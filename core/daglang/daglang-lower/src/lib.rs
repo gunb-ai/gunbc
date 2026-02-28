@@ -8051,6 +8051,8 @@ fn resolve_return_expr_source(
 
 /// Collect all leaf expression references from a complex expression.
 /// Returns (input_port_name, source_node_id, source_port_name, type_id) tuples.
+/// Sets `has_local_refs` to true if the expression references local variables
+/// (let bindings) that can't be resolved as compute node inputs.
 #[allow(clippy::too_many_arguments)]
 fn collect_expr_leaf_refs(
     expr: &Expr,
@@ -8060,6 +8062,7 @@ fn collect_expr_leaf_refs(
     endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
     refs: &mut Vec<(String, String, String, String)>,
     seen: &mut HashSet<String>,
+    has_local_refs: &mut bool,
 ) {
     match expr {
         Expr::Ident(name) => {
@@ -8079,6 +8082,8 @@ fn collect_expr_leaf_refs(
             } else if let Some(Some(source)) = endpoints_by_name.get(name) {
                 seen.insert(port_name.clone());
                 refs.push((port_name, source.node_id.clone(), source.primary_output.clone(), "Any".to_string()));
+            } else {
+                *has_local_refs = true;
             }
         }
         Expr::FieldAccess(base, field) => {
@@ -8104,65 +8109,65 @@ fn collect_expr_leaf_refs(
                     refs.push((port_name, source.node_id.clone(), field.clone(), "Any".to_string()));
                 }
             } else {
-                collect_expr_leaf_refs(base, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+                collect_expr_leaf_refs(base, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
             }
         }
         Expr::BinOp(left, _, right) => {
-            collect_expr_leaf_refs(left, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
-            collect_expr_leaf_refs(right, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+            collect_expr_leaf_refs(left, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+            collect_expr_leaf_refs(right, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
         }
         Expr::UnaryOp(_, inner) => {
-            collect_expr_leaf_refs(inner, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+            collect_expr_leaf_refs(inner, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
         }
         Expr::If(cond, then_, else_) => {
-            collect_expr_leaf_refs(cond, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
-            collect_expr_leaf_refs(then_, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+            collect_expr_leaf_refs(cond, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+            collect_expr_leaf_refs(then_, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
             if let Some(e) = else_ {
-                collect_expr_leaf_refs(e, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+                collect_expr_leaf_refs(e, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
             }
         }
         Expr::Pipe(receiver, call) => {
-            collect_expr_leaf_refs(receiver, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
-            collect_expr_leaf_refs(call, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+            collect_expr_leaf_refs(receiver, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+            collect_expr_leaf_refs(call, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
         }
         Expr::Match(scrutinee, arms) => {
-            collect_expr_leaf_refs(scrutinee, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+            collect_expr_leaf_refs(scrutinee, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
             for arm in arms {
-                collect_expr_leaf_refs(&arm.body, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+                collect_expr_leaf_refs(&arm.body, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
             }
         }
         Expr::Call(_, args) => {
             for (_, arg) in args {
-                collect_expr_leaf_refs(arg, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+                collect_expr_leaf_refs(arg, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
             }
         }
         Expr::Record(_, fields) => {
             for (_, field_expr) in fields {
-                collect_expr_leaf_refs(field_expr, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+                collect_expr_leaf_refs(field_expr, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
             }
         }
         Expr::StringInterp(parts) => {
             for part in parts {
                 if let daglang_syntax::ast::StringPart::Expr(inner) = part {
-                    collect_expr_leaf_refs(inner, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+                    collect_expr_leaf_refs(inner, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
                 }
             }
         }
         Expr::List(elems) => {
             for elem in elems {
-                collect_expr_leaf_refs(elem, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+                collect_expr_leaf_refs(elem, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
             }
         }
         Expr::Lambda(_, body) => {
-            collect_expr_leaf_refs(body, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+            collect_expr_leaf_refs(body, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
         }
         Expr::For(_, iterable, _, body) => {
-            collect_expr_leaf_refs(iterable, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
-            collect_expr_leaf_refs(body, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+            collect_expr_leaf_refs(iterable, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+            collect_expr_leaf_refs(body, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
         }
         Expr::Return(fields) => {
             for (_, field_expr) in fields {
-                collect_expr_leaf_refs(field_expr, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+                collect_expr_leaf_refs(field_expr, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
             }
         }
         Expr::Literal(_)
@@ -8262,6 +8267,7 @@ fn synthesize_return_expr_compute(
 ) -> Option<(String, String)> {
     let mut refs: Vec<(String, String, String, String)> = Vec::new();
     let mut seen = HashSet::new();
+    let mut has_local_refs = false;
     collect_expr_leaf_refs(
         expr,
         param_types,
@@ -8270,9 +8276,10 @@ fn synthesize_return_expr_compute(
         endpoints_by_name,
         &mut refs,
         &mut seen,
+        &mut has_local_refs,
     );
 
-    if refs.is_empty() {
+    if refs.is_empty() || has_local_refs {
         return None;
     }
 
