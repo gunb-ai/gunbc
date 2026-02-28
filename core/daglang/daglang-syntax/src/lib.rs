@@ -570,35 +570,36 @@ pub mod ast {
         Hash,
     }
 
-    impl PipeMethod {
-        /// Parse a method name string into a known built-in pipe method.
-        pub fn from_str(name: &str) -> Option<Self> {
+    impl std::str::FromStr for PipeMethod {
+        type Err = ();
+
+        fn from_str(name: &str) -> Result<Self, Self::Err> {
             match name {
-                "map" => Some(Self::Map),
-                "filter" => Some(Self::Filter),
-                "filter_map" => Some(Self::FilterMap),
-                "flat_map" => Some(Self::FlatMap),
-                "sort_by" => Some(Self::SortBy),
-                "append" => Some(Self::Append),
-                "fold" => Some(Self::Fold),
-                "join" => Some(Self::Join),
-                "count" => Some(Self::Count),
-                "sum" => Some(Self::Sum),
-                "first" => Some(Self::First),
-                "last" => Some(Self::Last),
-                "max_by" => Some(Self::MaxBy),
-                "any" => Some(Self::Any),
-                "all" => Some(Self::All),
-                "contains" => Some(Self::Contains),
-                "starts_with" => Some(Self::StartsWith),
-                "ends_with" => Some(Self::EndsWith),
-                "repeat" => Some(Self::Repeat),
-                "replace_section" => Some(Self::ReplaceSection),
-                "chars" => Some(Self::Chars),
-                "to_bytes" => Some(Self::ToBytes),
-                "to_json" => Some(Self::ToJson),
-                "hash" => Some(Self::Hash),
-                _ => None,
+                "map" => Ok(Self::Map),
+                "filter" => Ok(Self::Filter),
+                "filter_map" => Ok(Self::FilterMap),
+                "flat_map" => Ok(Self::FlatMap),
+                "sort_by" => Ok(Self::SortBy),
+                "append" => Ok(Self::Append),
+                "fold" => Ok(Self::Fold),
+                "join" => Ok(Self::Join),
+                "count" => Ok(Self::Count),
+                "sum" => Ok(Self::Sum),
+                "first" => Ok(Self::First),
+                "last" => Ok(Self::Last),
+                "max_by" => Ok(Self::MaxBy),
+                "any" => Ok(Self::Any),
+                "all" => Ok(Self::All),
+                "contains" => Ok(Self::Contains),
+                "starts_with" => Ok(Self::StartsWith),
+                "ends_with" => Ok(Self::EndsWith),
+                "repeat" => Ok(Self::Repeat),
+                "replace_section" => Ok(Self::ReplaceSection),
+                "chars" => Ok(Self::Chars),
+                "to_bytes" => Ok(Self::ToBytes),
+                "to_json" => Ok(Self::ToJson),
+                "hash" => Ok(Self::Hash),
+                _ => Err(()),
             }
         }
     }

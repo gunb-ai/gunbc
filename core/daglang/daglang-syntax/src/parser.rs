@@ -2554,7 +2554,7 @@ impl Parser {
             match op {
                 TokenKind::PipeArrow => match &rhs {
                     Expr::Call(name, args) => {
-                        if let Some(method) = PipeMethod::from_str(name) {
+                        if let Ok(method) = name.parse::<PipeMethod>() {
                             Expr::PipeCall(Box::new(lhs), method, args.clone())
                         } else {
                             Expr::Pipe(Box::new(lhs), Box::new(rhs))
