@@ -15,7 +15,7 @@
 //! ```
 
 #![deny(dead_code)]
-use gunbc_cli::BinaryArgs;
+use gunbc_cli::{parse, CliParam, ParamType};
 use gunbc_dag::{
     dsl_builder::build_dsl_graph_with_profile, mock_defaults::auto_mock_spec, print_tool_header,
     run_tool, RunToolOptions,
@@ -25,14 +25,30 @@ use gunbc_ir::{detect_entrypoints, Value};
 use std::process;
 
 fn main() {
-    let parsed = BinaryArgs::new()
-        .with_string_param("profile", Some('p'), Some("unit_test"))
-        .with_string_param("repo", Some('r'), None)
-        .with_string_param("issue", Some('i'), None)
-        .with_string_param("worker_id", Some('w'), Some("gunbc-sdlc"))
-        .with_string_param("llm_provider", None, Some("anthropic"))
-        .with_string_param("llm_model", None, Some("claude-sonnet-4-20250514"))
-        .parse_env();
+    let argv: Vec<String> = std::env::args().collect();
+    let schema = vec![
+        CliParam::new("profile", ParamType::Str)
+            .short('p')
+            .default("unit_test"),
+        CliParam::new("repo", ParamType::Str).short('r'),
+        CliParam::new("issue", ParamType::Str).short('i'),
+        CliParam::new("worker_id", ParamType::Str)
+            .short('w')
+            .default("gunbc-sdlc"),
+        CliParam::new("llm_provider", ParamType::Str).default("anthropic"),
+        CliParam::new("llm_model", ParamType::Str).default("claude-sonnet-4-20250514"),
+    ];
+    let parsed = match parse(&argv, &schema) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            print_attention(
+                AttentionLevel::Error,
+                "SDLC argument parsing failed",
+                &error.to_string(),
+            );
+            process::exit(1);
+        }
+    };
 
     if parsed.help {
         print_help();
@@ -41,21 +57,37 @@ fn main() {
 
     let dry_run = parsed.dry_run;
     let profile = parsed
-        .get_string("profile")
+        .values
+        .get("profile")
+        .and_then(|v| v.as_str())
         .unwrap_or("unit_test")
         .to_string();
-    let repo = parsed.get_string("repo").map(|s| s.to_string());
-    let issue = parsed.get_string("issue").map(|s| s.to_string());
+    let repo = parsed
+        .values
+        .get("repo")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let issue = parsed
+        .values
+        .get("issue")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     let worker_id = parsed
-        .get_string("worker_id")
+        .values
+        .get("worker_id")
+        .and_then(|v| v.as_str())
         .unwrap_or("gunbc-sdlc")
         .to_string();
     let llm_provider = parsed
-        .get_string("llm_provider")
+        .values
+        .get("llm_provider")
+        .and_then(|v| v.as_str())
         .unwrap_or("anthropic")
         .to_string();
     let llm_model = parsed
-        .get_string("llm_model")
+        .values
+        .get("llm_model")
+        .and_then(|v| v.as_str())
         .unwrap_or("claude-sonnet-4-20250514")
         .to_string();
 
@@ -153,10 +185,7 @@ fn main() {
         // Seed entrypoint inputs from auto-mock spec
         let boundary = spec.to_boundary_mocks();
         for (node_id, port_name, _) in &entrypoints.entrypoint_ports {
-            if input_mocks
-                .get_input(&node_id.0, &port_name.0)
-                .is_none()
-            {
+            if input_mocks.get_input(&node_id.0, &port_name.0).is_none() {
                 if let Some(val) = boundary.get_input(&node_id.0, &port_name.0) {
                     input_mocks.set_input(node_id.0.clone(), port_name.0.clone(), val.clone());
                 }
@@ -173,10 +202,7 @@ fn main() {
     // ========================================================================
 
     let mut metadata = vec![
-        (
-            "exec",
-            if dry_run { "dry-run" } else { "real" }.to_string(),
-        ),
+        ("exec", if dry_run { "dry-run" } else { "real" }.to_string()),
         ("profile", profile),
         ("repo", format!("{}/{}", owner, repo_name)),
         ("worker", worker_id),

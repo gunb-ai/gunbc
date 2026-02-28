@@ -18,7 +18,7 @@
 //! ```
 
 #![deny(dead_code)]
-use gunbc_cli::BinaryArgs;
+use gunbc_cli::{parse, CliParam, ParamType};
 use gunbc_dag::{dsl_builder::build_dsl_graph, print_tool_header, run_tool, RunToolOptions};
 use gunbc_exec::{print_attention, AttentionLevel, BoundaryMocks, ExecutionMode};
 use gunbc_ir::{detect_entrypoints, Value};
@@ -116,14 +116,32 @@ fn query_issue_description(issue_number: &str) -> Option<String> {
 }
 
 fn main() {
-    let parsed = BinaryArgs::new()
-        .with_string_param("repo_path", Some('r'), Some("."))
-        .with_string_param("base_ref", Some('b'), None)
-        .with_string_param("provider", Some('p'), Some("anthropic"))
-        .with_string_param("depth", Some('d'), Some("M"))
-        .with_string_param("pr", None, None)
-        .with_string_param("issue", None, None)
-        .parse_env();
+    let argv: Vec<String> = std::env::args().collect();
+    let schema = vec![
+        CliParam::new("repo_path", ParamType::Str)
+            .short('r')
+            .default("."),
+        CliParam::new("base_ref", ParamType::Str).short('b'),
+        CliParam::new("provider", ParamType::Str)
+            .short('p')
+            .default("anthropic"),
+        CliParam::new("depth", ParamType::Str)
+            .short('d')
+            .default("M"),
+        CliParam::new("pr", ParamType::Str),
+        CliParam::new("issue", ParamType::Str),
+    ];
+    let parsed = match parse(&argv, &schema) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            print_attention(
+                AttentionLevel::Error,
+                "Pipeline argument parsing failed",
+                &error.to_string(),
+            );
+            process::exit(1);
+        }
+    };
 
     if parsed.help {
         print_help();
@@ -131,15 +149,39 @@ fn main() {
     }
 
     let dry_run = parsed.dry_run;
-    let repo_path = parsed.get_string("repo_path").unwrap_or(".").to_string();
-    let base_ref = parsed.get_string("base_ref").map(|s| s.to_string());
+    let repo_path = parsed
+        .values
+        .get("repo_path")
+        .and_then(|v| v.as_str())
+        .unwrap_or(".")
+        .to_string();
+    let base_ref = parsed
+        .values
+        .get("base_ref")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     let provider = parsed
-        .get_string("provider")
+        .values
+        .get("provider")
+        .and_then(|v| v.as_str())
         .unwrap_or("anthropic")
         .to_string();
-    let depth_str = parsed.get_string("depth").unwrap_or("M").to_string();
-    let pr_number = parsed.get_string("pr").map(|s| s.to_string());
-    let issue_number = parsed.get_string("issue").map(|s| s.to_string());
+    let depth_str = parsed
+        .values
+        .get("depth")
+        .and_then(|v| v.as_str())
+        .unwrap_or("M")
+        .to_string();
+    let pr_number = parsed
+        .values
+        .get("pr")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let issue_number = parsed
+        .values
+        .get("issue")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     // Validate provider
     if !["openai", "anthropic"].contains(&provider.as_str()) {
