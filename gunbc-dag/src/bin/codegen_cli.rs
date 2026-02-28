@@ -1208,8 +1208,6 @@ mod tests {
             "bootstrap",
             "deps",
             "gist",
-            "gist-diff",
-            "gist-recent",
             "makegen",
             "pragma",
             "testgen",
