@@ -23,10 +23,10 @@ func bootstrap(check_mode: Bool?) -> { success: Bool, crate_count: Int, makefile
   scan = shell.Find.ListDirs(path: "crates")
 
   makefile_content = render_bootstrap_makefile(crate_names: scan.dirs)
-  makefile = content_upsert(content: makefile_content, path: "Makefile")
+  makefile = content_upsert(content: makefile_content.return, path: "Makefile")
 
   gitignore_content = render_bootstrap_gitignore(crate_names: scan.dirs)
-  gitignore = content_upsert(content: gitignore_content, path: ".gitignore")
+  gitignore = content_upsert(content: gitignore_content.return, path: ".gitignore")
 
   return {
     success: scan.dirs |> count() > 0,
