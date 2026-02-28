@@ -460,7 +460,7 @@ NOT modify `core/codegen/src/cli_gen.rs` or any compiler crate.
 | A11 | — | **Delete compensating tests.** 7 `workflow_*.rs` + `infra_cli.rs`. | Files deleted. `cargo test --workspace` passes. | S |
 
 **Prerequisite**: C20 (profile/mode/subcommand CLI gen) must land before A1-A5.
-**Chain**: A1 → A2 → A3; A4 → A5 → A6; A7 → A8 → A9 → A10 → A11
+**Chain**: A1 → A2 → A3; A4 → A5; A7 → A8 → A9 → A10 → A11
 
 ---
 
