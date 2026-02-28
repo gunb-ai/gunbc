@@ -2950,12 +2950,20 @@ fn collect_for_loop_sites_from_scoped(body: &scope::ScopedBody, out: &mut Vec<Fo
         match item {
             scope::ScopedItem::ForLoop {
                 element_var,
+                iterable,
                 passthrough,
                 body,
             } => {
+                let iterable_ref = match iterable {
+                    scope::ExprRef::Ident(name) => Some(IterableRef::Ident(name.clone())),
+                    scope::ExprRef::FieldAccess { base, field } => {
+                        Some(IterableRef::FieldAccess(base.clone(), field.clone()))
+                    }
+                    scope::ExprRef::Literal(_) | scope::ExprRef::Opaque => None,
+                };
                 out.push(ForLoopSite {
                     element_var: element_var.clone(),
-                    iterable: None,
+                    iterable: iterable_ref,
                     passthrough: passthrough.clone(),
                     body_service_call_paths: collect_service_paths_from_scoped_body(body),
                 });
