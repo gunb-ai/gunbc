@@ -371,6 +371,41 @@ The CLI generator should produce every binary from DSL metadata. Design: `docs/d
 | 65 | RT65 | **Eliminate `infra.rs`.** 8 subcommands (most complex binary). Move spec rendering to DSL. Needs `KEY=VALUE` parsing + multi-value flags + `--execute` safety gate in CLI template. Last and hardest elimination. | L | Pending | RT63 |
 | 66 | RT66 | **Delete handwritten binary infrastructure.** After all binaries generated, delete `BinaryArgs` from `gunbc-cli`, remove `#[allow(clippy::disallowed_methods)]` annotations, clean up orphaned support code. ~2,600 lines deleted. | S | Pending | RT64, RT65 |
 
+### gunbc-dag Migration Queue (Rust → core/ + DSL)
+
+Migrate gunbc-dag from 23K lines to ~3K. Generic infrastructure → core/ crates. Domain knowledge → DSL data/fns.
+Design: `docs/design/gunbc-dag-migration.md`.
+
+**Stream A: Extract generic infrastructure to core/ (no DSL features needed)**
+
+| # | ID | What | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| 67 | RT67 | **Move `resolve_service.rs` to core/.** 2,177 lines. 100% generic (REST/Shell/File service interpreters parameterized by `ServiceOperationSpec`). Zero repo-specific logic. Target: `core/ir/src/transport/service_ops.rs` or new `core/resolve`. | M | Pending | — |
+| 68 | RT68 | **Split `mock_defaults.rs`.** Generic probing/builder framework (~350 lines) → `core/test/src/auto_mock.rs`. GCP-specific field mappings (~230 lines) stay in gunbc-dag or move to DSL data. | S | Pending | — |
+| 69 | RT69 | **Move fidelity evaluation pattern to core/.** Compile-evaluate pattern in `fidelity.rs` (354 lines) is generic. Move to `core/codegen/src/dsl_evaluator.rs`. gunbc-dag calls it with repo-specific DSL file paths. | S | Pending | — |
+| 70 | RT70 | **Move `dsl_builder.rs` pattern to core/.** Extract compile-then-resolve (~300 lines) to `core/codegen/src/graph_builder.rs`. gunbc-dag keeps thin workspace layout adapter. | S | Pending | — |
+| 71 | RT71 | **Create `core/workflow` crate.** Extract 11 generic workflow modules (planner, executor, admission, coordination, schema, key, process_registry, slo, projection, proof, errors). ~2,936 lines. gunbc-dag keeps catalog + unit_commands + spec_builders. | L | Pending | RT67 |
+| 72 | RT72 | **Split `resolve.rs`.** Extract generic resolution framework (~1,600 lines: adapter ops, primitive mapping, resource lifecycle) to `core/resolve`. Leave `resolve_domain()` dispatch (~700 lines) in gunbc-dag. | M | Pending | RT67 |
+| 73 | RT73 | **Move testgen engine to core/.** `dag_test_discovery.rs`, `graph.rs`, `mock_interpreter.rs`, `ops.rs`, `profile_discovery.rs` (2,176 lines) → `core/codegen/src/testgen/`. gunbc-dag calls the engine, doesn't own it. | M | Pending | RT68 |
+
+**Stream B: Replace Rust domain data with DSL data declarations**
+
+| # | ID | What | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| 74 | RT74 | **Resource definitions → DSL data.** Move `REPO_SOURCE_INPUT_GLOBS`, `TESTGEN_INPUT_GLOBS`, output paths from `resources.rs` (342 lines) to `dsl/config/resources.dag`. ResourceDef construction from evaluated DSL data. | S | Pending | — |
+| 75 | RT75 | **Gitignore patterns → DSL data.** Move gitignore category definitions from `makegen/gitignore.rs` (372 lines) to `dsl/config/gitignore.dag`. Already data-driven; literal move. | S | Pending | — |
+| 76 | RT76 | **Docgen read targets → DSL data.** Move `DOCGEN_READ_TARGETS` from `docgen/mod.rs` (94 lines) to `dsl/tools/docgen.dag` as `data` declaration. | S | Pending | — |
+| 77 | RT77 | **Delete `policy/pragma.rs`.** Once clippy_toml rendering works via DSL (blocked on FC-CF5: recursive types), delete the 546-line Rust mirror. 2/3 already done (allowlist + lint_policy). | S | Pending | FC-CF5 |
+| 78 | RT78 | **Workflow catalog → DSL data.** Move `WORKFLOW_VARIANTS` table and `default_claims_for_stage()` from `catalog.rs` (576 lines) to `dsl/config/workflow_catalog.dag`. Evaluate at runtime. | M | Pending | RT71 |
+| 79 | RT79 | **Unit commands → DSL data.** Move per-workflow command tables from `unit_commands.rs` (425 lines) to `dsl/config/workflow_commands.dag`. Each unit → data record with `program` + `args`. | M | Pending | RT78 |
+| 80 | RT80 | **Makegen registry → DSL data.** Largest file (2,207 lines). Move BuildConfig, MetaTarget definitions, ToolRegistry derivation to DSL. Keep Cargo command invocation in Rust. Most complex migration item. | L | Pending | RT75 |
+
+**Stream C: Delete thin wrappers**
+
+| # | ID | What | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| 81 | RT81 | **Delete tool module wrappers.** Replace `bootstrap/mod.rs`, `build/mod.rs`, `codegen/mod.rs`, `deps_tool.rs`, `infra/mod.rs`, `gist.rs`, `embedded_assets.rs` (~145 lines) with single generic lookup using structural entrypoint inference. | S | Pending | — |
+
 ---
 
 ## Red Unqueued
