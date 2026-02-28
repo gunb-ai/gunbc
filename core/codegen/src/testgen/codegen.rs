@@ -1,3 +1,6 @@
+// Vec-init-then-push in fidelity ladder test generation is clearer than vec![] macro.
+#![allow(clippy::vec_init_then_push)]
+
 //! Test code generation from proof obligations.
 //!
 //! Tests are organized by obligation bucket:

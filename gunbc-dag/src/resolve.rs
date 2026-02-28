@@ -83,7 +83,7 @@ fn execute_with_declared_output_passthrough(
         }
         outputs.insert(key.clone(), value.clone());
     }
-    for (port_name, is_optional) in output_ports {
+    for (port_name, _is_optional) in output_ports {
         let passthrough_key = format!("{}{port_name}", PortName::OUTPUT_PASSTHROUGH_PREFIX);
         if let Some(value) = inputs.get(&passthrough_key) {
             outputs.insert(port_name.clone(), value.clone());
@@ -333,13 +333,35 @@ impl Executable for LiteralSourceOp {
 #[derive(Debug, Clone)]
 struct ExprComputeOp {
     fn_body: daglang_lower::LoweredFnBody,
+    input_ports: Vec<String>,
+    referenced_vars: Vec<String>,
     output_port: String,
 }
 
 impl Executable for ExprComputeOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let mut env = HashMap::new();
+        for port in &self.input_ports {
+            let value = inputs.get(port).cloned().unwrap_or(Value::Skipped);
+            if let Value::Map(fields) = &value {
+                for (field_name, field_value) in fields {
+                    env.insert(format!("{port}__{field_name}"), field_value.clone());
+                }
+            }
+            env.insert(port.clone(), value);
+        }
+        for port in &self.input_ports {
+            if !env.contains_key(port) {
+                env.insert(port.clone(), Value::Skipped);
+            }
+        }
+        for ref_name in &self.referenced_vars {
+            if !env.contains_key(ref_name) {
+                env.insert(ref_name.clone(), Value::Skipped);
+            }
+        }
         let sibling_fns = HashMap::new();
-        let result = daglang_lower::eval::evaluate_fn_body(&self.fn_body, &inputs, &sibling_fns)
+        let result = daglang_lower::eval::evaluate_fn_body(&self.fn_body, &env, &sibling_fns)
             .map_err(|e| ExecError::new(e.message))?;
         // The fn body returns { result: <value> }, extract and output it.
         if let Some(value) = result.get(&self.output_port) {
@@ -350,6 +372,82 @@ impl Executable for ExprComputeOp {
             // Fallback: return whatever the fn body produced.
             Ok(result)
         }
+    }
+}
+
+fn collect_fn_body_idents(body: &daglang_lower::LoweredFnBody) -> Vec<String> {
+    let mut idents = Vec::new();
+    for stmt in &body.stmts {
+        if let daglang_lower::expr::LoweredStmt::Return(fields) = stmt {
+            for (_, expr) in fields {
+                collect_lowered_expr_idents(expr, &mut idents);
+            }
+        }
+    }
+    idents.sort();
+    idents.dedup();
+    idents
+}
+
+fn collect_lowered_expr_idents(expr: &daglang_lower::expr::LoweredExpr, out: &mut Vec<String>) {
+    use daglang_lower::expr::LoweredExpr;
+    match expr {
+        LoweredExpr::Ident(name) => out.push(name.clone()),
+        LoweredExpr::BinOp { left, right, .. } => {
+            collect_lowered_expr_idents(left, out);
+            collect_lowered_expr_idents(right, out);
+        }
+        LoweredExpr::UnaryOp { expr, .. } => collect_lowered_expr_idents(expr, out),
+        LoweredExpr::IfElse {
+            cond, then_, else_, ..
+        } => {
+            collect_lowered_expr_idents(cond, out);
+            collect_lowered_expr_idents(then_, out);
+            if let Some(e) = else_ {
+                collect_lowered_expr_idents(e, out);
+            }
+        }
+        LoweredExpr::StringInterp(parts) => {
+            for part in parts {
+                if let daglang_lower::expr::LoweredStringPart::Expr(e) = part {
+                    collect_lowered_expr_idents(e, out);
+                }
+            }
+        }
+        LoweredExpr::Pipe { receiver, call } => {
+            collect_lowered_expr_idents(receiver, out);
+            collect_lowered_expr_idents(call, out);
+        }
+        LoweredExpr::Call { args, .. } => {
+            for (_, arg) in args {
+                collect_lowered_expr_idents(arg, out);
+            }
+        }
+        LoweredExpr::FieldAccess { expr, .. } => collect_lowered_expr_idents(expr, out),
+        LoweredExpr::Record { fields, .. } => {
+            for (_, field) in fields {
+                collect_lowered_expr_idents(field, out);
+            }
+        }
+        LoweredExpr::List(items) => {
+            for item in items {
+                collect_lowered_expr_idents(item, out);
+            }
+        }
+        LoweredExpr::Lambda { body, .. } => collect_lowered_expr_idents(body, out),
+        LoweredExpr::Match { expr, arms } => {
+            collect_lowered_expr_idents(expr, out);
+            for arm in arms {
+                collect_lowered_expr_idents(&arm.body, out);
+            }
+        }
+        LoweredExpr::For {
+            iterable, body, ..
+        } => {
+            collect_lowered_expr_idents(iterable, out);
+            collect_lowered_expr_idents(body, out);
+        }
+        _ => {}
     }
 }
 
@@ -584,7 +682,7 @@ fn normalize_release_resource_inputs(node: &mut Node<DynOp>) {
 fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
     let node_id = node.id.0.clone();
     match &node.body {
-        NodeBody::Opaque(op) => resolve_op(&node_id, op, &node.outputs),
+        NodeBody::Opaque(op) => resolve_op(&node_id, op, &node.inputs, &node.outputs),
         NodeBody::SubDag(inner) => Ok(DynOp::new(SubDagDispatchOp {
             dag: resolve_lowered_dag(inner)?,
         })),
@@ -593,12 +691,22 @@ fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
 
 fn resolve_node_body(node: &Node<LoweredOp>) -> Result<NodeBody<DynOp>, ResolveError> {
     match &node.body {
-        NodeBody::Opaque(op) => Ok(NodeBody::Opaque(resolve_op(&node.id.0, op, &node.outputs)?)),
+        NodeBody::Opaque(op) => Ok(NodeBody::Opaque(resolve_op(
+            &node.id.0,
+            op,
+            &node.inputs,
+            &node.outputs,
+        )?)),
         NodeBody::SubDag(inner) => Ok(NodeBody::SubDag(resolve_lowered_dag(inner)?)),
     }
 }
 
-fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, ResolveError> {
+fn resolve_op(
+    node_id: &str,
+    op: &LoweredOp,
+    inputs: &[Port],
+    outputs: &[Port],
+) -> Result<DynOp, ResolveError> {
     match op {
         LoweredOp::Collection { kind, .. } => resolve_collection(kind),
         LoweredOp::Pipeline {
@@ -613,7 +721,7 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
             stage_names: stage_names.clone(),
             output_ports: declared_output_ports(outputs),
         })),
-        LoweredOp::Primitive { kind, .. } => resolve_primitive(kind, outputs),
+        LoweredOp::Primitive { kind, .. } => resolve_primitive(kind, inputs, outputs),
         LoweredOp::Callable {
             module,
             name,
@@ -644,7 +752,11 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
 // ============================================================================
 
 /// Resolve typed lowered primitive nodes shared across all modules.
-fn resolve_primitive(kind: &PrimitiveOpKind, outputs: &[Port]) -> Result<DynOp, ResolveError> {
+fn resolve_primitive(
+    kind: &PrimitiveOpKind,
+    inputs: &[Port],
+    outputs: &[Port],
+) -> Result<DynOp, ResolveError> {
     match kind {
         PrimitiveOpKind::FsEnv => Ok(DynOp::new(DslFsEnvOp)),
         PrimitiveOpKind::CallParamSource { param, .. } => {
@@ -679,12 +791,16 @@ fn resolve_primitive(kind: &PrimitiveOpKind, outputs: &[Port]) -> Result<DynOp, 
         // FC-7: Output path annotation nodes are metadata-only, resolve as identity.
         PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(DynOp::new(IdentityCallableOp)),
         PrimitiveOpKind::ExprCompute { fn_body } => {
+            let input_ports: Vec<String> = inputs.iter().map(|p| p.name.0.clone()).collect();
+            let referenced_vars = collect_fn_body_idents(fn_body);
             let output_port = outputs
                 .first()
                 .map(|port| port.name.0.clone())
                 .unwrap_or_else(|| "result".to_string());
             Ok(DynOp::new(ExprComputeOp {
                 fn_body: *fn_body.clone(),
+                input_ports,
+                referenced_vars,
                 output_port,
             }))
         }

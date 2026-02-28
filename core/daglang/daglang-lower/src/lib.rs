@@ -16,6 +16,9 @@
 //! TypedAST → [daglang-lower] → GraphIR (gunbc Dag/Node/Port/Edge)
 //! ```
 
+// RT-C4: LoweringContext struct will group these params. Until then, allow.
+#![allow(clippy::too_many_arguments)]
+
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use daglang_syntax::ast::{
@@ -6587,6 +6590,13 @@ pub(crate) fn resolve_service_call_source(
     }))
 }
 
+fn unwrap_guarded_expr(expr: &Expr) -> &Expr {
+    match expr {
+        Expr::Guarded(inner, _) | Expr::After(inner, _) => unwrap_guarded_expr(inner),
+        other => other,
+    }
+}
+
 fn collect_bound_service_sources(
     caller: &str,
     stmts: &[Stmt],
@@ -6605,7 +6615,7 @@ fn collect_bound_service_sources(
                 name: binding,
                 expr,
                 ..
-            }) => match expr {
+            }) => match unwrap_guarded_expr(expr) {
                 Expr::ServiceCall(path, _) => {
                     if let Some(source) = resolve_service_call_source(
                         caller,
