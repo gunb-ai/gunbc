@@ -8089,7 +8089,10 @@ fn collect_expr_leaf_refs(
                 if seen.contains(&port_name) {
                     return;
                 }
-                if let Some(source) = bound_callable_sources.get(base_ident) {
+                if param_types.contains_key(base_ident) {
+                    seen.insert(port_name.clone());
+                    refs.push((port_name, PARAM_REF_SENTINEL.to_string(), format!("{base_ident}__{field}")));
+                } else if let Some(source) = bound_callable_sources.get(base_ident) {
                     seen.insert(port_name.clone());
                     refs.push((port_name, source.node_id.clone(), field.clone()));
                 } else if let Some(source) = bound_service_sources.get(base_ident) {
@@ -8269,11 +8272,16 @@ fn synthesize_return_expr_compute(
     // 5. Wire each leaf reference as an edge to the compute node.
     for (port_name, source_node, source_port) in &refs {
         if source_node == PARAM_REF_SENTINEL {
-            let param_name = source_port;
-            let param_ty = param_types.get(param_name).map_or("Any", |s| s.as_str());
+            // source_port is either "param_name" (plain) or "param__field" (field access).
+            // Split on "__" to get the base param and optional field.
+            let (base_param, field) = source_port
+                .split_once("__")
+                .map_or((source_port.as_str(), None), |(b, f)| (b, Some(f)));
+            let param_ty = param_types.get(base_param).map_or("Any", |s| s.as_str());
             let param_source_id =
-                ensure_param_source_node(builder, module_name, item_name, param_name, param_ty);
-            builder.add_edge(&param_source_id, param_name, &node_id, port_name);
+                ensure_param_source_node(builder, module_name, item_name, base_param, param_ty);
+            let src_port = field.unwrap_or(base_param);
+            builder.add_edge(&param_source_id, src_port, &node_id, port_name);
         } else {
             builder.add_edge(source_node, source_port, &node_id, port_name);
         }
