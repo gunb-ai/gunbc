@@ -172,6 +172,25 @@ Week 4:
 | #4 compile-on-demand | **Partially fixed** | All callsites now fail-closed (no silent fallbacks). `include_str!` migration folded into C1. |
 | #5 `has_local_refs` | **Documented** | Root cause of `make install` failure. Fix strategy in C10-full. |
 
+### Red-Team Review #2 — New Tasks
+
+These were identified by a second pass scanning for "fail-open" and "heuristic as semantics" patterns.
+Add to Lane A as red-team debt tokens. Each must include an RT id and deletion criteria.
+
+| # | ID | What | Deletion Criteria | Size | Lane A Phase |
+|---|-----|------|-------------------|------|-------------|
+| RT-N1 | **SplitLines exit-code semantics.** `ShellOutputParsing::SplitLines` returns empty list on non-zero exit. Conflates "no results" with "command failed." | Per-operation exit-code handling: `exit { allow: [0,1] on 1 => [] }` or at minimum only treat exit=1 + empty stderr as empty. | M | A3 |
+| RT-N2 | **TrimStdout optionality is structural.** `Port::is_optional()` centralizes the `?` suffix check, but optionality should be a structural type property, not a string convention. | `is_optional: bool` field on `Port` (or `Type::Optional(Box<Type>)` in the type system). Delete `ends_with('?')` from `is_optional()`. | M | A3 |
+| RT-N3 | **Fidelity Enum backward-compat path.** `enum_variant()` in `core/codegen/src/fidelity.rs` handles both `Value::Enum` and `Value::Str`. The `Value::Str` path is backward-compat for pre-C3 graphs. | Delete `Value::Str` arm once all compiled graphs use `Value::Enum` exclusively. Add a test that verifies no stdlib evaluation returns `Value::Str` for variant values. | S | A3 |
+| RT-N4 | **Config block unknown keys swallowed.** Parser `_ => { self.advance(); }` in service config blocks silently consumes unknown configuration keys. | Emit a parse diagnostic for unknown config keys (warn or error). Known keys: `endpoint`, `auth`, `auth_input`. | S | A3 |
+| RT-N5 | **Nested field-chain wiring workaround.** `dsl/cloud/gcp/credential.dag` has `extract_secret()` helper and alias output to avoid `cred.token.token` field-chain wiring. | Implement field-chain wiring (`x.y.z`) generically in the lowerer's expression-to-source resolution. Delete `extract_secret` and alias outputs. | M | A1 (part of C10-full) |
+| RT-N6 | **`#[path]` crate boundary in core/resolve.** `core/resolve/src/service_ops.rs` uses `#[path = "...gunbc-dag/src/resolve_service.rs"]`. Compiles the file twice, bloats incremental builds. | `git mv` the file. Extract `use super::*` dependencies into shared types. `gunbc-dag` imports from `gunbc_resolve::service_ops`. | L | A3 |
+| RT-N7 | **ExprCompute is runtime interpreter.** `ExprComputeOp` builds a `LoweredFnBody` and calls `evaluate_fn_body` at runtime — "interpreter inside runtime." | Either fully desugar expressions into DAG nodes (preferred), or make compute nodes first-class compiled node type. Delete `ExprComputeOp` when all return expressions are desugared. | L | A1 (subsumes C10-full) |
+
+**Guardrail proposal** (for preventing reinfection):
+- Ban-list for `core/` and `gunbc-dag/src/`: `panic!` on user input, `unwrap_or(<default>)` on parse/type/lower paths, `eprintln!` as diagnostic, `ends_with("?")` optionality checks — require `// RT-xx temporary` comment with tracked task id.
+- Workaround comments must include: RT id, corresponding row in gap-analysis-tasks.md, deletion criteria.
+
 ## What's Done (from this session)
 
 | Item | Status |
@@ -185,6 +204,7 @@ Week 4:
 | C9 | Verified done (no panics in lowerer lib.rs) |
 | C16 | Verified partial (metadata preferred, from_node_context fallback) |
 | C18 | Verified done (looks_effectful_without_kind removed, no expiry plumbing) |
-| Hack fixes | PipeMethod consolidation (-75 lines), fail-closed resource_defs/gitignore, fallback data deleted |
+| Hack fixes (round 1) | PipeMethod consolidation (-75 lines), fail-closed resource_defs/gitignore, fallback data deleted |
+| Hack fixes (round 2) | LowerError::InvalidFileOp (kill eprintln), Port::is_optional() (centralize optionality), 7 new RT tasks documented |
 | Merge fixes | ci.rs import, stale Cargo.toml bins, codegen regen, workspace.dag, workspace_model, pragma_lint allowlist |
 | Snapshots | makegen_expand.txt, module_graph.rs, corpus_modules.rs all updated |
