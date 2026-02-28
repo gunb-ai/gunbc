@@ -338,13 +338,19 @@ impl Executable for FormatMapOp {
 }
 
 /// Convert a serde_json::Value to a gunbc_ir::Value.
+///
+/// Intentional fallbacks (documented, not accidental):
+/// - Heterogeneous arrays → `Value::Json` (no typed list representation)
+/// - Objects → `Value::Json` (no generic struct representation)
 fn json_to_value(json: serde_json::Value) -> Value {
     match json {
-        serde_json::Value::Null => Value::Str("".to_string()),
+        serde_json::Value::Null => Value::Unit,
         serde_json::Value::Bool(b) => Value::Bool(b),
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
                 Value::Int(i)
+            } else if let Some(f) = n.as_f64() {
+                Value::Float(f)
             } else {
                 Value::Str(n.to_string())
             }

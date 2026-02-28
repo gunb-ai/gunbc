@@ -1328,7 +1328,6 @@ impl Parser {
         let mut readonly = false;
         let permissions: Vec<String> = Vec::new();
         let mut transport: Option<TransportBinding> = None;
-        let mock_response: Vec<MockResponseDef> = Vec::new();
 
         if self.eat(&TokenKind::LParen) {
             inputs = self.parse_field_list_until_rparen()?;
@@ -1389,7 +1388,6 @@ impl Parser {
             readonly,
             permissions,
             transport,
-            mock_response,
         })
     }
 
@@ -1462,7 +1460,6 @@ impl Parser {
         let mut outputs = Vec::new();
         let mut idempotent = false;
         let mut readonly = false;
-        let mock_response: Vec<MockResponseDef> = Vec::new();
         while !self.check(&TokenKind::RBrace) && !self.at_eof() {
             if self.check(&TokenKind::Input) {
                 self.advance();
@@ -1491,7 +1488,6 @@ impl Parser {
             outputs,
             idempotent,
             readonly,
-            mock_response,
         })
     }
 
@@ -1514,7 +1510,6 @@ impl Parser {
                     outputs: op.outputs,
                     idempotent: op.idempotent,
                     readonly: op.readonly,
-                    mock_response: op.mock_response,
                 });
             } else if self.check(&TokenKind::Capability) {
                 capabilities.push(self.parse_interface_capability_signature()?);
@@ -1585,7 +1580,6 @@ impl Parser {
             outputs,
             idempotent: false,
             readonly: false,
-            mock_response: Vec::new(),
         })
     }
 
@@ -1648,7 +1642,6 @@ impl Parser {
             outputs,
             idempotent,
             readonly,
-            mock_response: Vec::new(),
         })
     }
 

@@ -536,6 +536,10 @@ fn probe_best_response<T: Executable + Clone + Send>(
         }
     }
 
+    eprintln!(
+        "mock warning: probe_best_response for `{node_id}` — all response \
+         candidates failed, falling back to default_shell_response()"
+    );
     default_shell_response()
 }
 
