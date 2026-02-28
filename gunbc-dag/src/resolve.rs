@@ -40,9 +40,10 @@ use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv};
 
-use crate::resolve_service::{
+use gunbc_resolve::service_ops::{
     GenericFileParseOp, GenericFilePrepareOp, GenericLocalParseOp, GenericLocalPrepareOp,
     GenericRestParseOp, GenericRestPrepareOp, GenericShellParseOp, GenericShellPrepareOp,
+    InterfaceStubExecuteOp, InterfaceStubParseOp, InterfaceStubPrepareOp,
 };
 
 // ============================================================================
@@ -955,7 +956,7 @@ fn resolve_service_transport(
                 capability,
             }) = &metadata.spec
             {
-                return Ok(DynOp::new(crate::resolve_service::InterfaceStubExecuteOp {
+                return Ok(DynOp::new(InterfaceStubExecuteOp {
                     interface: interface.clone(),
                     capability: capability.clone(),
                 }));
@@ -1022,7 +1023,7 @@ fn resolve_service_transport(
                     },
                     Some(TransportRole::Prepare),
                 ) => {
-                    return Ok(DynOp::new(crate::resolve_service::InterfaceStubPrepareOp {
+                    return Ok(DynOp::new(InterfaceStubPrepareOp {
                         interface: interface.clone(),
                         capability: capability.clone(),
                     }));
@@ -1034,7 +1035,7 @@ fn resolve_service_transport(
                     },
                     Some(TransportRole::Parse),
                 ) => {
-                    return Ok(DynOp::new(crate::resolve_service::InterfaceStubParseOp {
+                    return Ok(DynOp::new(InterfaceStubParseOp {
                         interface: interface.clone(),
                         capability: capability.clone(),
                     }));

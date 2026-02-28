@@ -10,6 +10,7 @@ description = "gunbc repo-specific DAG configuration, CI, and generators"
 gunbc-infra = { path = "../core/infra" }
 gunbc-ir = { path = "../core/ir" }
 gunbc-exec = { path = "../core/exec" }
+gunbc-resolve = { path = "../core/resolve" }
 gunbc-codegen = { path = "../core/codegen" }
 gunbc-test = { path = "../core/test" }
 

@@ -6,6 +6,7 @@ members = [
     "core/ir",
     "core/exec",
     "core/cli",
+    "core/resolve",
     "core/codegen",
     "core/test",
     "core/testgen-registry",
