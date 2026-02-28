@@ -3479,3 +3479,167 @@ fn scope_credential_chain_has_service_calls() {
         "credential_chain should have items"
     );
 }
+
+// ============================================================================
+// Phase 2+3: Branch-scoped transport tests
+// ============================================================================
+
+#[test]
+fn detect_if_branches_collects_service_call_paths() {
+    use daglang_syntax::ast::{Expr, Stmt};
+
+    let stmts = vec![Stmt::Expr(Expr::If(
+        Box::new(Expr::Ident("enabled".into())),
+        Box::new(Expr::ServiceCall(
+            vec!["gcp".into(), "Storage".into(), "ReadObject".into()],
+            vec![],
+        )),
+        Some(Box::new(Expr::ServiceCall(
+            vec!["gcp".into(), "Storage".into(), "WriteObject".into()],
+            vec![],
+        ))),
+    ))];
+
+    let sites = detect_if_branches_in_stmts(&stmts);
+    assert_eq!(sites.len(), 1);
+    assert!(sites[0].has_else);
+    assert_eq!(sites[0].then_service_call_paths.len(), 1);
+    assert_eq!(
+        sites[0].then_service_call_paths[0],
+        vec!["gcp", "Storage", "ReadObject"]
+    );
+    assert_eq!(sites[0].else_service_call_paths.len(), 1);
+    assert_eq!(
+        sites[0].else_service_call_paths[0],
+        vec!["gcp", "Storage", "WriteObject"]
+    );
+}
+
+#[test]
+fn detect_match_branches_collects_service_call_paths() {
+    use daglang_syntax::ast::{Expr, MatchArm, Pattern, Stmt};
+
+    let stmts = vec![Stmt::Expr(Expr::Match(
+        Box::new(Expr::Ident("mode".into())),
+        vec![
+            MatchArm {
+                pattern: Pattern::Ident("Create".into()),
+                guard: None,
+                body: Expr::ServiceCall(
+                    vec!["github".into(), "Gist".into(), "Create".into()],
+                    vec![],
+                ),
+            },
+            MatchArm {
+                pattern: Pattern::Ident("Update".into()),
+                guard: None,
+                body: Expr::ServiceCall(
+                    vec!["github".into(), "Gist".into(), "Update".into()],
+                    vec![],
+                ),
+            },
+        ],
+    ))];
+
+    let sites = detect_match_branches_in_stmts(&stmts);
+    assert_eq!(sites.len(), 1);
+    assert_eq!(sites[0].arm_count, 2);
+    assert_eq!(sites[0].all_service_call_paths.len(), 2);
+    assert_eq!(
+        sites[0].all_service_call_paths[0],
+        vec!["github", "Gist", "Create"]
+    );
+    assert_eq!(
+        sites[0].all_service_call_paths[1],
+        vec!["github", "Gist", "Update"]
+    );
+}
+
+#[test]
+fn make_branch_body_dag_no_transports_has_single_op() {
+    let dag = make_branch_body_dag("test_module", "callable", 0, "true", &[]);
+    assert_eq!(dag.nodes.len(), 1);
+    assert_eq!(dag.nodes[0].id.0, "op");
+    // Should have input and condition ports
+    assert!(dag.nodes[0].inputs.iter().any(|p| p.name.0 == "input"));
+    assert!(dag.nodes[0].inputs.iter().any(|p| p.name.0 == "condition"));
+}
+
+#[test]
+fn make_branch_body_dag_with_transports_has_triplets() {
+    let transport = LoopBodyTransport {
+        metadata: ServiceCallMetadata {
+            service: "gcp.Storage".to_string(),
+            operation: "ReadObject".to_string(),
+            transport: ServiceTransportClass::RestNetwork,
+            idempotent: true,
+            readonly: true,
+            permissions: vec![],
+            spec: None,
+        },
+        prepare_inputs: vec!["bucket".to_string(), "path".to_string()],
+        parse_output: "result".to_string(),
+    };
+    let dag = make_branch_body_dag("test_module", "callable", 0, "true", &[transport]);
+
+    // Should have: op + prepare + execute + parse = 4 nodes
+    assert_eq!(dag.nodes.len(), 4);
+
+    let node_ids: Vec<&str> = dag.nodes.iter().map(|n| n.id.0.as_str()).collect();
+    assert!(node_ids.contains(&"op"), "should have body op");
+    assert!(
+        node_ids.contains(&"prepare_branch_t0"),
+        "should have prepare"
+    );
+    assert!(
+        node_ids.contains(&"execute_branch_t0"),
+        "should have execute"
+    );
+    assert!(node_ids.contains(&"parse_branch_t0"), "should have parse");
+
+    // op should still have condition port for BranchBuilder guard
+    let op_node = dag.nodes.iter().find(|n| n.id.0 == "op").unwrap();
+    assert!(
+        op_node.inputs.iter().any(|p| p.name.0 == "condition"),
+        "op should retain condition port for guard propagation"
+    );
+
+    // Should have 3 edges: prepare→execute, execute→parse, parse→op
+    assert_eq!(dag.edges.len(), 3);
+}
+
+#[test]
+fn branch_body_dag_with_transports_builds_with_branch_builder() {
+    use gunbc_ir::patterns::branch::BranchBuilder;
+
+    let transport = LoopBodyTransport {
+        metadata: ServiceCallMetadata {
+            service: "gcp.Storage".to_string(),
+            operation: "ReadObject".to_string(),
+            transport: ServiceTransportClass::RestNetwork,
+            idempotent: true,
+            readonly: true,
+            permissions: vec![],
+            spec: None,
+        },
+        prepare_inputs: vec!["bucket".to_string()],
+        parse_output: "result".to_string(),
+    };
+    let true_dag = make_branch_body_dag("test_module", "callable", 0, "true", &[transport]);
+    let false_dag = make_branch_body_dag("test_module", "callable", 0, "false", &[]);
+
+    // This should not panic — the true_dag retains condition/input ports
+    let branch_node = BranchBuilder::<LoweredOp>::new("test_branch")
+        .with_true_branch(true_dag)
+        .with_false_branch(false_dag)
+        .with_output("result", "Any")
+        .build();
+
+    assert!(branch_node.is_subdag());
+    // The branch node should expose the prepare input 'bucket' as an entrypoint
+    assert!(
+        branch_node.inputs.iter().any(|p| p.name.0 == "bucket"),
+        "branch should expose prepare inputs as entrypoints: {:?}",
+        branch_node.inputs.iter().map(|p| &p.name.0).collect::<Vec<_>>()
+    );
+}
