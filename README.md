@@ -63,6 +63,10 @@ Every external system is modeled as a **composition of layered concerns** (TCP �
 - No ambient globals: exec mode and policy flags are explicit inputs.
 - Fast path declared: any freshness/check logic documents fast and slow paths.
 - Generated code linting: fix IR or clippy config, never add `#[allow]` in generated output.
+- Translation layers are total or error: if parser/lowerer/resolver can't represent something, raise a typed error with source location — never drop silently or substitute a default.
+- No stubs that look like features: if a type/field/annotation exists, it must be wired end-to-end with at least one hard test, or deleted.
+- Model negative space: new service operations must declare at least one error response (when `response {}` blocks ship). No happy-path-only models.
+- Parse at the boundary, match exhaustively: new string-based dispatch → enum at intake, exhaustive match internally. `_ => default` in match on known variants is a smell.
 
 ## Invariants That Matter
 

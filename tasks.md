@@ -220,6 +220,10 @@ same class of bug?* If yes, you relocated it. If no, you eliminated it.
 | **Fallback arm** | `_ => default` or `other => ...` in a match on known variants | Exhaustive enum match. If a new variant appears, compilation forces handling it. |
 | **Duplicate filter logic** | Same `starts_with("res:")` / `"tool:"` check in 5 files | Central type (`PortCategory`) with one `from()` impl. Call sites use the type. |
 | **Manual registry** | Hand-maintained list mapping names → files/modules | Derive from DSL graph, Cargo.toml, or structural inference. |
+| **Silent drop** | `_ => None` in wiring/lowering path, `Value::Skipped` for required output | Return typed error with source location. Required outputs must never silently skip. |
+| **Dead scaffolding** | AST field/type that exists but parser never populates (e.g., `mock_response: Vec::new()`) | Either wire end-to-end with hard test, or delete. No "present-but-dead" features. |
+| **Happy-path-only model** | Service operation with no error response declaration, mock always exit 0 / status 200 | Declare at least one error response. Mock spec must generate error scenarios. |
+| **Accidental linkage** | `inventory::collect!` only works when crate happens to be linked into binary | Explicit force-link deps, or derive registrations from DSL annotations. |
 
 ### Remediation Ladder
 
@@ -405,6 +409,22 @@ Design: `docs/design/gunbc-dag-migration.md`.
 | # | ID | What | Size | Status | Deps |
 |---|-----|------|------|--------|------|
 | 81 | RT81 | **Delete tool module wrappers.** Replace `bootstrap/mod.rs`, `build/mod.rs`, `codegen/mod.rs`, `deps_tool.rs`, `infra/mod.rs`, `gist.rs`, `embedded_assets.rs` (~145 lines) with single generic lookup using structural entrypoint inference. | S | Pending | — |
+
+### Enforcement Queue (systematic failure-pattern elimination)
+
+Recurring failure patterns from branch postmortems and red-team audits. Each item eliminates a *class* of
+bug, not a single instance. The unifying meta-theme: declared intent must match enforced semantics — no
+silent drops, no heuristic re-derivation, no happy-path-only models.
+
+| # | ID | What | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| 82 | RT82 | **Lowerer totality: ban silent `_ => None` in wiring paths.** `lower_return_expr()` and `resolve_return_expr_source()` silently drop complex expressions (BinOp, If, Match, Pipe) via `_ => None`, causing missing edges → `Value::Skipped` output with no error. (a) Audit all `_ => None` arms in `expr.rs` and `lib.rs` wiring paths. (b) Replace with `LowerError::UnsupportedReturnExpr { expr_kind, location }`. (c) CI test: compile every `.dag` module, assert zero `UnsupportedReturnExpr` warnings for the current corpus. Acceptance: the class of bug from the `overall_success` postmortem cannot recur. | M | Pending | — |
+| 83 | RT83 | **Passthrough missing-input enforcement.** Strengthen RT4b from diagnostic to enforcement. When `execute_with_declared_output_passthrough()` falls back to `Value::Skipped` for a *required* output port (non-`?` type), return `ExecError` instead of silently substituting Skipped. Optional ports (`T?`) may still skip. CI test: required output ports never produce Skipped in dry-run of any `.dag` module. | S | Pending | RT4a |
+| 84 | RT84 | **Dead scaffolding policy + enforcement.** Systematic sweep: for every AST field/type that exists but is never populated or consumed, either (a) delete it or (b) wire it end-to-end with a failing test. Concrete targets: `MockResponseDef` (parser stub), `error_cases()` trait (always empty), `@retry` (unimplemented), `hermetic` on `OperationDef` (orphaned after stream 2 cleanup). CI guard: `grep` for `Vec::new()` initializers on AST collection fields that have zero production uses → fail. | M | Pending | — |
+| 85 | RT85 | **Error-scenario mocking in auto_mock_spec.** `auto_mock_spec()` always produces exit 0 / status 200 for every transport mock. Zero error scenarios. (a) For each service operation with a `response` block (after PC-1), generate at least one non-200 mock variant. (b) For shell operations, generate at least one non-zero exit mock. (c) Testgen Bucket C `SingleTransportFailure` should inject *realistic* errors (401, exit 1), not the `"<TRANSPORT_FAILURE>"` sentinel string. | M | Pending | RT48 |
+| 86 | RT86 | **Cross-layer contract tests.** Generate dry-run contract tests that span registry → CLI parsing → makegen wiring → execution. For each tool: (a) `--print-inputs json` output matches tool registry param declarations, (b) Makefile target invokes correct binary with correct flags, (c) dry-run execution completes without missing-input errors. These detect drift between layers automatically. | M | Pending | — |
+| 87 | RT87 | **Inventory linkage verification.** CI test that compiles the full binary set and verifies all expected `inventory::collect!` registrations are present. Currently, adding/moving a crate silently changes what's linked → silent loss of registrations. Either: (a) force-link inventory crates via explicit deps (short-term), or (b) derive CI secrets and tool registrations from DSL annotations (long-term, eliminates inventory). | S | Pending | — |
+| 88 | RT88 | **Translation layer fail-closed audit.** Systematic audit of parser→lowerer→resolver→executor boundaries for fail-open seams. For each boundary: (a) enumerate all match arms that produce defaults/fallbacks, (b) classify as intentional (documented) vs accidental (silent), (c) replace accidental fallbacks with typed errors. Targets: `default_rest_response()` growing blob, `probe_best_response` pessimistic ordering, `json_to_value` silent coercion. | M | Pending | — |
 
 ---
 
