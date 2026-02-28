@@ -20,68 +20,6 @@ fn default_fs_handle() -> Value {
     fs.into()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum GcpFieldKind {
-    Audience,
-    Project,
-    Secret,
-    SubjectToken,
-    Version,
-    ServiceAccount,
-}
-
-fn typed_gcp_field_kind(type_id: &str) -> Option<GcpFieldKind> {
-    match type_id {
-        // Preferred modeling path: refined type aliases encode intent directly.
-        "OidcAudience" | "WifAudience" => Some(GcpFieldKind::Audience),
-        "GcpProjectId" => Some(GcpFieldKind::Project),
-        "GcpSecretId" => Some(GcpFieldKind::Secret),
-        "GcpSubjectToken" | "OidcSubjectToken" => Some(GcpFieldKind::SubjectToken),
-        "GcpSecretVersion" => Some(GcpFieldKind::Version),
-        "GcpServiceAccountEmail" => Some(GcpFieldKind::ServiceAccount),
-        _ => None,
-    }
-}
-
-fn gcp_field_value_for_kind(kind: GcpFieldKind) -> Value {
-    match kind {
-        GcpFieldKind::Audience => Value::Str("mock-audience".to_string()),
-        GcpFieldKind::Project => Value::Str("mock-project".to_string()),
-        GcpFieldKind::Secret => Value::Str("mock-secret".to_string()),
-        GcpFieldKind::SubjectToken => Value::Str("mock-subject-token".to_string()),
-        GcpFieldKind::Version => Value::Str("latest".to_string()),
-        GcpFieldKind::ServiceAccount => {
-            Value::Str("mock-sa@mock-project.iam.gserviceaccount.com".to_string())
-        }
-    }
-}
-
-/// Legacy compatibility path while graph ports migrate to refined type aliases.
-fn legacy_gcp_field_value_by_name(port_name: &str) -> Option<Value> {
-    match port_name {
-        "audience" => Some(gcp_field_value_for_kind(GcpFieldKind::Audience)),
-        "project" => Some(gcp_field_value_for_kind(GcpFieldKind::Project)),
-        "secret" | "secret_name" => Some(gcp_field_value_for_kind(GcpFieldKind::Secret)),
-        "subject_token" => Some(gcp_field_value_for_kind(GcpFieldKind::SubjectToken)),
-        "version" => Some(gcp_field_value_for_kind(GcpFieldKind::Version)),
-        "service_account" | "service_account_or_role" => {
-            Some(gcp_field_value_for_kind(GcpFieldKind::ServiceAccount))
-        }
-        _ => None,
-    }
-}
-
-/// Returns a realistic GCP mock value when semantic intent is encoded in the
-/// type ID (preferred) or, as a compatibility path, in legacy port names.
-///
-/// This avoids GCP prepare ops falling back to `"(unresolved)"` when their
-/// inputs are optional or entrypoint ports filled with generic `"mock"`.
-fn gcp_field_value(type_id: &str, port_name: &str) -> Option<Value> {
-    typed_gcp_field_kind(type_id)
-        .map(gcp_field_value_for_kind)
-        .or_else(|| legacy_gcp_field_value_by_name(port_name))
-}
-
 fn default_value_for_type(type_id: &str) -> Value {
     match type_id {
         "TransportResponse" => default_shell_response(),
@@ -372,8 +310,7 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
                     .map(|input| input.cardinality)
             })
             .unwrap_or(Cardinality::ONE);
-        let value = gcp_field_value(type_id.0.as_str(), port_name.0.as_str())
-            .unwrap_or_else(|| default_value_for_port(type_id.0.as_str(), cardinality));
+        let value = default_value_for_port(type_id.0.as_str(), cardinality);
         spec = spec.input_mock(node_id.0.as_str(), port_name.0.as_str(), value);
     }
 
@@ -400,13 +337,7 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
             if output_names.contains(input_port.name.0.as_str()) {
                 continue;
             }
-            // Inject known GCP field values even for optional inputs.
             if input_port.cardinality.allows_empty() {
-                if let Some(value) =
-                    gcp_field_value(input_port.type_id.0.as_str(), input_port.name.0.as_str())
-                {
-                    required_inputs.insert(input_port.name.0.clone(), value);
-                }
                 continue;
             }
             if input_port.type_id.0 == "TransportResponse" {
@@ -416,13 +347,7 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
             let value = if input_port.name.0 == "skip" && input_port.type_id.0 == "Bool" {
                 Value::Bool(false)
             } else {
-                gcp_field_value(input_port.type_id.0.as_str(), input_port.name.0.as_str())
-                    .unwrap_or_else(|| {
-                        default_value_for_port(
-                            input_port.type_id.0.as_str(),
-                            input_port.cardinality,
-                        )
-                    })
+                default_value_for_port(input_port.type_id.0.as_str(), input_port.cardinality)
             };
             required_inputs.insert(input_port.name.0.clone(), value);
         }
@@ -546,33 +471,6 @@ fn probe_best_response<T: Executable + Clone + Send>(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn gcp_field_value_prefers_typed_hints_over_port_names() {
-        assert_eq!(
-            gcp_field_value("GcpProjectId", "renamed_project"),
-            Some(Value::Str("mock-project".to_string()))
-        );
-        assert_eq!(
-            gcp_field_value("GcpServiceAccountEmail", "identity"),
-            Some(Value::Str(
-                "mock-sa@mock-project.iam.gserviceaccount.com".to_string()
-            ))
-        );
-        assert_eq!(
-            gcp_field_value("GcpSubjectToken", "token"),
-            Some(Value::Str("mock-subject-token".to_string()))
-        );
-    }
-
-    #[test]
-    fn gcp_field_value_keeps_legacy_name_fallback_for_string_ports() {
-        assert_eq!(
-            gcp_field_value("String", "project"),
-            Some(Value::Str("mock-project".to_string()))
-        );
-        assert_eq!(gcp_field_value("String", "not_a_gcp_field"), None);
-    }
 
     #[test]
     fn auto_mock_spec_ci_graph_produces_transport_mocks() {
