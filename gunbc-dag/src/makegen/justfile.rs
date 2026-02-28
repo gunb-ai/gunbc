@@ -431,7 +431,6 @@ fn escape_just_string(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::makegen::shared::render_makefile;
     use std::collections::BTreeSet;
 
     #[test]
