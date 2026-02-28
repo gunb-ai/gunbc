@@ -646,6 +646,7 @@ impl std::fmt::Display for MissingResourceDeclaration {
             NodeKind::TransportParse => "transport parse",
             NodeKind::ResourceAcquire => "resource acquire",
             NodeKind::ResourceRelease => "resource release",
+            NodeKind::ParamSource => "param source",
             NodeKind::Pure => "pure",
         };
         write!(

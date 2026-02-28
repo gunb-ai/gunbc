@@ -32,6 +32,8 @@ pub enum NodeKind {
     ResourceAcquire,
     /// Releases a resource.
     ResourceRelease,
+    /// Feeds a callable's declared parameter into the DAG as an input source.
+    ParamSource,
     /// Pure computation (no I/O boundary).
     #[default]
     Pure,

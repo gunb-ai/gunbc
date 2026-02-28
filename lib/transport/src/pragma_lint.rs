@@ -100,24 +100,6 @@ mod tests {
         allow_lints: HashSet<String>,
     }
 
-    fn default_pragma_lint_policy() -> PragmaLintPolicy {
-        PragmaLintPolicy {
-            allow_dead_code: HashSet::from([
-                "core/daglang/daglang-syntax/src/parser.rs".to_string(),
-                "core/daglang/daglang-emit/src/lower_mips.rs".to_string(),
-                "gunbc-dag/src/makegen/registry.rs".to_string(),
-                "gunbc-dag/src/workspace/subdags/languages.rs".to_string(),
-                "lib/gcp-ops/src/graph.rs".to_string(),
-                "core/daglang/daglang-lower/src/lib.rs".to_string(),
-            ]),
-            allow_lints: HashSet::from([
-                "clippy::large_enum_variant".to_string(),
-                "clippy::too_many_arguments".to_string(),
-                "clippy::vec_init_then_push".to_string(),
-                "unused_variables".to_string(),
-            ]),
-        }
-    }
 
     fn load_pragma_lint_policy(root: &Path) -> PragmaLintPolicy {
         let candidate_paths = [
@@ -127,10 +109,19 @@ mod tests {
         let content = candidate_paths
             .iter()
             .find_map(|path| fs::read_to_string(path).ok())
-            .unwrap_or_default();
-        if content.trim().is_empty() {
-            return default_pragma_lint_policy();
-        }
+            .unwrap_or_else(|| {
+                panic!(
+                    "pragma lint policy not found at {:?}. Run `cargo run --bin gunbc-pragma` first.",
+                    candidate_paths
+                        .iter()
+                        .map(|p| p.display().to_string())
+                        .collect::<Vec<_>>()
+                )
+            });
+        assert!(
+            !content.trim().is_empty(),
+            "pragma lint policy file is empty. Run `cargo run --bin gunbc-pragma` to regenerate."
+        );
 
         let mut section = "";
         let mut allow_dead_code = HashSet::new();
@@ -156,14 +147,9 @@ mod tests {
             }
         }
 
-        let policy = PragmaLintPolicy {
+        PragmaLintPolicy {
             allow_dead_code,
             allow_lints,
-        };
-        if policy.allow_dead_code.is_empty() && policy.allow_lints.is_empty() {
-            default_pragma_lint_policy()
-        } else {
-            policy
         }
     }
 

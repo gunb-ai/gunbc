@@ -7376,19 +7376,22 @@ fn ensure_param_source_node(
         "param_source_{}",
         sanitize_identifier(&format!("{module_name}_{callable}_{param}"))
     );
-    builder.add_node(Node::opaque(
-        node_id.clone(),
-        vec![Port::with_cardinality(param, ty, Cardinality::ONE)],
-        vec![Port::with_cardinality(param, ty, Cardinality::ONE)],
-        LoweredOp::Primitive {
-            module: module_name.to_string(),
-            name: format!("call_param_source::{callable}::{param}"),
-            kind: PrimitiveOpKind::CallParamSource {
-                callable: callable.to_string(),
-                param: param.to_string(),
+    builder.add_node(
+        Node::opaque(
+            node_id.clone(),
+            vec![Port::with_cardinality(param, ty, Cardinality::ONE)],
+            vec![Port::with_cardinality(param, ty, Cardinality::ONE)],
+            LoweredOp::Primitive {
+                module: module_name.to_string(),
+                name: format!("call_param_source::{callable}::{param}"),
+                kind: PrimitiveOpKind::CallParamSource {
+                    callable: callable.to_string(),
+                    param: param.to_string(),
+                },
             },
-        },
-    ));
+        )
+        .with_kind(gunbc_ir::node::NodeKind::ParamSource),
+    );
     node_id
 }
 

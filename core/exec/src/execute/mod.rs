@@ -591,12 +591,13 @@ fn remap_input_mocks(
 fn resolve_mock_input(
     mocks: &BoundaryMocks,
     node_id: &NodeId,
+    node_kind: gunbc_ir::node::NodeKind,
     port_name: &PortName,
 ) -> Option<Value> {
     if let Some(value) = mocks.get_input(&node_id.0, &port_name.0) {
         return Some(value.clone());
     }
-    if !node_id.0.starts_with("param_source_") {
+    if node_kind != gunbc_ir::node::NodeKind::ParamSource {
         return None;
     }
     for ((mock_node, mock_port), value) in mocks.iter_inputs() {
@@ -773,18 +774,16 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
         }
 
         // Inject input mocks for dangling input ports (DAG entry points).
-        let mut inject_inputs = |mocks: &BoundaryMocks| {
+        if let Some(mocks) = input_mocks {
             for port in &node.inputs {
                 if !inputs.contains_key(&port.name.0) {
-                    if let Some(mock_value) = resolve_mock_input(mocks, &node.id, &port.name) {
+                    if let Some(mock_value) =
+                        resolve_mock_input(mocks, &node.id, node.kind, &port.name)
+                    {
                         inputs.insert(port.name.0.clone(), mock_value);
                     }
                 }
             }
-        };
-
-        if let Some(mocks) = input_mocks {
-            inject_inputs(mocks);
         }
 
         if let ExecutionMode::DryRun(ref mocks)
@@ -793,7 +792,15 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
             ..
         }) = mode
         {
-            inject_inputs(mocks);
+            for port in &node.inputs {
+                if !inputs.contains_key(&port.name.0) {
+                    if let Some(mock_value) =
+                        resolve_mock_input(mocks, &node.id, node.kind, &port.name)
+                    {
+                        inputs.insert(port.name.0.clone(), mock_value);
+                    }
+                }
+            }
         }
 
         // Default list inputs to empty when allowed and still missing.
@@ -1359,18 +1366,16 @@ fn build_node_inputs<T>(
         inputs.insert(port_name, Value::List(values));
     }
 
-    let mut inject_inputs = |mocks: &BoundaryMocks| {
+    if let Some(mocks) = input_mocks {
         for port in &node.inputs {
             if !inputs.contains_key(&port.name.0) {
-                if let Some(mock_value) = resolve_mock_input(mocks, &node.id, &port.name) {
+                if let Some(mock_value) =
+                    resolve_mock_input(mocks, &node.id, node.kind, &port.name)
+                {
                     inputs.insert(port.name.0.clone(), mock_value);
                 }
             }
         }
-    };
-
-    if let Some(mocks) = input_mocks {
-        inject_inputs(mocks);
     }
 
     if let ExecutionMode::DryRun(mocks)
@@ -1379,7 +1384,15 @@ fn build_node_inputs<T>(
         ..
     }) = mode
     {
-        inject_inputs(mocks);
+        for port in &node.inputs {
+            if !inputs.contains_key(&port.name.0) {
+                if let Some(mock_value) =
+                    resolve_mock_input(mocks, &node.id, node.kind, &port.name)
+                {
+                    inputs.insert(port.name.0.clone(), mock_value);
+                }
+            }
+        }
     }
 
     for port in &node.inputs {

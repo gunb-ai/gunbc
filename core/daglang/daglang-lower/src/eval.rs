@@ -648,6 +648,7 @@ fn eval_pipe_method(
                         .join(&sep);
                     Ok(Value::Str(joined))
                 }
+                Value::Skipped => Ok(Value::Str(String::new())),
                 _ => Err(EvalError::new("join requires a list")),
             }
         }
