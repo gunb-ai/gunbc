@@ -695,7 +695,7 @@ Nodes:
       * return: String (1)
   - return_expr_compute_tools_makegen_resolve_resource_target_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::resolve_resource_target::return]
     inputs:
-      * mode: Bool (1)
+      * mode: String (1)
     outputs:
       * result: String (1)
   - param_source_tools_makegen_resolve_resource_target_mode [primitive::CallParamSource { callable: "resolve_resource_target", param: "mode" } tools.makegen.call_param_source::resolve_resource_target::mode]
@@ -710,7 +710,7 @@ Nodes:
       * res_targets: List<ResourceTargetEntry> (1)
   - return_expr_compute_tools_makegen_resolve_meta_deps_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::resolve_meta_deps::return]
     inputs:
-      * needs: Bool (1)
+      * needs: List<ResourceNeed> (1)
     outputs:
       * result: List<String> (1)
   - param_source_tools_makegen_resolve_meta_deps_needs [primitive::CallParamSource { callable: "resolve_meta_deps", param: "needs" } tools.makegen.call_param_source::resolve_meta_deps::needs]
@@ -723,7 +723,7 @@ Nodes:
       * mode: Any (1)
   - return_expr_compute_tools_makegen_resolve_meta_fix_deps_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::resolve_meta_fix_deps::return]
     inputs:
-      * needs: Bool (1)
+      * needs: List<ResourceNeed> (1)
     outputs:
       * result: List<String> (1)
   - param_source_tools_makegen_resolve_meta_fix_deps_needs [primitive::CallParamSource { callable: "resolve_meta_fix_deps", param: "needs" } tools.makegen.call_param_source::resolve_meta_fix_deps::needs]
@@ -733,8 +733,8 @@ Nodes:
       * needs: List<ResourceNeed> (1)
   - return_expr_compute_tools_makegen_apply_prefix_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::apply_prefix::return]
     inputs:
-      * prefix: Bool (1)
-      * cmd: Bool (1)
+      * prefix: String? (1)
+      * cmd: String (1)
     outputs:
       * result: String (1)
   - param_source_tools_makegen_apply_prefix_prefix [primitive::CallParamSource { callable: "apply_prefix", param: "prefix" } tools.makegen.call_param_source::apply_prefix::prefix]
@@ -749,7 +749,7 @@ Nodes:
       * cmd: String (1)
   - return_expr_compute_tools_makegen_render_core_targets_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::render_core_targets::return]
     inputs:
-      * workflows: Bool (1)
+      * workflows: List<CoreWorkflow> (1)
     outputs:
       * result: String (1)
   - param_source_tools_makegen_render_core_targets_workflows [primitive::CallParamSource { callable: "render_core_targets", param: "workflows" } tools.makegen.call_param_source::render_core_targets::workflows]
@@ -775,8 +775,8 @@ Nodes:
       * name: Any (1)
   - return_expr_compute_tools_makegen_render_meta_check_variant_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::render_meta_check_variant::return]
     inputs:
-      * meta__check_command: Bool (1)
-      * deps: Bool (1)
+      * meta__check_command: Any (1)
+      * deps: Any (1)
     outputs:
       * result: String (1)
   - param_source_tools_makegen_render_meta_check_variant_meta [primitive::CallParamSource { callable: "render_meta_check_variant", param: "meta" } tools.makegen.call_param_source::render_meta_check_variant::meta]
@@ -810,7 +810,7 @@ Nodes:
       * return: String (1)
   - return_expr_compute_tools_makegen_render_help_param_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::render_help_param::return]
     inputs:
-      * p__default: Bool (1)
+      * p__default: Any (1)
     outputs:
       * result: String (1)
   - param_source_tools_makegen_render_help_param_p [primitive::CallParamSource { callable: "render_help_param", param: "p" } tools.makegen.call_param_source::render_help_param::p]
@@ -820,7 +820,7 @@ Nodes:
       * p: EntrypointParam (1)
   - return_expr_compute_tools_makegen_render_help_params_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::render_help_params::return]
     inputs:
-      * params: Bool (1)
+      * params: List<EntrypointParam> (1)
     outputs:
       * result: String (1)
   - param_source_tools_makegen_render_help_params_params [primitive::CallParamSource { callable: "render_help_params", param: "params" } tools.makegen.call_param_source::render_help_params::params]
@@ -833,7 +833,7 @@ Nodes:
       * return: String (1)
   - return_expr_compute_tools_makegen_render_tool_targets_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::render_tool_targets::return]
     inputs:
-      * tools: Bool (1)
+      * tools: List<DiscoveredTool> (1)
     outputs:
       * result: String (1)
   - param_source_tools_makegen_render_tool_targets_tools [primitive::CallParamSource { callable: "render_tool_targets", param: "tools" } tools.makegen.call_param_source::render_tool_targets::tools]
@@ -843,7 +843,7 @@ Nodes:
       * tools: List<DiscoveredTool> (1)
   - return_expr_compute_tools_makegen_render_help_core_lines_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::render_help_core_lines::return]
     inputs:
-      * workflows: Bool (1)
+      * workflows: List<CoreWorkflow> (1)
     outputs:
       * result: String (1)
   - param_source_tools_makegen_render_help_core_lines_workflows [primitive::CallParamSource { callable: "render_help_core_lines", param: "workflows" } tools.makegen.call_param_source::render_help_core_lines::workflows]
@@ -856,7 +856,7 @@ Nodes:
       * return: String (1)
   - return_expr_compute_tools_makegen_render_help_meta_lines_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::render_help_meta_lines::return]
     inputs:
-      * metas: Bool (1)
+      * metas: List<MetaTargetDef> (1)
     outputs:
       * result: String (1)
   - param_source_tools_makegen_render_help_meta_lines_metas [primitive::CallParamSource { callable: "render_help_meta_lines", param: "metas" } tools.makegen.call_param_source::render_help_meta_lines::metas]
@@ -869,7 +869,7 @@ Nodes:
       * return: String (1)
   - return_expr_compute_tools_makegen_render_help_tool_lines_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::render_help_tool_lines::return]
     inputs:
-      * tools: Bool (1)
+      * tools: List<DiscoveredTool> (1)
     outputs:
       * result: String (1)
   - param_source_tools_makegen_render_help_tool_lines_tools [primitive::CallParamSource { callable: "render_help_tool_lines", param: "tools" } tools.makegen.call_param_source::render_help_tool_lines::tools]
@@ -897,7 +897,7 @@ Nodes:
       * return: String (1)
   - return_expr_compute_tools_makegen_collect_core_phony_str_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::collect_core_phony_str::return]
     inputs:
-      * workflows: Bool (1)
+      * workflows: List<CoreWorkflow> (1)
     outputs:
       * result: String (1)
   - param_source_tools_makegen_collect_core_phony_str_workflows [primitive::CallParamSource { callable: "collect_core_phony_str", param: "workflows" } tools.makegen.call_param_source::collect_core_phony_str::workflows]
@@ -910,7 +910,7 @@ Nodes:
       * return: String (1)
   - return_expr_compute_tools_makegen_collect_tool_phony_str_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::collect_tool_phony_str::return]
     inputs:
-      * tools: Bool (1)
+      * tools: List<DiscoveredTool> (1)
     outputs:
       * result: String (1)
   - param_source_tools_makegen_collect_tool_phony_str_tools [primitive::CallParamSource { callable: "collect_tool_phony_str", param: "tools" } tools.makegen.call_param_source::collect_tool_phony_str::tools]
@@ -986,12 +986,12 @@ Nodes:
       * paths: List<FilePath> (1)
   - return_expr_compute_std_patterns_classify_files_readable_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } std.patterns.return_expr_compute::classify_files::readable]
     inputs:
-      * partitioned__readable: Bool (1)
+      * partitioned__readable: Any (1)
     outputs:
       * result: List<FilePath> (1)
   - return_expr_compute_std_patterns_classify_files_skipped_return_1 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } std.patterns.return_expr_compute::classify_files::skipped]
     inputs:
-      * partitioned__skipped: Bool (1)
+      * partitioned__skipped: Any (1)
     outputs:
       * result: List<FilePath> (1)
   - param_source_std_patterns_acquire_subject_token_audience [primitive::CallParamSource { callable: "acquire_subject_token", param: "audience" } std.patterns.call_param_source::acquire_subject_token::audience]
@@ -1080,8 +1080,8 @@ Nodes:
       * bindings: Json (1)
   - return_expr_compute_std_filesystem_skip_reason_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } std.filesystem.return_expr_compute::skip_reason::return]
     inputs:
-      * entry__kind: Bool (1)
-      * entry__symlink_target: Bool (1)
+      * entry__kind: Any (1)
+      * entry__symlink_target: Any (1)
     outputs:
       * result: String (1)
   - param_source_std_filesystem_skip_reason_entry [primitive::CallParamSource { callable: "skip_reason", param: "entry" } std.filesystem.call_param_source::skip_reason::entry]

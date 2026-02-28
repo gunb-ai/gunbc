@@ -8050,7 +8050,7 @@ fn resolve_return_expr_source(
 }
 
 /// Collect all leaf expression references from a complex expression.
-/// Returns (input_port_name, source_node_id, source_port_name) triples.
+/// Returns (input_port_name, source_node_id, source_port_name, type_id) tuples.
 #[allow(clippy::too_many_arguments)]
 fn collect_expr_leaf_refs(
     expr: &Expr,
@@ -8058,7 +8058,7 @@ fn collect_expr_leaf_refs(
     bound_callable_sources: &HashMap<String, LoweredEndpoint>,
     bound_service_sources: &HashMap<String, ServiceTransportEndpoint>,
     endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-    refs: &mut Vec<(String, String, String)>,
+    refs: &mut Vec<(String, String, String, String)>,
     seen: &mut HashSet<String>,
 ) {
     match expr {
@@ -8067,20 +8067,18 @@ fn collect_expr_leaf_refs(
             if seen.contains(&port_name) {
                 return;
             }
-            if let Some(_param_ty) = param_types.get(name) {
-                // Param refs are collected with a PARAM_REF sentinel source.
-                // synthesize_return_expr_compute resolves them via ensure_param_source_node.
+            if let Some(param_ty) = param_types.get(name) {
                 seen.insert(port_name.clone());
-                refs.push((port_name, PARAM_REF_SENTINEL.to_string(), name.clone()));
+                refs.push((port_name, PARAM_REF_SENTINEL.to_string(), name.clone(), param_ty.clone()));
             } else if let Some(source) = bound_callable_sources.get(name) {
                 seen.insert(port_name.clone());
-                refs.push((port_name, source.node_id.clone(), source.primary_output.clone()));
+                refs.push((port_name, source.node_id.clone(), source.primary_output.clone(), "Any".to_string()));
             } else if let Some(source) = bound_service_sources.get(name) {
                 seen.insert(port_name.clone());
-                refs.push((port_name, source.parse.node_id.clone(), source.parse.primary_output.clone()));
+                refs.push((port_name, source.parse.node_id.clone(), source.parse.primary_output.clone(), "Any".to_string()));
             } else if let Some(Some(source)) = endpoints_by_name.get(name) {
                 seen.insert(port_name.clone());
-                refs.push((port_name, source.node_id.clone(), source.primary_output.clone()));
+                refs.push((port_name, source.node_id.clone(), source.primary_output.clone(), "Any".to_string()));
             }
         }
         Expr::FieldAccess(base, field) => {
@@ -8091,16 +8089,16 @@ fn collect_expr_leaf_refs(
                 }
                 if param_types.contains_key(base_ident) {
                     seen.insert(port_name.clone());
-                    refs.push((port_name, PARAM_REF_SENTINEL.to_string(), format!("{base_ident}__{field}")));
+                    refs.push((port_name, PARAM_REF_SENTINEL.to_string(), format!("{base_ident}__{field}"), "Any".to_string()));
                 } else if let Some(source) = bound_callable_sources.get(base_ident) {
                     seen.insert(port_name.clone());
-                    refs.push((port_name, source.node_id.clone(), field.clone()));
+                    refs.push((port_name, source.node_id.clone(), field.clone(), "Any".to_string()));
                 } else if let Some(source) = bound_service_sources.get(base_ident) {
                     seen.insert(port_name.clone());
-                    refs.push((port_name, source.parse.node_id.clone(), field.clone()));
+                    refs.push((port_name, source.parse.node_id.clone(), field.clone(), "Any".to_string()));
                 } else if let Some(Some(source)) = endpoints_by_name.get(base_ident) {
                     seen.insert(port_name.clone());
-                    refs.push((port_name, source.node_id.clone(), field.clone()));
+                    refs.push((port_name, source.node_id.clone(), field.clone(), "Any".to_string()));
                 }
             } else {
                 collect_expr_leaf_refs(base, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
@@ -8217,8 +8215,7 @@ fn synthesize_return_expr_compute(
     item_name: &str,
     disambiguator: &str,
 ) -> Option<(String, String)> {
-    // 1. Collect all leaf references from the expression tree.
-    let mut refs = Vec::new();
+    let mut refs: Vec<(String, String, String, String)> = Vec::new();
     let mut seen = HashSet::new();
     collect_expr_leaf_refs(
         expr,
@@ -8234,10 +8231,9 @@ fn synthesize_return_expr_compute(
         return None;
     }
 
-    // 2. Create input/output ports for the compute node.
     let input_ports: Vec<Port> = refs
         .iter()
-        .map(|(port_name, _, _)| Port::with_cardinality(port_name.as_str(), "Bool", Cardinality::ONE))
+        .map(|(port_name, _, _, type_id)| Port::with_cardinality(port_name.as_str(), type_id.as_str(), Cardinality::ONE))
         .collect();
     let output_type = output_port.type_id.0.as_str();
     let result_port_name = "result";
@@ -8269,8 +8265,7 @@ fn synthesize_return_expr_compute(
         },
     ));
 
-    // 5. Wire each leaf reference as an edge to the compute node.
-    for (port_name, source_node, source_port) in &refs {
+    for (port_name, source_node, source_port, _type_id) in &refs {
         if source_node == PARAM_REF_SENTINEL {
             // source_port is either "param_name" (plain) or "param__field" (field access).
             // Split on "__" to get the base param and optional field.

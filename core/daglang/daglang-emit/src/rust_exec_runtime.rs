@@ -289,6 +289,7 @@ pub fn required_embedded_assets(dag: &Dag<LoweredOp>) -> BTreeSet<EmbeddedAsset>
 
 /// Whether a node should be included in exec-runtime emission, skipped
 /// because it's metadata-only, or classified to a specific handler.
+#[derive(Debug, PartialEq)]
 enum HandlerClassification {
     Handler(HandlerKind),
     MetadataOnly,
@@ -1380,7 +1381,7 @@ mod tests {
         };
         assert_eq!(
             classify_handler(&pattern_callable),
-            Some(HandlerKind::Passthrough)
+            Some(HandlerClassification::Handler(HandlerKind::Passthrough))
         );
 
         // Service transport nodes use passthrough.
@@ -1396,7 +1397,7 @@ mod tests {
         };
         assert_eq!(
             classify_handler(&service_prepare),
-            Some(HandlerKind::Passthrough)
+            Some(HandlerClassification::Handler(HandlerKind::Passthrough))
         );
     }
 
@@ -1417,28 +1418,28 @@ mod tests {
         // PureGeneric → passthrough (DSL body wrapper, no specialized handler needed).
         assert_eq!(
             classify_handler(&make(ObligationCategory::PureGeneric)),
-            Some(HandlerKind::Passthrough),
+            Some(HandlerClassification::Handler(HandlerKind::Passthrough)),
             "PureGeneric should passthrough"
         );
 
         // PureRender → passthrough during migration (TODO: NF-5).
         assert_eq!(
             classify_handler(&make(ObligationCategory::PureRender)),
-            Some(HandlerKind::Passthrough),
+            Some(HandlerClassification::Handler(HandlerKind::Passthrough)),
             "PureRender should passthrough (migration)"
         );
 
         // PureDataLoad → passthrough during migration (TODO: NF-5).
         assert_eq!(
             classify_handler(&make(ObligationCategory::PureDataLoad)),
-            Some(HandlerKind::Passthrough),
+            Some(HandlerClassification::Handler(HandlerKind::Passthrough)),
             "PureDataLoad should passthrough (migration)"
         );
 
         // ResourceProvide → passthrough (structural).
         assert_eq!(
             classify_handler(&make(ObligationCategory::ResourceProvide)),
-            Some(HandlerKind::Passthrough),
+            Some(HandlerClassification::Handler(HandlerKind::Passthrough)),
             "ResourceProvide should passthrough"
         );
     }
