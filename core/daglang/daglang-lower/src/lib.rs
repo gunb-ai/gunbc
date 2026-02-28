@@ -252,6 +252,38 @@ pub enum ServiceTransportClass {
     InterfaceStub,
 }
 
+impl ServiceTransportClass {
+    /// Transport cost classification (mirrors `transport_depth` in `std/fidelity.dag`).
+    ///
+    /// Single authoritative source for the transport→FermiDepth mapping.
+    /// The DSL `transport_depth()` function should be kept in sync.
+    pub fn fermi_depth(&self) -> &'static str {
+        match self {
+            Self::LocalDirect => "Xs",
+            Self::InterfaceStub => "Xs",
+            Self::ShellLocal => "S",
+            Self::FileBoundary => "S",
+            Self::RestNetwork => "L",
+            Self::Unknown => "Xl",
+        }
+    }
+
+    /// Whether this transport class is hermetic (can be fully mocked in DryRun).
+    ///
+    /// Single authoritative source for the transport→hermetic mapping.
+    /// The DSL `transport_hermetic()` function should be kept in sync.
+    pub fn is_hermetic(&self) -> bool {
+        match self {
+            Self::LocalDirect => true,
+            Self::InterfaceStub => true,
+            Self::ShellLocal => true,
+            Self::FileBoundary => true,
+            Self::RestNetwork => false,
+            Self::Unknown => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct ServiceCallMetadata {
     pub service: String,

@@ -3273,3 +3273,30 @@ func caller(id: String) -> { name: String } {
         "error should mention service, operation, and missing transport; got: {msg}",
     );
 }
+
+// RT55: Transport cost model on ServiceTransportClass
+#[test]
+fn service_transport_class_fermi_depth_matches_dsl_fidelity() {
+    use super::ServiceTransportClass;
+
+    // Mirrors transport_depth() in std/fidelity.dag
+    assert_eq!(ServiceTransportClass::LocalDirect.fermi_depth(), "Xs");
+    assert_eq!(ServiceTransportClass::InterfaceStub.fermi_depth(), "Xs");
+    assert_eq!(ServiceTransportClass::ShellLocal.fermi_depth(), "S");
+    assert_eq!(ServiceTransportClass::FileBoundary.fermi_depth(), "S");
+    assert_eq!(ServiceTransportClass::RestNetwork.fermi_depth(), "L");
+    assert_eq!(ServiceTransportClass::Unknown.fermi_depth(), "Xl");
+}
+
+#[test]
+fn service_transport_class_hermetic_matches_dsl_fidelity() {
+    use super::ServiceTransportClass;
+
+    // Mirrors transport_hermetic() in std/fidelity.dag
+    assert!(ServiceTransportClass::LocalDirect.is_hermetic());
+    assert!(ServiceTransportClass::InterfaceStub.is_hermetic());
+    assert!(ServiceTransportClass::ShellLocal.is_hermetic());
+    assert!(ServiceTransportClass::FileBoundary.is_hermetic());
+    assert!(!ServiceTransportClass::RestNetwork.is_hermetic());
+    assert!(!ServiceTransportClass::Unknown.is_hermetic());
+}
