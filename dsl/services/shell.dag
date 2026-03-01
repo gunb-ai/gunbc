@@ -9,6 +9,7 @@
 module services.shell
 
 import std.types { FilePath, NonEmptyStr, Secret }
+import std.errors { GcpErrorShape }
 import extdeps.cloud.gcp.core { GcpProject, GcpServiceAccount }
 import extdeps.tools.package_managers { PackageManager, InstallSource }
 
@@ -47,6 +48,12 @@ service oauth2.Google {
     }
     idempotent
     transport rest { method: POST, path: "/token" }
+    response {
+      200 => Json
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
   }
 }
 
