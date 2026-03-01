@@ -1,0 +1,90 @@
+// extdeps/cloud/gcp/storage.dag -- "What is Google Cloud Storage?"
+//
+// GCS resource model: buckets, objects, storage classes, CAS
+// preconditions (generation-based), lifecycle rules.
+//
+// Complements extdeps/coordination/gcs.dag (which covers GCS as
+// a coordination store with full behavioral specs).
+//
+// Consumers:
+//   services/gcp/storage.dag (future)    — transport wiring
+//   infra/gcp/resources.dag              — GcsBucket resource impl
+//   extdeps/coordination/gcs.dag         — CAS behavioral overlay
+
+module extdeps.cloud.gcp.storage
+
+import extdeps.cloud.gcp.core { GcpProject, GcpRegion }
+
+// ── Storage classes ───────────────────────────────────────────────
+
+type StorageClass = Standard | Nearline | Coldline | Archive
+
+// ── Buckets ───────────────────────────────────────────────────────
+
+type GcsBucket {
+  name: String
+  location: String
+  storage_class: StorageClass
+  versioning: Bool
+  project: String
+}
+
+// ── Objects ───────────────────────────────────────────────────────
+
+type GcsObject {
+  bucket: String
+  key: String
+  generation: Int
+  metageneration: Int
+  content_type: String?
+  size: Int
+  md5_hash: String?
+  crc32c: String?
+}
+
+// ── CAS preconditions ─────────────────────────────────────────────
+// GCS uses monotonic generation numbers for optimistic concurrency.
+
+type GcsCasPrecondition {
+  if_generation_match: Int?
+  if_metageneration_match: Int?
+}
+
+// ── ACLs ──────────────────────────────────────────────────────────
+
+type ObjectAcl
+  = Private
+  | PublicRead
+  | ProjectPrivate
+  | AuthenticatedRead
+  | BucketOwnerRead
+  | BucketOwnerFullControl
+
+// ── Lifecycle rules ───────────────────────────────────────────────
+
+type LifecycleAction
+  = LifecycleDelete
+  | SetStorageClass { class: StorageClass }
+
+type LifecycleCondition {
+  age_days: Int?
+  created_before: String?
+  num_newer_versions: Int?
+}
+
+type LifecycleRule {
+  action: LifecycleAction
+  condition: LifecycleCondition
+}
+
+// ── Behavioral facts ──────────────────────────────────────────────
+
+data get_is_readonly: Bool = true
+
+data get_is_idempotent: Bool = true
+
+data insert_is_idempotent: Bool = false
+
+data cas_conflict_status: Int = 412
+
+data create_only_generation: Int = 0

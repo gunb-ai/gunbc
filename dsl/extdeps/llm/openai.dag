@@ -1,0 +1,127 @@
+// extdeps/llm/openai.dag -- "What is the OpenAI API?"
+//
+// OpenAI-specific: models, response formats, tool choice,
+// function calling, finish reasons.
+//
+// Complements extdeps/llm/pricing.dag (model specs and pricing)
+// and extdeps/llm/core.dag (universal protocol types).
+//
+// Consumers:
+//   services/llm/openai.dag — transport wiring
+
+module extdeps.llm.openai
+
+import extdeps.llm.core { Role, StopReason, TokenUsage }
+import std.behavioral {
+  OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+}
+
+// ── Models ────────────────────────────────────────────────────────
+
+type OpenAiModel
+  = Gpt4o
+  | Gpt4oMini
+  | O1
+  | O3
+  | O3Mini
+  | O4Mini
+
+type OpenAiModelSpec {
+  model: OpenAiModel
+  model_id: String
+  context_window: Int
+  max_output_tokens: Int
+}
+
+data models: List<OpenAiModelSpec> = [
+  { model: Gpt4o, model_id: "gpt-4o", context_window: 128000, max_output_tokens: 16384 },
+  { model: Gpt4oMini, model_id: "gpt-4o-mini", context_window: 128000, max_output_tokens: 16384 },
+  { model: O1, model_id: "o1", context_window: 200000, max_output_tokens: 100000 },
+  { model: O3, model_id: "o3", context_window: 200000, max_output_tokens: 100000 },
+  { model: O3Mini, model_id: "o3-mini", context_window: 200000, max_output_tokens: 100000 },
+  { model: O4Mini, model_id: "o4-mini", context_window: 200000, max_output_tokens: 100000 }
+]
+
+// ── Response format ───────────────────────────────────────────────
+
+type ResponseFormat
+  = TextFormat
+  | JsonObjectFormat
+  | JsonSchemaFormat { schema: Json }
+
+// ── Tool choice ───────────────────────────────────────────────────
+
+type ToolChoice
+  = ToolChoiceAuto
+  | ToolChoiceNone
+  | ToolChoiceRequired
+  | ToolChoiceNamed { name: String }
+
+// ── Finish reasons ────────────────────────────────────────────────
+
+type OpenAiFinishReason = Stop | Length | ToolCalls | ContentFilter
+
+// ── Function calling ──────────────────────────────────────────────
+
+type FunctionCall {
+  name: String
+  arguments: String
+}
+
+type ToolCall {
+  id: String
+  type: String
+  function: FunctionCall
+}
+
+// ── Operation behaviors ───────────────────────────────────────────
+
+type OpenAiOperationBehavior {
+  operation: String
+  behavior: OperationBehavior
+}
+
+data operation_behaviors: List<OpenAiOperationBehavior> = [
+  {
+    operation: "chat_completion",
+    behavior: {
+      side_effects: WritesExternal,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: NonDeterministic,
+      failure_modes: [
+        { name: "RateLimited", condition: "too_many_requests", http_status: 429, recoverable: true, retry_safe: true },
+        { name: "ServerError", condition: "internal_error", http_status: 500, recoverable: true, retry_safe: true },
+        { name: "InvalidRequest", condition: "malformed_input", http_status: 400, recoverable: false, retry_safe: false },
+        { name: "AuthError", condition: "invalid_api_key", http_status: 401, recoverable: false, retry_safe: false },
+        { name: "ContentFiltered", condition: "safety_filter_triggered", http_status: 400, recoverable: false, retry_safe: false }
+      ],
+      edge_cases: [
+        { description: "JSON mode may produce partial JSON if max_tokens is hit", trigger: "json_mode_truncation", severity: High },
+        { description: "reasoning models (o1/o3) do not support temperature or system messages", trigger: "reasoning_model", severity: Medium }
+      ],
+      confidence: Documented,
+      prerequisites: [{ description: "valid OpenAI API key", kind: Credential }],
+      assumptions: [],
+      unknowns: ["Exact behavior of content_filter finish reason across models"]
+    }
+  },
+  {
+    operation: "responses",
+    behavior: {
+      side_effects: WritesExternal,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: NonDeterministic,
+      failure_modes: [
+        { name: "RateLimited", condition: "too_many_requests", http_status: 429, recoverable: true, retry_safe: true },
+        { name: "InvalidRequest", condition: "malformed_input", http_status: 400, recoverable: false, retry_safe: false }
+      ],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "valid OpenAI API key", kind: Credential }],
+      assumptions: [],
+      unknowns: []
+    }
+  }
+]

@@ -1,0 +1,136 @@
+// extdeps/cloud/gcp/iam.dag -- "What is GCP IAM?"
+//
+// IAM resource model: roles, bindings, policies, impersonation
+// chains, token lifetimes.
+//
+// Consumers:
+//   services/gcp/iam.dag           — transport wiring
+//   cloud/gcp/credential.dag       — impersonation chain
+//   std/patterns.dag               — credential_chain pattern
+
+module extdeps.cloud.gcp.iam
+
+import extdeps.cloud.gcp.core { GcpServiceAccount, GcpProject }
+import std.behavioral {
+  OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+}
+
+// ── Roles ─────────────────────────────────────────────────────────
+
+type GcpRole {
+  name: String
+  title: String
+  permissions: List<String>?
+  predefined: Bool
+}
+
+data common_roles: List<GcpRole> = [
+  { name: "roles/viewer", title: "Viewer", permissions: null, predefined: true },
+  { name: "roles/editor", title: "Editor", permissions: null, predefined: true },
+  { name: "roles/owner", title: "Owner", permissions: null, predefined: true },
+  { name: "roles/storage.objectViewer", title: "Storage Object Viewer", permissions: null, predefined: true },
+  { name: "roles/storage.objectAdmin", title: "Storage Object Admin", permissions: null, predefined: true },
+  { name: "roles/secretmanager.secretAccessor", title: "Secret Manager Secret Accessor", permissions: null, predefined: true },
+  { name: "roles/iam.serviceAccountTokenCreator", title: "Service Account Token Creator", permissions: null, predefined: true },
+  { name: "roles/run.invoker", title: "Cloud Run Invoker", permissions: null, predefined: true }
+]
+
+// ── Bindings & policies ───────────────────────────────────────────
+
+type IamCondition {
+  title: String
+  expression: String
+  description: String?
+}
+
+type GcpBinding {
+  role: String
+  members: List<String>
+  condition: IamCondition?
+}
+
+type GcpPolicy {
+  bindings: List<GcpBinding>
+  etag: String
+  version: Int
+}
+
+// ── Impersonation ─────────────────────────────────────────────────
+
+type ImpersonationChain {
+  source: String
+  target: String
+  delegates: List<String>
+}
+
+// ── Token lifetimes ───────────────────────────────────────────────
+
+type TokenLifetime {
+  default_seconds: Int
+  max_seconds: Int
+}
+
+data default_token_lifetime: TokenLifetime = {
+  default_seconds: 3600,
+  max_seconds: 43200
+}
+
+// ── Operation behaviors ───────────────────────────────────────────
+
+type IamOperationBehavior {
+  operation: String
+  behavior: OperationBehavior
+}
+
+data operation_behaviors: List<IamOperationBehavior> = [
+  {
+    operation: "getIamPolicy",
+    behavior: {
+      side_effects: ReadOnly,
+      idempotent: true,
+      idempotency_keys: null,
+      determinism: Deterministic,
+      failure_modes: [{ name: "PermissionDenied", condition: "insufficient_access", http_status: 403, recoverable: false, retry_safe: false }],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "resourcemanager.projects.getIamPolicy permission", kind: Capability }],
+      assumptions: [],
+      unknowns: []
+    }
+  },
+  {
+    operation: "setIamPolicy",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["etag"],
+      determinism: Deterministic,
+      failure_modes: [
+        { name: "ConflictError", condition: "etag_mismatch", http_status: 409, recoverable: true, retry_safe: false },
+        { name: "PermissionDenied", condition: "insufficient_access", http_status: 403, recoverable: false, retry_safe: false }
+      ],
+      edge_cases: [{ description: "IAM policy changes may take up to 7 minutes to propagate", trigger: "policy_update", severity: High }],
+      confidence: Documented,
+      prerequisites: [{ description: "resourcemanager.projects.setIamPolicy permission", kind: Capability }],
+      assumptions: ["etag provides CAS semantics for concurrent updates"],
+      unknowns: []
+    }
+  },
+  {
+    operation: "generateAccessToken",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: NonDeterministic,
+      failure_modes: [
+        { name: "PermissionDenied", condition: "insufficient_access", http_status: 403, recoverable: false, retry_safe: false }
+      ],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "iam.serviceAccounts.getAccessToken permission", kind: Capability }],
+      assumptions: ["Generated tokens have the requested lifetime"],
+      unknowns: []
+    }
+  }
+]

@@ -1,0 +1,85 @@
+// extdeps/cloud/gcp/sts.dag -- "What is GCP Security Token Service?"
+//
+// STS token exchange model: grant types, subject token types,
+// token responses. Used for Workload Identity Federation.
+//
+// Consumers:
+//   services/gcp/sts.dag       — transport wiring
+//   cloud/gcp/credential.dag   — WIF credential chain step
+//   std/patterns.dag           — credential_chain pattern
+
+module extdeps.cloud.gcp.sts
+
+import extdeps.cloud.core { CloudAuthScheme }
+import std.behavioral {
+  OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+}
+
+// ── Token types ───────────────────────────────────────────────────
+
+type SubjectTokenType = Jwt | StsAccessToken | IdToken | Saml2
+
+type RequestedTokenType = RequestAccessToken | RequestIdToken
+
+// ── Grant type ────────────────────────────────────────────────────
+
+type StsGrantType = TokenExchange
+
+// ── Token exchange request ────────────────────────────────────────
+
+type StsTokenExchange {
+  grant_type: StsGrantType
+  subject_token: String
+  subject_token_type: SubjectTokenType
+  audience: String
+  scope: String?
+  requested_token_type: RequestedTokenType?
+}
+
+// ── Token exchange response ───────────────────────────────────────
+
+type StsTokenResponse {
+  access_token: String
+  issued_token_type: String
+  token_type: String
+  expires_in: Int
+}
+
+// ── Constants ─────────────────────────────────────────────────────
+
+data sts_endpoint: String = "https://sts.googleapis.com/v1/token"
+
+data default_grant_type: String = "urn:ietf:params:oauth:grant-type:token-exchange"
+
+data jwt_subject_token_type: String = "urn:ietf:params:oauth:token-type:jwt"
+
+data access_token_type: String = "urn:ietf:params:oauth:token-type:access_token"
+
+// ── Operation behaviors ───────────────────────────────────────────
+
+type StsOperationBehavior {
+  operation: String
+  behavior: OperationBehavior
+}
+
+data operation_behaviors: List<StsOperationBehavior> = [
+  {
+    operation: "exchange",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: NonDeterministic,
+      failure_modes: [
+        { name: "InvalidGrant", condition: "expired_or_invalid_subject_token", http_status: 400, recoverable: false, retry_safe: false },
+        { name: "InvalidAudience", condition: "audience_mismatch", http_status: 400, recoverable: false, retry_safe: false },
+        { name: "PermissionDenied", condition: "wif_pool_not_bound", http_status: 403, recoverable: false, retry_safe: false }
+      ],
+      edge_cases: [{ description: "STS tokens have shorter lifetime than source tokens", trigger: "token_exchange", severity: Medium }],
+      confidence: Documented,
+      prerequisites: [{ description: "valid WIF pool and provider configured", kind: Infrastructure }],
+      assumptions: ["Subject token is not expired at time of exchange"],
+      unknowns: ["Exact clock skew tolerance for subject token validation"]
+    }
+  }
+]

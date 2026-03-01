@@ -1,0 +1,67 @@
+// extdeps/cloud/core.dag -- "What is a cloud provider?"
+//
+// Universal concepts shared across GCP, AWS, and Azure.
+// Types only — concrete values live in provider-specific core.dag files.
+//
+// Consumers:
+//   extdeps/cloud/gcp/core.dag   — GCP-specific identity, endpoints
+//   extdeps/cloud/aws/core.dag   — AWS-specific ARNs, SigV4
+//   extdeps/cloud/azure/core.dag — Azure-specific tenants, subscriptions
+
+module extdeps.cloud.core
+
+// ── Authentication schemes ────────────────────────────────────────
+// How cloud APIs authenticate requests. Each provider uses a subset.
+
+type CloudAuthScheme
+  = BearerToken
+  | SigV4 { region: String, service: String }
+  | ApiKey
+  | OidcToken { audience: String }
+
+// ── Service endpoints ─────────────────────────────────────────────
+
+type ServiceEndpoint {
+  base_url: String
+  version: String
+  regional: Bool
+}
+
+// ── Rate limiting ─────────────────────────────────────────────────
+
+type RateLimitPolicy {
+  requests_per_minute: Int
+  burst: Int?
+  scope: String
+}
+
+// ── Credentials ───────────────────────────────────────────────────
+
+type Credential {
+  scheme: CloudAuthScheme
+  scopes: List<String>?
+  expires_seconds: Int?
+}
+
+// ── Idempotency ───────────────────────────────────────────────────
+
+type IdempotencyToken {
+  header: String
+  format: String
+}
+
+// ── Quotas ────────────────────────────────────────────────────────
+
+type CloudQuota {
+  resource: String
+  limit: Int
+  scope: String
+}
+
+// ── Regions ───────────────────────────────────────────────────────
+
+type CloudRegion {
+  provider: String
+  name: String
+  display_name: String
+}

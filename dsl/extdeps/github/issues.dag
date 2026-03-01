@@ -1,0 +1,179 @@
+// extdeps/github/issues.dag -- "What is a GitHub Issue?"
+//
+// The issue resource model: states, labels, events, comments, timeline.
+// This is the raw GitHub model. The SDLC lifecycle stage model
+// (IssueLifecycleStage) lives in std/types.dag and maps onto this.
+//
+// Consumers:
+//   services/github/issues.dag             — transport wiring
+//   funcs/sdlc_stages.dag                  — stage handler logic
+//   extdeps/github/pull_requests.dag       — cross-reference
+
+module extdeps.github.issues
+
+import extdeps.github.core { GitHubUser }
+import std.behavioral {
+  OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+}
+
+// ── Issue model ───────────────────────────────────────────────────
+
+type GitHubIssueState = Open | Closed
+
+type Label {
+  id: Int
+  name: String
+  color: String
+  description: String?
+}
+
+type GitHubIssue {
+  id: Int
+  number: Int
+  title: String
+  body: String?
+  state: GitHubIssueState
+  labels: List<Label>
+  user: String
+  created_at: String
+  updated_at: String
+  closed_at: String?
+  url: String
+}
+
+// ── Comments ──────────────────────────────────────────────────────
+
+type IssueComment {
+  id: Int
+  body: String
+  user: String
+  created_at: String
+  updated_at: String
+}
+
+// ── Events & timeline ─────────────────────────────────────────────
+
+type IssueEventType
+  = Labeled
+  | Unlabeled
+  | IssueClosed
+  | Reopened
+  | Assigned
+  | Unassigned
+  | Milestoned
+  | Commented
+
+type IssueEvent {
+  id: Int
+  event: IssueEventType
+  actor: String
+  created_at: String
+}
+
+// ── Filters ───────────────────────────────────────────────────────
+
+type IssueFilter
+  = ByState { state: GitHubIssueState }
+  | ByLabel { label: String }
+  | ByAssignee { login: String }
+
+// ── State machine ─────────────────────────────────────────────────
+
+type IssueStateTransition {
+  from: GitHubIssueState
+  to: GitHubIssueState
+  action: String
+}
+
+data state_transitions: List<IssueStateTransition> = [
+  { from: Open, to: Closed, action: "close" },
+  { from: Closed, to: Open, action: "reopen" }
+]
+
+// ── Operation behaviors ───────────────────────────────────────────
+
+type IssueOperationBehavior {
+  operation: String
+  behavior: OperationBehavior
+}
+
+data operation_behaviors: List<IssueOperationBehavior> = [
+  {
+    operation: "create",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: Deterministic,
+      failure_modes: [
+        { name: "ValidationError", condition: "invalid_input", http_status: 422, recoverable: false, retry_safe: false },
+        { name: "AuthError", condition: "insufficient_scopes", http_status: 401, recoverable: false, retry_safe: false }
+      ],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "repo write access", kind: Capability }],
+      assumptions: [],
+      unknowns: []
+    }
+  },
+  {
+    operation: "get",
+    behavior: {
+      side_effects: ReadOnly,
+      idempotent: true,
+      idempotency_keys: null,
+      determinism: Deterministic,
+      failure_modes: [{ name: "NotFound", condition: "issue_absent", http_status: 404, recoverable: false, retry_safe: false }],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "repo read access", kind: Capability }],
+      assumptions: [],
+      unknowns: []
+    }
+  },
+  {
+    operation: "close",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["issue_number"],
+      determinism: Deterministic,
+      failure_modes: [{ name: "NotFound", condition: "issue_absent", http_status: 404, recoverable: false, retry_safe: false }],
+      edge_cases: [{ description: "closing an already-closed issue is a no-op", trigger: "already_closed", severity: Low }],
+      confidence: Documented,
+      prerequisites: [{ description: "repo write access", kind: Capability }],
+      assumptions: [],
+      unknowns: []
+    }
+  },
+  {
+    operation: "comment",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: Deterministic,
+      failure_modes: [{ name: "NotFound", condition: "issue_absent", http_status: 404, recoverable: false, retry_safe: false }],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "repo write access", kind: Capability }],
+      assumptions: [],
+      unknowns: []
+    }
+  },
+  {
+    operation: "list_events",
+    behavior: {
+      side_effects: ReadOnly,
+      idempotent: true,
+      idempotency_keys: null,
+      determinism: Deterministic,
+      failure_modes: [{ name: "NotFound", condition: "issue_absent", http_status: 404, recoverable: false, retry_safe: false }],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "repo read access", kind: Capability }],
+      assumptions: ["Timeline events are ordered chronologically"],
+      unknowns: ["Whether deleted labels appear in timeline"]
+    }
+  }
+]

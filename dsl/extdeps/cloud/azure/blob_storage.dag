@@ -1,0 +1,117 @@
+// extdeps/cloud/azure/blob_storage.dag -- "What is Azure Blob Storage?"
+//
+// Azure Blob resource model: containers, blobs, ETag-based CAS,
+// access tiers, blob types.
+//
+// Consumers:
+//   infra/azure/resources.dag — BlobContainer resource impl
+
+module extdeps.cloud.azure.blob_storage
+
+import extdeps.cloud.azure.core { AzureRegion }
+import std.behavioral {
+  OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+}
+
+// ── Blob types ────────────────────────────────────────────────────
+
+type BlobType = BlockBlob | AppendBlob | PageBlob
+
+// ── Access tiers ──────────────────────────────────────────────────
+
+type BlobTier = Hot | Cool | Cold | BlobArchive
+
+// ── Containers ────────────────────────────────────────────────────
+
+type BlobContainer {
+  name: String
+  account: String
+  public_access: ContainerAccess
+}
+
+type ContainerAccess = ContainerPrivate | BlobAccess | ContainerLevelAccess
+
+// ── Blobs ─────────────────────────────────────────────────────────
+
+type AzureBlob {
+  container: String
+  name: String
+  etag: String
+  content_type: String?
+  size: Int
+  tier: BlobTier
+  type: BlobType
+}
+
+// ── CAS preconditions ─────────────────────────────────────────────
+// Azure Blob uses ETags for optimistic concurrency.
+
+type ETagPrecondition {
+  if_match: String?
+  if_none_match: String?
+}
+
+// ── Behavioral facts ──────────────────────────────────────────────
+
+data get_is_readonly: Bool = true
+
+data get_is_idempotent: Bool = true
+
+data cas_conflict_status: Int = 412
+
+// ── Operation behaviors ───────────────────────────────────────────
+
+type BlobOperationBehavior {
+  operation: String
+  behavior: OperationBehavior
+}
+
+data operation_behaviors: List<BlobOperationBehavior> = [
+  {
+    operation: "GetBlob",
+    behavior: {
+      side_effects: ReadOnly,
+      idempotent: true,
+      idempotency_keys: null,
+      determinism: Deterministic,
+      failure_modes: [{ name: "BlobNotFound", condition: "blob_absent", http_status: 404, recoverable: false, retry_safe: false }],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "Storage Blob Data Reader role", kind: Capability }],
+      assumptions: [],
+      unknowns: []
+    }
+  },
+  {
+    operation: "PutBlob",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["container", "blob_name"],
+      determinism: Deterministic,
+      failure_modes: [
+        { name: "ConditionNotMet", condition: "etag_mismatch", http_status: 412, recoverable: true, retry_safe: false }
+      ],
+      edge_cases: [{ description: "append blobs can only be appended to, not overwritten", trigger: "append_blob_type", severity: Medium }],
+      confidence: Documented,
+      prerequisites: [{ description: "Storage Blob Data Contributor role", kind: Capability }],
+      assumptions: [],
+      unknowns: []
+    }
+  },
+  {
+    operation: "DeleteBlob",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["container", "blob_name"],
+      determinism: Deterministic,
+      failure_modes: [{ name: "BlobNotFound", condition: "blob_absent", http_status: 404, recoverable: false, retry_safe: false }],
+      edge_cases: [{ description: "soft-deleted blobs can be restored within retention period", trigger: "soft_delete_enabled", severity: Medium }],
+      confidence: Documented,
+      prerequisites: [{ description: "Storage Blob Data Contributor role", kind: Capability }],
+      assumptions: [],
+      unknowns: []
+    }
+  }
+]

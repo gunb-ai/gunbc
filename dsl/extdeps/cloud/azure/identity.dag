@@ -1,0 +1,116 @@
+// extdeps/cloud/azure/identity.dag -- "What is Azure Identity?"
+//
+// Azure RBAC and identity model: role assignments, role definitions,
+// scopes, service principals.
+//
+// Consumers:
+//   infra/azure/resources.dag    — identity resource impl
+//   cloud/azure/credential.dag   — Azure credential chain
+
+module extdeps.cloud.azure.identity
+
+import extdeps.cloud.azure.core { AzureTenant, ManagedIdentity }
+import std.behavioral {
+  OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+}
+
+// ── Scopes ────────────────────────────────────────────────────────
+
+type AzureScope {
+  scope_path: String
+  type: AzureScopeType
+}
+
+type AzureScopeType = SubscriptionScope | ResourceGroupScope | ResourceScope
+
+// ── Service principals ────────────────────────────────────────────
+
+type ServicePrincipal {
+  app_id: String
+  object_id: String
+  display_name: String
+  type: SpType
+}
+
+type SpType = Application | LegacyApp | ManagedIdentitySp
+
+// ── Role definitions ──────────────────────────────────────────────
+
+type AzureRoleDefinition {
+  id: String
+  name: String
+  description: String?
+  permissions: List<AzurePermission>
+  assignable_scopes: List<String>
+}
+
+type AzurePermission {
+  actions: List<String>
+  not_actions: List<String>
+  data_actions: List<String>
+  not_data_actions: List<String>
+}
+
+// ── Role assignments ──────────────────────────────────────────────
+
+type RoleAssignment {
+  id: String
+  principal_id: String
+  role_definition_id: String
+  scope: String
+}
+
+// ── Common roles ──────────────────────────────────────────────────
+
+data common_roles: List<AzureRoleDefinition> = [
+  { id: "acdd72a7-3385-48ef-bd42-f606fba81ae7", name: "Reader", description: "View all resources", permissions: [], assignable_scopes: ["/"] },
+  { id: "b24988ac-6180-42a0-ab88-20f7382dd24c", name: "Contributor", description: "Manage all resources except access", permissions: [], assignable_scopes: ["/"] },
+  { id: "8e3af657-a8ff-443c-a75c-2fe8c4bcb635", name: "Owner", description: "Full access including RBAC", permissions: [], assignable_scopes: ["/"] },
+  { id: "2a2b9908-6ea1-4ae2-8e65-a410df84e7d1", name: "Storage Blob Data Reader", description: "Read blob data", permissions: [], assignable_scopes: ["/"] },
+  { id: "ba92f5b4-2d11-453d-a403-e96b0029c9fe", name: "Storage Blob Data Contributor", description: "Read/write blob data", permissions: [], assignable_scopes: ["/"] }
+]
+
+// ── Operation behaviors ───────────────────────────────────────────
+
+type IdentityOperationBehavior {
+  operation: String
+  behavior: OperationBehavior
+}
+
+data operation_behaviors: List<IdentityOperationBehavior> = [
+  {
+    operation: "CreateRoleAssignment",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["principal_id", "role_definition_id", "scope"],
+      determinism: Deterministic,
+      failure_modes: [
+        { name: "RoleAssignmentExists", condition: "duplicate_assignment", http_status: 409, recoverable: false, retry_safe: true },
+        { name: "PrincipalNotFound", condition: "invalid_principal", http_status: 400, recoverable: false, retry_safe: false }
+      ],
+      edge_cases: [{ description: "RBAC propagation can take up to 5 minutes", trigger: "new_assignment", severity: High }],
+      confidence: Documented,
+      prerequisites: [{ description: "Microsoft.Authorization/roleAssignments/write permission", kind: Capability }],
+      assumptions: [],
+      unknowns: []
+    }
+  },
+  {
+    operation: "GetToken",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: NonDeterministic,
+      failure_modes: [
+        { name: "AuthError", condition: "invalid_credentials", http_status: 401, recoverable: false, retry_safe: false }
+      ],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "valid managed identity or service principal credentials", kind: Credential }],
+      assumptions: [],
+      unknowns: []
+    }
+  }
+]

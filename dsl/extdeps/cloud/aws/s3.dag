@@ -1,0 +1,135 @@
+// extdeps/cloud/aws/s3.dag -- "What is Amazon S3?"
+//
+// S3 resource model: buckets, objects, versioning, ETag-based CAS,
+// storage classes, bucket policies.
+//
+// Consumers:
+//   infra/aws/resources.dag — S3Bucket resource impl
+
+module extdeps.cloud.aws.s3
+
+import extdeps.cloud.aws.core { AwsRegion }
+import std.behavioral {
+  OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+}
+
+// ── Storage classes ───────────────────────────────────────────────
+
+type S3StorageClass
+  = S3Standard
+  | S3IntelligentTiering
+  | S3StandardIa
+  | S3OneZoneIa
+  | S3Glacier
+  | S3GlacierDeepArchive
+
+// ── Buckets ───────────────────────────────────────────────────────
+
+type S3Bucket {
+  name: String
+  region: String
+  versioning: Bool
+}
+
+type S3BucketPolicy {
+  version: String
+  statements: List<S3PolicyStatement>
+}
+
+type S3PolicyStatement {
+  effect: S3Effect
+  principal: String
+  action: List<String>
+  resource: String
+}
+
+type S3Effect = Allow | Deny
+
+// ── Objects ───────────────────────────────────────────────────────
+
+type S3Object {
+  bucket: String
+  key: String
+  etag: String
+  version_id: String?
+  size: Int
+  storage_class: S3StorageClass
+  content_type: String?
+}
+
+// ── CAS preconditions ─────────────────────────────────────────────
+// S3 uses ETags for optimistic concurrency.
+
+type S3CasPrecondition {
+  if_match: String?
+  if_none_match: String?
+}
+
+// ── Behavioral facts ──────────────────────────────────────────────
+
+data get_is_readonly: Bool = true
+
+data get_is_idempotent: Bool = true
+
+data put_is_idempotent: Bool = true
+
+data cas_conflict_status: Int = 412
+
+// ── Operation behaviors ───────────────────────────────────────────
+
+type S3OperationBehavior {
+  operation: String
+  behavior: OperationBehavior
+}
+
+data operation_behaviors: List<S3OperationBehavior> = [
+  {
+    operation: "GetObject",
+    behavior: {
+      side_effects: ReadOnly,
+      idempotent: true,
+      idempotency_keys: null,
+      determinism: Deterministic,
+      failure_modes: [
+        { name: "NoSuchKey", condition: "object_absent", http_status: 404, recoverable: false, retry_safe: false }
+      ],
+      edge_cases: [{ description: "versioned bucket returns latest version by default", trigger: "versioning_enabled", severity: Low }],
+      confidence: Documented,
+      prerequisites: [{ description: "s3:GetObject permission", kind: Capability }],
+      assumptions: [],
+      unknowns: []
+    }
+  },
+  {
+    operation: "PutObject",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["bucket", "key"],
+      determinism: Deterministic,
+      failure_modes: [
+        { name: "AccessDenied", condition: "insufficient_permissions", http_status: 403, recoverable: false, retry_safe: false }
+      ],
+      edge_cases: [{ description: "overwrites existing object without warning unless If-Match is set", trigger: "no_precondition", severity: High }],
+      confidence: Documented,
+      prerequisites: [{ description: "s3:PutObject permission", kind: Capability }],
+      assumptions: [],
+      unknowns: []
+    }
+  },
+  {
+    operation: "DeleteObject",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["bucket", "key"],
+      determinism: Deterministic,
+      failure_modes: [],
+      edge_cases: [{ description: "deleting a versioned object inserts a delete marker", trigger: "versioning_enabled", severity: Medium }],
+      confidence: Documented,
+      prerequisites: [{ description: "s3:DeleteObject permission", kind: Capability }],
+      assumptions: ["Delete of non-existent key is a successful no-op"],
+      unknowns: []
+    }
+  }
+]
