@@ -2,12 +2,14 @@
 //!
 //! Canonical globs and output paths are loaded from `dsl/config/resources.dag`.
 
-use daglang_driver::{compile_from_context, DriverContext};
+use daglang_driver::compile_data_from_sources;
 use gunbc_ir::resource::{codegen_resource_def, InputPattern, ResourceDef, ResourceScope};
 use gunbc_ir::ResourceId;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::OnceLock;
+
+const RESOURCES_DAG_SOURCE: &str = include_str!("../../dsl/config/resources.dag");
 
 // Canonical build resource names for repo-level composition.
 pub const BUILD_RESOURCE_GENERATED_CLI: &str = "generated_cli";
@@ -38,15 +40,9 @@ fn resource_dsl_data() -> &'static ResourceDslData {
     RESOURCE_DSL_DATA.get_or_init(load_resource_dsl_data)
 }
 
-#[allow(clippy::disallowed_methods)] // Build-time DSL data loading.
 fn load_resource_dsl_data() -> ResourceDslData {
-    let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dsl");
-    let dag_file = dsl_root.join("config/resources.dag");
-    let context = DriverContext {
-        roots: vec![dsl_root],
-        target_file: Some(dag_file),
-    };
-    let output = compile_from_context(&context)
+    let path = Path::new("<embedded>/config/resources.dag");
+    let output = compile_data_from_sources(&[(path, RESOURCES_DAG_SOURCE)])
         .expect("config/resources.dag must compile — fix DSL syntax errors before building");
 
     let repo_source_input_globs =

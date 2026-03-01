@@ -2,43 +2,36 @@
 //!
 //! Compiles `config/clippy_policy.dag`, extracts fn bodies and data
 //! declarations, then evaluates `derive_*` functions to produce pragma
-//! output strings. Follows the proven pattern from `makegen/shared.rs`.
+//! output strings.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::Path;
 
-use daglang_driver::{compile_from_context, DriverContext};
-use daglang_lower::{CallableKind, LoweredFnBody, LoweredOp};
-use gunbc_ir::node::NodeBody;
+use daglang_driver::compile_data_from_sources;
+use daglang_lower::LoweredFnBody;
 use gunbc_ir::Value;
+
+const CLIPPY_POLICY_SOURCE: &str = include_str!("../../../dsl/config/clippy_policy.dag");
+const EXTDEPS_CLIPPY_SOURCE: &str = include_str!("../../../dsl/extdeps/clippy.dag");
+const ARCH_RULES_SOURCE: &str = include_str!("../../../dsl/config/arch_rules.dag");
+const CLIPPY_DISALLOWED_SOURCE: &str = include_str!("../../../dsl/config/clippy_disallowed.dag");
+const STD_LINT_SOURCE: &str = include_str!("../../../dsl/std/lint.dag");
 
 /// Compile `config/clippy_policy.dag` and extract fn bodies + data values.
 fn compile_clippy_policy() -> (
     HashMap<String, LoweredFnBody>,
     HashMap<String, serde_json::Value>,
 ) {
-    let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dsl");
-    let dag_file = dsl_root.join("config/clippy_policy.dag");
-    let context = DriverContext {
-        roots: vec![dsl_root],
-        target_file: Some(dag_file),
-    };
-    let output = compile_from_context(&context).expect("clippy_policy.dag should compile");
+    let output = compile_data_from_sources(&[
+        (Path::new("<embedded>/std/lint.dag"), STD_LINT_SOURCE),
+        (Path::new("<embedded>/extdeps/clippy.dag"), EXTDEPS_CLIPPY_SOURCE),
+        (Path::new("<embedded>/config/arch_rules.dag"), ARCH_RULES_SOURCE),
+        (Path::new("<embedded>/config/clippy_disallowed.dag"), CLIPPY_DISALLOWED_SOURCE),
+        (Path::new("<embedded>/config/clippy_policy.dag"), CLIPPY_POLICY_SOURCE),
+    ])
+    .expect("clippy_policy.dag should compile");
 
-    let mut fns = HashMap::new();
-    for node in &output.lowered_dag.nodes {
-        if let NodeBody::Opaque(LoweredOp::Callable {
-            kind: CallableKind::Fn,
-            name,
-            fn_body: Some(body),
-            ..
-        }) = &node.body
-        {
-            fns.insert(name.clone(), *body.clone());
-        }
-    }
-
-    (fns, output.data_values)
+    (output.fns, output.data_values)
 }
 
 /// Evaluate `derive_disallowed_methods_allowlist()` from DSL.

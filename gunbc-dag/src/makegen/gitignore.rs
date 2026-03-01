@@ -12,10 +12,12 @@
 //! - `rationale`: Why these files are ignored
 
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::Path;
 
-use daglang_driver::{compile_from_context, DriverContext};
+use daglang_driver::compile_data_from_sources;
 use serde::Deserialize;
+
+const GITIGNORE_DAG_SOURCE: &str = include_str!("../../../dsl/config/gitignore.dag");
 
 use crate::dsl_registry::discover_tool_defs_from_dsl;
 use crate::makegen::registry::{BuildConfig, BuildSystem};
@@ -46,15 +48,9 @@ fn build_system_name(build_system: BuildSystem) -> &'static str {
     }
 }
 
-#[allow(clippy::disallowed_methods)] // Build-time DSL data loading.
 fn load_dsl_categories(build_system: BuildSystem) -> Vec<Category> {
-    let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dsl");
-    let dag_file = dsl_root.join("config/gitignore.dag");
-    let context = DriverContext {
-        roots: vec![dsl_root],
-        target_file: Some(dag_file),
-    };
-    let output = compile_from_context(&context)
+    let path = Path::new("<embedded>/config/gitignore.dag");
+    let output = compile_data_from_sources(&[(path, GITIGNORE_DAG_SOURCE)])
         .expect("config/gitignore.dag must compile — fix DSL syntax errors before building");
     let value = output
         .data_values

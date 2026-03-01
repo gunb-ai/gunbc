@@ -314,6 +314,111 @@ pub fn compile_from_context(context: &DriverContext) -> Result<CompileOutput, Co
     compile_from_context_with_options(context, CompileOptions::default())
 }
 
+/// Lightweight compilation from embedded source strings.
+///
+/// Builds a module graph from `(virtual_path, source_text)` pairs, typechecks,
+/// lowers, and extracts data values and fn bodies. No filesystem access.
+/// Used by build-time generators that embed `.dag` sources via `include_str!`.
+pub fn compile_data_from_sources(
+    sources: &[(&Path, &str)],
+) -> Result<EmbeddedCompileOutput, CompileError> {
+    let mut parsed = Vec::new();
+    for (path, source) in sources {
+        let ast = parser::parse_with_file_diagnostics(path, source)
+            .map_err(|diagnostics| {
+                CompileError::Message(format!(
+                    "failed to parse embedded module {}: {}",
+                    path.display(),
+                    diagnostics
+                        .iter()
+                        .map(|d| d.render())
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                ))
+            })?;
+        let module_path = ast
+            .module_path
+            .as_ref()
+            .map(|mp| mp.node.clone())
+            .ok_or_else(|| {
+                CompileError::Message(format!(
+                    "embedded module {} missing `module` declaration",
+                    path.display()
+                ))
+            })?;
+        let imports: Vec<ModulePath> = ast
+            .imports
+            .iter()
+            .map(|imp| imp.node.path.clone())
+            .collect();
+        parsed.push((path.to_path_buf(), module_path, imports, ast));
+    }
+
+    let mut index_by_module = HashMap::new();
+    for (idx, (_, module_path, _, _)) in parsed.iter().enumerate() {
+        index_by_module.insert(module_path.clone(), idx);
+    }
+
+    let mut resolved = Vec::new();
+    for (path, module_path, imports, ast) in parsed {
+        let mut dependencies = Vec::new();
+        for import in &imports {
+            if let Some(&dep) = index_by_module.get(import) {
+                dependencies.push(dep);
+            }
+            // Unresolved imports are tolerated for self-contained data modules.
+        }
+        resolved.push(ResolvedModule {
+            path,
+            ast,
+            module_path,
+            dependencies,
+        });
+    }
+
+    let module_graph = ModuleGraph { modules: resolved };
+    let typed = typecheck_module_graph_with_options(
+        module_graph,
+        TypecheckOptions {
+            allow_unresolved_imports: true,
+        },
+    )
+    .map_err(CompileError::Typecheck)?;
+    let data_values = daglang_lower::build_data_values(&typed);
+
+    // Lowering is best-effort: data-only modules have no callable/pipeline
+    // declarations, so the lowerer correctly returns NoLowerableItems.
+    let mut fns = HashMap::new();
+    match daglang_lower::lower_typed_project(&typed) {
+        Ok(lowered) => {
+            for node in &lowered.nodes {
+                if let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable {
+                    kind: daglang_lower::CallableKind::Fn,
+                    name,
+                    fn_body: Some(body),
+                    ..
+                }) = &node.body
+                {
+                    fns.insert(name.clone(), *body.clone());
+                }
+            }
+        }
+        Err(daglang_lower::LowerError::NoLowerableItems) => {
+            // Data-only module — no fns to extract, data_values is enough.
+        }
+        Err(e) => return Err(CompileError::Lower(e)),
+    }
+
+    Ok(EmbeddedCompileOutput { data_values, fns })
+}
+
+/// Output from compiling embedded DSL sources.
+#[derive(Debug)]
+pub struct EmbeddedCompileOutput {
+    pub data_values: HashMap<String, serde_json::Value>,
+    pub fns: HashMap<String, daglang_lower::LoweredFnBody>,
+}
+
 pub fn compile_from_context_with_options(
     context: &DriverContext,
     options: CompileOptions,
