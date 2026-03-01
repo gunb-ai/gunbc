@@ -35,8 +35,15 @@
 pub mod backend;
 pub mod classify;
 pub mod cli;
+pub mod credential;
 pub mod executor;
 pub mod freshness_policy;
+pub mod metrics;
+pub mod middleware;
+pub mod rate_limit;
+pub mod retry;
+pub mod pipeline;
+pub mod transport_types;
 
 pub mod ops;
 pub mod preflight;
@@ -51,6 +58,26 @@ pub use freshness_policy::{check_and_plan_freshness, update_freshness_manifest};
 pub use ops::TransportOps;
 
 pub use resource_io::TransportIo;
+
+// Middleware infrastructure
+pub use classify::{
+    classify_for_middleware, classify_rest_response, classify_transport_error,
+    extract_status_code, is_success, ClassifiedErrorKind, ClassifiedResponse,
+};
+pub use metrics::{InMemoryMetricsSink, LogMetricsSink, MetricsMiddleware, MetricsSink, NullMetricsSink};
+pub use middleware::{
+    MiddlewareContext, MiddlewareOutcome, PostProcessOutcome, SharedMiddlewareState,
+    TransportMiddleware,
+};
+pub use rate_limit::{RateLimitMiddleware, RateLimitState};
+pub use retry::{CircuitBreaker, CircuitState, RetryMiddleware};
+pub use pipeline::{TransportPipeline, TransportPipelineBuilder};
+pub use credential::{CredentialCache, CredentialMiddleware};
+
+// Transport foundation types (TL-0)
+pub use transport_types::{
+    EndpointBehavior, FailureMode, OperationBehavior, TransportCapabilities, TransportClass,
+};
 
 pub mod system_models;
 

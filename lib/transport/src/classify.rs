@@ -8,7 +8,7 @@ use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 
 /// Normalized transport error kind.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ClassifiedErrorKind {
     Auth,
     RateLimit,
@@ -134,34 +134,96 @@ fn classify_status(
     ClassifiedErrorKind::Unknown
 }
 
-fn provider_error_message(provider: ResponseProvider, body: &JsonValue) -> Option<String> {
-    match provider {
-        ResponseProvider::GitHub => body
-            .get("message")
-            .and_then(JsonValue::as_str)
-            .map(|s| s.to_string()),
-        ResponseProvider::Gcp => body
-            .get("error")
-            .and_then(|v| v.get("message").or_else(|| v.get("status")))
-            .and_then(JsonValue::as_str)
-            .map(|s| s.to_string()),
-        ResponseProvider::Anthropic => body
-            .get("error")
-            .and_then(|v| v.get("message"))
-            .and_then(JsonValue::as_str)
-            .map(|s| s.to_string())
-            .or_else(|| {
-                body.get("type")
-                    .and_then(JsonValue::as_str)
-                    .map(|s| s.to_string())
-            }),
-        ResponseProvider::OpenAi => body
-            .get("error")
-            .and_then(|v| v.get("message"))
-            .and_then(JsonValue::as_str)
-            .map(|s| s.to_string()),
-        ResponseProvider::Generic => None,
+/// Provider-specific error details parsed from response body.
+#[derive(Debug, Clone, Default)]
+pub struct ProviderDiagnostics {
+    /// Primary error message.
+    pub message: Option<String>,
+    /// Error type/code (provider-specific).
+    pub error_type: Option<String>,
+    /// HTTP status string (GCP).
+    pub status: Option<String>,
+    /// Documentation URL (GitHub).
+    pub documentation_url: Option<String>,
+    /// Numeric error code (GCP, OpenAI).
+    pub code: Option<i64>,
+}
+
+impl ProviderDiagnostics {
+    /// Combine fields into a human-readable message.
+    pub fn to_message(&self) -> Option<String> {
+        if let Some(msg) = &self.message {
+            let mut result = msg.clone();
+            if let Some(doc) = &self.documentation_url {
+                result.push_str(" (see: ");
+                result.push_str(doc);
+                result.push(')');
+            }
+            Some(result)
+        } else {
+            self.error_type.clone()
+        }
     }
+}
+
+/// Parse provider-specific error shape from response body.
+pub fn parse_provider_error(provider: ResponseProvider, body: &JsonValue) -> ProviderDiagnostics {
+    match provider {
+        ResponseProvider::GitHub => parse_github_error(body),
+        ResponseProvider::Gcp => parse_gcp_error(body),
+        ResponseProvider::Anthropic => parse_anthropic_error(body),
+        ResponseProvider::OpenAi => parse_openai_error(body),
+        ResponseProvider::Generic => ProviderDiagnostics::default(),
+    }
+}
+
+/// GitHub error shape: `{ message, documentation_url }`
+fn parse_github_error(body: &JsonValue) -> ProviderDiagnostics {
+    ProviderDiagnostics {
+        message: body.get("message").and_then(JsonValue::as_str).map(String::from),
+        documentation_url: body.get("documentation_url").and_then(JsonValue::as_str).map(String::from),
+        ..Default::default()
+    }
+}
+
+/// GCP error shape: `{ error: { code, message, status } }`
+fn parse_gcp_error(body: &JsonValue) -> ProviderDiagnostics {
+    let error = body.get("error");
+    ProviderDiagnostics {
+        message: error.and_then(|e| e.get("message")).and_then(JsonValue::as_str).map(String::from),
+        status: error.and_then(|e| e.get("status")).and_then(JsonValue::as_str).map(String::from),
+        code: error.and_then(|e| e.get("code")).and_then(JsonValue::as_i64),
+        ..Default::default()
+    }
+}
+
+/// Anthropic error shape: `{ type, error: { type, message } }`
+fn parse_anthropic_error(body: &JsonValue) -> ProviderDiagnostics {
+    let error = body.get("error");
+    ProviderDiagnostics {
+        message: error.and_then(|e| e.get("message")).and_then(JsonValue::as_str).map(String::from),
+        error_type: error
+            .and_then(|e| e.get("type"))
+            .and_then(JsonValue::as_str)
+            .map(String::from)
+            .or_else(|| body.get("type").and_then(JsonValue::as_str).map(String::from)),
+        ..Default::default()
+    }
+}
+
+/// OpenAI error shape: `{ error: { message, type, code } }`
+fn parse_openai_error(body: &JsonValue) -> ProviderDiagnostics {
+    let error = body.get("error");
+    ProviderDiagnostics {
+        message: error.and_then(|e| e.get("message")).and_then(JsonValue::as_str).map(String::from),
+        error_type: error.and_then(|e| e.get("type")).and_then(JsonValue::as_str).map(String::from),
+        code: error.and_then(|e| e.get("code")).and_then(JsonValue::as_i64),
+        ..Default::default()
+    }
+}
+
+fn provider_error_message(provider: ResponseProvider, body: &JsonValue) -> Option<String> {
+    parse_provider_error(provider, body).to_message()
 }
 
 fn message_has_auth_indicator(message: Option<&str>) -> bool {
@@ -196,6 +258,86 @@ fn parse_retry_after_ms(headers: &HashMap<String, String>) -> Option<u64> {
     // Retry-After commonly uses seconds. We keep parsing intentionally strict
     // for deterministic tests and middleware behavior.
     raw.parse::<u64>().ok().map(|seconds| seconds * 1000)
+}
+
+// ---------------------------------------------------------------------------
+// Middleware integration
+// ---------------------------------------------------------------------------
+
+use gunbc_ir::transport::TransportResponse;
+
+/// Default classification policy when none is configured.
+fn default_policy() -> ResponseClassification {
+    ResponseClassification {
+        provider: ResponseProvider::Generic,
+        prioritize_auth_errors: true,
+        parse_provider_error_shapes: true,
+    }
+}
+
+/// Classify a transport response for middleware decisions.
+///
+/// This is the primary entry point for middleware (retry, metrics) to classify
+/// responses. It handles the `TransportResponse` enum and dispatches to the
+/// appropriate type-specific classifier.
+///
+/// Returns `None` for:
+/// - Successful HTTP responses (2xx)
+/// - Non-HTTP transports (File, Shell, Tcp, Local)
+///
+/// # Arguments
+///
+/// * `response` - The transport response to classify
+/// * `policy` - Optional classification policy; uses a sensible default if None
+///
+/// # Example
+///
+/// ```ignore
+/// use gunbc_lib_transport::classify::{classify_for_middleware, ClassifiedErrorKind};
+///
+/// let classified = classify_for_middleware(&response, None);
+/// if let Some(c) = classified {
+///     if c.retryable() {
+///         // Handle retry
+///     }
+/// }
+/// ```
+pub fn classify_for_middleware(
+    response: &TransportResponse,
+    policy: Option<&ResponseClassification>,
+) -> Option<ClassifiedResponse> {
+    let default = default_policy();
+    let policy = policy.unwrap_or(&default);
+    match response {
+        TransportResponse::Rest(r) => classify_rest_response(r, policy),
+        TransportResponse::Http(r) => classify_http_response(r, policy),
+        // Non-HTTP transports don't have HTTP-style classification
+        TransportResponse::File(_)
+        | TransportResponse::Shell(_)
+        | TransportResponse::Tcp(_)
+        | TransportResponse::Local(_) => None,
+    }
+}
+
+/// Extract HTTP status code from a transport response if applicable.
+pub fn extract_status_code(response: &TransportResponse) -> Option<u16> {
+    match response {
+        TransportResponse::Rest(r) => Some(r.status),
+        TransportResponse::Http(r) => Some(r.status),
+        _ => None,
+    }
+}
+
+/// Check if a response indicates success (2xx for HTTP, success field for others).
+pub fn is_success(response: &TransportResponse) -> bool {
+    match response {
+        TransportResponse::Rest(r) => r.is_success(),
+        TransportResponse::Http(r) => r.is_success(),
+        TransportResponse::File(r) => r.success,
+        TransportResponse::Shell(r) => r.success(),
+        TransportResponse::Tcp(_) => true, // TCP connections that succeed don't error
+        TransportResponse::Local(_) => true,
+    }
 }
 
 #[cfg(test)]
@@ -309,5 +451,129 @@ mod tests {
         let classified = classify_transport_error("connect timeout");
         assert_eq!(classified.kind, ClassifiedErrorKind::Network);
         assert!(classified.retryable());
+    }
+
+    // Middleware integration tests
+
+    #[test]
+    fn classify_for_middleware_handles_rest_response() {
+        use gunbc_ir::transport::TransportResponse;
+
+        let rest_response = RestResponse::new(429, serde_json::json!({"message": "rate limit"}));
+        let response = TransportResponse::Rest(rest_response);
+
+        let classified = classify_for_middleware(&response, None);
+        assert!(classified.is_some());
+        let c = classified.unwrap();
+        assert_eq!(c.kind, ClassifiedErrorKind::RateLimit);
+        assert!(c.retryable());
+    }
+
+    #[test]
+    fn classify_for_middleware_returns_none_for_success() {
+        use gunbc_ir::transport::TransportResponse;
+
+        let rest_response = RestResponse::new(200, serde_json::json!({"ok": true}));
+        let response = TransportResponse::Rest(rest_response);
+
+        let classified = classify_for_middleware(&response, None);
+        assert!(classified.is_none());
+    }
+
+    #[test]
+    fn classify_for_middleware_returns_none_for_non_http() {
+        use gunbc_ir::transport::{LocalResponse, ShellResponse, TransportResponse};
+
+        let shell = TransportResponse::Shell(ShellResponse {
+            stdout: "ok".to_string(),
+            stderr: "".to_string(),
+            exit_code: 0,
+        });
+        assert!(classify_for_middleware(&shell, None).is_none());
+
+        let local = TransportResponse::Local(LocalResponse {
+            outputs: serde_json::json!({}),
+        });
+        assert!(classify_for_middleware(&local, None).is_none());
+    }
+
+    #[test]
+    fn extract_status_code_works_for_http_types() {
+        use gunbc_ir::transport::{LocalResponse, TransportResponse};
+
+        let rest = TransportResponse::Rest(RestResponse::new(404, serde_json::json!({})));
+        assert_eq!(extract_status_code(&rest), Some(404));
+
+        let http = TransportResponse::Http(HttpResponse {
+            status: 500,
+            headers: HashMap::new(),
+            body: "".to_string(),
+        });
+        assert_eq!(extract_status_code(&http), Some(500));
+
+        let local = TransportResponse::Local(LocalResponse {
+            outputs: serde_json::json!({}),
+        });
+        assert_eq!(extract_status_code(&local), None);
+    }
+
+    #[test]
+    fn is_success_checks_all_transport_types() {
+        use gunbc_ir::transport::{FileResponse, LocalResponse, ShellResponse, TransportResponse};
+
+        // REST success
+        let rest = TransportResponse::Rest(RestResponse::new(200, serde_json::json!({})));
+        assert!(is_success(&rest));
+
+        // REST failure
+        let rest_fail = TransportResponse::Rest(RestResponse::new(500, serde_json::json!({})));
+        assert!(!is_success(&rest_fail));
+
+        // Shell success
+        let shell = TransportResponse::Shell(ShellResponse {
+            stdout: "".to_string(),
+            stderr: "".to_string(),
+            exit_code: 0,
+        });
+        assert!(is_success(&shell));
+
+        // Shell failure
+        let shell_fail = TransportResponse::Shell(ShellResponse {
+            stdout: "".to_string(),
+            stderr: "error".to_string(),
+            exit_code: 1,
+        });
+        assert!(!is_success(&shell_fail));
+
+        // File success is determined by the success field
+        use gunbc_ir::transport::FileOp;
+        let file_ok = TransportResponse::File(FileResponse {
+            path: "/tmp/test".to_string(),
+            operation: FileOp::Read,
+            success: true,
+            content: None,
+            bytes: None,
+            exists: Some(true),
+            error: None,
+        });
+        assert!(is_success(&file_ok));
+
+        // File failure (success=false) should return false
+        let file_fail = TransportResponse::File(FileResponse {
+            path: "/tmp/missing".to_string(),
+            operation: FileOp::Read,
+            success: false,
+            content: None,
+            bytes: None,
+            exists: Some(false),
+            error: Some("file not found".to_string()),
+        });
+        assert!(!is_success(&file_fail));
+
+        // Local always success
+        let local = TransportResponse::Local(LocalResponse {
+            outputs: serde_json::json!({}),
+        });
+        assert!(is_success(&local));
     }
 }
