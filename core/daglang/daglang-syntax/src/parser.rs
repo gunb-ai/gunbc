@@ -1004,6 +1004,27 @@ impl Parser {
                 Ok(Refinement::Format(fmt))
             }
             "raw_body" => Ok(Refinement::RawBody),
+            "retry" => {
+                return Err(self.err(
+                    "@retry is not supported — retry policy should be modeled via \
+                     transport middleware (see Lane 5: TL-3)"
+                        .into(),
+                ));
+            }
+            "error_map" => {
+                return Err(self.err(
+                    "@error_map is not supported — error mapping should use \
+                     response {} blocks (see Lane 6: SL-6)"
+                        .into(),
+                ));
+            }
+            "requires" => {
+                return Err(self.err(
+                    "@requires is not supported — use `uses` declarations for \
+                     resource/capability requirements"
+                        .into(),
+                ));
+            }
             "file_types" => {
                 self.expect(&TokenKind::LParen)?;
                 let mut exts = Vec::new();
@@ -1345,7 +1366,12 @@ impl Parser {
                 self.advance();
                 readonly = true;
             } else if self.check(&TokenKind::Hermetic) {
-                // Accept but ignore — hermeticity is structurally derived
+                // Accept but warn — hermeticity is structurally derived from transport
+                self.record_err(self.err(
+                    "hermetic on operations is ignored — hermeticity is structurally \
+                     derived from transport declarations"
+                        .into(),
+                ));
                 self.advance();
             } else {
                 break;
@@ -1370,7 +1396,12 @@ impl Parser {
                     self.advance();
                     readonly = true;
                 } else if self.check(&TokenKind::Hermetic) {
-                    // Accept but ignore — hermeticity is structurally derived
+                    // Accept but warn — hermeticity is structurally derived from transport
+                    self.record_err(self.err(
+                        "hermetic on operations is ignored — hermeticity is structurally \
+                         derived from transport declarations"
+                            .into(),
+                    ));
                     self.advance();
                 } else if self.check(&TokenKind::Transport) {
                     transport = Some(self.parse_transport_binding()?);
@@ -3561,5 +3592,62 @@ pipeline gist {
             }
             other => panic!("expected ExternAssetDecl, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn retry_refinement_is_rejected() {
+        let err = parse_source_err(
+            "module test\ntype Req = String where retry(max: 3)",
+        );
+        assert!(
+            err.message.contains("@retry is not supported"),
+            "unexpected error: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn error_map_refinement_is_rejected() {
+        let err = parse_source_err(
+            "module test\ntype Req = String where error_map(401: Unauthorized)",
+        );
+        assert!(
+            err.message.contains("@error_map is not supported"),
+            "unexpected error: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn requires_refinement_is_rejected() {
+        let err = parse_source_err(
+            r#"module test
+type Req = String where requires(env: "TOKEN")"#,
+        );
+        assert!(
+            err.message.contains("@requires is not supported"),
+            "unexpected error: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn hermetic_on_operation_produces_error() {
+        let errs = parse(
+            r#"module test
+service foo.Bar {
+  operation Baz hermetic {
+    input { x: String }
+    output { y: String }
+  }
+}"#,
+        )
+        .expect_err("hermetic on operation should produce error");
+        assert!(
+            errs.iter()
+                .any(|e| e.message.contains("hermetic on operations is ignored")),
+            "expected hermetic warning, got: {:?}",
+            errs.iter().map(|e| &e.message).collect::<Vec<_>>()
+        );
     }
 }
