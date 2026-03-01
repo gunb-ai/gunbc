@@ -35,6 +35,7 @@
 pub mod backend;
 pub mod classify;
 pub mod cli;
+pub mod credential;
 pub mod executor;
 pub mod freshness_policy;
 pub mod metrics;
@@ -70,6 +71,7 @@ pub use middleware::{
 pub use rate_limit::{RateLimitMiddleware, RateLimitState};
 pub use retry::{CircuitBreaker, CircuitState, RetryMiddleware};
 pub use pipeline::{TransportPipeline, TransportPipelineBuilder};
+pub use credential::{CredentialCache, CredentialMiddleware};
 
 pub mod system_models;
 
