@@ -36,6 +36,8 @@ pub enum ValueExpr {
     },
     /// Secret/redacted value — rendered as a secret constructor per language.
     Secret(String),
+    /// Typed enum unit variant.
+    Enum { ty: String, variant: String },
     /// Node was skipped (guard false) — rendered as skip sentinel per language.
     Skipped,
 }
@@ -65,6 +67,10 @@ impl From<&Value> for ValueExpr {
             Value::Float(f) => ValueExpr::Json(serde_json::json!(*f)),
             Value::Bytes(b) => ValueExpr::Json(serde_json::json!({"__bytes": b.len()})),
             Value::Secret(_) => ValueExpr::Secret("***".to_string()),
+            Value::Enum { ty, variant } => ValueExpr::Enum {
+                ty: ty.clone(),
+                variant: variant.clone(),
+            },
             Value::Skipped => ValueExpr::Skipped,
         }
     }

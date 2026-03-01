@@ -14,6 +14,84 @@
 module interfaces.outcome_ledger
 
 import std.types { NonEmptyStr, StageOutcome }
+import std.behavioral {
+  OperationBehavior, FailureMode, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+}
+import std.coordination { CasMechanism, DeliveryGuarantee }
+import std.capability { CapabilityRequirement, InfraScope, AccessLevel }
+
+type CapabilityBehaviorContract {
+  capability: String
+  behavior: OperationBehavior
+}
+
+type CapabilityFailureContract {
+  capability: String
+  failures: List<FailureMode>
+}
+
+data cas_mechanism: CasMechanism = GenerationBased
+data delivery_guarantee: DeliveryGuarantee = AtLeastOnce
+
+data capability_behaviors: List<CapabilityBehaviorContract> = [
+  {
+    capability: "upsert",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["run_key", "stage", "outcome.content_hash"],
+      determinism: Deterministic,
+      failure_modes: [{ name: "Conflict", condition: "same_run_stage_different_content_hash", http_status: 409, recoverable: false, retry_safe: false }],
+      edge_cases: [{ description: "same content hash is no-op success", trigger: "duplicate_write", severity: Low }],
+      confidence: Documented,
+      prerequisites: [{ description: "ledger write access", kind: Capability }],
+      assumptions: ["content_hash is stable canonical digest of outcome payload"],
+      unknowns: []
+    }
+  },
+  {
+    capability: "get",
+    behavior: {
+      side_effects: ReadOnly,
+      idempotent: true,
+      idempotency_keys: ["run_key", "stage"],
+      determinism: Deterministic,
+      failure_modes: [],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "ledger read access", kind: Capability }],
+      assumptions: [],
+      unknowns: []
+    }
+  },
+  {
+    capability: "list_by_issue",
+    behavior: {
+      side_effects: ReadOnly,
+      idempotent: true,
+      idempotency_keys: ["issue_id"],
+      determinism: Deterministic,
+      failure_modes: [],
+      edge_cases: [{ description: "result spans multiple runs and stages and may require paging", trigger: "large_history", severity: Medium }],
+      confidence: HighConfidence,
+      prerequisites: [{ description: "ledger read access", kind: Capability }],
+      assumptions: ["Outcome records preserve causal ordering metadata"],
+      unknowns: []
+    }
+  }
+]
+
+data capability_requirements: List<CapabilityRequirement> = [
+  { scope: Storage, level: Write, resource: "outcome_ledger.upsert" },
+  { scope: Storage, level: Read, resource: "outcome_ledger.read" }
+]
+
+data capability_failure_contracts: List<CapabilityFailureContract> = [
+  {
+    capability: "upsert",
+    failures: [{ name: "Conflict", condition: "same_run_stage_different_content_hash", http_status: 409, recoverable: false, retry_safe: false }]
+  }
+]
 
 interface OutcomeLedger {
 

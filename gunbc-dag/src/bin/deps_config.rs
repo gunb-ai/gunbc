@@ -3,7 +3,7 @@
 //! Ensures or verifies that `deps.toml` matches the canonical tool registry.
 
 #![deny(dead_code)]
-use gunbc_cli::BinaryArgs;
+use gunbc_cli::{parse, CliParam, ParamType};
 use gunbc_codegen::file_writer::{format_diff, FileWriter};
 use gunbc_dag::deps_config_resource_def;
 use gunbc_dag::resources::DEPS_CONFIG_OUTPUT_PATH;
@@ -18,19 +18,47 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 fn main() {
-    let parsed = BinaryArgs::new()
-        .with_mode()
-        .with_string_param("path", Some('p'), Some(DEPS_CONFIG_OUTPUT_PATH))
-        .parse_env();
+    let argv: Vec<String> = std::env::args().collect();
+    let schema = vec![
+        CliParam::new("mode", ParamType::Str).default("ensure"),
+        CliParam::new("path", ParamType::Str)
+            .short('p')
+            .default(DEPS_CONFIG_OUTPUT_PATH),
+    ];
+    let parsed = match parse(&argv, &schema) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            print_attention(
+                AttentionLevel::Error,
+                "deps-config argument parsing failed",
+                &error.to_string(),
+            );
+            process::exit(1);
+        }
+    };
     if parsed.help {
         print_help();
         return;
     }
 
     let dry_run = parsed.dry_run;
-    let resource_mode = parsed.resource_mode.unwrap_or(ExecMode::Ensure);
+    let mode_raw = parsed
+        .values
+        .get("mode")
+        .and_then(|v| v.as_str())
+        .unwrap_or("ensure");
+    let resource_mode = ExecMode::parse_strict(mode_raw).unwrap_or_else(|_| {
+        print_attention(
+            AttentionLevel::Error,
+            "deps-config --mode is invalid",
+            "expected one of: ensure, verify",
+        );
+        process::exit(1);
+    });
     let path = parsed
-        .get_string("path")
+        .values
+        .get("path")
+        .and_then(|v| v.as_str())
         .unwrap_or(DEPS_CONFIG_OUTPUT_PATH)
         .to_string();
 

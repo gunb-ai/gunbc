@@ -520,6 +520,8 @@ pub mod ast {
         For(String, Box<Expr>, Vec<String>, Box<Expr>),
         /// Pipe: `expr |> fn`
         Pipe(Box<Expr>, Box<Expr>),
+        /// Built-in pipe method call: `expr |> method(args)`
+        PipeCall(Box<Expr>, PipeMethod, Vec<(Option<String>, Expr)>),
         /// Lambda (inline only, in |> chains): `x => x.name`
         Lambda(Vec<String>, Box<Expr>),
         /// List literal: `[a, b, c]`
@@ -532,6 +534,111 @@ pub mod ast {
         After(Box<Expr>, Vec<String>),
         /// Return: `return { field: value }`
         Return(Vec<(String, Expr)>),
+    }
+
+    /// Built-in pipe methods resolved by parser/typechecker/lowerer as
+    /// first-class syntax, not free-form callable names.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum PipeMethod {
+        // Collection -> Collection
+        Map,
+        Filter,
+        FilterMap,
+        FlatMap,
+        SortBy,
+        Append,
+        // Collection -> Scalar
+        Fold,
+        Join,
+        Count,
+        Sum,
+        First,
+        Last,
+        MaxBy,
+        Any,
+        All,
+        Contains,
+        // String methods
+        StartsWith,
+        EndsWith,
+        Repeat,
+        ReplaceSection,
+        Chars,
+        // Conversion methods
+        ToBytes,
+        ToJson,
+        Hash,
+    }
+
+    impl PipeMethod {
+        pub fn as_str(&self) -> &'static str {
+            match self {
+                Self::Map => "map",
+                Self::Filter => "filter",
+                Self::FilterMap => "filter_map",
+                Self::FlatMap => "flat_map",
+                Self::SortBy => "sort_by",
+                Self::Append => "append",
+                Self::Fold => "fold",
+                Self::Join => "join",
+                Self::Count => "count",
+                Self::Sum => "sum",
+                Self::First => "first",
+                Self::Last => "last",
+                Self::MaxBy => "max_by",
+                Self::Any => "any",
+                Self::All => "all",
+                Self::Contains => "contains",
+                Self::StartsWith => "starts_with",
+                Self::EndsWith => "ends_with",
+                Self::Repeat => "repeat",
+                Self::ReplaceSection => "replace_section",
+                Self::Chars => "chars",
+                Self::ToBytes => "to_bytes",
+                Self::ToJson => "to_json",
+                Self::Hash => "hash",
+            }
+        }
+    }
+
+    impl std::fmt::Display for PipeMethod {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(self.as_str())
+        }
+    }
+
+    impl std::str::FromStr for PipeMethod {
+        type Err = ();
+
+        fn from_str(name: &str) -> Result<Self, Self::Err> {
+            match name {
+                "map" => Ok(Self::Map),
+                "filter" => Ok(Self::Filter),
+                "filter_map" => Ok(Self::FilterMap),
+                "flat_map" => Ok(Self::FlatMap),
+                "sort_by" => Ok(Self::SortBy),
+                "append" => Ok(Self::Append),
+                "fold" => Ok(Self::Fold),
+                "join" => Ok(Self::Join),
+                "count" => Ok(Self::Count),
+                "sum" => Ok(Self::Sum),
+                "first" => Ok(Self::First),
+                "last" => Ok(Self::Last),
+                "max_by" => Ok(Self::MaxBy),
+                "any" => Ok(Self::Any),
+                "all" => Ok(Self::All),
+                "contains" => Ok(Self::Contains),
+                "starts_with" => Ok(Self::StartsWith),
+                "ends_with" => Ok(Self::EndsWith),
+                "repeat" => Ok(Self::Repeat),
+                "replace_section" => Ok(Self::ReplaceSection),
+                "chars" => Ok(Self::Chars),
+                "to_bytes" => Ok(Self::ToBytes),
+                "to_json" => Ok(Self::ToJson),
+                "hash" => Ok(Self::Hash),
+                _ => Err(()),
+            }
+        }
     }
 
     #[derive(Debug, Clone)]

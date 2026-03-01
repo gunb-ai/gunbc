@@ -434,8 +434,8 @@ fn classify_primitive(
             outputs,
             body: PureBody::Literal(serde_json::Value::Null),
         }),
-        // RT4a: Return expression compute nodes evaluate fn bodies at runtime.
-        PrimitiveOpKind::ReturnExprCompute { .. } => Ok(Computation::Pure {
+        // Expression compute nodes evaluate lowered fn bodies at runtime.
+        PrimitiveOpKind::ExprCompute { .. } => Ok(Computation::Pure {
             inputs,
             outputs,
             body: PureBody::Literal(serde_json::Value::Null),

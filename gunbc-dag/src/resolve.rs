@@ -40,9 +40,10 @@ use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv};
 
-use crate::resolve_service::{
+use gunbc_resolve::service_ops::{
     GenericFileParseOp, GenericFilePrepareOp, GenericLocalParseOp, GenericLocalPrepareOp,
     GenericRestParseOp, GenericRestPrepareOp, GenericShellParseOp, GenericShellPrepareOp,
+    InterfaceStubExecuteOp, InterfaceStubParseOp, InterfaceStubPrepareOp,
 };
 
 // ============================================================================
@@ -64,11 +65,10 @@ impl std::fmt::Display for ResolveError {
 
 impl std::error::Error for ResolveError {}
 
-/// Extract output port names and optionality from Port declarations.
 fn declared_output_ports(outputs: &[Port]) -> Vec<(String, bool)> {
     outputs
         .iter()
-        .map(|p| (p.name.0.clone(), p.type_id.0.ends_with('?')))
+        .map(|p| (p.name.0.clone(), p.is_optional()))
         .collect()
 }
 
@@ -83,97 +83,28 @@ fn execute_with_declared_output_passthrough(
         }
         outputs.insert(key.clone(), value.clone());
     }
+    let any_passthrough_wired = output_ports.iter().any(|(port_name, _)| {
+        let key = format!("{}{port_name}", PortName::OUTPUT_PASSTHROUGH_PREFIX);
+        inputs.contains_key(&key)
+    });
     for (port_name, is_optional) in output_ports {
         let passthrough_key = format!("{}{port_name}", PortName::OUTPUT_PASSTHROUGH_PREFIX);
         if let Some(value) = inputs.get(&passthrough_key) {
             outputs.insert(port_name.clone(), value.clone());
             continue;
         }
-        outputs.entry(port_name.clone()).or_insert_with(|| {
-            if let Some(fallback) = passthrough_fallback_value(port_name, &inputs) {
-                return fallback;
-            }
-            if *is_optional {
-                Value::Skipped
-            } else {
-                // RT83: Required output ports with no wired input indicate a
-                // lowering gap. Diagnostic suppressed from stderr to avoid noise
-                // in CI — tracked via structured obligations instead.
-                // TODO(RT83): return ExecError for required ports once all
-                // dag_util.dag if/else branches are fully wired.
-                Value::Skipped
-            }
-        });
+        if *is_optional || !any_passthrough_wired {
+            outputs.insert(port_name.clone(), Value::Skipped);
+            continue;
+        }
+        // Required output, other passthroughs arrived but this one is missing.
+        // Fail-closed: this indicates a lowerer wiring gap.
+        return Err(ExecError::new(format!(
+            "missing required declared output passthrough: `{}` (expected input `{}`)",
+            port_name, passthrough_key
+        )));
     }
     Ok(outputs)
-}
-
-fn passthrough_fallback_value(port_name: &str, inputs: &HashMap<String, Value>) -> Option<Value> {
-    let aliases: &[&str] = match port_name {
-        "result" => &["input", "value", "content", "document"],
-        "return" => &[
-            "value",
-            "content",
-            "document",
-            "input",
-            "result",
-            "directives",
-            "sections",
-            "lines",
-            "text",
-            "items",
-        ],
-        _ => &[],
-    };
-
-    let candidate = aliases
-        .iter()
-        .find_map(|alias| inputs.get(*alias).cloned())?;
-
-    if port_name != "return" {
-        return Some(candidate);
-    }
-
-    Some(match candidate {
-        Value::Str(_) => candidate,
-        Value::Int(value) => Value::Str(value.to_string()),
-        Value::Bool(value) => Value::Str(value.to_string()),
-        Value::Float(value) => Value::Str(value.to_string()),
-        Value::Unit => Value::Str(String::new()),
-        Value::List(values) | Value::Set(values) => Value::Str(
-            values
-                .iter()
-                .map(passthrough_value_to_text)
-                .collect::<Vec<_>>()
-                .join("\n"),
-        ),
-        Value::Map(values) => Value::Str(format!("{values:?}")),
-        Value::Json(value) => Value::Str(value.to_string()),
-        Value::Bytes(bytes) => Value::Str(format!("{bytes:?}")),
-        Value::Secret(secret) => Value::Str(secret.to_string()),
-        Value::Request(request) => Value::Str(format!("{request:?}")),
-        Value::Response(response) => Value::Str(format!("{response:?}")),
-        Value::Skipped => Value::Skipped,
-    })
-}
-
-fn passthrough_value_to_text(value: &Value) -> String {
-    match value {
-        Value::Str(value) => value.clone(),
-        Value::Int(value) => value.to_string(),
-        Value::Bool(value) => value.to_string(),
-        Value::Float(value) => value.to_string(),
-        Value::Unit => String::new(),
-        Value::Json(value) => value.to_string(),
-        Value::Map(value) => format!("{value:?}"),
-        Value::Bytes(value) => format!("{value:?}"),
-        Value::Secret(value) => value.to_string(),
-        Value::Request(value) => format!("{value:?}"),
-        Value::Response(value) => format!("{value:?}"),
-        Value::List(values) => format!("{values:?}"),
-        Value::Set(values) => format!("{values:?}"),
-        Value::Skipped => String::new(),
-    }
 }
 
 /// Identity callable op for DSL-compiled callables with fn bodies.
@@ -233,8 +164,20 @@ impl Executable for PipelineDispatchOp {
     ///     if already at the last stage (terminal self-loop)
     /// - If `current_stage` is absent: no `next_stage` is emitted
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let mut outputs =
-            execute_with_declared_output_passthrough(&self.output_ports, inputs)?;
+        // These outputs are computed by dispatch logic itself, not expected as
+        // passthrough inputs from upstream wiring.
+        let passthrough_ports: Vec<(String, bool)> = self
+            .output_ports
+            .iter()
+            .filter(|(name, _)| {
+                !matches!(
+                    name.as_str(),
+                    "stages" | "stage_order" | "active_stage" | "next_stage"
+                )
+            })
+            .cloned()
+            .collect();
+        let mut outputs = execute_with_declared_output_passthrough(&passthrough_ports, inputs)?;
         outputs.insert("stages".to_string(), Value::Int(self.stage_count as i64));
         outputs.insert(
             "stage_order".to_string(),
@@ -394,18 +337,40 @@ impl Executable for LiteralSourceOp {
     }
 }
 
-/// RT4a: Compute node for complex return expressions (BinOp, UnaryOp, etc.).
+/// Compute node for lowered expression evaluation.
 /// Evaluates a `LoweredFnBody` using `evaluate_fn_body` with inputs from predecessor nodes.
 #[derive(Debug, Clone)]
-struct ReturnExprComputeOp {
+struct ExprComputeOp {
     fn_body: daglang_lower::LoweredFnBody,
+    input_ports: Vec<String>,
+    referenced_vars: Vec<String>,
     output_port: String,
 }
 
-impl Executable for ReturnExprComputeOp {
+impl Executable for ExprComputeOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let mut env = HashMap::new();
+        for port in &self.input_ports {
+            let value = inputs.get(port).cloned().unwrap_or(Value::Skipped);
+            if let Value::Map(fields) = &value {
+                for (field_name, field_value) in fields {
+                    env.insert(format!("{port}__{field_name}"), field_value.clone());
+                }
+            }
+            env.insert(port.clone(), value);
+        }
+        for port in &self.input_ports {
+            if !env.contains_key(port) {
+                env.insert(port.clone(), Value::Skipped);
+            }
+        }
+        for ref_name in &self.referenced_vars {
+            if !env.contains_key(ref_name) {
+                env.insert(ref_name.clone(), Value::Skipped);
+            }
+        }
         let sibling_fns = HashMap::new();
-        let result = daglang_lower::eval::evaluate_fn_body(&self.fn_body, &inputs, &sibling_fns)
+        let result = daglang_lower::eval::evaluate_fn_body(&self.fn_body, &env, &sibling_fns)
             .map_err(|e| ExecError::new(e.message))?;
         // The fn body returns { result: <value> }, extract and output it.
         if let Some(value) = result.get(&self.output_port) {
@@ -416,6 +381,82 @@ impl Executable for ReturnExprComputeOp {
             // Fallback: return whatever the fn body produced.
             Ok(result)
         }
+    }
+}
+
+fn collect_fn_body_idents(body: &daglang_lower::LoweredFnBody) -> Vec<String> {
+    let mut idents = Vec::new();
+    for stmt in &body.stmts {
+        if let daglang_lower::expr::LoweredStmt::Return(fields) = stmt {
+            for (_, expr) in fields {
+                collect_lowered_expr_idents(expr, &mut idents);
+            }
+        }
+    }
+    idents.sort();
+    idents.dedup();
+    idents
+}
+
+fn collect_lowered_expr_idents(expr: &daglang_lower::expr::LoweredExpr, out: &mut Vec<String>) {
+    use daglang_lower::expr::LoweredExpr;
+    match expr {
+        LoweredExpr::Ident(name) => out.push(name.clone()),
+        LoweredExpr::BinOp { left, right, .. } => {
+            collect_lowered_expr_idents(left, out);
+            collect_lowered_expr_idents(right, out);
+        }
+        LoweredExpr::UnaryOp { expr, .. } => collect_lowered_expr_idents(expr, out),
+        LoweredExpr::IfElse {
+            cond, then_, else_, ..
+        } => {
+            collect_lowered_expr_idents(cond, out);
+            collect_lowered_expr_idents(then_, out);
+            if let Some(e) = else_ {
+                collect_lowered_expr_idents(e, out);
+            }
+        }
+        LoweredExpr::StringInterp(parts) => {
+            for part in parts {
+                if let daglang_lower::expr::LoweredStringPart::Expr(e) = part {
+                    collect_lowered_expr_idents(e, out);
+                }
+            }
+        }
+        LoweredExpr::Pipe { receiver, call } => {
+            collect_lowered_expr_idents(receiver, out);
+            collect_lowered_expr_idents(call, out);
+        }
+        LoweredExpr::Call { args, .. } => {
+            for (_, arg) in args {
+                collect_lowered_expr_idents(arg, out);
+            }
+        }
+        LoweredExpr::FieldAccess { expr, .. } => collect_lowered_expr_idents(expr, out),
+        LoweredExpr::Record { fields, .. } => {
+            for (_, field) in fields {
+                collect_lowered_expr_idents(field, out);
+            }
+        }
+        LoweredExpr::List(items) => {
+            for item in items {
+                collect_lowered_expr_idents(item, out);
+            }
+        }
+        LoweredExpr::Lambda { body, .. } => collect_lowered_expr_idents(body, out),
+        LoweredExpr::Match { expr, arms } => {
+            collect_lowered_expr_idents(expr, out);
+            for arm in arms {
+                collect_lowered_expr_idents(&arm.body, out);
+            }
+        }
+        LoweredExpr::For {
+            iterable, body, ..
+        } => {
+            collect_lowered_expr_idents(iterable, out);
+            collect_lowered_expr_idents(body, out);
+        }
+        _ => {}
     }
 }
 
@@ -650,7 +691,7 @@ fn normalize_release_resource_inputs(node: &mut Node<DynOp>) {
 fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
     let node_id = node.id.0.clone();
     match &node.body {
-        NodeBody::Opaque(op) => resolve_op(&node_id, op, &node.outputs),
+        NodeBody::Opaque(op) => resolve_op(&node_id, op, &node.inputs, &node.outputs),
         NodeBody::SubDag(inner) => Ok(DynOp::new(SubDagDispatchOp {
             dag: resolve_lowered_dag(inner)?,
         })),
@@ -659,12 +700,22 @@ fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
 
 fn resolve_node_body(node: &Node<LoweredOp>) -> Result<NodeBody<DynOp>, ResolveError> {
     match &node.body {
-        NodeBody::Opaque(op) => Ok(NodeBody::Opaque(resolve_op(&node.id.0, op, &node.outputs)?)),
+        NodeBody::Opaque(op) => Ok(NodeBody::Opaque(resolve_op(
+            &node.id.0,
+            op,
+            &node.inputs,
+            &node.outputs,
+        )?)),
         NodeBody::SubDag(inner) => Ok(NodeBody::SubDag(resolve_lowered_dag(inner)?)),
     }
 }
 
-fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, ResolveError> {
+fn resolve_op(
+    node_id: &str,
+    op: &LoweredOp,
+    inputs: &[Port],
+    outputs: &[Port],
+) -> Result<DynOp, ResolveError> {
     match op {
         LoweredOp::Collection { kind, .. } => resolve_collection(kind),
         LoweredOp::Pipeline {
@@ -679,7 +730,7 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
             stage_names: stage_names.clone(),
             output_ports: declared_output_ports(outputs),
         })),
-        LoweredOp::Primitive { kind, .. } => resolve_primitive(kind, outputs),
+        LoweredOp::Primitive { kind, .. } => resolve_primitive(kind, inputs, outputs),
         LoweredOp::Callable {
             module,
             name,
@@ -710,7 +761,11 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
 // ============================================================================
 
 /// Resolve typed lowered primitive nodes shared across all modules.
-fn resolve_primitive(kind: &PrimitiveOpKind, outputs: &[Port]) -> Result<DynOp, ResolveError> {
+fn resolve_primitive(
+    kind: &PrimitiveOpKind,
+    inputs: &[Port],
+    outputs: &[Port],
+) -> Result<DynOp, ResolveError> {
     match kind {
         PrimitiveOpKind::FsEnv => Ok(DynOp::new(DslFsEnvOp)),
         PrimitiveOpKind::CallParamSource { param, .. } => {
@@ -744,14 +799,17 @@ fn resolve_primitive(kind: &PrimitiveOpKind, outputs: &[Port]) -> Result<DynOp, 
         PrimitiveOpKind::IoExecuteFileWrite => Ok(DynOp::new(TransportOps::Execute)),
         // FC-7: Output path annotation nodes are metadata-only, resolve as identity.
         PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(DynOp::new(IdentityCallableOp)),
-        // RT4a: Compute nodes evaluate complex return expressions via fn body evaluation.
-        PrimitiveOpKind::ReturnExprCompute { fn_body } => {
+        PrimitiveOpKind::ExprCompute { fn_body } => {
+            let input_ports: Vec<String> = inputs.iter().map(|p| p.name.0.clone()).collect();
+            let referenced_vars = collect_fn_body_idents(fn_body);
             let output_port = outputs
                 .first()
                 .map(|port| port.name.0.clone())
                 .unwrap_or_else(|| "result".to_string());
-            Ok(DynOp::new(ReturnExprComputeOp {
+            Ok(DynOp::new(ExprComputeOp {
                 fn_body: *fn_body.clone(),
+                input_ports,
+                referenced_vars,
                 output_port,
             }))
         }
@@ -767,7 +825,7 @@ fn resolve_domain(
     node_id: &str,
     module: &str,
     name: &str,
-    kind: CallableKind,
+    _kind: CallableKind,
     outputs: &[Port],
     service_metadata: Option<&ServiceCallMetadata>,
 ) -> Result<DynOp, ResolveError> {
@@ -798,26 +856,7 @@ fn resolve_domain(
             return resolve_service_transport(node_id, module, name, outputs, service_metadata);
         }
     }
-    // 4. Extern impl lookup — DSL `extern func` items resolved to Rust ops.
-    //
-    // Shadow bridge detection: if an extern impl exists for a Fn/Func callable,
-    // the Rust impl silently overrides whatever DSL body the callable has.
-    // This is a documented workaround for a lowerer limitation (NF-7: same-module
-    // extern func calls don't wire output ports correctly). Once NF-7 is resolved,
-    // these callables should be converted to `extern func` declarations in DSL
-    // and this shadow bridge path can be removed.
-    let _ = &kind; // used in debug_assertions block below; suppress release warning
-    if let Some(op) = crate::extern_impls::lookup_extern_impl(module, name) {
-        #[cfg(debug_assertions)]
-        if matches!(kind, CallableKind::Fn | CallableKind::Func) {
-            eprintln!(
-                "resolve: shadow bridge {module}::{name} (kind={kind:?}) — \
-                 Rust extern impl overrides DSL callable body"
-            );
-        }
-        return Ok(op);
-    }
-    // 5. Default: identity callable for compiler-validated callables.
+    // 4. Default: identity callable for compiler-validated callables.
     //
     // All LoweredOp::Callable nodes are produced by the DSL compiler (the
     // lowerer only emits Callable for items in the typed project). The
@@ -947,7 +986,7 @@ fn resolve_extern_call(node_id: &str, symbol: &str) -> Result<DynOp, ResolveErro
     let module = sym.module().unwrap_or("");
     let name = sym.name().unwrap_or("");
 
-    if let Some(op) = crate::extern_impls::lookup_extern_impl(module, name) {
+    if let Some(op) = crate::extern_ops::resolve_extern_symbol(module, name) {
         return Ok(op);
     }
     if module == "std.resources" {
@@ -963,7 +1002,7 @@ fn resolve_extern_call(node_id: &str, symbol: &str) -> Result<DynOp, ResolveErro
         node_id: node_id.to_string(),
         reason: format!(
             "extern symbol `{symbol}` could not be resolved — \
-             no extern impl, std.resources, or tools.infra handler found"
+             no extern op, std.resources, or tools.infra handler found"
         ),
     })
 }
@@ -1019,7 +1058,7 @@ fn resolve_service_transport(
                 capability,
             }) = &metadata.spec
             {
-                return Ok(DynOp::new(crate::resolve_service::InterfaceStubExecuteOp {
+                return Ok(DynOp::new(InterfaceStubExecuteOp {
                     interface: interface.clone(),
                     capability: capability.clone(),
                 }));
@@ -1086,7 +1125,7 @@ fn resolve_service_transport(
                     },
                     Some(TransportRole::Prepare),
                 ) => {
-                    return Ok(DynOp::new(crate::resolve_service::InterfaceStubPrepareOp {
+                    return Ok(DynOp::new(InterfaceStubPrepareOp {
                         interface: interface.clone(),
                         capability: capability.clone(),
                     }));
@@ -1098,7 +1137,7 @@ fn resolve_service_transport(
                     },
                     Some(TransportRole::Parse),
                 ) => {
-                    return Ok(DynOp::new(crate::resolve_service::InterfaceStubParseOp {
+                    return Ok(DynOp::new(InterfaceStubParseOp {
                         interface: interface.clone(),
                         capability: capability.clone(),
                     }));
@@ -1300,46 +1339,6 @@ mod tests {
                 kind,
             },
         )
-    }
-
-    #[test]
-    fn resolve_pragma_render_ops_emit_content() {
-        let cases = [
-            "render_clippy_toml",
-            "render_disallowed_methods_allowlist",
-            "render_pragma_lint_policy",
-        ];
-        for name in cases {
-            let node = callable_node(name, "tools.pragma", name, ObligationCategory::None);
-            let result = resolve_node(&node).expect(name);
-            let outputs = result.execute(HashMap::new()).expect(name);
-            assert!(
-                outputs
-                    .get("return")
-                    .and_then(Value::as_str)
-                    .map(|content| !content.is_empty())
-                    .unwrap_or(false),
-                "resolver should execute pragma renderer `{name}` and emit non-empty return"
-            );
-        }
-    }
-
-    #[test]
-    fn resolve_bootstrap_render_ops_emit_content() {
-        let cases = ["render_bootstrap_makefile", "render_bootstrap_gitignore"];
-        for name in cases {
-            let node = callable_node(name, "tools.bootstrap", name, ObligationCategory::None);
-            let result = resolve_node(&node).expect(name);
-            let outputs = result.execute(HashMap::new()).expect(name);
-            assert!(
-                outputs
-                    .get("return")
-                    .and_then(Value::as_str)
-                    .map(|content| !content.is_empty())
-                    .unwrap_or(false),
-                "resolver should execute bootstrap renderer `{name}` and emit non-empty return"
-            );
-        }
     }
 
     #[test]
@@ -2328,27 +2327,4 @@ mod tests {
         );
     }
 
-    /// Shadow bridge: a Callable (DSL fn body) that has a Rust extern impl.
-    /// The extern impl wins at resolution (Step 4 > Step 5). This test
-    /// documents the behavior. When NF-7 lands (same-module extern func
-    /// wiring), these callables should become ExternCall nodes and this
-    /// shadow bridge pattern should be eliminated.
-    #[test]
-    fn resolve_shadow_bridge_callable_uses_extern_impl_not_passthrough() {
-        // tools.pragma::render_clippy_toml has a Rust extern impl.
-        // When it appears as a Callable (fn body), the extern impl wins.
-        let node = callable_node(
-            "render_clippy_toml",
-            "tools.pragma",
-            "render_clippy_toml",
-            ObligationCategory::PureRender,
-        );
-        let result =
-            resolve_node(&node).expect("shadow bridge callable should resolve to extern impl");
-        let debug = format!("{result:?}");
-        assert!(
-            debug.contains("RenderClippyTomlOp"),
-            "should resolve to RenderClippyTomlOp (extern impl), not DeclaredOutputCallableOp: {debug}"
-        );
-    }
 }

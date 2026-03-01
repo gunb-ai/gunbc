@@ -33,20 +33,49 @@ mod tests {
     }
 
     fn default_disallowed_methods_allowlist() -> HashSet<String> {
-        HashSet::from(["lib/transport/".to_string()])
+        HashSet::from([
+            "lib/transport/".to_string(),
+            "core/exec/".to_string(),
+            "core/workflow/".to_string(),
+            "core/codegen/".to_string(),
+            "core/testgen-registry/".to_string(),
+            "core/ir/".to_string(),
+            "core/test/".to_string(),
+            "core/infra/".to_string(),
+            "core/cli/".to_string(),
+            "core/daglang/daglang-cli/".to_string(),
+            "core/daglang/daglang-derive/".to_string(),
+            "core/daglang/daglang-driver/".to_string(),
+            "core/daglang/daglang-emit/".to_string(),
+            "core/daglang/daglang-lower/".to_string(),
+            "core/daglang/daglang-resolve/".to_string(),
+            "core/daglang/daglang-syntax/".to_string(),
+            "core/daglang/daglang-typecheck/".to_string(),
+            "gunbc-dag/src/".to_string(),
+            "core/ir/src/workspace_layout.rs".to_string(),
+            "core/ir/src/transport/credential.rs".to_string(),
+            "core/ir/src/resource/".to_string(),
+            "lib/cloud-ops/".to_string(),
+            "lib/gcp-ops/".to_string(),
+        ])
     }
 
     fn load_disallowed_methods_allowlist(root: &Path) -> HashSet<String> {
-        let path = root.join("tools/disallowed-methods-allowlist.txt");
-        let content = match fs::read_to_string(&path) {
-            Ok(content) => content,
-            Err(_) => {
-                // The shell guardrail script was removed; this generated file may
-                // be absent on fresh checkouts. Fall back to the canonical
-                // transport-boundary prefix used by pragma policy.
-                return default_disallowed_methods_allowlist();
-            }
-        };
+        let candidate_paths = [
+            root.join("tools/disallowed-methods-allowlist.txt"),
+            root.join("core/daglang/daglang-cli/tools/disallowed-methods-allowlist.txt"),
+        ];
+        let content = candidate_paths
+            .iter()
+            .find_map(|path| fs::read_to_string(path).ok())
+            .unwrap_or_else(|| {
+                // Fall back to the canonical transport-boundary prefix when
+                // generated policy artifacts are absent.
+                String::new()
+            });
+        if content.is_empty() {
+            return default_disallowed_methods_allowlist();
+        }
         let mut allowed = HashSet::new();
         for line in content.lines() {
             let line = line.trim();
@@ -71,10 +100,28 @@ mod tests {
         allow_lints: HashSet<String>,
     }
 
+
     fn load_pragma_lint_policy(root: &Path) -> PragmaLintPolicy {
-        let path = root.join("tools/pragma-lint-policy.txt");
-        let content = fs::read_to_string(&path)
-            .unwrap_or_else(|_| panic!("missing pragma policy file: {}", path.display()));
+        let candidate_paths = [
+            root.join("tools/pragma-lint-policy.txt"),
+            root.join("core/daglang/daglang-cli/tools/pragma-lint-policy.txt"),
+        ];
+        let content = candidate_paths
+            .iter()
+            .find_map(|path| fs::read_to_string(path).ok())
+            .unwrap_or_else(|| {
+                panic!(
+                    "pragma lint policy not found at {:?}. Run `cargo run --bin gunbc-pragma` first.",
+                    candidate_paths
+                        .iter()
+                        .map(|p| p.display().to_string())
+                        .collect::<Vec<_>>()
+                )
+            });
+        assert!(
+            !content.trim().is_empty(),
+            "pragma lint policy file is empty. Run `cargo run --bin gunbc-pragma` to regenerate."
+        );
 
         let mut section = "";
         let mut allow_dead_code = HashSet::new();

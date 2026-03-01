@@ -12,6 +12,113 @@
 module interfaces.agent_provider
 
 import std.types { NonEmptyStr, AgentStatus, ApprovalMode }
+import std.behavioral {
+  OperationBehavior, FailureMode, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+}
+import std.coordination { DeliveryGuarantee, QueueSemantics, QueueOrdering }
+import std.capability { CapabilityRequirement, InfraScope, AccessLevel }
+
+type CapabilityBehaviorContract {
+  capability: String
+  behavior: OperationBehavior
+}
+
+type CapabilityFailureContract {
+  capability: String
+  failures: List<FailureMode>
+}
+
+data execution_delivery: DeliveryGuarantee = AtLeastOnce
+
+data execution_queue_semantics: QueueSemantics = {
+  ordering: Fifo,
+  visibility_timeout_seconds: 900,
+  dead_letter: { max_attempts: 5, destination: "agent_provider.dlq" }
+}
+
+data capability_behaviors: List<CapabilityBehaviorContract> = [
+  {
+    capability: "spawn",
+    behavior: {
+      side_effects: WritesExternal,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: NonDeterministic,
+      failure_modes: [{ name: "AdmissionDenied", condition: "provider_refused_new_run", http_status: 429, recoverable: true, retry_safe: true }],
+      edge_cases: [{ description: "spawn may return started=false with queued status under capacity pressure", trigger: "saturated_executor", severity: Medium }],
+      confidence: Documented,
+      prerequisites: [{ description: "agent execution backend available", kind: Infrastructure }],
+      assumptions: ["run_id is globally unique within provider namespace"],
+      unknowns: ["Long-tail startup latency under burst load"]
+    }
+  },
+  {
+    capability: "poll",
+    behavior: {
+      side_effects: ReadOnly,
+      idempotent: true,
+      idempotency_keys: ["run_id"],
+      determinism: NonDeterministic,
+      failure_modes: [{ name: "NotFound", condition: "run_id_unknown", http_status: 404, recoverable: false, retry_safe: false }],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "run_id was previously issued by spawn", kind: Runtime }],
+      assumptions: ["status transitions are monotonic toward terminal states"],
+      unknowns: []
+    }
+  },
+  {
+    capability: "cancel",
+    behavior: {
+      side_effects: WritesExternal,
+      idempotent: true,
+      idempotency_keys: ["run_id"],
+      determinism: Deterministic,
+      failure_modes: [],
+      edge_cases: [{ description: "cancel may race with natural completion", trigger: "late_cancel", severity: Medium }],
+      confidence: HighConfidence,
+      prerequisites: [{ description: "caller has authority to cancel run", kind: Capability }],
+      assumptions: ["final_status reflects terminal state after cancellation attempt"],
+      unknowns: []
+    }
+  },
+  {
+    capability: "get_result",
+    behavior: {
+      side_effects: ReadOnly,
+      idempotent: true,
+      idempotency_keys: ["run_id"],
+      determinism: Deterministic,
+      failure_modes: [{ name: "NotReady", condition: "run_not_terminal", http_status: 409, recoverable: true, retry_safe: true }],
+      edge_cases: [],
+      confidence: HighConfidence,
+      prerequisites: [{ description: "run has reached terminal status", kind: Runtime }],
+      assumptions: ["stdout/stderr capture may be truncated by provider limits"],
+      unknowns: []
+    }
+  }
+]
+
+data capability_requirements: List<CapabilityRequirement> = [
+  { scope: Compute, level: Write, resource: "agent_provider.exec" },
+  { scope: Storage, level: Read, resource: "agent_provider.logs" },
+  { scope: Api, level: Write, resource: "agent_provider.control" }
+]
+
+data capability_failure_contracts: List<CapabilityFailureContract> = [
+  {
+    capability: "spawn",
+    failures: [{ name: "AdmissionDenied", condition: "provider_refused_new_run", http_status: 429, recoverable: true, retry_safe: true }]
+  },
+  {
+    capability: "poll",
+    failures: [{ name: "NotFound", condition: "run_id_unknown", http_status: 404, recoverable: false, retry_safe: false }]
+  },
+  {
+    capability: "get_result",
+    failures: [{ name: "NotReady", condition: "run_not_terminal", http_status: 409, recoverable: true, retry_safe: true }]
+  }
+]
 
 interface AgentProvider {
 

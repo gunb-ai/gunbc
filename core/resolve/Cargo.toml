@@ -1,0 +1,12 @@
+[package]
+name = "gunbc-resolve"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared DAG resolution operations for service transports"
+
+[dependencies]
+daglang-lower = { path = "../daglang/daglang-lower" }
+gunbc-exec = { path = "../exec" }
+gunbc-ir = { path = "../ir" }
+serde_json = { workspace = true }

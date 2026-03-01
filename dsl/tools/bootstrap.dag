@@ -11,27 +11,11 @@ module tools.bootstrap
 import std.patterns { content_upsert }
 import std.resources { Filesystem }
 import services.shell { shell.Find }
-import shared.dag_util { generated_header }
 
 // ── Render helpers ──────────────────────────────────────────────────
-// DSL fn bodies are overridden by extern_impls.rs at resolve time.
-// Phase 7 of extern-bridge-gap-analysis.md converts these to pure DSL.
 
-fn render_bootstrap_makefile(crate_names: List<String>) -> String {
-  let header = generated_header(tool: "bootstrap") + ".PHONY: all\n\n"
-  let targets = crate_names
-    |> map(name => "{name}:\n\tcargo build -p {name}")
-    |> join("\n\n")
-  "{header}all: {crate_names |> join(\" \")}\n\n{targets}\n"
-}
-
-fn render_bootstrap_gitignore(crate_names: List<String>) -> String {
-  let header = generated_header(tool: "bootstrap") + "/target/\n"
-  let entries = crate_names
-    |> map(name => "/{name}/target/")
-    |> join("\n")
-  "{header}{entries}\n"
-}
+extern func render_bootstrap_makefile(crate_names: List<String>) -> { return: String }
+extern func render_bootstrap_gitignore(crate_names: List<String>) -> { return: String }
 
 func bootstrap(check_mode: Bool?) -> { success: Bool, crate_count: Int, makefile_written: Bool, gitignore_written: Bool }
   uses fs: Filesystem(mode: ReadWrite)
@@ -39,10 +23,10 @@ func bootstrap(check_mode: Bool?) -> { success: Bool, crate_count: Int, makefile
   scan = shell.Find.ListDirs(path: "crates")
 
   makefile_content = render_bootstrap_makefile(crate_names: scan.dirs)
-  makefile = content_upsert(content: makefile_content, path: "Makefile")
+  makefile = content_upsert(content: makefile_content.return, path: "Makefile")
 
   gitignore_content = render_bootstrap_gitignore(crate_names: scan.dirs)
-  gitignore = content_upsert(content: gitignore_content, path: ".gitignore")
+  gitignore = content_upsert(content: gitignore_content.return, path: ".gitignore")
 
   return {
     success: scan.dirs |> count() > 0,

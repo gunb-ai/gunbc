@@ -54,6 +54,7 @@ pub mod github;
 pub mod github_actions;
 pub mod http;
 pub mod llm;
+pub mod middleware;
 pub mod rest;
 pub mod review;
 pub mod scope;
@@ -120,6 +121,11 @@ pub use llm::{
     anthropic_provider, build_chat_request, builtin_provider_ids, openai_provider,
     parse_chat_response, provider_by_id, ChatMessage, ChatRequest, ChatResponse, FinishReason,
     LlmProvider, Role, Usage,
+};
+pub use middleware::{
+    CircuitBreakerConfig, CredentialConfig, CredentialInjection, CredentialProvider,
+    RateLimitAlgorithm, RateLimitConfig, ResponseClassification, ResponseProvider, RetryBackoff,
+    RetryConfig, TransportMiddlewareConfig,
 };
 pub use rest::{RestRequest, RestResponse};
 pub use scope::{CredentialIntent, ScopeContract, ScopeContractError};

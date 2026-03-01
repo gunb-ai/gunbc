@@ -350,7 +350,7 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerClassification> {
             ..
         } => return Some(HandlerClassification::MetadataOnly),
         LoweredOp::Primitive {
-            kind: PrimitiveOpKind::ReturnExprCompute { .. },
+            kind: PrimitiveOpKind::ExprCompute { .. },
             ..
         } => return Some(HandlerClassification::MetadataOnly),
     }

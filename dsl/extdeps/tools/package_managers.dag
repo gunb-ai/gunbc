@@ -1,0 +1,160 @@
+// extdeps/tools/package_managers.dag -- "What are package managers?"
+
+module extdeps.tools.package_managers
+
+import std.behavioral {
+  OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+}
+
+type PackageManager = Apt | Brew | Cargo | Winget | Choco | GithubRelease
+
+type PlatformSupport {
+  os: String
+  arch: String
+}
+
+type InstallSource
+  = SystemRepo
+  | Crate
+  | Release { url_template: String }
+
+type PackageManagerOperationBehavior {
+  manager: PackageManager
+  operation: String
+  behavior: OperationBehavior
+}
+
+type ManagerPlatformSupport {
+  manager: PackageManager
+  platform: PlatformSupport
+}
+
+data manager_platform_matrix: List<ManagerPlatformSupport> = [
+  { manager: Apt, platform: { os: "linux", arch: "x86_64" } },
+  { manager: Apt, platform: { os: "linux", arch: "aarch64" } },
+  { manager: Brew, platform: { os: "macos", arch: "x86_64" } },
+  { manager: Brew, platform: { os: "macos", arch: "aarch64" } },
+  { manager: Brew, platform: { os: "linux", arch: "x86_64" } },
+  { manager: Winget, platform: { os: "windows", arch: "x86_64" } },
+  { manager: Choco, platform: { os: "windows", arch: "x86_64" } },
+  { manager: Cargo, platform: { os: "linux", arch: "x86_64" } },
+  { manager: Cargo, platform: { os: "macos", arch: "aarch64" } },
+  { manager: Cargo, platform: { os: "windows", arch: "x86_64" } },
+  { manager: GithubRelease, platform: { os: "linux", arch: "x86_64" } }
+]
+
+// Canonical operation vocabulary applied across managers.
+data operation_behaviors: List<PackageManagerOperationBehavior> = [
+  {
+    manager: Apt,
+    operation: "Install",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["package", "version"],
+      determinism: Deterministic,
+      failure_modes: [{ name: "PackageNotFound", condition: "repo_missing_package", http_status: null, recoverable: false, retry_safe: false }],
+      edge_cases: [{ description: "may require root privileges", trigger: "non_privileged_shell", severity: High }],
+      confidence: Documented,
+      prerequisites: [{ description: "apt metadata updated and network reachable", kind: Infrastructure }],
+      assumptions: ["Debian-compatible package database is present"],
+      unknowns: []
+    }
+  },
+  {
+    manager: Brew,
+    operation: "Install",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["formula_or_cask"],
+      determinism: Deterministic,
+      failure_modes: [],
+      edge_cases: [{ description: "cask installs may trigger GUI-specific prompts", trigger: "cask_mode", severity: Medium }],
+      confidence: HighConfidence,
+      prerequisites: [{ description: "brew installed and taps configured", kind: Tooling }],
+      assumptions: ["Formula naming remains stable across taps"],
+      unknowns: []
+    }
+  },
+  {
+    manager: Choco,
+    operation: "Install",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["package", "version"],
+      determinism: Deterministic,
+      failure_modes: [],
+      edge_cases: [{ description: "administrator shell commonly required", trigger: "limited_permissions", severity: High }],
+      confidence: MediumConfidence,
+      prerequisites: [{ description: "Windows host with Chocolatey configured", kind: Infrastructure }],
+      assumptions: ["Package feed metadata is trusted"],
+      unknowns: []
+    }
+  },
+  {
+    manager: Winget,
+    operation: "Install",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["package_id", "version"],
+      determinism: Deterministic,
+      failure_modes: [],
+      edge_cases: [{ description: "source and package agreement flags may be required non-interactively", trigger: "headless_runner", severity: Medium }],
+      confidence: Documented,
+      prerequisites: [{ description: "winget sources are initialized", kind: Infrastructure }],
+      assumptions: ["Package IDs are canonicalized by source"],
+      unknowns: []
+    }
+  },
+  {
+    manager: Cargo,
+    operation: "Install",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["crate", "version"],
+      determinism: Deterministic,
+      failure_modes: [],
+      edge_cases: [{ description: "requires toolchain and compatible target libc", trigger: "platform_mismatch", severity: Medium }],
+      confidence: Documented,
+      prerequisites: [{ description: "rust toolchain installed", kind: Tooling }],
+      assumptions: ["Crate index reachable and lockable"],
+      unknowns: []
+    }
+  },
+  {
+    manager: GithubRelease,
+    operation: "Download",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["repo", "version", "asset"],
+      determinism: Deterministic,
+      failure_modes: [{ name: "ReleaseMissing", condition: "tag_or_asset_not_found", http_status: 404, recoverable: false, retry_safe: false }],
+      edge_cases: [],
+      confidence: MediumConfidence,
+      prerequisites: [{ description: "network access to GitHub release assets", kind: Infrastructure }],
+      assumptions: ["Asset naming follows predictable platform suffix conventions"],
+      unknowns: []
+    }
+  },
+  {
+    manager: GithubRelease,
+    operation: "RunScript",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: NonDeterministic,
+      failure_modes: [],
+      edge_cases: [{ description: "arbitrary script execution may have side effects beyond package installation", trigger: "installer_script", severity: Critical }],
+      confidence: MediumConfidence,
+      prerequisites: [{ description: "script source is authenticated and trusted", kind: Policy }],
+      assumptions: ["Caller sandboxing policy determines blast radius"],
+      unknowns: []
+    }
+  }
+]

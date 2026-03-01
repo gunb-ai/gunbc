@@ -187,6 +187,14 @@ impl OutputSummary {
                     Value::Set(s) => (FieldKind::List(s.len()), format!("{{{} items}}", s.len())),
                     Value::Float(f) => (FieldKind::Number, f.to_string()),
                     Value::Bytes(b) => (FieldKind::Scalar, format!("<{} bytes>", b.len())),
+                    Value::Enum { ty, variant } => {
+                        let preview = if ty.is_empty() {
+                            variant.clone()
+                        } else {
+                            format!("{ty}.{variant}")
+                        };
+                        (FieldKind::Scalar, preview)
+                    }
                 };
                 Some(FieldSummary {
                     name: name.clone(),

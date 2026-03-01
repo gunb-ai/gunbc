@@ -22,7 +22,7 @@
 
 #![deny(dead_code)]
 use cargo_metadata::MetadataCommand;
-use gunbc_cli::BinaryArgs;
+use gunbc_cli::parse;
 use gunbc_codegen::{core_outputs, generate_cli_with_import, FileWriter, ToolDef};
 use gunbc_exec::{print_attention, run_freshness_steps, AttentionLevel};
 use gunbc_ir::resource::{
@@ -39,7 +39,7 @@ use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let parsed = match BinaryArgs::new().parse(&args) {
+    let parsed = match parse(&args, &[]) {
         Ok(parsed) => parsed,
         Err(e) => {
             print_attention(
@@ -915,8 +915,6 @@ mod tests {
             "bootstrap",
             "deps",
             "gist",
-            "gist-diff",
-            "gist-recent",
             "makegen",
             "pragma",
             "testgen",
@@ -925,6 +923,21 @@ mod tests {
                 names.contains(required),
                 "missing tool from DSL discovery: {}",
                 required
+            );
+        }
+
+        // gist.dag is a multi-entrypoint module and should be grouped as one
+        // top-level tool with subcommands.
+        let gist = tools
+            .iter()
+            .find(|t| t.meta.tool_name == "gist")
+            .expect("gist tool should exist");
+        let subcommands: BTreeSet<&str> = gist.subcommands.iter().map(|s| s.name.as_str()).collect();
+        for subcommand in ["gist-diff", "gist-recent"] {
+            assert!(
+                subcommands.contains(subcommand),
+                "missing gist subcommand from DSL discovery: {}",
+                subcommand
             );
         }
     }

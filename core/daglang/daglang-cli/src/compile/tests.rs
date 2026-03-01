@@ -428,7 +428,8 @@ fn resolve_lowered_dag_defers_pipeline_nodes() {
     let NodeBody::Opaque(op) = &resolved.nodes[0].body else {
         panic!("pipeline fixture should not contain subdag nodes")
     };
-    // PipelineDispatchOp uses output passthrough — execution should succeed.
+    // PipelineDispatchOp uses output passthrough. Missing __out:out input falls
+    // back to Value::Skipped until C19 restores enforcement after C10 wiring.
     let result = op
         .execute(HashMap::new())
         .expect("passthrough op should execute");
@@ -507,6 +508,9 @@ func run() -> { report: String } {
         .get("sample.main::run")
         .expect("execution log should include sample.main::run");
 
+    // The fn-call result binding (`report = summarize(...)`) isn't wired as a DAG
+    // node endpoint — the lowerer doesn't create a __out:report edge for fn-call
+    // results in func bodies. Falls back to Skipped until C10/C19 fix this.
     assert_eq!(
         run_entry.outputs.get("report"),
         Some(&gunbc_ir::Value::Skipped)

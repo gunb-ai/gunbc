@@ -779,6 +779,12 @@ fn collect_covered_stages_from_expr(
             collect_covered_stages_from_expr(lhs, producer_by_binding, covered);
             collect_covered_stages_from_expr(rhs, producer_by_binding, covered);
         }
+        Expr::PipeCall(receiver, _, args) => {
+            collect_covered_stages_from_expr(receiver, producer_by_binding, covered);
+            for (_name, arg_expr) in args {
+                collect_covered_stages_from_expr(arg_expr, producer_by_binding, covered);
+            }
+        }
         Expr::Lambda(_, body) => {
             collect_covered_stages_from_expr(body, producer_by_binding, covered);
         }
@@ -864,6 +870,12 @@ fn collect_root_identifiers(expr: &Expr, roots: &mut std::collections::BTreeSet<
         Expr::Pipe(lhs, rhs) => {
             collect_root_identifiers(lhs, roots);
             collect_root_identifiers(rhs, roots);
+        }
+        Expr::PipeCall(receiver, _, args) => {
+            collect_root_identifiers(receiver, roots);
+            for (_name, arg_expr) in args {
+                collect_root_identifiers(arg_expr, roots);
+            }
         }
         Expr::Lambda(_, body) => collect_root_identifiers(body, roots),
         Expr::List(items) => {

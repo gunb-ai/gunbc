@@ -1,0 +1,105 @@
+// extdeps/coordination/sqlite.dag -- "SQLite as a coordination store."
+
+module extdeps.coordination.sqlite
+
+import std.behavioral {
+  OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+}
+
+type SqliteJournalMode = Wal | Delete | Truncate
+
+type SqliteBusyTimeout {
+  millis: Int
+}
+
+type SqliteCoordinationOperationBehavior {
+  operation: String
+  behavior: OperationBehavior
+}
+
+data operation_behaviors: List<SqliteCoordinationOperationBehavior> = [
+  {
+    operation: "KvGet",
+    behavior: {
+      side_effects: ReadOnly,
+      idempotent: true,
+      idempotency_keys: null,
+      determinism: Deterministic,
+      failure_modes: [],
+      edge_cases: [{ description: "client must evaluate expires_at for soft TTL semantics", trigger: "stale_rows", severity: Medium }],
+      confidence: Documented,
+      prerequisites: [{ description: "database file readable", kind: Infrastructure }],
+      assumptions: ["Key column indexed for lookup path"],
+      unknowns: []
+    }
+  },
+  {
+    operation: "KvSet",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["key", "expected_version"],
+      determinism: Deterministic,
+      failure_modes: [{ name: "Busy", condition: "writer_lock_contended", http_status: null, recoverable: true, retry_safe: true }],
+      edge_cases: [{ description: "single-writer lock can serialize all writes", trigger: "high_write_load", severity: High }],
+      confidence: Documented,
+      prerequisites: [{ description: "WAL mode enabled for concurrent readers", kind: Infrastructure }],
+      assumptions: ["SQLite >= 3.35 available for RETURNING support"],
+      unknowns: ["Performance profile on networked filesystems"]
+    }
+  },
+  {
+    operation: "KvCas",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["key", "expected_version", "value_hash"],
+      determinism: Deterministic,
+      failure_modes: [{ name: "Conflict", condition: "update_rowcount_zero", http_status: null, recoverable: true, retry_safe: false }],
+      edge_cases: [],
+      confidence: HighConfidence,
+      prerequisites: [{ description: "caller retries on BUSY with bounded timeout", kind: Runtime }],
+      assumptions: ["CAS encoded as update with version predicate"],
+      unknowns: []
+    }
+  },
+  {
+    operation: "Heartbeat",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["lease_id"],
+      determinism: Deterministic,
+      failure_modes: [],
+      edge_cases: [],
+      confidence: MediumConfidence,
+      prerequisites: [{ description: "lease row exists and has not expired", kind: Runtime }],
+      assumptions: ["Heartbeat updates are short transactions"],
+      unknowns: []
+    }
+  },
+  {
+    operation: "TtlCleanup",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["cleanup_cutoff"],
+      determinism: Deterministic,
+      failure_modes: [],
+      edge_cases: [{ description: "cleanup cadence drives storage growth and read amplification", trigger: "infrequent_cleanup", severity: Medium }],
+      confidence: Documented,
+      prerequisites: [{ description: "periodic scheduler invokes cleanup", kind: Tooling }],
+      assumptions: ["datetime('now') aligns with process wall clock assumptions"],
+      unknowns: ["Long-term bloat behavior without incremental vacuum tuning"]
+    }
+  }
+]
+
+data default_journal_mode: SqliteJournalMode = Wal
+data default_busy_timeout: SqliteBusyTimeout = { millis: 5000 }
+
+data wal_constraints: List<String> = [
+  "WAL mode requires write access to .db-wal and .db-shm sidecar files",
+  "Single-writer semantics still apply even with WAL enabled",
+  "Avoid NFS/SMB when strict lock semantics are required"
+]

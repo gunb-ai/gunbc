@@ -355,6 +355,9 @@ dependencies = [
  "daglang-derive",
  "daglang-driver",
  "daglang-lower",
+ "daglang-resolve",
+ "daglang-syntax",
+ "daglang-typecheck",
  "gunbc-cli",
  "gunbc-exec",
  "gunbc-infra",
@@ -391,9 +394,11 @@ dependencies = [
  "gunbc-lib-review",
  "gunbc-lib-transport",
  "gunbc-primitives",
+ "gunbc-resolve",
  "gunbc-test",
  "gunbc-testgen-registry",
  "gunbc-testgen-registry-macros",
+ "gunbc-workflow",
  "ron",
  "serde",
  "serde_json",
@@ -577,6 +582,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "gunbc-resolve"
+version = "0.1.0"
+dependencies = [
+ "daglang-lower",
+ "gunbc-exec",
+ "gunbc-ir",
+ "serde_json",
+]
+
+[[package]]
 name = "gunbc-test"
 version = "0.1.0"
 dependencies = [
@@ -603,6 +618,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "gunbc-workflow"
+version = "0.1.0"
+dependencies = [
+ "gunbc-exec",
+ "gunbc-infra",
+ "gunbc-ir",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

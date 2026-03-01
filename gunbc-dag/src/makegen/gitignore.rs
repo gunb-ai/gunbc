@@ -12,6 +12,10 @@
 //! - `rationale`: Why these files are ignored
 
 use std::collections::HashSet;
+use std::path::PathBuf;
+
+use daglang_driver::{compile_from_context, DriverContext};
+use serde::Deserialize;
 
 use crate::dsl_registry::discover_tool_defs_from_dsl;
 use crate::makegen::registry::{BuildConfig, BuildSystem};
@@ -26,122 +30,63 @@ use gunbc_ir::MakefileStructuredRenderer;
 // Derive Categories from BuildConfig
 // ============================================================================
 
+#[derive(Debug, Deserialize)]
+struct DslGitignoreCategory {
+    name: String,
+    source: Option<String>,
+    items: Vec<String>,
+    rationale: Option<String>,
+    when_build_system: Option<String>,
+}
+
+fn build_system_name(build_system: BuildSystem) -> &'static str {
+    match build_system {
+        BuildSystem::Cargo => "cargo",
+        BuildSystem::Buck2 => "buck2",
+    }
+}
+
+#[allow(clippy::disallowed_methods)] // Build-time DSL data loading.
+fn load_dsl_categories(build_system: BuildSystem) -> Vec<Category> {
+    let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dsl");
+    let dag_file = dsl_root.join("config/gitignore.dag");
+    let context = DriverContext {
+        roots: vec![dsl_root],
+        target_file: Some(dag_file),
+    };
+    let output = compile_from_context(&context)
+        .expect("config/gitignore.dag must compile — fix DSL syntax errors before building");
+    let value = output
+        .data_values
+        .get("categories")
+        .expect("config/gitignore.dag must declare categories");
+    let parsed: Vec<DslGitignoreCategory> = serde_json::from_value(value.clone())
+        .expect("config/gitignore.dag categories must deserialize to DslGitignoreCategory");
+    let build_system_name = build_system_name(build_system);
+    parsed
+        .into_iter()
+        .filter(|entry| {
+            match entry.when_build_system.as_deref() {
+                None => true,
+                Some(required) => required == build_system_name,
+            }
+        })
+        .filter(|entry| !entry.items.is_empty())
+        .map(|entry| Category {
+            name: entry.name.into(),
+            source: entry.source.map(Into::into),
+            items: entry.items.into_iter().map(Into::into).collect(),
+            rationale: entry.rationale.map(Into::into),
+        })
+        .collect()
+}
+
 /// Derive ignore categories from BuildConfig.
 ///
 /// Categories are derived from `build_system` to ensure the gitignore
 /// matches what's actually in the repo.
 pub fn derive_categories(config: &BuildConfig) -> Vec<Category> {
-    let mut categories = Vec::new();
-
-    // From build_system - determines which build artifacts to ignore
-    match config.build_system {
-        BuildSystem::Cargo => {
-            categories.push(Category {
-                name: "Cargo build artifacts".into(),
-                source: Some("cargo".into()),
-                items: vec!["/target/".into(), "/target-codex/".into()],
-                rationale: Some("Reproducible from source via cargo build".into()),
-            });
-            categories.push(Category {
-                name: "Cargo cache (local CARGO_HOME)".into(),
-                source: Some("tool/rust".into()),
-                items: vec!["/.cargo-home/".into()],
-                rationale: Some(
-                    "Local Cargo cache may include git checkouts; not project state".into(),
-                ),
-            });
-            categories.push(Category {
-                name: "Codegen bin symlink".into(),
-                source: Some("codegen".into()),
-                items: vec!["/bin/".into()],
-                rationale: Some("Symlink to target/release created by codegen".into()),
-            });
-        }
-        BuildSystem::Buck2 => {
-            // Buck2 uses both cargo (for codegen) and buck2 (for build)
-            categories.push(Category {
-                name: "Cargo build artifacts".into(),
-                source: Some("cargo".into()),
-                items: vec!["/target/".into(), "/target-codex/".into()],
-                rationale: Some("Reproducible from source via cargo build".into()),
-            });
-            categories.push(Category {
-                name: "Cargo cache (local CARGO_HOME)".into(),
-                source: Some("tool/rust".into()),
-                items: vec!["/.cargo-home/".into()],
-                rationale: Some(
-                    "Local Cargo cache may include git checkouts; not project state".into(),
-                ),
-            });
-            categories.push(Category {
-                name: "Codegen bin symlink".into(),
-                source: Some("codegen".into()),
-                items: vec!["/bin/".into()],
-                rationale: Some("Symlink to target/release created by codegen".into()),
-            });
-            categories.push(Category {
-                name: "Buck2 build artifacts".into(),
-                source: Some("buck2".into()),
-                items: vec!["/buck-out/".into()],
-                rationale: Some("Reproducible from source via buck2 build".into()),
-            });
-            categories.push(Category {
-                name: "Vendored dependencies".into(),
-                source: Some("buck2".into()),
-                items: vec![
-                    "/third-party/rust/vendor/".into(),
-                    "/third-party/rust/.cargo/".into(),
-                ],
-                rationale: Some("Reproducible from lockfile via reindeer vendor".into()),
-            });
-        }
-    }
-
-    // Coverage is always included (cargo-tarpaulin)
-    categories.push(Category {
-        name: "Coverage reports".into(),
-        source: Some("cargo-tarpaulin".into()),
-        items: vec![
-            "tarpaulin-report.html".into(),
-            "tarpaulin-report.json".into(),
-            "cobertura.xml".into(),
-            "lcov.info".into(),
-            "coverage/".into(),
-        ],
-        rationale: Some("Generated, often large, reproducible".into()),
-    });
-
-    // Universal categories (always included)
-    categories.push(Category {
-        name: "Editor/IDE state".into(),
-        source: Some("editor".into()),
-        items: vec![
-            ".idea/".into(),
-            ".vscode/".into(),
-            "*.swp".into(),
-            "*.swo".into(),
-            "*~".into(),
-        ],
-        rationale: Some("Per-developer configuration, not project state".into()),
-    });
-    categories.push(Category {
-        name: "OS metadata".into(),
-        source: Some("os".into()),
-        items: vec![".DS_Store".into(), "Thumbs.db".into()],
-        rationale: Some("OS-generated, not project state".into()),
-    });
-    categories.push(Category {
-        name: "Secrets and local config".into(),
-        source: Some("secrets".into()),
-        items: vec![".env".into(), ".env.local".into(), ".env.*.local".into()],
-        rationale: Some("Environment-specific, may contain secrets".into()),
-    });
-    categories.push(Category {
-        name: "Generator stamp files".into(),
-        source: Some("generators".into()),
-        items: vec![".*-stamp".into()],
-        rationale: Some("Producer-centric model stamps; regenerated by make targets".into()),
-    });
+    let mut categories = load_dsl_categories(config.build_system);
     // Tool outputs — auto-derived from DSL entrypoint inference registry.
     // Bootstrap seed files are filtered out: they are generated but committed.
     let seed_patterns: HashSet<&str> = baseline_commit_policies()
@@ -176,13 +121,6 @@ pub fn derive_categories(config: &BuildConfig) -> Vec<Category> {
             }
         }
     }
-
-    categories.push(Category {
-        name: "Workflow runtime state".into(),
-        source: Some("workflow".into()),
-        items: vec!["/.gunbc/".into()],
-        rationale: Some("Local execution ledger and config; not source-of-truth".into()),
-    });
 
     categories
 }

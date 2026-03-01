@@ -1,0 +1,145 @@
+// extdeps/coordination/postgres.dag -- "PostgreSQL as a coordination store."
+
+module extdeps.coordination.postgres
+
+import std.behavioral {
+  OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+}
+import std.rate_limit { PropagationDelay }
+
+type PgIsolationLevel = ReadCommitted | Serializable
+
+type PgSkipLocked {
+  enabled: Bool
+}
+
+type PgFencingToken {
+  column: String
+  monotonic: Bool
+}
+
+type PgNotifyChannel {
+  name: String
+  payload_limit_bytes: Int
+}
+
+type PgCoordinationOperationBehavior {
+  operation: String
+  behavior: OperationBehavior
+}
+
+data operation_behaviors: List<PgCoordinationOperationBehavior> = [
+  {
+    operation: "KvGet",
+    behavior: {
+      side_effects: ReadOnly,
+      idempotent: true,
+      idempotency_keys: null,
+      determinism: Deterministic,
+      failure_modes: [],
+      edge_cases: [{ description: "soft TTL requires client-side expires_at checks", trigger: "expired_row_present", severity: Medium }],
+      confidence: Documented,
+      prerequisites: [{ description: "read access to kv table", kind: Capability }],
+      assumptions: ["SELECT path uses indexed key lookup"],
+      unknowns: []
+    }
+  },
+  {
+    operation: "KvSet",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["key", "expected_version"],
+      determinism: Deterministic,
+      failure_modes: [{ name: "Conflict", condition: "rowcount_zero_due_to_version_mismatch", http_status: null, recoverable: true, retry_safe: false }],
+      edge_cases: [],
+      confidence: HighConfidence,
+      prerequisites: [{ description: "write access to kv table", kind: Capability }],
+      assumptions: ["Transaction wraps read-modify-write with row-level lock"],
+      unknowns: ["Optimal lock granularity under mixed read/write workloads"]
+    }
+  },
+  {
+    operation: "KvCas",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["key", "expected_version", "value_hash"],
+      determinism: Deterministic,
+      failure_modes: [{ name: "Conflict", condition: "version_mismatch", http_status: null, recoverable: true, retry_safe: false }],
+      edge_cases: [{ description: "conditional create may use insert-on-conflict semantics", trigger: "missing_row", severity: Medium }],
+      confidence: Documented,
+      prerequisites: [{ description: "transactional SQL execution capability", kind: Tooling }],
+      assumptions: ["Version increments atomically with update"],
+      unknowns: []
+    }
+  },
+  {
+    operation: "ClaimFromQueue",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: NonDeterministic,
+      failure_modes: [],
+      edge_cases: [{ description: "SKIP LOCKED skips in-flight rows and can reorder fairness under contention", trigger: "hot_queue", severity: High }],
+      confidence: Documented,
+      prerequisites: [{ description: "queue table has claim_expires_at + ordering indexes", kind: Infrastructure }],
+      assumptions: ["Claims include expiry and owner metadata"],
+      unknowns: ["Starvation risk with persistent hot partitions"]
+    }
+  },
+  {
+    operation: "Heartbeat",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["claim_id", "owner"],
+      determinism: Deterministic,
+      failure_modes: [{ name: "LeaseLost", condition: "claim_not_owned_or_expired", http_status: null, recoverable: false, retry_safe: false }],
+      edge_cases: [],
+      confidence: HighConfidence,
+      prerequisites: [{ description: "owner identity is stable for claim lifetime", kind: Runtime }],
+      assumptions: ["Heartbeat updates claim_expires_at only for matching owner"],
+      unknowns: []
+    }
+  },
+  {
+    operation: "Release",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["claim_id", "owner"],
+      determinism: Deterministic,
+      failure_modes: [],
+      edge_cases: [],
+      confidence: HighConfidence,
+      prerequisites: [{ description: "release caller owns active claim", kind: Runtime }],
+      assumptions: ["Release either clears owner fields or marks row done"],
+      unknowns: []
+    }
+  },
+  {
+    operation: "NotifyWatch",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: NonDeterministic,
+      failure_modes: [],
+      edge_cases: [{ description: "NOTIFY payload limited to 8000 bytes", trigger: "oversized_payload", severity: Medium }],
+      confidence: Documented,
+      prerequisites: [{ description: "long-lived listener connections exist", kind: Infrastructure }],
+      assumptions: ["Notifications are hint channel and not source of truth"],
+      unknowns: ["Dropped notification behavior during network partitions"]
+    }
+  }
+]
+
+data skip_locked_semantics: PgSkipLocked = { enabled: true }
+
+data notify_latency: PropagationDelay = {
+  typical_ms: 50,
+  max_ms: 2000,
+  description: "NOTIFY delivery latency to active listeners"
+}

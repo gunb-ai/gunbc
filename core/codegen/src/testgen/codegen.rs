@@ -1,3 +1,6 @@
+// Vec-init-then-push in fidelity ladder test generation is clearer than vec![] macro.
+#![allow(clippy::vec_init_then_push)]
+
 //! Test code generation from proof obligations.
 //!
 //! Tests are organized by obligation bucket:
@@ -270,7 +273,7 @@ impl ProbeObserverBundle {
     }
 }
 
-impl<'a, T: Clone> TestGenerator<'a, T> {
+impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
     /// Create a new test generator for a DAG.
     pub fn new(dag: &'a Dag<T>) -> Self {
         Self {
@@ -5234,7 +5237,7 @@ struct CorpusExampleCtx<'a> {
     inputs: &'a HashMap<String, Value>,
 }
 
-impl<T: Clone> TestGenerator<'_, T> {
+impl<T: Clone + 'static> TestGenerator<'_, T> {
 
     fn build_corpus_section(
         &self,

@@ -565,6 +565,9 @@ fn render_value_expr(expr: &ValueExpr) -> String {
         ValueExpr::Secret(s) => {
             format!("SecretString::new(\"{}\")", escape_rust_str(s))
         }
+        ValueExpr::Enum { ty: _, variant } => {
+            format!("\"{}\".to_string()", escape_rust_str(variant))
+        }
         ValueExpr::Skipped => "Value::Skipped".to_string(),
     }
 }

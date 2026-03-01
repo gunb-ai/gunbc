@@ -4,20 +4,16 @@
 //! `WorkflowSpec`/registry model. It intentionally mirrors the Makefile target
 //! graph (target names + dependencies) while emitting Just syntax.
 
-use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
-use crate::makegen::registry::{
-    BuildConfig, EntrypointParam, MetaTarget, ResourceTargetMap, ToolInfo, ToolRegistry,
-};
+use daglang_driver::{compile_from_context, DriverContext};
+use serde::Deserialize;
+
+use crate::makegen::registry::{BuildConfig, EntrypointParam, ToolInfo, ToolRegistry};
 use gunbc_ir::CargoInvocation;
 use gunbc_ir::cargo::{CargoCommand, Subcommand, Warnings};
 use gunbc_ir::render_ir::FileHeader;
-use gunbc_ir::resource::ExecMode;
-
-use super::shared::{
-    core_workflow_body, core_workflow_comment, meta_target_deps, tool_target_deps,
-};
 
 /// Renderer for Justfiles with standardized header generation.
 pub struct JustfileRenderer<'a> {
@@ -74,6 +70,42 @@ struct Recipe {
     comment: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct CoreWorkflowData {
+    name: String,
+    description: String,
+    deps: Vec<String>,
+    body: Vec<String>,
+    comment: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ResourceNeedData {
+    resource: String,
+    mode: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct MetaTargetData {
+    name: String,
+    description: String,
+    has_check: bool,
+    has_fix: bool,
+    command: String,
+    check_command: Option<String>,
+    fix_command: Option<String>,
+    command_prefix: Option<String>,
+    resource_needs: Vec<ResourceNeedData>,
+    fix_prerequisites: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ResourceTargetEntryData {
+    resource: String,
+    ensure_target: String,
+    verify_target: String,
+}
+
 fn render_justfile_content(registry: &ToolRegistry, config: &BuildConfig) -> String {
     let mut out = String::new();
     out.push_str("# NOTE: This Justfile mirrors Makefile target topology.\n");
@@ -111,6 +143,7 @@ fn render_justfile_content(registry: &ToolRegistry, config: &BuildConfig) -> Str
 
 fn build_recipes(registry: &ToolRegistry, config: &BuildConfig) -> Vec<Recipe> {
     let mut recipes = Vec::new();
+    let (core_workflows, meta_targets, resource_targets) = load_build_targets_data();
 
     recipes.push(Recipe {
         name: "help".to_string(),
@@ -122,28 +155,27 @@ fn build_recipes(registry: &ToolRegistry, config: &BuildConfig) -> Vec<Recipe> {
         comment: Some("Help target".to_string()),
     });
 
-    for workflow in &registry.core_workflows {
-        let deps = workflow.deps.clone();
-        let body = core_workflow_body(workflow, config)
+    for workflow in core_workflows {
+        let body = workflow
+            .body
             .into_iter()
-            .map(|line| normalize_make_command_for_just(line.as_ref()))
+            .map(|line| normalize_make_command_for_just(&line))
             .collect();
         recipes.push(Recipe {
-            name: workflow.name.clone(),
-            deps,
+            name: workflow.name,
+            deps: workflow.deps,
             body,
-            comment: Some(core_workflow_comment(workflow, config)),
+            comment: Some(workflow.comment.unwrap_or(workflow.description)),
         });
     }
 
-    let res_map = ResourceTargetMap::default_map(config);
-    for meta in &registry.meta_targets {
-        recipes.push(build_meta_recipe(meta, config, &res_map));
-        if meta.has_check_variant {
-            recipes.push(build_meta_check_recipe(meta, config, &res_map));
+    for meta in &meta_targets {
+        recipes.push(build_meta_recipe(meta, &resource_targets));
+        if meta.has_check {
+            recipes.push(build_meta_check_recipe(meta, &resource_targets));
         }
-        if meta.has_fix_variant {
-            recipes.push(build_meta_fix_recipe(meta, config, &res_map));
+        if meta.has_fix {
+            recipes.push(build_meta_fix_recipe(meta, &resource_targets));
         }
     }
 
@@ -166,35 +198,67 @@ fn build_recipes(registry: &ToolRegistry, config: &BuildConfig) -> Vec<Recipe> {
     recipes
 }
 
-fn build_meta_recipe(
-    meta: &MetaTarget,
-    config: &BuildConfig,
-    res_map: &ResourceTargetMap,
-) -> Recipe {
-    let deps = meta_target_deps(meta, res_map)
-        .into_iter()
-        .map(Cow::into_owned)
-        .collect();
+fn resolve_resource_target(
+    resource: &str,
+    mode: &str,
+    res_targets: &[ResourceTargetEntryData],
+) -> Option<String> {
+    let entry = res_targets.iter().find(|entry| entry.resource == resource)?;
+    Some(match mode {
+        "ensure" => entry.ensure_target.clone(),
+        _ => entry.verify_target.clone(),
+    })
+}
+
+fn resolve_meta_base_deps(
+    meta: &MetaTargetData,
+    res_targets: &[ResourceTargetEntryData],
+) -> Vec<String> {
+    meta.resource_needs
+        .iter()
+        .filter_map(|need| resolve_resource_target(&need.resource, &need.mode, res_targets))
+        .collect()
+}
+
+fn resolve_meta_fix_deps(
+    meta: &MetaTargetData,
+    res_targets: &[ResourceTargetEntryData],
+) -> Vec<String> {
+    meta.resource_needs
+        .iter()
+        .filter_map(|need| resolve_resource_target(&need.resource, "ensure", res_targets))
+        .collect()
+}
+
+fn apply_prefix(prefix: &Option<String>, command: &str) -> String {
+    match prefix {
+        Some(p) if !p.trim().is_empty() => {
+            let base = command.strip_prefix('@').unwrap_or(command);
+            format!("@{} {}", p.trim(), base)
+        }
+        _ => command.to_string(),
+    }
+}
+
+fn build_meta_recipe(meta: &MetaTargetData, res_targets: &[ResourceTargetEntryData]) -> Recipe {
+    let deps = resolve_meta_base_deps(meta, res_targets);
     Recipe {
         name: meta.name.clone(),
         deps,
-        body: vec![meta.get_command(config)],
+        body: vec![apply_prefix(&meta.command_prefix, &meta.command)],
         comment: Some(format!("{}: {}", meta.name, meta.description)),
     }
 }
 
 fn build_meta_check_recipe(
-    meta: &MetaTarget,
-    config: &BuildConfig,
-    res_map: &ResourceTargetMap,
+    meta: &MetaTargetData,
+    res_targets: &[ResourceTargetEntryData],
 ) -> Recipe {
-    let deps = meta_target_deps(meta, res_map)
-        .into_iter()
-        .map(Cow::into_owned)
-        .collect();
+    let deps = resolve_meta_base_deps(meta, res_targets);
     let command = meta
-        .get_check_command(config)
-        .unwrap_or_else(|| meta.get_command(config));
+        .check_command
+        .clone()
+        .unwrap_or_else(|| meta.command.clone());
     Recipe {
         name: format!("{}-check", meta.name),
         deps,
@@ -204,30 +268,14 @@ fn build_meta_check_recipe(
 }
 
 fn build_meta_fix_recipe(
-    meta: &MetaTarget,
-    config: &BuildConfig,
-    res_map: &ResourceTargetMap,
+    meta: &MetaTargetData,
+    res_targets: &[ResourceTargetEntryData],
 ) -> Recipe {
     let mut deps = Vec::new();
-    for dep in &meta.fix_prerequisites {
-        deps.push(dep.target_name().to_string());
-    }
-    for need in &meta.resources {
-        let target = res_map
-            .resolve(&need.id, ExecMode::Ensure)
-            .unwrap_or_else(|| {
-                panic!(
-                    "missing resource target mapping for {:?} ({:?}) in fix variant '{}-fix'",
-                    need.id,
-                    ExecMode::Ensure,
-                    meta.name
-                )
-            });
-        deps.push(target.to_string());
-    }
-    let command = meta
-        .get_fix_command(config)
-        .unwrap_or_else(|| meta.get_command(config));
+    deps.extend(meta.fix_prerequisites.iter().cloned());
+    deps.extend(resolve_meta_fix_deps(meta, res_targets));
+    let command = meta.fix_command.clone().unwrap_or_else(|| meta.command.clone());
+    let command = apply_prefix(&meta.command_prefix, &command);
     Recipe {
         name: format!("{}-fix", meta.name),
         deps,
@@ -237,10 +285,8 @@ fn build_meta_fix_recipe(
 }
 
 fn build_tool_recipe(tool: &ToolInfo, config: &BuildConfig, dry_run: bool) -> Recipe {
-    let deps = tool_target_deps(tool, config)
-        .into_iter()
-        .map(Cow::into_owned)
-        .collect();
+    let _ = config;
+    let deps = tool_target_deps(tool);
     let name = if dry_run {
         format!("{}-dry", tool.short_name)
     } else {
@@ -259,6 +305,54 @@ fn build_tool_recipe(tool: &ToolInfo, config: &BuildConfig, dry_run: bool) -> Re
         body: vec![tool_command_for_just(tool, config, dry_run)],
         comment: Some(format!("{} entrypoints: {}", tool.binary_name(), port_list)),
     }
+}
+
+fn tool_target_deps(tool: &ToolInfo) -> Vec<String> {
+    if tool.needs_generated_cli {
+        vec!["ensure-codegen".to_string()]
+    } else {
+        Vec::new()
+    }
+}
+
+#[allow(clippy::disallowed_methods)] // Build-time DSL data loading.
+fn load_build_targets_data() -> (
+    Vec<CoreWorkflowData>,
+    Vec<MetaTargetData>,
+    Vec<ResourceTargetEntryData>,
+) {
+    let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dsl");
+    let dag_file = dsl_root.join("config/build_targets.dag");
+    let context = DriverContext {
+        roots: vec![dsl_root],
+        target_file: Some(dag_file),
+    };
+    let output = compile_from_context(&context).expect("build_targets.dag should compile");
+    let workflows = serde_json::from_value::<Vec<CoreWorkflowData>>(
+        output
+            .data_values
+            .get("core_workflows")
+            .cloned()
+            .expect("core_workflows data should exist"),
+    )
+    .expect("core_workflows should deserialize");
+    let metas = serde_json::from_value::<Vec<MetaTargetData>>(
+        output
+            .data_values
+            .get("meta_targets")
+            .cloned()
+            .expect("meta_targets data should exist"),
+    )
+    .expect("meta_targets should deserialize");
+    let resource_targets = serde_json::from_value::<Vec<ResourceTargetEntryData>>(
+        output
+            .data_values
+            .get("resource_targets")
+            .cloned()
+            .expect("resource_targets data should exist"),
+    )
+    .expect("resource_targets should deserialize");
+    (workflows, metas, resource_targets)
 }
 
 fn normalize_make_command_for_just(command: &str) -> String {
@@ -337,7 +431,6 @@ fn escape_just_string(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::makegen::shared::render_makefile;
     use std::collections::BTreeSet;
 
     #[test]
@@ -352,7 +445,7 @@ mod tests {
     #[test]
     fn test_justfile_target_graph_matches_makefile() {
         let registry = ToolRegistry::default_registry();
-        let makefile = render_makefile(&registry);
+        let makefile = crate::makegen::shared::render_makefile(&registry);
         let justfile = render_justfile(&registry);
 
         let make_graph = parse_target_graph(&makefile);

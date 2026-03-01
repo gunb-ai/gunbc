@@ -1,0 +1,145 @@
+// extdeps/coordination/gcs.dag -- "GCS as a coordination store."
+
+module extdeps.coordination.gcs
+
+import std.behavioral {
+  OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+}
+import std.coordination { CasMechanism, NotificationMechanism }
+import std.rate_limit { PropagationDelay }
+
+type GcsGeneration = Int
+type GcsMetageneration = Int
+
+type GcsPrecondition
+  = IfGenerationMatch { generation: GcsGeneration }
+  | IfMetagenerationMatch { metageneration: GcsMetageneration }
+  | IfGenerationNotMatch { generation: GcsGeneration }
+
+type GcsCoordinationOperationBehavior {
+  operation: String
+  behavior: OperationBehavior
+}
+
+type GcsCasPattern {
+  mechanism: CasMechanism
+  create_only_generation: Int
+  conflict_status: Int
+}
+
+type NotificationLatency {
+  mechanism: NotificationMechanism
+  delay: PropagationDelay
+}
+
+data operation_behaviors: List<GcsCoordinationOperationBehavior> = [
+  {
+    operation: "GetObject",
+    behavior: {
+      side_effects: ReadOnly,
+      idempotent: true,
+      idempotency_keys: null,
+      determinism: Deterministic,
+      failure_modes: [{ name: "NotFound", condition: "object_absent", http_status: 404, recoverable: false, retry_safe: false }],
+      edge_cases: [{ description: "generation and metageneration are separate monotonic counters", trigger: null, severity: Medium }],
+      confidence: Documented,
+      prerequisites: [{ description: "storage.objects.get permission", kind: Capability }],
+      assumptions: ["Read path can request media payload via alt=media"],
+      unknowns: ["Regional latency variance for cold objects"]
+    }
+  },
+  {
+    operation: "InsertObject",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["bucket", "object", "ifGenerationMatch"],
+      determinism: Deterministic,
+      failure_modes: [{ name: "PreconditionFailed", condition: "generation_mismatch", http_status: 412, recoverable: true, retry_safe: false }],
+      edge_cases: [{ description: "ifGenerationMatch=0 enforces create-only semantics", trigger: "create_only_write", severity: High }],
+      confidence: Documented,
+      prerequisites: [{ description: "storage.objects.create permission", kind: Capability }],
+      assumptions: ["Returned generation is authoritative for future CAS writes"],
+      unknowns: ["Exact contention profile under high-frequency concurrent writers"]
+    }
+  },
+  {
+    operation: "PatchMetadata",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["bucket", "object", "ifMetagenerationMatch"],
+      determinism: Deterministic,
+      failure_modes: [{ name: "PreconditionFailed", condition: "metageneration_mismatch", http_status: 412, recoverable: true, retry_safe: false }],
+      edge_cases: [],
+      confidence: HighConfidence,
+      prerequisites: [{ description: "storage.objects.update permission", kind: Capability }],
+      assumptions: ["Metadata writes are serialized by metageneration checks"],
+      unknowns: []
+    }
+  },
+  {
+    operation: "DeleteObject",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["bucket", "object", "ifGenerationMatch"],
+      determinism: Deterministic,
+      failure_modes: [{ name: "PreconditionFailed", condition: "generation_mismatch", http_status: 412, recoverable: true, retry_safe: false }],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "storage.objects.delete permission", kind: Capability }],
+      assumptions: ["Delete with generation precondition avoids lost updates"],
+      unknowns: ["Delete visibility lag in eventually consistent listings"]
+    }
+  },
+  {
+    operation: "ComposeObjects",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: Deterministic,
+      failure_modes: [],
+      edge_cases: [{ description: "compose can fail if source generations changed", trigger: "concurrent_source_mutation", severity: High }],
+      confidence: MediumConfidence,
+      prerequisites: [{ description: "compose permissions on source and destination", kind: Capability }],
+      assumptions: ["Source object list is bounded by provider compose limits"],
+      unknowns: ["Performance and limits for deeply chained compose operations"]
+    }
+  },
+  {
+    operation: "WatchChanges",
+    behavior: {
+      side_effects: ReadOnly,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: EventuallyConsistent,
+      failure_modes: [],
+      edge_cases: [{ description: "notification stream is best-effort and must be treated as hint channel", trigger: null, severity: High }],
+      confidence: Documented,
+      prerequisites: [{ description: "bucket notifications configured to Pub/Sub topic", kind: Infrastructure }],
+      assumptions: ["Primary correctness remains in store scan + CAS logic"],
+      unknowns: ["Maximum notification delay under sustained event volume"]
+    }
+  }
+]
+
+data cas_patterns: List<GcsCasPattern> = [
+  {
+    mechanism: GenerationBased,
+    create_only_generation: 0,
+    conflict_status: 412
+  }
+]
+
+data notification_latency: List<NotificationLatency> = [
+  {
+    mechanism: PubSub,
+    delay: {
+      typical_ms: 5000,
+      max_ms: 30000,
+      description: "Bucket notification delivery to Pub/Sub subscribers"
+    }
+  }
+]

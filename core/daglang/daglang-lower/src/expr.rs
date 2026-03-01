@@ -16,6 +16,24 @@ pub struct LoweredFnBody {
     pub stmts: Vec<LoweredStmt>,
 }
 
+/// Typed reference to an expression leaf source used by lowerer wiring.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LeafRef {
+    Param {
+        name: String,
+        field: Option<String>,
+        ty: String,
+    },
+    Callable {
+        endpoint: String,
+        port: String,
+    },
+    Service {
+        endpoint: String,
+        port: String,
+    },
+}
+
 /// A lowered statement.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoweredStmt {
@@ -305,6 +323,16 @@ fn lower_expr(expr: &ast::Expr, variant_names: &HashSet<String>) -> LoweredExpr 
         ast::Expr::Pipe(receiver, call) => LoweredExpr::Pipe {
             receiver: Box::new(lower_expr(receiver, variant_names)),
             call: Box::new(lower_expr(call, variant_names)),
+        },
+        ast::Expr::PipeCall(receiver, method, args) => LoweredExpr::Pipe {
+            receiver: Box::new(lower_expr(receiver, variant_names)),
+            call: Box::new(LoweredExpr::Call {
+                name: method.as_str().to_string(),
+                args: args
+                    .iter()
+                    .map(|(k, v)| (k.clone(), lower_expr(v, variant_names)))
+                    .collect(),
+            }),
         },
         ast::Expr::Lambda(params, body) => LoweredExpr::Lambda {
             params: params.clone(),

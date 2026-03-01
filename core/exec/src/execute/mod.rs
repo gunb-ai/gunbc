@@ -33,7 +33,8 @@ use gunbc_ir::transport::{FileOp, TransportResponse};
 use gunbc_ir::{
     canonical_edge_order, classify_coercion, detect_boundaries, detect_entrypoints,
     normalize_resource_id, AccessMode, AppliedCoercion, BoundaryInfo, Cardinality, Dag,
-    LogDetailLevel, Node, NodeBody, NodeId, NodeKind, Value, RESOURCE_FILE, RESOURCE_FILE_PREFIX,
+    LogDetailLevel, Node, NodeBody, NodeId, NodeKind, PortName, Value, RESOURCE_FILE,
+    RESOURCE_FILE_PREFIX,
 };
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -583,6 +584,30 @@ fn remap_input_mocks(
     result
 }
 
+/// Resolve an input mock value for `(node_id, port_name)`.
+///
+/// Param source nodes are auto-fed by matching any explicitly provided
+/// non-param-source input with the same port name.
+fn resolve_mock_input(
+    mocks: &BoundaryMocks,
+    node_id: &NodeId,
+    node_kind: gunbc_ir::node::NodeKind,
+    port_name: &PortName,
+) -> Option<Value> {
+    if let Some(value) = mocks.get_input(&node_id.0, &port_name.0) {
+        return Some(value.clone());
+    }
+    if node_kind != gunbc_ir::node::NodeKind::ParamSource {
+        return None;
+    }
+    for ((mock_node, mock_port), value) in mocks.iter_inputs() {
+        if mock_port == &port_name.0 && !mock_node.starts_with("param_source_") {
+            return Some(value.clone());
+        }
+    }
+    None
+}
+
 /// Remap input mocks embedded in DryRun/Simulate execution modes.
 fn remap_mode_inputs(
     mode: ExecutionMode,
@@ -749,18 +774,16 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
         }
 
         // Inject input mocks for dangling input ports (DAG entry points).
-        let mut inject_inputs = |mocks: &BoundaryMocks| {
+        if let Some(mocks) = input_mocks {
             for port in &node.inputs {
                 if !inputs.contains_key(&port.name.0) {
-                    if let Some(mock_value) = mocks.get_input(&node.id.0, &port.name.0) {
-                        inputs.insert(port.name.0.clone(), mock_value.clone());
+                    if let Some(mock_value) =
+                        resolve_mock_input(mocks, &node.id, node.kind, &port.name)
+                    {
+                        inputs.insert(port.name.0.clone(), mock_value);
                     }
                 }
             }
-        };
-
-        if let Some(mocks) = input_mocks {
-            inject_inputs(mocks);
         }
 
         if let ExecutionMode::DryRun(ref mocks)
@@ -769,7 +792,15 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
             ..
         }) = mode
         {
-            inject_inputs(mocks);
+            for port in &node.inputs {
+                if !inputs.contains_key(&port.name.0) {
+                    if let Some(mock_value) =
+                        resolve_mock_input(mocks, &node.id, node.kind, &port.name)
+                    {
+                        inputs.insert(port.name.0.clone(), mock_value);
+                    }
+                }
+            }
         }
 
         // Default list inputs to empty when allowed and still missing.
@@ -1335,18 +1366,16 @@ fn build_node_inputs<T>(
         inputs.insert(port_name, Value::List(values));
     }
 
-    let mut inject_inputs = |mocks: &BoundaryMocks| {
+    if let Some(mocks) = input_mocks {
         for port in &node.inputs {
             if !inputs.contains_key(&port.name.0) {
-                if let Some(mock_value) = mocks.get_input(&node.id.0, &port.name.0) {
-                    inputs.insert(port.name.0.clone(), mock_value.clone());
+                if let Some(mock_value) =
+                    resolve_mock_input(mocks, &node.id, node.kind, &port.name)
+                {
+                    inputs.insert(port.name.0.clone(), mock_value);
                 }
             }
         }
-    };
-
-    if let Some(mocks) = input_mocks {
-        inject_inputs(mocks);
     }
 
     if let ExecutionMode::DryRun(mocks)
@@ -1355,7 +1384,15 @@ fn build_node_inputs<T>(
         ..
     }) = mode
     {
-        inject_inputs(mocks);
+        for port in &node.inputs {
+            if !inputs.contains_key(&port.name.0) {
+                if let Some(mock_value) =
+                    resolve_mock_input(mocks, &node.id, node.kind, &port.name)
+                {
+                    inputs.insert(port.name.0.clone(), mock_value);
+                }
+            }
+        }
     }
 
     for port in &node.inputs {
@@ -2054,60 +2091,51 @@ fn should_intercept_by_kind<T>(node: &Node<T>) -> bool {
     )
 }
 
-/// Port-level heuristic: does this node look effectful despite `kind: Pure`?
-///
-/// Returns a human-readable reason string if the node has port patterns that
-/// indicate it should have been classified (transport request inputs,
-/// tool handle ports, resource ports).
-fn looks_effectful_without_kind<T>(node: &Node<T>) -> Option<&'static str> {
-    for p in &node.inputs {
-        if p.type_id.0 == "TransportRequest" {
-            return Some("has TransportRequest input (transport executor)");
-        }
-        if p.type_id.0 == "ToolHandle" {
-            return Some("has ToolHandle input (tool consumer)");
-        }
-        if p.name.is_resource() {
-            return Some("has res:* input port (resource consumer)");
-        }
-    }
-    for p in &node.outputs {
-        if p.type_id.0 == "ToolHandle" {
-            return Some("has ToolHandle output (tool environment)");
-        }
-        if matches!(
-            p.type_id.0.as_str(),
-            "FilesystemHandle"
-                | "NetworkHandle"
-                | "Timestamp"
-                | "Credential"
-                | "Platform"
-        ) {
-            return Some("has resource-environment output");
-        }
-    }
-    None
-}
-
 /// Pre-flight check: error if any `Pure` node has effectful port patterns.
 ///
-/// Called before DryRun/Simulate execution to ensure no effectful node slips
-/// through interception due to a missing or incorrect `NodeKind`. This enforces
-/// the "no silent fallback" invariant — either the lowerer stamps `kind` via
-/// `stamp_node_kinds()`, or the hand-built DAG sets it explicitly via
-/// [`Node::with_kind`].
+/// `looks_effectful_without_kind()` helper was removed (C18); keep the checks
+/// inlined here so accidental `kind: Pure` regressions still fail closed.
 fn validate_node_kinds_for_interception<T>(dag: &Dag<T>) -> Result<(), ExecError> {
     for node in &dag.nodes {
         if node.kind != NodeKind::Pure {
             continue;
         }
-        if let Some(reason) = looks_effectful_without_kind(node) {
-            return Err(ExecError::new(format!(
-                "node '{}' has kind: Pure but {reason}. \
-                 Set NodeKind via Node::with_kind() or the lowerer's stamp_node_kinds() \
-                 so DryRun/Simulate can intercept it correctly.",
-                node.id.0,
-            )));
+        for port in &node.inputs {
+            if port.type_id.0 == "TransportRequest" {
+                return Err(ExecError::new(format!(
+                    "node '{}' has kind: Pure but has TransportRequest input",
+                    node.id.0
+                )));
+            }
+            if port.type_id.0 == "ToolHandle" {
+                return Err(ExecError::new(format!(
+                    "node '{}' has kind: Pure but has ToolHandle input",
+                    node.id.0
+                )));
+            }
+            if port.name.is_resource() {
+                return Err(ExecError::new(format!(
+                    "node '{}' has kind: Pure but has resource input '{}'",
+                    node.id.0, port.name.0
+                )));
+            }
+        }
+        for port in &node.outputs {
+            if port.type_id.0 == "ToolHandle" {
+                return Err(ExecError::new(format!(
+                    "node '{}' has kind: Pure but has ToolHandle output",
+                    node.id.0
+                )));
+            }
+            if matches!(
+                port.type_id.0.as_str(),
+                "FilesystemHandle" | "NetworkHandle" | "Timestamp" | "Credential" | "Platform"
+            ) {
+                return Err(ExecError::new(format!(
+                    "node '{}' has kind: Pure but has resource-environment output '{}'",
+                    node.id.0, port.type_id.0
+                )));
+            }
         }
     }
     Ok(())

@@ -550,6 +550,14 @@ impl Port {
         }
     }
 
+    /// Whether this port's type is optional (type_id ends with `?`).
+    ///
+    /// Centralizes the optionality check so callers don't inspect the raw
+    /// type_id string suffix. Long-term: represent optionality structurally.
+    pub fn is_optional(&self) -> bool {
+        self.type_id.0.ends_with('?')
+    }
+
     /// Create a resource port for `res:*` convention.
     ///
     /// Resource ports carry acquired resources (capabilities or observations)

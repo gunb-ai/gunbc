@@ -2552,7 +2552,16 @@ impl Parser {
             Expr::BinOp(Box::new(lhs), bop, Box::new(rhs))
         } else {
             match op {
-                TokenKind::PipeArrow => Expr::Pipe(Box::new(lhs), Box::new(rhs)),
+                TokenKind::PipeArrow => match &rhs {
+                    Expr::Call(name, args) => {
+                        if let Ok(method) = name.parse::<PipeMethod>() {
+                            Expr::PipeCall(Box::new(lhs), method, args.clone())
+                        } else {
+                            Expr::Pipe(Box::new(lhs), Box::new(rhs))
+                        }
+                    }
+                    _ => Expr::Pipe(Box::new(lhs), Box::new(rhs)),
+                },
                 TokenKind::NullCoalesce => {
                     Expr::BinOp(Box::new(lhs), BinOp::NullCoalesce, Box::new(rhs))
                 }
@@ -3041,6 +3050,11 @@ mod tests {
         parser.parse_expr(0).expect_err("expression should fail")
     }
 
+    fn parse_source_err(source: &str) -> ParseError {
+        let mut errs = parse(source).expect_err("source should fail");
+        errs.remove(0)
+    }
+
     #[test]
     fn parse_module_decl() {
         let sf = parse_or_panic("module tools.makegen");
@@ -3055,6 +3069,26 @@ mod tests {
         assert_eq!(
             sf.imports[0].node.bindings,
             Some(vec!["ToolRegistry".into()])
+        );
+    }
+
+    #[test]
+    fn parse_service_config_auth_input_rejects_string_literal() {
+        let err = parse_source_err(
+            r#"module services.example
+service github.Gist {
+  config {
+    endpoint: "https://api.github.com"
+    auth: BearerToken
+    auth_input: "token"
+  }
+  operation Create() -> { id: String }
+}"#,
+        );
+        assert!(
+            err.message.contains("expected identifier for `auth_input`"),
+            "unexpected parse error: {}",
+            err.message
         );
     }
 
@@ -3385,6 +3419,19 @@ pipeline gist {
             Expr::Pipe(lhs, rhs) => {
                 assert!(matches!(*rhs, Expr::Ident(ref name) if name == "g"));
                 assert!(matches!(*lhs, Expr::Pipe(_, _)));
+            }
+            other => panic!("unexpected expression tree: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn expression_pipe_method_lowers_to_pipe_call() {
+        let expr = parse_expr_only("items |> map(x => x)");
+        match expr {
+            Expr::PipeCall(receiver, PipeMethod::Map, args) => {
+                assert!(matches!(*receiver, Expr::Ident(ref name) if name == "items"));
+                assert_eq!(args.len(), 1);
+                assert!(matches!(args[0].1, Expr::Lambda(_, _)));
             }
             other => panic!("unexpected expression tree: {other:?}"),
         }

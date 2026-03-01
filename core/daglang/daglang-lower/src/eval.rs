@@ -257,8 +257,11 @@ fn eval_expr(
 
         LoweredExpr::VariantConstruct { tag, fields } => {
             if fields.is_empty() {
-                // Unit variant: `Closed` → Value::Str("Closed")
-                Ok(Value::Str(tag.clone()))
+                // Unit variant: `Closed` → Value::Enum { ty: "", variant: "Closed" }
+                Ok(Value::Enum {
+                    ty: String::new(),
+                    variant: tag.clone(),
+                })
             } else {
                 // Payload variant: `Ok { value: x }` → Map with _variant tag
                 let mut map = BTreeMap::new();
@@ -374,10 +377,16 @@ fn field_access(base: &Value, field: &str) -> Result<Value, EvalError> {
 
 fn eval_binop(lhs: &Value, op: LoweredBinOp, rhs: &Value) -> Result<Value, EvalError> {
     match op {
-        // String concatenation
-        LoweredBinOp::Add if matches!(lhs, Value::Str(_)) || matches!(rhs, Value::Str(_)) => Ok(
-            Value::Str(format!("{}{}", value_to_string(lhs), value_to_string(rhs))),
-        ),
+        LoweredBinOp::Add
+            if matches!(lhs, Value::Str(_) | Value::Enum { .. })
+                || matches!(rhs, Value::Str(_) | Value::Enum { .. }) =>
+        {
+            Ok(Value::Str(format!(
+                "{}{}",
+                value_to_string(lhs),
+                value_to_string(rhs)
+            )))
+        }
         // Arithmetic
         LoweredBinOp::Add => int_op(lhs, rhs, |a, b| a + b),
         LoweredBinOp::Sub => int_op(lhs, rhs, |a, b| a - b),
@@ -417,8 +426,9 @@ fn int_op(lhs: &Value, rhs: &Value, f: impl Fn(i64, i64) -> i64) -> Result<Value
 fn values_equal(lhs: &Value, rhs: &Value) -> bool {
     match (lhs, rhs) {
         (Value::Unit, Value::Unit) | (Value::Skipped, Value::Skipped) => true,
-        // null comparison: None/Unit treated as equal
         (Value::Unit, Value::Skipped) | (Value::Skipped, Value::Unit) => true,
+        (Value::Enum { variant, .. }, Value::Str(s))
+        | (Value::Str(s), Value::Enum { variant, .. }) => variant == s,
         _ => lhs == rhs,
     }
 }
@@ -586,7 +596,9 @@ fn match_pattern(pattern: &LoweredPattern, value: &Value) -> Option<Vec<(String,
                         None
                     }
                 }
-                // Unit variants match by string equality
+                // Unit variants match by enum-variant equality.
+                Value::Enum { variant, .. } if variant == variant_name => Some(vec![]),
+                // Backward-compat path for older snapshots.
                 Value::Str(s) if s == variant_name => Some(vec![]),
                 _ => None,
             }
@@ -636,6 +648,7 @@ fn eval_pipe_method(
                         .join(&sep);
                     Ok(Value::Str(joined))
                 }
+                Value::Skipped => Ok(Value::Str(String::new())),
                 _ => Err(EvalError::new("join requires a list")),
             }
         }
@@ -654,7 +667,8 @@ fn eval_pipe_method(
                     Ok(Value::List(results))
                 }
                 (Value::List(items), _) => Ok(Value::List(items)),
-                _ => Err(EvalError::new("map requires a list")),
+                (Value::Skipped, _) => Ok(Value::List(vec![])),
+                (other, _) => Err(EvalError::new(format!("map requires a list, got {:?}", other))),
             }
         }
 
@@ -1004,6 +1018,7 @@ pub fn sort_key(value: &Value) -> String {
         Value::Request(request) => format!("req:{request:?}"),
         Value::Response(response) => format!("resp:{response:?}"),
         Value::Secret(secret) => format!("secret:{}", secret.len()),
+        Value::Enum { ty, variant } => format!("enum:{ty}:{variant}"),
         Value::Float(f) => format!("f:{f}"),
         Value::Bytes(b) => format!("bytes:{}", b.len()),
         Value::Skipped => "skipped".to_string(),
@@ -1029,6 +1044,13 @@ pub fn value_to_string(value: &Value) -> String {
         Value::Request(request) => format!("{request:?}"),
         Value::Response(response) => format!("{response:?}"),
         Value::Secret(secret) => format!("secret({})", secret.len()),
+        Value::Enum { ty, variant } => {
+            if ty.is_empty() {
+                variant.clone()
+            } else {
+                format!("{ty}.{variant}")
+            }
+        }
         Value::Float(f) => f.to_string(),
         Value::Bytes(b) => format!("<{} bytes>", b.len()),
     }
@@ -1046,6 +1068,7 @@ pub fn value_truthy(value: &Value) -> bool {
         Value::Json(json) => !json.is_null(),
         Value::Secret(secret) => !secret.is_empty(),
         Value::Bytes(b) => !b.is_empty(),
+        Value::Enum { .. } => true,
         Value::Skipped | Value::Unit => false,
         Value::Request(_) | Value::Response(_) => true,
     }

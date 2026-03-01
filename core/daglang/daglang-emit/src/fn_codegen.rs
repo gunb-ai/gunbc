@@ -214,6 +214,10 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
             }
         }
         ast::Expr::Pipe(left, right) => compile_pipe(left, right, ctx),
+        ast::Expr::PipeCall(receiver, method, args) => {
+            let rhs = ast::Expr::Call(method.as_str().to_string(), args.clone());
+            compile_pipe(receiver, &rhs, ctx)
+        }
         ast::Expr::StringInterp(parts) => compile_string_interp(parts, ctx),
         ast::Expr::For(binding, iter_expr, _passthrough, body) => {
             let result_var = fresh("for_result");
@@ -259,6 +263,8 @@ fn compile_literal(lit: &ast::Literal) -> code_ir::Expr {
         ast::Literal::None => code_ir::Expr::Var("None".to_string()),
     }
 }
+
+
 
 // ---------------------------------------------------------------------------
 // Identifiers — bare names resolve to enum-variant paths

@@ -1,0 +1,59 @@
+// std/rate_limit.dag -- Rate limiting, retries, and propagation delay vocabulary.
+
+module std.rate_limit
+
+type ResetStrategy = FixedWindow | SlidingWindow | TokenBucket
+
+type RateLimit {
+  scope: String
+  requests_per_window: Int
+  window_seconds: Int
+  burst: Int?
+  reset_strategy: ResetStrategy
+}
+
+type BackoffStrategy
+  = Exponential { base_ms: Int, max_ms: Int }
+  | Linear { step_ms: Int }
+  | JitteredExponential { base_ms: Int, max_ms: Int }
+
+type RetryPolicy {
+  max_attempts: Int
+  backoff: BackoffStrategy
+  retry_on: List<String>
+}
+
+type PropagationDelay {
+  typical_ms: Int
+  max_ms: Int
+  description: String
+}
+
+// Common presets reused across extdeps and service metadata.
+data github_core_limit: RateLimit = {
+  scope: "github.core",
+  requests_per_window: 5000,
+  window_seconds: 3600,
+  burst: null,
+  reset_strategy: FixedWindow
+}
+
+data github_search_limit: RateLimit = {
+  scope: "github.search",
+  requests_per_window: 30,
+  window_seconds: 60,
+  burst: null,
+  reset_strategy: FixedWindow
+}
+
+data default_jittered_retry: RetryPolicy = {
+  max_attempts: 5,
+  backoff: JitteredExponential { base_ms: 200, max_ms: 8000 },
+  retry_on: ["rate_limit", "timeout", "http_429", "http_5xx", "network"]
+}
+
+data conservative_retry: RetryPolicy = {
+  max_attempts: 3,
+  backoff: Exponential { base_ms: 500, max_ms: 5000 },
+  retry_on: ["http_429", "http_503", "network"]
+}
