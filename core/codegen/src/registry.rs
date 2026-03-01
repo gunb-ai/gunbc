@@ -224,6 +224,7 @@ impl ToolDef {
                 enable_step_mode: false,
                 mock_spec_call: None,
                 enable_mode: false,
+                available_profiles: vec![],
             },
             entrypoints: vec![],
             custom_import: None,
@@ -290,6 +291,15 @@ impl ToolDef {
     /// Enable `--mode` flag (verify/ensure) for content_upsert tools (RT61).
     pub fn enable_mode(mut self) -> Self {
         self.meta.enable_mode = true;
+        self
+    }
+
+    /// Set available profiles for `--profile` enum flag (C20/RT59).
+    ///
+    /// When non-empty, the generated CLI accepts `--profile <name>` to select
+    /// which interface bindings are active at runtime.
+    pub fn available_profiles(mut self, profiles: Vec<String>) -> Self {
+        self.meta.available_profiles = profiles;
         self
     }
 

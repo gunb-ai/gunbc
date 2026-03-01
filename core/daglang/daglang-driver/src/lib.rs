@@ -63,6 +63,12 @@ pub struct CompileOutput {
     /// Keys are both qualified (`module.name`) and unqualified (`name`).
     /// Values are the constant expressions from `data` items.
     pub data_values: HashMap<String, serde_json::Value>,
+    /// Available profile names extracted from `profile` declarations (C20/RT59).
+    ///
+    /// When non-empty, the CLI generator can produce a `--profile` enum flag
+    /// that validates against these names. Profile selection determines which
+    /// interface bindings are active at runtime.
+    pub available_profiles: Vec<String>,
 }
 
 impl CompileOutput {
@@ -413,6 +419,7 @@ pub fn compile_from_module_graph_with_options(
     let inferred_entrypoints = daglang_lower::infer_entrypoints(&lowered);
     let dsl_type_registry = extract_dsl_type_registry(&typed);
     let data_values = daglang_lower::build_data_values(&typed);
+    let available_profiles = collect_available_profiles(&typed);
 
     let receipt = compute_receipt(&lowered, &emitted, &emit_manifest_path, &source_paths);
 
@@ -427,6 +434,7 @@ pub fn compile_from_module_graph_with_options(
         dsl_type_registry,
         receipt,
         data_values,
+        available_profiles,
     })
 }
 
@@ -461,6 +469,24 @@ fn collect_pipeline_params(typed: &TypedProject) -> Vec<PipelineParam> {
         }
     }
     params
+}
+
+/// Extract available profile names from the typed project (C20/RT59).
+///
+/// Walks all modules looking for `profile` declarations and collects
+/// their names. These names become valid values for the `--profile` CLI flag.
+fn collect_available_profiles(typed: &TypedProject) -> Vec<String> {
+    let mut profiles = Vec::new();
+    for module in &typed.modules {
+        for item in &module.ast.items {
+            if let Item::ProfileDef(def) = &item.node {
+                profiles.push(def.name.clone());
+            }
+        }
+    }
+    profiles.sort();
+    profiles.dedup();
+    profiles
 }
 
 /// Extract a `TypeRegistry` from DSL-defined sum and product types.
