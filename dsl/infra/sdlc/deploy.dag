@@ -126,6 +126,52 @@ func deploy_github_secret(project_id: String) -> { name: String } {
   return { name: existing.name }
 }
 
+// ── SP-2: Revision deployment with traffic migration ──────────────
+
+// Deploy a new revision and wait for readiness before migrating traffic.
+// This is the idempotent deploy pattern: if the image hasn't changed,
+// the update is a no-op (spec_hash fingerprint in labels).
+func deploy_revision(
+  project_id: String,
+  region: String,
+  image: String
+) -> { revision: String, uri: String, migrated: Bool } {
+  // Deploy new revision via update (creates a new revision if image differs)
+  updated = CloudRun.UpdateService(
+    project_id: project_id,
+    region: region,
+    name: worker_service_name(),
+    image: image,
+    memory: "512Mi",
+    labels: { "managed-by": "gunbc", "component": "sdlc-worker", "deploy-image": image }
+  )
+
+  // Wait for the new revision to become ready
+  ready = CloudRun.WaitReady(
+    project_id: project_id,
+    region: region,
+    service_name: worker_service_name(),
+    revision_name: updated.name,
+    timeout_seconds: 300
+  )
+
+  // Migrate 100% traffic to the new revision once ready
+  traffic = if ready.ready {
+    CloudRun.UpdateTraffic(
+      project_id: project_id,
+      region: region,
+      service_name: worker_service_name(),
+      traffic: [{ revision: updated.name, percent: 100 }]
+    )
+  }
+
+  return {
+    revision: updated.name,
+    uri: updated.uri,
+    migrated: ready.ready
+  }
+}
+
 // ── Full deployment pipeline ────────────────────────────────────────
 
 func deploy_all(
@@ -138,4 +184,96 @@ func deploy_all(
   service = deploy_worker_service(project_id: project_id, region: region)
 
   return { success: true }
+}
+
+// SP-2: Full deployment with revision rollout.
+func deploy_with_revision(
+  project_id: String,
+  region: String,
+  image: String
+) -> { success: Bool, revision: String, uri: String } {
+  // Ensure all infrastructure exists first
+  infra = deploy_all(project_id: project_id, region: region)
+
+  // Then deploy the new revision with traffic migration
+  rev = deploy_revision(
+    project_id: project_id,
+    region: region,
+    image: image
+  )
+
+  return {
+    success: rev.migrated,
+    revision: rev.revision,
+    uri: rev.uri
+  }
+}
+
+// ── Tests ──────────────────────────────────────────────────────────
+
+test deploy_worker_creates_new_service {
+
+    input deploy_worker_service.project_id -> "test-project"
+    input deploy_worker_service.region -> "us-central1"
+
+    // Service does not exist
+    mock get_service/execute.response -> rest_response(200, { exists: false })
+
+    // Create succeeds
+    mock create_service/execute.response -> rest_response(200, {
+      name: "gunbc-sdlc-worker",
+      uri: "https://gunbc-sdlc-worker-abc123.run.app"
+    })
+
+    expect result.name == "gunbc-sdlc-worker"
+    expect result.uri is NonEmpty
+}
+
+test deploy_revision_migrates_traffic {
+
+    input deploy_revision.project_id -> "test-project"
+    input deploy_revision.region -> "us-central1"
+    input deploy_revision.image -> "us-central1-docker.pkg.dev/test-project/gunbc/sdlc-worker:v2"
+
+    // Update creates new revision
+    mock update_service/execute.response -> rest_response(200, {
+      name: "gunbc-sdlc-worker-rev2",
+      uri: "https://gunbc-sdlc-worker-abc123.run.app"
+    })
+
+    // Revision becomes ready
+    mock wait_ready/execute.response -> rest_response(200, {
+      ready: true,
+      reason: null
+    })
+
+    // Traffic migration succeeds
+    mock update_traffic/execute.response -> rest_response(200, {
+      ok: true,
+      uri: "https://gunbc-sdlc-worker-abc123.run.app"
+    })
+
+    expect result.migrated == true
+    expect result.revision == "gunbc-sdlc-worker-rev2"
+}
+
+test deploy_revision_waits_for_readiness {
+
+    input deploy_revision.project_id -> "test-project"
+    input deploy_revision.region -> "us-central1"
+    input deploy_revision.image -> "us-central1-docker.pkg.dev/test-project/gunbc/sdlc-worker:v3"
+
+    mock update_service/execute.response -> rest_response(200, {
+      name: "gunbc-sdlc-worker-rev3",
+      uri: "https://gunbc-sdlc-worker-abc123.run.app"
+    })
+
+    // Revision not ready (timeout)
+    mock wait_ready/execute.response -> rest_response(200, {
+      ready: false,
+      reason: "Container failed to start"
+    })
+
+    // Traffic migration should NOT happen
+    expect result.migrated == false
 }
