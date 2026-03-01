@@ -44,6 +44,7 @@ pub mod expr;
 #[allow(dead_code)]
 pub(crate) mod scope;
 pub mod spec;
+pub(crate) mod transport;
 
 pub use spec::{
     ArgvSegment, BodyEntry, FieldSpec, FileOperationSpec, LocalOperationSpec, OutputFieldSpec,
@@ -484,6 +485,12 @@ impl<T: PartialEq> EndpointRegistry<T> {
 
     fn get(&self, key: &str) -> Option<&T> {
         self.by_key.get(key).and_then(|entry| entry.as_ref())
+    }
+
+    fn merge(&mut self, other: EndpointRegistry<T>) {
+        for (key, value) in other.by_key {
+            self.by_key.entry(key).or_insert(value);
+        }
     }
 }
 
@@ -1056,14 +1063,13 @@ fn is_known_uses_type(set: &HashSet<String>, name: &str) -> bool {
 /// triplets in the registry so `resolve_service_call_source` can find them. These
 /// stubs use `ServiceTransportClass::InterfaceStub` and are DryRun-compatible;
 /// real-mode execution will surface a "requires --profile" error at the resolver.
-fn add_interface_stub_transport_triplets(
-    builder: &mut DagBuilder,
+fn derive_interface_stub_transport_triplets(
     project: &TypedProject,
     stub_interfaces: &HashSet<String>,
-    registry: &mut ServiceEndpointRegistry,
-) {
+) -> transport::TransportManifest {
+    let mut manifest = transport::TransportManifest::new();
     if stub_interfaces.is_empty() {
-        return;
+        return manifest;
     }
 
     for module in &project.modules {
@@ -1106,7 +1112,7 @@ fn add_interface_stub_transport_triplets(
                     .map(|port| port.name.0.clone())
                     .collect::<Vec<_>>();
 
-                builder.add_node(Node::opaque(
+                manifest.add_node(Node::opaque(
                     prepare_id.clone(),
                     prepare_ports,
                     vec![Port::scalar("request", "TransportRequest")],
@@ -1163,10 +1169,10 @@ fn add_interface_stub_transport_triplets(
                     },
                 )
                 .with_input_guard("request", Guard::NotEq(Value::Skipped));
-                builder.add_node(execute_node);
+                manifest.add_node(execute_node);
 
                 // Parse node: typed capability outputs → typed capability outputs (identity).
-                builder.add_node(Node::opaque(
+                manifest.add_node(Node::opaque(
                     parse_id.clone(),
                     typed_outputs.clone(),
                     typed_outputs,
@@ -1186,7 +1192,7 @@ fn add_interface_stub_transport_triplets(
                 ));
 
                 // Wire the triplet: prepare → execute → parse.
-                builder.add_edge(
+                manifest.add_edge(
                     prepare_id.as_str(),
                     "request",
                     execute_id.as_str(),
@@ -1194,7 +1200,7 @@ fn add_interface_stub_transport_triplets(
                 );
                 // Wire per-field edges from execute to parse.
                 for field in &capability.outputs {
-                    builder.add_edge(
+                    manifest.add_edge(
                         execute_id.as_str(),
                         field.name.as_str(),
                         parse_id.as_str(),
@@ -1202,7 +1208,7 @@ fn add_interface_stub_transport_triplets(
                     );
                 }
                 if capability.outputs.is_empty() {
-                    builder.add_edge(execute_id.as_str(), "result", parse_id.as_str(), "result");
+                    manifest.add_edge(execute_id.as_str(), "result", parse_id.as_str(), "result");
                 }
 
                 // Register endpoints under multiple keys for flexible resolution.
@@ -1224,11 +1230,12 @@ fn add_interface_stub_transport_triplets(
                     metadata: Some(metadata),
                 };
                 let cap_key = format!("{}.{}", interface.name, capability.name);
-                registry.register(cap_key.clone(), endpoint.clone());
-                registry.register(format!("{module_name}.{cap_key}"), endpoint);
+                manifest.registry.register(cap_key.clone(), endpoint.clone());
+                manifest.registry.register(format!("{module_name}.{cap_key}"), endpoint);
             }
         }
     }
+    manifest
 }
 
 /// Wraps a `Dag` with O(1) deduplication tracking for nodes and edges.
@@ -1302,6 +1309,16 @@ impl DagBuilder {
         self.seen_edges
             .iter()
             .any(|(_, _, tn, tp, _)| tn == to_node && tp == to_port)
+    }
+
+    /// Apply a transport manifest's nodes and edges to the builder.
+    fn apply_manifest(&mut self, manifest: &transport::TransportManifest) {
+        for node in &manifest.nodes {
+            self.add_node(node.clone());
+        }
+        for edge in &manifest.edges {
+            self.add_edge(&edge.from_node, &edge.from_port, &edge.to_node, &edge.to_port);
+        }
     }
 
     fn clone_transport_triplet(
@@ -1819,12 +1836,14 @@ fn lower_typed_project_with_callable_scope(
     }
 
     add_makegen_scaffolding(&mut builder, &endpoints_by_full);
-    let mut service_registry = if callable_modules.is_some() && active_profile.is_none() {
+    let transport_manifest = if callable_modules.is_some() && active_profile.is_none() {
         let required_service_calls = collect_required_service_call_keys(project, callable_modules);
-        add_service_transport_triplets(&mut builder, project, Some(&required_service_calls))?
+        derive_service_transport_triplets(project, Some(&required_service_calls))?
     } else {
-        add_service_transport_triplets(&mut builder, project, None)?
+        derive_service_transport_triplets(project, None)?
     };
+    builder.apply_manifest(&transport_manifest);
+    let mut service_registry = transport_manifest.registry;
     let data_values = build_data_values(project);
     add_dependency_edges(
         &mut builder,
@@ -1843,13 +1862,10 @@ fn lower_typed_project_with_callable_scope(
     // IS-3: Collect interfaces needing stub transport.
     let stub_interfaces =
         interfaces_needing_stubs(project, active_profile, &profile_bound_interfaces);
-    // IS-4: Register stub transport triplets so resolve_service_call_source can find them.
-    add_interface_stub_transport_triplets(
-        &mut builder,
-        project,
-        &stub_interfaces,
-        &mut service_registry,
-    );
+    // IS-4: Derive stub transport triplets so resolve_service_call_source can find them.
+    let stub_manifest = derive_interface_stub_transport_triplets(project, &stub_interfaces);
+    builder.apply_manifest(&stub_manifest);
+    service_registry.merge(stub_manifest.registry);
     let known_interface_types = collect_interface_type_names(project);
     add_service_call_edges(
         &mut builder,
@@ -5850,13 +5866,12 @@ fn capability_prepare_ports(
         .collect()
 }
 
-fn add_service_transport_triplets(
-    builder: &mut DagBuilder,
+fn derive_service_transport_triplets(
     project: &TypedProject,
     required_calls: Option<&HashSet<String>>,
-) -> Result<ServiceEndpointRegistry, LowerError> {
+) -> Result<transport::TransportManifest, LowerError> {
     let data_registry = build_data_registry(project);
-    let mut registry = ServiceEndpointRegistry::default();
+    let mut manifest = transport::TransportManifest::new();
     for module in &project.modules {
         let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
@@ -5915,7 +5930,7 @@ fn add_service_transport_triplets(
                     .map(|port| port.name.0.clone())
                     .collect::<Vec<_>>();
 
-                builder.add_node(Node::opaque(
+                manifest.add_node(Node::opaque(
                     prepare_id.clone(),
                     prepare_ports,
                     vec![Port::scalar("request", "TransportRequest")],
@@ -5964,7 +5979,7 @@ fn add_service_transport_triplets(
                     },
                 )
                 .with_input_guard("request", Guard::NotEq(Value::Skipped));
-                builder.add_node(execute_node);
+                manifest.add_node(execute_node);
                 let parse_outputs = if operation.outputs.is_empty() {
                     vec![Port::scalar("result", "Unit")]
                 } else {
@@ -5981,7 +5996,7 @@ fn add_service_transport_triplets(
                         })
                         .collect::<Vec<_>>()
                 };
-                builder.add_node(Node::opaque(
+                manifest.add_node(Node::opaque(
                     parse_id.clone(),
                     vec![Port::scalar("response", "TransportResponse")],
                     parse_outputs,
@@ -6000,13 +6015,13 @@ fn add_service_transport_triplets(
                     },
                 ));
 
-                builder.add_edge(
+                manifest.add_edge(
                     prepare_id.as_str(),
                     "request",
                     execute_id.as_str(),
                     "request",
                 );
-                builder.add_edge(
+                manifest.add_edge(
                     execute_id.as_str(),
                     "response",
                     parse_id.as_str(),
@@ -6035,7 +6050,7 @@ fn add_service_transport_triplets(
                     has_auth,
                     metadata: Some(service_metadata),
                 };
-                registry.register(
+                manifest.registry.register(
                     format!("{}.{}", service.name, operation.name),
                     endpoint.clone(),
                 );
@@ -6044,18 +6059,18 @@ fn add_service_transport_triplets(
                     .rsplit('.')
                     .next()
                     .unwrap_or(service.name.as_str());
-                registry.register(
+                manifest.registry.register(
                     format!("{service_tail}.{}", operation.name),
                     endpoint.clone(),
                 );
-                registry.register(
+                manifest.registry.register(
                     format!("{}.{}.{}", module_name, service.name, operation.name),
                     endpoint,
                 );
             }
         }
     }
-    Ok(registry)
+    Ok(manifest)
 }
 
 fn add_service_call_edges(
