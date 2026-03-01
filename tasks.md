@@ -470,18 +470,18 @@ Then run A1 → A2 → A3 and A4 → A5 once C20 is available.
 Delete every manual registry, extern bridge, and thin wrapper. Replace with DSL
 `data` declarations. After: adding a tool requires zero Rust changes.
 
-| # | IDs | What | Acceptance Criteria | Size |
-|---|-----|------|---------------------|------|
-| B1 | RT75 | **Gitignore patterns → DSL data.** `dsl/config/gitignore.dag` with 14 category `data` records. | Data section in `gitignore.rs` deleted. Generated `.gitignore` identical. | S |
-| B2 | RT80 | **Makegen registry → DSL data.** Move `BuildConfig`, `MetaTarget`, manual `ToolInfo` entries. Keep `ToolInfo::from_tool_def()` + Cargo commands (~400 lines). | `registry.rs` from 2,217 to ~400. Generated Makefile identical. | L |
-| B3 | RT74 | **Resource definitions → DSL data.** `dsl/config/resources.dag` with globs + output paths. | `resources.rs` deleted. Resource freshness works. | S |
-| B4 | RT76 | **Docgen targets → DSL data.** `dsl/tools/docgen.dag` data declaration. | `docgen/mod.rs` data deleted. Docgen reads from DSL. | S |
-| B5 | RT77 | **Delete `policy/pragma.rs`.** DSL rendering works (proven). Delete 546-line Rust mirror. | `pragma.rs` deleted. `make pragma` output identical. | S |
-| B6 | RT23 | **Delete `extern_impls.rs`.** Shadow bridges → DSL `extern func`. 2 recursive externs kept via inventory. | `extern_impls.rs` deleted. `lookup_extern_impl()` deleted. | M |
-| B7 | RT81 | **Delete tool wrappers.** 7 thin modules → generic `dsl_builder::build_dsl_graph_for_entrypoint()`. | `bootstrap/`, `build/`, `codegen/`, `infra/`, `gist.rs`, `deps_tool.rs` deleted. | S |
-| B8 | — | **Delete `embedded_assets.rs`.** Dead after extern deletion. | File deleted. | S |
-| B9 | — | **Delete compensating tests.** `tool_registration.rs`, `makefile_parity.rs`, `extern_ratchet.rs`. | 3 files deleted. `cargo test --workspace` passes. | S |
-| B10 | — | **Clean `makegen/shared.rs` + `justfile.rs`.** Remove deleted-registry references. | No references to deleted types. | S |
+| # | IDs | What | Acceptance Criteria | Size | Status |
+|---|-----|------|---------------------|------|--------|
+| B1 | RT75 | **Gitignore patterns → DSL data.** `dsl/config/gitignore.dag` with 14 category `data` records. | Data section in `gitignore.rs` deleted. Generated `.gitignore` identical. | S | Done |
+| B2 | RT80 | **Makegen registry → DSL data.** MetaTarget/CoreWorkflow data in DSL. Dead ToolInfo factory methods deleted. `registry.rs` reduced to 559 lines (from 672). `ToolInfo::from_tool_def()` + Cargo commands remain. Generated Makefile identical. | `registry.rs` lean. Generated Makefile identical. | L | Done |
+| B3 | RT74 | **Resource definitions → DSL data.** `dsl/config/resources.dag` with globs + output paths. | `resources.rs` deleted. Resource freshness works. | S | Done |
+| B4 | RT76 | **Docgen targets → DSL data.** `dsl/tools/docgen.dag` data declaration. | `docgen/mod.rs` data deleted. Docgen reads from DSL. | S | Done |
+| B5 | RT77 | **Delete `policy/pragma.rs`.** DSL rendering works (proven). Delete 546-line Rust mirror. | `pragma.rs` deleted. `make pragma` output identical. | S | Done |
+| B6 | RT23 | **Delete `extern_impls.rs`.** Shadow bridges → DSL `extern func`. 2 recursive externs kept via inventory. | `extern_impls.rs` deleted. `lookup_extern_impl()` deleted. | M | Done |
+| B7 | RT81 | **Delete tool wrappers.** 7 thin modules → generic `dsl_builder::build_dsl_graph_for_entrypoint()`. | `bootstrap/`, `build/`, `codegen/`, `infra/`, `gist.rs`, `deps_tool.rs` deleted. | S | Done |
+| B8 | — | **Delete `embedded_assets.rs`.** Dead after extern deletion. | File deleted. | S | Done |
+| B9 | — | **Delete compensating tests.** `tool_registration.rs`, `makefile_parity.rs`, `extern_ratchet.rs`. | 3 files deleted. `cargo test --workspace` passes. | S | Done |
+| B10 | — | **Clean `makegen/shared.rs` + `justfile.rs`.** Remove deleted-registry references. | No references to deleted types. | S | Done |
 
 **Chain**: B1 → B2 → B10; B3; B4; B5 → B6 → B7 → B8 → B9
 
