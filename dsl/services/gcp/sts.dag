@@ -11,7 +11,13 @@ import extdeps.cloud.gcp.sts {
 }
 
 service gcp.STS {
-  config { endpoint: "https://sts.googleapis.com" }
+  config {
+    endpoint: "https://sts.googleapis.com"
+    // GCP STS rate limits: token exchange has high limits (1000/min)
+    rate_limit: { requests: 1000, per: minute, scope: sts }
+    // Retry on quota exceeded and server errors with exponential backoff
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 503] }
+  }
 
   operation Exchange {
     input {

@@ -11,7 +11,15 @@ import extdeps.github.gists { Gist, GistFile, GistVisibility }
 import extdeps.github.core { GitHubUser, Repository }
 
 service github.Gist {
-  config { endpoint: "https://api.github.com", auth: BearerToken, auth_input: auth_token }
+  config {
+    endpoint: "https://api.github.com"
+    auth: BearerToken
+    auth_input: auth_token
+    // GitHub API rate limits: 5000 requests/hour for authenticated users
+    rate_limit: { requests: 5000, per: hour, scope: core }
+    // Retry on rate limit and server errors with exponential backoff
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503, 504] }
+  }
 
   operation Create {
     input {

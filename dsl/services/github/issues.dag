@@ -26,7 +26,14 @@ import extdeps.github.issues { GitHubIssue, GitHubIssueState, Label, IssueCommen
 import extdeps.github.core { GitHubUser, Repository, Pagination }
 
 service github.Issues : IssueProvider {
-  config { endpoint: "https://api.github.com", auth: BearerToken }
+  config {
+    endpoint: "https://api.github.com"
+    auth: BearerToken
+    // GitHub API rate limits: 5000 requests/hour for authenticated users
+    rate_limit: { requests: 5000, per: hour, scope: core }
+    // Retry on rate limit and server errors with exponential backoff
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503, 504] }
+  }
 
   // --- Core CRUD ---------------------------------------------------------
 

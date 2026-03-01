@@ -13,7 +13,14 @@ import extdeps.llm.openai {
 import extdeps.llm.pricing { ModelPricing, ContextWindow, ModelCapability }
 
 service llm.OpenAI {
-  config { endpoint: "https://api.openai.com", auth: BearerToken }
+  config {
+    endpoint: "https://api.openai.com"
+    auth: BearerToken
+    // OpenAI API rate limits: varies by tier (500-3500 RPM), use conservative default
+    rate_limit: { requests: 500, per: minute, scope: chat }
+    // Retry on rate limit and server errors with exponential backoff
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503] }
+  }
 
   operation ChatCompletion {
     input {
