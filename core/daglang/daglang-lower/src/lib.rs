@@ -17,7 +17,7 @@
 //! ```
 
 // RT-C4: LoweringContext struct will group these params. Until then, allow.
-#![allow(clippy::too_many_arguments)]
+
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
@@ -1236,6 +1236,35 @@ fn derive_interface_stub_transport_triplets(
         }
     }
     manifest
+}
+
+/// Read-only lookup tables threaded through wiring functions during lowering.
+///
+/// Bundles the identifiers and registries that most wiring functions need,
+/// reducing parameter counts across the module. Constructed per-item within
+/// `add_dependency_edges` and similar top-level phases.
+struct LoweringContext<'a> {
+    module_name: &'a str,
+    item_name: &'a str,
+    param_types: &'a HashMap<String, String>,
+    endpoints_by_name: &'a HashMap<String, Option<LoweredEndpoint>>,
+    data_values: &'a HashMap<String, serde_json::Value>,
+    service_registry: &'a ServiceEndpointRegistry,
+    bound_callable_sources: &'a HashMap<String, LoweredEndpoint>,
+    bound_service_sources: &'a HashMap<String, ServiceTransportEndpoint>,
+    expanded_results: &'a HashMap<String, PatternExpansionResult>,
+}
+
+/// Per-node expansion state for pattern lowering.
+///
+/// Groups the suffix, target, and argument-mapping state that flows through
+/// the pattern expansion call chain (expand_pattern_body_node, etc.).
+struct PatternNodeEnv<'a> {
+    suffix: &'a str,
+    target: &'a LoweredEndpoint,
+    arg_map: &'a HashMap<String, &'a Expr>,
+    uses_binding_types: &'a HashMap<String, String>,
+    node_outputs: &'a HashMap<String, ExpandedNodeOutput>,
 }
 
 /// Wraps a `Dag` with O(1) deduplication tracking for nodes and edges.
@@ -6445,40 +6474,26 @@ fn add_service_call_edges(
             // can resolve to the loop node's "result" output.
             let mut augmented_callable_sources = bound_callable_sources.clone();
             collect_for_loop_bindings(stmts, target, &mut augmented_callable_sources);
-            wire_fn_call_arguments(
-                builder,
-                stmts,
-                endpoints_by_name,
-                &param_types,
-                &augmented_callable_sources,
-                &bound_service_sources,
-                module_name.as_str(),
+            let empty_expanded = HashMap::new();
+            let fn_ctx = LoweringContext {
+                module_name: module_name.as_str(),
                 item_name,
+                param_types: &param_types,
+                endpoints_by_name,
                 data_values,
-            );
+                service_registry,
+                bound_callable_sources: &augmented_callable_sources,
+                bound_service_sources: &bound_service_sources,
+                expanded_results: &empty_expanded,
+            };
+            wire_fn_call_arguments(builder, &fn_ctx, stmts);
             // Wire for-loop iterable expressions to loop node "items" ports.
-            wire_for_loop_iterables(
-                builder,
-                stmts,
-                target,
-                &param_types,
-                &bound_callable_sources,
-                &bound_service_sources,
-                module_name.as_str(),
-                item_name,
-            );
-            wire_callable_return_outputs(
-                builder,
-                stmts,
-                target,
-                body_lossy,
-                &param_types,
-                &augmented_callable_sources,
-                &bound_service_sources,
-                endpoints_by_name,
-                module_name.as_str(),
-                item_name,
-            );
+            let loop_ctx = LoweringContext {
+                bound_callable_sources: &bound_callable_sources,
+                ..fn_ctx
+            };
+            wire_for_loop_iterables(builder, &loop_ctx, stmts, target);
+            wire_callable_return_outputs(builder, &fn_ctx, stmts, target, body_lossy);
         }
     }
     for module in &project.modules {
@@ -7960,19 +7975,13 @@ pub fn build_data_values(project: &TypedProject) -> HashMap<String, serde_json::
 
 fn wire_fn_call_arguments(
     builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
     stmts: &[Stmt],
-    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-    param_types: &HashMap<String, String>,
-    bound_callable_sources: &HashMap<String, LoweredEndpoint>,
-    bound_service_sources: &HashMap<String, ServiceTransportEndpoint>,
-    module_name: &str,
-    item_name: &str,
-    data_values: &HashMap<String, serde_json::Value>,
 ) {
     let mut fn_calls = Vec::new();
     collect_fn_calls_with_args(stmts, &mut fn_calls);
     for fn_call in &fn_calls {
-        let Some(Some(fn_endpoint)) = endpoints_by_name.get(&fn_call.name) else {
+        let Some(Some(fn_endpoint)) = ctx.endpoints_by_name.get(&fn_call.name) else {
             continue;
         };
         for (index, arg) in fn_call.args.iter().enumerate() {
@@ -7983,7 +7992,7 @@ fn wire_fn_call_arguments(
                 continue;
             }
             if let Some((base_ident, field_name)) = arg.field_access.as_ref() {
-                if let Some(source) = bound_callable_sources.get(base_ident) {
+                if let Some(source) = ctx.bound_callable_sources.get(base_ident) {
                     builder.add_edge(
                         source.node_id.as_str(),
                         field_name.as_str(),
@@ -7992,7 +8001,7 @@ fn wire_fn_call_arguments(
                     );
                     continue;
                 }
-                if let Some(source) = bound_service_sources.get(base_ident) {
+                if let Some(source) = ctx.bound_service_sources.get(base_ident) {
                     builder.add_edge(
                         source.parse.node_id.as_str(),
                         field_name.as_str(),
@@ -8003,11 +8012,11 @@ fn wire_fn_call_arguments(
                 }
             }
             if let Some(arg_ident) = arg.ident.as_deref() {
-                if let Some(param_ty) = param_types.get(arg_ident) {
+                if let Some(param_ty) = ctx.param_types.get(arg_ident) {
                     let src = ensure_param_source_node(
                         builder,
-                        module_name,
-                        item_name,
+                        ctx.module_name,
+                        ctx.item_name,
                         arg_ident,
                         param_ty.as_str(),
                     );
@@ -8019,7 +8028,7 @@ fn wire_fn_call_arguments(
                     );
                     continue;
                 }
-                if let Some(source) = bound_callable_sources.get(arg_ident) {
+                if let Some(source) = ctx.bound_callable_sources.get(arg_ident) {
                     builder.add_edge(
                         source.node_id.as_str(),
                         source.primary_output.as_str(),
@@ -8028,7 +8037,7 @@ fn wire_fn_call_arguments(
                     );
                     continue;
                 }
-                if let Some(source) = bound_service_sources.get(arg_ident) {
+                if let Some(source) = ctx.bound_service_sources.get(arg_ident) {
                     builder.add_edge(
                         source.parse.node_id.as_str(),
                         source.parse.primary_output.as_str(),
@@ -8038,12 +8047,12 @@ fn wire_fn_call_arguments(
                     continue;
                 }
                 // Wire data declaration references as JSON literal source nodes.
-                if let Some(json_val) = data_values.get(arg_ident) {
+                if let Some(json_val) = ctx.data_values.get(arg_ident) {
                     let literal = ServiceCallArgLiteral::Json(json_val.clone());
                     let src = ensure_literal_source_node(
                         builder,
-                        module_name,
-                        item_name,
+                        ctx.module_name,
+                        ctx.item_name,
                         param_name,
                         "Any",
                         &literal,
@@ -8061,8 +8070,8 @@ fn wire_fn_call_arguments(
             if let Some(literal) = arg.literal.as_ref() {
                 let src = ensure_literal_source_node(
                     builder,
-                    module_name,
-                    item_name,
+                    ctx.module_name,
+                    ctx.item_name,
                     param_name,
                     "Any",
                     literal,
@@ -8157,59 +8166,54 @@ fn return_literal_arg(expr: &Expr) -> Option<ServiceCallArgLiteral> {
 
 fn resolve_return_expr_source(
     builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
     expr: &Expr,
     output_port: &Port,
     output_name: &str,
-    param_types: &HashMap<String, String>,
-    bound_callable_sources: &HashMap<String, LoweredEndpoint>,
-    bound_service_sources: &HashMap<String, ServiceTransportEndpoint>,
-    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-    module_name: &str,
-    item_name: &str,
     disambiguator: &str,
 ) -> Option<(String, String)> {
     let expr = unwrap_return_expr(expr);
     match expr {
         Expr::Ident(name) => {
-            if let Some(param_ty) = param_types.get(name) {
+            if let Some(param_ty) = ctx.param_types.get(name) {
                 let src = ensure_param_source_node(
                     builder,
-                    module_name,
-                    item_name,
+                    ctx.module_name,
+                    ctx.item_name,
                     name,
                     param_ty.as_str(),
                 );
                 return Some((src, name.clone()));
             }
-            if let Some(source) = bound_callable_sources.get(name) {
+            if let Some(source) = ctx.bound_callable_sources.get(name) {
                 return Some((source.node_id.clone(), source.primary_output.clone()));
             }
-            if let Some(source) = bound_service_sources.get(name) {
+            if let Some(source) = ctx.bound_service_sources.get(name) {
                 return Some((
                     source.parse.node_id.clone(),
                     source.parse.primary_output.clone(),
                 ));
             }
-            if let Some(Some(source)) = endpoints_by_name.get(name) {
+            if let Some(Some(source)) = ctx.endpoints_by_name.get(name) {
                 return Some((source.node_id.clone(), source.primary_output.clone()));
             }
             None
         }
         Expr::FieldAccess(base, field) => {
             if let Expr::Ident(base_ident) = base.as_ref() {
-                if let Some(source) = bound_callable_sources.get(base_ident) {
+                if let Some(source) = ctx.bound_callable_sources.get(base_ident) {
                     return Some((source.node_id.clone(), field.clone()));
                 }
-                if let Some(source) = bound_service_sources.get(base_ident) {
+                if let Some(source) = ctx.bound_service_sources.get(base_ident) {
                     return Some((source.parse.node_id.clone(), field.clone()));
                 }
-                if let Some(Some(source)) = endpoints_by_name.get(base_ident) {
+                if let Some(Some(source)) = ctx.endpoints_by_name.get(base_ident) {
                     return Some((source.node_id.clone(), field.clone()));
                 }
             }
             None
         }
-        Expr::Call(name, _) => endpoints_by_name
+        Expr::Call(name, _) => ctx.endpoints_by_name
             .get(name)
             .and_then(|entry| entry.clone())
             .map(|source| (source.node_id, source.primary_output)),
@@ -8217,8 +8221,8 @@ fn resolve_return_expr_source(
             let literal = return_literal_arg(expr)?;
             let src = ensure_literal_source_node(
                 builder,
-                module_name,
-                item_name,
+                ctx.module_name,
+                ctx.item_name,
                 output_name,
                 output_port.type_id.0.as_str(),
                 &literal,
@@ -8230,15 +8234,10 @@ fn resolve_return_expr_source(
         _ => {
             synthesize_expr_compute(
                 builder,
+                ctx,
                 expr,
                 output_port,
                 output_name,
-                param_types,
-                bound_callable_sources,
-                bound_service_sources,
-                endpoints_by_name,
-                module_name,
-                item_name,
                 disambiguator,
             )
         }
@@ -8256,10 +8255,7 @@ struct ExprLeafRef {
 /// (let bindings) that can't be resolved as compute node inputs.
 fn collect_expr_leaf_refs(
     expr: &Expr,
-    param_types: &HashMap<String, String>,
-    bound_callable_sources: &HashMap<String, LoweredEndpoint>,
-    bound_service_sources: &HashMap<String, ServiceTransportEndpoint>,
-    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+    ctx: &LoweringContext<'_>,
     refs: &mut Vec<ExprLeafRef>,
     seen: &mut HashSet<String>,
     has_local_refs: &mut bool,
@@ -8270,7 +8266,7 @@ fn collect_expr_leaf_refs(
             if seen.contains(&port_name) {
                 return;
             }
-            if let Some(param_ty) = param_types.get(name) {
+            if let Some(param_ty) = ctx.param_types.get(name) {
                 seen.insert(port_name.clone());
                 refs.push(ExprLeafRef {
                     input_port: port_name,
@@ -8280,7 +8276,7 @@ fn collect_expr_leaf_refs(
                         ty: param_ty.clone(),
                     },
                 });
-            } else if let Some(source) = bound_callable_sources.get(name) {
+            } else if let Some(source) = ctx.bound_callable_sources.get(name) {
                 seen.insert(port_name.clone());
                 refs.push(ExprLeafRef {
                     input_port: port_name,
@@ -8289,7 +8285,7 @@ fn collect_expr_leaf_refs(
                         port: source.primary_output.clone(),
                     },
                 });
-            } else if let Some(source) = bound_service_sources.get(name) {
+            } else if let Some(source) = ctx.bound_service_sources.get(name) {
                 seen.insert(port_name.clone());
                 refs.push(ExprLeafRef {
                     input_port: port_name,
@@ -8298,7 +8294,7 @@ fn collect_expr_leaf_refs(
                         port: source.parse.primary_output.clone(),
                     },
                 });
-            } else if let Some(Some(source)) = endpoints_by_name.get(name) {
+            } else if let Some(Some(source)) = ctx.endpoints_by_name.get(name) {
                 seen.insert(port_name.clone());
                 refs.push(ExprLeafRef {
                     input_port: port_name,
@@ -8317,7 +8313,7 @@ fn collect_expr_leaf_refs(
                 if seen.contains(&port_name) {
                     return;
                 }
-                if let Some(param_ty) = param_types.get(base_ident) {
+                if let Some(param_ty) = ctx.param_types.get(base_ident) {
                     let base_port = base_ident.clone();
                     if !seen.contains(&base_port) {
                         seen.insert(base_port.clone());
@@ -8330,7 +8326,7 @@ fn collect_expr_leaf_refs(
                             },
                         });
                     }
-                } else if let Some(source) = bound_callable_sources.get(base_ident) {
+                } else if let Some(source) = ctx.bound_callable_sources.get(base_ident) {
                     seen.insert(port_name.clone());
                     refs.push(ExprLeafRef {
                         input_port: port_name,
@@ -8339,7 +8335,7 @@ fn collect_expr_leaf_refs(
                             port: field.clone(),
                         },
                     });
-                } else if let Some(source) = bound_service_sources.get(base_ident) {
+                } else if let Some(source) = ctx.bound_service_sources.get(base_ident) {
                     seen.insert(port_name.clone());
                     refs.push(ExprLeafRef {
                         input_port: port_name,
@@ -8348,7 +8344,7 @@ fn collect_expr_leaf_refs(
                             port: field.clone(),
                         },
                     });
-                } else if let Some(Some(source)) = endpoints_by_name.get(base_ident) {
+                } else if let Some(Some(source)) = ctx.endpoints_by_name.get(base_ident) {
                     seen.insert(port_name.clone());
                     refs.push(ExprLeafRef {
                         input_port: port_name,
@@ -8359,71 +8355,71 @@ fn collect_expr_leaf_refs(
                     });
                 }
             } else {
-                collect_expr_leaf_refs(base, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+                collect_expr_leaf_refs(base, ctx, refs, seen, has_local_refs);
             }
         }
         Expr::BinOp(left, _, right) => {
-            collect_expr_leaf_refs(left, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
-            collect_expr_leaf_refs(right, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+            collect_expr_leaf_refs(left, ctx, refs, seen, has_local_refs);
+            collect_expr_leaf_refs(right, ctx, refs, seen, has_local_refs);
         }
         Expr::UnaryOp(_, inner) => {
-            collect_expr_leaf_refs(inner, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+            collect_expr_leaf_refs(inner, ctx, refs, seen, has_local_refs);
         }
         Expr::If(cond, then_, else_) => {
-            collect_expr_leaf_refs(cond, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
-            collect_expr_leaf_refs(then_, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+            collect_expr_leaf_refs(cond, ctx, refs, seen, has_local_refs);
+            collect_expr_leaf_refs(then_, ctx, refs, seen, has_local_refs);
             if let Some(e) = else_ {
-                collect_expr_leaf_refs(e, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+                collect_expr_leaf_refs(e, ctx, refs, seen, has_local_refs);
             }
         }
         Expr::Pipe(receiver, call) => {
-            collect_expr_leaf_refs(receiver, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
-            collect_expr_leaf_refs(call, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+            collect_expr_leaf_refs(receiver, ctx, refs, seen, has_local_refs);
+            collect_expr_leaf_refs(call, ctx, refs, seen, has_local_refs);
         }
         Expr::PipeCall(receiver, _, args) => {
-            collect_expr_leaf_refs(receiver, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+            collect_expr_leaf_refs(receiver, ctx, refs, seen, has_local_refs);
             for (_, arg) in args {
-                collect_expr_leaf_refs(arg, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+                collect_expr_leaf_refs(arg, ctx, refs, seen, has_local_refs);
             }
         }
         Expr::Match(scrutinee, arms) => {
-            collect_expr_leaf_refs(scrutinee, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+            collect_expr_leaf_refs(scrutinee, ctx, refs, seen, has_local_refs);
             for arm in arms {
-                collect_expr_leaf_refs(&arm.body, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+                collect_expr_leaf_refs(&arm.body, ctx, refs, seen, has_local_refs);
             }
         }
         Expr::Call(_, args) => {
             for (_, arg) in args {
-                collect_expr_leaf_refs(arg, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+                collect_expr_leaf_refs(arg, ctx, refs, seen, has_local_refs);
             }
         }
         Expr::Record(_, fields) => {
             for (_, field_expr) in fields {
-                collect_expr_leaf_refs(field_expr, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+                collect_expr_leaf_refs(field_expr, ctx, refs, seen, has_local_refs);
             }
         }
         Expr::StringInterp(parts) => {
             for part in parts {
                 if let daglang_syntax::ast::StringPart::Expr(inner) = part {
-                    collect_expr_leaf_refs(inner, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+                    collect_expr_leaf_refs(inner, ctx, refs, seen, has_local_refs);
                 }
             }
         }
         Expr::List(elems) => {
             for elem in elems {
-                collect_expr_leaf_refs(elem, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+                collect_expr_leaf_refs(elem, ctx, refs, seen, has_local_refs);
             }
         }
         Expr::Lambda(_, body) => {
-            collect_expr_leaf_refs(body, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+            collect_expr_leaf_refs(body, ctx, refs, seen, has_local_refs);
         }
         Expr::For(_, iterable, _, body) => {
-            collect_expr_leaf_refs(iterable, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
-            collect_expr_leaf_refs(body, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+            collect_expr_leaf_refs(iterable, ctx, refs, seen, has_local_refs);
+            collect_expr_leaf_refs(body, ctx, refs, seen, has_local_refs);
         }
         Expr::Return(fields) => {
             for (_, field_expr) in fields {
-                collect_expr_leaf_refs(field_expr, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+                collect_expr_leaf_refs(field_expr, ctx, refs, seen, has_local_refs);
             }
         }
         Expr::Literal(_)
@@ -8621,15 +8617,10 @@ fn remap_pattern(pattern: &daglang_syntax::ast::Pattern) -> expr::LoweredPattern
 /// Creates a node that evaluates the expression using `evaluate_fn_body` at runtime.
 fn synthesize_expr_compute(
     builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
     expr: &Expr,
     output_port: &Port,
     output_name: &str,
-    param_types: &HashMap<String, String>,
-    bound_callable_sources: &HashMap<String, LoweredEndpoint>,
-    bound_service_sources: &HashMap<String, ServiceTransportEndpoint>,
-    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-    module_name: &str,
-    item_name: &str,
     disambiguator: &str,
 ) -> Option<(String, String)> {
     let mut refs: Vec<ExprLeafRef> = Vec::new();
@@ -8637,10 +8628,7 @@ fn synthesize_expr_compute(
     let mut has_local_refs = false;
     collect_expr_leaf_refs(
         expr,
-        param_types,
-        bound_callable_sources,
-        bound_service_sources,
-        endpoints_by_name,
+        ctx,
         &mut refs,
         &mut seen,
         &mut has_local_refs,
@@ -8676,15 +8664,15 @@ fn synthesize_expr_compute(
     // 4. Create the compute node.
     let node_id = format!(
         "expr_compute_{}",
-        sanitize_identifier(&format!("{module_name}_{item_name}_{output_name}_{disambiguator}"))
+        sanitize_identifier(&format!("{}_{}_{}_{}", ctx.module_name, ctx.item_name, output_name, disambiguator))
     );
     builder.add_node(Node::opaque(
         node_id.clone(),
         input_ports,
         output_ports,
         LoweredOp::Primitive {
-            module: module_name.to_string(),
-            name: format!("expr_compute::{item_name}::{output_name}"),
+            module: ctx.module_name.to_string(),
+            name: format!("expr_compute::{}::{}", ctx.item_name, output_name),
             kind: PrimitiveOpKind::ExprCompute {
                 fn_body: Box::new(fn_body),
             },
@@ -8695,7 +8683,7 @@ fn synthesize_expr_compute(
         match &leaf.source {
             expr::LeafRef::Param { name, ty, .. } => {
                 let param_source_id =
-                    ensure_param_source_node(builder, module_name, item_name, name, ty);
+                    ensure_param_source_node(builder, ctx.module_name, ctx.item_name, name, ty);
                 builder.add_edge(&param_source_id, name, &node_id, &leaf.input_port);
             }
             expr::LeafRef::Callable { endpoint, port }
@@ -8710,15 +8698,10 @@ fn synthesize_expr_compute(
 
 fn wire_callable_return_outputs(
     builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
     stmts: &[Stmt],
     target: &LoweredEndpoint,
     body_lossy: bool,
-    param_types: &HashMap<String, String>,
-    bound_callable_sources: &HashMap<String, LoweredEndpoint>,
-    bound_service_sources: &HashMap<String, ServiceTransportEndpoint>,
-    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-    module_name: &str,
-    item_name: &str,
 ) {
     let outputs = match builder.dag.get_node(&NodeId::new(target.node_id.clone())) {
         Some(node) => node.outputs.clone(),
@@ -8743,15 +8726,10 @@ fn wire_callable_return_outputs(
         }
         let Some((source_node, source_port)) = resolve_return_expr_source(
             builder,
+            ctx,
             &expr,
             &output_port,
             output_name.as_str(),
-            param_types,
-            bound_callable_sources,
-            bound_service_sources,
-            endpoints_by_name,
-            module_name,
-            item_name,
             &format!("return_{index}"),
         ) else {
             // RT4c: Return output can't be wired.
@@ -8847,13 +8825,9 @@ fn collect_for_loop_bindings(
 /// or parameter) and wires the data edge.
 fn wire_for_loop_iterables(
     builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
     stmts: &[Stmt],
     target: &LoweredEndpoint,
-    param_types: &HashMap<String, String>,
-    bound_callable_sources: &HashMap<String, LoweredEndpoint>,
-    bound_service_sources: &HashMap<String, ServiceTransportEndpoint>,
-    module_name: &str,
-    item_name: &str,
 ) {
     let for_sites = detect_for_loops_in_stmts(stmts);
     for (index, site) in for_sites.iter().enumerate() {
@@ -8863,14 +8837,14 @@ fn wire_for_loop_iterables(
         };
         match iterable {
             IterableRef::FieldAccess(base_ident, field_name) => {
-                if let Some(source) = bound_callable_sources.get(base_ident) {
+                if let Some(source) = ctx.bound_callable_sources.get(base_ident) {
                     builder.add_edge(
                         source.node_id.as_str(),
                         field_name.as_str(),
                         loop_node_id.as_str(),
                         "items",
                     );
-                } else if let Some(source) = bound_service_sources.get(base_ident) {
+                } else if let Some(source) = ctx.bound_service_sources.get(base_ident) {
                     builder.add_edge(
                         source.parse.node_id.as_str(),
                         field_name.as_str(),
@@ -8880,23 +8854,23 @@ fn wire_for_loop_iterables(
                 }
             }
             IterableRef::Ident(name) => {
-                if let Some(param_ty) = param_types.get(name) {
+                if let Some(param_ty) = ctx.param_types.get(name) {
                     let src = ensure_param_source_node(
                         builder,
-                        module_name,
-                        item_name,
+                        ctx.module_name,
+                        ctx.item_name,
                         name,
                         param_ty.as_str(),
                     );
                     builder.add_edge(src.as_str(), name, loop_node_id.as_str(), "items");
-                } else if let Some(source) = bound_callable_sources.get(name) {
+                } else if let Some(source) = ctx.bound_callable_sources.get(name) {
                     builder.add_edge(
                         source.node_id.as_str(),
                         source.primary_output.as_str(),
                         loop_node_id.as_str(),
                         "items",
                     );
-                } else if let Some(source) = bound_service_sources.get(name) {
+                } else if let Some(source) = ctx.bound_service_sources.get(name) {
                     builder.add_edge(
                         source.parse.node_id.as_str(),
                         source.parse.primary_output.as_str(),
