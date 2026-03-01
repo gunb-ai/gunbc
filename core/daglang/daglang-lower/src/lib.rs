@@ -3012,15 +3012,19 @@ struct ForLoopSite {
     body_service_call_paths: Vec<Vec<String>>,
 }
 
+/// Detected if/else branch with service call paths per branch.
+/// Populated from `scope::ScopedBody` via `collect_if_sites_from_scoped`.
 #[derive(Debug)]
-struct IfBranchScopeSite {
+struct IfBranchSite {
     has_else: bool,
     then_service_call_paths: Vec<Vec<String>>,
     else_service_call_paths: Vec<Vec<String>>,
 }
 
+/// Detected match expression with service call paths across all arms.
+/// Populated from `scope::ScopedBody` via `collect_match_sites_from_scoped`.
 #[derive(Debug)]
-struct MatchBranchScopeSite {
+struct MatchBranchSite {
     arm_count: usize,
     all_service_call_paths: Vec<Vec<String>>,
 }
@@ -3078,6 +3082,78 @@ fn collect_for_loop_sites_from_scoped(body: &scope::ScopedBody, out: &mut Vec<Fo
     }
 }
 
+fn collect_if_sites_from_scoped(body: &scope::ScopedBody, out: &mut Vec<IfBranchSite>) {
+    for item in &body.items {
+        match item {
+            scope::ScopedItem::IfBranch {
+                then_body,
+                else_body,
+            } => {
+                out.push(IfBranchSite {
+                    has_else: else_body.is_some(),
+                    then_service_call_paths: collect_service_paths_from_scoped_body(then_body),
+                    else_service_call_paths: else_body
+                        .as_ref()
+                        .map(|b| collect_service_paths_from_scoped_body(b))
+                        .unwrap_or_default(),
+                });
+                collect_if_sites_from_scoped(then_body, out);
+                if let Some(else_body) = else_body {
+                    collect_if_sites_from_scoped(else_body, out);
+                }
+            }
+            scope::ScopedItem::ForLoop { body, .. } => {
+                collect_if_sites_from_scoped(body, out);
+            }
+            scope::ScopedItem::MatchBranch { arms } => {
+                for arm in arms {
+                    collect_if_sites_from_scoped(&arm.body, out);
+                }
+            }
+            scope::ScopedItem::ServiceCall(_)
+            | scope::ScopedItem::FnCall { .. }
+            | scope::ScopedItem::Binding { .. }
+            | scope::ScopedItem::Other => {}
+        }
+    }
+}
+
+fn collect_match_sites_from_scoped(body: &scope::ScopedBody, out: &mut Vec<MatchBranchSite>) {
+    for item in &body.items {
+        match item {
+            scope::ScopedItem::MatchBranch { arms } => {
+                let mut all_paths = Vec::new();
+                for arm in arms {
+                    all_paths.extend(collect_service_paths_from_scoped_body(&arm.body));
+                }
+                out.push(MatchBranchSite {
+                    arm_count: arms.len(),
+                    all_service_call_paths: all_paths,
+                });
+                for arm in arms {
+                    collect_match_sites_from_scoped(&arm.body, out);
+                }
+            }
+            scope::ScopedItem::IfBranch {
+                then_body,
+                else_body,
+            } => {
+                collect_match_sites_from_scoped(then_body, out);
+                if let Some(else_body) = else_body {
+                    collect_match_sites_from_scoped(else_body, out);
+                }
+            }
+            scope::ScopedItem::ForLoop { body, .. } => {
+                collect_match_sites_from_scoped(body, out);
+            }
+            scope::ScopedItem::ServiceCall(_)
+            | scope::ScopedItem::FnCall { .. }
+            | scope::ScopedItem::Binding { .. }
+            | scope::ScopedItem::Other => {}
+        }
+    }
+}
+
 fn detect_for_loops_in_stmts(stmts: &[Stmt]) -> Vec<ForLoopSite> {
     let scoped = scope::ScopedBody::from_stmts(stmts);
     let mut sites = Vec::new();
@@ -3085,68 +3161,17 @@ fn detect_for_loops_in_stmts(stmts: &[Stmt]) -> Vec<ForLoopSite> {
     sites
 }
 
-/// Collect service call paths from a single expression (non-recursive into for-loops).
-pub(crate) fn collect_service_call_paths_from_expr(expr: &Expr, paths: &mut Vec<Vec<String>>) {
-    if let Expr::ServiceCall(path, _) = expr {
-        paths.push(path.clone());
-    }
-    // Recurse into sub-expressions (but stop at nested for-loops).
-    match expr {
-        Expr::Call(_, args) | Expr::ServiceCall(_, args) => {
-            for (_, arg) in args {
-                collect_service_call_paths_from_expr(arg, paths);
-            }
-        }
-        Expr::FieldAccess(base, _) => collect_service_call_paths_from_expr(base, paths),
-        Expr::BinOp(lhs, _, rhs) | Expr::Pipe(lhs, rhs) => {
-            collect_service_call_paths_from_expr(lhs, paths);
-            collect_service_call_paths_from_expr(rhs, paths);
-        }
-        Expr::UnaryOp(_, inner) | Expr::Lambda(_, inner) | Expr::After(inner, _) => {
-            collect_service_call_paths_from_expr(inner, paths);
-        }
-        Expr::Guarded(inner, guard) => {
-            collect_service_call_paths_from_expr(inner, paths);
-            collect_service_call_paths_from_expr(guard, paths);
-        }
-        _ => {}
-    }
-}
-
-fn detect_if_branches_in_stmts(stmts: &[Stmt]) -> Vec<IfBranchScopeSite> {
+fn detect_if_branches_in_stmts(stmts: &[Stmt]) -> Vec<IfBranchSite> {
+    let scoped = scope::ScopedBody::from_stmts(stmts);
     let mut sites = Vec::new();
-    walk_stmts(stmts, &mut |expr| {
-        if let Expr::If(_, then_expr, else_branch) = expr {
-            let mut then_calls = Vec::new();
-            collect_service_call_paths_from_expr(then_expr, &mut then_calls);
-            let mut else_calls = Vec::new();
-            if let Some(else_expr) = else_branch {
-                collect_service_call_paths_from_expr(else_expr, &mut else_calls);
-            }
-            sites.push(IfBranchScopeSite {
-                has_else: else_branch.is_some(),
-                then_service_call_paths: then_calls,
-                else_service_call_paths: else_calls,
-            });
-        }
-    });
+    collect_if_sites_from_scoped(&scoped, &mut sites);
     sites
 }
 
-fn detect_match_branches_in_stmts(stmts: &[Stmt]) -> Vec<MatchBranchScopeSite> {
+fn detect_match_branches_in_stmts(stmts: &[Stmt]) -> Vec<MatchBranchSite> {
+    let scoped = scope::ScopedBody::from_stmts(stmts);
     let mut sites = Vec::new();
-    walk_stmts(stmts, &mut |expr| {
-        if let Expr::Match(_, arms) = expr {
-            let mut all_calls = Vec::new();
-            for arm in arms {
-                collect_service_call_paths_from_expr(&arm.body, &mut all_calls);
-            }
-            sites.push(MatchBranchScopeSite {
-                arm_count: arms.len(),
-                all_service_call_paths: all_calls,
-            });
-        }
-    });
+    collect_match_sites_from_scoped(&scoped, &mut sites);
     sites
 }
 
