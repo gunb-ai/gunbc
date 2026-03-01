@@ -541,13 +541,8 @@ spec.rs       # Service operation specs
 | C19 | RT83, RT4b | **Restore passthrough enforcement + runtime fail-closed diagnostics.** After C4+C5+C7 wire dag_util branches, required outputs with no input must return `ExecError` (not `Skipped`) and emit clear diagnostics for missing declared passthroughs (RT4b). | `resolve.rs` returns `ExecError` for required missing outputs. Missing passthrough ports are diagnosable (no silent fallback). CI clean (no unwired branches). | S |
 | ~~C20~~ | ~~RT59, RT63~~ | ~~**CLI generator: profile, mode, subcommand support.** Expose `available_profiles` in `CompileOutput`. Template generates `--profile` enum flag, `--mode ensure\|verify`, subcommand dispatch for multi-func modules. Unblocks Worker A.~~ **Done** | ~~Generated CLI for `pipelines/sdlc.dag` accepts `--profile`. Generated CLI for multi-func modules has subcommands.~~ | ~~L~~ |
 | C21 | — | **CLI generator: KEY=VALUE and multi-value flag support.** For `Map<String, String>` params, generate `KEY=VALUE` parser (e.g., `--input project_id=my-project`). For `List<String>` params, generate accumulator flags (`--target A --target B`). Required for A5 (infra.rs elimination). | `gunbc-infra --input project_id=foo` parses to map. `--target A --target B` parses to list. | M |
-| C22 | TP-1 | **Transport primitives: DSL syntax.** Add `rate_limit {}`, `retry {}`, `circuit_breaker {}`, `credential {}` blocks to grammar. Parse budget expressions (`5000 per hour`). Typecheck scope bindings (`uses rate_limit: core`). See `docs/design/transport-primitives.md`. | `rate_limit core { budget: 5000 per hour }` parses. `uses rate_limit: core` typechecks. | L |
-| C23 | TP-2 | **Transport primitives: IR lowering.** Lower transport blocks to existing `TransportMiddlewareConfig` IR. Rate limit budgets become `RateLimitConfig`. Retry policies become `RetryConfig`. | Lowered IR contains middleware config from DSL blocks. Rust runtime still interprets. | M |
-| C24 | TP-3 | **Transport primitives: domain data migration.** Move rate limit budgets from Rust to `dsl/services/*.dag`. GitHub 5000/hour, GCP quotas, Anthropic limits. Service definitions become source of truth. | `lib/transport/` reads budgets from compiled IR, not hardcoded. | M |
-| C25 | TP-4 | **Transport primitives: emit per backend.** Emit rate limit/retry/circuit breaker logic per target language. Rust emit uses existing middleware as template. Go/C stubs for future. | Generated Rust code handles rate limiting without runtime middleware. | XL |
-| C26 | TP-5 | **Transport middleware elimination.** Delete `lib/transport/src/{rate_limit,retry,credential,pipeline}.rs`. All transport logic is generated from DSL. Only thin executor layer remains. | `lib/transport/` has no middleware. CI passes. | L |
 
-**Chain**: C1 → C3; C2; C10 (RT4a/c) → C4 → C5 → C6; C7; C8; C9; C10a → (RF-INV1 or RF-INV2 gate) → C11 → C14 → C15 → C19; C12; C13; C16; C17; C18; C20 (early, unblocks A); C21 (unblocks A5); C22 → C23 → C24 → C25 → C26
+**Chain**: C1 → C3; C2; C10 (RT4a/c) → C4 → C5 → C6; C7; C8; C9; C10a → (RF-INV1 or RF-INV2 gate) → C11 → C14 → C15 → C19; C12; C13; C16; C17; C18; C20 (early, unblocks A); C21 (unblocks A5)
 
 ---
 
@@ -968,11 +963,24 @@ the sibling repos useful (failure modes, edge cases, rate limits, prerequisites)
 
 ### Principle
 
-Make the transport layer production-ready: rate limiting, retry with backoff,
-response classification, credential middleware, enriched virtual backends.
-All runtime infrastructure that Lane 7 (SDLC Production) needs.
+Two-phase approach following the Protobuf/gRPC pattern:
 
-**Rust work in `lib/transport/`, `core/test/`, `core/ir/src/transport/`.**
+**Phase 1 (TL-0:10): Target SDK** — Build language-specific OS mechanisms (token
+buckets, mutexes, retry loops, credential caches). This is the "runtime library"
+that handles thread sleep, atomic counters, TCP sockets. Domain-agnostic.
+
+**Phase 2 (TL-11:15): Domain Modeling** — Move domain policy (rate limit budgets,
+retry rules, error shapes) from Rust code into `.dag` service definitions. The
+compiler generates **configuration code** that links to the Target SDK.
+
+The distinction:
+- **Domain policy (What)** → `.dag` — "GitHub rate limit is 5000/hour"
+- **OS mechanisms (How)** → Target SDK — "How do I atomically decrement a counter?"
+
+**Design doc**: `docs/design/transport-primitives.md`
+
+**Phase 1 work**: `lib/transport/`, `core/test/`, `core/ir/src/transport/`
+**Phase 2 work**: `core/daglang/`, `dsl/services/`
 
 ### Why this lane exists
 
@@ -982,9 +990,9 @@ varies per service), automatic retry with jittered backoff, response
 classification (status code → typed error before field extraction), credential
 refresh/caching, and enriched virtual backends for hermetic testing.
 
-The virtual transport backend (`test_backend.rs`) handles File ops and basic
-Shell but HTTP stubs are unimplemented. Lane 7 (SDLC Production) needs all
-of these for real execution and for fidelity-tiered hermetic tests.
+Phase 1 builds these mechanisms as a domain-agnostic Target SDK. Phase 2
+moves the domain-specific configuration (rate limits, error shapes) into
+`.dag` files so the compiler can emit configuration for any target language.
 
 ### File Territory
 
@@ -995,7 +1003,10 @@ of these for real execution and for fidelity-tiered hermetic tests.
 **No overlap with Red Team** (which works in `core/daglang/`, `core/codegen/`,
 `core/exec/`, `gunbc-dag/src/`).
 
-### Queue
+### Phase 1: Target SDK (TL-0:10)
+
+Build the domain-agnostic OS-level middleware. This code doesn't know "GitHub"
+or "GCP" — it only knows "I was configured with budget=5000, window=3600".
 
 | # | ID | Task | Size | Status | Deps |
 |---|-----|------|------|--------|------|
@@ -1012,6 +1023,28 @@ of these for real execution and for fidelity-tiered hermetic tests.
 | 10 | TL-10 | **IR transport types.** `core/ir/src/transport/` additions. `RateLimitConfig`, `RetryConfig`, `CredentialConfig`, `ResponseClassification` as IR types. Lowerer can populate from service/operation metadata. Resolver reads to configure transport pipeline. Tests: round-trip serialization, lowerer population. | M | Pending | — |
 
 **Chain**: TL-1 → TL-2 → TL-9; TL-3 → TL-4, TL-7; TL-5; TL-6; TL-10 (early, no deps); TL-8 → TL-9
+
+### Phase 2: Transport Domain Modeling (after TL-9)
+
+**Design doc**: `docs/design/transport-primitives.md`
+
+**Principle**: Phase 1 (TL-0:10) builds the **Target SDK** — OS-level mechanisms (token buckets, mutexes, sockets) that are language-specific. Phase 2 moves **domain data** (rate limit budgets, retry policies, error shapes) into `.dag` where it belongs.
+
+The distinction:
+- **Domain policy (What)** → `.dag` — "GitHub rate limit is 5000/hour" is an external fact about a service
+- **OS mechanisms (How)** → Target SDK — "How do I atomically decrement a counter?" is Rust/Go/Python specific
+
+This follows the Protobuf/gRPC pattern: the compiler generates **configuration code** that links to a Target SDK, not line-by-line OS implementations.
+
+| # | ID | Task | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| 11 | TL-11 | **DSL syntax for transport blocks.** Add `rate_limit {}`, `retry {}`, `error_shape {}`, `credential {}` blocks to grammar. Parse budget expressions (`5000 per hour`). Typecheck scope bindings (`uses rate_limit: core`). | L | Pending | TL-9 |
+| 12 | TL-12 | **Lower transport blocks to IR.** Lower DSL transport blocks to existing `TransportMiddlewareConfig` IR (TL-10). Rate limit budgets become `RateLimitConfig`. Retry policies become `RetryConfig`. Rust runtime still interprets. | M | Pending | TL-10, TL-11 |
+| 13 | TL-13 | **Domain data migration.** Move hardcoded rate limits from Rust to `dsl/services/*.dag`. GitHub 5000/hour core, 30/min search. GCP quotas. Anthropic limits. Delete provider-specific branches from `classify.rs`. Service definitions become source of truth. | M | Pending | TL-12 |
+| 14 | TL-14 | **Multi-target emit.** Emit transport configuration per target language. Rust emits code linking to existing Target SDK. Go/Python stubs for future. Generated code calls `RateLimitMiddleware::new(config)` — doesn't reimplement token bucket. | XL | Pending | TL-13 |
+| 15 | TL-15 | **Substrate cleanup.** `lib/transport/` becomes pure Target SDK (no domain knowledge). Delete `GITHUB_CORE_LIMIT` constants, `host.contains("github.com")` branches. All domain facts live in `.dag`. | L | Pending | TL-14 |
+
+**Chain (Phase 2)**: TL-11 → TL-12 → TL-13 → TL-14 → TL-15
 
 ---
 
