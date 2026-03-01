@@ -9,6 +9,7 @@ module services.github.gist
 
 import extdeps.github.gists { Gist, GistFile, GistVisibility }
 import extdeps.github.core { GitHubUser, Repository }
+import std.errors { GitHubErrorShape }
 
 service github.Gist {
   config {
@@ -33,5 +34,12 @@ service github.Gist {
       html_url: Url
     }
     transport rest { method: POST, path: "/gists" }
+    response {
+      201 => Gist
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 }

@@ -11,6 +11,7 @@ import extdeps.llm.openai {
   ToolChoice, OpenAiFinishReason, FunctionCall, ToolCall
 }
 import extdeps.llm.pricing { ModelPricing, ContextWindow, ModelCapability }
+import std.errors { OpenAiErrorShape }
 
 service llm.OpenAI {
   config {
@@ -37,6 +38,15 @@ service llm.OpenAI {
       completion_tokens: Int from "usage/completion_tokens"
     }
     transport rest { method: POST, path: "/v1/chat/completions" }
+    response {
+      200 => Json
+      400 => OpenAiErrorShape
+      401 => OpenAiErrorShape
+      403 => OpenAiErrorShape
+      404 => OpenAiErrorShape
+      429 => OpenAiErrorShape
+      5xx => OpenAiErrorShape
+    }
   }
 
   operation Responses {
@@ -53,6 +63,15 @@ service llm.OpenAI {
       input_tokens: Int from "usage/input_tokens"
     }
     transport rest { method: POST, path: "/v1/responses" }
+    response {
+      200 => Json
+      400 => OpenAiErrorShape
+      401 => OpenAiErrorShape
+      403 => OpenAiErrorShape
+      404 => OpenAiErrorShape
+      429 => OpenAiErrorShape
+      5xx => OpenAiErrorShape
+    }
   }
 }
 

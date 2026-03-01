@@ -54,6 +54,17 @@ type AnthropicErrorShape {
   error: AnthropicErrorDetails
 }
 
+type OpenAiErrorDetails {
+  message: String
+  type: String
+  param: String?
+  code: String?
+}
+
+type OpenAiErrorShape {
+  error: OpenAiErrorDetails
+}
+
 data github_error_example: GitHubErrorShape = {
   message: "Not Found",
   documentation_url: "https://docs.github.com/rest"
