@@ -9,12 +9,21 @@
 //!
 //! The steps are the same as the old `run_lint_upsert` but modeled as
 //! individual DAG nodes instead of a monolithic callback.
+//!
+//! # Operation identity
+//!
+//! Build verification steps (clippy, test-compile, release-check) declare
+//! `subsumes: Some(OperationKey { .. })` to express which service operation
+//! they cover. This connects the freshness system to the domain model's
+//! operation identity, enabling the general composition-level overlap
+//! detection in `compose_with_freshness`.
 
 use crate::preflight::{self};
 use crate::TransportIo;
 use gunbc_exec::freshness::FRESHNESS_ACTIVE_ENV;
 use gunbc_exec::FreshnessStep;
 use gunbc_ir::resource::{load_manifest_default, save_manifest_default, ManagedResource};
+use gunbc_ir::OperationKey;
 
 /// Check repo freshness and return planned steps if stale.
 ///
@@ -95,9 +104,9 @@ pub fn update_freshness_manifest() -> Result<(), String> {
 /// 2. codegen-dag: generate code from DAG structures
 /// 3. testgen: generate tests
 /// 4. pragma: process pragma directives
-/// 5. clippy: lint check (with auto-fix)
-/// 6. test-compile: compile lib tests without running
-/// 7. release-check: compile-check release bins for the workspace
+/// 5. clippy: lint check (subsumes cargo.Build.Clippy)
+/// 6. test-compile: compile lib tests without running (subsumes cargo.Build.Test)
+/// 7. release-check: compile-check release bins (subsumes cargo.Build.Build)
 fn freshness_steps() -> Vec<FreshnessStep> {
     let mut steps = generation_freshness_steps();
     steps.extend(build_verification_steps());
@@ -106,9 +115,8 @@ fn freshness_steps() -> Vec<FreshnessStep> {
 
 /// Generation-only freshness steps: codegen → codegen-dag → testgen → pragma.
 ///
-/// Use when the caller already performs build/clippy/test (e.g., the CI binary
-/// runs Build+Clippy+Test via the build tool DAG, making the build verification
-/// steps redundant).
+/// These don't subsume any service operation — they're code generation, not
+/// build/lint/test. Safe to compose with any tool DAG.
 fn generation_freshness_steps() -> Vec<FreshnessStep> {
     vec![
         // codegen MUST run first: it generates target/codegen/bin/*/main.rs
@@ -127,6 +135,7 @@ fn generation_freshness_steps() -> Vec<FreshnessStep> {
                 "--".into(),
                 "codegen".into(),
             ],
+            subsumes: None,
         },
         FreshnessStep {
             id: "codegen-dag".into(),
@@ -140,6 +149,7 @@ fn generation_freshness_steps() -> Vec<FreshnessStep> {
                 "--".into(),
                 "codegen".into(),
             ],
+            subsumes: None,
         },
         FreshnessStep {
             id: "testgen".into(),
@@ -151,6 +161,7 @@ fn generation_freshness_steps() -> Vec<FreshnessStep> {
                 "--bin".into(),
                 "gunbc-testgen".into(),
             ],
+            subsumes: None,
         },
         FreshnessStep {
             id: "pragma".into(),
@@ -162,14 +173,20 @@ fn generation_freshness_steps() -> Vec<FreshnessStep> {
                 "--bin".into(),
                 "gunbc-pragma".into(),
             ],
+            subsumes: None,
         },
     ]
 }
 
 /// Build verification steps: clippy, test-compile, release-check.
 ///
-/// These are separated from generation steps so that tools which already
-/// run their own build/clippy/test (like the CI binary) can skip them.
+/// Each step declares which service operation it subsumes via `OperationKey`.
+/// This is derived from the domain model: `cargo.Build.Clippy`, `cargo.Build.Test`,
+/// `cargo.Build.Build` are the canonical operation identities from `dsl/services/cargo.dag`.
+///
+/// When composed with a tool DAG that already contains these operations,
+/// `compose_with_freshness` detects the overlap via `validate_no_operation_overlap`
+/// and rejects the composition — no manually maintained mapping table needed.
 fn build_verification_steps() -> Vec<FreshnessStep> {
     vec![
         FreshnessStep {
@@ -182,6 +199,7 @@ fn build_verification_steps() -> Vec<FreshnessStep> {
                 "-D".into(),
                 "warnings".into(),
             ],
+            subsumes: Some(OperationKey::new("cargo.Build", "Clippy")),
         },
         FreshnessStep {
             id: "test-compile".into(),
@@ -192,6 +210,7 @@ fn build_verification_steps() -> Vec<FreshnessStep> {
                 "--lib".into(),
                 "--no-run".into(),
             ],
+            subsumes: Some(OperationKey::new("cargo.Build", "Test")),
         },
         FreshnessStep {
             id: "release-check".into(),
@@ -202,6 +221,7 @@ fn build_verification_steps() -> Vec<FreshnessStep> {
                 "--release".into(),
                 "--bins".into(),
             ],
+            subsumes: Some(OperationKey::new("cargo.Build", "Build")),
         },
     ]
 }
@@ -238,6 +258,41 @@ mod tests {
         assert_eq!(
             ids,
             vec!["codegen", "codegen-dag", "testgen", "pragma", "clippy", "test-compile", "release-check"]
+        );
+    }
+
+    #[test]
+    fn generation_steps_have_no_subsumes() {
+        for step in generation_freshness_steps() {
+            assert!(
+                step.subsumes.is_none(),
+                "generation step '{}' should not subsume any operation",
+                step.id
+            );
+        }
+    }
+
+    #[test]
+    fn build_verification_steps_all_have_subsumes() {
+        for step in build_verification_steps() {
+            assert!(
+                step.subsumes.is_some(),
+                "build verification step '{}' must declare its subsumes operation",
+                step.id
+            );
+        }
+    }
+
+    #[test]
+    fn build_verification_subsumes_match_cargo_service() {
+        let steps = build_verification_steps();
+        let keys: Vec<_> = steps
+            .iter()
+            .map(|s| s.subsumes.as_ref().unwrap().to_string())
+            .collect();
+        assert_eq!(
+            keys,
+            vec!["cargo.Build.Clippy", "cargo.Build.Test", "cargo.Build.Build"]
         );
     }
 }

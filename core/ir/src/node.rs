@@ -4,7 +4,7 @@ use crate::boundary::detect_boundaries;
 use crate::dag::{Dag, Guard, Port};
 use crate::entrypoint::detect_entrypoints;
 use crate::log_detail::LogDetailLevel;
-use crate::types::{Cardinality, NodeId, PortName};
+use crate::types::{Cardinality, NodeId, OperationKey, PortName};
 use crate::Value;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -93,6 +93,15 @@ pub struct Node<T> {
     /// `stamp_node_kinds()` before they reach the executor.
     #[serde(default)]
     pub kind: NodeKind,
+    /// Canonical identity of the service operation this node represents.
+    ///
+    /// Stamped by the lowerer from `ServiceCallMetadata` on transport nodes,
+    /// and by freshness steps via `FreshnessStep::subsumes`. Used for
+    /// composition-level overlap detection: if two nodes in a composed DAG
+    /// share the same `OperationKey`, the composition is rejected as a
+    /// duplicate upsert.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation_key: Option<OperationKey>,
 }
 
 impl<T> Node<T> {
@@ -106,6 +115,7 @@ impl<T> Node<T> {
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
+            operation_key: None,
         }
     }
 
@@ -175,6 +185,7 @@ impl<T> Node<T> {
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
+            operation_key: None,
         }
     }
 
@@ -224,6 +235,12 @@ impl<T> Node<T> {
     /// Set the structural node kind.
     pub fn with_kind(mut self, kind: NodeKind) -> Self {
         self.kind = kind;
+        self
+    }
+
+    /// Set the operation key for composition overlap detection.
+    pub fn with_operation_key(mut self, key: OperationKey) -> Self {
+        self.operation_key = Some(key);
         self
     }
 
@@ -305,6 +322,7 @@ impl<T> Node<T> {
             examples: self.examples,
             log_detail: self.log_detail,
             kind: self.kind,
+            operation_key: self.operation_key,
         }
     }
 

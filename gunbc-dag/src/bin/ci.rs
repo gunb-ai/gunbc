@@ -239,23 +239,29 @@ mod tests {
     /// cargo Build/Clippy/Test operations that overlap with the freshness
     /// chain's clippy/test-compile/release-check steps.
     ///
-    /// This test exercises the compiler-level check in compose_with_freshness()
-    /// rather than reimplementing the detection logic here.
+    /// This test exercises the general OperationKey-based overlap detection
+    /// in compose_with_freshness() — freshness steps declare `subsumes` and
+    /// tool DAG nodes carry `operation_key`, both derived from the domain model.
     #[test]
     fn full_freshness_with_build_dag_is_rejected() {
         use gunbc_exec::{compose_with_freshness, FreshnessStep};
+        use gunbc_ir::OperationKey;
 
         let dag = gunbc_dag::build_build_graph().expect("build graph should compile");
 
-        // Simulate full freshness steps that include build-phase operations
+        // Simulate full freshness steps that include build-phase operations.
+        // The subsumes field connects them to the same OperationKey that the
+        // lowerer stamps on the tool DAG's transport nodes.
         let overlapping_steps = vec![
             FreshnessStep {
                 id: "clippy".into(),
                 command: vec!["cargo".into(), "clippy".into()],
+                subsumes: Some(OperationKey::new("cargo.Build", "Clippy")),
             },
             FreshnessStep {
                 id: "test-compile".into(),
                 command: vec!["cargo".into(), "test".into(), "--no-run".into()],
+                subsumes: Some(OperationKey::new("cargo.Build", "Test")),
             },
         ];
 
@@ -267,13 +273,13 @@ mod tests {
         );
         let err_msg = result.unwrap_err().to_string();
         assert!(
-            err_msg.contains("freshness/tool overlap"),
-            "error message should identify overlap: {err_msg}"
+            err_msg.contains("duplicate operation"),
+            "error message should identify duplicate operations: {err_msg}"
         );
     }
 
     /// Validates that generation-only freshness steps compose cleanly
-    /// with the build DAG (no overlap).
+    /// with the build DAG (no overlap — generation steps have no subsumes).
     #[test]
     fn generation_freshness_with_build_dag_is_accepted() {
         use gunbc_exec::{compose_with_freshness, FreshnessStep};
@@ -284,10 +290,12 @@ mod tests {
             FreshnessStep {
                 id: "codegen".into(),
                 command: vec!["echo".into(), "codegen".into()],
+                subsumes: None,
             },
             FreshnessStep {
                 id: "testgen".into(),
                 command: vec!["echo".into(), "testgen".into()],
+                subsumes: None,
             },
         ];
 

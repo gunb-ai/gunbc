@@ -116,6 +116,7 @@ mod tests {
         let steps = vec![FreshnessStep {
             id: "codegen-dag".to_string(),
             command: vec!["echo".to_string(), "ok".to_string()],
+            subsumes: None,
         }];
         assert!(freshness_steps_planned(Some(&steps)));
     }
