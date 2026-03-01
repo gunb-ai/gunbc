@@ -9,12 +9,19 @@
 module services.shell
 
 import std.types { FilePath, NonEmptyStr, Secret }
+import std.errors { GcpErrorShape }
+import extdeps.cloud.gcp.core { GcpProject, GcpServiceAccount }
+import extdeps.tools.package_managers { PackageManager, InstallSource }
 
 service gcloud.Auth {
   operation Login {
     input { update_adc: Bool = true }
     output { ok: Bool }
     transport shell { argv: ["gcloud", "auth", "login", "--update-adc"] }
+    exit {
+      0 => Unit
+      nonzero => String "Authentication failed"
+    }
   }
 
   operation ReadADC {
@@ -45,6 +52,12 @@ service oauth2.Google {
     }
     idempotent
     transport rest { method: POST, path: "/token" }
+    response {
+      200 => Json
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
   }
 }
 
@@ -54,6 +67,10 @@ service shell.Find {
     output { dirs: List<FilePath> }
     readonly
     transport shell { argv: ["find", "{path}", "-maxdepth", "{max_depth}", "-mindepth", "{min_depth}", "-type", "d"] }
+    exit {
+      0 => Unit
+      nonzero => String "Find command failed"
+    }
   }
 }
 
@@ -64,6 +81,10 @@ service shell.Codegen {
     readonly
     // Checks if codegen output files exist / are stale
     transport shell { argv: ["test", "-f", "target/codegen/.stamp"] }
+    exit {
+      0 => Unit "File exists"
+      1 => Unit "File does not exist"
+    }
   }
 
   operation Run {
@@ -74,6 +95,10 @@ service shell.Codegen {
       stderr: String
     }
     transport shell { argv: ["cargo", "run", "--bin", "gunbc-codegen", "--", "--mode=ensure"] }
+    exit {
+      0 => Unit
+      nonzero => String "Codegen failed"
+    }
   }
 }
 
@@ -82,6 +107,10 @@ service rustup.Component {
     input { component: NonEmptyStr }
     output { success: Bool }
     transport shell { argv: ["rustup", "component", "add", "{component}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Failed to add component"
+    }
   }
 }
 
@@ -91,6 +120,10 @@ service shell.Env {
     output { value: String? }
     readonly
     transport shell { argv: ["printenv", "{name}"] }
+    exit {
+      0 => Unit
+      1 => Unit "Variable not set"
+    }
   }
 }
 
@@ -99,6 +132,10 @@ service shell.OAuth2 {
     input { refresh_token: Secret }
     output { access_token: Secret, valid: Bool }
     transport shell { argv: ["curl", "-s", "-X", "POST", "https://oauth2.googleapis.com/token", "-d", "grant_type=refresh_token&refresh_token={refresh_token}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Token refresh failed"
+    }
   }
 }
 
@@ -108,6 +145,10 @@ service shell.GCloud {
     output { access_token: Secret }
     readonly
     transport shell { argv: ["gcloud", "auth", "print-access-token"] }
+    exit {
+      0 => Unit
+      nonzero => String "Failed to get access token"
+    }
   }
 
   operation SecretManagerAccessVersion {
@@ -119,6 +160,10 @@ service shell.GCloud {
     output { secret_value: Secret }
     readonly
     transport shell { argv: ["gcloud", "secrets", "versions", "access", "{version}", "--secret={secret_name}", "--project={project_id}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Failed to access secret"
+    }
   }
 }
 
@@ -128,5 +173,9 @@ service shell.Which {
     output { exists: Bool, path: FilePath? }
     readonly
     transport shell { argv: ["which", "{command}"] }
+    exit {
+      0 => Unit "Command found"
+      1 => Unit "Command not found"
+    }
   }
 }

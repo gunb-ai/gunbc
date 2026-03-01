@@ -22,8 +22,12 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use daglang_syntax::ast::{
-    CapabilityDef, DataDef, Expr, Item, Literal, NodeStmt, OperationDef, ServiceDef, Stmt,
-    TransportBinding,
+    BackoffStrategy, CapabilityDef, DataDef, Expr, Item, Literal, NodeStmt, OperationDef,
+    RateLimitUnit, ServiceDef, Stmt, TransportBinding,
+};
+use gunbc_ir::transport::middleware::{
+    RateLimitAlgorithm, RateLimitConfig, ResponseClassification, ResponseProvider, RetryBackoff,
+    RetryConfig, TransportMiddlewareConfig,
 };
 use daglang_syntax::ast_utils::{
     canonical_resource_type_name, is_type_expr_optional, resource_type_name,
@@ -47,8 +51,10 @@ pub mod spec;
 pub(crate) mod transport;
 
 pub use spec::{
-    ArgvSegment, BodyEntry, FieldSpec, FileOperationSpec, LocalOperationSpec, OutputFieldSpec,
-    RestOperationSpec, ServiceOperationSpec, ShellOperationSpec, ShellOutputParsing,
+    check_response_completeness, ArgvSegment, BodyEntry, ExitCodePattern, ExitMappingEntry,
+    FieldSpec, FileOperationSpec, LocalOperationSpec, OutputFieldSpec, ResponseCompletenessWarning,
+    ResponseMappingEntry, ResponseStatusPattern, RestOperationSpec, ServiceOperationSpec,
+    ShellOperationSpec, ShellOutputParsing,
 };
 
 pub use expr::LoweredFnBody;
@@ -289,7 +295,7 @@ impl ServiceTransportClass {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ServiceCallMetadata {
     pub service: String,
     pub operation: String,
@@ -5119,7 +5125,7 @@ fn derive_operation_spec(
 ) -> Option<ServiceOperationSpec> {
     match transport {
         ServiceTransportClass::RestNetwork => {
-            derive_rest_spec(service, operation).map(ServiceOperationSpec::Rest)
+            derive_rest_spec(service, operation).map(|s| ServiceOperationSpec::Rest(Box::new(s)))
         }
         ServiceTransportClass::ShellLocal => {
             derive_shell_spec(service, operation, data_registry).map(ServiceOperationSpec::Shell)
@@ -5169,6 +5175,133 @@ fn extract_headers_from_expr(expr: &Expr) -> Vec<(String, String)> {
     }
 }
 
+/// Derive transport middleware config from service config blocks (TL-12).
+fn derive_middleware_config(
+    service: &ServiceDef,
+    _operation: &OperationDef,
+) -> Option<TransportMiddlewareConfig> {
+    let config = &service.config;
+
+    // Only produce middleware config if at least one block is defined.
+    if config.rate_limits.is_empty() && config.retry.is_none() {
+        return None;
+    }
+
+    let rate_limit = config.rate_limits.first().map(|rl| {
+        // Convert per-unit to per-minute for sustained rate.
+        let sustained_per_minute = match rl.per {
+            RateLimitUnit::Second => rl.requests * 60,
+            RateLimitUnit::Minute => rl.requests,
+            RateLimitUnit::Hour => rl.requests / 60,
+            RateLimitUnit::Day => rl.requests / 1440,
+        } as u32;
+
+        RateLimitConfig {
+            scope_key: rl
+                .scope
+                .clone()
+                .unwrap_or_else(|| service.name.replace('.', ":")),
+            algorithm: RateLimitAlgorithm::TokenBucket,
+            max_burst: (sustained_per_minute / 10).max(1),
+            sustained_per_minute,
+            honor_retry_after: true,
+        }
+    });
+
+    let retry = config.retry.as_ref().map(|r| {
+        let backoff = match r.backoff {
+            BackoffStrategy::Constant => RetryBackoff::Fixed,
+            BackoffStrategy::Linear => RetryBackoff::Fixed,
+            BackoffStrategy::Exponential => RetryBackoff::Exponential,
+        };
+        RetryConfig {
+            max_attempts: r.max_attempts as u32,
+            base_delay_ms: r.base_delay_ms.unwrap_or(100) as u64,
+            max_delay_ms: r.max_delay_ms.unwrap_or(10_000) as u64,
+            backoff,
+            retry_statuses: r.retry_on.iter().map(|s| *s as u16).collect(),
+            retry_network_errors: true,
+            require_idempotent_or_readonly: false,
+            circuit_breaker: None,
+        }
+    });
+
+    // Infer response provider from service name.
+    let response_classification = infer_response_provider(&service.name).map(|provider| {
+        ResponseClassification {
+            provider,
+            prioritize_auth_errors: true,
+            parse_provider_error_shapes: true,
+        }
+    });
+
+    Some(TransportMiddlewareConfig {
+        rate_limit,
+        retry,
+        credential: None, // Credential config is wired separately via auth_scheme.
+        response_classification,
+    })
+}
+
+/// Infer the response provider from service name patterns.
+fn infer_response_provider(service_name: &str) -> Option<ResponseProvider> {
+    let lower = service_name.to_lowercase();
+    if lower.starts_with("github.") || lower.contains("gist") {
+        Some(ResponseProvider::GitHub)
+    } else if lower.starts_with("gcp.") || lower.starts_with("google.") {
+        Some(ResponseProvider::Gcp)
+    } else if lower.contains("anthropic") || lower.starts_with("llm.anthropic") {
+        Some(ResponseProvider::Anthropic)
+    } else if lower.contains("openai") || lower.starts_with("llm.openai") {
+        Some(ResponseProvider::OpenAi)
+    } else {
+        None
+    }
+}
+
+/// Convert AST status pattern to spec status pattern.
+fn convert_status_pattern(status: &daglang_syntax::ast::StatusPattern) -> ResponseStatusPattern {
+    match status {
+        daglang_syntax::ast::StatusPattern::Exact(code) => ResponseStatusPattern::Exact(*code),
+        daglang_syntax::ast::StatusPattern::Success2xx => ResponseStatusPattern::Success2xx,
+        daglang_syntax::ast::StatusPattern::Redirect3xx => ResponseStatusPattern::Redirect3xx,
+        daglang_syntax::ast::StatusPattern::ClientError4xx => ResponseStatusPattern::ClientError4xx,
+        daglang_syntax::ast::StatusPattern::ServerError5xx => ResponseStatusPattern::ServerError5xx,
+    }
+}
+
+/// Convert AST response entries to spec response mapping entries.
+fn derive_response_mapping(response_entries: &[daglang_syntax::ast::ResponseEntry]) -> Vec<ResponseMappingEntry> {
+    response_entries
+        .iter()
+        .map(|entry| ResponseMappingEntry {
+            status: convert_status_pattern(&entry.status),
+            response_type: type_expr_to_string(&entry.response_type),
+            description: entry.description.clone(),
+        })
+        .collect()
+}
+
+/// Convert AST exit code to spec exit code pattern.
+fn convert_exit_code(code: &daglang_syntax::ast::ExitCode) -> ExitCodePattern {
+    match code {
+        daglang_syntax::ast::ExitCode::Exact(n) => ExitCodePattern::Exact(*n),
+        daglang_syntax::ast::ExitCode::NonZero => ExitCodePattern::NonZero,
+    }
+}
+
+/// Convert AST exit entries to spec exit mapping entries.
+fn derive_exit_mapping(exit_entries: &[daglang_syntax::ast::ExitEntry]) -> Vec<ExitMappingEntry> {
+    exit_entries
+        .iter()
+        .map(|entry| ExitMappingEntry {
+            code: convert_exit_code(&entry.code),
+            output_type: type_expr_to_string(&entry.output_type),
+            description: entry.description.clone(),
+        })
+        .collect()
+}
+
 fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<RestOperationSpec> {
     let endpoint = service.config.endpoint.clone().unwrap_or_default();
     let (method, path_template) = match &operation.transport {
@@ -5195,6 +5328,12 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
         other => other.to_string(),
     });
 
+    // Derive middleware config from rate_limit/retry blocks (TL-12).
+    let middleware = derive_middleware_config(service, operation);
+
+    // Derive response mapping from response {} blocks (SL-9).
+    let response_mapping = derive_response_mapping(&operation.response);
+
     Some(RestOperationSpec {
         endpoint,
         method,
@@ -5205,6 +5344,8 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
         headers,
         auth_scheme,
         auth_input,
+        middleware,
+        response_mapping,
     })
 }
 
@@ -5265,12 +5406,16 @@ fn derive_shell_spec(
     // Extract env from `env: Map<String, String>` input default.
     let env = extract_env_from_inputs(&operation.inputs, data_registry);
 
+    // Derive exit mapping from exit {} blocks (SL-9).
+    let exit_mapping = derive_exit_mapping(&operation.exit);
+
     Some(ShellOperationSpec {
         argv_template,
         input_fields,
         output_fields,
         output_parsing,
         env,
+        exit_mapping,
     })
 }
 

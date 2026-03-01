@@ -3,7 +3,10 @@
   "path": "services/shell.dag",
   "items": 9,
   "dependencies": [
-    "std.types"
+    "std.types",
+    "std.errors",
+    "extdeps.cloud.gcp.core",
+    "extdeps.tools.package_managers"
   ],
   "_count_rationale": "12 operations × 3 triplet nodes = 36 transport targets. readonly/idempotent restored from pre-migration @annotations (2026-02-28).",
   "expand_contract": {

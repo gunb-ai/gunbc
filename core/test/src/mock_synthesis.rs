@@ -14,6 +14,7 @@ pub enum MockProvider {
     GitHub,
     Gcp,
     Anthropic,
+    OpenAi,
 }
 
 /// Behavior-driven synthesis input.
@@ -69,13 +70,28 @@ fn success_shape(provider: MockProvider) -> JsonValue {
         }),
         MockProvider::Gcp => json!({
             "name": "projects/mock-project/secrets/mock-secret/versions/1",
-            "etag": "mock-etag"
+            "etag": "mock-etag",
+            "payload": { "data": "bW9jaw==" },
+            "bindings": [],
+            "access_token": "mock-access-token",
+            "accessToken": "mock-access-token",
+            "expires_in": 3600
         }),
         MockProvider::Anthropic => json!({
             "id": "msg_mock",
             "type": "message",
-            "content": [{ "type": "text", "text": "Mock response" }],
-            "stop_reason": "end_turn"
+            "content": [{ "type": "text", "text": "Mock LLM response content." }],
+            "stop_reason": "end_turn",
+            "model": "claude-3-5-sonnet-20241022",
+            "usage": { "input_tokens": 100, "output_tokens": 200 }
+        }),
+        MockProvider::OpenAi => json!({
+            "id": "chatcmpl-mock",
+            "object": "chat.completion",
+            "model": "gpt-4",
+            "choices": [{ "message": { "content": "Mock LLM response content." }, "finish_reason": "stop" }],
+            "output": [{ "content": [{ "text": "Mock LLM response content." }] }],
+            "usage": { "prompt_tokens": 100, "completion_tokens": 200 }
         }),
         MockProvider::Generic => json!({ "ok": true }),
     }
@@ -100,6 +116,13 @@ fn error_shape(provider: MockProvider, status: u16, mode: Option<&str>) -> JsonV
             "error": {
                 "type": anthropic_error_type(status, mode),
                 "message": anthropic_error_message(status, mode)
+            }
+        }),
+        MockProvider::OpenAi => json!({
+            "error": {
+                "type": openai_error_type(status, mode),
+                "message": openai_error_message(status, mode),
+                "code": openai_error_code(status, mode)
             }
         }),
         MockProvider::Generic => json!({
@@ -153,6 +176,34 @@ fn anthropic_error_message(status: u16, mode: &str) -> &'static str {
         (429, _) | (_, "rate_limit") => "rate limit exceeded",
         (401, _) | (_, "auth") => "authentication failed",
         _ => "Anthropic API error",
+    }
+}
+
+fn openai_error_type(status: u16, mode: &str) -> &'static str {
+    match (status, mode) {
+        (401, _) | (_, "auth") => "invalid_api_key",
+        (429, _) | (_, "rate_limit") => "rate_limit_exceeded",
+        (400, _) => "invalid_request_error",
+        (404, _) | (_, "not_found") => "model_not_found",
+        _ => "api_error",
+    }
+}
+
+fn openai_error_message(status: u16, mode: &str) -> &'static str {
+    match (status, mode) {
+        (429, _) | (_, "rate_limit") => "Rate limit exceeded. Please retry after a short wait.",
+        (401, _) | (_, "auth") => "Incorrect API key provided.",
+        (404, _) | (_, "not_found") => "The model does not exist or you do not have access to it.",
+        _ => "OpenAI API error",
+    }
+}
+
+fn openai_error_code(status: u16, mode: &str) -> Option<&'static str> {
+    match (status, mode) {
+        (401, _) | (_, "auth") => Some("invalid_api_key"),
+        (429, _) | (_, "rate_limit") => Some("rate_limit_exceeded"),
+        (404, _) | (_, "not_found") => Some("model_not_found"),
+        _ => None,
     }
 }
 
@@ -219,5 +270,25 @@ mod tests {
         let response = synthesize_rest_response(&spec);
         assert_eq!(response.body["id"], "override");
         assert_eq!(response.body["nested"]["x"], 1);
+    }
+
+    #[test]
+    fn openai_success_synthesis_includes_choices_and_usage() {
+        let response = synthesize_rest_response(&MockResponseSynthesis::success(MockProvider::OpenAi));
+        assert_eq!(response.status, 200);
+        assert!(response.body.get("choices").is_some());
+        assert!(response.body.get("usage").is_some());
+        assert_eq!(response.body["choices"][0]["finish_reason"], "stop");
+    }
+
+    #[test]
+    fn openai_error_synthesis_uses_provider_shape() {
+        let response = synthesize_rest_response(&MockResponseSynthesis::failure(
+            MockProvider::OpenAi,
+            429,
+            "rate_limit",
+        ));
+        assert_eq!(response.status, 429);
+        assert_eq!(response.body["error"]["type"], "rate_limit_exceeded");
     }
 }

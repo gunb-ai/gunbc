@@ -17,7 +17,10 @@ use gunbc_ir::{
 use gunbc_primitives::filename;
 use std::collections::{HashMap, HashSet};
 
-use crate::{extract_mock_requirements, MockSpec, NodeExample, OutputMatcher};
+use crate::{
+    extract_mock_requirements, MockProvider, MockResponseSynthesis, MockSpec, NodeExample,
+    OutputMatcher,
+};
 
 fn default_fs_handle() -> Value {
     let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
@@ -84,21 +87,58 @@ fn default_file_response() -> Value {
     }))
 }
 
+/// Infer the mock provider from a node ID (e.g., "github.Gist.Create/execute").
+fn infer_provider_from_node_id(node_id: &str) -> MockProvider {
+    let lower = node_id.to_lowercase();
+    if lower.starts_with("github.") || lower.contains("/github.") || lower.contains("gist") {
+        MockProvider::GitHub
+    } else if lower.starts_with("gcp.") || lower.contains("/gcp.") || lower.contains("secret") {
+        MockProvider::Gcp
+    } else if lower.starts_with("llm.anthropic") || lower.contains("anthropic") {
+        MockProvider::Anthropic
+    } else if lower.starts_with("llm.openai") || lower.contains("openai") {
+        MockProvider::OpenAi
+    } else {
+        MockProvider::Generic
+    }
+}
+
+/// Provider-aware REST response synthesis.
+///
+/// Uses `MockResponseSynthesis` from `gunbc_test::mock_synthesis` to generate
+/// provider-specific response shapes instead of the kitchen sink blob.
+fn rest_response_for_provider(provider: MockProvider) -> Value {
+    let spec = MockResponseSynthesis::success(provider);
+    let response = gunbc_test::synthesize_rest_response(&spec);
+    Value::Response(TransportResponse::Rest(response))
+}
+
+/// Default REST response for unknown providers (kitchen sink fallback).
+///
+/// This fallback includes shapes from all providers so parse nodes can extract
+/// fields regardless of which provider the operation targets. Once all callers
+/// use `rest_response_for_provider`, this can be removed.
 fn default_rest_response() -> Value {
+    // Synthesize a merged response that satisfies all provider parse nodes.
+    // This is the "kitchen sink" fallback for untyped contexts.
     let mut response = RestResponse::new(
         200,
         serde_json::json!({
+            // OAuth/token fields (shared across auth flows)
             "access_token": "mock-access-token",
             "accessToken": "mock-access-token",
             "expires_in": 3600,
             "token_type": "Bearer",
+            // GitHub fields
             "html_url": "https://gist.github.com/mock",
             "id": "mock-id",
+            "state": "open",
+            // GCP fields
             "raw": "mock-token",
             "payload": { "data": "bW9jaw==" },
             "bindings": [],
             "etag": "mock-etag",
-            // LLM response shapes so parse nodes extract non-empty content.
+            "name": "projects/mock-project/secrets/mock-secret/versions/1",
             // Anthropic Messages API: content/0/text
             "content": [{ "type": "text", "text": "Mock LLM response content." }],
             "stop_reason": "end_turn",
@@ -128,11 +168,18 @@ fn default_value_for_slot<T: Executable + Clone + Send>(
         return default_value_for_port(type_id, cardinality);
     }
 
-    // Pick a response variant compatible with downstream parse nodes.
+    // Try provider-specific REST response first (based on node ID patterns).
+    let provider = infer_provider_from_node_id(node_id);
+    let provider_rest = rest_response_for_provider(provider);
+    if response_candidate_satisfies_consumers(dag, node_id, port_name, &provider_rest) {
+        return provider_rest;
+    }
+
+    // Fall back to trying all response variants.
     let candidates = [
         default_shell_response(),
         default_file_response(),
-        default_rest_response(),
+        default_rest_response(), // kitchen sink fallback
     ];
     for candidate in candidates {
         if response_candidate_satisfies_consumers(dag, node_id, port_name, &candidate) {
@@ -432,10 +479,22 @@ fn probe_best_response<T: Executable + Clone + Send>(
     node_id: &str,
     partial_example: &NodeExample,
 ) -> Value {
+    // Try provider-specific REST response first.
+    let provider = infer_provider_from_node_id(node_id);
+    let provider_rest = rest_response_for_provider(provider);
+    {
+        let mut inputs = partial_example.inputs.clone();
+        inputs.insert("response".to_string(), provider_rest.clone());
+        if execute_single_node(dag, node_id, inputs, ExecutionMode::Real).is_ok() {
+            return provider_rest;
+        }
+    }
+
+    // Fall back to trying all response variants.
     let candidates = [
         default_shell_response(),
         default_file_response(),
-        default_rest_response(),
+        default_rest_response(), // kitchen sink fallback
     ];
 
     for candidate in candidates {

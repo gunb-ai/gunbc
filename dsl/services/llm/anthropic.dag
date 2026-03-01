@@ -5,10 +5,25 @@
 
 module services.llm.anthropic
 
+import extdeps.llm.core { Role, LlmMessage, TokenUsage, StopReason }
+import extdeps.llm.anthropic {
+  AnthropicModel, AnthropicModelSpec, ContentBlock,
+  SystemPrompt, ThinkingConfig, AnthropicApiVersion
+}
+import extdeps.llm.pricing { ModelPricing, ContextWindow, ModelCapability }
+import std.errors { AnthropicErrorShape }
+
 service llm.Anthropic {
   // TODO(RT-A3): add auth_input: api_key — requires threading api_key: Secret through
   // all callers (design.dag, sdlc_stages.dag, review_pipeline.dag).
-  config { endpoint: "https://api.anthropic.com", auth: Header("x-api-key") }
+  config {
+    endpoint: "https://api.anthropic.com"
+    auth: Header("x-api-key")
+    // Anthropic API rate limits: varies by tier (1000-4000 RPM), use conservative default
+    rate_limit: { requests: 1000, per: minute, scope: messages }
+    // Retry on overload and server errors with exponential backoff
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503, 529] }
+  }
 
   operation Messages {
     input {
@@ -26,5 +41,15 @@ service llm.Anthropic {
       output_tokens: Int from "usage/output_tokens"
     }
     transport rest { method: POST, path: "/v1/messages" }
+    response {
+      200 => Json
+      400 => AnthropicErrorShape
+      401 => AnthropicErrorShape
+      403 => AnthropicErrorShape
+      404 => AnthropicErrorShape
+      429 => AnthropicErrorShape
+      529 => AnthropicErrorShape
+      5xx => AnthropicErrorShape
+    }
   }
 }

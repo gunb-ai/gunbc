@@ -9,7 +9,8 @@ use std::collections::{BTreeSet, HashMap};
 
 use daglang_lower::{
     ArgvSegment, BodyEntry, FieldSpec, FileOperationSpec, LocalOperationSpec, OutputFieldSpec,
-    RestOperationSpec, ShellOperationSpec, ShellOutputParsing,
+    ResponseMappingEntry, ResponseStatusPattern, RestOperationSpec, ShellOperationSpec,
+    ShellOutputParsing,
 };
 use gunbc_exec::{
     decorate_service_failure, AuthContext, ExecError, Executable, OutputMap, ServiceCallMetadata,
@@ -182,6 +183,15 @@ impl Executable for GenericRestParseOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match inputs.get("response") {
             Some(Value::Response(TransportResponse::Rest(rest))) => {
+                // SL-10: Validate status code against declared response mappings.
+                // This catches undeclared non-2xx status codes early.
+                validate_status_declared(
+                    rest.status,
+                    &self.spec.response_mapping,
+                    &self.spec.method,
+                    &self.spec.path_template,
+                )?;
+
                 if !rest.is_success() {
                     let body_excerpt = match &rest.body {
                         serde_json::Value::Object(map) => map
@@ -275,6 +285,94 @@ impl Executable for GenericRestParseOp {
                 std::mem::discriminant(other)
             ))),
         }
+    }
+}
+
+/// Check if a status code matches a response mapping entry's pattern.
+fn status_matches_pattern(status: u16, pattern: &ResponseStatusPattern) -> bool {
+    match pattern {
+        ResponseStatusPattern::Exact(code) => status == *code,
+        ResponseStatusPattern::Success2xx => (200..300).contains(&status),
+        ResponseStatusPattern::Redirect3xx => (300..400).contains(&status),
+        ResponseStatusPattern::ClientError4xx => (400..500).contains(&status),
+        ResponseStatusPattern::ServerError5xx => (500..600).contains(&status),
+    }
+}
+
+/// Find a matching response mapping entry for a given status code.
+/// Returns the first matching entry, or None if no entry matches.
+fn find_response_mapping(
+    status: u16,
+    mappings: &[ResponseMappingEntry],
+) -> Option<&ResponseMappingEntry> {
+    // First try exact matches, then fall back to wildcard patterns.
+    // This ensures exact status codes take precedence over wildcards.
+    for entry in mappings {
+        if let ResponseStatusPattern::Exact(code) = entry.status {
+            if status == code {
+                return Some(entry);
+            }
+        }
+    }
+    // Then try wildcard patterns.
+    for entry in mappings {
+        if !matches!(entry.status, ResponseStatusPattern::Exact(_))
+            && status_matches_pattern(status, &entry.status)
+        {
+            return Some(entry);
+        }
+    }
+    None
+}
+
+/// Check if a status code is declared in the response mapping.
+/// Returns an error if the status is not declared (undeclared non-2xx).
+fn validate_status_declared(
+    status: u16,
+    mappings: &[ResponseMappingEntry],
+    method: &str,
+    path: &str,
+) -> Result<(), ExecError> {
+    // If no response mappings are declared, allow all status codes.
+    // This maintains backward compatibility with services that don't
+    // have response {} blocks yet.
+    if mappings.is_empty() {
+        return Ok(());
+    }
+
+    // Check if the status code matches any declared pattern.
+    if find_response_mapping(status, mappings).is_some() {
+        return Ok(());
+    }
+
+    // Status code is not declared - this is a hard error for non-2xx.
+    // For 2xx, we allow it even if not declared (success is implicit).
+    if (200..300).contains(&status) {
+        return Ok(());
+    }
+
+    Err(ExecError::new(format!(
+        "{} {} returned undeclared status code {}. \
+        Expected one of: {}",
+        method,
+        path,
+        status,
+        mappings
+            .iter()
+            .map(|m| format_status_pattern(&m.status))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )))
+}
+
+/// Format a status pattern for error messages.
+fn format_status_pattern(pattern: &ResponseStatusPattern) -> String {
+    match pattern {
+        ResponseStatusPattern::Exact(code) => code.to_string(),
+        ResponseStatusPattern::Success2xx => "2xx".to_string(),
+        ResponseStatusPattern::Redirect3xx => "3xx".to_string(),
+        ResponseStatusPattern::ClientError4xx => "4xx".to_string(),
+        ResponseStatusPattern::ServerError5xx => "5xx".to_string(),
     }
 }
 
@@ -1321,7 +1419,8 @@ mod tests {
             headers: vec![],
             auth_scheme: None,
             auth_input: None,
-
+            middleware: None,
+            response_mapping: vec![],
         }
     }
 
@@ -1376,7 +1475,8 @@ mod tests {
             headers: vec![],
             auth_scheme: None,
             auth_input: None,
-
+            middleware: None,
+            response_mapping: vec![],
         }
     }
 
@@ -1399,6 +1499,7 @@ mod tests {
             }],
             output_parsing: ShellOutputParsing::TrimStdout,
             env: vec![],
+            exit_mapping: vec![],
         }
     }
 
@@ -1420,6 +1521,7 @@ mod tests {
             }],
             output_parsing: ShellOutputParsing::ExitCodeBool,
             env: vec![],
+            exit_mapping: vec![],
         }
     }
 
@@ -1484,7 +1586,8 @@ mod tests {
             headers: vec![],
             auth_scheme: None,
             auth_input: None,
-
+            middleware: None,
+            response_mapping: vec![],
         };
         let op = GenericRestPrepareOp { spec };
         let error = op
@@ -1547,7 +1650,8 @@ mod tests {
             headers: vec![],
             auth_scheme: None,
             auth_input: None,
-
+            middleware: None,
+            response_mapping: vec![],
         };
         let op = GenericRestParseOp {
             spec,
@@ -1634,6 +1738,7 @@ mod tests {
                 output_fields: vec![],
                 output_parsing: ShellOutputParsing::SuccessStdoutStderr,
                 env: vec![("RUSTFLAGS".to_string(), "-D warnings".to_string())],
+                exit_mapping: vec![],
             },
         };
 
@@ -1725,6 +1830,7 @@ mod tests {
             }],
             output_parsing: ShellOutputParsing::SplitLines,
             env: vec![],
+            exit_mapping: vec![],
         };
         let op = GenericShellParseOp {
             spec,
@@ -1784,6 +1890,7 @@ mod tests {
             ],
             output_parsing: ShellOutputParsing::SuccessStdoutStderr,
             env: vec![],
+            exit_mapping: vec![],
         };
         let op = GenericShellParseOp {
             spec,
@@ -1844,7 +1951,8 @@ mod tests {
             headers: vec![],
             auth_scheme: None,
             auth_input: None,
-
+            middleware: None,
+            response_mapping: vec![],
         };
 
         let op = GenericRestPrepareOp { spec };
@@ -2107,6 +2215,7 @@ mod tests {
             }],
             output_parsing: ShellOutputParsing::TrimStdout,
             env: vec![],
+            exit_mapping: vec![],
         }
     }
 

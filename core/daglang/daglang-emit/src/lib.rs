@@ -1056,7 +1056,7 @@ mod tests {
             ServiceOperationSpec, ServiceTransportClass, ShellOperationSpec, ShellOutputParsing,
         };
 
-        let rest_spec = ServiceOperationSpec::Rest(RestOperationSpec {
+        let rest_spec = ServiceOperationSpec::Rest(Box::new(RestOperationSpec {
             endpoint: "https://api.anthropic.com".to_string(),
             method: "POST".to_string(),
             path_template: "/v1/messages".to_string(),
@@ -1098,8 +1098,9 @@ mod tests {
             headers: vec![("anthropic-version".to_string(), "2023-06-01".to_string())],
             auth_scheme: None,
             auth_input: None,
-
-        });
+            middleware: None,
+            response_mapping: vec![],
+        }));
 
         let shell_spec = ServiceOperationSpec::Shell(ShellOperationSpec {
             argv_template: vec![
@@ -1111,6 +1112,7 @@ mod tests {
             output_fields: vec![],
             output_parsing: ShellOutputParsing::SuccessStdoutStderr,
             env: vec![],
+            exit_mapping: vec![],
         });
 
         let mut dag = Dag::new();

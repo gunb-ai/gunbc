@@ -9,6 +9,7 @@
 module services.git
 
 import std.types { CommitSha, FilePath, GitRef }
+import extdeps.git { GitCommit, GitBranch, GitRemote, GitDiffEntry, GitMergeResult }
 
 service git.Core {
   operation CurrentBranch {
@@ -16,6 +17,10 @@ service git.Core {
     output { branch: String }
     readonly
     transport shell { argv: ["git", "rev-parse", "--abbrev-ref", "HEAD"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
   }
 
   operation RemoteBranches {
@@ -23,6 +28,10 @@ service git.Core {
     output { branches: List<String> }
     readonly
     transport shell { argv: ["git", "branch", "-r", "--format=%(refname:short)"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
   }
 
   operation LsFiles {
@@ -30,6 +39,10 @@ service git.Core {
     output { files: List<FilePath> }
     readonly
     transport shell { argv: ["git", "ls-files"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
   }
 
   operation Diff {
@@ -37,6 +50,10 @@ service git.Core {
     output { diff: String }
     readonly
     transport shell { argv: ["git", "diff", "\{base\}", "\{head\}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
   }
 
   operation RevList {
@@ -44,6 +61,10 @@ service git.Core {
     output { commits: List<CommitSha> }
     readonly
     transport shell { argv: ["git", "rev-list", "\{since\}..HEAD"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
   }
 
   operation RevListBase {
@@ -51,6 +72,11 @@ service git.Core {
     output { base_ref: CommitSha }
     readonly
     transport shell { argv: ["git", "merge-base", "HEAD", "\{since\}"] }
+    exit {
+      0 => Unit
+      1 => String "No common ancestor found"
+      128 => String "Invalid ref or not a git repository"
+    }
   }
 
   operation Show {
@@ -58,5 +84,9 @@ service git.Core {
     output { content: String }
     readonly
     transport shell { argv: ["git", "show", "\{ref\}:\{path\}"] }
+    exit {
+      0 => Unit
+      128 => String "File not found or invalid ref"
+    }
   }
 }
