@@ -394,7 +394,8 @@ mod tests {
                 scope_key: "test".to_string(),
                 algorithm: RateLimitAlgorithm::TokenBucket,
                 max_burst: 10,
-                sustained_per_minute: 60,
+                requests: 60,
+                window_seconds: 60,
                 honor_retry_after: true,
             }),
             ..Default::default()
@@ -521,7 +522,8 @@ mod tests {
                 scope_key: "test".to_string(),
                 algorithm: RateLimitAlgorithm::TokenBucket,
                 max_burst: 10,
-                sustained_per_minute: 60,
+                requests: 60,
+                window_seconds: 60,
                 honor_retry_after: true,
             }),
             retry: Some(RetryConfig {

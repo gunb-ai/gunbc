@@ -94,7 +94,7 @@ service shell.Codegen {
       stdout: String
       stderr: String
     }
-    transport shell { argv: ["cargo", "run", "--bin", "gunbc-codegen", "--", "--mode=ensure"] }
+    transport shell { argv: ["cargo", "run", "--bin", "gunbc-codegen", "--", "codegen"] }
     exit {
       0 => Unit
       nonzero => String "Codegen failed"

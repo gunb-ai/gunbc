@@ -5188,13 +5188,15 @@ fn derive_middleware_config(
     }
 
     let rate_limit = config.rate_limits.first().map(|rl| {
-        // Convert per-unit to per-minute for sustained rate.
-        let sustained_per_minute = match rl.per {
-            RateLimitUnit::Second => rl.requests * 60,
-            RateLimitUnit::Minute => rl.requests,
-            RateLimitUnit::Hour => rl.requests / 60,
-            RateLimitUnit::Day => rl.requests / 1440,
-        } as u32;
+        // Store raw requests and window — let the runtime do precise math.
+        let (requests, window_seconds) = match rl.per {
+            RateLimitUnit::Second => (rl.requests as u32, 1_u32),
+            RateLimitUnit::Minute => (rl.requests as u32, 60),
+            RateLimitUnit::Hour => (rl.requests as u32, 3600),
+            RateLimitUnit::Day => (rl.requests as u32, 86400),
+        };
+        // Burst = 1/10th of requests or 1, whichever is larger.
+        let max_burst = (requests / 10).max(1);
 
         RateLimitConfig {
             scope_key: rl
@@ -5202,8 +5204,9 @@ fn derive_middleware_config(
                 .clone()
                 .unwrap_or_else(|| service.name.replace('.', ":")),
             algorithm: RateLimitAlgorithm::TokenBucket,
-            max_burst: (sustained_per_minute / 10).max(1),
-            sustained_per_minute,
+            max_burst,
+            requests,
+            window_seconds,
             honor_retry_after: true,
         }
     });
@@ -8484,7 +8487,7 @@ fn remap_expr_idents(expr: &Expr) -> expr::LoweredExpr {
                 .iter()
                 .map(|arm| expr::LoweredMatchArm {
                     pattern: remap_pattern(&arm.pattern),
-                    guard: arm.guard.as_ref().map(|g| remap_expr_idents(g)),
+                    guard: arm.guard.as_ref().map(remap_expr_idents),
                     body: remap_expr_idents(&arm.body),
                 })
                 .collect(),

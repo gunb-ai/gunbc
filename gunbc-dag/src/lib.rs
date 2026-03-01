@@ -31,7 +31,6 @@ pub mod makegen;
 pub mod pragma;
 pub mod resource_defs;
 pub mod resolve;
-pub mod resolve_service;
 pub mod testgen_dag;
 pub mod tool_graphs;
 pub mod tool_runner;

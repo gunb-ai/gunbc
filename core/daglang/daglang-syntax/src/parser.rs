@@ -1774,12 +1774,8 @@ impl Parser {
                 self.advance();
                 readonly = true;
             } else if self.check(&TokenKind::Hermetic) {
-                // Accept but warn — hermeticity is structurally derived from transport
-                self.record_err(self.err(
-                    "hermetic on operations is ignored — hermeticity is structurally \
-                     derived from transport declarations"
-                        .into(),
-                ));
+                // Silently accept — hermeticity is structurally derived from transport.
+                // Keeping as a no-op avoids breaking existing .dag files.
                 self.advance();
             } else {
                 break;
@@ -1804,12 +1800,7 @@ impl Parser {
                     self.advance();
                     readonly = true;
                 } else if self.check(&TokenKind::Hermetic) {
-                    // Accept but warn — hermeticity is structurally derived from transport
-                    self.record_err(self.err(
-                        "hermetic on operations is ignored — hermeticity is structurally \
-                         derived from transport declarations"
-                            .into(),
-                    ));
+                    // Silently accept — hermeticity is structurally derived from transport.
                     self.advance();
                 } else if self.check(&TokenKind::Transport) {
                     transport = Some(self.parse_transport_binding()?);
@@ -4046,8 +4037,10 @@ type Req = String where requires(env: "TOKEN")"#,
     }
 
     #[test]
-    fn hermetic_on_operation_produces_error() {
-        let errs = parse(
+    fn hermetic_on_operation_is_silently_accepted() {
+        // hermetic is a no-op on operations (hermeticity is derived from transport),
+        // but it must not break parsing of existing .dag files.
+        let _ast = parse_or_panic(
             r#"module test
 service foo.Bar {
   operation Baz hermetic {
@@ -4055,13 +4048,6 @@ service foo.Bar {
     output { y: String }
   }
 }"#,
-        )
-        .expect_err("hermetic on operation should produce error");
-        assert!(
-            errs.iter()
-                .any(|e| e.message.contains("hermetic on operations is ignored")),
-            "expected hermetic warning, got: {:?}",
-            errs.iter().map(|e| &e.message).collect::<Vec<_>>()
         );
     }
 

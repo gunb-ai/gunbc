@@ -367,6 +367,17 @@ fn field_access(base: &Value, field: &str) -> Result<Value, EvalError> {
             .get(field)
             .cloned()
             .ok_or_else(|| EvalError::new(format!("no field '{field}' in map"))),
+        Value::Json(json) => match json {
+            serde_json::Value::Object(obj) => Ok(obj
+                .get(field)
+                .map(|v| Value::Json(v.clone()))
+                .unwrap_or(Value::Unit)),
+            serde_json::Value::Null => Ok(Value::Unit),
+            _ => Err(EvalError::new(format!(
+                "cannot access field '{field}' on JSON {:?}",
+                json
+            ))),
+        },
         Value::Unit | Value::Skipped => Ok(Value::Unit),
         _ => Err(EvalError::new(format!(
             "cannot access field '{field}' on {:?}",
@@ -634,7 +645,7 @@ fn eval_pipe(
             let rhs = eval_expr(right, env, sibling_fns)?;
             eval_binop(&lhs, *op, &rhs)
         }
-        other => Err(EvalError::new(&format!(
+        other => Err(EvalError::new(format!(
             "pipe RHS must be a call or pipe chain, got: {other:?}"
         ))),
     }
