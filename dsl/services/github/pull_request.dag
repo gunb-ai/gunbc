@@ -9,6 +9,13 @@
 
 module services.github.pull_request
 
+import extdeps.github.pull_requests {
+  PullRequest, PrState, PrBranchRef, PrMergeStrategy,
+  Review, ReviewState, PrFile, PrFileStatus,
+  CheckStatus, CheckConclusion
+}
+import extdeps.github.core { GitHubUser, Repository }
+
 service github.PullRequest {
   config { endpoint: "https://api.github.com", auth: BearerToken }
 

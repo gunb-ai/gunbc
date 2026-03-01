@@ -1,8 +1,14 @@
 // services/github/gist.dag -- GitHub Gist API.
 //
 // Replaces: core/ir/src/transport/gist.rs, core/ir/src/ops/gist.rs
+//
+// Imports the Gist domain model from extdeps for type consistency.
+// The extdeps define "what is a gist?" — this file defines "how do we call the API?"
 
 module services.github.gist
+
+import extdeps.github.gists { Gist, GistFile, GistVisibility }
+import extdeps.github.core { GitHubUser, Repository }
 
 service github.Gist {
   config { endpoint: "https://api.github.com", auth: BearerToken, auth_input: auth_token }

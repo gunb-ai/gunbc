@@ -5,6 +5,9 @@
 
 module services.gcp.iam
 
+import extdeps.cloud.gcp.core { GcpProject, GcpServiceAccount, OAuth2Scope }
+import extdeps.cloud.gcp.iam { GcpRole, GcpBinding, GcpPolicy, ImpersonationChain, TokenLifetime }
+
 service gcp.IAM {
   config { endpoint: "https://iamcredentials.googleapis.com", auth: BearerToken, auth_input: access_token }
 

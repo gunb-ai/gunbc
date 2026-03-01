@@ -9,6 +9,8 @@
 module services.shell
 
 import std.types { FilePath, NonEmptyStr, Secret }
+import extdeps.cloud.gcp.core { GcpProject, GcpServiceAccount }
+import extdeps.tools.package_managers { PackageManager, InstallSource }
 
 service gcloud.Auth {
   operation Login {

@@ -4,6 +4,12 @@
 
 module services.gcp.sts
 
+import extdeps.cloud.gcp.core { GcpProject, WifPool, WifProvider }
+import extdeps.cloud.gcp.sts {
+  SubjectTokenType, RequestedTokenType, StsGrantType,
+  StsTokenExchange, StsTokenResponse
+}
+
 service gcp.STS {
   config { endpoint: "https://sts.googleapis.com" }
 

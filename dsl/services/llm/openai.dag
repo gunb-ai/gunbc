@@ -5,6 +5,13 @@
 
 module services.llm.openai
 
+import extdeps.llm.core { Role, LlmMessage, TokenUsage, StopReason }
+import extdeps.llm.openai {
+  OpenAiModel, OpenAiModelSpec, ResponseFormat,
+  ToolChoice, OpenAiFinishReason, FunctionCall, ToolCall
+}
+import extdeps.llm.pricing { ModelPricing, ContextWindow, ModelCapability }
+
 service llm.OpenAI {
   config { endpoint: "https://api.openai.com", auth: BearerToken }
 

@@ -22,6 +22,8 @@ module services.github.issues
 
 import interfaces.issue_provider { IssueProvider, IssueEvent }
 import std.types { TrackedIssue, IssueState, IssueLifecycleStage, NonEmptyStr, Url }
+import extdeps.github.issues { GitHubIssue, GitHubIssueState, Label, IssueComment }
+import extdeps.github.core { GitHubUser, Repository, Pagination }
 
 service github.Issues : IssueProvider {
   config { endpoint: "https://api.github.com", auth: BearerToken }

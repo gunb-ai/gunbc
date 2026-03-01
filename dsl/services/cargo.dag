@@ -9,6 +9,9 @@
 
 module services.cargo
 
+import extdeps.cargo { CargoManifest, CargoDependency, CargoProfile, CargoFeature }
+import extdeps.tools.rust_toolchain { RustChannel, CargoCommand, RustEdition }
+
 service cargo.Build {
   operation Build {
     input { all_targets: Bool = true, env: Map<String, String> = cargo_compile_env }

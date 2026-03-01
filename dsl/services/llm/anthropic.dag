@@ -5,6 +5,13 @@
 
 module services.llm.anthropic
 
+import extdeps.llm.core { Role, LlmMessage, TokenUsage, StopReason }
+import extdeps.llm.anthropic {
+  AnthropicModel, AnthropicModelSpec, ContentBlock,
+  SystemPrompt, ThinkingConfig, AnthropicApiVersion
+}
+import extdeps.llm.pricing { ModelPricing, ContextWindow, ModelCapability }
+
 service llm.Anthropic {
   // TODO(RT-A3): add auth_input: api_key — requires threading api_key: Secret through
   // all callers (design.dag, sdlc_stages.dag, review_pipeline.dag).
