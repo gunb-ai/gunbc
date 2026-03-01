@@ -51,10 +51,10 @@ pub mod spec;
 pub(crate) mod transport;
 
 pub use spec::{
-    check_response_completeness, ArgvSegment, BodyEntry, ExitCodePattern, ExitMappingEntry,
-    FieldSpec, FileOperationSpec, LocalOperationSpec, OutputFieldSpec, ResponseCompletenessWarning,
-    ResponseMappingEntry, ResponseStatusPattern, RestOperationSpec, ServiceOperationSpec,
-    ShellOperationSpec, ShellOutputParsing,
+    check_response_completeness, ArgvSegment, AuthRequirement, BodyEntry, ExitCodePattern,
+    ExitMappingEntry, FieldSpec, FileOperationSpec, LocalOperationSpec, OutputFieldSpec,
+    ResponseCompletenessWarning, ResponseMappingEntry, ResponseStatusPattern, RestOperationSpec,
+    ServiceOperationSpec, ShellOperationSpec, ShellOutputParsing,
 };
 
 pub use expr::LoweredFnBody;
@@ -5231,12 +5231,27 @@ fn derive_middleware_config(
         }
     });
 
-    // Infer response provider from service name.
+    // Derive error shape extraction from error_shape {} blocks (TL-16).
+    // When explicit error_shape is declared, the transport layer uses JSON-path
+    // extraction instead of hardcoded provider parsing.
+    let error_shape = service.config.error_shapes.first().map(|es| {
+        gunbc_ir::transport::middleware::ErrorShapeExtraction {
+            message_path: es
+                .message_path
+                .clone()
+                .unwrap_or_else(|| ".message".to_string()),
+            code_path: es.error_type_path.clone(),
+            details_path: None,
+        }
+    });
+
+    // Infer response provider from service name (fallback when no error_shape).
     let response_classification = infer_response_provider(&service.name).map(|provider| {
         ResponseClassification {
             provider,
             prioritize_auth_errors: true,
-            parse_provider_error_shapes: true,
+            parse_provider_error_shapes: error_shape.is_none(),
+            error_shape: error_shape.clone(),
         }
     });
 
