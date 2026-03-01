@@ -34,7 +34,7 @@ type CargoTarget
 
 // ── Profiles ──────────────────────────────────────────────────────
 
-type CargoProfile = Dev | Release | ProfileTest | ProfileBench
+type CargoProfile = CargoDev | CargoRelease | ProfileTest | ProfileBench
 
 // ── Features ──────────────────────────────────────────────────────
 
@@ -49,13 +49,13 @@ type TestHarness = Harness | NoHarness
 
 // ── Commands ──────────────────────────────────────────────────────
 
-type CargoCommand = Build | Test | Clippy | Doc | Run | Check | Bench | Publish
+type CargoCommand = CargoBuild | CargoTest | CargoClippy | CargoDoc | CargoRun | CargoCheck | CargoBench | CargoPublish
 
 // ── Constants ─────────────────────────────────────────────────────
 
 data default_edition: String = "2021"
 
-data default_profile: CargoProfile = Dev
+data default_profile: CargoProfile = CargoDev
 
 // ── Operation behaviors ───────────────────────────────────────────
 

@@ -52,7 +52,7 @@ type GitRemote {
 
 // ── Merge strategies ──────────────────────────────────────────────
 
-type GitMergeStrategy = Merge | Squash | Rebase | FastForward
+type GitMergeStrategy = GitMerge | GitSquash | GitRebase | GitFastForward
 
 // ── Diff model ────────────────────────────────────────────────────
 
@@ -76,7 +76,7 @@ type DiffHunk {
 
 // ── Working tree status ───────────────────────────────────────────
 
-type GitFileStatus = Clean | Modified | Added | Deleted | Renamed | Untracked
+type GitFileStatus = GitClean | GitModified | GitAdded | GitDeleted | GitRenamed | GitUntracked
 
 // ── Constants ─────────────────────────────────────────────────────
 

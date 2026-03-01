@@ -2,8 +2,7 @@
 
 module infra.aws.config
 
-import infra.core { CloudConfig, InfraEnvironment }
-import infra.spec { Environment }
+import infra.core { CloudConfig, InfraEnvironment, Environment }
 
 fn aws_dev_config() -> InfraEnvironment {
   {

@@ -43,7 +43,7 @@ type S3PolicyStatement {
   resource: String
 }
 
-type S3Effect = Allow | Deny
+type S3Effect = S3Allow | S3Deny
 
 // ── Objects ───────────────────────────────────────────────────────
 

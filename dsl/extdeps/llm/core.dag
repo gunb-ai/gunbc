@@ -15,7 +15,7 @@ module extdeps.llm.core
 
 // ── Message protocol ──────────────────────────────────────────────
 
-type Role = System | User | Assistant | Tool
+type Role = LlmSystem | LlmUser | LlmAssistant | LlmTool
 
 type LlmMessage {
   role: Role

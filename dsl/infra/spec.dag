@@ -9,11 +9,7 @@
 
 module infra.spec
 
-import infra.core { CloudProvider, CloudConfig, InfraEnvironment }
-
-// --- Environments --------------------------------------------------------
-
-type Environment = Dev | Ci | Test | Prod
+import infra.core { CloudProvider, CloudConfig, InfraEnvironment, Environment }
 
 // --- Reconciliation (provider-neutral) -----------------------------------
 // All providers use the same check -> create/update -> resolve pattern.

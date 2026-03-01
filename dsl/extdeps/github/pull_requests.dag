@@ -54,7 +54,7 @@ type Review {
 
 // ── Checks ────────────────────────────────────────────────────────
 
-type CheckStatus = Queued | InProgress | Completed
+type CheckStatus = CheckQueued | CheckInProgress | CheckCompleted
 
 type CheckConclusion
   = CheckSuccess

@@ -40,11 +40,11 @@ type GitHubAuthToken {
 }
 
 type GitHubScope
-  = Repo
-  | Gist
-  | Workflow
-  | ReadOrg
-  | ReadUser
+  = ScopeRepo
+  | ScopeGist
+  | ScopeWorkflow
+  | ScopeReadOrg
+  | ScopeReadUser
 
 // ── Pagination ────────────────────────────────────────────────────
 // GitHub uses Link-header cursor-based pagination.

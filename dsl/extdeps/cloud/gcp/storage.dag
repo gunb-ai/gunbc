@@ -17,7 +17,7 @@ import extdeps.cloud.gcp.core { GcpProject, GcpRegion }
 
 // ── Storage classes ───────────────────────────────────────────────
 
-type StorageClass = Standard | Nearline | Coldline | Archive
+type StorageClass = GcsStandard | GcsNearline | GcsColdline | GcsArchive
 
 // ── Buckets ───────────────────────────────────────────────────────
 
