@@ -3094,7 +3094,7 @@ fn collect_if_sites_from_scoped(body: &scope::ScopedBody, out: &mut Vec<IfBranch
                     then_service_call_paths: collect_service_paths_from_scoped_body(then_body),
                     else_service_call_paths: else_body
                         .as_ref()
-                        .map(|b| collect_service_paths_from_scoped_body(b))
+                        .map(collect_service_paths_from_scoped_body)
                         .unwrap_or_default(),
                 });
                 collect_if_sites_from_scoped(then_body, out);
