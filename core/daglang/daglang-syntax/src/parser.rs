@@ -259,6 +259,7 @@ impl Parser {
             TokenKind::From => "from",
             TokenKind::Where => "where",
             TokenKind::Transport => "transport",
+            TokenKind::Response => "response",
             TokenKind::Outputs => "outputs",
             TokenKind::Idempotent => "idempotent",
             TokenKind::Readonly => "readonly",
@@ -771,6 +772,96 @@ impl Parser {
         };
         self.expect(&TokenKind::RBrace)?;
         Ok(binding)
+    }
+
+    /// Parse a response contract block: `response { STATUS => TYPE, ... }`
+    ///
+    /// Syntax:
+    /// ```text
+    /// response {
+    ///     200 => SuccessType
+    ///     201 => CreatedType "Created resource"
+    ///     4xx => ClientError
+    ///     5xx => ServerError
+    /// }
+    /// ```
+    fn parse_response_block(&mut self) -> Result<Vec<ResponseEntry>, ParseError> {
+        self.expect(&TokenKind::Response)?;
+        self.expect(&TokenKind::LBrace)?;
+
+        let mut entries = Vec::new();
+
+        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+            // Parse status pattern (200, 2xx, 4xx, 5xx, etc.)
+            let status = self.parse_status_pattern()?;
+
+            // Expect =>
+            self.expect(&TokenKind::FatArrow)?;
+
+            // Parse response type
+            let response_type = self.parse_type_expr()?;
+
+            // Optional description string
+            let description = if let TokenKind::Str(s) = &self.peek().kind {
+                let desc = s.clone();
+                self.advance();
+                Some(desc)
+            } else {
+                None
+            };
+
+            entries.push(ResponseEntry {
+                status,
+                response_type,
+                description,
+            });
+
+            // Optional comma separator
+            self.eat(&TokenKind::Comma);
+        }
+
+        self.expect(&TokenKind::RBrace)?;
+        Ok(entries)
+    }
+
+    /// Parse a status pattern: exact code (200, 404) or wildcard (2xx, 4xx, 5xx).
+    ///
+    /// Note: Wildcard patterns like "4xx" are lexed as Int(4) + Ident("xx"),
+    /// so we need to handle this two-token sequence.
+    fn parse_status_pattern(&mut self) -> Result<StatusPattern, ParseError> {
+        // Check if we have an Int followed by "xx" (wildcard pattern)
+        if let TokenKind::Int(n) = &self.peek().kind {
+            let code = *n;
+            self.advance();
+
+            // Check if followed by "xx" suffix for wildcard patterns
+            if let TokenKind::Ident(suffix) = &self.peek().kind {
+                if suffix == "xx" {
+                    self.advance();
+                    return match code {
+                        2 => Ok(StatusPattern::Success2xx),
+                        3 => Ok(StatusPattern::Redirect3xx),
+                        4 => Ok(StatusPattern::ClientError4xx),
+                        5 => Ok(StatusPattern::ServerError5xx),
+                        _ => Err(ParseError {
+                            message: format!("Invalid wildcard pattern: {}xx", code),
+                            span: self.peek().span,
+                        }),
+                    };
+                }
+            }
+
+            // No "xx" suffix - it's an exact status code
+            return Ok(StatusPattern::Exact(code as u16));
+        }
+
+        Err(ParseError {
+            message: format!(
+                "Expected status code (200, 404) or pattern (2xx, 4xx, 5xx), found {:?}",
+                self.peek().kind
+            ),
+            span: self.peek().span,
+        })
     }
 
     fn end_span(&self, start: Span) -> Span {
@@ -1576,6 +1667,7 @@ impl Parser {
         let mut readonly = false;
         let permissions: Vec<String> = Vec::new();
         let mut transport: Option<TransportBinding> = None;
+        let mut response: Vec<ResponseEntry> = Vec::new();
 
         if self.eat(&TokenKind::LParen) {
             inputs = self.parse_field_list_until_rparen()?;
@@ -1622,6 +1714,8 @@ impl Parser {
                     self.advance();
                 } else if self.check(&TokenKind::Transport) {
                     transport = Some(self.parse_transport_binding()?);
+                } else if self.check(&TokenKind::Response) {
+                    response = self.parse_response_block()?;
                 } else {
                     self.advance();
                 }
@@ -1636,6 +1730,7 @@ impl Parser {
             readonly,
             permissions,
             transport,
+            response,
         })
     }
 
@@ -3866,6 +3961,45 @@ pipeline gist {
                 assert_eq!(retry.max_attempts, 3);
                 assert_eq!(retry.backoff, BackoffStrategy::Exponential);
                 assert_eq!(retry.retry_on, vec![429, 500, 502]);
+            }
+            other => panic!("expected ServiceDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_operation_with_response_block() {
+        // Simple test without string interpolation to avoid StrBegin
+        let source = r#"
+            module services.example
+            service github.Issues {
+                config { endpoint: "https://api.github.com" }
+                operation Get {
+                    input { id: Int }
+                    output { issue: Issue }
+                    transport rest { method: GET, path: "/issues/123" }
+                    response {
+                        200 => Issue
+                        4xx => ClientError
+                        5xx => ServerError
+                    }
+                }
+            }
+        "#;
+        let ast = parse_or_panic(source);
+        match &ast.items[0].node {
+            Item::ServiceDef(def) => {
+                assert_eq!(def.operations.len(), 1);
+                let op = &def.operations[0];
+                assert_eq!(op.name, "Get");
+                assert_eq!(op.response.len(), 3);
+
+                // Check exact status code
+                assert_eq!(op.response[0].status, StatusPattern::Exact(200));
+                assert!(matches!(op.response[0].response_type, TypeExpr::Named(ref n) if n == "Issue"));
+
+                // Check wildcard patterns
+                assert_eq!(op.response[1].status, StatusPattern::ClientError4xx);
+                assert_eq!(op.response[2].status, StatusPattern::ServerError5xx);
             }
             other => panic!("expected ServiceDef, got {other:?}"),
         }

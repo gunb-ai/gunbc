@@ -286,6 +286,32 @@ pub mod ast {
         pub readonly: bool,
         pub permissions: Vec<String>,
         pub transport: Option<TransportBinding>,
+        /// Response contract: maps HTTP status codes/patterns to response types.
+        pub response: Vec<ResponseEntry>,
+    }
+
+    /// Response contract entry: STATUS => TYPE.
+    /// STATUS is a pattern (exact code like 200, or wildcard like 2xx, 4xx, 5xx).
+    #[derive(Debug, Clone)]
+    pub struct ResponseEntry {
+        pub status: StatusPattern,
+        pub response_type: TypeExpr,
+        pub description: Option<String>,
+    }
+
+    /// HTTP status code pattern.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum StatusPattern {
+        /// Exact status code: 200, 201, 404, etc.
+        Exact(u16),
+        /// 2xx wildcard: any 2xx status.
+        Success2xx,
+        /// 3xx wildcard: redirects.
+        Redirect3xx,
+        /// 4xx wildcard: client errors.
+        ClientError4xx,
+        /// 5xx wildcard: server errors.
+        ServerError5xx,
     }
 
     // ── Resources ───────────────────────────────────────────────────
