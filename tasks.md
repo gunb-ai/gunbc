@@ -13,11 +13,11 @@ vertical slice of remaining work.
 ```
 Lane 1: Compiler & Binary Elimination
   Red C + Red A — compiler refactor enables binary deletion
-  (C1:C22, A1:A11)
+  (C1:C24, A1:A11)
 
 Lane 2: Service Contracts & Transport
   Transport domain modeling + service layer + contract testing
-  (TL-7,11:15, SL-1:11, CT-1:7)
+  (TL-7,11:16, SL-1:11, CT-1:7)
 
 Lane 3: SDLC Production
   Push hermetic pipeline to real cloud execution
@@ -105,8 +105,10 @@ spec.rs       # Service operation specs
 | 20 | C19 | **Restore passthrough enforcement + diagnostics (RT4b).** Required outputs with no input → `ExecError` (not `Skipped`). | Missing passthrough ports are diagnosable. CI clean. | S | C4, C5, C7 |
 | 21 | C21 | **CLI generator: KEY=VALUE and multi-value flags.** For `Map<String, String>` params, generate `KEY=VALUE` parser. Unblocks A5. | `gunbc-infra --input project_id=foo` parses to map. | M | — |
 | 22 | C22 | **Deductive Redundancy Elimination (DRE).** Idempotency fingerprinting. Phase 1: compile-time `StaticFingerprint`. Phase 2: test-time execution ledger. See `docs/design/deductive-redundancy.md`. | Static fingerprint catches duplicate reads/writes at compile time. | L | — |
+| 23 | C23 | **Hermetic AOT binaries (kill `CARGO_MANIFEST_DIR`).** 11 production files use `env!("CARGO_MANIFEST_DIR")` to read `.dag` files at runtime, hardcoding the developer's absolute path. Replace with `include_str!` to embed `.dag` sources at compile time, parsing AST purely in-memory. Bazel-style: binary runs on any machine. | Zero `env!("CARGO_MANIFEST_DIR")` in non-test code. Binaries run outside source tree. | L | C1 |
+| 24 | C24 | **Pure dataflow lowering (kill `ExprComputeOp` + `__` hack).** `ExprComputeOp` embeds a hidden AST interpreter in the executor. The lowerer rewrites `entry.kind` → `entry__kind`, forcing runtime Map flattening + `referenced_vars` pre-seeding with `Value::Skipped` to mask unbound variables. Desugar `BinOp`, `If`, `Match`, `FieldAccess` into primitive structural DAG nodes (`GetFieldNode`, `LogicalOrNode`, etc.). | Zero `ExprComputeOp` in any compiled graph. `__` convention deleted. `referenced_vars` deleted. | XL | C10 |
 
-**Chain**: C1 → C3; C2; C10 (RT4a/c) → C4 → C5 → C6; C7; C8; C9; C10a → C11 → C14 → C15 → C19; C12; C13; C16; C17; C18; C21 (unblocks A5); C22
+**Chain**: C1 → C3; C2; C10 (RT4a/c) → C4 → C5 → C6; C7; C8; C9; C10a → C11 → C14 → C15 → C19; C12; C13; C16; C17; C18; C21 (unblocks A5); C22; C23 (after C1); C24 (after C10)
 
 ---
 
@@ -124,11 +126,11 @@ C21 unblocks A5 (multi-value flag support).
 | 2 | A8 | **Unit commands → DSL data.** `dsl/config/workflow_commands.dag` with per-workflow `{ program, args }`. | `unit_commands.rs` deleted. | M | — |
 | 3 | A9 | **Extract generic workflow to `core/workflow/`.** Move planner, executor, admission, coordination, slo, projection, proof, errors, schema, key (9 modules). | New `core/workflow/` crate. All tests pass. | L | — |
 | 4 | A10 | **Delete binary infrastructure.** Remove `BinaryArgs` from `gunbc-cli`. | `BinaryArgs` deleted. | S | — |
-| 5 | A1 | **Eliminate `sdlc.rs`.** Move param_source propagation. Delete binary. | `sdlc.rs` deleted. Generated binary works. | S | C20 ✓ |
-| 6 | A2 | **Eliminate `deps_config.rs`.** | `deps_config.rs` deleted. `gunbc-deps-config --mode=ensure` works. | S | C20 ✓ |
-| 7 | A3 | **Eliminate `pipeline.rs`.** Move `query_ci_status()` etc. to DSL. | `pipeline.rs` deleted. `gunbc-pipeline --depth 1` works. | M | C20 ✓ |
-| 8 | A4 | **Eliminate `workflow.rs`.** Move plan rendering to DSL. | `workflow.rs` deleted. `gunbc-workflow plan` and `run` work. | L | C20 ✓ |
-| 9 | A5 | **Eliminate `infra.rs`.** 8 subcommands → DSL. | `infra.rs` deleted. All 8 subcommands work. | L | C21 |
+| 5 | A1 | **Eliminate `sdlc.rs`.** `git rm` the handwritten binary. Move param_source propagation to DSL. Rely 100% on `target/codegen/bin/` output from C20 generator. Remove `[[bin]]` entry from `Cargo.toml`. | `sdlc.rs` deleted. No `[[bin]]` entry. Generated binary works. | S | C20 ✓ |
+| 6 | A2 | **Eliminate `deps_config.rs`.** `git rm` the handwritten binary. Remove `[[bin]]` entry. | `deps_config.rs` deleted. `gunbc-deps-config --mode=ensure` works via generated binary. | S | C20 ✓ |
+| 7 | A3 | **Eliminate `pipeline.rs`.** `git rm` the handwritten binary. Move `query_ci_status()` etc. to DSL. Remove `[[bin]]` entry. | `pipeline.rs` deleted. `gunbc-pipeline --depth 1` works via generated binary. | M | C20 ✓ |
+| 8 | A4 | **Eliminate `workflow.rs`.** `git rm` the handwritten binary. Move plan rendering to DSL. Remove `[[bin]]` entry. | `workflow.rs` deleted. `gunbc-workflow plan` and `run` work via generated binary. | L | C20 ✓ |
+| 9 | A5 | **Eliminate `infra.rs`.** `git rm` the handwritten binary. 8 subcommands → DSL. Remove `[[bin]]` entry. | `infra.rs` deleted. All 8 subcommands work via generated binary. | L | C21 |
 | 10 | A11 | **Delete compensating tests.** 7 `workflow_*.rs` + `infra_cli.rs`. | Files deleted. `cargo test --workspace` passes. | S | A1:A5 |
 
 **Execution order**: A7 → A8 → A9 → A10 → A11 (parallel with A1-A5).
@@ -162,8 +164,9 @@ configuration (rate limits, error shapes) from Rust into `.dag` files.
 | 4 | TL-13 | **Domain data migration.** Move hardcoded rate limits from Rust to `dsl/services/*.dag`. Delete provider-specific branches from `classify.rs`. | M | TL-12 |
 | 5 | TL-14 | **Multi-target emit.** Emit transport configuration per target language. Rust links to Target SDK. Go/Python stubs for future. | XL | TL-13 |
 | 6 | TL-15 | **Substrate cleanup.** `lib/transport/` becomes pure Target SDK. Delete `GITHUB_CORE_LIMIT` constants, `host.contains("github.com")` branches. | L | TL-14 |
+| 7 | TL-16 | **Dynamic JSON-path error shapes.** Lower `error_shape {}` blocks (parser support exists at `parser.rs:415`) into JSON-path extraction rules in IR (`message_path: ".error.message"`, `code_path: ".error.code"`). Delete `ResponseProvider` enum, `infer_response_provider()` string matching (`daglang-lower:5250`), and hardcoded `parse_github_error`/`parse_gcp_error`/`parse_anthropic_error`/`parse_openai_error` from `classify.rs`. Transport layer blindly executes JSON-path extractions. | L | TL-12 |
 
-**Chain**: TL-7 (independent); TL-11 → TL-12 → TL-13 → TL-14 → TL-15
+**Chain**: TL-7 (independent); TL-11 → TL-12 → TL-13 → TL-14 → TL-15; TL-16 (after TL-12)
 
 ---
 
