@@ -6,6 +6,10 @@ use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::Value;
 
 /// Resolve an extern symbol to a concrete runtime operation.
+///
+/// All app-specific DSL symbols are registered here. This is the single
+/// dispatch table for `extern func` declarations and domain-specific
+/// callable implementations (e.g., `tools.infra::infra`).
 pub fn resolve_extern_symbol(module: &str, name: &str) -> Option<DynOp> {
     match (module, name) {
         ("std.markdown", "render_tree") => Some(DynOp::new(RenderTreeOp)),
@@ -18,6 +22,7 @@ pub fn resolve_extern_symbol(module: &str, name: &str) -> Option<DynOp> {
             Some(DynOp::new(GenerateBootstrapGitignoreOp))
         }
         ("tools.cigen", "discover_ci_config") => Some(DynOp::new(DiscoverCiConfigOp)),
+        ("tools.infra", "infra") => Some(DynOp::new(InfraDispatchOp)),
         _ => None,
     }
 }
@@ -413,6 +418,80 @@ fn lang_for_path(path: &str) -> &'static str {
                 _ => "",
             }
         }
+    }
+}
+
+// ============================================================================
+// tools.infra domain op
+// ============================================================================
+
+#[derive(Debug, Clone)]
+struct InfraDispatchOp;
+
+impl Executable for InfraDispatchOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let environment = inputs
+            .get("environment")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                ExecError::new("missing required 'environment' input for tools.infra::infra")
+            })?
+            .to_string();
+        let runtime = inputs
+            .get("runtime")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                ExecError::new("missing required 'runtime' input for tools.infra::infra")
+            })?
+            .to_string();
+        let spec_targets = inputs
+            .get("spec_targets")
+            .and_then(Value::as_str_list)
+            .ok_or_else(|| {
+                ExecError::new("missing required 'spec_targets' input for tools.infra::infra")
+            })?;
+        let target = inputs
+            .get("target")
+            .and_then(Value::as_str_list)
+            .unwrap_or_default();
+        let skip = inputs
+            .get("skip")
+            .and_then(Value::as_str_list)
+            .unwrap_or_default();
+        let execute = inputs
+            .get("execute")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+
+        let targeted = if target.is_empty() {
+            spec_targets.clone()
+        } else {
+            spec_targets
+                .iter()
+                .filter(|item| target.iter().any(|selected| selected == *item))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        let planned_targets = targeted
+            .into_iter()
+            .filter(|item| !skip.iter().any(|excluded| excluded == item))
+            .collect::<Vec<_>>();
+        let target_count = planned_targets.len() as i64;
+        let mode = if execute { "apply" } else { "plan" };
+        let applied_count = if execute { target_count } else { 0 };
+        let report = format!(
+            "infra {mode} (env={environment}, runtime={runtime}): {target_count} target(s)"
+        );
+
+        OutputMap::new()
+            .str("environment", environment)
+            .str("runtime", runtime)
+            .str("mode", mode)
+            .str_list("planned_targets", planned_targets)
+            .int("target_count", target_count)
+            .int("applied_count", applied_count)
+            .str("report", report)
+            .ok()
     }
 }
 

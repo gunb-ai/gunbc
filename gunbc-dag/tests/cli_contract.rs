@@ -82,6 +82,7 @@ fn parse_scalar_value(param_type: ParamType, raw: &str) -> Value {
                 .expect("contract sample int should parse as i64"),
         ),
         ParamType::Bool => Value::Bool(raw == "true"),
+        ParamType::Map => Value::Str(raw.to_string()),
     }
 }
 
@@ -96,6 +97,7 @@ fn scalar_sample(port_name: &str, param_type: ParamType, idx: usize) -> String {
                 "false".to_string()
             }
         }
+        ParamType::Map => format!("{port_name}_key_{idx}={port_name}_val_{idx}"),
     }
 }
 
@@ -389,6 +391,7 @@ fn scalar_to_json(param_type: ParamType, raw: &str) -> serde_json::Value {
         ParamType::Str => serde_json::Value::String(raw.to_string()),
         ParamType::Int => serde_json::json!(raw.parse::<i64>().unwrap()),
         ParamType::Bool => serde_json::Value::Bool(raw == "true"),
+        ParamType::Map => serde_json::Value::String(raw.to_string()),
     }
 }
 

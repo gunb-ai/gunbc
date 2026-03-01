@@ -880,18 +880,15 @@ fn resolve_domain(
     if module == "std.resources" {
         return resolve_std_resources(name);
     }
-    let custom = match module {
-        "tools.infra" => resolve_tools_infra(name),
-        _ => None,
-    };
-    if let Some(op) = custom {
+    // 2. App-specific callables resolved via extern_ops (single dispatch table).
+    if let Some(op) = crate::extern_ops::resolve_extern_symbol(module, name) {
         return Ok(op);
     }
-    // 2. Service/workspace modules use generic transport dispatch.
+    // 3. Service/workspace modules use generic transport dispatch.
     if module.starts_with("services.") || module.starts_with("workspace.") {
         return resolve_service_transport(node_id, module, name, outputs, service_metadata);
     }
-    // 3. Service transport nodes from non-service modules (e.g., loop body
+    // 4. Service transport nodes from non-service modules (e.g., loop body
     //    transport nodes which inherit the tool module name, not the service module).
     //    Only route when the metadata has a concrete operation spec; nodes without
     //    specs (e.g., not-yet-implemented service operations) fall through to the
@@ -902,7 +899,7 @@ fn resolve_domain(
             return resolve_service_transport(node_id, module, name, outputs, service_metadata);
         }
     }
-    // 4. Default: identity callable for compiler-validated callables.
+    // 5. Default: identity callable for compiler-validated callables.
     //
     // All LoweredOp::Callable nodes are produced by the DSL compiler (the
     // lowerer only emits Callable for items in the typed project). The
@@ -939,83 +936,6 @@ fn resolve_std_resources(name: &str) -> Result<DynOp, ResolveError> {
     Ok(DynOp::new(IdentityCallableOp))
 }
 
-fn resolve_tools_infra(name: &str) -> Option<DynOp> {
-    match name {
-        "infra" => Some(DynOp::new(InfraDispatchOp)),
-        _ => None,
-    }
-}
-
-#[derive(Debug, Clone)]
-struct InfraDispatchOp;
-
-impl Executable for InfraDispatchOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let environment = inputs
-            .get("environment")
-            .and_then(Value::as_str)
-            .ok_or_else(|| {
-                ExecError::new("missing required 'environment' input for tools.infra::infra")
-            })?
-            .to_string();
-        let runtime = inputs
-            .get("runtime")
-            .and_then(Value::as_str)
-            .ok_or_else(|| {
-                ExecError::new("missing required 'runtime' input for tools.infra::infra")
-            })?
-            .to_string();
-        let spec_targets = inputs
-            .get("spec_targets")
-            .and_then(Value::as_str_list)
-            .ok_or_else(|| {
-                ExecError::new("missing required 'spec_targets' input for tools.infra::infra")
-            })?;
-        let target = inputs
-            .get("target")
-            .and_then(Value::as_str_list)
-            .unwrap_or_default();
-        let skip = inputs
-            .get("skip")
-            .and_then(Value::as_str_list)
-            .unwrap_or_default();
-        let execute = inputs
-            .get("execute")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-
-        let targeted = if target.is_empty() {
-            spec_targets.clone()
-        } else {
-            spec_targets
-                .iter()
-                .filter(|item| target.iter().any(|selected| selected == *item))
-                .cloned()
-                .collect::<Vec<_>>()
-        };
-        let planned_targets = targeted
-            .into_iter()
-            .filter(|item| !skip.iter().any(|excluded| excluded == item))
-            .collect::<Vec<_>>();
-        let target_count = planned_targets.len() as i64;
-        let mode = if execute { "apply" } else { "plan" };
-        let applied_count = if execute { target_count } else { 0 };
-        let report = format!(
-            "infra {mode} (env={environment}, runtime={runtime}): {target_count} target(s)"
-        );
-
-        OutputMap::new()
-            .str("environment", environment)
-            .str("runtime", runtime)
-            .str("mode", mode)
-            .str_list("planned_targets", planned_targets)
-            .int("target_count", target_count)
-            .int("applied_count", applied_count)
-            .str("report", report)
-            .ok()
-    }
-}
-
 // ============================================================================
 // Extern symbol resolution
 // ============================================================================
@@ -1038,17 +958,12 @@ fn resolve_extern_call(node_id: &str, symbol: &str) -> Result<DynOp, ResolveErro
     if module == "std.resources" {
         return resolve_std_resources(name);
     }
-    if let Some(op) = resolve_tools_infra(name) {
-        if module == "tools.infra" {
-            return Ok(op);
-        }
-    }
 
     Err(ResolveError {
         node_id: node_id.to_string(),
         reason: format!(
             "extern symbol `{symbol}` could not be resolved — \
-             no extern op, std.resources, or tools.infra handler found"
+             no extern op or std.resources handler found"
         ),
     })
 }

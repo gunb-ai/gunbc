@@ -1146,6 +1146,116 @@ pub struct ProviderResponseContract {
     pub is_error: bool,
 }
 
+impl ProviderResponseContract {
+    /// Generate a test name from the contract fields.
+    pub fn test_name(&self) -> String {
+        let sanitized_op = self
+            .operation
+            .replace("::", "_")
+            .replace('.', "_")
+            .to_lowercase();
+        let kind = if self.is_error { "error" } else { "success" };
+        format!(
+            "response_contract_{sanitized_op}_{kind}_{}",
+            self.status_code
+        )
+    }
+
+    /// Generate a `#[test]` function that mocks the transport to return
+    /// this status code and verifies the workflow handles it correctly.
+    ///
+    /// `mock_transport_expr` is the Rust expression for constructing a
+    /// mock transport that returns the given status code
+    /// (e.g., `MockTransport::with_status(401)`).
+    pub fn generate_test_fn(&self, mock_transport_expr: &str) -> String {
+        let fn_name = self.test_name();
+        let expected_type = &self.response_type;
+        let status = self.status_code;
+
+        if self.is_error {
+            format!(
+                "#[test]\n\
+                 fn {fn_name}() {{\n    \
+                     let transport = {mock_transport_expr};\n    \
+                     let result = transport.execute();\n    \
+                     assert!(result.is_err(), \"status {status} should produce an error\");\n    \
+                     let err = result.unwrap_err();\n    \
+                     assert_eq!(err.status_code(), {status}, \"error status code mismatch\");\n    \
+                     assert_eq!(err.response_type(), \"{expected_type}\", \"error type mismatch\");\n\
+                 }}\n"
+            )
+        } else {
+            format!(
+                "#[test]\n\
+                 fn {fn_name}() {{\n    \
+                     let transport = {mock_transport_expr};\n    \
+                     let result = transport.execute();\n    \
+                     assert!(result.is_ok(), \"status {status} should succeed\");\n    \
+                     let response = result.unwrap();\n    \
+                     assert_eq!(response.response_type(), \"{expected_type}\", \"response type mismatch\");\n\
+                 }}\n"
+            )
+        }
+    }
+}
+
+/// Generate all response contract test functions for a set of operations.
+///
+/// Groups contracts by operation and generates one test per status code.
+/// `mock_builder` is a function that takes status code and returns the
+/// mock transport expression string.
+pub fn generate_response_contract_tests(
+    contracts: &[ProviderResponseContract],
+    mock_builder: impl Fn(u16) -> String,
+) -> Vec<String> {
+    contracts
+        .iter()
+        .map(|c| c.generate_test_fn(&mock_builder(c.status_code)))
+        .collect()
+}
+
+/// Validate that a set of response contracts covers both success and error
+/// cases for each operation (the "model negative space" invariant).
+///
+/// Returns Ok(()) if each operation has at least one success (2xx) and
+/// one error (non-2xx) contract. Returns Err with missing operations.
+pub fn validate_response_contract_coverage(
+    contracts: &[ProviderResponseContract],
+) -> Result<(), Vec<String>> {
+    let mut ops: std::collections::HashMap<&str, (bool, bool)> = std::collections::HashMap::new();
+    for c in contracts {
+        let entry = ops.entry(&c.operation).or_insert((false, false));
+        if c.is_error {
+            entry.1 = true;
+        } else {
+            entry.0 = true;
+        }
+    }
+    let missing: Vec<String> = ops
+        .iter()
+        .filter(|(_, (has_success, has_error))| !has_success || !has_error)
+        .map(|(op, (has_success, has_error))| {
+            let mut msg = format!("{op}: missing");
+            if !has_success {
+                msg.push_str(" success");
+            }
+            if !has_error {
+                if !has_success {
+                    msg.push_str(" and");
+                }
+                msg.push_str(" error");
+            }
+            msg.push_str(" response contract");
+            msg
+        })
+        .collect();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(missing)
+    }
+}
+
 // ============================================================================
 // Resource requirements (not yet implemented)
 // ============================================================================
@@ -3443,5 +3553,137 @@ mod tests {
 
         let tests = generate_compliance_test_suite(&bindings, &contracts);
         assert!(tests.is_empty(), "no tests when binding doesn't match");
+    }
+
+    // ============ CT-5: ProviderResponseContract obligation tests ============
+
+    #[test]
+    fn test_response_contract_test_name_error() {
+        let c = ProviderResponseContract {
+            operation: "github.Gist::Create".to_string(),
+            status_code: 401,
+            response_type: "GitHubErrorShape".to_string(),
+            is_error: true,
+        };
+        assert_eq!(c.test_name(), "response_contract_github_gist_create_error_401");
+    }
+
+    #[test]
+    fn test_response_contract_test_name_success() {
+        let c = ProviderResponseContract {
+            operation: "github.Gist::Create".to_string(),
+            status_code: 201,
+            response_type: "GistResponse".to_string(),
+            is_error: false,
+        };
+        assert_eq!(c.test_name(), "response_contract_github_gist_create_success_201");
+    }
+
+    #[test]
+    fn test_response_contract_generate_error_test() {
+        let c = ProviderResponseContract {
+            operation: "gcp.Storage::Get".to_string(),
+            status_code: 404,
+            response_type: "GcpNotFoundError".to_string(),
+            is_error: true,
+        };
+        let code = c.generate_test_fn("MockTransport::with_status(404)");
+        assert!(code.contains("#[test]"));
+        assert!(code.contains("fn response_contract_gcp_storage_get_error_404()"));
+        assert!(code.contains("MockTransport::with_status(404)"));
+        assert!(code.contains("result.is_err()"));
+        assert!(code.contains("err.status_code(), 404"));
+        assert!(code.contains("GcpNotFoundError"));
+    }
+
+    #[test]
+    fn test_response_contract_generate_success_test() {
+        let c = ProviderResponseContract {
+            operation: "gcp.Storage::Get".to_string(),
+            status_code: 200,
+            response_type: "ObjectData".to_string(),
+            is_error: false,
+        };
+        let code = c.generate_test_fn("MockTransport::with_status(200)");
+        assert!(code.contains("#[test]"));
+        assert!(code.contains("result.is_ok()"));
+        assert!(code.contains("ObjectData"));
+    }
+
+    #[test]
+    fn test_generate_response_contract_tests_batch() {
+        let contracts = vec![
+            ProviderResponseContract {
+                operation: "github.Gist::Create".to_string(),
+                status_code: 201,
+                response_type: "GistResponse".to_string(),
+                is_error: false,
+            },
+            ProviderResponseContract {
+                operation: "github.Gist::Create".to_string(),
+                status_code: 401,
+                response_type: "AuthError".to_string(),
+                is_error: true,
+            },
+        ];
+        let tests = generate_response_contract_tests(&contracts, |status| {
+            format!("MockTransport::with_status({status})")
+        });
+        assert_eq!(tests.len(), 2);
+        assert!(tests[0].contains("success_201"));
+        assert!(tests[1].contains("error_401"));
+    }
+
+    #[test]
+    fn test_validate_response_contract_coverage_complete() {
+        let contracts = vec![
+            ProviderResponseContract {
+                operation: "gcp.Storage::Get".to_string(),
+                status_code: 200,
+                response_type: "ObjectData".to_string(),
+                is_error: false,
+            },
+            ProviderResponseContract {
+                operation: "gcp.Storage::Get".to_string(),
+                status_code: 404,
+                response_type: "NotFound".to_string(),
+                is_error: true,
+            },
+        ];
+        assert!(validate_response_contract_coverage(&contracts).is_ok());
+    }
+
+    #[test]
+    fn test_validate_response_contract_coverage_missing_error() {
+        let contracts = vec![ProviderResponseContract {
+            operation: "gcp.Storage::Get".to_string(),
+            status_code: 200,
+            response_type: "ObjectData".to_string(),
+            is_error: false,
+        }];
+        let result = validate_response_contract_coverage(&contracts);
+        assert!(result.is_err());
+        let missing = result.unwrap_err();
+        assert_eq!(missing.len(), 1);
+        assert!(missing[0].contains("error response contract"));
+    }
+
+    #[test]
+    fn test_validate_response_contract_coverage_missing_success() {
+        let contracts = vec![ProviderResponseContract {
+            operation: "gcp.Storage::Get".to_string(),
+            status_code: 500,
+            response_type: "ServerError".to_string(),
+            is_error: true,
+        }];
+        let result = validate_response_contract_coverage(&contracts);
+        assert!(result.is_err());
+        let missing = result.unwrap_err();
+        assert!(missing[0].contains("success"));
+    }
+
+    #[test]
+    fn test_validate_response_contract_coverage_empty() {
+        assert!(validate_response_contract_coverage(&[]).is_ok());
     }
 }
