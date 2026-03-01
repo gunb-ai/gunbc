@@ -233,22 +233,6 @@ pub struct ExtraTarget {
     pub post_commands: Vec<String>,
 }
 
-impl ExtraTarget {
-    /// Create a new extra target.
-    pub fn new(suffix: impl Into<String>, description: impl Into<String>) -> Self {
-        Self {
-            suffix: suffix.into(),
-            description: description.into(),
-            post_commands: Vec::new(),
-        }
-    }
-
-    /// Add a post command.
-    pub fn with_command(mut self, cmd: impl Into<String>) -> Self {
-        self.post_commands.push(cmd.into());
-        self
-    }
-}
 
 /// An entrypoint parameter that becomes a Make variable.
 #[derive(Debug, Clone)]
@@ -267,36 +251,6 @@ pub struct EntrypointParam {
     pub repeatable: bool,
 }
 
-impl EntrypointParam {
-    /// Create a new entrypoint parameter.
-    pub fn new(
-        port_name: impl Into<String>,
-        make_var: impl Into<String>,
-        cli_flag: impl Into<String>,
-        type_hint: impl Into<String>,
-    ) -> Self {
-        Self {
-            port_name: port_name.into(),
-            make_var: make_var.into(),
-            cli_flag: cli_flag.into(),
-            type_hint: type_hint.into(),
-            default: None,
-            repeatable: false,
-        }
-    }
-
-    /// Set a default value.
-    pub fn with_default(mut self, default: impl Into<String>) -> Self {
-        self.default = Some(default.into());
-        self
-    }
-
-    /// Mark as repeatable (for list parameters).
-    pub fn repeatable(mut self) -> Self {
-        self.repeatable = true;
-        self
-    }
-}
 
 /// Minimal workflow descriptor for tool targets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -337,85 +291,6 @@ pub struct ToolInfo {
 }
 
 impl ToolInfo {
-    /// Create a tool in its own package.
-    pub fn new(
-        binary: impl Into<String>,
-        short_name: impl Into<String>,
-        description: impl Into<String>,
-    ) -> Self {
-        Self {
-            invocation: CargoInvocation::new(binary),
-            short_name: short_name.into(),
-            description: description.into(),
-            entrypoints: Vec::new(),
-            extra_targets: Vec::new(),
-            has_declarative_dag: false,
-            needs_generated_cli: true,
-            live_secrets: Vec::new(),
-        }
-    }
-
-    /// Create a tool that's a binary inside another package.
-    pub fn in_package(
-        binary: impl Into<String>,
-        package: impl Into<String>,
-        short_name: impl Into<String>,
-        description: impl Into<String>,
-    ) -> Self {
-        Self {
-            invocation: CargoInvocation::in_package(binary, package),
-            short_name: short_name.into(),
-            description: description.into(),
-            entrypoints: Vec::new(),
-            extra_targets: Vec::new(),
-            has_declarative_dag: false,
-            needs_generated_cli: true,
-            live_secrets: Vec::new(),
-        }
-    }
-
-    /// Create a standalone tool from its component name.
-    pub fn standalone(component: &str, description: impl Into<String>) -> Self {
-        Self {
-            invocation: CargoInvocation::standalone(component),
-            short_name: component.to_string(),
-            description: description.into(),
-            entrypoints: Vec::new(),
-            extra_targets: Vec::new(),
-            has_declarative_dag: false,
-            needs_generated_cli: true,
-            live_secrets: Vec::new(),
-        }
-    }
-
-    /// Create a tool that is a repo-local workspace binary.
-    pub fn workspace(tool_name: &str, description: impl Into<String>) -> Self {
-        Self {
-            invocation: CargoInvocation::composed(tool_name, "dag"),
-            short_name: tool_name.to_string(),
-            description: description.into(),
-            entrypoints: Vec::new(),
-            extra_targets: Vec::new(),
-            has_declarative_dag: false,
-            needs_generated_cli: true,
-            live_secrets: Vec::new(),
-        }
-    }
-
-    /// Create a tool that lives inside another package.
-    pub fn composed(component: &str, package_component: &str, description: impl Into<String>) -> Self {
-        Self {
-            invocation: CargoInvocation::composed(component, package_component),
-            short_name: component.to_string(),
-            description: description.into(),
-            entrypoints: Vec::new(),
-            extra_targets: Vec::new(),
-            has_declarative_dag: false,
-            needs_generated_cli: true,
-            live_secrets: Vec::new(),
-        }
-    }
-
     /// Create a ToolInfo from a codegen ToolDef.
     pub fn from_tool_def(def: &gunbc_codegen::registry::ToolDef) -> Option<Self> {
         let invocation = def.invocation.as_ref()?;
@@ -449,30 +324,6 @@ impl ToolInfo {
     /// The binary name (e.g., "gunbc-ci").
     pub fn binary_name(&self) -> &str {
         &self.invocation.binary
-    }
-
-    /// Add an entrypoint parameter.
-    pub fn with_param(mut self, param: EntrypointParam) -> Self {
-        self.entrypoints.push(param);
-        self
-    }
-
-    /// Add an extra composite target.
-    pub fn with_extra_target(mut self, target: ExtraTarget) -> Self {
-        self.extra_targets.push(target);
-        self
-    }
-
-    /// Mark this tool as having a declarative DAG definition.
-    pub fn with_declarative_dag(mut self) -> Self {
-        self.has_declarative_dag = true;
-        self
-    }
-
-    /// Mark this tool as having a hand-written main.rs (no generated CLI).
-    pub fn manual(mut self) -> Self {
-        self.needs_generated_cli = false;
-        self
     }
 
     /// Build a normalized workflow specification for this tool target.
@@ -653,8 +504,26 @@ mod tests {
     #[test]
     fn tools_needing_codegen_reflects_flag() {
         let mut registry = ToolRegistry::new();
-        registry.register(ToolInfo::workspace("generated", "Generated tool"));
-        registry.register(ToolInfo::workspace("manual", "Manual tool").manual());
+        registry.register(ToolInfo {
+            invocation: CargoInvocation::composed("generated", "dag"),
+            short_name: "generated".to_string(),
+            description: "Generated tool".to_string(),
+            entrypoints: Vec::new(),
+            extra_targets: Vec::new(),
+            has_declarative_dag: false,
+            needs_generated_cli: true,
+            live_secrets: Vec::new(),
+        });
+        registry.register(ToolInfo {
+            invocation: CargoInvocation::composed("manual", "dag"),
+            short_name: "manual".to_string(),
+            description: "Manual tool".to_string(),
+            entrypoints: Vec::new(),
+            extra_targets: Vec::new(),
+            has_declarative_dag: false,
+            needs_generated_cli: false,
+            live_secrets: Vec::new(),
+        });
         let codegen = registry.tools_needing_codegen();
         assert_eq!(codegen.len(), 1);
         assert_eq!(codegen[0].short_name, "generated");
@@ -662,8 +531,26 @@ mod tests {
 
     #[test]
     fn workflow_spec_for_tool_uses_codegen_dependency_when_needed() {
-        let generated = ToolInfo::workspace("alpha", "Alpha");
-        let manual = ToolInfo::workspace("beta", "Beta").manual();
+        let generated = ToolInfo {
+            invocation: CargoInvocation::composed("alpha", "dag"),
+            short_name: "alpha".to_string(),
+            description: "Alpha".to_string(),
+            entrypoints: Vec::new(),
+            extra_targets: Vec::new(),
+            has_declarative_dag: false,
+            needs_generated_cli: true,
+            live_secrets: Vec::new(),
+        };
+        let manual = ToolInfo {
+            invocation: CargoInvocation::composed("beta", "dag"),
+            short_name: "beta".to_string(),
+            description: "Beta".to_string(),
+            entrypoints: Vec::new(),
+            extra_targets: Vec::new(),
+            has_declarative_dag: false,
+            needs_generated_cli: false,
+            live_secrets: Vec::new(),
+        };
         let generated_spec = generated.workflow_spec();
         let manual_spec = manual.workflow_spec();
         assert_eq!(generated_spec.deps, vec!["ensure-codegen"]);

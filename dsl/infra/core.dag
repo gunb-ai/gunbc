@@ -182,6 +182,10 @@ type CloudConfig
       tenant_id: NonEmptyStr
     }
 
+// --- Environments --------------------------------------------------------
+
+type Environment = Dev | Ci | Test | Prod
+
 // Unified environment config (provider-neutral outer shell)
 type InfraEnvironment {
   name: Environment

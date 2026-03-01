@@ -1,0 +1,113 @@
+// extdeps/llm/anthropic.dag -- "What is the Anthropic API?"
+//
+// Anthropic-specific message format: content blocks, tool use,
+// extended thinking, system prompts, API versioning.
+//
+// Complements extdeps/llm/pricing.dag (model specs and pricing)
+// and extdeps/llm/core.dag (universal protocol types).
+//
+// Consumers:
+//   services/llm/anthropic.dag — transport wiring
+
+module extdeps.llm.anthropic
+
+import extdeps.llm.core { Role, StopReason, TokenUsage }
+import std.behavioral {
+  OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+}
+
+// ── Models ────────────────────────────────────────────────────────
+
+type AnthropicModel
+  = ClaudeHaiku4_5
+  | ClaudeSonnet4_6
+  | ClaudeOpus4_6
+
+type AnthropicModelSpec {
+  model: AnthropicModel
+  model_id: String
+  context_window: Int
+  max_output_tokens: Int
+}
+
+data models: List<AnthropicModelSpec> = [
+  { model: ClaudeHaiku4_5, model_id: "claude-haiku-4-5-20251001", context_window: 200000, max_output_tokens: 64000 },
+  { model: ClaudeSonnet4_6, model_id: "claude-sonnet-4-6-20250929", context_window: 200000, max_output_tokens: 64000 },
+  { model: ClaudeOpus4_6, model_id: "claude-opus-4-6-20251101", context_window: 200000, max_output_tokens: 64000 }
+]
+
+// ── Content blocks ────────────────────────────────────────────────
+
+type ContentBlock
+  = TextBlock { text: String }
+  | ToolUseBlock { id: String, name: String, input: Json }
+  | ToolResultBlock { tool_use_id: String, content: String }
+
+// ── System prompt ─────────────────────────────────────────────────
+
+type CacheControl = Ephemeral
+
+type SystemPrompt {
+  text: String
+  cache_control: CacheControl?
+}
+
+// ── Extended thinking ─────────────────────────────────────────────
+
+type ThinkingConfig {
+  type: String
+  budget_tokens: Int
+}
+
+// ── Tool definitions ──────────────────────────────────────────────
+
+type AnthropicToolDefinition {
+  name: String
+  description: String
+  input_schema: Json
+}
+
+// ── API versioning ────────────────────────────────────────────────
+
+type AnthropicApiVersion {
+  version: String
+  header: String
+}
+
+data current_api_version: AnthropicApiVersion = {
+  version: "2023-06-01",
+  header: "anthropic-version"
+}
+
+// ── Operation behaviors ───────────────────────────────────────────
+
+type AnthropicOperationBehavior {
+  operation: String
+  behavior: OperationBehavior
+}
+
+data operation_behaviors: List<AnthropicOperationBehavior> = [
+  {
+    operation: "messages",
+    behavior: {
+      side_effects: WritesExternal,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: NonDeterministic,
+      failure_modes: [
+        { name: "RateLimited", condition: "too_many_requests", http_status: 429, recoverable: true, retry_safe: true },
+        { name: "Overloaded", condition: "server_overloaded", http_status: 529, recoverable: true, retry_safe: true },
+        { name: "InvalidRequest", condition: "malformed_input", http_status: 400, recoverable: false, retry_safe: false },
+        { name: "AuthError", condition: "invalid_api_key", http_status: 401, recoverable: false, retry_safe: false }
+      ],
+      edge_cases: [
+        { description: "extended thinking adds latency and increases token usage", trigger: "thinking_enabled", severity: Medium },
+        { description: "tool use may produce multiple content blocks per response", trigger: "tools_provided", severity: Low }
+      ],
+      confidence: Documented,
+      prerequisites: [{ description: "valid Anthropic API key", kind: Credential }],
+      assumptions: ["Response content is UTF-8 text"],
+      unknowns: ["Exact retry-after header behavior under sustained load"]
+    }
+  }
+]

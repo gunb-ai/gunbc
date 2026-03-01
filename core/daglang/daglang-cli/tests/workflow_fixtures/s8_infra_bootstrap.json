@@ -1,7 +1,7 @@
 {
   "module": "infra.core",
   "path": "infra/core.dag",
-  "items": 10,
+  "items": 11,
   "dependencies": [],
   "expand_contract": {
     "status": "success",

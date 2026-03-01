@@ -120,7 +120,7 @@ L4+ needs transport on all services the local profile touches — BT6 handles th
 | 13 | BT12 | **ArtifactStore providers.** `gcs_artifact_store.dag` (cloud_run) + `inline_artifact_store.dag` (local). Transport blocks, test blocks, profile bindings. | L8 | M | Done | BT10 |
 | 14 | BT-R2 | **SDLC review: provider completion.** Transport blocks on gcs_claim_store + gcs_outcome_ledger. Inline definitions extracted to provider files. Dead code deleted from pipelines/sdlc.dag. deploy.dag variable naming fixed. Profile bindings updated in sdlc.dag. | — | M | Done | BT11, BT12 |
 | 15 | BT-R3 | **SDLC review: fix 3 execution gaps.** LLM mock responses (enriched `default_rest_response` with LLM-shaped fields), `navigate_json_path` `/` separator + array index support, auth credential embedding in `GenericRestPrepareOp`, `CallParamSourceOp` replaces `IdentityCallableOp` for param_source nodes, param_source propagation in sdlc.rs CLI. Design: `docs/design/mock-response-pipeline.md`. | — | M | Done | BT10 |
-| 16 | BT-E1 | **Transport node deduplication.** `gunbc-sdlc --dry-run` fails at 408/494 nodes: `scalar input 'prepare_transport_...Anthropic_Messages.max_tokens' has multiple upstream edges`. Root cause: lowerer creates ONE shared transport triplet per service operation, but `endpoint_use_count` resets per module — callables in different modules both wire literal sources to the same prepare node's scalar port. Fix: make `endpoint_use_count` global across all modules in the compiled graph (not per-module). Touches: `daglang-lower/src/lib.rs` (`add_service_call_edges`, line 5683). | L1 | M | Pending | BT-R3 |
+| 16 | BT-E1 | **Transport node deduplication.** `gunbc-sdlc --dry-run` fails at 408/494 nodes: `scalar input 'prepare_transport_...Anthropic_Messages.max_tokens' has multiple upstream edges`. Root cause: lowerer creates ONE shared transport triplet per service operation, but `endpoint_use_count` resets per module — callables in different modules both wire literal sources to the same prepare node's scalar port. Fix: moved `endpoint_use_count` to global scope across all modules. Cross-module regression test added. | L1 | M | Done | BT-R3 |
 
 ### Postmortem: Testgen Discovery Bug (BT-R1)
 
@@ -281,27 +281,27 @@ Priority: what the SDLC scenario needs first.
 
 | # | ID | Task | Size | Status | Deps |
 |---|-----|------|------|--------|------|
-| 1 | ED-1 | **`extdeps/cloud/core.dag`** — universal cloud concepts. `Region`, `AuthScheme` (Bearer/SigV4/ApiKey/OIDC), `ServiceEndpoint`, `RateLimit`, `Credential`, `IdempotencyToken`. Shared across GCP/AWS/Azure. | S | Pending | — |
-| 2 | ED-2 | **`extdeps/github/core.dag`** — "What is GitHub?" `Repository`, `User`, `RateLimit`, `AuthToken`, `ApiVersion`, `Pagination` (link-header cursor). Shared across Issues/PRs/Gists. | S | Pending | — |
-| 3 | ED-3 | **`extdeps/github/issues.dag`** — "What is a GitHub Issue?" `Issue`, `IssueState` (Open/Closed), `Label`, `IssueEvent`, `IssueComment`, `Timeline`. Event types as sum type. State machine: open → closed. | M | Pending | ED-2 |
-| 4 | ED-4 | **`extdeps/github/pull_requests.dag`** — "What is a PR?" `PullRequest`, `ReviewState`, `CheckStatus`, `MergeStrategy` (Merge/Squash/Rebase), `BranchProtection`. State machine: draft → open → review → merged/closed. | M | Pending | ED-2 |
-| 5 | ED-5 | **`extdeps/github/gists.dag`** — "What is a Gist?" `Gist`, `GistFile`, `GistVisibility` (Public/Secret). Minimal — gist is simpler than issues/PRs. | S | Pending | ED-2 |
-| 6 | ED-6 | **`extdeps/llm/core.dag`** — "What is an LLM API?" `Message`, `Role` (System/User/Assistant), `TokenUsage`, `StopReason`, `Temperature`, `MaxTokens`. Shared across Anthropic/OpenAI. | S | Pending | — |
-| 7 | ED-7 | **`extdeps/llm/anthropic.dag`** — "What is the Anthropic API?" `Model` (claude-4-sonnet/opus/haiku), `ContentBlock` (Text/ToolUse/ToolResult), `SystemPrompt`, `ThinkingConfig`. | S | Pending | ED-6 |
-| 8 | ED-8 | **`extdeps/llm/openai.dag`** — "What is the OpenAI API?" `Model` (gpt-4o/o1/o3), `ResponseFormat` (Text/JsonObject/JsonSchema), `ToolChoice`. | S | Pending | ED-6 |
-| 9 | ED-9 | **`extdeps/cloud/gcp/core.dag`** — "What is GCP?" `Project`, `ServiceAccount`, `OAuth2Scope`, `WifPool`, `WifProvider`, `ApiEndpoint` pattern (`{service}.googleapis.com/v1`). | M | Pending | ED-1 |
-| 10 | ED-10 | **`extdeps/cloud/gcp/storage.dag`** — "What is GCS?" `Bucket`, `Object`, `StorageClass`, `CasPrecondition` (generation-based), `ObjectOp` behavioral properties. | M | Pending | ED-9 |
-| 11 | ED-11 | **`extdeps/cloud/gcp/pubsub.dag`** — "What is Pub/Sub?" `Topic`, `Subscription`, `AckDeadline`, `OrderingKey`, `DeliveryGuarantee` (AtLeastOnce). | M | Pending | ED-9 |
-| 12 | ED-12 | **`extdeps/cloud/gcp/iam.dag`** — "What is GCP IAM?" `Role`, `Binding`, `Policy`, `ImpersonationChain`, `TokenLifetime`. | S | Pending | ED-9 |
-| 13 | ED-13 | **`extdeps/cloud/gcp/secret_manager.dag`** — "What is Secret Manager?" `Secret`, `SecretVersion`, `RotationSchedule`, `AccessPolicy`. | S | Pending | ED-9 |
-| 14 | ED-14 | **`extdeps/cloud/gcp/cloud_run.dag`** — "What is Cloud Run?" `Service`, `Revision`, `TrafficSplit`, `ScalingConfig`, `ContainerPort`. | M | Pending | ED-9 |
-| 15 | ED-15 | **`extdeps/cloud/gcp/sts.dag`** — "What is STS?" `TokenExchange`, `SubjectTokenType` (JWT/AccessToken), `GrantType`. | S | Pending | ED-9 |
-| 16 | ED-16 | **`extdeps/git.dag`** — "What is Git?" `Commit`, `Branch`, `Remote`, `Ref`, `MergeStrategy`, `DiffStat`. | M | Pending | — |
-| 17 | ED-17 | **`extdeps/cargo.dag`** — "What is Cargo?" `Package`, `Target`, `Profile` (dev/release), `Feature`, `TestHarness`. | S | Pending | — |
-| 18 | ED-18 | **`extdeps/cloud/aws/core.dag`** — "What is AWS?" `Arn`, `Region`, `SigV4`, `AssumeRole`, `SessionToken`. | M | Pending | ED-1 |
-| 19 | ED-19 | **`extdeps/cloud/aws/s3.dag`** + **iam.dag** + **lambda.dag** + **secrets_manager.dag** + **sqs.dag** — AWS service models. Follow GCP patterns. | L | Pending | ED-18 |
-| 20 | ED-20 | **`extdeps/cloud/azure/core.dag`** — "What is Azure?" `Subscription`, `Tenant`, `ManagedIdentity`, `FederatedCredential`. | M | Pending | ED-1 |
-| 21 | ED-21 | **`extdeps/cloud/azure/blob_storage.dag`** + **identity.dag** + **container_apps.dag** + **key_vault.dag** + **service_bus.dag** — Azure service models. Follow GCP patterns. | L | Pending | ED-20 |
+| 1 | ED-1 | **`extdeps/cloud/core.dag`** — universal cloud concepts. `Region`, `AuthScheme` (Bearer/SigV4/ApiKey/OIDC), `ServiceEndpoint`, `RateLimit`, `Credential`, `IdempotencyToken`. Shared across GCP/AWS/Azure. | S | Done | — |
+| 2 | ED-2 | **`extdeps/github/core.dag`** — "What is GitHub?" `Repository`, `User`, `RateLimit`, `AuthToken`, `ApiVersion`, `Pagination` (link-header cursor). Shared across Issues/PRs/Gists. | S | Done | — |
+| 3 | ED-3 | **`extdeps/github/issues.dag`** — "What is a GitHub Issue?" `Issue`, `IssueState` (imported from `std.types`), `Label`, `IssueEvent`, `IssueComment`, `Timeline`. Event types as sum type. State machine: open → closed. | M | Done | ED-2 |
+| 4 | ED-4 | **`extdeps/github/pull_requests.dag`** — "What is a PR?" `PullRequest`, `ReviewState`, `CheckStatus`, `MergeStrategy` (Merge/Squash/Rebase), `BranchProtection`. State machine: draft → open → review → merged/closed. | M | Done | ED-2 |
+| 5 | ED-5 | **`extdeps/github/gists.dag`** — "What is a Gist?" `Gist`, `GistFile`, `GistVisibility` (Public/Secret). Minimal — gist is simpler than issues/PRs. | S | Done | ED-2 |
+| 6 | ED-6 | **`extdeps/llm/core.dag`** — "What is an LLM API?" `Message`, `Role` (System/User/Assistant), `TokenUsage`, `StopReason`, `Temperature`, `MaxTokens`. Shared across Anthropic/OpenAI. | S | Done | — |
+| 7 | ED-7 | **`extdeps/llm/anthropic.dag`** — "What is the Anthropic API?" `Model` (claude-4-sonnet/opus/haiku), `ContentBlock` (Text/ToolUse/ToolResult), `SystemPrompt`, `ThinkingConfig`. | S | Done | ED-6 |
+| 8 | ED-8 | **`extdeps/llm/openai.dag`** — "What is the OpenAI API?" `Model` (gpt-4o/o1/o3), `ResponseFormat` (Text/JsonObject/JsonSchema), `ToolChoice`. | S | Done | ED-6 |
+| 9 | ED-9 | **`extdeps/cloud/gcp/core.dag`** — "What is GCP?" `GcpProject`, `GcpServiceAccount`, `OAuth2Scope`, `WifPool`, `WifProvider`, `GcpApiEndpoint` pattern (`{service}.googleapis.com/v1`). | M | Done | ED-1 |
+| 10 | ED-10 | **`extdeps/cloud/gcp/storage.dag`** — "What is GCS?" `Bucket`, `Object`, `StorageClass`, `CasPrecondition` (generation-based), `ObjectOp` behavioral properties. | M | Done | ED-9 |
+| 11 | ED-11 | **`extdeps/cloud/gcp/pubsub.dag`** — "What is Pub/Sub?" `Topic`, `Subscription`, `AckDeadline`, `OrderingKey`, `DeliveryGuarantee` (AtLeastOnce). | M | Done | ED-9 |
+| 12 | ED-12 | **`extdeps/cloud/gcp/iam.dag`** — "What is GCP IAM?" `Role`, `Binding`, `Policy`, `ImpersonationChain`, `TokenLifetime`. | S | Done | ED-9 |
+| 13 | ED-13 | **`extdeps/cloud/gcp/secret_manager.dag`** — "What is Secret Manager?" `Secret`, `SecretVersion`, `RotationSchedule`, `AccessPolicy`. | S | Done | ED-9 |
+| 14 | ED-14 | **`extdeps/cloud/gcp/cloud_run.dag`** — "What is Cloud Run?" `Service`, `Revision`, `TrafficSplit`, `ScalingConfig`, `ContainerPort`. | M | Done | ED-9 |
+| 15 | ED-15 | **`extdeps/cloud/gcp/sts.dag`** — "What is STS?" `TokenExchange`, `SubjectTokenType` (JWT/AccessToken), `GrantType`. | S | Done | ED-9 |
+| 16 | ED-16 | **`extdeps/git.dag`** — "What is Git?" `Commit`, `Branch`, `Remote`, `Ref`, `MergeStrategy`, `DiffStat`. | M | Done | — |
+| 17 | ED-17 | **`extdeps/cargo.dag`** — "What is Cargo?" `CargoPackage`, `CargoTarget`, `CargoProfile` (dev/release), `CargoFeature`, `TestHarness`. | S | Done | — |
+| 18 | ED-18 | **`extdeps/cloud/aws/core.dag`** — "What is AWS?" `Arn`, `AwsRegion`, `SigV4`, `AssumeRole`, `SessionCredentials`. | M | Done | ED-1 |
+| 19 | ED-19 | **`extdeps/cloud/aws/s3.dag`** + **iam.dag** + **lambda.dag** + **secrets_manager.dag** + **sqs.dag** — AWS service models. Follow GCP patterns. | L | Done | ED-18 |
+| 20 | ED-20 | **`extdeps/cloud/azure/core.dag`** — "What is Azure?" `AzureSubscription`, `AzureTenant`, `ManagedIdentity`, `FederatedCredential`. | M | Done | ED-1 |
+| 21 | ED-21 | **`extdeps/cloud/azure/blob_storage.dag`** + **identity.dag** + **container_apps.dag** + **key_vault.dag** + **service_bus.dag** — Azure service models. Follow GCP patterns. | L | Done | ED-20 |
 
 ### Design Decisions
 
@@ -470,18 +470,18 @@ Then run A1 → A2 → A3 and A4 → A5 once C20 is available.
 Delete every manual registry, extern bridge, and thin wrapper. Replace with DSL
 `data` declarations. After: adding a tool requires zero Rust changes.
 
-| # | IDs | What | Acceptance Criteria | Size |
-|---|-----|------|---------------------|------|
-| B1 | RT75 | **Gitignore patterns → DSL data.** `dsl/config/gitignore.dag` with 14 category `data` records. | Data section in `gitignore.rs` deleted. Generated `.gitignore` identical. | S |
-| B2 | RT80 | **Makegen registry → DSL data.** Move `BuildConfig`, `MetaTarget`, manual `ToolInfo` entries. Keep `ToolInfo::from_tool_def()` + Cargo commands (~400 lines). | `registry.rs` from 2,217 to ~400. Generated Makefile identical. | L |
-| B3 | RT74 | **Resource definitions → DSL data.** `dsl/config/resources.dag` with globs + output paths. | `resources.rs` deleted. Resource freshness works. | S |
-| B4 | RT76 | **Docgen targets → DSL data.** `dsl/tools/docgen.dag` data declaration. | `docgen/mod.rs` data deleted. Docgen reads from DSL. | S |
-| B5 | RT77 | **Delete `policy/pragma.rs`.** DSL rendering works (proven). Delete 546-line Rust mirror. | `pragma.rs` deleted. `make pragma` output identical. | S |
-| B6 | RT23 | **Delete `extern_impls.rs`.** Shadow bridges → DSL `extern func`. 2 recursive externs kept via inventory. | `extern_impls.rs` deleted. `lookup_extern_impl()` deleted. | M |
-| B7 | RT81 | **Delete tool wrappers.** 7 thin modules → generic `dsl_builder::build_dsl_graph_for_entrypoint()`. | `bootstrap/`, `build/`, `codegen/`, `infra/`, `gist.rs`, `deps_tool.rs` deleted. | S |
-| B8 | — | **Delete `embedded_assets.rs`.** Dead after extern deletion. | File deleted. | S |
-| B9 | — | **Delete compensating tests.** `tool_registration.rs`, `makefile_parity.rs`, `extern_ratchet.rs`. | 3 files deleted. `cargo test --workspace` passes. | S |
-| B10 | — | **Clean `makegen/shared.rs` + `justfile.rs`.** Remove deleted-registry references. | No references to deleted types. | S |
+| # | IDs | What | Acceptance Criteria | Size | Status |
+|---|-----|------|---------------------|------|--------|
+| B1 | RT75 | **Gitignore patterns → DSL data.** `dsl/config/gitignore.dag` with 14 category `data` records. | Data section in `gitignore.rs` deleted. Generated `.gitignore` identical. | S | Done |
+| B2 | RT80 | **Makegen registry → DSL data.** MetaTarget/CoreWorkflow data in DSL. Dead ToolInfo factory methods deleted. `registry.rs` reduced to 559 lines (from 672). `ToolInfo::from_tool_def()` + Cargo commands remain. Generated Makefile identical. | `registry.rs` lean. Generated Makefile identical. | L | Done |
+| B3 | RT74 | **Resource definitions → DSL data.** `dsl/config/resources.dag` with globs + output paths. | `resources.rs` deleted. Resource freshness works. | S | Done |
+| B4 | RT76 | **Docgen targets → DSL data.** `dsl/tools/docgen.dag` data declaration. | `docgen/mod.rs` data deleted. Docgen reads from DSL. | S | Done |
+| B5 | RT77 | **Delete `policy/pragma.rs`.** DSL rendering works (proven). Delete 546-line Rust mirror. | `pragma.rs` deleted. `make pragma` output identical. | S | Done |
+| B6 | RT23 | **Delete `extern_impls.rs`.** Shadow bridges → DSL `extern func`. 2 recursive externs kept via inventory. | `extern_impls.rs` deleted. `lookup_extern_impl()` deleted. | M | Done |
+| B7 | RT81 | **Delete tool wrappers.** 7 thin modules → generic `dsl_builder::build_dsl_graph_for_entrypoint()`. | `bootstrap/`, `build/`, `codegen/`, `infra/`, `gist.rs`, `deps_tool.rs` deleted. | S | Done |
+| B8 | — | **Delete `embedded_assets.rs`.** Dead after extern deletion. | File deleted. | S | Done |
+| B9 | — | **Delete compensating tests.** `tool_registration.rs`, `makefile_parity.rs`, `extern_ratchet.rs`. | 3 files deleted. `cargo test --workspace` passes. | S | Done |
+| B10 | — | **Clean `makegen/shared.rs` + `justfile.rs`.** Remove deleted-registry references. | No references to deleted types. | S | Done |
 
 **Chain**: B1 → B2 → B10; B3; B4; B5 → B6 → B7 → B8 → B9
 
