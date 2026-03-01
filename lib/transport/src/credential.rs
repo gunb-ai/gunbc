@@ -17,11 +17,9 @@
 //! }
 //! ```
 
-use crate::middleware::{
-    MiddlewareContext, MiddlewareOutcome, PostProcessOutcome, TransportMiddleware,
-};
+use crate::middleware::{MiddlewareContext, MiddlewareOutcome, TransportMiddleware};
 use gunbc_exec::ExecError;
-use gunbc_ir::transport::{CredentialConfig, TransportRequest, TransportResponse};
+use gunbc_ir::transport::{CredentialConfig, TransportRequest};
 use gunbc_ir::{AuthScheme, Credential, Secret};
 use std::collections::HashMap;
 use std::sync::Mutex;
