@@ -33,6 +33,7 @@ type GitHubIssue {
   title: String
   body: String?
   state: GitHubIssueState
+  state_reason: String?
   labels: List<Label>
   user: String
   created_at: String
@@ -79,15 +80,19 @@ type IssueFilter
 
 // ── State machine ─────────────────────────────────────────────────
 
+// state_reason values: "completed", "not_planned", "reopened".
+// Distinguishes successful completion from intentional abandonment.
 type IssueStateTransition {
   from: GitHubIssueState
   to: GitHubIssueState
   action: String
+  state_reason: String?
 }
 
 data state_transitions: List<IssueStateTransition> = [
-  { from: Open, to: Closed, action: "close" },
-  { from: Closed, to: Open, action: "reopen" }
+  { from: Open, to: Closed, action: "close", state_reason: "completed" },
+  { from: Open, to: Closed, action: "close_not_planned", state_reason: "not_planned" },
+  { from: Closed, to: Open, action: "reopen", state_reason: "reopened" }
 ]
 
 // ── Operation behaviors ───────────────────────────────────────────

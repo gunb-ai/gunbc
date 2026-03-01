@@ -41,7 +41,7 @@ data models: List<AnthropicModelSpec> = [
 type ContentBlock
   = TextBlock { text: String }
   | ToolUseBlock { id: String, name: String, input: Json }
-  | ToolResultBlock { tool_use_id: String, content: String }
+  | ToolResultBlock { tool_use_id: String, content: String, is_error: Bool? }
 
 // ── System prompt ─────────────────────────────────────────────────
 

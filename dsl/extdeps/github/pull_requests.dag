@@ -17,7 +17,9 @@ import std.behavioral {
 
 // ── PR model ──────────────────────────────────────────────────────
 
-type PrState = PrOpen | PrClosed | PrMerged
+// Wire format: state is strictly "open" or "closed".
+// A merged PR is state=closed with merged=true (see PullRequest.merged).
+type PrState = PrOpen | PrClosed
 
 type PrBranchRef {
   ref: String
@@ -100,7 +102,7 @@ type PrStateTransition {
 
 data pr_state_machine: List<PrStateTransition> = [
   { from: PrOpen, to: PrClosed, action: "close", terminal: false },
-  { from: PrOpen, to: PrMerged, action: "merge", terminal: true },
+  { from: PrOpen, to: PrClosed, action: "merge", terminal: true },
   { from: PrClosed, to: PrOpen, action: "reopen", terminal: false }
 ]
 

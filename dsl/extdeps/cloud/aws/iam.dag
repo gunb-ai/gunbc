@@ -52,10 +52,18 @@ type AwsPolicyDocument {
 
 type AwsPolicyEffect = AwsAllow | AwsDeny
 
+// Comprehensive IAM policy statement matching the AWS JSON policy schema.
+// S3 bucket policies, SQS policies, etc. are all standard IAM policy documents
+// with the addition of Principal. The Not* fields model negative bounds
+// ("allow all except X"), critical for secure SDLC boundaries.
 type AwsPolicyStatement {
   effect: AwsPolicyEffect
+  principal: String?
+  not_principal: String?
   action: List<String>
+  not_action: List<String>?
   resource: List<String>
+  not_resource: List<String>?
   condition: Map<String, String>?
 }
 
