@@ -14,14 +14,16 @@ import std.behavioral {
 }
 
 // ── Runtimes ──────────────────────────────────────────────────────
+// AWS adds Lambda runtimes out-of-band (e.g., python3.13, nodejs22.x).
+// A strict enum forces a compiler update for each new runtime. Use String
+// and provide canonical values as data.
 
-type LambdaRuntime
-  = Nodejs20
-  | Python312
-  | Java21
-  | Dotnet8
-  | ProvidedAl2023
-  | CustomRuntime
+type LambdaRuntime = String
+
+data canonical_runtimes: List<String> = [
+  "nodejs20.x", "python3.12", "java21", "dotnet8",
+  "provided.al2023", "custom"
+]
 
 // ── Functions ─────────────────────────────────────────────────────
 

@@ -9,6 +9,7 @@
 module extdeps.cloud.aws.s3
 
 import extdeps.cloud.aws.core { AwsRegion }
+import extdeps.cloud.aws.iam { AwsPolicyDocument }
 import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
 }
@@ -31,19 +32,9 @@ type S3Bucket {
   versioning: Bool
 }
 
-type S3BucketPolicy {
-  version: String
-  statements: List<S3PolicyStatement>
-}
-
-type S3PolicyStatement {
-  effect: S3Effect
-  principal: String
-  action: List<String>
-  resource: String
-}
-
-type S3Effect = S3Allow | S3Deny
+// S3 bucket policies are standard IAM policy documents (with Principal).
+// Use the unified AwsPolicyDocument from iam.dag.
+type S3BucketPolicy = AwsPolicyDocument
 
 // ── Objects ───────────────────────────────────────────────────────
 
