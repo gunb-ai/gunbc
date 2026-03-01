@@ -120,7 +120,7 @@ L4+ needs transport on all services the local profile touches — BT6 handles th
 | 13 | BT12 | **ArtifactStore providers.** `gcs_artifact_store.dag` (cloud_run) + `inline_artifact_store.dag` (local). Transport blocks, test blocks, profile bindings. | L8 | M | Done | BT10 |
 | 14 | BT-R2 | **SDLC review: provider completion.** Transport blocks on gcs_claim_store + gcs_outcome_ledger. Inline definitions extracted to provider files. Dead code deleted from pipelines/sdlc.dag. deploy.dag variable naming fixed. Profile bindings updated in sdlc.dag. | — | M | Done | BT11, BT12 |
 | 15 | BT-R3 | **SDLC review: fix 3 execution gaps.** LLM mock responses (enriched `default_rest_response` with LLM-shaped fields), `navigate_json_path` `/` separator + array index support, auth credential embedding in `GenericRestPrepareOp`, `CallParamSourceOp` replaces `IdentityCallableOp` for param_source nodes, param_source propagation in sdlc.rs CLI. Design: `docs/design/mock-response-pipeline.md`. | — | M | Done | BT10 |
-| 16 | BT-E1 | **Transport node deduplication.** `gunbc-sdlc --dry-run` fails at 408/494 nodes: `scalar input 'prepare_transport_...Anthropic_Messages.max_tokens' has multiple upstream edges`. Root cause: lowerer creates ONE shared transport triplet per service operation, but `endpoint_use_count` resets per module — callables in different modules both wire literal sources to the same prepare node's scalar port. Fix: make `endpoint_use_count` global across all modules in the compiled graph (not per-module). Touches: `daglang-lower/src/lib.rs` (`add_service_call_edges`, line 5683). | L1 | M | Pending | BT-R3 |
+| 16 | BT-E1 | **Transport node deduplication.** `gunbc-sdlc --dry-run` fails at 408/494 nodes: `scalar input 'prepare_transport_...Anthropic_Messages.max_tokens' has multiple upstream edges`. Root cause: lowerer creates ONE shared transport triplet per service operation, but `endpoint_use_count` resets per module — callables in different modules both wire literal sources to the same prepare node's scalar port. Fix: moved `endpoint_use_count` to global scope across all modules. Cross-module regression test added. | L1 | M | Done | BT-R3 |
 
 ### Postmortem: Testgen Discovery Bug (BT-R1)
 
@@ -470,18 +470,18 @@ Then run A1 → A2 → A3 and A4 → A5 once C20 is available.
 Delete every manual registry, extern bridge, and thin wrapper. Replace with DSL
 `data` declarations. After: adding a tool requires zero Rust changes.
 
-| # | IDs | What | Acceptance Criteria | Size |
-|---|-----|------|---------------------|------|
-| B1 | RT75 | **Gitignore patterns → DSL data.** `dsl/config/gitignore.dag` with 14 category `data` records. | Data section in `gitignore.rs` deleted. Generated `.gitignore` identical. | S |
-| B2 | RT80 | **Makegen registry → DSL data.** Move `BuildConfig`, `MetaTarget`, manual `ToolInfo` entries. Keep `ToolInfo::from_tool_def()` + Cargo commands (~400 lines). | `registry.rs` from 2,217 to ~400. Generated Makefile identical. | L |
-| B3 | RT74 | **Resource definitions → DSL data.** `dsl/config/resources.dag` with globs + output paths. | `resources.rs` deleted. Resource freshness works. | S |
-| B4 | RT76 | **Docgen targets → DSL data.** `dsl/tools/docgen.dag` data declaration. | `docgen/mod.rs` data deleted. Docgen reads from DSL. | S |
-| B5 | RT77 | **Delete `policy/pragma.rs`.** DSL rendering works (proven). Delete 546-line Rust mirror. | `pragma.rs` deleted. `make pragma` output identical. | S |
-| B6 | RT23 | **Delete `extern_impls.rs`.** Shadow bridges → DSL `extern func`. 2 recursive externs kept via inventory. | `extern_impls.rs` deleted. `lookup_extern_impl()` deleted. | M |
-| B7 | RT81 | **Delete tool wrappers.** 7 thin modules → generic `dsl_builder::build_dsl_graph_for_entrypoint()`. | `bootstrap/`, `build/`, `codegen/`, `infra/`, `gist.rs`, `deps_tool.rs` deleted. | S |
-| B8 | — | **Delete `embedded_assets.rs`.** Dead after extern deletion. | File deleted. | S |
-| B9 | — | **Delete compensating tests.** `tool_registration.rs`, `makefile_parity.rs`, `extern_ratchet.rs`. | 3 files deleted. `cargo test --workspace` passes. | S |
-| B10 | — | **Clean `makegen/shared.rs` + `justfile.rs`.** Remove deleted-registry references. | No references to deleted types. | S |
+| # | IDs | What | Acceptance Criteria | Size | Status |
+|---|-----|------|---------------------|------|--------|
+| B1 | RT75 | **Gitignore patterns → DSL data.** `dsl/config/gitignore.dag` with 14 category `data` records. | Data section in `gitignore.rs` deleted. Generated `.gitignore` identical. | S | Done |
+| B2 | RT80 | **Makegen registry → DSL data.** MetaTarget/CoreWorkflow data in DSL. Dead ToolInfo factory methods deleted. `registry.rs` reduced to 559 lines (from 672). `ToolInfo::from_tool_def()` + Cargo commands remain. Generated Makefile identical. | `registry.rs` lean. Generated Makefile identical. | L | Done |
+| B3 | RT74 | **Resource definitions → DSL data.** `dsl/config/resources.dag` with globs + output paths. | `resources.rs` deleted. Resource freshness works. | S | Done |
+| B4 | RT76 | **Docgen targets → DSL data.** `dsl/tools/docgen.dag` data declaration. | `docgen/mod.rs` data deleted. Docgen reads from DSL. | S | Done |
+| B5 | RT77 | **Delete `policy/pragma.rs`.** DSL rendering works (proven). Delete 546-line Rust mirror. | `pragma.rs` deleted. `make pragma` output identical. | S | Done |
+| B6 | RT23 | **Delete `extern_impls.rs`.** Shadow bridges → DSL `extern func`. 2 recursive externs kept via inventory. | `extern_impls.rs` deleted. `lookup_extern_impl()` deleted. | M | Done |
+| B7 | RT81 | **Delete tool wrappers.** 7 thin modules → generic `dsl_builder::build_dsl_graph_for_entrypoint()`. | `bootstrap/`, `build/`, `codegen/`, `infra/`, `gist.rs`, `deps_tool.rs` deleted. | S | Done |
+| B8 | — | **Delete `embedded_assets.rs`.** Dead after extern deletion. | File deleted. | S | Done |
+| B9 | — | **Delete compensating tests.** `tool_registration.rs`, `makefile_parity.rs`, `extern_ratchet.rs`. | 3 files deleted. `cargo test --workspace` passes. | S | Done |
+| B10 | — | **Clean `makegen/shared.rs` + `justfile.rs`.** Remove deleted-registry references. | No references to deleted types. | S | Done |
 
 **Chain**: B1 → B2 → B10; B3; B4; B5 → B6 → B7 → B8 → B9
 
