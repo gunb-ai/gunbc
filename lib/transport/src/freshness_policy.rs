@@ -185,8 +185,8 @@ fn generation_freshness_steps() -> Vec<FreshnessStep> {
 /// `cargo.Build.Build` are the canonical operation identities from `dsl/services/cargo.dag`.
 ///
 /// When composed with a tool DAG that already contains these operations,
-/// `compose_with_freshness` detects the overlap via `validate_no_operation_overlap`
-/// and rejects the composition — no manually maintained mapping table needed.
+/// the C22 Deductive Redundancy Elimination system will detect the overlap
+/// via idempotency fingerprints (see `docs/design/deductive-redundancy.md`).
 fn build_verification_steps() -> Vec<FreshnessStep> {
     vec![
         FreshnessStep {

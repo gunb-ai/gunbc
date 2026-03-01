@@ -17,7 +17,6 @@ use crate::entrypoint::detect_entrypoints;
 use crate::node::{Node, NodeBody};
 use crate::type_registry::TypeRegistry;
 use crate::types::{NodeId, OperationKey, PortName, SemanticCarrierKind, TypeId};
-use std::collections::HashMap;
 use std::fmt;
 
 /// Error from SubDag interface validation.
@@ -268,93 +267,6 @@ pub fn validate_resource_wiring_recursive<T>(dag: &Dag<T>) -> Vec<UnwiredResourc
     let mut unwired = Vec::new();
     validate_resource_wiring_recursive_impl(dag, &std::collections::HashSet::new(), &mut unwired);
     unwired
-}
-
-/// A duplicate operation detected during DAG composition.
-///
-/// When two nodes in a composed DAG share the same `OperationKey`, they
-/// represent the same service operation executed twice — redundant work
-/// that should be eliminated by adjusting the composition.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DuplicateOperation {
-    /// The operation that appears more than once.
-    pub operation: OperationKey,
-    /// Node IDs of all nodes that share this operation key.
-    pub nodes: Vec<NodeId>,
-}
-
-impl fmt::Display for DuplicateOperation {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let node_ids: Vec<_> = self.nodes.iter().map(|n| n.0.as_str()).collect();
-        write!(
-            f,
-            "duplicate operation '{}' on nodes: [{}]",
-            self.operation,
-            node_ids.join(", ")
-        )
-    }
-}
-
-/// Detect operations that appear in both a freshness SubDag and the tool DAG.
-///
-/// Scoped to freshness-vs-tool intersection only: a tool is allowed to call
-/// the same service operation multiple times (e.g., two `github.Issues.Get`
-/// calls), but it must not duplicate operations that the freshness chain
-/// already performs.
-pub fn validate_no_operation_overlap<T>(dag: &Dag<T>) -> Vec<DuplicateOperation> {
-    let mut freshness_keys: HashMap<OperationKey, Vec<NodeId>> = HashMap::new();
-    let mut tool_keys: HashMap<OperationKey, Vec<NodeId>> = HashMap::new();
-
-    for node in &dag.nodes {
-        if node.id.0 == "freshness" {
-            if let NodeBody::SubDag(ref inner) = node.body {
-                collect_operation_keys_recursive(inner, &mut freshness_keys);
-            }
-        } else {
-            if let Some(ref key) = node.operation_key {
-                tool_keys.entry(key.clone()).or_default().push(node.id.clone());
-            }
-            if let NodeBody::SubDag(ref inner) = node.body {
-                collect_operation_keys_recursive(inner, &mut tool_keys);
-            }
-        }
-    }
-
-    // Report only keys that appear in BOTH freshness and tool DAG
-    let mut duplicates: Vec<_> = freshness_keys
-        .into_iter()
-        .filter_map(|(key, mut freshness_nodes)| {
-            tool_keys.remove(&key).map(|mut tool_nodes| {
-                freshness_nodes.append(&mut tool_nodes);
-                DuplicateOperation {
-                    operation: key,
-                    nodes: freshness_nodes,
-                }
-            })
-        })
-        .collect();
-
-    // Sort for deterministic output
-    duplicates.sort_by(|a, b| a.operation.to_string().cmp(&b.operation.to_string()));
-    duplicates
-}
-
-/// Recursively collect operation keys from all nodes in a DAG.
-fn collect_operation_keys_recursive<T>(
-    dag: &Dag<T>,
-    by_key: &mut HashMap<OperationKey, Vec<NodeId>>,
-) {
-    for node in &dag.nodes {
-        if let Some(ref key) = node.operation_key {
-            by_key
-                .entry(key.clone())
-                .or_default()
-                .push(node.id.clone());
-        }
-        if let NodeBody::SubDag(ref inner) = node.body {
-            collect_operation_keys_recursive(inner, by_key);
-        }
-    }
 }
 
 fn validate_resource_wiring_recursive_impl<T>(
@@ -1140,77 +1052,6 @@ mod tests {
         assert!(resource_unwired.is_empty());
     }
 
-    // ============ validate_no_operation_overlap() tests ============
-
-    #[test]
-    fn test_no_overlap_when_no_operation_keys() {
-        let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque("a", vec![], vec![port("out", "Bool")], ()));
-        dag.add_node(Node::opaque("b", vec![], vec![port("out", "Bool")], ()));
-        assert!(validate_no_operation_overlap(&dag).is_empty());
-    }
-
-    #[test]
-    fn test_no_overlap_with_distinct_operation_keys() {
-        let mut dag: Dag<()> = Dag::new();
-        dag.add_node(
-            Node::opaque("a", vec![], vec![port("out", "Bool")], ())
-                .with_operation_key(OperationKey::new("cargo.Build", "Clippy")),
-        );
-        dag.add_node(
-            Node::opaque("b", vec![], vec![port("out", "Bool")], ())
-                .with_operation_key(OperationKey::new("cargo.Build", "Test")),
-        );
-        assert!(validate_no_operation_overlap(&dag).is_empty());
-    }
-
-    #[test]
-    fn test_same_operation_key_in_tool_dag_is_allowed() {
-        // A tool calling the same service operation twice is legitimate
-        let mut dag: Dag<()> = Dag::new();
-        dag.add_node(
-            Node::opaque("a", vec![], vec![port("out", "Bool")], ())
-                .with_operation_key(OperationKey::new("github.Issues", "Get")),
-        );
-        dag.add_node(
-            Node::opaque("b", vec![], vec![port("out", "Bool")], ())
-                .with_operation_key(OperationKey::new("github.Issues", "Get")),
-        );
-        // No freshness SubDag → no cross-subdag overlap to detect
-        assert!(validate_no_operation_overlap(&dag).is_empty());
-    }
-
-    #[test]
-    fn test_overlap_detected_across_subdag_boundary() {
-        // Node at top level with operation key
-        let mut dag: Dag<()> = Dag::new();
-        dag.add_node(
-            Node::opaque("top_clippy", vec![], vec![port("out", "Bool")], ())
-                .with_operation_key(OperationKey::new("cargo.Build", "Clippy")),
-        );
-
-        // Same operation key inside a SubDag
-        let mut inner: Dag<()> = Dag::new();
-        inner.add_node(
-            Node::opaque("inner_clippy", vec![], vec![port("out", "Bool")], ())
-                .with_operation_key(OperationKey::new("cargo.Build", "Clippy")),
-        );
-        dag.add_node(Node::subdag("freshness", inner));
-
-        let dups = validate_no_operation_overlap(&dag);
-        assert_eq!(dups.len(), 1, "overlap across SubDag boundary: {:?}", dups);
-        assert_eq!(dups[0].nodes.len(), 2);
-    }
-
-    #[test]
-    fn test_display_format_for_duplicate_operation() {
-        let dup = DuplicateOperation {
-            operation: OperationKey::new("cargo.Build", "Clippy"),
-            nodes: vec![NodeId::new("a"), NodeId::new("b")],
-        };
-        let s = dup.to_string();
-        assert!(s.contains("cargo.Build.Clippy"));
-        assert!(s.contains("a"));
-        assert!(s.contains("b"));
-    }
+    // NOTE: validate_no_operation_overlap tests removed.
+    // Replaced by C22: Deductive Redundancy Elimination using idempotency fingerprints.
 }

@@ -14,20 +14,20 @@
 //! 3. Compose the freshness sub-DAG with the tool's DAG using [`WithFreshness<T>`]
 //! 4. Execute the combined DAG — freshness nodes display inline
 //!
-//! # Overlap detection
+//! # Redundancy detection (C22: Deductive Redundancy Elimination)
 //!
-//! Freshness steps that subsume a service operation declare it via
-//! `FreshnessStep::subsumes`. When composing, the operation keys from
-//! freshness steps and tool DAG nodes are validated for overlap using
-//! `gunbc_ir::validate_no_operation_overlap` — the same general invariant
-//! that prevents duplicate upserts anywhere in the system.
+//! Naive operation-key overlap detection has been removed. The replacement
+//! (C22) uses idempotency fingerprints from domain models: each operation's
+//! identity is defined by its OperationKey plus the values of its declared
+//! idempotency_keys (e.g., S3.PutObject is unique by bucket+key, not by
+//! call count). See `docs/design/deductive-redundancy.md`.
 //!
 //! Recursion is prevented via the `GUNBC_FRESHNESS_ACTIVE` environment variable:
 //! freshness steps set it on child processes, and [`compose_with_freshness`]
 //! skips injection when it's set.
 
 use crate::{ExecError, Executable};
-use gunbc_ir::{validate_no_operation_overlap, Dag, Edge, Node, OperationKey, Port, Value};
+use gunbc_ir::{Dag, Edge, Node, OperationKey, Port, Value};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
@@ -258,20 +258,9 @@ pub fn compose_with_freshness<T: Clone>(
         ));
     }
 
-    // Validate: no operation should appear in both the freshness sub-DAG
-    // and the tool DAG. This uses the general IR-level overlap detection,
-    // not a freshness-specific mapping table.
-    let duplicates = validate_no_operation_overlap(&wrapped);
-    if !duplicates.is_empty() {
-        let details: Vec<_> = duplicates.iter().map(|d| d.to_string()).collect();
-        return Err(ExecError::new(format!(
-            "composition rejected — duplicate operations detected (same operation \
-             in both freshness chain and tool DAG is redundant work):\n  {}\n\
-             Fix: use FreshnessScope::GenerationOnly for tools that include \
-             build/clippy/test operations, or remove the overlapping freshness steps.",
-            details.join("\n  ")
-        )));
-    }
+    // NOTE: Naive overlap detection removed. Redundancy detection is deferred
+    // to C22 (Deductive Redundancy Elimination) which uses idempotency
+    // fingerprints from domain models instead of raw operation key comparison.
 
     Ok(wrapped)
 }
@@ -362,53 +351,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn overlap_detected_for_clippy() {
-        let dag = dag_with_operation("cargo.Build", "Clippy");
-        let result = compose_with_freshness(
-            dag,
-            Some(vec![step_subsumes("clippy", "cargo.Build", "Clippy")]),
-        );
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("cargo.Build.Clippy"));
-    }
-
-    #[test]
-    fn overlap_detected_for_test_compile() {
-        let dag = dag_with_operation("cargo.Build", "Test");
-        let result = compose_with_freshness(
-            dag,
-            Some(vec![step_subsumes("test-compile", "cargo.Build", "Test")]),
-        );
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("cargo.Build.Test")
-        );
-    }
-
-    #[test]
-    fn overlap_detected_for_release_check() {
-        let dag = dag_with_operation("cargo.Build", "Build");
-        let result = compose_with_freshness(
-            dag,
-            Some(vec![step_subsumes(
-                "release-check",
-                "cargo.Build",
-                "Build",
-            )]),
-        );
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("cargo.Build.Build"));
-    }
+    // NOTE: Overlap detection tests removed (C22 DRE replaces naive check).
+    // compose_with_freshness no longer rejects overlapping operation keys;
+    // redundancy detection is deferred to idempotency fingerprinting.
 
     #[test]
     fn no_overlap_for_generation_steps() {

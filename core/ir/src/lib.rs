@@ -209,8 +209,8 @@ pub use types::{
     SemanticCarrierKind, TypeId, ValueBacking,
 };
 pub use validate::{
-    validate_no_operation_overlap, validate_resource_wiring, validate_resource_wiring_recursive,
-    validate_subdag_interfaces, DuplicateOperation, PortDirection, SubDagError, UnwiredResource,
+    validate_resource_wiring, validate_resource_wiring_recursive,
+    validate_subdag_interfaces, PortDirection, SubDagError, UnwiredResource,
 };
 pub use value::{
     SecretHint, SecretString, Value, ValueKind, HUMAN_TEXT_MAX_LINES, HUMAN_TEXT_MAX_LINE_WIDTH,
