@@ -25,6 +25,21 @@ use gunbc_ir::resource::{load_manifest_default, save_manifest_default, ManagedRe
 /// Returns `Some(steps)` if the repo needs freshening, where steps are
 /// the sequential chain: codegen → codegen-dag → testgen → pragma → clippy → test-compile → release-check.
 pub fn check_and_plan_freshness() -> Option<Vec<FreshnessStep>> {
+    check_and_plan_freshness_inner(freshness_steps)
+}
+
+/// Check repo freshness with only generation steps (codegen, testgen, pragma).
+///
+/// Use this for tools that already run their own build/clippy/test steps
+/// (e.g., the CI binary runs Build+Clippy+Test via the build tool DAG).
+/// Skips the redundant clippy, test-compile, and release-check freshness steps.
+pub fn check_and_plan_generation_freshness() -> Option<Vec<FreshnessStep>> {
+    check_and_plan_freshness_inner(generation_freshness_steps)
+}
+
+fn check_and_plan_freshness_inner(
+    steps_fn: fn() -> Vec<FreshnessStep>,
+) -> Option<Vec<FreshnessStep>> {
     // Recursion prevention: if we're already inside a freshness context, skip.
     if std::env::var(FRESHNESS_ACTIVE_ENV).is_ok() {
         return None;
@@ -38,7 +53,7 @@ pub fn check_and_plan_freshness() -> Option<Vec<FreshnessStep>> {
         Ok(m) => m,
         Err(_) => {
             // Can't load manifest — assume stale
-            return Some(freshness_steps());
+            return Some(steps_fn());
         }
     };
 
@@ -47,7 +62,7 @@ pub fn check_and_plan_freshness() -> Option<Vec<FreshnessStep>> {
         return None;
     }
 
-    Some(freshness_steps())
+    Some(steps_fn())
 }
 
 /// Update the freshness manifest after successful execution.
@@ -68,7 +83,7 @@ pub fn update_freshness_manifest() -> Result<(), String> {
     Ok(())
 }
 
-/// Build the freshness step chain.
+/// Build the full freshness step chain (generation + build verification).
 ///
 /// These are the same steps as the old `run_lint_upsert`, modeled as
 /// individual commands:
@@ -84,6 +99,17 @@ pub fn update_freshness_manifest() -> Result<(), String> {
 /// 6. test-compile: compile lib tests without running
 /// 7. release-check: compile-check release bins for the workspace
 fn freshness_steps() -> Vec<FreshnessStep> {
+    let mut steps = generation_freshness_steps();
+    steps.extend(build_verification_steps());
+    steps
+}
+
+/// Generation-only freshness steps: codegen → codegen-dag → testgen → pragma.
+///
+/// Use when the caller already performs build/clippy/test (e.g., the CI binary
+/// runs Build+Clippy+Test via the build tool DAG, making the build verification
+/// steps redundant).
+fn generation_freshness_steps() -> Vec<FreshnessStep> {
     vec![
         // codegen MUST run first: it generates target/codegen/bin/*/main.rs
         // that codegen-dag, testgen, and pragma need to compile.
@@ -137,6 +163,15 @@ fn freshness_steps() -> Vec<FreshnessStep> {
                 "gunbc-pragma".into(),
             ],
         },
+    ]
+}
+
+/// Build verification steps: clippy, test-compile, release-check.
+///
+/// These are separated from generation steps so that tools which already
+/// run their own build/clippy/test (like the CI binary) can skip them.
+fn build_verification_steps() -> Vec<FreshnessStep> {
+    vec![
         FreshnessStep {
             id: "clippy".into(),
             command: vec![
@@ -183,6 +218,26 @@ mod tests {
         assert_eq!(
             release_check.command,
             vec!["cargo", "check", "--workspace", "--release", "--bins"]
+        );
+    }
+
+    #[test]
+    fn generation_steps_exclude_build_verification() {
+        let steps = generation_freshness_steps();
+        let ids: Vec<&str> = steps.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(ids, vec!["codegen", "codegen-dag", "testgen", "pragma"]);
+        assert!(!ids.contains(&"clippy"));
+        assert!(!ids.contains(&"test-compile"));
+        assert!(!ids.contains(&"release-check"));
+    }
+
+    #[test]
+    fn full_steps_include_all() {
+        let steps = freshness_steps();
+        let ids: Vec<&str> = steps.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec!["codegen", "codegen-dag", "testgen", "pragma", "clippy", "test-compile", "release-check"]
         );
     }
 }

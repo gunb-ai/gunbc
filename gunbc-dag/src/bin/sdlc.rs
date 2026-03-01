@@ -216,7 +216,7 @@ fn main() {
         mode,
         RunToolOptions {
             success_port: None,
-            with_freshness: false,
+            freshness: gunbc_dag::FreshnessScope::None,
             input_mocks: Some(&input_mocks),
         },
     );

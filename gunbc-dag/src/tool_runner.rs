@@ -7,12 +7,30 @@ use gunbc_exec::{
 use gunbc_ir::Dag;
 use std::io::IsTerminal;
 
+/// Controls which freshness steps are injected before tool execution.
+///
+/// Tools that already perform build/clippy/test should use `GenerationOnly`
+/// to avoid redundant work. The redundancy detection test
+/// (`ci_freshness_does_not_overlap_build_operations`) enforces this.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum FreshnessScope {
+    /// No freshness steps.
+    #[default]
+    None,
+    /// Full freshness chain: generation + build verification.
+    /// Use for tools that don't perform their own build/clippy/test.
+    Full,
+    /// Generation-only: codegen, codegen-dag, testgen, pragma.
+    /// Use for tools that already run build/clippy/test (e.g., CI binary).
+    GenerationOnly,
+}
+
 /// Run configuration for shared tool execution ceremony.
 #[derive(Debug, Clone, Default)]
 pub struct RunToolOptions<'a> {
     pub success_port: Option<&'a str>,
     pub input_mocks: Option<&'a BoundaryMocks>,
-    pub with_freshness: bool,
+    pub freshness: FreshnessScope,
 }
 
 /// Print a standard tool banner and key-value metadata lines.
@@ -31,27 +49,34 @@ pub fn run_tool<T: Executable + Clone + Send + 'static>(
     options: RunToolOptions<'_>,
 ) {
     let animated = std::io::stdout().is_terminal();
-    if options.with_freshness {
-        let steps = gunbc_lib_transport::check_and_plan_freshness();
-        let should_update_manifest = steps.as_ref().is_some_and(|s| !s.is_empty());
-        let dag_with_freshness = compose_with_freshness(dag, steps);
-        execute_and_display(
-            &dag_with_freshness,
-            mode,
-            animated,
-            options.success_port,
-            options.input_mocks,
-        );
-        update_freshness_manifest_if_needed(should_update_manifest);
-    } else {
-        execute_and_display(
-            &dag,
-            mode,
-            animated,
-            options.success_port,
-            options.input_mocks,
-        );
+    let steps = match options.freshness {
+        FreshnessScope::None => None,
+        FreshnessScope::Full => gunbc_lib_transport::check_and_plan_freshness(),
+        FreshnessScope::GenerationOnly => {
+            gunbc_lib_transport::check_and_plan_generation_freshness()
+        }
+    };
+    if let Some(ref planned) = steps {
+        if !planned.is_empty() {
+            let dag_with_freshness = compose_with_freshness(dag, Some(planned.clone()));
+            execute_and_display(
+                &dag_with_freshness,
+                mode,
+                animated,
+                options.success_port,
+                options.input_mocks,
+            );
+            update_freshness_manifest_if_needed(true);
+            return;
+        }
     }
+    execute_and_display(
+        &dag,
+        mode,
+        animated,
+        options.success_port,
+        options.input_mocks,
+    );
 }
 
 /// Persist freshness state after successful execution when freshness steps ran.

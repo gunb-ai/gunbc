@@ -110,7 +110,7 @@ fn render_rust_setup_step() -> String {
 fn render_cache_step() -> String {
   let cache_key = "cargo-{gha_runner_os_ref()}-{gha_hashfiles_ref(pattern: "**/Cargo.lock")}"
   let restore_key = "cargo-{gha_runner_os_ref()}-"
-  let paths = ["~/.cargo/bin/", "~/.cargo/registry/index/", "~/.cargo/registry/cache/", "~/.cargo/git/db/"]
+  let paths = ["~/.cargo/bin/", "~/.cargo/registry/index/", "~/.cargo/registry/cache/", "~/.cargo/git/db/", "target/"]
   let path_block = paths
     |> map(p => yaml_indent(level: 6, text: p))
     |> join("\n")
