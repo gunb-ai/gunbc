@@ -94,6 +94,8 @@ pub fn assert_typed_builder_rejects_invalid_slot<T: Clone>(dag: &gunbc_ir::Dag<T
         "expected typed builder to reject unknown slot for {name}"
     );
 }
+pub mod auto_mock;
+pub use auto_mock::auto_mock_spec;
 pub mod temp;
 pub use temp::{unique_temp_dir, unique_temp_file};
 

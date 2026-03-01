@@ -140,7 +140,7 @@ impl Executable for TestgenOp {
 
                 // 2. Auto-generate MockSpec from types + DAG structure
                 let safe_name = module_name.replace('.', "-");
-                let spec = crate::mock_defaults::auto_mock_spec(&result.dag, &safe_name);
+                let spec = gunbc_test::auto_mock_spec(&result.dag, &safe_name);
 
                 // 2b. Classify the module via DSL-evaluated fidelity policy
                 let classification =
@@ -159,7 +159,7 @@ impl Executable for TestgenOp {
                     "crate::dsl_builder::build_dsl_graph(\"{dsl_path}\").expect(\"graph should build\")"
                 );
                 let mock_spec_path =
-                    format!("crate::mock_defaults::auto_mock_spec(&dag, \"{safe_name}\")");
+                    format!("gunbc_test::auto_mock_spec(&dag, \"{safe_name}\")");
 
                 let target_def = TestgenTargetDef {
                     name: std::borrow::Cow::Owned(safe_name),

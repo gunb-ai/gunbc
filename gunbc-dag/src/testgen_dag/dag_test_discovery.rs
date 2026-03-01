@@ -15,7 +15,7 @@
 //! `generate_target()`, not declared statically in annotations.
 
 use crate::dsl_builder::{build_dsl_graph, build_dsl_graph_with_types, build_dsl_graph_with_types_and_profile};
-use crate::mock_defaults::auto_mock_spec;
+use gunbc_test::auto_mock_spec;
 use daglang_emit::test_mock_emit::{TestFile, TERMINAL_NODE_SENTINEL};
 use daglang_syntax::ast::{ExpectStmt, Expr, FixtureDef, Literal, TestDef};
 use gunbc_codegen::registry::TestgenTargetDef;
@@ -265,7 +265,7 @@ pub fn auto_testgen_for_module(
         )
     };
     let mock_spec_path = format!(
-        "crate::mock_defaults::auto_mock_spec(&dag, \"{}\")",
+        "gunbc_test::auto_mock_spec(&dag, \"{}\")",
         safe_name,
     );
 
@@ -484,7 +484,7 @@ pub fn build_testgen_target_def(
     // mock_spec_path: use auto_mock_spec as the runtime function.
     // Test-specific overrides are baked into the MockSpec at generation time,
     // but flow tests calling this path will only get auto-mocked values.
-    let mock_spec_path = format!("crate::mock_defaults::auto_mock_spec(&dag, \"{test_name}\")");
+    let mock_spec_path = format!("gunbc_test::auto_mock_spec(&dag, \"{test_name}\")");
 
     TestgenTargetDef {
         name: Cow::Owned(test_name),

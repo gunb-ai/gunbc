@@ -1,8 +1,12 @@
-//! Helpers for resilient graph-mock specs on DSL-backed DAGs.
+//! Auto-mock specification builder.
+//!
+//! Builds a complete `MockSpec` from a DAG by probing its structure:
+//! type-compatible default values are generated for every boundary slot,
+//! entrypoint port, and terminal node. The probing algorithm trial-executes
+//! downstream consumer nodes to select the best response variant.
 
 use gunbc_exec::{execute_single_node, Executable, ExecutionMode};
 use gunbc_ir::transport::{
-    cloud::{CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef},
     FileOp, FileResponse, RestResponse, ShellRequest, ShellResponse, TransportRequest,
     TransportResponse,
 };
@@ -11,9 +15,9 @@ use gunbc_ir::{
     PortName, Value, ValueBacking,
 };
 use gunbc_primitives::filename;
-use gunbc_test::extract_mock_requirements;
-use gunbc_test::{MockSpec, NodeExample, OutputMatcher};
 use std::collections::{HashMap, HashSet};
+
+use crate::{extract_mock_requirements, MockSpec, NodeExample, OutputMatcher};
 
 fn default_fs_handle() -> Value {
     let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
@@ -24,7 +28,6 @@ fn default_value_for_type(type_id: &str) -> Value {
     match type_id {
         "TransportResponse" => default_shell_response(),
         "TransportRequest" => Value::Request(TransportRequest::Shell(ShellRequest::new("true"))),
-        "CloudSecretConfig" => default_cloud_secret_config(),
         "Secret" => Value::Secret(gunbc_ir::SecretString::new("mock")),
         "FilesystemHandle" => default_fs_handle(),
         _ => match value_backing_for_type_id(type_id) {
@@ -60,24 +63,6 @@ fn default_value_for_port(type_id: &str, cardinality: Cardinality) -> Value {
             Value::List(vec![value; count])
         }
     }
-}
-
-fn default_cloud_secret_config() -> Value {
-    CloudSecretConfig {
-        provider: CloudProviderKind::Gcp,
-        runtime: CloudRuntimeKind::LocalDev,
-        audience: "mock-audience".to_string(),
-        project_or_account: "mock-project".to_string(),
-        secret: CloudSecretRef {
-            prefix: "projects/mock-project/secrets/".to_string(),
-            name: "mock-secret".to_string(),
-            delimiter: String::new(),
-            version: Some("latest".to_string()),
-        },
-        service_account_or_role: Some("mock-sa@mock-project.iam.gserviceaccount.com".to_string()),
-        impersonate_account_or_role: None,
-    }
-    .into()
 }
 
 fn default_shell_response() -> Value {
@@ -466,20 +451,4 @@ fn probe_best_response<T: Executable + Clone + Send>(
          candidates failed, falling back to default_shell_response()"
     );
     default_shell_response()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn auto_mock_spec_ci_graph_produces_transport_mocks() {
-        let dag = crate::ci::build_ci_graph().expect("build ci graph");
-        let spec = auto_mock_spec(&dag, "ci");
-        // CI graph should have transport mocks for service transport nodes.
-        assert!(
-            !spec.transport_mocks.is_empty(),
-            "CI graph should have at least one transport mock"
-        );
-    }
 }

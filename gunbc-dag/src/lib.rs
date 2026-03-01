@@ -28,7 +28,6 @@ pub mod fidelity;
 pub mod fs_env;
 
 pub mod makegen;
-pub mod mock_defaults;
 pub mod pragma;
 pub mod resource_defs;
 pub mod resolve;

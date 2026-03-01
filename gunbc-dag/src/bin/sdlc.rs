@@ -17,9 +17,10 @@
 #![deny(dead_code)]
 use gunbc_cli::{parse, CliParam, ParamType};
 use gunbc_dag::{
-    dsl_builder::build_dsl_graph_with_profile, mock_defaults::auto_mock_spec, print_tool_header,
+    dsl_builder::build_dsl_graph_with_profile, print_tool_header,
     run_tool, RunToolOptions,
 };
+use gunbc_test::auto_mock_spec;
 use gunbc_exec::{lower, print_attention, AttentionLevel, BoundaryMocks, ExecutionMode};
 use gunbc_ir::{detect_entrypoints, Value};
 use std::process;
