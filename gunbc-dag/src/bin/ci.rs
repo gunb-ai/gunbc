@@ -233,77 +233,69 @@ mod tests {
         );
     }
 
-    /// Structural enforcement: CI freshness scope must not overlap with
-    /// the build tool DAG's cargo operations.
+    /// Validates that the composition-level overlap detection works:
+    /// composing the build DAG with full freshness steps must be rejected
+    /// by compose_with_freshness() because the build DAG already contains
+    /// cargo Build/Clippy/Test operations that overlap with the freshness
+    /// chain's clippy/test-compile/release-check steps.
     ///
-    /// The build DAG runs Build+Clippy+Test via cargo service operations.
-    /// The CI binary uses `FreshnessScope::GenerationOnly` to avoid
-    /// re-running those same cargo operations as freshness steps. This test
-    /// ensures the two sets don't overlap — if they did, CI would perform
-    /// redundant compilation work.
-    ///
-    /// If this test fails, either:
-    /// 1. A new freshness step was added that overlaps with the build DAG
-    ///    → move it to `build_verification_steps()` in freshness_policy.rs
-    /// 2. The CI binary's `FreshnessScope` was changed from `GenerationOnly`
-    ///    → verify no redundancy is introduced
+    /// This test exercises the compiler-level check in compose_with_freshness()
+    /// rather than reimplementing the detection logic here.
     #[test]
-    fn ci_freshness_does_not_overlap_build_operations() {
-        // Known mapping: freshness step ID → cargo operation keyword found in
-        // build DAG node IDs. This is the overlap surface we guard against.
-        const BUILD_CARGO_KEYWORDS: &[&str] = &["Clippy", "Test", "Build"];
+    fn full_freshness_with_build_dag_is_rejected() {
+        use gunbc_exec::{compose_with_freshness, FreshnessStep};
 
-        // Get the build DAG and extract node IDs that represent cargo operations
         let dag = gunbc_dag::build_build_graph().expect("build graph should compile");
-        let cargo_node_ids: Vec<&str> = dag
-            .nodes
-            .iter()
-            .filter(|n| {
-                let id = n.id.0.as_str();
-                id.contains("transport_services_cargo")
-                    && BUILD_CARGO_KEYWORDS.iter().any(|kw| id.contains(kw))
-            })
-            .map(|n| n.id.0.as_str())
-            .collect();
+
+        // Simulate full freshness steps that include build-phase operations
+        let overlapping_steps = vec![
+            FreshnessStep {
+                id: "clippy".into(),
+                command: vec!["cargo".into(), "clippy".into()],
+            },
+            FreshnessStep {
+                id: "test-compile".into(),
+                command: vec!["cargo".into(), "test".into(), "--no-run".into()],
+            },
+        ];
+
+        let result = compose_with_freshness(dag, Some(overlapping_steps));
         assert!(
-            !cargo_node_ids.is_empty(),
-            "build DAG should contain cargo transport nodes"
+            result.is_err(),
+            "compose_with_freshness must reject freshness steps that overlap \
+             with the build DAG's cargo operations"
         );
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("freshness/tool overlap"),
+            "error message should identify overlap: {err_msg}"
+        );
+    }
 
-        // Get the generation-only freshness steps (what CI actually uses)
-        let gen_steps = gunbc_lib_transport::check_and_plan_generation_freshness();
-        if let Some(steps) = gen_steps {
-            // Freshness step IDs that correspond to build-phase cargo operations
-            const BUILD_PHASE_IDS: &[&str] = &["clippy", "test-compile", "release-check"];
+    /// Validates that generation-only freshness steps compose cleanly
+    /// with the build DAG (no overlap).
+    #[test]
+    fn generation_freshness_with_build_dag_is_accepted() {
+        use gunbc_exec::{compose_with_freshness, FreshnessStep};
 
-            let overlap: Vec<&str> = steps
-                .iter()
-                .filter(|s| BUILD_PHASE_IDS.contains(&s.id.as_str()))
-                .map(|s| s.id.as_str())
-                .collect();
+        let dag = gunbc_dag::build_build_graph().expect("build graph should compile");
 
-            assert!(
-                overlap.is_empty(),
-                "CI freshness scope contains steps that overlap with the build DAG's \
-                 cargo operations: {overlap:?}. This causes redundant compilation work. \
-                 Use FreshnessScope::GenerationOnly or move these steps to \
-                 build_verification_steps() in freshness_policy.rs."
-            );
-        }
+        let gen_steps = vec![
+            FreshnessStep {
+                id: "codegen".into(),
+                command: vec!["echo".into(), "codegen".into()],
+            },
+            FreshnessStep {
+                id: "testgen".into(),
+                command: vec!["echo".into(), "testgen".into()],
+            },
+        ];
 
-        // Also verify that Full scope WOULD have overlap (validates the test catches real issues)
-        let full_steps = gunbc_lib_transport::check_and_plan_freshness();
-        if let Some(steps) = full_steps {
-            const BUILD_PHASE_IDS: &[&str] = &["clippy", "test-compile", "release-check"];
-            let has_build_steps = steps
-                .iter()
-                .any(|s| BUILD_PHASE_IDS.contains(&s.id.as_str()));
-            assert!(
-                has_build_steps,
-                "Full freshness scope should contain build-phase steps \
-                 (clippy, test-compile, release-check). If these were removed, \
-                 this test needs updating."
-            );
-        }
+        let result = compose_with_freshness(dag, Some(gen_steps));
+        assert!(
+            result.is_ok(),
+            "generation-only freshness steps should not overlap with build DAG: {:?}",
+            result.err()
+        );
     }
 }

@@ -159,6 +159,23 @@ impl<T: Executable> Executable for WithFreshness<T> {
     }
 }
 
+/// Overlap surface: maps freshness step IDs to cargo operation keywords
+/// found in tool DAG node IDs. If a freshness step's ID is a key here,
+/// and any tool DAG node ID contains the corresponding keyword preceded
+/// by a cargo transport prefix, the composition would schedule redundant work.
+///
+/// This is the single source of truth for the freshness/tool overlap boundary.
+/// Add entries here when new freshness steps are introduced that correspond
+/// to cargo operations the tool DAG might already perform.
+const FRESHNESS_CARGO_OVERLAP: &[(&str, &str)] = &[
+    ("clippy", "Clippy"),
+    ("test-compile", "Test"),
+    ("release-check", "Build"),
+];
+
+/// Marker in tool DAG node IDs that indicates a cargo transport operation.
+const CARGO_TRANSPORT_MARKER: &str = "transport_services_cargo";
+
 /// Compose a tool DAG with an optional freshness chain.
 ///
 /// This is the single entry point for freshness integration. It replaces
@@ -172,33 +189,39 @@ impl<T: Executable> Executable for WithFreshness<T> {
 ///
 /// # Returns
 ///
-/// A `Dag<WithFreshness<T>>` where:
+/// `Ok(Dag<WithFreshness<T>>)` where:
 /// - All original tool nodes are wrapped as `WithFreshness::Tool(op)`
 /// - If steps were provided, a "freshness" sub-DAG is prepended and wired
 ///   as a blocking dependency to all tool root nodes
+///
+/// `Err(ExecError)` if any freshness step would duplicate work already
+/// performed by the tool DAG's cargo operations (overlap detection).
 ///
 /// # Display
 ///
 /// The freshness sub-DAG renders as a grouped stage in the terminal display:
 /// ```text
-/// › freshness [5/5]
+/// › freshness [4/4]
+///    ✓ codegen
 ///    ✓ codegen-dag
 ///    ✓ testgen
 ///    ✓ pragma
-///    ✓ clippy
-///    ✓ test-compile
 /// ```
 pub fn compose_with_freshness<T: Clone>(
     dag: Dag<T>,
     steps: Option<Vec<FreshnessStep>>,
-) -> Dag<WithFreshness<T>> {
+) -> Result<Dag<WithFreshness<T>>, ExecError> {
     // Wrap all existing tool nodes
     let mut wrapped = dag.map_ops(&mut WithFreshness::Tool);
 
     let steps = match steps {
         Some(s) if !s.is_empty() => s,
-        _ => return wrapped,
+        _ => return Ok(wrapped),
     };
+
+    // Detect redundant work: if a freshness step covers a cargo operation
+    // that the tool DAG already performs, the composition is invalid.
+    detect_freshness_overlap(&wrapped, &steps)?;
 
     // Build the freshness sub-DAG: sequential chain of steps
     let freshness_subdag = build_freshness_subdag(steps);
@@ -233,7 +256,56 @@ pub fn compose_with_freshness<T: Clone>(
         ));
     }
 
-    wrapped
+    Ok(wrapped)
+}
+
+/// Detect freshness steps that would duplicate cargo operations already
+/// present in the tool DAG. Returns an error listing the overlapping steps.
+fn detect_freshness_overlap<T>(
+    dag: &Dag<WithFreshness<T>>,
+    steps: &[FreshnessStep],
+) -> Result<(), ExecError> {
+    // Collect cargo operation keywords present in the tool DAG
+    let dag_cargo_ops: HashSet<&str> = FRESHNESS_CARGO_OVERLAP
+        .iter()
+        .filter(|(_, op_keyword)| {
+            dag.nodes.iter().any(|n| {
+                let id = n.id.0.as_str();
+                id.contains(CARGO_TRANSPORT_MARKER) && id.contains(op_keyword)
+            })
+        })
+        .map(|(_, op_keyword)| *op_keyword)
+        .collect();
+
+    if dag_cargo_ops.is_empty() {
+        return Ok(());
+    }
+
+    // Check if any freshness step overlaps with the DAG's cargo operations
+    let mut overlaps = Vec::new();
+    for step in steps {
+        for &(step_id, op_keyword) in FRESHNESS_CARGO_OVERLAP {
+            if step.id == step_id && dag_cargo_ops.contains(op_keyword) {
+                overlaps.push(format!(
+                    "freshness step '{}' → cargo operation '{}'",
+                    step_id, op_keyword
+                ));
+            }
+        }
+    }
+
+    if overlaps.is_empty() {
+        return Ok(());
+    }
+
+    Err(ExecError::new(format!(
+        "freshness/tool overlap detected — the following freshness steps would \
+         duplicate cargo operations already in the tool DAG:\n  {}\n\
+         Fix: use FreshnessScope::GenerationOnly for tools that include \
+         build/clippy/test operations, or split the freshness chain in \
+         freshness_policy.rs to exclude overlapping steps.",
+        overlaps.join("\n  ")
+    )))
 }
 
 /// Build a sequential sub-DAG from freshness steps.
@@ -273,4 +345,83 @@ fn build_freshness_subdag<T: Clone>(steps: Vec<FreshnessStep>) -> Dag<WithFreshn
     }
 
     dag
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dag_with_cargo_node(op_keyword: &str) -> Dag<String> {
+        let node_id = format!(
+            "execute_{CARGO_TRANSPORT_MARKER}_cargo_Build_{op_keyword}"
+        );
+        let mut dag = Dag::new();
+        dag.nodes.push(Node::opaque(
+            node_id.as_str(),
+            vec![],
+            vec![Port::new("success", "Bool")],
+            "noop".to_string(),
+        ));
+        dag
+    }
+
+    fn step(id: &str) -> FreshnessStep {
+        FreshnessStep {
+            id: id.to_string(),
+            command: vec!["echo".to_string()],
+        }
+    }
+
+    #[test]
+    fn overlap_detected_for_clippy() {
+        let dag = dag_with_cargo_node("Clippy");
+        let result = compose_with_freshness(dag, Some(vec![step("clippy")]));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("clippy"));
+    }
+
+    #[test]
+    fn overlap_detected_for_test_compile() {
+        let dag = dag_with_cargo_node("Test");
+        let result = compose_with_freshness(dag, Some(vec![step("test-compile")]));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("test-compile"));
+    }
+
+    #[test]
+    fn overlap_detected_for_release_check() {
+        let dag = dag_with_cargo_node("Build");
+        let result = compose_with_freshness(dag, Some(vec![step("release-check")]));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("release-check"));
+    }
+
+    #[test]
+    fn no_overlap_for_generation_steps() {
+        let dag = dag_with_cargo_node("Clippy");
+        let gen_steps = vec![step("codegen"), step("testgen"), step("pragma")];
+        let result = compose_with_freshness(dag, Some(gen_steps));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn no_overlap_when_dag_has_no_cargo_nodes() {
+        let mut dag = Dag::new();
+        dag.nodes.push(Node::opaque(
+            "some_other_node",
+            vec![],
+            vec![Port::new("done", "Bool")],
+            "noop".to_string(),
+        ));
+        let all_steps = vec![step("clippy"), step("test-compile"), step("release-check")];
+        let result = compose_with_freshness(dag, Some(all_steps));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn no_steps_returns_ok() {
+        let dag: Dag<String> = Dag::new();
+        let result = compose_with_freshness(dag, None);
+        assert!(result.is_ok());
+    }
 }

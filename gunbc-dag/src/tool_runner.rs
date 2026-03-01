@@ -10,8 +10,9 @@ use std::io::IsTerminal;
 /// Controls which freshness steps are injected before tool execution.
 ///
 /// Tools that already perform build/clippy/test should use `GenerationOnly`
-/// to avoid redundant work. The redundancy detection test
-/// (`ci_freshness_does_not_overlap_build_operations`) enforces this.
+/// to avoid redundant work. The overlap is enforced at the composition level:
+/// `compose_with_freshness()` returns an error if freshness steps would
+/// duplicate cargo operations already present in the tool DAG.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum FreshnessScope {
     /// No freshness steps.
@@ -56,27 +57,29 @@ pub fn run_tool<T: Executable + Clone + Send + 'static>(
             gunbc_lib_transport::check_and_plan_generation_freshness()
         }
     };
-    if let Some(ref planned) = steps {
-        if !planned.is_empty() {
-            let dag_with_freshness = compose_with_freshness(dag, Some(planned.clone()));
-            execute_and_display(
-                &dag_with_freshness,
-                mode,
-                animated,
-                options.success_port,
-                options.input_mocks,
+    let dag_with_freshness = match compose_with_freshness(dag, steps) {
+        Ok(composed) => composed,
+        Err(e) => {
+            print_attention(
+                AttentionLevel::Error,
+                "Freshness composition failed",
+                &e.to_string(),
             );
-            update_freshness_manifest_if_needed(true);
-            return;
+            std::process::exit(1);
         }
-    }
+    };
+    let ran_freshness = dag_with_freshness
+        .nodes
+        .iter()
+        .any(|n| n.id.0 == "freshness");
     execute_and_display(
-        &dag,
+        &dag_with_freshness,
         mode,
         animated,
         options.success_port,
         options.input_mocks,
     );
+    update_freshness_manifest_if_needed(ran_freshness);
 }
 
 /// Persist freshness state after successful execution when freshness steps ran.
