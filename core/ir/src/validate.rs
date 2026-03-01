@@ -560,6 +560,7 @@ mod tests {
             log_detail: None,
             kind: NodeKind::Pure,
             operation_key: None,
+            transport_class: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -594,6 +595,7 @@ mod tests {
             log_detail: None,
             kind: NodeKind::Pure,
             operation_key: None,
+            transport_class: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -628,6 +630,7 @@ mod tests {
             log_detail: None,
             kind: NodeKind::Pure,
             operation_key: None,
+            transport_class: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -664,6 +667,7 @@ mod tests {
             log_detail: None,
             kind: NodeKind::Pure,
             operation_key: None,
+            transport_class: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -701,6 +705,7 @@ mod tests {
             log_detail: None,
             kind: NodeKind::Pure,
             operation_key: None,
+            transport_class: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -816,6 +821,7 @@ mod tests {
             log_detail: None,
             kind: NodeKind::Pure,
             operation_key: None,
+            transport_class: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -863,6 +869,7 @@ mod tests {
             log_detail: None,
             kind: NodeKind::Pure,
             operation_key: None,
+            transport_class: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -897,6 +904,7 @@ mod tests {
             log_detail: None,
             kind: NodeKind::Pure,
             operation_key: None,
+            transport_class: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -938,6 +946,7 @@ mod tests {
             log_detail: None,
             kind: NodeKind::Pure,
             operation_key: None,
+            transport_class: None,
         };
 
         let mut dag: Dag<()> = Dag::new();

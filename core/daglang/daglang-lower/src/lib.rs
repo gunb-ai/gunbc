@@ -250,50 +250,9 @@ pub enum ObligationCategory {
     PureGeneric,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ServiceTransportClass {
-    Unknown,
-    ShellLocal,
-    RestNetwork,
-    FileBoundary,
-    LocalDirect,
-    /// Stub transport for interface capabilities compiled without a profile.
-    /// DryRun-compatible; errors in Real mode with "requires --profile".
-    InterfaceStub,
-}
-
-impl ServiceTransportClass {
-    /// Transport cost classification (mirrors `transport_depth` in `std/fidelity.dag`).
-    ///
-    /// Single authoritative source for the transport→FermiDepth mapping.
-    /// The DSL `transport_depth()` function should be kept in sync.
-    pub fn fermi_depth(&self) -> &'static str {
-        match self {
-            Self::LocalDirect => "Xs",
-            Self::InterfaceStub => "Xs",
-            Self::ShellLocal => "S",
-            Self::FileBoundary => "S",
-            Self::RestNetwork => "L",
-            Self::Unknown => "Xl",
-        }
-    }
-
-    /// Whether this transport class is hermetic (can be fully mocked in DryRun).
-    ///
-    /// Single authoritative source for the transport→hermetic mapping.
-    /// The DSL `transport_hermetic()` function should be kept in sync.
-    pub fn is_hermetic(&self) -> bool {
-        match self {
-            Self::LocalDirect => true,
-            Self::InterfaceStub => true,
-            Self::ShellLocal => true,
-            Self::FileBoundary => true,
-            Self::RestNetwork => false,
-            Self::Unknown => false,
-        }
-    }
-}
+// ServiceTransportClass has been moved to gunbc-ir. Re-export for backward
+// compatibility with consumers that import it from daglang_lower.
+pub use gunbc_ir::ServiceTransportClass;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ServiceCallMetadata {
@@ -408,6 +367,13 @@ pub fn obligation_to_node_kind(node: &Node<LoweredOp>) -> NodeKind {
 pub fn stamp_node_kinds(dag: &mut Dag<LoweredOp>) {
     for node in &mut dag.nodes {
         node.kind = obligation_to_node_kind(node);
+        // Stamp transport class from ServiceCallMetadata so consumers can
+        // read it directly from the Node without Any-downcasting LoweredOp.
+        if let gunbc_ir::NodeBody::Opaque(ref op) = node.body {
+            if let Some(meta) = op.service_call_metadata() {
+                node.transport_class = Some(meta.transport);
+            }
+        }
         if let gunbc_ir::NodeBody::SubDag(ref mut inner) = node.body {
             stamp_node_kinds(inner);
         }

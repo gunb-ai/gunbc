@@ -171,6 +171,7 @@ impl<'a, T> ScriptedDagBuilder<'a, T> {
                 log_detail: node.log_detail,
                 kind: node.kind,
                 operation_key: node.operation_key.clone(),
+                transport_class: node.transport_class,
             });
         }
 

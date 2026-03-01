@@ -669,6 +669,7 @@ pub fn resolve_lowered_dag(dag: &Dag<LoweredOp>) -> Result<Dag<DynOp>, ResolveEr
             log_detail: node.log_detail,
             kind: node.kind,
             operation_key: node.operation_key.clone(),
+            transport_class: node.transport_class,
         };
         normalize_release_resource_inputs(&mut resolved_node);
         if let Some(mode) = needs_transport_resource(node, &resolved_node) {

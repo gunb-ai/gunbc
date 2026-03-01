@@ -49,6 +49,61 @@ impl NodeKind {
     }
 }
 
+/// Transport protocol class for service operations.
+///
+/// Set by the lowerer from DSL `transport` blocks. Read by testgen, fidelity
+/// analysis, and derive — replacing `Any`-based downcasting of `LoweredOp`
+/// with a first-class metadata field on `Node`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ServiceTransportClass {
+    /// Transport class could not be determined.
+    Unknown,
+    /// Shell command execution (local process).
+    ShellLocal,
+    /// REST API calls over HTTP/HTTPS (network).
+    RestNetwork,
+    /// Filesystem operations (local I/O boundary).
+    FileBoundary,
+    /// In-process / direct function call (no I/O).
+    LocalDirect,
+    /// Stub transport for interface capabilities compiled without a profile.
+    /// DryRun-compatible; errors in Real mode with "requires --profile".
+    InterfaceStub,
+}
+
+impl ServiceTransportClass {
+    /// Transport cost classification (mirrors `transport_depth` in `std/fidelity.dag`).
+    ///
+    /// Single authoritative source for the transport→FermiDepth mapping.
+    /// The DSL `transport_depth()` function should be kept in sync.
+    pub fn fermi_depth(&self) -> &'static str {
+        match self {
+            Self::LocalDirect => "Xs",
+            Self::InterfaceStub => "Xs",
+            Self::ShellLocal => "S",
+            Self::FileBoundary => "S",
+            Self::RestNetwork => "L",
+            Self::Unknown => "Xl",
+        }
+    }
+
+    /// Whether this transport class is hermetic (can be fully mocked in DryRun).
+    ///
+    /// Single authoritative source for the transport→hermetic mapping.
+    /// The DSL `transport_hermetic()` function should be kept in sync.
+    pub fn is_hermetic(&self) -> bool {
+        match self {
+            Self::LocalDirect => true,
+            Self::InterfaceStub => true,
+            Self::ShellLocal => true,
+            Self::FileBoundary => true,
+            Self::RestNetwork => false,
+            Self::Unknown => false,
+        }
+    }
+}
+
 /// A node in the DAG, generic over its operation type.
 ///
 /// Nodes are pure transformations of inputs to outputs.
@@ -102,6 +157,14 @@ pub struct Node<T> {
     /// duplicate upsert.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub operation_key: Option<OperationKey>,
+    /// Transport protocol class for this node's service operation.
+    ///
+    /// Stamped by the lowerer from `ServiceCallMetadata` on transport triplet
+    /// nodes (prepare/execute/parse). `None` for pure computation nodes.
+    /// Read by testgen and fidelity analysis instead of `Any`-downcasting
+    /// through `LoweredOp`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transport_class: Option<ServiceTransportClass>,
 }
 
 impl<T> Node<T> {
@@ -116,6 +179,7 @@ impl<T> Node<T> {
             log_detail: None,
             kind: NodeKind::Pure,
             operation_key: None,
+            transport_class: None,
         }
     }
 
@@ -186,6 +250,7 @@ impl<T> Node<T> {
             log_detail: None,
             kind: NodeKind::Pure,
             operation_key: None,
+            transport_class: None,
         }
     }
 
@@ -241,6 +306,12 @@ impl<T> Node<T> {
     /// Set the operation key for composition overlap detection.
     pub fn with_operation_key(mut self, key: OperationKey) -> Self {
         self.operation_key = Some(key);
+        self
+    }
+
+    /// Set the transport protocol class for this node.
+    pub fn with_transport_class(mut self, tc: ServiceTransportClass) -> Self {
+        self.transport_class = Some(tc);
         self
     }
 
@@ -323,6 +394,7 @@ impl<T> Node<T> {
             log_detail: self.log_detail,
             kind: self.kind,
             operation_key: self.operation_key,
+            transport_class: self.transport_class,
         }
     }
 
