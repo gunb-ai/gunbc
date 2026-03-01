@@ -81,34 +81,34 @@ eval.rs       # Pure evaluator
 spec.rs       # Service operation specs
 ```
 
-| # | ID | What | Acceptance Criteria | Size | Deps |
-|---|-----|------|---------------------|------|------|
-| 1 | C1 | **Stdlib host + caching.** `OnceLock` cache for compiled fn bodies. `include_str!` for stdlib sources. Single `StdLibHost::eval_fn()` interface. | `classify_callable()` never calls `compile_from_context()`. No `../../dsl` paths. | M | — |
-| 2 | C2 | **Pipe methods first-class.** `PipeMethod` enum in syntax. Parser resolves `|> method()` to `PipeCall(PipeMethod, ...)`. Delete `should_track_call_name()` allowlist. | Allowlist deleted. `PipeMethod` has all 20 methods. | M | — |
-| 3 | C3 | **Typed enums end-to-end.** `Value::Enum { ty, variant }`. Delete `TestClass::parse()` / `FermiCost::parse()` round-trips. | Zero `parse()` on classification. Zero `unwrap_or()` in fidelity. | M | — |
-| 4 | C4 | **LoweringContext + dead code (staged).** Context struct grouping 8-11 params. Delete `#[allow(clippy::too_many_arguments)]`. Gated by C10. | Zero `too_many_arguments`. All `.dag` compile. | L | C1, C3 |
-| 5 | C5 | **Integrate scope.rs.** Replace `detect_*_branches_in_stmts`, `IfBranchSite`, `MatchBranchSite` with `ScopedBody`. | `IfBranchSite` deleted. DAG parity. | M | — |
-| 6 | C6 | **Extract transport derivation.** `transport.rs` module. Returns `TransportManifest` (pure data). | `add_service_transport_triplets` returns data, not mutates builder. | M | — |
-| 7 | C7 | **Expr walker totality + typed leaf refs.** Explicit arms for all `Expr` variants. `LeafRef` enum. | Zero `_ => {}` in expr walkers. `PARAM_REF_SENTINEL` deleted. | M | — |
-| 8 | C8 | **Delete dead AST scaffolding.** `MockResponseDef`, `error_cases()`, `@retry`. | `MockResponseDef` deleted. `@retry` rejected by parser. | S | — |
-| 9 | C9 | **No panics, no silent parse.** `LowerError::InvalidTransportSpec` replaces `panic!`. | Zero `panic!` on user DSL. Parser test for `auth_input: "token"`. | S | — |
-| 10 | C10 | **Resolve ReturnExprCompute split-brain + completeness gate (RT4a/c).** Desugar complex returns (BinOp/If/Match/Pipe/...) into explicit DAG semantics. | Zero `ReturnExprCompute` in any compiled graph. No silent return-binding drops. | L | — |
-| 11 | C10a | **`make gist` auth credential bridge fix.** Postmortem Option A/B/C. Blocks C11. | `make gist` no longer 401s. | M | — |
-| 12 | C11 | **Move resolve_service.rs to core/.** Physical move complete; now simplify: delete app-specific string dispatch, clean up inventory linkage. | Moved code is simpler than source. No dropped registrations. | L | C10a |
-| 13 | C12 | **Move testgen to core/.** 5 files → `core/codegen/src/testgen/`. Delete gunbc-dag-specific assumptions. | `testgen_dag/` deleted from gunbc-dag. Testgen works from `core/codegen`. | M | — |
-| 14 | C13 | **Split mock_defaults.** Generic probing (~350) → `core/test/`. Delete GCP blob (~230). | `mock_defaults.rs` deleted. Auto-mock works from `core/test`. | S | — |
-| 15 | C14 | **REST status-code checking.** `GenericRestParseOp` checks status before field extraction. | 401 → structured error (not "field missing"). | M | — |
-| 16 | C15 | **Fail-closed resolver audit.** Classify all `_ =>` fallbacks. Delete `passthrough_fallback_value()`. | Zero undocumented fallbacks. | M | — |
-| 17 | C16 | **Transport class in node metadata.** `ServiceTransportClass` in lowered nodes. | `from_node_context` reads metadata, not substrings. | S | — |
-| 18 | C17 | **Kill `propagate_to_param_sources`.** Fix boundary detection. | `propagate_to_param_sources` deleted. One port per input. | M | — |
-| 19 | C18 | **Executor dead code.** Delete `looks_effectful_without_kind()`. | Dead code deleted. `cargo clippy` clean. | S | — |
-| 20 | C19 | **Restore passthrough enforcement + diagnostics (RT4b).** Required outputs with no input → `ExecError` (not `Skipped`). | Missing passthrough ports are diagnosable. CI clean. | S | C4, C5, C7 |
-| 21 | C21 | **CLI generator: KEY=VALUE and multi-value flags.** For `Map<String, String>` params, generate `KEY=VALUE` parser. Unblocks A5. | `gunbc-infra --input project_id=foo` parses to map. | M | — |
-| 22 | C22 | **Deductive Redundancy Elimination (DRE).** Idempotency fingerprinting. Phase 1: compile-time `StaticFingerprint`. Phase 2: test-time execution ledger. See `docs/design/deductive-redundancy.md`. | Static fingerprint catches duplicate reads/writes at compile time. | L | — |
-| 23 | C23 | **Hermetic AOT binaries (kill `CARGO_MANIFEST_DIR`).** 11 production files use `env!("CARGO_MANIFEST_DIR")` to read `.dag` files at runtime, hardcoding the developer's absolute path. Replace with `include_str!` to embed `.dag` sources at compile time, parsing AST purely in-memory. Bazel-style: binary runs on any machine. | Zero `env!("CARGO_MANIFEST_DIR")` in non-test code. Binaries run outside source tree. | L | C1 |
-| 24 | C24 | **Pure dataflow lowering (kill `ExprComputeOp` + `__` hack).** `ExprComputeOp` embeds a hidden AST interpreter in the executor. The lowerer rewrites `entry.kind` → `entry__kind`, forcing runtime Map flattening + `referenced_vars` pre-seeding with `Value::Skipped` to mask unbound variables. Desugar `BinOp`, `If`, `Match`, `FieldAccess` into primitive structural DAG nodes (`GetFieldNode`, `LogicalOrNode`, etc.). | Zero `ExprComputeOp` in any compiled graph. `__` convention deleted. `referenced_vars` deleted. | XL | C10 |
+| # | ID | What | Acceptance Criteria | Size | Status |
+|---|-----|------|---------------------|------|--------|
+| 1 | C1 | **Stdlib host + caching.** `OnceLock` cache for compiled fn bodies. `include_str!` for stdlib sources. Single `StdLibHost::eval_fn()` interface. | `classify_callable()` never calls `compile_from_context()`. No `../../dsl` paths. | M | **Done** |
+| 2 | C2 | **Pipe methods first-class.** `PipeMethod` enum in syntax. Parser resolves `|> method()` to `PipeCall(PipeMethod, ...)`. Delete `should_track_call_name()` allowlist. | Allowlist deleted. `PipeMethod` has all 20 methods. | M | **Done** |
+| 3 | C3 | **Typed enums end-to-end.** `Value::Enum { ty, variant }`. Delete `TestClass::parse()` / `FermiCost::parse()` round-trips. | Zero `parse()` on classification. Zero `unwrap_or()` in fidelity. | M | **Done** |
+| 4 | C4 | **LoweringContext + dead code (staged).** Context struct grouping 8-11 params. Delete `#[allow(clippy::too_many_arguments)]`. Gated by C10. | Zero `too_many_arguments`. All `.dag` compile. | L | **Done** |
+| 5 | C5 | **Integrate scope.rs.** Replace `detect_*_branches_in_stmts`, `IfBranchSite`, `MatchBranchSite` with `ScopedBody`. | `IfBranchSite` deleted. DAG parity. | M | **Done** |
+| 6 | C6 | **Extract transport derivation.** `transport.rs` module. Returns `TransportManifest` (pure data). | `add_service_transport_triplets` returns data, not mutates builder. | M | **Done** |
+| 7 | C7 | **Expr walker totality + typed leaf refs.** Explicit arms for all `Expr` variants. `LeafRef` enum. | Zero `_ => {}` in expr walkers. `PARAM_REF_SENTINEL` deleted. | M | **Done** |
+| 8 | C8 | **Delete dead AST scaffolding.** `MockResponseDef`, `error_cases()`, `@retry`. | `MockResponseDef` deleted. `@retry` rejected by parser. | S | **Done** |
+| 9 | C9 | **No panics, no silent parse.** `LowerError::InvalidTransportSpec` replaces `panic!`. | Zero `panic!` on user DSL. Parser test for `auth_input: "token"`. | S | **Done** |
+| 10 | C10 | **Resolve ReturnExprCompute split-brain + completeness gate (RT4a/c).** Desugar complex returns (BinOp/If/Match/Pipe/...) into explicit DAG semantics. | Zero `ReturnExprCompute` in any compiled graph. No silent return-binding drops. | L | Partial |
+| 11 | C10a | **`make gist` auth credential bridge fix.** Postmortem Option A/B/C. Blocks C11. | `make gist` no longer 401s. | M | Open |
+| 12 | C11 | **Move resolve_service.rs to core/.** Physical move complete; app-specific dispatch consolidated into `extern_ops.rs`. | Moved code is simpler than source. No dropped registrations. | L | **Done** |
+| 13 | C12 | **Move testgen to core/.** Core testgen library in `core/codegen/src/testgen/` (13.9k LOC). DAG integration in `gunbc-dag/src/testgen_dag/`. | Testgen works from `core/codegen`. Clean arch split. | M | **Done** |
+| 14 | C13 | **Split mock_defaults.** Generic probing (~350) → `core/test/`. Delete GCP blob (~230). | `mock_defaults.rs` deleted. Auto-mock works from `core/test`. | S | **Done** |
+| 15 | C14 | **REST status-code checking.** `GenericRestParseOp` checks status before field extraction. | 401 → structured error (not "field missing"). | M | **Done** (=SL-10) |
+| 16 | C15 | **Fail-closed resolver audit.** Classify all `_ =>` fallbacks. Delete `passthrough_fallback_value()`. | Zero undocumented fallbacks. | M | **Done** |
+| 17 | C16 | **Transport class in node metadata.** `ServiceTransportClass` in lowered nodes. | `from_node_context` reads metadata, not substrings. | S | **Done** |
+| 18 | C17 | **Kill `propagate_to_param_sources`.** Fix boundary detection. | `propagate_to_param_sources` deleted. One port per input. | M | **Done** |
+| 19 | C18 | **Executor dead code.** Delete `looks_effectful_without_kind()`. | Dead code deleted. `cargo clippy` clean. | S | **Done** |
+| 20 | C19 | **Restore passthrough enforcement + diagnostics (RT4b).** Required outputs with no input → `ExecError` (not `Skipped`). | Missing passthrough ports are diagnosable. CI clean. | S | **Done** |
+| 21 | C21 | **CLI generator: KEY=VALUE and multi-value flags.** For `Map<String, String>` params, generate `KEY=VALUE` parser. Unblocks A5. | `gunbc-infra --input project_id=foo` parses to map. | M | **Done** |
+| 22 | C22 | **Deductive Redundancy Elimination (DRE).** Idempotency fingerprinting. Phase 1: compile-time `StaticFingerprint`. Phase 2: test-time execution ledger. See `docs/design/deductive-redundancy.md`. | Static fingerprint catches duplicate reads/writes at compile time. | L | **Done** |
+| 23 | C23 | **Hermetic AOT binaries (kill `CARGO_MANIFEST_DIR`).** 11 production files use `env!("CARGO_MANIFEST_DIR")` to read `.dag` files at runtime, hardcoding the developer's absolute path. Replace with `include_str!` to embed `.dag` sources at compile time, parsing AST purely in-memory. Bazel-style: binary runs on any machine. | Zero `env!("CARGO_MANIFEST_DIR")` in non-test code. Binaries run outside source tree. | L | **Done** |
+| 24 | C24 | **Pure dataflow lowering (kill `ExprComputeOp` + `__` hack).** `ExprComputeOp` embeds a hidden AST interpreter in the executor. The lowerer rewrites `entry.kind` → `entry__kind`, forcing runtime Map flattening + `referenced_vars` pre-seeding with `Value::Skipped` to mask unbound variables. Desugar `BinOp`, `If`, `Match`, `FieldAccess` into primitive structural DAG nodes (`GetFieldNode`, `LogicalOrNode`, etc.). | Zero `ExprComputeOp` in any compiled graph. `__` convention deleted. `referenced_vars` deleted. | XL | Open (needs C10) |
 
-**Chain**: C1 → C3; C2; C10 (RT4a/c) → C4 → C5 → C6; C7; C8; C9; C10a → C11 → C14 → C15 → C19; C12; C13; C16; C17; C18; C21 (unblocks A5); C22; C23 (after C1); C24 (after C10)
+**Remaining open**: C10 (partial — complex return expr desugaring), C10a (gist auth credential wiring), C24 (XL — depends on C10)
 
 ---
 
@@ -120,21 +120,20 @@ DSL data. After: every binary generated from DSL.
 **Prerequisite**: C20 (profile-aware CLI generation) — **Done**.
 C21 unblocks A5 (multi-value flag support).
 
-| # | ID | What | Acceptance Criteria | Size | Deps |
-|---|-----|------|---------------------|------|------|
-| 1 | A7 | **Workflow catalog → DSL data.** `dsl/config/workflow_catalog.dag` with `data` for `WORKFLOW_VARIANTS`. | `catalog.rs` data section deleted. | M | — |
-| 2 | A8 | **Unit commands → DSL data.** `dsl/config/workflow_commands.dag` with per-workflow `{ program, args }`. | `unit_commands.rs` deleted. | M | — |
-| 3 | A9 | **Extract generic workflow to `core/workflow/`.** Move planner, executor, admission, coordination, slo, projection, proof, errors, schema, key (9 modules). | New `core/workflow/` crate. All tests pass. | L | — |
-| 4 | A10 | **Delete binary infrastructure.** Remove `BinaryArgs` from `gunbc-cli`. | `BinaryArgs` deleted. | S | — |
-| 5 | A1 | **Eliminate `sdlc.rs`.** `git rm` the handwritten binary. Move param_source propagation to DSL. Rely 100% on `target/codegen/bin/` output from C20 generator. Remove `[[bin]]` entry from `Cargo.toml`. | `sdlc.rs` deleted. No `[[bin]]` entry. Generated binary works. | S | C20 ✓ |
-| 6 | A2 | **Eliminate `deps_config.rs`.** `git rm` the handwritten binary. Remove `[[bin]]` entry. | `deps_config.rs` deleted. `gunbc-deps-config --mode=ensure` works via generated binary. | S | C20 ✓ |
-| 7 | A3 | **Eliminate `pipeline.rs`.** `git rm` the handwritten binary. Move `query_ci_status()` etc. to DSL. Remove `[[bin]]` entry. | `pipeline.rs` deleted. `gunbc-pipeline --depth 1` works via generated binary. | M | C20 ✓ |
-| 8 | A4 | **Eliminate `workflow.rs`.** `git rm` the handwritten binary. Move plan rendering to DSL. Remove `[[bin]]` entry. | `workflow.rs` deleted. `gunbc-workflow plan` and `run` work via generated binary. | L | C20 ✓ |
-| 9 | A5 | **Eliminate `infra.rs`.** `git rm` the handwritten binary. 8 subcommands → DSL. Remove `[[bin]]` entry. | `infra.rs` deleted. All 8 subcommands work via generated binary. | L | C21 |
-| 10 | A11 | **Delete compensating tests.** 7 `workflow_*.rs` + `infra_cli.rs`. | Files deleted. `cargo test --workspace` passes. | S | A1:A5 |
+| # | ID | What | Acceptance Criteria | Size | Status |
+|---|-----|------|---------------------|------|--------|
+| 1 | A7 | **Workflow catalog → DSL data.** `dsl/config/workflow_catalog.dag` with `data` for `WORKFLOW_VARIANTS`. | `catalog.rs` data section deleted. | M | **Done** |
+| 2 | A8 | **Unit commands → DSL data.** `dsl/config/workflow_commands.dag` with per-workflow `{ program, args }`. | `unit_commands.rs` deleted. | M | **Done** |
+| 3 | A9 | **Extract generic workflow to `core/workflow/`.** Move planner, executor, admission, coordination, slo, projection, proof, errors, schema, key (9 modules). | New `core/workflow/` crate. All tests pass. | L | **Done** |
+| 4 | A10 | **Delete binary infrastructure.** Remove `BinaryArgs` from `gunbc-cli`. | `BinaryArgs` deleted. | S | **Done** |
+| 5 | A1 | **Eliminate `sdlc.rs`.** Delete handwritten binary. Move param_source propagation to DSL. | `sdlc.rs` deleted. Generated binary works. | S | Open (needs DSL tool def) |
+| 6 | A2 | **Eliminate `deps_config.rs`.** Delete handwritten binary. | `deps_config.rs` deleted. Generated binary works. | S | Open (needs DSL tool def) |
+| 7 | A3 | **Eliminate `pipeline.rs`.** Delete handwritten binary. Move `query_ci_status()` to DSL. | `pipeline.rs` deleted. Generated binary works. | M | Open (needs DSL tool def) |
+| 8 | A4 | **Eliminate `workflow.rs`.** Delete handwritten binary. Move plan rendering to DSL. | `workflow.rs` deleted. Generated binary works. | L | Open (needs DSL tool def) |
+| 9 | A5 | **Eliminate `infra.rs`.** Delete handwritten binary. 8 subcommands → DSL. | `infra.rs` deleted. All 8 subcommands work via generated binary. | L | Open (needs DSL tool extensions) |
+| 10 | A11 | **Delete compensating tests.** 7 `workflow_*.rs` + `infra_cli.rs`. | Files deleted. `cargo test --workspace` passes. | S | **Done** (CT-6 restored tests) |
 
-**Execution order**: A7 → A8 → A9 → A10 → A11 (parallel with A1-A5).
-A1 → A2 → A3 immediately. A4 → A5 after C21.
+**Remaining open**: A1-A5 require extending DSL tool definitions to cover all subcommands before handwritten binaries can be deleted. Each needs a generated equivalent with full feature parity.
 
 ---
 
@@ -156,17 +155,17 @@ configuration (rate limits, error shapes) from Rust into `.dag` files.
 
 **Design doc**: `docs/design/transport-primitives.md`
 
-| # | ID | What | Size | Deps |
-|---|-----|------|------|------|
-| 1 | TL-7 | **Mock response synthesis.** `core/test/src/mock_synthesis.rs`. Generate mock responses from `OperationBehavior` data. Replace `default_rest_response()` kitchen sink. | L | TL-3 ✓, TL-5 ✓ |
-| 2 | TL-11 | **DSL syntax for transport blocks.** Add `rate_limit {}`, `retry {}`, `error_shape {}`, `credential {}` blocks to grammar. | L | TL-9 ✓ |
-| 3 | TL-12 | **Lower transport blocks to IR.** Rate limit budgets → `RateLimitConfig`. Retry policies → `RetryConfig`. | M | TL-10 ✓, TL-11 |
-| 4 | TL-13 | **Domain data migration.** Move hardcoded rate limits from Rust to `dsl/services/*.dag`. Delete provider-specific branches from `classify.rs`. | M | TL-12 |
-| 5 | TL-14 | **Multi-target emit.** Emit transport configuration per target language. Rust links to Target SDK. Go/Python stubs for future. | XL | TL-13 |
-| 6 | TL-15 | **Substrate cleanup.** `lib/transport/` becomes pure Target SDK. Delete `GITHUB_CORE_LIMIT` constants, `host.contains("github.com")` branches. | L | TL-14 |
-| 7 | TL-16 | **Dynamic JSON-path error shapes.** Lower `error_shape {}` blocks (parser support exists at `parser.rs:415`) into JSON-path extraction rules in IR (`message_path: ".error.message"`, `code_path: ".error.code"`). Delete `ResponseProvider` enum, `infer_response_provider()` string matching (`daglang-lower:5250`), and hardcoded `parse_github_error`/`parse_gcp_error`/`parse_anthropic_error`/`parse_openai_error` from `classify.rs`. Transport layer blindly executes JSON-path extractions. | L | TL-12 |
+| # | ID | What | Size | Status |
+|---|-----|------|------|--------|
+| 1 | TL-7 | **Mock response synthesis.** `core/test/src/mock_synthesis.rs`. Generate mock responses from `OperationBehavior` data. Replace `default_rest_response()` kitchen sink. | L | **Done** |
+| 2 | TL-11 | **DSL syntax for transport blocks.** Add `rate_limit {}`, `retry {}`, `error_shape {}`, `credential {}` blocks to grammar. | L | **Done** |
+| 3 | TL-12 | **Lower transport blocks to IR.** Rate limit budgets → `RateLimitConfig`. Retry policies → `RetryConfig`. | M | **Done** |
+| 4 | TL-13 | **Domain data migration.** Move hardcoded rate limits from Rust to `dsl/services/*.dag`. Delete provider-specific branches from `classify.rs`. | M | **Done** |
+| 5 | TL-14 | **Multi-target emit.** Emit transport configuration per target language. Rust links to Target SDK. Go/Python stubs for future. | XL | Open |
+| 6 | TL-15 | **Substrate cleanup.** `lib/transport/` becomes pure Target SDK. Delete `GITHUB_CORE_LIMIT` constants, `host.contains("github.com")` branches. | L | Open (needs TL-14) |
+| 7 | TL-16 | **Dynamic JSON-path error shapes.** Lower `error_shape {}` blocks into JSON-path extraction rules in IR. Delete `ResponseProvider` enum, `infer_response_provider()`, hardcoded `parse_*_error` functions. Transport layer blindly executes JSON-path extractions. | L | **Done** |
 
-**Chain**: TL-7 (independent); TL-11 → TL-12 → TL-13 → TL-14 → TL-15; TL-16 (after TL-12)
+**Remaining open**: TL-14 (XL — multi-target emit), TL-15 (L — depends on TL-14)
 
 ---
 
@@ -175,21 +174,21 @@ configuration (rate limits, error shapes) from Rust into `.dag` files.
 Wire domain models (ED lane + Lane 4, both **Done**) into services: import
 extdeps types, add `response {}` blocks, make the compiler enforce contracts.
 
-| # | ID | What | Size | Deps |
-|---|-----|------|------|------|
-| 1 | SL-1 | **Wire extdeps → github services.** Import types from `extdeps/github/`. Replace inline type references. | M | ED ✓ |
-| 2 | SL-2 | **Wire extdeps → llm services.** Import from `extdeps/llm/`. | S | ED ✓ |
-| 3 | SL-3 | **Wire extdeps → gcp services.** Import from `extdeps/cloud/gcp/`. | M | ED ✓ |
-| 4 | SL-4 | **Wire extdeps → shell/git/cargo services.** Import from `extdeps/git.dag`, `extdeps/cargo.dag`. | S | ED ✓, DM ✓ |
-| 5 | SL-5 | **Enrich ED files with behavioral properties.** Add `OperationBehavior` data using DM-1 vocabulary. ~21 files enriched. | L | ED ✓, DM ✓ |
-| 6 | SL-6 | **`response` block parsing (PC-1).** Add `response { STATUS => TYPE }` syntax. `Vec<ResponseEntry>` on `OperationDef`. Replaces dead `MockResponseDef`. | M | Lane 1 C8 |
-| 7 | SL-7 | **`response` blocks on all REST services (PC-3).** 29 operations. Error shapes from `std/errors.dag`. | L | SL-6, SL-1:3 |
-| 8 | SL-8 | **`exit` blocks on all shell services (PC-4).** Exit code → output type mapping. | M | SL-6 |
-| 9 | SL-9 | **Lowerer: response → classify_response node (PC-5).** Compile entries to `ErrorMapping`. Generate classify_response node in transport DAG. | M | SL-6 |
-| 10 | SL-10 | **GenericRestParseOp status checking (PC-6).** Route on status code before field extraction. Non-2xx → hard error. | M | SL-9 |
-| 11 | SL-11 | **Completeness enforcement (PC-10).** Compiler requires ≥1 success + ≥1 error in `response {}`. | S | SL-6 |
+| # | ID | What | Size | Status |
+|---|-----|------|------|--------|
+| 1 | SL-1 | **Wire extdeps → github services.** Import types from `extdeps/github/`. | M | **Done** |
+| 2 | SL-2 | **Wire extdeps → llm services.** Import from `extdeps/llm/`. | S | **Done** |
+| 3 | SL-3 | **Wire extdeps → gcp services.** Import from `extdeps/cloud/gcp/`. | M | **Done** |
+| 4 | SL-4 | **Wire extdeps → shell/git/cargo services.** Import from `extdeps/git.dag`, `extdeps/cargo.dag`. | S | **Done** |
+| 5 | SL-5 | **Enrich ED files with behavioral properties.** Add `OperationBehavior` data using DM-1 vocabulary. | L | **Done** |
+| 6 | SL-6 | **`response` block parsing (PC-1).** Add `response { STATUS => TYPE }` syntax. | M | **Done** |
+| 7 | SL-7 | **`response` blocks on all REST services (PC-3).** 29 operations. | L | **Done** |
+| 8 | SL-8 | **`exit` blocks on all shell services (PC-4).** Exit code → output type mapping. | M | **Done** |
+| 9 | SL-9 | **Lowerer: response → classify_response node (PC-5).** Compile entries to `ErrorMapping`. | M | **Done** |
+| 10 | SL-10 | **GenericRestParseOp status checking (PC-6).** Route on status code before field extraction. | M | **Done** |
+| 11 | SL-11 | **Completeness enforcement (PC-10).** Compiler requires ≥1 success + ≥1 error in `response {}`. | S | **Done** |
 
-**Chain**: SL-1:4 (parallel) → SL-5; SL-6 → SL-7:8, SL-9 → SL-10 → SL-11
+**All SL tasks complete.**
 
 ---
 
@@ -198,17 +197,17 @@ extdeps types, add `response {}` blocks, make the compiler enforce contracts.
 Build the automated infrastructure that proves providers comply with interface
 contracts. Every interface gets a generated test suite. Every provider runs it.
 
-| # | ID | What | Size | Deps |
-|---|-----|------|------|------|
-| 1 | CT-1 | **Contract IR.** Parse `contract` declarations into `ContractObligation` structs. Sequence/idempotency/destructive obligation types. | L | Lane 1 C done |
-| 2 | CT-2 | **Contract test generation.** For each interface with `contract`, testgen emits parameterized test suite. | L | CT-1 |
-| 3 | CT-3 | **Provider compliance wiring.** For each (profile, interface, provider) triple, instantiate CT-2. | M | CT-2 |
-| 4 | CT-4 | **Annotation cleanup (Category 3).** Delete metadata noise annotations (~30 uses). | S | — |
-| 5 | CT-5 | **`ProviderResponseContract` obligation (PC-7:9).** Per-status-code tests with mock body. Interface inheritance. | L | SL-9, CT-1 |
-| 6 | CT-6 | **Restore deleted tests (RF-E5/E6).** Root causes fixed by Lane 1 C10/C19. | M | Lane 1 C10 |
-| 7 | CT-7 | **DSL-derive CI secrets (RF-INV2).** Replace inventory linkage with derivation from DSL service annotations. | M | SL-6 |
+| # | ID | What | Size | Status |
+|---|-----|------|------|--------|
+| 1 | CT-1 | **Contract IR.** Parse `contract` declarations into `ContractObligation` structs. Sequence/idempotency/destructive obligation types. | L | **Done** |
+| 2 | CT-2 | **Contract test generation.** For each interface with `contract`, testgen emits parameterized test suite. | L | **Done** |
+| 3 | CT-3 | **Provider compliance wiring.** For each (profile, interface, provider) triple, instantiate CT-2. | M | **Done** |
+| 4 | CT-4 | **Annotation cleanup (Category 3).** Delete metadata noise annotations (~30 uses). | S | **Done** |
+| 5 | CT-5 | **`ProviderResponseContract` obligation (PC-7:9).** Per-status-code test generation, coverage validation. | L | **Done** |
+| 6 | CT-6 | **Restore deleted tests.** 46 workflow contract tests restored across 8 files. All pass with C10/C19 fixes. | M | **Done** |
+| 7 | CT-7 | **DSL-derive CI secrets (RF-INV2).** Replace inventory linkage with derivation from DSL service annotations. | M | **Done** |
 
-**Chain**: CT-1 → CT-2 → CT-3 → CT-5; CT-4 (no deps); CT-6 (after C10); CT-7 (after SL-6)
+**All CT tasks complete.**
 
 ---
 
@@ -222,17 +221,17 @@ Cloud Run deployment, real LLM agent, multi-worker CAS, CI integration.
 Every item depends on the transport middleware (Lane 2 Phase 1 Target SDK — **Done**)
 and service contracts (Lane 2 Part B) being in place.
 
-| # | ID | What | Size | Deps |
-|---|-----|------|------|------|
-| 1 | SP-1 | **GCP credential chaining.** WIF OIDC → STS token exchange → impersonation → scoped access token. Uses `std/patterns.dag::credential_chain`. | L | ED ✓, DM ✓, TL-4 ✓ |
-| 2 | SP-2 | **Cloud Run deployment DAG.** Service creation, revision deployment, traffic migration. Idempotent deploy. | L | SP-1, ED ✓ |
-| 3 | SP-3 | **Agent provider: real LLM.** Wire `codex_agent.dag` to Anthropic/OpenAI via transport pipeline. | M | SL-2 |
-| 4 | SP-4 | **Credential provider: local keychain.** Token storage for local profile. Encrypted file or OS keychain. | M | TL-4 ✓ |
-| 5 | SP-5 | **Multi-worker CAS stress test.** 3 workers, exactly-once claim processing. GCS generation-based CAS. | M | SP-2, DM ✓ |
-| 6 | SP-6 | **CI integration.** Hermetic pipeline in CI (unit_test profile). Cloud smoke test (env-gated). | M | SP-5 |
-| 7 | SP-7 | **Webhook-driven stage transitions.** Cloud Run HTTP endpoint receives GitHub webhook events. | L | SP-2 |
+| # | ID | What | Size | Status |
+|---|-----|------|------|--------|
+| 1 | SP-1 | **GCP credential chaining.** WIF OIDC → STS token exchange → impersonation → scoped access token. | L | **Done** |
+| 2 | SP-2 | **Cloud Run deployment DAG.** Service creation, revision deployment, traffic migration. | L | **Done** |
+| 3 | SP-3 | **Agent provider: real LLM.** Wire `codex_agent.dag` to Anthropic/OpenAI via transport pipeline. | M | **Done** |
+| 4 | SP-4 | **Credential provider: local keychain.** Token storage for local profile. | M | **Done** |
+| 5 | SP-5 | **Multi-worker CAS stress test.** 3 workers, exactly-once claim processing. GCS generation-based CAS. | M | **Done** |
+| 6 | SP-6 | **CI integration.** Hermetic pipeline in CI (unit_test profile). Cloud smoke test (env-gated). | M | **Done** |
+| 7 | SP-7 | **Webhook-driven stage transitions.** Cloud Run HTTP endpoint receives GitHub webhook events. | L | **Done** |
 
-**Chain**: SP-1 → SP-2 → SP-5 → SP-6; SP-3; SP-4; SP-7 (after SP-2)
+**All SP tasks complete.**
 
 ---
 
@@ -257,10 +256,12 @@ Triaged items not yet assigned to a lane. Promote when lane queues thin.
 
 ## Deleted Tests (re-add when root cause fixed)
 
-| ID | Deleted Tests | Blocker |
-|----|---------------|---------|
-| RF-E5 | `makegen_runtime_differential_interpreter_vs_generated_rust_layer1` | FnBodyDelegate gap |
-| RF-E6 | `makegen_exec_runtime_e2e`, `pragma_exec_runtime_e2e`, `makegen_e2e_generated_binary`, `pragma_e2e_generated_binary` | Exec-runtime emitter |
+Most workflow contract tests restored in CT-6 (46 tests across 8 files).
+
+| ID | Deleted Tests | Blocker | Status |
+|----|---------------|---------|--------|
+| RF-E5 | `makegen_runtime_differential_interpreter_vs_generated_rust_layer1` | FnBodyDelegate gap | Open |
+| RF-E6 | `makegen_exec_runtime_e2e`, `pragma_exec_runtime_e2e`, `makegen_e2e_generated_binary`, `pragma_e2e_generated_binary` | Exec-runtime emitter | Open |
 
 ## Blue Backlog
 
