@@ -3020,6 +3020,74 @@ func dual(msg: String) -> { reply: String } {
     );
 }
 
+#[test]
+fn cross_module_service_dedup_clones_transport_triplet() {
+    // Two modules in the same project that each call the same service
+    // operation must each get their own transport triplet (original + _c1).
+    // This is the cross-MODULE variant of the cross-callable test above —
+    // it regresses BT-E1 where endpoint_use_count reset per module.
+    let typed = typed_project_from_sources(&[
+        (
+            "dsl/services/dedup_cross_mod_svc.dag",
+            r#"module sample.dedup_cross_mod_svc
+service Echo {
+  operation Ping(message: String) -> { reply: String } {
+    transport shell { argv: ["echo", "{message}"] }
+  }
+}"#,
+        ),
+        (
+            "dsl/tools/dedup_cross_mod_a.dag",
+            r#"module sample.dedup_cross_mod_a
+import sample.dedup_cross_mod_svc { Echo }
+func alpha(msg: String) -> { reply: String } {
+  result = Echo.Ping(message: msg)
+  return { reply: result.reply }
+}"#,
+        ),
+        (
+            "dsl/tools/dedup_cross_mod_b.dag",
+            r#"module sample.dedup_cross_mod_b
+import sample.dedup_cross_mod_svc { Echo }
+func beta(msg: String) -> { reply: String } {
+  result = Echo.Ping(message: msg)
+  return { reply: result.reply }
+}"#,
+        ),
+    ]);
+    let dag = lower_typed_project(&typed).expect("lowering should succeed");
+    let prepare_nodes: Vec<_> = dag
+        .nodes
+        .iter()
+        .filter(|n| n.id.0.starts_with("prepare_transport_") && n.id.0.contains("Echo_Ping"))
+        .collect();
+    assert!(
+        prepare_nodes.len() >= 2,
+        "expected at least 2 prepare nodes for Echo.Ping (original + clone), found {}: {:?}",
+        prepare_nodes.len(),
+        prepare_nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
+    );
+    // Verify no two edges target the same scalar (node, port) from
+    // different sources — the original duplicate-edge bug (BT-E1).
+    let mut edge_targets: std::collections::HashMap<(String, String), Vec<String>> =
+        std::collections::HashMap::new();
+    for edge in &dag.edges {
+        edge_targets
+            .entry((edge.to_node.0.clone(), edge.to_port.0.clone()))
+            .or_default()
+            .push(edge.from_node.0.clone());
+    }
+    for ((node, port), sources) in &edge_targets {
+        if port == PortName::DEPS || port == "request" || port == "response" {
+            continue; // these are allowed to have multiple sources
+        }
+        assert!(
+            sources.len() <= 1,
+            "duplicate scalar edge to {node}:{port} from {sources:?}",
+        );
+    }
+}
+
 // ── Pattern expansion tests ──────────────────────────────────────
 
 /// Lower a synthetic test module injected into the real DSL corpus.
