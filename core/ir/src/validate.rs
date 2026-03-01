@@ -1,22 +1,20 @@
-//! DAG validation: SubDag interfaces and operation overlap detection.
+//! DAG validation: SubDag interfaces and resource wiring.
 //!
 //! Validates that SubDag nodes' declared interfaces (input/output ports)
 //! match the inner DAG's structural entrypoints and boundaries.
 //!
-//! Also validates that composed DAGs don't contain duplicate operations
-//! (same `OperationKey` on multiple nodes), which would indicate redundant
-//! work scheduling — a composition error analogous to upserting the same
-//! member twice without modification.
-//!
 //! This catches mismatches at build time rather than waiting for `lower()`
 //! in the executor.
+//!
+//! Note: Operation overlap detection was removed; replaced by C22
+//! (Deductive Redundancy Elimination using idempotency fingerprints).
 
 use crate::boundary::detect_boundaries;
 use crate::dag::{Dag, Port};
 use crate::entrypoint::detect_entrypoints;
 use crate::node::{Node, NodeBody};
 use crate::type_registry::TypeRegistry;
-use crate::types::{NodeId, OperationKey, PortName, SemanticCarrierKind, TypeId};
+use crate::types::{NodeId, PortName, SemanticCarrierKind, TypeId};
 use std::fmt;
 
 /// Error from SubDag interface validation.

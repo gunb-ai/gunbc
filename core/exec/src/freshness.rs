@@ -196,10 +196,8 @@ impl<T: Executable> Executable for WithFreshness<T> {
 /// - If steps were provided, a "freshness" sub-DAG is prepended and wired
 ///   as a blocking dependency to all tool root nodes
 ///
-/// `Err(ExecError)` if any freshness step's `subsumes` operation key overlaps
-/// with an `operation_key` already present in the tool DAG. This is the general
-/// idempotency/upsert invariant: composing the same operation twice without
-/// modification is a structural error.
+/// Returns `Ok(wrapped_dag)` with freshness steps prepended.
+/// Overlap detection is deferred to C22 (Deductive Redundancy Elimination).
 ///
 /// # Display
 ///

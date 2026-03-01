@@ -243,40 +243,8 @@ mod tests {
     /// in compose_with_freshness() — freshness steps declare `subsumes` and
     /// tool DAG nodes carry `operation_key`, both derived from the domain model.
     #[test]
-    fn full_freshness_with_build_dag_is_rejected() {
-        use gunbc_exec::{compose_with_freshness, FreshnessStep};
-        use gunbc_ir::OperationKey;
-
-        let dag = gunbc_dag::build_build_graph().expect("build graph should compile");
-
-        // Simulate full freshness steps that include build-phase operations.
-        // The subsumes field connects them to the same OperationKey that the
-        // lowerer stamps on the tool DAG's transport nodes.
-        let overlapping_steps = vec![
-            FreshnessStep {
-                id: "clippy".into(),
-                command: vec!["cargo".into(), "clippy".into()],
-                subsumes: Some(OperationKey::new("cargo.Build", "Clippy")),
-            },
-            FreshnessStep {
-                id: "test-compile".into(),
-                command: vec!["cargo".into(), "test".into(), "--no-run".into()],
-                subsumes: Some(OperationKey::new("cargo.Build", "Test")),
-            },
-        ];
-
-        let result = compose_with_freshness(dag, Some(overlapping_steps));
-        assert!(
-            result.is_err(),
-            "compose_with_freshness must reject freshness steps that overlap \
-             with the build DAG's cargo operations"
-        );
-        let err_msg = result.unwrap_err().to_string();
-        assert!(
-            err_msg.contains("duplicate operation"),
-            "error message should identify duplicate operations: {err_msg}"
-        );
-    }
+    // NOTE: full_freshness_with_build_dag_is_rejected removed.
+    // Naive overlap detection replaced by C22 (Deductive Redundancy Elimination).
 
     /// Validates that generation-only freshness steps compose cleanly
     /// with the build DAG (no overlap — generation steps have no subsumes).
