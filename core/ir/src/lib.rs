@@ -120,9 +120,11 @@ pub use coerce::{
     CoercionReport,
 };
 pub use contract::{
-    cross_product_witnesses, variant_witness_for, variant_witnesses, BoundaryWitness,
-    CodegenPlatformRepr, CodegenTypeShape, Platform, ProtocolLayer, ProtocolLayerKind,
-    ProtocolStack, ProtocolStackError, ScalarKind, StatusSemantic, TypeContract, TypeLayer,
+    cross_product_witnesses, generate_compliance_test_suite, generate_contract_test_body,
+    generate_contract_test_fn, generate_interface_contract_tests, validate_provider_compliance,
+    variant_witness_for, variant_witnesses, BoundaryWitness, CodegenPlatformRepr,
+    CodegenTypeShape, Platform, ProtocolLayer, ProtocolLayerKind, ProtocolStack,
+    ProtocolStackError, ProviderBinding, ScalarKind, StatusSemantic, TypeContract, TypeLayer,
 };
 pub use dag::{
     build, canonical_edge_order, edges_to_port, Dag, DagEdgePorts, DagInputPort, DagOutputPort,
