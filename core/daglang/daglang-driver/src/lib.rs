@@ -10,12 +10,7 @@ use daglang_emit::{
 };
 pub use daglang_lower::is_user_param_port;
 pub use daglang_lower::InferredEntrypoint;
-use daglang_lower::{
-    lower_typed_project_for_modules_with_entry,
-    lower_typed_project_for_modules_with_entry_and_collection_nodes,
-    lower_typed_project_with_profile, lower_typed_project_with_profile_and_collection_nodes,
-    LowerError, LoweredOp,
-};
+use daglang_lower::{lower_with_config, LowerError, LoweredOp, LoweringConfig};
 use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
 use daglang_syntax::ast::{Expr, Item, Literal, ModulePath, PipelineDef, StageDef, Stmt, TypeBody};
 use daglang_syntax::ast_utils::type_expr_to_string;
@@ -467,27 +462,12 @@ pub fn compile_from_module_graph_with_options(
     )
     .map_err(CompileError::Typecheck)?;
     let extern_assets = collect_extern_assets(&typed);
-    let lowered = if let Some(scope) = callable_scope.as_ref() {
-        if options.emit_collection_nodes {
-            lower_typed_project_for_modules_with_entry_and_collection_nodes(
-                &typed,
-                scope,
-                options.profile.as_deref(),
-                entry_module_name.as_deref(),
-            )
-        } else {
-            lower_typed_project_for_modules_with_entry(
-                &typed,
-                scope,
-                options.profile.as_deref(),
-                entry_module_name.as_deref(),
-            )
-        }
-    } else if options.emit_collection_nodes {
-        lower_typed_project_with_profile_and_collection_nodes(&typed, options.profile.as_deref())
-    } else {
-        lower_typed_project_with_profile(&typed, options.profile.as_deref())
-    }
+    let lowered = lower_with_config(&typed, &LoweringConfig {
+        callable_modules: callable_scope.as_ref(),
+        emit_collection_nodes: options.emit_collection_nodes,
+        active_profile: options.profile.as_deref(),
+        entry_module: entry_module_name.as_deref(),
+    })
     .map_err(CompileError::Lower)?;
     let dag_paths = daglang_lower::extract_output_paths(&lowered);
     let annotation_paths = daglang_lower::extract_declared_outputs(&typed);

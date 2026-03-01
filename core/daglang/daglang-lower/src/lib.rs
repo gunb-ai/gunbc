@@ -16,7 +16,7 @@
 //! TypedAST → [daglang-lower] → GraphIR (gunbc Dag/Node/Port/Edge)
 //! ```
 
-// RT-C4: LoweringContext struct will group these params. Until then, allow.
+// RT-C4: LoweringConfig groups the 4 boolean/optional lowerer parameters.
 
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -1605,36 +1605,73 @@ fn collect_variant_names(project: &TypedProject) -> HashSet<String> {
     names
 }
 
+/// Configuration for the lowering pipeline.
+///
+/// Groups the 4 optional/boolean parameters that control which modules are
+/// lowered, how collection nodes are emitted, and which profile is active.
+/// Replaces the 11-function combinatorial entry point explosion (C4).
+#[derive(Debug, Clone, Default)]
+pub struct LoweringConfig<'a> {
+    /// If set, only lower callables from these modules.
+    pub callable_modules: Option<&'a HashSet<String>>,
+    /// Emit explicit collection pipeline nodes (map/filter/fold).
+    pub emit_collection_nodes: bool,
+    /// Active profile name for interface stub resolution.
+    pub active_profile: Option<&'a str>,
+    /// Entry module for single-tool lowering.
+    pub entry_module: Option<&'a str>,
+}
+
+/// Lower a typed project with the given configuration.
+pub fn lower_with_config(
+    project: &TypedProject,
+    config: &LoweringConfig<'_>,
+) -> Result<Dag<LoweredOp>, LowerError> {
+    lower_typed_project_impl(
+        project,
+        config.callable_modules,
+        config.emit_collection_nodes,
+        config.active_profile,
+        config.entry_module,
+    )
+}
+
 pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, None, false, None, None)
+    lower_with_config(project, &LoweringConfig::default())
 }
 
 pub fn lower_typed_project_with_profile(
     project: &TypedProject,
     active_profile: Option<&str>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, None, false, active_profile, None)
+    lower_with_config(project, &LoweringConfig { active_profile, ..Default::default() })
 }
 
-/// Lowers typed modules while emitting explicit collection pipeline nodes.
 pub fn lower_typed_project_with_collection_nodes(
     project: &TypedProject,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, None, true, None, None)
+    lower_with_config(project, &LoweringConfig { emit_collection_nodes: true, ..Default::default() })
 }
 
 pub fn lower_typed_project_with_profile_and_collection_nodes(
     project: &TypedProject,
     active_profile: Option<&str>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, None, true, active_profile, None)
+    lower_with_config(project, &LoweringConfig {
+        active_profile,
+        emit_collection_nodes: true,
+        ..Default::default()
+    })
 }
 
 pub fn lower_typed_project_for_modules(
     project: &TypedProject,
     callable_modules: &HashSet<String>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, Some(callable_modules), false, None, None)
+    lower_with_config(project, &LoweringConfig {
+        callable_modules: Some(callable_modules),
+        ..Default::default()
+    })
 }
 
 pub fn lower_typed_project_for_modules_with_profile(
@@ -1642,21 +1679,22 @@ pub fn lower_typed_project_for_modules_with_profile(
     callable_modules: &HashSet<String>,
     active_profile: Option<&str>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(
-        project,
-        Some(callable_modules),
-        false,
+    lower_with_config(project, &LoweringConfig {
+        callable_modules: Some(callable_modules),
         active_profile,
-        None,
-    )
+        ..Default::default()
+    })
 }
 
-/// Lowers only scoped modules while emitting explicit collection pipeline nodes.
 pub fn lower_typed_project_for_modules_with_collection_nodes(
     project: &TypedProject,
     callable_modules: &HashSet<String>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, Some(callable_modules), true, None, None)
+    lower_with_config(project, &LoweringConfig {
+        callable_modules: Some(callable_modules),
+        emit_collection_nodes: true,
+        ..Default::default()
+    })
 }
 
 pub fn lower_typed_project_for_modules_with_profile_and_collection_nodes(
@@ -1664,13 +1702,12 @@ pub fn lower_typed_project_for_modules_with_profile_and_collection_nodes(
     callable_modules: &HashSet<String>,
     active_profile: Option<&str>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(
-        project,
-        Some(callable_modules),
-        true,
+    lower_with_config(project, &LoweringConfig {
+        callable_modules: Some(callable_modules),
         active_profile,
-        None,
-    )
+        emit_collection_nodes: true,
+        ..Default::default()
+    })
 }
 
 pub fn lower_typed_project_for_modules_with_entry(
@@ -1679,13 +1716,12 @@ pub fn lower_typed_project_for_modules_with_entry(
     active_profile: Option<&str>,
     entry_module: Option<&str>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(
-        project,
-        Some(callable_modules),
-        false,
+    lower_with_config(project, &LoweringConfig {
+        callable_modules: Some(callable_modules),
         active_profile,
         entry_module,
-    )
+        ..Default::default()
+    })
 }
 
 pub fn lower_typed_project_for_modules_with_entry_and_collection_nodes(
@@ -1694,16 +1730,16 @@ pub fn lower_typed_project_for_modules_with_entry_and_collection_nodes(
     active_profile: Option<&str>,
     entry_module: Option<&str>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(
-        project,
-        Some(callable_modules),
-        true,
+    lower_with_config(project, &LoweringConfig {
+        callable_modules: Some(callable_modules),
         active_profile,
         entry_module,
-    )
+        emit_collection_nodes: true,
+        ..Default::default()
+    })
 }
 
-fn lower_typed_project_with_callable_scope(
+fn lower_typed_project_impl(
     project: &TypedProject,
     callable_modules: Option<&HashSet<String>>,
     emit_collection_nodes: bool,
