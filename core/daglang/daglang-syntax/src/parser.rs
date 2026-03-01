@@ -399,6 +399,29 @@ impl Parser {
                                 )));
                             }
                         }
+                        "rate_limit" => {
+                            // Inline: `rate_limit: { ... }` or block: `rate_limit { ... }`
+                            self.expect(&TokenKind::LBrace)?;
+                            let rate_limit = self.parse_rate_limit_block()?;
+                            self.expect(&TokenKind::RBrace)?;
+                            config.rate_limits.push(rate_limit);
+                        }
+                        "retry" => {
+                            self.expect(&TokenKind::LBrace)?;
+                            config.retry = Some(self.parse_retry_block()?);
+                            self.expect(&TokenKind::RBrace)?;
+                        }
+                        "error_shape" => {
+                            self.expect(&TokenKind::LBrace)?;
+                            let error_shape = self.parse_error_shape_block()?;
+                            self.expect(&TokenKind::RBrace)?;
+                            config.error_shapes.push(error_shape);
+                        }
+                        "credential" => {
+                            self.expect(&TokenKind::LBrace)?;
+                            config.credential = Some(self.parse_credential_block()?);
+                            self.expect(&TokenKind::RBrace)?;
+                        }
                         _ => {
                             self.advance();
                         }
@@ -410,6 +433,231 @@ impl Parser {
             self.eat(&TokenKind::Comma);
         }
         Ok(config)
+    }
+
+    // ── Transport block parsers (TL-11) ─────────────────────────────
+
+    fn parse_rate_limit_block(&mut self) -> Result<RateLimitDef, ParseError> {
+        let mut requests: i64 = 0;
+        let mut per = RateLimitUnit::Hour;
+        let mut scope: Option<String> = None;
+
+        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+            if Self::token_kind_as_ident(&self.peek().kind).is_some() {
+                let field_name = self.expect_ident()?;
+                if self.eat(&TokenKind::Colon) {
+                    match field_name.as_str() {
+                        "requests" => {
+                            if let TokenKind::Int(n) = &self.peek().kind {
+                                requests = *n;
+                                self.advance();
+                            }
+                        }
+                        "per" => {
+                            let unit = self.expect_ident()?;
+                            per = match unit.to_lowercase().as_str() {
+                                "second" => RateLimitUnit::Second,
+                                "minute" => RateLimitUnit::Minute,
+                                "hour" => RateLimitUnit::Hour,
+                                "day" => RateLimitUnit::Day,
+                                _ => RateLimitUnit::Hour,
+                            };
+                        }
+                        "scope" => {
+                            if let TokenKind::Str(s) = &self.peek().kind {
+                                scope = Some(s.clone());
+                                self.advance();
+                            } else if Self::token_kind_as_ident(&self.peek().kind).is_some() {
+                                scope = Some(self.expect_ident()?);
+                            }
+                        }
+                        _ => {
+                            self.advance();
+                        }
+                    }
+                }
+            } else {
+                self.advance();
+            }
+            self.eat(&TokenKind::Comma);
+        }
+
+        Ok(RateLimitDef { requests, per, scope })
+    }
+
+    fn parse_retry_block(&mut self) -> Result<RetryDef, ParseError> {
+        let mut max_attempts: i64 = 3;
+        let mut backoff = BackoffStrategy::Exponential;
+        let mut base_delay_ms: Option<i64> = None;
+        let mut max_delay_ms: Option<i64> = None;
+        let mut retry_on: Vec<i64> = Vec::new();
+
+        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+            if Self::token_kind_as_ident(&self.peek().kind).is_some() {
+                let field_name = self.expect_ident()?;
+                if self.eat(&TokenKind::Colon) {
+                    match field_name.as_str() {
+                        "max_attempts" => {
+                            if let TokenKind::Int(n) = &self.peek().kind {
+                                max_attempts = *n;
+                                self.advance();
+                            }
+                        }
+                        "backoff" => {
+                            let strategy = self.expect_ident()?;
+                            backoff = match strategy.to_lowercase().as_str() {
+                                "constant" => BackoffStrategy::Constant,
+                                "linear" => BackoffStrategy::Linear,
+                                "exponential" => BackoffStrategy::Exponential,
+                                _ => BackoffStrategy::Exponential,
+                            };
+                        }
+                        "base_delay_ms" => {
+                            if let TokenKind::Int(n) = &self.peek().kind {
+                                base_delay_ms = Some(*n);
+                                self.advance();
+                            }
+                        }
+                        "max_delay_ms" => {
+                            if let TokenKind::Int(n) = &self.peek().kind {
+                                max_delay_ms = Some(*n);
+                                self.advance();
+                            }
+                        }
+                        "retry_on" => {
+                            // Parse list: [429, 500, 502]
+                            if self.eat(&TokenKind::LBracket) {
+                                while !self.check(&TokenKind::RBracket) && !self.at_eof() {
+                                    if let TokenKind::Int(n) = &self.peek().kind {
+                                        retry_on.push(*n);
+                                        self.advance();
+                                    }
+                                    self.eat(&TokenKind::Comma);
+                                }
+                                self.expect(&TokenKind::RBracket)?;
+                            }
+                        }
+                        _ => {
+                            self.advance();
+                        }
+                    }
+                }
+            } else {
+                self.advance();
+            }
+            self.eat(&TokenKind::Comma);
+        }
+
+        Ok(RetryDef {
+            max_attempts,
+            backoff,
+            base_delay_ms,
+            max_delay_ms,
+            retry_on,
+        })
+    }
+
+    fn parse_error_shape_block(&mut self) -> Result<ErrorShapeDef, ParseError> {
+        let mut status = String::new();
+        let mut error_type_path: Option<String> = None;
+        let mut message_path: Option<String> = None;
+        let mut retryable = false;
+
+        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+            if Self::token_kind_as_ident(&self.peek().kind).is_some() {
+                let field_name = self.expect_ident()?;
+                if self.eat(&TokenKind::Colon) {
+                    match field_name.as_str() {
+                        "status" => {
+                            if let TokenKind::Int(n) = &self.peek().kind {
+                                status = n.to_string();
+                                self.advance();
+                            } else if let TokenKind::Str(s) = &self.peek().kind {
+                                status = s.clone();
+                                self.advance();
+                            }
+                        }
+                        "error_type_path" => {
+                            if let TokenKind::Str(s) = &self.peek().kind {
+                                error_type_path = Some(s.clone());
+                                self.advance();
+                            }
+                        }
+                        "message_path" => {
+                            if let TokenKind::Str(s) = &self.peek().kind {
+                                message_path = Some(s.clone());
+                                self.advance();
+                            }
+                        }
+                        "retryable" => {
+                            if self.check(&TokenKind::True) {
+                                retryable = true;
+                                self.advance();
+                            } else if self.check(&TokenKind::False) {
+                                retryable = false;
+                                self.advance();
+                            }
+                        }
+                        _ => {
+                            self.advance();
+                        }
+                    }
+                }
+            } else {
+                self.advance();
+            }
+            self.eat(&TokenKind::Comma);
+        }
+
+        Ok(ErrorShapeDef {
+            status,
+            error_type_path,
+            message_path,
+            retryable,
+        })
+    }
+
+    fn parse_credential_block(&mut self) -> Result<CredentialDef, ParseError> {
+        let mut credential_type = String::new();
+        let mut header: Option<String> = None;
+        let mut source: Option<String> = None;
+
+        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+            if Self::token_kind_as_ident(&self.peek().kind).is_some() {
+                let field_name = self.expect_ident()?;
+                if self.eat(&TokenKind::Colon) {
+                    match field_name.as_str() {
+                        "type" => {
+                            credential_type = self.expect_ident()?;
+                        }
+                        "header" => {
+                            if let TokenKind::Str(s) = &self.peek().kind {
+                                header = Some(s.clone());
+                                self.advance();
+                            }
+                        }
+                        "source" => {
+                            if let TokenKind::Str(s) = &self.peek().kind {
+                                source = Some(s.clone());
+                                self.advance();
+                            }
+                        }
+                        _ => {
+                            self.advance();
+                        }
+                    }
+                }
+            } else {
+                self.advance();
+            }
+            self.eat(&TokenKind::Comma);
+        }
+
+        Ok(CredentialDef {
+            credential_type,
+            header,
+            source,
+        })
     }
 
     fn parse_transport_binding(&mut self) -> Result<TransportBinding, ParseError> {
@@ -3560,6 +3808,66 @@ pipeline gist {
                 assert!(matches!(def.ty, TypeExpr::Named(ref n) if n == "Config"));
             }
             other => panic!("expected ExternAssetDecl, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_service_config_with_rate_limit() {
+        let source = r#"
+            module services.example
+            service github.Gist {
+                config {
+                    endpoint: "https://api.github.com"
+                    auth: BearerToken
+                    rate_limit: { requests: 5000, per: hour, scope: core }
+                }
+                operation Create {
+                    input { content: String }
+                    output { id: String }
+                    transport rest { method: POST, path: "/gists" }
+                }
+            }
+        "#;
+        let ast = parse_or_panic(source);
+        assert_eq!(ast.items.len(), 1);
+        match &ast.items[0].node {
+            Item::ServiceDef(def) => {
+                assert_eq!(def.config.rate_limits.len(), 1);
+                let rl = &def.config.rate_limits[0];
+                assert_eq!(rl.requests, 5000);
+                assert_eq!(rl.per, RateLimitUnit::Hour);
+                assert_eq!(rl.scope, Some("core".to_string()));
+            }
+            other => panic!("expected ServiceDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_service_config_with_retry() {
+        let source = r#"
+            module services.example
+            service llm.Anthropic {
+                config {
+                    endpoint: "https://api.anthropic.com"
+                    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502] }
+                }
+                operation Messages {
+                    input { model: String }
+                    output { content: String }
+                    transport rest { method: POST, path: "/v1/messages" }
+                }
+            }
+        "#;
+        let ast = parse_or_panic(source);
+        match &ast.items[0].node {
+            Item::ServiceDef(def) => {
+                assert!(def.config.retry.is_some());
+                let retry = def.config.retry.as_ref().unwrap();
+                assert_eq!(retry.max_attempts, 3);
+                assert_eq!(retry.backoff, BackoffStrategy::Exponential);
+                assert_eq!(retry.retry_on, vec![429, 500, 502]);
+            }
+            other => panic!("expected ServiceDef, got {other:?}"),
         }
     }
 }

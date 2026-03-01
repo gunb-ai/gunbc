@@ -705,6 +705,83 @@ pub mod ast {
         /// When set, the lowerer wires this argument to `res:credential` on the
         /// execute node instead of including it in the prepare body.
         pub auth_input: Option<String>,
+        /// Rate limiting configuration for this service.
+        pub rate_limits: Vec<RateLimitDef>,
+        /// Retry policy for this service.
+        pub retry: Option<RetryDef>,
+        /// Error shape mapping for this service.
+        pub error_shapes: Vec<ErrorShapeDef>,
+        /// Credential configuration for this service.
+        pub credential: Option<CredentialDef>,
+    }
+
+    // ── Transport blocks (TL-11) ─────────────────────────────────────
+
+    /// Rate limit definition: `rate_limit { requests: 5000, per: hour, scope: core }`
+    #[derive(Debug, Clone)]
+    pub struct RateLimitDef {
+        /// Number of requests allowed in the window.
+        pub requests: i64,
+        /// Time unit for the rate limit window.
+        pub per: RateLimitUnit,
+        /// Optional scope name (e.g., "core", "search").
+        pub scope: Option<String>,
+    }
+
+    /// Rate limit time unit.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum RateLimitUnit {
+        Second,
+        Minute,
+        Hour,
+        Day,
+    }
+
+    /// Retry policy definition: `retry { max_attempts: 3, backoff: exponential }`
+    #[derive(Debug, Clone)]
+    pub struct RetryDef {
+        /// Maximum number of retry attempts.
+        pub max_attempts: i64,
+        /// Backoff strategy.
+        pub backoff: BackoffStrategy,
+        /// Optional base delay in milliseconds.
+        pub base_delay_ms: Option<i64>,
+        /// Optional max delay in milliseconds.
+        pub max_delay_ms: Option<i64>,
+        /// HTTP status codes that trigger retry.
+        pub retry_on: Vec<i64>,
+    }
+
+    /// Backoff strategy for retries.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum BackoffStrategy {
+        Constant,
+        Linear,
+        Exponential,
+    }
+
+    /// Error shape definition for provider-specific error mapping.
+    #[derive(Debug, Clone)]
+    pub struct ErrorShapeDef {
+        /// HTTP status code or range (e.g., 400, "4xx").
+        pub status: String,
+        /// Error type field path in response body.
+        pub error_type_path: Option<String>,
+        /// Error message field path in response body.
+        pub message_path: Option<String>,
+        /// Whether this error is retryable.
+        pub retryable: bool,
+    }
+
+    /// Credential configuration for service authentication.
+    #[derive(Debug, Clone)]
+    pub struct CredentialDef {
+        /// Credential type (e.g., "bearer", "api_key", "oauth2").
+        pub credential_type: String,
+        /// Header name for the credential (if applicable).
+        pub header: Option<String>,
+        /// Environment variable or secret path.
+        pub source: Option<String>,
     }
 
     #[derive(Debug, Clone)]
