@@ -233,15 +233,6 @@ mod tests {
         );
     }
 
-    /// Validates that the composition-level overlap detection works:
-    /// composing the build DAG with full freshness steps must be rejected
-    /// by compose_with_freshness() because the build DAG already contains
-    /// cargo Build/Clippy/Test operations that overlap with the freshness
-    /// chain's clippy/test-compile/release-check steps.
-    ///
-    /// This test exercises the general OperationKey-based overlap detection
-    /// in compose_with_freshness() — freshness steps declare `subsumes` and
-    /// tool DAG nodes carry `operation_key`, both derived from the domain model.
     // NOTE: full_freshness_with_build_dag_is_rejected removed.
     // Naive overlap detection replaced by C22 (Deductive Redundancy Elimination).
 
