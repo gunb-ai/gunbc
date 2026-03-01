@@ -109,6 +109,10 @@ pub struct RestOperationSpec {
     /// Populated from `rate_limit {}`, `retry {}`, etc. blocks in the service config.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub middleware: Option<TransportMiddlewareConfig>,
+    /// Response contract: maps HTTP status codes to response types.
+    /// Compiled from `response { STATUS => TYPE }` blocks.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub response_mapping: Vec<ResponseMappingEntry>,
 }
 
 /// Shell protocol specification: argv template + output parsing.
@@ -125,6 +129,10 @@ pub struct ShellOperationSpec {
     /// Environment variables for the shell process.
     /// Resolved from `env: Map<String, String>` input defaults at compile time.
     pub env: Vec<(String, String)>,
+    /// Exit code contract: maps exit codes to output types.
+    /// Compiled from `exit { CODE => TYPE }` blocks.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exit_mapping: Vec<ExitMappingEntry>,
 }
 
 /// Specification for an input field.
@@ -183,4 +191,54 @@ pub enum ShellOutputParsing {
     SuccessStdoutStderr,
     /// Bool from exit code: `success = exit_code == 0`.
     ExitCodeBool,
+}
+
+/// HTTP response contract entry: maps status codes to response types.
+/// Compiled from `response { STATUS => TYPE }` blocks in `.dag` files.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct ResponseMappingEntry {
+    /// Status pattern (exact code or wildcard).
+    pub status: ResponseStatusPattern,
+    /// Type name for the response body.
+    pub response_type: String,
+    /// Optional description for documentation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// HTTP status code pattern for response contracts.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub enum ResponseStatusPattern {
+    /// Exact status code: 200, 201, 404, etc.
+    Exact(u16),
+    /// 2xx wildcard: any 2xx status.
+    Success2xx,
+    /// 3xx wildcard: redirects.
+    Redirect3xx,
+    /// 4xx wildcard: client errors.
+    ClientError4xx,
+    /// 5xx wildcard: server errors.
+    ServerError5xx,
+}
+
+/// Shell exit code contract entry: maps exit codes to output types.
+/// Compiled from `exit { CODE => TYPE }` blocks in `.dag` files.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct ExitMappingEntry {
+    /// Exit code pattern (exact code or wildcard).
+    pub code: ExitCodePattern,
+    /// Type name for the output on this exit code.
+    pub output_type: String,
+    /// Optional description for documentation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Shell exit code pattern for exit contracts.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub enum ExitCodePattern {
+    /// Exact exit code: 0, 1, 128, etc.
+    Exact(i32),
+    /// Non-zero wildcard: any non-zero exit code.
+    NonZero,
 }

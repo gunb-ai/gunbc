@@ -864,6 +864,79 @@ impl Parser {
         })
     }
 
+    /// Parse an `exit` block for shell operations:
+    /// ```text
+    /// exit {
+    ///     0 => Success
+    ///     1 => GeneralError "Command failed"
+    ///     nonzero => Error
+    /// }
+    /// ```
+    fn parse_exit_block(&mut self) -> Result<Vec<ExitEntry>, ParseError> {
+        self.expect(&TokenKind::Exit)?;
+        self.expect(&TokenKind::LBrace)?;
+
+        let mut entries = Vec::new();
+
+        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+            // Parse exit code (0, 1, 2, ...) or "nonzero"
+            let code = self.parse_exit_code()?;
+
+            // Expect =>
+            self.expect(&TokenKind::FatArrow)?;
+
+            // Parse output type
+            let output_type = self.parse_type_expr()?;
+
+            // Optional description string
+            let description = if let TokenKind::Str(s) = &self.peek().kind {
+                let desc = s.clone();
+                self.advance();
+                Some(desc)
+            } else {
+                None
+            };
+
+            entries.push(ExitEntry {
+                code,
+                output_type,
+                description,
+            });
+
+            // Optional comma separator
+            self.eat(&TokenKind::Comma);
+        }
+
+        self.expect(&TokenKind::RBrace)?;
+        Ok(entries)
+    }
+
+    /// Parse an exit code: exact value (0, 1, 2) or "nonzero" wildcard.
+    fn parse_exit_code(&mut self) -> Result<ExitCode, ParseError> {
+        // Check for "nonzero" identifier
+        if let TokenKind::Ident(name) = &self.peek().kind {
+            if name == "nonzero" {
+                self.advance();
+                return Ok(ExitCode::NonZero);
+            }
+        }
+
+        // Check for integer exit code
+        if let TokenKind::Int(n) = &self.peek().kind {
+            let code = *n as i32;
+            self.advance();
+            return Ok(ExitCode::Exact(code));
+        }
+
+        Err(ParseError {
+            message: format!(
+                "Expected exit code (0, 1, 2, ...) or 'nonzero', found {:?}",
+                self.peek().kind
+            ),
+            span: self.peek().span,
+        })
+    }
+
     fn end_span(&self, start: Span) -> Span {
         let end = self.tokens[self.pos.saturating_sub(1)].span;
         Span {
@@ -1668,6 +1741,7 @@ impl Parser {
         let permissions: Vec<String> = Vec::new();
         let mut transport: Option<TransportBinding> = None;
         let mut response: Vec<ResponseEntry> = Vec::new();
+        let mut exit: Vec<ExitEntry> = Vec::new();
 
         if self.eat(&TokenKind::LParen) {
             inputs = self.parse_field_list_until_rparen()?;
@@ -1716,6 +1790,8 @@ impl Parser {
                     transport = Some(self.parse_transport_binding()?);
                 } else if self.check(&TokenKind::Response) {
                     response = self.parse_response_block()?;
+                } else if self.check(&TokenKind::Exit) {
+                    exit = self.parse_exit_block()?;
                 } else {
                     self.advance();
                 }
@@ -1731,6 +1807,7 @@ impl Parser {
             permissions,
             transport,
             response,
+            exit,
         })
     }
 
@@ -4000,6 +4077,51 @@ pipeline gist {
                 // Check wildcard patterns
                 assert_eq!(op.response[1].status, StatusPattern::ClientError4xx);
                 assert_eq!(op.response[2].status, StatusPattern::ServerError5xx);
+            }
+            other => panic!("expected ServiceDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_operation_with_exit_block() {
+        let source = r#"
+            module services.example
+            service shell.Git {
+                operation CurrentBranch {
+                    input {}
+                    output { branch: String }
+                    readonly
+                    transport shell { argv: ["git", "rev-parse", "--abbrev-ref", "HEAD"] }
+                    exit {
+                        0 => Unit
+                        1 => String "Not a git repository"
+                        nonzero => Error "Command failed"
+                    }
+                }
+            }
+        "#;
+        let ast = parse_or_panic(source);
+        match &ast.items[0].node {
+            Item::ServiceDef(def) => {
+                assert_eq!(def.operations.len(), 1);
+                let op = &def.operations[0];
+                assert_eq!(op.name, "CurrentBranch");
+                assert_eq!(op.exit.len(), 3);
+
+                // Check exact exit code 0
+                assert_eq!(op.exit[0].code, ExitCode::Exact(0));
+                assert!(matches!(op.exit[0].output_type, TypeExpr::Named(ref n) if n == "Unit"));
+                assert!(op.exit[0].description.is_none());
+
+                // Check exact exit code 1 with description
+                assert_eq!(op.exit[1].code, ExitCode::Exact(1));
+                assert!(matches!(op.exit[1].output_type, TypeExpr::Named(ref n) if n == "String"));
+                assert_eq!(op.exit[1].description.as_deref(), Some("Not a git repository"));
+
+                // Check nonzero wildcard
+                assert_eq!(op.exit[2].code, ExitCode::NonZero);
+                assert!(matches!(op.exit[2].output_type, TypeExpr::Named(ref n) if n == "Error"));
+                assert_eq!(op.exit[2].description.as_deref(), Some("Command failed"));
             }
             other => panic!("expected ServiceDef, got {other:?}"),
         }

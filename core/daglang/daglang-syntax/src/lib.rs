@@ -288,6 +288,8 @@ pub mod ast {
         pub transport: Option<TransportBinding>,
         /// Response contract: maps HTTP status codes/patterns to response types.
         pub response: Vec<ResponseEntry>,
+        /// Exit contract: maps shell exit codes to output types.
+        pub exit: Vec<ExitEntry>,
     }
 
     /// Response contract entry: STATUS => TYPE.
@@ -312,6 +314,23 @@ pub mod ast {
         ClientError4xx,
         /// 5xx wildcard: server errors.
         ServerError5xx,
+    }
+
+    /// Exit code contract entry for shell operations: CODE => TYPE.
+    #[derive(Debug, Clone)]
+    pub struct ExitEntry {
+        pub code: ExitCode,
+        pub output_type: TypeExpr,
+        pub description: Option<String>,
+    }
+
+    /// Shell exit code pattern.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum ExitCode {
+        /// Exact exit code: 0, 1, 2, etc.
+        Exact(i32),
+        /// Non-zero wildcard: any non-zero exit code (failure).
+        NonZero,
     }
 
     // ── Resources ───────────────────────────────────────────────────

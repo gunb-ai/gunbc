@@ -50,7 +50,8 @@ pub(crate) mod scope;
 pub mod spec;
 
 pub use spec::{
-    ArgvSegment, BodyEntry, FieldSpec, FileOperationSpec, LocalOperationSpec, OutputFieldSpec,
+    ArgvSegment, BodyEntry, ExitCodePattern, ExitMappingEntry, FieldSpec, FileOperationSpec,
+    LocalOperationSpec, OutputFieldSpec, ResponseMappingEntry, ResponseStatusPattern,
     RestOperationSpec, ServiceOperationSpec, ShellOperationSpec, ShellOutputParsing,
 };
 
@@ -5370,6 +5371,49 @@ fn infer_response_provider(service_name: &str) -> Option<ResponseProvider> {
     }
 }
 
+/// Convert AST status pattern to spec status pattern.
+fn convert_status_pattern(status: &daglang_syntax::ast::StatusPattern) -> ResponseStatusPattern {
+    match status {
+        daglang_syntax::ast::StatusPattern::Exact(code) => ResponseStatusPattern::Exact(*code),
+        daglang_syntax::ast::StatusPattern::Success2xx => ResponseStatusPattern::Success2xx,
+        daglang_syntax::ast::StatusPattern::Redirect3xx => ResponseStatusPattern::Redirect3xx,
+        daglang_syntax::ast::StatusPattern::ClientError4xx => ResponseStatusPattern::ClientError4xx,
+        daglang_syntax::ast::StatusPattern::ServerError5xx => ResponseStatusPattern::ServerError5xx,
+    }
+}
+
+/// Convert AST response entries to spec response mapping entries.
+fn derive_response_mapping(response_entries: &[daglang_syntax::ast::ResponseEntry]) -> Vec<ResponseMappingEntry> {
+    response_entries
+        .iter()
+        .map(|entry| ResponseMappingEntry {
+            status: convert_status_pattern(&entry.status),
+            response_type: type_expr_to_string(&entry.response_type),
+            description: entry.description.clone(),
+        })
+        .collect()
+}
+
+/// Convert AST exit code to spec exit code pattern.
+fn convert_exit_code(code: &daglang_syntax::ast::ExitCode) -> ExitCodePattern {
+    match code {
+        daglang_syntax::ast::ExitCode::Exact(n) => ExitCodePattern::Exact(*n),
+        daglang_syntax::ast::ExitCode::NonZero => ExitCodePattern::NonZero,
+    }
+}
+
+/// Convert AST exit entries to spec exit mapping entries.
+fn derive_exit_mapping(exit_entries: &[daglang_syntax::ast::ExitEntry]) -> Vec<ExitMappingEntry> {
+    exit_entries
+        .iter()
+        .map(|entry| ExitMappingEntry {
+            code: convert_exit_code(&entry.code),
+            output_type: type_expr_to_string(&entry.output_type),
+            description: entry.description.clone(),
+        })
+        .collect()
+}
+
 fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<RestOperationSpec> {
     let endpoint = service.config.endpoint.clone().unwrap_or_default();
     let (method, path_template) = match &operation.transport {
@@ -5399,6 +5443,9 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
     // Derive middleware config from rate_limit/retry blocks (TL-12).
     let middleware = derive_middleware_config(service, operation);
 
+    // Derive response mapping from response {} blocks (SL-9).
+    let response_mapping = derive_response_mapping(&operation.response);
+
     Some(RestOperationSpec {
         endpoint,
         method,
@@ -5410,6 +5457,7 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
         auth_scheme,
         auth_input,
         middleware,
+        response_mapping,
     })
 }
 
@@ -5470,12 +5518,16 @@ fn derive_shell_spec(
     // Extract env from `env: Map<String, String>` input default.
     let env = extract_env_from_inputs(&operation.inputs, data_registry);
 
+    // Derive exit mapping from exit {} blocks (SL-9).
+    let exit_mapping = derive_exit_mapping(&operation.exit);
+
     Some(ShellOperationSpec {
         argv_template,
         input_fields,
         output_fields,
         output_parsing,
         env,
+        exit_mapping,
     })
 }
 
