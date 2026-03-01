@@ -267,7 +267,7 @@ fn json_value_to_string(v: &JsonValue) -> String {
 
 /// Resolve a dotted JSON path (e.g., ".error.message") against a JSON value.
 fn resolve_json_path<'a>(path: &str, body: &'a JsonValue) -> Option<&'a JsonValue> {
-    let path = path.strip_prefix('.').unwrap_or(path);
+    let path = path.strip_prefix("$.").unwrap_or(path).strip_prefix('.').unwrap_or(path);
     let mut current = body;
     for segment in path.split('.') {
         if segment.is_empty() {

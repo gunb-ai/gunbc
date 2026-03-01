@@ -23,7 +23,7 @@ const ALLOWED_FILES: &[&str] = &[
     "core/codegen/src/cli_gen.rs",
     "core/codegen/src/testgen/mock_corpus.rs",
     "core/test/src/boundary.rs",
-    "gunbc-dag/src/bin/infra.rs",
+    // infra.rs deleted (A5); generated equivalent lives in target/codegen/bin/ (already skipped)
     "core/test/src/auto_mock.rs",
 ];
 

@@ -395,6 +395,10 @@ impl Executable for ExprComputeOp {
                 for (field_name, field_value) in fields {
                     env.insert(format!("{port}__{field_name}"), field_value.clone());
                 }
+            } else if let Value::Json(serde_json::Value::Object(map)) = &value {
+                for (field_name, field_value) in map {
+                    env.insert(format!("{port}__{field_name}"), Value::Json(field_value.clone()));
+                }
             }
             env.insert(port.clone(), value);
         }

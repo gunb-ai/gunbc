@@ -57,7 +57,7 @@ data workflow_commands: List<WorkflowCommandSet> = [
     commands: [
       { node_id: "gist.compilation_ensure", label: "compilation ensure", program: "cargo", args: ["build", "--workspace", "--bins"] },
       { node_id: "gist.codegen_ensure", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-codegen-dag"] },
-      { node_id: "gist.gist_create", label: "gist diff upload", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-gist-diff"] }
+      { node_id: "gist.gist_create", label: "gist diff upload", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-gist", "--", "gist-diff"] }
     ]
   },
   {
@@ -65,7 +65,7 @@ data workflow_commands: List<WorkflowCommandSet> = [
     commands: [
       { node_id: "gist.compilation_ensure", label: "compilation ensure", program: "cargo", args: ["build", "--workspace", "--bins"] },
       { node_id: "gist.codegen_ensure", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-codegen-dag"] },
-      { node_id: "gist.gist_create", label: "gist recent upload", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-gist-recent"] }
+      { node_id: "gist.gist_create", label: "gist recent upload", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-gist", "--", "gist-recent"] }
     ]
   },
   {
