@@ -618,7 +618,25 @@ fn eval_pipe(
         LoweredExpr::Call { name, args } => {
             eval_pipe_method(name, receiver, args, env, sibling_fns)
         }
-        _ => Err(EvalError::new("pipe RHS must be a call")),
+        LoweredExpr::Pipe {
+            receiver: nested_call,
+            call: final_call,
+        } => {
+            // Right-nested pipe chain: a |> (b |> c) — apply b to a, then c.
+            let intermediate = eval_pipe(receiver, nested_call, env, sibling_fns)?;
+            eval_pipe(intermediate, final_call, env, sibling_fns)
+        }
+        LoweredExpr::BinOp { left, op, right } => {
+            // Pipe into expression like `list |> count() > 0`:
+            // parser produces Pipe(list, BinOp(Call("count"), Gt, 0)).
+            // Evaluate the left side as a pipe method, then apply the binop.
+            let lhs = eval_pipe(receiver, left, env, sibling_fns)?;
+            let rhs = eval_expr(right, env, sibling_fns)?;
+            eval_binop(&lhs, *op, &rhs)
+        }
+        other => Err(EvalError::new(&format!(
+            "pipe RHS must be a call or pipe chain, got: {other:?}"
+        ))),
     }
 }
 
