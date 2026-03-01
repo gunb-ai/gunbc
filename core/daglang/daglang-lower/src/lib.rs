@@ -5245,7 +5245,7 @@ fn derive_operation_spec(
 ) -> Option<ServiceOperationSpec> {
     match transport {
         ServiceTransportClass::RestNetwork => {
-            derive_rest_spec(service, operation).map(ServiceOperationSpec::Rest)
+            derive_rest_spec(service, operation).map(|s| ServiceOperationSpec::Rest(Box::new(s)))
         }
         ServiceTransportClass::ShellLocal => {
             derive_shell_spec(service, operation, data_registry).map(ServiceOperationSpec::Shell)

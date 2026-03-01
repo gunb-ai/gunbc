@@ -9,9 +9,10 @@ use serde::Serialize;
 
 /// Complete specification for a service operation, extracted from `.dag` declarations.
 /// Each variant parameterizes a generic protocol interpreter (REST, Shell, File).
+/// Note: RestOperationSpec is boxed to avoid large_enum_variant clippy warning.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum ServiceOperationSpec {
-    Rest(RestOperationSpec),
+    Rest(Box<RestOperationSpec>),
     Shell(ShellOperationSpec),
     File(FileOperationSpec),
     Local(LocalOperationSpec),

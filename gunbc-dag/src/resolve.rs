@@ -1073,12 +1073,12 @@ fn resolve_service_transport(
             match (spec, role) {
                 (ServiceOperationSpec::Rest(rest_spec), Some(TransportRole::Prepare)) => {
                     return Ok(DynOp::new(GenericRestPrepareOp {
-                        spec: rest_spec.clone(),
+                        spec: (**rest_spec).clone(),
                     }));
                 }
                 (ServiceOperationSpec::Rest(rest_spec), Some(TransportRole::Parse)) => {
                     return Ok(DynOp::new(GenericRestParseOp {
-                        spec: rest_spec.clone(),
+                        spec: (**rest_spec).clone(),
                         service_name: metadata.service.clone(),
                         operation_name: metadata.operation.clone(),
                         auth_scheme: rest_spec.auth_scheme.clone().unwrap_or_default(),
@@ -1829,7 +1829,7 @@ mod tests {
             idempotent: true,
             readonly: false,
             permissions: vec![],
-            spec: Some(ServiceOperationSpec::Rest(RestOperationSpec {
+            spec: Some(ServiceOperationSpec::Rest(Box::new(RestOperationSpec {
                 endpoint: "https://sts.googleapis.com".to_string(),
                 method: "POST".to_string(),
                 path_template: "/v1/token".to_string(),
@@ -1873,7 +1873,7 @@ mod tests {
                 auth_input: None,
                 middleware: None,
                 response_mapping: vec![],
-            })),
+            }))),
         }
     }
 
@@ -1886,7 +1886,7 @@ mod tests {
             idempotent: true,
             readonly: true,
             permissions: vec!["secretmanager.versions.access".to_string()],
-            spec: Some(ServiceOperationSpec::Rest(RestOperationSpec {
+            spec: Some(ServiceOperationSpec::Rest(Box::new(RestOperationSpec {
                 endpoint: "https://secretmanager.googleapis.com".to_string(),
                 method: "GET".to_string(),
                 path_template: "/v1/projects/{project}/secrets/{secret}/versions/{version}:access"
@@ -1938,7 +1938,7 @@ mod tests {
                 auth_input: None,
                 middleware: None,
                 response_mapping: vec![],
-            })),
+            }))),
         }
     }
 

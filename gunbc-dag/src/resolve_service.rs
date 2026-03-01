@@ -301,10 +301,10 @@ fn status_matches_pattern(status: u16, pattern: &ResponseStatusPattern) -> bool 
 
 /// Find a matching response mapping entry for a given status code.
 /// Returns the first matching entry, or None if no entry matches.
-fn find_response_mapping<'a>(
+fn find_response_mapping(
     status: u16,
-    mappings: &'a [ResponseMappingEntry],
-) -> Option<&'a ResponseMappingEntry> {
+    mappings: &[ResponseMappingEntry],
+) -> Option<&ResponseMappingEntry> {
     // First try exact matches, then fall back to wildcard patterns.
     // This ensures exact status codes take precedence over wildcards.
     for entry in mappings {
