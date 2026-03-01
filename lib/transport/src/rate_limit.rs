@@ -310,32 +310,37 @@ impl TransportMiddleware for RateLimitMiddleware {
         request: TransportRequest,
         _ctx: &mut MiddlewareContext,
     ) -> MiddlewareOutcome {
-        // Check rate limit
-        match self.state.get_or_create(&self.config.scope_key, &self.config) {
-            Ok(()) => {
-                // Request allowed, record headroom for metrics
-                if let Some(headroom) = self.state.headroom(&self.config.scope_key) {
-                    // Metrics sink would be called here via ctx.shared_state
-                    // For now, we just proceed
-                    let _ = headroom;
-                }
-                MiddlewareOutcome::Continue(request)
-            }
-            Err(wait_duration) => {
-                // Rate limited - wait synchronously
-                // In a real async implementation, this would be async sleep
-                std::thread::sleep(wait_duration);
+        // Maximum retry attempts for rate limit acquisition.
+        // Prevents infinite loops while handling thundering herd scenarios where
+        // multiple threads wake up simultaneously after sleeping.
+        const MAX_ACQUIRE_ATTEMPTS: u32 = 10;
+        let mut attempts = 0;
 
-                // Try again after waiting
-                match self.state.get_or_create(&self.config.scope_key, &self.config) {
-                    Ok(()) => MiddlewareOutcome::Continue(request),
-                    Err(_) => {
-                        // Still rate limited - should not happen, but abort
-                        MiddlewareOutcome::Abort(gunbc_exec::ExecError::new(format!(
-                            "Rate limit exhausted for scope '{}' after waiting {:?}",
-                            self.config.scope_key, wait_duration
-                        )))
+        loop {
+            attempts += 1;
+
+            match self.state.get_or_create(&self.config.scope_key, &self.config) {
+                Ok(()) => {
+                    // Request allowed, record headroom for metrics
+                    if let Some(headroom) = self.state.headroom(&self.config.scope_key) {
+                        // Metrics sink would be called here via ctx.shared_state
+                        let _ = headroom;
                     }
+                    return MiddlewareOutcome::Continue(request);
+                }
+                Err(wait_duration) => {
+                    if attempts >= MAX_ACQUIRE_ATTEMPTS {
+                        // Too many failed attempts - abort rather than loop forever
+                        return MiddlewareOutcome::Abort(gunbc_exec::ExecError::new(format!(
+                            "Rate limit exhausted for scope '{}' after {} attempts",
+                            self.config.scope_key, attempts
+                        )));
+                    }
+
+                    // Rate limited - wait synchronously then retry
+                    // In a real async implementation, this would be async sleep
+                    std::thread::sleep(wait_duration);
+                    // Loop continues to retry acquisition
                 }
             }
         }

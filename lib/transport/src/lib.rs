@@ -43,6 +43,7 @@ pub mod middleware;
 pub mod rate_limit;
 pub mod retry;
 pub mod pipeline;
+pub mod transport_types;
 
 pub mod ops;
 pub mod preflight;
@@ -72,6 +73,11 @@ pub use rate_limit::{RateLimitMiddleware, RateLimitState};
 pub use retry::{CircuitBreaker, CircuitState, RetryMiddleware};
 pub use pipeline::{TransportPipeline, TransportPipelineBuilder};
 pub use credential::{CredentialCache, CredentialMiddleware};
+
+// Transport foundation types (TL-0)
+pub use transport_types::{
+    EndpointBehavior, FailureMode, OperationBehavior, TransportCapabilities, TransportClass,
+};
 
 pub mod system_models;
 

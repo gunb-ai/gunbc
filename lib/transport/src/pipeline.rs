@@ -208,23 +208,42 @@ impl TransportPipeline {
     }
 
     /// Execute request once through the pipeline.
+    ///
+    /// Tracks which layers have run `pre_request` to ensure proper cleanup
+    /// when inner layers abort or request retry.
     fn execute_once(
         &self,
-        mut request: TransportRequest,
+        request: TransportRequest,
         ctx: &mut MiddlewareContext,
     ) -> Result<PostProcessOutcome, ExecError> {
+        // Track how many layers successfully ran pre_request
+        let mut layers_completed_pre = 0;
+        // Keep a clone for cleanup in case of early exit
+        let request_for_cleanup = request.clone();
+        let mut current_request = request;
+
         // Pre-request processing (outer to inner)
         for layer in &self.layers {
-            match layer.pre_request(request, ctx) {
-                MiddlewareOutcome::Continue(req) => request = req,
+            match layer.pre_request(current_request, ctx) {
+                MiddlewareOutcome::Continue(req) => {
+                    current_request = req;
+                    layers_completed_pre += 1;
+                }
                 MiddlewareOutcome::ShortCircuit(response) => {
+                    // Cleanup layers that already ran pre_request
+                    self.cleanup_layers(layers_completed_pre, &request_for_cleanup, ctx);
                     return Ok(PostProcessOutcome::Complete(response));
                 }
                 MiddlewareOutcome::Abort(error) => {
+                    // Cleanup layers that already ran pre_request
+                    self.cleanup_layers(layers_completed_pre, &request_for_cleanup, ctx);
                     return Ok(PostProcessOutcome::Abort(error));
                 }
             }
         }
+
+        // Use the final transformed request for execution
+        let request = current_request;
 
         // Execute the actual transport
         let result = if let Some(executor) = &self.executor {
@@ -239,11 +258,20 @@ impl TransportPipeline {
         match result {
             Ok(mut response) => {
                 // Post-response processing (inner to outer)
-                for layer in self.layers.iter().rev() {
+                // All layers ran pre_request, so process all in reverse
+                for (idx, layer) in self.layers.iter().enumerate().rev() {
                     match layer.post_response(&request, response, ctx) {
                         PostProcessOutcome::Complete(resp) => response = resp,
-                        outcome @ PostProcessOutcome::Retry { .. } => return Ok(outcome),
-                        outcome @ PostProcessOutcome::Abort(_) => return Ok(outcome),
+                        outcome @ PostProcessOutcome::Retry { .. } => {
+                            // Clean up remaining outer layers that haven't seen post_response
+                            self.cleanup_layers(idx, &request, ctx);
+                            return Ok(outcome);
+                        }
+                        outcome @ PostProcessOutcome::Abort(_) => {
+                            // Clean up remaining outer layers
+                            self.cleanup_layers(idx, &request, ctx);
+                            return Ok(outcome);
+                        }
                     }
                 }
                 Ok(PostProcessOutcome::Complete(response))
@@ -260,6 +288,26 @@ impl TransportPipeline {
                 }
                 Ok(outcome)
             }
+        }
+    }
+
+    /// Clean up layers that ran pre_request but won't see post_response.
+    ///
+    /// Calls on_error with a synthetic cleanup error for the first N layers
+    /// (outer layers) that successfully ran pre_request.
+    fn cleanup_layers(
+        &self,
+        count: usize,
+        request: &TransportRequest,
+        ctx: &mut MiddlewareContext,
+    ) {
+        // Create a synthetic cleanup error - layers use this to clean up state
+        let cleanup_error = ExecError::new("pipeline cleanup (request did not complete)");
+
+        // Call on_error for layers 0..count in reverse order (inner to outer cleanup)
+        for layer in self.layers[..count].iter().rev() {
+            // Ignore the outcome - we're just cleaning up
+            let _ = layer.on_error(request, cleanup_error.clone(), ctx);
         }
     }
 
