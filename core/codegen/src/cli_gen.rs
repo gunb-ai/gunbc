@@ -412,9 +412,24 @@ fn build_cli_imports(tool: &ToolMeta, custom_import: Option<&str>, step_mode: bo
 // ============================================================================
 
 /// Generate the graph builder call expression.
-fn generate_graph_builder_call(tool: &ToolMeta) -> String {
+///
+/// When `has_profiles` is true, appends `selected_profile.as_deref()` to the
+/// graph builder arguments so the profile selection flows through to the DAG.
+fn generate_graph_builder_call(tool: &ToolMeta, has_profiles: bool) -> String {
     let f = &tool.graph_builder_call;
-    let args = &tool.graph_builder_args;
+    let base_args = &tool.graph_builder_args;
+
+    // Build final args list, optionally including profile
+    let args = if has_profiles {
+        if base_args.is_empty() {
+            "selected_profile.as_deref()".to_string()
+        } else {
+            format!("{}, selected_profile.as_deref()", base_args)
+        }
+    } else {
+        base_args.to_string()
+    };
+
     if tool.returns_result {
         let call = if args.is_empty() {
             format!("{}()", f)
@@ -823,8 +838,9 @@ fn build_cli_source_file(
 
 /// Build the `main()` function for standard mode.
 fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
+    let has_profiles = !tool.available_profiles.is_empty();
     let arg_parsing = generate_arg_parsing_with_mode(entrypoints, tool.enable_mode, &tool.available_profiles);
-    let graph_builder_call = generate_graph_builder_call(tool);
+    let graph_builder_call = generate_graph_builder_call(tool, has_profiles);
     let input_mocks = generate_input_mocks(entrypoints);
     let dry_run_block = generate_dry_run_block(tool);
     let body_lines_expr = generate_preamble_body_lines(entrypoints);
@@ -1030,24 +1046,37 @@ fn build_subcmd_run_fn(
     tool: &ToolMeta,
     subcmd: &crate::registry::SubcommandDef,
 ) -> FnDef {
+    let has_profiles = !tool.available_profiles.is_empty();
     let arg_parsing = generate_arg_parsing_with_mode(&subcmd.entrypoints, tool.enable_mode, &tool.available_profiles);
     let input_mocks = generate_input_mocks(&subcmd.entrypoints);
     let body_lines_expr = generate_preamble_body_lines(&subcmd.entrypoints);
 
+    // Build args, optionally including profile
+    let base_args = &subcmd.graph_builder_args;
+    let args = if has_profiles {
+        if base_args.is_empty() {
+            "selected_profile.as_deref()".to_string()
+        } else {
+            format!("{}, selected_profile.as_deref()", base_args)
+        }
+    } else {
+        base_args.to_string()
+    };
+
     let graph_builder_call = if subcmd.returns_result {
-        let call = if subcmd.graph_builder_args.is_empty() {
+        let call = if args.is_empty() {
             format!("{}()", subcmd.graph_builder_call)
         } else {
-            format!("{}({})", subcmd.graph_builder_call, subcmd.graph_builder_args)
+            format!("{}({})", subcmd.graph_builder_call, args)
         };
         format!(
             "match {} {{\n    Ok(d) => d,\n    Err(e) => {{\n        eprintln!(\"Error building graph: {{}}\", e);\n        process::exit(1);\n    }}\n}}",
             call
         )
-    } else if subcmd.graph_builder_args.is_empty() {
+    } else if args.is_empty() {
         format!("{}()", subcmd.graph_builder_call)
     } else {
-        format!("{}({})", subcmd.graph_builder_call, subcmd.graph_builder_args)
+        format!("{}({})", subcmd.graph_builder_call, args)
     };
 
     let mock_setup = match &subcmd.mock_spec_call {
@@ -1073,6 +1102,8 @@ fn build_subcmd_run_fn(
         String::new()
     };
 
+    let profile_block = generate_profile_block(tool);
+
     let body_code = format!(
         "// Reconstruct args with program name for parser compatibility\n\
          let mut args: Vec<String> = Vec::new();\n\
@@ -1082,6 +1113,7 @@ fn build_subcmd_run_fn(
          \n\
          {arg_parsing}\n\
          {mode_block}\
+         {profile_block}\
          // Build the graph and compose with freshness checks\n\
          let dag = {graph_builder_call};\n\
          let steps = check_and_plan_freshness();\n\
@@ -1101,6 +1133,7 @@ fn build_subcmd_run_fn(
         subcmd_name = subcmd.name,
         arg_parsing = arg_parsing,
         mode_block = mode_block,
+        profile_block = profile_block,
         graph_builder_call = graph_builder_call,
         input_mocks = input_mocks,
         dry_run_block = dry_run_block,
@@ -1252,7 +1285,7 @@ match parsed.subcommand {\n\
 fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
     // Step mode doesn't need profile support - it's for CI step execution
     let arg_parsing = generate_arg_parsing_with_mode(entrypoints, false, &[]);
-    let graph_builder_call = generate_graph_builder_call(tool);
+    let graph_builder_call = generate_graph_builder_call(tool, false);
     let input_mocks = generate_input_mocks(entrypoints);
     let dry_run_block = generate_dry_run_block(tool);
     let body_lines_expr = generate_preamble_body_lines(entrypoints);
@@ -1304,7 +1337,8 @@ fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDe
 
 /// Build the `run_single_step()` function for step mode.
 fn build_run_single_step_fn(tool: &ToolMeta) -> FnDef {
-    let graph_builder_call = generate_graph_builder_call(tool);
+    // Step mode doesn't need profile support - it's for CI step execution
+    let graph_builder_call = generate_graph_builder_call(tool, false);
     let dry_run_block = generate_dry_run_block(tool);
     let success_port_or_empty = tool.success_port.as_deref().unwrap_or("");
 
@@ -1391,7 +1425,8 @@ fn build_run_single_step_fn(tool: &ToolMeta) -> FnDef {
 
 /// Build the `list_dag_steps()` function for step mode.
 fn build_list_dag_steps_fn(tool: &ToolMeta) -> FnDef {
-    let graph_builder_call = generate_graph_builder_call(tool);
+    // Step mode doesn't need profile support - it's for CI step execution
+    let graph_builder_call = generate_graph_builder_call(tool, false);
 
     let body_code = format!(
         "let dag = {graph_builder_call};\n\

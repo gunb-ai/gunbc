@@ -540,8 +540,9 @@ spec.rs       # Service operation specs
 | C18 | — | **Executor dead code.** Delete `looks_effectful_without_kind()`. Delete unwired credential expiry plumbing. | Dead code deleted. `cargo clippy` clean. | S |
 | C19 | RT83, RT4b | **Restore passthrough enforcement + runtime fail-closed diagnostics.** After C4+C5+C7 wire dag_util branches, required outputs with no input must return `ExecError` (not `Skipped`) and emit clear diagnostics for missing declared passthroughs (RT4b). | `resolve.rs` returns `ExecError` for required missing outputs. Missing passthrough ports are diagnosable (no silent fallback). CI clean (no unwired branches). | S |
 | ~~C20~~ | ~~RT59, RT63~~ | ~~**CLI generator: profile, mode, subcommand support.** Expose `available_profiles` in `CompileOutput`. Template generates `--profile` enum flag, `--mode ensure\|verify`, subcommand dispatch for multi-func modules. Unblocks Worker A.~~ **Done** | ~~Generated CLI for `pipelines/sdlc.dag` accepts `--profile`. Generated CLI for multi-func modules has subcommands.~~ | ~~L~~ |
+| C21 | — | **CLI generator: KEY=VALUE and multi-value flag support.** For `Map<String, String>` params, generate `KEY=VALUE` parser (e.g., `--input project_id=my-project`). For `List<String>` params, generate accumulator flags (`--target A --target B`). Required for A5 (infra.rs elimination). | `gunbc-infra --input project_id=foo` parses to map. `--target A --target B` parses to list. | M |
 
-**Chain**: C1 → C3; C2; C10 (RT4a/c) → C4 → C5 → C6; C7; C8; C9; C10a → (RF-INV1 or RF-INV2 gate) → C11 → C14 → C15 → C19; C12; C13; C16; C17; C18; C20 (early, unblocks A)
+**Chain**: C1 → C3; C2; C10 (RT4a/c) → C4 → C5 → C6; C7; C8; C9; C10a → (RF-INV1 or RF-INV2 gate) → C11 → C14 → C15 → C19; C12; C13; C16; C17; C18; C20 (early, unblocks A); C21 (unblocks A5)
 
 ---
 
