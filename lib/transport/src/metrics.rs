@@ -238,8 +238,8 @@ struct RequestTiming {
 /// Metrics middleware that records request/response timing and counts.
 pub struct MetricsMiddleware {
     sink: Arc<dyn MetricsSink>,
-    /// Active request timings, keyed by operation_id.
-    timings: Mutex<HashMap<String, RequestTiming>>,
+    /// Active request timings, keyed by unique request_id to avoid collision.
+    timings: Mutex<HashMap<u64, RequestTiming>>,
 }
 
 impl MetricsMiddleware {
@@ -260,14 +260,14 @@ impl TransportMiddleware for MetricsMiddleware {
         let transport_kind = transport_kind_str(&request);
         self.sink.record_request(&ctx.operation_id, transport_kind);
 
-        // Store timing for this request
+        // Store timing for this request, keyed by unique request_id
         let timing = RequestTiming {
             start: Instant::now(),
         };
         self.timings
             .lock()
             .unwrap()
-            .insert(ctx.operation_id.clone(), timing);
+            .insert(ctx.request_id, timing);
 
         MiddlewareOutcome::Continue(request)
     }
@@ -282,7 +282,7 @@ impl TransportMiddleware for MetricsMiddleware {
             .timings
             .lock()
             .unwrap()
-            .remove(&ctx.operation_id)
+            .remove(&ctx.request_id)
             .map(|t| t.start.elapsed().as_millis() as u64)
             .unwrap_or(0);
 
@@ -300,7 +300,7 @@ impl TransportMiddleware for MetricsMiddleware {
         ctx: &mut MiddlewareContext,
     ) -> PostProcessOutcome {
         // Clean up timing
-        self.timings.lock().unwrap().remove(&ctx.operation_id);
+        self.timings.lock().unwrap().remove(&ctx.request_id);
 
         // Record as network error (most execution errors are network-level)
         self.sink

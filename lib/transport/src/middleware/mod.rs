@@ -14,7 +14,11 @@
 
 use gunbc_exec::ExecError;
 use gunbc_ir::transport::{TransportMiddlewareConfig, TransportRequest, TransportResponse};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+
+/// Global counter for generating unique request IDs.
+static REQUEST_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 /// Context passed through the middleware chain.
 ///
@@ -22,6 +26,9 @@ use std::sync::Arc;
 /// layers can read and modify.
 #[derive(Debug, Clone)]
 pub struct MiddlewareContext {
+    /// Unique request ID for correlating timing data across concurrent requests.
+    /// Prevents HashMap collision when multiple requests share the same operation_id.
+    pub request_id: u64,
     /// Operation identifier for logging/metrics (e.g., "github.gist.create").
     pub operation_id: String,
     /// Whether the operation is idempotent (safe to retry without side effects).
@@ -46,6 +53,7 @@ impl MiddlewareContext {
         shared_state: Arc<SharedMiddlewareState>,
     ) -> Self {
         Self {
+            request_id: REQUEST_ID_COUNTER.fetch_add(1, Ordering::Relaxed),
             operation_id: operation_id.into(),
             idempotent,
             readonly,

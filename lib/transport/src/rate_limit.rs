@@ -38,6 +38,9 @@ struct TokenBucket {
     max_tokens: f64,
     /// Tokens added per second.
     refill_rate: f64,
+    /// Explicit pause until a specific time (for Retry-After handling).
+    /// If set and in the future, all requests are blocked.
+    pause_until: Option<Instant>,
 }
 
 impl TokenBucket {
@@ -48,11 +51,23 @@ impl TokenBucket {
             last_refill: Instant::now(),
             max_tokens: max_burst as f64,
             refill_rate,
+            pause_until: None,
         }
     }
 
     /// Try to acquire a token. Returns wait time if rate limited.
     fn try_acquire(&mut self) -> Result<(), Duration> {
+        let now = Instant::now();
+
+        // Check explicit pause first (from Retry-After)
+        if let Some(until) = self.pause_until {
+            if now < until {
+                return Err(until.duration_since(now));
+            }
+            // Pause expired, clear it
+            self.pause_until = None;
+        }
+
         self.refill();
 
         if self.tokens >= 1.0 {
@@ -77,24 +92,23 @@ impl TokenBucket {
 
     /// Current headroom as fraction (0.0 = exhausted, 1.0 = full).
     fn headroom(&self) -> f64 {
+        // If paused, headroom is 0
+        if let Some(until) = self.pause_until {
+            if Instant::now() < until {
+                return 0.0;
+            }
+        }
         self.tokens / self.max_tokens
     }
 
     /// Force a wait until a specific time (for Retry-After handling).
     fn force_wait_until(&mut self, until: Instant) {
-        // Set tokens to 0 and adjust last_refill so refill will
-        // naturally recover at the right time
         let now = Instant::now();
         if until > now {
+            // Set explicit pause - this is the only safe way to enforce wait
+            self.pause_until = Some(until);
+            // Also drain tokens to prevent any requests after pause expires
             self.tokens = 0.0;
-            // Calculate when we should have started to have 1 token by `until`
-            let wait_duration = until.duration_since(now);
-            let tokens_to_recover = 1.0;
-            let natural_refill_time = Duration::from_secs_f64(tokens_to_recover / self.refill_rate);
-            if wait_duration > natural_refill_time {
-                // We need to wait longer than natural refill, so set last_refill back
-                self.last_refill = now - (wait_duration - natural_refill_time);
-            }
         }
     }
 }
@@ -108,6 +122,8 @@ struct SlidingWindow {
     window: Duration,
     /// Maximum requests per window.
     max_requests: u32,
+    /// Explicit pause until a specific time (for Retry-After handling).
+    pause_until: Option<Instant>,
 }
 
 impl SlidingWindow {
@@ -116,12 +132,23 @@ impl SlidingWindow {
             requests: Vec::new(),
             window: Duration::from_secs(60),
             max_requests: sustained_per_minute,
+            pause_until: None,
         }
     }
 
     /// Try to record a request. Returns wait time if rate limited.
     fn try_acquire(&mut self) -> Result<(), Duration> {
         let now = Instant::now();
+
+        // Check explicit pause first (from Retry-After)
+        if let Some(until) = self.pause_until {
+            if now < until {
+                return Err(until.duration_since(now));
+            }
+            // Pause expired, clear it
+            self.pause_until = None;
+        }
+
         self.prune(now);
 
         if (self.requests.len() as u32) < self.max_requests {
@@ -130,10 +157,15 @@ impl SlidingWindow {
         } else {
             // Calculate time until oldest request falls out of window
             if let Some(oldest) = self.requests.first() {
-                let oldest_age = now.duration_since(*oldest);
-                if oldest_age < self.window {
-                    let wait = self.window - oldest_age;
-                    return Err(wait);
+                // Use checked_duration_since to avoid panics on future timestamps
+                if let Some(oldest_age) = now.checked_duration_since(*oldest) {
+                    if oldest_age < self.window {
+                        let wait = self.window - oldest_age;
+                        return Err(wait);
+                    }
+                } else {
+                    // oldest is in the future (shouldn't happen, but be safe)
+                    return Err(Duration::from_secs(1));
                 }
             }
             // Should not happen if prune worked correctly
@@ -143,12 +175,19 @@ impl SlidingWindow {
 
     /// Remove requests older than the window.
     fn prune(&mut self, now: Instant) {
-        let cutoff = now - self.window;
+        // Use saturating_sub to avoid underflow when now < window
+        let cutoff = now.checked_sub(self.window).unwrap_or(now);
         self.requests.retain(|t| *t > cutoff);
     }
 
     /// Current headroom as fraction.
     fn headroom(&self) -> f64 {
+        // If paused, headroom is 0
+        if let Some(until) = self.pause_until {
+            if Instant::now() < until {
+                return 0.0;
+            }
+        }
         let used = self.requests.len() as f64;
         let max = self.max_requests as f64;
         (max - used) / max
@@ -156,14 +195,13 @@ impl SlidingWindow {
 
     /// Force a wait until a specific time (for Retry-After handling).
     fn force_wait_until(&mut self, until: Instant) {
-        // Fill the window with fake requests that will expire at `until`
         let now = Instant::now();
         if until > now {
-            let fake_time = until - self.window;
+            // Use explicit pause instead of manipulating timestamps
+            // This avoids underflow panics when retry-after > window
+            self.pause_until = Some(until);
+            // Clear requests to be safe
             self.requests.clear();
-            for _ in 0..self.max_requests {
-                self.requests.push(fake_time);
-            }
         }
     }
 }

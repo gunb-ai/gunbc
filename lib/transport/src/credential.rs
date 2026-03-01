@@ -34,21 +34,32 @@ struct CachedCredential {
     fetched_at: Instant,
     /// Absolute expiry time (from credential's TTL or config override).
     expires_at: Option<SystemTime>,
+    /// Total TTL duration computed at fetch time.
+    /// Used for proactive refresh threshold calculation.
+    total_ttl: Option<Duration>,
 }
 
 impl CachedCredential {
     fn new(credential: Credential, ttl_override: Option<u64>) -> Self {
         let fetched_at = Instant::now();
-        let expires_at = if let Some(ttl_ms) = ttl_override {
-            Some(SystemTime::now() + Duration::from_millis(ttl_ms))
+        let now = SystemTime::now();
+
+        let (expires_at, total_ttl) = if let Some(ttl_ms) = ttl_override {
+            let ttl = Duration::from_millis(ttl_ms);
+            (Some(now + ttl), Some(ttl))
+        } else if let Some(expiry) = credential.secret().expires_at() {
+            // Compute TTL from expiry - now
+            let ttl = expiry.duration_since(now).ok();
+            (Some(expiry), ttl)
         } else {
-            credential.secret().expires_at()
+            (None, None)
         };
 
         Self {
             credential,
             fetched_at,
             expires_at,
+            total_ttl,
         }
     }
 
@@ -62,18 +73,13 @@ impl CachedCredential {
 
     /// Whether this credential should be proactively refreshed.
     fn should_refresh(&self, threshold_pct: u8) -> bool {
-        let Some(expiry) = self.expires_at else {
+        let Some(total_ttl) = self.total_ttl else {
             return false; // No expiry = never refresh
         };
 
-        let Ok(total_duration) = expiry.duration_since(
-            SystemTime::UNIX_EPOCH + self.fetched_at.elapsed(),
-        ) else {
-            // Can't compute duration, don't refresh
-            return false;
-        };
-
-        let threshold_duration = total_duration * threshold_pct as u32 / 100;
+        // threshold_duration is when we should start refreshing
+        // e.g., 80% threshold on 1 hour TTL = start refreshing after 48 minutes
+        let threshold_duration = total_ttl * threshold_pct as u32 / 100;
         let elapsed = self.fetched_at.elapsed();
 
         elapsed > threshold_duration
@@ -177,19 +183,40 @@ impl CredentialMiddleware {
         });
 
         // Check cache
-        if let Some(cached) = self.cache.get(&cache_key) {
-            // Check if proactive refresh needed
-            if !self.cache.should_refresh(&cache_key, self.config.refresh_threshold_pct) {
-                return Ok(cached);
+        let cached = self.cache.get(&cache_key);
+        let needs_refresh = self
+            .cache
+            .should_refresh(&cache_key, self.config.refresh_threshold_pct);
+
+        // If we have a valid cached credential and don't need refresh, use it
+        if let Some(ref cred) = cached {
+            if !needs_refresh {
+                return Ok(cred.clone());
             }
-            // Fall through to refresh
         }
 
-        // Acquire new credential
+        // Try to acquire new credential (either proactive refresh or initial fetch)
         if let Some(provider) = &self.provider {
-            let credential = provider(&self.config)?;
-            self.cache.put(cache_key, credential.clone(), self.config.cache_ttl_ms);
-            Ok(credential)
+            match provider(&self.config) {
+                Ok(credential) => {
+                    self.cache
+                        .put(cache_key, credential.clone(), self.config.cache_ttl_ms);
+                    return Ok(credential);
+                }
+                Err(e) => {
+                    // If refresh failed but we have a valid cached credential, use it
+                    if let Some(cred) = cached {
+                        return Ok(cred);
+                    }
+                    // No cached credential and refresh failed - propagate error
+                    return Err(e);
+                }
+            }
+        }
+
+        // No provider - can only use cached
+        if let Some(cred) = cached {
+            Ok(cred)
         } else {
             Err(ExecError::new(
                 "No credential provider configured and no cached credential available",

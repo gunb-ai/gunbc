@@ -57,6 +57,8 @@ pub enum CircuitState {
         failure_count: u32,
         /// Maximum probe requests before deciding.
         max_probes: u32,
+        /// Number of requests currently in-flight (to prevent thundering herd).
+        in_flight: u32,
     },
 }
 
@@ -82,6 +84,9 @@ impl CircuitBreaker {
     }
 
     /// Check if request should be allowed.
+    ///
+    /// When transitioning from Open to HalfOpen, only ONE request is allowed at a time
+    /// to prevent thundering herd (all waiting requests rushing through at once).
     pub fn should_allow(&self) -> bool {
         let mut state = self.state.lock().unwrap();
         match &*state {
@@ -92,10 +97,12 @@ impl CircuitBreaker {
             } => {
                 // Check if it's time to half-open
                 if opened_at.elapsed() >= *reset_timeout {
+                    // Transition to HalfOpen with one probe in flight
                     *state = CircuitState::HalfOpen {
                         success_count: 0,
                         failure_count: 0,
                         max_probes: self.config.half_open_max_requests,
+                        in_flight: 1, // This request is the first probe
                     };
                     true
                 } else {
@@ -106,9 +113,26 @@ impl CircuitBreaker {
                 success_count,
                 failure_count,
                 max_probes,
+                in_flight,
             } => {
+                // Prevent thundering herd: only allow one request at a time in half-open.
+                // Wait for current probe to complete before allowing more.
+                if *in_flight > 0 {
+                    return false;
+                }
+
                 // Allow probe if under limit
-                (success_count + failure_count) < *max_probes
+                if (success_count + failure_count) < *max_probes {
+                    *state = CircuitState::HalfOpen {
+                        success_count: *success_count,
+                        failure_count: *failure_count,
+                        max_probes: *max_probes,
+                        in_flight: in_flight + 1,
+                    };
+                    true
+                } else {
+                    false
+                }
             }
         }
     }
@@ -131,10 +155,12 @@ impl CircuitBreaker {
                     // Recovered, close circuit
                     *state = CircuitState::Closed { failure_count: 0 };
                 } else {
+                    // Probe succeeded, allow next probe (in_flight = 0)
                     *state = CircuitState::HalfOpen {
                         success_count: new_success,
                         failure_count: 0,
                         max_probes: *max_probes,
+                        in_flight: 0,
                     };
                 }
             }
@@ -197,8 +223,13 @@ fn calculate_backoff(config: &RetryConfig, attempt: u32) -> Duration {
             // Exponential with random jitter ±25%
             let factor = 2_f64.powi((attempt - 1) as i32);
             let base_delay = (base * factor).min(max);
-            // Simple deterministic "jitter" based on attempt for reproducibility
-            let jitter_factor = 0.75 + (((attempt as f64 * 0.37) % 0.5) as f64);
+            // True random jitter in range [0.75, 1.25] to avoid thundering herd
+            use std::collections::hash_map::RandomState;
+            use std::hash::{BuildHasher, Hasher};
+            let mut hasher = RandomState::new().build_hasher();
+            hasher.write_u64(std::time::Instant::now().elapsed().as_nanos() as u64);
+            let random_bits = hasher.finish();
+            let jitter_factor = 0.75 + ((random_bits % 500) as f64 / 1000.0);
             base_delay * jitter_factor
         }
     };
@@ -326,12 +357,21 @@ impl TransportMiddleware for RetryMiddleware {
         ctx: &mut MiddlewareContext,
     ) -> PostProcessOutcome {
         // Check if this was a success (for circuit breaker)
+        // Only Server and Network errors should trip the circuit breaker.
+        // Client errors (4xx including 404) are typically the caller's fault,
+        // not a sign of service degradation.
         let classified =
             classify_for_middleware(&response, ctx.config.response_classification.as_ref());
-        let is_failure = classified.is_some();
+        let is_circuit_breaker_failure = classified.as_ref().map_or(false, |c| {
+            matches!(
+                c.kind,
+                crate::classify::ClassifiedErrorKind::Server
+                    | crate::classify::ClassifiedErrorKind::Network
+            )
+        });
 
         if let Some(cb) = &self.circuit_breaker {
-            if is_failure {
+            if is_circuit_breaker_failure {
                 cb.record_failure();
             } else {
                 cb.record_success();
