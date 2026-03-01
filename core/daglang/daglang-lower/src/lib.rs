@@ -50,9 +50,10 @@ pub(crate) mod scope;
 pub mod spec;
 
 pub use spec::{
-    ArgvSegment, BodyEntry, ExitCodePattern, ExitMappingEntry, FieldSpec, FileOperationSpec,
-    LocalOperationSpec, OutputFieldSpec, ResponseMappingEntry, ResponseStatusPattern,
-    RestOperationSpec, ServiceOperationSpec, ShellOperationSpec, ShellOutputParsing,
+    check_response_completeness, ArgvSegment, BodyEntry, ExitCodePattern, ExitMappingEntry,
+    FieldSpec, FileOperationSpec, LocalOperationSpec, OutputFieldSpec, ResponseCompletenessWarning,
+    ResponseMappingEntry, ResponseStatusPattern, RestOperationSpec, ServiceOperationSpec,
+    ShellOperationSpec, ShellOutputParsing,
 };
 
 pub use expr::LoweredFnBody;

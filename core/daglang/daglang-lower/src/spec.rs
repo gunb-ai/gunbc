@@ -242,3 +242,139 @@ pub enum ExitCodePattern {
     /// Non-zero wildcard: any non-zero exit code.
     NonZero,
 }
+
+/// Response contract completeness warning.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResponseCompletenessWarning {
+    pub service: String,
+    pub operation: String,
+    pub message: String,
+}
+
+/// Check response mapping for completeness (SL-11).
+///
+/// A complete response mapping should have:
+/// - At least one success entry (2xx or exact 200/201/etc.)
+/// - At least one error entry (4xx/5xx or specific error codes)
+///
+/// Returns a list of warnings for incomplete response blocks.
+pub fn check_response_completeness(
+    response_mapping: &[ResponseMappingEntry],
+    service: &str,
+    operation: &str,
+) -> Vec<ResponseCompletenessWarning> {
+    // If no response mapping is declared, don't warn (backward compatibility).
+    if response_mapping.is_empty() {
+        return vec![];
+    }
+
+    let mut warnings = Vec::new();
+
+    // Check for success entry (2xx)
+    let has_success = response_mapping.iter().any(|entry| match entry.status {
+        ResponseStatusPattern::Success2xx => true,
+        ResponseStatusPattern::Exact(code) => (200..300).contains(&code),
+        _ => false,
+    });
+
+    // Check for error entry (4xx or 5xx)
+    let has_error = response_mapping.iter().any(|entry| match entry.status {
+        ResponseStatusPattern::ClientError4xx | ResponseStatusPattern::ServerError5xx => true,
+        ResponseStatusPattern::Exact(code) => (400..600).contains(&code),
+        _ => false,
+    });
+
+    if !has_success {
+        warnings.push(ResponseCompletenessWarning {
+            service: service.to_string(),
+            operation: operation.to_string(),
+            message: "response block missing success entry (200, 201, or 2xx)".to_string(),
+        });
+    }
+
+    if !has_error {
+        warnings.push(ResponseCompletenessWarning {
+            service: service.to_string(),
+            operation: operation.to_string(),
+            message: "response block missing error entry (4xx or 5xx)".to_string(),
+        });
+    }
+
+    warnings
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn complete_response_mapping_produces_no_warnings() {
+        let mapping = vec![
+            ResponseMappingEntry {
+                status: ResponseStatusPattern::Exact(200),
+                response_type: "Json".to_string(),
+                description: None,
+            },
+            ResponseMappingEntry {
+                status: ResponseStatusPattern::ClientError4xx,
+                response_type: "Error".to_string(),
+                description: None,
+            },
+        ];
+        let warnings = check_response_completeness(&mapping, "test.Service", "Op");
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn missing_success_entry_produces_warning() {
+        let mapping = vec![ResponseMappingEntry {
+            status: ResponseStatusPattern::ServerError5xx,
+            response_type: "Error".to_string(),
+            description: None,
+        }];
+        let warnings = check_response_completeness(&mapping, "test.Service", "Op");
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].message.contains("success entry"));
+    }
+
+    #[test]
+    fn missing_error_entry_produces_warning() {
+        let mapping = vec![ResponseMappingEntry {
+            status: ResponseStatusPattern::Exact(201),
+            response_type: "Created".to_string(),
+            description: None,
+        }];
+        let warnings = check_response_completeness(&mapping, "test.Service", "Op");
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].message.contains("error entry"));
+    }
+
+    #[test]
+    fn empty_mapping_produces_no_warnings() {
+        let warnings = check_response_completeness(&[], "test.Service", "Op");
+        assert!(warnings.is_empty(), "empty mapping should not produce warnings");
+    }
+
+    #[test]
+    fn wildcard_patterns_satisfy_completeness() {
+        let mapping = vec![
+            ResponseMappingEntry {
+                status: ResponseStatusPattern::Success2xx,
+                response_type: "Json".to_string(),
+                description: None,
+            },
+            ResponseMappingEntry {
+                status: ResponseStatusPattern::ClientError4xx,
+                response_type: "ClientError".to_string(),
+                description: None,
+            },
+            ResponseMappingEntry {
+                status: ResponseStatusPattern::ServerError5xx,
+                response_type: "ServerError".to_string(),
+                description: None,
+            },
+        ];
+        let warnings = check_response_completeness(&mapping, "test.Service", "Op");
+        assert!(warnings.is_empty());
+    }
+}
