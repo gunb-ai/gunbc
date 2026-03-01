@@ -20,11 +20,18 @@ import interfaces.outcome_ledger { OutcomeLedger }
 import interfaces.agent_provider { AgentProvider }
 import interfaces.signal_store { SignalStore }
 import interfaces.artifact_store { ArtifactStore }
+import interfaces.credential_provider { CredentialProvider }
 import std.types {
   NonEmptyStr, StageOutcome, Signal, SignalType,
   ArtifactPayload, ArtifactMarker, ArtifactType
 }
+
 // Profile bindings (compile-time interface -> implementation mapping):
+//
+// SP-4: CredentialProvider bound to LocalCredentialProvider.
+//   Uses env vars and ~/.gunbc/credentials/ file cache.
+//
+//   CredentialProvider -> LocalCredentialProvider { cache_dir: "~/.gunbc/credentials" }
 //   IssueProvider    -> github.Issues       { owner: "gunb-ai", repo: "gunbc", credential: env("GITHUB_TOKEN") }
 //   ClaimStore       -> FileClaimStore      { dir: "target/sdlc/claims" }
 //   OutcomeLedger    -> FileOutcomeLedger   { dir: "target/sdlc/outcomes" }
@@ -34,6 +41,7 @@ import std.types {
 
 // --- Concrete implementations ---
 // Moved to dsl/services/sdlc/providers/:
+//   LocalCredentialProvider -> local_credential_provider.dag (SP-4)
 //   FileClaimStore      -> file_claim_store.dag
 //   FileOutcomeLedger   -> file_outcome_ledger.dag
 //   FileSignalStore     -> file_signal_store.dag

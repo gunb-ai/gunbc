@@ -20,11 +20,22 @@ import interfaces.outcome_ledger { OutcomeLedger }
 import interfaces.agent_provider { AgentProvider }
 import interfaces.signal_store { SignalStore }
 import interfaces.artifact_store { ArtifactStore }
+import interfaces.credential_provider { CredentialProvider }
 import std.types {
   NonEmptyStr, StageOutcome, Signal, SignalType,
   ArtifactPayload, ArtifactMarker, ArtifactType
 }
+
 // Profile bindings (compile-time interface -> implementation mapping):
+//
+// SP-1: CredentialProvider bound to GcpWifCredentialProvider.
+//   Uses GitHubActions runtime in CI, Metadata runtime on Cloud Run.
+//
+//   CredentialProvider -> GcpWifCredentialProvider {
+//     runtime: GitHubActions,
+//     project_id: "gunbai-auto",
+//     audience: "sigstore"
+//   }
 //   IssueProvider    -> github.Issues       { owner: "gunb-ai", repo: "gunbc", credential: secret("github-token") }
 //   ClaimStore       -> GcsClaimStore       { bucket: "gunbai-auto-sdlc-claims" }
 //   OutcomeLedger    -> GcsOutcomeLedger    { bucket: "gunbai-auto-sdlc-outcomes" }
@@ -34,6 +45,7 @@ import std.types {
 
 // --- Concrete implementations ---
 // Moved to dsl/services/sdlc/providers/:
+//   GcpWifCredentialProvider -> gcp_credential_provider.dag (SP-1)
 //   GcsClaimStore      -> gcs_claim_store.dag
 //   GcsOutcomeLedger   -> gcs_outcome_ledger.dag
 //   PubSubSignalStore  -> pubsub_signal_store.dag
