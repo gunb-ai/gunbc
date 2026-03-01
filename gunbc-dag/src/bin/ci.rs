@@ -242,7 +242,6 @@ mod tests {
     /// This test exercises the general OperationKey-based overlap detection
     /// in compose_with_freshness() — freshness steps declare `subsumes` and
     /// tool DAG nodes carry `operation_key`, both derived from the domain model.
-    #[test]
     // NOTE: full_freshness_with_build_dag_is_rejected removed.
     // Naive overlap detection replaced by C22 (Deductive Redundancy Elimination).
 
