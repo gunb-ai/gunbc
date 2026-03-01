@@ -1428,6 +1428,12 @@ pub enum LowerError {
         operation: String,
         file_op: String,
     },
+    /// Transport block contents are invalid or incomplete.
+    InvalidTransportSpec {
+        service: String,
+        operation: String,
+        detail: String,
+    },
     /// Active profile uses an env(...) config binding that is not set.
     MissingProfileConfigEnv {
         profile: String,
@@ -1494,6 +1500,14 @@ impl std::fmt::Display for LowerError {
             Self::InvalidFileOp { operation, file_op } => {
                 write!(f, "unknown file operation `{file_op}` on `{operation}`")
             }
+            Self::InvalidTransportSpec {
+                service,
+                operation,
+                detail,
+            } => write!(
+                f,
+                "invalid transport spec for `{service}.{operation}`: {detail}"
+            ),
             Self::UnknownProfile { profile } => {
                 write!(f, "unknown profile `{profile}`")
             }
@@ -5262,7 +5276,14 @@ fn derive_operation_spec(
                 capability: operation.name.clone(),
             })
         }
-        _ => None,
+        ServiceTransportClass::Unknown => {
+            // Transport class could not be determined. This is not an error
+            // for abstract services (no transport block) — they get spec: None
+            // which the resolver handles as a stub. Concrete services with
+            // declared but unrecognized transport would hit MissingTransport
+            // earlier in the validation pass.
+            None
+        }
     }
 }
 

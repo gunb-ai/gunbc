@@ -1004,27 +1004,21 @@ impl Parser {
                 Ok(Refinement::Format(fmt))
             }
             "raw_body" => Ok(Refinement::RawBody),
-            "retry" => {
-                return Err(self.err(
-                    "@retry is not supported — retry policy should be modeled via \
-                     transport middleware (see Lane 5: TL-3)"
-                        .into(),
-                ));
-            }
-            "error_map" => {
-                return Err(self.err(
-                    "@error_map is not supported — error mapping should use \
-                     response {} blocks (see Lane 6: SL-6)"
-                        .into(),
-                ));
-            }
-            "requires" => {
-                return Err(self.err(
-                    "@requires is not supported — use `uses` declarations for \
-                     resource/capability requirements"
-                        .into(),
-                ));
-            }
+            "retry" => Err(self.err(
+                "@retry is not supported — retry policy should be modeled via \
+                 transport middleware (see Lane 5: TL-3)"
+                    .into(),
+            )),
+            "error_map" => Err(self.err(
+                "@error_map is not supported — error mapping should use \
+                 response {} blocks (see Lane 6: SL-6)"
+                    .into(),
+            )),
+            "requires" => Err(self.err(
+                "@requires is not supported — use `uses` declarations for \
+                 resource/capability requirements"
+                    .into(),
+            )),
             "file_types" => {
                 self.expect(&TokenKind::LParen)?;
                 let mut exts = Vec::new();
