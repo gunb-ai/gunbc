@@ -170,6 +170,7 @@ impl<'a, T> ScriptedDagBuilder<'a, T> {
                 examples: Vec::new(),
                 log_detail: node.log_detail,
                 kind: node.kind,
+                operation_key: node.operation_key.clone(),
             });
         }
 

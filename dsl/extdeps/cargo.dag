@@ -33,8 +33,13 @@ type CargoTarget
   | Bench { name: String }
 
 // ── Profiles ──────────────────────────────────────────────────────
+// Cargo allows arbitrary user-defined profiles in Cargo.toml
+// (e.g., [profile.ci-optimized]). Use String to avoid a closed-world
+// enum that cannot represent valid workspaces.
 
-type CargoProfile = CargoDev | CargoRelease | ProfileTest | ProfileBench
+type CargoProfile = String
+
+data canonical_profiles: List<String> = ["dev", "release", "test", "bench"]
 
 // ── Features ──────────────────────────────────────────────────────
 
@@ -55,7 +60,7 @@ type CargoCommand = CargoBuild | CargoTest | CargoClippy | CargoDoc | CargoRun |
 
 data default_edition: String = "2021"
 
-data default_profile: CargoProfile = CargoDev
+data default_profile: CargoProfile = "dev"
 
 // ── Operation behaviors ───────────────────────────────────────────
 

@@ -340,7 +340,7 @@ fn main() {
         mode,
         RunToolOptions {
             success_port: Some("output"),
-            with_freshness: false,
+            freshness: gunbc_dag::FreshnessScope::None,
             input_mocks: Some(&input_mocks),
         },
     );

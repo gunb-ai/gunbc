@@ -46,7 +46,9 @@ pub mod test_backend;
 // STRUCTURAL ENFORCEMENT: TransportOps + transport-layer CLI helpers only
 // execute_transport and execute_request are internal - not exported
 pub use backend::{TransportBackend, TransportBackendGuard};
-pub use freshness_policy::{check_and_plan_freshness, update_freshness_manifest};
+pub use freshness_policy::{
+    check_and_plan_freshness, check_and_plan_generation_freshness, update_freshness_manifest,
+};
 
 pub use ops::TransportOps;
 

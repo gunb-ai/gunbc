@@ -34,8 +34,8 @@ use gunbc_ir::patterns::branch::IfBuilder;
 use gunbc_ir::patterns::{BranchBuilder, LoopBuilder, PatternOp};
 use gunbc_ir::resource::{AccessMode, RESOURCE_FILE};
 use gunbc_ir::{
-    Cardinality, Dag, DagTopology, Edge, EdgeKind, Guard, Node, NodeId, NodeKind, Port, PortName,
-    Value,
+    Cardinality, Dag, DagTopology, Edge, EdgeKind, Guard, Node, NodeId, NodeKind, OperationKey,
+    Port, PortName, Value,
 };
 use serde::Serialize;
 
@@ -1168,7 +1168,11 @@ fn derive_interface_stub_transport_triplets(
                         fn_body: None,
                     },
                 )
-                .with_input_guard("request", Guard::NotEq(Value::Skipped));
+                .with_input_guard("request", Guard::NotEq(Value::Skipped))
+                .with_operation_key(OperationKey::new(
+                    &interface.name,
+                    &capability.name,
+                ));
                 manifest.add_node(execute_node);
 
                 // Parse node: typed capability outputs → typed capability outputs (identity).
@@ -5799,7 +5803,11 @@ fn derive_service_transport_triplets(
                         fn_body: None,
                     },
                 )
-                .with_input_guard("request", Guard::NotEq(Value::Skipped));
+                .with_input_guard("request", Guard::NotEq(Value::Skipped))
+                .with_operation_key(OperationKey::new(
+                    &service.name,
+                    &operation.name,
+                ));
                 manifest.add_node(execute_node);
                 let parse_outputs = if operation.outputs.is_empty() {
                     vec![Port::scalar("result", "Unit")]

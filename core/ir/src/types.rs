@@ -516,6 +516,42 @@ pub fn boundary_label(count: u32) -> &'static str {
 }
 
 // =============================================================================
+// Operation identity
+// =============================================================================
+
+/// Canonical identity of a service operation.
+///
+/// Represents `service.operation` as a typed key, derived from the domain model
+/// (DSL service definitions). Used for composition-level overlap detection:
+/// when two sub-DAGs are composed and both contain nodes for the same operation,
+/// the composition is rejected as redundant (duplicate upsert without modification).
+///
+/// Stamped by the lowerer on transport nodes from `ServiceCallMetadata`,
+/// and by freshness steps via `FreshnessStep::subsumes`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct OperationKey {
+    /// Service path (e.g., "cargo.Build").
+    pub service: String,
+    /// Operation name (e.g., "Clippy", "Test", "Build").
+    pub operation: String,
+}
+
+impl OperationKey {
+    pub fn new(service: impl Into<String>, operation: impl Into<String>) -> Self {
+        Self {
+            service: service.into(),
+            operation: operation.into(),
+        }
+    }
+}
+
+impl fmt::Display for OperationKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}.{}", self.service, self.operation)
+    }
+}
+
+// =============================================================================
 // Identifier types (unchanged)
 // =============================================================================
 

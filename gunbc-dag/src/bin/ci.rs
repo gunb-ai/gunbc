@@ -183,8 +183,8 @@ fn main() {
         dag,
         mode,
         RunToolOptions {
-            success_port: Some("overall_success"),
-            with_freshness: true,
+            success_port: Some("success"),
+            freshness: gunbc_dag::FreshnessScope::GenerationOnly,
             input_mocks: Some(&input_mocks),
         },
     );
@@ -230,6 +230,80 @@ mod tests {
         assert_eq!(
             ci_path_for_node("tools.makegen::makegen"),
             Some(MAKEFILE_OUTPUT_PATH)
+        );
+    }
+
+    /// Validates that the composition-level overlap detection works:
+    /// composing the build DAG with full freshness steps must be rejected
+    /// by compose_with_freshness() because the build DAG already contains
+    /// cargo Build/Clippy/Test operations that overlap with the freshness
+    /// chain's clippy/test-compile/release-check steps.
+    ///
+    /// This test exercises the general OperationKey-based overlap detection
+    /// in compose_with_freshness() — freshness steps declare `subsumes` and
+    /// tool DAG nodes carry `operation_key`, both derived from the domain model.
+    #[test]
+    fn full_freshness_with_build_dag_is_rejected() {
+        use gunbc_exec::{compose_with_freshness, FreshnessStep};
+        use gunbc_ir::OperationKey;
+
+        let dag = gunbc_dag::build_build_graph().expect("build graph should compile");
+
+        // Simulate full freshness steps that include build-phase operations.
+        // The subsumes field connects them to the same OperationKey that the
+        // lowerer stamps on the tool DAG's transport nodes.
+        let overlapping_steps = vec![
+            FreshnessStep {
+                id: "clippy".into(),
+                command: vec!["cargo".into(), "clippy".into()],
+                subsumes: Some(OperationKey::new("cargo.Build", "Clippy")),
+            },
+            FreshnessStep {
+                id: "test-compile".into(),
+                command: vec!["cargo".into(), "test".into(), "--no-run".into()],
+                subsumes: Some(OperationKey::new("cargo.Build", "Test")),
+            },
+        ];
+
+        let result = compose_with_freshness(dag, Some(overlapping_steps));
+        assert!(
+            result.is_err(),
+            "compose_with_freshness must reject freshness steps that overlap \
+             with the build DAG's cargo operations"
+        );
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("duplicate operation"),
+            "error message should identify duplicate operations: {err_msg}"
+        );
+    }
+
+    /// Validates that generation-only freshness steps compose cleanly
+    /// with the build DAG (no overlap — generation steps have no subsumes).
+    #[test]
+    fn generation_freshness_with_build_dag_is_accepted() {
+        use gunbc_exec::{compose_with_freshness, FreshnessStep};
+
+        let dag = gunbc_dag::build_build_graph().expect("build graph should compile");
+
+        let gen_steps = vec![
+            FreshnessStep {
+                id: "codegen".into(),
+                command: vec!["echo".into(), "codegen".into()],
+                subsumes: None,
+            },
+            FreshnessStep {
+                id: "testgen".into(),
+                command: vec!["echo".into(), "testgen".into()],
+                subsumes: None,
+            },
+        ];
+
+        let result = compose_with_freshness(dag, Some(gen_steps));
+        assert!(
+            result.is_ok(),
+            "generation-only freshness steps should not overlap with build DAG: {:?}",
+            result.err()
         );
     }
 }

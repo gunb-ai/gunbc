@@ -171,7 +171,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("extdeps.cloud.aws.core".into(), 1),
         ("extdeps.cloud.aws.iam".into(), 2),
         ("extdeps.cloud.aws.lambda".into(), 2),
-        ("extdeps.cloud.aws.s3".into(), 2),
+        ("extdeps.cloud.aws.s3".into(), 3),
         ("extdeps.cloud.aws.secrets_manager".into(), 2),
         ("extdeps.cloud.aws.sqs".into(), 2),
         ("extdeps.cloud.azure.blob_storage".into(), 2),
