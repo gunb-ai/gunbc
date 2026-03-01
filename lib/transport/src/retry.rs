@@ -362,13 +362,20 @@ impl TransportMiddleware for RetryMiddleware {
         // not a sign of service degradation.
         let classified =
             classify_for_middleware(&response, ctx.config.response_classification.as_ref());
-        let is_circuit_breaker_failure = classified.as_ref().map_or(false, |c| {
+
+        // For HTTP transports, use classification; for non-HTTP, use is_success
+        let is_circuit_breaker_failure = if let Some(c) = &classified {
+            // HTTP failure: Server or Network errors trip the circuit breaker
             matches!(
                 c.kind,
                 crate::classify::ClassifiedErrorKind::Server
                     | crate::classify::ClassifiedErrorKind::Network
             )
-        });
+        } else {
+            // Non-HTTP transport (File, Shell, Tcp, Local): use is_success
+            // If the transport reports failure, count it for circuit breaker
+            !crate::classify::is_success(&response)
+        };
 
         if let Some(cb) = &self.circuit_breaker {
             if is_circuit_breaker_failure {

@@ -45,12 +45,22 @@ struct TokenBucket {
 
 impl TokenBucket {
     fn new(max_burst: u32, sustained_per_minute: u32) -> Self {
-        let refill_rate = sustained_per_minute as f64 / 60.0;
+        // Ensure we don't divide by zero in try_acquire
+        // If sustained_per_minute is 0, use a very small rate (1 per hour)
+        let safe_rate = if sustained_per_minute == 0 {
+            1.0 / 3600.0 // 1 per hour as minimum
+        } else {
+            sustained_per_minute as f64 / 60.0
+        };
+
+        // max_burst of 0 means no requests allowed - use at least 1
+        let safe_max = if max_burst == 0 { 1.0 } else { max_burst as f64 };
+
         Self {
-            tokens: max_burst as f64,
+            tokens: safe_max,
             last_refill: Instant::now(),
-            max_tokens: max_burst as f64,
-            refill_rate,
+            max_tokens: safe_max,
+            refill_rate: safe_rate,
             pause_until: None,
         }
     }

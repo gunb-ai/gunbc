@@ -545,9 +545,9 @@ mod tests {
         });
         assert!(!is_success(&shell_fail));
 
-        // File always success (errors are ExecError not response)
+        // File success is determined by the success field
         use gunbc_ir::transport::FileOp;
-        let file = TransportResponse::File(FileResponse {
+        let file_ok = TransportResponse::File(FileResponse {
             path: "/tmp/test".to_string(),
             operation: FileOp::Read,
             success: true,
@@ -556,7 +556,19 @@ mod tests {
             exists: Some(true),
             error: None,
         });
-        assert!(is_success(&file));
+        assert!(is_success(&file_ok));
+
+        // File failure (success=false) should return false
+        let file_fail = TransportResponse::File(FileResponse {
+            path: "/tmp/missing".to_string(),
+            operation: FileOp::Read,
+            success: false,
+            content: None,
+            bytes: None,
+            exists: Some(false),
+            error: Some("file not found".to_string()),
+        });
+        assert!(!is_success(&file_fail));
 
         // Local always success
         let local = TransportResponse::Local(LocalResponse {

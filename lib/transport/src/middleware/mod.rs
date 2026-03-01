@@ -4,13 +4,14 @@
 //! concerns: rate limiting, retry, credentials, metrics. Each middleware implements
 //! `TransportMiddleware` and composes via `TransportPipeline`.
 //!
-//! # Pipeline Order
+//! # Pipeline Order (standard pipeline)
 //!
 //! ```text
-//! request → metrics → rate_limit → retry → credential → execute → classify → retry → metrics → response
+//! request → metrics → retry → rate_limit → execute → rate_limit → retry → metrics → response
 //! ```
 //!
 //! Pre-request flows outer→inner; post-response flows inner→outer.
+//! The credential layer is available but not included in the standard pipeline.
 
 use gunbc_exec::ExecError;
 use gunbc_ir::transport::{TransportMiddlewareConfig, TransportRequest, TransportResponse};

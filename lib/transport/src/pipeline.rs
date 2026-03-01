@@ -4,12 +4,15 @@
 //! Middleware is applied in order: outer layers see the request first on the
 //! way in, and the response first on the way out.
 //!
-//! # Pipeline Order
+//! # Pipeline Order (standard pipeline)
 //!
 //! ```text
-//! Request flow:  metrics → rate_limit → retry → credential → execute
-//! Response flow: execute → credential → retry → rate_limit → metrics
+//! Request flow:  metrics → retry → rate_limit → execute
+//! Response flow: execute → rate_limit → retry → metrics
 //! ```
+//!
+//! Note: The credential layer is NOT included in the standard pipeline.
+//! Use `.layer(Arc::new(CredentialMiddleware::new(config)))` to add it.
 //!
 //! # Usage
 //!
