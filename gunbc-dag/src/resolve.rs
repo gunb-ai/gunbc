@@ -1583,8 +1583,8 @@ mod tests {
                 }],
                 output_parsing: ShellOutputParsing::ExitCodeBool,
                 env: vec![],
+                exit_mapping: vec![],
             })),
-
         }
     }
 
@@ -1637,8 +1637,8 @@ mod tests {
                 ],
                 output_parsing: ShellOutputParsing::SuccessStdoutStderr,
                 env: vec![],
+                exit_mapping: vec![],
             })),
-
         }
     }
 
@@ -1871,9 +1871,9 @@ mod tests {
                 headers: vec![],
                 auth_scheme: None,
                 auth_input: None,
-
+                middleware: None,
+                response_mapping: vec![],
             })),
-
         }
     }
 
@@ -1936,9 +1936,9 @@ mod tests {
                 headers: vec![],
                 auth_scheme: None,
                 auth_input: None,
-
+                middleware: None,
+                response_mapping: vec![],
             })),
-
         }
     }
 
