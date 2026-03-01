@@ -1261,10 +1261,24 @@ struct LoweringContext<'a> {
 /// the pattern expansion call chain (expand_pattern_body_node, etc.).
 struct PatternNodeEnv<'a> {
     suffix: &'a str,
-    target: &'a LoweredEndpoint,
     arg_map: &'a HashMap<String, &'a Expr>,
     uses_binding_types: &'a HashMap<String, String>,
     node_outputs: &'a HashMap<String, ExpandedNodeOutput>,
+}
+
+/// Parameters for recursive pattern expansion (target + pattern registry + depth).
+struct PatternExpansionParams<'a> {
+    target: &'a LoweredEndpoint,
+    all_patterns: &'a HashMap<String, ExpandablePattern<'a>>,
+    depth: usize,
+}
+
+/// Shared lookup tables for DAG wiring (endpoints, service registry, data values).
+struct DagWiringContext<'a> {
+    endpoints_by_full: &'a HashMap<(String, String), LoweredEndpoint>,
+    endpoints_by_name: &'a HashMap<String, Option<LoweredEndpoint>>,
+    service_registry: &'a ServiceEndpointRegistry,
+    data_values: &'a HashMap<String, serde_json::Value>,
 }
 
 /// Wraps a `Dag` with O(1) deduplication tracking for nodes and edges.
@@ -1874,15 +1888,18 @@ fn lower_typed_project_with_callable_scope(
     builder.apply_manifest(&transport_manifest);
     let mut service_registry = transport_manifest.registry;
     let data_values = build_data_values(project);
+    let wctx = DagWiringContext {
+        endpoints_by_full: &endpoints_by_full,
+        endpoints_by_name: &endpoints_by_name,
+        service_registry: &service_registry,
+        data_values: &data_values,
+    };
     add_dependency_edges(
         &mut builder,
         project,
-        &endpoints_by_full,
-        &endpoints_by_name,
-        &service_registry,
+        &wctx,
         emit_collection_nodes,
         entry_module,
-        &data_values,
     );
     let profile_registry = collect_profile_binding_registry(project, active_profile)?;
     let active_profile_bindings =
@@ -1896,16 +1913,19 @@ fn lower_typed_project_with_callable_scope(
     builder.apply_manifest(&stub_manifest);
     service_registry.merge(stub_manifest.registry);
     let known_interface_types = collect_interface_type_names(project);
+    let wctx = DagWiringContext {
+        endpoints_by_full: &endpoints_by_full,
+        endpoints_by_name: &endpoints_by_name,
+        service_registry: &service_registry,
+        data_values: &data_values,
+    };
     add_service_call_edges(
         &mut builder,
         project,
-        &endpoints_by_full,
-        &endpoints_by_name,
-        &service_registry,
+        &wctx,
         active_profile_bindings.as_ref(),
         &profile_bound_interfaces,
         &known_interface_types,
-        &data_values,
     )?;
     let auth_provider_names = collect_auth_provider_names(project);
     wire_auth_credential_edges(
@@ -2921,12 +2941,9 @@ fn register_endpoint(
 fn add_dependency_edges(
     builder: &mut DagBuilder,
     project: &TypedProject,
-    endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
-    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-    service_registry: &ServiceEndpointRegistry,
+    wctx: &DagWiringContext<'_>,
     emit_collection_nodes: bool,
     entry_module: Option<&str>,
-    data_values: &HashMap<String, serde_json::Value>,
 ) {
     for module in &project.modules {
         let module_name = module.module_path.as_dotted();
@@ -2952,7 +2969,8 @@ fn add_dependency_edges(
             let Some((item_name, stmts)) = item_callable_body(&item.node) else {
                 continue;
             };
-            let Some(target) = endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
+            let Some(target) =
+                wctx.endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
             else {
                 continue;
             };
@@ -2964,7 +2982,7 @@ fn add_dependency_edges(
             let mut calls = BTreeSet::new();
             collect_calls_from_stmts(stmts, &mut calls);
             for call in calls {
-                let Some(Some(source)) = endpoints_by_name.get(&call) else {
+                let Some(Some(source)) = wctx.endpoints_by_name.get(&call) else {
                     continue;
                 };
                 if source.node_id == target.node_id {
@@ -2979,28 +2997,22 @@ fn add_dependency_edges(
             }
 
             if entry_module.is_none_or(|em| module_name == em) {
-                expand_content_upsert_patterns(
-                    builder,
-                    &module_name,
+                let empty_callables = HashMap::new();
+                let empty_services = HashMap::new();
+                let empty_expanded = HashMap::new();
+                let ctx = LoweringContext {
+                    module_name: &module_name,
                     item_name,
-                    stmts,
-                    target,
-                    endpoints_by_name,
-                    &param_types,
-                    data_values,
-                );
-                expand_non_generic_pattern_calls(
-                    builder,
-                    project,
-                    &module_name,
-                    item_name,
-                    stmts,
-                    target,
-                    endpoints_by_name,
-                    &param_types,
-                    service_registry,
-                    data_values,
-                );
+                    param_types: &param_types,
+                    endpoints_by_name: wctx.endpoints_by_name,
+                    data_values: wctx.data_values,
+                    service_registry: wctx.service_registry,
+                    bound_callable_sources: &empty_callables,
+                    bound_service_sources: &empty_services,
+                    expanded_results: &empty_expanded,
+                };
+                expand_content_upsert_patterns(builder, &ctx, stmts, target);
+                expand_non_generic_pattern_calls(builder, project, &ctx, stmts, target);
             }
             if emit_collection_nodes {
                 add_collection_pipeline_nodes(builder, &module_name, stmts, target);
@@ -3011,7 +3023,7 @@ fn add_dependency_edges(
                 &module_name,
                 stmts,
                 target,
-                service_registry,
+                wctx.service_registry,
                 &uses_binding_types,
             );
         }
@@ -3715,13 +3727,9 @@ fn add_control_flow_pattern_nodes(
 
 fn expand_content_upsert_patterns(
     builder: &mut DagBuilder,
-    module_name: &str,
-    item_name: &str,
+    ctx: &LoweringContext<'_>,
     stmts: &[Stmt],
     target: &LoweredEndpoint,
-    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-    param_types: &HashMap<String, String>,
-    data_values: &HashMap<String, serde_json::Value>,
 ) {
     let mut bound_callables = HashMap::<String, String>::new();
     let mut expansion_count = 0usize;
@@ -3735,16 +3743,7 @@ fn expand_content_upsert_patterns(
                     if name == "content_upsert" {
                         expansion_count += 1;
                         expand_single_content_upsert(
-                            builder,
-                            module_name,
-                            item_name,
-                            expansion_count,
-                            args,
-                            target,
-                            &bound_callables,
-                            endpoints_by_name,
-                            param_types,
-                            data_values,
+                            builder, ctx, expansion_count, args, target, &bound_callables,
                         );
                     }
                 }
@@ -3764,16 +3763,7 @@ fn expand_content_upsert_patterns(
                 if name == "content_upsert" {
                     expansion_count += 1;
                     expand_single_content_upsert(
-                        builder,
-                        module_name,
-                        item_name,
-                        expansion_count,
-                        args,
-                        target,
-                        &bound_callables,
-                        endpoints_by_name,
-                        param_types,
-                        data_values,
+                        builder, ctx, expansion_count, args, target, &bound_callables,
                     );
                 }
             }
@@ -3789,17 +3779,13 @@ fn expand_content_upsert_patterns(
 
 fn expand_single_content_upsert(
     builder: &mut DagBuilder,
-    module_name: &str,
-    item_name: &str,
+    ctx: &LoweringContext<'_>,
     expansion_count: usize,
     args: &[(Option<String>, Expr)],
     target: &LoweredEndpoint,
     bound_callables: &HashMap<String, String>,
-    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-    param_types: &HashMap<String, String>,
-    data_values: &HashMap<String, serde_json::Value>,
 ) {
-    let suffix = expansion_suffix(item_name, expansion_count);
+    let suffix = expansion_suffix(ctx.item_name, expansion_count);
     let prepare_read_id = format!("prepare_read_{suffix}");
     let execute_read_id = format!("execute_read_{suffix}");
     let compare_id = format!("compare_{suffix}_content");
@@ -3823,7 +3809,7 @@ fn expand_single_content_upsert(
             Port::scalar("skip", "Bool"),
         ],
         LoweredOp::Primitive {
-            module: module_name.to_string(),
+            module: ctx.module_name.to_string(),
             name: format!("content_upsert::{prepare_read_id}"),
             kind: PrimitiveOpKind::IoPrepareFileRead,
         },
@@ -3836,7 +3822,7 @@ fn expand_single_content_upsert(
         ],
         vec![Port::scalar("response", "TransportResponse")],
         LoweredOp::Primitive {
-            module: module_name.to_string(),
+            module: ctx.module_name.to_string(),
             name: format!("content_upsert::{execute_read_id}"),
             kind: PrimitiveOpKind::IoExecuteFileRead,
         },
@@ -3849,7 +3835,7 @@ fn expand_single_content_upsert(
         ],
         vec![Port::scalar("fresh", "Bool"), Port::scalar("skip", "Bool")],
         LoweredOp::Primitive {
-            module: module_name.to_string(),
+            module: ctx.module_name.to_string(),
             name: format!("content_upsert::{compare_id}"),
             kind: PrimitiveOpKind::CompareEquality,
         },
@@ -3862,7 +3848,7 @@ fn expand_single_content_upsert(
         ],
         vec![Port::scalar("request", "TransportRequest")],
         LoweredOp::Primitive {
-            module: module_name.to_string(),
+            module: ctx.module_name.to_string(),
             name: format!("content_upsert::{prepare_write_id}"),
             kind: PrimitiveOpKind::IoPrepareFileWrite,
         },
@@ -3883,7 +3869,7 @@ fn expand_single_content_upsert(
         execute_transport_inputs,
         vec![Port::scalar("response", "TransportResponse")],
         LoweredOp::Primitive {
-            module: module_name.to_string(),
+            module: ctx.module_name.to_string(),
             name: format!("content_upsert::{execute_transport_id}"),
             kind: PrimitiveOpKind::IoExecuteFileWrite,
         },
@@ -3907,10 +3893,10 @@ fn expand_single_content_upsert(
     ];
     let wired_content = wire_resolved_or_param_source(
         builder,
-        module_name,
-        item_name,
-        param_types,
-        resolve_content_source(args, bound_callables, endpoints_by_name),
+        ctx.module_name,
+        ctx.item_name,
+        ctx.param_types,
+        resolve_content_source(args, bound_callables, ctx.endpoints_by_name),
         resolve_named_ident_arg(args, "content"),
         &content_destinations,
     );
@@ -3918,12 +3904,12 @@ fn expand_single_content_upsert(
     // literal source node with the data value — mirrors wire_fn_call_arguments.
     if !wired_content {
         if let Some(ident) = resolve_named_ident_arg(args, "content") {
-            if let Some(json_val) = data_values.get(ident) {
+            if let Some(json_val) = ctx.data_values.get(ident) {
                 let literal = ServiceCallArgLiteral::Json(json_val.clone());
                 let src = ensure_literal_source_node(
                     builder,
-                    module_name,
-                    item_name,
+                    ctx.module_name,
+                    ctx.item_name,
                     "content",
                     "String",
                     &literal,
@@ -3936,10 +3922,10 @@ fn expand_single_content_upsert(
 
     let wired_path = wire_resolved_or_param_source(
         builder,
-        module_name,
-        item_name,
-        param_types,
-        resolve_path_source(args, bound_callables, endpoints_by_name),
+        ctx.module_name,
+        ctx.item_name,
+        ctx.param_types,
+        resolve_path_source(args, bound_callables, ctx.endpoints_by_name),
         resolve_named_ident_arg(args, "path"),
         &[
             (prepare_read_id.as_str(), "path"),
@@ -3950,15 +3936,13 @@ fn expand_single_content_upsert(
         if let Some(literal) = resolve_path_literal(args) {
             let literal_source = ensure_literal_source_node(
                 builder,
-                module_name,
-                item_name,
+                ctx.module_name,
+                ctx.item_name,
                 "path",
                 "String",
                 &literal,
                 format!("content_upsert_path_{suffix}").as_str(),
             );
-            // FC-7: Also add an explicit output path annotation node so
-            // extract_output_paths() doesn't need the ID substring hack.
             if let ServiceCallArgLiteral::String(path_str) = &literal {
                 let path_annotation_id = format!("output_path_annotation_{suffix}");
                 builder.add_node(Node::opaque(
@@ -3966,7 +3950,7 @@ fn expand_single_content_upsert(
                     vec![],
                     vec![Port::scalar("path", "String")],
                     LoweredOp::Primitive {
-                        module: module_name.to_string(),
+                        module: ctx.module_name.to_string(),
                         name: format!("content_upsert::output_path_annotation_{suffix}"),
                         kind: PrimitiveOpKind::ContentUpsertOutputPath {
                             path: path_str.clone(),
@@ -4182,18 +4166,12 @@ fn pattern_uses_binding_types(uses: &[daglang_syntax::ast::UsesClause]) -> HashM
 fn expand_non_generic_pattern_calls(
     builder: &mut DagBuilder,
     project: &TypedProject,
-    module_name: &str,
-    item_name: &str,
+    ctx: &LoweringContext<'_>,
     stmts: &[Stmt],
     target: &LoweredEndpoint,
-    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-    param_types: &HashMap<String, String>,
-    service_registry: &ServiceEndpointRegistry,
-    data_values: &HashMap<String, serde_json::Value>,
 ) {
     let pattern_defs = collect_expandable_pattern_defs(project);
     let mut expansion_count = 0usize;
-    // Track expanded pattern results so later code can reference pattern outputs.
     let mut expanded_results = HashMap::<String, PatternExpansionResult>::new();
 
     for stmt in stmts {
@@ -4211,9 +4189,6 @@ fn expand_non_generic_pattern_calls(
             _ => continue,
         };
 
-        // Skip content_upsert — already expanded by the specialized
-        // expand_single_content_upsert path which correctly wires the
-        // content_upsert → ensure → file_content_matches → eq chain.
         if call_name == "content_upsert" {
             continue;
         }
@@ -4223,27 +4198,34 @@ fn expand_non_generic_pattern_calls(
         };
 
         expansion_count += 1;
+        let inner_ctx = LoweringContext {
+            expanded_results: &expanded_results,
+            module_name: ctx.module_name,
+            item_name: ctx.item_name,
+            param_types: ctx.param_types,
+            endpoints_by_name: ctx.endpoints_by_name,
+            data_values: ctx.data_values,
+            service_registry: ctx.service_registry,
+            bound_callable_sources: ctx.bound_callable_sources,
+            bound_service_sources: ctx.bound_service_sources,
+        };
+        let pexp = PatternExpansionParams {
+            target,
+            all_patterns: &pattern_defs,
+            depth: 0,
+        };
         let result = expand_single_pattern(
             builder,
-            module_name,
-            item_name,
+            &inner_ctx,
             expansion_count,
             pattern_def,
             call_args,
-            target,
-            param_types,
-            service_registry,
-            data_values,
-            endpoints_by_name,
-            &expanded_results,
-            &pattern_defs,
-            0, // recursion depth
+            &pexp,
         );
         if let Some(result) = result {
-            // Wire a dep edge from the last expanded node to the target callable.
             builder.add_edge(
                 &result.last_node_id,
-                "fresh", // CompareEquality's output — safe fallback
+                "fresh",
                 &target.node_id,
                 PortName::DEPS,
             );
@@ -4262,25 +4244,17 @@ const PATTERN_EXPANSION_MAX_DEPTH: usize = 5;
 
 fn expand_single_pattern(
     builder: &mut DagBuilder,
-    module_name: &str,
-    item_name: &str,
+    ctx: &LoweringContext<'_>,
     expansion_count: usize,
     pattern: &ExpandablePattern<'_>,
     call_args: &[(Option<String>, Expr)],
-    target: &LoweredEndpoint,
-    caller_param_types: &HashMap<String, String>,
-    service_registry: &ServiceEndpointRegistry,
-    data_values: &HashMap<String, serde_json::Value>,
-    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-    expanded_results: &HashMap<String, PatternExpansionResult>,
-    all_patterns: &HashMap<String, ExpandablePattern<'_>>,
-    depth: usize,
+    pexp: &PatternExpansionParams<'_>,
 ) -> Option<PatternExpansionResult> {
-    if depth >= PATTERN_EXPANSION_MAX_DEPTH {
+    if pexp.depth >= PATTERN_EXPANSION_MAX_DEPTH {
         return None;
     }
 
-    let suffix = expansion_suffix(item_name, expansion_count);
+    let suffix = expansion_suffix(ctx.item_name, expansion_count);
     let uses_binding_types = pattern_uses_binding_types(pattern.uses);
 
     // Build argument map: pattern param name → caller arg expression.
@@ -4295,13 +4269,9 @@ fn expand_single_pattern(
     }
 
     // Phase 3: Build type parameter substitution map for generic patterns.
-    // For ensure<Check, Action>(should_act: ..., check: fcm(...), action: fs.write(...)):
-    //   - Named arg "check" matches type param "Check" → substitutes Check with fcm(...)
-    //   - Named arg "action" matches type param "Action" → substitutes Action with fs.write(...)
     let mut type_param_map = HashMap::<String, &Expr>::new();
     for type_param in pattern.type_params {
         let lowered = type_param.to_ascii_lowercase();
-        // Check named args: arg name (lowercased) matches type param (lowercased).
         for (arg_name, arg_expr) in call_args {
             if let Some(name) = arg_name {
                 if name.to_ascii_lowercase() == lowered {
@@ -4313,19 +4283,12 @@ fn expand_single_pattern(
 
     // Merge the parent pattern's uses_binding_types with the caller's context
     // so that service calls in substituted expressions can be resolved.
-    // For content_upsert → ensure: the caller's `fs: Filesystem` binding must
-    // be available when expanding `fs.write(...)` substituted for `Action`.
     let caller_uses_binding_types: HashMap<String, String> = call_args
         .iter()
         .filter_map(|(_, expr)| {
             if let Expr::ServiceCall(path, _) = expr {
                 let binding = path.first()?;
-                // The binding type comes from the CALLER's scope, not the pattern's.
-                // For now, we check if it's in uses_binding_types (from the pattern itself).
                 None::<(String, String)>.or_else(|| {
-                    // Caller-level uses bindings are in the grandparent scope;
-                    // we don't have direct access. The service_registry lookup
-                    // will handle it.
                     Some((binding.clone(), binding.clone()))
                 })
             } else {
@@ -4337,39 +4300,23 @@ fn expand_single_pattern(
     combined_uses.extend(caller_uses_binding_types);
 
     // Track nodes created in the expansion for after-edge wiring.
-    // Maps pattern body binding name → (last_node_id, output_port_name).
     let mut node_outputs = HashMap::<String, ExpandedNodeOutput>::new();
     let mut last_node_id = String::new();
 
     for body_stmt in pattern.body_stmts {
         match body_stmt {
             Stmt::Node(ns) => {
-                // Phase 3: Substitute type parameters in node expressions.
-                // e.g., `node check: Check` with Check = file_content_matches(...)
-                //   becomes `node check: file_content_matches(...)`
                 let effective_expr = substitute_type_param(&ns.expr, &type_param_map);
                 let expr_ref = effective_expr.as_ref().unwrap_or(&ns.expr);
 
+                let env = PatternNodeEnv {
+                    suffix: &suffix,
+                    arg_map: &arg_map,
+                    uses_binding_types: &combined_uses,
+                    node_outputs: &node_outputs,
+                };
                 let expanded = expand_pattern_body_node(
-                    builder,
-                    module_name,
-                    item_name,
-                    &suffix,
-                    &ns.name,
-                    expr_ref,
-                    &ns.after,
-                    &ns.when_guard,
-                    &arg_map,
-                    &combined_uses,
-                    &node_outputs,
-                    caller_param_types,
-                    service_registry,
-                    data_values,
-                    target,
-                    endpoints_by_name,
-                    expanded_results,
-                    all_patterns,
-                    depth,
+                    builder, ctx, &env, pexp, &ns.name, expr_ref, &ns.after,
                 );
                 if let Some(output) = expanded {
                     last_node_id.clone_from(&output.node_id);
@@ -4380,26 +4327,14 @@ fn expand_single_pattern(
                 let effective_expr = substitute_type_param(expr, &type_param_map);
                 let expr_ref = effective_expr.as_ref().unwrap_or(expr);
 
+                let env = PatternNodeEnv {
+                    suffix: &suffix,
+                    arg_map: &arg_map,
+                    uses_binding_types: &combined_uses,
+                    node_outputs: &node_outputs,
+                };
                 let expanded = expand_pattern_body_node(
-                    builder,
-                    module_name,
-                    item_name,
-                    &suffix,
-                    name,
-                    expr_ref,
-                    &[],
-                    &None,
-                    &arg_map,
-                    &combined_uses,
-                    &node_outputs,
-                    caller_param_types,
-                    service_registry,
-                    data_values,
-                    target,
-                    endpoints_by_name,
-                    expanded_results,
-                    all_patterns,
-                    depth,
+                    builder, ctx, &env, pexp, name, expr_ref, &[],
                 );
                 if let Some(output) = expanded {
                     last_node_id.clone_from(&output.node_id);
@@ -4578,101 +4513,52 @@ fn resolve_expr_idents(expr: &Expr, arg_map: &HashMap<String, &Expr>) -> Expr {
 /// - `Expr::Call(pattern_name, ...)` → recursive pattern expansion
 fn expand_pattern_body_node(
     builder: &mut DagBuilder,
-    module_name: &str,
-    item_name: &str,
-    suffix: &str,
+    ctx: &LoweringContext<'_>,
+    env: &PatternNodeEnv<'_>,
+    pexp: &PatternExpansionParams<'_>,
     node_name: &str,
     expr: &Expr,
     after_deps: &[String],
-    _when_guard: &Option<Expr>,
-    arg_map: &HashMap<String, &Expr>,
-    uses_binding_types: &HashMap<String, String>,
-    node_outputs: &HashMap<String, ExpandedNodeOutput>,
-    caller_param_types: &HashMap<String, String>,
-    service_registry: &ServiceEndpointRegistry,
-    data_values: &HashMap<String, serde_json::Value>,
-    target: &LoweredEndpoint,
-    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-    expanded_results: &HashMap<String, PatternExpansionResult>,
-    all_patterns: &HashMap<String, ExpandablePattern<'_>>,
-    depth: usize,
 ) -> Option<ExpandedNodeOutput> {
     match expr {
-        Expr::ServiceCall(path, args) => expand_service_call_node(
-            builder,
-            module_name,
-            item_name,
-            suffix,
-            node_name,
-            path,
-            args,
-            after_deps,
-            arg_map,
-            uses_binding_types,
-            node_outputs,
-            caller_param_types,
-            service_registry,
-            data_values,
-            target,
-            endpoints_by_name,
-            expanded_results,
-        ),
-        Expr::Call(call_name, args) if call_name == "eq" => expand_eq_node(
-            builder,
-            module_name,
-            item_name,
-            suffix,
-            node_name,
-            args,
-            after_deps,
-            arg_map,
-            node_outputs,
-            caller_param_types,
-            service_registry,
-            data_values,
-            target,
-            endpoints_by_name,
-            expanded_results,
-        ),
-        Expr::Call(call_name, call_args) if all_patterns.contains_key(call_name.as_str()) => {
+        Expr::ServiceCall(path, args) => {
+            expand_service_call_node(builder, ctx, env, node_name, path, args, after_deps)
+        }
+        Expr::Call(call_name, args) if call_name == "eq" => {
+            expand_eq_node(builder, ctx, env, node_name, args, after_deps)
+        }
+        Expr::Call(call_name, call_args)
+            if pexp.all_patterns.contains_key(call_name.as_str()) =>
+        {
             // Recursive pattern expansion: this node calls another pattern.
-            // e.g., `ensure(should_act: ..., check: fcm(...), action: fs.write(...))`
-            let inner_pattern = &all_patterns[call_name.as_str()];
+            let inner_pattern = &pexp.all_patterns[call_name.as_str()];
 
             // Merge caller's arg_map into the call args so the inner pattern
             // can resolve references to the outer pattern's parameters.
-            // For content_upsert calling ensure: `check: file_content_matches(path: path, expected: content)`
-            // where `path` and `content` are content_upsert params that map to caller exprs.
             let mut merged_args: Vec<(Option<String>, Expr)> = Vec::new();
             for (inner_arg_name, inner_arg_expr) in call_args {
-                // Recursively resolve idents through the parent arg_map so nested
-                // expressions like `file_content_matches(path: path, expected: content)`
-                // get their idents resolved to the caller's actual expressions.
-                let resolved_expr = resolve_expr_idents(inner_arg_expr, arg_map);
+                let resolved_expr = resolve_expr_idents(inner_arg_expr, env.arg_map);
                 merged_args.push((inner_arg_name.clone(), resolved_expr));
             }
 
+            let inner_pexp = PatternExpansionParams {
+                target: pexp.target,
+                all_patterns: pexp.all_patterns,
+                depth: pexp.depth + 1,
+            };
             let inner_result = expand_single_pattern(
                 builder,
-                module_name,
-                item_name,
-                depth + 1, // use depth as sub-expansion count for unique suffix
+                ctx,
+                pexp.depth + 1,
                 inner_pattern,
                 &merged_args,
-                target,
-                caller_param_types,
-                service_registry,
-                data_values,
-                endpoints_by_name,
-                expanded_results,
-                all_patterns,
-                depth + 1,
+                &inner_pexp,
             );
 
             // Wire after-dependency edges.
             if let Some(ref result) = inner_result {
                 for dep in after_deps {
-                    if let Some(dep_output) = node_outputs.get(dep) {
+                    if let Some(dep_output) = env.node_outputs.get(dep) {
                         builder.add_edge(
                             &dep_output.node_id,
                             &dep_output.output_port,
@@ -4684,7 +4570,6 @@ fn expand_pattern_body_node(
             }
 
             // Convert PatternExpansionResult to ExpandedNodeOutput.
-            // Use the first return output as the representative output.
             inner_result.and_then(|r| {
                 r.return_outputs
                     .values()
@@ -4703,34 +4588,24 @@ fn expand_pattern_body_node(
 /// the corresponding transport triplet from the service registry.
 fn expand_service_call_node(
     builder: &mut DagBuilder,
-    module_name: &str,
-    item_name: &str,
-    suffix: &str,
+    ctx: &LoweringContext<'_>,
+    env: &PatternNodeEnv<'_>,
     node_name: &str,
     call_path: &[String],
     call_args: &[(Option<String>, Expr)],
     after_deps: &[String],
-    arg_map: &HashMap<String, &Expr>,
-    uses_binding_types: &HashMap<String, String>,
-    node_outputs: &HashMap<String, ExpandedNodeOutput>,
-    caller_param_types: &HashMap<String, String>,
-    service_registry: &ServiceEndpointRegistry,
-    data_values: &HashMap<String, serde_json::Value>,
-    _target: &LoweredEndpoint,
-    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-    expanded_results: &HashMap<String, PatternExpansionResult>,
 ) -> Option<ExpandedNodeOutput> {
     // Resolve the service call path to a registry key.
     // e.g., ["fs", "read"] with uses fs: Filesystem → "Filesystem.read"
     let binding = call_path.first()?;
     let capability = call_path.last()?;
-    let resource_type = uses_binding_types.get(binding)?;
+    let resource_type = env.uses_binding_types.get(binding)?;
     let cap_key = format!("{resource_type}.{capability}");
 
-    let endpoint = service_registry.get(&cap_key)?;
+    let endpoint = ctx.service_registry.get(&cap_key)?;
 
     // Clone the triplet with a unique suffix.
-    let clone_suffix = format!("{suffix}_{node_name}");
+    let clone_suffix = format!("{}_{node_name}", env.suffix);
     let cloned = builder.clone_transport_triplet(endpoint, &clone_suffix);
 
     // Wire call arguments to the cloned prepare node's inputs.
@@ -4742,24 +4617,18 @@ fn expand_service_call_node(
         // to a caller argument) or a reference to another expanded node.
         wire_pattern_arg_to_prepare(
             builder,
-            module_name,
-            item_name,
+            ctx,
             arg_name,
             arg_expr,
             &cloned.prepare_node_id,
-            arg_map,
-            node_outputs,
-            caller_param_types,
-            service_registry,
-            data_values,
-            endpoints_by_name,
-            expanded_results,
+            env.arg_map,
+            env.node_outputs,
         );
     }
 
     // Wire after-dependency edges.
     for dep in after_deps {
-        if let Some(dep_output) = node_outputs.get(dep) {
+        if let Some(dep_output) = env.node_outputs.get(dep) {
             builder.add_edge(
                 &dep_output.node_id,
                 &dep_output.output_port,
@@ -4778,22 +4647,13 @@ fn expand_service_call_node(
 /// Expand an `eq(a: ..., b: ...)` call into a CompareEquality primitive node.
 fn expand_eq_node(
     builder: &mut DagBuilder,
-    module_name: &str,
-    item_name: &str,
-    suffix: &str,
+    ctx: &LoweringContext<'_>,
+    env: &PatternNodeEnv<'_>,
     node_name: &str,
     args: &[(Option<String>, Expr)],
     after_deps: &[String],
-    arg_map: &HashMap<String, &Expr>,
-    node_outputs: &HashMap<String, ExpandedNodeOutput>,
-    caller_param_types: &HashMap<String, String>,
-    _service_registry: &ServiceEndpointRegistry,
-    data_values: &HashMap<String, serde_json::Value>,
-    _target: &LoweredEndpoint,
-    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-    expanded_results: &HashMap<String, PatternExpansionResult>,
 ) -> Option<ExpandedNodeOutput> {
-    let compare_id = format!("compare_{suffix}_{node_name}");
+    let compare_id = format!("compare_{}_{node_name}", env.suffix);
 
     builder.add_node(Node::opaque(
         compare_id.clone(),
@@ -4803,7 +4663,7 @@ fn expand_eq_node(
         ],
         vec![Port::scalar("fresh", "Bool"), Port::scalar("skip", "Bool")],
         LoweredOp::Primitive {
-            module: module_name.to_string(),
+            module: ctx.module_name.to_string(),
             name: format!("pattern_eq::{compare_id}"),
             kind: PrimitiveOpKind::CompareEquality,
         },
@@ -4821,25 +4681,13 @@ fn expand_eq_node(
             .map(|(_, b)| *b)
             .unwrap_or(arg_name);
         wire_pattern_arg_to_node(
-            builder,
-            module_name,
-            item_name,
-            arg_name,
-            arg_expr,
-            &compare_id,
-            dest_port,
-            arg_map,
-            node_outputs,
-            caller_param_types,
-            data_values,
-            endpoints_by_name,
-            expanded_results,
+            builder, ctx, arg_expr, &compare_id, dest_port, env.arg_map, env.node_outputs,
         );
     }
 
     // Wire after-dependency edges.
     for dep in after_deps {
-        if let Some(dep_output) = node_outputs.get(dep) {
+        if let Some(dep_output) = env.node_outputs.get(dep) {
             builder.add_edge(
                 &dep_output.node_id,
                 &dep_output.output_port,
@@ -4861,33 +4709,15 @@ fn expand_eq_node(
 /// node_outputs (expanded nodes), and param sources.
 fn wire_pattern_arg_to_prepare(
     builder: &mut DagBuilder,
-    module_name: &str,
-    item_name: &str,
+    ctx: &LoweringContext<'_>,
     arg_name: &str,
     arg_expr: &Expr,
     prepare_node_id: &str,
     arg_map: &HashMap<String, &Expr>,
     node_outputs: &HashMap<String, ExpandedNodeOutput>,
-    caller_param_types: &HashMap<String, String>,
-    _service_registry: &ServiceEndpointRegistry,
-    data_values: &HashMap<String, serde_json::Value>,
-    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-    expanded_results: &HashMap<String, PatternExpansionResult>,
 ) {
     wire_pattern_arg_to_node(
-        builder,
-        module_name,
-        item_name,
-        arg_name,
-        arg_expr,
-        prepare_node_id,
-        arg_name,
-        arg_map,
-        node_outputs,
-        caller_param_types,
-        data_values,
-        endpoints_by_name,
-        expanded_results,
+        builder, ctx, arg_expr, prepare_node_id, arg_name, arg_map, node_outputs,
     );
 }
 
@@ -4901,35 +4731,18 @@ fn wire_pattern_arg_to_prepare(
 /// 4. If the arg is an ident matching a caller callable → wire from that.
 fn wire_pattern_arg_to_node(
     builder: &mut DagBuilder,
-    module_name: &str,
-    item_name: &str,
-    _arg_name: &str,
+    ctx: &LoweringContext<'_>,
     arg_expr: &Expr,
     dest_node_id: &str,
     dest_port: &str,
     arg_map: &HashMap<String, &Expr>,
     node_outputs: &HashMap<String, ExpandedNodeOutput>,
-    caller_param_types: &HashMap<String, String>,
-    data_values: &HashMap<String, serde_json::Value>,
-    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-    expanded_results: &HashMap<String, PatternExpansionResult>,
 ) {
     match arg_expr {
         Expr::Ident(name) => {
             if let Some(caller_expr) = arg_map.get(name.as_str()) {
                 // Case 1: Pattern parameter → resolve through caller's arg map.
-                wire_caller_expr_to_node(
-                    builder,
-                    module_name,
-                    item_name,
-                    caller_expr,
-                    dest_node_id,
-                    dest_port,
-                    caller_param_types,
-                    data_values,
-                    endpoints_by_name,
-                    expanded_results,
-                );
+                wire_caller_expr_to_node(builder, ctx, caller_expr, dest_node_id, dest_port);
             } else if let Some(output) = node_outputs.get(name.as_str()) {
                 // Case 2: Reference to an expanded node in the pattern body.
                 builder.add_edge(
@@ -4949,16 +4762,7 @@ fn wire_pattern_arg_to_node(
                     // Field access on a pattern parameter → resolve through caller.
                     if matches!(caller_expr, Expr::FieldAccess(_, _)) {
                         wire_caller_expr_to_node(
-                            builder,
-                            module_name,
-                            item_name,
-                            caller_expr,
-                            dest_node_id,
-                            dest_port,
-                            caller_param_types,
-                            data_values,
-                            endpoints_by_name,
-                            expanded_results,
+                            builder, ctx, caller_expr, dest_node_id, dest_port,
                         );
                     }
                 }
@@ -4973,8 +4777,8 @@ fn wire_pattern_arg_to_node(
             };
             let src = ensure_literal_source_node(
                 builder,
-                module_name,
-                item_name,
+                ctx.module_name,
+                ctx.item_name,
                 dest_port,
                 "Any",
                 &literal,
@@ -4992,51 +4796,42 @@ fn wire_pattern_arg_to_node(
 /// field access, and literals from the caller's scope.
 fn wire_caller_expr_to_node(
     builder: &mut DagBuilder,
-    module_name: &str,
-    item_name: &str,
+    ctx: &LoweringContext<'_>,
     caller_expr: &Expr,
     dest_node_id: &str,
     dest_port: &str,
-    caller_param_types: &HashMap<String, String>,
-    data_values: &HashMap<String, serde_json::Value>,
-    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-    expanded_results: &HashMap<String, PatternExpansionResult>,
 ) {
     match caller_expr {
         Expr::Ident(name) => {
-            if let Some(param_ty) = caller_param_types.get(name.as_str()) {
-                // Caller parameter.
+            if let Some(param_ty) = ctx.param_types.get(name.as_str()) {
                 let param_source = ensure_param_source_node(
                     builder,
-                    module_name,
-                    item_name,
+                    ctx.module_name,
+                    ctx.item_name,
                     name,
                     param_ty.as_str(),
                 );
                 builder.add_edge(&param_source, name, dest_node_id, dest_port);
-            } else if let Some(Some(endpoint)) = endpoints_by_name.get(name.as_str()) {
-                // Caller callable endpoint.
+            } else if let Some(Some(endpoint)) = ctx.endpoints_by_name.get(name.as_str()) {
                 builder.add_edge(
                     &endpoint.node_id,
                     &endpoint.primary_output,
                     dest_node_id,
                     dest_port,
                 );
-            } else if let Some(json_val) = data_values.get(name.as_str()) {
-                // Data value.
+            } else if let Some(json_val) = ctx.data_values.get(name.as_str()) {
                 let literal = ServiceCallArgLiteral::Json(json_val.clone());
                 let src = ensure_literal_source_node(
                     builder,
-                    module_name,
-                    item_name,
+                    ctx.module_name,
+                    ctx.item_name,
                     dest_port,
                     "String",
                     &literal,
                     &format!("pattern_data_{name}"),
                 );
                 builder.add_edge(&src, dest_port, dest_node_id, dest_port);
-            } else if let Some(result) = expanded_results.get(name.as_str()) {
-                // Expanded pattern result.
+            } else if let Some(result) = ctx.expanded_results.get(name.as_str()) {
                 if let Some(first_output) = result.return_outputs.values().next() {
                     builder.add_edge(
                         &first_output.node_id,
@@ -5049,11 +4844,9 @@ fn wire_caller_expr_to_node(
         }
         Expr::FieldAccess(base, field) => {
             if let Expr::Ident(base_name) = base.as_ref() {
-                if let Some(Some(endpoint)) = endpoints_by_name.get(base_name.as_str()) {
-                    // Field access on a caller callable.
+                if let Some(Some(endpoint)) = ctx.endpoints_by_name.get(base_name.as_str()) {
                     builder.add_edge(&endpoint.node_id, field, dest_node_id, dest_port);
-                } else if let Some(result) = expanded_results.get(base_name.as_str()) {
-                    // Field access on an expanded pattern result.
+                } else if let Some(result) = ctx.expanded_results.get(base_name.as_str()) {
                     if let Some(output) = result.return_outputs.get(field.as_str()) {
                         builder.add_edge(
                             &output.node_id,
@@ -5062,12 +4855,11 @@ fn wire_caller_expr_to_node(
                             dest_port,
                         );
                     }
-                } else if let Some(param_ty) = caller_param_types.get(base_name.as_str()) {
-                    // Caller param field access.
+                } else if let Some(param_ty) = ctx.param_types.get(base_name.as_str()) {
                     let param_source = ensure_param_source_node(
                         builder,
-                        module_name,
-                        item_name,
+                        ctx.module_name,
+                        ctx.item_name,
                         base_name,
                         param_ty.as_str(),
                     );
@@ -5084,8 +4876,8 @@ fn wire_caller_expr_to_node(
             };
             let src = ensure_literal_source_node(
                 builder,
-                module_name,
-                item_name,
+                ctx.module_name,
+                ctx.item_name,
                 dest_port,
                 "Any",
                 &literal,
@@ -6105,13 +5897,10 @@ fn derive_service_transport_triplets(
 fn add_service_call_edges(
     builder: &mut DagBuilder,
     project: &TypedProject,
-    endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
-    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-    service_registry: &ServiceEndpointRegistry,
+    wctx: &DagWiringContext<'_>,
     active_profile_bindings: Option<&ActiveProfileBindings>,
     profile_bound_interfaces: &HashSet<String>,
     known_interface_types: &HashSet<String>,
-    data_values: &HashMap<String, serde_json::Value>,
 ) -> Result<(), LowerError> {
     // Track transport endpoint usage across ALL modules and callables so
     // that the second caller to reference the same service operation gets
@@ -6161,7 +5950,8 @@ fn add_service_call_edges(
                 ),
                 _ => continue,
             };
-            let Some(target) = endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
+            let Some(target) =
+                wctx.endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
             else {
                 continue;
             };
@@ -6172,15 +5962,15 @@ fn add_service_call_edges(
             let bound_callable_sources = collect_bound_callable_sources(
                 module_name.as_str(),
                 stmts,
-                endpoints_by_full,
-                endpoints_by_name,
+                wctx.endpoints_by_full,
+                wctx.endpoints_by_name,
             );
             let caller = format!("{module_name}::{item_name}");
             let mut bound_service_sources = collect_bound_service_sources(
                 caller.as_str(),
                 stmts,
                 &uses_binding_types,
-                service_registry,
+                wctx.service_registry,
                 active_profile_bindings,
                 profile_bound_interfaces,
                 known_interface_types,
@@ -6224,7 +6014,7 @@ fn add_service_call_edges(
                     caller.as_str(),
                     &call.path,
                     &uses_binding_types,
-                    service_registry,
+                    wctx.service_registry,
                     active_profile_bindings,
                     profile_bound_interfaces,
                     known_interface_types,
@@ -6343,7 +6133,7 @@ fn add_service_call_edges(
                         }
                     }
                     if let Some(call_name) = arg.call.as_deref() {
-                        if let Some(Some(call_source)) = endpoints_by_name.get(call_name) {
+                        if let Some(Some(call_source)) = wctx.endpoints_by_name.get(call_name) {
                             builder.add_edge(
                                 call_source.node_id.as_str(),
                                 call_source.primary_output.as_str(),
@@ -6479,9 +6269,9 @@ fn add_service_call_edges(
                 module_name: module_name.as_str(),
                 item_name,
                 param_types: &param_types,
-                endpoints_by_name,
-                data_values,
-                service_registry,
+                endpoints_by_name: wctx.endpoints_by_name,
+                data_values: wctx.data_values,
+                service_registry: wctx.service_registry,
                 bound_callable_sources: &augmented_callable_sources,
                 bound_service_sources: &bound_service_sources,
                 expanded_results: &empty_expanded,
@@ -6502,7 +6292,8 @@ fn add_service_call_edges(
             let Item::PipelineDef(def) = &item.node else {
                 continue;
             };
-            let Some(target) = endpoints_by_full.get(&(module_name.clone(), def.name.clone()))
+            let Some(target) =
+                wctx.endpoints_by_full.get(&(module_name.clone(), def.name.clone()))
             else {
                 continue;
             };
@@ -6525,7 +6316,7 @@ fn add_service_call_edges(
                         caller.as_str(),
                         &call.path,
                         &uses_binding_types,
-                        service_registry,
+                        wctx.service_registry,
                         active_profile_bindings,
                         profile_bound_interfaces,
                         known_interface_types,
