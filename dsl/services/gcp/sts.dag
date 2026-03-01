@@ -9,6 +9,7 @@ import extdeps.cloud.gcp.sts {
   SubjectTokenType, RequestedTokenType, StsGrantType,
   StsTokenExchange, StsTokenResponse
 }
+import std.errors { GcpErrorShape, GitHubErrorShape }
 
 service gcp.STS {
   config {
@@ -32,6 +33,14 @@ service gcp.STS {
     // generates the full OAuth2 token exchange request from these inputs.
     idempotent
     transport rest { method: POST, path: "/v1/token" }
+    response {
+      200 => StsTokenResponse
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
   }
 }
 
@@ -54,6 +63,12 @@ service github.OIDC {
     output { subject_token: Secret from "value" }
     readonly
     transport rest { method: GET, path: "/\{audience\}" }
+    response {
+      200 => Json
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 }
 
@@ -66,5 +81,10 @@ service gcp.Metadata {
     // Response body IS the token (not JSON), parsed as raw string.
     readonly
     transport rest { method: GET, path: "/computeMetadata/v1/instance/service-accounts/default/identity?audience=\{audience\}" }
+    response {
+      200 => String
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
   }
 }
