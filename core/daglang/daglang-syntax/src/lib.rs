@@ -758,6 +758,10 @@ pub mod ast {
         pub error_shapes: Vec<ErrorShapeDef>,
         /// Credential configuration for this service.
         pub credential: Option<CredentialDef>,
+        /// Provider-specific configuration fields not covered by the core
+        /// schema. These are preserved for downstream consumption (e.g.,
+        /// `bucket`, `base_dir`, `model`, `project_id`).
+        pub extra: Vec<(String, String)>,
     }
 
     // ── Transport blocks (TL-11) ─────────────────────────────────────

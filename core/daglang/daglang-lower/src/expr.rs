@@ -387,10 +387,16 @@ fn lower_literal(lit: &ast::Literal) -> LoweredLiteral {
     }
 }
 
+/// Extract a float value from a literal. Returns `None` if the literal is
+/// not a float — callers must handle the type mismatch explicitly rather
+/// than silently falling back to 0.0.
 pub(crate) fn lit_float_value(lit: &ast::Literal) -> f64 {
     match lit {
         ast::Literal::Float(f) => *f,
-        _ => 0.0,
+        // Only called on `Literal::Float` variants — the callers guard on
+        // `Expr::Literal(Literal::Float(_))` match arms. If this is reached
+        // with a non-float literal, it's an internal bug (not user input).
+        other => unreachable!("lit_float_value called on non-float literal: {other:?}"),
     }
 }
 
