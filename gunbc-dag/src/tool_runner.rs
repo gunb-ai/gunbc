@@ -7,12 +7,31 @@ use gunbc_exec::{
 use gunbc_ir::Dag;
 use std::io::IsTerminal;
 
+/// Controls which freshness steps are injected before tool execution.
+///
+/// Tools that already perform build/clippy/test should use `GenerationOnly`
+/// to avoid redundant work. The overlap is enforced at the composition level:
+/// `compose_with_freshness()` returns an error if freshness steps would
+/// duplicate cargo operations already present in the tool DAG.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum FreshnessScope {
+    /// No freshness steps.
+    #[default]
+    None,
+    /// Full freshness chain: generation + build verification.
+    /// Use for tools that don't perform their own build/clippy/test.
+    Full,
+    /// Generation-only: codegen, codegen-dag, testgen, pragma.
+    /// Use for tools that already run build/clippy/test (e.g., CI binary).
+    GenerationOnly,
+}
+
 /// Run configuration for shared tool execution ceremony.
 #[derive(Debug, Clone, Default)]
 pub struct RunToolOptions<'a> {
     pub success_port: Option<&'a str>,
     pub input_mocks: Option<&'a BoundaryMocks>,
-    pub with_freshness: bool,
+    pub freshness: FreshnessScope,
 }
 
 /// Print a standard tool banner and key-value metadata lines.
@@ -31,27 +50,36 @@ pub fn run_tool<T: Executable + Clone + Send + 'static>(
     options: RunToolOptions<'_>,
 ) {
     let animated = std::io::stdout().is_terminal();
-    if options.with_freshness {
-        let steps = gunbc_lib_transport::check_and_plan_freshness();
-        let should_update_manifest = steps.as_ref().is_some_and(|s| !s.is_empty());
-        let dag_with_freshness = compose_with_freshness(dag, steps);
-        execute_and_display(
-            &dag_with_freshness,
-            mode,
-            animated,
-            options.success_port,
-            options.input_mocks,
-        );
-        update_freshness_manifest_if_needed(should_update_manifest);
-    } else {
-        execute_and_display(
-            &dag,
-            mode,
-            animated,
-            options.success_port,
-            options.input_mocks,
-        );
-    }
+    let steps = match options.freshness {
+        FreshnessScope::None => None,
+        FreshnessScope::Full => gunbc_lib_transport::check_and_plan_freshness(),
+        FreshnessScope::GenerationOnly => {
+            gunbc_lib_transport::check_and_plan_generation_freshness()
+        }
+    };
+    let dag_with_freshness = match compose_with_freshness(dag, steps) {
+        Ok(composed) => composed,
+        Err(e) => {
+            print_attention(
+                AttentionLevel::Error,
+                "Freshness composition failed",
+                &e.to_string(),
+            );
+            std::process::exit(1);
+        }
+    };
+    let ran_freshness = dag_with_freshness
+        .nodes
+        .iter()
+        .any(|n| n.id.0 == "freshness");
+    execute_and_display(
+        &dag_with_freshness,
+        mode,
+        animated,
+        options.success_port,
+        options.input_mocks,
+    );
+    update_freshness_manifest_if_needed(ran_freshness);
 }
 
 /// Persist freshness state after successful execution when freshness steps ran.
@@ -88,6 +116,7 @@ mod tests {
         let steps = vec![FreshnessStep {
             id: "codegen-dag".to_string(),
             command: vec!["echo".to_string(), "ok".to_string()],
+            subsumes: None,
         }];
         assert!(freshness_steps_planned(Some(&steps)));
     }

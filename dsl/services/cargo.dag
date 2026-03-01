@@ -9,6 +9,9 @@
 
 module services.cargo
 
+import extdeps.cargo { CargoManifest, CargoDependency, CargoProfile, CargoFeature }
+import extdeps.tools.rust_toolchain { RustChannel, CargoCommand, RustEdition }
+
 service cargo.Build {
   operation Build {
     input { all_targets: Bool = true, env: Map<String, String> = cargo_compile_env }
@@ -18,6 +21,10 @@ service cargo.Build {
       stderr: String
     }
     transport shell { argv: ["cargo", "build", "--all-targets"] }
+    exit {
+      0 => Unit
+      101 => String "Compilation failed"
+    }
   }
 
   operation Test {
@@ -28,6 +35,10 @@ service cargo.Build {
       stderr: String
     }
     transport shell { argv: ["cargo", "test", "--workspace"] }
+    exit {
+      0 => Unit
+      101 => String "Tests failed"
+    }
   }
 
   operation Clippy {
@@ -38,6 +49,10 @@ service cargo.Build {
       stderr: String
     }
     transport shell { argv: ["cargo", "clippy", "--all-targets", "--", "-D", "warnings"] }
+    exit {
+      0 => Unit
+      101 => String "Clippy warnings or errors"
+    }
   }
 
   operation Doc {
@@ -49,6 +64,10 @@ service cargo.Build {
     }
     readonly
     transport shell { argv: ["cargo", "doc", "--no-deps"] }
+    exit {
+      0 => Unit
+      101 => String "Documentation generation failed"
+    }
   }
 
   operation Run {
@@ -60,5 +79,10 @@ service cargo.Build {
     }
     // Note: args are appended to the command by the transport layer.
     transport shell { argv: ["cargo", "run", "-p", "\{package\}", "--bin", "\{bin\}"] }
+    exit {
+      0 => Unit
+      101 => String "Run failed"
+      nonzero => String "Binary exited with error"
+    }
   }
 }

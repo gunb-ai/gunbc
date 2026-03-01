@@ -22,9 +22,19 @@ module services.github.issues
 
 import interfaces.issue_provider { IssueProvider, IssueEvent }
 import std.types { TrackedIssue, IssueState, IssueLifecycleStage, NonEmptyStr, Url }
+import std.errors { GitHubErrorShape }
+import extdeps.github.issues { GitHubIssue, GitHubIssueState, Label, IssueComment }
+import extdeps.github.core { GitHubUser, Repository, Pagination }
 
 service github.Issues : IssueProvider {
-  config { endpoint: "https://api.github.com", auth: BearerToken }
+  config {
+    endpoint: "https://api.github.com"
+    auth: BearerToken
+    // GitHub API rate limits: 5000 requests/hour for authenticated users
+    rate_limit: { requests: 5000, per: hour, scope: core }
+    // Retry on rate limit and server errors with exponential backoff
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503, 504] }
+  }
 
   // --- Core CRUD ---------------------------------------------------------
 
@@ -38,6 +48,14 @@ service github.Issues : IssueProvider {
       issue: TrackedIssue from "."
     }
     transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/issues" }
+    response {
+      201 => TrackedIssue
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 
   operation get {
@@ -49,6 +67,13 @@ service github.Issues : IssueProvider {
       found: Bool from "status == 200"
     }
     transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}" }
+    response {
+      200 => TrackedIssue
+      301 => GitHubErrorShape
+      404 => GitHubErrorShape
+      410 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 
   operation close {
@@ -59,6 +84,14 @@ service github.Issues : IssueProvider {
       ok: Bool from "state == \"closed\""
     }
     transport rest { method: PATCH, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}" }
+    response {
+      200 => TrackedIssue
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 
   // --- Comments ----------------------------------------------------------
@@ -76,6 +109,14 @@ service github.Issues : IssueProvider {
       ok: Bool from "id != 0"
     }
     transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}/comments" }
+    response {
+      201 => IssueComment
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 
   // --- Labels (lifecycle stage transitions) ------------------------------
@@ -92,6 +133,13 @@ service github.Issues : IssueProvider {
       ok: Bool from "status == 200"
     }
     transport rest { method: PUT, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}/labels" }
+    response {
+      200 => List<Label>
+      401 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 
   // --- Listing (for polling / batch processing) --------------------------
@@ -105,6 +153,13 @@ service github.Issues : IssueProvider {
       issues: List<TrackedIssue>
     }
     transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues" }
+    response {
+      200 => List<TrackedIssue>
+      301 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 
   operation list_events {
@@ -116,6 +171,12 @@ service github.Issues : IssueProvider {
       events: List<IssueEvent>
     }
     transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}/events" }
+    response {
+      200 => List<IssueEvent>
+      404 => GitHubErrorShape
+      410 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 }
 

@@ -1034,7 +1034,6 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 path: vec!["gunbc_test".to_string()],
                 items: vec![
                     "ResourceAcquireResult".to_string(),
-                    "ResourceRefreshResult".to_string(),
                     "ResourceSimulation".to_string(),
                 ],
             });
@@ -3241,13 +3240,10 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     ));
                     "PoolSlot"
                 }
-                gunbc_test::ResourceType::Credential {
-                    expiry_ms,
-                    refreshable,
-                } => {
+                gunbc_test::ResourceType::Credential { expiry_ms } => {
                     doc.push(format!(
-                        "Test resource '{}' credential (expiry: {:?}, refreshable: {}).",
-                        resource.resource_id, expiry_ms, refreshable
+                        "Test resource '{}' credential (expiry: {:?}).",
+                        resource.resource_id, expiry_ms
                     ));
                     "Credential"
                 }
@@ -3316,7 +3312,6 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 gunbc_test::ResourceType::Lease { duration_ms } => Some(duration_ms),
                 gunbc_test::ResourceType::Credential {
                     expiry_ms: Some(ms),
-                    ..
                 } => Some(ms),
                 _ => None,
             };
@@ -3359,89 +3354,6 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 });
             }
 
-            // Credential-specific: refresh test
-            let has_refresh = resource
-                .behaviors
-                .iter()
-                .any(|b| matches!(b, gunbc_test::ResourceBehavior::RefreshSucceeds { .. }));
-            if has_refresh {
-                let refresh_test = format!(
-                    "test_resource_{}_refresh",
-                    sanitize_resource_id(&resource.resource_id)
-                );
-                let body = vec![
-                    Stmt::let_bind("spec", Expr::call("mock_spec", vec![])),
-                    Stmt::let_bind(
-                        "resource",
-                        Expr::var("spec")
-                            .method(
-                                "get_resource",
-                                vec![Expr::Str(resource.resource_id.clone())],
-                            )
-                            .method("expect", vec![Expr::Str("resource should exist".into())]),
-                    ),
-                    Stmt::let_bind("result", Expr::var("resource").method("refresh", vec![])),
-                    Stmt::Expr(Expr::call(
-                        "assert!",
-                        vec![
-                            Expr::call(
-                                "matches!",
-                                vec![
-                                    Expr::var("result"),
-                                    Expr::var("ResourceRefreshResult::Refreshed { .. }"),
-                                ],
-                            ),
-                            Expr::Str("credential refresh should succeed".into()),
-                        ],
-                    )),
-                ];
-
-                tests.push(TestFn {
-                    name: refresh_test,
-                    doc: vec![format!(
-                        "Test resource '{}' credential refresh.",
-                        resource.resource_id
-                    )],
-                    body,
-                });
-            }
-
-            // Credential-specific: revoke test
-            let has_revoke = resource
-                .behaviors
-                .iter()
-                .any(|b| matches!(b, gunbc_test::ResourceBehavior::RevokeSucceeds));
-            if has_revoke {
-                let revoke_test = format!(
-                    "test_resource_{}_revoke",
-                    sanitize_resource_id(&resource.resource_id)
-                );
-                let body = vec![
-                    Stmt::let_bind("spec", Expr::call("mock_spec", vec![])),
-                    Stmt::let_bind(
-                        "resource",
-                        Expr::var("spec")
-                            .method(
-                                "get_resource",
-                                vec![Expr::Str(resource.resource_id.clone())],
-                            )
-                            .method("expect", vec![Expr::Str("resource should exist".into())]),
-                    ),
-                    Stmt::Assert(Assert::True {
-                        expr: Expr::var("resource").method("revoke", vec![]),
-                        message: "credential revocation should succeed".to_string(),
-                    }),
-                ];
-
-                tests.push(TestFn {
-                    name: revoke_test,
-                    doc: vec![format!(
-                        "Test resource '{}' credential revocation.",
-                        resource.resource_id
-                    )],
-                    body,
-                });
-            }
         }
 
         tests

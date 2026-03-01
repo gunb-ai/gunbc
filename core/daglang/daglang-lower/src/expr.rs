@@ -387,7 +387,7 @@ fn lower_literal(lit: &ast::Literal) -> LoweredLiteral {
     }
 }
 
-fn lit_float_value(lit: &ast::Literal) -> f64 {
+pub(crate) fn lit_float_value(lit: &ast::Literal) -> f64 {
     match lit {
         ast::Literal::Float(f) => *f,
         _ => 0.0,

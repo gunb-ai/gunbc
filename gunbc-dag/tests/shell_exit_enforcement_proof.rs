@@ -295,7 +295,7 @@ fn auto_mock_spec_always_produces_success_responses() {
     let dag = build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_recent")
         .expect("gist-recent graph should build");
 
-    let spec = gunbc_dag::mock_defaults::auto_mock_spec(&dag, "gist_recent");
+    let spec = gunbc_test::auto_mock_spec(&dag, "gist_recent");
 
     // Collect all transport response values from both boundary_mocks and transport_mocks
     let mut shell_mocks = Vec::new();

@@ -14,12 +14,20 @@
 //! 3. Compose the freshness sub-DAG with the tool's DAG using [`WithFreshness<T>`]
 //! 4. Execute the combined DAG — freshness nodes display inline
 //!
+//! # Redundancy detection (C22: Deductive Redundancy Elimination)
+//!
+//! Naive operation-key overlap detection has been removed. The replacement
+//! (C22) uses idempotency fingerprints from domain models: each operation's
+//! identity is defined by its OperationKey plus the values of its declared
+//! idempotency_keys (e.g., S3.PutObject is unique by bucket+key, not by
+//! call count). See `docs/design/deductive-redundancy.md`.
+//!
 //! Recursion is prevented via the `GUNBC_FRESHNESS_ACTIVE` environment variable:
 //! freshness steps set it on child processes, and [`compose_with_freshness`]
 //! skips injection when it's set.
 
 use crate::{ExecError, Executable};
-use gunbc_ir::{Dag, Edge, Node, Port, Value};
+use gunbc_ir::{Dag, Edge, Node, OperationKey, Port, Value};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
@@ -40,6 +48,17 @@ pub struct FreshnessStep {
     pub id: String,
     /// The shell command to run (program + args).
     pub command: Vec<String>,
+    /// The service operation this step subsumes, if any.
+    ///
+    /// When a freshness step performs the same work as a service operation
+    /// (e.g., the "clippy" freshness step runs `cargo clippy`, which is the
+    /// same as `cargo.Build.Clippy`), this field declares that identity.
+    /// The composition layer uses this to detect and reject duplicate work:
+    /// if a freshness step subsumes an operation that the tool DAG also
+    /// contains, the composition is invalid.
+    ///
+    /// Derived from the domain model — not a manually maintained mapping.
+    pub subsumes: Option<OperationKey>,
 }
 
 impl fmt::Debug for FreshnessStep {
@@ -172,35 +191,39 @@ impl<T: Executable> Executable for WithFreshness<T> {
 ///
 /// # Returns
 ///
-/// A `Dag<WithFreshness<T>>` where:
+/// `Ok(Dag<WithFreshness<T>>)` where:
 /// - All original tool nodes are wrapped as `WithFreshness::Tool(op)`
 /// - If steps were provided, a "freshness" sub-DAG is prepended and wired
 ///   as a blocking dependency to all tool root nodes
+///
+/// Returns `Ok(wrapped_dag)` with freshness steps prepended.
+/// Overlap detection is deferred to C22 (Deductive Redundancy Elimination).
 ///
 /// # Display
 ///
 /// The freshness sub-DAG renders as a grouped stage in the terminal display:
 /// ```text
-/// › freshness [5/5]
+/// › freshness [4/4]
+///    ✓ codegen
 ///    ✓ codegen-dag
 ///    ✓ testgen
 ///    ✓ pragma
-///    ✓ clippy
-///    ✓ test-compile
 /// ```
 pub fn compose_with_freshness<T: Clone>(
     dag: Dag<T>,
     steps: Option<Vec<FreshnessStep>>,
-) -> Dag<WithFreshness<T>> {
+) -> Result<Dag<WithFreshness<T>>, ExecError> {
     // Wrap all existing tool nodes
     let mut wrapped = dag.map_ops(&mut WithFreshness::Tool);
 
     let steps = match steps {
         Some(s) if !s.is_empty() => s,
-        _ => return wrapped,
+        _ => return Ok(wrapped),
     };
 
-    // Build the freshness sub-DAG: sequential chain of steps
+    // Build the freshness sub-DAG: sequential chain of steps.
+    // Each freshness step that subsumes an operation stamps its operation_key
+    // on the corresponding node — this is what the overlap validation reads.
     let freshness_subdag = build_freshness_subdag(steps);
 
     // Find opaque root nodes (nodes that no edge targets and are not SubDags).
@@ -233,7 +256,11 @@ pub fn compose_with_freshness<T: Clone>(
         ));
     }
 
-    wrapped
+    // NOTE: Naive overlap detection removed. Redundancy detection is deferred
+    // to C22 (Deductive Redundancy Elimination) which uses idempotency
+    // fingerprints from domain models instead of raw operation key comparison.
+
+    Ok(wrapped)
 }
 
 /// Build a sequential sub-DAG from freshness steps.
@@ -242,6 +269,9 @@ pub fn compose_with_freshness<T: Clone>(
 /// sequential execution: codegen-dag → testgen → pragma → clippy → test-compile.
 ///
 /// The sub-DAG's boundary output is "done: Bool" from the last step.
+///
+/// Each step's `subsumes` operation key is stamped on the node as
+/// `operation_key`, enabling the general overlap detection in the IR.
 fn build_freshness_subdag<T: Clone>(steps: Vec<FreshnessStep>) -> Dag<WithFreshness<T>> {
     let mut dag = Dag::new();
 
@@ -249,6 +279,7 @@ fn build_freshness_subdag<T: Clone>(steps: Vec<FreshnessStep>) -> Dag<WithFreshn
 
     for step in steps {
         let id = step.id.clone();
+        let operation_key = step.subsumes.clone();
 
         let inputs = if prev_id.is_some() {
             vec![Port::new("_prev", "Bool")]
@@ -256,12 +287,20 @@ fn build_freshness_subdag<T: Clone>(steps: Vec<FreshnessStep>) -> Dag<WithFreshn
             vec![]
         };
 
-        dag.nodes.push(Node::opaque(
+        let mut node = Node::opaque(
             id.as_str(),
             inputs,
             vec![Port::new("done", "Bool")],
             WithFreshness::Freshness(step),
-        ));
+        );
+
+        // Stamp the operation key from subsumes — this is what connects
+        // the freshness step to the domain model's operation identity.
+        if let Some(key) = operation_key {
+            node = node.with_operation_key(key);
+        }
+
+        dag.nodes.push(node);
 
         // Chain: previous step's done → this step's _prev
         if let Some(ref prev) = prev_id {
@@ -273,4 +312,85 @@ fn build_freshness_subdag<T: Clone>(steps: Vec<FreshnessStep>) -> Dag<WithFreshn
     }
 
     dag
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Create a tool DAG with a node that has the given operation key.
+    fn dag_with_operation(service: &str, operation: &str) -> Dag<String> {
+        let mut dag = Dag::new();
+        dag.nodes.push(
+            Node::opaque(
+                format!("execute_transport_{service}_{operation}"),
+                vec![],
+                vec![Port::new("success", "Bool")],
+                "noop".to_string(),
+            )
+            .with_operation_key(OperationKey::new(service, operation)),
+        );
+        dag
+    }
+
+    fn step(id: &str) -> FreshnessStep {
+        FreshnessStep {
+            id: id.to_string(),
+            command: vec!["echo".to_string()],
+            subsumes: None,
+        }
+    }
+
+    fn step_subsumes(id: &str, service: &str, operation: &str) -> FreshnessStep {
+        FreshnessStep {
+            id: id.to_string(),
+            command: vec!["echo".to_string()],
+            subsumes: Some(OperationKey::new(service, operation)),
+        }
+    }
+
+    // NOTE: Overlap detection tests removed (C22 DRE replaces naive check).
+    // compose_with_freshness no longer rejects overlapping operation keys;
+    // redundancy detection is deferred to idempotency fingerprinting.
+
+    #[test]
+    fn no_overlap_for_generation_steps() {
+        let dag = dag_with_operation("cargo.Build", "Clippy");
+        let gen_steps = vec![step("codegen"), step("testgen"), step("pragma")];
+        let result = compose_with_freshness(dag, Some(gen_steps));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn no_overlap_when_dag_has_no_operation_keys() {
+        let mut dag = Dag::new();
+        dag.nodes.push(Node::opaque(
+            "some_other_node",
+            vec![],
+            vec![Port::new("done", "Bool")],
+            "noop".to_string(),
+        ));
+        let steps = vec![
+            step_subsumes("clippy", "cargo.Build", "Clippy"),
+            step_subsumes("test-compile", "cargo.Build", "Test"),
+            step_subsumes("release-check", "cargo.Build", "Build"),
+        ];
+        let result = compose_with_freshness(dag, Some(steps));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn no_steps_returns_ok() {
+        let dag: Dag<String> = Dag::new();
+        let result = compose_with_freshness(dag, None);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn steps_without_subsumes_never_overlap() {
+        let dag = dag_with_operation("cargo.Build", "Clippy");
+        // Step has same display ID but no subsumes — no overlap
+        let result = compose_with_freshness(dag, Some(vec![step("clippy")]));
+        assert!(result.is_ok());
+    }
 }

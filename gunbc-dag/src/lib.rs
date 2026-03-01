@@ -28,11 +28,9 @@ pub mod fidelity;
 pub mod fs_env;
 
 pub mod makegen;
-pub mod mock_defaults;
 pub mod pragma;
 pub mod resource_defs;
 pub mod resolve;
-pub mod resolve_service;
 pub mod testgen_dag;
 pub mod tool_graphs;
 pub mod tool_runner;
@@ -71,7 +69,7 @@ pub use tool_graphs::{
 };
 pub use tool_runner::{
     freshness_steps_planned, print_tool_header, run_tool, update_freshness_manifest_if_needed,
-    RunToolOptions,
+    FreshnessScope, RunToolOptions,
 };
 pub use workflow::{
     all_tool_workflow_names, bootstrap_workflow_spec, check_slo, ci_unit_commands,

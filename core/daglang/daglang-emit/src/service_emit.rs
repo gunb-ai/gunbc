@@ -750,7 +750,8 @@ mod tests {
             headers: vec![("anthropic-version".to_string(), "2023-06-01".to_string())],
             auth_scheme: None,
             auth_input: None,
-
+            middleware: None,
+            response_mapping: vec![],
         }
     }
 
@@ -764,6 +765,7 @@ mod tests {
             output_fields: vec![],
             output_parsing: ShellOutputParsing::SuccessStdoutStderr,
             env: vec![],
+            exit_mapping: vec![],
         }
     }
 
@@ -800,7 +802,8 @@ mod tests {
             headers: vec![],
             auth_scheme: None,
             auth_input: None,
-
+            middleware: None,
+            response_mapping: vec![],
         }
     }
 
@@ -848,7 +851,8 @@ mod tests {
             headers: vec![],
             auth_scheme: None,
             auth_input: None,
-
+            middleware: None,
+            response_mapping: vec![],
         }
     }
 
@@ -856,7 +860,7 @@ mod tests {
 
     #[test]
     fn go_rest_prepare_generates_http_request() {
-        let spec = ServiceOperationSpec::Rest(sample_rest_spec());
+        let spec = ServiceOperationSpec::Rest(Box::new(sample_rest_spec()));
         let code = emit_go_service_func(
             "prepare_anthropic_messages",
             ServiceTransportPhase::Prepare,
@@ -881,7 +885,7 @@ mod tests {
 
     #[test]
     fn go_rest_parse_generates_struct_and_json_extraction() {
-        let spec = ServiceOperationSpec::Rest(sample_rest_spec());
+        let spec = ServiceOperationSpec::Rest(Box::new(sample_rest_spec()));
         let code = emit_go_service_func(
             "parse_anthropic_messages",
             ServiceTransportPhase::Parse,
@@ -898,7 +902,7 @@ mod tests {
 
     #[test]
     fn go_rest_parse_bytes_field_uses_type_safe_conversion() {
-        let spec = ServiceOperationSpec::Rest(sample_rest_with_bytes_output());
+        let spec = ServiceOperationSpec::Rest(Box::new(sample_rest_with_bytes_output()));
         let code = emit_go_service_func("parse_secret_access", ServiceTransportPhase::Parse, &spec);
         assert!(
             code.contains("Payload []byte"),
@@ -912,7 +916,7 @@ mod tests {
 
     #[test]
     fn go_rest_prepare_with_path_params_uses_sprintf() {
-        let spec = ServiceOperationSpec::Rest(sample_rest_with_path_params());
+        let spec = ServiceOperationSpec::Rest(Box::new(sample_rest_with_path_params()));
         let code = emit_go_service_func(
             "prepare_secret_access",
             ServiceTransportPhase::Prepare,
@@ -948,7 +952,7 @@ mod tests {
 
     #[test]
     fn go_execute_stub() {
-        let spec = ServiceOperationSpec::Rest(sample_rest_spec());
+        let spec = ServiceOperationSpec::Rest(Box::new(sample_rest_spec()));
         let code = emit_go_service_func(
             "execute_anthropic_messages",
             ServiceTransportPhase::Execute,
@@ -965,7 +969,7 @@ mod tests {
 
     #[test]
     fn c_rest_prepare_generates_snprintf_url() {
-        let spec = ServiceOperationSpec::Rest(sample_rest_with_path_params());
+        let spec = ServiceOperationSpec::Rest(Box::new(sample_rest_with_path_params()));
         let code = emit_c_service_func(
             "prepare_secret_access",
             ServiceTransportPhase::Prepare,
@@ -979,7 +983,7 @@ mod tests {
 
     #[test]
     fn c_rest_parse_has_field_comments() {
-        let spec = ServiceOperationSpec::Rest(sample_rest_spec());
+        let spec = ServiceOperationSpec::Rest(Box::new(sample_rest_spec()));
         let code = emit_c_service_func(
             "parse_anthropic_messages",
             ServiceTransportPhase::Parse,
@@ -1005,7 +1009,7 @@ mod tests {
 
     #[test]
     fn mips_rest_prepare_has_spec_comment() {
-        let spec = ServiceOperationSpec::Rest(sample_rest_spec());
+        let spec = ServiceOperationSpec::Rest(Box::new(sample_rest_spec()));
         let code = emit_mips_service_func(
             "prepare_anthropic_messages",
             ServiceTransportPhase::Prepare,
@@ -1034,7 +1038,7 @@ mod tests {
 
     #[test]
     fn mips_execute_stub_has_description() {
-        let spec = ServiceOperationSpec::Rest(sample_rest_spec());
+        let spec = ServiceOperationSpec::Rest(Box::new(sample_rest_spec()));
         let code =
             emit_mips_service_func("execute_transport", ServiceTransportPhase::Execute, &spec);
         assert!(

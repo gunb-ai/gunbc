@@ -184,7 +184,7 @@ fn main() {
         mode,
         RunToolOptions {
             success_port: Some("success"),
-            with_freshness: true,
+            freshness: gunbc_dag::FreshnessScope::GenerationOnly,
             input_mocks: Some(&input_mocks),
         },
     );
@@ -230,6 +230,38 @@ mod tests {
         assert_eq!(
             ci_path_for_node("tools.makegen::makegen"),
             Some(MAKEFILE_OUTPUT_PATH)
+        );
+    }
+
+    // NOTE: full_freshness_with_build_dag_is_rejected removed.
+    // Naive overlap detection replaced by C22 (Deductive Redundancy Elimination).
+
+    /// Validates that generation-only freshness steps compose cleanly
+    /// with the build DAG (no overlap — generation steps have no subsumes).
+    #[test]
+    fn generation_freshness_with_build_dag_is_accepted() {
+        use gunbc_exec::{compose_with_freshness, FreshnessStep};
+
+        let dag = gunbc_dag::build_build_graph().expect("build graph should compile");
+
+        let gen_steps = vec![
+            FreshnessStep {
+                id: "codegen".into(),
+                command: vec!["echo".into(), "codegen".into()],
+                subsumes: None,
+            },
+            FreshnessStep {
+                id: "testgen".into(),
+                command: vec!["echo".into(), "testgen".into()],
+                subsumes: None,
+            },
+        ];
+
+        let result = compose_with_freshness(dag, Some(gen_steps));
+        assert!(
+            result.is_ok(),
+            "generation-only freshness steps should not overlap with build DAG: {:?}",
+            result.err()
         );
     }
 }

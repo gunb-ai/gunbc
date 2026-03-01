@@ -149,20 +149,7 @@ impl MockSpec {
 
     /// Add a credential resource simulation.
     pub fn resource_credential(mut self, id: impl Into<String>, expiry_ms: Option<u64>) -> Self {
-        self.resource_mocks = self.resource_mocks.credential(id, expiry_ms, false);
-        self
-    }
-
-    /// Add a refreshable credential resource simulation.
-    pub fn resource_credential_refreshable(
-        mut self,
-        id: impl Into<String>,
-        expiry_ms: u64,
-        refresh_ttl_ms: u64,
-    ) -> Self {
-        self.resource_mocks =
-            self.resource_mocks
-                .credential_refreshable(id, expiry_ms, refresh_ttl_ms);
+        self.resource_mocks = self.resource_mocks.credential(id, expiry_ms);
         self
     }
 
@@ -611,40 +598,11 @@ impl ResourceSimulation {
             ResourceType::Lease { duration_ms } => held_ms > duration_ms,
             ResourceType::Credential {
                 expiry_ms: Some(ms),
-                ..
             } => held_ms > ms,
             _ => false,
         }
     }
 
-    /// Simulate refreshing this resource (credentials only).
-    pub fn refresh(&self) -> ResourceRefreshResult {
-        if let ResourceType::Credential { refreshable, .. } = &self.resource_type {
-            if !refreshable {
-                return ResourceRefreshResult::NotRefreshable;
-            }
-            for behavior in &self.behaviors {
-                if let ResourceBehavior::RefreshSucceeds { new_ttl_ms } = behavior {
-                    return ResourceRefreshResult::Refreshed {
-                        new_ttl_ms: *new_ttl_ms,
-                    };
-                }
-                if let ResourceBehavior::RefreshFails { error } = behavior {
-                    return ResourceRefreshResult::Failed(error.clone());
-                }
-            }
-            ResourceRefreshResult::NotRefreshable
-        } else {
-            ResourceRefreshResult::NotRefreshable
-        }
-    }
-
-    /// Simulate revoking this resource (credentials only).
-    pub fn revoke(&self) -> bool {
-        self.behaviors
-            .iter()
-            .any(|b| matches!(b, ResourceBehavior::RevokeSucceeds))
-    }
 }
 
 /// Type of resource being simulated.
@@ -658,10 +616,9 @@ pub enum ResourceType {
     SharedLock { max_holders: usize },
     /// Connection pool slot
     PoolSlot { pool_size: usize },
-    /// Credential with optional expiry and refresh capability
+    /// Credential with optional expiry
     Credential {
         expiry_ms: Option<u64>,
-        refreshable: bool,
     },
 }
 
@@ -680,12 +637,6 @@ pub enum ResourceBehavior {
     LeaseExpires,
     /// Contention: another holder has it
     Contended { holder: String },
-    /// Credential refresh succeeds with a new TTL
-    RefreshSucceeds { new_ttl_ms: u64 },
-    /// Credential refresh fails with an error
-    RefreshFails { error: String },
-    /// Credential revocation succeeds
-    RevokeSucceeds,
 }
 
 /// Result of simulated resource acquisition.
@@ -699,17 +650,6 @@ pub enum ResourceAcquireResult {
     Delayed(u64),
     /// Waiting for contention
     Waiting,
-}
-
-/// Result of simulated credential refresh.
-#[derive(Debug, Clone)]
-pub enum ResourceRefreshResult {
-    /// Refresh succeeded with a new TTL
-    Refreshed { new_ttl_ms: u64 },
-    /// Refresh failed
-    Failed(String),
-    /// Resource is not refreshable
-    NotRefreshable,
 }
 
 /// Resource mock specification.
@@ -760,18 +700,10 @@ impl ResourceMocks {
     }
 
     /// Add a credential simulation.
-    pub fn credential(
-        mut self,
-        id: impl Into<String>,
-        expiry_ms: Option<u64>,
-        refreshable: bool,
-    ) -> Self {
+    pub fn credential(mut self, id: impl Into<String>, expiry_ms: Option<u64>) -> Self {
         self.resources.push(ResourceSimulation::new(
             id,
-            ResourceType::Credential {
-                expiry_ms,
-                refreshable,
-            },
+            ResourceType::Credential { expiry_ms },
         ));
         self
     }
@@ -780,34 +712,10 @@ impl ResourceMocks {
     pub fn credential_fails(mut self, id: impl Into<String>, error: impl Into<String>) -> Self {
         let sim = ResourceSimulation::new(
             id,
-            ResourceType::Credential {
-                expiry_ms: None,
-                refreshable: false,
-            },
+            ResourceType::Credential { expiry_ms: None },
         )
         .with_behavior(ResourceBehavior::FailAcquire {
             error: error.into(),
-        });
-        self.resources.push(sim);
-        self
-    }
-
-    /// Add a refreshable credential simulation.
-    pub fn credential_refreshable(
-        mut self,
-        id: impl Into<String>,
-        expiry_ms: u64,
-        refresh_ttl_ms: u64,
-    ) -> Self {
-        let sim = ResourceSimulation::new(
-            id,
-            ResourceType::Credential {
-                expiry_ms: Some(expiry_ms),
-                refreshable: true,
-            },
-        )
-        .with_behavior(ResourceBehavior::RefreshSucceeds {
-            new_ttl_ms: refresh_ttl_ms,
         });
         self.resources.push(sim);
         self
@@ -1466,81 +1374,6 @@ mod tests {
         let spec = MockSpec::new("test").resource_credential("cred:api", None);
         let resource = spec.get_resource("cred:api").unwrap();
         assert!(!resource.should_timeout(u64::MAX));
-    }
-
-    #[test]
-    fn test_credential_refresh_succeeds() {
-        let mocks = ResourceMocks::new().credential_refreshable("cred:api", 3_600_000, 7_200_000);
-        let resource = mocks.get("cred:api").unwrap();
-        let result = resource.refresh();
-        assert!(matches!(
-            result,
-            ResourceRefreshResult::Refreshed {
-                new_ttl_ms: 7_200_000
-            }
-        ));
-    }
-
-    #[test]
-    fn test_credential_refresh_fails() {
-        let sim = ResourceSimulation::new(
-            "cred:api",
-            ResourceType::Credential {
-                expiry_ms: Some(3_600_000),
-                refreshable: true,
-            },
-        )
-        .with_behavior(ResourceBehavior::RefreshFails {
-            error: "token revoked".into(),
-        });
-        let result = sim.refresh();
-        assert!(matches!(result, ResourceRefreshResult::Failed(_)));
-    }
-
-    #[test]
-    fn test_credential_refresh_not_refreshable() {
-        let spec = MockSpec::new("test").resource_credential("cred:api", Some(3_600_000));
-        let resource = spec.get_resource("cred:api").unwrap();
-        let result = resource.refresh();
-        assert!(matches!(result, ResourceRefreshResult::NotRefreshable));
-    }
-
-    #[test]
-    fn test_credential_revoke() {
-        let sim = ResourceSimulation::new(
-            "cred:api",
-            ResourceType::Credential {
-                expiry_ms: None,
-                refreshable: false,
-            },
-        )
-        .with_behavior(ResourceBehavior::RevokeSucceeds);
-        assert!(sim.revoke());
-    }
-
-    #[test]
-    fn test_credential_revoke_no_behavior() {
-        let spec = MockSpec::new("test").resource_credential("cred:api", None);
-        let resource = spec.get_resource("cred:api").unwrap();
-        assert!(!resource.revoke());
-    }
-
-    #[test]
-    fn test_mock_spec_credential_builders() {
-        let spec = MockSpec::new("test")
-            .resource_credential("cred:basic", Some(1_000))
-            .resource_credential_refreshable("cred:refresh", 3_600_000, 7_200_000);
-
-        assert!(spec.get_resource("cred:basic").is_some());
-        assert!(spec.get_resource("cred:refresh").is_some());
-
-        let refresh = spec.get_resource("cred:refresh").unwrap();
-        assert!(matches!(
-            refresh.refresh(),
-            ResourceRefreshResult::Refreshed {
-                new_ttl_ms: 7_200_000
-            }
-        ));
     }
 
     #[test]

@@ -28,8 +28,10 @@ pub struct RateLimitConfig {
     pub algorithm: RateLimitAlgorithm,
     /// Maximum immediate burst before throttling.
     pub max_burst: u32,
-    /// Sustained request budget per minute.
-    pub sustained_per_minute: u32,
+    /// Total requests allowed in the window.
+    pub requests: u32,
+    /// Window duration in seconds (e.g. 3600 for per-hour limits).
+    pub window_seconds: u32,
     /// Respect `Retry-After` headers when present.
     #[serde(default)]
     pub honor_retry_after: bool,
@@ -163,7 +165,8 @@ mod tests {
                 scope_key: "github:core".to_string(),
                 algorithm: RateLimitAlgorithm::TokenBucket,
                 max_burst: 20,
-                sustained_per_minute: 83,
+                requests: 5000,
+                window_seconds: 3600,
                 honor_retry_after: true,
             }),
             retry: Some(RetryConfig {

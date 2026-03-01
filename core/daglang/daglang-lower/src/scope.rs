@@ -222,26 +222,18 @@ fn collect_scoped_items_from_expr(expr: &Expr, items: &mut Vec<ScopedItem>) {
             });
         }
 
-        // If/else — scope-introducing.
+        // If/else — scope-introducing. Always emit IfBranch so consumers
+        // can generate control-flow nodes regardless of service call presence.
         Expr::If(_, then_expr, else_expr) => {
             let then_body = scope_from_expr(then_expr);
             let else_body = else_expr.as_ref().map(|e| scope_from_expr(e));
-            // Only emit an IfBranch if there are service calls in the branches.
-            if then_body.has_service_calls()
-                || else_body.as_ref().is_some_and(|b| b.has_service_calls())
-            {
-                items.push(ScopedItem::IfBranch {
-                    then_body,
-                    else_body,
-                });
-            } else {
-                // No service calls inside — treat as opaque expression.
-                // Still recurse to pick up any service calls in condition.
-                items.push(ScopedItem::Other);
-            }
+            items.push(ScopedItem::IfBranch {
+                then_body,
+                else_body,
+            });
         }
 
-        // Match — scope-introducing.
+        // Match — scope-introducing. Always emit MatchBranch.
         Expr::Match(_, arms) => {
             let arm_scopes: Vec<MatchArmScope> = arms
                 .iter()
@@ -251,12 +243,7 @@ fn collect_scoped_items_from_expr(expr: &Expr, items: &mut Vec<ScopedItem>) {
                     MatchArmScope { label, body }
                 })
                 .collect();
-            let has_calls = arm_scopes.iter().any(|a| a.body.has_service_calls());
-            if has_calls {
-                items.push(ScopedItem::MatchBranch { arms: arm_scopes });
-            } else {
-                items.push(ScopedItem::Other);
-            }
+            items.push(ScopedItem::MatchBranch { arms: arm_scopes });
         }
 
         // Function call — tracked but not scope-introducing.
@@ -572,7 +559,7 @@ mod tests {
     }
 
     #[test]
-    fn match_without_service_calls_is_other() {
+    fn match_without_service_calls_is_match_branch() {
         let match_expr = Expr::Match(
             Box::new(Expr::Ident("x".into())),
             vec![
@@ -593,8 +580,9 @@ mod tests {
 
         assert!(body.direct_service_calls().is_empty());
         assert_eq!(body.total_service_call_count(), 0);
-        // Should be ScopedItem::Other, not MatchBranch
-        assert!(matches!(body.items[0], ScopedItem::Other));
+        // MatchBranch is always emitted even without service calls,
+        // so consumers can generate control-flow nodes unconditionally.
+        assert!(matches!(body.items[0], ScopedItem::MatchBranch { .. }));
     }
 
     #[test]

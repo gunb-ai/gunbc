@@ -1,10 +1,13 @@
-//! SubDag interface validation.
+//! DAG validation: SubDag interfaces and resource wiring.
 //!
 //! Validates that SubDag nodes' declared interfaces (input/output ports)
 //! match the inner DAG's structural entrypoints and boundaries.
 //!
 //! This catches mismatches at build time rather than waiting for `lower()`
 //! in the executor.
+//!
+//! Note: Operation overlap detection was removed; replaced by C22
+//! (Deductive Redundancy Elimination using idempotency fingerprints).
 
 use crate::boundary::detect_boundaries;
 use crate::dag::{Dag, Port};
@@ -556,6 +559,7 @@ mod tests {
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
+            operation_key: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -589,6 +593,7 @@ mod tests {
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
+            operation_key: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -622,6 +627,7 @@ mod tests {
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
+            operation_key: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -657,6 +663,7 @@ mod tests {
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
+            operation_key: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -693,6 +700,7 @@ mod tests {
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
+            operation_key: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -807,6 +815,7 @@ mod tests {
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
+            operation_key: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -853,6 +862,7 @@ mod tests {
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
+            operation_key: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -886,6 +896,7 @@ mod tests {
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
+            operation_key: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -926,6 +937,7 @@ mod tests {
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
+            operation_key: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -1037,4 +1049,7 @@ mod tests {
             .collect();
         assert!(resource_unwired.is_empty());
     }
+
+    // NOTE: validate_no_operation_overlap tests removed.
+    // Replaced by C22: Deductive Redundancy Elimination using idempotency fingerprints.
 }

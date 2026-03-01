@@ -77,16 +77,15 @@ fn execute_with_declared_output_passthrough(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let mut outputs = HashMap::new();
+    let any_passthrough_wired = inputs
+        .keys()
+        .any(|k| k.starts_with(PortName::OUTPUT_PASSTHROUGH_PREFIX));
     for (key, value) in &inputs {
         if key.starts_with(PortName::OUTPUT_PASSTHROUGH_PREFIX) {
             continue;
         }
         outputs.insert(key.clone(), value.clone());
     }
-    let any_passthrough_wired = output_ports.iter().any(|(port_name, _)| {
-        let key = format!("{}{port_name}", PortName::OUTPUT_PASSTHROUGH_PREFIX);
-        inputs.contains_key(&key)
-    });
     for (port_name, is_optional) in output_ports {
         let passthrough_key = format!("{}{port_name}", PortName::OUTPUT_PASSTHROUGH_PREFIX);
         if let Some(value) = inputs.get(&passthrough_key) {
@@ -94,11 +93,15 @@ fn execute_with_declared_output_passthrough(
             continue;
         }
         if *is_optional || !any_passthrough_wired {
+            // Optional ports always get Skipped.
+            // When zero passthroughs were wired, the lowerer doesn't support
+            // this pattern yet (C10 gap) — fall back to Skipped rather than
+            // failing on every unwired function.
             outputs.insert(port_name.clone(), Value::Skipped);
             continue;
         }
-        // Required output, other passthroughs arrived but this one is missing.
-        // Fail-closed: this indicates a lowerer wiring gap.
+        // At least one passthrough was wired but this required one is missing.
+        // Fail-closed: this indicates a partial lowerer wiring gap.
         return Err(ExecError::new(format!(
             "missing required declared output passthrough: `{}` (expected input `{}`)",
             port_name, passthrough_key
@@ -352,6 +355,8 @@ impl Executable for ExprComputeOp {
         let mut env = HashMap::new();
         for port in &self.input_ports {
             let value = inputs.get(port).cloned().unwrap_or(Value::Skipped);
+            // Flatten Map fields into `parent__field` env vars to match the
+            // lowerer's `__` convention (e.g., `entry.kind` lowers to `entry__kind`).
             if let Value::Map(fields) = &value {
                 for (field_name, field_value) in fields {
                     env.insert(format!("{port}__{field_name}"), field_value.clone());
@@ -359,11 +364,10 @@ impl Executable for ExprComputeOp {
             }
             env.insert(port.clone(), value);
         }
-        for port in &self.input_ports {
-            if !env.contains_key(port) {
-                env.insert(port.clone(), Value::Skipped);
-            }
-        }
+        // Pre-seed referenced identifiers so that `__`-flattened field access
+        // variables resolve to Skipped when the parent input is itself Skipped
+        // (the lowerer emits `entry__kind` but when `entry` is Skipped, the
+        // Map flattening above has nothing to flatten).
         for ref_name in &self.referenced_vars {
             if !env.contains_key(ref_name) {
                 env.insert(ref_name.clone(), Value::Skipped);
@@ -384,6 +388,12 @@ impl Executable for ExprComputeOp {
     }
 }
 
+/// Collect all `Ident` names referenced in a lowered fn body.
+///
+/// Used to pre-seed the expression environment with `Value::Skipped` for
+/// `__`-flattened field access variables (e.g., `entry__kind`) when the
+/// parent input is itself Skipped — the Map flattening only fires for
+/// actual `Value::Map` inputs.
 fn collect_fn_body_idents(body: &daglang_lower::LoweredFnBody) -> Vec<String> {
     let mut idents = Vec::new();
     for stmt in &body.stmts {
@@ -658,6 +668,7 @@ pub fn resolve_lowered_dag(dag: &Dag<LoweredOp>) -> Result<Dag<DynOp>, ResolveEr
             examples: node.examples.clone(),
             log_detail: node.log_detail,
             kind: node.kind,
+            operation_key: node.operation_key.clone(),
         };
         normalize_release_resource_inputs(&mut resolved_node);
         if let Some(mode) = needs_transport_resource(node, &resolved_node) {
@@ -1073,12 +1084,12 @@ fn resolve_service_transport(
             match (spec, role) {
                 (ServiceOperationSpec::Rest(rest_spec), Some(TransportRole::Prepare)) => {
                     return Ok(DynOp::new(GenericRestPrepareOp {
-                        spec: rest_spec.clone(),
+                        spec: (**rest_spec).clone(),
                     }));
                 }
                 (ServiceOperationSpec::Rest(rest_spec), Some(TransportRole::Parse)) => {
                     return Ok(DynOp::new(GenericRestParseOp {
-                        spec: rest_spec.clone(),
+                        spec: (**rest_spec).clone(),
                         service_name: metadata.service.clone(),
                         operation_name: metadata.operation.clone(),
                         auth_scheme: rest_spec.auth_scheme.clone().unwrap_or_default(),
@@ -1583,8 +1594,8 @@ mod tests {
                 }],
                 output_parsing: ShellOutputParsing::ExitCodeBool,
                 env: vec![],
+                exit_mapping: vec![],
             })),
-
         }
     }
 
@@ -1637,8 +1648,8 @@ mod tests {
                 ],
                 output_parsing: ShellOutputParsing::SuccessStdoutStderr,
                 env: vec![],
+                exit_mapping: vec![],
             })),
-
         }
     }
 
@@ -1829,7 +1840,7 @@ mod tests {
             idempotent: true,
             readonly: false,
             permissions: vec![],
-            spec: Some(ServiceOperationSpec::Rest(RestOperationSpec {
+            spec: Some(ServiceOperationSpec::Rest(Box::new(RestOperationSpec {
                 endpoint: "https://sts.googleapis.com".to_string(),
                 method: "POST".to_string(),
                 path_template: "/v1/token".to_string(),
@@ -1871,9 +1882,9 @@ mod tests {
                 headers: vec![],
                 auth_scheme: None,
                 auth_input: None,
-
-            })),
-
+                middleware: None,
+                response_mapping: vec![],
+            }))),
         }
     }
 
@@ -1886,7 +1897,7 @@ mod tests {
             idempotent: true,
             readonly: true,
             permissions: vec!["secretmanager.versions.access".to_string()],
-            spec: Some(ServiceOperationSpec::Rest(RestOperationSpec {
+            spec: Some(ServiceOperationSpec::Rest(Box::new(RestOperationSpec {
                 endpoint: "https://secretmanager.googleapis.com".to_string(),
                 method: "GET".to_string(),
                 path_template: "/v1/projects/{project}/secrets/{secret}/versions/{version}:access"
@@ -1936,9 +1947,9 @@ mod tests {
                 headers: vec![],
                 auth_scheme: None,
                 auth_input: None,
-
-            })),
-
+                middleware: None,
+                response_mapping: vec![],
+            }))),
         }
     }
 

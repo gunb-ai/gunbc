@@ -205,12 +205,12 @@ pub use types::{
     semantic_carrier_class_for_type_id, semantic_carrier_compatible,
     semantic_carrier_kind_for_type_id, value_backing_for_type_id, value_compatible_with_type_id,
     value_kind_name, Cardinality, CardinalityMismatch, CardinalitySamplingStrategy, NodeId,
-    PortCategory, PortName, SeedPlaceholderPolicy, SemanticCarrierClass, SemanticCarrierKind,
-    TypeId, ValueBacking,
+    OperationKey, PortCategory, PortName, SeedPlaceholderPolicy, SemanticCarrierClass,
+    SemanticCarrierKind, TypeId, ValueBacking,
 };
 pub use validate::{
-    validate_resource_wiring, validate_resource_wiring_recursive, validate_subdag_interfaces,
-    PortDirection, SubDagError, UnwiredResource,
+    validate_resource_wiring, validate_resource_wiring_recursive,
+    validate_subdag_interfaces, PortDirection, SubDagError, UnwiredResource,
 };
 pub use value::{
     SecretHint, SecretString, Value, ValueKind, HUMAN_TEXT_MAX_LINES, HUMAN_TEXT_MAX_LINE_WIDTH,

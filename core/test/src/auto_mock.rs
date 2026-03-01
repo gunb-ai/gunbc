@@ -1,8 +1,12 @@
-//! Helpers for resilient graph-mock specs on DSL-backed DAGs.
+//! Auto-mock specification builder.
+//!
+//! Builds a complete `MockSpec` from a DAG by probing its structure:
+//! type-compatible default values are generated for every boundary slot,
+//! entrypoint port, and terminal node. The probing algorithm trial-executes
+//! downstream consumer nodes to select the best response variant.
 
 use gunbc_exec::{execute_single_node, Executable, ExecutionMode};
 use gunbc_ir::transport::{
-    cloud::{CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef},
     FileOp, FileResponse, RestResponse, ShellRequest, ShellResponse, TransportRequest,
     TransportResponse,
 };
@@ -11,9 +15,12 @@ use gunbc_ir::{
     PortName, Value, ValueBacking,
 };
 use gunbc_primitives::filename;
-use gunbc_test::extract_mock_requirements;
-use gunbc_test::{MockSpec, NodeExample, OutputMatcher};
 use std::collections::{HashMap, HashSet};
+
+use crate::{
+    extract_mock_requirements, MockProvider, MockResponseSynthesis, MockSpec, NodeExample,
+    OutputMatcher,
+};
 
 fn default_fs_handle() -> Value {
     let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
@@ -24,7 +31,6 @@ fn default_value_for_type(type_id: &str) -> Value {
     match type_id {
         "TransportResponse" => default_shell_response(),
         "TransportRequest" => Value::Request(TransportRequest::Shell(ShellRequest::new("true"))),
-        "CloudSecretConfig" => default_cloud_secret_config(),
         "Secret" => Value::Secret(gunbc_ir::SecretString::new("mock")),
         "FilesystemHandle" => default_fs_handle(),
         _ => match value_backing_for_type_id(type_id) {
@@ -62,24 +68,6 @@ fn default_value_for_port(type_id: &str, cardinality: Cardinality) -> Value {
     }
 }
 
-fn default_cloud_secret_config() -> Value {
-    CloudSecretConfig {
-        provider: CloudProviderKind::Gcp,
-        runtime: CloudRuntimeKind::LocalDev,
-        audience: "mock-audience".to_string(),
-        project_or_account: "mock-project".to_string(),
-        secret: CloudSecretRef {
-            prefix: "projects/mock-project/secrets/".to_string(),
-            name: "mock-secret".to_string(),
-            delimiter: String::new(),
-            version: Some("latest".to_string()),
-        },
-        service_account_or_role: Some("mock-sa@mock-project.iam.gserviceaccount.com".to_string()),
-        impersonate_account_or_role: None,
-    }
-    .into()
-}
-
 fn default_shell_response() -> Value {
     Value::Response(TransportResponse::Shell(ShellResponse::ok(String::new())))
 }
@@ -99,21 +87,58 @@ fn default_file_response() -> Value {
     }))
 }
 
+/// Infer the mock provider from a node ID (e.g., "github.Gist.Create/execute").
+fn infer_provider_from_node_id(node_id: &str) -> MockProvider {
+    let lower = node_id.to_lowercase();
+    if lower.starts_with("github.") || lower.contains("/github.") || lower.contains("gist") {
+        MockProvider::GitHub
+    } else if lower.starts_with("gcp.") || lower.contains("/gcp.") || lower.contains("secret") {
+        MockProvider::Gcp
+    } else if lower.starts_with("llm.anthropic") || lower.contains("anthropic") {
+        MockProvider::Anthropic
+    } else if lower.starts_with("llm.openai") || lower.contains("openai") {
+        MockProvider::OpenAi
+    } else {
+        MockProvider::Generic
+    }
+}
+
+/// Provider-aware REST response synthesis.
+///
+/// Uses `MockResponseSynthesis` from `gunbc_test::mock_synthesis` to generate
+/// provider-specific response shapes instead of the kitchen sink blob.
+fn rest_response_for_provider(provider: MockProvider) -> Value {
+    let spec = MockResponseSynthesis::success(provider);
+    let response = crate::synthesize_rest_response(&spec);
+    Value::Response(TransportResponse::Rest(response))
+}
+
+/// Default REST response for unknown providers (kitchen sink fallback).
+///
+/// This fallback includes shapes from all providers so parse nodes can extract
+/// fields regardless of which provider the operation targets. Once all callers
+/// use `rest_response_for_provider`, this can be removed.
 fn default_rest_response() -> Value {
+    // Synthesize a merged response that satisfies all provider parse nodes.
+    // This is the "kitchen sink" fallback for untyped contexts.
     let mut response = RestResponse::new(
         200,
         serde_json::json!({
+            // OAuth/token fields (shared across auth flows)
             "access_token": "mock-access-token",
             "accessToken": "mock-access-token",
             "expires_in": 3600,
             "token_type": "Bearer",
+            // GitHub fields
             "html_url": "https://gist.github.com/mock",
             "id": "mock-id",
+            "state": "open",
+            // GCP fields
             "raw": "mock-token",
             "payload": { "data": "bW9jaw==" },
             "bindings": [],
             "etag": "mock-etag",
-            // LLM response shapes so parse nodes extract non-empty content.
+            "name": "projects/mock-project/secrets/mock-secret/versions/1",
             // Anthropic Messages API: content/0/text
             "content": [{ "type": "text", "text": "Mock LLM response content." }],
             "stop_reason": "end_turn",
@@ -143,11 +168,18 @@ fn default_value_for_slot<T: Executable + Clone + Send>(
         return default_value_for_port(type_id, cardinality);
     }
 
-    // Pick a response variant compatible with downstream parse nodes.
+    // Try provider-specific REST response first (based on node ID patterns).
+    let provider = infer_provider_from_node_id(node_id);
+    let provider_rest = rest_response_for_provider(provider);
+    if response_candidate_satisfies_consumers(dag, node_id, port_name, &provider_rest) {
+        return provider_rest;
+    }
+
+    // Fall back to trying all response variants.
     let candidates = [
         default_shell_response(),
         default_file_response(),
-        default_rest_response(),
+        default_rest_response(), // kitchen sink fallback
     ];
     for candidate in candidates {
         if response_candidate_satisfies_consumers(dag, node_id, port_name, &candidate) {
@@ -447,10 +479,22 @@ fn probe_best_response<T: Executable + Clone + Send>(
     node_id: &str,
     partial_example: &NodeExample,
 ) -> Value {
+    // Try provider-specific REST response first.
+    let provider = infer_provider_from_node_id(node_id);
+    let provider_rest = rest_response_for_provider(provider);
+    {
+        let mut inputs = partial_example.inputs.clone();
+        inputs.insert("response".to_string(), provider_rest.clone());
+        if execute_single_node(dag, node_id, inputs, ExecutionMode::Real).is_ok() {
+            return provider_rest;
+        }
+    }
+
+    // Fall back to trying all response variants.
     let candidates = [
         default_shell_response(),
         default_file_response(),
-        default_rest_response(),
+        default_rest_response(), // kitchen sink fallback
     ];
 
     for candidate in candidates {
@@ -466,20 +510,4 @@ fn probe_best_response<T: Executable + Clone + Send>(
          candidates failed, falling back to default_shell_response()"
     );
     default_shell_response()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn auto_mock_spec_ci_graph_produces_transport_mocks() {
-        let dag = crate::ci::build_ci_graph().expect("build ci graph");
-        let spec = auto_mock_spec(&dag, "ci");
-        // CI graph should have transport mocks for service transport nodes.
-        assert!(
-            !spec.transport_mocks.is_empty(),
-            "CI graph should have at least one transport mock"
-        );
-    }
 }

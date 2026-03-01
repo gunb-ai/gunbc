@@ -1,11 +1,26 @@
 // services/github/gist.dag -- GitHub Gist API.
 //
 // Replaces: core/ir/src/transport/gist.rs, core/ir/src/ops/gist.rs
+//
+// Imports the Gist domain model from extdeps for type consistency.
+// The extdeps define "what is a gist?" — this file defines "how do we call the API?"
 
 module services.github.gist
 
+import extdeps.github.gists { Gist, GistFile, GistVisibility }
+import extdeps.github.core { GitHubUser, Repository }
+import std.errors { GitHubErrorShape }
+
 service github.Gist {
-  config { endpoint: "https://api.github.com", auth: BearerToken, auth_input: auth_token }
+  config {
+    endpoint: "https://api.github.com"
+    auth: BearerToken
+    auth_input: auth_token
+    // GitHub API rate limits: 5000 requests/hour for authenticated users
+    rate_limit: { requests: 5000, per: hour, scope: core }
+    // Retry on rate limit and server errors with exponential backoff
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503, 504] }
+  }
 
   operation Create {
     input {
@@ -19,5 +34,12 @@ service github.Gist {
       html_url: Url
     }
     transport rest { method: POST, path: "/gists" }
+    response {
+      201 => Gist
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 }

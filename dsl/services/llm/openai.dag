@@ -5,8 +5,23 @@
 
 module services.llm.openai
 
+import extdeps.llm.core { Role, LlmMessage, TokenUsage, StopReason }
+import extdeps.llm.openai {
+  OpenAiModel, OpenAiModelSpec, ResponseFormat,
+  ToolChoice, OpenAiFinishReason, FunctionCall, ToolCall
+}
+import extdeps.llm.pricing { ModelPricing, ContextWindow, ModelCapability }
+import std.errors { OpenAiErrorShape }
+
 service llm.OpenAI {
-  config { endpoint: "https://api.openai.com", auth: BearerToken }
+  config {
+    endpoint: "https://api.openai.com"
+    auth: BearerToken
+    // OpenAI API rate limits: varies by tier (500-3500 RPM), use conservative default
+    rate_limit: { requests: 500, per: minute, scope: chat }
+    // Retry on rate limit and server errors with exponential backoff
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503] }
+  }
 
   operation ChatCompletion {
     input {
@@ -23,6 +38,15 @@ service llm.OpenAI {
       completion_tokens: Int from "usage/completion_tokens"
     }
     transport rest { method: POST, path: "/v1/chat/completions" }
+    response {
+      200 => Json
+      400 => OpenAiErrorShape
+      401 => OpenAiErrorShape
+      403 => OpenAiErrorShape
+      404 => OpenAiErrorShape
+      429 => OpenAiErrorShape
+      5xx => OpenAiErrorShape
+    }
   }
 
   operation Responses {
@@ -39,6 +63,15 @@ service llm.OpenAI {
       input_tokens: Int from "usage/input_tokens"
     }
     transport rest { method: POST, path: "/v1/responses" }
+    response {
+      200 => Json
+      400 => OpenAiErrorShape
+      401 => OpenAiErrorShape
+      403 => OpenAiErrorShape
+      404 => OpenAiErrorShape
+      429 => OpenAiErrorShape
+      5xx => OpenAiErrorShape
+    }
   }
 }
 

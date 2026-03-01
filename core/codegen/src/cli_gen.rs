@@ -858,7 +858,8 @@ fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
          // Build the graph and compose with freshness checks\n\
          let dag = {graph_builder_call};\n\
          let steps = check_and_plan_freshness();\n\
-         let dag = compose_with_freshness(dag, steps);\n\
+         let dag = compose_with_freshness(dag, steps)\n\
+             .expect(\"freshness/tool overlap: freshness steps duplicate cargo operations in the tool DAG\");\n\
          \n\
          {input_mocks}\n\
          // Set up execution mode\n\
@@ -1117,7 +1118,8 @@ fn build_subcmd_run_fn(
          // Build the graph and compose with freshness checks\n\
          let dag = {graph_builder_call};\n\
          let steps = check_and_plan_freshness();\n\
-         let dag = compose_with_freshness(dag, steps);\n\
+         let dag = compose_with_freshness(dag, steps)\n\
+             .expect(\"freshness/tool overlap: freshness steps duplicate cargo operations in the tool DAG\");\n\
          \n\
          {input_mocks}\n\
          // Set up execution mode\n\
@@ -1300,7 +1302,8 @@ fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDe
          // Build the graph and compose with freshness checks\n\
          let dag = {graph_builder_call};\n\
          let steps = check_and_plan_freshness();\n\
-         let dag = compose_with_freshness(dag, steps);\n\
+         let dag = compose_with_freshness(dag, steps)\n\
+             .expect(\"freshness/tool overlap: freshness steps duplicate cargo operations in the tool DAG\");\n\
          \n\
          {input_mocks}\n\
          // Set up execution mode\n\

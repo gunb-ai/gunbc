@@ -13,7 +13,8 @@
 //!     scope_key: "github:core",
 //!     algorithm: RateLimitAlgorithm::TokenBucket,
 //!     max_burst: 20,
-//!     sustained_per_minute: 83,  // ~5000/hour
+//!     requests: 5000,
+//!     window_seconds: 3600,  // per hour
 //!     honor_retry_after: true,
 //! }
 //! ```
@@ -44,13 +45,12 @@ struct TokenBucket {
 }
 
 impl TokenBucket {
-    fn new(max_burst: u32, sustained_per_minute: u32) -> Self {
-        // Ensure we don't divide by zero in try_acquire
-        // If sustained_per_minute is 0, use a very small rate (1 per hour)
-        let safe_rate = if sustained_per_minute == 0 {
+    fn new(max_burst: u32, requests: u32, window_seconds: u32) -> Self {
+        // Convert raw (requests, window) to tokens/second without integer truncation.
+        let safe_rate = if requests == 0 || window_seconds == 0 {
             1.0 / 3600.0 // 1 per hour as minimum
         } else {
-            sustained_per_minute as f64 / 60.0
+            requests as f64 / window_seconds as f64
         };
 
         // max_burst of 0 means no requests allowed - use at least 1
@@ -137,11 +137,12 @@ struct SlidingWindow {
 }
 
 impl SlidingWindow {
-    fn new(sustained_per_minute: u32) -> Self {
+    fn new(requests: u32, window_seconds: u32) -> Self {
+        let window_secs = if window_seconds == 0 { 60 } else { window_seconds };
         Self {
             requests: Vec::new(),
-            window: Duration::from_secs(60),
-            max_requests: sustained_per_minute,
+            window: Duration::from_secs(window_secs as u64),
+            max_requests: requests,
             pause_until: None,
         }
     }
@@ -227,10 +228,10 @@ impl RateLimiter {
     fn new(config: &RateLimitConfig) -> Self {
         match config.algorithm {
             RateLimitAlgorithm::TokenBucket => {
-                RateLimiter::TokenBucket(TokenBucket::new(config.max_burst, config.sustained_per_minute))
+                RateLimiter::TokenBucket(TokenBucket::new(config.max_burst, config.requests, config.window_seconds))
             }
             RateLimitAlgorithm::SlidingWindow => {
-                RateLimiter::SlidingWindow(SlidingWindow::new(config.sustained_per_minute))
+                RateLimiter::SlidingWindow(SlidingWindow::new(config.requests, config.window_seconds))
             }
         }
     }
@@ -393,14 +394,15 @@ mod tests {
             scope_key: "test".to_string(),
             algorithm: RateLimitAlgorithm::TokenBucket,
             max_burst,
-            sustained_per_minute: per_minute,
+            requests: per_minute,
+            window_seconds: 60,
             honor_retry_after: true,
         }
     }
 
     #[test]
     fn token_bucket_allows_burst() {
-        let mut bucket = TokenBucket::new(5, 60);
+        let mut bucket = TokenBucket::new(5, 60, 60); // 60 req/min
 
         // Should allow 5 requests immediately (burst)
         for _ in 0..5 {
@@ -413,7 +415,7 @@ mod tests {
 
     #[test]
     fn token_bucket_refills_over_time() {
-        let mut bucket = TokenBucket::new(2, 120); // 2 tokens/sec
+        let mut bucket = TokenBucket::new(2, 120, 60); // 2 tokens/sec (120/min)
 
         // Use all tokens
         assert!(bucket.try_acquire().is_ok());
@@ -429,7 +431,7 @@ mod tests {
 
     #[test]
     fn sliding_window_limits_requests() {
-        let mut window = SlidingWindow::new(3); // 3 per minute
+        let mut window = SlidingWindow::new(3, 60); // 3 per minute
 
         assert!(window.try_acquire().is_ok());
         assert!(window.try_acquire().is_ok());
@@ -445,7 +447,8 @@ mod tests {
             scope_key: "scope1".to_string(),
             algorithm: RateLimitAlgorithm::TokenBucket,
             max_burst: 2,
-            sustained_per_minute: 60,
+            requests: 60,
+            window_seconds: 60,
             honor_retry_after: false,
         };
 
@@ -453,7 +456,8 @@ mod tests {
             scope_key: "scope2".to_string(),
             algorithm: RateLimitAlgorithm::TokenBucket,
             max_burst: 3,
-            sustained_per_minute: 60,
+            requests: 60,
+            window_seconds: 60,
             honor_retry_after: false,
         };
 
@@ -493,7 +497,8 @@ mod tests {
             scope_key: "test".to_string(),
             algorithm: RateLimitAlgorithm::TokenBucket,
             max_burst: 4,
-            sustained_per_minute: 60,
+            requests: 60,
+            window_seconds: 60,
             honor_retry_after: false,
         };
 
@@ -513,7 +518,8 @@ mod tests {
             scope_key: "test".to_string(),
             algorithm: RateLimitAlgorithm::TokenBucket,
             max_burst: 10,
-            sustained_per_minute: 60,
+            requests: 60,
+            window_seconds: 60,
             honor_retry_after: true,
         };
 

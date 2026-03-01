@@ -7,7 +7,8 @@
 #![allow(clippy::disallowed_methods)]
 
 use gunbc_codegen::testgen::mock_corpus::{build_corpus, WorkflowInfo};
-use gunbc_dag::{dsl_builder::build_dsl_graph_for_entry, mock_defaults::auto_mock_spec};
+use gunbc_dag::dsl_builder::build_dsl_graph_for_entry;
+use gunbc_test::auto_mock_spec;
 use gunbc_test::MockSpec;
 
 // ---------------------------------------------------------------------------

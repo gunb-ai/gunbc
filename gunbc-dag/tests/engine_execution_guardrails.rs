@@ -24,7 +24,7 @@ const ALLOWED_FILES: &[&str] = &[
     "core/codegen/src/testgen/mock_corpus.rs",
     "core/test/src/boundary.rs",
     "gunbc-dag/src/bin/infra.rs",
-    "gunbc-dag/src/mock_defaults.rs",
+    "core/test/src/auto_mock.rs",
 ];
 
 #[test]

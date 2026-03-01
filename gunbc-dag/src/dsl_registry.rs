@@ -146,7 +146,7 @@ fn discover_from_dag_file(dsl_root: &Path, path: &Path) -> Option<Vec<ToolDef>> 
             let subcmd_name = ep.func_name.replace('_', "-");
             let graph_builder_args = format!("\"{}\", Some(\"{}\")", rel_path, ep.func_name);
             let mock_spec = format!(
-                "gunbc_dag::mock_defaults::auto_mock_spec(&dag, \"{}\")",
+                "gunbc_test::auto_mock_spec(&dag, \"{}\")",
                 subcmd_name,
             );
             let entrypoints = func_params
@@ -175,7 +175,7 @@ fn discover_from_dag_file(dsl_root: &Path, path: &Path) -> Option<Vec<ToolDef>> 
             module_entrypoints[0].func_name
         );
         let mock_spec = format!(
-            "gunbc_dag::mock_defaults::auto_mock_spec(&dag, \"{}\")",
+            "gunbc_test::auto_mock_spec(&dag, \"{}\")",
             module_tool_name,
         );
 
@@ -210,7 +210,7 @@ fn discover_from_dag_file(dsl_root: &Path, path: &Path) -> Option<Vec<ToolDef>> 
 
         let description = humanize_tool_name(&tool_name);
         let mock_spec = format!(
-            "gunbc_dag::mock_defaults::auto_mock_spec(&dag, \"{}\")",
+            "gunbc_test::auto_mock_spec(&dag, \"{}\")",
             tool_name,
         );
 
@@ -383,7 +383,7 @@ fn testgen_tool_def() -> ToolDef {
         "",
     )
     .returns_result()
-    .mock_spec_call(r#"gunbc_dag::mock_defaults::auto_mock_spec(&dag, "testgen")"#)
+    .mock_spec_call(r#"gunbc_test::auto_mock_spec(&dag, "testgen")"#)
     .import("use gunbc_dag::testgen_dag::build_testgen_graph_auto;")
     .output("**/generated_tests*.rs")
 }

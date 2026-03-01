@@ -9,8 +9,23 @@
 
 module services.github.pull_request
 
+import extdeps.github.pull_requests {
+  PullRequest, PrState, PrBranchRef, PrMergeStrategy,
+  Review, ReviewState, PrFile, PrFileStatus,
+  CheckStatus, CheckConclusion
+}
+import extdeps.github.core { GitHubUser, Repository }
+import std.errors { GitHubErrorShape }
+
 service github.PullRequest {
-  config { endpoint: "https://api.github.com", auth: BearerToken }
+  config {
+    endpoint: "https://api.github.com"
+    auth: BearerToken
+    // GitHub API rate limits: 5000 requests/hour for authenticated users
+    rate_limit: { requests: 5000, per: hour, scope: core }
+    // Retry on rate limit and server errors with exponential backoff
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503, 504] }
+  }
 
   operation Create {
     input {
@@ -30,6 +45,14 @@ service github.PullRequest {
       head_sha: String from "head.sha"
     }
     transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/pulls" }
+    response {
+      201 => PullRequest
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 
   operation Get {
@@ -50,6 +73,12 @@ service github.PullRequest {
       merged: Bool from "merged"
     }
     transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/pulls/\{number\}" }
+    response {
+      200 => PullRequest
+      301 => GitHubErrorShape
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 
   operation AddComment {
@@ -64,6 +93,14 @@ service github.PullRequest {
       url: String from "html_url"
     }
     transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/issues/\{number\}/comments" }
+    response {
+      201 => Json
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 
   operation Merge {
@@ -81,6 +118,16 @@ service github.PullRequest {
       message: String from "message"
     }
     transport rest { method: PUT, path: "/repos/\{owner\}/\{repo\}/pulls/\{number\}/merge" }
+    response {
+      200 => Json
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      405 => GitHubErrorShape
+      409 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 
   operation ListFiles {
@@ -94,6 +141,12 @@ service github.PullRequest {
       files: Json
     }
     transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/pulls/\{number\}/files" }
+    response {
+      200 => List<PrFile>
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 
   operation RequestReview {
@@ -108,6 +161,13 @@ service github.PullRequest {
       url: String from "html_url"
     }
     transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/pulls/\{number\}/requested_reviewers" }
+    response {
+      201 => PullRequest
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 
   operation ListReviews {
@@ -120,6 +180,11 @@ service github.PullRequest {
       reviews: Json
     }
     transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/pulls/\{number\}/reviews" }
+    response {
+      200 => List<Review>
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 }
 

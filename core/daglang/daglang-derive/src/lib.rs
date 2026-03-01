@@ -58,7 +58,7 @@ pub struct CallableProperties {
 }
 
 /// A discovered prepare→execute→parse transport triplet.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct TransportTriplet {
     pub prepare_node: String,
     pub execute_node: String,
@@ -187,7 +187,10 @@ pub fn derive_transport_triplets(dag: &Dag<LoweredOp>) -> Vec<TransportTriplet> 
         .iter()
         .map(|node| (node.id.0.as_str(), node))
         .collect::<HashMap<_, _>>();
-    let mut unique = BTreeSet::<TransportTriplet>::new();
+    // Use Vec with manual dedup on (prepare, execute, parse) keys.
+    // We avoid BTreeSet since ServiceCallMetadata doesn't implement Ord (TL-12).
+    let mut triplets = Vec::<TransportTriplet>::new();
+    let mut seen_keys = std::collections::HashSet::<(String, String, Vec<String>)>::new();
 
     for edge in &dag.edges {
         let Some(prepare_node) = node_by_id.get(edge.from_node.0.as_str()).copied() else {
@@ -224,15 +227,26 @@ pub fn derive_transport_triplets(dag: &Dag<LoweredOp>) -> Vec<TransportTriplet> 
             gunbc_ir::node::NodeBody::SubDag(_) => None,
         };
 
-        unique.insert(TransportTriplet {
-            prepare_node: edge.from_node.0.clone(),
-            execute_node: edge.to_node.0.clone(),
-            parse_nodes,
-            service_metadata,
-        });
+        let key = (
+            edge.from_node.0.clone(),
+            edge.to_node.0.clone(),
+            parse_nodes.clone(),
+        );
+        if seen_keys.insert(key) {
+            triplets.push(TransportTriplet {
+                prepare_node: edge.from_node.0.clone(),
+                execute_node: edge.to_node.0.clone(),
+                parse_nodes,
+                service_metadata,
+            });
+        }
     }
 
-    unique.into_iter().collect()
+    triplets.sort_by(|a, b| {
+        (&a.prepare_node, &a.execute_node, &a.parse_nodes)
+            .cmp(&(&b.prepare_node, &b.execute_node, &b.parse_nodes))
+    });
+    triplets
 }
 
 fn node_input_port_type<'a>(node: &'a Node<LoweredOp>, port_name: &str) -> Option<&'a str> {
