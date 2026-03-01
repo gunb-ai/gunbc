@@ -1,0 +1,99 @@
+// extdeps/cloud/gcp/core.dag -- "What is GCP?"
+//
+// GCP identity model: projects, service accounts, OAuth2 scopes,
+// Workload Identity Federation, API endpoint patterns, regions.
+//
+// Complements extdeps/api/gcp_ops.dag (which covers retries,
+// propagation delays, and operational constraints).
+//
+// Consumers:
+//   extdeps/cloud/gcp/{storage,pubsub,iam,secret_manager,cloud_run,sts}.dag
+//   services/gcp/*        — transport wiring
+//   cloud/gcp/credential.dag — credential chain
+
+module extdeps.cloud.gcp.core
+
+import extdeps.cloud.core { ServiceEndpoint, CloudAuthScheme }
+
+// ── Projects ──────────────────────────────────────────────────────
+
+type GcpProject {
+  project_id: String
+  project_number: Int
+  name: String
+}
+
+// ── Service accounts ──────────────────────────────────────────────
+
+type GcpServiceAccount {
+  email: String
+  unique_id: String
+  display_name: String?
+  disabled: Bool
+}
+
+// ── OAuth2 scopes ─────────────────────────────────────────────────
+
+type OAuth2Scope {
+  scope: String
+  description: String
+}
+
+data common_scopes: List<OAuth2Scope> = [
+  { scope: "https://www.googleapis.com/auth/cloud-platform", description: "Full access to all GCP resources" },
+  { scope: "https://www.googleapis.com/auth/devstorage.read_write", description: "Read/write access to GCS" },
+  { scope: "https://www.googleapis.com/auth/iam", description: "IAM management" },
+  { scope: "https://www.googleapis.com/auth/pubsub", description: "Pub/Sub access" },
+  { scope: "https://www.googleapis.com/auth/secretmanager", description: "Secret Manager access" }
+]
+
+// ── Workload Identity Federation ──────────────────────────────────
+
+type WifPool {
+  name: String
+  project: String
+  display_name: String?
+  disabled: Bool
+}
+
+type WifProvider {
+  name: String
+  pool: String
+  issuer_uri: String
+  attribute_mapping: Map<String, String>?
+}
+
+// ── API endpoints ─────────────────────────────────────────────────
+// Pattern: {service}.googleapis.com/{version}
+
+type GcpApiEndpoint {
+  service: String
+  base_url: String
+  version: String
+}
+
+data api_endpoints: List<GcpApiEndpoint> = [
+  { service: "storage", base_url: "https://storage.googleapis.com/storage/v1", version: "v1" },
+  { service: "iam", base_url: "https://iam.googleapis.com/v1", version: "v1" },
+  { service: "secretmanager", base_url: "https://secretmanager.googleapis.com/v1", version: "v1" },
+  { service: "run", base_url: "https://run.googleapis.com/v2", version: "v2" },
+  { service: "pubsub", base_url: "https://pubsub.googleapis.com/v1", version: "v1" },
+  { service: "sts", base_url: "https://sts.googleapis.com/v1", version: "v1" }
+]
+
+// ── Regions ───────────────────────────────────────────────────────
+
+type GcpRegion {
+  name: String
+  zones: List<String>
+  multi_region: Bool
+}
+
+data regions: List<GcpRegion> = [
+  { name: "us-central1", zones: ["us-central1-a", "us-central1-b", "us-central1-c", "us-central1-f"], multi_region: false },
+  { name: "us-east1", zones: ["us-east1-b", "us-east1-c", "us-east1-d"], multi_region: false },
+  { name: "us-east4", zones: ["us-east4-a", "us-east4-b", "us-east4-c"], multi_region: false },
+  { name: "europe-west1", zones: ["europe-west1-b", "europe-west1-c", "europe-west1-d"], multi_region: false },
+  { name: "us", zones: [], multi_region: true },
+  { name: "eu", zones: [], multi_region: true }
+]

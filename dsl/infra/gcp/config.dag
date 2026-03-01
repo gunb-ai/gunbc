@@ -5,8 +5,7 @@
 
 module infra.gcp.config
 
-import infra.core { CloudConfig, InfraEnvironment }
-import infra.spec { Environment }
+import infra.core { CloudConfig, InfraEnvironment, Environment }
 
 // --- GCP-specific spec types ---------------------------------------------
 

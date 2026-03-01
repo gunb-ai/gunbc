@@ -17,8 +17,8 @@
 
 module examples.deployment
 
-import infra.core { ObjectStorage, Compute, SecretStore, Identity, Queue, CloudConfig, InfraEnvironment }
-import infra.spec { Environment, ReconcileResult }
+import infra.core { ObjectStorage, Compute, SecretStore, Identity, Queue, CloudConfig, InfraEnvironment, Environment }
+import infra.spec { ReconcileResult }
 
 // --- Provider resources ---
 import infra.gcp.resources { GcsBucket, CloudRunService, ManagedSecret, GcpServiceAccount, WifProvider, PubSubTopic }

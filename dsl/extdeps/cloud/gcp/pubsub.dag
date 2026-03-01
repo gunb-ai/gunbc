@@ -1,0 +1,130 @@
+// extdeps/cloud/gcp/pubsub.dag -- "What is Google Cloud Pub/Sub?"
+//
+// Pub/Sub resource model: topics, subscriptions, messages,
+// delivery guarantees, dead letter policies.
+//
+// Consumers:
+//   services/sdlc/providers/pubsub_signal_store.dag — signal queue
+//   infra/gcp/resources.dag                         — queue resource
+
+module extdeps.cloud.gcp.pubsub
+
+import extdeps.cloud.gcp.core { GcpProject }
+import std.behavioral {
+  OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+}
+
+// ── Topics ────────────────────────────────────────────────────────
+
+type PubsubTopic {
+  name: String
+  project: String
+  schema: String?
+  message_retention_seconds: Int?
+}
+
+// ── Subscriptions ─────────────────────────────────────────────────
+
+type DeadLetterPolicy {
+  dead_letter_topic: String
+  max_delivery_attempts: Int
+}
+
+type PushAuthMethod = OidcPushAuth { service_account: String, audience: String? }
+
+type PushConfig {
+  endpoint: String
+  auth_method: PushAuthMethod?
+}
+
+type PubsubSubscription {
+  name: String
+  topic: String
+  ack_deadline_seconds: Int
+  message_retention_seconds: Int
+  ordering: Bool
+  dead_letter: DeadLetterPolicy?
+  filter: String?
+}
+
+// ── Messages ──────────────────────────────────────────────────────
+
+type PubsubMessage {
+  data: Bytes
+  attributes: Map<String, String>?
+  message_id: String
+  publish_time: String
+  ordering_key: String?
+}
+
+// ── Delivery ──────────────────────────────────────────────────────
+
+type DeliveryGuarantee = AtLeastOnce
+
+// ── Constants ─────────────────────────────────────────────────────
+
+data default_ack_deadline: Int = 10
+
+data max_ack_deadline: Int = 600
+
+data max_message_size_bytes: Int = 10485760
+
+// ── Operation behaviors ───────────────────────────────────────────
+
+type PubsubOperationBehavior {
+  operation: String
+  behavior: OperationBehavior
+}
+
+data operation_behaviors: List<PubsubOperationBehavior> = [
+  {
+    operation: "publish",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: Deterministic,
+      failure_modes: [
+        { name: "TopicNotFound", condition: "topic_absent", http_status: 404, recoverable: false, retry_safe: false },
+        { name: "MessageTooLarge", condition: "exceeds_10mb", http_status: 400, recoverable: false, retry_safe: false }
+      ],
+      edge_cases: [{ description: "ordering key enforces per-key ordering but adds latency", trigger: "ordering_key_set", severity: Medium }],
+      confidence: Documented,
+      prerequisites: [{ description: "pubsub.topics.publish permission", kind: Capability }],
+      assumptions: ["Messages are delivered at least once"],
+      unknowns: ["Exact deduplication window for message_id"]
+    }
+  },
+  {
+    operation: "pull",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: NonDeterministic,
+      failure_modes: [
+        { name: "SubscriptionNotFound", condition: "subscription_absent", http_status: 404, recoverable: false, retry_safe: false }
+      ],
+      edge_cases: [{ description: "unacked messages are redelivered after ack deadline", trigger: "ack_timeout", severity: High }],
+      confidence: Documented,
+      prerequisites: [{ description: "pubsub.subscriptions.consume permission", kind: Capability }],
+      assumptions: [],
+      unknowns: []
+    }
+  },
+  {
+    operation: "acknowledge",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["ack_id"],
+      determinism: Deterministic,
+      failure_modes: [{ name: "InvalidAckId", condition: "expired_or_invalid_ack", http_status: 400, recoverable: false, retry_safe: false }],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "pubsub.subscriptions.consume permission", kind: Capability }],
+      assumptions: [],
+      unknowns: []
+    }
+  }
+]

@@ -1,0 +1,173 @@
+// extdeps/git.dag -- "What is Git?"
+//
+// Core Git object model: commits, branches, refs, diffs, merge strategies.
+// Facts about Git's data model, not how we invoke it (that's services/git.dag).
+//
+// Consumers:
+//   services/git.dag               — shell transport wiring
+//   extdeps/github/pull_requests.dag — PR branch refs
+//   tools/build.dag                — branch detection
+
+module extdeps.git
+
+import std.behavioral {
+  OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+}
+
+// ── Object model ──────────────────────────────────────────────────
+
+type ObjectType = BlobObj | TreeObj | CommitObj | TagObj
+
+type GitAuthor {
+  name: String
+  email: String
+  timestamp: String
+}
+
+type GitCommit {
+  sha: String
+  message: String
+  author: GitAuthor
+  parent_shas: List<String>
+}
+
+// ── Refs ──────────────────────────────────────────────────────────
+
+type GitRef
+  = BranchRef { name: String }
+  | TagRef { name: String }
+  | CommitRef { sha: String }
+
+type GitBranch {
+  name: String
+  upstream: String?
+  is_head: Bool
+}
+
+type GitRemote {
+  name: String
+  url: String
+  fetch_refspec: String
+}
+
+// ── Merge strategies ──────────────────────────────────────────────
+
+type GitMergeStrategy = GitMerge | GitSquash | GitRebase | GitFastForward
+
+// ── Diff model ────────────────────────────────────────────────────
+
+type DiffStat {
+  files_changed: Int
+  insertions: Int
+  deletions: Int
+}
+
+type DiffLine
+  = DiffAdded { content: String }
+  | DiffRemoved { content: String }
+  | DiffContext { content: String }
+
+type DiffHunk {
+  file_path: String
+  old_start: Int
+  new_start: Int
+  lines: List<DiffLine>
+}
+
+// ── Working tree status ───────────────────────────────────────────
+
+type GitFileStatus = GitClean | GitModified | GitAdded | GitDeleted | GitRenamed | GitUntracked
+
+// ── Constants ─────────────────────────────────────────────────────
+
+data default_remote: String = "origin"
+
+data default_branch_names: List<String> = ["main", "master"]
+
+// ── Operation behaviors ───────────────────────────────────────────
+
+type GitOperationBehavior {
+  operation: String
+  behavior: OperationBehavior
+}
+
+data operation_behaviors: List<GitOperationBehavior> = [
+  {
+    operation: "clone",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: Deterministic,
+      failure_modes: [{ name: "AlreadyExists", condition: "target_dir_exists", http_status: null, recoverable: false, retry_safe: false }],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "network access to remote", kind: Infrastructure }],
+      assumptions: [],
+      unknowns: []
+    }
+  },
+  {
+    operation: "fetch",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["remote"],
+      determinism: Deterministic,
+      failure_modes: [{ name: "RemoteUnreachable", condition: "network_failure", http_status: null, recoverable: true, retry_safe: true }],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "network access to remote", kind: Infrastructure }],
+      assumptions: ["Remote ref state is consistent during fetch"],
+      unknowns: []
+    }
+  },
+  {
+    operation: "push",
+    behavior: {
+      side_effects: WritesExternal,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: Deterministic,
+      failure_modes: [
+        { name: "NonFastForward", condition: "remote_has_diverged", http_status: null, recoverable: true, retry_safe: false },
+        { name: "PermissionDenied", condition: "insufficient_access", http_status: null, recoverable: false, retry_safe: false }
+      ],
+      edge_cases: [{ description: "force-push overwrites remote history", trigger: "force_flag", severity: High }],
+      confidence: Documented,
+      prerequisites: [{ description: "write access to remote", kind: Capability }],
+      assumptions: [],
+      unknowns: []
+    }
+  },
+  {
+    operation: "commit",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: Deterministic,
+      failure_modes: [{ name: "NothingToCommit", condition: "empty_staging_area", http_status: null, recoverable: false, retry_safe: false }],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "staged changes exist", kind: Runtime }],
+      assumptions: [],
+      unknowns: []
+    }
+  },
+  {
+    operation: "status",
+    behavior: {
+      side_effects: ReadOnly,
+      idempotent: true,
+      idempotency_keys: null,
+      determinism: Deterministic,
+      failure_modes: [],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "valid git repository", kind: Runtime }],
+      assumptions: [],
+      unknowns: []
+    }
+  }
+]

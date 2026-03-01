@@ -2,8 +2,7 @@
 
 module infra.azure.config
 
-import infra.core { CloudConfig, InfraEnvironment }
-import infra.spec { Environment }
+import infra.core { CloudConfig, InfraEnvironment, Environment }
 
 fn azure_dev_config() -> InfraEnvironment {
   {

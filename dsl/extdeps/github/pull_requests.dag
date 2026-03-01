@@ -1,0 +1,180 @@
+// extdeps/github/pull_requests.dag -- "What is a GitHub Pull Request?"
+//
+// PR resource model: states, reviews, checks, merge strategies,
+// branch protection, file changes. State machine: draft → open →
+// review → merged/closed.
+//
+// Consumers:
+//   services/github/pull_request.dag — transport wiring
+//   funcs/sdlc_stages.dag           — code review stage
+
+module extdeps.github.pull_requests
+
+import extdeps.github.core { Repository }
+import std.behavioral {
+  OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+}
+
+// ── PR model ──────────────────────────────────────────────────────
+
+type PrState = PrOpen | PrClosed | PrMerged
+
+type PrBranchRef {
+  ref: String
+  sha: String
+  repo: String
+}
+
+type PullRequest {
+  id: Int
+  number: Int
+  title: String
+  body: String?
+  state: PrState
+  head: PrBranchRef
+  base: PrBranchRef
+  user: String
+  draft: Bool
+  mergeable: Bool?
+  merged: Bool
+  created_at: String
+}
+
+// ── Reviews ───────────────────────────────────────────────────────
+
+type ReviewState = Approved | ChangesRequested | ReviewCommented | Dismissed | Pending
+
+type Review {
+  id: Int
+  user: String
+  state: ReviewState
+  body: String?
+  submitted_at: String
+}
+
+// ── Checks ────────────────────────────────────────────────────────
+
+type CheckStatus = CheckQueued | CheckInProgress | CheckCompleted
+
+type CheckConclusion
+  = CheckSuccess
+  | CheckFailure
+  | Neutral
+  | Cancelled
+  | Skipped
+  | TimedOut
+  | ActionRequired
+
+// ── Merge ─────────────────────────────────────────────────────────
+
+type PrMergeStrategy = PrMerge | PrSquash | PrRebase
+
+// ── Branch protection ─────────────────────────────────────────────
+
+type BranchProtection {
+  required_reviews: Int
+  dismiss_stale: Bool
+  require_status_checks: Bool
+  enforce_admins: Bool
+}
+
+// ── File changes ──────────────────────────────────────────────────
+
+type PrFileStatus = FileAdded | FileRemoved | FileModified | FileRenamed
+
+type PrFile {
+  filename: String
+  status: PrFileStatus
+  additions: Int
+  deletions: Int
+}
+
+// ── State machine ─────────────────────────────────────────────────
+
+type PrStateTransition {
+  from: PrState
+  to: PrState
+  action: String
+  terminal: Bool
+}
+
+data pr_state_machine: List<PrStateTransition> = [
+  { from: PrOpen, to: PrClosed, action: "close", terminal: false },
+  { from: PrOpen, to: PrMerged, action: "merge", terminal: true },
+  { from: PrClosed, to: PrOpen, action: "reopen", terminal: false }
+]
+
+// ── Operation behaviors ───────────────────────────────────────────
+
+type PrOperationBehavior {
+  operation: String
+  behavior: OperationBehavior
+}
+
+data operation_behaviors: List<PrOperationBehavior> = [
+  {
+    operation: "create",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: Deterministic,
+      failure_modes: [
+        { name: "ValidationError", condition: "invalid_head_or_base", http_status: 422, recoverable: false, retry_safe: false }
+      ],
+      edge_cases: [{ description: "creating a PR from a fork requires cross-repo permissions", trigger: "fork_pr", severity: Medium }],
+      confidence: Documented,
+      prerequisites: [{ description: "repo write access", kind: Capability }],
+      assumptions: [],
+      unknowns: []
+    }
+  },
+  {
+    operation: "get",
+    behavior: {
+      side_effects: ReadOnly,
+      idempotent: true,
+      idempotency_keys: null,
+      determinism: Deterministic,
+      failure_modes: [{ name: "NotFound", condition: "pr_absent", http_status: 404, recoverable: false, retry_safe: false }],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "repo read access", kind: Capability }],
+      assumptions: [],
+      unknowns: []
+    }
+  },
+  {
+    operation: "merge",
+    behavior: {
+      side_effects: WritesExternal,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: Deterministic,
+      failure_modes: [
+        { name: "NotMergeable", condition: "merge_conflicts", http_status: 405, recoverable: false, retry_safe: false },
+        { name: "ChecksFailing", condition: "required_checks_not_passing", http_status: 405, recoverable: true, retry_safe: true }
+      ],
+      edge_cases: [{ description: "squash merge rewrites commit history", trigger: "squash_strategy", severity: Medium }],
+      confidence: Documented,
+      prerequisites: [{ description: "repo write access and passing checks", kind: Capability }],
+      assumptions: [],
+      unknowns: []
+    }
+  },
+  {
+    operation: "list_files",
+    behavior: {
+      side_effects: ReadOnly,
+      idempotent: true,
+      idempotency_keys: null,
+      determinism: Deterministic,
+      failure_modes: [{ name: "NotFound", condition: "pr_absent", http_status: 404, recoverable: false, retry_safe: false }],
+      edge_cases: [{ description: "large PRs (>3000 files) are truncated", trigger: "large_diff", severity: Medium }],
+      confidence: Documented,
+      prerequisites: [{ description: "repo read access", kind: Capability }],
+      assumptions: [],
+      unknowns: []
+    }
+  }
+]
