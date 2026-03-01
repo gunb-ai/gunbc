@@ -109,7 +109,7 @@ fn infer_provider_from_node_id(node_id: &str) -> MockProvider {
 /// provider-specific response shapes instead of the kitchen sink blob.
 fn rest_response_for_provider(provider: MockProvider) -> Value {
     let spec = MockResponseSynthesis::success(provider);
-    let response = gunbc_test::synthesize_rest_response(&spec);
+    let response = crate::synthesize_rest_response(&spec);
     Value::Response(TransportResponse::Rest(response))
 }
 
