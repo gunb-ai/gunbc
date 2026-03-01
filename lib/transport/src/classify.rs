@@ -134,34 +134,96 @@ fn classify_status(
     ClassifiedErrorKind::Unknown
 }
 
-fn provider_error_message(provider: ResponseProvider, body: &JsonValue) -> Option<String> {
-    match provider {
-        ResponseProvider::GitHub => body
-            .get("message")
-            .and_then(JsonValue::as_str)
-            .map(|s| s.to_string()),
-        ResponseProvider::Gcp => body
-            .get("error")
-            .and_then(|v| v.get("message").or_else(|| v.get("status")))
-            .and_then(JsonValue::as_str)
-            .map(|s| s.to_string()),
-        ResponseProvider::Anthropic => body
-            .get("error")
-            .and_then(|v| v.get("message"))
-            .and_then(JsonValue::as_str)
-            .map(|s| s.to_string())
-            .or_else(|| {
-                body.get("type")
-                    .and_then(JsonValue::as_str)
-                    .map(|s| s.to_string())
-            }),
-        ResponseProvider::OpenAi => body
-            .get("error")
-            .and_then(|v| v.get("message"))
-            .and_then(JsonValue::as_str)
-            .map(|s| s.to_string()),
-        ResponseProvider::Generic => None,
+/// Provider-specific error details parsed from response body.
+#[derive(Debug, Clone, Default)]
+pub struct ProviderDiagnostics {
+    /// Primary error message.
+    pub message: Option<String>,
+    /// Error type/code (provider-specific).
+    pub error_type: Option<String>,
+    /// HTTP status string (GCP).
+    pub status: Option<String>,
+    /// Documentation URL (GitHub).
+    pub documentation_url: Option<String>,
+    /// Numeric error code (GCP, OpenAI).
+    pub code: Option<i64>,
+}
+
+impl ProviderDiagnostics {
+    /// Combine fields into a human-readable message.
+    pub fn to_message(&self) -> Option<String> {
+        if let Some(msg) = &self.message {
+            let mut result = msg.clone();
+            if let Some(doc) = &self.documentation_url {
+                result.push_str(" (see: ");
+                result.push_str(doc);
+                result.push(')');
+            }
+            Some(result)
+        } else {
+            self.error_type.clone()
+        }
     }
+}
+
+/// Parse provider-specific error shape from response body.
+pub fn parse_provider_error(provider: ResponseProvider, body: &JsonValue) -> ProviderDiagnostics {
+    match provider {
+        ResponseProvider::GitHub => parse_github_error(body),
+        ResponseProvider::Gcp => parse_gcp_error(body),
+        ResponseProvider::Anthropic => parse_anthropic_error(body),
+        ResponseProvider::OpenAi => parse_openai_error(body),
+        ResponseProvider::Generic => ProviderDiagnostics::default(),
+    }
+}
+
+/// GitHub error shape: `{ message, documentation_url }`
+fn parse_github_error(body: &JsonValue) -> ProviderDiagnostics {
+    ProviderDiagnostics {
+        message: body.get("message").and_then(JsonValue::as_str).map(String::from),
+        documentation_url: body.get("documentation_url").and_then(JsonValue::as_str).map(String::from),
+        ..Default::default()
+    }
+}
+
+/// GCP error shape: `{ error: { code, message, status } }`
+fn parse_gcp_error(body: &JsonValue) -> ProviderDiagnostics {
+    let error = body.get("error");
+    ProviderDiagnostics {
+        message: error.and_then(|e| e.get("message")).and_then(JsonValue::as_str).map(String::from),
+        status: error.and_then(|e| e.get("status")).and_then(JsonValue::as_str).map(String::from),
+        code: error.and_then(|e| e.get("code")).and_then(JsonValue::as_i64),
+        ..Default::default()
+    }
+}
+
+/// Anthropic error shape: `{ type, error: { type, message } }`
+fn parse_anthropic_error(body: &JsonValue) -> ProviderDiagnostics {
+    let error = body.get("error");
+    ProviderDiagnostics {
+        message: error.and_then(|e| e.get("message")).and_then(JsonValue::as_str).map(String::from),
+        error_type: error
+            .and_then(|e| e.get("type"))
+            .and_then(JsonValue::as_str)
+            .map(String::from)
+            .or_else(|| body.get("type").and_then(JsonValue::as_str).map(String::from)),
+        ..Default::default()
+    }
+}
+
+/// OpenAI error shape: `{ error: { message, type, code } }`
+fn parse_openai_error(body: &JsonValue) -> ProviderDiagnostics {
+    let error = body.get("error");
+    ProviderDiagnostics {
+        message: error.and_then(|e| e.get("message")).and_then(JsonValue::as_str).map(String::from),
+        error_type: error.and_then(|e| e.get("type")).and_then(JsonValue::as_str).map(String::from),
+        code: error.and_then(|e| e.get("code")).and_then(JsonValue::as_i64),
+        ..Default::default()
+    }
+}
+
+fn provider_error_message(provider: ResponseProvider, body: &JsonValue) -> Option<String> {
+    parse_provider_error(provider, body).to_message()
 }
 
 fn message_has_auth_indicator(message: Option<&str>) -> bool {
@@ -266,14 +328,14 @@ pub fn extract_status_code(response: &TransportResponse) -> Option<u16> {
     }
 }
 
-/// Check if a response indicates success (2xx for HTTP, or non-HTTP transport).
+/// Check if a response indicates success (2xx for HTTP, success field for others).
 pub fn is_success(response: &TransportResponse) -> bool {
     match response {
         TransportResponse::Rest(r) => r.is_success(),
         TransportResponse::Http(r) => r.is_success(),
-        TransportResponse::File(_) => true, // File ops that succeed don't error
+        TransportResponse::File(r) => r.success,
         TransportResponse::Shell(r) => r.success(),
-        TransportResponse::Tcp(_) => true,  // TCP connections that succeed don't error
+        TransportResponse::Tcp(_) => true, // TCP connections that succeed don't error
         TransportResponse::Local(_) => true,
     }
 }

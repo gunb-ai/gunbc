@@ -97,14 +97,17 @@ impl TransportPipelineBuilder {
         // Metrics is always added (outermost)
         // Will be added in build() with the configured sink
 
-        // Rate limit if configured
-        if let Some(rate_config) = &config.rate_limit {
-            builder = builder.layer(Arc::new(RateLimitMiddleware::new(rate_config.clone())));
-        }
-
-        // Retry if configured
+        // Retry is outer to rate_limit so that rate_limit sees 429 responses first,
+        // updates its pause_until state from Retry-After headers, then passes
+        // the response to retry middleware for the actual retry decision.
         if let Some(retry_config) = &config.retry {
             builder = builder.layer(Arc::new(RetryMiddleware::new(retry_config.clone())));
+        }
+
+        // Rate limit is inner - it sees responses before retry and can extract
+        // Retry-After headers to update its internal state
+        if let Some(rate_config) = &config.rate_limit {
+            builder = builder.layer(Arc::new(RateLimitMiddleware::new(rate_config.clone())));
         }
 
         builder
@@ -279,10 +282,13 @@ impl TransportPipeline {
             Err(error) => {
                 // Error processing (inner to outer)
                 let mut outcome = PostProcessOutcome::Abort(error);
-                for layer in self.layers.iter().rev() {
+                for (idx, layer) in self.layers.iter().enumerate().rev() {
                     if let PostProcessOutcome::Abort(e) = outcome {
                         outcome = layer.on_error(&request, e, ctx);
                     } else {
+                        // Inner layer transformed error to Retry/Complete
+                        // Clean up remaining outer layers (indices 0..=idx)
+                        self.cleanup_layers(idx + 1, &request, ctx);
                         break;
                     }
                 }
@@ -533,6 +539,8 @@ mod tests {
             .build();
 
         let names = pipeline.layer_names();
-        assert_eq!(names, vec!["metrics", "rate_limit", "retry"]);
+        // Order: metrics (outermost) → retry → rate_limit (innermost)
+        // Rate limit is inner to see 429 responses before retry consumes them
+        assert_eq!(names, vec!["metrics", "retry", "rate_limit"]);
     }
 }

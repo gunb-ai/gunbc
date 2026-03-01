@@ -299,8 +299,14 @@ impl TransportMiddleware for MetricsMiddleware {
         error: gunbc_exec::ExecError,
         ctx: &mut MiddlewareContext,
     ) -> PostProcessOutcome {
-        // Clean up timing
+        // Clean up timing state
         self.timings.lock().unwrap().remove(&ctx.request_id);
+
+        // Don't record synthetic cleanup errors as real failures
+        let error_msg = error.to_string();
+        if error_msg.contains("pipeline cleanup") {
+            return PostProcessOutcome::Abort(error);
+        }
 
         // Record as network error (most execution errors are network-level)
         self.sink

@@ -396,13 +396,20 @@ impl TransportMiddleware for RetryMiddleware {
         error: ExecError,
         ctx: &mut MiddlewareContext,
     ) -> PostProcessOutcome {
+        // Don't process synthetic pipeline cleanup errors - just pass through
+        // without affecting circuit breaker state or attempting retry
+        let error_msg = error.to_string();
+        if error_msg.contains("pipeline cleanup") {
+            return PostProcessOutcome::Abort(error);
+        }
+
         // Record failure for circuit breaker
         if let Some(cb) = &self.circuit_breaker {
             cb.record_failure();
         }
 
         // Classify the error
-        let classified = classify_transport_error(&error.to_string());
+        let classified = classify_transport_error(&error_msg);
         let is_retryable = classified.retryable();
 
         // Check if we should retry
