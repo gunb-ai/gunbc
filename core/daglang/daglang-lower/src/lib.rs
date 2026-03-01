@@ -8617,11 +8617,18 @@ fn wire_callable_return_outputs(
             item_name,
             &format!("return_{index}"),
         ) else {
-            // RT4c: Return output can't be wired (unsupported expression kind).
-            // Optional outputs (T?) are expected to be missing sometimes;
-            // required outputs that can't be wired indicate a lowering gap.
-            // TODO(RT4c): collect these as structured LowerWarnings in the
-            // lowerer return type instead of silently continuing.
+            // RT4c: Return output can't be wired.
+            //
+            // synthesize_expr_compute() handles BinOp, UnaryOp, If, Match,
+            // Pipe etc. — it returns None only when the expression references
+            // local variables (has_local_refs) that can't be resolved as
+            // compute node inputs. These are known gaps (e.g. fn bodies with
+            // `let` bindings flowing into return expressions).
+            //
+            // Diagnostic suppressed for now: many stdlib fns (patterns,
+            // filesystem) have this shape intentionally. A structured
+            // LowerWarning collection (RT4c future) would allow distinguishing
+            // real gaps from expected local-ref patterns.
             continue;
         };
         if source_node == target.node_id {
