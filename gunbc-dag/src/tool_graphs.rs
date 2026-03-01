@@ -41,7 +41,7 @@ pub fn build_signature() -> Result<WorkflowSignature, BuilderError> {
     builder = "crate::build_build_graph().unwrap()"
 )]
 pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
-    crate::dsl_builder::build_dsl_graph_for_entrypoint("tools/build.dag", Some("build"))
+    crate::dsl_builder::build_dsl_graph_for_entrypoint("tools/build.dag", Some("build_all"))
 }
 
 /// Get the declared signature for the codegen workflow.
