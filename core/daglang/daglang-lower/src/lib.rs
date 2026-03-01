@@ -8484,10 +8484,12 @@ fn remap_expr_idents(expr: &Expr) -> expr::LoweredExpr {
         Expr::Literal(lit) => {
             let lowered = match lit {
                 daglang_syntax::ast::Literal::Int(n) => expr::LoweredLiteral::Int(*n),
+                daglang_syntax::ast::Literal::Float(_) => {
+                    expr::LoweredLiteral::String(format!("{}", expr::lit_float_value(lit)))
+                }
                 daglang_syntax::ast::Literal::Bool(b) => expr::LoweredLiteral::Bool(*b),
                 daglang_syntax::ast::Literal::String(s) => expr::LoweredLiteral::String(s.clone()),
                 daglang_syntax::ast::Literal::None => expr::LoweredLiteral::None,
-                _ => expr::LoweredLiteral::None,
             };
             expr::LoweredExpr::Literal(lowered)
         }
@@ -8515,10 +8517,105 @@ fn remap_expr_idents(expr: &Expr) -> expr::LoweredExpr {
                     .collect(),
             }),
         },
-        _ => expr::LoweredExpr::Literal(expr::LoweredLiteral::None),
+        Expr::Call(name, args) => expr::LoweredExpr::Call {
+            name: name.clone(),
+            args: args
+                .iter()
+                .map(|(k, v)| (k.clone(), remap_expr_idents(v)))
+                .collect(),
+        },
+        Expr::ServiceCall(path, args) => expr::LoweredExpr::Call {
+            name: path.join("."),
+            args: args
+                .iter()
+                .map(|(k, v)| (k.clone(), remap_expr_idents(v)))
+                .collect(),
+        },
+        Expr::Record(type_name, fields) => expr::LoweredExpr::Record {
+            type_name: type_name.clone(),
+            fields: fields
+                .iter()
+                .map(|(k, v)| (k.clone(), remap_expr_idents(v)))
+                .collect(),
+        },
+        Expr::Match(scrutinee, arms) => expr::LoweredExpr::Match {
+            expr: Box::new(remap_expr_idents(scrutinee)),
+            arms: arms
+                .iter()
+                .map(|arm| expr::LoweredMatchArm {
+                    pattern: remap_pattern(&arm.pattern),
+                    guard: arm.guard.as_ref().map(|g| remap_expr_idents(g)),
+                    body: remap_expr_idents(&arm.body),
+                })
+                .collect(),
+        },
+        Expr::Pipe(receiver, call) => expr::LoweredExpr::Pipe {
+            receiver: Box::new(remap_expr_idents(receiver)),
+            call: Box::new(remap_expr_idents(call)),
+        },
+        Expr::Lambda(params, body) => expr::LoweredExpr::Lambda {
+            params: params.clone(),
+            body: Box::new(remap_expr_idents(body)),
+        },
+        Expr::List(items) => {
+            expr::LoweredExpr::List(items.iter().map(remap_expr_idents).collect())
+        }
+        Expr::Map(entries) => expr::LoweredExpr::Record {
+            type_name: None,
+            fields: entries
+                .iter()
+                .filter_map(|(k, v)| {
+                    if let Expr::Literal(daglang_syntax::ast::Literal::String(key)) = k {
+                        Some((key.clone(), remap_expr_idents(v)))
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
+        },
+        Expr::Guarded(inner, _guard) => remap_expr_idents(inner),
+        Expr::After(inner, _deps) => remap_expr_idents(inner),
+        Expr::For(binding, iterable, _passthrough, body) => expr::LoweredExpr::For {
+            binding: binding.clone(),
+            iterable: Box::new(remap_expr_idents(iterable)),
+            body: Box::new(remap_expr_idents(body)),
+        },
+        Expr::Return(fields) => expr::LoweredExpr::Return(
+            fields
+                .iter()
+                .map(|(k, v)| (k.clone(), remap_expr_idents(v)))
+                .collect(),
+        ),
     }
 }
 
+fn remap_pattern(pattern: &daglang_syntax::ast::Pattern) -> expr::LoweredPattern {
+    match pattern {
+        daglang_syntax::ast::Pattern::Ident(name) => expr::LoweredPattern::Ident(name.clone()),
+        daglang_syntax::ast::Pattern::Variant(name, fields) => expr::LoweredPattern::Variant(
+            name.clone(),
+            fields
+                .iter()
+                .map(|(k, v)| (k.clone(), remap_pattern(v)))
+                .collect(),
+        ),
+        daglang_syntax::ast::Pattern::Wildcard => expr::LoweredPattern::Wildcard,
+        daglang_syntax::ast::Pattern::Literal(lit) => {
+            let lowered = match lit {
+                daglang_syntax::ast::Literal::Int(n) => expr::LoweredLiteral::Int(*n),
+                daglang_syntax::ast::Literal::Float(_) => {
+                    expr::LoweredLiteral::String(format!("{}", expr::lit_float_value(lit)))
+                }
+                daglang_syntax::ast::Literal::Bool(b) => expr::LoweredLiteral::Bool(*b),
+                daglang_syntax::ast::Literal::String(s) => {
+                    expr::LoweredLiteral::String(s.clone())
+                }
+                daglang_syntax::ast::Literal::None => expr::LoweredLiteral::None,
+            };
+            expr::LoweredPattern::Literal(lowered)
+        }
+    }
+}
 
 /// Synthesize a compute node for a complex return expression.
 /// Creates a node that evaluates the expression using `evaluate_fn_body` at runtime.
