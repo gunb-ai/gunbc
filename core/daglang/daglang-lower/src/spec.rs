@@ -4,11 +4,12 @@
 //! from `.dag` service declarations. Each spec variant parameterizes a generic
 //! protocol interpreter (REST, Shell, File, Local).
 
+use gunbc_ir::transport::middleware::TransportMiddlewareConfig;
 use serde::Serialize;
 
 /// Complete specification for a service operation, extracted from `.dag` declarations.
 /// Each variant parameterizes a generic protocol interpreter (REST, Shell, File).
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum ServiceOperationSpec {
     Rest(RestOperationSpec),
     Shell(ShellOperationSpec),
@@ -73,7 +74,10 @@ pub struct LocalOperationSpec {
 }
 
 /// REST protocol specification: endpoint + method + path + body + response.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+///
+/// Note: `PartialOrd`/`Ord` are derived only for fields that support it.
+/// The `middleware` field is excluded from ordering comparisons.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RestOperationSpec {
     /// Base URL from `config { endpoint: "https://..." }` on the service.
     pub endpoint: String,
@@ -101,6 +105,10 @@ pub struct RestOperationSpec {
     /// `config { auth_input: field_name }` in the DSL.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth_input: Option<String>,
+    /// Transport middleware configuration (rate limit, retry, credential, response).
+    /// Populated from `rate_limit {}`, `retry {}`, etc. blocks in the service config.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub middleware: Option<TransportMiddlewareConfig>,
 }
 
 /// Shell protocol specification: argv template + output parsing.
