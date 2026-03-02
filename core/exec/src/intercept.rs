@@ -217,7 +217,6 @@ impl BoundaryMocks {
     pub fn iter_inputs(&self) -> impl Iterator<Item = (&(String, String), &Value)> {
         self.input_mocks.iter()
     }
-
 }
 
 #[cfg(test)]
@@ -330,5 +329,4 @@ mod tests {
         assert_eq!(mock.next_value(), Value::Str("first".into()));
         assert_eq!(mock.next_value(), Value::Str("second".into()));
     }
-
 }

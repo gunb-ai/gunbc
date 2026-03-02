@@ -29,8 +29,8 @@ pub mod fs_env;
 
 pub mod makegen;
 pub mod pragma;
-pub mod resource_defs;
 pub mod resolve;
+pub mod resource_defs;
 pub mod testgen_dag;
 pub mod tool_graphs;
 pub mod tool_runner;
@@ -52,9 +52,8 @@ pub use gunbc_lib_cloud_ops::env_requirements::{
     CLOUD_ENV_COMMON_OPTIONAL,
 };
 pub use makegen::{
-    build_makegen_graph, default_build_config, makegen_signature, render_gitignore, render_justfile,
-    render_makefile,
-    BuildConfig, MakegenGraphOp, WorkflowKind, WorkflowSpec,
+    build_makegen_graph, default_build_config, makegen_signature, render_gitignore,
+    render_justfile, render_makefile, BuildConfig, MakegenGraphOp, WorkflowKind, WorkflowSpec,
 };
 pub use pragma::{build_pragma_graph, pragma_signature, PragmaGraphOp};
 pub use resolve::{resolve_lowered_dag, ResolveError};

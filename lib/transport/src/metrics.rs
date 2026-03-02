@@ -264,10 +264,7 @@ impl TransportMiddleware for MetricsMiddleware {
         let timing = RequestTiming {
             start: Instant::now(),
         };
-        self.timings
-            .lock()
-            .unwrap()
-            .insert(ctx.request_id, timing);
+        self.timings.lock().unwrap().insert(ctx.request_id, timing);
 
         MiddlewareOutcome::Continue(request)
     }
@@ -453,9 +450,13 @@ mod tests {
         let response = TransportResponse::Local(LocalResponse {
             outputs: serde_json::json!({}),
         });
-        let outcome = mw.post_response(&TransportRequest::Local(LocalRequest {
-            inputs: serde_json::json!({}),
-        }), response, &mut ctx);
+        let outcome = mw.post_response(
+            &TransportRequest::Local(LocalRequest {
+                inputs: serde_json::json!({}),
+            }),
+            response,
+            &mut ctx,
+        );
         assert!(matches!(outcome, PostProcessOutcome::Complete(_)));
         assert_eq!(sink.response_count(), 1);
         assert!(sink.total_duration_ms() >= 10);
@@ -466,7 +467,9 @@ mod tests {
         use gunbc_ir::transport::*;
 
         assert_eq!(
-            transport_kind_str(&TransportRequest::Rest(RestRequest::get("https://example.com"))),
+            transport_kind_str(&TransportRequest::Rest(RestRequest::get(
+                "https://example.com"
+            ))),
             "rest"
         );
         assert_eq!(

@@ -397,23 +397,19 @@ pub fn emit_go_bundle(
 
     let has_service_transport = symbols.iter().any(|s| s.spec.is_some());
 
-    let mut symbol_funcs = symbols
-        .iter()
-        .map(|sym| {
-            if let Some(ref spec) = sym.spec {
-                let phase = sym
-                    .service_phase
-                    .expect("service symbol should include transport phase");
-                service_emit::emit_go_service_func(&sym.name, phase, spec)
-            } else {
-                format!(
-                    "func {name}() {{\n    // generated callable stub\n}}\n",
-                    name = sym.name
-                )
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
+    let mut symbol_funcs_parts: Vec<String> = Vec::with_capacity(symbols.len());
+    for sym in &symbols {
+        if let Some(ref spec) = sym.spec {
+            let phase = require_service_phase(sym)?;
+            symbol_funcs_parts.push(service_emit::emit_go_service_func(&sym.name, phase, spec));
+        } else {
+            symbol_funcs_parts.push(format!(
+                "func {name}() {{\n    // generated callable stub\n}}\n",
+                name = sym.name
+            ));
+        }
+    }
+    let mut symbol_funcs = symbol_funcs_parts.join("\n");
 
     // TL-14: Append inline Go middleware config functions.
     let go_middleware_funcs =
@@ -512,20 +508,16 @@ pub fn emit_c_bundle(
         .map(|entry| sanitize_identifier(entry))
         .collect::<Vec<_>>();
 
-    let symbol_funcs = symbols
-        .iter()
-        .map(|sym| {
-            if let Some(ref spec) = sym.spec {
-                let phase = sym
-                    .service_phase
-                    .expect("service symbol should include transport phase");
-                service_emit::emit_c_service_func(&sym.name, phase, spec)
-            } else {
-                format!("static void {name}(void) {{}}\n", name = sym.name)
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
+    let mut symbol_funcs_parts: Vec<String> = Vec::with_capacity(symbols.len());
+    for sym in &symbols {
+        if let Some(ref spec) = sym.spec {
+            let phase = require_service_phase(sym)?;
+            symbol_funcs_parts.push(service_emit::emit_c_service_func(&sym.name, phase, spec));
+        } else {
+            symbol_funcs_parts.push(format!("static void {name}(void) {{}}\n", name = sym.name));
+        }
+    }
+    let symbol_funcs = symbol_funcs_parts.join("\n");
 
     // TL-14: Emit inline C middleware config structs.
     let c_middleware_funcs =
@@ -609,20 +601,16 @@ pub fn emit_mips_bundle(
     let manifest_rendered = render_manifest(&artifacts.manifest);
     let has_makegen_asset = has_required_asset(required_assets, MAKEGEN_ASSET_KEY);
 
-    let label_defs = symbols
-        .iter()
-        .map(|sym| {
-            if let Some(ref spec) = sym.spec {
-                let phase = sym
-                    .service_phase
-                    .expect("service symbol should include transport phase");
-                service_emit::emit_mips_service_func(&sym.name, phase, spec)
-            } else {
-                format!("{name}:\n    jr $ra\n", name = sym.name)
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
+    let mut label_defs_parts: Vec<String> = Vec::with_capacity(symbols.len());
+    for sym in &symbols {
+        if let Some(ref spec) = sym.spec {
+            let phase = require_service_phase(sym)?;
+            label_defs_parts.push(service_emit::emit_mips_service_func(&sym.name, phase, spec));
+        } else {
+            label_defs_parts.push(format!("{name}:\n    jr $ra\n", name = sym.name));
+        }
+    }
+    let label_defs = label_defs_parts.join("\n");
 
     // TL-14: Emit inline MIPS middleware config data.
     let mips_middleware_data =
@@ -686,6 +674,17 @@ struct CollectedSymbol {
     name: String,
     spec: Option<ServiceOperationSpec>,
     service_phase: Option<service_emit::ServiceTransportPhase>,
+}
+
+fn require_service_phase(
+    symbol: &CollectedSymbol,
+) -> Result<service_emit::ServiceTransportPhase, EmitError> {
+    symbol.service_phase.ok_or_else(|| {
+        EmitError::InvalidLoweredNode(format!(
+            "service symbol `{}` missing transport phase metadata",
+            symbol.name
+        ))
+    })
 }
 
 /// Collect middleware configs from symbols for JSON manifest emission (TL-14).

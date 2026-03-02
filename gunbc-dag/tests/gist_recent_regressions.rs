@@ -1,9 +1,9 @@
 #![allow(clippy::disallowed_methods)]
 
 use gunbc_dag::dsl_builder::build_dsl_graph_for_entry;
-use gunbc_test::auto_mock_spec;
-use gunbc_exec::{lower, BoundaryMocks, ExecutionMode, execute_with_mode_and_inputs};
+use gunbc_exec::{execute_with_mode_and_inputs, lower, BoundaryMocks, ExecutionMode};
 use gunbc_ir::{detect_entrypoints, Value};
+use gunbc_test::auto_mock_spec;
 
 #[test]
 fn gist_recent_graph_no_ls_files() {
@@ -98,11 +98,9 @@ fn gist_recent_end_to_end_emits_gist_url() {
                         port_name.0.clone(),
                         Value::Str("3.days.ago".into()),
                     ),
-                    "public" => mocks.set_input(
-                        node_id.0.clone(),
-                        port_name.0.clone(),
-                        Value::Bool(false),
-                    ),
+                    "public" => {
+                        mocks.set_input(node_id.0.clone(), port_name.0.clone(), Value::Bool(false))
+                    }
                     _ => {}
                 }
             }
@@ -127,7 +125,9 @@ fn gist_recent_end_to_end_emits_gist_url() {
         "execution should include git Diff parse. Got: {node_ids:?}"
     );
     assert!(
-        node_ids.iter().any(|id| id.contains("render_diff_markdown")),
+        node_ids
+            .iter()
+            .any(|id| id.contains("render_diff_markdown")),
         "execution should include render_diff_markdown. Got: {node_ids:?}"
     );
     assert!(
@@ -135,7 +135,9 @@ fn gist_recent_end_to_end_emits_gist_url() {
         "execution should include Gist_Create transport. Got: {node_ids:?}"
     );
     assert!(
-        node_ids.iter().any(|id| id.contains("credential_chain") || id.contains("acquire_gcp")),
+        node_ids
+            .iter()
+            .any(|id| id.contains("credential_chain") || id.contains("acquire_gcp")),
         "execution should include credential chain nodes. Got: {node_ids:?}"
     );
 }

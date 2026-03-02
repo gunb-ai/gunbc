@@ -128,74 +128,63 @@ impl BuildConfig {
             build_system: BuildSystem::Cargo,
             use_dag_entrypoints: false,
             warnings: w,
-            ensure_codegen: c(
-                CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
-                    .args(BinaryArgs::codegen(CodegenSubcommand::Codegen))
-                    .warnings(w),
-            ),
+            ensure_codegen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
+                .args(BinaryArgs::codegen(CodegenSubcommand::Codegen))
+                .warnings(w)),
             codegen: c(CargoCommand::new(Subcommand::Run(codegen_dag_inv.clone())).warnings(w)),
-            daggen: c(
-                CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
-                    .args(BinaryArgs::codegen(CodegenSubcommand::Daggen))
-                    .warnings(w),
-            ),
-            build: c(
-                CargoCommand::new(Subcommand::Build)
-                    .all_targets()
-                    .warnings(w),
-            ),
+            daggen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
+                .args(BinaryArgs::codegen(CodegenSubcommand::Daggen))
+                .warnings(w)),
+            build: c(CargoCommand::new(Subcommand::Build)
+                .all_targets()
+                .warnings(w)),
             test: c(CargoCommand::new(Subcommand::Test).warnings(w)),
-            lint: c(
-                CargoCommand::new(Subcommand::Clippy)
-                    .all_targets()
-                    .warnings(w),
-            ),
-            lint_fix: c(
-                CargoCommand::new(Subcommand::Clippy)
-                    .fix()
-                    .workspace()
-                    .allow_dirty()
-                    .allow_staged()
-                    .warnings(w),
-            ),
+            lint: c(CargoCommand::new(Subcommand::Clippy)
+                .all_targets()
+                .warnings(w)),
+            lint_fix: c(CargoCommand::new(Subcommand::Clippy)
+                .fix()
+                .workspace()
+                .allow_dirty()
+                .allow_staged()
+                .warnings(w)),
             fmt: c(CargoCommand::new(Subcommand::Fmt)),
             fmt_check: c(CargoCommand::new(Subcommand::Fmt).check()),
-            check: c(
-                CargoCommand::new(Subcommand::Check)
-                    .all_targets()
-                    .warnings(w),
-            ),
-            ci_yaml: c(
-                CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
-                    .args(BinaryArgs::codegen(CodegenSubcommand::Cigen))
-                    .warnings(w),
-            ),
-            testgen: c(
-                CargoCommand::new(Subcommand::Run(CargoInvocation::composed("testgen", "dag")))
-                    .warnings(w),
-            ),
-            deps_config_ensure: c(
-                CargoCommand::new(Subcommand::Run(CargoInvocation::composed("deps-config", "dag")))
-                    .args(BinaryArgs::with_mode(ExecMode::Ensure))
-                    .warnings(w),
-            ),
-            deps_config_check: c(
-                CargoCommand::new(Subcommand::Run(CargoInvocation::composed("deps-config", "dag")))
-                    .args(BinaryArgs::with_mode(ExecMode::Verify))
-                    .warnings(w),
-            ),
-            bootstrap: c(
-                CargoCommand::new(Subcommand::Run(CargoInvocation::composed("bootstrap", "dag")))
-                    .warnings(w),
-            ),
-            pragma: c(
-                CargoCommand::new(Subcommand::Run(CargoInvocation::composed("pragma", "dag")))
-                    .warnings(w),
-            ),
-            makegen: c(
-                CargoCommand::new(Subcommand::Run(CargoInvocation::composed("makegen", "dag")))
-                    .warnings(w),
-            ),
+            check: c(CargoCommand::new(Subcommand::Check)
+                .all_targets()
+                .warnings(w)),
+            ci_yaml: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
+                .args(BinaryArgs::codegen(CodegenSubcommand::Cigen))
+                .warnings(w)),
+            testgen: c(CargoCommand::new(Subcommand::Run(CargoInvocation::composed(
+                "testgen", "dag",
+            )))
+            .warnings(w)),
+            deps_config_ensure: c(CargoCommand::new(Subcommand::Run(CargoInvocation::composed(
+                "deps-config",
+                "dag",
+            )))
+            .args(BinaryArgs::with_mode(ExecMode::Ensure))
+            .warnings(w)),
+            deps_config_check: c(CargoCommand::new(Subcommand::Run(CargoInvocation::composed(
+                "deps-config",
+                "dag",
+            )))
+            .args(BinaryArgs::with_mode(ExecMode::Verify))
+            .warnings(w)),
+            bootstrap: c(CargoCommand::new(Subcommand::Run(CargoInvocation::composed(
+                "bootstrap",
+                "dag",
+            )))
+            .warnings(w)),
+            pragma: c(CargoCommand::new(Subcommand::Run(CargoInvocation::composed(
+                "pragma", "dag",
+            )))
+            .warnings(w)),
+            makegen: c(CargoCommand::new(Subcommand::Run(CargoInvocation::composed(
+                "makegen", "dag",
+            )))
+            .warnings(w)),
         }
     }
 
@@ -233,7 +222,6 @@ pub struct ExtraTarget {
     pub post_commands: Vec<String>,
 }
 
-
 /// An entrypoint parameter that becomes a Make variable.
 #[derive(Debug, Clone)]
 pub struct EntrypointParam {
@@ -250,7 +238,6 @@ pub struct EntrypointParam {
     /// Whether this param can be repeated (for list types).
     pub repeatable: bool,
 }
-
 
 /// Minimal workflow descriptor for tool targets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -382,18 +369,20 @@ impl ToolRegistry {
     }
 
     /// Build the default registry with all tools discovered from DSL.
-    pub fn default_registry() -> Self {
+    pub fn default_registry() -> Result<Self, String> {
         let mut registry = Self::new();
 
-        for tool_def in crate::dsl_registry::discover_tool_defs_from_dsl() {
+        for tool_def in crate::dsl_registry::discover_tool_defs_from_dsl()? {
             if let Some(tool_info) = ToolInfo::from_tool_def(&tool_def) {
                 registry.register_if_missing(tool_info);
             }
         }
 
         enrich_live_secrets(&mut registry.tools);
-        registry.tools.sort_by(|a, b| a.short_name.cmp(&b.short_name));
         registry
+            .tools
+            .sort_by(|a, b| a.short_name.cmp(&b.short_name));
+        Ok(registry)
     }
 
     /// Get tools that need CLI codegen.
@@ -482,15 +471,21 @@ mod tests {
 
     #[test]
     fn default_registry_derives_tools_from_dsl() {
-        let registry = ToolRegistry::default_registry();
+        let registry = ToolRegistry::default_registry().expect("registry discovery should succeed");
         assert!(registry.tools.iter().any(|tool| tool.short_name == "deps"));
-        assert!(registry.tools.iter().any(|tool| tool.short_name == "makegen"));
-        assert!(registry.tools.iter().any(|tool| tool.short_name == "pragma"));
+        assert!(registry
+            .tools
+            .iter()
+            .any(|tool| tool.short_name == "makegen"));
+        assert!(registry
+            .tools
+            .iter()
+            .any(|tool| tool.short_name == "pragma"));
     }
 
     #[test]
     fn default_registry_has_unique_short_names() {
-        let registry = ToolRegistry::default_registry();
+        let registry = ToolRegistry::default_registry().expect("registry discovery should succeed");
         let mut seen = std::collections::BTreeSet::new();
         for tool in &registry.tools {
             assert!(

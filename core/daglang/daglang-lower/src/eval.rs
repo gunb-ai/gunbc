@@ -37,10 +37,7 @@ pub fn evaluate_fn_body(
                 match &value {
                     Value::Map(fields) => {
                         for (field_name, field_value) in fields {
-                            env.bind(
-                                format!("{name}__{field_name}"),
-                                field_value.clone(),
-                            );
+                            env.bind(format!("{name}__{field_name}"), field_value.clone());
                         }
                     }
                     Value::Json(serde_json::Value::Object(map)) => {
@@ -720,8 +717,13 @@ fn eval_pipe_method(
                     Ok(Value::List(results))
                 }
                 (Value::List(items), _) => Ok(Value::List(items)),
-                (Value::Skipped, _) => Err(EvalError::new("map: receiver is Skipped (unwired input)")),
-                (other, _) => Err(EvalError::new(format!("map requires a list, got {:?}", other))),
+                (Value::Skipped, _) => {
+                    Err(EvalError::new("map: receiver is Skipped (unwired input)"))
+                }
+                (other, _) => Err(EvalError::new(format!(
+                    "map requires a list, got {:?}",
+                    other
+                ))),
             }
         }
 
@@ -742,7 +744,9 @@ fn eval_pipe_method(
                     Ok(Value::List(results))
                 }
                 (Value::List(items), _) => Ok(Value::List(items)),
-                (Value::Skipped, _) => Err(EvalError::new("filter: receiver is Skipped (unwired input)")),
+                (Value::Skipped, _) => Err(EvalError::new(
+                    "filter: receiver is Skipped (unwired input)",
+                )),
                 _ => Err(EvalError::new("filter requires a list")),
             }
         }
@@ -764,7 +768,9 @@ fn eval_pipe_method(
                     Ok(Value::List(results))
                 }
                 (Value::List(items), _) => Ok(Value::List(items)),
-                (Value::Skipped, _) => Err(EvalError::new("filter_map: receiver is Skipped (unwired input)")),
+                (Value::Skipped, _) => Err(EvalError::new(
+                    "filter_map: receiver is Skipped (unwired input)",
+                )),
                 _ => Err(EvalError::new("filter_map requires a list")),
             }
         }
@@ -787,7 +793,9 @@ fn eval_pipe_method(
                     Ok(Value::List(results))
                 }
                 (Value::List(items), _) => Ok(Value::List(items)),
-                (Value::Skipped, _) => Err(EvalError::new("flat_map: receiver is Skipped (unwired input)")),
+                (Value::Skipped, _) => Err(EvalError::new(
+                    "flat_map: receiver is Skipped (unwired input)",
+                )),
                 _ => Err(EvalError::new("flat_map requires a list")),
             }
         }
@@ -812,7 +820,9 @@ fn eval_pipe_method(
                     }
                     Ok(acc)
                 }
-                (Value::Skipped, _, _) => Err(EvalError::new("fold: receiver is Skipped (unwired input)")),
+                (Value::Skipped, _, _) => {
+                    Err(EvalError::new("fold: receiver is Skipped (unwired input)"))
+                }
                 _ => Err(EvalError::new("fold requires list, init, and f")),
             }
         }
@@ -828,7 +838,9 @@ fn eval_pipe_method(
                     }
                     Ok(Value::List(base))
                 }
-                (Value::Skipped, _) => Err(EvalError::new("append: receiver is Skipped (unwired input)")),
+                (Value::Skipped, _) => Err(EvalError::new(
+                    "append: receiver is Skipped (unwired input)",
+                )),
                 (other, _) => Err(EvalError::new(format!(
                     "append requires a list, got {:?}",
                     other
@@ -880,7 +892,9 @@ fn eval_pipe_method(
                     }
                     Ok(Value::Bool(false))
                 }
-                (Value::Skipped, _) => Err(EvalError::new("any: receiver is Skipped (unwired input)")),
+                (Value::Skipped, _) => {
+                    Err(EvalError::new("any: receiver is Skipped (unwired input)"))
+                }
                 _ => Err(EvalError::new("any requires list and predicate")),
             }
         }
@@ -899,7 +913,9 @@ fn eval_pipe_method(
                     }
                     Ok(Value::Bool(true))
                 }
-                (Value::Skipped, _) => Err(EvalError::new("all: receiver is Skipped (unwired input)")),
+                (Value::Skipped, _) => {
+                    Err(EvalError::new("all: receiver is Skipped (unwired input)"))
+                }
                 _ => Err(EvalError::new("all requires list and predicate")),
             }
         }
@@ -913,7 +929,9 @@ fn eval_pipe_method(
                     let needle = eval_expr(expr, env, sibling_fns)?;
                     Ok(Value::Bool(items.contains(&needle)))
                 }
-                (Value::Skipped, _) => Err(EvalError::new("contains: receiver is Skipped (unwired input)")),
+                (Value::Skipped, _) => Err(EvalError::new(
+                    "contains: receiver is Skipped (unwired input)",
+                )),
                 _ => Err(EvalError::new("contains requires list and item")),
             }
         }
@@ -939,7 +957,9 @@ fn eval_pipe_method(
                     Ok(Value::List(keyed.into_iter().map(|(_, v)| v).collect()))
                 }
                 (Value::List(items), _) => Ok(Value::List(items)),
-                (Value::Skipped, _) => Err(EvalError::new("sort_by: receiver is Skipped (unwired input)")),
+                (Value::Skipped, _) => Err(EvalError::new(
+                    "sort_by: receiver is Skipped (unwired input)",
+                )),
                 _ => Err(EvalError::new("sort_by requires a list")),
             }
         }
@@ -1396,7 +1416,15 @@ mod tests {
             },
         )];
 
-        let methods_with_lambda = &["filter", "filter_map", "flat_map", "map", "sort_by", "any", "all"];
+        let methods_with_lambda = &[
+            "filter",
+            "filter_map",
+            "flat_map",
+            "map",
+            "sort_by",
+            "any",
+            "all",
+        ];
         for method in methods_with_lambda {
             let args = if *method == "any" || *method == "all" {
                 &true_lambda
@@ -1435,7 +1463,10 @@ mod tests {
 
         // fold
         let fold_args = vec![
-            (Some("init".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+            (
+                Some("init".to_string()),
+                LoweredExpr::Literal(LoweredLiteral::Int(0)),
+            ),
             (
                 Some("f".to_string()),
                 LoweredExpr::Lambda {

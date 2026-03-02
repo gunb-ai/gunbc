@@ -129,10 +129,7 @@ fn run_makegen_case(kind: BackendKind) {
             // evaluation at DAG runtime (fn bodies are not fully evaluated
             // in the DAG executor). The content is a string interpolation
             // placeholder until the evaluate_fn_body path is used.
-            assert!(
-                !content.is_empty(),
-                "Makefile content should not be empty"
-            );
+            assert!(!content.is_empty(), "Makefile content should not be empty");
         }
         BackendKind::Real => {
             let workspace = TempWorkspace::new("makegen-real-fs");
@@ -145,10 +142,7 @@ fn run_makegen_case(kind: BackendKind) {
             let makefile_path = workspace.path().join(path);
             let content = io.read_file(&makefile_path).expect("Makefile should exist");
             let content = String::from_utf8(content).expect("Makefile content should be utf8");
-            assert!(
-                !content.is_empty(),
-                "Makefile content should not be empty"
-            );
+            assert!(!content.is_empty(), "Makefile content should not be empty");
         }
     }
 }

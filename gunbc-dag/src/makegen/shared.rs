@@ -80,24 +80,69 @@ fn compile_makegen() -> (
         // Leaf dependencies (no imports)
         (Path::new("<embedded>/std/types.dag"), STD_TYPES_SOURCE),
         (Path::new("<embedded>/std/errors.dag"), STD_ERRORS_SOURCE),
-        (Path::new("<embedded>/std/behavioral.dag"), STD_BEHAVIORAL_SOURCE),
-        (Path::new("<embedded>/std/resources.dag"), STD_RESOURCES_SOURCE),
-        (Path::new("<embedded>/std/filesystem.dag"), STD_FILESYSTEM_SOURCE),
-        (Path::new("<embedded>/extdeps/cloud/core.dag"), EXT_CLOUD_CORE_SOURCE),
-        (Path::new("<embedded>/extdeps/cloud/gcp/core.dag"), EXT_GCP_CORE_SOURCE),
-        (Path::new("<embedded>/extdeps/cloud/gcp/secret_manager.dag"), EXT_GCP_SM_SOURCE),
-        (Path::new("<embedded>/extdeps/cloud/gcp/iam.dag"), EXT_GCP_IAM_SOURCE),
-        (Path::new("<embedded>/extdeps/cloud/gcp/sts.dag"), EXT_GCP_STS_SOURCE),
-        (Path::new("<embedded>/extdeps/tools/package_managers.dag"), EXT_PKG_MGRS_SOURCE),
-        (Path::new("<embedded>/extdeps/make.dag"), EXTDEPS_MAKE_SOURCE),
+        (
+            Path::new("<embedded>/std/behavioral.dag"),
+            STD_BEHAVIORAL_SOURCE,
+        ),
+        (
+            Path::new("<embedded>/std/resources.dag"),
+            STD_RESOURCES_SOURCE,
+        ),
+        (
+            Path::new("<embedded>/std/filesystem.dag"),
+            STD_FILESYSTEM_SOURCE,
+        ),
+        (
+            Path::new("<embedded>/extdeps/cloud/core.dag"),
+            EXT_CLOUD_CORE_SOURCE,
+        ),
+        (
+            Path::new("<embedded>/extdeps/cloud/gcp/core.dag"),
+            EXT_GCP_CORE_SOURCE,
+        ),
+        (
+            Path::new("<embedded>/extdeps/cloud/gcp/secret_manager.dag"),
+            EXT_GCP_SM_SOURCE,
+        ),
+        (
+            Path::new("<embedded>/extdeps/cloud/gcp/iam.dag"),
+            EXT_GCP_IAM_SOURCE,
+        ),
+        (
+            Path::new("<embedded>/extdeps/cloud/gcp/sts.dag"),
+            EXT_GCP_STS_SOURCE,
+        ),
+        (
+            Path::new("<embedded>/extdeps/tools/package_managers.dag"),
+            EXT_PKG_MGRS_SOURCE,
+        ),
+        (
+            Path::new("<embedded>/extdeps/make.dag"),
+            EXTDEPS_MAKE_SOURCE,
+        ),
         // Service defs
         (Path::new("<embedded>/services/shell.dag"), SVC_SHELL_SOURCE),
-        (Path::new("<embedded>/services/gcp/secret_manager.dag"), SVC_GCP_SM_SOURCE),
-        (Path::new("<embedded>/services/gcp/iam.dag"), SVC_GCP_IAM_SOURCE),
-        (Path::new("<embedded>/services/gcp/sts.dag"), SVC_GCP_STS_SOURCE),
+        (
+            Path::new("<embedded>/services/gcp/secret_manager.dag"),
+            SVC_GCP_SM_SOURCE,
+        ),
+        (
+            Path::new("<embedded>/services/gcp/iam.dag"),
+            SVC_GCP_IAM_SOURCE,
+        ),
+        (
+            Path::new("<embedded>/services/gcp/sts.dag"),
+            SVC_GCP_STS_SOURCE,
+        ),
         // Intermediate
-        (Path::new("<embedded>/std/patterns.dag"), STD_PATTERNS_SOURCE),
-        (Path::new("<embedded>/config/build_targets.dag"), BUILD_TARGETS_SOURCE),
+        (
+            Path::new("<embedded>/std/patterns.dag"),
+            STD_PATTERNS_SOURCE,
+        ),
+        (
+            Path::new("<embedded>/config/build_targets.dag"),
+            BUILD_TARGETS_SOURCE,
+        ),
         // Target
         (Path::new("<embedded>/tools/makegen.dag"), MAKEGEN_SOURCE),
     ])

@@ -121,12 +121,11 @@ pub use coerce::{
 };
 pub use contract::{
     cross_product_witnesses, generate_compliance_test_suite, generate_contract_test_body,
-    generate_contract_test_fn, generate_interface_contract_tests,
-    generate_response_contract_tests, validate_provider_compliance,
-    validate_response_contract_coverage, variant_witness_for, variant_witnesses, BoundaryWitness,
-    CodegenPlatformRepr, CodegenTypeShape, Platform, ProtocolLayer, ProtocolLayerKind,
-    ProtocolStack, ProtocolStackError, ProviderBinding, ProviderResponseContract, ScalarKind,
-    StatusSemantic, TypeContract, TypeLayer,
+    generate_contract_test_fn, generate_interface_contract_tests, generate_response_contract_tests,
+    validate_provider_compliance, validate_response_contract_coverage, variant_witness_for,
+    variant_witnesses, BoundaryWitness, CodegenPlatformRepr, CodegenTypeShape, Platform,
+    ProtocolLayer, ProtocolLayerKind, ProtocolStack, ProtocolStackError, ProviderBinding,
+    ProviderResponseContract, ScalarKind, StatusSemantic, TypeContract, TypeLayer,
 };
 pub use dag::{
     build, canonical_edge_order, edges_to_port, Dag, DagEdgePorts, DagInputPort, DagOutputPort,
@@ -213,8 +212,8 @@ pub use types::{
     SemanticCarrierKind, TypeId, ValueBacking,
 };
 pub use validate::{
-    validate_resource_wiring, validate_resource_wiring_recursive,
-    validate_subdag_interfaces, PortDirection, SubDagError, UnwiredResource,
+    validate_resource_wiring, validate_resource_wiring_recursive, validate_subdag_interfaces,
+    PortDirection, SubDagError, UnwiredResource,
 };
 pub use value::{
     SecretHint, SecretString, Value, ValueKind, HUMAN_TEXT_MAX_LINES, HUMAN_TEXT_MAX_LINE_WIDTH,

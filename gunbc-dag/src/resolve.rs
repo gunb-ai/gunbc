@@ -999,14 +999,10 @@ fn resolve_domain(
     }
     // 4. Service transport nodes from non-service modules (e.g., loop body
     //    transport nodes which inherit the tool module name, not the service module).
-    //    Only route when the metadata has a concrete operation spec; nodes without
-    //    specs (e.g., not-yet-implemented service operations) fall through to the
-    //    passthrough default.
-    if let Some(transport_role) = TransportRole::from_name(name) {
-        let has_spec = service_metadata.as_ref().is_some_and(|m| m.spec.is_some());
-        if has_spec || transport_role == TransportRole::Execute {
-            return resolve_service_transport(node_id, module, name, outputs, service_metadata);
-        }
+    //    Route all transport roles through the transport resolver and fail
+    //    closed when metadata/specs are missing.
+    if TransportRole::from_name(name).is_some() {
+        return resolve_service_transport(node_id, module, name, outputs, service_metadata);
     }
     // 5. Default: identity callable for compiler-validated callables.
     //
@@ -1058,8 +1054,14 @@ fn resolve_extern_call(node_id: &str, symbol: &str) -> Result<DynOp, ResolveErro
     use gunbc_ir::ProgramSymbolId;
 
     let sym = ProgramSymbolId::new(symbol);
-    let module = sym.module().unwrap_or("");
-    let name = sym.name().unwrap_or("");
+    let module = sym.module().ok_or_else(|| ResolveError {
+        node_id: node_id.to_string(),
+        reason: format!("extern symbol `{symbol}` is missing module segment"),
+    })?;
+    let name = sym.name().ok_or_else(|| ResolveError {
+        node_id: node_id.to_string(),
+        reason: format!("extern symbol `{symbol}` is missing callable name segment"),
+    })?;
 
     if let Some(op) = crate::extern_ops::resolve_extern_symbol(module, name) {
         return Ok(op);
@@ -1151,7 +1153,10 @@ fn resolve_service_transport(
                         spec: (**rest_spec).clone(),
                         service_name: metadata.service.clone(),
                         operation_name: metadata.operation.clone(),
-                        auth_scheme: rest_spec.auth_scheme.clone().unwrap_or_default(),
+                        auth_scheme: rest_spec
+                            .auth_scheme
+                            .clone()
+                            .unwrap_or_else(|| "none".to_string()),
                         permissions: metadata.permissions.clone(),
                     }));
                 }
@@ -2355,8 +2360,8 @@ mod tests {
             err.reason
         );
         assert!(
-            err.reason.contains("could not be resolved"),
-            "error should indicate resolution failure: {}",
+            err.reason.contains("missing module segment"),
+            "error should indicate malformed symbol shape: {}",
             err.reason
         );
     }

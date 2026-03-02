@@ -389,7 +389,10 @@ mod tests {
     #[test]
     fn empty_mapping_produces_no_warnings() {
         let warnings = check_response_completeness(&[], "test.Service", "Op");
-        assert!(warnings.is_empty(), "empty mapping should not produce warnings");
+        assert!(
+            warnings.is_empty(),
+            "empty mapping should not produce warnings"
+        );
     }
 
     #[test]
@@ -432,7 +435,9 @@ mod tests {
             middleware: None,
             response_mapping: vec![],
         }));
-        let req = spec.auth_requirement().expect("should have auth requirement");
+        let req = spec
+            .auth_requirement()
+            .expect("should have auth requirement");
         assert_eq!(req.scheme, "BearerToken");
         assert_eq!(req.input_field, "auth_token");
         assert_eq!(req.endpoint, "https://api.github.com");

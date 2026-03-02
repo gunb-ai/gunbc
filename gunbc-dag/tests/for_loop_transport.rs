@@ -11,8 +11,8 @@
 #![allow(clippy::disallowed_methods)]
 
 use gunbc_dag::dsl_builder::build_dsl_graph_for_entry;
-use gunbc_test::auto_mock_spec;
 use gunbc_exec::{execute_with_mode_and_inputs, lower, ExecutionMode};
+use gunbc_test::auto_mock_spec;
 
 // -------------------------------------------------------------------
 // Structural: gist graph uses read_text_files pattern (no inline loop)

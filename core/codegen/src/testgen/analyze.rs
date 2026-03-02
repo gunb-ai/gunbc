@@ -245,7 +245,9 @@ mod tests {
     #[test]
     fn test_analyze_simple_dag() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque("A", vec![], vec![port("out", "String")], ()).with_kind(NodeKind::Pure));
+        dag.add_node(
+            Node::opaque("A", vec![], vec![port("out", "String")], ()).with_kind(NodeKind::Pure),
+        );
         dag.add_node(
             Node::opaque(
                 "B",
@@ -299,13 +301,8 @@ mod tests {
     fn test_analyze_tool_env_detection() {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(
-            Node::opaque(
-                "env",
-                vec![],
-                vec![port("tool:clippy", "ToolHandle")],
-                (),
-            )
-            .with_kind(NodeKind::ToolEnvironment),
+            Node::opaque("env", vec![], vec![port("tool:clippy", "ToolHandle")], ())
+                .with_kind(NodeKind::ToolEnvironment),
         );
         dag.add_node(
             Node::opaque(
@@ -361,7 +358,9 @@ mod tests {
     #[test]
     fn test_analyze_with_obligations() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque("a", vec![], vec![port("out", "String")], ()).with_kind(NodeKind::Pure));
+        dag.add_node(
+            Node::opaque("a", vec![], vec![port("out", "String")], ()).with_kind(NodeKind::Pure),
+        );
         dag.add_node(
             Node::opaque(
                 "b",

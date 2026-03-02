@@ -741,8 +741,7 @@ fn duplicate_named_call_argument_is_reported() {
         "duplicate_arg.dag",
         "module sample.calls\nfn fmt(value: String) -> String { value }\nfn run() -> String { fmt(value: \"a\", value: \"b\") }",
     )]);
-    let errors =
-        typecheck_module_graph(graph).expect_err("duplicate named argument should fail");
+    let errors = typecheck_module_graph(graph).expect_err("duplicate named argument should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::DuplicateCallArgument {
@@ -1086,8 +1085,8 @@ func run(path: String) -> { body: String } {
   return { body: response.body }
 }"#,
     )]);
-    let errors = typecheck_module_graph(graph)
-        .expect_err("unknown named service call argument should fail");
+    let errors =
+        typecheck_module_graph(graph).expect_err("unknown named service call argument should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::UnknownServiceCallArgument {
@@ -1769,8 +1768,8 @@ fn missing_tail_expression_is_allowed_for_unit_return_type() {
         r#"module sample.types
 fn run() -> Unit { let x = 42 }"#,
     )]);
-    let typed = typecheck_module_graph(graph)
-        .expect("unit return type should allow no tail expression");
+    let typed =
+        typecheck_module_graph(graph).expect("unit return type should allow no tail expression");
     assert_eq!(typed.modules.len(), 1);
 }
 
@@ -1848,8 +1847,8 @@ fn user_defined_generic_arity_mismatch_is_reported() {
 type Box<T> = T
 fn run(value: Box<String, Int>) -> String { value }"#,
     )]);
-    let errors = typecheck_module_graph(graph)
-        .expect_err("user-defined generic arity mismatch should fail");
+    let errors =
+        typecheck_module_graph(graph).expect_err("user-defined generic arity mismatch should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::ArityMismatch {
@@ -1869,8 +1868,8 @@ pipeline ci {
   stage build [after missing] {}
 }"#,
     )]);
-    let errors = typecheck_module_graph(graph)
-        .expect_err("unknown pipeline stage dependency should fail");
+    let errors =
+        typecheck_module_graph(graph).expect_err("unknown pipeline stage dependency should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::UnknownPipelineStageDependency {
@@ -1891,8 +1890,7 @@ pipeline ci {
   stage build {}
 }"#,
     )]);
-    let errors =
-        typecheck_module_graph(graph).expect_err("duplicate pipeline stage should fail");
+    let errors = typecheck_module_graph(graph).expect_err("duplicate pipeline stage should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::DuplicatePipelineStage { pipeline, stage }

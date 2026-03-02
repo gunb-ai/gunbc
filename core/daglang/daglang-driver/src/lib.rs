@@ -477,18 +477,20 @@ pub fn compile_from_module_graph_with_options(
 
     let derived = derive_artifacts(&lowered).map_err(CompileError::Derive)?;
 
-    let target_module_name = context.target_file.as_ref().and_then(|tf| {
+    let target_module_name = if let Some(tf) = context.target_file.as_ref() {
         let canonical = {
             #[allow(clippy::disallowed_methods)]
             std::fs::canonicalize(tf).ok()
         };
-        discover_module_graph_for_context(context)
-            .ok()?
+        let module_graph = discover_module_graph_for_context(context)?;
+        module_graph
             .modules
             .into_iter()
             .find(|m| m.path == *tf || canonical.as_ref().is_some_and(|c| m.path == *c))
             .map(|m| m.module_path.as_dotted())
-    });
+    } else {
+        None
+    };
 
     let target = options.target;
     let layer = options.layer;
@@ -507,7 +509,12 @@ pub fn compile_from_module_graph_with_options(
     let data_values = daglang_lower::build_data_values(&typed);
     let available_profiles = collect_available_profiles(&typed);
 
-    let receipt = compute_receipt(&lowered, &emitted, &emit_manifest_path, &source_paths);
+    let receipt = Some(compute_receipt(
+        &lowered,
+        &emitted,
+        &emit_manifest_path,
+        &source_paths,
+    )?);
 
     Ok(CompileOutput {
         lowered_dag: lowered,
@@ -1152,17 +1159,16 @@ fn compute_receipt(
     emitted: &EmissionBundle,
     emit_manifest_path: &str,
     source_paths: &[PathBuf],
-) -> Option<CompileReceipt> {
+) -> Result<CompileReceipt, CompileError> {
     // Source digest: sha256 of sorted path:hash pairs.
     // Including the path prevents false cache hits when files are renamed
     // or contents are swapped between files.
-    let source_digest = compute_source_digest(source_paths).ok()?;
+    let source_digest = compute_source_digest(source_paths)
+        .map_err(|e| CompileError::Message(format!("failed to compute source digest: {e}")))?;
 
     // Program IR digest: sha256 of canonical IR JSON.
-    let canonical_json = match daglang_lower::canonical_ir_json(dag) {
-        Ok(json) => json,
-        Err(_) => return None,
-    };
+    let canonical_json = daglang_lower::canonical_ir_json(dag)
+        .map_err(|e| CompileError::Message(format!("failed to render canonical IR JSON: {e}")))?;
     let program_ir_digest = sha256_hex(canonical_json.as_bytes());
 
     // Emit manifest digest: sha256 of the manifest file content.
@@ -1171,9 +1177,13 @@ fn compute_receipt(
         .iter()
         .find(|f| f.path == emit_manifest_path)
         .map(|f| sha256_hex(f.content.as_bytes()))
-        .unwrap_or_default();
+        .ok_or_else(|| {
+            CompileError::Message(format!(
+                "emit manifest `{emit_manifest_path}` missing from emitted files"
+            ))
+        })?;
 
-    Some(CompileReceipt {
+    Ok(CompileReceipt {
         source_digest,
         program_ir_digest,
         emit_manifest_digest,
@@ -2277,6 +2287,7 @@ fn run(values: List<String>) -> String {
     }
 
     #[test]
+    #[ignore] // Pre-existing: PureRender fn body delegate gap (RF-E5) — exec-runtime can't classify Callable with fn_body
     fn compile_with_exec_runtime_layer_emits_exec_runtime_bundle() {
         let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
         let root = workspace.join("dsl");

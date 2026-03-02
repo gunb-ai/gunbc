@@ -2780,18 +2780,12 @@ fn infer_expr_type(
                 | daglang_syntax::ast::PipeMethod::All
                 | daglang_syntax::ast::PipeMethod::Contains
                 | daglang_syntax::ast::PipeMethod::StartsWith
-                | daglang_syntax::ast::PipeMethod::EndsWith => {
-                    ValueType::Named("Bool".to_string())
-                }
+                | daglang_syntax::ast::PipeMethod::EndsWith => ValueType::Named("Bool".to_string()),
                 daglang_syntax::ast::PipeMethod::Join
                 | daglang_syntax::ast::PipeMethod::Repeat
                 | daglang_syntax::ast::PipeMethod::ReplaceSection
-                | daglang_syntax::ast::PipeMethod::Hash => {
-                    ValueType::Named("String".to_string())
-                }
-                daglang_syntax::ast::PipeMethod::ToBytes => {
-                    ValueType::Named("Bytes".to_string())
-                }
+                | daglang_syntax::ast::PipeMethod::Hash => ValueType::Named("String".to_string()),
+                daglang_syntax::ast::PipeMethod::ToBytes => ValueType::Named("Bytes".to_string()),
                 daglang_syntax::ast::PipeMethod::ToJson => ValueType::Named("Json".to_string()),
                 daglang_syntax::ast::PipeMethod::Map
                 | daglang_syntax::ast::PipeMethod::Filter
@@ -2799,9 +2793,7 @@ fn infer_expr_type(
                 | daglang_syntax::ast::PipeMethod::FlatMap
                 | daglang_syntax::ast::PipeMethod::SortBy
                 | daglang_syntax::ast::PipeMethod::Append
-                | daglang_syntax::ast::PipeMethod::Chars => {
-                    ValueType::Named("List".to_string())
-                }
+                | daglang_syntax::ast::PipeMethod::Chars => ValueType::Named("List".to_string()),
                 daglang_syntax::ast::PipeMethod::Fold
                 | daglang_syntax::ast::PipeMethod::First
                 | daglang_syntax::ast::PipeMethod::Last
@@ -3464,7 +3456,6 @@ fn should_validate_named_type(name: &str) -> bool {
     name.chars()
         .all(|ch| ch.is_alphanumeric() || matches!(ch, '_' | '.'))
 }
-
 
 #[cfg(test)]
 mod tests;

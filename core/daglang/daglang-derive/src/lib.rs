@@ -243,8 +243,11 @@ pub fn derive_transport_triplets(dag: &Dag<LoweredOp>) -> Vec<TransportTriplet> 
     }
 
     triplets.sort_by(|a, b| {
-        (&a.prepare_node, &a.execute_node, &a.parse_nodes)
-            .cmp(&(&b.prepare_node, &b.execute_node, &b.parse_nodes))
+        (&a.prepare_node, &a.execute_node, &a.parse_nodes).cmp(&(
+            &b.prepare_node,
+            &b.execute_node,
+            &b.parse_nodes,
+        ))
     });
     triplets
 }
@@ -792,11 +795,8 @@ impl NodeBodyExt for gunbc_ir::node::NodeBody<LoweredOp> {
 /// and collect transport classes, permissions, idempotent/readonly flags,
 /// and service operations. SubDag inner nodes are recursively traversed.
 fn derive_callable_properties(dag: &Dag<LoweredOp>) -> BTreeMap<String, CallableProperties> {
-    let node_by_id: HashMap<&str, &Node<LoweredOp>> = dag
-        .nodes
-        .iter()
-        .map(|n| (n.id.0.as_str(), n))
-        .collect();
+    let node_by_id: HashMap<&str, &Node<LoweredOp>> =
+        dag.nodes.iter().map(|n| (n.id.0.as_str(), n)).collect();
 
     // Build adjacency list from edges
     let mut successors: HashMap<&str, Vec<&str>> = HashMap::new();
@@ -885,8 +885,7 @@ fn derive_callable_properties(dag: &Dag<LoweredOp>) -> BTreeMap<String, Callable
         }
 
         let key = format!("{module}::{name}");
-        let mut transport_vec: Vec<ServiceTransportClass> =
-            transport_classes.into_iter().collect();
+        let mut transport_vec: Vec<ServiceTransportClass> = transport_classes.into_iter().collect();
         transport_vec.sort();
         let mut perms_vec: Vec<String> = permissions.into_iter().collect();
         perms_vec.sort();
@@ -1365,7 +1364,6 @@ mod tests {
                         readonly: true,
                         permissions: vec![],
                         spec: None,
-
                     })),
                     is_interactive: false,
                     resource_target: None,
@@ -1392,7 +1390,6 @@ mod tests {
                         readonly: false,
                         permissions: vec!["gist.write".to_string()],
                         spec: None,
-
                     })),
                     is_interactive: false,
                     resource_target: None,

@@ -115,9 +115,8 @@ impl DiscoveryCache {
 /// skip parse+typecheck+lower+emit entirely.
 ///
 /// Testgen is the sole hardcoded exception (custom builder, no DSL module).
-pub fn discover_tool_defs_from_dsl() -> Vec<ToolDef> {
+pub fn discover_tool_defs_from_dsl() -> Result<Vec<ToolDef>, String> {
     try_discover_tool_defs_from_dsl()
-        .unwrap_or_else(|e| panic!("failed to discover tool defs from DSL: {e}"))
 }
 
 /// Fallible discovery entrypoint for callers that need structured errors.
@@ -125,7 +124,7 @@ pub fn discover_tool_defs_from_dsl() -> Vec<ToolDef> {
 pub fn try_discover_tool_defs_from_dsl() -> Result<Vec<ToolDef>, String> {
     let layout = WorkspaceLayout::from_env_manifest_dir()
         .or_else(|_| WorkspaceLayout::from_cargo_metadata())
-        .expect("workspace layout for DSL discovery");
+        .map_err(|e| format!("workspace layout for DSL discovery: {e}"))?;
     let dsl_root = layout.workspace_root.join("dsl");
 
     let mut cache = DiscoveryCache::load(&layout.workspace_root)?.unwrap_or_default();
@@ -139,15 +138,25 @@ pub fn try_discover_tool_defs_from_dsl() -> Result<Vec<ToolDef>, String> {
     let tools_dir = dsl_root.join("tools");
     let entries = std::fs::read_dir(&tools_dir)
         .map_err(|e| format!("cannot read tools directory {}: {e}", tools_dir.display()))?;
-    let mut paths: Vec<_> = entries
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("dag"))
-        .collect();
+    let mut paths: Vec<PathBuf> = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|e| {
+            format!(
+                "cannot iterate tools directory entries in {}: {e}",
+                tools_dir.display()
+            )
+        })?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("dag") {
+            paths.push(path);
+        }
+    }
     paths.sort();
 
     for path in paths {
-        if let Some(defs) = discover_from_dag_file_cached(&dsl_root, &path, &mut cache, &mut cache_dirty)? {
+        if let Some(defs) =
+            discover_from_dag_file_cached(&dsl_root, &path, &mut cache, &mut cache_dirty)?
+        {
             for tool in defs {
                 tool_map.insert(tool.meta.tool_name.to_string(), tool);
             }
@@ -233,7 +242,7 @@ fn discover_from_dag_file_cached(
     }
 
     // Extract func params from AST for both result and cache
-    let func_params = extract_func_params_from_ast(&ast);
+    let func_params = extract_func_params_from_ast(&ast)?;
 
     // Build ToolDefs from compilation output
     let result = build_tool_defs_from_cached_params(
@@ -269,28 +278,35 @@ fn discover_from_dag_file_cached(
 /// Extract func parameters from a parsed AST.
 fn extract_func_params_from_ast(
     ast: &daglang_syntax::ast::SourceFile,
-) -> BTreeMap<String, Vec<DslParam>> {
+) -> Result<BTreeMap<String, Vec<DslParam>>, String> {
     let mut func_params: BTreeMap<String, Vec<DslParam>> = BTreeMap::new();
     for item in &ast.items {
         if let Item::FuncDef(func) = &item.node {
-            let params = func
-                .params
-                .iter()
-                .map(|p| {
-                    let (type_id, cardinality) = map_type_expr(&p.ty);
-                    let default = p.default.as_ref().and_then(expr_to_default_string);
-                    DslParam {
-                        name: p.name.clone(),
-                        type_id,
-                        cardinality,
-                        default,
-                    }
-                })
-                .collect();
+            let mut params = Vec::with_capacity(func.params.len());
+            for p in &func.params {
+                let (type_id, cardinality) = map_type_expr(&p.ty).map_err(|e| {
+                    format!(
+                        "unsupported CLI type mapping for {}.{} parameter `{}`: {e}",
+                        ast.module_path
+                            .as_ref()
+                            .map(|m| m.node.as_dotted())
+                            .unwrap_or_default(),
+                        func.name,
+                        p.name
+                    )
+                })?;
+                let default = p.default.as_ref().and_then(expr_to_default_string);
+                params.push(DslParam {
+                    name: p.name.clone(),
+                    type_id,
+                    cardinality,
+                    default,
+                });
+            }
             func_params.insert(func.name.clone(), params);
         }
     }
-    func_params
+    Ok(func_params)
 }
 
 /// Convert cached func params back to DslParam.
@@ -529,7 +545,7 @@ fn derive_entrypoints(params: &[DslParam]) -> Vec<CliEntrypoint> {
 // ── Type mapping ───────────────────────────────────────────────────
 
 /// Map a DSL TypeExpr to (ParamType, Cardinality).
-fn map_type_expr(ty: &TypeExpr) -> (ParamType, Cardinality) {
+fn map_type_expr(ty: &TypeExpr) -> Result<(ParamType, Cardinality), String> {
     match ty {
         TypeExpr::Named(name) => {
             let type_id = match name.as_str() {
@@ -538,17 +554,25 @@ fn map_type_expr(ty: &TypeExpr) -> (ParamType, Cardinality) {
                 // String, CommitSha, Url, FilePath, Platform, etc. → Str
                 _ => ParamType::Str,
             };
-            (type_id, Cardinality::ONE)
+            Ok((type_id, Cardinality::ONE))
         }
         TypeExpr::Optional(inner) => {
-            let (type_id, _) = map_type_expr(inner);
-            (type_id, Cardinality::ZERO_OR_ONE)
+            let (type_id, _) = map_type_expr(inner)?;
+            Ok((type_id, Cardinality::ZERO_OR_ONE))
         }
-        TypeExpr::Generic(name, args) if name == "List" && !args.is_empty() => {
-            let (type_id, _) = map_type_expr(&args[0]);
-            (type_id, Cardinality::ZERO_OR_MORE)
+        TypeExpr::Generic(name, args) if name == "List" => {
+            let inner = args.first().ok_or_else(|| {
+                "List type requires one type argument for CLI entrypoint mapping".to_string()
+            })?;
+            let (type_id, _) = map_type_expr(inner)?;
+            Ok((type_id, Cardinality::ZERO_OR_MORE))
         }
-        _ => (ParamType::Str, Cardinality::ONE),
+        TypeExpr::Generic(name, _) => Err(format!(
+            "generic type `{name}` is not supported for CLI entrypoint mapping"
+        )),
+        other => Err(format!(
+            "type expression `{other:?}` is not supported for CLI entrypoint mapping"
+        )),
     }
 }
 
@@ -642,7 +666,7 @@ mod tests {
 
     #[test]
     fn discovers_inferred_tools_from_dsl() {
-        let tools = discover_tool_defs_from_dsl();
+        let tools = discover_tool_defs_from_dsl().expect("tool discovery should succeed");
 
         let names: Vec<&str> = tools.iter().map(|t| t.meta.tool_name.as_ref()).collect();
 
@@ -675,7 +699,7 @@ mod tests {
 
     #[test]
     fn inferred_tools_have_invocations() {
-        let tools = discover_tool_defs_from_dsl();
+        let tools = discover_tool_defs_from_dsl().expect("tool discovery should succeed");
 
         for tool in &tools {
             let name = tool.meta.tool_name.as_ref();
@@ -699,7 +723,7 @@ mod tests {
 
     #[test]
     fn all_tools_return_result() {
-        let tools = discover_tool_defs_from_dsl();
+        let tools = discover_tool_defs_from_dsl().expect("tool discovery should succeed");
         for tool in &tools {
             assert!(
                 tool.meta.returns_result,
@@ -711,7 +735,7 @@ mod tests {
 
     #[test]
     fn entrypoints_derived_from_func_params() {
-        let tools = discover_tool_defs_from_dsl();
+        let tools = discover_tool_defs_from_dsl().expect("tool discovery should succeed");
 
         // RT63: gist.dag has multiple funcs → subcommand dispatch.
         // gist_diff entrypoints are now in the subcommand, not the top-level tool.
@@ -741,7 +765,7 @@ mod tests {
 
     #[test]
     fn pragma_has_expected_outputs() {
-        let tools = discover_tool_defs_from_dsl();
+        let tools = discover_tool_defs_from_dsl().expect("tool discovery should succeed");
         let pragma = tools.iter().find(|t| t.meta.tool_name == "pragma").unwrap();
 
         // pragma produces 3 outputs via content_upsert
@@ -753,7 +777,7 @@ mod tests {
 
     #[test]
     fn tool_names_sorted() {
-        let tools = discover_tool_defs_from_dsl();
+        let tools = discover_tool_defs_from_dsl().expect("tool discovery should succeed");
         let names: Vec<&str> = tools.iter().map(|t| t.meta.tool_name.as_ref()).collect();
         let mut sorted = names.clone();
         sorted.sort();
@@ -762,7 +786,7 @@ mod tests {
 
     #[test]
     fn tools_use_entrypoint_builder() {
-        let tools = discover_tool_defs_from_dsl();
+        let tools = discover_tool_defs_from_dsl().expect("tool discovery should succeed");
         for tool in &tools {
             if tool.meta.tool_name == "testgen" {
                 continue;

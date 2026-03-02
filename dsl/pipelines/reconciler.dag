@@ -137,7 +137,10 @@ pipeline reconciler
             payload: { issue_id: issue.id, stage: stage_label },
             produced_at: "now"
           })
-          { issue_id: issue.id, action: "signal_emitted", converged: false }
+          match signal_result.emitted {
+            true => { issue_id: issue.id, action: "signal_emitted", converged: false }
+            false => { issue_id: issue.id, action: "signal_failed", converged: false }
+          }
         }
         true => match is_terminal(status: ledger_result.outcome.status) {
           true => {
@@ -177,7 +180,10 @@ pipeline reconciler
                 payload: { issue_id: issue.id, stage: stage_label },
                 produced_at: "now"
               })
-              { issue_id: issue.id, action: "success_requeued", converged: false }
+              match requeue_signal.emitted {
+                true => { issue_id: issue.id, action: "success_requeued", converged: false }
+                false => { issue_id: issue.id, action: "requeue_failed", converged: false }
+              }
             }
             false => match is_retryable(status: ledger_result.outcome.status) {
             true => {
@@ -214,7 +220,10 @@ pipeline reconciler
                     },
                     produced_at: "now"
                   })
-                  { issue_id: issue.id, action: "retry_queued", converged: false }
+                  match retry_signal.emitted {
+                    true => { issue_id: issue.id, action: "retry_queued", converged: false }
+                    false => { issue_id: issue.id, action: "retry_failed", converged: false }
+                  }
                 }
               }
             }
@@ -369,6 +378,7 @@ pipeline reconciler
       },
       produced_at: "now"
     })
+    tick_emitted = tick_signal.emitted
   }
 }
 

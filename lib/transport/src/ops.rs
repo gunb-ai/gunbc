@@ -20,8 +20,8 @@ use gunbc_exec::{
     require_response, require_str, ExecError, Executable, IntoExecResult, OutputMap,
     TransportResponseExt,
 };
-use gunbc_ir::transport::{TcpRequest, TransportRequest, TransportResponse};
 use gunbc_ir::resource::RESOURCE_CREDENTIAL;
+use gunbc_ir::transport::{TcpRequest, TransportRequest, TransportResponse};
 use gunbc_ir::{AuthScheme, Credential, Secret, Value};
 use std::collections::HashMap;
 

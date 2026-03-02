@@ -1135,10 +1135,7 @@ fn collect_resource_obligations<T>(
             continue;
         }
 
-        let cred_port = node
-            .inputs
-            .iter()
-            .find(|p| p.name.0 == "res:credential");
+        let cred_port = node.inputs.iter().find(|p| p.name.0 == "res:credential");
 
         let Some(port) = cred_port else {
             // No res:credential port — not an authenticated endpoint.
@@ -1559,14 +1556,23 @@ mod tests {
                 "execute_rest",
                 vec![
                     Port::scalar("request", "TransportRequest"),
-                    Port::with_cardinality("res:credential", "Credential", Cardinality::ZERO_OR_ONE),
+                    Port::with_cardinality(
+                        "res:credential",
+                        "Credential",
+                        Cardinality::ZERO_OR_ONE,
+                    ),
                 ],
                 vec![Port::scalar("response", "TransportResponse")],
                 (),
             )
             .with_kind(NodeKind::TransportExecute),
         );
-        dag.add_edge(edge("cred_source", "token", "execute_rest", "res:credential"));
+        dag.add_edge(edge(
+            "cred_source",
+            "token",
+            "execute_rest",
+            "res:credential",
+        ));
 
         let registry = TypeRegistry::with_core_types();
         let obligations = collect_obligations(&dag, &registry, None);
@@ -1578,8 +1584,14 @@ mod tests {
                     if node_id.0 == "execute_rest" && *connected
             )
         });
-        assert!(cred_obligation.is_some(), "connected credential should generate discharged obligation");
-        assert!(!cred_obligation.unwrap().needs_test(), "connected credential should be discharged");
+        assert!(
+            cred_obligation.is_some(),
+            "connected credential should generate discharged obligation"
+        );
+        assert!(
+            !cred_obligation.unwrap().needs_test(),
+            "connected credential should be discharged"
+        );
     }
 
     #[test]
@@ -1591,7 +1603,11 @@ mod tests {
                 "execute_rest",
                 vec![
                     Port::scalar("request", "TransportRequest"),
-                    Port::with_cardinality("res:credential", "Credential", Cardinality::ZERO_OR_ONE),
+                    Port::with_cardinality(
+                        "res:credential",
+                        "Credential",
+                        Cardinality::ZERO_OR_ONE,
+                    ),
                 ],
                 vec![Port::scalar("response", "TransportResponse")],
                 (),
@@ -1610,8 +1626,14 @@ mod tests {
                     if node_id.0 == "execute_rest" && !*connected
             )
         });
-        assert!(cred_obligation.is_some(), "disconnected credential should be invalid");
-        assert!(cred_obligation.unwrap().is_invalid(), "disconnected credential is a structural error");
+        assert!(
+            cred_obligation.is_some(),
+            "disconnected credential should be invalid"
+        );
+        assert!(
+            cred_obligation.unwrap().is_invalid(),
+            "disconnected credential is a structural error"
+        );
     }
 
     #[test]
@@ -1622,13 +1644,8 @@ mod tests {
                 .with_kind(NodeKind::Pure),
         );
         dag.add_node(
-            Node::opaque(
-                "b",
-                vec![Port::scalar("in", "String")],
-                vec![],
-                (),
-            )
-            .with_kind(NodeKind::Pure),
+            Node::opaque("b", vec![Port::scalar("in", "String")], vec![], ())
+                .with_kind(NodeKind::Pure),
         );
         dag.add_edge(edge("a", "out", "b", "in"));
 
@@ -1732,13 +1749,8 @@ mod tests {
                 .with_kind(NodeKind::Pure),
         );
         dag.add_node(
-            Node::opaque(
-                "b",
-                vec![Port::scalar("in", "String")],
-                vec![],
-                (),
-            )
-            .with_kind(NodeKind::Pure),
+            Node::opaque("b", vec![Port::scalar("in", "String")], vec![], ())
+                .with_kind(NodeKind::Pure),
         );
         dag.add_edge(edge("a", "out", "b", "in"));
 

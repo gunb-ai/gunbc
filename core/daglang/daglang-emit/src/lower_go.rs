@@ -520,10 +520,7 @@ fn expr_uses_json(expr: &Expr) -> bool {
 
 /// Map an abstract type name to its Go equivalent.
 fn map_to_go_type(abstract_type: &str) -> String {
-    crate::type_mapping::map_abstract_type(
-        &crate::type_mapping::GO_TYPE_MAPPING,
-        abstract_type,
-    )
+    crate::type_mapping::map_abstract_type(&crate::type_mapping::GO_TYPE_MAPPING, abstract_type)
 }
 
 // ===========================================================================

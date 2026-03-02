@@ -719,10 +719,7 @@ pub fn extract_middleware(spec: &ServiceOperationSpec) -> Option<&TransportMiddl
 /// Emit a Rust function that constructs `TransportMiddlewareConfig` for an operation.
 ///
 /// The generated code links to the Target SDK types from `gunbc_ir::transport::middleware`.
-pub fn emit_rust_middleware_config(
-    op_name: &str,
-    config: &TransportMiddlewareConfig,
-) -> String {
+pub fn emit_rust_middleware_config(op_name: &str, config: &TransportMiddlewareConfig) -> String {
     let mut out = String::new();
     out.push_str(&format!(
         "/// Transport middleware configuration for `{op_name}`.\n\
@@ -794,12 +791,15 @@ pub fn emit_rust_middleware_config(
     if let Some(ref cred) = config.credential {
         let provider = match cred.provider {
             gunbc_ir::transport::middleware::CredentialProvider::OAuthBearer => "OAuthBearer",
-            gunbc_ir::transport::middleware::CredentialProvider::GcpWorkloadIdentityFederation => "GcpWorkloadIdentityFederation",
+            gunbc_ir::transport::middleware::CredentialProvider::GcpWorkloadIdentityFederation => {
+                "GcpWorkloadIdentityFederation"
+            }
             gunbc_ir::transport::middleware::CredentialProvider::ApiKey => "ApiKey",
         };
         let injection = match &cred.injection {
             gunbc_ir::transport::middleware::CredentialInjection::AuthorizationBearer => {
-                "gunbc_ir::transport::middleware::CredentialInjection::AuthorizationBearer".to_string()
+                "gunbc_ir::transport::middleware::CredentialInjection::AuthorizationBearer"
+                    .to_string()
             }
             gunbc_ir::transport::middleware::CredentialInjection::Header { name } => {
                 format!("gunbc_ir::transport::middleware::CredentialInjection::Header {{ name: \"{name}\".to_string() }}")
@@ -889,10 +889,7 @@ pub fn emit_rust_middleware_config(
 }
 
 /// Emit a Go struct literal returning `TransportMiddlewareConfig` for an operation.
-pub fn emit_go_middleware_config(
-    op_name: &str,
-    config: &TransportMiddlewareConfig,
-) -> String {
+pub fn emit_go_middleware_config(op_name: &str, config: &TransportMiddlewareConfig) -> String {
     let mut out = String::new();
     out.push_str(&format!(
         "// {op_name}MiddlewareConfig returns the transport middleware configuration.\n\
@@ -977,10 +974,7 @@ pub fn emit_go_middleware_config(
 }
 
 /// Emit C middleware config constants for an operation.
-pub fn emit_c_middleware_config(
-    op_name: &str,
-    config: &TransportMiddlewareConfig,
-) -> String {
+pub fn emit_c_middleware_config(op_name: &str, config: &TransportMiddlewareConfig) -> String {
     let mut out = String::new();
     out.push_str(&format!(
         "/* {op_name}: transport middleware configuration */\n"
@@ -1086,10 +1080,7 @@ pub fn emit_c_middleware_config(
 }
 
 /// Emit MIPS data section with middleware config for an operation.
-pub fn emit_mips_middleware_config(
-    op_name: &str,
-    config: &TransportMiddlewareConfig,
-) -> String {
+pub fn emit_mips_middleware_config(op_name: &str, config: &TransportMiddlewareConfig) -> String {
     let mut out = String::new();
     out.push_str(&format!("    # {op_name}: transport middleware config\n"));
 
@@ -1152,9 +1143,8 @@ pub fn serialize_middleware_config_json(
 ) -> Result<String, String> {
     let mut map = serde_json::Map::new();
     for (name, config) in configs {
-        let val = serde_json::to_value(config).map_err(|e| {
-            format!("failed to serialize middleware config for `{name}`: {e}")
-        })?;
+        let val = serde_json::to_value(config)
+            .map_err(|e| format!("failed to serialize middleware config for `{name}`: {e}"))?;
         map.insert(name.clone(), val);
     }
     serde_json::to_string_pretty(&serde_json::Value::Object(map))
@@ -1650,10 +1640,7 @@ mod tests {
             code.contains("github_gist_create_rate_limit_scope"),
             "has rate limit label: {code}"
         );
-        assert!(
-            code.contains("\"github:core\""),
-            "has scope key: {code}"
-        );
+        assert!(code.contains("\"github:core\""), "has scope key: {code}");
         assert!(
             code.contains("github_gist_create_retry_max_attempts"),
             "has retry label: {code}"
@@ -1688,7 +1675,10 @@ mod tests {
     fn middleware_config_empty_emits_nones() {
         let config = TransportMiddlewareConfig::default();
         let code = emit_rust_middleware_config("empty_op", &config);
-        assert!(code.contains("rate_limit: None"), "has None rate limit: {code}");
+        assert!(
+            code.contains("rate_limit: None"),
+            "has None rate limit: {code}"
+        );
         assert!(code.contains("retry: None"), "has None retry: {code}");
         assert!(
             code.contains("response_classification: None"),
@@ -1699,14 +1689,10 @@ mod tests {
     #[test]
     fn serialize_middleware_config_json_produces_valid_json() {
         let config = sample_middleware_config();
-        let json = serialize_middleware_config_json(&[
-            ("github_gist_create".to_string(), &config),
-        ])
-        .expect("serialization should succeed");
+        let json = serialize_middleware_config_json(&[("github_gist_create".to_string(), &config)])
+            .expect("serialization should succeed");
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
         assert!(parsed.get("github_gist_create").is_some());
-        assert!(
-            parsed["github_gist_create"]["rate_limit"]["scope_key"] == "github:core"
-        );
+        assert!(parsed["github_gist_create"]["rate_limit"]["scope_key"] == "github:core");
     }
 }

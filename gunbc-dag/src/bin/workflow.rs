@@ -10,9 +10,9 @@ use std::path::PathBuf;
 use std::process;
 
 use gunbc_dag::{
-    ci_workflow_spec, default_process_unit_registry, execute_workflow_plan, explain_plan, plan_workflow,
-    test_all_workflow_spec, tool_workflow_spec, workflow_unit_commands, BlockedReason, MissReason,
-    PlannerInputs, PlannerWorkflowSpec,
+    ci_workflow_spec, default_process_unit_registry, execute_workflow_plan, explain_plan,
+    plan_workflow, test_all_workflow_spec, tool_workflow_spec, workflow_unit_commands,
+    BlockedReason, MissReason, PlannerInputs, PlannerWorkflowSpec,
 };
 use serde_json::{json, Map, Value};
 
@@ -68,8 +68,13 @@ fn run() -> Result<(), String> {
 
     let spec = workflow_spec_for_name(workflow_name)?;
     let registry = default_process_unit_registry();
-    let plan = plan_workflow(&spec, &registry, &PlannerInputs::new(), &args.workspace_root)
-        .map_err(|error| format!("failed to plan workflow '{workflow_name}': {error}"))?;
+    let plan = plan_workflow(
+        &spec,
+        &registry,
+        &PlannerInputs::new(),
+        &args.workspace_root,
+    )
+    .map_err(|error| format!("failed to plan workflow '{workflow_name}': {error}"))?;
 
     if args.plan_only {
         let explain = explain_plan(&spec, &plan);
@@ -87,7 +92,8 @@ fn run() -> Result<(), String> {
     let commands = workflow_unit_commands(workflow_name).map_err(|error| {
         format!("workflow '{workflow_name}' cannot execute with unit commands: {error}")
     })?;
-    let summary = execute_workflow_plan(&spec, &plan, &commands, &args.workspace_root, args.dry_run);
+    let summary =
+        execute_workflow_plan(&spec, &plan, &commands, &args.workspace_root, args.dry_run);
 
     match args.format {
         OutputFormat::Json => println!("{}", render_execution_json(&summary)),

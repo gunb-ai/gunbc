@@ -5,11 +5,11 @@
 pub use gunbc_ir::transport::github_actions::WorkflowConfig;
 pub use gunbc_primitives::EmbeddedFileExistsOp;
 
-use gunbc_ir::CargoInvocation;
 use gunbc_exec::DynOp;
 use gunbc_ir::transport::github_actions::{
     checkout, gcp_workload_identity, rust_toolchain, ubuntu_latest, Integration, Permissions,
 };
+use gunbc_ir::CargoInvocation;
 use gunbc_ir::{infer_signature, BuilderError, Dag, WorkflowSignature};
 use gunbc_testgen_registry::iter_dag_specs;
 use std::collections::BTreeSet;

@@ -81,7 +81,9 @@ pub fn map_abstract_type(mapping: &DslTypeMapping, abstract_type: &str) -> Strin
                 let mapped_key = map_abstract_type(mapping, key);
                 let mapped_val = map_abstract_type(mapping, val);
                 // fmt must contain exactly two `{}` placeholders.
-                return fmt.replacen("{}", &mapped_key, 1).replacen("{}", &mapped_val, 1);
+                return fmt
+                    .replacen("{}", &mapped_key, 1)
+                    .replacen("{}", &mapped_val, 1);
             }
         }
     }
@@ -234,10 +236,7 @@ mod tests {
             map_abstract_type(&GO_TYPE_MAPPING, "List<String>"),
             "[]string"
         );
-        assert_eq!(
-            map_abstract_type(&GO_TYPE_MAPPING, "List<Int>"),
-            "[]int64"
-        );
+        assert_eq!(map_abstract_type(&GO_TYPE_MAPPING, "List<Int>"), "[]int64");
     }
 
     #[test]
@@ -278,9 +277,6 @@ mod tests {
             map_abstract_type(&RUST_TYPE_MAPPING, "FooBar"),
             "serde_json::Value"
         );
-        assert_eq!(
-            map_abstract_type(&GO_TYPE_MAPPING, "FooBar"),
-            "interface{}"
-        );
+        assert_eq!(map_abstract_type(&GO_TYPE_MAPPING, "FooBar"), "interface{}");
     }
 }

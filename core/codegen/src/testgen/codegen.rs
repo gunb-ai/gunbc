@@ -24,7 +24,6 @@
 //! Only obligations that are Unknown or RuntimeOnly produce tests.
 
 use crate::testgen::analyze::{analyze_dag, DagAnalysis};
-use crate::testgen::registry_gen::derive_virtual_backend_requirements;
 use crate::testgen::obligation::{
     collect_obligations, DischargeStatus, Obligation, ObligationSet, ObligationSource,
     ProofObligation,
@@ -32,6 +31,7 @@ use crate::testgen::obligation::{
 use crate::testgen::probe_observer::{
     analyze_probe_observers, observability_report, ProbeObserverAnalysis,
 };
+use crate::testgen::registry_gen::derive_virtual_backend_requirements;
 use crate::testgen::render_rust::plain_rust_renderer;
 use gunbc_cli::ParamType;
 use gunbc_infra::hash::ContentHash;
@@ -3353,7 +3353,6 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     body,
                 });
             }
-
         }
 
         tests
@@ -5160,7 +5159,6 @@ struct CorpusExampleCtx<'a> {
 }
 
 impl<T: Clone + 'static> TestGenerator<'_, T> {
-
     fn build_corpus_section(
         &self,
         graph_builder_fn: &str,
@@ -5197,7 +5195,11 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
             eprintln!(
                 "[corpus] WARNING: {} corpus identit{} not found in DAG (corpus drift?): {}",
                 unmatched_identities.len(),
-                if unmatched_identities.len() == 1 { "y" } else { "ies" },
+                if unmatched_identities.len() == 1 {
+                    "y"
+                } else {
+                    "ies"
+                },
                 unmatched_identities.join(", "),
             );
         }
@@ -5250,8 +5252,7 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
                         });
                     }
                     gunbc_test::Expectation::TypeContractOnly => {
-                        let (doc, body) =
-                            self.build_corpus_body_dryrun(&ctx, analysis, node, None);
+                        let (doc, body) = self.build_corpus_body_dryrun(&ctx, analysis, node, None);
                         tests.push(TestFn {
                             name: test_name,
                             doc,
@@ -5441,10 +5442,7 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
                         .method("get", vec![Expr::Str(port.clone())])
                         .method(
                             "expect",
-                            vec![Expr::Str(format!(
-                                "output port '{}' should exist",
-                                port
-                            ))],
+                            vec![Expr::Str(format!("output port '{}' should exist", port))],
                         ),
                 ));
                 body.extend(render_output_matcher_check(matcher, &var_name));
@@ -5571,8 +5569,7 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
                     "Real".to_string(),
                 ])
             } else {
-                let mocks_expr =
-                    self.dryrun_mocks_expr(analysis, "adjacent pair source node");
+                let mocks_expr = self.dryrun_mocks_expr(analysis, "adjacent pair source node");
                 body.push(Stmt::let_bind("mocks_a", mocks_expr));
                 Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks_a")])
             };
@@ -5656,8 +5653,7 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
                     "Real".to_string(),
                 ])
             } else {
-                let mocks_expr =
-                    self.dryrun_mocks_expr(analysis, "adjacent pair target node");
+                let mocks_expr = self.dryrun_mocks_expr(analysis, "adjacent pair target node");
                 body.push(Stmt::let_bind("mocks_b", mocks_expr));
                 Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks_b")])
             };
@@ -5682,7 +5678,9 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
             body.push(Stmt::Blank);
 
             // Assert type contract on target node outputs.
-            body.push(Stmt::Comment("Verify target node output types.".to_string()));
+            body.push(Stmt::Comment(
+                "Verify target node output types.".to_string(),
+            ));
             for port in &to_node.outputs {
                 let port_name = &port.name.0;
                 let type_id = &port.type_id.0;
@@ -5886,10 +5884,7 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
                             Expr::var("dag").ref_of(),
                             Expr::Str(concrete_node_id.clone()),
                             Expr::var(&input_var),
-                            Expr::call(
-                                "ExecutionMode::DryRun",
-                                vec![Expr::var(&mocks_var)],
-                            ),
+                            Expr::call("ExecutionMode::DryRun", vec![Expr::var(&mocks_var)]),
                         ],
                     )
                     .method(
@@ -8447,8 +8442,11 @@ mod tests {
         let mut corpus = HashMap::new();
         corpus.insert(identity, corpus_entry);
 
-        let spec = MockSpec::new("corpus_effectful")
-            .boundary("svc::fetch", "body", Value::Str("<MOCK>".into()));
+        let spec = MockSpec::new("corpus_effectful").boundary(
+            "svc::fetch",
+            "body",
+            Value::Str("<MOCK>".into()),
+        );
 
         let config = TestConfig {
             corpus_tests: true,

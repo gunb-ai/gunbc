@@ -15,24 +15,24 @@ module tools.pragma
 import std.patterns { content_upsert }
 import std.types { PragmaDirective }
 
-extern func render_clippy_toml_content() -> { return: String }
-extern func render_disallowed_methods_allowlist_content() -> { return: String }
-extern func render_pragma_lint_policy_content() -> { return: String }
+extern func render_clippy_toml_content(directives: List<PragmaDirective>) -> { return: String }
+extern func render_disallowed_methods_allowlist_content(directives: List<PragmaDirective>) -> { return: String }
+extern func render_pragma_lint_policy_content(directives: List<PragmaDirective>) -> { return: String }
 
 func pragma(directives: List<PragmaDirective>) -> { success: Bool, clippy_written: Bool, allowlist_written: Bool, policy_written: Bool } {
-  clippy_content = render_clippy_toml_content()
+  clippy_content = render_clippy_toml_content(directives: directives)
   clippy = content_upsert(
     content: clippy_content.return,
     path: "clippy.toml"
   )
 
-  allowlist_content = render_disallowed_methods_allowlist_content()
+  allowlist_content = render_disallowed_methods_allowlist_content(directives: directives)
   allowlist = content_upsert(
     content: allowlist_content.return,
     path: "tools/disallowed-methods-allowlist.txt"
   )
 
-  policy_content = render_pragma_lint_policy_content()
+  policy_content = render_pragma_lint_policy_content(directives: directives)
   policy = content_upsert(
     content: policy_content.return,
     path: "tools/pragma-lint-policy.txt"

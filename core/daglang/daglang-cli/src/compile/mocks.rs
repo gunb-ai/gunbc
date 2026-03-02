@@ -12,7 +12,7 @@ use gunbc_ir::Value;
 /// don't evaluate at runtime (DeclaredOutputCallableOp passthrough), so we
 /// pre-compute the content via direct fn body evaluation and inject it as an
 /// output mock — mirroring the generated binary's embedded asset approach.
-pub fn makegen_entrypoint_mocks(output_path: &str) -> BoundaryMocks {
+pub fn makegen_entrypoint_mocks(output_path: &str) -> Result<BoundaryMocks, String> {
     let mut input_mocks = BoundaryMocks::new();
     input_mocks.set_input(
         "tools.makegen::makegen",
@@ -29,14 +29,15 @@ pub fn makegen_entrypoint_mocks(output_path: &str) -> BoundaryMocks {
     // render_makefile_content.  Without this, the passthrough callable
     // forwards the literal DSL template string ("{header}{body}") instead
     // of the evaluated Makefile.
-    let makefile_content = gunbc_dag::makegen::compute_makegen_content();
+    let makefile_content = gunbc_dag::makegen::compute_makegen_content()
+        .map_err(|e| format!("failed to compute makegen content for mocks: {e}"))?;
     input_mocks.set_value(
         "tools.makegen::render_makefile_content",
         "return",
         Value::Str(makefile_content),
     );
 
-    input_mocks
+    Ok(input_mocks)
 }
 
 /// Dry-run mocks: intercept transport boundary nodes so no I/O occurs.

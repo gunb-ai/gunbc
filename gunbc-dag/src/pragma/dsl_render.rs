@@ -24,10 +24,22 @@ fn compile_clippy_policy() -> (
 ) {
     let output = compile_data_from_sources(&[
         (Path::new("<embedded>/std/lint.dag"), STD_LINT_SOURCE),
-        (Path::new("<embedded>/extdeps/clippy.dag"), EXTDEPS_CLIPPY_SOURCE),
-        (Path::new("<embedded>/config/arch_rules.dag"), ARCH_RULES_SOURCE),
-        (Path::new("<embedded>/config/clippy_disallowed.dag"), CLIPPY_DISALLOWED_SOURCE),
-        (Path::new("<embedded>/config/clippy_policy.dag"), CLIPPY_POLICY_SOURCE),
+        (
+            Path::new("<embedded>/extdeps/clippy.dag"),
+            EXTDEPS_CLIPPY_SOURCE,
+        ),
+        (
+            Path::new("<embedded>/config/arch_rules.dag"),
+            ARCH_RULES_SOURCE,
+        ),
+        (
+            Path::new("<embedded>/config/clippy_disallowed.dag"),
+            CLIPPY_DISALLOWED_SOURCE,
+        ),
+        (
+            Path::new("<embedded>/config/clippy_policy.dag"),
+            CLIPPY_POLICY_SOURCE,
+        ),
     ])
     .expect("clippy_policy.dag should compile");
 

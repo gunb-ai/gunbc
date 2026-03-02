@@ -101,7 +101,6 @@ mod tests {
         allow_lints: HashSet<String>,
     }
 
-
     fn load_pragma_lint_policy(root: &Path) -> PragmaLintPolicy {
         let candidate_paths = [
             root.join("tools/pragma-lint-policy.txt"),

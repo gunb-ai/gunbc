@@ -276,7 +276,10 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("services.sdlc.providers.health_check".into(), 1),
         ("services.sdlc.providers.inline_artifact_store".into(), 2),
         ("services.sdlc.providers.llm_agent_provider".into(), 7),
-        ("services.sdlc.providers.local_credential_provider".into(), 4),
+        (
+            "services.sdlc.providers.local_credential_provider".into(),
+            4,
+        ),
         ("services.sdlc.providers.pubsub_signal_store".into(), 3),
         ("services.sdlc.providers.rolling_deploy".into(), 2),
         ("services.sdlc.providers.structured_logging".into(), 1),

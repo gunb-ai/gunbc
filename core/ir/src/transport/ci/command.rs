@@ -38,7 +38,17 @@ use serde::{Deserialize, Serialize};
 /// - `Warning`: Yellow, creates PR annotations
 /// - `Notice`: Blue/cyan, informational annotations
 /// - `Debug`: Gray, only shown when debug logging enabled
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, gunbc_delegate_macros::StringEnum)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    gunbc_delegate_macros::StringEnum,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum AnnotationLevel {
     /// Debug message (only shown with debug logging enabled)

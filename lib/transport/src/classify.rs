@@ -643,10 +643,7 @@ mod tests {
 
     #[test]
     fn error_shape_extraction_falls_back_to_code_path() {
-        let response = RestResponse::new(
-            500,
-            serde_json::json!({ "code": "INTERNAL_ERROR" }),
-        );
+        let response = RestResponse::new(500, serde_json::json!({ "code": "INTERNAL_ERROR" }));
         let policy = ResponseClassification {
             provider: ResponseProvider::Generic,
             prioritize_auth_errors: false,
@@ -659,9 +656,6 @@ mod tests {
         };
         let classified = classify_rest_response(&response, &policy).expect("classification");
         assert_eq!(classified.kind, ClassifiedErrorKind::Server);
-        assert_eq!(
-            classified.message,
-            Some("INTERNAL_ERROR".to_string())
-        );
+        assert_eq!(classified.message, Some("INTERNAL_ERROR".to_string()));
     }
 }

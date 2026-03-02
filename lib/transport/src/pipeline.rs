@@ -185,11 +185,7 @@ impl TransportPipeline {
         request: TransportRequest,
         ctx: &mut MiddlewareContext,
     ) -> Result<TransportResponse, ExecError> {
-        let max_attempts = self
-            .config
-            .retry
-            .as_ref()
-            .map_or(1, |r| r.max_attempts);
+        let max_attempts = self.config.retry.as_ref().map_or(1, |r| r.max_attempts);
 
         loop {
             let result = self.execute_once(request.clone(), ctx);
@@ -256,8 +252,7 @@ impl TransportPipeline {
             executor(&request)
         } else {
             // Use crate-internal executor
-            crate::backend::execute_transport_with_backend(&request)
-                .exec_context("transport error")
+            crate::backend::execute_transport_with_backend(&request).exec_context("transport error")
         };
 
         // Post-process result
@@ -336,8 +331,7 @@ mod tests {
     use super::*;
     use crate::metrics::InMemoryMetricsSink;
     use gunbc_ir::transport::{
-        LocalRequest, LocalResponse, RateLimitAlgorithm, RateLimitConfig, RetryBackoff,
-        RetryConfig,
+        LocalRequest, LocalResponse, RateLimitAlgorithm, RateLimitConfig, RetryBackoff, RetryConfig,
     };
 
     fn mock_executor() -> ExecutorFn {

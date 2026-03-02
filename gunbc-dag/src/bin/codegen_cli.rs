@@ -292,7 +292,15 @@ fn cmd_rollback(dry_run: bool) {
 
     for target in &targets {
         let path = Path::new(target);
-        if io.file_exists(path).unwrap_or(false) {
+        let exists = match io.file_exists(path) {
+            Ok(exists) => exists,
+            Err(e) => {
+                eprintln!("  failed to probe {}: {}", target, e);
+                errors.push((target.clone(), e.to_string()));
+                continue;
+            }
+        };
+        if exists {
             if dry_run {
                 println!("  would remove: {}", target);
             } else {
@@ -774,9 +782,21 @@ fn codegen_outputs_exist(io: &dyn ResourceIo) -> bool {
         return true;
     }
 
-    paths
-        .iter()
-        .all(|path| io.file_exists(path).unwrap_or(false))
+    for path in &paths {
+        match io.file_exists(path) {
+            Ok(true) => {}
+            Ok(false) => return false,
+            Err(e) => {
+                print_attention(
+                    AttentionLevel::Warning,
+                    "Could not probe generated output",
+                    &format!("{}: {e}", path.display()),
+                );
+                return false;
+            }
+        }
+    }
+    true
 }
 
 fn workspace_layout_or_none() -> Option<WorkspaceLayout> {
@@ -912,14 +932,7 @@ mod tests {
             discover_codegen_tools(&workspace_root).expect("DSL discovery should return tool defs");
         let names: BTreeSet<String> = tools.iter().map(|t| t.meta.tool_name.to_string()).collect();
 
-        for required in [
-            "bootstrap",
-            "deps",
-            "gist",
-            "makegen",
-            "pragma",
-            "testgen",
-        ] {
+        for required in ["bootstrap", "deps", "gist", "makegen", "pragma", "testgen"] {
             assert!(
                 names.contains(required),
                 "missing tool from DSL discovery: {}",
@@ -933,7 +946,8 @@ mod tests {
             .iter()
             .find(|t| t.meta.tool_name == "gist")
             .expect("gist tool should exist");
-        let subcommands: BTreeSet<&str> = gist.subcommands.iter().map(|s| s.name.as_str()).collect();
+        let subcommands: BTreeSet<&str> =
+            gist.subcommands.iter().map(|s| s.name.as_str()).collect();
         for subcommand in ["gist-diff", "gist-recent"] {
             assert!(
                 subcommands.contains(subcommand),

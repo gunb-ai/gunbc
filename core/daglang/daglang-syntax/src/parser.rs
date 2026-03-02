@@ -286,7 +286,7 @@ impl Parser {
         // Subsequent comma-separated params
         while self.check(&TokenKind::Comma) {
             self.advance(); // skip comma
-            // Allow trailing comma: `(a, b,) =>`
+                            // Allow trailing comma: `(a, b,) =>`
             if self.check(&TokenKind::RParen) {
                 break;
             }
@@ -479,9 +479,7 @@ impl Parser {
                         if let TokenKind::Int(n) = &self.peek().kind {
                             let n = *n;
                             if n <= 0 {
-                                return Err(self.err(
-                                    "rate_limit `requests` must be > 0".into(),
-                                ));
+                                return Err(self.err("rate_limit `requests` must be > 0".into()));
                             }
                             requests = Some(n);
                             self.advance();
@@ -536,14 +534,15 @@ impl Parser {
             self.eat(&TokenKind::Comma);
         }
 
-        let requests = requests.ok_or_else(|| {
-            self.err("rate_limit block requires `requests` field".into())
-        })?;
-        let per = per.ok_or_else(|| {
-            self.err("rate_limit block requires `per` field".into())
-        })?;
+        let requests = requests
+            .ok_or_else(|| self.err("rate_limit block requires `requests` field".into()))?;
+        let per = per.ok_or_else(|| self.err("rate_limit block requires `per` field".into()))?;
 
-        Ok(RateLimitDef { requests, per, scope })
+        Ok(RateLimitDef {
+            requests,
+            per,
+            scope,
+        })
     }
 
     fn parse_retry_block(&mut self) -> Result<RetryDef, ParseError> {
@@ -562,9 +561,7 @@ impl Parser {
                         if let TokenKind::Int(n) = &self.peek().kind {
                             let n = *n;
                             if n < 1 {
-                                return Err(self.err(
-                                    "retry `max_attempts` must be >= 1".into(),
-                                ));
+                                return Err(self.err("retry `max_attempts` must be >= 1".into()));
                             }
                             max_attempts = Some(n);
                             self.advance();
@@ -593,9 +590,7 @@ impl Parser {
                         if let TokenKind::Int(n) = &self.peek().kind {
                             let n = *n;
                             if n < 0 {
-                                return Err(self.err(
-                                    "retry `base_delay_ms` must be >= 0".into(),
-                                ));
+                                return Err(self.err("retry `base_delay_ms` must be >= 0".into()));
                             }
                             base_delay_ms = Some(n);
                             self.advance();
@@ -610,9 +605,7 @@ impl Parser {
                         if let TokenKind::Int(n) = &self.peek().kind {
                             let n = *n;
                             if n < 0 {
-                                return Err(self.err(
-                                    "retry `max_delay_ms` must be >= 0".into(),
-                                ));
+                                return Err(self.err("retry `max_delay_ms` must be >= 0".into()));
                             }
                             max_delay_ms = Some(n);
                             self.advance();
@@ -656,9 +649,8 @@ impl Parser {
             self.eat(&TokenKind::Comma);
         }
 
-        let max_attempts = max_attempts.ok_or_else(|| {
-            self.err("retry block requires `max_attempts` field".into())
-        })?;
+        let max_attempts = max_attempts
+            .ok_or_else(|| self.err("retry block requires `max_attempts` field".into()))?;
 
         Ok(RetryDef {
             max_attempts,
@@ -746,9 +738,8 @@ impl Parser {
             self.eat(&TokenKind::Comma);
         }
 
-        let status = status.ok_or_else(|| {
-            self.err("error_shape block requires `status` field".into())
-        })?;
+        let status =
+            status.ok_or_else(|| self.err("error_shape block requires `status` field".into()))?;
 
         Ok(ErrorShapeDef {
             status,
@@ -809,9 +800,8 @@ impl Parser {
             self.eat(&TokenKind::Comma);
         }
 
-        let credential_type = credential_type.ok_or_else(|| {
-            self.err("credential block requires `type` field".into())
-        })?;
+        let credential_type = credential_type
+            .ok_or_else(|| self.err("credential block requires `type` field".into()))?;
 
         Ok(CredentialDef {
             credential_type,
@@ -3881,7 +3871,9 @@ fn classify_transports(transports: List<TransportClass>) -> DerivedClassificatio
         let fn_item = sf
             .items
             .iter()
-            .find(|item| matches!(&item.node, Item::FnDef(def) if def.name == "classify_transports"))
+            .find(
+                |item| matches!(&item.node, Item::FnDef(def) if def.name == "classify_transports"),
+            )
             .expect("classify_transports fn should exist");
         match &fn_item.node {
             Item::FnDef(def) => {
@@ -4172,9 +4164,7 @@ pipeline gist {
 
     #[test]
     fn retry_refinement_is_rejected() {
-        let err = parse_source_err(
-            "module test\ntype Req = String where retry(max: 3)",
-        );
+        let err = parse_source_err("module test\ntype Req = String where retry(max: 3)");
         assert!(
             err.message.contains("@retry is not supported"),
             "unexpected error: {}",
@@ -4184,9 +4174,8 @@ pipeline gist {
 
     #[test]
     fn error_map_refinement_is_rejected() {
-        let err = parse_source_err(
-            "module test\ntype Req = String where error_map(401: Unauthorized)",
-        );
+        let err =
+            parse_source_err("module test\ntype Req = String where error_map(401: Unauthorized)");
         assert!(
             err.message.contains("@error_map is not supported"),
             "unexpected error: {}",
@@ -4311,7 +4300,9 @@ service foo.Bar {
 
                 // Check exact status code
                 assert_eq!(op.response[0].status, StatusPattern::Exact(200));
-                assert!(matches!(op.response[0].response_type, TypeExpr::Named(ref n) if n == "Issue"));
+                assert!(
+                    matches!(op.response[0].response_type, TypeExpr::Named(ref n) if n == "Issue")
+                );
 
                 // Check wildcard patterns
                 assert_eq!(op.response[1].status, StatusPattern::ClientError4xx);
@@ -4355,7 +4346,10 @@ service foo.Bar {
                 // Check exact exit code 1 with description
                 assert_eq!(op.exit[1].code, ExitCode::Exact(1));
                 assert!(matches!(op.exit[1].output_type, TypeExpr::Named(ref n) if n == "String"));
-                assert_eq!(op.exit[1].description.as_deref(), Some("Not a git repository"));
+                assert_eq!(
+                    op.exit[1].description.as_deref(),
+                    Some("Not a git repository")
+                );
 
                 // Check nonzero wildcard
                 assert_eq!(op.exit[2].code, ExitCode::NonZero);
@@ -4658,7 +4652,10 @@ service rest.T {
             Item::ServiceDef(def) => {
                 assert_eq!(def.config.rate_limits.len(), 1);
                 assert_eq!(def.config.rate_limits[0].requests, 100);
-                assert!(matches!(def.config.rate_limits[0].per, RateLimitUnit::Minute));
+                assert!(matches!(
+                    def.config.rate_limits[0].per,
+                    RateLimitUnit::Minute
+                ));
                 assert_eq!(def.config.rate_limits[0].scope.as_deref(), Some("global"));
 
                 let retry = def.config.retry.as_ref().expect("retry should be present");
@@ -4703,7 +4700,11 @@ service rest.T {
                 );
                 assert!(!def.config.error_shapes[0].retryable);
 
-                let cred = def.config.credential.as_ref().expect("credential should be present");
+                let cred = def
+                    .config
+                    .credential
+                    .as_ref()
+                    .expect("credential should be present");
                 assert_eq!(cred.credential_type, "ApiKey");
                 assert_eq!(cred.header.as_deref(), Some("x-api-key"));
                 assert_eq!(cred.source.as_deref(), Some("env"));

@@ -418,14 +418,7 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerClassification> {
             Some(ObligationCategory::ServiceTransportPrepare)
             | Some(ObligationCategory::ServiceTransportExecute)
             | Some(ObligationCategory::ServiceTransportParse) => handler(HandlerKind::Passthrough),
-            Some(ObligationCategory::PureRender) | Some(ObligationCategory::PureDataLoad) => {
-                #[cfg(debug_assertions)]
-                eprintln!(
-                    "NF-5: obligation {:?} for {module}::{name} is passthrough but should require a handler",
-                    obligation.unwrap(),
-                );
-                handler(HandlerKind::Passthrough)
-            }
+            Some(ObligationCategory::PureRender) | Some(ObligationCategory::PureDataLoad) => None,
             None => handler(HandlerKind::Passthrough),
         },
     }
@@ -577,23 +570,30 @@ fn handler_body(kind: HandlerKind) -> &'static str {
         }
         HandlerKind::PragmaEntrypoint => {
             r##"    let _directives = parse_pragma_directives(&inputs);
-    let written = inputs
-        .get("__deps")
-        .and_then(Value::as_list)
-        .map(|deps| {
-            deps.iter().any(|value| {
-                matches!(
-                    value,
-                    Value::Response(TransportResponse::File(response))
-                        if response.operation == FileOp::Write && response.success
-                )
-            })
-        })
-        .unwrap_or(false);
+    let mut clippy_written = false;
+    let mut allowlist_written = false;
+    let mut policy_written = false;
+    if let Some(deps) = inputs.get("__deps").and_then(Value::as_list) {
+        for value in deps {
+            let Value::Response(TransportResponse::File(response)) = value else {
+                continue;
+            };
+            if response.operation != FileOp::Write || !response.success {
+                continue;
+            }
+            match response.path.as_str() {
+                "clippy.toml" => clippy_written = true,
+                "tools/disallowed-methods-allowlist.txt" => allowlist_written = true,
+                "tools/pragma-lint-policy.txt" => policy_written = true,
+                _ => {}
+            }
+        }
+    }
     OutputMap::new()
-        .bool("clippy_written", written)
-        .bool("allowlist_written", written)
-        .bool("policy_written", written)
+        .bool("success", true)
+        .bool("clippy_written", clippy_written)
+        .bool("allowlist_written", allowlist_written)
+        .bool("policy_written", policy_written)
         .ok()
 "##
         }
@@ -646,12 +646,29 @@ fn handler_body(kind: HandlerKind) -> &'static str {
         HandlerKind::CompareContent => {
             r##"    let expected = inputs.get("expected_content").and_then(Value::as_str)
         .ok_or_else(|| ExecError::new("missing required `expected_content` input for compare_content"))?;
-    let actual = match inputs.get("response") {
-        Some(Value::Response(TransportResponse::File(r))) if r.success => {
-            r.content.clone().unwrap_or_default()
-        }
-        _ => String::new(),
+    let Some(response) = inputs.get("response") else {
+        return Err(ExecError::new("missing required `response` input for compare_content"));
     };
+    let file_response = match response {
+        Value::Response(TransportResponse::File(r)) => r,
+        _ => return Err(ExecError::new("compare_content expected file transport response")),
+    };
+    if !file_response.success {
+        let error = file_response
+            .error
+            .clone()
+            .unwrap_or_else(|| "unknown read failure".to_string());
+        return Err(ExecError::new(format!(
+            "compare_content read failed for `{}`: {error}",
+            file_response.path
+        )));
+    }
+    let actual = file_response.content.clone().ok_or_else(|| {
+        ExecError::new(format!(
+            "compare_content missing file content in successful response for `{}`",
+            file_response.path
+        ))
+    })?;
     let fresh = actual == expected;
     OutputMap::new().bool("fresh", fresh).bool("skip", fresh).ok()
 "##
@@ -1450,18 +1467,18 @@ mod tests {
             "PureGeneric should passthrough"
         );
 
-        // PureRender → passthrough during migration (TODO: NF-5).
+        // PureRender requires a dedicated handler and is not classified as passthrough.
         assert_eq!(
             classify_handler(&make(ObligationCategory::PureRender)),
-            Some(HandlerClassification::Handler(HandlerKind::Passthrough)),
-            "PureRender should passthrough (migration)"
+            None,
+            "PureRender should be unresolved without a dedicated handler"
         );
 
-        // PureDataLoad → passthrough during migration (TODO: NF-5).
+        // PureDataLoad requires a dedicated handler and is not classified as passthrough.
         assert_eq!(
             classify_handler(&make(ObligationCategory::PureDataLoad)),
-            Some(HandlerClassification::Handler(HandlerKind::Passthrough)),
-            "PureDataLoad should passthrough (migration)"
+            None,
+            "PureDataLoad should be unresolved without a dedicated handler"
         );
 
         // ResourceProvide → passthrough (structural).

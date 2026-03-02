@@ -171,42 +171,41 @@ func handle_webhook(
   // Step 2: Classify event and determine signal type
   signal_type = event_to_signal_type(event: event)
 
-  if signal_type == None {
-    return {
-      response: ({
-        status: 200,
-        message: "Event type not actionable",
-        signal_emitted: false
-      } as WebhookResponse)
+  match signal_type {
+    None => {
+      return {
+        response: ({
+          status: 200,
+          message: "Event type not actionable",
+          signal_emitted: false
+        } as WebhookResponse)
+      }
     }
-  }
+    Some(signal_type_value) => {
+      // Step 3: Emit signal to SignalStore (idempotent via delivery_id)
+      issue_id = event_to_issue_id(event: event)
+      stage = event_to_stage(event: event)
 
-  // Step 3: Emit signal to SignalStore (idempotent via delivery_id)
-  issue_id = event_to_issue_id(event: event)
-  stage = event_to_stage(event: event)
-  signal_type_value = match signal_type {
-    Some(v) => v
-    None => ReconcileTick { window_id: "noop" }
-  }
+      signal_result = signals.emit(signal: {
+        signal_type: signal_type_value,
+        idempotency_key: "webhook::{delivery_id}",
+        payload: {
+          issue_id: issue_id,
+          stage: stage,
+          source: "github-webhook",
+          delivery_id: delivery_id
+        },
+        produced_at: "now"
+      })
 
-  signal_result = signals.emit(signal: {
-    signal_type: signal_type_value,
-    idempotency_key: "webhook::{delivery_id}",
-    payload: {
-      issue_id: issue_id,
-      stage: stage,
-      source: "github-webhook",
-      delivery_id: delivery_id
-    },
-    produced_at: "now"
-  })
-
-  return {
-    response: ({
-      status: 200,
-      message: if signal_result.emitted { "Signal emitted" } else { "Signal not emitted" },
-      signal_emitted: signal_result.emitted
-    } as WebhookResponse)
+      return {
+        response: ({
+          status: if signal_result.emitted { 200 } else { 500 },
+          message: if signal_result.emitted { "Signal emitted" } else { "Failed to emit signal" },
+          signal_emitted: signal_result.emitted
+        } as WebhookResponse)
+      }
+    }
   }
 }
 

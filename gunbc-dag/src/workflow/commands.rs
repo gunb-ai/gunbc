@@ -11,10 +11,10 @@ use daglang_syntax::{
 use gunbc_ir::NodeId;
 use gunbc_workflow::UnitCommand;
 
-const WORKFLOW_COMMANDS_SOURCE: &str =
-    include_str!("../../../dsl/config/workflow_commands.dag");
+const WORKFLOW_COMMANDS_SOURCE: &str = include_str!("../../../dsl/config/workflow_commands.dag");
 
-static WORKFLOW_COMMANDS: OnceLock<HashMap<String, BTreeMap<NodeId, UnitCommand>>> = OnceLock::new();
+static WORKFLOW_COMMANDS: OnceLock<HashMap<String, BTreeMap<NodeId, UnitCommand>>> =
+    OnceLock::new();
 
 fn commands_by_workflow() -> &'static HashMap<String, BTreeMap<NodeId, UnitCommand>> {
     WORKFLOW_COMMANDS.get_or_init(|| {
@@ -25,7 +25,8 @@ fn commands_by_workflow() -> &'static HashMap<String, BTreeMap<NodeId, UnitComma
 
 /// Build command map for CI workflow units.
 pub fn ci_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
-    workflow_unit_commands("ci").unwrap_or_else(|error| panic!("failed to load ci commands: {error}"))
+    workflow_unit_commands("ci")
+        .unwrap_or_else(|error| panic!("failed to load ci commands: {error}"))
 }
 
 /// Build command map for test-all workflow units.
@@ -55,16 +56,18 @@ pub fn workflow_unit_commands(
         })
 }
 
-fn load_workflow_commands_from_dsl() -> Result<HashMap<String, BTreeMap<NodeId, UnitCommand>>, String> {
+fn load_workflow_commands_from_dsl(
+) -> Result<HashMap<String, BTreeMap<NodeId, UnitCommand>>, String> {
     let path = Path::new("<embedded>/config/workflow_commands.dag");
-    let parsed = parser::parse_with_file_diagnostics(path, WORKFLOW_COMMANDS_SOURCE)
-        .map_err(|diagnostics| {
+    let parsed = parser::parse_with_file_diagnostics(path, WORKFLOW_COMMANDS_SOURCE).map_err(
+        |diagnostics| {
             diagnostics
                 .into_iter()
                 .map(|diagnostic| diagnostic.render())
                 .collect::<Vec<_>>()
                 .join("\n")
-        })?;
+        },
+    )?;
 
     let mut raw = None;
     for item in parsed.items {
@@ -110,7 +113,10 @@ fn parse_workflow_commands_expr(
     Ok(out)
 }
 
-fn parse_command_map(expr: &Expr, workflow_idx: usize) -> Result<BTreeMap<NodeId, UnitCommand>, String> {
+fn parse_command_map(
+    expr: &Expr,
+    workflow_idx: usize,
+) -> Result<BTreeMap<NodeId, UnitCommand>, String> {
     let Expr::List(command_items) = expr else {
         return Err(format!(
             "workflow_commands[{workflow_idx}].commands must be a list"
@@ -127,12 +133,19 @@ fn parse_command_map(expr: &Expr, workflow_idx: usize) -> Result<BTreeMap<NodeId
         let label = expect_string_field(fields, "label", cmd_idx)?;
         let program = expect_string_field(fields, "program", cmd_idx)?;
         let args = expect_string_list_field(fields, "args", cmd_idx)?;
-        commands.insert(NodeId::from(node_id), UnitCommand::new(label, program, args));
+        commands.insert(
+            NodeId::from(node_id),
+            UnitCommand::new(label, program, args),
+        );
     }
     Ok(commands)
 }
 
-fn expect_field<'a>(fields: &'a [(String, Expr)], name: &str, idx: usize) -> Result<&'a Expr, String> {
+fn expect_field<'a>(
+    fields: &'a [(String, Expr)],
+    name: &str,
+    idx: usize,
+) -> Result<&'a Expr, String> {
     fields
         .iter()
         .find(|(field, _)| field == name)
@@ -140,10 +153,17 @@ fn expect_field<'a>(fields: &'a [(String, Expr)], name: &str, idx: usize) -> Res
         .ok_or_else(|| format!("record[{idx}] missing required field '{name}'"))
 }
 
-fn expect_string_field(fields: &[(String, Expr)], name: &str, idx: usize) -> Result<String, String> {
+fn expect_string_field(
+    fields: &[(String, Expr)],
+    name: &str,
+    idx: usize,
+) -> Result<String, String> {
     match expect_field(fields, name, idx)? {
         Expr::Literal(Literal::String(value)) => Ok(value.clone()),
-        other => Err(format!("record[{idx}].{name} must be String, found {:?}", other)),
+        other => Err(format!(
+            "record[{idx}].{name} must be String, found {:?}",
+            other
+        )),
     }
 }
 
@@ -169,7 +189,6 @@ fn expect_string_list_field(
     }
     Ok(values)
 }
-
 
 #[cfg(test)]
 mod tests {

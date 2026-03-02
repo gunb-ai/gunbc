@@ -24,10 +24,9 @@ pub fn resolve_extern_symbol(module: &str, name: &str) -> Option<DynOp> {
         ("tools.pragma", "render_clippy_toml_content") => {
             Some(DynOp::new(RenderPragmaClippyTomlContentOp))
         }
-        (
-            "tools.pragma",
-            "render_disallowed_methods_allowlist_content",
-        ) => Some(DynOp::new(RenderPragmaDisallowedMethodsAllowlistContentOp)),
+        ("tools.pragma", "render_disallowed_methods_allowlist_content") => {
+            Some(DynOp::new(RenderPragmaDisallowedMethodsAllowlistContentOp))
+        }
         ("tools.pragma", "render_pragma_lint_policy_content") => {
             Some(DynOp::new(RenderPragmaLintPolicyContentOp))
         }
@@ -159,7 +158,8 @@ impl Executable for DiscoverToolsOp {
         use crate::makegen::registry::{BuildConfig, ToolRegistry};
         use gunbc_ir::cargo::{CargoCommand, Subcommand};
 
-        let registry = ToolRegistry::default_registry();
+        let registry = ToolRegistry::default_registry()
+            .map_err(|e| ExecError::new(format!("failed to build tool registry: {e}")))?;
         let config = BuildConfig::cargo();
 
         let tools: Vec<Value> = registry
@@ -269,7 +269,8 @@ impl Executable for GenerateBootstrapMakefileOp {
         use gunbc_exec::optional_str_list_strict;
         let _ = optional_str_list_strict(&inputs, "crate_names")?;
         use crate::makegen::{registry::ToolRegistry, shared::render_makefile};
-        let registry = ToolRegistry::default_registry();
+        let registry = ToolRegistry::default_registry()
+            .map_err(|e| ExecError::new(format!("failed to build tool registry: {e}")))?;
         let makefile = render_makefile(&registry);
         OutputMap::new()
             .str("makefile_content", makefile.clone())
@@ -287,7 +288,8 @@ impl Executable for GenerateBootstrapGitignoreOp {
         let _ = optional_str_list_strict(&inputs, "crate_names")?;
         use crate::makegen::{gitignore::render_gitignore, registry::default_build_config};
         let config = default_build_config();
-        let gitignore = render_gitignore(&config);
+        let gitignore = render_gitignore(&config)
+            .map_err(|e| ExecError::new(format!("failed to render gitignore: {e}")))?;
         OutputMap::new()
             .str("gitignore_content", gitignore.clone())
             .str("return", gitignore)

@@ -255,7 +255,9 @@ impl ThinkingConfig {
 ///
 /// Controls the trade-off between reasoning depth and speed/cost.
 /// Default is `Medium`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, gunbc_delegate_macros::StringEnum)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Serialize, Deserialize, gunbc_delegate_macros::StringEnum,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum ReasoningEffort {
     Low,
@@ -266,7 +268,9 @@ pub enum ReasoningEffort {
 /// Reasoning summary verbosity for OpenAI models.
 ///
 /// Controls how much of the model's reasoning is returned.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, gunbc_delegate_macros::StringEnum)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Serialize, Deserialize, gunbc_delegate_macros::StringEnum,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum ReasoningSummary {
     /// Brief summary of the reasoning process.
@@ -280,7 +284,9 @@ pub enum ReasoningSummary {
 // ---------------------------------------------------------------------------
 
 /// Role in a chat conversation.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, gunbc_delegate_macros::StringEnum)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Serialize, Deserialize, gunbc_delegate_macros::StringEnum,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     /// System instructions that guide the model's behavior.

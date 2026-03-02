@@ -475,14 +475,10 @@ fn generate_arg_parsing_with_mode(
     // Build schema
     code.push_str("let schema = vec![\n");
     if enable_mode {
-        code.push_str(
-            "    gunbc_cli::CliParam::new(\"mode\", gunbc_cli::ParamType::Str),\n",
-        );
+        code.push_str("    gunbc_cli::CliParam::new(\"mode\", gunbc_cli::ParamType::Str),\n");
     }
     if !available_profiles.is_empty() {
-        code.push_str(
-            "    gunbc_cli::CliParam::new(\"profile\", gunbc_cli::ParamType::Str),\n",
-        );
+        code.push_str("    gunbc_cli::CliParam::new(\"profile\", gunbc_cli::ParamType::Str),\n");
     }
     for ep in entrypoints {
         let type_expr = match ep.type_id {
@@ -761,9 +757,7 @@ fn generate_mode_block(tool: &ToolMeta) -> String {
     code.push_str("            }\n");
     code.push_str("        }\n");
     code.push_str("    }\n");
-    code.push_str(
-        "    _ => gunbc_ir::resource::ExecMode::Ensure, // default: ensure (dev mode)\n",
-    );
+    code.push_str("    _ => gunbc_ir::resource::ExecMode::Ensure, // default: ensure (dev mode)\n");
     code.push_str("};\n");
     code.push_str("// Verify mode forces dry-run so content_upsert nodes check without writing\n");
     code.push_str("let dry_run = dry_run || resource_mode.fails_on_stale();\n\n");
@@ -859,7 +853,8 @@ fn build_cli_source_file(
 /// Build the `main()` function for standard mode.
 fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
     let has_profiles = !tool.available_profiles.is_empty();
-    let arg_parsing = generate_arg_parsing_with_mode(entrypoints, tool.enable_mode, &tool.available_profiles);
+    let arg_parsing =
+        generate_arg_parsing_with_mode(entrypoints, tool.enable_mode, &tool.available_profiles);
     let graph_builder_call = generate_graph_builder_call(tool, has_profiles);
     let input_mocks = generate_input_mocks(entrypoints);
     let dry_run_block = generate_dry_run_block(tool);
@@ -1012,24 +1007,24 @@ fn build_subcommand_source_file(
             "Subcommands:".to_string(),
         ]
         .into_iter()
-        .chain(subcommands.iter().map(|s| format!("- {}: {}", s.name, s.description)))
+        .chain(
+            subcommands
+                .iter()
+                .map(|s| format!("- {}: {}", s.name, s.description)),
+        )
         .collect(),
         items,
     }
 }
 
 /// Build the dispatch `main()` for subcommand mode.
-fn build_subcmd_main_fn(
-    tool: &ToolMeta,
-    subcommands: &[crate::registry::SubcommandDef],
-) -> FnDef {
+fn build_subcmd_main_fn(tool: &ToolMeta, subcommands: &[crate::registry::SubcommandDef]) -> FnDef {
     let mut match_arms = String::new();
     for subcmd in subcommands {
         writeln!(
             match_arms,
             "    \"{}\" => run_{}(&args[2..]),",
-            subcmd.name,
-            subcmd.func_name,
+            subcmd.name, subcmd.func_name,
         )
         .unwrap();
     }
@@ -1068,12 +1063,13 @@ fn build_subcmd_main_fn(
 }
 
 /// Build a `run_<func>()` function for a single subcommand.
-fn build_subcmd_run_fn(
-    tool: &ToolMeta,
-    subcmd: &crate::registry::SubcommandDef,
-) -> FnDef {
+fn build_subcmd_run_fn(tool: &ToolMeta, subcmd: &crate::registry::SubcommandDef) -> FnDef {
     let has_profiles = !tool.available_profiles.is_empty();
-    let arg_parsing = generate_arg_parsing_with_mode(&subcmd.entrypoints, tool.enable_mode, &tool.available_profiles);
+    let arg_parsing = generate_arg_parsing_with_mode(
+        &subcmd.entrypoints,
+        tool.enable_mode,
+        &tool.available_profiles,
+    );
     let input_mocks = generate_input_mocks(&subcmd.entrypoints);
     let body_lines_expr = generate_preamble_body_lines(&subcmd.entrypoints);
 
@@ -1187,10 +1183,7 @@ fn build_subcmd_run_fn(
 }
 
 /// Build the help function for subcommand mode.
-fn build_subcmd_help_fn(
-    tool: &ToolMeta,
-    subcommands: &[crate::registry::SubcommandDef],
-) -> FnDef {
+fn build_subcmd_help_fn(tool: &ToolMeta, subcommands: &[crate::registry::SubcommandDef]) -> FnDef {
     let mut subcmd_lines = String::new();
     for subcmd in subcommands {
         writeln!(
@@ -1947,9 +1940,7 @@ mod tests {
                 returns_result: true,
                 success_port: None,
                 mock_spec_call: Some("create_mock()".to_string()),
-                entrypoints: vec![
-                    CliEntrypoint::new("owner", ParamType::Str).short('o'),
-                ],
+                entrypoints: vec![CliEntrypoint::new("owner", ParamType::Str).short('o')],
             },
             SubcommandDef {
                 name: "list".to_string(),
@@ -1991,10 +1982,7 @@ mod tests {
         );
 
         // Should have help with subcommands
-        assert!(
-            code.contains("SUBCOMMANDS"),
-            "help should list subcommands"
-        );
+        assert!(code.contains("SUBCOMMANDS"), "help should list subcommands");
         assert!(
             code.contains("Create a new gist"),
             "help should show descriptions"
@@ -2055,10 +2043,7 @@ mod tests {
             code.contains("\"cloud_run\""),
             "should list cloud_run profile"
         );
-        assert!(
-            code.contains("\"local\""),
-            "should list local profile"
-        );
+        assert!(code.contains("\"local\""), "should list local profile");
         assert!(
             code.contains("\"unit_test\""),
             "should list unit_test profile"

@@ -234,7 +234,10 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                 .out_dir
                 .as_ref()
                 .map(|out_dir| path_utils::normalize_cli_path(cwd, &PathBuf::from(out_dir)));
-            let embedded_data = build_embedded_data();
+            let embedded_data = build_embedded_data().unwrap_or_else(|error| {
+                eprintln!("{error}");
+                std::process::exit(1);
+            });
             let options = CompileOptions {
                 emit_collection_nodes: parsed.emit_collection_nodes,
                 profile: parsed.profile.clone(),
@@ -358,7 +361,10 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             let normalized_output_path =
                 path_utils::normalize_cli_path(cwd, &PathBuf::from(&parsed.output_path));
             let output_path_str = normalized_output_path.to_string_lossy().into_owned();
-            let input_mocks = makegen_entrypoint_mocks(&output_path_str);
+            let input_mocks = makegen_entrypoint_mocks(&output_path_str).unwrap_or_else(|error| {
+                eprintln!("{error}");
+                std::process::exit(1);
+            });
             let mode = match parsed.mode {
                 RunMode::Real => ExecutionMode::Real,
                 RunMode::DryRun => {
@@ -457,7 +463,8 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
 }
 
 /// Build the embedded data map for extern assets.
-fn build_embedded_data() -> std::collections::HashMap<String, daglang_emit::EmbeddedData> {
+fn build_embedded_data(
+) -> Result<std::collections::HashMap<String, daglang_emit::EmbeddedData>, String> {
     gunbc_dag::makegen::build_embedded_data()
 }
 

@@ -237,9 +237,7 @@ fn gcloud_exit_code_1_fails_with_error() {
     // Error should mention either shell exit code (direct gcloud failure) or
     // credential resolution failure (Skipped propagation through conditional path)
     assert!(
-        error.contains("exit")
-            || error.contains("credential")
-            || error.contains("Skipped"),
+        error.contains("exit") || error.contains("credential") || error.contains("Skipped"),
         "error should mention exit code or credential failure, got: {error}"
     );
 

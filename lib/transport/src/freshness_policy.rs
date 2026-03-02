@@ -257,7 +257,15 @@ mod tests {
         let ids: Vec<&str> = steps.iter().map(|s| s.id.as_str()).collect();
         assert_eq!(
             ids,
-            vec!["codegen", "codegen-dag", "testgen", "pragma", "clippy", "test-compile", "release-check"]
+            vec![
+                "codegen",
+                "codegen-dag",
+                "testgen",
+                "pragma",
+                "clippy",
+                "test-compile",
+                "release-check"
+            ]
         );
     }
 
@@ -292,7 +300,11 @@ mod tests {
             .collect();
         assert_eq!(
             keys,
-            vec!["cargo.Build.Clippy", "cargo.Build.Test", "cargo.Build.Build"]
+            vec![
+                "cargo.Build.Clippy",
+                "cargo.Build.Test",
+                "cargo.Build.Build"
+            ]
         );
     }
 }

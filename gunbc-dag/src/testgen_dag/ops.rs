@@ -101,7 +101,9 @@ impl Executable for TestgenOp {
                             .map(|p| p.profile_name.as_str());
 
                         if let Some(profile) = fallback_profile {
-                            match crate::dsl_builder::build_dsl_graph_with_types_and_profile(dsl_path, profile) {
+                            match crate::dsl_builder::build_dsl_graph_with_types_and_profile(
+                                dsl_path, profile,
+                            ) {
                                 Ok(r) => r,
                                 Err(e2) => {
                                     let placeholder = format!(
@@ -150,16 +152,16 @@ impl Executable for TestgenOp {
                     .values()
                     .flat_map(|p| p.transport_classes.iter().cloned())
                     .collect();
-                let requires =
-                    gunbc_codegen::fidelity::requires_from_transport_classes(&all_transport_classes);
+                let requires = gunbc_codegen::fidelity::requires_from_transport_classes(
+                    &all_transport_classes,
+                );
 
                 // 3. Build TestgenTargetDef
                 let module_test_name = format!("{}_generated_tests", module_name.replace('.', "_"));
                 let dag_builder_call = format!(
                     "crate::dsl_builder::build_dsl_graph(\"{dsl_path}\").expect(\"graph should build\")"
                 );
-                let mock_spec_path =
-                    format!("gunbc_test::auto_mock_spec(&dag, \"{safe_name}\")");
+                let mock_spec_path = format!("gunbc_test::auto_mock_spec(&dag, \"{safe_name}\")");
 
                 let target_def = TestgenTargetDef {
                     name: std::borrow::Cow::Owned(safe_name),

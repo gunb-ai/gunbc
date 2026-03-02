@@ -22,8 +22,7 @@ use gunbc_workflow::{
 };
 
 // Embedded DSL sources for hermetic binary operation.
-const WORKFLOW_CATALOG_SOURCE: &str =
-    include_str!("../../../dsl/config/workflow_catalog.dag");
+const WORKFLOW_CATALOG_SOURCE: &str = include_str!("../../../dsl/config/workflow_catalog.dag");
 const WF_BOOTSTRAP: &str = include_str!("../../../dsl/workflows/bootstrap.dag");
 const WF_BUILD_ALL: &str = include_str!("../../../dsl/workflows/build_all.dag");
 const WF_CI: &str = include_str!("../../../dsl/workflows/ci.dag");
@@ -71,16 +70,15 @@ fn workflow_variants() -> &'static [WorkflowVariantDef] {
 
 fn load_workflow_variants_from_dsl() -> Result<Vec<WorkflowVariantDef>, String> {
     let path = Path::new("<embedded>/config/workflow_catalog.dag");
-    let parsed =
-        parser::parse_with_file_diagnostics(path, WORKFLOW_CATALOG_SOURCE).map_err(
-            |diagnostics| {
-                diagnostics
-                    .into_iter()
-                    .map(|diagnostic| diagnostic.render())
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            },
-        )?;
+    let parsed = parser::parse_with_file_diagnostics(path, WORKFLOW_CATALOG_SOURCE).map_err(
+        |diagnostics| {
+            diagnostics
+                .into_iter()
+                .map(|diagnostic| diagnostic.render())
+                .collect::<Vec<_>>()
+                .join("\n")
+        },
+    )?;
 
     let mut raw = None;
     for item in parsed.items {
@@ -132,7 +130,11 @@ fn parse_workflow_variant_record(
     })
 }
 
-fn expect_field<'a>(fields: &'a [(String, Expr)], name: &str, idx: usize) -> Result<&'a Expr, String> {
+fn expect_field<'a>(
+    fields: &'a [(String, Expr)],
+    name: &str,
+    idx: usize,
+) -> Result<&'a Expr, String> {
     fields
         .iter()
         .find(|(field, _)| field == name)
@@ -140,7 +142,11 @@ fn expect_field<'a>(fields: &'a [(String, Expr)], name: &str, idx: usize) -> Res
         .ok_or_else(|| format!("workflow_variants[{idx}] missing required field '{name}'"))
 }
 
-fn expect_string_field(fields: &[(String, Expr)], name: &str, idx: usize) -> Result<String, String> {
+fn expect_string_field(
+    fields: &[(String, Expr)],
+    name: &str,
+    idx: usize,
+) -> Result<String, String> {
     match expect_field(fields, name, idx)? {
         Expr::Literal(Literal::String(value)) => Ok(value.clone()),
         other => Err(format!(
@@ -235,7 +241,10 @@ pub(super) fn resolve_workflow_variant(name: &str) -> Option<&'static WorkflowVa
     workflow_variants().iter().find(|variant| {
         variant.canonical_name == name
             || variant.canonical_name == normalized
-            || variant.aliases.iter().any(|alias| alias == name || alias == &normalized)
+            || variant
+                .aliases
+                .iter()
+                .any(|alias| alias == name || alias == &normalized)
     })
 }
 
@@ -585,15 +594,23 @@ fn parse_stage_claims(_stmts: &[Stmt]) -> Vec<UnitClaim> {
 fn default_stage_claims(stage_name: &str) -> Vec<UnitClaim> {
     match stage_name {
         // cargo build writes to target/
-        "build_compile" => vec![UnitClaim::write("file:target"), UnitClaim::read("tool:cargo")],
+        "build_compile" => vec![
+            UnitClaim::write("file:target"),
+            UnitClaim::read("tool:cargo"),
+        ],
         // cargo test reads target/ and test artifacts
-        "test_run" => vec![UnitClaim::read("file:target"), UnitClaim::read("tool:cargo")],
+        "test_run" => vec![
+            UnitClaim::read("file:target"),
+            UnitClaim::read("tool:cargo"),
+        ],
         // clippy reads source + target
-        "clippy_run" => vec![UnitClaim::read("file:target"), UnitClaim::read("tool:cargo")],
+        "clippy_run" => vec![
+            UnitClaim::read("file:target"),
+            UnitClaim::read("tool:cargo"),
+        ],
         _ => vec![],
     }
 }
-
 
 fn compilation_ref() -> ProcessUnitRef {
     ProcessUnitRef::new(COMPILATION_PROCESS_ID, COMPILATION_ENSURE_UNIT)

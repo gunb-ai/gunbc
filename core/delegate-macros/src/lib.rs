@@ -146,12 +146,9 @@ pub fn derive_string_enum(input: TokenStream) -> TokenStream {
     let enum_ident = &input.ident;
 
     let Data::Enum(ref data_enum) = input.data else {
-        return syn::Error::new_spanned(
-            enum_ident,
-            "StringEnum can only be derived for enums",
-        )
-        .to_compile_error()
-        .into();
+        return syn::Error::new_spanned(enum_ident, "StringEnum can only be derived for enums")
+            .to_compile_error()
+            .into();
     };
 
     let rename_all = match parse_container_rename_all(&input.attrs) {
@@ -259,9 +256,7 @@ fn parse_variant_string_name(attrs: &[syn::Attribute]) -> Result<Option<String>,
                     name = Some(lit.value());
                     Ok(())
                 } else {
-                    Err(meta.error(
-                        "unrecognized string_enum variant attribute; expected `name`",
-                    ))
+                    Err(meta.error("unrecognized string_enum variant attribute; expected `name`"))
                 }
             })?;
             return Ok(name);
