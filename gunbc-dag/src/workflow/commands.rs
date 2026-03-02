@@ -13,10 +13,11 @@ use gunbc_workflow::UnitCommand;
 
 const WORKFLOW_COMMANDS_SOURCE: &str = include_str!("../../../dsl/config/workflow_commands.dag");
 
-static WORKFLOW_COMMANDS: OnceLock<Result<HashMap<String, BTreeMap<NodeId, UnitCommand>>, String>> =
-    OnceLock::new();
+type WorkflowCommandMap = HashMap<String, BTreeMap<NodeId, UnitCommand>>;
 
-fn commands_by_workflow() -> Result<&'static HashMap<String, BTreeMap<NodeId, UnitCommand>>, String>
+static WORKFLOW_COMMANDS: OnceLock<Result<WorkflowCommandMap, String>> = OnceLock::new();
+
+fn commands_by_workflow() -> Result<&'static WorkflowCommandMap, String>
 {
     WORKFLOW_COMMANDS
         .get_or_init(load_workflow_commands_from_dsl)
@@ -55,8 +56,7 @@ pub fn workflow_unit_commands(
         })
 }
 
-fn load_workflow_commands_from_dsl(
-) -> Result<HashMap<String, BTreeMap<NodeId, UnitCommand>>, String> {
+fn load_workflow_commands_from_dsl() -> Result<WorkflowCommandMap, String> {
     let path = Path::new("<embedded>/config/workflow_commands.dag");
     let parsed = parser::parse_with_file_diagnostics(path, WORKFLOW_COMMANDS_SOURCE).map_err(
         |diagnostics| {
@@ -86,9 +86,7 @@ fn load_workflow_commands_from_dsl(
     parse_workflow_commands_expr(&raw)
 }
 
-fn parse_workflow_commands_expr(
-    expr: &Expr,
-) -> Result<HashMap<String, BTreeMap<NodeId, UnitCommand>>, String> {
+fn parse_workflow_commands_expr(expr: &Expr) -> Result<WorkflowCommandMap, String> {
     let Expr::List(workflows) = expr else {
         return Err("workflow_commands must be a list of records".to_string());
     };
