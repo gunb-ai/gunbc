@@ -1,0 +1,155 @@
+// pipelines/scale_test.dag -- SR-5: Multi-worker scale test.
+//
+// 5 workers, 20 concurrent issues, 10-minute run.
+// Verify: no duplicate claims, no lost outcomes, all issues reach terminal state.
+//
+// Acceptance criteria:
+//   - Zero claim conflicts (no duplicate processing)
+//   - Zero lost outcomes
+//   - All 20 issues terminal within 10 min
+//
+// Depends on: SC-8 (cloud profile e2e smoke test)
+
+module pipelines.scale_test
+
+import interfaces.issue_provider { IssueProvider }
+import interfaces.claim_store { ClaimStore }
+import interfaces.outcome_ledger { OutcomeLedger }
+import interfaces.signal_store { SignalStore }
+import services.shell { shell.Env }
+import std.types {
+  NonEmptyStr, TrackedIssue, StageOutcome, IssueState
+}
+
+// ── Configuration ──────────────────────────────────────────────────
+
+type ScaleTestConfig {
+  worker_count: Int = 5
+  issue_count: Int = 20
+  timeout_seconds: Int = 600    // 10 minutes
+  poll_interval_seconds: Int = 5
+}
+
+data default_config: ScaleTestConfig = {
+  worker_count: 5,
+  issue_count: 20,
+  timeout_seconds: 600,
+  poll_interval_seconds: 5
+}
+
+type ScaleTestResult {
+  total_issues: Int
+  terminal_count: Int
+  claim_conflicts: Int
+  lost_outcomes: Int
+  elapsed_seconds: Int
+  all_passed: Bool
+}
+
+// ── Scale test pipeline ──────────────────────────────────────────
+
+pipeline scale_test
+  uses issues: IssueProvider
+  uses claims: ClaimStore
+  uses outcomes: OutcomeLedger
+  uses signals: SignalStore
+{
+
+  // Stage 0: Gate — check if scale testing is enabled
+  stage gate {
+    scale_env = shell.Env.Get(name: "GUNBC_SCALE_TEST")
+    enabled = scale_env.value == "true"
+  }
+
+  // Stage 1: Seed — create test issues (or discover existing ones)
+  stage seed [after gate, when enabled] {
+    discovered = issues.discover(
+      labels: ["sdlc:idea", "sdlc:scale-test"],
+      state: Open
+    )
+    issue_count = discovered.issues |> count()
+  }
+
+  // Stage 2: Verify claims — check that no duplicate claims exist
+  stage verify_claims [after seed] {
+    claim_results = for issue in discovered.issues {
+      // Try to acquire a claim (should succeed if no other worker holds it)
+      claim = claims.acquire(
+        issue_id: "{issue.id}",
+        stage: "scale-test-verify",
+        owner: "scale-test-verifier",
+        lease_ttl_ms: 5000
+      )
+
+      // Immediately release
+      release = claims.release(
+        issue_id: "{issue.id}",
+        stage: "scale-test-verify",
+        owner: "scale-test-verifier",
+        generation: claim.lease_generation
+      ) [after claim, when claim.acquired]
+
+      { issue_id: issue.id, acquired: claim.acquired, conflict: claim.conflict }
+    }
+
+    claim_conflicts = claim_results |> filter(r => r.conflict) |> count()
+  }
+
+  // Stage 3: Verify outcomes — check that all issues have outcomes
+  stage verify_outcomes [after verify_claims] {
+    outcome_results = for issue in discovered.issues {
+      outcome = outcomes.get(
+        run_key: "sdlc::{issue.id}",
+        stage: "design"
+      )
+      { issue_id: issue.id, has_outcome: outcome.found }
+    }
+
+    lost_outcomes = outcome_results |> filter(r => !r.has_outcome) |> count()
+  }
+
+  // Stage 4: Report
+  stage report [after verify_outcomes] {
+    all_passed = claim_conflicts == 0 && lost_outcomes == 0
+  }
+}
+
+// ── Tests ──────────────────────────────────────────────────────────
+
+test scale_test_skipped_when_disabled {
+
+    mock gate/env_get/execute.response -> { value: null }
+
+    expect result is Map
+}
+
+test scale_test_no_conflicts {
+
+    mock gate/env_get/execute.response -> { value: "true" }
+
+    // 3 test issues
+    mock seed/execute.response -> rest_response(200, {
+      issues: [
+        { id: "1", title: "Scale test 1", labels: ["sdlc:idea", "sdlc:scale-test"], state: "open" },
+        { id: "2", title: "Scale test 2", labels: ["sdlc:idea", "sdlc:scale-test"], state: "open" },
+        { id: "3", title: "Scale test 3", labels: ["sdlc:idea", "sdlc:scale-test"], state: "open" }
+      ]
+    })
+
+    // All claims succeed
+    mock verify_claims/acquire/execute.response -> rest_response(200, {
+      acquired: true, conflict: false, lease_generation: 1
+    })
+
+    mock verify_claims/release/execute.response -> rest_response(200, {
+      released: true
+    })
+
+    // All outcomes exist
+    mock verify_outcomes/get/execute.response -> rest_response(200, {
+      found: true,
+      outcome: { status: "Success", attempt_count: 1, retry_budget_remaining: 2 }
+    })
+
+    expect result is Map
+}

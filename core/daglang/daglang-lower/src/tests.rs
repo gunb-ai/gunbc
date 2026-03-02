@@ -1552,6 +1552,62 @@ func caller(name: String) -> { id: String } {
 }
 
 #[test]
+fn auth_input_missing_field_raises_error() {
+    // SC-7: auth_input references a field that does not exist in operation inputs.
+    let typed = typed_project_from_sources(&[(
+        "dsl/services/auth_input_missing.dag",
+        r#"module sample.auth_missing
+service sample.Api {
+  config { endpoint: "https://api.example.com", auth: BearerToken, auth_input: nonexistent }
+  operation Create {
+input { name: String }
+output { id: String }
+transport rest { method: POST, path: "/v1/things" }
+  }
+}
+func caller(name: String) -> { id: String } {
+  result = sample.Api.Create(name: name)
+  return { id: result.id }
+}"#,
+    )]);
+
+    let err = lower_typed_project(&typed).expect_err("should fail: auth_input references missing field");
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("nonexistent") && msg.contains("not found"),
+        "error should mention the missing field: {msg}"
+    );
+}
+
+#[test]
+fn auth_input_wrong_type_raises_error() {
+    // SC-7: auth_input references a field that is not Secret type.
+    let typed = typed_project_from_sources(&[(
+        "dsl/services/auth_input_wrong_type.dag",
+        r#"module sample.auth_wrong_type
+service sample.Api {
+  config { endpoint: "https://api.example.com", auth: BearerToken, auth_input: auth_token }
+  operation Create {
+input { name: String, auth_token: String }
+output { id: String }
+transport rest { method: POST, path: "/v1/things" }
+  }
+}
+func caller(name: String, token: String) -> { id: String } {
+  result = sample.Api.Create(name: name, auth_token: token)
+  return { id: result.id }
+}"#,
+    )]);
+
+    let err = lower_typed_project(&typed).expect_err("should fail: auth_input field is not Secret");
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("Secret") && msg.contains("String"),
+        "error should mention expected Secret type and actual type: {msg}"
+    );
+}
+
+#[test]
 /// IS-3: Pipeline compilation without --profile now succeeds with stub interfaces.
 fn pipeline_stage_bound_service_call_requires_active_profile() {
     let typed = typed_project_from_sources(&[(

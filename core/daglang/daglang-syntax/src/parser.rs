@@ -434,45 +434,21 @@ impl Parser {
                         }
                         other => {
                             // Provider-specific config fields (e.g., bucket,
-                            // base_dir, model, project_id). These can use
-                            // full type syntax: `field: Type<T> = default`.
-                            // Skip the value expression by consuming tokens
-                            // until we hit a comma, newline, or closing brace.
-                            let other = other.to_string();
-                            let mut depth = 0i32;
-                            let mut value_str = String::new();
-                            loop {
-                                if self.at_eof() { break; }
-                                // Stop at comma or closing brace at depth 0
-                                if depth == 0 {
-                                    if self.check(&TokenKind::Comma)
-                                        || self.check(&TokenKind::RBrace)
-                                    {
-                                        break;
-                                    }
-                                    // Stop if we hit what looks like a new field declaration
-                                    // (ident followed by colon at depth 0, peek ahead)
-                                    if Self::token_kind_as_ident(&self.peek().kind).is_some()
-                                        && self.tokens.get(self.pos + 1)
-                                            .is_some_and(|t| t.kind == TokenKind::Colon)
-                                    {
-                                        break;
-                                    }
-                                }
-                                match &self.peek().kind {
-                                    TokenKind::LBrace | TokenKind::LBracket | TokenKind::LParen
-                                    | TokenKind::Lt => depth += 1,
-                                    TokenKind::RBrace | TokenKind::RBracket | TokenKind::RParen
-                                    | TokenKind::Gt => {
-                                        if depth > 0 { depth -= 1; }
-                                        else { break; }
-                                    }
-                                    TokenKind::Str(s) => { value_str = s.clone(); }
-                                    _ => {}
-                                }
-                                self.advance();
-                            }
-                            config.extra.push((other, value_str));
+                            // base_dir, model, project_id). Parse the type
+                            // annotation and optional default value:
+                            // `field: Type` or `field: Type = default`.
+                            let field_name = other.to_string();
+                            let ty = self.parse_type_expr()?;
+                            let default = if self.eat(&TokenKind::Eq) {
+                                Some(self.parse_expr(0)?)
+                            } else {
+                                None
+                            };
+                            config.extra.push(ProviderConfigField {
+                                name: field_name,
+                                ty,
+                                default,
+                            });
                         }
                     }
                 }

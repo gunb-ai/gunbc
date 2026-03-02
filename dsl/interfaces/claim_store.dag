@@ -135,6 +135,21 @@ interface ClaimStore {
     generation:   Int
   ) -> { released: Bool }
 
+  // List all active (non-expired) claims. Used by anti-entropy
+  // reconciler (SR-7) to detect stale claims with no heartbeat.
+  capability list_active() -> {
+    claims: List<{
+      issue_id: String,
+      stage: String,
+      owner: String,
+      generation: Int,
+      acquired_at_epoch_ms: Int,
+      last_heartbeat_epoch_ms: Int,
+      expires_at_epoch_ms: Int
+    }>
+  }
+    readonly
+
   // --- Behavioral contracts ------------------------------------------------
   //
   // INV-9:  Mutual exclusion — at most one active (non-expired) lease per (issue_id, stage).

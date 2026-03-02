@@ -43,6 +43,8 @@ type ReconcilerParams {
   repo_name:      NonEmptyStr = "gunbc"
   worker_id:      NonEmptyStr = "reconciler"
   window_id:      NonEmptyStr                           // Unique ID for this reconciliation window
+  stale_claim_threshold_ms: Int = 120000                // 2 minutes — SR-7 anti-entropy
+  reconcile_interval_ms:    Int = 300000                // 5 minutes — SR-7 scan period
 }
 
 // ── Helper functions ────────────────────────────────────────────────
@@ -62,6 +64,34 @@ fn is_success(status: AgentStatus) -> Bool {
 
 fn format_terminal_comment(issue_id: String, stage: String, reason: String) -> String {
   "## Terminal Failure\n\n**Stage:** {stage}\n**Reason:** {reason}\n\nThis issue has reached a terminal failure state and requires manual intervention.\n\n---\n_Reported by gunbc reconciler_"
+}
+
+// SR-7: Anti-entropy helper — detect stale claims (no heartbeat > threshold).
+fn is_stale_claim(
+  last_heartbeat_epoch_ms: Int,
+  now_epoch_ms: Int,
+  threshold_ms: Int
+) -> Bool {
+  (now_epoch_ms - last_heartbeat_epoch_ms) > threshold_ms
+}
+
+// SR-7: Check if an outcome has a matching active claim.
+fn has_matching_claim(
+  issue_id: String,
+  stage: String,
+  active_claims: List<{ issue_id: String, stage: String }>
+) -> Bool {
+  active_claims |> any(c => c.issue_id == issue_id && c.stage == stage)
+}
+
+// SR-7: Detect stuck stages — outcome is in-progress but too old.
+fn is_stuck_stage(
+  status: String,
+  updated_at_epoch_ms: Int,
+  now_epoch_ms: Int,
+  threshold_ms: Int
+) -> Bool {
+  status == "InProgress" && (now_epoch_ms - updated_at_epoch_ms) > threshold_ms
 }
 
 // ── Reconciliation pipeline ─────────────────────────────────────────
@@ -198,15 +228,124 @@ pipeline reconciler
     }
   }
 
-  // Step 3: Emit ReconcileTick signal for audit
-  stage complete [after check_convergence] {
+  // Step 3 (SR-7): Scan for stale claims — claims with no heartbeat > threshold.
+  // Release stale claims so other workers can re-acquire them.
+  stage scan_stale_claims [after discover] {
+    all_claims = claims.list_active()
+
+    stale_results = for claim in all_claims.claims {
+      stale = is_stale_claim(
+        last_heartbeat_epoch_ms: claim.last_heartbeat_epoch_ms,
+        now_epoch_ms: now_epoch_ms(),
+        threshold_ms: params.stale_claim_threshold_ms
+      )
+
+      match stale {
+        true => {
+          // Force-release the stale claim
+          release_result = claims.release(
+            issue_id: claim.issue_id,
+            stage: claim.stage,
+            owner: claim.owner,
+            generation: claim.generation
+          )
+
+          // Emit signal so the issue gets re-processed
+          requeue = signals.emit(signal: {
+            signal_type: "WorkReady",
+            idempotency_key: "stale-claim::{claim.issue_id}::{claim.stage}",
+            payload: {
+              issue_id: claim.issue_id,
+              stage: claim.stage,
+              reason: "stale_claim_released"
+            },
+            produced_at: "now"
+          })
+
+          { issue_id: claim.issue_id, stage: claim.stage, action: "stale_released" }
+        }
+        false => {
+          { issue_id: claim.issue_id, stage: claim.stage, action: "healthy" }
+        }
+      }
+    }
+
+    stale_count = stale_results |> filter(r => r.action == "stale_released") |> count()
+  }
+
+  // Step 4 (SR-7): Detect orphaned outcomes — outcomes with no matching active claim
+  // and no terminal status. These indicate a worker that crashed after recording
+  // an in-progress outcome but before completing or releasing its claim.
+  stage detect_orphaned_outcomes [after check_convergence, after scan_stale_claims] {
+    // Build lookup of active claim keys
+    active_claim_keys = all_claims.claims |> map(c => {
+      issue_id: c.issue_id,
+      stage: c.stage
+    })
+
+    orphan_results = for issue in open_issues.issues {
+      issue_outcomes = outcomes.list_by_issue(issue_id: issue.id)
+
+      orphans = for outcome in issue_outcomes.outcomes {
+        has_claim = has_matching_claim(
+          issue_id: issue.id,
+          stage: outcome.stage,
+          active_claims: active_claim_keys
+        )
+
+        stuck = is_stuck_stage(
+          status: outcome.status,
+          updated_at_epoch_ms: outcome.updated_at_epoch_ms ?? 0,
+          now_epoch_ms: now_epoch_ms(),
+          threshold_ms: params.stale_claim_threshold_ms * 5   // 10 min for stuck stages
+        )
+
+        match has_claim {
+          false => match stuck {
+            true => {
+              // Orphaned + stuck: emit alert signal and requeue
+              alert = signals.emit(signal: {
+                signal_type: "OrphanedOutcome",
+                idempotency_key: "orphan::{issue.id}::{outcome.stage}",
+                payload: {
+                  issue_id: issue.id,
+                  stage: outcome.stage,
+                  status: outcome.status,
+                  reason: "orphaned_stuck_outcome"
+                },
+                produced_at: "now"
+              })
+              { issue_id: issue.id, stage: outcome.stage, action: "orphan_flagged" }
+            }
+            false => {
+              { issue_id: issue.id, stage: outcome.stage, action: "none" }
+            }
+          }
+          true => {
+            { issue_id: issue.id, stage: outcome.stage, action: "none" }
+          }
+        }
+      }
+      orphans
+    }
+
+    orphan_count = orphan_results
+      |> flat_map(r => r)
+      |> filter(r => r.action == "orphan_flagged")
+      |> count()
+  }
+
+  // Step 5: Emit ReconcileTick signal for audit (extended for SR-7)
+  stage complete [after check_convergence, after scan_stale_claims, after detect_orphaned_outcomes] {
     tick_signal = signals.emit(signal: {
       signal_type: "ReconcileTick",
       idempotency_key: "reconcile-tick::{params.window_id}",
       payload: {
         window_id: params.window_id,
         issues_checked: open_issues.issues |> count(),
-        actions_taken: reconcile_results |> filter(r => !r.converged) |> count()
+        actions_taken: reconcile_results |> filter(r => !r.converged) |> count(),
+        stale_claims_released: stale_count,
+        orphaned_outcomes_flagged: orphan_count
       },
       produced_at: "now"
     })
@@ -237,6 +376,83 @@ test reconciler_converged_issues {
             attempt_count: 1,
             retry_budget_remaining: 2
         }
+    })
+
+    expect result is Map
+}
+
+test reconciler_releases_stale_claims {
+
+    // Mock: discover returns no open issues (we're testing claims scan)
+    mock discover/execute.response -> rest_response(200, {
+        issues: []
+    })
+
+    // Mock: list_active returns one stale claim (heartbeat 5 min ago)
+    mock scan_stale_claims/list_active/execute.response -> rest_response(200, {
+        claims: [{
+            issue_id: "42",
+            stage: "design",
+            owner: "crashed-worker",
+            generation: 1706745600000000,
+            acquired_at_epoch_ms: 1706745000000,
+            last_heartbeat_epoch_ms: 1706745000000,
+            expires_at_epoch_ms: 1706745300000
+        }]
+    })
+
+    // Mock: release succeeds
+    mock scan_stale_claims/release/execute.response -> rest_response(204, {})
+
+    // Mock: requeue signal emitted
+    mock scan_stale_claims/signals_emit/execute.response -> rest_response(200, {
+        messageIds: ["msg-stale-001"]
+    })
+
+    expect result is Map
+}
+
+test reconciler_detects_orphaned_outcomes {
+
+    // Mock: discover returns one issue
+    mock discover/execute.response -> rest_response(200, {
+        issues: [{
+            id: "42",
+            title: "Test issue",
+            body: "Test body",
+            labels: ["sdlc:design"],
+            stage: "Design",
+            url: "https://github.com/gunb-ai/gunbc/issues/42"
+        }]
+    })
+
+    // Mock: outcome shows Success (converged)
+    mock check_convergence/outcomes_get/execute.response -> rest_response(200, {
+        found: true,
+        outcome: {
+            status: "Success",
+            attempt_count: 1,
+            retry_budget_remaining: 2
+        }
+    })
+
+    // Mock: no active claims (all released or expired)
+    mock scan_stale_claims/list_active/execute.response -> rest_response(200, {
+        claims: []
+    })
+
+    // Mock: list_by_issue returns an InProgress outcome with no matching claim
+    mock detect_orphaned_outcomes/list_by_issue/execute.response -> rest_response(200, {
+        outcomes: [{
+            stage: "implementing",
+            status: "InProgress",
+            updated_at_epoch_ms: 1706740000000
+        }]
+    })
+
+    // Mock: orphan alert signal
+    mock detect_orphaned_outcomes/signals_emit/execute.response -> rest_response(200, {
+        messageIds: ["msg-orphan-001"]
     })
 
     expect result is Map

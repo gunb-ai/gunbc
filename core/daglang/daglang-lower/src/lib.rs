@@ -1479,6 +1479,20 @@ pub enum LowerError {
     },
     /// No executable declarations were available for lowering.
     NoLowerableItems,
+    /// `auth_input` references a field that does not exist in the operation's inputs,
+    /// or the referenced field is not of type `Secret`.
+    InvalidAuthInput {
+        service: String,
+        operation: String,
+        field_name: String,
+        reason: String,
+    },
+    /// Provider config field is not recognized for the given provider.
+    InvalidProviderConfigField {
+        service: String,
+        field: String,
+        known_fields: Vec<String>,
+    },
 }
 
 impl std::fmt::Display for LowerError {
@@ -1578,6 +1592,24 @@ impl std::fmt::Display for LowerError {
                 "profile `{profile}` binding `{interface_type}` requires config `{key}` from env var `{env_var}`, but it is not set"
             ),
             Self::NoLowerableItems => write!(f, "no callable or pipeline declarations to lower"),
+            Self::InvalidAuthInput {
+                service,
+                operation,
+                field_name,
+                reason,
+            } => write!(
+                f,
+                "invalid auth_input `{field_name}` for `{service}.{operation}`: {reason}"
+            ),
+            Self::InvalidProviderConfigField {
+                service,
+                field,
+                known_fields,
+            } => write!(
+                f,
+                "unknown config field `{field}` for service `{service}`; known fields: {}",
+                known_fields.join(", ")
+            ),
         }
     }
 }
@@ -5856,6 +5888,63 @@ fn capability_prepare_ports(
         .collect()
 }
 
+/// SR-8: Validate that provider-specific config fields (those stored in
+/// `config.extra`) are recognised for the service's provider prefix.
+/// Returns an error for any unrecognised field so that config typos become
+/// compile-time errors.
+///
+/// Schemas are declared in `dsl/std/provider_config.dag` as typed records.
+/// This function mirrors those schemas for compile-time enforcement.
+/// When the compiler gains the ability to read schema types from the DAG
+/// module registry, this hardcoded list will be replaced by a lookup
+/// against the `provider_config_schemas` data declaration.
+fn validate_provider_config_fields(service: &ServiceDef) -> Result<(), LowerError> {
+    if service.config.extra.is_empty() {
+        return Ok(());
+    }
+
+    // Map provider prefix → allowed extra config field names.
+    // Kept in sync with dsl/std/provider_config.dag typed schemas.
+    let known_schemas: &[(&str, &[&str])] = &[
+        ("gcs.", &["bucket", "project_id"]),
+        ("pubsub.", &["topic", "subscription", "project_id"]),
+        ("github.", &["owner", "repo"]),
+        ("gcp.", &["runtime", "project_id", "audience"]),
+        ("file.", &["dir"]),
+        ("llm.", &[]),
+        // Services without a dotted prefix but with known config schemas:
+        ("LlmAgentProvider", &["provider", "default_model", "max_turns"]),
+        ("GcpWifCredentialProvider", &["runtime", "project_id", "audience"]),
+        ("LocalCredentialProvider", &["cache_dir"]),
+        ("cloudrun.", &["project_id", "region"]),
+        ("codex.", &[]),
+        ("stub.", &[]),
+        ("sdlc.", &[]),
+    ];
+
+    // Find the matching schema for this service's name.
+    let matched_schema = known_schemas.iter().find(|(prefix, _)| {
+        service.name.starts_with(prefix) || service.name == *prefix
+    });
+
+    if let Some((_prefix, allowed_fields)) = matched_schema {
+        for field in &service.config.extra {
+            if !allowed_fields.contains(&field.name.as_str()) {
+                return Err(LowerError::InvalidProviderConfigField {
+                    service: service.name.clone(),
+                    field: field.name.clone(),
+                    known_fields: allowed_fields.iter().map(|s| s.to_string()).collect(),
+                });
+            }
+        }
+    }
+    // Services with unknown prefixes: extra fields are allowed but not validated.
+    // As more providers are modeled, their schemas should be added to
+    // dsl/std/provider_config.dag and mirrored here.
+
+    Ok(())
+}
+
 fn derive_service_transport_triplets(
     project: &TypedProject,
     required_calls: Option<&HashSet<String>>,
@@ -5868,6 +5957,10 @@ fn derive_service_transport_triplets(
             let Item::ServiceDef(service) = &item.node else {
                 continue;
             };
+
+            // SR-8: Validate provider-specific config fields against
+            // known schemas. Config typos become compile errors.
+            validate_provider_config_fields(service)?;
 
             for operation in &service.operations {
                 if let Some(required_calls) = required_calls {
@@ -5907,6 +6000,42 @@ fn derive_service_transport_triplets(
                         });
                     }
                 }
+
+                // SC-7: Validate auth_input references a real Secret-typed field.
+                if let Some(ref auth_field_name) = service.config.auth_input {
+                    if operation.transport.is_some() {
+                        let matching_field = operation
+                            .inputs
+                            .iter()
+                            .find(|f| f.name == *auth_field_name);
+                        match matching_field {
+                            None => {
+                                return Err(LowerError::InvalidAuthInput {
+                                    service: service.name.clone(),
+                                    operation: operation.name.clone(),
+                                    field_name: auth_field_name.clone(),
+                                    reason: format!(
+                                        "field `{auth_field_name}` not found in operation inputs"
+                                    ),
+                                });
+                            }
+                            Some(field) => {
+                                let field_type = type_expr_to_string(&field.ty);
+                                if field_type != "Secret" {
+                                    return Err(LowerError::InvalidAuthInput {
+                                        service: service.name.clone(),
+                                        operation: operation.name.clone(),
+                                        field_name: auth_field_name.clone(),
+                                        reason: format!(
+                                            "field must be type `Secret`, found `{field_type}`"
+                                        ),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+
                 let suffix = sanitize_identifier(&format!(
                     "{module_name}_{}_{}",
                     service.name, operation.name

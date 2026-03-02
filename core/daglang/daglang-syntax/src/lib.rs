@@ -759,9 +759,20 @@ pub mod ast {
         /// Credential configuration for this service.
         pub credential: Option<CredentialDef>,
         /// Provider-specific configuration fields not covered by the core
-        /// schema. These are preserved for downstream consumption (e.g.,
-        /// `bucket`, `base_dir`, `model`, `project_id`).
-        pub extra: Vec<(String, String)>,
+        /// schema. Parsed as typed declarations for downstream validation
+        /// (e.g., `bucket: NonEmptyStr`, `project_id: ProjectId`).
+        pub extra: Vec<ProviderConfigField>,
+    }
+
+    /// A provider-specific config field: `name: Type` or `name: Type = default`.
+    #[derive(Debug, Clone)]
+    pub struct ProviderConfigField {
+        /// Field name (e.g., `bucket`, `project_id`).
+        pub name: String,
+        /// Type annotation (e.g., `NonEmptyStr`, `List<Json>`).
+        pub ty: TypeExpr,
+        /// Optional default value expression (e.g., `"anthropic"`, `5`, `[]`).
+        pub default: Option<Expr>,
     }
 
     // ── Transport blocks (TL-11) ─────────────────────────────────────
