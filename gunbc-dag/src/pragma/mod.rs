@@ -11,14 +11,8 @@ use gunbc_ir::{infer_signature, BuilderError, Dag, WorkflowSignature};
 pub type PragmaGraphOp = DynOp;
 
 /// Get the declared signature for the pragma workflow (auto-derived from DAG).
-pub fn pragma_signature() -> WorkflowSignature {
-    match build_pragma_graph() {
-        Ok(dag) => infer_signature(&dag),
-        Err(err) => {
-            eprintln!("warning: failed to build pragma DAG for signature: {err}");
-            WorkflowSignature::default()
-        }
-    }
+pub fn pragma_signature() -> Result<WorkflowSignature, BuilderError> {
+    build_pragma_graph().map(|dag| infer_signature(&dag))
 }
 
 /// Build pragma graph from the DSL source.

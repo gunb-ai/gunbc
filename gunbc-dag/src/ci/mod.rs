@@ -5,11 +5,11 @@
 pub use gunbc_ir::transport::github_actions::WorkflowConfig;
 pub use gunbc_primitives::EmbeddedFileExistsOp;
 
-use gunbc_ir::CargoInvocation;
 use gunbc_exec::DynOp;
 use gunbc_ir::transport::github_actions::{
     checkout, gcp_workload_identity, rust_toolchain, ubuntu_latest, Integration, Permissions,
 };
+use gunbc_ir::CargoInvocation;
 use gunbc_ir::{infer_signature, BuilderError, Dag, WorkflowSignature};
 use gunbc_testgen_registry::iter_dag_specs;
 use std::collections::BTreeSet;
@@ -18,14 +18,8 @@ use std::collections::BTreeSet;
 pub type CIGraphOp = DynOp;
 
 /// Get the declared signature for the ci workflow (auto-derived from DAG).
-pub fn ci_signature() -> WorkflowSignature {
-    match build_ci_graph() {
-        Ok(dag) => infer_signature(&dag),
-        Err(err) => {
-            eprintln!("warning: failed to build ci DAG for signature: {err}");
-            WorkflowSignature::default()
-        }
-    }
+pub fn ci_signature() -> Result<WorkflowSignature, BuilderError> {
+    build_ci_graph().map(|dag| infer_signature(&dag))
 }
 
 /// Get the integrations used by the CI workflow.

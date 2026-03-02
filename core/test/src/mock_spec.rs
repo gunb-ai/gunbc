@@ -602,7 +602,6 @@ impl ResourceSimulation {
             _ => false,
         }
     }
-
 }
 
 /// Type of resource being simulated.
@@ -617,9 +616,7 @@ pub enum ResourceType {
     /// Connection pool slot
     PoolSlot { pool_size: usize },
     /// Credential with optional expiry
-    Credential {
-        expiry_ms: Option<u64>,
-    },
+    Credential { expiry_ms: Option<u64> },
 }
 
 /// Simulated behavior for a resource.
@@ -710,13 +707,10 @@ impl ResourceMocks {
 
     /// Add a credential that fails to acquire.
     pub fn credential_fails(mut self, id: impl Into<String>, error: impl Into<String>) -> Self {
-        let sim = ResourceSimulation::new(
-            id,
-            ResourceType::Credential { expiry_ms: None },
-        )
-        .with_behavior(ResourceBehavior::FailAcquire {
-            error: error.into(),
-        });
+        let sim = ResourceSimulation::new(id, ResourceType::Credential { expiry_ms: None })
+            .with_behavior(ResourceBehavior::FailAcquire {
+                error: error.into(),
+            });
         self.resources.push(sim);
         self
     }

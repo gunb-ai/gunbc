@@ -37,7 +37,8 @@ fn temp_root() -> std::path::PathBuf {
 
 #[test]
 fn all_tool_workflow_specs_build_without_error() {
-    for name in all_tool_workflow_names() {
+    let names = all_tool_workflow_names().expect("derive tool workflow names");
+    for name in names {
         tool_workflow_spec(name)
             .unwrap_or_else(|error| panic!("tool workflow '{name}' failed to build: {error}"));
     }
@@ -45,7 +46,8 @@ fn all_tool_workflow_specs_build_without_error() {
 
 #[test]
 fn all_tool_workflow_specs_are_deterministic() {
-    for name in all_tool_workflow_names() {
+    let names = all_tool_workflow_names().expect("derive tool workflow names");
+    for name in names {
         let a = tool_workflow_spec(name).expect(name);
         let b = tool_workflow_spec(name).expect(name);
         assert_eq!(
@@ -69,7 +71,7 @@ fn compilation_ensure_is_deduped_across_all_tool_workflows() {
         pragma_workflow_spec().expect("pragma"),
         deps_workflow_spec().expect("deps"),
     ];
-    let registry = default_process_unit_registry();
+    let registry = default_process_unit_registry().expect("default registry should build");
     let global = plan_global_workflows(&specs, &registry, &PlannerInputsByWorkflow::new(), &root)
         .expect("global plan");
 
@@ -104,7 +106,7 @@ fn codegen_ensure_is_deduped_across_all_tool_workflows() {
         pragma_workflow_spec().expect("pragma"),
         deps_workflow_spec().expect("deps"),
     ];
-    let registry = default_process_unit_registry();
+    let registry = default_process_unit_registry().expect("default registry should build");
     let global = plan_global_workflows(&specs, &registry, &PlannerInputsByWorkflow::new(), &root)
         .expect("global plan");
 
@@ -143,7 +145,7 @@ fn global_plan_with_all_workflows_satisfies_non_redundancy_proof() {
         pragma_workflow_spec().expect("pragma"),
         deps_workflow_spec().expect("deps"),
     ];
-    let registry = default_process_unit_registry();
+    let registry = default_process_unit_registry().expect("default registry should build");
     let global = plan_global_workflows(&specs, &registry, &PlannerInputsByWorkflow::new(), &root)
         .expect("global plan");
 
@@ -163,7 +165,7 @@ fn global_plan_with_all_workflows_satisfies_projection_equivalence() {
         pragma_workflow_spec().expect("pragma"),
         deps_workflow_spec().expect("deps"),
     ];
-    let registry = default_process_unit_registry();
+    let registry = default_process_unit_registry().expect("default registry should build");
     let global = plan_global_workflows(&specs, &registry, &PlannerInputsByWorkflow::new(), &root)
         .expect("global plan");
 

@@ -335,7 +335,8 @@ mod tests {
 
     #[test]
     fn openai_success_synthesis_includes_choices_and_usage() {
-        let response = synthesize_rest_response(&MockResponseSynthesis::success(MockProvider::OpenAi));
+        let response =
+            synthesize_rest_response(&MockResponseSynthesis::success(MockProvider::OpenAi));
         assert_eq!(response.status, 200);
         assert!(response.body.get("choices").is_some());
         assert!(response.body.get("usage").is_some());
@@ -389,10 +390,7 @@ mod tests {
 
     #[test]
     fn provider_from_response_type_falls_back_to_generic() {
-        assert_eq!(
-            provider_from_response_type("Json"),
-            MockProvider::Generic
-        );
+        assert_eq!(provider_from_response_type("Json"), MockProvider::Generic);
     }
 
     #[test]

@@ -32,7 +32,7 @@ fn temp_root() -> PathBuf {
 fn gist_plan_produces_execute_on_first_run() {
     let root = temp_root();
     let spec = gist_workflow_spec().expect("gist spec");
-    let registry = default_process_unit_registry();
+    let registry = default_process_unit_registry().expect("default registry should build");
     let plan = plan_workflow_with_mode(
         &spec,
         &registry,
@@ -57,7 +57,7 @@ fn gist_plan_produces_execute_on_first_run() {
 fn gist_recent_critical_path_includes_rev_list() {
     let root = temp_root();
     let spec = gist_recent_workflow_spec().expect("gist-recent spec");
-    let registry = default_process_unit_registry();
+    let registry = default_process_unit_registry().expect("default registry should build");
     let plan = plan_workflow_with_mode(
         &spec,
         &registry,
@@ -91,7 +91,7 @@ fn gist_diff_has_fewer_nodes_than_gist() {
 #[test]
 fn shared_base_units_keep_identical_work_identity_across_modes() {
     let root = temp_root();
-    let registry = default_process_unit_registry();
+    let registry = default_process_unit_registry().expect("default registry should build");
     let gist = gist_workflow_spec().expect("gist");
     let diff = gist_diff_workflow_spec().expect("diff");
     let recent = gist_recent_workflow_spec().expect("recent");
@@ -163,7 +163,7 @@ fn shared_base_units_keep_identical_work_identity_across_modes() {
 #[test]
 fn shared_compilation_key_is_identical_between_gist_and_diff() {
     let root = temp_root();
-    let registry = default_process_unit_registry();
+    let registry = default_process_unit_registry().expect("default registry should build");
     let gist = gist_workflow_spec().expect("gist");
     let diff = gist_diff_workflow_spec().expect("diff");
 
@@ -206,7 +206,7 @@ fn shared_compilation_key_is_identical_between_gist_and_diff() {
 #[test]
 fn global_plan_deduplicates_shared_gist_base_units() {
     let root = temp_root();
-    let registry = default_process_unit_registry();
+    let registry = default_process_unit_registry().expect("default registry should build");
     let gist = gist_workflow_spec().expect("gist");
     let diff = gist_diff_workflow_spec().expect("diff");
 
@@ -244,7 +244,7 @@ fn global_plan_deduplicates_shared_gist_base_units() {
 fn explain_execute_set_matches_node_count_for_snapshot() {
     let root = temp_root();
     let spec = gist_workflow_spec().expect("gist");
-    let registry = default_process_unit_registry();
+    let registry = default_process_unit_registry().expect("default registry should build");
     let plan = plan_workflow_with_mode(
         &spec,
         &registry,

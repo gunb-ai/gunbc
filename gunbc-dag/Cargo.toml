@@ -87,19 +87,15 @@ path = "src/bin/codegen_cli.rs"
 
 [[bin]]
 name = "gunbc-deps-config"
-path = "../target/codegen/bin/deps-config/main.rs"
+path = "src/bin/deps_config.rs"
 
 [[bin]]
 name = "gunbc-infra"
 path = "../target/codegen/bin/infra/main.rs"
 
 [[bin]]
-name = "gunbc-pipeline"
-path = "../target/codegen/bin/pipeline/main.rs"
-
-[[bin]]
 name = "gunbc-workflow"
-path = "../target/codegen/bin/workflow/main.rs"
+path = "src/bin/workflow.rs"
 
 [[bin]]
 name = "gunbc-gist"
@@ -123,10 +119,6 @@ path = "../target/codegen/bin/clippy-lint/main.rs"
 [[bin]]
 name = "gunbc-build-all"
 path = "../target/codegen/bin/build-all/main.rs"
-
-[[bin]]
-name = "gunbc-sdlc"
-path = "../target/codegen/bin/sdlc/main.rs"
 
 [[bin]]
 name = "gunbc-design"

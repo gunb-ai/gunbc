@@ -94,11 +94,11 @@ lint-fix: pragma
 	@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings
 
 # Run CI via workflow planner (typed units, deterministic keying)
-ci:
+ci: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- ci
 
 # Run all tests via workflow planner (warm-path optimized)
-test-all:
+test-all: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- test-all
 
 help:
@@ -332,4 +332,3 @@ review-design: ensure-codegen
 
 review-design-dry: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-review-design -q --release -- --dry-run strict
-

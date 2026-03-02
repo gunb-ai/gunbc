@@ -172,14 +172,14 @@ data core_workflows: List<CoreWorkflow> = [
   {
     name: "ci",
     description: "Run CI via workflow planner (typed units, deterministic keying)",
-    deps: [],
+    deps: ["ensure-codegen"],
     body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- ci"],
     comment: None
   },
   {
     name: "test-all",
     description: "Run all tests via workflow planner (warm-path optimized)",
-    deps: [],
+    deps: ["ensure-codegen"],
     body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- test-all"],
     comment: None
   }

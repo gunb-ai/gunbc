@@ -39,7 +39,10 @@ impl TransportClass {
 
     /// Whether this transport class has request/response semantics.
     pub fn is_request_response(&self) -> bool {
-        matches!(self, Self::Rest | Self::Http | Self::Grpc | Self::Shell | Self::File)
+        matches!(
+            self,
+            Self::Rest | Self::Http | Self::Grpc | Self::Shell | Self::File
+        )
     }
 }
 

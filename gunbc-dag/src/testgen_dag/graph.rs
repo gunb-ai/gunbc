@@ -177,9 +177,7 @@ fn profile_fermi_cost(
     profile: &super::profile_discovery::DiscoveredProfile,
 ) -> gunbc_test::FermiCost {
     match profile.test_class {
-        gunbc_test::TestClass::Unit | gunbc_test::TestClass::Hermetic => {
-            gunbc_test::FermiCost::XS
-        }
+        gunbc_test::TestClass::Unit | gunbc_test::TestClass::Hermetic => gunbc_test::FermiCost::XS,
         gunbc_test::TestClass::Integration => {
             if profile.required_env.is_empty() {
                 gunbc_test::FermiCost::S

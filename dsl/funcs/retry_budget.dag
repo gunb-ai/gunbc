@@ -1,0 +1,203 @@
+// funcs/retry_budget.dag -- SR-2: Retry budget persistence.
+//
+// Retry count survives process restart. Store in outcome ledger
+// alongside stage result. Enforce max retries per stage (configurable,
+// default 3).
+//
+// Protocol:
+//   1. Before stage execution, read prior outcome from ledger
+//   2. If prior.status == Failed and budget > 0: decrement budget, retry
+//   3. If prior.status == Failed and budget == 0: terminal failure
+//   4. After stage execution, persist new outcome with updated budget
+//
+// Acceptance criteria:
+//   - Failed stage retries up to budget
+//   - Budget persists across restarts
+//   - Budget=0 → terminal failure
+
+module funcs.retry_budget
+
+import interfaces.outcome_ledger { OutcomeLedger }
+import std.types {
+  NonEmptyStr, StageOutcome, OutcomeStatus
+}
+
+type RetryDecision
+  = Proceed { attempt_number: Int, budget_remaining: Int }
+  | TerminalFailed { reason: String, total_attempts: Int }
+  | FirstAttempt { budget: Int }
+  | AlreadySucceeded
+
+// Check retry budget before stage execution.
+// Returns a RetryDecision that tells the worker whether to proceed,
+// terminate, or skip (already succeeded).
+func check_retry_budget(
+  run_key: NonEmptyStr,
+  stage: NonEmptyStr,
+  max_retries: Int = 3
+) -> { decision: RetryDecision }
+  uses outcomes: OutcomeLedger
+{
+  prior = outcomes.get(
+    run_key: run_key,
+    stage: stage
+  )
+
+  let decision = match prior.found {
+    false => FirstAttempt { budget: max_retries }
+    true  => match prior.outcome.status {
+      Success         => AlreadySucceeded
+      PendingApproval => AlreadySucceeded
+      TerminalFailed  => TerminalFailed {
+        reason: "previously marked terminal",
+        total_attempts: prior.outcome.attempt_count
+      }
+      _ => if prior.outcome.retry_budget_remaining > 0 {
+        Proceed {
+          attempt_number: prior.outcome.attempt_count + 1,
+          budget_remaining: prior.outcome.retry_budget_remaining - 1
+        }
+      } else {
+        TerminalFailed {
+          reason: "retry budget exhausted",
+          total_attempts: prior.outcome.attempt_count
+        }
+      }
+    }
+  }
+
+  return { decision: decision }
+}
+
+// Record stage outcome with retry budget tracking.
+// Called after each stage execution to persist the result
+// along with updated attempt count and budget.
+func record_with_budget(
+  run_key: NonEmptyStr,
+  stage: NonEmptyStr,
+  success: Bool,
+  attempt_number: Int,
+  budget_remaining: Int
+) -> { recorded: Bool }
+  uses outcomes: OutcomeLedger
+{
+  result = outcomes.upsert(
+    run_key: run_key,
+    stage: stage,
+    outcome: {
+      status: match success {
+        true  => Success
+        false => if budget_remaining > 0 { Failed } else { TerminalFailed }
+      },
+      attempt_count: attempt_number,
+      retry_budget_remaining: budget_remaining
+    }
+  )
+
+  return { recorded: result.updated }
+}
+
+// Mark a stage as terminal failure (budget exhausted or non-retryable error).
+func mark_terminal(
+  run_key: NonEmptyStr,
+  stage: NonEmptyStr,
+  attempt_count: Int,
+  reason: String
+) -> { marked: Bool }
+  uses outcomes: OutcomeLedger
+{
+  result = outcomes.upsert(
+    run_key: run_key,
+    stage: stage,
+    outcome: {
+      status: TerminalFailed,
+      attempt_count: attempt_count,
+      retry_budget_remaining: 0
+    }
+  )
+
+  return { marked: result.updated }
+}
+
+// ── Tests ──────────────────────────────────────────────────────────
+
+test first_attempt_gets_full_budget {
+
+    input check/prepare.run_key -> "sdlc::42::design::v1"
+    input check/prepare.stage -> "design"
+    input check/prepare.max_retries -> 3
+
+    mock get/execute.response -> rest_response(200, {
+      found: false, outcome: null
+    })
+
+    expect result.decision is FirstAttempt
+}
+
+test failed_stage_decrements_budget {
+
+    input check/prepare.run_key -> "sdlc::42::design::v1"
+    input check/prepare.stage -> "design"
+    input check/prepare.max_retries -> 3
+
+    mock get/execute.response -> rest_response(200, {
+      found: true,
+      outcome: {
+        status: "Failed",
+        attempt_count: 1,
+        retry_budget_remaining: 2
+      }
+    })
+
+    expect result.decision is Proceed
+}
+
+test budget_exhausted_terminal {
+
+    input check/prepare.run_key -> "sdlc::42::design::v1"
+    input check/prepare.stage -> "design"
+    input check/prepare.max_retries -> 3
+
+    mock get/execute.response -> rest_response(200, {
+      found: true,
+      outcome: {
+        status: "Failed",
+        attempt_count: 3,
+        retry_budget_remaining: 0
+      }
+    })
+
+    expect result.decision is TerminalFailed
+}
+
+test successful_stage_skips {
+
+    input check/prepare.run_key -> "sdlc::42::design::v1"
+    input check/prepare.stage -> "design"
+
+    mock get/execute.response -> rest_response(200, {
+      found: true,
+      outcome: {
+        status: "Success",
+        attempt_count: 1,
+        retry_budget_remaining: 2
+      }
+    })
+
+    expect result.decision is AlreadySucceeded
+}
+
+test record_preserves_budget {
+
+    input record/prepare.run_key -> "sdlc::42::design::v1"
+    input record/prepare.stage -> "design"
+    input record/prepare.success -> true
+    input record/prepare.attempt_number -> 2
+    input record/prepare.budget_remaining -> 1
+
+    mock upsert/execute.response -> rest_response(200, {
+      updated: true, previous: null
+    })
+
+    expect result.recorded == true
+}

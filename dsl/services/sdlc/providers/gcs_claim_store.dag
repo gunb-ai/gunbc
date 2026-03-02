@@ -28,6 +28,7 @@ module services.sdlc.providers.gcs_claim_store
 
 import interfaces.claim_store { ClaimStore }
 import std.types { NonEmptyStr }
+import std.errors { GcpErrorShape }
 
 // =========================================================================
 // GcsClaimStore : ClaimStore
@@ -48,16 +49,19 @@ import std.types { NonEmptyStr }
 
 service gcs.ClaimStore : ClaimStore {
 
-
   config {
     bucket: NonEmptyStr
     project_id: NonEmptyStr
-    endpoint: String = "https://storage.googleapis.com"
+    endpoint: "https://storage.googleapis.com"
     auth: BearerToken
+    auth_input: access_token
+    rate_limit: { requests: 1000, per: minute, scope: gcs_claims }
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 503] }
   }
 
   operation acquire {
     input {
+      access_token: Secret
       issue_id: NonEmptyStr
       stage: NonEmptyStr
       owner: NonEmptyStr
@@ -71,10 +75,20 @@ service gcs.ClaimStore : ClaimStore {
     }
     idempotent
     transport rest { method: PUT, path: "/upload/storage/v1/b/\{bucket\}/o?uploadType=media&name=claims/\{issue_id\}/\{stage\}.json" }
+    response {
+      200 => Json
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      412 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
   }
 
   operation heartbeat {
     input {
+      access_token: Secret
       issue_id: NonEmptyStr
       stage: NonEmptyStr
       owner: NonEmptyStr
@@ -83,10 +97,48 @@ service gcs.ClaimStore : ClaimStore {
     output { accepted: Bool }
     idempotent
     transport rest { method: PUT, path: "/upload/storage/v1/b/\{bucket\}/o?uploadType=media&name=claims/\{issue_id\}/\{stage\}.json" }
+    response {
+      200 => Json
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      412 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  // List all active claim objects under the claims/ prefix.
+  // Used by anti-entropy reconciler (SR-7) to find stale claims.
+  operation list_active {
+    input {
+      access_token: Secret
+    }
+    output {
+      claims: List<{
+        issue_id: String,
+        stage: String,
+        owner: String,
+        generation: Int,
+        acquired_at_epoch_ms: Int,
+        last_heartbeat_epoch_ms: Int,
+        expires_at_epoch_ms: Int
+      }>
+    }
+    readonly
+    transport rest { method: GET, path: "/storage/v1/b/\{bucket\}/o?prefix=claims/" }
+    response {
+      200 => Json
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
   }
 
   operation release {
     input {
+      access_token: Secret
       issue_id: NonEmptyStr
       stage: NonEmptyStr
       owner: NonEmptyStr
@@ -94,6 +146,16 @@ service gcs.ClaimStore : ClaimStore {
     }
     output { released: Bool }
     transport rest { method: DELETE, path: "/storage/v1/b/\{bucket\}/o/claims%2F\{issue_id\}%2F\{stage\}.json" }
+    response {
+      204 => Unit
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      412 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
   }
 }
 

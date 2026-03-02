@@ -1,0 +1,250 @@
+// services/sdlc/providers/structured_logging.dag -- SR-3: Structured execution logging.
+//
+// JSON-structured log lines with trace_id, issue_id, stage, node_id,
+// duration_ms. Cloud Logging compatible.
+//
+// Every transport node emits structured log. Logs are queryable by trace_id.
+//
+// Acceptance criteria:
+//   - Every transport node emits structured log
+//   - Logs are queryable by trace_id
+//   - Cloud Logging compatible JSON format
+
+module services.sdlc.providers.structured_logging
+
+import std.types { NonEmptyStr, EpochMs }
+
+// Structured log entry. Each transport node execution produces one.
+// Fields match Cloud Logging structured payload format.
+type StructuredLogEntry {
+  // Unique trace ID for this pipeline invocation (propagated across all stages)
+  trace_id: NonEmptyStr
+
+  // Issue being processed (e.g., "gunb-ai/gunbc#42")
+  issue_id: NonEmptyStr
+
+  // Pipeline stage (e.g., "design", "design-review")
+  stage: NonEmptyStr
+
+  // DAG node ID (e.g., "execute_transport_github_Issues_get")
+  node_id: NonEmptyStr
+
+  // Execution duration in milliseconds
+  duration_ms: Int
+
+  // Cloud Logging severity level
+  severity: LogSeverity
+
+  // Human-readable message
+  message: String
+
+  // Timestamp (ISO 8601)
+  timestamp: String
+
+  // Transport details (provider, operation, HTTP status)
+  transport: TransportLogContext?
+
+  // Error details (if severity >= ERROR)
+  error: LogErrorContext?
+
+  // Worker identity
+  worker_id: NonEmptyStr
+}
+
+type LogSeverity = DEBUG | INFO | WARNING | ERROR | CRITICAL
+
+type TransportLogContext {
+  provider: String
+  operation: String
+  http_status: Int?
+  http_method: String?
+  endpoint: String?
+  request_id: String?
+}
+
+type LogErrorContext {
+  error_type: String
+  message: String
+  retryable: Bool
+  stack_trace: String?
+}
+
+// Execution span for timing pipeline stages.
+type ExecutionSpan {
+  trace_id: NonEmptyStr
+  span_id: NonEmptyStr
+  parent_span_id: NonEmptyStr?
+  operation_name: String
+  start_time: EpochMs
+  end_time: EpochMs?
+  status: SpanStatus
+  attributes: Map<String, String>
+}
+
+type SpanStatus = OK | SPAN_ERROR | UNSET
+
+// Log filter for querying structured logs.
+type LogFilter {
+  trace_id: NonEmptyStr?
+  issue_id: NonEmptyStr?
+  stage: NonEmptyStr?
+  severity_min: LogSeverity?
+  time_range_start: EpochMs?
+  time_range_end: EpochMs?
+}
+
+// Escape a string for safe JSON embedding.
+// Handles double quotes, backslashes, and newlines.
+fn json_escape(s: String) -> String {
+  s
+    |> split(delimiter: "\\")
+    |> join(separator: "\\\\")
+    |> split(delimiter: "\"")
+    |> join(separator: "\\\"")
+    |> split(delimiter: "\n")
+    |> join(separator: "\\n")
+    |> split(delimiter: "\t")
+    |> join(separator: "\\t")
+}
+
+// Format a structured log entry as a JSON-compatible string.
+// Cloud Logging auto-parses JSON payloads from stdout.
+fn format_log_entry(entry: StructuredLogEntry) -> String {
+  let msg = json_escape(s: entry.message)
+  let transport_json = match entry.transport {
+    Some(t) => ",\"transport\":{\"provider\":\"{json_escape(s: t.provider)}\",\"operation\":\"{json_escape(s: t.operation)}\"}"
+    None => ""
+  }
+  let error_json = match entry.error {
+    Some(e) => ",\"error\":{\"type\":\"{json_escape(s: e.error_type)}\",\"message\":\"{json_escape(s: e.message)}\",\"retryable\":{e.retryable}}"
+    None => ""
+  }
+  "{\"severity\":\"{entry.severity}\",\"timestamp\":\"{entry.timestamp}\",\"trace_id\":\"{entry.trace_id}\",\"issue_id\":\"{entry.issue_id}\",\"stage\":\"{entry.stage}\",\"node_id\":\"{entry.node_id}\",\"duration_ms\":{entry.duration_ms},\"message\":\"{msg}\",\"worker_id\":\"{entry.worker_id}\"{transport_json}{error_json}}"
+}
+
+// Create a log entry for a successful transport execution.
+// timestamp must be provided by the caller (ISO 8601 string from the runtime).
+fn log_transport_success(
+  trace_id: NonEmptyStr,
+  issue_id: NonEmptyStr,
+  stage: NonEmptyStr,
+  node_id: NonEmptyStr,
+  duration_ms: Int,
+  worker_id: NonEmptyStr,
+  provider: String,
+  operation: String,
+  http_status: Int,
+  timestamp: String
+) -> StructuredLogEntry {
+  {
+    trace_id: trace_id,
+    issue_id: issue_id,
+    stage: stage,
+    node_id: node_id,
+    duration_ms: duration_ms,
+    severity: INFO,
+    message: "Transport {provider}.{operation} completed ({http_status})",
+    timestamp: timestamp,
+    transport: ({
+      provider: provider,
+      operation: operation,
+      http_status: http_status as Int?,
+      http_method: None,
+      endpoint: None,
+      request_id: None
+    } as TransportLogContext?),
+    error: None,
+    worker_id: worker_id
+  }
+}
+
+// Create a log entry for a failed transport execution.
+// timestamp must be provided by the caller (ISO 8601 string from the runtime).
+fn log_transport_error(
+  trace_id: NonEmptyStr,
+  issue_id: NonEmptyStr,
+  stage: NonEmptyStr,
+  node_id: NonEmptyStr,
+  duration_ms: Int,
+  worker_id: NonEmptyStr,
+  provider: String,
+  operation: String,
+  error_type: String,
+  error_message: String,
+  retryable: Bool,
+  timestamp: String
+) -> StructuredLogEntry {
+  {
+    trace_id: trace_id,
+    issue_id: issue_id,
+    stage: stage,
+    node_id: node_id,
+    duration_ms: duration_ms,
+    severity: ERROR as LogSeverity,
+    message: "Transport {provider}.{operation} failed: {error_message}",
+    timestamp: timestamp,
+    transport: ({
+      provider: provider,
+      operation: operation,
+      http_status: None,
+      http_method: None,
+      endpoint: None,
+      request_id: None
+    } as TransportLogContext?),
+    error: ({
+      error_type: error_type,
+      message: error_message,
+      retryable: retryable,
+      stack_trace: None
+    } as LogErrorContext?),
+    worker_id: worker_id
+  }
+}
+
+// ── Tests ──────────────────────────────────────────────────────────
+
+test structured_log_format {
+
+    let entry = log_transport_success(
+      trace_id: "trace-001",
+      issue_id: "gunb-ai/gunbc#42",
+      stage: "design",
+      node_id: "execute_transport_github_Issues_get",
+      duration_ms: 142,
+      worker_id: "worker-1",
+      provider: "github.Issues",
+      operation: "get",
+      http_status: 200,
+      timestamp: "2026-03-02T00:00:00Z"
+    )
+
+    let formatted = format_log_entry(entry: entry)
+
+    expect formatted contains "trace-001"
+    expect formatted contains "design"
+    expect formatted contains "142"
+}
+
+test structured_log_error_format {
+
+    let entry = log_transport_error(
+      trace_id: "trace-002",
+      issue_id: "gunb-ai/gunbc#43",
+      stage: "claim",
+      node_id: "execute_transport_gcs_ClaimStore_acquire",
+      duration_ms: 50,
+      worker_id: "worker-2",
+      provider: "gcs.ClaimStore",
+      operation: "acquire",
+      error_type: "PreconditionFailed",
+      error_message: "412 Precondition Failed",
+      retryable: true,
+      timestamp: "2026-03-02T00:00:01Z"
+    )
+
+    let formatted = format_log_entry(entry: entry)
+
+    expect formatted contains "ERROR"
+    expect formatted contains "PreconditionFailed"
+    expect formatted contains "retryable"
+}

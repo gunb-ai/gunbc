@@ -264,8 +264,6 @@ fn compile_literal(lit: &ast::Literal) -> code_ir::Expr {
     }
 }
 
-
-
 // ---------------------------------------------------------------------------
 // Identifiers — bare names resolve to enum-variant paths
 // ---------------------------------------------------------------------------

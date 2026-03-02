@@ -25,6 +25,7 @@ module services.sdlc.providers.gcs_outcome_ledger
 
 import interfaces.outcome_ledger { OutcomeLedger }
 import std.types { NonEmptyStr, StageOutcome }
+import std.errors { GcpErrorShape }
 
 // =========================================================================
 // GcsOutcomeLedger : OutcomeLedger
@@ -36,16 +37,19 @@ import std.types { NonEmptyStr, StageOutcome }
 
 service gcs.OutcomeLedger : OutcomeLedger {
 
-
   config {
     bucket: NonEmptyStr
     project_id: NonEmptyStr
-    endpoint: String = "https://storage.googleapis.com"
+    endpoint: "https://storage.googleapis.com"
     auth: BearerToken
+    auth_input: access_token
+    rate_limit: { requests: 1000, per: minute, scope: gcs_outcomes }
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 503] }
   }
 
   operation upsert {
     input {
+      access_token: Secret
       run_key: NonEmptyStr
       stage: NonEmptyStr
       outcome: StageOutcome
@@ -56,10 +60,20 @@ service gcs.OutcomeLedger : OutcomeLedger {
     }
     idempotent
     transport rest { method: PUT, path: "/upload/storage/v1/b/\{bucket\}/o?uploadType=media&name=outcomes/\{run_key\}/\{stage\}.json" }
+    response {
+      200 => Json
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      412 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
   }
 
   operation get {
     input {
+      access_token: Secret
       run_key: NonEmptyStr
       stage: NonEmptyStr
     }
@@ -70,12 +84,31 @@ service gcs.OutcomeLedger : OutcomeLedger {
     idempotent
     readonly
     transport rest { method: GET, path: "/storage/v1/b/\{bucket\}/o/outcomes%2F\{run_key\}%2F\{stage\}.json?alt=media" }
+    response {
+      200 => Json
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
   }
 
   operation list_by_issue {
-    input { issue_id: NonEmptyStr }
+    input {
+      access_token: Secret
+      issue_id: NonEmptyStr
+    }
     output { outcomes: List<StageOutcome> }
+    readonly
     transport rest { method: GET, path: "/storage/v1/b/\{bucket\}/o?prefix=outcomes/\{issue_id\}/" }
+    response {
+      200 => Json
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
   }
 }
 

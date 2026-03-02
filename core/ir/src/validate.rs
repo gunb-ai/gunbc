@@ -1052,10 +1052,7 @@ mod tests {
 
         let unwired = validate_resource_wiring_recursive(&dag);
         // data is not a resource port, so no unwired resources
-        let resource_unwired: Vec<_> = unwired
-            .iter()
-            .filter(|u| u.port.is_resource())
-            .collect();
+        let resource_unwired: Vec<_> = unwired.iter().filter(|u| u.port.is_resource()).collect();
         assert!(resource_unwired.is_empty());
     }
 

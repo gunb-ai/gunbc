@@ -72,8 +72,7 @@ pub use mock_spec::{
     assert_boundaries, assert_transport_mocks, validate_chain, BoundaryMock, ChainError,
     ChainValidationResult, ExpectedOutput, InputConstraint, InputExpectation, InputMock,
     LiveExpectedOutput, MockSpec, NodeExample, OutputMatcher, ResourceAcquireResult,
-    ResourceBehavior, ResourceMocks, ResourceSimulation, ResourceType,
-    TransportMock,
+    ResourceBehavior, ResourceMocks, ResourceSimulation, ResourceType, TransportMock,
 };
 pub use mock_synthesis::{synthesize_rest_response, MockProvider, MockResponseSynthesis};
 pub use mockable::{CardinalityTestInput, ErrorTestCase, ExpectedBehavior, Mockable};

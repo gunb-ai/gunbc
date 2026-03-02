@@ -31,10 +31,7 @@ impl TestOp {
 }
 
 impl Executable for TestOp {
-    fn execute(
-        &self,
-        inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         if self.pass_through {
             return Ok(inputs);
         }
@@ -1587,12 +1584,9 @@ fn test_input_mocks_with_dry_run_mode() {
     let mut input_mocks = BoundaryMocks::new();
     input_mocks.set_input("prepare", "arg", Value::Str("injected-arg".into()));
 
-    let log = execute_with_mode_and_inputs(
-        &dag,
-        ExecutionMode::DryRun(dry_mocks),
-        Some(&input_mocks),
-    )
-    .unwrap();
+    let log =
+        execute_with_mode_and_inputs(&dag, ExecutionMode::DryRun(dry_mocks), Some(&input_mocks))
+            .unwrap();
 
     // prepare should run normally with the injected input
     let prepare = log.get("prepare").unwrap();
@@ -1631,8 +1625,7 @@ fn test_input_mocks_per_port_on_non_root_node() {
     let mut input_mocks = BoundaryMocks::new();
     input_mocks.set_input("B", "y", Value::Str("from-mock".into()));
 
-    let log =
-        execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks)).unwrap();
+    let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks)).unwrap();
 
     let b = log.get("B").unwrap();
     assert_eq!(
@@ -1680,8 +1673,7 @@ fn test_input_mocks_do_not_intercept_in_real_mode() {
     let mut input_mocks = BoundaryMocks::new();
     input_mocks.set_value("compute", "out", Value::Str("mocked".into()));
 
-    let log =
-        execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks)).unwrap();
+    let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks)).unwrap();
     let entry = log.get("compute").expect("compute entry should exist");
     assert!(!entry.was_intercepted);
     assert_eq!(entry.outputs.get("out"), Some(&Value::Str("real".into())));
@@ -2059,8 +2051,14 @@ fn validate_node_kinds_rejects_kindless_transport_node() {
     let err = validate_node_kinds_for_interception(&dag);
     assert!(err.is_err());
     let msg = err.unwrap_err().to_string();
-    assert!(msg.contains("transport"), "expected transport mention: {msg}");
-    assert!(msg.contains("kind: Pure"), "expected kind: None mention: {msg}");
+    assert!(
+        msg.contains("transport"),
+        "expected transport mention: {msg}"
+    );
+    assert!(
+        msg.contains("kind: Pure"),
+        "expected kind: None mention: {msg}"
+    );
 }
 
 #[test]
@@ -2102,7 +2100,10 @@ fn validate_node_kinds_rejects_kindless_resource_environment() {
     ));
     let err = validate_node_kinds_for_interception(&dag);
     assert!(err.is_err());
-    assert!(err.unwrap_err().to_string().contains("resource-environment"));
+    assert!(err
+        .unwrap_err()
+        .to_string()
+        .contains("resource-environment"));
 }
 
 #[test]

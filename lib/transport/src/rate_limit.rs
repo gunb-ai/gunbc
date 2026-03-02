@@ -23,7 +23,9 @@ use crate::classify::{classify_for_middleware, ClassifiedErrorKind};
 use crate::middleware::{
     MiddlewareContext, MiddlewareOutcome, PostProcessOutcome, TransportMiddleware,
 };
-use gunbc_ir::transport::{RateLimitAlgorithm, RateLimitConfig, TransportRequest, TransportResponse};
+use gunbc_ir::transport::{
+    RateLimitAlgorithm, RateLimitConfig, TransportRequest, TransportResponse,
+};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -54,7 +56,11 @@ impl TokenBucket {
         };
 
         // max_burst of 0 means no requests allowed - use at least 1
-        let safe_max = if max_burst == 0 { 1.0 } else { max_burst as f64 };
+        let safe_max = if max_burst == 0 {
+            1.0
+        } else {
+            max_burst as f64
+        };
 
         Self {
             tokens: safe_max,
@@ -138,7 +144,11 @@ struct SlidingWindow {
 
 impl SlidingWindow {
     fn new(requests: u32, window_seconds: u32) -> Self {
-        let window_secs = if window_seconds == 0 { 60 } else { window_seconds };
+        let window_secs = if window_seconds == 0 {
+            60
+        } else {
+            window_seconds
+        };
         Self {
             requests: Vec::new(),
             window: Duration::from_secs(window_secs as u64),
@@ -227,12 +237,15 @@ enum RateLimiter {
 impl RateLimiter {
     fn new(config: &RateLimitConfig) -> Self {
         match config.algorithm {
-            RateLimitAlgorithm::TokenBucket => {
-                RateLimiter::TokenBucket(TokenBucket::new(config.max_burst, config.requests, config.window_seconds))
-            }
-            RateLimitAlgorithm::SlidingWindow => {
-                RateLimiter::SlidingWindow(SlidingWindow::new(config.requests, config.window_seconds))
-            }
+            RateLimitAlgorithm::TokenBucket => RateLimiter::TokenBucket(TokenBucket::new(
+                config.max_burst,
+                config.requests,
+                config.window_seconds,
+            )),
+            RateLimitAlgorithm::SlidingWindow => RateLimiter::SlidingWindow(SlidingWindow::new(
+                config.requests,
+                config.window_seconds,
+            )),
         }
     }
 
@@ -330,7 +343,10 @@ impl TransportMiddleware for RateLimitMiddleware {
         loop {
             attempts += 1;
 
-            match self.state.get_or_create(&self.config.scope_key, &self.config) {
+            match self
+                .state
+                .get_or_create(&self.config.scope_key, &self.config)
+            {
                 Ok(()) => {
                     // Request allowed, record headroom for metrics
                     if let Some(headroom) = self.state.headroom(&self.config.scope_key) {
@@ -365,10 +381,13 @@ impl TransportMiddleware for RateLimitMiddleware {
     ) -> PostProcessOutcome {
         // Check for 429 and apply Retry-After
         if self.config.honor_retry_after {
-            if let Some(classified) = classify_for_middleware(&response, ctx.config.response_classification.as_ref()) {
+            if let Some(classified) =
+                classify_for_middleware(&response, ctx.config.response_classification.as_ref())
+            {
                 if classified.kind == ClassifiedErrorKind::RateLimit {
                     if let Some(retry_after_ms) = classified.retry_after_ms {
-                        self.state.apply_retry_after(&self.config.scope_key, retry_after_ms);
+                        self.state
+                            .apply_retry_after(&self.config.scope_key, retry_after_ms);
                     }
                 }
             }
@@ -385,9 +404,9 @@ impl TransportMiddleware for RateLimitMiddleware {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::middleware::SharedMiddlewareState;
     use gunbc_ir::transport::{LocalRequest, TransportMiddlewareConfig};
     use std::sync::Arc;
-    use crate::middleware::SharedMiddlewareState;
 
     fn test_config(max_burst: u32, per_minute: u32) -> RateLimitConfig {
         RateLimitConfig {

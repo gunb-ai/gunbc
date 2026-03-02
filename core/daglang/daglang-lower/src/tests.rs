@@ -45,8 +45,7 @@ fn callable_stmts_from_source(source: &str) -> Vec<Stmt> {
 #[allow(clippy::disallowed_methods)]
 fn typed_project_for_module_with_dependency_closure(module_name: &str) -> TypedProject {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
-    let graph =
-        ModuleGraph::discover(&[dsl_root]).expect("module graph discovery should succeed");
+    let graph = ModuleGraph::discover(&[dsl_root]).expect("module graph discovery should succeed");
     let target_index = graph
         .modules
         .iter()
@@ -385,8 +384,7 @@ fn run(values: List<String>) -> String {
 }
 "#,
     )]);
-    let dag =
-        lower_typed_project_with_collection_nodes(&typed).expect("lowering should succeed");
+    let dag = lower_typed_project_with_collection_nodes(&typed).expect("lowering should succeed");
     let node_ids = dag
         .nodes
         .iter()
@@ -549,8 +547,7 @@ fn deps_parity_report_is_deterministic() {
 fn bootstrap_parity_report_is_deterministic() {
     let typed = typed_project_for_module_with_dependency_closure("tools.bootstrap");
     let dag = lower_target_module_with_dependency_scope(&typed, "tools.bootstrap");
-    let reference =
-        build_bootstrap_graph().expect("bootstrap builder graph should be available");
+    let reference = build_bootstrap_graph().expect("bootstrap builder graph should be available");
 
     let report_a = compare_ir(&dag, &reference);
     let report_b = compare_ir(&dag, &reference);
@@ -787,10 +784,8 @@ func run() -> { lines: List<String> } {
 }"#,
     )]);
     let dag = lower_typed_project(&typed).expect("lowering should succeed");
-    let parsing = shell_output_parsing_for_node(
-        &dag,
-        "execute_transport_sample_services_shell_Tools_Echo",
-    );
+    let parsing =
+        shell_output_parsing_for_node(&dag, "execute_transport_sample_services_shell_Tools_Echo");
     assert_eq!(parsing, ShellOutputParsing::SplitLines);
 }
 
@@ -812,10 +807,8 @@ func run() -> { ok: Bool } {
 }"#,
     )]);
     let dag = lower_typed_project(&typed).expect("lowering should succeed");
-    let parsing = shell_output_parsing_for_node(
-        &dag,
-        "execute_transport_sample_services_shell_Tools_Echo",
-    );
+    let parsing =
+        shell_output_parsing_for_node(&dag, "execute_transport_sample_services_shell_Tools_Echo");
     assert_eq!(parsing, ShellOutputParsing::ExitCodeBool);
 }
 
@@ -1391,9 +1384,9 @@ func caller(name: String, token: Secret) -> { id: String } {
 
     // auth_token should NOT be wired to prepare node
     assert!(
-        !dag.edges.iter().any(|edge| {
-            edge.to_node.0 == prepare_node_id && edge.to_port.0 == "auth_token"
-        }),
+        !dag.edges
+            .iter()
+            .any(|edge| { edge.to_node.0 == prepare_node_id && edge.to_port.0 == "auth_token" }),
         "auth_input arg should NOT be wired to prepare node"
     );
 
@@ -1450,17 +1443,17 @@ func caller(name: String, token: Secret) -> { id: String } {
 
     // Positional auth_token should NOT be wired to prepare node
     assert!(
-        !dag.edges.iter().any(|edge| {
-            edge.to_node.0 == prepare_node_id && edge.to_port.0 == "auth_token"
-        }),
+        !dag.edges
+            .iter()
+            .any(|edge| { edge.to_node.0 == prepare_node_id && edge.to_port.0 == "auth_token" }),
         "positional auth_input arg should NOT be wired to prepare node"
     );
 
     // Non-auth positional arg (name at index 0) should still be wired to prepare
     assert!(
-        dag.edges.iter().any(|edge| {
-            edge.to_node.0 == prepare_node_id && edge.to_port.0 == "name"
-        }),
+        dag.edges
+            .iter()
+            .any(|edge| { edge.to_node.0 == prepare_node_id && edge.to_port.0 == "name" }),
         "non-auth positional arg 'name' should be wired to prepare node"
     );
 }
@@ -1549,6 +1542,63 @@ func caller(name: String) -> { id: String } {
             );
         }
     }
+}
+
+#[test]
+fn auth_input_missing_field_raises_error() {
+    // SC-7: auth_input references a field that does not exist in operation inputs.
+    let typed = typed_project_from_sources(&[(
+        "dsl/services/auth_input_missing.dag",
+        r#"module sample.auth_missing
+service sample.Api {
+  config { endpoint: "https://api.example.com", auth: BearerToken, auth_input: nonexistent }
+  operation Create {
+input { name: String }
+output { id: String }
+transport rest { method: POST, path: "/v1/things" }
+  }
+}
+func caller(name: String) -> { id: String } {
+  result = sample.Api.Create(name: name)
+  return { id: result.id }
+}"#,
+    )]);
+
+    let err =
+        lower_typed_project(&typed).expect_err("should fail: auth_input references missing field");
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("nonexistent") && msg.contains("not found"),
+        "error should mention the missing field: {msg}"
+    );
+}
+
+#[test]
+fn auth_input_wrong_type_raises_error() {
+    // SC-7: auth_input references a field that is not Secret type.
+    let typed = typed_project_from_sources(&[(
+        "dsl/services/auth_input_wrong_type.dag",
+        r#"module sample.auth_wrong_type
+service sample.Api {
+  config { endpoint: "https://api.example.com", auth: BearerToken, auth_input: auth_token }
+  operation Create {
+input { name: String, auth_token: String }
+output { id: String }
+transport rest { method: POST, path: "/v1/things" }
+  }
+}
+func caller(name: String, token: String) -> { id: String } {
+  result = sample.Api.Create(name: name, auth_token: token)
+  return { id: result.id }
+}"#,
+    )]);
+
+    let err = lower_typed_project(&typed).expect_err("should fail: auth_input field is not Secret");
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("Secret") && msg.contains("String"),
+        "error should mention expected Secret type and actual type: {msg}"
+    );
 }
 
 #[test]
@@ -2482,8 +2532,10 @@ func run() -> { ok: Bool } uses store: Storage {
         .iter()
         .any(|node| node.id.0 == "sample.resources::run"));
     assert!(
-        !dag.edges.iter().any(|edge| edge.to_node.0 == "sample.resources::run"
-            && edge.to_port.0 == PortName::DEPS),
+        !dag.edges
+            .iter()
+            .any(|edge| edge.to_node.0 == "sample.resources::run"
+                && edge.to_port.0 == PortName::DEPS),
         "interface-only uses should not fabricate lifecycle dependency edges"
     );
 }
@@ -2686,8 +2738,7 @@ fn makegen_parity_report_is_deterministic() {
 fn canonical_ir_json_is_deterministic_for_makegen() {
     let lowered = load_makegen_lowered();
     let first = canonical_ir_json(&lowered).expect("first canonical json run should serialize");
-    let second =
-        canonical_ir_json(&lowered).expect("second canonical json run should serialize");
+    let second = canonical_ir_json(&lowered).expect("second canonical json run should serialize");
     assert_eq!(first, second, "canonical IR json must be byte-stable");
 }
 
@@ -3379,9 +3430,8 @@ func caller(id: String) -> { name: String } {
 }"#,
     )]);
 
-    let err = lower_typed_project(&typed).expect_err(
-        "lowering a partially-specified service should fail (RT4)",
-    );
+    let err = lower_typed_project(&typed)
+        .expect_err("lowering a partially-specified service should fail (RT4)");
     let msg = err.to_string();
     assert!(
         msg.contains("NoTransport") && msg.contains("Fetch") && msg.contains("no transport"),
@@ -3421,11 +3471,7 @@ fn service_transport_class_hermetic_matches_dsl_fidelity() {
 // ============================================================================
 
 /// Helper: find func body stmts by name, panicking with context on failure.
-fn find_func_stmts(
-    project: &TypedProject,
-    module_name: &str,
-    func_name: &str,
-) -> Vec<Stmt> {
+fn find_func_stmts(project: &TypedProject, module_name: &str, func_name: &str) -> Vec<Stmt> {
     for module in &project.modules {
         if module.module_path.as_dotted() != module_name {
             continue;
@@ -3446,11 +3492,7 @@ fn find_func_stmts(
 }
 
 /// Helper: find pattern body stmts by name.
-fn find_pattern_stmts(
-    project: &TypedProject,
-    module_name: &str,
-    pattern_name: &str,
-) -> Vec<Stmt> {
+fn find_pattern_stmts(project: &TypedProject, module_name: &str, pattern_name: &str) -> Vec<Stmt> {
     for module in &project.modules {
         if module.module_path.as_dotted() != module_name {
             continue;
@@ -3589,10 +3631,7 @@ fn scope_credential_chain_has_service_calls() {
 
     // credential_chain composes acquire_subject_token, optional_impersonation, etc.
     // via node statements and fn calls. Verify the scope tree builds without panic.
-    assert!(
-        !body.items.is_empty(),
-        "credential_chain should have items"
-    );
+    assert!(!body.items.is_empty(), "credential_chain should have items");
 }
 
 // ============================================================================
@@ -3755,6 +3794,10 @@ fn branch_body_dag_with_transports_builds_with_branch_builder() {
     assert!(
         branch_node.inputs.iter().any(|p| p.name.0 == "bucket"),
         "branch should expose prepare inputs as entrypoints: {:?}",
-        branch_node.inputs.iter().map(|p| &p.name.0).collect::<Vec<_>>()
+        branch_node
+            .inputs
+            .iter()
+            .map(|p| &p.name.0)
+            .collect::<Vec<_>>()
     );
 }

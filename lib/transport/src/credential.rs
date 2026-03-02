@@ -98,7 +98,10 @@ impl CredentialCache {
     /// Get a cached credential if valid.
     pub fn get(&self, key: &str) -> Option<Credential> {
         let entries = self.entries.lock().unwrap();
-        entries.get(key).filter(|c| c.is_valid()).map(|c| c.credential.clone())
+        entries
+            .get(key)
+            .filter(|c| c.is_valid())
+            .map(|c| c.credential.clone())
     }
 
     /// Check if credential should be refreshed.
@@ -176,9 +179,10 @@ impl CredentialMiddleware {
 
     /// Get or acquire a credential.
     fn get_credential(&self) -> Result<Credential, ExecError> {
-        let cache_key = self.config.cache_key.clone().unwrap_or_else(|| {
-            format!("{:?}:{:?}", self.config.provider, self.config.injection)
-        });
+        let cache_key =
+            self.config.cache_key.clone().unwrap_or_else(|| {
+                format!("{:?}:{:?}", self.config.provider, self.config.injection)
+            });
 
         // Check cache
         let cached = self.cache.get(&cache_key);
@@ -327,7 +331,8 @@ mod tests {
     #[test]
     fn middleware_applies_credential_to_rest_request() {
         let config = test_config();
-        let mw = CredentialMiddleware::with_provider(config, static_credential_provider("test-token"));
+        let mw =
+            CredentialMiddleware::with_provider(config, static_credential_provider("test-token"));
 
         let mw_config = Arc::new(TransportMiddlewareConfig::default());
         let shared = Arc::new(SharedMiddlewareState::new());

@@ -13,9 +13,9 @@
 //! lowering pipeline. They replace the ad-hoc IfBranchSite/MatchBranchSite
 //! structs and detect_*_branches_in_stmts functions in lib.rs.
 
-use daglang_syntax::ast::{Expr, Pattern, Stmt};
 #[cfg(test)]
 use daglang_syntax::ast::MatchArm;
+use daglang_syntax::ast::{Expr, Pattern, Stmt};
 
 /// A service call found in the AST, with its dot-separated path and args.
 #[derive(Debug, Clone)]
@@ -65,20 +65,14 @@ pub(crate) enum ScopedItem {
     },
 
     /// A match expression introducing N nested scopes (one per arm).
-    MatchBranch {
-        arms: Vec<MatchArmScope>,
-    },
+    MatchBranch { arms: Vec<MatchArmScope> },
 
     /// A function call (non-service). Not scope-introducing, but tracked
     /// so transport planning knows about fn-call-based service forwarding.
-    FnCall {
-        name: String,
-    },
+    FnCall { name: String },
 
     /// A let binding or assignment. Not scope-introducing.
-    Binding {
-        name: String,
-    },
+    Binding { name: String },
 
     /// Anything else (pure expressions, returns, etc.).
     Other,
@@ -150,9 +144,7 @@ impl ScopedBody {
                         arm.body.collect_all_service_calls(out);
                     }
                 }
-                ScopedItem::FnCall { .. }
-                | ScopedItem::Binding { .. }
-                | ScopedItem::Other => {}
+                ScopedItem::FnCall { .. } | ScopedItem::Binding { .. } | ScopedItem::Other => {}
             }
         }
     }
@@ -177,15 +169,11 @@ fn collect_scoped_items_from_stmt(stmt: &Stmt, items: &mut Vec<ScopedItem>) {
         Stmt::Let(name, expr) => {
             // First process the expression for service calls / control flow
             collect_scoped_items_from_expr(expr, items);
-            items.push(ScopedItem::Binding {
-                name: name.clone(),
-            });
+            items.push(ScopedItem::Binding { name: name.clone() });
         }
         Stmt::Assign(name, expr) => {
             collect_scoped_items_from_expr(expr, items);
-            items.push(ScopedItem::Binding {
-                name: name.clone(),
-            });
+            items.push(ScopedItem::Binding { name: name.clone() });
         }
         Stmt::Expr(expr) => {
             collect_scoped_items_from_expr(expr, items);
@@ -252,9 +240,7 @@ fn collect_scoped_items_from_expr(expr: &Expr, items: &mut Vec<ScopedItem>) {
             for (_, arg_expr) in args {
                 collect_scoped_items_from_expr(arg_expr, items);
             }
-            items.push(ScopedItem::FnCall {
-                name: name.clone(),
-            });
+            items.push(ScopedItem::FnCall { name: name.clone() });
         }
 
         // Pipe — recurse into both sides.
@@ -511,10 +497,7 @@ mod tests {
                 else_body,
             } => {
                 assert_eq!(then_body.direct_service_calls().len(), 1);
-                assert_eq!(
-                    else_body.as_ref().unwrap().direct_service_calls().len(),
-                    1
-                );
+                assert_eq!(else_body.as_ref().unwrap().direct_service_calls().len(), 1);
             }
             other => panic!("expected IfBranch, got {other:?}"),
         }
@@ -589,10 +572,7 @@ mod tests {
     fn let_binding_with_service_call_in_rhs() {
         let stmts = vec![Stmt::Let(
             "result".into(),
-            Expr::ServiceCall(
-                vec!["gcp".into(), "Storage".into(), "Read".into()],
-                vec![],
-            ),
+            Expr::ServiceCall(vec!["gcp".into(), "Storage".into(), "Read".into()], vec![]),
         )];
         let body = ScopedBody::from_stmts(&stmts);
 

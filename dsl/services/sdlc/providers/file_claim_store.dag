@@ -70,6 +70,23 @@ service file.ClaimStore : ClaimStore {
     output { released: Bool }
     transport file { op: DELETE, path: "\{dir\}/claims/\{issue_id\}/\{stage\}.json" }
   }
+
+  operation list_active {
+    input {}
+    output {
+      claims: List<{
+        issue_id: String,
+        stage: String,
+        owner: String,
+        generation: Int,
+        acquired_at_epoch_ms: Int,
+        last_heartbeat_epoch_ms: Int,
+        expires_at_epoch_ms: Int
+      }>
+    }
+    readonly
+    transport file { op: READ, path: "\{dir\}/claims/" }
+  }
 }
 
 // ── Tests ──────────────────────────────────────────────────────────

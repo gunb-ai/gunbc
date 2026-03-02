@@ -2,6 +2,13 @@
 //!
 //! Classification is used by middleware (retry, metrics, diagnostics) to make
 //! transport decisions before provider-specific parse stages run.
+//!
+//! # TL-15: Provider-agnostic classification
+//!
+//! Error message extraction uses only the `error_shape` JSON-path rules
+//! declared in `.dag` service definitions. No provider-specific parsing
+//! functions exist in this module — the compiler emits all provider knowledge
+//! as `ErrorShapeExtraction` config (TL-14 / TL-16).
 
 use gunbc_ir::transport::{
     ErrorShapeExtraction, HttpResponse, ResponseClassification, ResponseProvider, RestResponse,
@@ -51,14 +58,11 @@ pub fn classify_rest_response(
         return None;
     }
 
-    // TL-16: Prefer error_shape JSON-path extraction over hardcoded provider parsing.
-    let message = if let Some(ref shape) = policy.error_shape {
-        extract_error_message_by_path(shape, &response.body)
-    } else if policy.parse_provider_error_shapes {
-        provider_error_message(policy.provider, &response.body)
-    } else {
-        None
-    };
+    // TL-15: Only use error_shape JSON-path extraction. No hardcoded provider parsing.
+    let message = policy
+        .error_shape
+        .as_ref()
+        .and_then(|shape| extract_error_message_by_path(shape, &response.body));
 
     Some(ClassifiedResponse {
         kind: classify_status(
@@ -83,18 +87,12 @@ pub fn classify_http_response(
     }
 
     let parsed = serde_json::from_str::<JsonValue>(&response.body).ok();
-    // TL-16: Prefer error_shape JSON-path extraction over hardcoded provider parsing.
-    let message = if let Some(ref shape) = policy.error_shape {
+    // TL-15: Only use error_shape JSON-path extraction. No hardcoded provider parsing.
+    let message = policy.error_shape.as_ref().and_then(|shape| {
         parsed
             .as_ref()
             .and_then(|body| extract_error_message_by_path(shape, body))
-    } else if policy.parse_provider_error_shapes {
-        parsed
-            .as_ref()
-            .and_then(|body| provider_error_message(policy.provider, body))
-    } else {
-        None
-    };
+    });
 
     Some(ClassifiedResponse {
         kind: classify_status(
@@ -144,117 +142,38 @@ fn classify_status(
     ClassifiedErrorKind::Unknown
 }
 
-/// Provider-specific error details parsed from response body.
-#[derive(Debug, Clone, Default)]
-pub struct ProviderDiagnostics {
-    /// Primary error message.
-    pub message: Option<String>,
-    /// Error type/code (provider-specific).
-    pub error_type: Option<String>,
-    /// HTTP status string (GCP).
-    pub status: Option<String>,
-    /// Documentation URL (GitHub).
-    pub documentation_url: Option<String>,
-    /// Numeric error code (GCP, OpenAI).
-    pub code: Option<i64>,
-}
-
-impl ProviderDiagnostics {
-    /// Combine fields into a human-readable message.
-    pub fn to_message(&self) -> Option<String> {
-        if let Some(msg) = &self.message {
-            let mut result = msg.clone();
-            if let Some(doc) = &self.documentation_url {
-                result.push_str(" (see: ");
-                result.push_str(doc);
-                result.push(')');
-            }
-            Some(result)
-        } else {
-            self.error_type.clone()
-        }
-    }
-}
-
-/// Parse provider-specific error shape from response body.
-pub fn parse_provider_error(provider: ResponseProvider, body: &JsonValue) -> ProviderDiagnostics {
-    match provider {
-        ResponseProvider::GitHub => parse_github_error(body),
-        ResponseProvider::Gcp => parse_gcp_error(body),
-        ResponseProvider::Anthropic => parse_anthropic_error(body),
-        ResponseProvider::OpenAi => parse_openai_error(body),
-        ResponseProvider::Generic => ProviderDiagnostics::default(),
-    }
-}
-
-/// GitHub error shape: `{ message, documentation_url }`
-fn parse_github_error(body: &JsonValue) -> ProviderDiagnostics {
-    ProviderDiagnostics {
-        message: body.get("message").and_then(JsonValue::as_str).map(String::from),
-        documentation_url: body.get("documentation_url").and_then(JsonValue::as_str).map(String::from),
-        ..Default::default()
-    }
-}
-
-/// GCP error shape: `{ error: { code, message, status } }`
-fn parse_gcp_error(body: &JsonValue) -> ProviderDiagnostics {
-    let error = body.get("error");
-    ProviderDiagnostics {
-        message: error.and_then(|e| e.get("message")).and_then(JsonValue::as_str).map(String::from),
-        status: error.and_then(|e| e.get("status")).and_then(JsonValue::as_str).map(String::from),
-        code: error.and_then(|e| e.get("code")).and_then(JsonValue::as_i64),
-        ..Default::default()
-    }
-}
-
-/// Anthropic error shape: `{ type, error: { type, message } }`
-fn parse_anthropic_error(body: &JsonValue) -> ProviderDiagnostics {
-    let error = body.get("error");
-    ProviderDiagnostics {
-        message: error.and_then(|e| e.get("message")).and_then(JsonValue::as_str).map(String::from),
-        error_type: error
-            .and_then(|e| e.get("type"))
-            .and_then(JsonValue::as_str)
-            .map(String::from)
-            .or_else(|| body.get("type").and_then(JsonValue::as_str).map(String::from)),
-        ..Default::default()
-    }
-}
-
-/// OpenAI error shape: `{ error: { message, type, code } }`
-fn parse_openai_error(body: &JsonValue) -> ProviderDiagnostics {
-    let error = body.get("error");
-    ProviderDiagnostics {
-        message: error.and_then(|e| e.get("message")).and_then(JsonValue::as_str).map(String::from),
-        error_type: error.and_then(|e| e.get("type")).and_then(JsonValue::as_str).map(String::from),
-        code: error.and_then(|e| e.get("code")).and_then(JsonValue::as_i64),
-        ..Default::default()
-    }
-}
-
-fn provider_error_message(provider: ResponseProvider, body: &JsonValue) -> Option<String> {
-    parse_provider_error(provider, body).to_message()
-}
-
 /// Extract error message from response body using JSON-path rules (TL-16).
 ///
-/// Replaces hardcoded provider parsing with declarative JSON-path extraction
-/// from `error_shape {}` blocks in `.dag` files.
+/// Uses declarative JSON-path extraction from `error_shape {}` blocks in `.dag`
+/// files. This is the sole error extraction mechanism — no provider-specific
+/// parsing functions exist (TL-15 cleanup).
 fn extract_error_message_by_path(shape: &ErrorShapeExtraction, body: &JsonValue) -> Option<String> {
     let message = resolve_json_path(&shape.message_path, body)
         .and_then(JsonValue::as_str)
         .map(String::from);
 
-    if message.is_some() {
-        return message;
-    }
+    let primary = if let Some(msg) = message {
+        msg
+    } else {
+        // Fall back to code_path if message_path yields nothing.
+        shape
+            .code_path
+            .as_ref()
+            .and_then(|p| resolve_json_path(p, body))
+            .map(json_value_to_string)?
+    };
 
-    // Fall back to code_path if message_path yields nothing.
-    shape
-        .code_path
+    // Compose with details_path context (e.g., documentation URL) if available.
+    let details = shape
+        .details_path
         .as_ref()
         .and_then(|p| resolve_json_path(p, body))
-        .map(json_value_to_string)
+        .map(json_value_to_string);
+
+    match details {
+        Some(detail) if !detail.is_empty() => Some(format!("{primary} (see: {detail})")),
+        _ => Some(primary),
+    }
 }
 
 /// Convert a JSON value to a string, stripping quotes from string values.
@@ -267,7 +186,11 @@ fn json_value_to_string(v: &JsonValue) -> String {
 
 /// Resolve a dotted JSON path (e.g., ".error.message") against a JSON value.
 fn resolve_json_path<'a>(path: &str, body: &'a JsonValue) -> Option<&'a JsonValue> {
-    let path = path.strip_prefix("$.").unwrap_or(path).strip_prefix('.').unwrap_or(path);
+    let path = path
+        .strip_prefix("$.")
+        .unwrap_or(path)
+        .strip_prefix('.')
+        .unwrap_or(path);
     let mut current = body;
     for segment in path.split('.') {
         if segment.is_empty() {
@@ -323,7 +246,7 @@ fn default_policy() -> ResponseClassification {
     ResponseClassification {
         provider: ResponseProvider::Generic,
         prioritize_auth_errors: true,
-        parse_provider_error_shapes: true,
+        parse_provider_error_shapes: false,
         error_shape: None,
     }
 }
@@ -398,6 +321,62 @@ mod tests {
     use super::*;
     use gunbc_ir::transport::{HttpResponse, RestResponse};
 
+    /// Helper: Build a policy with error_shape for GitHub-style errors.
+    fn github_error_shape_policy() -> ResponseClassification {
+        ResponseClassification {
+            provider: ResponseProvider::GitHub,
+            prioritize_auth_errors: true,
+            parse_provider_error_shapes: false,
+            error_shape: Some(ErrorShapeExtraction {
+                message_path: ".message".to_string(),
+                code_path: None,
+                details_path: Some(".documentation_url".to_string()),
+            }),
+        }
+    }
+
+    /// Helper: Build a policy with error_shape for GCP-style errors.
+    fn gcp_error_shape_policy() -> ResponseClassification {
+        ResponseClassification {
+            provider: ResponseProvider::Gcp,
+            prioritize_auth_errors: true,
+            parse_provider_error_shapes: false,
+            error_shape: Some(ErrorShapeExtraction {
+                message_path: ".error.message".to_string(),
+                code_path: Some(".error.status".to_string()),
+                details_path: None,
+            }),
+        }
+    }
+
+    /// Helper: Build a policy with error_shape for Anthropic-style errors.
+    fn anthropic_error_shape_policy() -> ResponseClassification {
+        ResponseClassification {
+            provider: ResponseProvider::Anthropic,
+            prioritize_auth_errors: true,
+            parse_provider_error_shapes: false,
+            error_shape: Some(ErrorShapeExtraction {
+                message_path: ".error.message".to_string(),
+                code_path: Some(".error.type".to_string()),
+                details_path: None,
+            }),
+        }
+    }
+
+    /// Helper: Build a policy with error_shape for OpenAI-style errors.
+    fn openai_error_shape_policy() -> ResponseClassification {
+        ResponseClassification {
+            provider: ResponseProvider::OpenAi,
+            prioritize_auth_errors: true,
+            parse_provider_error_shapes: false,
+            error_shape: Some(ErrorShapeExtraction {
+                message_path: ".error.message".to_string(),
+                code_path: Some(".error.type".to_string()),
+                details_path: None,
+            }),
+        }
+    }
+
     #[test]
     fn github_rate_limit_uses_retry_after_header() {
         let mut response = RestResponse::new(
@@ -410,13 +389,8 @@ mod tests {
         response
             .headers
             .insert("Retry-After".to_string(), "42".to_string());
-        let policy = ResponseClassification {
-            provider: ResponseProvider::GitHub,
-            prioritize_auth_errors: true,
-            parse_provider_error_shapes: true,
-            error_shape: None,
-        };
 
+        let policy = github_error_shape_policy();
         let classified =
             classify_rest_response(&response, &policy).expect("non-2xx should classify");
         assert_eq!(classified.kind, ClassifiedErrorKind::RateLimit);
@@ -439,12 +413,7 @@ mod tests {
                 }
             }),
         );
-        let policy = ResponseClassification {
-            provider: ResponseProvider::Gcp,
-            prioritize_auth_errors: true,
-            parse_provider_error_shapes: true,
-            error_shape: None,
-        };
+        let policy = gcp_error_shape_policy();
         let classified = classify_rest_response(&response, &policy).expect("classification");
         assert_eq!(classified.kind, ClassifiedErrorKind::Client);
         assert_eq!(classified.message, Some("Invalid project id".to_string()));
@@ -462,27 +431,37 @@ mod tests {
                 }
             }),
         );
-        let policy = ResponseClassification {
-            provider: ResponseProvider::Anthropic,
-            prioritize_auth_errors: true,
-            parse_provider_error_shapes: true,
-            error_shape: None,
-        };
+        let policy = anthropic_error_shape_policy();
         let classified = classify_rest_response(&response, &policy).expect("classification");
         assert_eq!(classified.kind, ClassifiedErrorKind::Auth);
     }
 
     #[test]
-    fn malformed_provider_shape_falls_back_to_status_classification() {
+    fn malformed_body_falls_back_to_status_classification() {
         let response = RestResponse::new(500, serde_json::json!({"unexpected": true}));
+        let policy = gcp_error_shape_policy();
+        let classified = classify_rest_response(&response, &policy).expect("classification");
+        assert_eq!(classified.kind, ClassifiedErrorKind::Server);
+        assert_eq!(classified.message, None);
+    }
+
+    #[test]
+    fn no_error_shape_falls_back_to_status_only() {
+        let response = RestResponse::new(
+            403,
+            serde_json::json!({
+                "message": "Forbidden"
+            }),
+        );
         let policy = ResponseClassification {
-            provider: ResponseProvider::Gcp,
+            provider: ResponseProvider::Generic,
             prioritize_auth_errors: true,
-            parse_provider_error_shapes: true,
+            parse_provider_error_shapes: false,
             error_shape: None,
         };
         let classified = classify_rest_response(&response, &policy).expect("classification");
-        assert_eq!(classified.kind, ClassifiedErrorKind::Server);
+        assert_eq!(classified.kind, ClassifiedErrorKind::Auth);
+        // No error_shape means no message extraction.
         assert_eq!(classified.message, None);
     }
 
@@ -493,12 +472,7 @@ mod tests {
             headers: HashMap::new(),
             body: r#"{"error":{"message":"invalid api key"}}"#.to_string(),
         };
-        let policy = ResponseClassification {
-            provider: ResponseProvider::OpenAi,
-            prioritize_auth_errors: true,
-            parse_provider_error_shapes: true,
-            error_shape: None,
-        };
+        let policy = openai_error_shape_policy();
         let classified = classify_http_response(&response, &policy).expect("classification");
         assert_eq!(classified.kind, ClassifiedErrorKind::Auth);
         assert_eq!(classified.message, Some("invalid api key".to_string()));
@@ -669,10 +643,7 @@ mod tests {
 
     #[test]
     fn error_shape_extraction_falls_back_to_code_path() {
-        let response = RestResponse::new(
-            500,
-            serde_json::json!({ "code": "INTERNAL_ERROR" }),
-        );
+        let response = RestResponse::new(500, serde_json::json!({ "code": "INTERNAL_ERROR" }));
         let policy = ResponseClassification {
             provider: ResponseProvider::Generic,
             prioritize_auth_errors: false,
@@ -685,9 +656,6 @@ mod tests {
         };
         let classified = classify_rest_response(&response, &policy).expect("classification");
         assert_eq!(classified.kind, ClassifiedErrorKind::Server);
-        assert_eq!(
-            classified.message,
-            Some("INTERNAL_ERROR".to_string())
-        );
+        assert_eq!(classified.message, Some("INTERNAL_ERROR".to_string()));
     }
 }

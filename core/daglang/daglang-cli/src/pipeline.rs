@@ -1154,9 +1154,18 @@ mod tests {
             "unexpected diagnostics: {diagnostics:?}"
         );
         assert_eq!(graph.modules.len(), 3);
-        assert_eq!(graph.modules[0].module_path, ModulePath::new(vec!["b".into()]));
-        assert_eq!(graph.modules[1].module_path, ModulePath::new(vec!["c".into()]));
-        assert_eq!(graph.modules[2].module_path, ModulePath::new(vec!["a".into()]));
+        assert_eq!(
+            graph.modules[0].module_path,
+            ModulePath::new(vec!["b".into()])
+        );
+        assert_eq!(
+            graph.modules[1].module_path,
+            ModulePath::new(vec!["c".into()])
+        );
+        assert_eq!(
+            graph.modules[2].module_path,
+            ModulePath::new(vec!["a".into()])
+        );
         assert_eq!(
             graph.modules[2].dependencies,
             vec![1],

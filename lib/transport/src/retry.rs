@@ -599,23 +599,35 @@ mod tests {
 
         // Attempt 1 - should retry
         ctx.attempt = 1;
-        let outcome = mw.post_response(&TransportRequest::Local(LocalRequest {
-            inputs: serde_json::json!({}),
-        }), response.clone(), &mut ctx);
+        let outcome = mw.post_response(
+            &TransportRequest::Local(LocalRequest {
+                inputs: serde_json::json!({}),
+            }),
+            response.clone(),
+            &mut ctx,
+        );
         assert!(matches!(outcome, PostProcessOutcome::Retry { .. }));
 
         // Attempt 2 - should retry
         ctx.attempt = 2;
-        let outcome = mw.post_response(&TransportRequest::Local(LocalRequest {
-            inputs: serde_json::json!({}),
-        }), response.clone(), &mut ctx);
+        let outcome = mw.post_response(
+            &TransportRequest::Local(LocalRequest {
+                inputs: serde_json::json!({}),
+            }),
+            response.clone(),
+            &mut ctx,
+        );
         assert!(matches!(outcome, PostProcessOutcome::Retry { .. }));
 
         // Attempt 3 (max) - should not retry
         ctx.attempt = 3;
-        let outcome = mw.post_response(&TransportRequest::Local(LocalRequest {
-            inputs: serde_json::json!({}),
-        }), response.clone(), &mut ctx);
+        let outcome = mw.post_response(
+            &TransportRequest::Local(LocalRequest {
+                inputs: serde_json::json!({}),
+            }),
+            response.clone(),
+            &mut ctx,
+        );
         assert!(matches!(outcome, PostProcessOutcome::Complete(_)));
     }
 
@@ -629,16 +641,24 @@ mod tests {
 
         // 500 should retry
         let response = TransportResponse::Rest(RestResponse::new(500, serde_json::json!({})));
-        let outcome = mw.post_response(&TransportRequest::Local(LocalRequest {
-            inputs: serde_json::json!({}),
-        }), response, &mut ctx);
+        let outcome = mw.post_response(
+            &TransportRequest::Local(LocalRequest {
+                inputs: serde_json::json!({}),
+            }),
+            response,
+            &mut ctx,
+        );
         assert!(matches!(outcome, PostProcessOutcome::Retry { .. }));
 
         // 400 should not retry (not in retry_statuses)
         let response = TransportResponse::Rest(RestResponse::new(400, serde_json::json!({})));
-        let outcome = mw.post_response(&TransportRequest::Local(LocalRequest {
-            inputs: serde_json::json!({}),
-        }), response, &mut ctx);
+        let outcome = mw.post_response(
+            &TransportRequest::Local(LocalRequest {
+                inputs: serde_json::json!({}),
+            }),
+            response,
+            &mut ctx,
+        );
         assert!(matches!(outcome, PostProcessOutcome::Complete(_)));
     }
 
@@ -657,9 +677,13 @@ mod tests {
         let response = TransportResponse::Rest(RestResponse::new(500, serde_json::json!({})));
         for _ in 0..3 {
             ctx.attempt = 1;
-            mw.post_response(&TransportRequest::Local(LocalRequest {
-                inputs: serde_json::json!({}),
-            }), response.clone(), &mut ctx);
+            mw.post_response(
+                &TransportRequest::Local(LocalRequest {
+                    inputs: serde_json::json!({}),
+                }),
+                response.clone(),
+                &mut ctx,
+            );
         }
 
         // Now circuit should be open

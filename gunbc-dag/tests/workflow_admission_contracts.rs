@@ -49,7 +49,7 @@ fn registry_for_two_nodes(
 
 #[test]
 fn ci_and_test_all_specs_pass_default_admission_validation() {
-    let registry = default_process_unit_registry();
+    let registry = default_process_unit_registry().expect("default registry should build");
     let ci = ci_workflow_spec().expect("ci workflow spec");
     validate_workflow_admission(&ci, &registry).expect("ci workflow admission should pass");
 

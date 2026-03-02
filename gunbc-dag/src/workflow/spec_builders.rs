@@ -6,17 +6,18 @@ use gunbc_workflow::WorkflowSpec;
 
 /// Build a workflow spec by canonical/alias name.
 pub fn workflow_spec(name: &str) -> Result<WorkflowSpec, String> {
-    catalog::build_workflow_spec(name, &default_process_unit_registry())
+    let registry = default_process_unit_registry()?;
+    catalog::build_workflow_spec(name, &registry)
 }
 
 /// Return canonical tool workflow names.
-pub fn all_tool_workflow_names() -> Vec<&'static str> {
+pub fn all_tool_workflow_names() -> Result<Vec<&'static str>, String> {
     catalog::all_tool_workflow_names()
 }
 
 /// Build a tool workflow spec by name.
 pub fn tool_workflow_spec(name: &str) -> Result<WorkflowSpec, String> {
-    let Some(variant) = catalog::resolve_workflow_variant(name) else {
+    let Some(variant) = catalog::resolve_workflow_variant(name)? else {
         return Err(format!("unknown tool workflow: '{name}'"));
     };
     if !variant.is_tool {
@@ -67,7 +68,8 @@ mod tests {
 
     #[test]
     fn all_tool_workflows_build_successfully() {
-        for name in all_tool_workflow_names() {
+        let names = all_tool_workflow_names().expect("derive tool workflow names");
+        for name in names {
             tool_workflow_spec(name)
                 .unwrap_or_else(|error| panic!("tool workflow '{name}' failed to build: {error}"));
         }

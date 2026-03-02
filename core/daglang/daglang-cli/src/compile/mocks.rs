@@ -12,7 +12,7 @@ use gunbc_ir::Value;
 /// don't evaluate at runtime (DeclaredOutputCallableOp passthrough), so we
 /// pre-compute the content via direct fn body evaluation and inject it as an
 /// output mock — mirroring the generated binary's embedded asset approach.
-pub fn makegen_entrypoint_mocks(output_path: &str) -> BoundaryMocks {
+pub fn makegen_entrypoint_mocks(output_path: &str) -> Result<BoundaryMocks, String> {
     let mut input_mocks = BoundaryMocks::new();
     input_mocks.set_input(
         "tools.makegen::makegen",
@@ -29,14 +29,15 @@ pub fn makegen_entrypoint_mocks(output_path: &str) -> BoundaryMocks {
     // render_makefile_content.  Without this, the passthrough callable
     // forwards the literal DSL template string ("{header}{body}") instead
     // of the evaluated Makefile.
-    let makefile_content = gunbc_dag::makegen::compute_makegen_content();
+    let makefile_content = gunbc_dag::makegen::compute_makegen_content()
+        .map_err(|e| format!("failed to compute makegen content for mocks: {e}"))?;
     input_mocks.set_value(
         "tools.makegen::render_makefile_content",
         "return",
         Value::Str(makefile_content),
     );
 
-    input_mocks
+    Ok(input_mocks)
 }
 
 /// Dry-run mocks: intercept transport boundary nodes so no I/O occurs.
@@ -60,14 +61,14 @@ pub fn makegen_dry_run_transport_mocks(output_path: &str) -> BoundaryMocks {
 }
 
 /// Check-mode mocks: read existing content and intercept the write transport.
-pub fn makegen_check_mode_transport_mocks(output_path: &str) -> BoundaryMocks {
+pub fn makegen_check_mode_transport_mocks(output_path: &str) -> Result<BoundaryMocks, String> {
     let mut check_mode_mocks = BoundaryMocks::new();
     check_mode_mocks.set_value(
         "fs_env",
         "FilesystemHandle",
         Value::Str("filesystem://check-mode".to_string()),
     );
-    let existing_content = read_existing_content(output_path);
+    let existing_content = read_existing_content(output_path)?;
     check_mode_mocks.set_value(
         "execute_read_makegen",
         "response",
@@ -77,11 +78,21 @@ pub fn makegen_check_mode_transport_mocks(output_path: &str) -> BoundaryMocks {
         ))),
     );
     check_mode_mocks.set_value("execute_makegen_transport", "response", Value::Skipped);
-    check_mode_mocks
+    Ok(check_mode_mocks)
 }
 
-/// Read existing file content, returning empty string on any error.
+/// Read existing file content.
+///
+/// Returns empty string when the file does not yet exist, and errors on other
+/// filesystem failures.
 #[allow(clippy::disallowed_methods)]
-fn read_existing_content(output_path: &str) -> String {
-    std::fs::read_to_string(output_path).unwrap_or_default()
+fn read_existing_content(output_path: &str) -> Result<String, String> {
+    match std::fs::read_to_string(output_path) {
+        Ok(content) => Ok(content),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(error) => Err(format!(
+            "failed to read existing makegen output at {}: {}",
+            output_path, error
+        )),
+    }
 }

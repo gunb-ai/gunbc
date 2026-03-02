@@ -31,7 +31,9 @@ impl TryFrom<&Value> for CloudSecretConfig {
 }
 
 /// Supported cloud providers for secret-backed credentials.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, gunbc_delegate_macros::StringEnum)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, gunbc_delegate_macros::StringEnum,
+)]
 pub enum CloudProviderKind {
     Gcp,
     Aws,

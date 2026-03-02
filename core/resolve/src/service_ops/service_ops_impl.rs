@@ -605,10 +605,7 @@ impl GenericShellParseOp {
         };
         ExecError::new(format!(
             "{}.{}: shell command exited with code {}{}",
-            self.service_name,
-            self.operation_name,
-            shell.exit_code,
-            detail
+            self.service_name, self.operation_name, shell.exit_code, detail
         ))
     }
 }
@@ -648,9 +645,7 @@ impl Executable for GenericShellParseOp {
                                 .first()
                                 .map(|f| f.name.as_str())
                                 .unwrap_or("lines");
-                            return OutputMap::new()
-                                .str_list(field_name, Vec::new())
-                                .ok();
+                            return OutputMap::new().str_list(field_name, Vec::new()).ok();
                         }
                         let lines: Vec<String> = shell
                             .stdout
@@ -676,13 +671,9 @@ impl Executable for GenericShellParseOp {
                         // Otherwise fail — empty stdout from a failed command
                         // must not propagate as a valid result.
                         if !shell.success() {
-                            let is_optional = field
-                                .map(|f| f.is_optional)
-                                .unwrap_or(false);
+                            let is_optional = field.map(|f| f.is_optional).unwrap_or(false);
                             if is_optional {
-                                return OutputMap::new()
-                                    .value(field_name, Value::Skipped)
-                                    .ok();
+                                return OutputMap::new().value(field_name, Value::Skipped).ok();
                             }
                             return Err(self.shell_exit_error(shell));
                         }
@@ -821,9 +812,7 @@ fn input_as_string(
 ) -> Result<String, ExecError> {
     match inputs.get(name) {
         Some(Value::Str(s)) => Ok(s.clone()),
-        Some(Value::Secret(secret)) => {
-            Ok(secret.expose_plaintext_for_transport().to_string())
-        }
+        Some(Value::Secret(secret)) => Ok(secret.expose_plaintext_for_transport().to_string()),
         Some(Value::Int(n)) => Ok(n.to_string()),
         Some(Value::Bool(b)) => Ok(b.to_string()),
         Some(Value::Float(f)) => Ok(f.to_string()),

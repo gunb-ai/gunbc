@@ -26,7 +26,7 @@ fn temp_root() -> std::path::PathBuf {
 fn keys_are_deterministic_for_fixed_inputs() {
     let root = temp_root();
     let spec = ci_workflow_spec().expect("ci spec");
-    let registry = default_process_unit_registry();
+    let registry = default_process_unit_registry().expect("default registry should build");
     let inputs = PlannerInputs::new();
 
     let first = plan_workflow(&spec, &registry, &inputs, &root).expect("first plan");
@@ -49,7 +49,7 @@ fn keys_are_deterministic_for_fixed_inputs() {
 fn all_nodes_always_execute() {
     let root = temp_root();
     let spec = ci_workflow_spec().expect("ci spec");
-    let registry = default_process_unit_registry();
+    let registry = default_process_unit_registry().expect("default registry should build");
     let inputs = PlannerInputs::new();
 
     let plan = plan_workflow(&spec, &registry, &inputs, &root).expect("plan");
@@ -89,7 +89,7 @@ fn unknown_process_units_fail_planner_admission() {
 fn concurrent_planning_calls_remain_deterministic() {
     let root = temp_root();
     let spec = ci_workflow_spec().expect("ci spec");
-    let registry = default_process_unit_registry();
+    let registry = default_process_unit_registry().expect("default registry should build");
     let baseline = plan_workflow(&spec, &registry, &PlannerInputs::new(), &root)
         .expect("baseline plan should succeed")
         .nodes

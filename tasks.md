@@ -16,9 +16,8 @@ Lane 1: Compiler Critical Path
   Unblock SDLC execution — C10, C10a, then C24/C25/C26
   (C10:C26, A1:A4)
 
-Lane 2: Service Contracts & Transport
-  Transport domain modeling + multi-target emit
-  (TL-14:15)
+Lane 2: Service Contracts & Transport ✓
+  All complete (TL-14, TL-15 done)
 
 Lane 3: SDLC Ship
   Part B: Wire real transports → cloud profile works (SC-1:8)
@@ -116,13 +115,13 @@ spec.rs       # Service operation specs
 | 19 | C18 | **Executor dead code.** Delete `looks_effectful_without_kind()`. | Dead code deleted. `cargo clippy` clean. | S | **Done** |
 | 20 | C19 | **Restore passthrough enforcement + diagnostics (RT4b).** Required outputs with no input → `ExecError` (not `Skipped`). | Missing passthrough ports are diagnosable. CI clean. | S | **Done** |
 | 21 | C21 | **CLI generator: KEY=VALUE and multi-value flags.** For `Map<String, String>` params, generate `KEY=VALUE` parser. Unblocks A5. | `gunbc-infra --input project_id=foo` parses to map. | M | **Done** |
-| 22 | C22 | **Deductive Redundancy Elimination (DRE).** Idempotency fingerprinting. Phase 1: compile-time `StaticFingerprint`. Phase 2: test-time execution ledger. See `docs/design/deductive-redundancy.md`. | Static fingerprint catches duplicate reads/writes at compile time. | L | **Done** |
+| 22 | C22 | **Deductive Redundancy Elimination (DRE).** Idempotency fingerprinting. Phase 1: compile-time `StaticFingerprint`. Phase 2: test-time execution ledger. See `docs/design/deductive-redundancy.md`. | Static fingerprint catches duplicate reads/writes at compile time. | L | Pending |
 | 23 | C23 | **Hermetic AOT binaries (kill `CARGO_MANIFEST_DIR`).** 11 production files use `env!("CARGO_MANIFEST_DIR")` to read `.dag` files at runtime, hardcoding the developer's absolute path. Replace with `include_str!` to embed `.dag` sources at compile time, parsing AST purely in-memory. Bazel-style: binary runs on any machine. | Zero `env!("CARGO_MANIFEST_DIR")` in non-test code. Binaries run outside source tree. | L | **Done** |
-| 24 | C24 | **Pure dataflow lowering (kill `ExprComputeOp` + `__` hack).** `ExprComputeOp` embeds a hidden AST interpreter in the executor. The lowerer rewrites `entry.kind` → `entry__kind`, forcing runtime Map flattening + `referenced_vars` pre-seeding with `Value::Skipped` to mask unbound variables. Desugar `BinOp`, `If`, `Match`, `FieldAccess` into primitive structural DAG nodes (`GetFieldNode`, `LogicalOrNode`, etc.). | Zero `ExprComputeOp` in any compiled graph. `__` convention deleted. `referenced_vars` deleted. | XL | Open (needs C10) |
-| 25 | C25 | **Service-driven codegen (kill handwritten ops).** The resolver hand-wires ~40 `DynOp` implementations for service operations (REST prepare/parse, shell prepare/parse, etc.). With response blocks (SL-7), exit blocks (SL-8), and transport class metadata (C16) in the IR, the compiler has enough information to generate these ops from service definitions. Delete `extern_ops.rs` dispatch table. | Zero handwritten `DynOp` for services. `extern_ops.rs` dispatch table derived from DSL. | XL | Open (needs C24) |
-| 26 | C26 | **Incremental compilation.** Every `cargo run --bin gunbc-codegen-dag` recompiles all `.dag` files from scratch. With hermetic AOT binaries (C23) and static fingerprints (C22), the compiler can skip recompilation of unchanged modules. Hash `.dag` source → compare to cached IR → emit only changed artifacts. | Unchanged `.dag` files skip parse+lower+emit. 10x speedup on incremental edits. | L | Open |
+| 24 | C24 | **Pure dataflow lowering (kill `ExprComputeOp` + `__` hack).** `ExprComputeOp` embeds a hidden AST interpreter in the executor. The lowerer rewrites `entry.kind` → `entry__kind`, forcing runtime Map flattening + `referenced_vars` pre-seeding with `Value::Skipped` to mask unbound variables. Desugar `BinOp`, `If`, `Match`, `FieldAccess` into primitive structural DAG nodes (`GetFieldNode`, `LogicalOrNode`, etc.). **Design doc**: `docs/design/pure-dataflow-lowering.md`. | Zero `ExprComputeOp` in any compiled graph. `__` convention deleted. `referenced_vars` deleted. | XL | Partial (step 1: `GetField` primitive op added — handles simple `param.field` projections. 175 ExprCompute nodes remain for compound expressions.) |
+| 25 | C25 | **Service-driven codegen (kill handwritten ops).** The resolver hand-wires ~40 `DynOp` implementations for service operations (REST prepare/parse, shell prepare/parse, etc.). With response blocks (SL-7), exit blocks (SL-8), and transport class metadata (C16) in the IR, the compiler has enough information to generate these ops from service definitions. Delete `extern_ops.rs` dispatch table. **Design docs**: `docs/design/service-codegen.md` (protocol interfaces), `docs/design/pure-dataflow-lowering.md` §4 (migration path). | Zero handwritten `DynOp` for services. `extern_ops.rs` dispatch table derived from DSL. | XL | Open (needs C24) |
+| 26 | C26 | **Incremental compilation.** Every `cargo run --bin gunbc-codegen-dag` recompiles all `.dag` files from scratch. With hermetic AOT binaries (C23) and static fingerprints (C22), the compiler can skip recompilation of unchanged modules. Hash `.dag` source → compare to cached IR → emit only changed artifacts. | Unchanged `.dag` files skip parse+lower+emit. 10x speedup on incremental edits. | **Done** |
 
-**Remaining open**: C10 (partial — complex return expr desugaring), C10a (gist auth credential wiring), C24 (XL — depends on C10), C25 (XL — depends on C24), C26 (L)
+**Remaining open**: C24 (XL — step 1 done, compound expression decomposition remains), C25 (XL — depends on C24)
 
 ---
 
@@ -175,11 +174,11 @@ configuration (rate limits, error shapes) from Rust into `.dag` files.
 | 2 | TL-11 | **DSL syntax for transport blocks.** Add `rate_limit {}`, `retry {}`, `error_shape {}`, `credential {}` blocks to grammar. | L | **Done** |
 | 3 | TL-12 | **Lower transport blocks to IR.** Rate limit budgets → `RateLimitConfig`. Retry policies → `RetryConfig`. | M | **Done** |
 | 4 | TL-13 | **Domain data migration.** Move hardcoded rate limits from Rust to `dsl/services/*.dag`. Delete provider-specific branches from `classify.rs`. | M | **Done** |
-| 5 | TL-14 | **Multi-target emit.** Emit transport configuration per target language. Rust links to Target SDK. Go/Python stubs for future. | XL | Open |
-| 6 | TL-15 | **Substrate cleanup.** `lib/transport/` becomes pure Target SDK. Delete `GITHUB_CORE_LIMIT` constants, `host.contains("github.com")` branches. | L | Open (needs TL-14) |
+| 5 | TL-14 | **Multi-target emit.** Emit transport configuration per target language. Rust links to Target SDK. Go/Python stubs for future. | XL | **Done** |
+| 6 | TL-15 | **Substrate cleanup.** `lib/transport/` becomes pure Target SDK. Delete `GITHUB_CORE_LIMIT` constants, `host.contains("github.com")` branches. | L | **Done** |
 | 7 | TL-16 | **Dynamic JSON-path error shapes.** Lower `error_shape {}` blocks into JSON-path extraction rules in IR. Delete `ResponseProvider` enum, `infer_response_provider()`, hardcoded `parse_*_error` functions. Transport layer blindly executes JSON-path extractions. | L | **Done** |
 
-**Remaining open**: TL-14 (XL — multi-target emit), TL-15 (L — depends on TL-14)
+**All TL tasks complete.**
 
 ---
 
@@ -260,16 +259,16 @@ executes against real GitHub, GCS, and LLM providers.
 
 | # | ID | What | Acceptance Criteria | Size | Status |
 |---|-----|------|---------------------|------|--------|
-| 1 | SC-1 | **Wire GCS claim store transport.** Replace stub transport blocks in `gcs_claim_store.dag` with real `transport rest {}` blocks pointing to GCS JSON API. Wire `acquire` (conditional PUT with `ifGenerationMatch`), `heartbeat` (PATCH), `release` (DELETE). | `cloud_run` profile claim operations execute against real GCS. Generation-based CAS works. | M | Open |
-| 2 | SC-2 | **Wire GCS outcome ledger transport.** Replace stubs in `gcs_outcome_ledger.dag` with real `transport rest {}`. Wire `upsert` (PUT) and `get` (GET) with JSON response parsing. | `cloud_run` profile outcome recording works against real GCS. | S | Open |
-| 3 | SC-3 | **Wire GCS artifact store transport.** Replace stubs in `gcs_artifact_store.dag` with real `transport rest {}`. Wire `store` (PUT with content-hash path), `retrieve` (GET), `metadata` (HEAD). | `cloud_run` profile artifact operations work against real GCS. | M | Open |
-| 4 | SC-4 | **Wire GitHub issue provider transport.** Replace stubs in `github_issue_provider.dag` with real `transport rest {}` blocks for `discover` (GET /issues), `get` (GET /issues/:id), `comment` (POST /issues/:id/comments), `set_labels` (PUT /issues/:id/labels), `close` (PATCH /issues/:id). | `cloud_run` + `local` profile issue operations work against real GitHub API. | M | Open |
-| 5 | SC-5 | **Wire Pub/Sub signal store transport.** Replace stubs in `pubsub_signal_store.dag` with real `transport rest {}` for Pub/Sub API. Wire `emit` (POST /publish), `consume` (POST /pull), `ack` (POST /acknowledge). | `cloud_run` profile stage-transition signals flow through real Pub/Sub. | M | Open |
-| 6 | SC-6 | **Wire credential providers.** Real transport for `gcloud auth print-access-token` (shell), Secret Manager `GET /secrets/:name/versions/latest:access` (REST). | `cloud_run` profile credential chain works end-to-end. No hardcoded tokens. | M | Open |
-| 7 | SC-7 | **auth_input compile-time validation.** Validate that `config { auth_input: X }` references an actual field in the operation's `input {}` block. Validate field type is `Secret`. Emit compiler error if missing or wrong type. | `config { auth_input: nonexistent }` → compiler error with span. Zero silent credential skips. | S | Open |
-| 8 | SC-8 | **Cloud profile e2e smoke test.** Integration test: create GitHub issue with `sdlc:idea` label → SDLC pipeline discovers, claims, executes design stage → verify outcome recorded in GCS. Env-gated (`GUNBC_CLOUD_E2E=true`). | `cargo test -- cloud_e2e` passes when env-gated. Exercises SC-1:6 end-to-end. | M | Open (needs SC-1:6) |
+| 1 | SC-1 | **Wire GCS claim store transport.** Replace stub transport blocks in `gcs_claim_store.dag` with real `transport rest {}` blocks pointing to GCS JSON API. Wire `acquire` (conditional PUT with `ifGenerationMatch`), `heartbeat` (PATCH), `release` (DELETE). | `cloud_run` profile claim operations execute against real GCS. Generation-based CAS works. | M | **Done** |
+| 2 | SC-2 | **Wire GCS outcome ledger transport.** Replace stubs in `gcs_outcome_ledger.dag` with real `transport rest {}`. Wire `upsert` (PUT) and `get` (GET) with JSON response parsing. | `cloud_run` profile outcome recording works against real GCS. | S | **Done** |
+| 3 | SC-3 | **Wire GCS artifact store transport.** Replace stubs in `gcs_artifact_store.dag` with real `transport rest {}`. Wire `store` (PUT with content-hash path), `retrieve` (GET), `metadata` (HEAD). | `cloud_run` profile artifact operations work against real GCS. | M | **Done** |
+| 4 | SC-4 | **Wire GitHub issue provider transport.** Replace stubs in `github_issue_provider.dag` with real `transport rest {}` blocks for `discover` (GET /issues), `get` (GET /issues/:id), `comment` (POST /issues/:id/comments), `set_labels` (PUT /issues/:id/labels), `close` (PATCH /issues/:id). | `cloud_run` + `local` profile issue operations work against real GitHub API. | M | **Done** |
+| 5 | SC-5 | **Wire Pub/Sub signal store transport.** Replace stubs in `pubsub_signal_store.dag` with real `transport rest {}` for Pub/Sub API. Wire `emit` (POST /publish), `consume` (POST /pull), `ack` (POST /acknowledge). | `cloud_run` profile stage-transition signals flow through real Pub/Sub. | M | **Done** |
+| 6 | SC-6 | **Wire credential providers.** Real transport for `gcloud auth print-access-token` (shell), Secret Manager `GET /secrets/:name/versions/latest:access` (REST). | `cloud_run` profile credential chain works end-to-end. No hardcoded tokens. | M | **Done** |
+| 7 | SC-7 | **auth_input compile-time validation.** Validate that `config { auth_input: X }` references an actual field in the operation's `input {}` block. Validate field type is `Secret`. Emit compiler error if missing or wrong type. | `config { auth_input: nonexistent }` → compiler error with span. Zero silent credential skips. | S | **Done** |
+| 8 | SC-8 | **Cloud profile e2e smoke test.** Integration test: create GitHub issue with `sdlc:idea` label → SDLC pipeline discovers, claims, executes design stage → verify outcome recorded in GCS. Env-gated (`GUNBC_CLOUD_E2E=true`). | `cargo test -- cloud_e2e` passes when env-gated. Exercises SC-1:6 end-to-end. | M | **Done** |
 
-**Remaining open**: SC-1:8 (all open — SC-1:6 parallelizable, SC-7 independent, SC-8 needs SC-1:6).
+**All SC tasks complete.**
 
 ---
 
@@ -280,16 +279,34 @@ observability, retry resilience, and zero-downtime deploys.
 
 | # | ID | What | Acceptance Criteria | Size | Status |
 |---|-----|------|---------------------|------|--------|
-| 1 | SR-1 | **Approval gate wiring.** `pending_approval` exit code 42 triggers claim release + yield. Approval signal (GitHub comment/label) resumes work on same issue. | Stage pauses at approval gate. Approval signal resumes within 60s. No duplicate work. | M | Open |
-| 2 | SR-2 | **Retry budget persistence.** Retry count survives process restart. Store in outcome ledger alongside stage result. Enforce max retries per stage (configurable, default 3). | Failed stage retries up to budget. Budget persists across restarts. Budget=0 → terminal failure. | M | Open |
-| 3 | SR-3 | **Structured execution logging.** JSON-structured log lines with `trace_id`, `issue_id`, `stage`, `node_id`, `duration_ms`. Cloud Logging compatible. | Every transport node emits structured log. Logs are queryable by `trace_id`. | M | Open |
-| 4 | SR-4 | **Health check endpoint.** Cloud Run health check: `/health` returns 200 + worker status (idle/processing/draining). Graceful shutdown on SIGTERM (finish current stage, release claims). | Cloud Run readiness probe passes. SIGTERM → clean claim release within 30s. | S | Open |
-| 5 | SR-5 | **Multi-worker scale test.** 5 workers, 20 concurrent issues, 10-minute run. Verify: no duplicate claims, no lost outcomes, all issues reach terminal state. | Zero claim conflicts. Zero lost outcomes. All 20 issues terminal within 10 min. | M | Open (needs SC-8) |
-| 6 | SR-6 | **Rolling deploy with zero downtime.** Cloud Run traffic migration: deploy new revision → route 10% → validate → route 100%. Rollback on health check failure. | Deploy completes with zero dropped webhook events. Rollback tested. | M | Open |
-| 7 | SR-7 | **Anti-entropy reconciliation.** Periodic scan (every 5 min): find issues with stale claims (no heartbeat > 2 min), orphaned outcomes (no matching claim), stuck stages. Auto-recover or alert. | Stale claims auto-released. Orphaned outcomes flagged. Stuck stages retried or escalated. | L | Open |
-| 8 | SR-8 | **config.extra → typed provider config.** Parse unknown config values into `Expr` (not token-skipped strings). Move provider config schemas into `.dag` models. Validate config fields at compile time. | Zero `config.extra` entries. All provider config fields typed and validated. Config typo → compiler error. | M | Open |
+| 1 | SR-1 | **Approval gate wiring.** `pending_approval` exit code 42 triggers claim release + yield. Approval signal (GitHub comment/label) resumes work on same issue. | Stage pauses at approval gate. Approval signal resumes within 60s. No duplicate work. | M | **Done** |
+| 2 | SR-2 | **Retry budget persistence.** Retry count survives process restart. Store in outcome ledger alongside stage result. Enforce max retries per stage (configurable, default 3). | Failed stage retries up to budget. Budget persists across restarts. Budget=0 → terminal failure. | M | **Done** |
+| 3 | SR-3 | **Structured execution logging.** JSON-structured log lines with `trace_id`, `issue_id`, `stage`, `node_id`, `duration_ms`. Cloud Logging compatible. | Every transport node emits structured log. Logs are queryable by `trace_id`. | M | **Done** |
+| 4 | SR-4 | **Health check endpoint.** Cloud Run health check: `/health` returns 200 + worker status (idle/processing/draining). Graceful shutdown on SIGTERM (finish current stage, release claims). | Cloud Run readiness probe passes. SIGTERM → clean claim release within 30s. | S | **Done** |
+| 5 | SR-5 | **Multi-worker scale test.** 5 workers, 20 concurrent issues, 10-minute run. Verify: no duplicate claims, no lost outcomes, all issues reach terminal state. | Zero claim conflicts. Zero lost outcomes. All 20 issues terminal within 10 min. | M | **Done** |
+| 6 | SR-6 | **Rolling deploy with zero downtime.** Cloud Run traffic migration: deploy new revision → route 10% → validate → route 100%. Rollback on health check failure. | Deploy completes with zero dropped webhook events. Rollback tested. | M | **Done** |
+| 7 | SR-7 | **Anti-entropy reconciliation.** Periodic scan (every 5 min): find issues with stale claims (no heartbeat > 2 min), orphaned outcomes (no matching claim), stuck stages. Auto-recover or alert. | Stale claims auto-released. Orphaned outcomes flagged. Stuck stages retried or escalated. | L | **Done** |
+| 8 | SR-8 | **config.extra → typed provider config.** Parse unknown config values into `Expr` (not token-skipped strings). Move provider config schemas into `.dag` models. Validate config fields at compile time. | Zero `config.extra` entries. All provider config fields typed and validated. Config typo → compiler error. | M | **Done** |
 
-**Remaining open**: SR-1:8 (all open — SR-1:4 parallelizable, SR-5 needs SC-8, SR-6:7 need SR-4, SR-8 independent).
+**All SR tasks complete.**
+
+---
+
+# Phase 3: The Purist Engine (Aspirational)
+
+Final stages of the compiler refactor. Eliminate all runtime interpretation,
+achieve fully hermetic AOT compilation, and strong-type every boundary.
+
+C24 (Pure Dataflow Lowering) is the keystone dependency — tracked in Lane 1 Part A above.
+C27 and SR-8 cover related ground (typed config blocks).
+
+| # | ID | Task | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| 1 | C28 | **Daggen (AOT DAG Compilation).** Currently, generated CLI tools (`gunbc-sdlc`, etc.) parse and resolve `.dag` files dynamically at runtime via `build_dsl_graph_with_profile`. Implement "Daggen" to compile lowered DAGs directly into static `Dag<T>` Rust structs during `make codegen`. The final binaries should contain zero DSL parsing/resolution logic, becoming fully hermetic AOT executables. | XL | Pending | C24 |
+| 2 | C29 | **Dynamic JSON-Path Output Mappings.** Just like `error_shape` (TL-16), extend JSONPath extraction to successful responses. Lower output mappings into extraction rules (e.g., `issue_id: "$.id"`) so the Rust runtime doesn't need hardcoded struct extraction logic. | M | Pending | TL-16 |
+| 3 | C30 | **Strict Type-Aware JSON Bridging.** `value_bridge.rs` currently hijacks the JSON keys `__enum` and `__bytes` to reconstruct complex `Value` types. This is "in-band signaling" and could collide with actual API payloads. Make `from_bridge_json` type-aware by passing the expected `TypeId` (which is known statically from the port). Delete the `__enum` JSON dictionary hacks. | M | Pending | — |
+| 4 | C27 | **Typed Config Blocks.** The parser currently skips unknown tokens in `config {}` blocks and stores them as stringified `extra: Vec<(String, String)>`. Replace this pragmatic fallback with strongly typed AST parsing for provider-specific config fields (e.g. `bucket: String`, `model: String`). | S | **Done** | — |
+| 5 | CT-8 | **Wire Contract Test Generation.** Connect the new `StructuredContract` and `ProviderResponseContract` infrastructure in `core/ir/src/contract.rs` to `gunbc-testgen`. Emit S-Tier hermetic tests that mathematically prove every provider binding obeys the `.dag` behavioral contracts. | M | Pending | CT-1 |
 
 ---
 

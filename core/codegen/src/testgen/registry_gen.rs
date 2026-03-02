@@ -41,7 +41,11 @@ pub enum TransportClass {
 
 impl TransportClass {
     /// Classify a transport node by examining explicit request/response types.
-    fn from_node_context(_node_id: &str, input_type: Option<&str>, output_type: Option<&str>) -> Self {
+    fn from_node_context(
+        _node_id: &str,
+        input_type: Option<&str>,
+        output_type: Option<&str>,
+    ) -> Self {
         match (input_type, output_type) {
             (Some("TcpRequest"), _) | (_, Some("TcpResponse")) => return Self::Tcp,
             (Some("ShellRequest"), _) | (_, Some("ShellResponse")) => return Self::Shell,
@@ -104,10 +108,15 @@ impl VirtualBackendRequirements {
 
     /// Count of distinct transport classes used.
     pub fn transport_class_count(&self) -> usize {
-        [self.needs_rest, self.needs_shell, self.needs_file, self.needs_tcp]
-            .iter()
-            .filter(|&&b| b)
-            .count()
+        [
+            self.needs_rest,
+            self.needs_shell,
+            self.needs_file,
+            self.needs_tcp,
+        ]
+        .iter()
+        .filter(|&&b| b)
+        .count()
     }
 }
 
@@ -126,8 +135,16 @@ pub fn derive_virtual_backend_requirements<T>(
         .nodes
         .iter()
         .map(|n| {
-            let req_input = n.inputs.iter().find(|p| p.name.0 == "request").map(|p| p.type_id.0.as_str());
-            let resp_output = n.outputs.iter().find(|p| p.name.0 == "response").map(|p| p.type_id.0.as_str());
+            let req_input = n
+                .inputs
+                .iter()
+                .find(|p| p.name.0 == "request")
+                .map(|p| p.type_id.0.as_str());
+            let resp_output = n
+                .outputs
+                .iter()
+                .find(|p| p.name.0 == "response")
+                .map(|p| p.type_id.0.as_str());
             (n.id.0.as_str(), (req_input, resp_output))
         })
         .collect();
@@ -143,7 +160,9 @@ pub fn derive_virtual_backend_requirements<T>(
         let transport_class = node_by_id
             .get(executor_id.as_str())
             .and_then(|node| transport_class_from_node_metadata(*node))
-            .unwrap_or_else(|| TransportClass::from_node_context(executor_id, input_type, output_type));
+            .unwrap_or_else(|| {
+                TransportClass::from_node_context(executor_id, input_type, output_type)
+            });
 
         match transport_class {
             TransportClass::Rest | TransportClass::Http => requirements.needs_rest = true,
@@ -172,7 +191,11 @@ mod tests {
     #[test]
     fn classify_rest_from_unknown_types_defaults_to_rest() {
         assert_eq!(
-            TransportClass::from_node_context("service_transport::execute::github.Gist::Create", None, None),
+            TransportClass::from_node_context(
+                "service_transport::execute::github.Gist::Create",
+                None,
+                None
+            ),
             TransportClass::Rest
         );
     }
@@ -180,7 +203,11 @@ mod tests {
     #[test]
     fn classify_shell_from_port_types() {
         assert_eq!(
-            TransportClass::from_node_context("execute_shell", Some("ShellRequest"), Some("ShellResponse")),
+            TransportClass::from_node_context(
+                "execute_shell",
+                Some("ShellRequest"),
+                Some("ShellResponse")
+            ),
             TransportClass::Shell
         );
     }
@@ -188,7 +215,11 @@ mod tests {
     #[test]
     fn classify_file_from_port_types() {
         assert_eq!(
-            TransportClass::from_node_context("execute_file", Some("FileRequest"), Some("FileResponse")),
+            TransportClass::from_node_context(
+                "execute_file",
+                Some("FileRequest"),
+                Some("FileResponse")
+            ),
             TransportClass::File
         );
     }
@@ -196,7 +227,11 @@ mod tests {
     #[test]
     fn classify_tcp_from_port_types() {
         assert_eq!(
-            TransportClass::from_node_context("execute_tcp_check", Some("TcpRequest"), Some("TcpResponse")),
+            TransportClass::from_node_context(
+                "execute_tcp_check",
+                Some("TcpRequest"),
+                Some("TcpResponse")
+            ),
             TransportClass::Tcp
         );
     }

@@ -126,24 +126,33 @@ pub enum CredentialInjection {
 }
 
 /// Response classification policy and provider hint.
+///
+/// # TL-15: Provider-agnostic classification
+///
+/// Error extraction uses only the `error_shape` JSON-path rules. The
+/// `parse_provider_error_shapes` field is retained for serialization backward
+/// compatibility but is not used by the transport layer. New code should
+/// always populate `error_shape`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResponseClassification {
     pub provider: ResponseProvider,
     /// Prefer auth-classification over generic 4xx when both signals exist.
     #[serde(default)]
     pub prioritize_auth_errors: bool,
-    /// Attempt provider-specific body parsing for richer diagnostics.
-    #[serde(default = "default_parse_provider_error_shapes")]
+    /// Legacy field retained for serialization backward compatibility.
+    /// The transport layer ignores this field — all error extraction uses
+    /// `error_shape` JSON-path rules (TL-15).
+    #[serde(default, skip_serializing_if = "is_false")]
     pub parse_provider_error_shapes: bool,
     /// JSON-path based error shape extraction rules (TL-16).
-    /// When present, the transport layer uses these paths to extract error
-    /// details from the response body instead of hardcoded provider parsing.
+    /// The transport layer uses these paths to extract error details from the
+    /// response body. This is the sole error extraction mechanism (TL-15).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error_shape: Option<ErrorShapeExtraction>,
 }
 
-fn default_parse_provider_error_shapes() -> bool {
-    true
+fn is_false(v: &bool) -> bool {
+    !v
 }
 
 /// JSON-path based error shape extraction (TL-16).
@@ -215,8 +224,12 @@ mod tests {
             response_classification: Some(ResponseClassification {
                 provider: ResponseProvider::GitHub,
                 prioritize_auth_errors: true,
-                parse_provider_error_shapes: true,
-                error_shape: None,
+                parse_provider_error_shapes: false,
+                error_shape: Some(ErrorShapeExtraction {
+                    message_path: ".message".to_string(),
+                    code_path: None,
+                    details_path: Some(".documentation_url".to_string()),
+                }),
             }),
         };
 
@@ -237,13 +250,15 @@ mod tests {
     }
 
     #[test]
-    fn response_classification_defaults_parse_provider_shapes() {
+    fn response_classification_defaults_parse_provider_shapes_to_false() {
         let json = r#"{
             "provider":"gcp",
             "prioritize_auth_errors":true
         }"#;
         let cfg: ResponseClassification = serde_json::from_str(json).expect("classification");
-        assert!(cfg.parse_provider_error_shapes);
+        // TL-15: parse_provider_error_shapes defaults to false; the transport
+        // layer uses only error_shape JSON-path extraction.
+        assert!(!cfg.parse_provider_error_shapes);
         assert!(cfg.error_shape.is_none());
     }
 

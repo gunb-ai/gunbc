@@ -51,12 +51,10 @@ fn load_resource_dsl_data() -> ResourceDslData {
     let repo_config_input_files =
         json_string_list(output.data_values.get("repo_config_input_files"))
             .expect("config/resources.dag must declare repo_config_input_files");
-    let testgen_input_globs =
-        json_string_list(output.data_values.get("testgen_input_globs"))
-            .expect("config/resources.dag must declare testgen_input_globs");
-    let output_paths =
-        json_output_paths(output.data_values.get("output_paths"))
-            .expect("config/resources.dag must declare output_paths");
+    let testgen_input_globs = json_string_list(output.data_values.get("testgen_input_globs"))
+        .expect("config/resources.dag must declare testgen_input_globs");
+    let output_paths = json_output_paths(output.data_values.get("output_paths"))
+        .expect("config/resources.dag must declare output_paths");
 
     ResourceDslData {
         repo_source_input_globs,
@@ -151,19 +149,22 @@ pub fn testgen_resource_def() -> ResourceDef {
 /// Resource definition for generated `Makefile` (`build:makefile`).
 pub fn makefile_resource_def() -> ResourceDef {
     let path = output_path_for(BUILD_RESOURCE_MAKEFILE, MAKEFILE_OUTPUT_PATH);
-    with_repo_inputs(ResourceDef::new(makefile_resource_id())).with_output(ResourceScope::file(path))
+    with_repo_inputs(ResourceDef::new(makefile_resource_id()))
+        .with_output(ResourceScope::file(path))
 }
 
 /// Resource definition for generated `.gitignore` (`build:gitignore`).
 pub fn gitignore_resource_def() -> ResourceDef {
     let path = output_path_for(BUILD_RESOURCE_GITIGNORE, GITIGNORE_OUTPUT_PATH);
-    with_repo_inputs(ResourceDef::new(gitignore_resource_id())).with_output(ResourceScope::file(path))
+    with_repo_inputs(ResourceDef::new(gitignore_resource_id()))
+        .with_output(ResourceScope::file(path))
 }
 
 /// Resource definition for generated `deps.toml` (`build:deps_config`).
 pub fn deps_config_resource_def() -> ResourceDef {
     let path = output_path_for(BUILD_RESOURCE_DEPS_CONFIG, DEPS_CONFIG_OUTPUT_PATH);
-    with_repo_inputs(ResourceDef::new(deps_config_resource_id())).with_output(ResourceScope::file(path))
+    with_repo_inputs(ResourceDef::new(deps_config_resource_id()))
+        .with_output(ResourceScope::file(path))
 }
 
 #[cfg(test)]
@@ -173,15 +174,24 @@ mod tests {
     #[test]
     fn dsl_resource_globs_match_expected_patterns() {
         let data = resource_dsl_data();
-        assert!(
-            data.repo_source_input_globs
-                .contains(&"gunbc-dag/src/**/*.rs".to_string())
-        );
-        assert!(data.repo_source_input_globs.contains(&"core/**/*.rs".to_string()));
-        assert!(data.repo_source_input_globs.contains(&"lib/**/*.rs".to_string()));
-        assert!(data.repo_source_input_globs.contains(&"dsl/**/*.dag".to_string()));
-        assert!(data.testgen_input_globs.contains(&"core/ir/src/**/*.rs".to_string()));
-        assert!(data.repo_config_input_files.contains(&"Cargo.lock".to_string()));
+        assert!(data
+            .repo_source_input_globs
+            .contains(&"gunbc-dag/src/**/*.rs".to_string()));
+        assert!(data
+            .repo_source_input_globs
+            .contains(&"core/**/*.rs".to_string()));
+        assert!(data
+            .repo_source_input_globs
+            .contains(&"lib/**/*.rs".to_string()));
+        assert!(data
+            .repo_source_input_globs
+            .contains(&"dsl/**/*.dag".to_string()));
+        assert!(data
+            .testgen_input_globs
+            .contains(&"core/ir/src/**/*.rs".to_string()));
+        assert!(data
+            .repo_config_input_files
+            .contains(&"Cargo.lock".to_string()));
         assert!(
             data.output_paths
                 .get(BUILD_RESOURCE_MAKEFILE)

@@ -291,12 +291,12 @@ pub fn parse(argv: &[String], schema: &[CliParam]) -> Result<ParseResult, ParseE
                             }
                             argv[i].clone()
                         };
-                        let (key, val) = raw.split_once('=').ok_or_else(|| {
-                            ParseError::InvalidKeyValue {
-                                flag: flag.to_string(),
-                                value: raw.clone(),
-                            }
-                        })?;
+                        let (key, val) =
+                            raw.split_once('=')
+                                .ok_or_else(|| ParseError::InvalidKeyValue {
+                                    flag: flag.to_string(),
+                                    value: raw.clone(),
+                                })?;
                         if key.trim().is_empty() {
                             return Err(ParseError::InvalidKeyValue {
                                 flag: flag.to_string(),
@@ -689,9 +689,12 @@ mod tests {
         let result = parse(
             &argv(&[
                 "prog",
-                "--input", "project_id=my-proj",
-                "--input", "zone=us-west1-a",
-                "--input", "env=prod",
+                "--input",
+                "project_id=my-proj",
+                "--input",
+                "zone=us-west1-a",
+                "--input",
+                "env=prod",
             ]),
             &schema,
         )
@@ -700,7 +703,10 @@ mod tests {
             Value::Map(m) => m,
             other => panic!("expected Map, got: {:?}", other),
         };
-        assert_eq!(map.get("project_id").and_then(Value::as_str), Some("my-proj"));
+        assert_eq!(
+            map.get("project_id").and_then(Value::as_str),
+            Some("my-proj")
+        );
         assert_eq!(map.get("zone").and_then(Value::as_str), Some("us-west1-a"));
         assert_eq!(map.get("env").and_then(Value::as_str), Some("prod"));
     }
@@ -714,7 +720,10 @@ mod tests {
             Value::Map(m) => m,
             other => panic!("expected Map, got: {:?}", other),
         };
-        assert_eq!(map.get("project_id").and_then(Value::as_str), Some("my-proj"));
+        assert_eq!(
+            map.get("project_id").and_then(Value::as_str),
+            Some("my-proj")
+        );
     }
 
     #[test]

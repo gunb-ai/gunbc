@@ -92,6 +92,12 @@ service InMemoryClaimStore : ClaimStore {
     input { issue_id: NonEmptyStr, stage: NonEmptyStr, owner: NonEmptyStr, generation: Int }
     output { released: Bool }
   }
+
+  operation list_active {
+    input {}
+    output { claims: List<{ issue_id: String, stage: String, owner: String, generation: Int, acquired_at_epoch_ms: Int, last_heartbeat_epoch_ms: Int, expires_at_epoch_ms: Int }> }
+    readonly
+  }
 }
 
 service InMemoryOutcomeLedger : OutcomeLedger {

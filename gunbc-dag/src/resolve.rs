@@ -27,8 +27,8 @@
 use std::collections::HashMap;
 
 use daglang_lower::{
-    CallableKind, CollectionOpKind, LoweredOp, PrimitiveLiteral,
-    PrimitiveOpKind, ServiceCallMetadata, ServiceOperationSpec,
+    CallableKind, CollectionOpKind, LoweredOp, PrimitiveLiteral, PrimitiveOpKind,
+    ServiceCallMetadata, ServiceOperationSpec,
 };
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
@@ -374,6 +374,65 @@ impl Executable for LiteralSourceOp {
     }
 }
 
+/// C24: Extract a named field from a Map/Record/JSON input.
+/// Pure structural projection — no runtime interpreter needed.
+/// Fail-closed: missing field, missing input port, or non-Map/Json input → ExecError.
+#[derive(Debug, Clone)]
+struct GetFieldOp {
+    input_port: String,
+    field: String,
+    output_port: String,
+}
+
+impl Executable for GetFieldOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let value = match inputs.get(&self.input_port) {
+            Some(value) => value.clone(),
+            None => {
+                return Err(ExecError::new(format!(
+                    "GetField `{}`: missing input port `{}` in inputs map (resolver/runtime bug)",
+                    self.field, self.input_port
+                )));
+            }
+        };
+        let extracted = match &value {
+            Value::Map(fields) => fields.get(&self.field).cloned().ok_or_else(|| {
+                let mut available: Vec<&String> = fields.keys().collect();
+                available.sort();
+                ExecError::new(format!(
+                    "GetField `{}`: field not found in Map on port `{}`. Available fields: {:?}",
+                    self.field, self.input_port, available
+                ))
+            })?,
+            Value::Json(serde_json::Value::Object(map)) => {
+                map.get(&self.field).map(|v| Value::Json(v.clone())).ok_or_else(|| {
+                    let mut available: Vec<&String> = map.keys().collect();
+                    available.sort();
+                    ExecError::new(format!(
+                        "GetField `{}`: field not found in Json object on port `{}`. Available fields: {:?}",
+                        self.field, self.input_port, available
+                    ))
+                })?
+            }
+            Value::Skipped => {
+                return Err(ExecError::new(format!(
+                    "GetField `{}`: input port `{}` is Skipped (unwired or missing upstream)",
+                    self.field, self.input_port
+                )));
+            }
+            other => {
+                return Err(ExecError::new(format!(
+                    "GetField `{}`: expected Map or Json object on port `{}`, got {:?}",
+                    self.field, self.input_port, other
+                )));
+            }
+        };
+        OutputMap::new()
+            .value(self.output_port.as_str(), extracted)
+            .ok()
+    }
+}
+
 /// Compute node for lowered expression evaluation.
 /// Evaluates a `LoweredFnBody` using `evaluate_fn_body` with inputs from predecessor nodes.
 #[derive(Debug, Clone)]
@@ -382,6 +441,8 @@ struct ExprComputeOp {
     input_ports: Vec<String>,
     referenced_vars: Vec<String>,
     output_port: String,
+    /// Pure `fn` definitions the expression body may call at runtime.
+    sibling_fns: HashMap<String, daglang_lower::LoweredFnBody>,
 }
 
 impl Executable for ExprComputeOp {
@@ -397,7 +458,10 @@ impl Executable for ExprComputeOp {
                 }
             } else if let Value::Json(serde_json::Value::Object(map)) = &value {
                 for (field_name, field_value) in map {
-                    env.insert(format!("{port}__{field_name}"), Value::Json(field_value.clone()));
+                    env.insert(
+                        format!("{port}__{field_name}"),
+                        Value::Json(field_value.clone()),
+                    );
                 }
             }
             env.insert(port.clone(), value);
@@ -411,8 +475,7 @@ impl Executable for ExprComputeOp {
                 env.insert(ref_name.clone(), Value::Skipped);
             }
         }
-        let sibling_fns = HashMap::new();
-        let result = daglang_lower::eval::evaluate_fn_body(&self.fn_body, &env, &sibling_fns)
+        let result = daglang_lower::eval::evaluate_fn_body(&self.fn_body, &env, &self.sibling_fns)
             .map_err(|e| ExecError::new(e.message))?;
         // The fn body returns { result: <value> }, extract and output it.
         if let Some(value) = result.get(&self.output_port) {
@@ -435,8 +498,16 @@ impl Executable for ExprComputeOp {
 fn collect_fn_body_idents(body: &daglang_lower::LoweredFnBody) -> Vec<String> {
     let mut idents = Vec::new();
     for stmt in &body.stmts {
-        if let daglang_lower::expr::LoweredStmt::Return(fields) = stmt {
-            for (_, expr) in fields {
+        match stmt {
+            daglang_lower::expr::LoweredStmt::Return(fields) => {
+                for (_, expr) in fields {
+                    collect_lowered_expr_idents(expr, &mut idents);
+                }
+            }
+            daglang_lower::expr::LoweredStmt::Let(_, expr) => {
+                collect_lowered_expr_idents(expr, &mut idents);
+            }
+            daglang_lower::expr::LoweredStmt::Expr(expr) => {
                 collect_lowered_expr_idents(expr, &mut idents);
             }
         }
@@ -498,9 +569,7 @@ fn collect_lowered_expr_idents(expr: &daglang_lower::expr::LoweredExpr, out: &mu
                 collect_lowered_expr_idents(&arm.body, out);
             }
         }
-        LoweredExpr::For {
-            iterable, body, ..
-        } => {
+        LoweredExpr::For { iterable, body, .. } => {
             collect_lowered_expr_idents(iterable, out);
             collect_lowered_expr_idents(body, out);
         }
@@ -849,7 +918,37 @@ fn resolve_primitive(
         PrimitiveOpKind::IoExecuteFileWrite => Ok(DynOp::new(TransportOps::Execute)),
         // FC-7: Output path annotation nodes are metadata-only, resolve as identity.
         PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(DynOp::new(IdentityCallableOp)),
-        PrimitiveOpKind::ExprCompute { fn_body } => {
+        PrimitiveOpKind::GetField { field } => {
+            let input_port =
+                inputs
+                    .first()
+                    .map(|p| p.name.0.clone())
+                    .ok_or_else(|| ResolveError {
+                        node_id: String::new(),
+                        reason: format!(
+                            "GetField `{field}`: node has no input port (compiler bug)"
+                        ),
+                    })?;
+            let output_port =
+                outputs
+                    .first()
+                    .map(|p| p.name.0.clone())
+                    .ok_or_else(|| ResolveError {
+                        node_id: String::new(),
+                        reason: format!(
+                            "GetField `{field}`: node has no output port (compiler bug)"
+                        ),
+                    })?;
+            Ok(DynOp::new(GetFieldOp {
+                input_port,
+                field: field.clone(),
+                output_port,
+            }))
+        }
+        PrimitiveOpKind::ExprCompute {
+            fn_body,
+            sibling_fns,
+        } => {
             let input_ports: Vec<String> = inputs.iter().map(|p| p.name.0.clone()).collect();
             let referenced_vars = collect_fn_body_idents(fn_body);
             let output_port = outputs
@@ -861,6 +960,7 @@ fn resolve_primitive(
                 input_ports,
                 referenced_vars,
                 output_port,
+                sibling_fns: sibling_fns.clone(),
             }))
         }
     }
@@ -888,20 +988,21 @@ fn resolve_domain(
     if let Some(op) = crate::extern_ops::resolve_extern_symbol(module, name) {
         return Ok(op);
     }
-    // 3. Service/workspace modules use generic transport dispatch.
-    if module.starts_with("services.") || module.starts_with("workspace.") {
+    // 3. Service/workspace modules use generic transport dispatch — but only
+    //    for nodes that ARE transport roles (prepare/execute/parse) or have
+    //    service metadata. Pure fn items in provider modules fall through to
+    //    the default DeclaredOutputCallableOp passthrough.
+    if (module.starts_with("services.") || module.starts_with("workspace."))
+        && (TransportRole::from_name(name).is_some() || service_metadata.is_some())
+    {
         return resolve_service_transport(node_id, module, name, outputs, service_metadata);
     }
     // 4. Service transport nodes from non-service modules (e.g., loop body
     //    transport nodes which inherit the tool module name, not the service module).
-    //    Only route when the metadata has a concrete operation spec; nodes without
-    //    specs (e.g., not-yet-implemented service operations) fall through to the
-    //    passthrough default.
-    if let Some(transport_role) = TransportRole::from_name(name) {
-        let has_spec = service_metadata.as_ref().is_some_and(|m| m.spec.is_some());
-        if has_spec || transport_role == TransportRole::Execute {
-            return resolve_service_transport(node_id, module, name, outputs, service_metadata);
-        }
+    //    Route all transport roles through the transport resolver and fail
+    //    closed when metadata/specs are missing.
+    if TransportRole::from_name(name).is_some() {
+        return resolve_service_transport(node_id, module, name, outputs, service_metadata);
     }
     // 5. Default: identity callable for compiler-validated callables.
     //
@@ -953,8 +1054,14 @@ fn resolve_extern_call(node_id: &str, symbol: &str) -> Result<DynOp, ResolveErro
     use gunbc_ir::ProgramSymbolId;
 
     let sym = ProgramSymbolId::new(symbol);
-    let module = sym.module().unwrap_or("");
-    let name = sym.name().unwrap_or("");
+    let module = sym.module().ok_or_else(|| ResolveError {
+        node_id: node_id.to_string(),
+        reason: format!("extern symbol `{symbol}` is missing module segment"),
+    })?;
+    let name = sym.name().ok_or_else(|| ResolveError {
+        node_id: node_id.to_string(),
+        reason: format!("extern symbol `{symbol}` is missing callable name segment"),
+    })?;
 
     if let Some(op) = crate::extern_ops::resolve_extern_symbol(module, name) {
         return Ok(op);
@@ -1046,7 +1153,10 @@ fn resolve_service_transport(
                         spec: (**rest_spec).clone(),
                         service_name: metadata.service.clone(),
                         operation_name: metadata.operation.clone(),
-                        auth_scheme: rest_spec.auth_scheme.clone().unwrap_or_default(),
+                        auth_scheme: rest_spec
+                            .auth_scheme
+                            .clone()
+                            .unwrap_or_else(|| "none".to_string()),
                         permissions: metadata.permissions.clone(),
                     }));
                 }
@@ -2250,8 +2360,8 @@ mod tests {
             err.reason
         );
         assert!(
-            err.reason.contains("could not be resolved"),
-            "error should indicate resolution failure: {}",
+            err.reason.contains("missing module segment"),
+            "error should indicate malformed symbol shape: {}",
             err.reason
         );
     }
@@ -2300,10 +2410,7 @@ mod tests {
     fn passthrough_partially_wired_missing_required_is_error() {
         // When at least one __out:* input is wired but a required output is
         // missing, execution must fail with a diagnostic error.
-        let output_ports = vec![
-            ("result".to_string(), false),
-            ("status".to_string(), false),
-        ];
+        let output_ports = vec![("result".to_string(), false), ("status".to_string(), false)];
         let mut inputs = HashMap::new();
         // Wire only one passthrough — "result" — leave "status" unwired.
         inputs.insert(
@@ -2373,10 +2480,7 @@ mod tests {
     #[test]
     fn passthrough_all_wired_succeeds() {
         // Happy path: all required outputs have passthrough inputs wired.
-        let output_ports = vec![
-            ("result".to_string(), false),
-            ("status".to_string(), false),
-        ];
+        let output_ports = vec![("result".to_string(), false), ("status".to_string(), false)];
         let mut inputs = HashMap::new();
         inputs.insert(
             format!("{}result", PortName::OUTPUT_PASSTHROUGH_PREFIX),
@@ -2390,19 +2494,12 @@ mod tests {
         inputs.insert("extra".to_string(), Value::Int(42));
         let outputs = execute_with_declared_output_passthrough(&output_ports, inputs)
             .expect("all-wired should succeed");
-        assert_eq!(
-            outputs.get("result").and_then(Value::as_str),
-            Some("data")
-        );
-        assert_eq!(
-            outputs.get("status").and_then(Value::as_str),
-            Some("ok")
-        );
+        assert_eq!(outputs.get("result").and_then(Value::as_str), Some("data"));
+        assert_eq!(outputs.get("status").and_then(Value::as_str), Some("ok"));
         assert_eq!(
             outputs.get("extra"),
             Some(&Value::Int(42)),
             "non-passthrough inputs should be forwarded"
         );
     }
-
 }

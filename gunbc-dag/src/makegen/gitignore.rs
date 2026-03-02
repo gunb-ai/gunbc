@@ -21,11 +21,11 @@ const GITIGNORE_DAG_SOURCE: &str = include_str!("../../../dsl/config/gitignore.d
 
 use crate::dsl_registry::discover_tool_defs_from_dsl;
 use crate::makegen::registry::{BuildConfig, BuildSystem};
-use gunbc_ir::CargoInvocation;
 use gunbc_infra::workspace_model::{baseline_commit_policies, CommitReason};
 use gunbc_ir::cargo::{CargoCommand, Subcommand};
 use gunbc_ir::render_ir::{Category, FileHeader, PlainText, StructuredRenderer};
 use gunbc_ir::symbols::{Tier, STANDARD};
+use gunbc_ir::CargoInvocation;
 use gunbc_ir::MakefileStructuredRenderer;
 
 // ============================================================================
@@ -48,24 +48,22 @@ fn build_system_name(build_system: BuildSystem) -> &'static str {
     }
 }
 
-fn load_dsl_categories(build_system: BuildSystem) -> Vec<Category> {
+fn load_dsl_categories(build_system: BuildSystem) -> Result<Vec<Category>, String> {
     let path = Path::new("<embedded>/config/gitignore.dag");
     let output = compile_data_from_sources(&[(path, GITIGNORE_DAG_SOURCE)])
-        .expect("config/gitignore.dag must compile — fix DSL syntax errors before building");
+        .map_err(|e| format!("config/gitignore.dag compilation failed: {e}"))?;
     let value = output
         .data_values
         .get("categories")
-        .expect("config/gitignore.dag must declare categories");
+        .ok_or_else(|| "config/gitignore.dag must declare `categories` data".to_string())?;
     let parsed: Vec<DslGitignoreCategory> = serde_json::from_value(value.clone())
-        .expect("config/gitignore.dag categories must deserialize to DslGitignoreCategory");
+        .map_err(|e| format!("config/gitignore.dag categories deserialization failed: {e}"))?;
     let build_system_name = build_system_name(build_system);
-    parsed
+    Ok(parsed
         .into_iter()
-        .filter(|entry| {
-            match entry.when_build_system.as_deref() {
-                None => true,
-                Some(required) => required == build_system_name,
-            }
+        .filter(|entry| match entry.when_build_system.as_deref() {
+            None => true,
+            Some(required) => required == build_system_name,
         })
         .filter(|entry| !entry.items.is_empty())
         .map(|entry| Category {
@@ -74,15 +72,15 @@ fn load_dsl_categories(build_system: BuildSystem) -> Vec<Category> {
             items: entry.items.into_iter().map(Into::into).collect(),
             rationale: entry.rationale.map(Into::into),
         })
-        .collect()
+        .collect())
 }
 
 /// Derive ignore categories from BuildConfig.
 ///
 /// Categories are derived from `build_system` to ensure the gitignore
 /// matches what's actually in the repo.
-pub fn derive_categories(config: &BuildConfig) -> Vec<Category> {
-    let mut categories = load_dsl_categories(config.build_system);
+pub fn derive_categories(config: &BuildConfig) -> Result<Vec<Category>, String> {
+    let mut categories = load_dsl_categories(config.build_system)?;
     // Tool outputs — auto-derived from DSL entrypoint inference registry.
     // Bootstrap seed files are filtered out: they are generated but committed.
     let seed_patterns: HashSet<&str> = baseline_commit_policies()
@@ -91,7 +89,7 @@ pub fn derive_categories(config: &BuildConfig) -> Vec<Category> {
         .map(|p| p.pattern)
         .collect();
 
-    for tool in discover_tool_defs_from_dsl() {
+    for tool in discover_tool_defs_from_dsl()? {
         if !tool.outputs.is_empty() {
             let items: Vec<_> = tool
                 .outputs
@@ -118,7 +116,7 @@ pub fn derive_categories(config: &BuildConfig) -> Vec<Category> {
         }
     }
 
-    categories
+    Ok(categories)
 }
 
 // ============================================================================
@@ -138,11 +136,11 @@ pub struct GitignoreRenderer<'a> {
 
 impl<'a> GitignoreRenderer<'a> {
     /// Create a renderer from BuildConfig.
-    pub fn from_config(config: &'a BuildConfig) -> Self {
-        Self {
-            categories: derive_categories(config),
+    pub fn from_config(config: &'a BuildConfig) -> Result<Self, String> {
+        Ok(Self {
+            categories: derive_categories(config)?,
             config,
-        }
+        })
     }
 
     /// Create with custom categories.
@@ -152,8 +150,10 @@ impl<'a> GitignoreRenderer<'a> {
 
     /// Render the complete .gitignore with header.
     pub fn render(&self) -> String {
-        let regenerate_cmd =
-            CargoCommand::new(Subcommand::Run(CargoInvocation::composed("bootstrap", "dag")));
+        let regenerate_cmd = CargoCommand::new(Subcommand::Run(CargoInvocation::composed(
+            "bootstrap",
+            "dag",
+        )));
         let header = FileHeader {
             generator_name: "gunbc-bootstrap".into(),
             regenerate_command: regenerate_cmd.to_shell().into(),
@@ -192,13 +192,13 @@ impl<'a> GitignoreRenderer<'a> {
 // ============================================================================
 
 /// Render a .gitignore from BuildConfig.
-pub fn render_gitignore(config: &BuildConfig) -> String {
-    GitignoreRenderer::from_config(config).render()
+pub fn render_gitignore(config: &BuildConfig) -> Result<String, String> {
+    Ok(GitignoreRenderer::from_config(config)?.render())
 }
 
 /// Render .gitignore content only (without header).
-pub fn render_gitignore_content(config: &BuildConfig) -> String {
-    GitignoreRenderer::from_config(config).render_content()
+pub fn render_gitignore_content(config: &BuildConfig) -> Result<String, String> {
+    Ok(GitignoreRenderer::from_config(config)?.render_content())
 }
 
 // ============================================================================
@@ -212,7 +212,7 @@ mod tests {
     #[test]
     fn test_derive_categories_cargo() {
         let config = BuildConfig::cargo();
-        let categories = derive_categories(&config);
+        let categories = derive_categories(&config).expect("category derivation should succeed");
 
         // Should have cargo artifacts
         assert!(categories
@@ -231,7 +231,7 @@ mod tests {
     #[test]
     fn test_derive_categories_buck2() {
         let config = BuildConfig::buck2();
-        let categories = derive_categories(&config);
+        let categories = derive_categories(&config).expect("category derivation should succeed");
 
         // Should have both cargo and buck2
         assert!(categories
@@ -245,7 +245,7 @@ mod tests {
     #[test]
     fn test_render_gitignore_has_header() {
         let config = BuildConfig::cargo();
-        let content = render_gitignore(&config);
+        let content = render_gitignore(&config).expect("gitignore render should succeed");
 
         assert!(content.contains("Generated by gunbc-bootstrap"));
         assert!(content.contains("DO NOT EDIT"));
@@ -254,7 +254,7 @@ mod tests {
     #[test]
     fn test_render_gitignore_has_sections() {
         let config = BuildConfig::cargo();
-        let content = render_gitignore(&config);
+        let content = render_gitignore(&config).expect("gitignore render should succeed");
 
         // Should have section headers with provenance
         assert!(content.contains("# --- Cargo build artifacts (from cargo) ---"));
@@ -264,7 +264,7 @@ mod tests {
     #[test]
     fn test_render_gitignore_has_patterns() {
         let config = BuildConfig::cargo();
-        let content = render_gitignore(&config);
+        let content = render_gitignore(&config).expect("gitignore render should succeed");
 
         // Should have actual patterns
         assert!(content.contains("/target/"));
@@ -276,7 +276,7 @@ mod tests {
     #[test]
     fn test_render_gitignore_has_rationale() {
         let config = BuildConfig::cargo();
-        let content = render_gitignore(&config);
+        let content = render_gitignore(&config).expect("gitignore render should succeed");
 
         // Should have rationale comments
         assert!(content.contains("Reproducible from source"));
@@ -286,7 +286,7 @@ mod tests {
     #[test]
     fn seed_files_excluded_from_rendered_gitignore() {
         let config = BuildConfig::cargo();
-        let content = render_gitignore(&config);
+        let content = render_gitignore(&config).expect("gitignore render should succeed");
 
         // Bootstrap seed files are generated but committed — they must NOT
         // appear as gitignore patterns in the tool output sections.

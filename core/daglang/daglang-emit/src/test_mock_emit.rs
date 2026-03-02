@@ -101,6 +101,7 @@ impl TestFile {
                     tests.push(TestDef {
                         name: t.name.clone(),
                         fixture: t.fixture.clone(),
+                        lets: t.lets.clone(),
                         mocks: t.mocks.clone(),
                         inputs: t.inputs.clone(),
                         expects: t.expects.clone(),
@@ -864,6 +865,7 @@ test sentinel_check {
             tests: vec![TestDef {
                 name: "with_helpers".to_string(),
                 fixture: None,
+                lets: vec![],
                 mocks: vec![MockDecl {
                     node_segments: vec!["execute".to_string()],
                     port: "data".to_string(),

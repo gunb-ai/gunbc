@@ -14,16 +14,18 @@
 //! Tier, hermetic, and fermi metadata are inferred from DAG topology by
 //! `generate_target()`, not declared statically in annotations.
 
-use crate::dsl_builder::{build_dsl_graph, build_dsl_graph_with_types, build_dsl_graph_with_types_and_profile};
-use gunbc_test::auto_mock_spec;
+use crate::dsl_builder::{
+    build_dsl_graph, build_dsl_graph_with_types, build_dsl_graph_with_types_and_profile,
+};
 use daglang_emit::test_mock_emit::{TestFile, TERMINAL_NODE_SENTINEL};
 use daglang_syntax::ast::{ExpectStmt, Expr, FixtureDef, Literal, TestDef};
 use gunbc_codegen::registry::TestgenTargetDef;
 use gunbc_exec::DynOp;
 use gunbc_ir::{BuilderError, Dag};
+use gunbc_test::auto_mock_spec;
 use gunbc_test::{
-    BoundaryMock, ExpectedOutput, FermiCost, LiveExpectedOutput, MockSpec, OutputMatcher, TestClass,
-    TransportMock,
+    BoundaryMock, ExpectedOutput, FermiCost, LiveExpectedOutput, MockSpec, OutputMatcher,
+    TestClass, TransportMock,
 };
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashSet};
@@ -264,10 +266,7 @@ pub fn auto_testgen_for_module(
             module.dsl_path,
         )
     };
-    let mock_spec_path = format!(
-        "gunbc_test::auto_mock_spec(&dag, \"{}\")",
-        safe_name,
-    );
+    let mock_spec_path = format!("gunbc_test::auto_mock_spec(&dag, \"{}\")", safe_name,);
 
     // RT24: Populate per-profile live test configs for profile-requiring modules.
     let live_profile_tests: Vec<gunbc_codegen::registry::LiveProfileTestConfig> =
@@ -326,9 +325,7 @@ pub fn auto_testgen_for_module(
 }
 
 /// Derive fermi cost from a profile's test class and environment requirements.
-fn profile_fermi_cost(
-    profile: &super::profile_discovery::DiscoveredProfile,
-) -> FermiCost {
+fn profile_fermi_cost(profile: &super::profile_discovery::DiscoveredProfile) -> FermiCost {
     match profile.test_class {
         TestClass::Unit | TestClass::Hermetic => FermiCost::XS,
         TestClass::Integration => {
@@ -747,7 +744,9 @@ mod tests {
 
         // Pipelines and workflows should now be discovered
         assert!(
-            names.iter().any(|n| n.starts_with("pipelines.") || n.starts_with("workflows.")),
+            names
+                .iter()
+                .any(|n| n.starts_with("pipelines.") || n.starts_with("workflows.")),
             "pipeline/workflow modules should be discovered"
         );
     }

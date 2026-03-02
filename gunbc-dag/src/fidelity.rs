@@ -6,8 +6,8 @@
 #[cfg(test)]
 mod tests {
     use gunbc_codegen::fidelity::{classify_callable, classify_module, FidelityClassification};
-    use gunbc_test::TestClass;
     use gunbc_test::FermiCost;
+    use gunbc_test::TestClass;
 
     fn classify_dsl_module(module_path: &str) -> FidelityClassification {
         let result = crate::dsl_builder::build_dsl_graph_with_types(module_path)

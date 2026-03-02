@@ -426,10 +426,7 @@ fn expr_uses_json(expr: &Expr) -> bool {
 
 /// Map an abstract type name to its Rust equivalent.
 fn map_to_rust_type(abstract_type: &str) -> String {
-    crate::type_mapping::map_abstract_type(
-        &crate::type_mapping::RUST_TYPE_MAPPING,
-        abstract_type,
-    )
+    crate::type_mapping::map_abstract_type(&crate::type_mapping::RUST_TYPE_MAPPING, abstract_type)
 }
 
 // ===========================================================================

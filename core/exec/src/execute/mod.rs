@@ -1369,8 +1369,7 @@ fn build_node_inputs<T>(
     if let Some(mocks) = input_mocks {
         for port in &node.inputs {
             if !inputs.contains_key(&port.name.0) {
-                if let Some(mock_value) =
-                    resolve_mock_input(mocks, &node.id, node.kind, &port.name)
+                if let Some(mock_value) = resolve_mock_input(mocks, &node.id, node.kind, &port.name)
                 {
                     inputs.insert(port.name.0.clone(), mock_value);
                 }
@@ -1386,8 +1385,7 @@ fn build_node_inputs<T>(
     {
         for port in &node.inputs {
             if !inputs.contains_key(&port.name.0) {
-                if let Some(mock_value) =
-                    resolve_mock_input(mocks, &node.id, node.kind, &port.name)
+                if let Some(mock_value) = resolve_mock_input(mocks, &node.id, node.kind, &port.name)
                 {
                     inputs.insert(port.name.0.clone(), mock_value);
                 }
@@ -2208,7 +2206,6 @@ fn mock_intercept_outputs<T>(
 
     Ok(outputs)
 }
-
 
 #[cfg(test)]
 mod tests;

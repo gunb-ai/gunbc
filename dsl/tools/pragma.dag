@@ -1,81 +1,40 @@
 // tools/pragma.dag -- Pragma config file generation.
 //
-// Generates 3 config files from pragma directives, each using
-// content_upsert. All 3 chains are independent (parallel).
+// Generates 3 config files from canonical policy derivation functions.
+// Rendering is delegated to explicit extern funcs that evaluate
+// config/clippy_policy.dag via Rust-side DSL evaluation.
 //
-//   1. clippy.toml           -- Clippy configuration
+//   1. clippy.toml                    -- Clippy configuration
 //   2. disallowed-methods-allowlist.txt -- Method allowlist
-//   3. pragma-lint-policy.txt -- Lint policy rules
-//
-// Each render fn contains filter |> map |> join chains that lower to
-// FilterNode -> MapNode -> JoinNode in the IR.
+//   3. pragma-lint-policy.txt         -- Lint policy rules
 //
 // Replaces: gunbc-dag/src/pragma/graph.rs (~19 nodes)
 
 module tools.pragma
 
 import std.patterns { content_upsert }
-import std.types { Document, PragmaDirective }
-import shared.dag_util { doc_with_header, generated_header, render_document, section, text_line }
+import std.types { PragmaDirective }
 
-fn render_clippy_toml_document(directives: List<PragmaDirective>) -> Document {
-  let entries = directives
-    |> filter(d => d.scope == "clippy" || d.scope == None)
-    |> map(d => text_line(text: "{d.key} = {d.value}"))
-  doc_with_header(
-    header: generated_header(tool: "pragma"),
-    comment_prefix: "#",
-    sections: [section(lines: entries)]
-  )
-}
-
-fn render_clippy_toml(directives: List<PragmaDirective>) -> String {
-  render_document(document: render_clippy_toml_document(directives: directives))
-}
-
-fn render_disallowed_methods_allowlist_document(directives: List<PragmaDirective>) -> Document {
-  let methods = directives
-    |> filter(d => d.key == "disallowed_method")
-    |> map(d => text_line(text: d.value))
-  doc_with_header(
-    header: generated_header(tool: "pragma"),
-    comment_prefix: "#",
-    sections: [section(lines: methods)]
-  )
-}
-
-fn render_disallowed_methods_allowlist(directives: List<PragmaDirective>) -> String {
-  render_document(document: render_disallowed_methods_allowlist_document(directives: directives))
-}
-
-fn render_pragma_lint_policy_document(directives: List<PragmaDirective>) -> Document {
-  let policies = directives
-    |> filter(d => d.scope == "lint")
-    |> map(d => text_line(text: "{d.key}: {d.value}"))
-  doc_with_header(
-    header: generated_header(tool: "pragma"),
-    comment_prefix: "#",
-    sections: [section(lines: policies)]
-  )
-}
-
-fn render_pragma_lint_policy(directives: List<PragmaDirective>) -> String {
-  render_document(document: render_pragma_lint_policy_document(directives: directives))
-}
+extern func render_clippy_toml_content(directives: List<PragmaDirective>) -> { return: String }
+extern func render_disallowed_methods_allowlist_content(directives: List<PragmaDirective>) -> { return: String }
+extern func render_pragma_lint_policy_content(directives: List<PragmaDirective>) -> { return: String }
 
 func pragma(directives: List<PragmaDirective>) -> { success: Bool, clippy_written: Bool, allowlist_written: Bool, policy_written: Bool } {
+  clippy_content = render_clippy_toml_content(directives: directives)
   clippy = content_upsert(
-    content: render_clippy_toml(directives: directives),
+    content: clippy_content.return,
     path: "clippy.toml"
   )
 
+  allowlist_content = render_disallowed_methods_allowlist_content(directives: directives)
   allowlist = content_upsert(
-    content: render_disallowed_methods_allowlist(directives: directives),
+    content: allowlist_content.return,
     path: "tools/disallowed-methods-allowlist.txt"
   )
 
+  policy_content = render_pragma_lint_policy_content(directives: directives)
   policy = content_upsert(
-    content: render_pragma_lint_policy(directives: directives),
+    content: policy_content.return,
     path: "tools/pragma-lint-policy.txt"
   )
 
@@ -86,4 +45,3 @@ func pragma(directives: List<PragmaDirective>) -> { success: Bool, clippy_writte
     policy_written: policy.written
   }
 }
-

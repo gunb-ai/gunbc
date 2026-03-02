@@ -22,6 +22,7 @@ module services.sdlc.providers.gcs_artifact_store
 
 import interfaces.artifact_store { ArtifactStore }
 import std.types { NonEmptyStr, ArtifactPayload, ArtifactType, ArtifactMarker }
+import std.errors { GcpErrorShape }
 
 // =========================================================================
 // GcsArtifactStore : ArtifactStore
@@ -36,32 +37,86 @@ service gcs.ArtifactStore : ArtifactStore {
   config {
     bucket: NonEmptyStr
     project_id: NonEmptyStr
-    endpoint: String = "https://storage.googleapis.com"
+    endpoint: "https://storage.googleapis.com"
     auth: BearerToken
+    auth_input: access_token
+    rate_limit: { requests: 1000, per: minute, scope: gcs_artifacts }
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 503] }
   }
 
   operation store {
-    input { artifact_id: NonEmptyStr, payload: ArtifactPayload, content_hash: NonEmptyStr }
+    input {
+      access_token: Secret
+      artifact_id: NonEmptyStr
+      payload: ArtifactPayload
+      content_hash: NonEmptyStr
+    }
     output { stored: Bool, conflict: Bool }
     transport rest { method: PUT, path: "/upload/storage/v1/b/\{bucket\}/o?uploadType=media&name=artifacts/\{artifact_id\}" }
+    response {
+      200 => Json
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      412 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
   }
 
   operation retrieve {
-    input { artifact_id: NonEmptyStr }
+    input {
+      access_token: Secret
+      artifact_id: NonEmptyStr
+    }
     output { found: Bool, payload: ArtifactPayload?, content_hash: NonEmptyStr? }
+    readonly
     transport rest { method: GET, path: "/storage/v1/b/\{bucket\}/o/artifacts%2F\{artifact_id\}?alt=media" }
+    response {
+      200 => Json
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
   }
 
   operation store_marker {
-    input { marker: ArtifactMarker }
+    input {
+      access_token: Secret
+      marker: ArtifactMarker
+    }
     output { stored: Bool }
     transport rest { method: PUT, path: "/upload/storage/v1/b/\{bucket\}/o?uploadType=media&name=markers/\{marker.run_key\}/\{marker.artifact_type\}/\{marker.kind\}.json" }
+    response {
+      200 => Json
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      412 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
   }
 
   operation get_canonical_marker {
-    input { run_key: NonEmptyStr, artifact_type: ArtifactType }
+    input {
+      access_token: Secret
+      run_key: NonEmptyStr
+      artifact_type: ArtifactType
+    }
     output { found: Bool, marker: ArtifactMarker? }
+    readonly
     transport rest { method: GET, path: "/storage/v1/b/\{bucket\}/o/markers%2F\{run_key\}%2F\{artifact_type\}%2FCanonical.json?alt=media" }
+    response {
+      200 => Json
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
   }
 }
 

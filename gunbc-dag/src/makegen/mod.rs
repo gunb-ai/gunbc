@@ -7,10 +7,10 @@ pub mod justfile;
 pub mod registry;
 pub mod shared;
 
+use daglang_emit::EmbeddedData;
 use gunbc_exec::DynOp;
 use gunbc_ir::{infer_signature, BuilderError, Dag, WorkflowSignature};
 use std::collections::HashMap;
-use daglang_emit::EmbeddedData;
 
 pub use gitignore::{derive_categories, render_gitignore, GitignoreRenderer};
 pub use justfile::{render_justfile, render_justfile_with_config, JustfileRenderer};
@@ -24,14 +24,8 @@ pub use shared::render_makefile;
 pub type MakegenGraphOp = DynOp;
 
 /// Get the declared signature for the makegen workflow (auto-derived from DAG).
-pub fn makegen_signature() -> WorkflowSignature {
-    match build_makegen_graph() {
-        Ok(dag) => infer_signature(&dag),
-        Err(err) => {
-            eprintln!("warning: failed to build makegen DAG for signature: {err}");
-            WorkflowSignature::default()
-        }
-    }
+pub fn makegen_signature() -> Result<WorkflowSignature, BuilderError> {
+    build_makegen_graph().map(|dag| infer_signature(&dag))
 }
 
 /// Build makegen graph from the DSL source.
@@ -43,24 +37,24 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
 pub const MAKEGEN_ASSET_KEY: &str = "tools.makegen::makefile";
 
 /// Build embedded asset map for compile-time codegen.
-pub fn build_embedded_data() -> HashMap<String, EmbeddedData> {
+pub fn build_embedded_data() -> Result<HashMap<String, EmbeddedData>, String> {
     let mut data = HashMap::new();
-    data.insert(MAKEGEN_ASSET_KEY.to_string(), makegen_embedded_data());
-    data
+    data.insert(MAKEGEN_ASSET_KEY.to_string(), makegen_embedded_data()?);
+    Ok(data)
 }
 
 /// Embedded makegen content payload.
-pub fn makegen_embedded_data() -> EmbeddedData {
-    EmbeddedData {
+pub fn makegen_embedded_data() -> Result<EmbeddedData, String> {
+    Ok(EmbeddedData {
         module: "tools.makegen".to_string(),
         layer1_file_path: "src/embedded_makefile.txt".to_string(),
         layer2_ident: "makegen_content".to_string(),
-        content: compute_makegen_content(),
-    }
+        content: compute_makegen_content()?,
+    })
 }
 
 /// Compute makegen content by rendering from discovered tools.
-pub fn compute_makegen_content() -> String {
-    let registry = ToolRegistry::default_registry();
-    render_makefile(&registry)
+pub fn compute_makegen_content() -> Result<String, String> {
+    let registry = ToolRegistry::default_registry()?;
+    Ok(render_makefile(&registry))
 }

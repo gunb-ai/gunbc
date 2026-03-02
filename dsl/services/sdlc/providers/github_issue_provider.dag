@@ -10,8 +10,9 @@
 
 module services.sdlc.providers.github_issue_provider
 
-import interfaces.issue_provider { IssueProvider }
+import interfaces.issue_provider { IssueProvider, IssueEvent }
 import std.types { TrackedIssue, IssueState, NonEmptyStr, Url }
+import std.errors { GitHubErrorShape }
 
 // =========================================================================
 // GitHubIssueProvider : IssueProvider
@@ -23,93 +24,162 @@ import std.types { TrackedIssue, IssueState, NonEmptyStr, Url }
 service github.IssueProvider : IssueProvider {
 
   config {
-    endpoint: String = "https://api.github.com"
+    endpoint: "https://api.github.com"
     auth: BearerToken
+    auth_input: auth_token
     owner: NonEmptyStr                 // GitHub org or user
     repo: NonEmptyStr                  // Repository name
+    rate_limit: { requests: 5000, per: hour, scope: core }
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503, 504] }
   }
 
   // --- Discovery ---------------------------------------------------------
 
   operation discover {
     input {
+      auth_token: Secret
       labels: List<String>
       state: IssueState?
     }
     output {
       issues: List<TrackedIssue>
     }
+    readonly
     transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues" }
+    response {
+      200 => List<TrackedIssue>
+      301 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 
   // --- Single issue ------------------------------------------------------
 
   operation get {
-    input { id: NonEmptyStr }
-    output {
-      issue: TrackedIssue
-      found: Bool
+    input {
+      auth_token: Secret
+      id: NonEmptyStr
     }
+    output {
+      issue: TrackedIssue from "."
+      found: Bool from "status == 200"
+    }
+    readonly
     transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}" }
+    response {
+      200 => TrackedIssue
+      301 => GitHubErrorShape
+      404 => GitHubErrorShape
+      410 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 
   // --- Create ------------------------------------------------------------
 
   operation create {
     input {
+      auth_token: Secret
       title: NonEmptyStr
       body: String
       labels: List<String>
     }
     output {
-      issue: TrackedIssue
+      issue: TrackedIssue from "."
     }
     transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/issues" }
+    response {
+      201 => TrackedIssue
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 
   // --- Comment (idempotent via marker) -----------------------------------
 
   operation comment {
     input {
+      auth_token: Secret
       id: NonEmptyStr
       body: String
       marker: NonEmptyStr?
     }
     output {
-      comment_id: NonEmptyStr
-      ok: Bool
+      comment_id: NonEmptyStr from "id"
+      ok: Bool from "id != 0"
     }
     transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}/comments" }
+    response {
+      201 => Json
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 
   // --- Set labels (replace full set) ------------------------------------
 
   operation set_labels {
     input {
+      auth_token: Secret
       id: NonEmptyStr
       labels: List<String>
     }
-    output { ok: Bool }
+    output { ok: Bool from "status == 200" }
     transport rest { method: PUT, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}/labels" }
+    response {
+      200 => Json
+      401 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 
   // --- Close (idempotent) ------------------------------------------------
 
   operation close {
-    input { id: NonEmptyStr }
-    output { ok: Bool }
+    input {
+      auth_token: Secret
+      id: NonEmptyStr
+    }
+    output { ok: Bool from "state == \"closed\"" }
+    idempotent
     transport rest { method: PATCH, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}" }
+    response {
+      200 => TrackedIssue
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 
   // --- List events -------------------------------------------------------
 
   operation list_events {
     input {
+      auth_token: Secret
       id: NonEmptyStr
       since: String?
     }
     output { events: List<IssueEvent> }
+    readonly
     transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}/events" }
+    response {
+      200 => List<IssueEvent>
+      404 => GitHubErrorShape
+      410 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
   }
 }
 

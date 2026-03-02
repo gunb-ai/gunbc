@@ -980,7 +980,11 @@ impl StructuredContract {
             if self.setup.is_empty() {
                 "direct"
             } else {
-                &self.setup.last().map(|s| s.capability.as_str()).unwrap_or("setup")
+                &self
+                    .setup
+                    .last()
+                    .map(|s| s.capability.as_str())
+                    .unwrap_or("setup")
             }
         )
     }
@@ -1049,9 +1053,7 @@ pub fn generate_contract_test_fn(contract: &StructuredContract, provider_expr: &
     let fn_name = contract.test_name();
     let body = generate_contract_test_body(contract);
 
-    format!(
-        "#[test]\nfn {fn_name}() {{\n    let provider = {provider_expr};\n{body}}}\n"
-    )
+    format!("#[test]\nfn {fn_name}() {{\n    let provider = {provider_expr};\n{body}}}\n")
 }
 
 /// Generate contract test functions for all contracts of an interface.
@@ -1123,7 +1125,10 @@ pub fn generate_compliance_test_suite(
             .filter(|c| c.interface_name == binding.interface_name)
             .collect();
         for contract in relevant {
-            tests.push(generate_contract_test_fn(contract, &binding.test_constructor));
+            tests.push(generate_contract_test_fn(
+                contract,
+                &binding.test_constructor,
+            ));
         }
     }
     tests
@@ -3377,10 +3382,22 @@ mod tests {
         };
 
         let body = generate_contract_test_body(&contract);
-        assert!(body.contains("provider.put("), "should call setup capability");
-        assert!(body.contains("provider.get("), "should call assertion capability");
-        assert!(body.contains("assert_eq!(result.found, true"), "should assert found");
-        assert!(body.contains("assert_eq!(result.value, \"v1\""), "should assert value");
+        assert!(
+            body.contains("provider.put("),
+            "should call setup capability"
+        );
+        assert!(
+            body.contains("provider.get("),
+            "should call assertion capability"
+        );
+        assert!(
+            body.contains("assert_eq!(result.found, true"),
+            "should assert found"
+        );
+        assert!(
+            body.contains("assert_eq!(result.value, \"v1\""),
+            "should assert value"
+        );
     }
 
     #[test]
@@ -3390,14 +3407,16 @@ mod tests {
             capability_name: "list".to_string(),
             kind: ContractKind::Invariant,
             setup: vec![],
-            assertion: ContractStep::new("list")
-                .with_expected("count", "0"),
+            assertion: ContractStep::new("list").with_expected("count", "0"),
         };
 
         let body = generate_contract_test_body(&contract);
         assert!(!body.contains("_setup_"), "invariant should have no setup");
         assert!(body.contains("provider.list()"), "should call list");
-        assert!(body.contains("assert_eq!(result.count, 0"), "should assert count");
+        assert!(
+            body.contains("assert_eq!(result.count, 0"),
+            "should assert count"
+        );
     }
 
     #[test]
@@ -3414,8 +3433,14 @@ mod tests {
 
         let code = generate_contract_test_fn(&contract, "KvImpl::test()");
         assert!(code.starts_with("#[test]"), "should have test attribute");
-        assert!(code.contains("fn contract_kv_get_sequence_put()"), "should have test name");
-        assert!(code.contains("let provider = KvImpl::test()"), "should construct provider");
+        assert!(
+            code.contains("fn contract_kv_get_sequence_put()"),
+            "should have test name"
+        );
+        assert!(
+            code.contains("let provider = KvImpl::test()"),
+            "should construct provider"
+        );
         assert!(code.contains("provider.put("), "should contain setup");
         assert!(code.contains("provider.get("), "should contain assertion");
     }
@@ -3530,8 +3555,14 @@ mod tests {
 
         let tests = generate_compliance_test_suite(&bindings, &contracts);
         assert_eq!(tests.len(), 2);
-        assert!(tests[0].contains("MemStore::new()"), "first test uses MemStore");
-        assert!(tests[1].contains("MockAuth::new()"), "second test uses MockAuth");
+        assert!(
+            tests[0].contains("MemStore::new()"),
+            "first test uses MemStore"
+        );
+        assert!(
+            tests[1].contains("MockAuth::new()"),
+            "second test uses MockAuth"
+        );
     }
 
     #[test]
@@ -3565,7 +3596,10 @@ mod tests {
             response_type: "GitHubErrorShape".to_string(),
             is_error: true,
         };
-        assert_eq!(c.test_name(), "response_contract_github_gist_create_error_401");
+        assert_eq!(
+            c.test_name(),
+            "response_contract_github_gist_create_error_401"
+        );
     }
 
     #[test]
@@ -3576,7 +3610,10 @@ mod tests {
             response_type: "GistResponse".to_string(),
             is_error: false,
         };
-        assert_eq!(c.test_name(), "response_contract_github_gist_create_success_201");
+        assert_eq!(
+            c.test_name(),
+            "response_contract_github_gist_create_success_201"
+        );
     }
 
     #[test]

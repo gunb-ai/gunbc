@@ -1,0 +1,104 @@
+// std/provider_config.dag -- SR-8: Typed provider config schemas.
+//
+// Declares the allowed provider-specific config fields for each service
+// prefix. The compiler uses these schemas to validate config blocks at
+// compile time, replacing the hardcoded allowlist in the lowerer.
+//
+// Adding a new provider config field:
+//   1. Add the field to the appropriate schema type below
+//   2. Use it in your service's config block: `field: Type = default`
+//   3. The compiler validates that only declared fields are used
+//
+// A config typo now produces a compiler error with the list of valid fields.
+
+module std.provider_config
+
+import std.types { NonEmptyStr, ProjectId }
+
+// ── GCS provider config ──────────────────────────────────────────────
+
+type GcsProviderConfig {
+  bucket: NonEmptyStr
+  project_id: ProjectId
+}
+
+// ── Pub/Sub provider config ──────────────────────────────────────────
+
+type PubsubProviderConfig {
+  topic: NonEmptyStr
+  subscription: NonEmptyStr?
+  project_id: ProjectId
+}
+
+// ── GitHub provider config ───────────────────────────────────────────
+
+type GithubProviderConfig {
+  owner: NonEmptyStr
+  repo: NonEmptyStr
+}
+
+// ── GCP provider config ─────────────────────────────────────────────
+
+type GcpProviderConfig {
+  runtime: NonEmptyStr?
+  project_id: ProjectId?
+  audience: NonEmptyStr?
+  region: NonEmptyStr?
+  model: NonEmptyStr?
+}
+
+// ── File provider config ─────────────────────────────────────────────
+
+type FileProviderConfig {
+  dir: NonEmptyStr?
+}
+
+// ── LLM agent provider config ────────────────────────────────────────
+
+type LlmAgentProviderConfig {
+  provider: NonEmptyStr
+  default_model: NonEmptyStr
+  max_turns: Int
+}
+
+// ── GCP WIF credential provider config ───────────────────────────────
+
+type GcpWifCredentialProviderConfig {
+  runtime: NonEmptyStr
+  project_id: ProjectId
+  audience: NonEmptyStr
+}
+
+// ── Local credential provider config ─────────────────────────────────
+
+type LocalCredentialProviderConfig {
+  cache_dir: NonEmptyStr?
+}
+
+// ── Cloud Run deploy provider config ─────────────────────────────────
+
+type CloudRunProviderConfig {
+  project_id: ProjectId
+  region: NonEmptyStr
+}
+
+// ── Schema registry ──────────────────────────────────────────────────
+// Maps service name prefixes to their typed config schemas.
+// The compiler uses this to validate provider-specific config fields.
+//
+// Schema resolution:
+//   1. Match service name against prefix (e.g., "gcs." matches "gcs.ClaimStore")
+//   2. Extract field names from the matched schema type
+//   3. Reject any config field not in the schema → compiler error
+
+data provider_config_schemas: List<{ prefix: String, schema: String }> = [
+  { prefix: "gcs.", schema: "GcsProviderConfig" },
+  { prefix: "pubsub.", schema: "PubsubProviderConfig" },
+  { prefix: "github.", schema: "GithubProviderConfig" },
+  { prefix: "gcp.", schema: "GcpProviderConfig" },
+  { prefix: "file.", schema: "FileProviderConfig" },
+  { prefix: "LlmAgentProvider", schema: "LlmAgentProviderConfig" },
+  { prefix: "GcpWifCredentialProvider", schema: "GcpWifCredentialProviderConfig" },
+  { prefix: "LocalCredentialProvider", schema: "LocalCredentialProviderConfig" },
+  { prefix: "cloudrun.", schema: "CloudRunProviderConfig" }
+]

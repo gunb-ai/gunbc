@@ -10,7 +10,7 @@
 #[allow(clippy::disallowed_methods)] // Test infrastructure: needs Command::new and fs::read_to_string
 #[test]
 #[ignore] // gen-types emitter bug: anonymous record fold inits emit `{ field: val }` instead of
-// `TypeName { field: val }`, producing invalid Rust. Pre-existing — tracked as RT emitter task.
+          // `TypeName { field: val }`, producing invalid Rust. Pre-existing — tracked as RT emitter task.
 fn generated_types_are_not_stale() {
     let output = std::process::Command::new(env!("CARGO"))
         .args([

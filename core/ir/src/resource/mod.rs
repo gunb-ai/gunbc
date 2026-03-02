@@ -678,9 +678,7 @@ pub fn classify_effect<T>(node: &Node<T>) -> Option<NodeKind> {
 
 /// Check whether a node declares at least one `res:*` input port.
 fn has_resource_port<T>(node: &Node<T>) -> bool {
-    node.inputs
-        .iter()
-        .any(|p| p.name.is_resource())
+    node.inputs.iter().any(|p| p.name.is_resource())
 }
 
 /// Validate that all effectful nodes declare resource ports.
@@ -1424,10 +1422,7 @@ mod tests {
         let violations = validate_resource_completeness(&dag);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].node_id.0, "transport_no_res");
-        assert_eq!(
-            violations[0].effect_kind,
-            NodeKind::TransportExecute
-        );
+        assert_eq!(violations[0].effect_kind, NodeKind::TransportExecute);
     }
 
     #[test]

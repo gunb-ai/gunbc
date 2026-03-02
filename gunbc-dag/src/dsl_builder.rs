@@ -192,9 +192,7 @@ pub fn build_tool_graph(tool_name: &str) -> Result<Dag<DynOp>, BuilderError> {
 /// Infer the workflow signature for a convention-based tool.
 ///
 /// Compiles the tool's DSL module and derives the signature from graph structure.
-pub fn tool_signature(
-    tool_name: &str,
-) -> Result<gunbc_ir::WorkflowSignature, BuilderError> {
+pub fn tool_signature(tool_name: &str) -> Result<gunbc_ir::WorkflowSignature, BuilderError> {
     build_tool_graph(tool_name).map(|dag| gunbc_ir::infer_signature(&dag))
 }
 
@@ -397,5 +395,4 @@ mod tests {
             "runtime CI graph should not include pipeline metadata nodes"
         );
     }
-
 }

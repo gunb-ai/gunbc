@@ -471,12 +471,8 @@ fn workflow_obligation_triplet_invariants_hold() {
             continue;
         };
 
-        let get = |key: &str| -> u64 {
-            expected_json
-                .get(key)
-                .and_then(Value::as_u64)
-                .unwrap_or(0)
-        };
+        let get =
+            |key: &str| -> u64 { expected_json.get(key).and_then(Value::as_u64).unwrap_or(0) };
 
         let prepare = get("service_transport_prepare_targets");
         let execute = get("service_transport_execute_targets");

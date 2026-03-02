@@ -22,7 +22,17 @@ large-error-threshold = 256
 #     Warnings are errors. If something is wrong, the build fails.
 #
 # APPROVED EXCEPTIONS (must have documented reason):
-#   - gunbc-lib-transport (IS the I/O boundary - the designated place for I/O)
+#   -  (IS the I/O boundary - the designated place for I/O)
+#   - / (freshness steps run external tooling as child processes)
+#   - / (CI secret masking at transport boundary)
+#   - / (CI secret masking at transport boundary)
+#   - * (compiler pipeline: filesystem discovery for .dag module resolution)
+#   - /* (build-time DSL module discovery and workspace graph construction)
+#   - / (workspace layout discovery uses cargo metadata subprocess)
+#   - / (transport boundary: credential applied to outbound requests)
+#   - /* (capability-marker validation for resource handles)
+#   -  (cloud ops: file-backed config, credential policy, secret cache)
+#   -  (GCP ops: secret extraction for GCP service requests)
 #
 # To add an exception: #[allow(clippy::disallowed_methods)] with comment.
 
@@ -56,6 +66,7 @@ disallowed-methods = [
     # Process execution - use node.requires(&cli::TOOL) for tool dependencies
     # Direct Command::new should only be in transport executor and cli.rs
     { path = "std::process::Command::new", reason = "I6: No escape hatches. Use env nodes + tool handles. Command::new only in transport executor/cli." },
+    
     # Other disallowed methods
     { path = "ureq::request", reason = "I6: No escape hatches. Network I/O must be in transport layer" },
     { path = "ureq::get", reason = "I6: No escape hatches. Network I/O must be in transport layer" },
@@ -68,7 +79,8 @@ disallowed-methods = [
     { path = "git2::Repository::open_bare", reason = "I6: No escape hatches. Git I/O must be in transport layer" },
     { path = "git2::Repository::discover", reason = "I6: No escape hatches. Git I/O must be in transport layer" },
     { path = "git2::Repository::init", reason = "I6: No escape hatches. Git I/O must be in transport layer" },
-    # Secret plaintext extraction aliases — force transport-boundary-only naming.
+    
+    # Secret plaintext extraction aliases \u2014 force transport-boundary-only naming.
     { path = "gunbc_ir::value::SecretString::expose_plaintext_for_transport", reason = "M7: Use expose_plaintext_for_transport at approved transport boundaries only" },
     { path = "gunbc_ir::transport::credential::Secret::expose_plaintext_for_transport", reason = "M7: Use expose_plaintext_for_transport at approved transport boundaries only" },
 ]

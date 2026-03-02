@@ -431,7 +431,10 @@ fn resolve_lowered_dag_defers_pipeline_nodes() {
     // PipelineDispatchOp uses output passthrough. With no passthroughs wired,
     // the resolver falls back to Skipped (C10 gap).
     let result = op.execute(HashMap::new());
-    assert!(result.is_ok(), "pipeline op should succeed with Skipped fallback");
+    assert!(
+        result.is_ok(),
+        "pipeline op should succeed with Skipped fallback"
+    );
     let outs = result.unwrap();
     assert_eq!(outs.get("out"), Some(&gunbc_ir::Value::Skipped));
 }
@@ -507,7 +510,10 @@ func run() -> { report: String } {
     // fn-call results in func bodies. With no passthroughs wired at all, the
     // resolver falls back to Value::Skipped for the unwired output.
     let result = execute_resolved_dag(&resolved, ExecutionMode::Real, None);
-    assert!(result.is_ok(), "execution should succeed (C10 fallback to Skipped)");
+    assert!(
+        result.is_ok(),
+        "execution should succeed (C10 fallback to Skipped)"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
@@ -592,7 +598,6 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 readonly: true,
                 permissions: vec![],
                 spec: None,
-
             })),
             is_interactive: false,
             resource_target: None,
@@ -616,7 +621,6 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 readonly: true,
                 permissions: vec![],
                 spec: None,
-
             })),
             is_interactive: false,
             resource_target: None,
@@ -640,7 +644,6 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 readonly: true,
                 permissions: vec![],
                 spec: None,
-
             })),
             is_interactive: false,
             resource_target: None,

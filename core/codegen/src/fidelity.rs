@@ -13,10 +13,10 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use daglang_derive::CallableProperties;
+use daglang_lower::{CallableKind, LoweredFnBody, LoweredOp, ServiceTransportClass};
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::ModulePath;
 use daglang_syntax::parser;
-use daglang_lower::{CallableKind, LoweredFnBody, LoweredOp, ServiceTransportClass};
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::Value;
 use gunbc_test::{FermiCost, TestClass};
@@ -56,14 +56,20 @@ impl StdLibHost {
     }
 }
 
-fn parse_embedded_module(path: &Path, source: &str) -> (ModulePath, Vec<ModulePath>, daglang_syntax::ast::SourceFile) {
-    let ast = parser::parse_with_file_diagnostics(path, source)
-        .unwrap_or_else(|diags| panic!("failed to parse embedded stdlib module {path:?}: {diags:?}"));
+fn parse_embedded_module(
+    path: &Path,
+    source: &str,
+) -> (ModulePath, Vec<ModulePath>, daglang_syntax::ast::SourceFile) {
+    let ast = parser::parse_with_file_diagnostics(path, source).unwrap_or_else(|diags| {
+        panic!("failed to parse embedded stdlib module {path:?}: {diags:?}")
+    });
     let module_path = ast
         .module_path
         .as_ref()
         .map(|mp| mp.node.clone())
-        .unwrap_or_else(|| panic!("embedded stdlib module {path:?} is missing `module` declaration"));
+        .unwrap_or_else(|| {
+            panic!("embedded stdlib module {path:?} is missing `module` declaration")
+        });
     let imports = ast
         .imports
         .iter()
@@ -76,7 +82,10 @@ fn build_embedded_stdlib_graph() -> ModuleGraph {
     let modules = vec![
         (PathBuf::from("<stdlib>/std/types.dag"), STD_TYPES_SOURCE),
         (PathBuf::from("<stdlib>/std/fermi.dag"), STD_FERMI_SOURCE),
-        (PathBuf::from("<stdlib>/std/fidelity.dag"), STD_FIDELITY_SOURCE),
+        (
+            PathBuf::from("<stdlib>/std/fidelity.dag"),
+            STD_FIDELITY_SOURCE,
+        ),
     ];
 
     let mut parsed = Vec::new();
@@ -95,7 +104,10 @@ fn build_embedded_stdlib_graph() -> ModuleGraph {
         let mut dependencies = Vec::new();
         for import in imports {
             let dep = index_by_module.get(&import).copied().unwrap_or_else(|| {
-                panic!("embedded stdlib import `{}` missing from host graph", import.as_dotted())
+                panic!(
+                    "embedded stdlib import `{}` missing from host graph",
+                    import.as_dotted()
+                )
             });
             dependencies.push(dep);
         }
@@ -161,7 +173,10 @@ fn decode_test_class(value: Option<&Value>) -> TestClass {
         Some("Unit") => TestClass::Unit,
         Some("Hermetic") => TestClass::Hermetic,
         Some("Integration") => TestClass::Integration,
-        other => panic!("classify_transports returned invalid test_class: {:?}", other),
+        other => panic!(
+            "classify_transports returned invalid test_class: {:?}",
+            other
+        ),
     }
 }
 
@@ -200,10 +215,7 @@ pub fn classify_callable(props: &CallableProperties) -> FidelityClassification {
     let hermetic_value = result.get("hermetic");
     let hermetic = match hermetic_value {
         Some(Value::Bool(b)) => *b,
-        other => panic!(
-            "classify_transports returned invalid hermetic: {:?}",
-            other
-        ),
+        other => panic!("classify_transports returned invalid hermetic: {:?}", other),
     };
 
     FidelityClassification {

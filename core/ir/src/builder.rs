@@ -59,20 +59,20 @@ pub enum BuilderError {
     TypeMismatch {
         from_node: NodeId,
         from_port: PortName,
-        from_type: TypeId,
+        from_type: Box<TypeId>,
         to_node: NodeId,
         to_port: PortName,
-        to_type: TypeId,
+        to_type: Box<TypeId>,
     },
     /// Edge is structurally compatible but semantically unsafe in strict mode.
     SemanticCarrierMismatch {
         from_node: NodeId,
         from_port: PortName,
-        from_type: TypeId,
+        from_type: Box<TypeId>,
         from_kind: SemanticCarrierKind,
         to_node: NodeId,
         to_port: PortName,
-        to_type: TypeId,
+        to_type: Box<TypeId>,
         to_kind: SemanticCarrierKind,
     },
     /// Port uses an invalid type expression.
@@ -592,10 +592,10 @@ impl<T> DagBuilder<T> {
             return Err(BuilderError::TypeMismatch {
                 from_node: from.node_id.clone(),
                 from_port: from.port.clone(),
-                from_type: from_port.type_id.clone(),
+                from_type: Box::new(from_port.type_id.clone()),
                 to_node: to.node_id.clone(),
                 to_port: to.port.clone(),
-                to_type: to_port.type_id.clone(),
+                to_type: Box::new(to_port.type_id.clone()),
             });
         }
 
@@ -607,11 +607,11 @@ impl<T> DagBuilder<T> {
             return Err(BuilderError::SemanticCarrierMismatch {
                 from_node: from.node_id.clone(),
                 from_port: from.port.clone(),
-                from_type: from_port.type_id.clone(),
+                from_type: Box::new(from_port.type_id.clone()),
                 from_kind: from_port.type_id.semantic_carrier_kind(),
                 to_node: to.node_id.clone(),
                 to_port: to.port.clone(),
-                to_type: to_port.type_id.clone(),
+                to_type: Box::new(to_port.type_id.clone()),
                 to_kind: to_port.type_id.semantic_carrier_kind(),
             });
         }
@@ -1271,8 +1271,8 @@ mod tests {
             Err(BuilderError::TypeMismatch {
                 from_type, to_type, ..
             }) => {
-                assert_eq!(from_type.0.as_str(), "String");
-                assert_eq!(to_type.0.as_str(), "Int");
+                assert_eq!(from_type.as_ref().0.as_str(), "String");
+                assert_eq!(to_type.as_ref().0.as_str(), "Int");
             }
             _ => panic!("Expected TypeMismatch error"),
         }
