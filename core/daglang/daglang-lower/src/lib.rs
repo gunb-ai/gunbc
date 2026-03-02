@@ -9115,16 +9115,20 @@ fn collect_local_let_bindings<'a>(
                 // Skip call-bound let stmts (tracked by bound_callable_sources)
                 // and direct Call/ServiceCall expressions (may not be evaluable
                 // by the simple evaluator if the callee isn't a built-in).
+                // Unwrap Guarded/After wrappers before checking — guarded service
+                // calls like `run = svc.Op() [when cond]` are still service calls.
+                let inner = unwrap_guarded_expr(expr);
                 if !bound_callable_sources.contains_key(name)
-                    && !matches!(expr, Expr::Call(_, _) | Expr::ServiceCall(_, _))
+                    && !matches!(inner, Expr::Call(_, _) | Expr::ServiceCall(_, _))
                 {
                     bindings.insert(name.clone(), expr as &Expr);
                 }
             }
             Stmt::Node(node_stmt) => {
+                let inner = unwrap_guarded_expr(&node_stmt.expr);
                 if !bound_callable_sources.contains_key(&node_stmt.name)
                     && !matches!(
-                        &node_stmt.expr,
+                        inner,
                         Expr::Call(_, _) | Expr::ServiceCall(_, _)
                     )
                 {

@@ -474,8 +474,16 @@ impl Executable for ExprComputeOp {
 fn collect_fn_body_idents(body: &daglang_lower::LoweredFnBody) -> Vec<String> {
     let mut idents = Vec::new();
     for stmt in &body.stmts {
-        if let daglang_lower::expr::LoweredStmt::Return(fields) = stmt {
-            for (_, expr) in fields {
+        match stmt {
+            daglang_lower::expr::LoweredStmt::Return(fields) => {
+                for (_, expr) in fields {
+                    collect_lowered_expr_idents(expr, &mut idents);
+                }
+            }
+            daglang_lower::expr::LoweredStmt::Let(_, expr) => {
+                collect_lowered_expr_idents(expr, &mut idents);
+            }
+            daglang_lower::expr::LoweredStmt::Expr(expr) => {
                 collect_lowered_expr_idents(expr, &mut idents);
             }
         }
