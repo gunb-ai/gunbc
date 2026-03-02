@@ -220,6 +220,11 @@ pub enum PrimitiveOpKind {
     ExprCompute {
         fn_body: Box<LoweredFnBody>,
     },
+    /// C24: Extract a named field from a Map/Record/JSON input.
+    /// Replaces `ExprCompute` + `__` convention for simple field projections.
+    GetField {
+        field: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -313,6 +318,7 @@ impl PrimitiveOpKind {
             Self::CompareEquality => ObligationCategory::InterfaceContractVerification,
             Self::ContentUpsertOutputPath { .. } => ObligationCategory::None,
             Self::ExprCompute { .. } => ObligationCategory::None,
+            Self::GetField { .. } => ObligationCategory::None,
         }
     }
 }
@@ -8188,7 +8194,22 @@ fn resolve_return_expr_source(
                 if let Some(Some(source)) = ctx.endpoints_by_name.get(base_ident) {
                     return Some((source.node_id.clone(), field.clone()));
                 }
+                // C24: For parameters, synthesize a GetField node instead of
+                // falling through to ExprCompute + __ convention.
+                if let Some(param_ty) = ctx.param_types.get(base_ident) {
+                    return synthesize_get_field(
+                        builder,
+                        ctx,
+                        base_ident,
+                        param_ty,
+                        field,
+                        output_port,
+                        output_name,
+                        disambiguator,
+                    );
+                }
             }
+            // For complex base expressions, fall through to ExprCompute.
             None
         }
         Expr::Call(name, _) => ctx.endpoints_by_name
@@ -8602,6 +8623,52 @@ fn remap_pattern(pattern: &daglang_syntax::ast::Pattern) -> expr::LoweredPattern
             expr::LoweredPattern::Literal(lowered)
         }
     }
+}
+
+/// C24: Synthesize a GetField node to extract a named field from a parameter.
+/// Replaces `ExprCompute` + `__` convention for simple `param.field` projections.
+#[allow(clippy::too_many_arguments)]
+fn synthesize_get_field(
+    builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
+    base_param: &str,
+    param_ty: &str,
+    field: &str,
+    output_port: &Port,
+    _output_name: &str,
+    disambiguator: &str,
+) -> Option<(String, String)> {
+    let output_type = output_port.type_id.0.as_str();
+    let result_port_name = "result";
+    let input_ports = vec![Port::with_cardinality(base_param, param_ty, Cardinality::ONE)];
+    let output_ports = vec![Port::with_cardinality(result_port_name, output_type, Cardinality::ONE)];
+
+    let node_id = format!(
+        "get_field_{}",
+        sanitize_identifier(&format!(
+            "{}_{}_{}_{}_{}", ctx.module_name, ctx.item_name, base_param, field, disambiguator
+        ))
+    );
+
+    builder.add_node(Node::opaque(
+        node_id.clone(),
+        input_ports,
+        output_ports,
+        LoweredOp::Primitive {
+            module: ctx.module_name.to_string(),
+            name: format!("get_field::{}::{}::{}", ctx.item_name, base_param, field),
+            kind: PrimitiveOpKind::GetField {
+                field: field.to_string(),
+            },
+        },
+    ));
+
+    // Wire from param source to GetField input.
+    let param_source_id =
+        ensure_param_source_node(builder, ctx.module_name, ctx.item_name, base_param, param_ty);
+    builder.add_edge(&param_source_id, base_param, &node_id, base_param);
+
+    Some((node_id, result_port_name.to_string()))
 }
 
 /// Synthesize a compute node for a complex return expression.
