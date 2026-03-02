@@ -68,10 +68,10 @@ fn build_health_response(
   last_heartbeat_at: EpochMs?
 ) -> HealthResponse {
   let status = match worker_status {
-    Idle           => "healthy"
-    Processing { } => "healthy"
-    Draining { }   => "draining"
-    Unhealthy { }  => "unhealthy"
+    Idle                   => "healthy"
+    Processing { issue_id } => "healthy"
+    Draining { issue_id }   => "draining"
+    Unhealthy { reason }    => "unhealthy"
   }
   {
     status: status,
@@ -87,18 +87,18 @@ fn build_health_response(
 // Check if the worker should accept new work (readiness probe).
 fn is_ready(status: WorkerStatus) -> Bool {
   match status {
-    Idle            => true
-    Processing { }  => true
-    Draining { }    => false
-    Unhealthy { }   => false
+    Idle                    => true
+    Processing { issue_id } => true
+    Draining { issue_id }   => false
+    Unhealthy { reason }    => false
   }
 }
 
 // Check if the worker is still alive (liveness probe).
 fn is_alive(status: WorkerStatus) -> Bool {
   match status {
-    Unhealthy { } => false
-    _             => true
+    Unhealthy { reason } => false
+    _                    => true
   }
 }
 
@@ -170,7 +170,7 @@ test health_check_idle {
       uptime_seconds: 120,
       version: "0.1.0",
       active_claims: 0,
-      last_heartbeat_at: null
+      last_heartbeat_at: None
     )
 
     expect response.status == "healthy"

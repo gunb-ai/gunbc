@@ -43,6 +43,8 @@ type GcpProviderConfig {
   runtime: NonEmptyStr?
   project_id: ProjectId?
   audience: NonEmptyStr?
+  region: NonEmptyStr?
+  model: NonEmptyStr?
 }
 
 // ── File provider config ─────────────────────────────────────────────

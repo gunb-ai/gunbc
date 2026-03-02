@@ -18,16 +18,11 @@
 
 // RT-C4: LoweringConfig groups the 4 boolean/optional lowerer parameters.
 
-
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use daglang_syntax::ast::{
     BackoffStrategy, CapabilityDef, DataDef, Expr, Field, Item, Literal, NodeStmt, OperationDef,
     RateLimitUnit, ServiceDef, Stmt, TransportBinding, TypeBody,
-};
-use gunbc_ir::transport::middleware::{
-    RateLimitAlgorithm, RateLimitConfig, ResponseClassification, ResponseProvider, RetryBackoff,
-    RetryConfig, TransportMiddlewareConfig,
 };
 use daglang_syntax::ast_utils::{
     canonical_resource_type_name, is_type_expr_optional, resource_type_name,
@@ -37,6 +32,10 @@ use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject
 use gunbc_ir::patterns::branch::IfBuilder;
 use gunbc_ir::patterns::{BranchBuilder, LoopBuilder, PatternOp};
 use gunbc_ir::resource::{AccessMode, RESOURCE_FILE};
+use gunbc_ir::transport::middleware::{
+    RateLimitAlgorithm, RateLimitConfig, ResponseClassification, ResponseProvider, RetryBackoff,
+    RetryConfig, TransportMiddlewareConfig,
+};
 use gunbc_ir::{
     Cardinality, Dag, DagTopology, Edge, EdgeKind, Guard, Node, NodeId, NodeKind, OperationKey,
     Port, PortName, Value,
@@ -95,13 +94,9 @@ pub enum LoweredOp {
     Pattern(PatternOp),
     /// A pattern operation that is not yet supported in daglang lowering.
     /// Produces a structured error at resolution time instead of panicking.
-    UnsupportedPattern {
-        name: String,
-    },
+    UnsupportedPattern { name: String },
     /// An extern function call referencing a symbol that must be linked externally.
-    ExternCall {
-        symbol: String,
-    },
+    ExternCall { symbol: String },
 }
 
 impl From<PatternOp> for LoweredOp {
@@ -276,7 +271,6 @@ pub struct ServiceCallMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spec: Option<ServiceOperationSpec>,
 }
-
 
 impl LoweredOp {
     pub fn obligation_category(&self) -> ObligationCategory {
@@ -1151,10 +1145,7 @@ fn derive_interface_stub_transport_triplets(
                     },
                 )
                 .with_input_guard("request", Guard::NotEq(Value::Skipped))
-                .with_operation_key(OperationKey::new(
-                    &interface.name,
-                    &capability.name,
-                ));
+                .with_operation_key(OperationKey::new(&interface.name, &capability.name));
                 manifest.add_node(execute_node);
 
                 // Parse node: typed capability outputs → typed capability outputs (identity).
@@ -1216,8 +1207,12 @@ fn derive_interface_stub_transport_triplets(
                     metadata: Some(metadata),
                 };
                 let cap_key = format!("{}.{}", interface.name, capability.name);
-                manifest.registry.register(cap_key.clone(), endpoint.clone());
-                manifest.registry.register(format!("{module_name}.{cap_key}"), endpoint);
+                manifest
+                    .registry
+                    .register(cap_key.clone(), endpoint.clone());
+                manifest
+                    .registry
+                    .register(format!("{module_name}.{cap_key}"), endpoint);
             }
         }
     }
@@ -1357,7 +1352,12 @@ impl DagBuilder {
             self.add_node(node.clone());
         }
         for edge in &manifest.edges {
-            self.add_edge(&edge.from_node, &edge.from_port, &edge.to_node, &edge.to_port);
+            self.add_edge(
+                &edge.from_node,
+                &edge.from_port,
+                &edge.to_node,
+                &edge.to_port,
+            );
         }
     }
 
@@ -1481,10 +1481,7 @@ pub enum LowerError {
         interface_type: String,
     },
     /// Transport block specifies an unknown file operation.
-    InvalidFileOp {
-        operation: String,
-        file_op: String,
-    },
+    InvalidFileOp { operation: String, file_op: String },
     /// Transport block contents are invalid or incomplete.
     InvalidTransportSpec {
         service: String,
@@ -1500,6 +1497,8 @@ pub enum LowerError {
     },
     /// No executable declarations were available for lowering.
     NoLowerableItems,
+    /// A pure function contains an effectful node statement.
+    PureFnContainsEffectfulNode { fn_name: String, node_name: String },
     /// `auth_input` references a field that does not exist in the operation's inputs,
     /// or the referenced field is not of type `Secret`.
     InvalidAuthInput {
@@ -1520,6 +1519,8 @@ pub enum LowerError {
         fields: Vec<String>,
         known_prefixes: Vec<String>,
     },
+    /// Provider schema mapping references a type that does not exist.
+    UnknownProviderSchemaType { prefix: String, schema: String },
 }
 
 impl std::fmt::Display for LowerError {
@@ -1619,6 +1620,10 @@ impl std::fmt::Display for LowerError {
                 "profile `{profile}` binding `{interface_type}` requires config `{key}` from env var `{env_var}`, but it is not set"
             ),
             Self::NoLowerableItems => write!(f, "no callable or pipeline declarations to lower"),
+            Self::PureFnContainsEffectfulNode { fn_name, node_name } => write!(
+                f,
+                "node statement `{node_name}` in pure fn `{fn_name}` is not allowed (pure fns cannot contain effectful nodes)"
+            ),
             Self::InvalidAuthInput {
                 service,
                 operation,
@@ -1647,6 +1652,10 @@ impl std::fmt::Display for LowerError {
                  known prefixes: {}",
                 fields,
                 known_prefixes.join(", ")
+            ),
+            Self::UnknownProviderSchemaType { prefix, schema } => write!(
+                f,
+                "provider schema mapping `{prefix}` -> `{schema}` is invalid: schema type `{schema}` not found"
             ),
         }
     }
@@ -1714,34 +1723,52 @@ pub fn lower_typed_project_with_profile(
     project: &TypedProject,
     active_profile: Option<&str>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_with_config(project, &LoweringConfig { active_profile, ..Default::default() })
+    lower_with_config(
+        project,
+        &LoweringConfig {
+            active_profile,
+            ..Default::default()
+        },
+    )
 }
 
 pub fn lower_typed_project_with_collection_nodes(
     project: &TypedProject,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_with_config(project, &LoweringConfig { emit_collection_nodes: true, ..Default::default() })
+    lower_with_config(
+        project,
+        &LoweringConfig {
+            emit_collection_nodes: true,
+            ..Default::default()
+        },
+    )
 }
 
 pub fn lower_typed_project_with_profile_and_collection_nodes(
     project: &TypedProject,
     active_profile: Option<&str>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_with_config(project, &LoweringConfig {
-        active_profile,
-        emit_collection_nodes: true,
-        ..Default::default()
-    })
+    lower_with_config(
+        project,
+        &LoweringConfig {
+            active_profile,
+            emit_collection_nodes: true,
+            ..Default::default()
+        },
+    )
 }
 
 pub fn lower_typed_project_for_modules(
     project: &TypedProject,
     callable_modules: &HashSet<String>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_with_config(project, &LoweringConfig {
-        callable_modules: Some(callable_modules),
-        ..Default::default()
-    })
+    lower_with_config(
+        project,
+        &LoweringConfig {
+            callable_modules: Some(callable_modules),
+            ..Default::default()
+        },
+    )
 }
 
 pub fn lower_typed_project_for_modules_with_profile(
@@ -1749,22 +1776,28 @@ pub fn lower_typed_project_for_modules_with_profile(
     callable_modules: &HashSet<String>,
     active_profile: Option<&str>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_with_config(project, &LoweringConfig {
-        callable_modules: Some(callable_modules),
-        active_profile,
-        ..Default::default()
-    })
+    lower_with_config(
+        project,
+        &LoweringConfig {
+            callable_modules: Some(callable_modules),
+            active_profile,
+            ..Default::default()
+        },
+    )
 }
 
 pub fn lower_typed_project_for_modules_with_collection_nodes(
     project: &TypedProject,
     callable_modules: &HashSet<String>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_with_config(project, &LoweringConfig {
-        callable_modules: Some(callable_modules),
-        emit_collection_nodes: true,
-        ..Default::default()
-    })
+    lower_with_config(
+        project,
+        &LoweringConfig {
+            callable_modules: Some(callable_modules),
+            emit_collection_nodes: true,
+            ..Default::default()
+        },
+    )
 }
 
 pub fn lower_typed_project_for_modules_with_profile_and_collection_nodes(
@@ -1772,12 +1805,15 @@ pub fn lower_typed_project_for_modules_with_profile_and_collection_nodes(
     callable_modules: &HashSet<String>,
     active_profile: Option<&str>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_with_config(project, &LoweringConfig {
-        callable_modules: Some(callable_modules),
-        active_profile,
-        emit_collection_nodes: true,
-        ..Default::default()
-    })
+    lower_with_config(
+        project,
+        &LoweringConfig {
+            callable_modules: Some(callable_modules),
+            active_profile,
+            emit_collection_nodes: true,
+            ..Default::default()
+        },
+    )
 }
 
 pub fn lower_typed_project_for_modules_with_entry(
@@ -1786,12 +1822,15 @@ pub fn lower_typed_project_for_modules_with_entry(
     active_profile: Option<&str>,
     entry_module: Option<&str>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_with_config(project, &LoweringConfig {
-        callable_modules: Some(callable_modules),
-        active_profile,
-        entry_module,
-        ..Default::default()
-    })
+    lower_with_config(
+        project,
+        &LoweringConfig {
+            callable_modules: Some(callable_modules),
+            active_profile,
+            entry_module,
+            ..Default::default()
+        },
+    )
 }
 
 pub fn lower_typed_project_for_modules_with_entry_and_collection_nodes(
@@ -1800,12 +1839,15 @@ pub fn lower_typed_project_for_modules_with_entry_and_collection_nodes(
     active_profile: Option<&str>,
     entry_module: Option<&str>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_with_config(project, &LoweringConfig {
-        callable_modules: Some(callable_modules),
-        active_profile,
-        entry_module,
-        emit_collection_nodes: true,
-    })
+    lower_with_config(
+        project,
+        &LoweringConfig {
+            callable_modules: Some(callable_modules),
+            active_profile,
+            entry_module,
+            emit_collection_nodes: true,
+        },
+    )
 }
 
 fn lower_typed_project_impl(
@@ -3050,8 +3092,9 @@ fn add_dependency_edges(
             let Some((item_name, stmts)) = item_callable_body(&item.node) else {
                 continue;
             };
-            let Some(target) =
-                wctx.endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
+            let Some(target) = wctx
+                .endpoints_by_full
+                .get(&(module_name.clone(), item_name.to_string()))
             else {
                 continue;
             };
@@ -3829,7 +3872,12 @@ fn expand_content_upsert_patterns(
                     if name == "content_upsert" {
                         expansion_count += 1;
                         expand_single_content_upsert(
-                            builder, ctx, expansion_count, args, target, &bound_callables,
+                            builder,
+                            ctx,
+                            expansion_count,
+                            args,
+                            target,
+                            &bound_callables,
                         );
                     }
                 }
@@ -3849,7 +3897,12 @@ fn expand_content_upsert_patterns(
                 if name == "content_upsert" {
                     expansion_count += 1;
                     expand_single_content_upsert(
-                        builder, ctx, expansion_count, args, target, &bound_callables,
+                        builder,
+                        ctx,
+                        expansion_count,
+                        args,
+                        target,
+                        &bound_callables,
                     );
                 }
             }
@@ -3971,7 +4024,12 @@ fn expand_single_content_upsert(
         "request",
     );
     builder.add_edge(&compare_id, "skip", &execute_transport_id, "skip");
-    builder.add_edge(&execute_transport_id, "response", &target.node_id, PortName::DEPS);
+    builder.add_edge(
+        &execute_transport_id,
+        "response",
+        &target.node_id,
+        PortName::DEPS,
+    );
 
     let content_destinations = [
         (compare_id.as_str(), "expected_content"),
@@ -4377,9 +4435,7 @@ fn expand_single_pattern(
         .filter_map(|(_, expr)| {
             if let Expr::ServiceCall(path, _) = expr {
                 let binding = path.first()?;
-                None::<(String, String)>.or_else(|| {
-                    Some((binding.clone(), binding.clone()))
-                })
+                None::<(String, String)>.or_else(|| Some((binding.clone(), binding.clone())))
             } else {
                 None
             }
@@ -4422,9 +4478,8 @@ fn expand_single_pattern(
                     uses_binding_types: &combined_uses,
                     node_outputs: &node_outputs,
                 };
-                let expanded = expand_pattern_body_node(
-                    builder, ctx, &env, pexp, name, expr_ref, &[],
-                );
+                let expanded =
+                    expand_pattern_body_node(builder, ctx, &env, pexp, name, expr_ref, &[]);
                 if let Some(output) = expanded {
                     last_node_id.clone_from(&output.node_id);
                     node_outputs.insert(name.clone(), output);
@@ -4616,9 +4671,7 @@ fn expand_pattern_body_node(
         Expr::Call(call_name, args) if call_name == "eq" => {
             expand_eq_node(builder, ctx, env, node_name, args, after_deps)
         }
-        Expr::Call(call_name, call_args)
-            if pexp.all_patterns.contains_key(call_name.as_str()) =>
-        {
+        Expr::Call(call_name, call_args) if pexp.all_patterns.contains_key(call_name.as_str()) => {
             // Recursive pattern expansion: this node calls another pattern.
             let inner_pattern = &pexp.all_patterns[call_name.as_str()];
 
@@ -4770,7 +4823,13 @@ fn expand_eq_node(
             .map(|(_, b)| *b)
             .unwrap_or(arg_name);
         wire_pattern_arg_to_node(
-            builder, ctx, arg_expr, &compare_id, dest_port, env.arg_map, env.node_outputs,
+            builder,
+            ctx,
+            arg_expr,
+            &compare_id,
+            dest_port,
+            env.arg_map,
+            env.node_outputs,
         );
     }
 
@@ -4806,7 +4865,13 @@ fn wire_pattern_arg_to_prepare(
     node_outputs: &HashMap<String, ExpandedNodeOutput>,
 ) {
     wire_pattern_arg_to_node(
-        builder, ctx, arg_expr, prepare_node_id, arg_name, arg_map, node_outputs,
+        builder,
+        ctx,
+        arg_expr,
+        prepare_node_id,
+        arg_name,
+        arg_map,
+        node_outputs,
     );
 }
 
@@ -4851,7 +4916,11 @@ fn wire_pattern_arg_to_node(
                     // Field access on a pattern parameter → resolve through caller.
                     if matches!(caller_expr, Expr::FieldAccess(_, _)) {
                         wire_caller_expr_to_node(
-                            builder, ctx, caller_expr, dest_node_id, dest_port,
+                            builder,
+                            ctx,
+                            caller_expr,
+                            dest_node_id,
+                            dest_port,
                         );
                     }
                 }
@@ -5324,14 +5393,13 @@ fn derive_middleware_config(
 
     // TL-15: parse_provider_error_shapes is always false — the transport layer
     // uses only error_shape JSON-path extraction.
-    let response_classification = infer_response_provider(&service.name).map(|provider| {
-        ResponseClassification {
+    let response_classification =
+        infer_response_provider(&service.name).map(|provider| ResponseClassification {
             provider,
             prioritize_auth_errors: true,
             parse_provider_error_shapes: false,
             error_shape: error_shape.clone(),
-        }
-    });
+        });
 
     Some(TransportMiddlewareConfig {
         rate_limit,
@@ -5369,7 +5437,9 @@ fn convert_status_pattern(status: &daglang_syntax::ast::StatusPattern) -> Respon
 }
 
 /// Convert AST response entries to spec response mapping entries.
-fn derive_response_mapping(response_entries: &[daglang_syntax::ast::ResponseEntry]) -> Vec<ResponseMappingEntry> {
+fn derive_response_mapping(
+    response_entries: &[daglang_syntax::ast::ResponseEntry],
+) -> Vec<ResponseMappingEntry> {
     response_entries
         .iter()
         .map(|entry| ResponseMappingEntry {
@@ -5414,7 +5484,12 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
         _ => Vec::new(),
     };
     let auth_input = service.config.auth_input.clone();
-    let input_fields = derive_input_fields(&operation.inputs, &path_template, &headers, auth_input.as_deref());
+    let input_fields = derive_input_fields(
+        &operation.inputs,
+        &path_template,
+        &headers,
+        auth_input.as_deref(),
+    );
     let output_fields = derive_output_fields(&operation.outputs);
     let body_template = match &operation.transport {
         Some(TransportBinding::Rest { body: Some(b), .. }) => body_template_entries_from_expr(b),
@@ -5954,12 +6029,19 @@ fn validate_provider_config_fields(
     }
 
     // Derive schemas from DSL: read provider_config_schemas data + type defs.
-    let schemas = derive_provider_schemas_from_project(project);
+    let schemas = derive_provider_schemas_from_project(project)?;
+
+    // Open-world: when compiled in isolation (e.g., testgen), std/provider_config.dag
+    // may not be in the dependency closure. Skip validation rather than rejecting all fields.
+    if schemas.is_empty() {
+        return Ok(());
+    }
 
     // Find the matching schema for this service's name.
-    let matched_schema = schemas.iter().find(|(prefix, _)| {
-        service.name.starts_with(prefix.as_str()) || service.name == *prefix
-    });
+    let matched_schema = schemas
+        .iter()
+        .filter(|(prefix, _)| service.name.starts_with(prefix.as_str()) || service.name == *prefix)
+        .max_by_key(|(prefix, _)| prefix.len());
 
     match matched_schema {
         Some((_prefix, allowed_fields)) => {
@@ -5981,7 +6063,12 @@ fn validate_provider_config_fields(
             }
             return Err(LowerError::UnknownProviderPrefix {
                 service: service.name.clone(),
-                fields: service.config.extra.iter().map(|f| f.name.clone()).collect(),
+                fields: service
+                    .config
+                    .extra
+                    .iter()
+                    .map(|f| f.name.clone())
+                    .collect(),
                 known_prefixes: schemas.iter().map(|(p, _)| p.clone()).collect(),
             });
         }
@@ -5996,7 +6083,7 @@ fn validate_provider_config_fields(
 /// then resolves each schema type to extract its field names.
 fn derive_provider_schemas_from_project(
     project: &TypedProject,
-) -> Vec<(String, Vec<String>)> {
+) -> Result<Vec<(String, Vec<String>)>, LowerError> {
     // Collect all type definitions keyed by name.
     let mut type_defs: HashMap<String, &Vec<Field>> = HashMap::new();
     for module in &project.modules {
@@ -6021,19 +6108,36 @@ fn derive_provider_schemas_from_project(
                             if let Expr::Record(_, fields) = entry {
                                 let prefix = fields.iter().find_map(|(k, v)| {
                                     if k == "prefix" {
-                                        if let Expr::Literal(Literal::String(s)) = v { Some(s.clone()) } else { None }
-                                    } else { None }
+                                        if let Expr::Literal(Literal::String(s)) = v {
+                                            Some(s.clone())
+                                        } else {
+                                            None
+                                        }
+                                    } else {
+                                        None
+                                    }
                                 });
                                 let schema_name = fields.iter().find_map(|(k, v)| {
                                     if k == "schema" {
-                                        if let Expr::Literal(Literal::String(s)) = v { Some(s.clone()) } else { None }
-                                    } else { None }
+                                        if let Expr::Literal(Literal::String(s)) = v {
+                                            Some(s.clone())
+                                        } else {
+                                            None
+                                        }
+                                    } else {
+                                        None
+                                    }
                                 });
                                 if let (Some(prefix), Some(schema)) = (prefix, schema_name) {
                                     let field_names = type_defs
                                         .get(&schema)
-                                        .map(|fields| fields.iter().map(|f| f.name.clone()).collect())
-                                        .unwrap_or_default();
+                                        .map(|fields| {
+                                            fields.iter().map(|f| f.name.clone()).collect()
+                                        })
+                                        .ok_or_else(|| LowerError::UnknownProviderSchemaType {
+                                            prefix: prefix.clone(),
+                                            schema: schema.clone(),
+                                        })?;
                                     schemas.push((prefix, field_names));
                                 }
                             }
@@ -6044,7 +6148,7 @@ fn derive_provider_schemas_from_project(
         }
     }
 
-    schemas
+    Ok(schemas)
 }
 
 fn derive_service_transport_triplets(
@@ -6106,10 +6210,8 @@ fn derive_service_transport_triplets(
                 // SC-7: Validate auth_input references a real Secret-typed field.
                 if let Some(ref auth_field_name) = service.config.auth_input {
                     if operation.transport.is_some() {
-                        let matching_field = operation
-                            .inputs
-                            .iter()
-                            .find(|f| f.name == *auth_field_name);
+                        let matching_field =
+                            operation.inputs.iter().find(|f| f.name == *auth_field_name);
                         match matching_field {
                             None => {
                                 return Err(LowerError::InvalidAuthInput {
@@ -6200,10 +6302,7 @@ fn derive_service_transport_triplets(
                     },
                 )
                 .with_input_guard("request", Guard::NotEq(Value::Skipped))
-                .with_operation_key(OperationKey::new(
-                    &service.name,
-                    &operation.name,
-                ));
+                .with_operation_key(OperationKey::new(&service.name, &operation.name));
                 manifest.add_node(execute_node);
                 let parse_outputs = if operation.outputs.is_empty() {
                     vec![Port::scalar("result", "Unit")]
@@ -6303,7 +6402,9 @@ fn derive_service_transport_triplets(
 /// These are passed as `sibling_fns` to ExprCompute nodes so the runtime
 /// evaluator can execute calls to user-defined pure fns (e.g., `stage_from_output`)
 /// that appear inside ExprCompute expression bodies.
-fn collect_project_fn_bodies(project: &TypedProject) -> HashMap<String, LoweredFnBody> {
+fn collect_project_fn_bodies(
+    project: &TypedProject,
+) -> Result<HashMap<String, LoweredFnBody>, LowerError> {
     let mut fn_bodies = HashMap::new();
     for module in &project.modules {
         for item in &module.ast.items {
@@ -6333,11 +6434,10 @@ fn collect_project_fn_bodies(project: &TypedProject) -> HashMap<String, LoweredF
                         ));
                     }
                     Stmt::Node(ns) => {
-                        eprintln!(
-                            "warning: node statement `{}` in pure fn `{}` is ignored \
-                             (pure fns cannot contain effectful nodes)",
-                            ns.name, def.name
-                        );
+                        return Err(LowerError::PureFnContainsEffectfulNode {
+                            fn_name: def.name.clone(),
+                            node_name: ns.name.clone(),
+                        });
                     }
                 }
             }
@@ -6350,7 +6450,7 @@ fn collect_project_fn_bodies(project: &TypedProject) -> HashMap<String, LoweredF
             fn_bodies.insert(def.name.clone(), body);
         }
     }
-    fn_bodies
+    Ok(fn_bodies)
 }
 
 /// Collect the subset of `all_fn_bodies` that an expression transitively calls.
@@ -6453,7 +6553,7 @@ fn add_service_call_edges(
     known_interface_types: &HashSet<String>,
 ) -> Result<(), LowerError> {
     // Collect all pure fn bodies so ExprCompute nodes can call them at runtime.
-    let all_fn_bodies = collect_project_fn_bodies(project);
+    let all_fn_bodies = collect_project_fn_bodies(project)?;
     // Track transport endpoint usage across ALL modules and callables so
     // that the second caller to reference the same service operation gets
     // a cloned triplet (_c1, _c2, …) instead of wiring duplicate scalar
@@ -6502,8 +6602,9 @@ fn add_service_call_edges(
                 ),
                 _ => continue,
             };
-            let Some(target) =
-                wctx.endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
+            let Some(target) = wctx
+                .endpoints_by_full
+                .get(&(module_name.clone(), item_name.to_string()))
             else {
                 continue;
             };
@@ -6748,14 +6849,16 @@ fn add_service_call_edges(
                                     effective_endpoint.execute_node_id.as_str(),
                                     PortName::RESOURCE_CREDENTIAL,
                                 );
-                            } else if let Some(bound_source) = bound_callable_sources.get(arg_ident) {
+                            } else if let Some(bound_source) = bound_callable_sources.get(arg_ident)
+                            {
                                 builder.add_edge(
                                     bound_source.node_id.as_str(),
                                     bound_source.primary_output.as_str(),
                                     effective_endpoint.execute_node_id.as_str(),
                                     PortName::RESOURCE_CREDENTIAL,
                                 );
-                            } else if let Some(bound_source) = bound_service_sources.get(arg_ident) {
+                            } else if let Some(bound_source) = bound_service_sources.get(arg_ident)
+                            {
                                 builder.add_edge(
                                     bound_source.parse.node_id.as_str(),
                                     bound_source.parse.primary_output.as_str(),
@@ -6771,7 +6874,8 @@ fn add_service_call_edges(
                                     effective_endpoint.execute_node_id.as_str(),
                                     PortName::RESOURCE_CREDENTIAL,
                                 );
-                            } else if let Some(bound_source) = bound_service_sources.get(base_ident) {
+                            } else if let Some(bound_source) = bound_service_sources.get(base_ident)
+                            {
                                 builder.add_edge(
                                     bound_source.parse.node_id.as_str(),
                                     field_name.as_str(),
@@ -6848,8 +6952,9 @@ fn add_service_call_edges(
             let Item::PipelineDef(def) = &item.node else {
                 continue;
             };
-            let Some(target) =
-                wctx.endpoints_by_full.get(&(module_name.clone(), def.name.clone()))
+            let Some(target) = wctx
+                .endpoints_by_full
+                .get(&(module_name.clone(), def.name.clone()))
             else {
                 continue;
             };
@@ -8033,50 +8138,48 @@ fn collection_op_kind(name: &str) -> Option<CollectionOpKind> {
 }
 
 fn collect_collection_ops_from_stmts(stmts: &[Stmt], sites: &mut Vec<CollectionOpSite>) {
-    walk_stmts(stmts, &mut |expr| {
-        match expr {
-            Expr::Pipe(_, rhs) => {
-                let Expr::Call(name, _) = rhs.as_ref() else {
-                    return;
-                };
-                let Some(kind) = collection_op_kind(name) else {
-                    return;
-                };
+    walk_stmts(stmts, &mut |expr| match expr {
+        Expr::Pipe(_, rhs) => {
+            let Expr::Call(name, _) = rhs.as_ref() else {
+                return;
+            };
+            let Some(kind) = collection_op_kind(name) else {
+                return;
+            };
+            sites.push(CollectionOpSite { kind });
+        }
+        Expr::PipeCall(_, method, _) => {
+            let method_name = match method {
+                daglang_syntax::ast::PipeMethod::Map => "map",
+                daglang_syntax::ast::PipeMethod::Filter => "filter",
+                daglang_syntax::ast::PipeMethod::FilterMap => "filter_map",
+                daglang_syntax::ast::PipeMethod::FlatMap => "flat_map",
+                daglang_syntax::ast::PipeMethod::SortBy => "sort_by",
+                daglang_syntax::ast::PipeMethod::Append => "append",
+                daglang_syntax::ast::PipeMethod::Fold => "fold",
+                daglang_syntax::ast::PipeMethod::Join => "join",
+                daglang_syntax::ast::PipeMethod::Count => "count",
+                daglang_syntax::ast::PipeMethod::Sum => "sum",
+                daglang_syntax::ast::PipeMethod::First => "first",
+                daglang_syntax::ast::PipeMethod::Last => "last",
+                daglang_syntax::ast::PipeMethod::MaxBy => "max_by",
+                daglang_syntax::ast::PipeMethod::Any => "any",
+                daglang_syntax::ast::PipeMethod::All => "all",
+                daglang_syntax::ast::PipeMethod::Contains => "contains",
+                daglang_syntax::ast::PipeMethod::StartsWith => "starts_with",
+                daglang_syntax::ast::PipeMethod::EndsWith => "ends_with",
+                daglang_syntax::ast::PipeMethod::Repeat => "repeat",
+                daglang_syntax::ast::PipeMethod::ReplaceSection => "replace_section",
+                daglang_syntax::ast::PipeMethod::Chars => "chars",
+                daglang_syntax::ast::PipeMethod::ToBytes => "to_bytes",
+                daglang_syntax::ast::PipeMethod::ToJson => "to_json",
+                daglang_syntax::ast::PipeMethod::Hash => "hash",
+            };
+            if let Some(kind) = collection_op_kind(method_name) {
                 sites.push(CollectionOpSite { kind });
             }
-            Expr::PipeCall(_, method, _) => {
-                let method_name = match method {
-                    daglang_syntax::ast::PipeMethod::Map => "map",
-                    daglang_syntax::ast::PipeMethod::Filter => "filter",
-                    daglang_syntax::ast::PipeMethod::FilterMap => "filter_map",
-                    daglang_syntax::ast::PipeMethod::FlatMap => "flat_map",
-                    daglang_syntax::ast::PipeMethod::SortBy => "sort_by",
-                    daglang_syntax::ast::PipeMethod::Append => "append",
-                    daglang_syntax::ast::PipeMethod::Fold => "fold",
-                    daglang_syntax::ast::PipeMethod::Join => "join",
-                    daglang_syntax::ast::PipeMethod::Count => "count",
-                    daglang_syntax::ast::PipeMethod::Sum => "sum",
-                    daglang_syntax::ast::PipeMethod::First => "first",
-                    daglang_syntax::ast::PipeMethod::Last => "last",
-                    daglang_syntax::ast::PipeMethod::MaxBy => "max_by",
-                    daglang_syntax::ast::PipeMethod::Any => "any",
-                    daglang_syntax::ast::PipeMethod::All => "all",
-                    daglang_syntax::ast::PipeMethod::Contains => "contains",
-                    daglang_syntax::ast::PipeMethod::StartsWith => "starts_with",
-                    daglang_syntax::ast::PipeMethod::EndsWith => "ends_with",
-                    daglang_syntax::ast::PipeMethod::Repeat => "repeat",
-                    daglang_syntax::ast::PipeMethod::ReplaceSection => "replace_section",
-                    daglang_syntax::ast::PipeMethod::Chars => "chars",
-                    daglang_syntax::ast::PipeMethod::ToBytes => "to_bytes",
-                    daglang_syntax::ast::PipeMethod::ToJson => "to_json",
-                    daglang_syntax::ast::PipeMethod::Hash => "hash",
-                };
-                if let Some(kind) = collection_op_kind(method_name) {
-                    sites.push(CollectionOpSite { kind });
-                }
-            }
-            _ => {}
         }
+        _ => {}
     });
 }
 
@@ -8320,11 +8423,7 @@ pub fn build_data_values(project: &TypedProject) -> HashMap<String, serde_json::
     values
 }
 
-fn wire_fn_call_arguments(
-    builder: &mut DagBuilder,
-    ctx: &LoweringContext<'_>,
-    stmts: &[Stmt],
-) {
+fn wire_fn_call_arguments(builder: &mut DagBuilder, ctx: &LoweringContext<'_>, stmts: &[Stmt]) {
     let mut fn_calls = Vec::new();
     collect_fn_calls_with_args(stmts, &mut fn_calls);
     for fn_call in &fn_calls {
@@ -8420,7 +8519,12 @@ fn wire_fn_call_arguments(
                 if let Some(let_expr) = ctx.local_let_bindings.get(arg_ident) {
                     let output_port = Port::with_cardinality(param_name, "Any", Cardinality::ONE);
                     if let Some((src_node, src_port)) = synthesize_expr_compute(
-                        builder, ctx, let_expr, &output_port, param_name, &format!("arg_{index}"),
+                        builder,
+                        ctx,
+                        let_expr,
+                        &output_port,
+                        param_name,
+                        &format!("arg_{index}"),
                     ) {
                         builder.add_edge(
                             src_node.as_str(),
@@ -8592,7 +8696,8 @@ fn resolve_return_expr_source(
             // For complex base expressions, fall through to ExprCompute.
             None
         }
-        Expr::Call(name, _) => ctx.endpoints_by_name
+        Expr::Call(name, _) => ctx
+            .endpoints_by_name
             .get(name)
             .and_then(|entry| entry.clone())
             .map(|source| (source.node_id, source.primary_output)),
@@ -8610,16 +8715,7 @@ fn resolve_return_expr_source(
             Some((src, output_name.to_string()))
         }
         // Handle complex expressions by synthesizing a dedicated compute node.
-        _ => {
-            synthesize_expr_compute(
-                builder,
-                ctx,
-                expr,
-                output_port,
-                output_name,
-                disambiguator,
-            )
-        }
+        _ => synthesize_expr_compute(builder, ctx, expr, output_port, output_name, disambiguator),
     }
 }
 
@@ -8947,9 +9043,7 @@ fn remap_expr_idents(expr: &Expr) -> expr::LoweredExpr {
             params: params.clone(),
             body: Box::new(remap_expr_idents(body)),
         },
-        Expr::List(items) => {
-            expr::LoweredExpr::List(items.iter().map(remap_expr_idents).collect())
-        }
+        Expr::List(items) => expr::LoweredExpr::List(items.iter().map(remap_expr_idents).collect()),
         Expr::Map(entries) => expr::LoweredExpr::Record {
             type_name: None,
             fields: entries
@@ -8997,9 +9091,7 @@ fn remap_pattern(pattern: &daglang_syntax::ast::Pattern) -> expr::LoweredPattern
                     expr::LoweredLiteral::String(format!("{}", expr::lit_float_value(lit)))
                 }
                 daglang_syntax::ast::Literal::Bool(b) => expr::LoweredLiteral::Bool(*b),
-                daglang_syntax::ast::Literal::String(s) => {
-                    expr::LoweredLiteral::String(s.clone())
-                }
+                daglang_syntax::ast::Literal::String(s) => expr::LoweredLiteral::String(s.clone()),
                 daglang_syntax::ast::Literal::None => expr::LoweredLiteral::None,
             };
             expr::LoweredPattern::Literal(lowered)
@@ -9020,13 +9112,22 @@ fn synthesize_get_field(
 ) -> Option<(String, String)> {
     let output_type = output_port.type_id.0.as_str();
     let result_port_name = "result";
-    let input_ports = vec![Port::with_cardinality(base_param, param_ty, Cardinality::ONE)];
-    let output_ports = vec![Port::with_cardinality(result_port_name, output_type, Cardinality::ONE)];
+    let input_ports = vec![Port::with_cardinality(
+        base_param,
+        param_ty,
+        Cardinality::ONE,
+    )];
+    let output_ports = vec![Port::with_cardinality(
+        result_port_name,
+        output_type,
+        Cardinality::ONE,
+    )];
 
     let node_id = format!(
         "get_field_{}",
         sanitize_identifier(&format!(
-            "{}_{}_{}_{}_{}", ctx.module_name, ctx.item_name, base_param, field, disambiguator
+            "{}_{}_{}_{}_{}",
+            ctx.module_name, ctx.item_name, base_param, field, disambiguator
         ))
     );
 
@@ -9044,8 +9145,13 @@ fn synthesize_get_field(
     ));
 
     // Wire from param source to GetField input.
-    let param_source_id =
-        ensure_param_source_node(builder, ctx.module_name, ctx.item_name, base_param, param_ty);
+    let param_source_id = ensure_param_source_node(
+        builder,
+        ctx.module_name,
+        ctx.item_name,
+        base_param,
+        param_ty,
+    );
     builder.add_edge(&param_source_id, base_param, &node_id, base_param);
 
     Some((node_id, result_port_name.to_string()))
@@ -9064,13 +9170,7 @@ fn synthesize_expr_compute(
     let mut refs: Vec<ExprLeafRef> = Vec::new();
     let mut seen = HashSet::new();
     let mut has_local_refs = false;
-    collect_expr_leaf_refs(
-        expr,
-        ctx,
-        &mut refs,
-        &mut seen,
-        &mut has_local_refs,
-    );
+    collect_expr_leaf_refs(expr, ctx, &mut refs, &mut seen, &mut has_local_refs);
 
     // C10: Only bail on truly unresolvable references (not local let bindings).
     // Local let bindings are resolved transitively in collect_expr_leaf_refs
@@ -9092,7 +9192,11 @@ fn synthesize_expr_compute(
         .collect();
     let output_type = output_port.type_id.0.as_str();
     let result_port_name = "result";
-    let output_ports = vec![Port::with_cardinality(result_port_name, output_type, Cardinality::ONE)];
+    let output_ports = vec![Port::with_cardinality(
+        result_port_name,
+        output_type,
+        Cardinality::ONE,
+    )];
 
     // 3. Create the fn body: include local let stmts (C10) then the return.
     // Local let stmts are non-call bindings from the callable body that the
@@ -9123,9 +9227,10 @@ fn synthesize_expr_compute(
         }
     }
     let lowered_expr = remap_expr_idents(expr);
-    fn_stmts.push(expr::LoweredStmt::Return(vec![
-        (result_port_name.to_string(), lowered_expr),
-    ]));
+    fn_stmts.push(expr::LoweredStmt::Return(vec![(
+        result_port_name.to_string(),
+        lowered_expr,
+    )]));
     let fn_body = LoweredFnBody { stmts: fn_stmts };
 
     // 4. Collect sibling fn bodies that the expression may call at runtime.
@@ -9145,7 +9250,10 @@ fn synthesize_expr_compute(
     // 5. Create the compute node.
     let node_id = format!(
         "expr_compute_{}",
-        sanitize_identifier(&format!("{}_{}_{}_{}", ctx.module_name, ctx.item_name, output_name, disambiguator))
+        sanitize_identifier(&format!(
+            "{}_{}_{}_{}",
+            ctx.module_name, ctx.item_name, output_name, disambiguator
+        ))
     );
     builder.add_node(Node::opaque(
         node_id.clone(),
@@ -9392,10 +9500,7 @@ fn collect_local_let_bindings<'a>(
             Stmt::Node(node_stmt) => {
                 let inner = unwrap_guarded_expr(&node_stmt.expr);
                 if !bound_callable_sources.contains_key(&node_stmt.name)
-                    && !matches!(
-                        inner,
-                        Expr::Call(_, _) | Expr::ServiceCall(_, _)
-                    )
+                    && !matches!(inner, Expr::Call(_, _) | Expr::ServiceCall(_, _))
                 {
                     bindings.insert(node_stmt.name.clone(), &node_stmt.expr as &Expr);
                 }
@@ -9518,7 +9623,10 @@ pub struct InferredEntrypoint {
 /// extraction, and any future exposure mapping (REST, Lambda, etc.).
 pub fn is_user_param_port(port_name: &str) -> bool {
     let pn = PortName::from(port_name);
-    !pn.is_internal() && !pn.is_tool() && !pn.is_resource() && !is_output_passthrough_input(port_name)
+    !pn.is_internal()
+        && !pn.is_tool()
+        && !pn.is_resource()
+        && !is_output_passthrough_input(port_name)
 }
 
 /// Infer entrypoints from graph structure.

@@ -2436,7 +2436,7 @@ impl Parser {
     }
 
     /// Parse a test definition:
-    /// `test <name> [: <fixture>] { annotation* (mock | input | expect)* }`
+    /// `test <name> [: <fixture>] { annotation* (let | mock | input | expect)* }`
     fn parse_test_def(&mut self) -> Result<TestDef, ParseError> {
         self.expect(&TokenKind::Test)?;
         let name = self.expect_ident()?;
@@ -2476,18 +2476,20 @@ impl Parser {
             }
         }
 
+        let mut lets = Vec::new();
         let mut mocks = Vec::new();
         let mut inputs = Vec::new();
         let mut expects = Vec::new();
 
         while !self.check(&TokenKind::RBrace) && !self.at_eof() {
             match &self.peek().kind {
+                TokenKind::Let => lets.push(self.parse_test_let_decl()?),
                 TokenKind::Mock => mocks.push(self.parse_mock_decl()?),
                 TokenKind::Input => inputs.push(self.parse_input_decl()?),
                 TokenKind::Expect => expects.push(self.parse_expect_stmt()?),
                 _ => {
                     return Err(self.err(format!(
-                        "expected 'mock', 'input', or 'expect' inside test, found {}",
+                        "expected 'let', 'mock', 'input', or 'expect' inside test, found {}",
                         self.peek().kind.desc()
                     )));
                 }
@@ -2498,6 +2500,7 @@ impl Parser {
         Ok(TestDef {
             name,
             fixture,
+            lets,
             mocks,
             inputs,
             expects,
@@ -2507,6 +2510,15 @@ impl Parser {
             auto_mock,
             mock_helpers,
         })
+    }
+
+    /// Parse: `let <ident> = <expr>`
+    fn parse_test_let_decl(&mut self) -> Result<LetDecl, ParseError> {
+        self.expect(&TokenKind::Let)?;
+        let name = self.expect_ident()?;
+        self.expect(&TokenKind::Eq)?;
+        let value = self.parse_expr(0)?;
+        Ok(LetDecl { name, value })
     }
 
     /// Parse a mock target path: `seg1/seg2/.../segN.port` or bare `port`

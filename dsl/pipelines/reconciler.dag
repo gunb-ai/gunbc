@@ -265,7 +265,10 @@ pipeline reconciler
                 },
                 produced_at: "now"
               })
-              { issue_id: claim.issue_id, stage: claim.stage, action: "stale_released" }
+              match requeue.emitted {
+                true => { issue_id: claim.issue_id, stage: claim.stage, action: "stale_released" }
+                false => { issue_id: claim.issue_id, stage: claim.stage, action: "requeue_failed" }
+              }
             }
             false => {
               // Release failed — claim was re-acquired by another worker
@@ -329,7 +332,10 @@ pipeline reconciler
                 },
                 produced_at: "now"
               })
-              { issue_id: issue.id, stage: outcome.stage, action: "orphan_flagged" }
+              match alert.emitted {
+                true => { issue_id: issue.id, stage: outcome.stage, action: "orphan_flagged" }
+                false => { issue_id: issue.id, stage: outcome.stage, action: "alert_failed" }
+              }
             }
             false => {
               { issue_id: issue.id, stage: outcome.stage, action: "none" }

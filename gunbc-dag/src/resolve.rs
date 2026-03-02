@@ -27,8 +27,8 @@
 use std::collections::HashMap;
 
 use daglang_lower::{
-    CallableKind, CollectionOpKind, LoweredOp, PrimitiveLiteral,
-    PrimitiveOpKind, ServiceCallMetadata, ServiceOperationSpec,
+    CallableKind, CollectionOpKind, LoweredOp, PrimitiveLiteral, PrimitiveOpKind,
+    ServiceCallMetadata, ServiceOperationSpec,
 };
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
@@ -386,13 +386,19 @@ struct GetFieldOp {
 
 impl Executable for GetFieldOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let value = inputs
-            .get(&self.input_port)
-            .cloned()
-            .unwrap_or(Value::Skipped);
+        let value = match inputs.get(&self.input_port) {
+            Some(value) => value.clone(),
+            None => {
+                return Err(ExecError::new(format!(
+                    "GetField `{}`: missing input port `{}` in inputs map (resolver/runtime bug)",
+                    self.field, self.input_port
+                )));
+            }
+        };
         let extracted = match &value {
             Value::Map(fields) => fields.get(&self.field).cloned().ok_or_else(|| {
-                let available: Vec<&String> = fields.keys().collect();
+                let mut available: Vec<&String> = fields.keys().collect();
+                available.sort();
                 ExecError::new(format!(
                     "GetField `{}`: field not found in Map on port `{}`. Available fields: {:?}",
                     self.field, self.input_port, available
@@ -400,7 +406,8 @@ impl Executable for GetFieldOp {
             })?,
             Value::Json(serde_json::Value::Object(map)) => {
                 map.get(&self.field).map(|v| Value::Json(v.clone())).ok_or_else(|| {
-                    let available: Vec<&String> = map.keys().collect();
+                    let mut available: Vec<&String> = map.keys().collect();
+                    available.sort();
                     ExecError::new(format!(
                         "GetField `{}`: field not found in Json object on port `{}`. Available fields: {:?}",
                         self.field, self.input_port, available
@@ -451,7 +458,10 @@ impl Executable for ExprComputeOp {
                 }
             } else if let Value::Json(serde_json::Value::Object(map)) = &value {
                 for (field_name, field_value) in map {
-                    env.insert(format!("{port}__{field_name}"), Value::Json(field_value.clone()));
+                    env.insert(
+                        format!("{port}__{field_name}"),
+                        Value::Json(field_value.clone()),
+                    );
                 }
             }
             env.insert(port.clone(), value);
@@ -559,9 +569,7 @@ fn collect_lowered_expr_idents(expr: &daglang_lower::expr::LoweredExpr, out: &mu
                 collect_lowered_expr_idents(&arm.body, out);
             }
         }
-        LoweredExpr::For {
-            iterable, body, ..
-        } => {
+        LoweredExpr::For { iterable, body, .. } => {
             collect_lowered_expr_idents(iterable, out);
             collect_lowered_expr_idents(body, out);
         }
@@ -911,27 +919,36 @@ fn resolve_primitive(
         // FC-7: Output path annotation nodes are metadata-only, resolve as identity.
         PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(DynOp::new(IdentityCallableOp)),
         PrimitiveOpKind::GetField { field } => {
-            let input_port = inputs
-                .first()
-                .map(|p| p.name.0.clone())
-                .ok_or_else(|| ResolveError {
-                    node_id: String::new(),
-                    reason: format!("GetField `{field}`: node has no input port (compiler bug)"),
-                })?;
-            let output_port = outputs
-                .first()
-                .map(|p| p.name.0.clone())
-                .ok_or_else(|| ResolveError {
-                    node_id: String::new(),
-                    reason: format!("GetField `{field}`: node has no output port (compiler bug)"),
-                })?;
+            let input_port =
+                inputs
+                    .first()
+                    .map(|p| p.name.0.clone())
+                    .ok_or_else(|| ResolveError {
+                        node_id: String::new(),
+                        reason: format!(
+                            "GetField `{field}`: node has no input port (compiler bug)"
+                        ),
+                    })?;
+            let output_port =
+                outputs
+                    .first()
+                    .map(|p| p.name.0.clone())
+                    .ok_or_else(|| ResolveError {
+                        node_id: String::new(),
+                        reason: format!(
+                            "GetField `{field}`: node has no output port (compiler bug)"
+                        ),
+                    })?;
             Ok(DynOp::new(GetFieldOp {
                 input_port,
                 field: field.clone(),
                 output_port,
             }))
         }
-        PrimitiveOpKind::ExprCompute { fn_body, sibling_fns } => {
+        PrimitiveOpKind::ExprCompute {
+            fn_body,
+            sibling_fns,
+        } => {
             let input_ports: Vec<String> = inputs.iter().map(|p| p.name.0.clone()).collect();
             let referenced_vars = collect_fn_body_idents(fn_body);
             let output_port = outputs
@@ -971,8 +988,13 @@ fn resolve_domain(
     if let Some(op) = crate::extern_ops::resolve_extern_symbol(module, name) {
         return Ok(op);
     }
-    // 3. Service/workspace modules use generic transport dispatch.
-    if module.starts_with("services.") || module.starts_with("workspace.") {
+    // 3. Service/workspace modules use generic transport dispatch — but only
+    //    for nodes that ARE transport roles (prepare/execute/parse) or have
+    //    service metadata. Pure fn items in provider modules fall through to
+    //    the default DeclaredOutputCallableOp passthrough.
+    if (module.starts_with("services.") || module.starts_with("workspace."))
+        && (TransportRole::from_name(name).is_some() || service_metadata.is_some())
+    {
         return resolve_service_transport(node_id, module, name, outputs, service_metadata);
     }
     // 4. Service transport nodes from non-service modules (e.g., loop body
@@ -2383,10 +2405,7 @@ mod tests {
     fn passthrough_partially_wired_missing_required_is_error() {
         // When at least one __out:* input is wired but a required output is
         // missing, execution must fail with a diagnostic error.
-        let output_ports = vec![
-            ("result".to_string(), false),
-            ("status".to_string(), false),
-        ];
+        let output_ports = vec![("result".to_string(), false), ("status".to_string(), false)];
         let mut inputs = HashMap::new();
         // Wire only one passthrough — "result" — leave "status" unwired.
         inputs.insert(
@@ -2456,10 +2475,7 @@ mod tests {
     #[test]
     fn passthrough_all_wired_succeeds() {
         // Happy path: all required outputs have passthrough inputs wired.
-        let output_ports = vec![
-            ("result".to_string(), false),
-            ("status".to_string(), false),
-        ];
+        let output_ports = vec![("result".to_string(), false), ("status".to_string(), false)];
         let mut inputs = HashMap::new();
         inputs.insert(
             format!("{}result", PortName::OUTPUT_PASSTHROUGH_PREFIX),
@@ -2473,19 +2489,12 @@ mod tests {
         inputs.insert("extra".to_string(), Value::Int(42));
         let outputs = execute_with_declared_output_passthrough(&output_ports, inputs)
             .expect("all-wired should succeed");
-        assert_eq!(
-            outputs.get("result").and_then(Value::as_str),
-            Some("data")
-        );
-        assert_eq!(
-            outputs.get("status").and_then(Value::as_str),
-            Some("ok")
-        );
+        assert_eq!(outputs.get("result").and_then(Value::as_str), Some("data"));
+        assert_eq!(outputs.get("status").and_then(Value::as_str), Some("ok"));
         assert_eq!(
             outputs.get("extra"),
             Some(&Value::Int(42)),
             "non-passthrough inputs should be forwarded"
         );
     }
-
 }

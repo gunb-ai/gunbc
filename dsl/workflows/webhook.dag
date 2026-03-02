@@ -36,6 +36,7 @@ import interfaces.credential_provider { CredentialProvider }
 import std.types {
   NonEmptyStr, Signal, SignalType, CredentialFlow, AccessToken
 }
+import std.state_machines { label_to_stage }
 
 // ── Webhook event types ─────────────────────────────────────────────
 
@@ -65,11 +66,33 @@ fn is_approval_comment(body: String) -> Bool {
 
 fn event_to_signal_type(event: WebhookEvent) -> SignalType? {
   match event {
-    IssueLabeled { label } => if is_sdlc_label(label: label) { "WorkReady" } else { None }
-    IssueUnlabeled { label } => if is_sdlc_label(label: label) { "ReconcileTick" } else { None }
-    IssueCommentCreated { body } => if is_approval_comment(body: body) { "ApprovalGranted" } else { None }
-    PullRequestClosed { merged } => if merged { "TestReady" } else { None }
-    PullRequestReview { state } => if state == "approved" { "ReviewComplete" } else { None }
+    IssueLabeled { issue_number, label } => {
+      stage = label_to_stage(label: label)
+      match stage {
+        Some(s) => WorkReady { issue_id: "{issue_number}", stage: s, stage_epoch: 1 }
+        None => None
+      }
+    }
+    IssueUnlabeled { issue_number, label } => if is_sdlc_label(label: label) {
+      ReconcileTick { window_id: "issue-{issue_number}" }
+    } else {
+      None
+    }
+    IssueCommentCreated { issue_number, body } => if is_approval_comment(body: body) {
+      ApprovalGranted { issue_id: "{issue_number}", stage: DesignReview, approval_epoch: 1 }
+    } else {
+      None
+    }
+    PullRequestClosed { pr_number, merged } => if merged {
+      WorkReady { issue_id: "{pr_number}", stage: Testing, stage_epoch: 1 }
+    } else {
+      None
+    }
+    PullRequestReview { pr_number, state } => if state == "approved" {
+      ApprovalGranted { issue_id: "{pr_number}", stage: CodeReview, approval_epoch: 1 }
+    } else {
+      None
+    }
     Unknown => None
   }
 }
@@ -98,6 +121,10 @@ fn event_to_stage(event: WebhookEvent) -> String? {
 
 // ── HMAC signature verification ─────────────────────────────────────
 
+fn hmac_sha256(key: String, data: String) -> String {
+  "{key}:{data}" |> hash()
+}
+
 fn verify_signature(payload: String, signature: String, secret: String) -> Bool {
   // HMAC-SHA256 verification.
   // The expected signature format is: sha256=<hex digest>
@@ -120,6 +147,7 @@ func handle_webhook(
   webhook_secret = creds.acquire(
     secret_name: "github-webhook-secret",
     flow: Stored { secret_name: "github-webhook-secret" },
+    scheme: Bearer,
     source_id: "webhook",
     required_scopes: []
   )
@@ -132,11 +160,11 @@ func handle_webhook(
 
   if !valid {
     return {
-      response: {
+      response: ({
         status: 401,
         message: "Invalid webhook signature",
         signal_emitted: false
-      }
+      } as WebhookResponse)
     }
   }
 
@@ -145,20 +173,24 @@ func handle_webhook(
 
   if signal_type == None {
     return {
-      response: {
+      response: ({
         status: 200,
         message: "Event type not actionable",
         signal_emitted: false
-      }
+      } as WebhookResponse)
     }
   }
 
   // Step 3: Emit signal to SignalStore (idempotent via delivery_id)
   issue_id = event_to_issue_id(event: event)
   stage = event_to_stage(event: event)
+  signal_type_value = match signal_type {
+    Some(v) => v
+    None => ReconcileTick { window_id: "noop" }
+  }
 
   signal_result = signals.emit(signal: {
-    signal_type: signal_type,
+    signal_type: signal_type_value,
     idempotency_key: "webhook::{delivery_id}",
     payload: {
       issue_id: issue_id,
@@ -170,11 +202,11 @@ func handle_webhook(
   })
 
   return {
-    response: {
+    response: ({
       status: 200,
-      message: "Signal emitted: {signal_type}",
-      signal_emitted: true
-    }
+      message: if signal_result.emitted { "Signal emitted" } else { "Signal not emitted" },
+      signal_emitted: signal_result.emitted
+    } as WebhookResponse)
   }
 }
 

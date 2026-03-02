@@ -89,10 +89,16 @@ pipeline scale_test
         generation: claim.lease_generation
       ) [after claim, when claim.acquired]
 
-      { issue_id: issue.id, acquired: claim.acquired, conflict: claim.conflict }
+      release_success = match claim.acquired {
+        true => release.released
+        false => true
+      }
+
+      { issue_id: issue.id, acquired: claim.acquired, conflict: claim.conflict, released: release_success }
     }
 
     claim_conflicts = claim_results |> filter(r => r.conflict) |> count()
+    release_failures = claim_results |> filter(r => !r.released) |> count()
   }
 
   // Stage 3: Verify outcomes — check that all issues have outcomes
@@ -110,7 +116,7 @@ pipeline scale_test
 
   // Stage 4: Report
   stage report [after verify_outcomes] {
-    all_passed = claim_conflicts == 0 && lost_outcomes == 0
+    all_passed = claim_conflicts == 0 && lost_outcomes == 0 && release_failures == 0
   }
 }
 

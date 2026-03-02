@@ -68,7 +68,7 @@ func approval_yield(
   )
 
   return {
-    yielded: true,
+    yielded: release.released,
     approval_marker: "sdlc:approval-pending:{stage}"
   }
 }

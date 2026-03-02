@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
@@ -6,7 +6,7 @@ use daglang_derive::{derive_artifacts, DeriveError, DerivedArtifacts};
 use daglang_emit::rust_exec_runtime::emit_exec_runtime_with_output_dir;
 use daglang_emit::{
     emit_c_bundle, emit_go_bundle, emit_mips_bundle, emit_rust_bundle, EmissionBundle,
-    EmitError, EmissionSummary, EmittedFile,
+    EmissionSummary, EmitError, EmittedFile,
 };
 pub use daglang_lower::is_user_param_port;
 pub use daglang_lower::InferredEntrypoint;
@@ -16,7 +16,7 @@ use daglang_syntax::ast::{Expr, Item, Literal, ModulePath, PipelineDef, StageDef
 use daglang_syntax::ast_utils::type_expr_to_string;
 use daglang_syntax::parser;
 use daglang_typecheck::{
-    typecheck_module_graph_with_options, TypecheckOptions, TypeError, TypedProject,
+    typecheck_module_graph_with_options, TypeError, TypecheckOptions, TypedProject,
 };
 use gunbc_ir::{Dag, ProgramSymbolId, ReachableDag, TypeRegistry};
 use serde::{Deserialize, Serialize};
@@ -319,18 +319,17 @@ pub fn compile_data_from_sources(
 ) -> Result<EmbeddedCompileOutput, CompileError> {
     let mut parsed = Vec::new();
     for (path, source) in sources {
-        let ast = parser::parse_with_file_diagnostics(path, source)
-            .map_err(|diagnostics| {
-                CompileError::Message(format!(
-                    "failed to parse embedded module {}: {}",
-                    path.display(),
-                    diagnostics
-                        .iter()
-                        .map(|d| d.render())
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                ))
-            })?;
+        let ast = parser::parse_with_file_diagnostics(path, source).map_err(|diagnostics| {
+            CompileError::Message(format!(
+                "failed to parse embedded module {}: {}",
+                path.display(),
+                diagnostics
+                    .iter()
+                    .map(|d| d.render())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ))
+        })?;
         let module_path = ast
             .module_path
             .as_ref()
@@ -462,12 +461,15 @@ pub fn compile_from_module_graph_with_options(
     )
     .map_err(CompileError::Typecheck)?;
     let extern_assets = collect_extern_assets(&typed);
-    let lowered = lower_with_config(&typed, &LoweringConfig {
-        callable_modules: callable_scope.as_ref(),
-        emit_collection_nodes: options.emit_collection_nodes,
-        active_profile: options.profile.as_deref(),
-        entry_module: entry_module_name.as_deref(),
-    })
+    let lowered = lower_with_config(
+        &typed,
+        &LoweringConfig {
+            callable_modules: callable_scope.as_ref(),
+            emit_collection_nodes: options.emit_collection_nodes,
+            active_profile: options.profile.as_deref(),
+            entry_module: entry_module_name.as_deref(),
+        },
+    )
     .map_err(CompileError::Lower)?;
     let dag_paths = daglang_lower::extract_output_paths(&lowered);
     let annotation_paths = daglang_lower::extract_declared_outputs(&typed);
@@ -496,8 +498,7 @@ pub fn compile_from_module_graph_with_options(
         options,
         target_module_name.as_deref(),
         &extern_assets,
-    )
-    ?;
+    )?;
     let emit_manifest_path = append_emit_manifest(&mut emitted, target, layer)?;
 
     let pipeline_params = collect_pipeline_params(&typed);
@@ -1009,7 +1010,6 @@ fn collect_root_identifiers(expr: &Expr, roots: &mut std::collections::BTreeSet<
     }
 }
 
-
 fn emit_with_options(
     dag: &Dag<LoweredOp>,
     derived: &DerivedArtifacts,
@@ -1156,17 +1156,7 @@ fn compute_receipt(
     // Source digest: sha256 of sorted path:hash pairs.
     // Including the path prevents false cache hits when files are renamed
     // or contents are swapped between files.
-    let mut source_hashes: Vec<String> = Vec::with_capacity(source_paths.len());
-    for path in source_paths {
-        #[allow(clippy::disallowed_methods)]
-        let content = match std::fs::read(path) {
-            Ok(bytes) => bytes,
-            Err(_) => return None,
-        };
-        source_hashes.push(format!("{}:{}", path.display(), sha256_hex(&content)));
-    }
-    source_hashes.sort();
-    let source_digest = sha256_hex(source_hashes.join("\n").as_bytes());
+    let source_digest = compute_source_digest(source_paths).ok()?;
 
     // Program IR digest: sha256 of canonical IR JSON.
     let canonical_json = match daglang_lower::canonical_ir_json(dag) {
@@ -1207,7 +1197,7 @@ pub struct CachedDiscoveryEntry {
     pub available_profiles: Vec<String>,
     /// Cached func parameters — avoids re-parsing the AST on cache hit.
     #[serde(default)]
-    pub func_params: HashMap<String, Vec<CachedFuncParam>>,
+    pub func_params: BTreeMap<String, Vec<CachedFuncParam>>,
 }
 
 /// Serializable entrypoint metadata for caching.
@@ -1253,9 +1243,7 @@ impl From<&CachedEntrypoint> for InferredEntrypoint {
 /// Discovers the module graph, reads all source files, and computes a
 /// content-addressable SHA-256 digest. This is much cheaper than full
 /// compilation (parse + typecheck + lower + emit).
-pub fn compute_source_digest_for_context(
-    context: &DriverContext,
-) -> Result<String, CompileError> {
+pub fn compute_source_digest_for_context(context: &DriverContext) -> Result<String, CompileError> {
     let module_graph = discover_module_graph_for_context(context)?;
     let source_paths: Vec<PathBuf> = module_graph
         .modules
@@ -1263,31 +1251,30 @@ pub fn compute_source_digest_for_context(
         .map(|m| m.path.clone())
         .collect();
     compute_source_digest(&source_paths)
-        .ok_or_else(|| CompileError::Message("failed to compute source digest".to_string()))
+        .map_err(|e| CompileError::Message(format!("failed to compute source digest: {e}")))
 }
 
 /// Compute a source digest from a list of source file paths.
 ///
-/// Returns SHA-256 of sorted path:hash pairs. Returns `None`
-/// if any file cannot be read (with a diagnostic on stderr).
+/// Returns SHA-256 of sorted path:hash pairs.
+/// Returns an error if any file cannot be read.
 ///
 /// Build-time filesystem access (compiler bootstrap exception).
-pub fn compute_source_digest(source_paths: &[PathBuf]) -> Option<String> {
+pub fn compute_source_digest(source_paths: &[PathBuf]) -> Result<String, std::io::Error> {
     let mut source_hashes: Vec<String> = Vec::with_capacity(source_paths.len());
     for path in source_paths {
         // Build-time bootstrap exception: reads .dag source files for hashing.
         #[allow(clippy::disallowed_methods)]
-        let content = match std::fs::read(path) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("warning: cannot read {} for source digest: {e}", path.display());
-                return None;
-            }
-        };
+        let content = std::fs::read(path).map_err(|e| {
+            std::io::Error::new(
+                e.kind(),
+                format!("cannot read {} for source digest: {e}", path.display()),
+            )
+        })?;
         source_hashes.push(format!("{}:{}", path.display(), sha256_hex(&content)));
     }
     source_hashes.sort();
-    Some(sha256_hex(source_hashes.join("\n").as_bytes()))
+    Ok(sha256_hex(source_hashes.join("\n").as_bytes()))
 }
 
 fn discover_module_graph_for_context(context: &DriverContext) -> Result<ModuleGraph, CompileError> {
@@ -1487,11 +1474,7 @@ fn include_profile_modules(
             .ast
             .imports
             .iter()
-            .filter_map(|import| {
-                module_index_by_decl
-                    .get(&import.node.path)
-                    .copied()
-            })
+            .filter_map(|import| module_index_by_decl.get(&import.node.path).copied())
             .collect::<Vec<_>>();
         dependencies.sort_unstable();
         dependencies.dedup();
@@ -1710,7 +1693,6 @@ fn merge_dedup_paths(a: Vec<String>, b: Vec<String>) -> Vec<String> {
     set.extend(b);
     set.into_iter().collect()
 }
-
 
 fn validate_module_path_consistency(
     graph: &ModuleGraph,
@@ -2245,7 +2227,8 @@ func run() -> { ok: Bool } uses issues: IssueProvider {
         );
         assert!(
             output.lowered_dag.edges.iter().any(|edge| {
-                edge.to_node.0 == "pipelines.main::run" && edge.to_port.0 == gunbc_ir::types::PortName::DEPS
+                edge.to_node.0 == "pipelines.main::run"
+                    && edge.to_port.0 == gunbc_ir::types::PortName::DEPS
             }),
             "bound service transport edge should feed target callable dependencies"
         );

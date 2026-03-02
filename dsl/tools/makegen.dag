@@ -277,4 +277,3 @@ func makegen(path: String = "Makefile") -> { written: Bool } {
   result = content_upsert(content: content, path: path)
   return { written: result.written }
 }
-

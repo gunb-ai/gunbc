@@ -10,7 +10,7 @@
 //! Special case: testgen has a custom builder (no DSL module) and is
 //! hardcoded as the sole exception.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use daglang_driver::{
@@ -32,13 +32,19 @@ struct DslParam {
     default: Option<String>,
 }
 
+/// Bump when cache format changes (e.g., new fields in CachedDiscoveryEntry).
+/// Stale caches with a different version are discarded on load.
+const CACHE_VERSION: u32 = 2;
+
 /// Persistent discovery cache for incremental compilation (C26).
 ///
 /// Stores per-module source digests and cached compilation metadata.
 /// On cache hit (source digest matches), compilation is skipped entirely.
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 struct DiscoveryCache {
-    entries: HashMap<String, CachedDiscoveryEntry>,
+    #[serde(default)]
+    cache_version: u32,
+    entries: BTreeMap<String, CachedDiscoveryEntry>,
 }
 
 impl DiscoveryCache {
@@ -49,47 +55,49 @@ impl DiscoveryCache {
             .join("discovery_cache.json")
     }
 
-    /// Load cache from disk. Returns empty cache if file doesn't exist.
+    /// Load cache from disk.
+    ///
+    /// Returns `Ok(None)` if file doesn't exist or cache version mismatches.
+    /// Returns `Err` for read/parse failures.
     /// Build-time filesystem access (bootstrap exception).
     #[allow(clippy::disallowed_methods)]
-    fn load(workspace_root: &Path) -> Self {
+    fn load(workspace_root: &Path) -> Result<Option<Self>, String> {
         let path = Self::cache_path(workspace_root);
         match std::fs::read_to_string(&path) {
-            Ok(s) => match serde_json::from_str(&s) {
-                Ok(cache) => cache,
-                Err(e) => {
-                    eprintln!("warning: discovery cache corrupted at {}, rebuilding: {e}", path.display());
-                    Self::default()
+            Ok(s) => {
+                let cache = serde_json::from_str::<Self>(&s).map_err(|e| {
+                    format!("discovery cache parse failed at {}: {e}", path.display())
+                })?;
+                if cache.cache_version != CACHE_VERSION {
+                    return Ok(None);
                 }
-            },
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Self::default(),
-            Err(e) => {
-                eprintln!("warning: cannot read discovery cache at {}: {e}", path.display());
-                Self::default()
+                Ok(Some(cache))
             }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(format!(
+                "cannot read discovery cache at {}: {e}",
+                path.display()
+            )),
         }
     }
 
-    /// Persist cache to disk. Build-time filesystem access (bootstrap exception).
+    /// Persist cache to disk.
+    ///
+    /// Returns `Err` on create/serialize/write failures.
+    /// Build-time filesystem access (bootstrap exception).
     #[allow(clippy::disallowed_methods)]
-    fn save(&self, workspace_root: &Path) {
+    fn save(&mut self, workspace_root: &Path) -> Result<(), String> {
+        self.cache_version = CACHE_VERSION;
         let path = Self::cache_path(workspace_root);
         if let Some(parent) = path.parent() {
-            if let Err(e) = std::fs::create_dir_all(parent) {
-                eprintln!("warning: cannot create cache directory {}: {e}", parent.display());
-                return;
-            }
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("cannot create cache directory {}: {e}", parent.display()))?;
         }
-        match serde_json::to_string_pretty(self) {
-            Ok(json) => {
-                if let Err(e) = std::fs::write(&path, json) {
-                    eprintln!("warning: cannot write discovery cache to {}: {e}", path.display());
-                }
-            }
-            Err(e) => {
-                eprintln!("warning: cannot serialize discovery cache: {e}");
-            }
-        }
+        let json = serde_json::to_string_pretty(self)
+            .map_err(|e| format!("cannot serialize discovery cache: {e}"))?;
+        std::fs::write(&path, json)
+            .map_err(|e| format!("cannot write discovery cache to {}: {e}", path.display()))?;
+        Ok(())
     }
 }
 
@@ -107,14 +115,20 @@ impl DiscoveryCache {
 /// skip parse+typecheck+lower+emit entirely.
 ///
 /// Testgen is the sole hardcoded exception (custom builder, no DSL module).
-#[allow(clippy::disallowed_methods)]
 pub fn discover_tool_defs_from_dsl() -> Vec<ToolDef> {
+    try_discover_tool_defs_from_dsl()
+        .unwrap_or_else(|e| panic!("failed to discover tool defs from DSL: {e}"))
+}
+
+/// Fallible discovery entrypoint for callers that need structured errors.
+#[allow(clippy::disallowed_methods)]
+pub fn try_discover_tool_defs_from_dsl() -> Result<Vec<ToolDef>, String> {
     let layout = WorkspaceLayout::from_env_manifest_dir()
         .or_else(|_| WorkspaceLayout::from_cargo_metadata())
         .expect("workspace layout for DSL discovery");
     let dsl_root = layout.workspace_root.join("dsl");
 
-    let mut cache = DiscoveryCache::load(&layout.workspace_root);
+    let mut cache = DiscoveryCache::load(&layout.workspace_root)?.unwrap_or_default();
     let mut cache_dirty = false;
 
     // Use BTreeMap for dedup by tool_name (later entries overwrite earlier,
@@ -123,21 +137,19 @@ pub fn discover_tool_defs_from_dsl() -> Vec<ToolDef> {
 
     // Scan dsl/tools/*.dag
     let tools_dir = dsl_root.join("tools");
-    if let Ok(entries) = std::fs::read_dir(&tools_dir) {
-        let mut paths: Vec<_> = entries
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("dag"))
-            .collect();
-        paths.sort();
+    let entries = std::fs::read_dir(&tools_dir)
+        .map_err(|e| format!("cannot read tools directory {}: {e}", tools_dir.display()))?;
+    let mut paths: Vec<_> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("dag"))
+        .collect();
+    paths.sort();
 
-        for path in paths {
-            if let Some(defs) =
-                discover_from_dag_file_cached(&dsl_root, &path, &mut cache, &mut cache_dirty)
-            {
-                for tool in defs {
-                    tool_map.insert(tool.meta.tool_name.to_string(), tool);
-                }
+    for path in paths {
+        if let Some(defs) = discover_from_dag_file_cached(&dsl_root, &path, &mut cache, &mut cache_dirty)? {
+            for tool in defs {
+                tool_map.insert(tool.meta.tool_name.to_string(), tool);
             }
         }
     }
@@ -148,26 +160,32 @@ pub fn discover_tool_defs_from_dsl() -> Vec<ToolDef> {
 
     // Persist cache if anything changed
     if cache_dirty {
-        cache.save(&layout.workspace_root);
+        cache.save(&layout.workspace_root)?;
     }
 
-    tool_map.into_values().collect()
+    Ok(tool_map.into_values().collect())
 }
 
 /// Cache-aware discovery: check source digest before full compilation (C26).
+///
+/// Returns `Ok(Some(defs))` on success, `Ok(None)` if no entrypoints,
+/// `Err(msg)` on read/parse/compile failure.
 #[allow(clippy::disallowed_methods)]
 fn discover_from_dag_file_cached(
     dsl_root: &Path,
     path: &Path,
     cache: &mut DiscoveryCache,
     cache_dirty: &mut bool,
-) -> Option<Vec<ToolDef>> {
+) -> Result<Option<Vec<ToolDef>>, String> {
     let rel_path = path
         .strip_prefix(dsl_root)
-        .ok()?
+        .map_err(|e| format!("path prefix: {e}"))?
         .to_string_lossy()
         .to_string();
-    let module_name = rel_path.strip_suffix(".dag")?.replace('/', ".");
+    let module_name = rel_path
+        .strip_suffix(".dag")
+        .ok_or_else(|| format!("not a .dag file: {rel_path}"))?
+        .replace('/', ".");
 
     let context = DriverContext {
         roots: vec![dsl_root.to_path_buf()],
@@ -175,37 +193,34 @@ fn discover_from_dag_file_cached(
     };
 
     // Compute source digest (cheap: module graph discovery + file hashing)
-    let source_digest = compute_source_digest_for_context(&context).ok()?;
+    let source_digest =
+        compute_source_digest_for_context(&context).map_err(|e| format!("source digest: {e}"))?;
 
     // Cache hit: skip full compilation, reconstruct from cached metadata.
     // Uses cached func params to avoid re-parsing the AST.
     if let Some(cached) = cache.entries.get(&module_name) {
         if cached.source_digest == source_digest {
-            let cached_entrypoints: Vec<InferredEntrypoint> =
-                cached.entrypoints.iter().map(InferredEntrypoint::from).collect();
-            let func_params = cached_func_params_to_dsl_params(&cached.func_params);
-            return build_tool_defs_from_cached_params(
-                &rel_path,
-                &module_name,
-                &cached_entrypoints,
-                &cached.output_paths,
-                &func_params,
-            );
+            let cached_entrypoints: Vec<InferredEntrypoint> = cached
+                .entrypoints
+                .iter()
+                .map(InferredEntrypoint::from)
+                .collect();
+            if let Some(func_params) = cached_func_params_to_dsl_params(&cached.func_params) {
+                return Ok(build_tool_defs_from_cached_params(
+                    &rel_path,
+                    &module_name,
+                    &cached_entrypoints,
+                    &cached.output_paths,
+                    &func_params,
+                ));
+            }
         }
     }
 
-    // Cache miss: full compilation
-    let source = std::fs::read_to_string(path).map_err(|e| {
-        eprintln!("warning: cannot read {}: {e}", path.display());
-    }).ok()?;
-    let ast = daglang_syntax::parser::parse(&source)
-        .map_err(|e| {
-            eprintln!("warning: parse error in {}: {:?}", path.display(), e);
-        })
-        .ok()?;
-    let compile_output = compile_from_context(&context).map_err(|e| {
-        eprintln!("warning: compilation error for {}: {e}", path.display());
-    }).ok()?;
+    // Cache miss: full compilation (build-time bootstrap exception)
+    let source = std::fs::read_to_string(path).map_err(|e| format!("read: {e}"))?;
+    let ast = daglang_syntax::parser::parse(&source).map_err(|e| format!("parse: {e:?}"))?;
+    let compile_output = compile_from_context(&context).map_err(|e| format!("compile: {e}"))?;
 
     let module_entrypoints: Vec<&InferredEntrypoint> = compile_output
         .inferred_entrypoints
@@ -214,7 +229,7 @@ fn discover_from_dag_file_cached(
         .collect();
 
     if module_entrypoints.is_empty() {
-        return None;
+        return Ok(None);
     }
 
     // Extract func params from AST for both result and cache
@@ -224,7 +239,11 @@ fn discover_from_dag_file_cached(
     let result = build_tool_defs_from_cached_params(
         &rel_path,
         &module_name,
-        &module_entrypoints.iter().copied().cloned().collect::<Vec<_>>(),
+        &module_entrypoints
+            .iter()
+            .copied()
+            .cloned()
+            .collect::<Vec<_>>(),
         &compile_output.output_paths,
         &func_params,
     );
@@ -244,7 +263,7 @@ fn discover_from_dag_file_cached(
     cache.entries.insert(module_name, entry);
     *cache_dirty = true;
 
-    result
+    Ok(result)
 }
 
 /// Extract func parameters from a parsed AST.
@@ -276,29 +295,30 @@ fn extract_func_params_from_ast(
 
 /// Convert cached func params back to DslParam.
 fn cached_func_params_to_dsl_params(
-    cached: &HashMap<String, Vec<CachedFuncParam>>,
-) -> BTreeMap<String, Vec<DslParam>> {
-    cached
-        .iter()
-        .map(|(name, params)| {
-            let dsl_params = params
-                .iter()
-                .map(|p| DslParam {
-                    name: p.name.clone(),
-                    type_id: ParamType::try_from(p.type_name.as_str()).unwrap_or(ParamType::Str),
-                    cardinality: decode_cached_cardinality(&p.cardinality),
-                    default: p.default.clone(),
-                })
-                .collect();
-            (name.clone(), dsl_params)
-        })
-        .collect()
+    cached: &BTreeMap<String, Vec<CachedFuncParam>>,
+) -> Option<BTreeMap<String, Vec<DslParam>>> {
+    let mut out = BTreeMap::new();
+    for (name, params) in cached {
+        let mut dsl_params = Vec::new();
+        for p in params {
+            let type_id = ParamType::try_from(p.type_name.as_str()).ok()?;
+            let cardinality = decode_cached_cardinality(&p.cardinality)?;
+            dsl_params.push(DslParam {
+                name: p.name.clone(),
+                type_id,
+                cardinality,
+                default: p.default.clone(),
+            });
+        }
+        out.insert(name.clone(), dsl_params);
+    }
+    Some(out)
 }
 
 /// Convert DslParam map to cached format for serialization.
 fn dsl_params_to_cached(
     params: &BTreeMap<String, Vec<DslParam>>,
-) -> HashMap<String, Vec<CachedFuncParam>> {
+) -> BTreeMap<String, Vec<CachedFuncParam>> {
     params
         .iter()
         .map(|(name, dsl_params)| {
@@ -324,26 +344,23 @@ fn encode_cached_cardinality(cardinality: Cardinality) -> String {
     format!("{}:{max}", cardinality.min)
 }
 
-fn decode_cached_cardinality(encoded: &str) -> Cardinality {
+fn decode_cached_cardinality(encoded: &str) -> Option<Cardinality> {
     match encoded {
         // Backward compatibility with older cache encodings.
-        "ZERO" => Cardinality::ZERO,
-        "ONE" => Cardinality::ONE,
-        "ZERO_OR_ONE" => Cardinality::ZERO_OR_ONE,
-        "ZERO_OR_MORE" => Cardinality::ZERO_OR_MORE,
-        "ONE_OR_MORE" => Cardinality::ONE_OR_MORE,
+        "ZERO" => Some(Cardinality::ZERO),
+        "ONE" => Some(Cardinality::ONE),
+        "ZERO_OR_ONE" => Some(Cardinality::ZERO_OR_ONE),
+        "ZERO_OR_MORE" => Some(Cardinality::ZERO_OR_MORE),
+        "ONE_OR_MORE" => Some(Cardinality::ONE_OR_MORE),
         _ => {
             let mut parts = encoded.splitn(2, ':');
-            let min = parts
-                .next()
-                .and_then(|s| s.parse::<u32>().ok())
-                .unwrap_or(Cardinality::ONE.min);
+            let min = parts.next().and_then(|s| s.parse::<u32>().ok())?;
             let max = match parts.next() {
                 Some("*") => None,
                 Some(s) => s.parse::<u32>().ok(),
-                None => Some(Cardinality::ONE.min),
+                None => return None,
             };
-            Cardinality::new(min, max)
+            Some(Cardinality::new(min, max))
         }
     }
 }
@@ -374,10 +391,7 @@ fn build_tool_defs_from_cached_params(
         for ep in module_entrypoints {
             let subcmd_name = ep.func_name.replace('_', "-");
             let graph_builder_args = format!("\"{}\", Some(\"{}\")", rel_path, ep.func_name);
-            let mock_spec = format!(
-                "gunbc_test::auto_mock_spec(&dag, \"{}\")",
-                subcmd_name,
-            );
+            let mock_spec = format!("gunbc_test::auto_mock_spec(&dag, \"{}\")", subcmd_name,);
             let entrypoints = func_params
                 .get(&ep.func_name)
                 .map(|params| derive_entrypoints(params))
@@ -398,13 +412,9 @@ fn build_tool_defs_from_cached_params(
 
         let first_args = format!(
             "\"{}\", Some(\"{}\")",
-            rel_path,
-            module_entrypoints[0].func_name
+            rel_path, module_entrypoints[0].func_name
         );
-        let mock_spec = format!(
-            "gunbc_test::auto_mock_spec(&dag, \"{}\")",
-            module_tool_name,
-        );
+        let mock_spec = format!("gunbc_test::auto_mock_spec(&dag, \"{}\")", module_tool_name,);
 
         let mut tool = ToolDef::new(
             String::from("gunbc-dag"),
@@ -434,10 +444,7 @@ fn build_tool_defs_from_cached_params(
         let tool_name = ep.func_name.replace('_', "-");
         let graph_builder_args = format!("\"{}\", Some(\"{}\")", rel_path, ep.func_name);
         let description = humanize_tool_name(&tool_name);
-        let mock_spec = format!(
-            "gunbc_test::auto_mock_spec(&dag, \"{}\")",
-            tool_name,
-        );
+        let mock_spec = format!("gunbc_test::auto_mock_spec(&dag, \"{}\")", tool_name,);
         let entrypoints = func_params
             .get(&ep.func_name)
             .map(|params| derive_entrypoints(params))

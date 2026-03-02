@@ -104,6 +104,11 @@ func deploy_worker_service(
     name: worker_service_name(),
     image: worker_image(project_id: project_id, region: region),
     memory: "512Mi",
+    env: {
+      "SDLC_LEDGER_DIR": "/data/ledger",
+      "SDLC_REPO_OWNER": "gunb-ai",
+      "SDLC_REPO_NAME": "gunbc"
+    },
     labels: { "managed-by": "gunbc", "component": "sdlc-worker" }
   )
   return { name: updated.name, uri: updated.uri }
@@ -143,6 +148,11 @@ func deploy_revision(
     name: worker_service_name(),
     image: image,
     memory: "512Mi",
+    env: {
+      "SDLC_LEDGER_DIR": "/data/ledger",
+      "SDLC_REPO_OWNER": "gunb-ai",
+      "SDLC_REPO_NAME": "gunbc"
+    },
     labels: { "managed-by": "gunbc", "component": "sdlc-worker", "deploy-image": image }
   )
 

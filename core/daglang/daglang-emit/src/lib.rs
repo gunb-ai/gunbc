@@ -356,7 +356,7 @@ pub fn emit_rust_bundle(
         },
     ];
     // TL-14: Emit middleware config JSON manifest.
-    if let Some(manifest) = emit_middleware_manifest("rust", &rust_symbols) {
+    if let Some(manifest) = emit_middleware_manifest("rust", &rust_symbols)? {
         files.push(manifest);
     }
     if let Some(test_file) = test_gen::emit_dry_run_completion_test("rust", &artifacts.obligations)
@@ -473,7 +473,7 @@ pub fn emit_go_bundle(
         },
     ];
     // TL-14: Emit middleware config JSON manifest.
-    if let Some(manifest) = emit_middleware_manifest("go", &symbols) {
+    if let Some(manifest) = emit_middleware_manifest("go", &symbols)? {
         files.push(manifest);
     }
     if let Some(test_file) = test_gen::emit_dry_run_completion_test("go", &artifacts.obligations) {
@@ -577,7 +577,7 @@ pub fn emit_c_bundle(
         },
     ];
     // TL-14: Emit middleware config JSON manifest.
-    if let Some(manifest) = emit_middleware_manifest("c", &symbols) {
+    if let Some(manifest) = emit_middleware_manifest("c", &symbols)? {
         files.push(manifest);
     }
     if let Some(test_file) = test_gen::emit_dry_run_completion_test("c", &artifacts.obligations) {
@@ -659,7 +659,7 @@ pub fn emit_mips_bundle(
         },
     ];
     // TL-14: Emit middleware config JSON manifest.
-    if let Some(manifest) = emit_middleware_manifest("mips", &symbols) {
+    if let Some(manifest) = emit_middleware_manifest("mips", &symbols)? {
         files.push(manifest);
     }
     if let Some(test_file) = test_gen::emit_dry_run_completion_test("mips", &artifacts.obligations)
@@ -701,10 +701,7 @@ fn collect_middleware_configs(
         if sym.service_phase != Some(service_emit::ServiceTransportPhase::Prepare) {
             continue;
         }
-        let middleware = sym
-            .spec
-            .as_ref()
-            .and_then(service_emit::extract_middleware);
+        let middleware = sym.spec.as_ref().and_then(service_emit::extract_middleware);
         if let Some(mw) = middleware {
             if seen.insert(&sym.name) {
                 configs.push((sym.name.clone(), mw));
@@ -718,17 +715,18 @@ fn collect_middleware_configs(
 fn emit_middleware_manifest(
     backend: &str,
     symbols: &[CollectedSymbol],
-) -> Option<EmittedFile> {
+) -> Result<Option<EmittedFile>, EmitError> {
     let configs = collect_middleware_configs(symbols);
     if configs.is_empty() {
-        return None;
+        return Ok(None);
     }
-    let json = service_emit::serialize_middleware_config_json(&configs)
-        .unwrap_or_else(|e| panic!("middleware config serialization failed: {e}"));
-    Some(EmittedFile {
+    let json = service_emit::serialize_middleware_config_json(&configs).map_err(|e| {
+        EmitError::InvalidLoweredNode(format!("middleware config serialization failed: {e}"))
+    })?;
+    Ok(Some(EmittedFile {
         path: format!("target/generated/{backend}/transport_middleware.json"),
         content: json,
-    })
+    }))
 }
 
 /// Emit inline middleware config functions for a specific backend (TL-14).
@@ -1243,7 +1241,6 @@ mod tests {
                     readonly: false,
                     permissions: vec!["messages".to_string()],
                     spec: Some(rest_spec.clone()),
-
                 })),
                 is_interactive: false,
                 resource_target: None,
@@ -1269,7 +1266,6 @@ mod tests {
                     readonly: false,
                     permissions: vec!["messages".to_string()],
                     spec: Some(rest_spec.clone()),
-
                 })),
                 is_interactive: false,
                 resource_target: None,
@@ -1295,7 +1291,6 @@ mod tests {
                     readonly: false,
                     permissions: vec!["messages".to_string()],
                     spec: Some(rest_spec),
-
                 })),
                 is_interactive: false,
                 resource_target: None,
@@ -1321,7 +1316,6 @@ mod tests {
                     readonly: false,
                     permissions: vec![],
                     spec: Some(shell_spec.clone()),
-
                 })),
                 is_interactive: false,
                 resource_target: None,
@@ -1347,7 +1341,6 @@ mod tests {
                     readonly: false,
                     permissions: vec![],
                     spec: Some(shell_spec),
-
                 })),
                 is_interactive: false,
                 resource_target: None,

@@ -81,7 +81,7 @@ type ExecutionSpan {
   attributes: Map<String, String>
 }
 
-type SpanStatus = OK | ERROR | UNSET
+type SpanStatus = OK | SPAN_ERROR | UNSET
 
 // Log filter for querying structured logs.
 type LogFilter {
@@ -96,10 +96,15 @@ type LogFilter {
 // Escape a string for safe JSON embedding.
 // Handles double quotes, backslashes, and newlines.
 fn json_escape(s: String) -> String {
-  s |> replace(from: "\\", to: "\\\\")
-    |> replace(from: "\"", to: "\\\"")
-    |> replace(from: "\n", to: "\\n")
-    |> replace(from: "\t", to: "\\t")
+  s
+    |> split(delimiter: "\\")
+    |> join(separator: "\\\\")
+    |> split(delimiter: "\"")
+    |> join(separator: "\\\"")
+    |> split(delimiter: "\n")
+    |> join(separator: "\\n")
+    |> split(delimiter: "\t")
+    |> join(separator: "\\t")
 }
 
 // Format a structured log entry as a JSON-compatible string.
@@ -140,15 +145,15 @@ fn log_transport_success(
     severity: INFO,
     message: "Transport {provider}.{operation} completed ({http_status})",
     timestamp: timestamp,
-    transport: {
+    transport: ({
       provider: provider,
       operation: operation,
-      http_status: http_status,
-      http_method: null,
-      endpoint: null,
-      request_id: null
-    },
-    error: null,
+      http_status: http_status as Int?,
+      http_method: None,
+      endpoint: None,
+      request_id: None
+    } as TransportLogContext?),
+    error: None,
     worker_id: worker_id
   }
 }
@@ -175,23 +180,23 @@ fn log_transport_error(
     stage: stage,
     node_id: node_id,
     duration_ms: duration_ms,
-    severity: ERROR,
+    severity: ERROR as LogSeverity,
     message: "Transport {provider}.{operation} failed: {error_message}",
     timestamp: timestamp,
-    transport: {
+    transport: ({
       provider: provider,
       operation: operation,
-      http_status: null,
-      http_method: null,
-      endpoint: null,
-      request_id: null
-    },
-    error: {
+      http_status: None,
+      http_method: None,
+      endpoint: None,
+      request_id: None
+    } as TransportLogContext?),
+    error: ({
       error_type: error_type,
       message: error_message,
       retryable: retryable,
-      stack_trace: null
-    },
+      stack_trace: None
+    } as LogErrorContext?),
     worker_id: worker_id
   }
 }

@@ -41,7 +41,16 @@ fn main() {
     });
 
     let desired = generate_deps_toml_from_registry();
-    let existing = read_existing(DEFAULT_MANIFEST_FILENAME);
+    let existing = match read_existing(DEFAULT_MANIFEST_FILENAME) {
+        Ok(existing) => existing,
+        Err(error) => {
+            eprintln!(
+                "error: failed to read {}: {error}",
+                DEFAULT_MANIFEST_FILENAME
+            );
+            process::exit(1);
+        }
+    };
     let is_fresh = existing.as_deref() == Some(desired.as_str());
 
     match mode {
@@ -81,8 +90,12 @@ fn main() {
 }
 
 #[allow(clippy::disallowed_methods)] // Bootstrap/config binary owns deps.toml.
-fn read_existing(path: &str) -> Option<String> {
-    std::fs::read_to_string(path).ok()
+fn read_existing(path: &str) -> Result<Option<String>, std::io::Error> {
+    match std::fs::read_to_string(path) {
+        Ok(content) => Ok(Some(content)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
+    }
 }
 
 #[allow(clippy::disallowed_methods)] // Bootstrap/config binary owns deps.toml.

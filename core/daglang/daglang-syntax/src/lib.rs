@@ -471,6 +471,8 @@ pub mod ast {
         pub name: String,
         /// Optional parent fixture name.
         pub fixture: Option<String>,
+        /// Local let-bindings available to subsequent expectations.
+        pub lets: Vec<LetDecl>,
         /// Mock declarations local to this test.
         pub mocks: Vec<MockDecl>,
         /// Input value injections for dangling DAG entry ports.
@@ -503,6 +505,13 @@ pub mod ast {
     pub struct InputDecl {
         pub node_segments: Vec<String>,
         pub port: String,
+        pub value: Expr,
+    }
+
+    /// A local let-binding inside a test block: `let <name> = <expr>`.
+    #[derive(Debug, Clone)]
+    pub struct LetDecl {
+        pub name: String,
         pub value: Expr,
     }
 
