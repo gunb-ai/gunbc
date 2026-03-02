@@ -230,6 +230,15 @@ fn classify_nodes_with_config(
         let handler = match classify_handler(op) {
             Some(HandlerClassification::Handler(h)) => h,
             Some(HandlerClassification::MetadataOnly) => continue,
+            Some(HandlerClassification::InterpreterOnly) => {
+                return Err(ExecRuntimeError::UnresolvableNode {
+                    node_id: node_id.clone(),
+                    detail: format!(
+                        "node requires interpreter (resolve.rs) — \
+                         cannot emit static handler for {op:?}"
+                    ),
+                });
+            }
             None => {
                 return Err(ExecRuntimeError::UnresolvableNode {
                     node_id: node_id.clone(),
@@ -293,6 +302,10 @@ pub fn required_embedded_assets(dag: &Dag<LoweredOp>) -> BTreeSet<EmbeddedAsset>
 enum HandlerClassification {
     Handler(HandlerKind),
     MetadataOnly,
+    /// C24: Operations resolved by the interpreter (resolve.rs) that have
+    /// no emitted handler yet. Unlike MetadataOnly, these ARE real transforms.
+    /// If the emitter encounters them, it should error — not silently skip.
+    InterpreterOnly,
 }
 
 fn classify_handler(op: &LoweredOp) -> Option<HandlerClassification> {
@@ -349,14 +362,18 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerClassification> {
             kind: PrimitiveOpKind::ContentUpsertOutputPath { .. },
             ..
         } => return Some(HandlerClassification::MetadataOnly),
+        // C24: GetField and ExprCompute are real transforms resolved by the
+        // interpreter (resolve.rs). They are NOT metadata-only — if the emitter
+        // tries to generate code for a graph containing them, it must error so
+        // we don't silently drop field projections or expression evaluations.
         LoweredOp::Primitive {
             kind: PrimitiveOpKind::GetField { .. },
             ..
-        } => return Some(HandlerClassification::MetadataOnly),
+        } => return Some(HandlerClassification::InterpreterOnly),
         LoweredOp::Primitive {
             kind: PrimitiveOpKind::ExprCompute { .. },
             ..
-        } => return Some(HandlerClassification::MetadataOnly),
+        } => return Some(HandlerClassification::InterpreterOnly),
     }
 
     let handler = |h| Some(HandlerClassification::Handler(h));

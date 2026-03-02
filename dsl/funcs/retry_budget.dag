@@ -28,10 +28,6 @@ type RetryDecision
   | FirstAttempt { budget: Int }
   | AlreadySucceeded
 
-// Default retry budget per stage. Can be overridden per-pipeline
-// via the `retry_budget` pipeline parameter.
-data DEFAULT_RETRY_BUDGET: Int = 3
-
 // Check retry budget before stage execution.
 // Returns a RetryDecision that tells the worker whether to proceed,
 // terminate, or skip (already succeeded).
@@ -50,9 +46,9 @@ func check_retry_budget(
   let decision = match prior.found {
     false => FirstAttempt { budget: max_retries }
     true  => match prior.outcome.status {
-      "Success"         => AlreadySucceeded
-      "PendingApproval" => AlreadySucceeded
-      "TerminalFailed"  => TerminalFailed {
+      Success         => AlreadySucceeded
+      PendingApproval => AlreadySucceeded
+      TerminalFailed  => TerminalFailed {
         reason: "previously marked terminal",
         total_attempts: prior.outcome.attempt_count
       }
@@ -90,8 +86,8 @@ func record_with_budget(
     stage: stage,
     outcome: {
       status: match success {
-        true  => "Success"
-        false => if budget_remaining > 0 { "Failed" } else { "TerminalFailed" }
+        true  => Success
+        false => if budget_remaining > 0 { Failed } else { TerminalFailed }
       },
       attempt_count: attempt_number,
       retry_budget_remaining: budget_remaining
@@ -114,7 +110,7 @@ func mark_terminal(
     run_key: run_key,
     stage: stage,
     outcome: {
-      status: "TerminalFailed",
+      status: TerminalFailed,
       attempt_count: attempt_count,
       retry_budget_remaining: 0
     }

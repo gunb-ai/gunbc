@@ -376,6 +376,7 @@ impl Executable for LiteralSourceOp {
 
 /// C24: Extract a named field from a Map/Record/JSON input.
 /// Pure structural projection — no runtime interpreter needed.
+/// Fail-closed: missing input port or non-Map/Json input → ExecError.
 #[derive(Debug, Clone)]
 struct GetFieldOp {
     input_port: String,
@@ -399,7 +400,12 @@ impl Executable for GetFieldOp {
                 .map(|v| Value::Json(v.clone()))
                 .unwrap_or(Value::Json(serde_json::Value::Null)),
             Value::Skipped => Value::Skipped,
-            _ => Value::Skipped,
+            other => {
+                return Err(ExecError::new(format!(
+                    "GetField `{}`: expected Map or Json object on port `{}`, got {:?}",
+                    self.field, self.input_port, other
+                )));
+            }
         };
         OutputMap::new()
             .value(self.output_port.as_str(), extracted)
@@ -886,11 +892,17 @@ fn resolve_primitive(
             let input_port = inputs
                 .first()
                 .map(|p| p.name.0.clone())
-                .unwrap_or_default();
+                .ok_or_else(|| ResolveError {
+                    node_id: String::new(),
+                    reason: format!("GetField `{field}`: node has no input port (compiler bug)"),
+                })?;
             let output_port = outputs
                 .first()
                 .map(|p| p.name.0.clone())
-                .unwrap_or_else(|| "result".to_string());
+                .ok_or_else(|| ResolveError {
+                    node_id: String::new(),
+                    reason: format!("GetField `{field}`: node has no output port (compiler bug)"),
+                })?;
             Ok(DynOp::new(GetFieldOp {
                 input_port,
                 field: field.clone(),

@@ -73,9 +73,10 @@ pipeline cloud_e2e
   }
 
   // Stage 3: Claim — acquire a claim on first discovered issue (SC-1)
+  // Guarded by `when has_issues` — first_issue is always Some here.
   stage claim_issue [after discover_issues, when has_issues] {
     first_issue = discovered.issues |> first()
-    issue_id = e2e_issue_id(prefix: first_issue?.id ?? "fallback")
+    issue_id = e2e_issue_id(prefix: first_issue?.id)
 
     claim = claims.acquire(
       issue_id: issue_id,

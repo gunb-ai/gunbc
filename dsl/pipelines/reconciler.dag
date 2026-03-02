@@ -251,19 +251,27 @@ pipeline reconciler
             generation: claim.generation
           )
 
-          // Emit signal so the issue gets re-processed
-          requeue = signals.emit(signal: {
-            signal_type: "WorkReady",
-            idempotency_key: "stale-claim::{claim.issue_id}::{claim.stage}",
-            payload: {
-              issue_id: claim.issue_id,
-              stage: claim.stage,
-              reason: "stale_claim_released"
-            },
-            produced_at: "now"
-          })
-
-          { issue_id: claim.issue_id, stage: claim.stage, action: "stale_released" }
+          // Only emit requeue signal if release succeeded (generation matched).
+          // If release failed, the claim was re-acquired — don't spam.
+          match release_result.released {
+            true => {
+              requeue = signals.emit(signal: {
+                signal_type: "WorkReady",
+                idempotency_key: "stale-claim::{claim.issue_id}::{claim.stage}",
+                payload: {
+                  issue_id: claim.issue_id,
+                  stage: claim.stage,
+                  reason: "stale_claim_released"
+                },
+                produced_at: "now"
+              })
+              { issue_id: claim.issue_id, stage: claim.stage, action: "stale_released" }
+            }
+            false => {
+              // Release failed — claim was re-acquired by another worker
+              { issue_id: claim.issue_id, stage: claim.stage, action: "release_conflict" }
+            }
+          }
         }
         false => {
           { issue_id: claim.issue_id, stage: claim.stage, action: "healthy" }
@@ -294,12 +302,17 @@ pipeline reconciler
           active_claims: active_claim_keys
         )
 
-        stuck = is_stuck_stage(
-          status: outcome.status,
-          updated_at_epoch_ms: outcome.updated_at_epoch_ms ?? 0,
-          now_epoch_ms: params.current_epoch_ms,
-          threshold_ms: params.stale_claim_threshold_ms * 5   // 10 min for stuck stages
-        )
+        // If updated_at_epoch_ms is missing, we don't have enough info
+        // to declare the stage stuck — treat as not-stuck to avoid false positives.
+        stuck = match outcome.updated_at_epoch_ms {
+          null => false
+          ts => is_stuck_stage(
+            status: outcome.status,
+            updated_at_epoch_ms: ts,
+            now_epoch_ms: params.current_epoch_ms,
+            threshold_ms: params.stale_claim_threshold_ms * 5   // 10 min for stuck stages
+          )
+        }
 
         match has_claim {
           false => match stuck {

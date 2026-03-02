@@ -144,6 +144,11 @@ service cloudrun.Deploy {
   }
 }
 
+// Validate that a percent value is in [0, 100].
+fn validate_percent(value: Int) -> Bool {
+  value >= 0 && value <= 100
+}
+
 // Orchestrate a rolling deploy with canary validation.
 // Protocol:
 //   1. Deploy new revision (no traffic)
@@ -151,15 +156,27 @@ service cloudrun.Deploy {
 //   3. Validate health of new revision
 //   4. If healthy: route 100% traffic to new revision
 //   5. If unhealthy: rollback to previous revision
+type CanarySplitResult
+  = Valid { splits: List<TrafficSplit> }
+  | InvalidPercent { value: Int, reason: String }
+
 fn build_canary_splits(
   new_revision: String,
   old_revision: String,
   canary_percent: Int
-) -> List<TrafficSplit> {
-  [
-    { revision: new_revision, percent: canary_percent },
-    { revision: old_revision, percent: 100 - canary_percent }
-  ]
+) -> CanarySplitResult {
+  match validate_percent(value: canary_percent) {
+    false => InvalidPercent {
+      value: canary_percent,
+      reason: "canary_percent must be between 0 and 100"
+    }
+    true => Valid {
+      splits: [
+        { revision: new_revision, percent: canary_percent },
+        { revision: old_revision, percent: 100 - canary_percent }
+      ]
+    }
+  }
 }
 
 fn build_full_splits(revision: String) -> List<TrafficSplit> {
@@ -180,13 +197,35 @@ test deploy_new_revision {
 
 test canary_traffic_split {
 
-    let splits = build_canary_splits(
+    let result = build_canary_splits(
       new_revision: "sdlc-worker-00002-abc",
       old_revision: "sdlc-worker-00001-xyz",
       canary_percent: 10
     )
 
-    expect splits |> count() == 2
+    expect result is Valid
+}
+
+test canary_percent_out_of_range {
+
+    let result = build_canary_splits(
+      new_revision: "sdlc-worker-00002-abc",
+      old_revision: "sdlc-worker-00001-xyz",
+      canary_percent: 110
+    )
+
+    expect result is InvalidPercent
+}
+
+test canary_percent_negative {
+
+    let result = build_canary_splits(
+      new_revision: "sdlc-worker-00002-abc",
+      old_revision: "sdlc-worker-00001-xyz",
+      canary_percent: -5
+    )
+
+    expect result is InvalidPercent
 }
 
 test rollback_on_unhealthy {

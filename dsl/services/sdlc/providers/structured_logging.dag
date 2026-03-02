@@ -93,21 +93,32 @@ type LogFilter {
   time_range_end: EpochMs?
 }
 
+// Escape a string for safe JSON embedding.
+// Handles double quotes, backslashes, and newlines.
+fn json_escape(s: String) -> String {
+  s |> replace(from: "\\", to: "\\\\")
+    |> replace(from: "\"", to: "\\\"")
+    |> replace(from: "\n", to: "\\n")
+    |> replace(from: "\t", to: "\\t")
+}
+
 // Format a structured log entry as a JSON-compatible string.
 // Cloud Logging auto-parses JSON payloads from stdout.
 fn format_log_entry(entry: StructuredLogEntry) -> String {
+  let msg = json_escape(s: entry.message)
   let transport_json = match entry.transport {
-    Some(t) => ",\"transport\":{\"provider\":\"{t.provider}\",\"operation\":\"{t.operation}\"}"
+    Some(t) => ",\"transport\":{\"provider\":\"{json_escape(s: t.provider)}\",\"operation\":\"{json_escape(s: t.operation)}\"}"
     None => ""
   }
   let error_json = match entry.error {
-    Some(e) => ",\"error\":{\"type\":\"{e.error_type}\",\"message\":\"{e.message}\",\"retryable\":{e.retryable}}"
+    Some(e) => ",\"error\":{\"type\":\"{json_escape(s: e.error_type)}\",\"message\":\"{json_escape(s: e.message)}\",\"retryable\":{e.retryable}}"
     None => ""
   }
-  "{\"severity\":\"{entry.severity}\",\"trace_id\":\"{entry.trace_id}\",\"issue_id\":\"{entry.issue_id}\",\"stage\":\"{entry.stage}\",\"node_id\":\"{entry.node_id}\",\"duration_ms\":{entry.duration_ms},\"message\":\"{entry.message}\",\"worker_id\":\"{entry.worker_id}\"{transport_json}{error_json}}"
+  "{\"severity\":\"{entry.severity}\",\"timestamp\":\"{entry.timestamp}\",\"trace_id\":\"{entry.trace_id}\",\"issue_id\":\"{entry.issue_id}\",\"stage\":\"{entry.stage}\",\"node_id\":\"{entry.node_id}\",\"duration_ms\":{entry.duration_ms},\"message\":\"{msg}\",\"worker_id\":\"{entry.worker_id}\"{transport_json}{error_json}}"
 }
 
 // Create a log entry for a successful transport execution.
+// timestamp must be provided by the caller (ISO 8601 string from the runtime).
 fn log_transport_success(
   trace_id: NonEmptyStr,
   issue_id: NonEmptyStr,
@@ -117,7 +128,8 @@ fn log_transport_success(
   worker_id: NonEmptyStr,
   provider: String,
   operation: String,
-  http_status: Int
+  http_status: Int,
+  timestamp: String
 ) -> StructuredLogEntry {
   {
     trace_id: trace_id,
@@ -127,7 +139,7 @@ fn log_transport_success(
     duration_ms: duration_ms,
     severity: INFO,
     message: "Transport {provider}.{operation} completed ({http_status})",
-    timestamp: "",
+    timestamp: timestamp,
     transport: {
       provider: provider,
       operation: operation,
@@ -142,6 +154,7 @@ fn log_transport_success(
 }
 
 // Create a log entry for a failed transport execution.
+// timestamp must be provided by the caller (ISO 8601 string from the runtime).
 fn log_transport_error(
   trace_id: NonEmptyStr,
   issue_id: NonEmptyStr,
@@ -153,7 +166,8 @@ fn log_transport_error(
   operation: String,
   error_type: String,
   error_message: String,
-  retryable: Bool
+  retryable: Bool,
+  timestamp: String
 ) -> StructuredLogEntry {
   {
     trace_id: trace_id,
@@ -163,7 +177,7 @@ fn log_transport_error(
     duration_ms: duration_ms,
     severity: ERROR,
     message: "Transport {provider}.{operation} failed: {error_message}",
-    timestamp: "",
+    timestamp: timestamp,
     transport: {
       provider: provider,
       operation: operation,
@@ -195,7 +209,8 @@ test structured_log_format {
       worker_id: "worker-1",
       provider: "github.Issues",
       operation: "get",
-      http_status: 200
+      http_status: 200,
+      timestamp: "2026-03-02T00:00:00Z"
     )
 
     let formatted = format_log_entry(entry: entry)
@@ -218,7 +233,8 @@ test structured_log_error_format {
       operation: "acquire",
       error_type: "PreconditionFailed",
       error_message: "412 Precondition Failed",
-      retryable: true
+      retryable: true,
+      timestamp: "2026-03-02T00:00:01Z"
     )
 
     let formatted = format_log_entry(entry: entry)
