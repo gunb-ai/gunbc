@@ -10,10 +10,13 @@
 //! Special case: testgen has a custom builder (no DSL module) and is
 //! hardcoded as the sole exception.
 
-use std::collections::{BTreeMap, HashSet};
-use std::path::Path;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::{Path, PathBuf};
 
-use daglang_driver::{compile_from_context, DriverContext, InferredEntrypoint};
+use daglang_driver::{
+    compile_from_context, compute_source_digest_for_context, CachedDiscoveryEntry,
+    CachedEntrypoint, DriverContext, InferredEntrypoint,
+};
 use daglang_syntax::ast::{Expr, Item, Literal, TypeExpr};
 use gunbc_cli::ParamType;
 use gunbc_codegen::cli_gen::CliEntrypoint;
@@ -29,6 +32,44 @@ struct DslParam {
     default: Option<String>,
 }
 
+/// Persistent discovery cache for incremental compilation (C26).
+///
+/// Stores per-module source digests and cached compilation metadata.
+/// On cache hit (source digest matches), compilation is skipped entirely.
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+struct DiscoveryCache {
+    entries: HashMap<String, CachedDiscoveryEntry>,
+}
+
+impl DiscoveryCache {
+    fn cache_path(workspace_root: &Path) -> PathBuf {
+        workspace_root
+            .join("target")
+            .join("dag-cache")
+            .join("discovery_cache.json")
+    }
+
+    #[allow(clippy::disallowed_methods)]
+    fn load(workspace_root: &Path) -> Self {
+        let path = Self::cache_path(workspace_root);
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+
+    #[allow(clippy::disallowed_methods)]
+    fn save(&self, workspace_root: &Path) {
+        let path = Self::cache_path(workspace_root);
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Ok(json) = serde_json::to_string_pretty(self) {
+            let _ = std::fs::write(&path, json);
+        }
+    }
+}
+
 /// Discover tool definitions from DSL entrypoint inference.
 ///
 /// Scans `dsl/tools/*.dag` for `func` items with untapped inputs
@@ -39,6 +80,9 @@ struct DslParam {
 /// - Invocation as `cargo run -p gunbc-dag --bin gunbc-{name}`
 /// - MockSpec as `auto_mock_spec(&dag, "{name}")`
 ///
+/// Uses content-hash-based incremental caching (C26): unchanged modules
+/// skip parse+typecheck+lower+emit entirely.
+///
 /// Testgen is the sole hardcoded exception (custom builder, no DSL module).
 #[allow(clippy::disallowed_methods)]
 pub fn discover_tool_defs_from_dsl() -> Vec<ToolDef> {
@@ -46,6 +90,9 @@ pub fn discover_tool_defs_from_dsl() -> Vec<ToolDef> {
         .or_else(|_| WorkspaceLayout::from_cargo_metadata())
         .expect("workspace layout for DSL discovery");
     let dsl_root = layout.workspace_root.join("dsl");
+
+    let mut cache = DiscoveryCache::load(&layout.workspace_root);
+    let mut cache_dirty = false;
 
     // Use BTreeMap for dedup by tool_name (later entries overwrite earlier,
     // so dedicated files like gist_diff.dag win over combined gist.dag).
@@ -62,7 +109,9 @@ pub fn discover_tool_defs_from_dsl() -> Vec<ToolDef> {
         paths.sort();
 
         for path in paths {
-            if let Some(defs) = discover_from_dag_file(&dsl_root, &path) {
+            if let Some(defs) =
+                discover_from_dag_file_cached(&dsl_root, &path, &mut cache, &mut cache_dirty)
+            {
                 for tool in defs {
                     tool_map.insert(tool.meta.tool_name.to_string(), tool);
                 }
@@ -74,16 +123,22 @@ pub fn discover_tool_defs_from_dsl() -> Vec<ToolDef> {
     let testgen = testgen_tool_def();
     tool_map.insert(testgen.meta.tool_name.to_string(), testgen);
 
+    // Persist cache if anything changed
+    if cache_dirty {
+        cache.save(&layout.workspace_root);
+    }
+
     tool_map.into_values().collect()
 }
 
-/// Parse a `.dag` file and produce `ToolDef`s for inferred entrypoints.
+/// Cache-aware discovery: check source digest before full compilation (C26).
 #[allow(clippy::disallowed_methods)]
-fn discover_from_dag_file(dsl_root: &Path, path: &Path) -> Option<Vec<ToolDef>> {
-    let source = std::fs::read_to_string(path).ok()?;
-    let ast = daglang_syntax::parser::parse(&source).ok()?;
-
-    // Compile to get inferred_entrypoints and output_paths
+fn discover_from_dag_file_cached(
+    dsl_root: &Path,
+    path: &Path,
+    cache: &mut DiscoveryCache,
+    cache_dirty: &mut bool,
+) -> Option<Vec<ToolDef>> {
     let rel_path = path
         .strip_prefix(dsl_root)
         .ok()?
@@ -95,15 +150,75 @@ fn discover_from_dag_file(dsl_root: &Path, path: &Path) -> Option<Vec<ToolDef>> 
         roots: vec![dsl_root.to_path_buf()],
         target_file: Some(path.to_path_buf()),
     };
+
+    // Compute source digest (cheap: module graph discovery + file hashing)
+    let source_digest = compute_source_digest_for_context(&context).ok()?;
+
+    // Cache hit: skip full compilation, reconstruct from cached metadata
+    if let Some(cached) = cache.entries.get(&module_name) {
+        if cached.source_digest == source_digest {
+            let cached_entrypoints: Vec<InferredEntrypoint> =
+                cached.entrypoints.iter().map(InferredEntrypoint::from).collect();
+            let source = std::fs::read_to_string(path).ok()?;
+            let ast = daglang_syntax::parser::parse(&source).ok()?;
+            return build_tool_defs_from_metadata(
+                &rel_path,
+                &module_name,
+                &cached_entrypoints,
+                &cached.output_paths,
+                &ast,
+            );
+        }
+    }
+
+    // Cache miss: full compilation
+    let source = std::fs::read_to_string(path).ok()?;
+    let ast = daglang_syntax::parser::parse(&source).ok()?;
     let compile_output = compile_from_context(&context).ok()?;
 
-    // Filter entrypoints to this module only
     let module_entrypoints: Vec<&InferredEntrypoint> = compile_output
         .inferred_entrypoints
         .iter()
         .filter(|ep| ep.module == module_name)
         .collect();
 
+    if module_entrypoints.is_empty() {
+        return None;
+    }
+
+    // Build ToolDefs from compilation output
+    let result = build_tool_defs_from_metadata(
+        &rel_path,
+        &module_name,
+        &module_entrypoints.iter().copied().cloned().collect::<Vec<_>>(),
+        &compile_output.output_paths,
+        &ast,
+    );
+
+    // Update cache
+    let entry = CachedDiscoveryEntry {
+        source_digest,
+        entrypoints: module_entrypoints
+            .iter()
+            .map(|ep| CachedEntrypoint::from(*ep))
+            .collect(),
+        output_paths: compile_output.output_paths,
+        available_profiles: compile_output.available_profiles,
+    };
+    cache.entries.insert(module_name, entry);
+    *cache_dirty = true;
+
+    result
+}
+
+/// Build ToolDefs from extracted metadata (shared by cache-hit and cache-miss paths).
+fn build_tool_defs_from_metadata(
+    rel_path: &str,
+    module_name: &str,
+    module_entrypoints: &[InferredEntrypoint],
+    output_paths: &[String],
+    ast: &daglang_syntax::ast::SourceFile,
+) -> Option<Vec<ToolDef>> {
     if module_entrypoints.is_empty() {
         return None;
     }
@@ -133,16 +248,15 @@ fn discover_from_dag_file(dsl_root: &Path, path: &Path) -> Option<Vec<ToolDef>> 
     // RT63: When a module has multiple entrypoints, produce ONE ToolDef
     // with subcommand dispatch instead of N separate binaries.
     if module_entrypoints.len() > 1 {
-        let file_stem = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("tool");
-        let module_tool_name = file_stem.replace('_', "-");
+        let module_tool_name = module_name
+            .rsplit('.')
+            .next()
+            .unwrap_or("tool")
+            .replace('_', "-");
         let description = humanize_tool_name(&module_tool_name);
 
-        // Build subcommand definitions from each entrypoint
         let mut subcommands = Vec::new();
-        for ep in &module_entrypoints {
+        for ep in module_entrypoints {
             let subcmd_name = ep.func_name.replace('_', "-");
             let graph_builder_args = format!("\"{}\", Some(\"{}\")", rel_path, ep.func_name);
             let mock_spec = format!(
@@ -167,8 +281,6 @@ fn discover_from_dag_file(dsl_root: &Path, path: &Path) -> Option<Vec<ToolDef>> 
             });
         }
 
-        // Use the first entrypoint's graph_builder_args for the top-level meta
-        // (it won't be used directly since dispatch goes through subcommands)
         let first_args = format!(
             "\"{}\", Some(\"{}\")",
             rel_path,
@@ -191,7 +303,7 @@ fn discover_from_dag_file(dsl_root: &Path, path: &Path) -> Option<Vec<ToolDef>> 
         .import("use gunbc_dag::dsl_builder::build_dsl_graph_for_entrypoint;")
         .invocation(cargo::CargoInvocation::composed(&module_tool_name, "dag"));
 
-        for output_path in &compile_output.output_paths {
+        for output_path in output_paths {
             tool = tool.output(output_path.clone());
         }
         for subcmd in subcommands {
@@ -201,20 +313,16 @@ fn discover_from_dag_file(dsl_root: &Path, path: &Path) -> Option<Vec<ToolDef>> 
         return Some(vec![tool]);
     }
 
-    // Single entrypoint: produce a standard single-function ToolDef
+    // Single entrypoint
     let mut tools = Vec::new();
-    for ep in &module_entrypoints {
+    for ep in module_entrypoints {
         let tool_name = ep.func_name.replace('_', "-");
-
         let graph_builder_args = format!("\"{}\", Some(\"{}\")", rel_path, ep.func_name);
-
         let description = humanize_tool_name(&tool_name);
         let mock_spec = format!(
             "gunbc_test::auto_mock_spec(&dag, \"{}\")",
             tool_name,
         );
-
-        // Get params from AST (lowered ports lose DSL type specifics)
         let entrypoints = func_params
             .get(&ep.func_name)
             .map(|params| derive_entrypoints(params))
@@ -232,12 +340,9 @@ fn discover_from_dag_file(dsl_root: &Path, path: &Path) -> Option<Vec<ToolDef>> 
         .import("use gunbc_dag::dsl_builder::build_dsl_graph_for_entrypoint;")
         .invocation(cargo::CargoInvocation::composed(&tool_name, "dag"));
 
-        // Add outputs from compilation
-        for output_path in &compile_output.output_paths {
+        for output_path in output_paths {
             tool = tool.output(output_path.clone());
         }
-
-        // Add entrypoints
         for cli_ep in entrypoints {
             tool = tool.entrypoint(cli_ep);
         }
