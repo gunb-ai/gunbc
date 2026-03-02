@@ -5974,6 +5974,11 @@ fn validate_provider_config_fields(
             }
         }
         None => {
+            // Interface implementations (stubs/in-memory adapters) can carry
+            // service-local config fields that are not provider schemas.
+            if service.implements.is_some() {
+                return Ok(());
+            }
             return Err(LowerError::UnknownProviderPrefix {
                 service: service.name.clone(),
                 fields: service.config.extra.iter().map(|f| f.name.clone()).collect(),
