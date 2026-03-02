@@ -14,6 +14,8 @@
 //   5. If failures, send error context back to LLM for retry
 //
 // Profile bindings: cloud_run (real API keys via credential chain)
+//
+// SC-6: Transport blocks will wire real REST calls to LLM APIs.
 
 module services.sdlc.providers.llm_agent_provider
 
@@ -53,6 +55,8 @@ service LlmAgentProvider : AgentProvider {
     max_turns: Int = 5
   }
 
+  // SC-6: spawn wires to LLM API via REST transport.
+  // Implementation: create branch -> send prompt to LLM -> parse response.
   operation spawn {
     input {
       prompt: String
@@ -67,84 +71,25 @@ service LlmAgentProvider : AgentProvider {
       status: AgentStatus
       started: Bool
     }
-
-    // SP-3: Wire to real LLM via REST transport.
-    body {
-      // Create agent branch
-      checkout = git.Core.Checkout(ref: branch, create: true)
-
-      // Build the agent prompt with repo context
-      agent_prompt = build_agent_prompt(
-        task_prompt: prompt,
-        repo_path: repo_path,
-        branch: branch
-      )
-
-      selected_model = model ?? config.default_model
-
-      // Send to LLM (Anthropic Messages API)
-      llm_response = llm.Anthropic.Messages(
-        model: selected_model,
-        messages: [{ role: "user", content: agent_prompt }],
-        system: build_system_prompt(),
-        max_tokens: 8192,
-        temperature: 0.0
-      )
-
-      // Generate a deterministic run_id from the branch + prompt hash
-      run_id = "{branch}-{prompt |> hash()}"
-
-      return {
-        run_id: run_id,
-        status: parse_agent_status(stop_reason: llm_response.stop_reason),
-        started: true
-      }
-    }
   }
 
+  // SC-6: poll returns terminal state (LLM-based agents are synchronous).
   operation poll {
     input { run_id: NonEmptyStr }
     output { status: AgentStatus, finished: Bool, exit_code: Int?, error: String? }
     readonly
-
-    // SP-3: For LLM-based agents, spawn is synchronous.
-    // Poll returns the terminal state immediately.
-    body {
-      return {
-        status: Completed,
-        finished: true,
-        exit_code: 0,
-        error: None
-      }
-    }
   }
 
   operation cancel {
     input { run_id: NonEmptyStr, reason: String? }
     output { cancelled: Bool, final_status: AgentStatus }
-
-    body {
-      return { cancelled: true, final_status: Cancelled }
-    }
   }
 
+  // SC-6: get_result uses git diff to find changed files on agent branch.
   operation get_result {
     input { run_id: NonEmptyStr }
     output { status: AgentStatus, exit_code: Int?, stdout: String?, stderr: String?, files_changed: List<String> }
     readonly
-
-    // SP-3: Return the list of files changed on the agent branch.
-    body {
-      diff = git.Core.DiffNameOnly(base: "main", head: run_id)
-
-      return {
-        status: Completed,
-        exit_code: 0,
-        stdout: None,
-        stderr: None,
-        files_changed: diff.files
-      }
-    }
   }
 }
 

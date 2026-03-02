@@ -5,23 +5,35 @@
 
 ---
 
-## Operating Model: Three Lanes
+## Operating Model: Three Lanes → Ship SDLC
 
+All lanes oriented toward one goal: **SDLC runs reliably in production**.
 Three parallel lanes, mutually independent, each covering a distinct
 vertical slice of remaining work.
 
 ```
-Lane 1: Compiler & Binary Elimination
-  Red C + Red A — compiler refactor enables binary deletion
-  (C1:C24, A1:A11)
+Lane 1: Compiler Critical Path
+  Unblock SDLC execution — C10, C10a, then C24/C25/C26
+  (C10:C26, A1:A4)
 
 Lane 2: Service Contracts & Transport
-  Transport domain modeling + service layer + contract testing
-  (TL-7,11:16, SL-1:11, CT-1:7)
+  Transport domain modeling + multi-target emit
+  (TL-14:15)
 
-Lane 3: SDLC Production
-  Push hermetic pipeline to real cloud execution
-  (SP-1:7)
+Lane 3: SDLC Ship
+  Part B: Wire real transports → cloud profile works (SC-1:8)
+  Part C: Harden for production — retry, observability, scale (SR-1:8)
+```
+
+### Critical Path
+
+```
+C10 (return expr) ──→ C10a (auth wiring) ──→ SC-1:6 (real transports) ──→ SC-8 (cloud e2e)
+        L                    M                    6×M parallel                  M
+                                                       │
+                                              SR-1:4 (hardening, parallel)
+                                                       │
+                                              SR-5:7 (scale + deploy)
 ```
 
 ### Protocols
@@ -29,7 +41,7 @@ Lane 3: SDLC Production
 **Independence**: Lanes touch different files. No merge conflicts.
 Lane 1: `core/daglang/`, `core/codegen/`, `core/exec/`, `core/resolve/`, `gunbc-dag/src/`.
 Lane 2: `dsl/services/`, `lib/transport/`, `core/test/`, `core/ir/src/transport/`.
-Lane 3: `lib/cloud-ops/`, `lib/gcp-ops/`, `dsl/cloud/`, `dsl/workflows/`.
+Lane 3: `dsl/services/sdlc/providers/`, `dsl/pipelines/`, `dsl/funcs/`, `lib/cloud-ops/`.
 
 **Scouting**: Every PR includes a `Scouted:` line listing
 opportunities for other lanes discovered during implementation.
@@ -128,14 +140,14 @@ C21 unblocks A5 (multi-value flag support).
 | 2 | A8 | **Unit commands → DSL data.** `dsl/config/workflow_commands.dag` with per-workflow `{ program, args }`. | `unit_commands.rs` deleted. | M | **Done** |
 | 3 | A9 | **Extract generic workflow to `core/workflow/`.** Move planner, executor, admission, coordination, slo, projection, proof, errors, schema, key (9 modules). | New `core/workflow/` crate. All tests pass. | L | **Done** |
 | 4 | A10 | **Delete binary infrastructure.** Remove `BinaryArgs` from `gunbc-cli`. | `BinaryArgs` deleted. | S | **Done** |
-| 5 | A1 | **Eliminate `sdlc.rs`.** Delete handwritten binary. Move param_source propagation to DSL. | `sdlc.rs` deleted. Generated binary works. | S | Open (needs DSL tool def) |
-| 6 | A2 | **Eliminate `deps_config.rs`.** Delete handwritten binary. | `deps_config.rs` deleted. Generated binary works. | S | Open (needs DSL tool def) |
-| 7 | A3 | **Eliminate `pipeline.rs`.** Delete handwritten binary. Move `query_ci_status()` to DSL. | `pipeline.rs` deleted. Generated binary works. | M | Open (needs DSL tool def) |
-| 8 | A4 | **Eliminate `workflow.rs`.** Delete handwritten binary. Move plan rendering to DSL. | `workflow.rs` deleted. Generated binary works. | L | Open (needs DSL tool def) |
-| 9 | A5 | **Eliminate `infra.rs`.** Delete handwritten binary. 8 subcommands → DSL. | `infra.rs` deleted. All 8 subcommands work via generated binary. | L | Open (needs DSL tool extensions) |
+| 5 | A1 | **Eliminate `sdlc.rs`.** Binary deleted. Stub exists in `target/codegen/bin/sdlc/main.rs`. Need full DSL tool def with param_source propagation. | Generated binary has feature parity. `make sdlc` works. | S | Partial (binary deleted, stub needs DSL tool def) |
+| 6 | A2 | **Eliminate `deps_config.rs`.** Binary deleted. Stub exists. Need DSL tool def for verify/ensure modes. | Generated binary has feature parity. `make deps-config` works. | S | Partial (binary deleted, stub needs DSL tool def) |
+| 7 | A3 | **Eliminate `pipeline.rs`.** Binary deleted. Stub exists. Need DSL tool def with `query_ci_status()`. | Generated binary has feature parity. `make pipeline` works. | M | Partial (binary deleted, stub needs DSL tool def) |
+| 8 | A4 | **Eliminate `workflow.rs`.** Binary deleted. Stub exists. Need DSL tool def with plan rendering. | Generated binary has feature parity. `make workflow` works. | L | Partial (binary deleted, stub needs DSL tool def) |
+| 9 | A5 | **Eliminate `infra.rs`.** Binary deleted. Full generated binary exists (159 LOC). 8 subcommands working. | All 8 subcommands work via generated binary. | L | **Done** |
 | 10 | A11 | **Delete compensating tests.** 7 `workflow_*.rs` + `infra_cli.rs`. | Files deleted. `cargo test --workspace` passes. | S | **Done** (CT-6 restored tests) |
 
-**Remaining open**: A1-A5 require extending DSL tool definitions to cover all subcommands before handwritten binaries can be deleted. Each needs a generated equivalent with full feature parity.
+**Remaining open**: A1-A4 have binaries deleted but stubs need full DSL tool definitions for feature parity. A5 is **Done** (fully generated).
 
 ---
 
@@ -223,6 +235,8 @@ Cloud Run deployment, real LLM agent, multi-worker CAS, CI integration.
 Every item depends on the transport middleware (Lane 2 Phase 1 Target SDK — **Done**)
 and service contracts (Lane 2 Part B) being in place.
 
+## Part A: Cloud Infrastructure (SP-1:7) — DONE
+
 | # | ID | What | Size | Status |
 |---|-----|------|------|--------|
 | 1 | SP-1 | **GCP credential chaining.** WIF OIDC → STS token exchange → impersonation → scoped access token. | L | **Done** |
@@ -234,6 +248,48 @@ and service contracts (Lane 2 Part B) being in place.
 | 7 | SP-7 | **Webhook-driven stage transitions.** Cloud Run HTTP endpoint receives GitHub webhook events. | L | **Done** |
 
 **All SP tasks complete.**
+
+---
+
+## Part B: SDLC Runs in Cloud
+
+Wire real transport operations for cloud profile. After this part, `gunbc-sdlc --profile cloud_run`
+executes against real GitHub, GCS, and LLM providers.
+
+**Prerequisites**: C10 (complex return expr), C10a (auth credential wiring) — both Lane 1.
+
+| # | ID | What | Acceptance Criteria | Size | Status |
+|---|-----|------|---------------------|------|--------|
+| 1 | SC-1 | **Wire GCS claim store transport.** Replace stub transport blocks in `gcs_claim_store.dag` with real `transport rest {}` blocks pointing to GCS JSON API. Wire `acquire` (conditional PUT with `ifGenerationMatch`), `heartbeat` (PATCH), `release` (DELETE). | `cloud_run` profile claim operations execute against real GCS. Generation-based CAS works. | M | Open |
+| 2 | SC-2 | **Wire GCS outcome ledger transport.** Replace stubs in `gcs_outcome_ledger.dag` with real `transport rest {}`. Wire `upsert` (PUT) and `get` (GET) with JSON response parsing. | `cloud_run` profile outcome recording works against real GCS. | S | Open |
+| 3 | SC-3 | **Wire GCS artifact store transport.** Replace stubs in `gcs_artifact_store.dag` with real `transport rest {}`. Wire `store` (PUT with content-hash path), `retrieve` (GET), `metadata` (HEAD). | `cloud_run` profile artifact operations work against real GCS. | M | Open |
+| 4 | SC-4 | **Wire GitHub issue provider transport.** Replace stubs in `github_issue_provider.dag` with real `transport rest {}` blocks for `discover` (GET /issues), `get` (GET /issues/:id), `comment` (POST /issues/:id/comments), `set_labels` (PUT /issues/:id/labels), `close` (PATCH /issues/:id). | `cloud_run` + `local` profile issue operations work against real GitHub API. | M | Open |
+| 5 | SC-5 | **Wire Pub/Sub signal store transport.** Replace stubs in `pubsub_signal_store.dag` with real `transport rest {}` for Pub/Sub API. Wire `emit` (POST /publish), `consume` (POST /pull), `ack` (POST /acknowledge). | `cloud_run` profile stage-transition signals flow through real Pub/Sub. | M | Open |
+| 6 | SC-6 | **Wire credential providers.** Real transport for `gcloud auth print-access-token` (shell), Secret Manager `GET /secrets/:name/versions/latest:access` (REST). | `cloud_run` profile credential chain works end-to-end. No hardcoded tokens. | M | Open |
+| 7 | SC-7 | **auth_input compile-time validation.** Validate that `config { auth_input: X }` references an actual field in the operation's `input {}` block. Validate field type is `Secret`. Emit compiler error if missing or wrong type. | `config { auth_input: nonexistent }` → compiler error with span. Zero silent credential skips. | S | Open |
+| 8 | SC-8 | **Cloud profile e2e smoke test.** Integration test: create GitHub issue with `sdlc:idea` label → SDLC pipeline discovers, claims, executes design stage → verify outcome recorded in GCS. Env-gated (`GUNBC_CLOUD_E2E=true`). | `cargo test -- cloud_e2e` passes when env-gated. Exercises SC-1:6 end-to-end. | M | Open (needs SC-1:6) |
+
+**Remaining open**: SC-1:8 (all open — SC-1:6 parallelizable, SC-7 independent, SC-8 needs SC-1:6).
+
+---
+
+## Part C: SDLC Runs Reliably
+
+Production hardening. After this part, SDLC runs unattended with
+observability, retry resilience, and zero-downtime deploys.
+
+| # | ID | What | Acceptance Criteria | Size | Status |
+|---|-----|------|---------------------|------|--------|
+| 1 | SR-1 | **Approval gate wiring.** `pending_approval` exit code 42 triggers claim release + yield. Approval signal (GitHub comment/label) resumes work on same issue. | Stage pauses at approval gate. Approval signal resumes within 60s. No duplicate work. | M | Open |
+| 2 | SR-2 | **Retry budget persistence.** Retry count survives process restart. Store in outcome ledger alongside stage result. Enforce max retries per stage (configurable, default 3). | Failed stage retries up to budget. Budget persists across restarts. Budget=0 → terminal failure. | M | Open |
+| 3 | SR-3 | **Structured execution logging.** JSON-structured log lines with `trace_id`, `issue_id`, `stage`, `node_id`, `duration_ms`. Cloud Logging compatible. | Every transport node emits structured log. Logs are queryable by `trace_id`. | M | Open |
+| 4 | SR-4 | **Health check endpoint.** Cloud Run health check: `/health` returns 200 + worker status (idle/processing/draining). Graceful shutdown on SIGTERM (finish current stage, release claims). | Cloud Run readiness probe passes. SIGTERM → clean claim release within 30s. | S | Open |
+| 5 | SR-5 | **Multi-worker scale test.** 5 workers, 20 concurrent issues, 10-minute run. Verify: no duplicate claims, no lost outcomes, all issues reach terminal state. | Zero claim conflicts. Zero lost outcomes. All 20 issues terminal within 10 min. | M | Open (needs SC-8) |
+| 6 | SR-6 | **Rolling deploy with zero downtime.** Cloud Run traffic migration: deploy new revision → route 10% → validate → route 100%. Rollback on health check failure. | Deploy completes with zero dropped webhook events. Rollback tested. | M | Open |
+| 7 | SR-7 | **Anti-entropy reconciliation.** Periodic scan (every 5 min): find issues with stale claims (no heartbeat > 2 min), orphaned outcomes (no matching claim), stuck stages. Auto-recover or alert. | Stale claims auto-released. Orphaned outcomes flagged. Stuck stages retried or escalated. | L | Open |
+| 8 | SR-8 | **config.extra → typed provider config.** Parse unknown config values into `Expr` (not token-skipped strings). Move provider config schemas into `.dag` models. Validate config fields at compile time. | Zero `config.extra` entries. All provider config fields typed and validated. Config typo → compiler error. | M | Open |
+
+**Remaining open**: SR-1:8 (all open — SR-1:4 parallelizable, SR-5 needs SC-8, SR-6:7 need SR-4, SR-8 independent).
 
 ---
 
@@ -252,7 +308,7 @@ Triaged items not yet assigned to a lane. Promote when lane queues thin.
 
 | ID | Scope | Ops | Notes |
 |----|-------|-----|-------|
-| RF-TC3 | GCS stores, github_issue_provider, credential providers | 17 | Needed for cloud_run profile |
+| RF-TC3 | GCS stores, github_issue_provider, credential providers | 17 | **Promoted to SC-1:6** |
 | RF-TC4 | Stub providers (unit_test profile) | 28 | Consider `transport stub {}` marker |
 | RF-TC5 | Infrastructure stubs (azure, aws, gcp-infra) | 140 | Defer until provisioning lane |
 
