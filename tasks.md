@@ -292,6 +292,24 @@ observability, retry resilience, and zero-downtime deploys.
 
 ---
 
+# Phase 3: The Purist Engine (Aspirational)
+
+Final stages of the compiler refactor. Eliminate all runtime interpretation,
+achieve fully hermetic AOT compilation, and strong-type every boundary.
+
+C24 (Pure Dataflow Lowering) is the keystone dependency — tracked in Lane 1 Part A above.
+C27 and SR-8 cover related ground (typed config blocks).
+
+| # | ID | Task | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| 1 | C28 | **Daggen (AOT DAG Compilation).** Currently, generated CLI tools (`gunbc-sdlc`, etc.) parse and resolve `.dag` files dynamically at runtime via `build_dsl_graph_with_profile`. Implement "Daggen" to compile lowered DAGs directly into static `Dag<T>` Rust structs during `make codegen`. The final binaries should contain zero DSL parsing/resolution logic, becoming fully hermetic AOT executables. | XL | Pending | C24 |
+| 2 | C29 | **Dynamic JSON-Path Output Mappings.** Just like `error_shape` (TL-16), extend JSONPath extraction to successful responses. Lower output mappings into extraction rules (e.g., `issue_id: "$.id"`) so the Rust runtime doesn't need hardcoded struct extraction logic. | M | Pending | TL-16 |
+| 3 | C30 | **Strict Type-Aware JSON Bridging.** `value_bridge.rs` currently hijacks the JSON keys `__enum` and `__bytes` to reconstruct complex `Value` types. This is "in-band signaling" and could collide with actual API payloads. Make `from_bridge_json` type-aware by passing the expected `TypeId` (which is known statically from the port). Delete the `__enum` JSON dictionary hacks. | M | Pending | — |
+| 4 | C27 | **Typed Config Blocks.** The parser currently skips unknown tokens in `config {}` blocks and stores them as stringified `extra: Vec<(String, String)>`. Replace this pragmatic fallback with strongly typed AST parsing for provider-specific config fields (e.g. `bucket: String`, `model: String`). | S | Pending | — |
+| 5 | CT-8 | **Wire Contract Test Generation.** Connect the new `StructuredContract` and `ProviderResponseContract` infrastructure in `core/ir/src/contract.rs` to `gunbc-testgen`. Emit S-Tier hermetic tests that mathematically prove every provider binding obeys the `.dag` behavioral contracts. | M | Pending | CT-1 |
+
+---
+
 # Backlog
 
 Triaged items not yet assigned to a lane. Promote when lane queues thin.
