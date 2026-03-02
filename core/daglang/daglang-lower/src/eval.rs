@@ -31,6 +31,28 @@ pub fn evaluate_fn_body(
         match stmt {
             LoweredStmt::Let(name, expr) => {
                 let value = eval_expr(expr, &env, sibling_fns)?;
+                // Flatten Map/JSON fields into `parent__field` entries so that
+                // the `__` convention works for local let bindings (same as
+                // ExprComputeOp::execute does for input port values).
+                match &value {
+                    Value::Map(fields) => {
+                        for (field_name, field_value) in fields {
+                            env.bind(
+                                format!("{name}__{field_name}"),
+                                field_value.clone(),
+                            );
+                        }
+                    }
+                    Value::Json(serde_json::Value::Object(map)) => {
+                        for (field_name, field_value) in map {
+                            env.bind(
+                                format!("{name}__{field_name}"),
+                                Value::Json(field_value.clone()),
+                            );
+                        }
+                    }
+                    _ => {}
+                }
                 env.bind(name.clone(), value);
             }
             LoweredStmt::Expr(expr) => {
