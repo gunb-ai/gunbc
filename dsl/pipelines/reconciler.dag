@@ -43,6 +43,7 @@ type ReconcilerParams {
   repo_name:      NonEmptyStr = "gunbc"
   worker_id:      NonEmptyStr = "reconciler"
   window_id:      NonEmptyStr                           // Unique ID for this reconciliation window
+  current_epoch_ms: Int                                 // Wall-clock time injected by the runtime
   stale_claim_threshold_ms: Int = 120000                // 2 minutes — SR-7 anti-entropy
   reconcile_interval_ms:    Int = 300000                // 5 minutes — SR-7 scan period
 }
@@ -236,7 +237,7 @@ pipeline reconciler
     stale_results = for claim in all_claims.claims {
       stale = is_stale_claim(
         last_heartbeat_epoch_ms: claim.last_heartbeat_epoch_ms,
-        now_epoch_ms: now_epoch_ms(),
+        now_epoch_ms: params.current_epoch_ms,
         threshold_ms: params.stale_claim_threshold_ms
       )
 
@@ -296,7 +297,7 @@ pipeline reconciler
         stuck = is_stuck_stage(
           status: outcome.status,
           updated_at_epoch_ms: outcome.updated_at_epoch_ms ?? 0,
-          now_epoch_ms: now_epoch_ms(),
+          now_epoch_ms: params.current_epoch_ms,
           threshold_ms: params.stale_claim_threshold_ms * 5   // 10 min for stuck stages
         )
 
