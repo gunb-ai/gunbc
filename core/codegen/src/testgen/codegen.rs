@@ -5020,7 +5020,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     ParamType::Map => {
                         // Map param: generate KEY=VALUE sample pair.
                         argv_parts.push(format!("\"{}\"", cli_escape(&flag)));
-                        argv_parts.push(format!("\"sample_key=sample_value\""));
+                        argv_parts.push("\"sample_key=sample_value\"".to_string());
                         assertions.push(format!(
                             "assert!(result.values.get(\"{}\").is_some(), \"map param '{}' should be present\");\n",
                             ep.port_name, ep.port_name

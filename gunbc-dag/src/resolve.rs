@@ -374,6 +374,39 @@ impl Executable for LiteralSourceOp {
     }
 }
 
+/// C24: Extract a named field from a Map/Record/JSON input.
+/// Pure structural projection — no runtime interpreter needed.
+#[derive(Debug, Clone)]
+struct GetFieldOp {
+    input_port: String,
+    field: String,
+    output_port: String,
+}
+
+impl Executable for GetFieldOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let value = inputs
+            .get(&self.input_port)
+            .cloned()
+            .unwrap_or(Value::Skipped);
+        let extracted = match &value {
+            Value::Map(fields) => fields
+                .get(&self.field)
+                .cloned()
+                .unwrap_or(Value::Skipped),
+            Value::Json(serde_json::Value::Object(map)) => map
+                .get(&self.field)
+                .map(|v| Value::Json(v.clone()))
+                .unwrap_or(Value::Skipped),
+            Value::Skipped => Value::Skipped,
+            _ => Value::Skipped,
+        };
+        OutputMap::new()
+            .value(self.output_port.as_str(), extracted)
+            .ok()
+    }
+}
+
 /// Compute node for lowered expression evaluation.
 /// Evaluates a `LoweredFnBody` using `evaluate_fn_body` with inputs from predecessor nodes.
 #[derive(Debug, Clone)]
@@ -849,6 +882,21 @@ fn resolve_primitive(
         PrimitiveOpKind::IoExecuteFileWrite => Ok(DynOp::new(TransportOps::Execute)),
         // FC-7: Output path annotation nodes are metadata-only, resolve as identity.
         PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(DynOp::new(IdentityCallableOp)),
+        PrimitiveOpKind::GetField { field } => {
+            let input_port = inputs
+                .first()
+                .map(|p| p.name.0.clone())
+                .unwrap_or_default();
+            let output_port = outputs
+                .first()
+                .map(|p| p.name.0.clone())
+                .unwrap_or_else(|| "result".to_string());
+            Ok(DynOp::new(GetFieldOp {
+                input_port,
+                field: field.clone(),
+                output_port,
+            }))
+        }
         PrimitiveOpKind::ExprCompute { fn_body } => {
             let input_ports: Vec<String> = inputs.iter().map(|p| p.name.0.clone()).collect();
             let referenced_vars = collect_fn_body_idents(fn_body);

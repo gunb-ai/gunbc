@@ -434,6 +434,12 @@ fn classify_primitive(
             outputs,
             body: PureBody::Literal(serde_json::Value::Null),
         }),
+        // C24: GetField nodes are pure field projections.
+        PrimitiveOpKind::GetField { .. } => Ok(Computation::Pure {
+            inputs,
+            outputs,
+            body: PureBody::Literal(serde_json::Value::Null),
+        }),
         // Expression compute nodes evaluate lowered fn bodies at runtime.
         PrimitiveOpKind::ExprCompute { .. } => Ok(Computation::Pure {
             inputs,

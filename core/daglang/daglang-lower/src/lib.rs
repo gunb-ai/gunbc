@@ -220,6 +220,11 @@ pub enum PrimitiveOpKind {
     ExprCompute {
         fn_body: Box<LoweredFnBody>,
     },
+    /// C24: Extract a named field from a Map/Record/JSON input.
+    /// Replaces `ExprCompute` + `__` convention for simple field projections.
+    GetField {
+        field: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -313,6 +318,7 @@ impl PrimitiveOpKind {
             Self::CompareEquality => ObligationCategory::InterfaceContractVerification,
             Self::ContentUpsertOutputPath { .. } => ObligationCategory::None,
             Self::ExprCompute { .. } => ObligationCategory::None,
+            Self::GetField { .. } => ObligationCategory::None,
         }
     }
 }
@@ -1229,6 +1235,13 @@ struct LoweringContext<'a> {
     bound_callable_sources: &'a HashMap<String, LoweredEndpoint>,
     bound_service_sources: &'a HashMap<String, ServiceTransportEndpoint>,
     expanded_results: &'a HashMap<String, PatternExpansionResult>,
+    /// Local let bindings (non-call) from the current callable body.
+    /// Used to resolve local variable references in return expressions
+    /// so they can be synthesized as ExprCompute nodes (C10 fix).
+    local_let_bindings: &'a HashMap<String, &'a Expr>,
+    /// The body statements of the current callable, for including
+    /// local let stmts in ExprCompute fn bodies.
+    body_stmts: &'a [Stmt],
 }
 
 /// Per-node expansion state for pattern lowering.
@@ -1767,7 +1780,6 @@ pub fn lower_typed_project_for_modules_with_entry_and_collection_nodes(
         active_profile,
         entry_module,
         emit_collection_nodes: true,
-        ..Default::default()
     })
 }
 
@@ -3044,6 +3056,7 @@ fn add_dependency_edges(
                 let empty_callables = HashMap::new();
                 let empty_services = HashMap::new();
                 let empty_expanded = HashMap::new();
+                let empty_locals = HashMap::new();
                 let ctx = LoweringContext {
                     module_name: &module_name,
                     item_name,
@@ -3054,6 +3067,8 @@ fn add_dependency_edges(
                     bound_callable_sources: &empty_callables,
                     bound_service_sources: &empty_services,
                     expanded_results: &empty_expanded,
+                    local_let_bindings: &empty_locals,
+                    body_stmts: &[],
                 };
                 expand_content_upsert_patterns(builder, &ctx, stmts, target);
                 expand_non_generic_pattern_calls(builder, project, &ctx, stmts, target);
@@ -4252,6 +4267,8 @@ fn expand_non_generic_pattern_calls(
             service_registry: ctx.service_registry,
             bound_callable_sources: ctx.bound_callable_sources,
             bound_service_sources: ctx.bound_service_sources,
+            local_let_bindings: ctx.local_let_bindings,
+            body_stmts: ctx.body_stmts,
         };
         let pexp = PatternExpansionParams {
             target,
@@ -6567,6 +6584,7 @@ fn add_service_call_edges(
             let mut augmented_callable_sources = bound_callable_sources.clone();
             collect_for_loop_bindings(stmts, target, &mut augmented_callable_sources);
             let empty_expanded = HashMap::new();
+            let local_let_bindings = collect_local_let_bindings(stmts, &augmented_callable_sources);
             let fn_ctx = LoweringContext {
                 module_name: module_name.as_str(),
                 item_name,
@@ -6577,6 +6595,8 @@ fn add_service_call_edges(
                 bound_callable_sources: &augmented_callable_sources,
                 bound_service_sources: &bound_service_sources,
                 expanded_results: &empty_expanded,
+                local_let_bindings: &local_let_bindings,
+                body_stmts: stmts,
             };
             wire_fn_call_arguments(builder, &fn_ctx, stmts);
             // Wire for-loop iterable expressions to loop node "items" ports.
@@ -8303,7 +8323,22 @@ fn resolve_return_expr_source(
                 if let Some(Some(source)) = ctx.endpoints_by_name.get(base_ident) {
                     return Some((source.node_id.clone(), field.clone()));
                 }
+                // C24: For parameters, synthesize a GetField node instead of
+                // falling through to ExprCompute + __ convention.
+                if let Some(param_ty) = ctx.param_types.get(base_ident) {
+                    return synthesize_get_field(
+                        builder,
+                        ctx,
+                        base_ident,
+                        param_ty,
+                        field,
+                        output_port,
+                        output_name,
+                        disambiguator,
+                    );
+                }
             }
+            // For complex base expressions, fall through to ExprCompute.
             None
         }
         Expr::Call(name, _) => ctx.endpoints_by_name
@@ -8396,6 +8431,12 @@ fn collect_expr_leaf_refs(
                         port: source.primary_output.clone(),
                     },
                 });
+            } else if let Some(bound_expr) = ctx.local_let_bindings.get(name) {
+                // C10: Resolve through local let binding. The let stmt will be
+                // included in the fn body; here we collect its transitive DAG
+                // dependencies. Insert into `seen` to prevent infinite recursion.
+                seen.insert(port_name);
+                collect_expr_leaf_refs(bound_expr, ctx, refs, seen, has_local_refs);
             } else {
                 *has_local_refs = true;
             }
@@ -8446,6 +8487,13 @@ fn collect_expr_leaf_refs(
                             port: field.clone(),
                         },
                     });
+                } else if let Some(bound_expr) = ctx.local_let_bindings.get(base_ident.as_str()) {
+                    // C10: Field access on a local let binding. Resolve
+                    // transitively through the binding's expression to capture
+                    // its DAG dependencies. The evaluator handles field access
+                    // natively on Map/JSON values.
+                    seen.insert(base_ident.to_string());
+                    collect_expr_leaf_refs(bound_expr, ctx, refs, seen, has_local_refs);
                 }
             } else {
                 collect_expr_leaf_refs(base, ctx, refs, seen, has_local_refs);
@@ -8706,6 +8754,52 @@ fn remap_pattern(pattern: &daglang_syntax::ast::Pattern) -> expr::LoweredPattern
     }
 }
 
+/// C24: Synthesize a GetField node to extract a named field from a parameter.
+/// Replaces `ExprCompute` + `__` convention for simple `param.field` projections.
+#[allow(clippy::too_many_arguments)]
+fn synthesize_get_field(
+    builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
+    base_param: &str,
+    param_ty: &str,
+    field: &str,
+    output_port: &Port,
+    _output_name: &str,
+    disambiguator: &str,
+) -> Option<(String, String)> {
+    let output_type = output_port.type_id.0.as_str();
+    let result_port_name = "result";
+    let input_ports = vec![Port::with_cardinality(base_param, param_ty, Cardinality::ONE)];
+    let output_ports = vec![Port::with_cardinality(result_port_name, output_type, Cardinality::ONE)];
+
+    let node_id = format!(
+        "get_field_{}",
+        sanitize_identifier(&format!(
+            "{}_{}_{}_{}_{}", ctx.module_name, ctx.item_name, base_param, field, disambiguator
+        ))
+    );
+
+    builder.add_node(Node::opaque(
+        node_id.clone(),
+        input_ports,
+        output_ports,
+        LoweredOp::Primitive {
+            module: ctx.module_name.to_string(),
+            name: format!("get_field::{}::{}::{}", ctx.item_name, base_param, field),
+            kind: PrimitiveOpKind::GetField {
+                field: field.to_string(),
+            },
+        },
+    ));
+
+    // Wire from param source to GetField input.
+    let param_source_id =
+        ensure_param_source_node(builder, ctx.module_name, ctx.item_name, base_param, param_ty);
+    builder.add_edge(&param_source_id, base_param, &node_id, base_param);
+
+    Some((node_id, result_port_name.to_string()))
+}
+
 /// Synthesize a compute node for a complex return expression.
 /// Creates a node that evaluates the expression using `evaluate_fn_body` at runtime.
 fn synthesize_expr_compute(
@@ -8727,7 +8821,10 @@ fn synthesize_expr_compute(
         &mut has_local_refs,
     );
 
-    if refs.is_empty() || has_local_refs {
+    // C10: Only bail on truly unresolvable references (not local let bindings).
+    // Local let bindings are resolved transitively in collect_expr_leaf_refs
+    // and included in the fn body below.
+    if has_local_refs {
         return None;
     }
 
@@ -8746,13 +8843,39 @@ fn synthesize_expr_compute(
     let result_port_name = "result";
     let output_ports = vec![Port::with_cardinality(result_port_name, output_type, Cardinality::ONE)];
 
-    // 3. Create the fn body from the remapped expression.
+    // 3. Create the fn body: include local let stmts (C10) then the return.
+    // Local let stmts are non-call bindings from the callable body that the
+    // return expression may reference. The evaluator processes them in order
+    // and flattens Map fields for the __ convention.
+    let mut fn_stmts: Vec<expr::LoweredStmt> = Vec::new();
+    if !ctx.local_let_bindings.is_empty() {
+        for stmt in ctx.body_stmts {
+            match stmt {
+                Stmt::Let(name, let_expr) | Stmt::Assign(name, let_expr) => {
+                    if ctx.local_let_bindings.contains_key(name) {
+                        fn_stmts.push(expr::LoweredStmt::Let(
+                            name.clone(),
+                            remap_expr_idents(let_expr),
+                        ));
+                    }
+                }
+                Stmt::Node(node_stmt) => {
+                    if ctx.local_let_bindings.contains_key(&node_stmt.name) {
+                        fn_stmts.push(expr::LoweredStmt::Let(
+                            node_stmt.name.clone(),
+                            remap_expr_idents(&node_stmt.expr),
+                        ));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
     let lowered_expr = remap_expr_idents(expr);
-    let fn_body = LoweredFnBody {
-        stmts: vec![expr::LoweredStmt::Return(vec![
-            (result_port_name.to_string(), lowered_expr),
-        ])],
-    };
+    fn_stmts.push(expr::LoweredStmt::Return(vec![
+        (result_port_name.to_string(), lowered_expr),
+    ]));
+    let fn_body = LoweredFnBody { stmts: fn_stmts };
 
     // 4. Create the compute node.
     let node_id = format!(
@@ -8974,6 +9097,43 @@ fn wire_for_loop_iterables(
             }
         }
     }
+}
+
+/// Collect local let bindings from statements that are NOT tracked by
+/// `collect_bound_callable_sources` (i.e., non-call, non-alias expressions).
+/// These are let bindings with evaluable expressions like pipe chains,
+/// binary ops, if/match, literals, etc.
+fn collect_local_let_bindings<'a>(
+    stmts: &'a [Stmt],
+    bound_callable_sources: &HashMap<String, LoweredEndpoint>,
+) -> HashMap<String, &'a Expr> {
+    let mut bindings = HashMap::new();
+    for stmt in stmts {
+        match stmt {
+            Stmt::Let(name, expr) | Stmt::Assign(name, expr) => {
+                // Skip call-bound let stmts (tracked by bound_callable_sources)
+                // and direct Call/ServiceCall expressions (may not be evaluable
+                // by the simple evaluator if the callee isn't a built-in).
+                if !bound_callable_sources.contains_key(name)
+                    && !matches!(expr, Expr::Call(_, _) | Expr::ServiceCall(_, _))
+                {
+                    bindings.insert(name.clone(), expr as &Expr);
+                }
+            }
+            Stmt::Node(node_stmt) => {
+                if !bound_callable_sources.contains_key(&node_stmt.name)
+                    && !matches!(
+                        &node_stmt.expr,
+                        Expr::Call(_, _) | Expr::ServiceCall(_, _)
+                    )
+                {
+                    bindings.insert(node_stmt.name.clone(), &node_stmt.expr as &Expr);
+                }
+            }
+            _ => {}
+        }
+    }
+    bindings
 }
 
 fn collect_bound_callable_sources(

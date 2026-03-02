@@ -19,7 +19,7 @@ use daglang_typecheck::{
     typecheck_module_graph_with_options, TypecheckOptions, TypeError, TypedProject,
 };
 use gunbc_ir::{Dag, ProgramSymbolId, ReachableDag, TypeRegistry};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1186,6 +1186,85 @@ fn compute_receipt(
         program_ir_digest,
         emit_manifest_digest,
     })
+}
+
+/// Cached discovery metadata for incremental compilation (C26).
+///
+/// Stores the source digest and extracted metadata from a compilation.
+/// When the source digest matches on a subsequent run, the cached metadata
+/// is returned without recompilation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CachedDiscoveryEntry {
+    /// SHA-256 of sorted source file content hashes.
+    pub source_digest: String,
+    /// Inferred entrypoints from compilation.
+    pub entrypoints: Vec<CachedEntrypoint>,
+    /// Output paths extracted from the DAG.
+    pub output_paths: Vec<String>,
+    /// Available profile names.
+    pub available_profiles: Vec<String>,
+}
+
+/// Serializable entrypoint metadata for caching.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CachedEntrypoint {
+    pub func_name: String,
+    pub module: String,
+    pub node_id: String,
+}
+
+impl From<&InferredEntrypoint> for CachedEntrypoint {
+    fn from(ep: &InferredEntrypoint) -> Self {
+        CachedEntrypoint {
+            func_name: ep.func_name.clone(),
+            module: ep.module.clone(),
+            node_id: ep.node_id.clone(),
+        }
+    }
+}
+
+impl From<&CachedEntrypoint> for InferredEntrypoint {
+    fn from(cached: &CachedEntrypoint) -> Self {
+        InferredEntrypoint {
+            func_name: cached.func_name.clone(),
+            module: cached.module.clone(),
+            node_id: cached.node_id.clone(),
+        }
+    }
+}
+
+/// Compute the source digest for a compilation context without performing
+/// the full compilation pipeline (C26).
+///
+/// Discovers the module graph, reads all source files, and computes a
+/// content-addressable SHA-256 digest. This is much cheaper than full
+/// compilation (parse + typecheck + lower + emit).
+pub fn compute_source_digest_for_context(
+    context: &DriverContext,
+) -> Result<String, CompileError> {
+    let module_graph = discover_module_graph_for_context(context)?;
+    let source_paths: Vec<PathBuf> = module_graph
+        .modules
+        .iter()
+        .map(|m| m.path.clone())
+        .collect();
+    compute_source_digest(&source_paths)
+        .ok_or_else(|| CompileError::Message("failed to compute source digest".to_string()))
+}
+
+/// Compute a source digest from a list of source file paths.
+///
+/// Returns SHA-256 of sorted per-file content hashes. Returns `None`
+/// if any file cannot be read.
+pub fn compute_source_digest(source_paths: &[PathBuf]) -> Option<String> {
+    let mut source_hashes: Vec<String> = Vec::with_capacity(source_paths.len());
+    for path in source_paths {
+        #[allow(clippy::disallowed_methods)]
+        let content = std::fs::read(path).ok()?;
+        source_hashes.push(sha256_hex(&content));
+    }
+    source_hashes.sort();
+    Some(sha256_hex(source_hashes.join("\n").as_bytes()))
 }
 
 fn discover_module_graph_for_context(context: &DriverContext) -> Result<ModuleGraph, CompileError> {

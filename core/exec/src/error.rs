@@ -476,11 +476,11 @@ pub fn decorate_service_failure(
                 .credential_ref
                 .as_deref()
                 .map(|_| "\"***\"".to_string())
-                .unwrap_or_else(|| "\"\"".into()),
+                .unwrap_or_else(|| "(none)".into()),
             source: auth
                 .credential_ref
                 .map(|c| format!("env:{c}"))
-                .unwrap_or_else(|| "static".into()),
+                .unwrap_or_else(|| "(no credential provided)".into()),
         });
         err = err.with_layer(ErrorLayer::Acquisition(AcquisitionErrorLayer {
             diagnostic: AcquisitionDiagnostic {
