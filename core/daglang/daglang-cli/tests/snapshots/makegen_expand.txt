@@ -698,8 +698,9 @@ Nodes:
   - literal_source_tools_makegen_render_phony_line_return_return_0 [primitive::CallLiteralSource { literal: String(".PHONY: {all_names}\n") } tools.makegen.call_literal_source::strhex:2e50484f4e593a207b616c6c5f6e616d65737d0a]
     outputs:
       * return: String (1)
-  - expr_compute_tools_makegen_resolve_resource_target_return_return_0 [primitive::ExprCompute { fn_body: LoweredFnBody { stmts: [Let("matches", Pipe { receiver: Ident("res_targets"), call: Call { name: "filter", args: [(None, Lambda { params: ["rt"], body: BinOp { left: Ident("rt__resource"), op: Eq, right: Ident("resource") } })] } }), Let("entry", Pipe { receiver: Ident("matches"), call: Call { name: "first", args: [] } }), Return([("result", Match { expr: Ident("entry"), arms: [LoweredMatchArm { pattern: Ident("None"), guard: None, body: Literal(String("")) }, LoweredMatchArm { pattern: Wildcard, guard: None, body: IfElse { cond: BinOp { left: Ident("mode"), op: Eq, right: Literal(String("ensure")) }, then_: Ident("entry__ensure_target"), else_: Some(Ident("entry__verify_target")) } }] })])] }, sibling_fns: {} } tools.makegen.expr_compute::resolve_resource_target::return]
+  - match_dispatch_tools_makegen_resolve_resource_target_return_return_0 [primitive::MatchDispatch { arms: [LoweredMatchArm { pattern: Literal(None), guard: None, body: Literal(String("")) }, LoweredMatchArm { pattern: Wildcard, guard: None, body: IfElse { cond: BinOp { left: Ident("mode"), op: Eq, right: Literal(String("ensure")) }, then_: FieldAccess { expr: Ident("entry"), field: "ensure_target" }, else_: Some(FieldAccess { expr: Ident("entry"), field: "verify_target" }) } }] } tools.makegen.match_dispatch::resolve_resource_target::return]
     inputs:
+      * scrutinee: Any (1)
       * res_targets: List<ResourceTargetEntry> (1)
       * resource: String (1)
       * mode: String (1)
@@ -725,11 +726,39 @@ Nodes:
       * res_targets: List<ResourceTargetEntry> (1)
     outputs:
       * res_targets: List<ResourceTargetEntry> (1)
+  - expr_compute_tools_makegen_resolve_meta_deps_return_return_0 [primitive::ExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Pipe { receiver: Pipe { receiver: Ident("needs"), call: Call { name: "map", args: [(None, Lambda { params: ["need"], body: Call { name: "resolve_resource_target", args: [(Some("resource"), Ident("need__resource")), (Some("mode"), Ident("need__mode")), (Some("res_targets"), Ident("res_targets"))] } })] } }, call: Call { name: "filter", args: [(None, Lambda { params: ["dep"], body: BinOp { left: Ident("dep"), op: Ne, right: Literal(String("")) } })] } })])] }, sibling_fns: {"resolve_resource_target": LoweredFnBody { stmts: [Let("matches", Pipe { receiver: Ident("res_targets"), call: Call { name: "filter", args: [(None, Lambda { params: ["rt"], body: BinOp { left: Ident("rt__resource"), op: Eq, right: Ident("resource") } })] } }), Let("entry", Pipe { receiver: Ident("matches"), call: Call { name: "first", args: [] } }), Expr(Match { expr: Ident("entry"), arms: [LoweredMatchArm { pattern: Ident("None"), guard: None, body: Literal(String("")) }, LoweredMatchArm { pattern: Wildcard, guard: None, body: IfElse { cond: BinOp { left: Ident("mode"), op: Eq, right: Literal(String("ensure")) }, then_: Ident("entry__ensure_target"), else_: Some(Ident("entry__verify_target")) } }] })] }} } tools.makegen.expr_compute::resolve_meta_deps::return]
+    inputs:
+      * needs: List<ResourceNeed> (1)
+      * res_targets: List<ResourceTargetEntry> (1)
+    outputs:
+      * result: List<String> (1)
+  - param_source_tools_makegen_resolve_meta_deps_needs [primitive::CallParamSource { callable: "resolve_meta_deps", param: "needs" } tools.makegen.call_param_source::resolve_meta_deps::needs]
+    inputs:
+      * needs: List<ResourceNeed> (1)
+    outputs:
+      * needs: List<ResourceNeed> (1)
   - literal_source_tools_makegen_resolve_meta_fix_deps_mode_fn_1 [primitive::CallLiteralSource { literal: String("ensure") } tools.makegen.call_literal_source::strhex:656e73757265]
     outputs:
       * mode: Any (1)
-  - expr_compute_tools_makegen_apply_prefix_return_return_0 [primitive::ExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Match { expr: Ident("prefix"), arms: [LoweredMatchArm { pattern: Ident("None"), guard: None, body: Ident("cmd") }, LoweredMatchArm { pattern: Wildcard, guard: None, body: StringInterp([Literal("@"), Expr(Ident("prefix")), Literal(" "), Expr(Ident("cmd"))]) }] })])] }, sibling_fns: {} } tools.makegen.expr_compute::apply_prefix::return]
+  - expr_compute_tools_makegen_resolve_meta_fix_deps_return_return_0 [primitive::ExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Pipe { receiver: Pipe { receiver: Ident("needs"), call: Call { name: "map", args: [(None, Lambda { params: ["need"], body: Call { name: "resolve_resource_target", args: [(Some("resource"), Ident("need__resource")), (Some("mode"), Literal(String("ensure"))), (Some("res_targets"), Ident("res_targets"))] } })] } }, call: Call { name: "filter", args: [(None, Lambda { params: ["dep"], body: BinOp { left: Ident("dep"), op: Ne, right: Literal(String("")) } })] } })])] }, sibling_fns: {"resolve_resource_target": LoweredFnBody { stmts: [Let("matches", Pipe { receiver: Ident("res_targets"), call: Call { name: "filter", args: [(None, Lambda { params: ["rt"], body: BinOp { left: Ident("rt__resource"), op: Eq, right: Ident("resource") } })] } }), Let("entry", Pipe { receiver: Ident("matches"), call: Call { name: "first", args: [] } }), Expr(Match { expr: Ident("entry"), arms: [LoweredMatchArm { pattern: Ident("None"), guard: None, body: Literal(String("")) }, LoweredMatchArm { pattern: Wildcard, guard: None, body: IfElse { cond: BinOp { left: Ident("mode"), op: Eq, right: Literal(String("ensure")) }, then_: Ident("entry__ensure_target"), else_: Some(Ident("entry__verify_target")) } }] })] }} } tools.makegen.expr_compute::resolve_meta_fix_deps::return]
     inputs:
+      * needs: List<ResourceNeed> (1)
+      * res_targets: List<ResourceTargetEntry> (1)
+    outputs:
+      * result: List<String> (1)
+  - param_source_tools_makegen_resolve_meta_fix_deps_needs [primitive::CallParamSource { callable: "resolve_meta_fix_deps", param: "needs" } tools.makegen.call_param_source::resolve_meta_fix_deps::needs]
+    inputs:
+      * needs: List<ResourceNeed> (1)
+    outputs:
+      * needs: List<ResourceNeed> (1)
+  - param_source_tools_makegen_resolve_meta_fix_deps_res_targets [primitive::CallParamSource { callable: "resolve_meta_fix_deps", param: "res_targets" } tools.makegen.call_param_source::resolve_meta_fix_deps::res_targets]
+    inputs:
+      * res_targets: List<ResourceTargetEntry> (1)
+    outputs:
+      * res_targets: List<ResourceTargetEntry> (1)
+  - match_dispatch_tools_makegen_apply_prefix_return_return_0 [primitive::MatchDispatch { arms: [LoweredMatchArm { pattern: Literal(None), guard: None, body: Ident("cmd") }, LoweredMatchArm { pattern: Wildcard, guard: None, body: StringInterp([Literal("@"), Expr(Ident("prefix")), Literal(" "), Expr(Ident("cmd"))]) }] } tools.makegen.match_dispatch::apply_prefix::return]
+    inputs:
+      * scrutinee: Any (1)
       * prefix: String? (1)
       * cmd: String (1)
     outputs:
@@ -794,7 +823,13 @@ Nodes:
   - literal_source_tools_makegen_render_meta_targets_return_return_0 [primitive::CallLiteralSource { literal: String("{header}\n{body}") } tools.makegen.call_literal_source::strhex:7b6865616465727d0a7b626f64797d]
     outputs:
       * return: String (1)
-  - expr_compute_tools_makegen_render_help_param_return_return_0 [primitive::ExprCompute { fn_body: LoweredFnBody { stmts: [Let("repeat_suffix", IfElse { cond: Ident("p__repeatable"), then_: Literal(String(" ...")), else_: Some(Literal(String(""))) }), Return([("result", Match { expr: Ident("p__default"), arms: [LoweredMatchArm { pattern: Ident("None"), guard: None, body: StringInterp([Literal("["), Expr(Ident("p__make_var")), Literal("=..."), Expr(Ident("repeat_suffix")), Literal("]")]) }, LoweredMatchArm { pattern: Wildcard, guard: None, body: StringInterp([Literal("["), Expr(Ident("p__make_var")), Literal("="), Expr(Ident("p__default")), Expr(Ident("repeat_suffix")), Literal("]")]) }] })])] }, sibling_fns: {} } tools.makegen.expr_compute::render_help_param::return]
+  - match_dispatch_tools_makegen_render_help_param_return_return_0 [primitive::MatchDispatch { arms: [LoweredMatchArm { pattern: Literal(None), guard: None, body: StringInterp([Literal("["), Expr(FieldAccess { expr: Ident("p"), field: "make_var" }), Literal("=..."), Expr(Ident("repeat_suffix")), Literal("]")]) }, LoweredMatchArm { pattern: Wildcard, guard: None, body: StringInterp([Literal("["), Expr(FieldAccess { expr: Ident("p"), field: "make_var" }), Literal("="), Expr(FieldAccess { expr: Ident("p"), field: "default" }), Expr(Ident("repeat_suffix")), Literal("]")]) }] } tools.makegen.match_dispatch::render_help_param::return]
+    inputs:
+      * scrutinee: Any (1)
+      * p: EntrypointParam (1)
+    outputs:
+      * result: String (1)
+  - get_field_tools_makegen_render_help_param_p_default_return_0_scrutinee [primitive::GetField { field: "default" } tools.makegen.get_field::render_help_param::p::default]
     inputs:
       * p: EntrypointParam (1)
     outputs:
@@ -804,9 +839,29 @@ Nodes:
       * p: EntrypointParam (1)
     outputs:
       * p: EntrypointParam (1)
+  - expr_compute_tools_makegen_render_help_params_return_return_0 [primitive::ExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Pipe { receiver: Pipe { receiver: Ident("params"), call: Call { name: "map", args: [(None, Lambda { params: ["p"], body: Call { name: "render_help_param", args: [(Some("p"), Ident("p"))] } })] } }, call: Call { name: "join", args: [(None, Literal(String(" ")))] } })])] }, sibling_fns: {"render_help_param": LoweredFnBody { stmts: [Let("repeat_suffix", IfElse { cond: Ident("p__repeatable"), then_: Literal(String(" ...")), else_: Some(Literal(String(""))) }), Expr(Match { expr: Ident("p__default"), arms: [LoweredMatchArm { pattern: Ident("None"), guard: None, body: StringInterp([Literal("["), Expr(Ident("p__make_var")), Literal("=..."), Expr(Ident("repeat_suffix")), Literal("]")]) }, LoweredMatchArm { pattern: Wildcard, guard: None, body: StringInterp([Literal("["), Expr(Ident("p__make_var")), Literal("="), Expr(Ident("p__default")), Expr(Ident("repeat_suffix")), Literal("]")]) }] })] }} } tools.makegen.expr_compute::render_help_params::return]
+    inputs:
+      * params: List<EntrypointParam> (1)
+    outputs:
+      * result: String (1)
+  - param_source_tools_makegen_render_help_params_params [primitive::CallParamSource { callable: "render_help_params", param: "params" } tools.makegen.call_param_source::render_help_params::params]
+    inputs:
+      * params: List<EntrypointParam> (1)
+    outputs:
+      * params: List<EntrypointParam> (1)
   - literal_source_tools_makegen_render_tool_target_return_return_0 [primitive::CallLiteralSource { literal: String("{main}\n{dry}\n{extras}") } tools.makegen.call_literal_source::strhex:7b6d61696e7d0a7b6472797d0a7b6578747261737d]
     outputs:
       * return: String (1)
+  - expr_compute_tools_makegen_render_tool_targets_return_return_0 [primitive::ExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Pipe { receiver: Pipe { receiver: Ident("tools"), call: Call { name: "map", args: [(None, Lambda { params: ["t"], body: Call { name: "render_tool_target", args: [(Some("tool"), Ident("t"))] } })] } }, call: Call { name: "join", args: [(None, Literal(String("\n")))] } })])] }, sibling_fns: {"render_tool_target": LoweredFnBody { stmts: [Let("port_list", Pipe { receiver: Pipe { receiver: Ident("tool__entrypoints"), call: Call { name: "map", args: [(None, Lambda { params: ["p"], body: StringInterp([Expr(Ident("p__port_name")), Literal(" ("), Expr(Ident("p__type_hint")), Literal(")")]) })] } }, call: Call { name: "join", args: [(None, Literal(String(", ")))] } }), Let("main", Call { name: "render_target", args: [(Some("name"), Ident("tool__short_name")), (Some("deps"), Ident("tool__deps")), (Some("body"), List([Ident("tool__command")])), (Some("comment"), StringInterp([Expr(Ident("tool__binary_name")), Literal(" entrypoints: "), Expr(Ident("port_list"))]))] }), Let("dry", Call { name: "render_target", args: [(Some("name"), StringInterp([Expr(Ident("tool__short_name")), Literal("-dry")])), (Some("deps"), Ident("tool__deps")), (Some("body"), List([Ident("tool__dry_run_command")])), (Some("comment"), Ident("None"))] }), Let("extras", Pipe { receiver: Pipe { receiver: Ident("tool__extra_targets"), call: Call { name: "map", args: [(None, Lambda { params: ["extra"], body: Call { name: "render_target", args: [(Some("name"), StringInterp([Expr(Ident("tool__short_name")), Literal("-"), Expr(Ident("extra__suffix"))])), (Some("deps"), List([Ident("tool__short_name")])), (Some("body"), Ident("extra__post_commands")), (Some("comment"), StringInterp([Expr(Ident("tool__short_name")), Literal("-"), Expr(Ident("extra__suffix")), Literal(": "), Expr(Ident("extra__description"))]))] } })] } }, call: Call { name: "join", args: [(None, Literal(String("")))] } }), Expr(StringInterp([Expr(Ident("main")), Literal("\n"), Expr(Ident("dry")), Literal("\n"), Expr(Ident("extras"))]))] }} } tools.makegen.expr_compute::render_tool_targets::return]
+    inputs:
+      * tools: List<DiscoveredTool> (1)
+    outputs:
+      * result: String (1)
+  - param_source_tools_makegen_render_tool_targets_tools [primitive::CallParamSource { callable: "render_tool_targets", param: "tools" } tools.makegen.call_param_source::render_tool_targets::tools]
+    inputs:
+      * tools: List<DiscoveredTool> (1)
+    outputs:
+      * tools: List<DiscoveredTool> (1)
   - expr_compute_tools_makegen_render_help_core_lines_return_return_0 [primitive::ExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Pipe { receiver: Pipe { receiver: Ident("workflows"), call: Call { name: "map", args: [(None, Lambda { params: ["w"], body: StringInterp([Literal("\t@echo \"  "), Expr(Ident("w__name")), Literal("  - "), Expr(BinOp { left: Ident("w__comment"), op: NullCoalesce, right: Ident("w__description") }), Literal("\"")]) })] } }, call: Call { name: "join", args: [(None, Literal(String("\n")))] } })])] }, sibling_fns: {} } tools.makegen.expr_compute::render_help_core_lines::return]
     inputs:
       * workflows: List<CoreWorkflow> (1)
@@ -830,9 +885,29 @@ Nodes:
   - literal_source_tools_makegen_render_help_meta_line_return_return_0 [primitive::CallLiteralSource { literal: String("\t{base_line}{fix_line}{check_line}") } tools.makegen.call_literal_source::strhex:097b626173655f6c696e657d7b6669785f6c696e657d7b636865636b5f6c696e657d]
     outputs:
       * return: String (1)
+  - expr_compute_tools_makegen_render_help_meta_lines_return_return_0 [primitive::ExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Pipe { receiver: Pipe { receiver: Ident("metas"), call: Call { name: "map", args: [(None, Lambda { params: ["m"], body: Call { name: "render_help_meta_line", args: [(Some("m"), Ident("m"))] } })] } }, call: Call { name: "join", args: [(None, Literal(String("\n")))] } })])] }, sibling_fns: {"render_help_meta_line": LoweredFnBody { stmts: [Let("base_line", StringInterp([Literal("@echo \"  "), Expr(Ident("m__name")), Literal("  - "), Expr(Ident("m__description")), Literal("\"")])), Let("fix_desc", Call { name: "fix_description", args: [(Some("prereqs"), Ident("m__fix_prerequisites"))] }), Let("fix_line", IfElse { cond: Ident("m__has_fix"), then_: StringInterp([Literal("\n\t@echo \"  "), Expr(Ident("m__name")), Literal("-fix  - "), Expr(Ident("m__description")), Literal(" ("), Expr(Ident("fix_desc")), Literal(")\"")]), else_: Some(Literal(String(""))) }), Let("check_line", IfElse { cond: Ident("m__has_check"), then_: StringInterp([Literal("\n\t@echo \"  "), Expr(Ident("m__name")), Literal("-check  - "), Expr(Ident("m__description")), Literal(" (check only)\"")]), else_: Some(Literal(String(""))) }), Expr(StringInterp([Literal("\t"), Expr(Ident("base_line")), Expr(Ident("fix_line")), Expr(Ident("check_line"))]))] }} } tools.makegen.expr_compute::render_help_meta_lines::return]
+    inputs:
+      * metas: List<MetaTargetDef> (1)
+    outputs:
+      * result: String (1)
+  - param_source_tools_makegen_render_help_meta_lines_metas [primitive::CallParamSource { callable: "render_help_meta_lines", param: "metas" } tools.makegen.call_param_source::render_help_meta_lines::metas]
+    inputs:
+      * metas: List<MetaTargetDef> (1)
+    outputs:
+      * metas: List<MetaTargetDef> (1)
   - literal_source_tools_makegen_render_help_tool_line_return_return_0 [primitive::CallLiteralSource { literal: String("\t{main_line}{extra_lines}") } tools.makegen.call_literal_source::strhex:097b6d61696e5f6c696e657d7b65787472615f6c696e65737d]
     outputs:
       * return: String (1)
+  - expr_compute_tools_makegen_render_help_tool_lines_return_return_0 [primitive::ExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Pipe { receiver: Pipe { receiver: Ident("tools"), call: Call { name: "map", args: [(None, Lambda { params: ["t"], body: Call { name: "render_help_tool_line", args: [(Some("t"), Ident("t"))] } })] } }, call: Call { name: "join", args: [(None, Literal(String("\n")))] } })])] }, sibling_fns: {"render_help_tool_line": LoweredFnBody { stmts: [Let("params", Call { name: "render_help_params", args: [(Some("params"), Ident("t__entrypoints"))] }), Let("main_line", StringInterp([Literal("@echo \"  "), Expr(Ident("t__short_name")), Literal(" "), Expr(Ident("params")), Literal("  - "), Expr(Ident("t__description")), Literal("\"")])), Let("extra_lines", Pipe { receiver: Pipe { receiver: Ident("t__extra_targets"), call: Call { name: "map", args: [(None, Lambda { params: ["extra"], body: StringInterp([Literal("\n\t@echo \"  "), Expr(Ident("t__short_name")), Literal("-"), Expr(Ident("extra__suffix")), Literal("  - "), Expr(Ident("extra__description")), Literal("\"")]) })] } }, call: Call { name: "join", args: [(None, Literal(String("")))] } }), Expr(StringInterp([Literal("\t"), Expr(Ident("main_line")), Expr(Ident("extra_lines"))]))] }} } tools.makegen.expr_compute::render_help_tool_lines::return]
+    inputs:
+      * tools: List<DiscoveredTool> (1)
+    outputs:
+      * result: String (1)
+  - param_source_tools_makegen_render_help_tool_lines_tools [primitive::CallParamSource { callable: "render_help_tool_lines", param: "tools" } tools.makegen.call_param_source::render_help_tool_lines::tools]
+    inputs:
+      * tools: List<DiscoveredTool> (1)
+    outputs:
+      * tools: List<DiscoveredTool> (1)
   - param_source_tools_makegen_render_help_target_workflows [primitive::CallParamSource { callable: "render_help_target", param: "workflows" } tools.makegen.call_param_source::render_help_target::workflows]
     inputs:
       * workflows: List<CoreWorkflow> (1)
@@ -874,6 +949,16 @@ Nodes:
       * t: DiscoveredTool (1)
     outputs:
       * t: DiscoveredTool (1)
+  - expr_compute_tools_makegen_collect_tool_phony_str_return_return_0 [primitive::ExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Pipe { receiver: Pipe { receiver: Ident("tools"), call: Call { name: "map", args: [(None, Lambda { params: ["t"], body: Call { name: "tool_phony_names", args: [(Some("t"), Ident("t"))] } })] } }, call: Call { name: "join", args: [(None, Literal(String(" ")))] } })])] }, sibling_fns: {"tool_phony_names": LoweredFnBody { stmts: [Let("base", StringInterp([Expr(Ident("t__short_name")), Literal(" "), Expr(Ident("t__short_name")), Literal("-dry")])), Let("extras", Pipe { receiver: Pipe { receiver: Ident("t__extra_targets"), call: Call { name: "map", args: [(None, Lambda { params: ["extra"], body: StringInterp([Expr(Ident("t__short_name")), Literal("-"), Expr(Ident("extra__suffix"))]) })] } }, call: Call { name: "join", args: [(None, Literal(String(" ")))] } }), Expr(IfElse { cond: BinOp { left: Ident("extras"), op: Ne, right: Literal(String("")) }, then_: StringInterp([Expr(Ident("base")), Literal(" "), Expr(Ident("extras"))]), else_: Some(Ident("base")) })] }} } tools.makegen.expr_compute::collect_tool_phony_str::return]
+    inputs:
+      * tools: List<DiscoveredTool> (1)
+    outputs:
+      * result: String (1)
+  - param_source_tools_makegen_collect_tool_phony_str_tools [primitive::CallParamSource { callable: "collect_tool_phony_str", param: "tools" } tools.makegen.call_param_source::collect_tool_phony_str::tools]
+    inputs:
+      * tools: List<DiscoveredTool> (1)
+    outputs:
+      * tools: List<DiscoveredTool> (1)
   - literal_source_tools_makegen_render_naming_convention_return_return_0 [primitive::CallLiteralSource { literal: String("# Naming convention:\n#   make <target>      - verify only (CI-safe, fails on issues)\n#   make <target>-fix  - auto-fix then verify (for dev)\n#\n# Dev default:     make test      (ensure generated artifacts, then test)\n# Dev workflow:    make test-fix  (fmt/lint fix + ensure generated artifacts, then test)\n# CI verification: make verify    (check generated artifacts)\n") } tools.makegen.call_literal_source::strhex:23204e616d696e6720636f6e76656e74696f6e3a0a232020206d616b65203c7461726765743e2020202020202d20766572696679206f6e6c79202843492d736166652c206661696c73206f6e20697373756573290a232020206d616b65203c7461726765743e2d66697820202d206175746f2d666978207468656e207665726966792028666f7220646576290a230a23204465762064656661756c743a20202020206d616b65207465737420202020202028656e737572652067656e657261746564206172746966616374732c207468656e2074657374290a232044657620776f726b666c6f773a202020206d616b6520746573742d666978202028666d742f6c696e7420666978202b20656e737572652067656e657261746564206172746966616374732c207468656e2074657374290a2320434920766572696669636174696f6e3a206d616b65207665726966792020202028636865636b2067656e65726174656420617274696661637473290a]
     outputs:
       * return: String (1)
@@ -1034,7 +1119,13 @@ Nodes:
       * bindings: Json (1)
     outputs:
       * bindings: Json (1)
-  - expr_compute_std_filesystem_skip_reason_return_return_0 [primitive::ExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Match { expr: Ident("entry__kind"), arms: [LoweredMatchArm { pattern: Ident("Directory"), guard: None, body: Literal(String("directory")) }, LoweredMatchArm { pattern: Ident("Missing"), guard: None, body: Literal(String("missing")) }, LoweredMatchArm { pattern: Ident("Other"), guard: None, body: Literal(String("special file")) }, LoweredMatchArm { pattern: Ident("Symlink"), guard: None, body: Match { expr: Ident("entry__symlink_target"), arms: [LoweredMatchArm { pattern: Ident("TargetDir"), guard: None, body: Literal(String("symlink to directory")) }, LoweredMatchArm { pattern: Ident("Broken"), guard: None, body: Literal(String("broken symlink")) }, LoweredMatchArm { pattern: Ident("TargetFile"), guard: None, body: Literal(String("binary file (via symlink)")) }] } }, LoweredMatchArm { pattern: Ident("RegularFile"), guard: None, body: Literal(String("binary file")) }] })])] }, sibling_fns: {} } std.filesystem.expr_compute::skip_reason::return]
+  - match_dispatch_std_filesystem_skip_reason_return_return_0 [primitive::MatchDispatch { arms: [LoweredMatchArm { pattern: Variant("Directory", []), guard: None, body: Literal(String("directory")) }, LoweredMatchArm { pattern: Variant("Missing", []), guard: None, body: Literal(String("missing")) }, LoweredMatchArm { pattern: Variant("Other", []), guard: None, body: Literal(String("special file")) }, LoweredMatchArm { pattern: Variant("Symlink", []), guard: None, body: Match { expr: FieldAccess { expr: Ident("entry"), field: "symlink_target" }, arms: [LoweredMatchArm { pattern: Variant("TargetDir", []), guard: None, body: Literal(String("symlink to directory")) }, LoweredMatchArm { pattern: Variant("Broken", []), guard: None, body: Literal(String("broken symlink")) }, LoweredMatchArm { pattern: Variant("TargetFile", []), guard: None, body: Literal(String("binary file (via symlink)")) }] } }, LoweredMatchArm { pattern: Variant("RegularFile", []), guard: None, body: Literal(String("binary file")) }] } std.filesystem.match_dispatch::skip_reason::return]
+    inputs:
+      * scrutinee: Any (1)
+      * entry: FileEntry (1)
+    outputs:
+      * result: String (1)
+  - get_field_std_filesystem_skip_reason_entry_kind_return_0_scrutinee [primitive::GetField { field: "kind" } std.filesystem.get_field::skip_reason::entry::kind]
     inputs:
       * entry: FileEntry (1)
     outputs:
@@ -1174,15 +1265,22 @@ Edges:
   - literal_source_tools_makegen_render_target_return_return_0.return -> tools.makegen::render_target.__out:return
   - literal_source_tools_makegen_render_section_header_return_return_0.return -> tools.makegen::render_section_header.__out:return
   - literal_source_tools_makegen_render_phony_line_return_return_0.return -> tools.makegen::render_phony_line.__out:return
-  - param_source_tools_makegen_resolve_resource_target_res_targets.res_targets -> expr_compute_tools_makegen_resolve_resource_target_return_return_0.res_targets
-  - param_source_tools_makegen_resolve_resource_target_resource.resource -> expr_compute_tools_makegen_resolve_resource_target_return_return_0.resource
-  - param_source_tools_makegen_resolve_resource_target_mode.mode -> expr_compute_tools_makegen_resolve_resource_target_return_return_0.mode
-  - expr_compute_tools_makegen_resolve_resource_target_return_return_0.result -> tools.makegen::resolve_resource_target.__out:return
+  - param_source_tools_makegen_resolve_resource_target_res_targets.res_targets -> match_dispatch_tools_makegen_resolve_resource_target_return_return_0.res_targets
+  - param_source_tools_makegen_resolve_resource_target_resource.resource -> match_dispatch_tools_makegen_resolve_resource_target_return_return_0.resource
+  - param_source_tools_makegen_resolve_resource_target_mode.mode -> match_dispatch_tools_makegen_resolve_resource_target_return_return_0.mode
+  - match_dispatch_tools_makegen_resolve_resource_target_return_return_0.result -> tools.makegen::resolve_resource_target.__out:return
   - param_source_tools_makegen_resolve_meta_deps_res_targets.res_targets -> tools.makegen::resolve_resource_target.res_targets
+  - param_source_tools_makegen_resolve_meta_deps_needs.needs -> expr_compute_tools_makegen_resolve_meta_deps_return_return_0.needs
+  - param_source_tools_makegen_resolve_meta_deps_res_targets.res_targets -> expr_compute_tools_makegen_resolve_meta_deps_return_return_0.res_targets
+  - expr_compute_tools_makegen_resolve_meta_deps_return_return_0.result -> tools.makegen::resolve_meta_deps.__out:return
   - literal_source_tools_makegen_resolve_meta_fix_deps_mode_fn_1.mode -> tools.makegen::resolve_resource_target.mode
-  - param_source_tools_makegen_apply_prefix_prefix.prefix -> expr_compute_tools_makegen_apply_prefix_return_return_0.prefix
-  - param_source_tools_makegen_apply_prefix_cmd.cmd -> expr_compute_tools_makegen_apply_prefix_return_return_0.cmd
-  - expr_compute_tools_makegen_apply_prefix_return_return_0.result -> tools.makegen::apply_prefix.__out:return
+  - param_source_tools_makegen_resolve_meta_fix_deps_needs.needs -> expr_compute_tools_makegen_resolve_meta_fix_deps_return_return_0.needs
+  - param_source_tools_makegen_resolve_meta_fix_deps_res_targets.res_targets -> expr_compute_tools_makegen_resolve_meta_fix_deps_return_return_0.res_targets
+  - expr_compute_tools_makegen_resolve_meta_fix_deps_return_return_0.result -> tools.makegen::resolve_meta_fix_deps.__out:return
+  - param_source_tools_makegen_apply_prefix_prefix.prefix -> match_dispatch_tools_makegen_apply_prefix_return_return_0.scrutinee
+  - param_source_tools_makegen_apply_prefix_prefix.prefix -> match_dispatch_tools_makegen_apply_prefix_return_return_0.prefix
+  - param_source_tools_makegen_apply_prefix_cmd.cmd -> match_dispatch_tools_makegen_apply_prefix_return_return_0.cmd
+  - match_dispatch_tools_makegen_apply_prefix_return_return_0.result -> tools.makegen::apply_prefix.__out:return
   - param_source_tools_makegen_render_core_targets_workflows.workflows -> expr_compute_tools_makegen_render_core_targets_return_return_0.workflows
   - expr_compute_tools_makegen_render_core_targets_return_return_0.result -> tools.makegen::render_core_targets.__out:return
   - param_source_tools_makegen_render_meta_base_res_targets.res_targets -> tools.makegen::resolve_meta_deps.res_targets
@@ -1202,15 +1300,25 @@ Edges:
   - literal_source_tools_makegen_render_meta_targets_title_fn_0.title -> tools.makegen::render_section_header.title
   - param_source_tools_makegen_render_meta_targets_res_targets.res_targets -> tools.makegen::render_meta_target.res_targets
   - literal_source_tools_makegen_render_meta_targets_return_return_0.return -> tools.makegen::render_meta_targets.__out:return
-  - param_source_tools_makegen_render_help_param_p.p -> expr_compute_tools_makegen_render_help_param_return_return_0.p
-  - expr_compute_tools_makegen_render_help_param_return_return_0.result -> tools.makegen::render_help_param.__out:return
+  - param_source_tools_makegen_render_help_param_p.p -> get_field_tools_makegen_render_help_param_p_default_return_0_scrutinee.p
+  - get_field_tools_makegen_render_help_param_p_default_return_0_scrutinee.result -> match_dispatch_tools_makegen_render_help_param_return_return_0.scrutinee
+  - param_source_tools_makegen_render_help_param_p.p -> match_dispatch_tools_makegen_render_help_param_return_return_0.p
+  - match_dispatch_tools_makegen_render_help_param_return_return_0.result -> tools.makegen::render_help_param.__out:return
+  - param_source_tools_makegen_render_help_params_params.params -> expr_compute_tools_makegen_render_help_params_return_return_0.params
+  - expr_compute_tools_makegen_render_help_params_return_return_0.result -> tools.makegen::render_help_params.__out:return
   - literal_source_tools_makegen_render_tool_target_return_return_0.return -> tools.makegen::render_tool_target.__out:return
+  - param_source_tools_makegen_render_tool_targets_tools.tools -> expr_compute_tools_makegen_render_tool_targets_return_return_0.tools
+  - expr_compute_tools_makegen_render_tool_targets_return_return_0.result -> tools.makegen::render_tool_targets.__out:return
   - param_source_tools_makegen_render_help_core_lines_workflows.workflows -> expr_compute_tools_makegen_render_help_core_lines_return_return_0.workflows
   - expr_compute_tools_makegen_render_help_core_lines_return_return_0.result -> tools.makegen::render_help_core_lines.__out:return
   - param_source_tools_makegen_fix_description_prereqs.prereqs -> expr_compute_tools_makegen_fix_description_return_return_0.prereqs
   - expr_compute_tools_makegen_fix_description_return_return_0.result -> tools.makegen::fix_description.__out:return
   - literal_source_tools_makegen_render_help_meta_line_return_return_0.return -> tools.makegen::render_help_meta_line.__out:return
+  - param_source_tools_makegen_render_help_meta_lines_metas.metas -> expr_compute_tools_makegen_render_help_meta_lines_return_return_0.metas
+  - expr_compute_tools_makegen_render_help_meta_lines_return_return_0.result -> tools.makegen::render_help_meta_lines.__out:return
   - literal_source_tools_makegen_render_help_tool_line_return_return_0.return -> tools.makegen::render_help_tool_line.__out:return
+  - param_source_tools_makegen_render_help_tool_lines_tools.tools -> expr_compute_tools_makegen_render_help_tool_lines_return_return_0.tools
+  - expr_compute_tools_makegen_render_help_tool_lines_return_return_0.result -> tools.makegen::render_help_tool_lines.__out:return
   - param_source_tools_makegen_render_help_target_workflows.workflows -> tools.makegen::render_help_core_lines.workflows
   - param_source_tools_makegen_render_help_target_metas.metas -> tools.makegen::render_help_meta_lines.metas
   - param_source_tools_makegen_render_help_target_tools.tools -> tools.makegen::render_help_tool_lines.tools
@@ -1220,6 +1328,8 @@ Edges:
   - literal_source_tools_makegen_collect_meta_phony_str_return_return_0.return -> tools.makegen::collect_meta_phony_str.__out:return
   - param_source_tools_makegen_tool_phony_names_t.t -> expr_compute_tools_makegen_tool_phony_names_return_return_0.t
   - expr_compute_tools_makegen_tool_phony_names_return_return_0.result -> tools.makegen::tool_phony_names.__out:return
+  - param_source_tools_makegen_collect_tool_phony_str_tools.tools -> expr_compute_tools_makegen_collect_tool_phony_str_return_return_0.tools
+  - expr_compute_tools_makegen_collect_tool_phony_str_return_return_0.result -> tools.makegen::collect_tool_phony_str.__out:return
   - literal_source_tools_makegen_render_naming_convention_return_return_0.return -> tools.makegen::render_naming_convention.__out:return
   - param_source_tools_makegen_render_makefile_body_workflows.workflows -> tools.makegen::collect_core_phony_str.workflows
   - param_source_tools_makegen_render_makefile_body_metas.metas -> tools.makegen::collect_meta_phony_str.metas
@@ -1284,8 +1394,10 @@ Edges:
   - parse_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken.subject_token -> std.patterns::metadata_oidc.__out:token
   - literal_source_std_patterns_check_iam_binding_has_role_return_0.has_role -> std.patterns::check_iam_binding.__out:has_role
   - param_source_std_patterns_add_iam_binding_bindings.bindings -> std.patterns::add_iam_binding.__out:updated_bindings
-  - param_source_std_filesystem_skip_reason_entry.entry -> expr_compute_std_filesystem_skip_reason_return_return_0.entry
-  - expr_compute_std_filesystem_skip_reason_return_return_0.result -> std.filesystem::skip_reason.__out:return
+  - param_source_std_filesystem_skip_reason_entry.entry -> get_field_std_filesystem_skip_reason_entry_kind_return_0_scrutinee.entry
+  - get_field_std_filesystem_skip_reason_entry_kind_return_0_scrutinee.result -> match_dispatch_std_filesystem_skip_reason_return_return_0.scrutinee
+  - param_source_std_filesystem_skip_reason_entry.entry -> match_dispatch_std_filesystem_skip_reason_return_return_0.entry
+  - match_dispatch_std_filesystem_skip_reason_return_return_0.result -> std.filesystem::skip_reason.__out:return
   - acquire_resource_std_resources_Filesystem.resource_handle -> release_resource_std_resources_Filesystem.resource_handle
   - acquire_resource_std_resources_Network.resource_handle -> release_resource_std_resources_Network.resource_handle
   - acquire_resource_std_resources_Clock.resource_handle -> release_resource_std_resources_Clock.resource_handle
@@ -1312,4 +1424,3 @@ Edges:
   - std.patterns::iam_preflight_check.ok -> release_resource_std_resources_Network.resource_handle
   - std.patterns::credential_chain.token -> provide_resource_std_patterns_credential_chain_auth.trigger
   - provide_resource_std_patterns_credential_chain_auth.auth -> release_resource_std_resources_AuthContext.resource_handle
-

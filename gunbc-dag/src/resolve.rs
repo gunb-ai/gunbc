@@ -161,6 +161,77 @@ impl Executable for DeclaredOutputCallableOp {
     }
 }
 
+/// C10: Callable op for `fn` items that evaluates the fn body directly.
+///
+/// Instead of relying on passthrough wiring from ExprCompute nodes, this op
+/// evaluates the fn's lowered body using the expression evaluator. The fn body
+/// can handle if/else, for-loops, match, pipes, records, and all other pure
+/// expression forms — producing the return value directly from the fn's logic.
+///
+/// Falls back to passthrough behavior when fn body evaluation fails (e.g.,
+/// the fn body references DAG-only constructs that the evaluator can't handle).
+#[derive(Clone)]
+struct FnBodyCallableOp {
+    fn_body: daglang_lower::LoweredFnBody,
+    output_ports: Vec<(String, bool)>,
+}
+
+impl std::fmt::Debug for FnBodyCallableOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FnBodyCallableOp")
+            .field("output_ports", &self.output_ports)
+            .finish()
+    }
+}
+
+impl Executable for FnBodyCallableOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        // Build the fn body evaluation environment from non-passthrough inputs.
+        let mut eval_inputs = HashMap::new();
+        let mut passthrough_inputs = HashMap::new();
+        for (key, value) in &inputs {
+            if key.starts_with(PortName::OUTPUT_PASSTHROUGH_PREFIX) {
+                passthrough_inputs.insert(key.clone(), value.clone());
+            } else if key != "__deps" {
+                eval_inputs.insert(key.clone(), value.clone());
+            }
+        }
+
+        // Try to evaluate the fn body. On success, map the results to declared
+        // output ports. Passthrough inputs override fn body results (they come
+        // from explicit DAG wiring and are more authoritative).
+        let empty_siblings = HashMap::new();
+        match daglang_lower::eval::evaluate_fn_body(&self.fn_body, &eval_inputs, &empty_siblings) {
+            Ok(body_results) => {
+                let mut outputs = HashMap::new();
+                for (port_name, _is_optional) in &self.output_ports {
+                    // 1. Check passthrough (explicit DAG wiring takes priority)
+                    let passthrough_key =
+                        format!("{}{port_name}", PortName::OUTPUT_PASSTHROUGH_PREFIX);
+                    if let Some(value) = inputs.get(&passthrough_key) {
+                        if !matches!(value, Value::Skipped) {
+                            outputs.insert(port_name.clone(), value.clone());
+                            continue;
+                        }
+                    }
+                    // 2. Check fn body evaluation result
+                    if let Some(value) = body_results.get(port_name) {
+                        outputs.insert(port_name.clone(), value.clone());
+                        continue;
+                    }
+                    // 3. Fallback to Skipped
+                    outputs.insert(port_name.clone(), Value::Skipped);
+                }
+                Ok(outputs)
+            }
+            Err(_) => {
+                // Fn body evaluation failed — fall back to passthrough behavior.
+                execute_with_declared_output_passthrough(&self.output_ports, inputs)
+            }
+        }
+    }
+}
+
 /// Pipeline dispatch op for resolved `LoweredOp::Pipeline` nodes.
 ///
 /// When a pipeline is invoked as a node in another DAG, this op represents
@@ -430,6 +501,231 @@ impl Executable for GetFieldOp {
         OutputMap::new()
             .value(self.output_port.as_str(), extracted)
             .ok()
+    }
+}
+
+/// C24: String interpolation — concatenate static parts with dynamic values.
+/// Inputs: one port per interpolated expression. Output: concatenated string.
+#[derive(Debug, Clone)]
+struct StringInterpolateOp {
+    parts: Vec<String>,
+    input_ports: Vec<String>,
+    output_port: String,
+}
+
+impl Executable for StringInterpolateOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let mut result = String::new();
+        for (i, part) in self.parts.iter().enumerate() {
+            result.push_str(part);
+            if i < self.input_ports.len() {
+                let value = inputs.get(&self.input_ports[i]).cloned().unwrap_or(Value::Skipped);
+                result.push_str(&daglang_lower::eval::value_to_string(&value));
+            }
+        }
+        OutputMap::new()
+            .value(&self.output_port, Value::Str(result))
+            .ok()
+    }
+}
+
+/// C24: Binary operation — applies an operator to two input values.
+/// Inputs: `left`, `right`. Output: result of the operation.
+#[derive(Debug, Clone)]
+struct BinaryOpOp {
+    op: daglang_lower::expr::LoweredBinOp,
+    output_port: String,
+}
+
+impl Executable for BinaryOpOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let left = inputs.get("left").cloned().unwrap_or(Value::Skipped);
+        let right = inputs.get("right").cloned().unwrap_or(Value::Skipped);
+        // Handle short-circuit semantics for logical/null-coalesce ops
+        let result = match self.op {
+            daglang_lower::expr::LoweredBinOp::And => {
+                if !daglang_lower::eval::value_truthy(&left) {
+                    Value::Bool(false)
+                } else {
+                    Value::Bool(daglang_lower::eval::value_truthy(&right))
+                }
+            }
+            daglang_lower::expr::LoweredBinOp::Or => {
+                if daglang_lower::eval::value_truthy(&left) {
+                    Value::Bool(true)
+                } else {
+                    Value::Bool(daglang_lower::eval::value_truthy(&right))
+                }
+            }
+            daglang_lower::expr::LoweredBinOp::NullCoalesce => {
+                if !matches!(left, Value::Unit | Value::Skipped) {
+                    left
+                } else {
+                    right
+                }
+            }
+            op => daglang_lower::eval::eval_binop(&left, op, &right).map_err(|e| {
+                ExecError::new(format!("BinaryOp {:?}: {}", self.op, e))
+            })?,
+        };
+        OutputMap::new().value(&self.output_port, result).ok()
+    }
+}
+
+/// C24: Unary operation — `!x` or `-x`.
+/// Input: `operand`. Output: result.
+#[derive(Debug, Clone)]
+struct UnaryOpOp {
+    op: daglang_lower::expr::LoweredUnaryOp,
+    output_port: String,
+}
+
+impl Executable for UnaryOpOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let val = inputs.get("operand").cloned().unwrap_or(Value::Skipped);
+        let result = match self.op {
+            daglang_lower::expr::LoweredUnaryOp::Not => {
+                Value::Bool(!daglang_lower::eval::value_truthy(&val))
+            }
+            daglang_lower::expr::LoweredUnaryOp::Neg => match val {
+                Value::Int(i) => Value::Int(-i),
+                Value::Float(f) => Value::Float(-f),
+                other => {
+                    return Err(ExecError::new(format!(
+                        "UnaryOp Neg: cannot negate {:?}",
+                        other
+                    )));
+                }
+            },
+        };
+        OutputMap::new().value(&self.output_port, result).ok()
+    }
+}
+
+/// C24: Conditional — selects between `then` and `else` based on `condition`.
+/// Inputs: `condition`, `then_value`, `else_value`. Output: selected branch.
+#[derive(Debug, Clone)]
+struct ConditionalOp {
+    output_port: String,
+}
+
+impl Executable for ConditionalOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let condition = inputs.get("condition").cloned().unwrap_or(Value::Bool(false));
+        let result = if daglang_lower::eval::value_truthy(&condition) {
+            inputs.get("then_value").cloned().unwrap_or(Value::Skipped)
+        } else {
+            inputs
+                .get("else_value")
+                .cloned()
+                .unwrap_or(Value::Unit)
+        };
+        OutputMap::new().value(&self.output_port, result).ok()
+    }
+}
+
+/// C24: Match dispatch — evaluates match arms against a scrutinee value.
+/// Input: `scrutinee` (plus any captured env values by name). Output: matched body result.
+#[derive(Clone)]
+struct MatchDispatchOp {
+    arms: Vec<daglang_lower::expr::LoweredMatchArm>,
+    output_port: String,
+}
+
+impl std::fmt::Debug for MatchDispatchOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MatchDispatchOp")
+            .field("arms", &self.arms.len())
+            .field("output_port", &self.output_port)
+            .finish()
+    }
+}
+
+impl Executable for MatchDispatchOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let scrutinee = inputs.get("scrutinee").cloned().unwrap_or(Value::Skipped);
+        // Build an env from all non-scrutinee inputs for arm body evaluation
+        let env: HashMap<String, Value> = inputs
+            .iter()
+            .filter(|(k, _)| k.as_str() != "scrutinee")
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        let empty_siblings = HashMap::new();
+        let result =
+            daglang_lower::eval::eval_match(&scrutinee, &self.arms, &env, &empty_siblings)
+                .map_err(|e| ExecError::new(format!("MatchDispatch: {e}")))?;
+        OutputMap::new().value(&self.output_port, result).ok()
+    }
+}
+
+/// C24: Record construction — assembles named fields into a Value::Map.
+/// Inputs: one port per field name. Output: Value::Map with all fields.
+#[derive(Debug, Clone)]
+struct RecordConstructOp {
+    fields: Vec<String>,
+    output_port: String,
+}
+
+impl Executable for RecordConstructOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let mut map = std::collections::BTreeMap::new();
+        for field in &self.fields {
+            let value = inputs.get(field).cloned().unwrap_or(Value::Skipped);
+            map.insert(field.clone(), value);
+        }
+        OutputMap::new()
+            .value(&self.output_port, Value::Map(map))
+            .ok()
+    }
+}
+
+/// C24: Null coalesce — `a ?? b`. Returns `value` if non-null, else `default`.
+/// Inputs: `value`, `default`. Output: coalesced result.
+#[derive(Debug, Clone)]
+struct NullCoalesceOp {
+    output_port: String,
+}
+
+impl Executable for NullCoalesceOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let value = inputs.get("value").cloned().unwrap_or(Value::Skipped);
+        let result = if matches!(value, Value::Unit | Value::Skipped) {
+            inputs.get("default").cloned().unwrap_or(Value::Unit)
+        } else {
+            value
+        };
+        OutputMap::new().value(&self.output_port, result).ok()
+    }
+}
+
+/// C24: Variant construction — produces tagged sum-type values.
+/// Unit variants → Value::Str(tag). Payload variants → Value::Map with `_variant` tag.
+#[derive(Debug, Clone)]
+struct VariantConstructOp {
+    tag: String,
+    fields: Vec<String>,
+    output_port: String,
+}
+
+impl Executable for VariantConstructOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let result = if self.fields.is_empty() {
+            // Unit variant
+            Value::Enum {
+                ty: String::new(),
+                variant: self.tag.clone(),
+            }
+        } else {
+            // Payload variant
+            let mut map = std::collections::BTreeMap::new();
+            map.insert("_variant".to_string(), Value::Str(self.tag.clone()));
+            for field in &self.fields {
+                let value = inputs.get(field).cloned().unwrap_or(Value::Skipped);
+                map.insert(field.clone(), value);
+            }
+            Value::Map(map)
+        };
+        OutputMap::new().value(&self.output_port, result).ok()
     }
 }
 
@@ -855,6 +1151,7 @@ fn resolve_op(
             name,
             kind,
             service_metadata,
+            fn_body,
             ..
         } => resolve_domain(
             node_id,
@@ -863,6 +1160,7 @@ fn resolve_op(
             *kind,
             outputs,
             service_metadata.as_deref(),
+            fn_body.as_deref(),
         ),
         LoweredOp::Pattern(pattern_op) => Ok(DynOp::new(pattern_op.clone())),
         LoweredOp::UnsupportedPattern { name } => Err(ResolveError {
@@ -945,6 +1243,82 @@ fn resolve_primitive(
                 output_port,
             }))
         }
+        PrimitiveOpKind::StringInterpolate { parts, input_ports } => {
+            let output_port = outputs
+                .first()
+                .map(|p| p.name.0.clone())
+                .unwrap_or_else(|| "result".to_string());
+            Ok(DynOp::new(StringInterpolateOp {
+                parts: parts.clone(),
+                input_ports: input_ports.clone(),
+                output_port,
+            }))
+        }
+        PrimitiveOpKind::BinaryOp { op } => {
+            let output_port = outputs
+                .first()
+                .map(|p| p.name.0.clone())
+                .unwrap_or_else(|| "result".to_string());
+            Ok(DynOp::new(BinaryOpOp {
+                op: *op,
+                output_port,
+            }))
+        }
+        PrimitiveOpKind::UnaryOp { op } => {
+            let output_port = outputs
+                .first()
+                .map(|p| p.name.0.clone())
+                .unwrap_or_else(|| "result".to_string());
+            Ok(DynOp::new(UnaryOpOp {
+                op: *op,
+                output_port,
+            }))
+        }
+        PrimitiveOpKind::Conditional => {
+            let output_port = outputs
+                .first()
+                .map(|p| p.name.0.clone())
+                .unwrap_or_else(|| "result".to_string());
+            Ok(DynOp::new(ConditionalOp { output_port }))
+        }
+        PrimitiveOpKind::MatchDispatch { arms } => {
+            let output_port = outputs
+                .first()
+                .map(|p| p.name.0.clone())
+                .unwrap_or_else(|| "result".to_string());
+            Ok(DynOp::new(MatchDispatchOp {
+                arms: arms.clone(),
+                output_port,
+            }))
+        }
+        PrimitiveOpKind::RecordConstruct { fields } => {
+            let output_port = outputs
+                .first()
+                .map(|p| p.name.0.clone())
+                .unwrap_or_else(|| "result".to_string());
+            Ok(DynOp::new(RecordConstructOp {
+                fields: fields.clone(),
+                output_port,
+            }))
+        }
+        PrimitiveOpKind::NullCoalesce => {
+            let output_port = outputs
+                .first()
+                .map(|p| p.name.0.clone())
+                .unwrap_or_else(|| "result".to_string());
+            Ok(DynOp::new(NullCoalesceOp { output_port }))
+        }
+        PrimitiveOpKind::VariantConstruct { tag, fields } => {
+            let output_port = outputs
+                .first()
+                .map(|p| p.name.0.clone())
+                .unwrap_or_else(|| "result".to_string());
+            Ok(DynOp::new(VariantConstructOp {
+                tag: tag.clone(),
+                fields: fields.clone(),
+                output_port,
+            }))
+        }
         PrimitiveOpKind::ExprCompute {
             fn_body,
             sibling_fns,
@@ -978,6 +1352,7 @@ fn resolve_domain(
     _kind: CallableKind,
     outputs: &[Port],
     service_metadata: Option<&ServiceCallMetadata>,
+    fn_body: Option<&daglang_lower::LoweredFnBody>,
 ) -> Result<DynOp, ResolveError> {
     // 1. Modules with custom resolvers — return Some for known callables,
     //    None for unknown (which falls through to passthrough).
@@ -1004,7 +1379,16 @@ fn resolve_domain(
     if TransportRole::from_name(name).is_some() {
         return resolve_service_transport(node_id, module, name, outputs, service_metadata);
     }
-    // 5. Default: identity callable for compiler-validated callables.
+    // 5. C10: fn items with fn bodies use FnBodyCallableOp to evaluate the
+    //    body directly, producing outputs from the fn's computation rather
+    //    than relying on passthrough wiring from ExprCompute nodes.
+    if let Some(body) = fn_body {
+        return Ok(DynOp::new(FnBodyCallableOp {
+            fn_body: body.clone(),
+            output_ports: declared_output_ports(outputs),
+        }));
+    }
+    // 6. Default: identity callable for compiler-validated callables.
     //
     // All LoweredOp::Callable nodes are produced by the DSL compiler (the
     // lowerer only emits Callable for items in the typed project). The
@@ -2501,5 +2885,328 @@ mod tests {
             Some(&Value::Int(42)),
             "non-passthrough inputs should be forwarded"
         );
+    }
+
+    // ── C24 Structural Primitive Tests ──────────────────────────────────────
+
+    #[test]
+    fn resolve_string_interpolate_concatenates_parts() {
+        let node = Node::opaque(
+            "interp",
+            vec![Port::new("name", "String"), Port::new("count", "Int")],
+            vec![Port::new("result", "String")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "string_interpolate".to_string(),
+                kind: PrimitiveOpKind::StringInterpolate {
+                    parts: vec![
+                        "hello ".to_string(),
+                        ", you have ".to_string(),
+                        " items".to_string(),
+                    ],
+                    input_ports: vec!["name".to_string(), "count".to_string()],
+                },
+            },
+        );
+        let result = resolve_node(&node).expect("should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert("name".to_string(), Value::Str("Alice".to_string()));
+        inputs.insert("count".to_string(), Value::Int(42));
+        let outputs = result.execute(inputs).expect("should execute");
+        assert_eq!(
+            outputs.get("result").and_then(Value::as_str),
+            Some("hello Alice, you have 42 items")
+        );
+    }
+
+    #[test]
+    fn resolve_binary_op_add_strings() {
+        let node = Node::opaque(
+            "binop",
+            vec![Port::new("left", "String"), Port::new("right", "String")],
+            vec![Port::new("result", "String")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "binary_op".to_string(),
+                kind: PrimitiveOpKind::BinaryOp {
+                    op: daglang_lower::expr::LoweredBinOp::Add,
+                },
+            },
+        );
+        let result = resolve_node(&node).expect("should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert("left".to_string(), Value::Str("foo".to_string()));
+        inputs.insert("right".to_string(), Value::Str("bar".to_string()));
+        let outputs = result.execute(inputs).expect("should execute");
+        assert_eq!(
+            outputs.get("result").and_then(Value::as_str),
+            Some("foobar")
+        );
+    }
+
+    #[test]
+    fn resolve_binary_op_compare_ints() {
+        let node = Node::opaque(
+            "binop",
+            vec![Port::new("left", "Int"), Port::new("right", "Int")],
+            vec![Port::new("result", "Bool")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "binary_op".to_string(),
+                kind: PrimitiveOpKind::BinaryOp {
+                    op: daglang_lower::expr::LoweredBinOp::Gt,
+                },
+            },
+        );
+        let result = resolve_node(&node).expect("should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert("left".to_string(), Value::Int(10));
+        inputs.insert("right".to_string(), Value::Int(5));
+        let outputs = result.execute(inputs).expect("should execute");
+        assert_eq!(outputs.get("result"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn resolve_unary_op_not() {
+        let node = Node::opaque(
+            "unop",
+            vec![Port::new("operand", "Bool")],
+            vec![Port::new("result", "Bool")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "unary_op".to_string(),
+                kind: PrimitiveOpKind::UnaryOp {
+                    op: daglang_lower::expr::LoweredUnaryOp::Not,
+                },
+            },
+        );
+        let result = resolve_node(&node).expect("should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert("operand".to_string(), Value::Bool(true));
+        let outputs = result.execute(inputs).expect("should execute");
+        assert_eq!(outputs.get("result"), Some(&Value::Bool(false)));
+    }
+
+    #[test]
+    fn resolve_conditional_selects_then_branch() {
+        let node = Node::opaque(
+            "cond",
+            vec![
+                Port::new("condition", "Bool"),
+                Port::new("then_value", "String"),
+                Port::new("else_value", "String"),
+            ],
+            vec![Port::new("result", "String")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "conditional".to_string(),
+                kind: PrimitiveOpKind::Conditional,
+            },
+        );
+        let result = resolve_node(&node).expect("should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert("condition".to_string(), Value::Bool(true));
+        inputs.insert("then_value".to_string(), Value::Str("yes".to_string()));
+        inputs.insert("else_value".to_string(), Value::Str("no".to_string()));
+        let outputs = result.execute(inputs).expect("should execute");
+        assert_eq!(
+            outputs.get("result").and_then(Value::as_str),
+            Some("yes")
+        );
+    }
+
+    #[test]
+    fn resolve_conditional_selects_else_branch() {
+        let node = Node::opaque(
+            "cond",
+            vec![
+                Port::new("condition", "Bool"),
+                Port::new("then_value", "String"),
+                Port::new("else_value", "String"),
+            ],
+            vec![Port::new("result", "String")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "conditional".to_string(),
+                kind: PrimitiveOpKind::Conditional,
+            },
+        );
+        let result = resolve_node(&node).expect("should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert("condition".to_string(), Value::Bool(false));
+        inputs.insert("then_value".to_string(), Value::Str("yes".to_string()));
+        inputs.insert("else_value".to_string(), Value::Str("no".to_string()));
+        let outputs = result.execute(inputs).expect("should execute");
+        assert_eq!(
+            outputs.get("result").and_then(Value::as_str),
+            Some("no")
+        );
+    }
+
+    #[test]
+    fn resolve_match_dispatch_selects_matching_arm() {
+        use daglang_lower::expr::*;
+        let node = Node::opaque(
+            "match",
+            vec![Port::new("scrutinee", "String")],
+            vec![Port::new("result", "Int")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "match_dispatch".to_string(),
+                kind: PrimitiveOpKind::MatchDispatch {
+                    arms: vec![
+                        LoweredMatchArm {
+                            pattern: LoweredPattern::Literal(LoweredLiteral::String(
+                                "a".to_string(),
+                            )),
+                            guard: None,
+                            body: LoweredExpr::Literal(LoweredLiteral::Int(1)),
+                        },
+                        LoweredMatchArm {
+                            pattern: LoweredPattern::Literal(LoweredLiteral::String(
+                                "b".to_string(),
+                            )),
+                            guard: None,
+                            body: LoweredExpr::Literal(LoweredLiteral::Int(2)),
+                        },
+                        LoweredMatchArm {
+                            pattern: LoweredPattern::Wildcard,
+                            guard: None,
+                            body: LoweredExpr::Literal(LoweredLiteral::Int(0)),
+                        },
+                    ],
+                },
+            },
+        );
+        let result = resolve_node(&node).expect("should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert("scrutinee".to_string(), Value::Str("b".to_string()));
+        let outputs = result.execute(inputs).expect("should execute");
+        assert_eq!(outputs.get("result"), Some(&Value::Int(2)));
+    }
+
+    #[test]
+    fn resolve_record_construct_builds_map() {
+        let node = Node::opaque(
+            "record",
+            vec![Port::new("x", "Int"), Port::new("y", "String")],
+            vec![Port::new("result", "Record")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "record_construct".to_string(),
+                kind: PrimitiveOpKind::RecordConstruct {
+                    fields: vec!["x".to_string(), "y".to_string()],
+                },
+            },
+        );
+        let result = resolve_node(&node).expect("should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert("x".to_string(), Value::Int(42));
+        inputs.insert("y".to_string(), Value::Str("hello".to_string()));
+        let outputs = result.execute(inputs).expect("should execute");
+        match outputs.get("result") {
+            Some(Value::Map(m)) => {
+                assert_eq!(m.get("x"), Some(&Value::Int(42)));
+                assert_eq!(m.get("y"), Some(&Value::Str("hello".to_string())));
+            }
+            other => panic!("expected Map, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn resolve_null_coalesce_returns_value_when_present() {
+        let node = Node::opaque(
+            "coalesce",
+            vec![Port::new("value", "String"), Port::new("default", "String")],
+            vec![Port::new("result", "String")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "null_coalesce".to_string(),
+                kind: PrimitiveOpKind::NullCoalesce,
+            },
+        );
+        let result = resolve_node(&node).expect("should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert("value".to_string(), Value::Str("real".to_string()));
+        inputs.insert("default".to_string(), Value::Str("fallback".to_string()));
+        let outputs = result.execute(inputs).expect("should execute");
+        assert_eq!(
+            outputs.get("result").and_then(Value::as_str),
+            Some("real")
+        );
+    }
+
+    #[test]
+    fn resolve_null_coalesce_returns_default_when_null() {
+        let node = Node::opaque(
+            "coalesce",
+            vec![Port::new("value", "String"), Port::new("default", "String")],
+            vec![Port::new("result", "String")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "null_coalesce".to_string(),
+                kind: PrimitiveOpKind::NullCoalesce,
+            },
+        );
+        let result = resolve_node(&node).expect("should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert("value".to_string(), Value::Unit);
+        inputs.insert("default".to_string(), Value::Str("fallback".to_string()));
+        let outputs = result.execute(inputs).expect("should execute");
+        assert_eq!(
+            outputs.get("result").and_then(Value::as_str),
+            Some("fallback")
+        );
+    }
+
+    #[test]
+    fn resolve_variant_construct_unit() {
+        let node = Node::opaque(
+            "variant",
+            vec![],
+            vec![Port::new("result", "BoxStyle")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "variant_construct".to_string(),
+                kind: PrimitiveOpKind::VariantConstruct {
+                    tag: "Closed".to_string(),
+                    fields: vec![],
+                },
+            },
+        );
+        let result = resolve_node(&node).expect("should resolve");
+        let outputs = result.execute(HashMap::new()).expect("should execute");
+        match outputs.get("result") {
+            Some(Value::Enum { variant, .. }) => assert_eq!(variant, "Closed"),
+            other => panic!("expected Enum, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn resolve_variant_construct_payload() {
+        let node = Node::opaque(
+            "variant",
+            vec![Port::new("value", "String")],
+            vec![Port::new("result", "Result")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "variant_construct".to_string(),
+                kind: PrimitiveOpKind::VariantConstruct {
+                    tag: "Ok".to_string(),
+                    fields: vec!["value".to_string()],
+                },
+            },
+        );
+        let result = resolve_node(&node).expect("should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert("value".to_string(), Value::Str("data".to_string()));
+        let outputs = result.execute(inputs).expect("should execute");
+        match outputs.get("result") {
+            Some(Value::Map(m)) => {
+                assert_eq!(m.get("_variant"), Some(&Value::Str("Ok".to_string())));
+                assert_eq!(m.get("value"), Some(&Value::Str("data".to_string())));
+            }
+            other => panic!("expected Map with _variant, got {:?}", other),
+        }
     }
 }

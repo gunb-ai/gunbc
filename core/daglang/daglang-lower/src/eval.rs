@@ -271,7 +271,7 @@ fn eval_expr(
 
         LoweredExpr::Match { expr, arms } => {
             let scrutinee = eval_expr(expr, env, sibling_fns)?;
-            eval_match(&scrutinee, arms, env, sibling_fns)
+            eval_match_inner(&scrutinee, arms, env, sibling_fns)
         }
 
         LoweredExpr::VariantConstruct { tag, fields } => {
@@ -407,7 +407,7 @@ fn field_access(base: &Value, field: &str) -> Result<Value, EvalError> {
     }
 }
 
-fn eval_binop(lhs: &Value, op: LoweredBinOp, rhs: &Value) -> Result<Value, EvalError> {
+pub fn eval_binop(lhs: &Value, op: LoweredBinOp, rhs: &Value) -> Result<Value, EvalError> {
     match op {
         LoweredBinOp::Add
             if matches!(lhs, Value::Str(_) | Value::Enum { .. })
@@ -555,7 +555,17 @@ fn record_update(base: &Value, updates: &Value) -> Result<Value, EvalError> {
     }
 }
 
-fn eval_match(
+pub fn eval_match(
+    scrutinee: &Value,
+    arms: &[LoweredMatchArm],
+    env_bindings: &HashMap<String, Value>,
+    sibling_fns: &HashMap<String, LoweredFnBody>,
+) -> Result<Value, EvalError> {
+    let env = Env::from_inputs(env_bindings);
+    eval_match_inner(scrutinee, arms, &env, sibling_fns)
+}
+
+fn eval_match_inner(
     scrutinee: &Value,
     arms: &[LoweredMatchArm],
     env: &Env,

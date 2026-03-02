@@ -379,6 +379,19 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerClassification> {
             kind: PrimitiveOpKind::ExprCompute { .. },
             ..
         } => return Some(HandlerClassification::Handler(HandlerKind::Passthrough)),
+        // C24: All structural primitive ops use passthrough stubs in layer-1 emit.
+        LoweredOp::Primitive {
+            kind:
+                PrimitiveOpKind::StringInterpolate { .. }
+                | PrimitiveOpKind::BinaryOp { .. }
+                | PrimitiveOpKind::UnaryOp { .. }
+                | PrimitiveOpKind::Conditional
+                | PrimitiveOpKind::MatchDispatch { .. }
+                | PrimitiveOpKind::RecordConstruct { .. }
+                | PrimitiveOpKind::NullCoalesce
+                | PrimitiveOpKind::VariantConstruct { .. },
+            ..
+        } => return Some(HandlerClassification::Handler(HandlerKind::Passthrough)),
     }
 
     let handler = |h| Some(HandlerClassification::Handler(h));

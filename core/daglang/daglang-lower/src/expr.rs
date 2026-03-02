@@ -400,7 +400,7 @@ pub(crate) fn lit_float_value(lit: &ast::Literal) -> f64 {
     }
 }
 
-fn lower_binop(op: &ast::BinOp) -> LoweredBinOp {
+pub(crate) fn lower_binop(op: &ast::BinOp) -> LoweredBinOp {
     match op {
         ast::BinOp::Add => LoweredBinOp::Add,
         ast::BinOp::Sub => LoweredBinOp::Sub,
@@ -433,7 +433,7 @@ fn lower_string_part(part: &ast::StringPart, variant_names: &HashSet<String>) ->
     }
 }
 
-fn lower_match_arm(arm: &ast::MatchArm, variant_names: &HashSet<String>) -> LoweredMatchArm {
+pub(crate) fn lower_match_arm(arm: &ast::MatchArm, variant_names: &HashSet<String>) -> LoweredMatchArm {
     LoweredMatchArm {
         pattern: lower_pattern(&arm.pattern, variant_names),
         guard: arm.guard.as_ref().map(|g| lower_expr(g, variant_names)),

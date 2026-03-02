@@ -224,6 +224,44 @@ pub enum PrimitiveOpKind {
     GetField {
         field: String,
     },
+    /// C24: String interpolation — `"hello {name}, you have {count} items"`.
+    /// Inputs: one port per interpolated expression. Output: concatenated string.
+    StringInterpolate {
+        /// Static template parts interleaved with input port names.
+        /// `parts.len() == input_ports.len() + 1` (first/last are always literal).
+        parts: Vec<String>,
+        input_ports: Vec<String>,
+    },
+    /// C24: Binary operation — `a + b`, `a == b`, `a && b`, etc.
+    BinaryOp {
+        op: crate::expr::LoweredBinOp,
+    },
+    /// C24: Unary operation — `!x`, `-x`.
+    UnaryOp {
+        op: crate::expr::LoweredUnaryOp,
+    },
+    /// C24: Conditional — `if cond { then } else { else_ }`.
+    /// Inputs: `condition`, `then`, `else`. Output: selected branch value.
+    Conditional,
+    /// C24: Match dispatch — pattern match on a scrutinee.
+    /// Arms are evaluated in order; first matching arm's body is the output.
+    MatchDispatch {
+        arms: Vec<crate::expr::LoweredMatchArm>,
+    },
+    /// C24: Record construction — `{ field1: val1, field2: val2 }`.
+    /// Each field maps to an input port; output is a Value::Map.
+    RecordConstruct {
+        fields: Vec<String>,
+    },
+    /// C24: Null coalesce — `a ?? b`.
+    /// Input: `value`, `default`. Output: `value` if non-null, else `default`.
+    NullCoalesce,
+    /// C24: Variant construction — `Ok { value: x }` or unit `None`.
+    /// Produces Value::Map with `_variant` tag or Value::Str for unit variants.
+    VariantConstruct {
+        tag: String,
+        fields: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -317,6 +355,15 @@ impl PrimitiveOpKind {
             Self::ContentUpsertOutputPath { .. } => ObligationCategory::None,
             Self::ExprCompute { .. } => ObligationCategory::None,
             Self::GetField { .. } => ObligationCategory::None,
+            // C24: All structural primitives are pure computation — no obligations.
+            Self::StringInterpolate { .. }
+            | Self::BinaryOp { .. }
+            | Self::UnaryOp { .. }
+            | Self::Conditional
+            | Self::MatchDispatch { .. }
+            | Self::RecordConstruct { .. }
+            | Self::NullCoalesce
+            | Self::VariantConstruct { .. } => ObligationCategory::None,
         }
     }
 }
@@ -1245,6 +1292,8 @@ struct LoweringContext<'a> {
     /// Passed to ExprCompute nodes as `sibling_fns` so the runtime evaluator
     /// can execute user-defined fn calls (e.g., `stage_from_output`).
     all_fn_bodies: &'a HashMap<String, LoweredFnBody>,
+    /// C24: Known sum-type variant names for match arm lowering.
+    variant_names: &'a HashSet<String>,
 }
 
 /// Per-node expansion state for pattern lowering.
@@ -1271,6 +1320,7 @@ struct DagWiringContext<'a> {
     endpoints_by_name: &'a HashMap<String, Option<LoweredEndpoint>>,
     service_registry: &'a ServiceEndpointRegistry,
     data_values: &'a HashMap<String, serde_json::Value>,
+    variant_names: &'a HashSet<String>,
 }
 
 /// Wraps a `Dag` with O(1) deduplication tracking for nodes and edges.
@@ -2016,6 +2066,7 @@ fn lower_typed_project_impl(
         endpoints_by_name: &endpoints_by_name,
         service_registry: &service_registry,
         data_values: &data_values,
+        variant_names: &variant_names,
     };
     add_dependency_edges(
         &mut builder,
@@ -2041,6 +2092,7 @@ fn lower_typed_project_impl(
         endpoints_by_name: &endpoints_by_name,
         service_registry: &service_registry,
         data_values: &data_values,
+        variant_names: &variant_names,
     };
     add_service_call_edges(
         &mut builder,
@@ -3139,6 +3191,7 @@ fn add_dependency_edges(
                     local_let_bindings: &empty_locals,
                     body_stmts: &[],
                     all_fn_bodies: &empty_fn_bodies,
+                    variant_names: wctx.variant_names,
                 };
                 expand_content_upsert_patterns(builder, &ctx, stmts, target);
                 expand_non_generic_pattern_calls(builder, project, &ctx, stmts, target);
@@ -4355,6 +4408,7 @@ fn expand_non_generic_pattern_calls(
             local_let_bindings: ctx.local_let_bindings,
             body_stmts: ctx.body_stmts,
             all_fn_bodies: ctx.all_fn_bodies,
+            variant_names: ctx.variant_names,
         };
         let pexp = PatternExpansionParams {
             target,
@@ -6935,6 +6989,7 @@ fn add_service_call_edges(
                 local_let_bindings: &local_let_bindings,
                 body_stmts: stmts,
                 all_fn_bodies: &all_fn_bodies,
+                variant_names: wctx.variant_names,
             };
             wire_fn_call_arguments(builder, &fn_ctx, stmts);
             // Wire for-loop iterable expressions to loop node "items" ports.
@@ -8735,6 +8790,46 @@ fn resolve_return_expr_source(
             );
             Some((src, output_name.to_string()))
         }
+        // C24-P1: Direct BinOp → BinaryOp structural node.
+        Expr::BinOp(left, op, right) => {
+            let left_source = resolve_return_expr_source(
+                builder,
+                ctx,
+                left,
+                output_port,
+                &format!("{output_name}_lhs"),
+                &format!("{disambiguator}_lhs"),
+            );
+            let right_source = resolve_return_expr_source(
+                builder,
+                ctx,
+                right,
+                output_port,
+                &format!("{output_name}_rhs"),
+                &format!("{disambiguator}_rhs"),
+            );
+            match (left_source, right_source) {
+                (Some((l_node, l_port)), Some((r_node, r_port))) => synthesize_binary_op(
+                    builder,
+                    ctx,
+                    op,
+                    &l_node,
+                    &l_port,
+                    &r_node,
+                    &r_port,
+                    output_port,
+                    output_name,
+                    disambiguator,
+                ),
+                _ => synthesize_expr_compute(
+                    builder, ctx, expr, output_port, output_name, disambiguator,
+                ),
+            }
+        }
+        // C24-P1: Direct Match → MatchDispatch structural node.
+        Expr::Match(scrutinee, arms) => synthesize_match_dispatch(
+            builder, ctx, scrutinee, arms, output_port, output_name, disambiguator,
+        ),
         // Handle complex expressions by synthesizing a dedicated compute node.
         _ => synthesize_expr_compute(builder, ctx, expr, output_port, output_name, disambiguator),
     }
@@ -8744,6 +8839,24 @@ fn resolve_return_expr_source(
 struct ExprLeafRef {
     input_port: String,
     source: expr::LeafRef,
+}
+
+/// C10: Collect binding names introduced by a match arm pattern.
+fn collect_pattern_bindings(pattern: &daglang_syntax::ast::Pattern, seen: &mut HashSet<String>) {
+    match pattern {
+        daglang_syntax::ast::Pattern::Ident(name) => {
+            // Only treat as a binding if it's lowercase (variant names are uppercase).
+            if name.chars().next().is_some_and(|c| c.is_lowercase()) {
+                seen.insert(name.clone());
+            }
+        }
+        daglang_syntax::ast::Pattern::Variant(_, fields) => {
+            for (_, inner) in fields {
+                collect_pattern_bindings(inner, seen);
+            }
+        }
+        daglang_syntax::ast::Pattern::Wildcard | daglang_syntax::ast::Pattern::Literal(_) => {}
+    }
 }
 
 /// Collect all leaf expression references from a complex expression.
@@ -8896,6 +9009,8 @@ fn collect_expr_leaf_refs(
         Expr::Match(scrutinee, arms) => {
             collect_expr_leaf_refs(scrutinee, ctx, refs, seen, has_local_refs);
             for arm in arms {
+                // C10: Mark match arm pattern bindings as locally scoped.
+                collect_pattern_bindings(&arm.pattern, seen);
                 collect_expr_leaf_refs(&arm.body, ctx, refs, seen, has_local_refs);
             }
         }
@@ -8921,10 +9036,17 @@ fn collect_expr_leaf_refs(
                 collect_expr_leaf_refs(elem, ctx, refs, seen, has_local_refs);
             }
         }
-        Expr::Lambda(_, body) => {
+        Expr::Lambda(params, body) => {
+            // C10: Lambda parameters are locally scoped — mark them as seen so
+            // references inside the body don't trigger `has_local_refs`.
+            for param in params {
+                seen.insert(param.clone());
+            }
             collect_expr_leaf_refs(body, ctx, refs, seen, has_local_refs);
         }
-        Expr::For(_, iterable, _, body) => {
+        Expr::For(binding, iterable, _, body) => {
+            // C10: For-loop binding variable is locally scoped.
+            seen.insert(binding.clone());
             collect_expr_leaf_refs(iterable, ctx, refs, seen, has_local_refs);
             collect_expr_leaf_refs(body, ctx, refs, seen, has_local_refs);
         }
@@ -9178,6 +9300,173 @@ fn synthesize_get_field(
     Some((node_id, result_port_name.to_string()))
 }
 
+/// C24-P1: Synthesize a BinaryOp structural node.
+/// Both operands must already be resolved to (node_id, port) sources.
+fn synthesize_binary_op(
+    builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
+    op: &daglang_syntax::ast::BinOp,
+    left_node: &str,
+    left_port: &str,
+    right_node: &str,
+    right_port: &str,
+    output_port: &Port,
+    output_name: &str,
+    disambiguator: &str,
+) -> Option<(String, String)> {
+    let lowered_op = expr::lower_binop(op);
+    let result_port_name = "result";
+    let output_type = output_port.type_id.0.as_str();
+
+    let input_ports = vec![
+        Port::with_cardinality("left", "Any", Cardinality::ONE),
+        Port::with_cardinality("right", "Any", Cardinality::ONE),
+    ];
+    let output_ports = vec![Port::with_cardinality(
+        result_port_name,
+        output_type,
+        Cardinality::ONE,
+    )];
+
+    let node_id = format!(
+        "binary_op_{}",
+        sanitize_identifier(&format!(
+            "{}_{}_{}_{}",
+            ctx.module_name, ctx.item_name, output_name, disambiguator
+        ))
+    );
+
+    builder.add_node(Node::opaque(
+        node_id.clone(),
+        input_ports,
+        output_ports,
+        LoweredOp::Primitive {
+            module: ctx.module_name.to_string(),
+            name: format!("binary_op::{}::{}", ctx.item_name, output_name),
+            kind: PrimitiveOpKind::BinaryOp { op: lowered_op },
+        },
+    ));
+
+    builder.add_edge(left_node, left_port, &node_id, "left");
+    builder.add_edge(right_node, right_port, &node_id, "right");
+
+    Some((node_id, result_port_name.to_string()))
+}
+
+/// C24-P1: Synthesize a MatchDispatch structural node.
+/// Resolves the scrutinee and collects leaf refs from arm bodies.
+/// Falls back to ExprCompute if leaf refs can't be resolved.
+fn synthesize_match_dispatch(
+    builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
+    scrutinee: &Expr,
+    arms: &[daglang_syntax::ast::MatchArm],
+    output_port: &Port,
+    output_name: &str,
+    disambiguator: &str,
+) -> Option<(String, String)> {
+    // Collect all leaf refs from the entire match expression.
+    let whole_expr = Expr::Match(Box::new(scrutinee.clone()), arms.to_vec());
+    let mut refs: Vec<ExprLeafRef> = Vec::new();
+    let mut seen = HashSet::new();
+    let mut has_local_refs = false;
+    collect_expr_leaf_refs(&whole_expr, ctx, &mut refs, &mut seen, &mut has_local_refs);
+
+    if has_local_refs {
+        return synthesize_expr_compute(
+            builder,
+            ctx,
+            &whole_expr,
+            output_port,
+            output_name,
+            disambiguator,
+        );
+    }
+
+    // Build input ports: "scrutinee" + all leaf refs from arm bodies.
+    let mut input_ports = vec![Port::with_cardinality("scrutinee", "Any", Cardinality::ONE)];
+    for leaf in &refs {
+        // Skip if this is the scrutinee itself (wired separately).
+        if leaf.input_port == "scrutinee" {
+            continue;
+        }
+        let ty = match &leaf.source {
+            expr::LeafRef::Param { ty, .. } => ty.as_str(),
+            _ => "Any",
+        };
+        input_ports.push(Port::with_cardinality(leaf.input_port.as_str(), ty, Cardinality::ONE));
+    }
+
+    let result_port_name = "result";
+    let output_type = output_port.type_id.0.as_str();
+    let output_ports = vec![Port::with_cardinality(
+        result_port_name,
+        output_type,
+        Cardinality::ONE,
+    )];
+
+    // Lower AST match arms to LoweredMatchArms.
+    let lowered_arms: Vec<expr::LoweredMatchArm> = arms
+        .iter()
+        .map(|arm| expr::lower_match_arm(arm, ctx.variant_names))
+        .collect();
+
+    let node_id = format!(
+        "match_dispatch_{}",
+        sanitize_identifier(&format!(
+            "{}_{}_{}_{}",
+            ctx.module_name, ctx.item_name, output_name, disambiguator
+        ))
+    );
+
+    builder.add_node(Node::opaque(
+        node_id.clone(),
+        input_ports,
+        output_ports,
+        LoweredOp::Primitive {
+            module: ctx.module_name.to_string(),
+            name: format!("match_dispatch::{}::{}", ctx.item_name, output_name),
+            kind: PrimitiveOpKind::MatchDispatch {
+                arms: lowered_arms,
+            },
+        },
+    ));
+
+    // Wire scrutinee input.
+    // Resolve scrutinee to a source. If it fails, we can't build this node.
+    let scrutinee_source = resolve_return_expr_source(
+        builder,
+        ctx,
+        scrutinee,
+        output_port,
+        &format!("{output_name}_scrutinee"),
+        &format!("{disambiguator}_scrutinee"),
+    );
+    if let Some((src_node, src_port)) = scrutinee_source {
+        builder.add_edge(&src_node, &src_port, &node_id, "scrutinee");
+    }
+
+    // Wire all other leaf ref inputs.
+    for leaf in &refs {
+        if leaf.input_port == "scrutinee" {
+            continue;
+        }
+        match &leaf.source {
+            expr::LeafRef::Param { name, ty, .. } => {
+                let param_source_id =
+                    ensure_param_source_node(builder, ctx.module_name, ctx.item_name, name, ty);
+                builder.add_edge(&param_source_id, name, &node_id, &leaf.input_port);
+            }
+            expr::LeafRef::Callable { endpoint, port }
+            | expr::LeafRef::Service { endpoint, port } => {
+                builder.add_edge(endpoint, port, &node_id, &leaf.input_port);
+            }
+        }
+    }
+
+    Some((node_id, result_port_name.to_string()))
+}
+
 /// Synthesize a compute node for a complex return expression.
 /// Creates a node that evaluates the expression using `evaluate_fn_body` at runtime.
 fn synthesize_expr_compute(
@@ -9223,12 +9512,20 @@ fn synthesize_expr_compute(
     // Local let stmts are non-call bindings from the callable body that the
     // return expression may reference. The evaluator processes them in order
     // and flattens Map fields for the __ convention.
+    //
+    // C10: Skip let bindings whose name is also an input port — those are
+    // already provided via DAG edges (e.g., for-loop results from cf_for nodes,
+    // callable results from bound_callable_sources). Re-evaluating them would
+    // duplicate computation and fail on complex DAG-backed expressions.
+    let input_port_names: HashSet<String> = refs.iter().map(|r| r.input_port.clone()).collect();
     let mut fn_stmts: Vec<expr::LoweredStmt> = Vec::new();
     if !ctx.local_let_bindings.is_empty() {
         for stmt in ctx.body_stmts {
             match stmt {
                 Stmt::Let(name, let_expr) | Stmt::Assign(name, let_expr) => {
-                    if ctx.local_let_bindings.contains_key(name) {
+                    if ctx.local_let_bindings.contains_key(name)
+                        && !input_port_names.contains(name)
+                    {
                         fn_stmts.push(expr::LoweredStmt::Let(
                             name.clone(),
                             remap_expr_idents(let_expr),
@@ -9236,7 +9533,9 @@ fn synthesize_expr_compute(
                     }
                 }
                 Stmt::Node(node_stmt) => {
-                    if ctx.local_let_bindings.contains_key(&node_stmt.name) {
+                    if ctx.local_let_bindings.contains_key(&node_stmt.name)
+                        && !input_port_names.contains(&node_stmt.name)
+                    {
                         fn_stmts.push(expr::LoweredStmt::Let(
                             node_stmt.name.clone(),
                             remap_expr_idents(&node_stmt.expr),
