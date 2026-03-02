@@ -709,7 +709,10 @@ fn c_path_args(template: &str, _fields: &[FieldSpec]) -> String {
 pub fn extract_middleware(spec: &ServiceOperationSpec) -> Option<&TransportMiddlewareConfig> {
     match spec {
         ServiceOperationSpec::Rest(rest) => rest.middleware.as_ref(),
-        _ => None,
+        ServiceOperationSpec::Shell(_) => None,
+        ServiceOperationSpec::File(_) => None,
+        ServiceOperationSpec::Local(_) => None,
+        ServiceOperationSpec::InterfaceStub { .. } => None,
     }
 }
 
@@ -788,7 +791,47 @@ pub fn emit_rust_middleware_config(
     }
 
     // Credential.
-    out.push_str("        credential: None,\n");
+    if let Some(ref cred) = config.credential {
+        let provider = match cred.provider {
+            gunbc_ir::transport::middleware::CredentialProvider::OAuthBearer => "OAuthBearer",
+            gunbc_ir::transport::middleware::CredentialProvider::GcpWorkloadIdentityFederation => "GcpWorkloadIdentityFederation",
+            gunbc_ir::transport::middleware::CredentialProvider::ApiKey => "ApiKey",
+        };
+        let injection = match &cred.injection {
+            gunbc_ir::transport::middleware::CredentialInjection::AuthorizationBearer => {
+                "gunbc_ir::transport::middleware::CredentialInjection::AuthorizationBearer".to_string()
+            }
+            gunbc_ir::transport::middleware::CredentialInjection::Header { name } => {
+                format!("gunbc_ir::transport::middleware::CredentialInjection::Header {{ name: \"{name}\".to_string() }}")
+            }
+            gunbc_ir::transport::middleware::CredentialInjection::QueryParam { name } => {
+                format!("gunbc_ir::transport::middleware::CredentialInjection::QueryParam {{ name: \"{name}\".to_string() }}")
+            }
+            gunbc_ir::transport::middleware::CredentialInjection::RequestAuthField => {
+                "gunbc_ir::transport::middleware::CredentialInjection::RequestAuthField".to_string()
+            }
+        };
+        out.push_str(&format!(
+            "        credential: Some(gunbc_ir::transport::middleware::CredentialConfig {{\n\
+             \x20           provider: gunbc_ir::transport::middleware::CredentialProvider::{provider},\n\
+             \x20           injection: {injection},\n\
+             \x20           cache_key: {cache_key},\n\
+             \x20           cache_ttl_ms: {cache_ttl},\n\
+             \x20           refresh_threshold_pct: {refresh_pct},\n\
+             \x20       }}),\n",
+            cache_key = match &cred.cache_key {
+                Some(k) => format!("Some(\"{k}\".to_string())"),
+                None => "None".to_string(),
+            },
+            cache_ttl = match cred.cache_ttl_ms {
+                Some(ttl) => format!("Some({ttl})"),
+                None => "None".to_string(),
+            },
+            refresh_pct = cred.refresh_threshold_pct,
+        ));
+    } else {
+        out.push_str("        credential: None,\n");
+    }
 
     // Response classification with error shape.
     if let Some(ref rc) = config.response_classification {
@@ -1102,17 +1145,20 @@ pub fn emit_mips_middleware_config(
 ///
 /// Used to emit a language-agnostic middleware config manifest file alongside
 /// the generated code. Any runtime can deserialize this to configure middleware.
+///
+/// Returns an error if any config fails to serialize.
 pub fn serialize_middleware_config_json(
     configs: &[(String, &TransportMiddlewareConfig)],
-) -> String {
+) -> Result<String, String> {
     let mut map = serde_json::Map::new();
     for (name, config) in configs {
-        if let Ok(val) = serde_json::to_value(config) {
-            map.insert(name.clone(), val);
-        }
+        let val = serde_json::to_value(config).map_err(|e| {
+            format!("failed to serialize middleware config for `{name}`: {e}")
+        })?;
+        map.insert(name.clone(), val);
     }
     serde_json::to_string_pretty(&serde_json::Value::Object(map))
-        .unwrap_or_else(|_| "{}".to_string())
+        .map_err(|e| format!("failed to serialize middleware config manifest: {e}"))
 }
 
 fn rust_response_provider_variant(
@@ -1655,7 +1701,8 @@ mod tests {
         let config = sample_middleware_config();
         let json = serialize_middleware_config_json(&[
             ("github_gist_create".to_string(), &config),
-        ]);
+        ])
+        .expect("serialization should succeed");
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
         assert!(parsed.get("github_gist_create").is_some());
         assert!(

@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 
 use daglang_driver::{
     compile_from_context, compute_source_digest_for_context, CachedDiscoveryEntry,
-    CachedEntrypoint, DriverContext, InferredEntrypoint,
+    CachedEntrypoint, CachedFuncParam, DriverContext, InferredEntrypoint,
 };
 use daglang_syntax::ast::{Expr, Item, Literal, TypeExpr};
 use gunbc_cli::ParamType;
@@ -49,23 +49,46 @@ impl DiscoveryCache {
             .join("discovery_cache.json")
     }
 
+    /// Load cache from disk. Returns empty cache if file doesn't exist.
+    /// Build-time filesystem access (bootstrap exception).
     #[allow(clippy::disallowed_methods)]
     fn load(workspace_root: &Path) -> Self {
         let path = Self::cache_path(workspace_root);
-        std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
+        match std::fs::read_to_string(&path) {
+            Ok(s) => match serde_json::from_str(&s) {
+                Ok(cache) => cache,
+                Err(e) => {
+                    eprintln!("warning: discovery cache corrupted at {}, rebuilding: {e}", path.display());
+                    Self::default()
+                }
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Self::default(),
+            Err(e) => {
+                eprintln!("warning: cannot read discovery cache at {}: {e}", path.display());
+                Self::default()
+            }
+        }
     }
 
+    /// Persist cache to disk. Build-time filesystem access (bootstrap exception).
     #[allow(clippy::disallowed_methods)]
     fn save(&self, workspace_root: &Path) {
         let path = Self::cache_path(workspace_root);
         if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                eprintln!("warning: cannot create cache directory {}: {e}", parent.display());
+                return;
+            }
         }
-        if let Ok(json) = serde_json::to_string_pretty(self) {
-            let _ = std::fs::write(&path, json);
+        match serde_json::to_string_pretty(self) {
+            Ok(json) => {
+                if let Err(e) = std::fs::write(&path, json) {
+                    eprintln!("warning: cannot write discovery cache to {}: {e}", path.display());
+                }
+            }
+            Err(e) => {
+                eprintln!("warning: cannot serialize discovery cache: {e}");
+            }
         }
     }
 }
@@ -154,27 +177,35 @@ fn discover_from_dag_file_cached(
     // Compute source digest (cheap: module graph discovery + file hashing)
     let source_digest = compute_source_digest_for_context(&context).ok()?;
 
-    // Cache hit: skip full compilation, reconstruct from cached metadata
+    // Cache hit: skip full compilation, reconstruct from cached metadata.
+    // Uses cached func params to avoid re-parsing the AST.
     if let Some(cached) = cache.entries.get(&module_name) {
         if cached.source_digest == source_digest {
             let cached_entrypoints: Vec<InferredEntrypoint> =
                 cached.entrypoints.iter().map(InferredEntrypoint::from).collect();
-            let source = std::fs::read_to_string(path).ok()?;
-            let ast = daglang_syntax::parser::parse(&source).ok()?;
-            return build_tool_defs_from_metadata(
+            let func_params = cached_func_params_to_dsl_params(&cached.func_params);
+            return build_tool_defs_from_cached_params(
                 &rel_path,
                 &module_name,
                 &cached_entrypoints,
                 &cached.output_paths,
-                &ast,
+                &func_params,
             );
         }
     }
 
     // Cache miss: full compilation
-    let source = std::fs::read_to_string(path).ok()?;
-    let ast = daglang_syntax::parser::parse(&source).ok()?;
-    let compile_output = compile_from_context(&context).ok()?;
+    let source = std::fs::read_to_string(path).map_err(|e| {
+        eprintln!("warning: cannot read {}: {e}", path.display());
+    }).ok()?;
+    let ast = daglang_syntax::parser::parse(&source)
+        .map_err(|e| {
+            eprintln!("warning: parse error in {}: {:?}", path.display(), e);
+        })
+        .ok()?;
+    let compile_output = compile_from_context(&context).map_err(|e| {
+        eprintln!("warning: compilation error for {}: {e}", path.display());
+    }).ok()?;
 
     let module_entrypoints: Vec<&InferredEntrypoint> = compile_output
         .inferred_entrypoints
@@ -186,16 +217,20 @@ fn discover_from_dag_file_cached(
         return None;
     }
 
+    // Extract func params from AST for both result and cache
+    let func_params = extract_func_params_from_ast(&ast);
+
     // Build ToolDefs from compilation output
-    let result = build_tool_defs_from_metadata(
+    let result = build_tool_defs_from_cached_params(
         &rel_path,
         &module_name,
         &module_entrypoints.iter().copied().cloned().collect::<Vec<_>>(),
         &compile_output.output_paths,
-        &ast,
+        &func_params,
     );
 
-    // Update cache
+    // Update cache with func params
+    let cached_params = dsl_params_to_cached(&func_params);
     let entry = CachedDiscoveryEntry {
         source_digest,
         entrypoints: module_entrypoints
@@ -204,6 +239,7 @@ fn discover_from_dag_file_cached(
             .collect(),
         output_paths: compile_output.output_paths,
         available_profiles: compile_output.available_profiles,
+        func_params: cached_params,
     };
     cache.entries.insert(module_name, entry);
     *cache_dirty = true;
@@ -211,19 +247,10 @@ fn discover_from_dag_file_cached(
     result
 }
 
-/// Build ToolDefs from extracted metadata (shared by cache-hit and cache-miss paths).
-fn build_tool_defs_from_metadata(
-    rel_path: &str,
-    module_name: &str,
-    module_entrypoints: &[InferredEntrypoint],
-    output_paths: &[String],
+/// Extract func parameters from a parsed AST.
+fn extract_func_params_from_ast(
     ast: &daglang_syntax::ast::SourceFile,
-) -> Option<Vec<ToolDef>> {
-    if module_entrypoints.is_empty() {
-        return None;
-    }
-
-    // Build a map of func name → AST params for param extraction
+) -> BTreeMap<String, Vec<DslParam>> {
     let mut func_params: BTreeMap<String, Vec<DslParam>> = BTreeMap::new();
     for item in &ast.items {
         if let Item::FuncDef(func) = &item.node {
@@ -243,6 +270,94 @@ fn build_tool_defs_from_metadata(
                 .collect();
             func_params.insert(func.name.clone(), params);
         }
+    }
+    func_params
+}
+
+/// Convert cached func params back to DslParam.
+fn cached_func_params_to_dsl_params(
+    cached: &HashMap<String, Vec<CachedFuncParam>>,
+) -> BTreeMap<String, Vec<DslParam>> {
+    cached
+        .iter()
+        .map(|(name, params)| {
+            let dsl_params = params
+                .iter()
+                .map(|p| DslParam {
+                    name: p.name.clone(),
+                    type_id: ParamType::try_from(p.type_name.as_str()).unwrap_or(ParamType::Str),
+                    cardinality: decode_cached_cardinality(&p.cardinality),
+                    default: p.default.clone(),
+                })
+                .collect();
+            (name.clone(), dsl_params)
+        })
+        .collect()
+}
+
+/// Convert DslParam map to cached format for serialization.
+fn dsl_params_to_cached(
+    params: &BTreeMap<String, Vec<DslParam>>,
+) -> HashMap<String, Vec<CachedFuncParam>> {
+    params
+        .iter()
+        .map(|(name, dsl_params)| {
+            let cached = dsl_params
+                .iter()
+                .map(|p| CachedFuncParam {
+                    name: p.name.clone(),
+                    type_name: p.type_id.as_str().to_string(),
+                    cardinality: encode_cached_cardinality(p.cardinality),
+                    default: p.default.clone(),
+                })
+                .collect();
+            (name.clone(), cached)
+        })
+        .collect()
+}
+
+fn encode_cached_cardinality(cardinality: Cardinality) -> String {
+    let max = cardinality
+        .max
+        .map(|m| m.to_string())
+        .unwrap_or_else(|| "*".to_string());
+    format!("{}:{max}", cardinality.min)
+}
+
+fn decode_cached_cardinality(encoded: &str) -> Cardinality {
+    match encoded {
+        // Backward compatibility with older cache encodings.
+        "ZERO" => Cardinality::ZERO,
+        "ONE" => Cardinality::ONE,
+        "ZERO_OR_ONE" => Cardinality::ZERO_OR_ONE,
+        "ZERO_OR_MORE" => Cardinality::ZERO_OR_MORE,
+        "ONE_OR_MORE" => Cardinality::ONE_OR_MORE,
+        _ => {
+            let mut parts = encoded.splitn(2, ':');
+            let min = parts
+                .next()
+                .and_then(|s| s.parse::<u32>().ok())
+                .unwrap_or(Cardinality::ONE.min);
+            let max = match parts.next() {
+                Some("*") => None,
+                Some(s) => s.parse::<u32>().ok(),
+                None => Some(Cardinality::ONE.min),
+            };
+            Cardinality::new(min, max)
+        }
+    }
+}
+
+/// Build ToolDefs from pre-extracted func params (shared by cache-hit and cache-miss paths).
+fn build_tool_defs_from_cached_params(
+    rel_path: &str,
+    module_name: &str,
+    module_entrypoints: &[InferredEntrypoint],
+    output_paths: &[String],
+    func_params: &BTreeMap<String, Vec<DslParam>>,
+) -> Option<Vec<ToolDef>> {
+    if module_entrypoints.is_empty() {
+        return None;
     }
 
     // RT63: When a module has multiple entrypoints, produce ONE ToolDef

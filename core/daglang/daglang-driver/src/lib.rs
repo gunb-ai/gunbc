@@ -1194,7 +1194,7 @@ fn compute_receipt(
 ///
 /// Stores the source digest and extracted metadata from a compilation.
 /// When the source digest matches on a subsequent run, the cached metadata
-/// is returned without recompilation.
+/// is returned without recompilation (including func params, so no re-parse needed).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedDiscoveryEntry {
     /// SHA-256 of sorted source file content hashes.
@@ -1205,6 +1205,9 @@ pub struct CachedDiscoveryEntry {
     pub output_paths: Vec<String>,
     /// Available profile names.
     pub available_profiles: Vec<String>,
+    /// Cached func parameters — avoids re-parsing the AST on cache hit.
+    #[serde(default)]
+    pub func_params: HashMap<String, Vec<CachedFuncParam>>,
 }
 
 /// Serializable entrypoint metadata for caching.
@@ -1213,6 +1216,15 @@ pub struct CachedEntrypoint {
     pub func_name: String,
     pub module: String,
     pub node_id: String,
+}
+
+/// Serializable func parameter metadata for caching.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CachedFuncParam {
+    pub name: String,
+    pub type_name: String,
+    pub cardinality: String,
+    pub default: Option<String>,
 }
 
 impl From<&InferredEntrypoint> for CachedEntrypoint {
@@ -1257,12 +1269,21 @@ pub fn compute_source_digest_for_context(
 /// Compute a source digest from a list of source file paths.
 ///
 /// Returns SHA-256 of sorted path:hash pairs. Returns `None`
-/// if any file cannot be read.
+/// if any file cannot be read (with a diagnostic on stderr).
+///
+/// Build-time filesystem access (compiler bootstrap exception).
 pub fn compute_source_digest(source_paths: &[PathBuf]) -> Option<String> {
     let mut source_hashes: Vec<String> = Vec::with_capacity(source_paths.len());
     for path in source_paths {
+        // Build-time bootstrap exception: reads .dag source files for hashing.
         #[allow(clippy::disallowed_methods)]
-        let content = std::fs::read(path).ok()?;
+        let content = match std::fs::read(path) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("warning: cannot read {} for source digest: {e}", path.display());
+                return None;
+            }
+        };
         source_hashes.push(format!("{}:{}", path.display(), sha256_hex(&content)));
     }
     source_hashes.sort();

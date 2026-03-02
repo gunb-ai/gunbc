@@ -376,7 +376,7 @@ impl Executable for LiteralSourceOp {
 
 /// C24: Extract a named field from a Map/Record/JSON input.
 /// Pure structural projection — no runtime interpreter needed.
-/// Fail-closed: missing input port or non-Map/Json input → ExecError.
+/// Fail-closed: missing field, missing input port, or non-Map/Json input → ExecError.
 #[derive(Debug, Clone)]
 struct GetFieldOp {
     input_port: String,
@@ -391,15 +391,28 @@ impl Executable for GetFieldOp {
             .cloned()
             .unwrap_or(Value::Skipped);
         let extracted = match &value {
-            Value::Map(fields) => fields
-                .get(&self.field)
-                .cloned()
-                .unwrap_or(Value::Json(serde_json::Value::Null)),
-            Value::Json(serde_json::Value::Object(map)) => map
-                .get(&self.field)
-                .map(|v| Value::Json(v.clone()))
-                .unwrap_or(Value::Json(serde_json::Value::Null)),
-            Value::Skipped => Value::Skipped,
+            Value::Map(fields) => fields.get(&self.field).cloned().ok_or_else(|| {
+                let available: Vec<&String> = fields.keys().collect();
+                ExecError::new(format!(
+                    "GetField `{}`: field not found in Map on port `{}`. Available fields: {:?}",
+                    self.field, self.input_port, available
+                ))
+            })?,
+            Value::Json(serde_json::Value::Object(map)) => {
+                map.get(&self.field).map(|v| Value::Json(v.clone())).ok_or_else(|| {
+                    let available: Vec<&String> = map.keys().collect();
+                    ExecError::new(format!(
+                        "GetField `{}`: field not found in Json object on port `{}`. Available fields: {:?}",
+                        self.field, self.input_port, available
+                    ))
+                })?
+            }
+            Value::Skipped => {
+                return Err(ExecError::new(format!(
+                    "GetField `{}`: input port `{}` is Skipped (unwired or missing upstream)",
+                    self.field, self.input_port
+                )));
+            }
             other => {
                 return Err(ExecError::new(format!(
                     "GetField `{}`: expected Map or Json object on port `{}`, got {:?}",

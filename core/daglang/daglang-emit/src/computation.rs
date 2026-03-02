@@ -434,17 +434,16 @@ fn classify_primitive(
             outputs,
             body: PureBody::Literal(serde_json::Value::Null),
         }),
-        // C24: GetField nodes are pure field projections.
-        PrimitiveOpKind::GetField { .. } => Ok(Computation::Pure {
-            inputs,
-            outputs,
-            body: PureBody::Literal(serde_json::Value::Null),
+        // C24: GetField and ExprCompute are interpreter-only operations
+        // resolved at runtime by resolve.rs. They must not reach the emitter —
+        // the InterpreterOnly guard in rust_exec_runtime.rs enforces this.
+        PrimitiveOpKind::GetField { field } => Err(ClassifyError::UnrecognizedOp {
+            node_id: name.to_string(),
+            detail: format!("GetField({field}) is interpreter-only and cannot be emitted"),
         }),
-        // Expression compute nodes evaluate lowered fn bodies at runtime.
-        PrimitiveOpKind::ExprCompute { .. } => Ok(Computation::Pure {
-            inputs,
-            outputs,
-            body: PureBody::Literal(serde_json::Value::Null),
+        PrimitiveOpKind::ExprCompute { .. } => Err(ClassifyError::UnrecognizedOp {
+            node_id: name.to_string(),
+            detail: "ExprCompute is interpreter-only and cannot be emitted".to_string(),
         }),
     }
 }

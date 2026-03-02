@@ -22,8 +22,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use daglang_syntax::ast::{
-    BackoffStrategy, CapabilityDef, DataDef, Expr, Item, Literal, NodeStmt, OperationDef,
-    RateLimitUnit, ServiceDef, Stmt, TransportBinding,
+    BackoffStrategy, CapabilityDef, DataDef, Expr, Field, Item, Literal, NodeStmt, OperationDef,
+    RateLimitUnit, ServiceDef, Stmt, TransportBinding, TypeBody,
 };
 use gunbc_ir::transport::middleware::{
     RateLimitAlgorithm, RateLimitConfig, ResponseClassification, ResponseProvider, RetryBackoff,
@@ -1514,6 +1514,12 @@ pub enum LowerError {
         field: String,
         known_fields: Vec<String>,
     },
+    /// Service has config fields but no known schema prefix.
+    UnknownProviderPrefix {
+        service: String,
+        fields: Vec<String>,
+        known_prefixes: Vec<String>,
+    },
 }
 
 impl std::fmt::Display for LowerError {
@@ -1630,6 +1636,17 @@ impl std::fmt::Display for LowerError {
                 f,
                 "unknown config field `{field}` for service `{service}`; known fields: {}",
                 known_fields.join(", ")
+            ),
+            Self::UnknownProviderPrefix {
+                service,
+                fields,
+                known_prefixes,
+            } => write!(
+                f,
+                "service `{service}` has config fields {:?} but no known provider schema; \
+                 known prefixes: {}",
+                fields,
+                known_prefixes.join(", ")
             ),
         }
     }
@@ -5922,56 +5939,107 @@ fn capability_prepare_ports(
 /// Returns an error for any unrecognised field so that config typos become
 /// compile-time errors.
 ///
-/// Schemas are declared in `dsl/std/provider_config.dag` as typed records.
-/// This function mirrors those schemas for compile-time enforcement.
-/// When the compiler gains the ability to read schema types from the DAG
-/// module registry, this hardcoded list will be replaced by a lookup
-/// against the `provider_config_schemas` data declaration.
-fn validate_provider_config_fields(service: &ServiceDef) -> Result<(), LowerError> {
+/// Validate provider-specific config fields against schemas derived from the DSL.
+///
+/// Single source of truth: `dsl/std/provider_config.dag` declares
+/// `provider_config_schemas` (prefix → schema type mapping) and the schema
+/// types themselves (with field declarations). This function reads both
+/// to build the validation map dynamically — no hardcoded schema list.
+fn validate_provider_config_fields(
+    service: &ServiceDef,
+    project: &TypedProject,
+) -> Result<(), LowerError> {
     if service.config.extra.is_empty() {
         return Ok(());
     }
 
-    // Map provider prefix → allowed extra config field names.
-    // Kept in sync with dsl/std/provider_config.dag typed schemas.
-    let known_schemas: &[(&str, &[&str])] = &[
-        ("gcs.", &["bucket", "project_id"]),
-        ("pubsub.", &["topic", "subscription", "project_id"]),
-        ("github.", &["owner", "repo"]),
-        ("gcp.", &["runtime", "project_id", "audience"]),
-        ("file.", &["dir"]),
-        ("llm.", &[]),
-        // Services without a dotted prefix but with known config schemas:
-        ("LlmAgentProvider", &["provider", "default_model", "max_turns"]),
-        ("GcpWifCredentialProvider", &["runtime", "project_id", "audience"]),
-        ("LocalCredentialProvider", &["cache_dir"]),
-        ("cloudrun.", &["project_id", "region"]),
-        ("codex.", &[]),
-        ("stub.", &[]),
-        ("sdlc.", &[]),
-    ];
+    // Derive schemas from DSL: read provider_config_schemas data + type defs.
+    let schemas = derive_provider_schemas_from_project(project);
 
     // Find the matching schema for this service's name.
-    let matched_schema = known_schemas.iter().find(|(prefix, _)| {
-        service.name.starts_with(prefix) || service.name == *prefix
+    let matched_schema = schemas.iter().find(|(prefix, _)| {
+        service.name.starts_with(prefix.as_str()) || service.name == *prefix
     });
 
-    if let Some((_prefix, allowed_fields)) = matched_schema {
-        for field in &service.config.extra {
-            if !allowed_fields.contains(&field.name.as_str()) {
-                return Err(LowerError::InvalidProviderConfigField {
-                    service: service.name.clone(),
-                    field: field.name.clone(),
-                    known_fields: allowed_fields.iter().map(|s| s.to_string()).collect(),
-                });
+    match matched_schema {
+        Some((_prefix, allowed_fields)) => {
+            for field in &service.config.extra {
+                if !allowed_fields.contains(&field.name) {
+                    return Err(LowerError::InvalidProviderConfigField {
+                        service: service.name.clone(),
+                        field: field.name.clone(),
+                        known_fields: allowed_fields.to_vec(),
+                    });
+                }
+            }
+        }
+        None => {
+            return Err(LowerError::UnknownProviderPrefix {
+                service: service.name.clone(),
+                fields: service.config.extra.iter().map(|f| f.name.clone()).collect(),
+                known_prefixes: schemas.iter().map(|(p, _)| p.clone()).collect(),
+            });
+        }
+    }
+
+    Ok(())
+}
+
+/// Derive provider config schemas from the DSL project.
+///
+/// Reads `provider_config_schemas` data declaration for prefix→schema mappings,
+/// then resolves each schema type to extract its field names.
+fn derive_provider_schemas_from_project(
+    project: &TypedProject,
+) -> Vec<(String, Vec<String>)> {
+    // Collect all type definitions keyed by name.
+    let mut type_defs: HashMap<String, &Vec<Field>> = HashMap::new();
+    for module in &project.modules {
+        for item in &module.ast.items {
+            if let Item::TypeDef(td) = &item.node {
+                if let TypeBody::Record(fields) = &td.body {
+                    type_defs.insert(td.name.clone(), fields);
+                }
             }
         }
     }
-    // Services with unknown prefixes: extra fields are allowed but not validated.
-    // As more providers are modeled, their schemas should be added to
-    // dsl/std/provider_config.dag and mirrored here.
 
-    Ok(())
+    // Find the provider_config_schemas data declaration.
+    let mut schemas = Vec::new();
+    for module in &project.modules {
+        for item in &module.ast.items {
+            if let Item::DataDef(def) = &item.node {
+                if def.name == "provider_config_schemas" {
+                    // The value is a list of records: [{prefix: "gcs.", schema: "GcsProviderConfig"}, ...]
+                    if let Expr::List(entries) = &def.value {
+                        for entry in entries {
+                            if let Expr::Record(_, fields) = entry {
+                                let prefix = fields.iter().find_map(|(k, v)| {
+                                    if k == "prefix" {
+                                        if let Expr::Literal(Literal::String(s)) = v { Some(s.clone()) } else { None }
+                                    } else { None }
+                                });
+                                let schema_name = fields.iter().find_map(|(k, v)| {
+                                    if k == "schema" {
+                                        if let Expr::Literal(Literal::String(s)) = v { Some(s.clone()) } else { None }
+                                    } else { None }
+                                });
+                                if let (Some(prefix), Some(schema)) = (prefix, schema_name) {
+                                    let field_names = type_defs
+                                        .get(&schema)
+                                        .map(|fields| fields.iter().map(|f| f.name.clone()).collect())
+                                        .unwrap_or_default();
+                                    schemas.push((prefix, field_names));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    schemas
 }
 
 fn derive_service_transport_triplets(
@@ -5988,8 +6056,8 @@ fn derive_service_transport_triplets(
             };
 
             // SR-8: Validate provider-specific config fields against
-            // known schemas. Config typos become compile errors.
-            validate_provider_config_fields(service)?;
+            // schemas derived from dsl/std/provider_config.dag.
+            validate_provider_config_fields(service, project)?;
 
             for operation in &service.operations {
                 if let Some(required_calls) = required_calls {
@@ -6259,7 +6327,13 @@ fn collect_project_fn_bodies(project: &TypedProject) -> HashMap<String, LoweredF
                                 .collect(),
                         ));
                     }
-                    Stmt::Node(_) => {}
+                    Stmt::Node(ns) => {
+                        eprintln!(
+                            "warning: node statement `{}` in pure fn `{}` is ignored \
+                             (pure fns cannot contain effectful nodes)",
+                            ns.name, def.name
+                        );
+                    }
                 }
             }
             // If the fn has params and a trailing expression but no explicit
@@ -8506,7 +8580,6 @@ fn resolve_return_expr_source(
                         param_ty,
                         field,
                         output_port,
-                        output_name,
                         disambiguator,
                     );
                 }
@@ -8931,7 +9004,6 @@ fn remap_pattern(pattern: &daglang_syntax::ast::Pattern) -> expr::LoweredPattern
 
 /// C24: Synthesize a GetField node to extract a named field from a parameter.
 /// Replaces `ExprCompute` + `__` convention for simple `param.field` projections.
-#[allow(clippy::too_many_arguments)]
 fn synthesize_get_field(
     builder: &mut DagBuilder,
     ctx: &LoweringContext<'_>,
@@ -8939,7 +9011,6 @@ fn synthesize_get_field(
     param_ty: &str,
     field: &str,
     output_port: &Port,
-    _output_name: &str,
     disambiguator: &str,
 ) -> Option<(String, String)> {
     let output_type = output_port.type_id.0.as_str();

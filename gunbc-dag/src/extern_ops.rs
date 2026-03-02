@@ -21,6 +21,16 @@ pub fn resolve_extern_symbol(module: &str, name: &str) -> Option<DynOp> {
         ("tools.bootstrap", "render_bootstrap_gitignore") => {
             Some(DynOp::new(GenerateBootstrapGitignoreOp))
         }
+        ("tools.pragma", "render_clippy_toml_content") => {
+            Some(DynOp::new(RenderPragmaClippyTomlContentOp))
+        }
+        (
+            "tools.pragma",
+            "render_disallowed_methods_allowlist_content",
+        ) => Some(DynOp::new(RenderPragmaDisallowedMethodsAllowlistContentOp)),
+        ("tools.pragma", "render_pragma_lint_policy_content") => {
+            Some(DynOp::new(RenderPragmaLintPolicyContentOp))
+        }
         ("tools.cigen", "discover_ci_config") => Some(DynOp::new(DiscoverCiConfigOp)),
         ("tools.infra", "infra") => Some(DynOp::new(InfraDispatchOp)),
         _ => None,
@@ -282,6 +292,49 @@ impl Executable for GenerateBootstrapGitignoreOp {
             .str("gitignore_content", gitignore.clone())
             .str("return", gitignore)
             .ok()
+    }
+}
+
+// ============================================================================
+// tools.pragma extern impls
+// ============================================================================
+
+#[derive(Debug, Clone)]
+struct RenderPragmaClippyTomlContentOp;
+
+impl Executable for RenderPragmaClippyTomlContentOp {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        let content = crate::pragma::dsl_render::render_clippy_toml_via_dsl();
+        OutputMap::new().str("return", content).ok()
+    }
+}
+
+#[derive(Debug, Clone)]
+struct RenderPragmaDisallowedMethodsAllowlistContentOp;
+
+impl Executable for RenderPragmaDisallowedMethodsAllowlistContentOp {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        let content = crate::pragma::dsl_render::render_allowlist_via_dsl();
+        OutputMap::new().str("return", content).ok()
+    }
+}
+
+#[derive(Debug, Clone)]
+struct RenderPragmaLintPolicyContentOp;
+
+impl Executable for RenderPragmaLintPolicyContentOp {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        let content = crate::pragma::dsl_render::render_lint_policy_via_dsl();
+        OutputMap::new().str("return", content).ok()
     }
 }
 

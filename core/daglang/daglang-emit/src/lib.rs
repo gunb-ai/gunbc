@@ -723,7 +723,8 @@ fn emit_middleware_manifest(
     if configs.is_empty() {
         return None;
     }
-    let json = service_emit::serialize_middleware_config_json(&configs);
+    let json = service_emit::serialize_middleware_config_json(&configs)
+        .unwrap_or_else(|e| panic!("middleware config serialization failed: {e}"));
     Some(EmittedFile {
         path: format!("target/generated/{backend}/transport_middleware.json"),
         content: json,

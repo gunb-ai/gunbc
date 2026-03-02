@@ -701,7 +701,7 @@ fn eval_pipe_method(
                         .join(&sep);
                     Ok(Value::Str(joined))
                 }
-                Value::Skipped => Ok(Value::Str(String::new())),
+                Value::Skipped => Err(EvalError::new("join: receiver is Skipped (unwired input)")),
                 _ => Err(EvalError::new("join requires a list")),
             }
         }
@@ -720,7 +720,7 @@ fn eval_pipe_method(
                     Ok(Value::List(results))
                 }
                 (Value::List(items), _) => Ok(Value::List(items)),
-                (Value::Skipped, _) => Ok(Value::List(vec![])),
+                (Value::Skipped, _) => Err(EvalError::new("map: receiver is Skipped (unwired input)")),
                 (other, _) => Err(EvalError::new(format!("map requires a list, got {:?}", other))),
             }
         }
@@ -742,7 +742,7 @@ fn eval_pipe_method(
                     Ok(Value::List(results))
                 }
                 (Value::List(items), _) => Ok(Value::List(items)),
-                (Value::Skipped, _) => Ok(Value::List(vec![])),
+                (Value::Skipped, _) => Err(EvalError::new("filter: receiver is Skipped (unwired input)")),
                 _ => Err(EvalError::new("filter requires a list")),
             }
         }
@@ -764,7 +764,7 @@ fn eval_pipe_method(
                     Ok(Value::List(results))
                 }
                 (Value::List(items), _) => Ok(Value::List(items)),
-                (Value::Skipped, _) => Ok(Value::List(vec![])),
+                (Value::Skipped, _) => Err(EvalError::new("filter_map: receiver is Skipped (unwired input)")),
                 _ => Err(EvalError::new("filter_map requires a list")),
             }
         }
@@ -787,7 +787,7 @@ fn eval_pipe_method(
                     Ok(Value::List(results))
                 }
                 (Value::List(items), _) => Ok(Value::List(items)),
-                (Value::Skipped, _) => Ok(Value::List(vec![])),
+                (Value::Skipped, _) => Err(EvalError::new("flat_map: receiver is Skipped (unwired input)")),
                 _ => Err(EvalError::new("flat_map requires a list")),
             }
         }
@@ -812,7 +812,7 @@ fn eval_pipe_method(
                     }
                     Ok(acc)
                 }
-                (Value::Skipped, Some((_, init_expr)), _) => eval_expr(init_expr, env, sibling_fns),
+                (Value::Skipped, _, _) => Err(EvalError::new("fold: receiver is Skipped (unwired input)")),
                 _ => Err(EvalError::new("fold requires list, init, and f")),
             }
         }
@@ -828,14 +828,7 @@ fn eval_pipe_method(
                     }
                     Ok(Value::List(base))
                 }
-                (Value::Skipped, Some((_, items_expr))) => {
-                    let to_append = eval_expr(items_expr, env, sibling_fns)?;
-                    match to_append {
-                        Value::List(items) => Ok(Value::List(items)),
-                        other => Ok(Value::List(vec![other])),
-                    }
-                }
-                (Value::Skipped, None) => Ok(Value::List(vec![])),
+                (Value::Skipped, _) => Err(EvalError::new("append: receiver is Skipped (unwired input)")),
                 (other, _) => Err(EvalError::new(format!(
                     "append requires a list, got {:?}",
                     other
@@ -845,7 +838,7 @@ fn eval_pipe_method(
 
         "count" => match receiver {
             Value::List(items) => Ok(Value::Int(items.len() as i64)),
-            Value::Skipped => Ok(Value::Int(0)),
+            Value::Skipped => Err(EvalError::new("count: receiver is Skipped (unwired input)")),
             _ => Err(EvalError::new("count requires a list")),
         },
 
@@ -857,19 +850,19 @@ fn eval_pipe_method(
                     .sum();
                 Ok(Value::Int(total))
             }
-            Value::Skipped => Ok(Value::Int(0)),
+            Value::Skipped => Err(EvalError::new("sum: receiver is Skipped (unwired input)")),
             _ => Err(EvalError::new("sum requires a list")),
         },
 
         "first" => match receiver {
             Value::List(items) => Ok(items.into_iter().next().unwrap_or(Value::Unit)),
-            Value::Skipped => Ok(Value::Unit),
+            Value::Skipped => Err(EvalError::new("first: receiver is Skipped (unwired input)")),
             _ => Err(EvalError::new("first requires a list")),
         },
 
         "last" => match receiver {
             Value::List(items) => Ok(items.into_iter().last().unwrap_or(Value::Unit)),
-            Value::Skipped => Ok(Value::Unit),
+            Value::Skipped => Err(EvalError::new("last: receiver is Skipped (unwired input)")),
             _ => Err(EvalError::new("last requires a list")),
         },
 
@@ -887,7 +880,7 @@ fn eval_pipe_method(
                     }
                     Ok(Value::Bool(false))
                 }
-                (Value::Skipped, _) => Ok(Value::Bool(false)),
+                (Value::Skipped, _) => Err(EvalError::new("any: receiver is Skipped (unwired input)")),
                 _ => Err(EvalError::new("any requires list and predicate")),
             }
         }
@@ -906,7 +899,7 @@ fn eval_pipe_method(
                     }
                     Ok(Value::Bool(true))
                 }
-                (Value::Skipped, _) => Ok(Value::Bool(true)),
+                (Value::Skipped, _) => Err(EvalError::new("all: receiver is Skipped (unwired input)")),
                 _ => Err(EvalError::new("all requires list and predicate")),
             }
         }
@@ -920,7 +913,7 @@ fn eval_pipe_method(
                     let needle = eval_expr(expr, env, sibling_fns)?;
                     Ok(Value::Bool(items.contains(&needle)))
                 }
-                (Value::Skipped, _) => Ok(Value::Bool(false)),
+                (Value::Skipped, _) => Err(EvalError::new("contains: receiver is Skipped (unwired input)")),
                 _ => Err(EvalError::new("contains requires list and item")),
             }
         }
@@ -946,7 +939,7 @@ fn eval_pipe_method(
                     Ok(Value::List(keyed.into_iter().map(|(_, v)| v).collect()))
                 }
                 (Value::List(items), _) => Ok(Value::List(items)),
-                (Value::Skipped, _) => Ok(Value::List(vec![])),
+                (Value::Skipped, _) => Err(EvalError::new("sort_by: receiver is Skipped (unwired input)")),
                 _ => Err(EvalError::new("sort_by requires a list")),
             }
         }
@@ -1381,12 +1374,11 @@ mod tests {
         assert_eq!(result["return"], Value::Str("test".to_string()));
     }
 
-    /// Pipe methods that expect a list should treat `Value::Skipped` as an empty
-    /// list rather than failing. This matches the `map` and `join` precedent and
-    /// prevents runtime errors when ExprCompute nodes receive Skipped inputs
-    /// (e.g., when pipeline stage arguments are not fully wired).
+    /// Pipe methods must reject `Value::Skipped` receivers with an error.
+    /// Skipped means the input is unwired — silently producing empty results
+    /// would hide wiring bugs in the DAG.
     #[test]
-    fn pipe_methods_treat_skipped_as_empty_list() {
+    fn pipe_methods_reject_skipped_receiver() {
         let env = Env::from_inputs(&HashMap::new());
         let sibling_fns = HashMap::new();
         let identity_lambda = vec![(
@@ -1404,102 +1396,63 @@ mod tests {
             },
         )];
 
-        // filter on Skipped -> empty list
-        let result =
-            eval_pipe_method("filter", Value::Skipped, &true_lambda, &env, &sibling_fns).unwrap();
-        assert_eq!(result, Value::List(vec![]));
+        let methods_with_lambda = &["filter", "filter_map", "flat_map", "map", "sort_by", "any", "all"];
+        for method in methods_with_lambda {
+            let args = if *method == "any" || *method == "all" {
+                &true_lambda
+            } else {
+                &identity_lambda
+            };
+            let result = eval_pipe_method(method, Value::Skipped, args, &env, &sibling_fns);
+            assert!(result.is_err(), "{method} should reject Skipped receiver");
+            assert!(
+                result.unwrap_err().message.contains("Skipped"),
+                "{method} error should mention Skipped"
+            );
+        }
 
-        // filter_map on Skipped -> empty list
-        let result = eval_pipe_method(
-            "filter_map",
-            Value::Skipped,
-            &identity_lambda,
-            &env,
-            &sibling_fns,
-        )
-        .unwrap();
-        assert_eq!(result, Value::List(vec![]));
+        let no_arg_methods = &["count", "sum", "first", "last"];
+        for method in no_arg_methods {
+            let result = eval_pipe_method(method, Value::Skipped, &[], &env, &sibling_fns);
+            assert!(result.is_err(), "{method} should reject Skipped receiver");
+        }
 
-        // flat_map on Skipped -> empty list
-        let result = eval_pipe_method(
-            "flat_map",
-            Value::Skipped,
-            &identity_lambda,
-            &env,
-            &sibling_fns,
-        )
-        .unwrap();
-        assert_eq!(result, Value::List(vec![]));
-
-        // count on Skipped -> 0
-        let result =
-            eval_pipe_method("count", Value::Skipped, &[], &env, &sibling_fns).unwrap();
-        assert_eq!(result, Value::Int(0));
-
-        // sum on Skipped -> 0
-        let result =
-            eval_pipe_method("sum", Value::Skipped, &[], &env, &sibling_fns).unwrap();
-        assert_eq!(result, Value::Int(0));
-
-        // first on Skipped -> Unit
-        let result =
-            eval_pipe_method("first", Value::Skipped, &[], &env, &sibling_fns).unwrap();
-        assert_eq!(result, Value::Unit);
-
-        // last on Skipped -> Unit
-        let result =
-            eval_pipe_method("last", Value::Skipped, &[], &env, &sibling_fns).unwrap();
-        assert_eq!(result, Value::Unit);
-
-        // any on Skipped -> false
-        let result =
-            eval_pipe_method("any", Value::Skipped, &true_lambda, &env, &sibling_fns).unwrap();
-        assert_eq!(result, Value::Bool(false));
-
-        // all on Skipped -> true (vacuously true)
-        let result =
-            eval_pipe_method("all", Value::Skipped, &true_lambda, &env, &sibling_fns).unwrap();
-        assert_eq!(result, Value::Bool(true));
-
-        // contains on Skipped -> false
+        // contains
         let needle_args = vec![(
             Some("item".to_string()),
             LoweredExpr::Literal(LoweredLiteral::String("x".to_string())),
         )];
-        let result = eval_pipe_method(
-            "contains",
-            Value::Skipped,
-            &needle_args,
-            &env,
-            &sibling_fns,
-        )
-        .unwrap();
-        assert_eq!(result, Value::Bool(false));
+        let result = eval_pipe_method("contains", Value::Skipped, &needle_args, &env, &sibling_fns);
+        assert!(result.is_err(), "contains should reject Skipped receiver");
 
-        // sort_by on Skipped -> empty list
-        let result = eval_pipe_method(
-            "sort_by",
-            Value::Skipped,
-            &identity_lambda,
-            &env,
-            &sibling_fns,
-        )
-        .unwrap();
-        assert_eq!(result, Value::List(vec![]));
-
-        // map on Skipped -> empty list (pre-existing behavior, verify)
-        let result =
-            eval_pipe_method("map", Value::Skipped, &identity_lambda, &env, &sibling_fns)
-                .unwrap();
-        assert_eq!(result, Value::List(vec![]));
-
-        // join on Skipped -> empty string (pre-existing behavior, verify)
+        // join
         let sep_args = vec![(
             None,
             LoweredExpr::Literal(LoweredLiteral::String(",".to_string())),
         )];
-        let result =
-            eval_pipe_method("join", Value::Skipped, &sep_args, &env, &sibling_fns).unwrap();
-        assert_eq!(result, Value::Str(String::new()));
+        let result = eval_pipe_method("join", Value::Skipped, &sep_args, &env, &sibling_fns);
+        assert!(result.is_err(), "join should reject Skipped receiver");
+
+        // fold
+        let fold_args = vec![
+            (Some("init".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+            (
+                Some("f".to_string()),
+                LoweredExpr::Lambda {
+                    params: vec!["acc".to_string(), "x".to_string()],
+                    body: Box::new(LoweredExpr::Ident("acc".to_string())),
+                },
+            ),
+        ];
+        let result = eval_pipe_method("fold", Value::Skipped, &fold_args, &env, &sibling_fns);
+        assert!(result.is_err(), "fold should reject Skipped receiver");
+
+        // append
+        let append_args = vec![(
+            Some("items".to_string()),
+            LoweredExpr::Literal(LoweredLiteral::String("x".to_string())),
+        )];
+        let result = eval_pipe_method("append", Value::Skipped, &append_args, &env, &sibling_fns);
+        assert!(result.is_err(), "append should reject Skipped receiver");
     }
 }
