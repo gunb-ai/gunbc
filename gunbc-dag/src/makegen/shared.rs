@@ -3,15 +3,34 @@
 //! The Makefile renderer evaluates DSL fn bodies compiled from `makegen.dag`.
 
 use std::collections::{BTreeMap, HashMap};
-use std::path::PathBuf;
+use std::path::Path;
 
-use daglang_driver::{compile_from_context, DriverContext};
-use daglang_lower::{CallableKind, LoweredFnBody, LoweredOp};
+use daglang_driver::compile_data_from_sources;
+use daglang_lower::LoweredFnBody;
 use gunbc_ir::cargo::{CargoCommand, Subcommand};
-use gunbc_ir::node::NodeBody;
 use gunbc_ir::Value;
 
 use crate::makegen::registry::{BuildConfig, ToolRegistry};
+
+const MAKEGEN_SOURCE: &str = include_str!("../../../dsl/tools/makegen.dag");
+const EXTDEPS_MAKE_SOURCE: &str = include_str!("../../../dsl/extdeps/make.dag");
+const BUILD_TARGETS_SOURCE: &str = include_str!("../../../dsl/config/build_targets.dag");
+const STD_PATTERNS_SOURCE: &str = include_str!("../../../dsl/std/patterns.dag");
+const STD_RESOURCES_SOURCE: &str = include_str!("../../../dsl/std/resources.dag");
+const STD_TYPES_SOURCE: &str = include_str!("../../../dsl/std/types.dag");
+const STD_FILESYSTEM_SOURCE: &str = include_str!("../../../dsl/std/filesystem.dag");
+const STD_ERRORS_SOURCE: &str = include_str!("../../../dsl/std/errors.dag");
+const STD_BEHAVIORAL_SOURCE: &str = include_str!("../../../dsl/std/behavioral.dag");
+const SVC_SHELL_SOURCE: &str = include_str!("../../../dsl/services/shell.dag");
+const SVC_GCP_SM_SOURCE: &str = include_str!("../../../dsl/services/gcp/secret_manager.dag");
+const SVC_GCP_IAM_SOURCE: &str = include_str!("../../../dsl/services/gcp/iam.dag");
+const SVC_GCP_STS_SOURCE: &str = include_str!("../../../dsl/services/gcp/sts.dag");
+const EXT_GCP_CORE_SOURCE: &str = include_str!("../../../dsl/extdeps/cloud/gcp/core.dag");
+const EXT_GCP_SM_SOURCE: &str = include_str!("../../../dsl/extdeps/cloud/gcp/secret_manager.dag");
+const EXT_GCP_IAM_SOURCE: &str = include_str!("../../../dsl/extdeps/cloud/gcp/iam.dag");
+const EXT_GCP_STS_SOURCE: &str = include_str!("../../../dsl/extdeps/cloud/gcp/sts.dag");
+const EXT_CLOUD_CORE_SOURCE: &str = include_str!("../../../dsl/extdeps/cloud/core.dag");
+const EXT_PKG_MGRS_SOURCE: &str = include_str!("../../../dsl/extdeps/tools/package_managers.dag");
 
 // ============================================================================
 // DSL-based Makefile rendering
@@ -57,28 +76,34 @@ fn compile_makegen() -> (
     HashMap<String, LoweredFnBody>,
     HashMap<String, serde_json::Value>,
 ) {
-    let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dsl");
-    let dag_file = dsl_root.join("tools/makegen.dag");
-    let context = DriverContext {
-        roots: vec![dsl_root],
-        target_file: Some(dag_file),
-    };
-    let output = compile_from_context(&context).expect("makegen should compile");
+    let output = compile_data_from_sources(&[
+        // Leaf dependencies (no imports)
+        (Path::new("<embedded>/std/types.dag"), STD_TYPES_SOURCE),
+        (Path::new("<embedded>/std/errors.dag"), STD_ERRORS_SOURCE),
+        (Path::new("<embedded>/std/behavioral.dag"), STD_BEHAVIORAL_SOURCE),
+        (Path::new("<embedded>/std/resources.dag"), STD_RESOURCES_SOURCE),
+        (Path::new("<embedded>/std/filesystem.dag"), STD_FILESYSTEM_SOURCE),
+        (Path::new("<embedded>/extdeps/cloud/core.dag"), EXT_CLOUD_CORE_SOURCE),
+        (Path::new("<embedded>/extdeps/cloud/gcp/core.dag"), EXT_GCP_CORE_SOURCE),
+        (Path::new("<embedded>/extdeps/cloud/gcp/secret_manager.dag"), EXT_GCP_SM_SOURCE),
+        (Path::new("<embedded>/extdeps/cloud/gcp/iam.dag"), EXT_GCP_IAM_SOURCE),
+        (Path::new("<embedded>/extdeps/cloud/gcp/sts.dag"), EXT_GCP_STS_SOURCE),
+        (Path::new("<embedded>/extdeps/tools/package_managers.dag"), EXT_PKG_MGRS_SOURCE),
+        (Path::new("<embedded>/extdeps/make.dag"), EXTDEPS_MAKE_SOURCE),
+        // Service defs
+        (Path::new("<embedded>/services/shell.dag"), SVC_SHELL_SOURCE),
+        (Path::new("<embedded>/services/gcp/secret_manager.dag"), SVC_GCP_SM_SOURCE),
+        (Path::new("<embedded>/services/gcp/iam.dag"), SVC_GCP_IAM_SOURCE),
+        (Path::new("<embedded>/services/gcp/sts.dag"), SVC_GCP_STS_SOURCE),
+        // Intermediate
+        (Path::new("<embedded>/std/patterns.dag"), STD_PATTERNS_SOURCE),
+        (Path::new("<embedded>/config/build_targets.dag"), BUILD_TARGETS_SOURCE),
+        // Target
+        (Path::new("<embedded>/tools/makegen.dag"), MAKEGEN_SOURCE),
+    ])
+    .expect("makegen should compile");
 
-    let mut fns = HashMap::new();
-    for node in &output.lowered_dag.nodes {
-        if let NodeBody::Opaque(LoweredOp::Callable {
-            kind: CallableKind::Fn,
-            name,
-            fn_body: Some(body),
-            ..
-        }) = &node.body
-        {
-            fns.insert(name.clone(), *body.clone());
-        }
-    }
-
-    (fns, output.data_values)
+    (output.fns, output.data_values)
 }
 
 /// Convert a `ToolRegistry`'s tools into `Value::List` matching the DSL

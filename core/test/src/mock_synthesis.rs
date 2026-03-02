@@ -225,6 +225,67 @@ fn merge_json(target: &mut JsonValue, patch: &JsonValue) {
     }
 }
 
+// ============================================================================
+// TL-7: Response-block-driven mock synthesis
+// ============================================================================
+
+/// Infer the `MockProvider` from a response type name declared in `response {}` blocks.
+///
+/// This bridges the gap between DSL-declared response types (e.g., "GitHubErrorShape")
+/// and the provider-aware mock synthesis system. When the response type name contains
+/// a provider hint, we can generate realistic mock payloads.
+pub fn provider_from_response_type(response_type: &str) -> MockProvider {
+    let lower = response_type.to_lowercase();
+    if lower.contains("github") || lower.contains("gist") {
+        MockProvider::GitHub
+    } else if lower.contains("gcp") {
+        MockProvider::Gcp
+    } else if lower.contains("anthropic") {
+        MockProvider::Anthropic
+    } else if lower.contains("openai") {
+        MockProvider::OpenAi
+    } else {
+        MockProvider::Generic
+    }
+}
+
+/// Infer the failure mode from an HTTP status code.
+///
+/// Maps common HTTP error codes to semantic failure mode tags used by
+/// the provider-specific error shape generators.
+pub fn failure_mode_from_status(status: u16) -> &'static str {
+    match status {
+        401 | 403 => "auth",
+        404 => "not_found",
+        429 => "rate_limit",
+        409 => "conflict",
+        422 => "validation",
+        _ if status >= 500 => "server",
+        _ => "unknown",
+    }
+}
+
+/// Synthesize a mock REST response from a response mapping entry (TL-7).
+///
+/// Given a status code and response type name from a `response { STATUS => TYPE }`
+/// declaration, generates a realistic mock response body that matches the
+/// provider's error shape.
+pub fn synthesize_from_response_entry(status: u16, response_type: &str) -> RestResponse {
+    let provider = provider_from_response_type(response_type);
+    let spec = if (200..300).contains(&status) {
+        MockResponseSynthesis::success(provider)
+    } else {
+        let mode = failure_mode_from_status(status);
+        MockResponseSynthesis {
+            provider,
+            status,
+            failure_mode: Some(mode.to_string()),
+            body_override: None,
+        }
+    };
+    synthesize_rest_response(&spec)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -290,5 +351,69 @@ mod tests {
         ));
         assert_eq!(response.status, 429);
         assert_eq!(response.body["error"]["type"], "rate_limit_exceeded");
+    }
+
+    // TL-7: Response-block-driven synthesis tests
+
+    #[test]
+    fn provider_from_response_type_infers_github() {
+        assert_eq!(
+            provider_from_response_type("GitHubErrorShape"),
+            MockProvider::GitHub
+        );
+    }
+
+    #[test]
+    fn provider_from_response_type_infers_gcp() {
+        assert_eq!(
+            provider_from_response_type("GcpErrorShape"),
+            MockProvider::Gcp
+        );
+    }
+
+    #[test]
+    fn provider_from_response_type_infers_anthropic() {
+        assert_eq!(
+            provider_from_response_type("AnthropicErrorShape"),
+            MockProvider::Anthropic
+        );
+    }
+
+    #[test]
+    fn provider_from_response_type_infers_openai() {
+        assert_eq!(
+            provider_from_response_type("OpenAiErrorShape"),
+            MockProvider::OpenAi
+        );
+    }
+
+    #[test]
+    fn provider_from_response_type_falls_back_to_generic() {
+        assert_eq!(
+            provider_from_response_type("Json"),
+            MockProvider::Generic
+        );
+    }
+
+    #[test]
+    fn synthesize_from_response_entry_github_401() {
+        let response = synthesize_from_response_entry(401, "GitHubErrorShape");
+        assert_eq!(response.status, 401);
+        assert_eq!(response.body["message"], "Bad credentials");
+        assert!(response.body.get("documentation_url").is_some());
+    }
+
+    #[test]
+    fn synthesize_from_response_entry_gcp_404() {
+        let response = synthesize_from_response_entry(404, "GcpErrorShape");
+        assert_eq!(response.status, 404);
+        assert_eq!(response.body["error"]["status"], "NOT_FOUND");
+    }
+
+    #[test]
+    fn synthesize_from_response_entry_success_200() {
+        let response = synthesize_from_response_entry(200, "Json");
+        assert_eq!(response.status, 200);
+        assert_eq!(response.body["ok"], true);
     }
 }

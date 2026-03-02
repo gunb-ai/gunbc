@@ -19,6 +19,11 @@ pub enum ParamType {
     Str,
     Int,
     Bool,
+    /// Map parameter accepting KEY=VALUE pairs.
+    ///
+    /// Repeatable: `--flag key1=val1 --flag key2=val2` accumulates into a
+    /// `Value::Map`. Always treated as repeatable regardless of cardinality.
+    Map,
 }
 
 impl ParamType {
@@ -28,6 +33,7 @@ impl ParamType {
             Self::Str => "String",
             Self::Int => "Int",
             Self::Bool => "Bool",
+            Self::Map => "Map",
         }
     }
 }
@@ -42,7 +48,7 @@ impl std::fmt::Display for ParamTypeParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "unknown ParamType '{}'; expected String/Str, Int, or Bool",
+            "unknown ParamType '{}'; expected String/Str, Int, Bool, or Map",
             self.value
         )
     }
@@ -58,6 +64,7 @@ impl TryFrom<&str> for ParamType {
             "String" | "Str" => Ok(Self::Str),
             "Bool" => Ok(Self::Bool),
             "Int" => Ok(Self::Int),
+            "Map" => Ok(Self::Map),
             other => Err(ParamTypeParseError {
                 value: other.to_string(),
             }),
@@ -118,7 +125,12 @@ impl CliParam {
 
     /// Whether this param accepts multiple values (repeatable flag).
     pub fn is_repeatable(&self) -> bool {
-        self.cardinality.allows_many()
+        self.cardinality.allows_many() || self.type_id == ParamType::Map
+    }
+
+    /// Whether this param is a Map (KEY=VALUE pairs).
+    pub fn is_map(&self) -> bool {
+        self.type_id == ParamType::Map
     }
 
     /// Derive the long flag name from port_name (kebab-case).
@@ -151,6 +163,8 @@ pub enum ParseError {
     UnknownFlag { flag: String },
     /// A flag received an invalid value.
     InvalidValue { flag: String, value: String },
+    /// A Map flag received a value that isn't KEY=VALUE.
+    InvalidKeyValue { flag: String, value: String },
 }
 
 impl std::fmt::Display for ParseError {
@@ -175,6 +189,13 @@ impl std::fmt::Display for ParseError {
             ParseError::InvalidValue { flag, value } => {
                 write!(f, "invalid value '{}' for flag '{}'", value, flag)
             }
+            ParseError::InvalidKeyValue { flag, value } => {
+                write!(
+                    f,
+                    "invalid KEY=VALUE '{}' for flag '{}' (expected NAME=VALUE)",
+                    value, flag
+                )
+            }
         }
     }
 }
@@ -195,6 +216,7 @@ pub fn parse_int_flag(flag: &str, value: &str) -> Result<i64, ParseError> {
 /// - Bool params: presence flag (no value consumed)
 /// - String/Int params: consume next arg
 /// - Repeatable (`cardinality.allows_many()`): push to `Value::List`
+/// - Map params: accumulate KEY=VALUE pairs into `Value::Map`
 /// - Defaults applied for missing optional params
 /// - `--dry-run` / `-n` and `--help` / `-h` are built-in
 /// - Unknown flags return `ParseError::UnknownFlag`
@@ -214,8 +236,11 @@ pub fn parse(argv: &[String], schema: &[CliParam]) -> Result<ParseResult, ParseE
     // Initialize accumulators
     let mut scalars: HashMap<usize, Option<String>> = HashMap::new();
     let mut lists: HashMap<usize, Vec<String>> = HashMap::new();
+    let mut maps: HashMap<usize, std::collections::BTreeMap<String, String>> = HashMap::new();
     for (idx, param) in schema.iter().enumerate() {
-        if param.is_repeatable() {
+        if param.is_map() {
+            maps.insert(idx, std::collections::BTreeMap::new());
+        } else if param.is_repeatable() {
             lists.insert(idx, Vec::new());
         } else {
             scalars.insert(idx, param.default_value.clone());
@@ -253,6 +278,34 @@ pub fn parse(argv: &[String], schema: &[CliParam]) -> Result<ParseResult, ParseE
                             None => "true",
                         };
                         scalars.insert(idx, Some(bool_value.to_string()));
+                    } else if param.is_map() {
+                        // Map param: consume KEY=VALUE pair.
+                        let raw = if let Some(v) = inline_value {
+                            v.to_string()
+                        } else {
+                            i += 1;
+                            if i >= argv.len() {
+                                return Err(ParseError::MissingValue {
+                                    flag: flag.to_string(),
+                                });
+                            }
+                            argv[i].clone()
+                        };
+                        let (key, val) = raw.split_once('=').ok_or_else(|| {
+                            ParseError::InvalidKeyValue {
+                                flag: flag.to_string(),
+                                value: raw.clone(),
+                            }
+                        })?;
+                        if key.trim().is_empty() {
+                            return Err(ParseError::InvalidKeyValue {
+                                flag: flag.to_string(),
+                                value: raw,
+                            });
+                        }
+                        maps.get_mut(&idx)
+                            .unwrap()
+                            .insert(key.to_string(), val.to_string());
                     } else if param.is_repeatable() {
                         let value = if let Some(v) = inline_value {
                             v.to_string()
@@ -292,7 +345,16 @@ pub fn parse(argv: &[String], schema: &[CliParam]) -> Result<ParseResult, ParseE
     let mut values: HashMap<String, Value> = HashMap::new();
 
     for (idx, param) in schema.iter().enumerate() {
-        if param.is_repeatable() {
+        if param.is_map() {
+            let map_entries = maps.remove(&idx).unwrap_or_default();
+            if !map_entries.is_empty() {
+                let bt: std::collections::BTreeMap<String, Value> = map_entries
+                    .into_iter()
+                    .map(|(k, v)| (k, Value::Str(v)))
+                    .collect();
+                values.insert(param.port_name.clone(), Value::Map(bt));
+            }
+        } else if param.is_repeatable() {
             let items = lists.remove(&idx).unwrap_or_default();
             if !items.is_empty() {
                 values.insert(param.port_name.clone(), Value::str_list(items));
@@ -304,6 +366,7 @@ pub fn parse(argv: &[String], schema: &[CliParam]) -> Result<ParseResult, ParseE
                         ParamType::Bool => Value::Bool(val == "true"),
                         ParamType::Int => Value::Int(parse_int_flag(&param.flag_name(), val)?),
                         ParamType::Str => Value::Str(val.clone()),
+                        ParamType::Map => unreachable!("Map handled above"),
                     };
                     values.insert(param.port_name.clone(), value);
                 }
@@ -602,5 +665,111 @@ mod tests {
             parse_int_flag("count", "x"),
             Err(ParseError::InvalidInt { .. })
         ));
+    }
+
+    // ========================================================================
+    // Map (KEY=VALUE) parameter tests (C21)
+    // ========================================================================
+
+    #[test]
+    fn test_map_param_single_pair() {
+        let schema = vec![CliParam::new("input", ParamType::Map)];
+        let result = parse(&argv(&["prog", "--input", "project_id=my-proj"]), &schema).unwrap();
+        let expected = Value::Map(
+            [("project_id".to_string(), Value::Str("my-proj".to_string()))]
+                .into_iter()
+                .collect(),
+        );
+        assert_eq!(result.values["input"], expected);
+    }
+
+    #[test]
+    fn test_map_param_multiple_pairs() {
+        let schema = vec![CliParam::new("input", ParamType::Map)];
+        let result = parse(
+            &argv(&[
+                "prog",
+                "--input", "project_id=my-proj",
+                "--input", "zone=us-west1-a",
+                "--input", "env=prod",
+            ]),
+            &schema,
+        )
+        .unwrap();
+        let map = match &result.values["input"] {
+            Value::Map(m) => m,
+            other => panic!("expected Map, got: {:?}", other),
+        };
+        assert_eq!(map.get("project_id").and_then(Value::as_str), Some("my-proj"));
+        assert_eq!(map.get("zone").and_then(Value::as_str), Some("us-west1-a"));
+        assert_eq!(map.get("env").and_then(Value::as_str), Some("prod"));
+    }
+
+    #[test]
+    fn test_map_param_inline_syntax() {
+        // --input=key=value (inline equals — first '=' splits flag, rest is value)
+        let schema = vec![CliParam::new("input", ParamType::Map)];
+        let result = parse(&argv(&["prog", "--input=project_id=my-proj"]), &schema).unwrap();
+        let map = match &result.values["input"] {
+            Value::Map(m) => m,
+            other => panic!("expected Map, got: {:?}", other),
+        };
+        assert_eq!(map.get("project_id").and_then(Value::as_str), Some("my-proj"));
+    }
+
+    #[test]
+    fn test_map_param_empty() {
+        let schema = vec![CliParam::new("input", ParamType::Map)];
+        let result = parse(&argv(&["prog"]), &schema).unwrap();
+        assert!(!result.values.contains_key("input"));
+    }
+
+    #[test]
+    fn test_map_param_missing_equals() {
+        let schema = vec![CliParam::new("input", ParamType::Map)];
+        let result = parse(&argv(&["prog", "--input", "no-equals-here"]), &schema);
+        assert!(matches!(result, Err(ParseError::InvalidKeyValue { .. })));
+    }
+
+    #[test]
+    fn test_map_param_empty_key() {
+        let schema = vec![CliParam::new("input", ParamType::Map)];
+        let result = parse(&argv(&["prog", "--input", "=value"]), &schema);
+        assert!(matches!(result, Err(ParseError::InvalidKeyValue { .. })));
+    }
+
+    #[test]
+    fn test_map_param_value_with_equals() {
+        // Value can contain '=' signs — only first '=' splits key from value.
+        let schema = vec![CliParam::new("input", ParamType::Map)];
+        let result = parse(&argv(&["prog", "--input", "query=a=b=c"]), &schema).unwrap();
+        let map = match &result.values["input"] {
+            Value::Map(m) => m,
+            other => panic!("expected Map, got: {:?}", other),
+        };
+        assert_eq!(map.get("query").and_then(Value::as_str), Some("a=b=c"));
+    }
+
+    #[test]
+    fn test_map_param_missing_value_arg() {
+        let schema = vec![CliParam::new("input", ParamType::Map)];
+        let result = parse(&argv(&["prog", "--input"]), &schema);
+        assert!(matches!(result, Err(ParseError::MissingValue { .. })));
+    }
+
+    #[test]
+    fn test_map_param_with_short_flag() {
+        let schema = vec![CliParam::new("input", ParamType::Map).short('i')];
+        let result = parse(&argv(&["prog", "-i", "key=val"]), &schema).unwrap();
+        let map = match &result.values["input"] {
+            Value::Map(m) => m,
+            other => panic!("expected Map, got: {:?}", other),
+        };
+        assert_eq!(map.get("key").and_then(Value::as_str), Some("val"));
+    }
+
+    #[test]
+    fn test_param_type_try_from_map() {
+        assert_eq!(ParamType::try_from("Map").unwrap(), ParamType::Map);
     }
 }

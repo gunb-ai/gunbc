@@ -371,8 +371,10 @@ fn field_access(base: &Value, field: &str) -> Result<Value, EvalError> {
             serde_json::Value::Object(obj) => Ok(obj
                 .get(field)
                 .map(|v| Value::Json(v.clone()))
-                .unwrap_or(Value::Unit)),
-            serde_json::Value::Null => Ok(Value::Unit),
+                // Missing JSON fields → JSON null (not Unit) to preserve
+                // JSON semantics and avoid masking typos like `resp.mesage`.
+                .unwrap_or(Value::Json(serde_json::Value::Null))),
+            serde_json::Value::Null => Ok(Value::Json(serde_json::Value::Null)),
             _ => Err(EvalError::new(format!(
                 "cannot access field '{field}' on JSON {:?}",
                 json

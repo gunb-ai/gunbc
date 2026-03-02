@@ -181,7 +181,9 @@ impl CliEntrypoint {
     /// Uses the language module's type system mapping for standard types.
     /// Collection types are derived from cardinality, not type_id string matching.
     pub fn rust_type(&self) -> String {
-        if self.cardinality.allows_many() {
+        if self.type_id == ParamType::Map {
+            "std::collections::BTreeMap<String, String>".to_string()
+        } else if self.cardinality.allows_many() {
             // Collection entrypoint — element type is type_id
             let element = self.type_id.as_str();
             lang_rust_type(&format!("List<{}>", element))
@@ -194,22 +196,30 @@ impl CliEntrypoint {
     ///
     /// Collection types are derived from cardinality, not type_id string matching.
     pub fn value_constructor(&self) -> &str {
-        if self.cardinality.allows_many() {
+        if self.type_id == ParamType::Map {
+            "Value::Map"
+        } else if self.cardinality.allows_many() {
             "Value::str_list"
         } else {
             match self.type_id {
                 ParamType::Str => "Value::Str",
                 ParamType::Int => "Value::Int",
                 ParamType::Bool => "Value::Bool",
+                ParamType::Map => unreachable!("handled above"),
             }
         }
+    }
+
+    /// Whether this param is a Map (KEY=VALUE pairs).
+    pub fn is_map(&self) -> bool {
+        self.type_id == ParamType::Map
     }
 
     /// Whether this entrypoint accepts multiple values (repeatable CLI flag).
     ///
     /// Derived from cardinality, not type_id string matching.
     pub fn is_repeatable(&self) -> bool {
-        self.cardinality.allows_many()
+        self.cardinality.allows_many() || self.type_id == ParamType::Map
     }
 
     /// Convert to a `gunbc_cli::CliParam` for in-process parsing.
@@ -479,6 +489,7 @@ fn generate_arg_parsing_with_mode(
             ParamType::Str => "gunbc_cli::ParamType::Str",
             ParamType::Int => "gunbc_cli::ParamType::Int",
             ParamType::Bool => "gunbc_cli::ParamType::Bool",
+            ParamType::Map => "gunbc_cli::ParamType::Map",
         };
         write!(
             code,
@@ -557,7 +568,12 @@ fn generate_arg_parsing_with_mode(
 
     // Extract local variables from cli_inputs for graph_builder_args compatibility
     for ep in entrypoints {
-        if ep.is_repeatable() {
+        if ep.is_map() {
+            write!(code,
+                "let {}: std::collections::BTreeMap<String, String> = match cli_inputs.get(\"{}\") {{\n    Some(Value::Map(m)) => m.iter().filter_map(|(k, v)| match v {{ Value::Str(s) => Some((k.clone(), s.clone())), _ => None }}).collect(),\n    _ => std::collections::BTreeMap::new(),\n}};\n",
+                ep.var_name(), ep.port_name
+            ).unwrap();
+        } else if ep.is_repeatable() {
             write!(code,
                 "let {}: Vec<String> = match cli_inputs.get(\"{}\") {{\n    Some(Value::List(items)) => items.iter().filter_map(|v| match v {{ Value::Str(s) => Some(s.clone()), _ => None }}).collect(),\n    _ => vec![],\n}};\n",
                 ep.var_name(), ep.port_name
@@ -602,6 +618,7 @@ fn generate_arg_parsing_with_mode(
                         ).unwrap();
                     }
                 }
+                ParamType::Map => {} // Handled by is_map() branch above.
             }
         }
     }
@@ -692,13 +709,16 @@ fn generate_help_options(entrypoints: &[CliEntrypoint]) -> String {
             .short_flag
             .map(|c| format!("-{}, ", c))
             .unwrap_or_else(|| "    ".to_string());
-        let type_hint = if ep.is_repeatable() {
+        let type_hint = if ep.is_map() {
+            " <KEY=VALUE>..."
+        } else if ep.is_repeatable() {
             " <VAL>..."
         } else {
             match ep.type_id {
                 ParamType::Bool => "",
                 ParamType::Int => " <NUM>",
                 ParamType::Str => " <VAL>",
+                ParamType::Map => " <KEY=VALUE>...",
             }
         };
         writeln!(
@@ -858,8 +878,13 @@ fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
          // Build the graph and compose with freshness checks\n\
          let dag = {graph_builder_call};\n\
          let steps = check_and_plan_freshness();\n\
-         let dag = compose_with_freshness(dag, steps)\n\
-             .expect(\"freshness/tool overlap: freshness steps duplicate cargo operations in the tool DAG\");\n\
+         let dag = match compose_with_freshness(dag, steps) {{\n\
+             Ok(d) => d,\n\
+             Err(e) => {{\n\
+                 eprintln!(\"error: freshness composition failed: {{e}}\");\n\
+                 std::process::exit(2);\n\
+             }}\n\
+         }};\n\
          \n\
          {input_mocks}\n\
          // Set up execution mode\n\
@@ -1118,8 +1143,13 @@ fn build_subcmd_run_fn(
          // Build the graph and compose with freshness checks\n\
          let dag = {graph_builder_call};\n\
          let steps = check_and_plan_freshness();\n\
-         let dag = compose_with_freshness(dag, steps)\n\
-             .expect(\"freshness/tool overlap: freshness steps duplicate cargo operations in the tool DAG\");\n\
+         let dag = match compose_with_freshness(dag, steps) {{\n\
+             Ok(d) => d,\n\
+             Err(e) => {{\n\
+                 eprintln!(\"error: freshness composition failed: {{e}}\");\n\
+                 std::process::exit(2);\n\
+             }}\n\
+         }};\n\
          \n\
          {input_mocks}\n\
          // Set up execution mode\n\
@@ -1302,8 +1332,13 @@ fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDe
          // Build the graph and compose with freshness checks\n\
          let dag = {graph_builder_call};\n\
          let steps = check_and_plan_freshness();\n\
-         let dag = compose_with_freshness(dag, steps)\n\
-             .expect(\"freshness/tool overlap: freshness steps duplicate cargo operations in the tool DAG\");\n\
+         let dag = match compose_with_freshness(dag, steps) {{\n\
+             Ok(d) => d,\n\
+             Err(e) => {{\n\
+                 eprintln!(\"error: freshness composition failed: {{e}}\");\n\
+                 std::process::exit(2);\n\
+             }}\n\
+         }};\n\
          \n\
          {input_mocks}\n\
          // Set up execution mode\n\

@@ -81,6 +81,46 @@ service gcp.CloudRun {
     input { project_id: ProjectId, region: String, name: NonEmptyStr }
     output { ok: Bool }
   }
+
+  // SP-2: Revision management for traffic migration.
+  operation ListRevisions {
+    readonly
+    idempotent
+    input { project_id: ProjectId, region: String, service_name: NonEmptyStr }
+    output { revisions: List<Json> }
+  }
+
+  operation GetRevision {
+    readonly
+    idempotent
+    input { project_id: ProjectId, region: String, service_name: NonEmptyStr, revision_name: NonEmptyStr }
+    output { exists: Bool, name: String, image: String?, ready: Bool }
+  }
+
+  // SP-2: Traffic migration (gradual rollout).
+  operation UpdateTraffic {
+    idempotent
+    input {
+      project_id: ProjectId
+      region: String
+      service_name: NonEmptyStr
+      traffic: List<Json>    // [{revision: "rev-name", percent: 100}]
+    }
+    output { ok: Bool, uri: Url }
+  }
+
+  // SP-2: Wait for revision readiness (poll-based).
+  operation WaitReady {
+    readonly
+    input {
+      project_id: ProjectId
+      region: String
+      service_name: NonEmptyStr
+      revision_name: NonEmptyStr
+      timeout_seconds: Int = 300
+    }
+    output { ready: Bool, reason: String? }
+  }
 }
 
 // --- Secret Manager (lifecycle) ------------------------------------------

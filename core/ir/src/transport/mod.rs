@@ -124,8 +124,8 @@ pub use llm::{
 };
 pub use middleware::{
     CircuitBreakerConfig, CredentialConfig, CredentialInjection, CredentialProvider,
-    RateLimitAlgorithm, RateLimitConfig, ResponseClassification, ResponseProvider, RetryBackoff,
-    RetryConfig, TransportMiddlewareConfig,
+    ErrorShapeExtraction, RateLimitAlgorithm, RateLimitConfig, ResponseClassification,
+    ResponseProvider, RetryBackoff, RetryConfig, TransportMiddlewareConfig,
 };
 pub use rest::{RestRequest, RestResponse};
 pub use scope::{CredentialIntent, ScopeContract, ScopeContractError};

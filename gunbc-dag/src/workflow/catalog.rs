@@ -1,7 +1,7 @@
 //! DSL-backed workflow catalog + derivation helpers.
 
 use std::collections::{BTreeSet, HashMap};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::OnceLock;
 
 use daglang_syntax::{
@@ -20,6 +20,34 @@ use gunbc_workflow::{
     required_input_contract, required_output_contract, ReportSpec, WorkflowOp, WorkflowSpec,
     WorkflowUnit,
 };
+
+// Embedded DSL sources for hermetic binary operation.
+const WORKFLOW_CATALOG_SOURCE: &str =
+    include_str!("../../../dsl/config/workflow_catalog.dag");
+const WF_BOOTSTRAP: &str = include_str!("../../../dsl/workflows/bootstrap.dag");
+const WF_BUILD_ALL: &str = include_str!("../../../dsl/workflows/build_all.dag");
+const WF_CI: &str = include_str!("../../../dsl/workflows/ci.dag");
+const WF_DEPS: &str = include_str!("../../../dsl/workflows/deps.dag");
+const WF_GIST: &str = include_str!("../../../dsl/workflows/gist.dag");
+const WF_MAKEGEN: &str = include_str!("../../../dsl/workflows/makegen.dag");
+const WF_PRAGMA: &str = include_str!("../../../dsl/workflows/pragma.dag");
+const WF_SDLC: &str = include_str!("../../../dsl/workflows/sdlc.dag");
+const WF_TEST_ALL: &str = include_str!("../../../dsl/workflows/test_all.dag");
+
+fn embedded_workflow_source(file: &str) -> Option<&'static str> {
+    match file {
+        "bootstrap.dag" => Some(WF_BOOTSTRAP),
+        "build_all.dag" => Some(WF_BUILD_ALL),
+        "ci.dag" => Some(WF_CI),
+        "deps.dag" => Some(WF_DEPS),
+        "gist.dag" => Some(WF_GIST),
+        "makegen.dag" => Some(WF_MAKEGEN),
+        "pragma.dag" => Some(WF_PRAGMA),
+        "sdlc.dag" => Some(WF_SDLC),
+        "test_all.dag" => Some(WF_TEST_ALL),
+        _ => None,
+    }
+}
 
 #[derive(Debug, Clone)]
 pub(super) struct WorkflowVariantDef {
@@ -41,18 +69,18 @@ fn workflow_variants() -> &'static [WorkflowVariantDef] {
     })
 }
 
-#[allow(clippy::disallowed_methods)]
 fn load_workflow_variants_from_dsl() -> Result<Vec<WorkflowVariantDef>, String> {
-    let path = workflow_catalog_file_path();
-    let source = std::fs::read_to_string(&path)
-        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
-    let parsed = parser::parse_with_file_diagnostics(&path, &source).map_err(|diagnostics| {
-        diagnostics
-            .into_iter()
-            .map(|diagnostic| diagnostic.render())
-            .collect::<Vec<_>>()
-            .join("\n")
-    })?;
+    let path = Path::new("<embedded>/config/workflow_catalog.dag");
+    let parsed =
+        parser::parse_with_file_diagnostics(path, WORKFLOW_CATALOG_SOURCE).map_err(
+            |diagnostics| {
+                diagnostics
+                    .into_iter()
+                    .map(|diagnostic| diagnostic.render())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            },
+        )?;
 
     let mut raw = None;
     for item in parsed.items {
@@ -429,7 +457,6 @@ fn stage_is_enabled(stage: &StageTemplate, mode: Option<&str>) -> bool {
     }
 }
 
-#[allow(clippy::disallowed_methods)]
 fn load_workflow_templates() -> Result<HashMap<String, WorkflowTemplate>, String> {
     let mut templates = HashMap::new();
     for variant in workflow_variants() {
@@ -444,13 +471,17 @@ fn load_workflow_templates() -> Result<HashMap<String, WorkflowTemplate>, String
     Ok(templates)
 }
 
-#[allow(clippy::disallowed_methods)]
 fn parse_workflow_template(file: &str, pipeline_name: &str) -> Result<WorkflowTemplate, String> {
-    let path = workflow_file_path(file);
-    let source = std::fs::read_to_string(&path)
-        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    let source = embedded_workflow_source(file).ok_or_else(|| {
+        format!(
+            "workflow file '{file}' not found in embedded sources — \
+             add it to embedded_workflow_source() in catalog.rs"
+        )
+    })?;
+    let path = format!("<embedded>/workflows/{file}");
+    let path = Path::new(&path);
 
-    let parsed = parser::parse_with_file_diagnostics(&path, &source).map_err(|diagnostics| {
+    let parsed = parser::parse_with_file_diagnostics(path, source).map_err(|diagnostics| {
         diagnostics
             .into_iter()
             .map(|diagnostic| diagnostic.render())
@@ -563,21 +594,6 @@ fn default_stage_claims(stage_name: &str) -> Vec<UnitClaim> {
     }
 }
 
-fn workflow_file_path(file: &str) -> PathBuf {
-    workflows_root().join(file)
-}
-
-fn workflow_catalog_file_path() -> PathBuf {
-    configs_root().join("workflow_catalog.dag")
-}
-
-fn workflows_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../dsl/workflows")
-}
-
-fn configs_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../dsl/config")
-}
 
 fn compilation_ref() -> ProcessUnitRef {
     ProcessUnitRef::new(COMPILATION_PROCESS_ID, COMPILATION_ENSURE_UNIT)

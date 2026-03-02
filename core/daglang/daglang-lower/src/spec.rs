@@ -51,6 +51,42 @@ impl ServiceOperationSpec {
             Self::InterfaceStub { .. } => &[],
         }
     }
+
+    /// Extract authentication requirements from this spec (CT-7).
+    ///
+    /// Returns the auth scheme and input field name if the operation requires
+    /// authentication credentials. CI pipelines use this to derive the set of
+    /// secrets they must provision.
+    pub fn auth_requirement(&self) -> Option<AuthRequirement> {
+        match self {
+            Self::Rest(spec) => {
+                let scheme = spec.auth_scheme.as_deref()?;
+                Some(AuthRequirement {
+                    scheme: scheme.to_string(),
+                    input_field: spec
+                        .auth_input
+                        .clone()
+                        .unwrap_or_else(|| "auth_token".to_string()),
+                    endpoint: spec.endpoint.clone(),
+                })
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Authentication requirement derived from DSL service config (CT-7).
+///
+/// Produced by scanning service operation specs. CI pipelines use these to
+/// determine which secrets to provision without hardcoded inventory linkage.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AuthRequirement {
+    /// Auth scheme (e.g., "BearerToken", "ApiKey").
+    pub scheme: String,
+    /// Input field name that carries the credential (e.g., "auth_token", "api_key").
+    pub input_field: String,
+    /// Service endpoint this credential is used for.
+    pub endpoint: String,
 }
 
 /// File protocol specification: operation type + path template.
@@ -377,5 +413,59 @@ mod tests {
         ];
         let warnings = check_response_completeness(&mapping, "test.Service", "Op");
         assert!(warnings.is_empty());
+    }
+
+    // CT-7: Auth requirement derivation tests
+
+    #[test]
+    fn rest_spec_auth_requirement_extracts_scheme_and_field() {
+        let spec = ServiceOperationSpec::Rest(Box::new(RestOperationSpec {
+            endpoint: "https://api.github.com".to_string(),
+            method: "POST".to_string(),
+            path_template: "/gists".to_string(),
+            input_fields: vec![],
+            output_fields: vec![],
+            body_template: None,
+            headers: vec![],
+            auth_scheme: Some("BearerToken".to_string()),
+            auth_input: Some("auth_token".to_string()),
+            middleware: None,
+            response_mapping: vec![],
+        }));
+        let req = spec.auth_requirement().expect("should have auth requirement");
+        assert_eq!(req.scheme, "BearerToken");
+        assert_eq!(req.input_field, "auth_token");
+        assert_eq!(req.endpoint, "https://api.github.com");
+    }
+
+    #[test]
+    fn rest_spec_without_auth_returns_none() {
+        let spec = ServiceOperationSpec::Rest(Box::new(RestOperationSpec {
+            endpoint: "http://localhost:8080".to_string(),
+            method: "GET".to_string(),
+            path_template: "/health".to_string(),
+            input_fields: vec![],
+            output_fields: vec![],
+            body_template: None,
+            headers: vec![],
+            auth_scheme: None,
+            auth_input: None,
+            middleware: None,
+            response_mapping: vec![],
+        }));
+        assert!(spec.auth_requirement().is_none());
+    }
+
+    #[test]
+    fn shell_spec_auth_requirement_is_none() {
+        let spec = ServiceOperationSpec::Shell(ShellOperationSpec {
+            argv_template: vec![],
+            input_fields: vec![],
+            output_fields: vec![],
+            output_parsing: ShellOutputParsing::TrimStdout,
+            env: vec![],
+            exit_mapping: vec![],
+        });
+        assert!(spec.auth_requirement().is_none());
     }
 }

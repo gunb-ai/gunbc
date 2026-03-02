@@ -382,7 +382,16 @@ impl Parser {
                         }
                         "auth" => {
                             if Self::token_kind_as_ident(&self.peek().kind).is_some() {
-                                config.auth = Some(self.expect_ident()?);
+                                let mut auth_value = self.expect_ident()?;
+                                // Support `Header("x-api-key")` style auth specs
+                                if self.eat(&TokenKind::LParen) {
+                                    if let TokenKind::Str(s) = &self.peek().kind {
+                                        auth_value = format!("{auth_value}({})", s);
+                                        self.advance();
+                                    }
+                                    self.expect(&TokenKind::RParen)?;
+                                }
+                                config.auth = Some(auth_value);
                             } else {
                                 return Err(self.err(format!(
                                     "expected identifier for `auth`, found {}",
@@ -423,13 +432,55 @@ impl Parser {
                             config.credential = Some(self.parse_credential_block()?);
                             self.expect(&TokenKind::RBrace)?;
                         }
-                        _ => {
-                            self.advance();
+                        other => {
+                            // Provider-specific config fields (e.g., bucket,
+                            // base_dir, model, project_id). These can use
+                            // full type syntax: `field: Type<T> = default`.
+                            // Skip the value expression by consuming tokens
+                            // until we hit a comma, newline, or closing brace.
+                            let other = other.to_string();
+                            let mut depth = 0i32;
+                            let mut value_str = String::new();
+                            loop {
+                                if self.at_eof() { break; }
+                                // Stop at comma or closing brace at depth 0
+                                if depth == 0 {
+                                    if self.check(&TokenKind::Comma)
+                                        || self.check(&TokenKind::RBrace)
+                                    {
+                                        break;
+                                    }
+                                    // Stop if we hit what looks like a new field declaration
+                                    // (ident followed by colon at depth 0, peek ahead)
+                                    if Self::token_kind_as_ident(&self.peek().kind).is_some()
+                                        && self.tokens.get(self.pos + 1)
+                                            .is_some_and(|t| t.kind == TokenKind::Colon)
+                                    {
+                                        break;
+                                    }
+                                }
+                                match &self.peek().kind {
+                                    TokenKind::LBrace | TokenKind::LBracket | TokenKind::LParen
+                                    | TokenKind::Lt => depth += 1,
+                                    TokenKind::RBrace | TokenKind::RBracket | TokenKind::RParen
+                                    | TokenKind::Gt => {
+                                        if depth > 0 { depth -= 1; }
+                                        else { break; }
+                                    }
+                                    TokenKind::Str(s) => { value_str = s.clone(); }
+                                    _ => {}
+                                }
+                                self.advance();
+                            }
+                            config.extra.push((other, value_str));
                         }
                     }
                 }
             } else {
-                self.advance();
+                return Err(self.err(format!(
+                    "expected field name in config block, found {}",
+                    self.peek().kind.desc()
+                )));
             }
             self.eat(&TokenKind::Comma);
         }
@@ -439,55 +490,88 @@ impl Parser {
     // ── Transport block parsers (TL-11) ─────────────────────────────
 
     fn parse_rate_limit_block(&mut self) -> Result<RateLimitDef, ParseError> {
-        let mut requests: i64 = 0;
-        let mut per = RateLimitUnit::Hour;
+        let mut requests: Option<i64> = None;
+        let mut per: Option<RateLimitUnit> = None;
         let mut scope: Option<String> = None;
 
         while !self.check(&TokenKind::RBrace) && !self.at_eof() {
             if Self::token_kind_as_ident(&self.peek().kind).is_some() {
                 let field_name = self.expect_ident()?;
-                if self.eat(&TokenKind::Colon) {
-                    match field_name.as_str() {
-                        "requests" => {
-                            if let TokenKind::Int(n) = &self.peek().kind {
-                                requests = *n;
-                                self.advance();
+                self.expect(&TokenKind::Colon)?;
+                match field_name.as_str() {
+                    "requests" => {
+                        if let TokenKind::Int(n) = &self.peek().kind {
+                            let n = *n;
+                            if n <= 0 {
+                                return Err(self.err(
+                                    "rate_limit `requests` must be > 0".into(),
+                                ));
                             }
-                        }
-                        "per" => {
-                            let unit = self.expect_ident()?;
-                            per = match unit.to_lowercase().as_str() {
-                                "second" => RateLimitUnit::Second,
-                                "minute" => RateLimitUnit::Minute,
-                                "hour" => RateLimitUnit::Hour,
-                                "day" => RateLimitUnit::Day,
-                                _ => RateLimitUnit::Hour,
-                            };
-                        }
-                        "scope" => {
-                            if let TokenKind::Str(s) = &self.peek().kind {
-                                scope = Some(s.clone());
-                                self.advance();
-                            } else if Self::token_kind_as_ident(&self.peek().kind).is_some() {
-                                scope = Some(self.expect_ident()?);
-                            }
-                        }
-                        _ => {
+                            requests = Some(n);
                             self.advance();
+                        } else {
+                            return Err(self.err(format!(
+                                "expected integer for `requests`, found {}",
+                                self.peek().kind.desc()
+                            )));
                         }
+                    }
+                    "per" => {
+                        let unit = self.expect_ident()?;
+                        per = Some(match unit.to_lowercase().as_str() {
+                            "second" => RateLimitUnit::Second,
+                            "minute" => RateLimitUnit::Minute,
+                            "hour" => RateLimitUnit::Hour,
+                            "day" => RateLimitUnit::Day,
+                            _ => {
+                                return Err(self.err(format!(
+                                    "unknown rate_limit unit `{unit}` — \
+                                     expected one of: second, minute, hour, day"
+                                )));
+                            }
+                        });
+                    }
+                    "scope" => {
+                        if let TokenKind::Str(s) = &self.peek().kind {
+                            scope = Some(s.clone());
+                            self.advance();
+                        } else if Self::token_kind_as_ident(&self.peek().kind).is_some() {
+                            scope = Some(self.expect_ident()?);
+                        } else {
+                            return Err(self.err(format!(
+                                "expected string or identifier for `scope`, found {}",
+                                self.peek().kind.desc()
+                            )));
+                        }
+                    }
+                    other => {
+                        return Err(self.err(format!(
+                            "unknown field `{other}` in rate_limit block — \
+                             expected one of: requests, per, scope"
+                        )));
                     }
                 }
             } else {
-                self.advance();
+                return Err(self.err(format!(
+                    "expected field name in rate_limit block, found {}",
+                    self.peek().kind.desc()
+                )));
             }
             self.eat(&TokenKind::Comma);
         }
+
+        let requests = requests.ok_or_else(|| {
+            self.err("rate_limit block requires `requests` field".into())
+        })?;
+        let per = per.ok_or_else(|| {
+            self.err("rate_limit block requires `per` field".into())
+        })?;
 
         Ok(RateLimitDef { requests, per, scope })
     }
 
     fn parse_retry_block(&mut self) -> Result<RetryDef, ParseError> {
-        let mut max_attempts: i64 = 3;
+        let mut max_attempts: Option<i64> = None;
         let mut backoff = BackoffStrategy::Exponential;
         let mut base_delay_ms: Option<i64> = None;
         let mut max_delay_ms: Option<i64> = None;
@@ -496,58 +580,109 @@ impl Parser {
         while !self.check(&TokenKind::RBrace) && !self.at_eof() {
             if Self::token_kind_as_ident(&self.peek().kind).is_some() {
                 let field_name = self.expect_ident()?;
-                if self.eat(&TokenKind::Colon) {
-                    match field_name.as_str() {
-                        "max_attempts" => {
-                            if let TokenKind::Int(n) = &self.peek().kind {
-                                max_attempts = *n;
-                                self.advance();
+                self.expect(&TokenKind::Colon)?;
+                match field_name.as_str() {
+                    "max_attempts" => {
+                        if let TokenKind::Int(n) = &self.peek().kind {
+                            let n = *n;
+                            if n < 1 {
+                                return Err(self.err(
+                                    "retry `max_attempts` must be >= 1".into(),
+                                ));
                             }
-                        }
-                        "backoff" => {
-                            let strategy = self.expect_ident()?;
-                            backoff = match strategy.to_lowercase().as_str() {
-                                "constant" => BackoffStrategy::Constant,
-                                "linear" => BackoffStrategy::Linear,
-                                "exponential" => BackoffStrategy::Exponential,
-                                _ => BackoffStrategy::Exponential,
-                            };
-                        }
-                        "base_delay_ms" => {
-                            if let TokenKind::Int(n) = &self.peek().kind {
-                                base_delay_ms = Some(*n);
-                                self.advance();
-                            }
-                        }
-                        "max_delay_ms" => {
-                            if let TokenKind::Int(n) = &self.peek().kind {
-                                max_delay_ms = Some(*n);
-                                self.advance();
-                            }
-                        }
-                        "retry_on" => {
-                            // Parse list: [429, 500, 502]
-                            if self.eat(&TokenKind::LBracket) {
-                                while !self.check(&TokenKind::RBracket) && !self.at_eof() {
-                                    if let TokenKind::Int(n) = &self.peek().kind {
-                                        retry_on.push(*n);
-                                        self.advance();
-                                    }
-                                    self.eat(&TokenKind::Comma);
-                                }
-                                self.expect(&TokenKind::RBracket)?;
-                            }
-                        }
-                        _ => {
+                            max_attempts = Some(n);
                             self.advance();
+                        } else {
+                            return Err(self.err(format!(
+                                "expected integer for `max_attempts`, found {}",
+                                self.peek().kind.desc()
+                            )));
                         }
+                    }
+                    "backoff" => {
+                        let strategy = self.expect_ident()?;
+                        backoff = match strategy.to_lowercase().as_str() {
+                            "constant" => BackoffStrategy::Constant,
+                            "linear" => BackoffStrategy::Linear,
+                            "exponential" => BackoffStrategy::Exponential,
+                            _ => {
+                                return Err(self.err(format!(
+                                    "unknown backoff strategy `{strategy}` — \
+                                     expected one of: constant, linear, exponential"
+                                )));
+                            }
+                        };
+                    }
+                    "base_delay_ms" => {
+                        if let TokenKind::Int(n) = &self.peek().kind {
+                            let n = *n;
+                            if n < 0 {
+                                return Err(self.err(
+                                    "retry `base_delay_ms` must be >= 0".into(),
+                                ));
+                            }
+                            base_delay_ms = Some(n);
+                            self.advance();
+                        } else {
+                            return Err(self.err(format!(
+                                "expected integer for `base_delay_ms`, found {}",
+                                self.peek().kind.desc()
+                            )));
+                        }
+                    }
+                    "max_delay_ms" => {
+                        if let TokenKind::Int(n) = &self.peek().kind {
+                            let n = *n;
+                            if n < 0 {
+                                return Err(self.err(
+                                    "retry `max_delay_ms` must be >= 0".into(),
+                                ));
+                            }
+                            max_delay_ms = Some(n);
+                            self.advance();
+                        } else {
+                            return Err(self.err(format!(
+                                "expected integer for `max_delay_ms`, found {}",
+                                self.peek().kind.desc()
+                            )));
+                        }
+                    }
+                    "retry_on" => {
+                        self.expect(&TokenKind::LBracket)?;
+                        while !self.check(&TokenKind::RBracket) && !self.at_eof() {
+                            if let TokenKind::Int(n) = &self.peek().kind {
+                                retry_on.push(*n);
+                                self.advance();
+                            } else {
+                                return Err(self.err(format!(
+                                    "expected integer status code in retry_on list, found {}",
+                                    self.peek().kind.desc()
+                                )));
+                            }
+                            self.eat(&TokenKind::Comma);
+                        }
+                        self.expect(&TokenKind::RBracket)?;
+                    }
+                    other => {
+                        return Err(self.err(format!(
+                            "unknown field `{other}` in retry block — \
+                             expected one of: max_attempts, backoff, base_delay_ms, \
+                             max_delay_ms, retry_on"
+                        )));
                     }
                 }
             } else {
-                self.advance();
+                return Err(self.err(format!(
+                    "expected field name in retry block, found {}",
+                    self.peek().kind.desc()
+                )));
             }
             self.eat(&TokenKind::Comma);
         }
+
+        let max_attempts = max_attempts.ok_or_else(|| {
+            self.err("retry block requires `max_attempts` field".into())
+        })?;
 
         Ok(RetryDef {
             max_attempts,
@@ -559,7 +694,7 @@ impl Parser {
     }
 
     fn parse_error_shape_block(&mut self) -> Result<ErrorShapeDef, ParseError> {
-        let mut status = String::new();
+        let mut status: Option<String> = None;
         let mut error_type_path: Option<String> = None;
         let mut message_path: Option<String> = None;
         let mut retryable = false;
@@ -567,48 +702,77 @@ impl Parser {
         while !self.check(&TokenKind::RBrace) && !self.at_eof() {
             if Self::token_kind_as_ident(&self.peek().kind).is_some() {
                 let field_name = self.expect_ident()?;
-                if self.eat(&TokenKind::Colon) {
-                    match field_name.as_str() {
-                        "status" => {
-                            if let TokenKind::Int(n) = &self.peek().kind {
-                                status = n.to_string();
-                                self.advance();
-                            } else if let TokenKind::Str(s) = &self.peek().kind {
-                                status = s.clone();
-                                self.advance();
-                            }
-                        }
-                        "error_type_path" => {
-                            if let TokenKind::Str(s) = &self.peek().kind {
-                                error_type_path = Some(s.clone());
-                                self.advance();
-                            }
-                        }
-                        "message_path" => {
-                            if let TokenKind::Str(s) = &self.peek().kind {
-                                message_path = Some(s.clone());
-                                self.advance();
-                            }
-                        }
-                        "retryable" => {
-                            if self.check(&TokenKind::True) {
-                                retryable = true;
-                                self.advance();
-                            } else if self.check(&TokenKind::False) {
-                                retryable = false;
-                                self.advance();
-                            }
-                        }
-                        _ => {
+                self.expect(&TokenKind::Colon)?;
+                match field_name.as_str() {
+                    "status" => {
+                        if let TokenKind::Int(n) = &self.peek().kind {
+                            status = Some(n.to_string());
                             self.advance();
+                        } else if let TokenKind::Str(s) = &self.peek().kind {
+                            status = Some(s.clone());
+                            self.advance();
+                        } else {
+                            return Err(self.err(format!(
+                                "expected integer or string for `status`, found {}",
+                                self.peek().kind.desc()
+                            )));
                         }
+                    }
+                    "error_type_path" => {
+                        if let TokenKind::Str(s) = &self.peek().kind {
+                            error_type_path = Some(s.clone());
+                            self.advance();
+                        } else {
+                            return Err(self.err(format!(
+                                "expected string for `error_type_path`, found {}",
+                                self.peek().kind.desc()
+                            )));
+                        }
+                    }
+                    "message_path" => {
+                        if let TokenKind::Str(s) = &self.peek().kind {
+                            message_path = Some(s.clone());
+                            self.advance();
+                        } else {
+                            return Err(self.err(format!(
+                                "expected string for `message_path`, found {}",
+                                self.peek().kind.desc()
+                            )));
+                        }
+                    }
+                    "retryable" => {
+                        if self.check(&TokenKind::True) {
+                            retryable = true;
+                            self.advance();
+                        } else if self.check(&TokenKind::False) {
+                            retryable = false;
+                            self.advance();
+                        } else {
+                            return Err(self.err(format!(
+                                "expected true or false for `retryable`, found {}",
+                                self.peek().kind.desc()
+                            )));
+                        }
+                    }
+                    other => {
+                        return Err(self.err(format!(
+                            "unknown field `{other}` in error_shape block — \
+                             expected one of: status, error_type_path, message_path, retryable"
+                        )));
                     }
                 }
             } else {
-                self.advance();
+                return Err(self.err(format!(
+                    "expected field name in error_shape block, found {}",
+                    self.peek().kind.desc()
+                )));
             }
             self.eat(&TokenKind::Comma);
         }
+
+        let status = status.ok_or_else(|| {
+            self.err("error_shape block requires `status` field".into())
+        })?;
 
         Ok(ErrorShapeDef {
             status,
@@ -619,40 +783,59 @@ impl Parser {
     }
 
     fn parse_credential_block(&mut self) -> Result<CredentialDef, ParseError> {
-        let mut credential_type = String::new();
+        let mut credential_type: Option<String> = None;
         let mut header: Option<String> = None;
         let mut source: Option<String> = None;
 
         while !self.check(&TokenKind::RBrace) && !self.at_eof() {
             if Self::token_kind_as_ident(&self.peek().kind).is_some() {
                 let field_name = self.expect_ident()?;
-                if self.eat(&TokenKind::Colon) {
-                    match field_name.as_str() {
-                        "type" => {
-                            credential_type = self.expect_ident()?;
-                        }
-                        "header" => {
-                            if let TokenKind::Str(s) = &self.peek().kind {
-                                header = Some(s.clone());
-                                self.advance();
-                            }
-                        }
-                        "source" => {
-                            if let TokenKind::Str(s) = &self.peek().kind {
-                                source = Some(s.clone());
-                                self.advance();
-                            }
-                        }
-                        _ => {
+                self.expect(&TokenKind::Colon)?;
+                match field_name.as_str() {
+                    "type" => {
+                        credential_type = Some(self.expect_ident()?);
+                    }
+                    "header" => {
+                        if let TokenKind::Str(s) = &self.peek().kind {
+                            header = Some(s.clone());
                             self.advance();
+                        } else {
+                            return Err(self.err(format!(
+                                "expected string for `header`, found {}",
+                                self.peek().kind.desc()
+                            )));
                         }
+                    }
+                    "source" => {
+                        if let TokenKind::Str(s) = &self.peek().kind {
+                            source = Some(s.clone());
+                            self.advance();
+                        } else {
+                            return Err(self.err(format!(
+                                "expected string for `source`, found {}",
+                                self.peek().kind.desc()
+                            )));
+                        }
+                    }
+                    other => {
+                        return Err(self.err(format!(
+                            "unknown field `{other}` in credential block — \
+                             expected one of: type, header, source"
+                        )));
                     }
                 }
             } else {
-                self.advance();
+                return Err(self.err(format!(
+                    "expected field name in credential block, found {}",
+                    self.peek().kind.desc()
+                )));
             }
             self.eat(&TokenKind::Comma);
         }
+
+        let credential_type = credential_type.ok_or_else(|| {
+            self.err("credential block requires `type` field".into())
+        })?;
 
         Ok(CredentialDef {
             credential_type,
@@ -4190,6 +4373,352 @@ service foo.Bar {
                 assert_eq!(op.exit[2].code, ExitCode::NonZero);
                 assert!(matches!(op.exit[2].output_type, TypeExpr::Named(ref n) if n == "Error"));
                 assert_eq!(op.exit[2].description.as_deref(), Some("Command failed"));
+            }
+            other => panic!("expected ServiceDef, got {other:?}"),
+        }
+    }
+
+    // ── Strict block validation tests ────────────────────────────────
+
+    #[test]
+    fn rate_limit_rejects_unknown_field() {
+        let err = parse_source_err(
+            r#"module t
+service rest.T {
+    config {
+        endpoint: "http://x"
+        rate_limit: { requests: 10, per: minute, bogus: 1 }
+    }
+    operation X { input {} output { r: String } transport rest { method: GET, path: "/" } }
+}"#,
+        );
+        assert!(
+            err.message.contains("unknown field `bogus`"),
+            "expected unknown field error, got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn rate_limit_requires_requests_field() {
+        let err = parse_source_err(
+            r#"module t
+service rest.T {
+    config {
+        endpoint: "http://x"
+        rate_limit: { per: minute }
+    }
+    operation X { input {} output { r: String } transport rest { method: GET, path: "/" } }
+}"#,
+        );
+        assert!(
+            err.message.contains("requires `requests`"),
+            "expected missing requests error, got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn rate_limit_requires_per_field() {
+        let err = parse_source_err(
+            r#"module t
+service rest.T {
+    config {
+        endpoint: "http://x"
+        rate_limit: { requests: 10 }
+    }
+    operation X { input {} output { r: String } transport rest { method: GET, path: "/" } }
+}"#,
+        );
+        assert!(
+            err.message.contains("requires `per`"),
+            "expected missing per error, got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn rate_limit_rejects_zero_requests() {
+        let err = parse_source_err(
+            r#"module t
+service rest.T {
+    config {
+        endpoint: "http://x"
+        rate_limit: { requests: 0, per: minute }
+    }
+    operation X { input {} output { r: String } transport rest { method: GET, path: "/" } }
+}"#,
+        );
+        assert!(
+            err.message.contains("must be > 0"),
+            "expected positive requests error, got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn rate_limit_rejects_unknown_unit() {
+        let err = parse_source_err(
+            r#"module t
+service rest.T {
+    config {
+        endpoint: "http://x"
+        rate_limit: { requests: 10, per: fortnight }
+    }
+    operation X { input {} output { r: String } transport rest { method: GET, path: "/" } }
+}"#,
+        );
+        assert!(
+            err.message.contains("unknown rate_limit unit"),
+            "expected unknown unit error, got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn retry_rejects_unknown_field() {
+        let err = parse_source_err(
+            r#"module t
+service rest.T {
+    config {
+        endpoint: "http://x"
+        retry: { max_attempts: 3, jitter: true }
+    }
+    operation X { input {} output { r: String } transport rest { method: GET, path: "/" } }
+}"#,
+        );
+        assert!(
+            err.message.contains("unknown field `jitter`"),
+            "expected unknown field error, got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn retry_requires_max_attempts() {
+        let err = parse_source_err(
+            r#"module t
+service rest.T {
+    config {
+        endpoint: "http://x"
+        retry: { backoff: linear }
+    }
+    operation X { input {} output { r: String } transport rest { method: GET, path: "/" } }
+}"#,
+        );
+        assert!(
+            err.message.contains("requires `max_attempts`"),
+            "expected missing max_attempts error, got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn retry_rejects_zero_max_attempts() {
+        let err = parse_source_err(
+            r#"module t
+service rest.T {
+    config {
+        endpoint: "http://x"
+        retry: { max_attempts: 0 }
+    }
+    operation X { input {} output { r: String } transport rest { method: GET, path: "/" } }
+}"#,
+        );
+        assert!(
+            err.message.contains("must be >= 1"),
+            "expected positive max_attempts error, got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn retry_rejects_unknown_backoff_strategy() {
+        let err = parse_source_err(
+            r#"module t
+service rest.T {
+    config {
+        endpoint: "http://x"
+        retry: { max_attempts: 3, backoff: fibonacci }
+    }
+    operation X { input {} output { r: String } transport rest { method: GET, path: "/" } }
+}"#,
+        );
+        assert!(
+            err.message.contains("unknown backoff strategy"),
+            "expected unknown backoff error, got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn retry_rejects_negative_delay() {
+        // Negative numbers tokenize as `-` then `100`, so the parser
+        // rejects `-` as a non-integer token for base_delay_ms.
+        let err = parse_source_err(
+            r#"module t
+service rest.T {
+    config {
+        endpoint: "http://x"
+        retry: { max_attempts: 3, base_delay_ms: -100 }
+    }
+    operation X { input {} output { r: String } transport rest { method: GET, path: "/" } }
+}"#,
+        );
+        assert!(
+            err.message.contains("base_delay_ms"),
+            "expected base_delay_ms error, got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn error_shape_rejects_unknown_field() {
+        let err = parse_source_err(
+            r#"module t
+service rest.T {
+    config {
+        endpoint: "http://x"
+        error_shape: { status: 400, code_path: "$.code" }
+    }
+    operation X { input {} output { r: String } transport rest { method: GET, path: "/" } }
+}"#,
+        );
+        assert!(
+            err.message.contains("unknown field `code_path`"),
+            "expected unknown field error, got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn error_shape_requires_status() {
+        let err = parse_source_err(
+            r#"module t
+service rest.T {
+    config {
+        endpoint: "http://x"
+        error_shape: { message_path: "$.message" }
+    }
+    operation X { input {} output { r: String } transport rest { method: GET, path: "/" } }
+}"#,
+        );
+        assert!(
+            err.message.contains("requires `status`"),
+            "expected missing status error, got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn credential_rejects_unknown_field() {
+        let err = parse_source_err(
+            r#"module t
+service rest.T {
+    config {
+        endpoint: "http://x"
+        credential: { type: BearerToken, prefix: "Bearer" }
+    }
+    operation X { input {} output { r: String } transport rest { method: GET, path: "/" } }
+}"#,
+        );
+        assert!(
+            err.message.contains("unknown field `prefix`"),
+            "expected unknown field error, got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn credential_requires_type() {
+        let err = parse_source_err(
+            r#"module t
+service rest.T {
+    config {
+        endpoint: "http://x"
+        credential: { header: "Authorization" }
+    }
+    operation X { input {} output { r: String } transport rest { method: GET, path: "/" } }
+}"#,
+        );
+        assert!(
+            err.message.contains("requires `type`"),
+            "expected missing type error, got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn valid_rate_limit_and_retry_parse_successfully() {
+        let sf = parse_or_panic(
+            r#"module t
+service rest.T {
+    config {
+        endpoint: "http://x"
+        auth: BearerToken
+        rate_limit: { requests: 100, per: minute, scope: global }
+        retry: { max_attempts: 3, backoff: exponential, base_delay_ms: 1000, max_delay_ms: 30000, retry_on: [429, 503] }
+    }
+    operation X {
+        input {}
+        output { r: String }
+        transport rest { method: GET, path: "/" }
+    }
+}"#,
+        );
+        match &sf.items[0].node {
+            Item::ServiceDef(def) => {
+                assert_eq!(def.config.rate_limits.len(), 1);
+                assert_eq!(def.config.rate_limits[0].requests, 100);
+                assert!(matches!(def.config.rate_limits[0].per, RateLimitUnit::Minute));
+                assert_eq!(def.config.rate_limits[0].scope.as_deref(), Some("global"));
+
+                let retry = def.config.retry.as_ref().expect("retry should be present");
+                assert_eq!(retry.max_attempts, 3);
+                assert!(matches!(retry.backoff, BackoffStrategy::Exponential));
+                assert_eq!(retry.base_delay_ms, Some(1000));
+                assert_eq!(retry.max_delay_ms, Some(30000));
+                assert_eq!(retry.retry_on, vec![429, 503]);
+            }
+            other => panic!("expected ServiceDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn valid_error_shape_and_credential_parse_successfully() {
+        let sf = parse_or_panic(
+            r#"module t
+service rest.T {
+    config {
+        endpoint: "http://x"
+        error_shape: { status: 400, error_type_path: "$.error.type", message_path: "$.error.message", retryable: false }
+        credential: { type: ApiKey, header: "x-api-key", source: "env" }
+    }
+    operation X {
+        input {}
+        output { r: String }
+        transport rest { method: GET, path: "/" }
+    }
+}"#,
+        );
+        match &sf.items[0].node {
+            Item::ServiceDef(def) => {
+                assert_eq!(def.config.error_shapes.len(), 1);
+                assert_eq!(def.config.error_shapes[0].status, "400");
+                assert_eq!(
+                    def.config.error_shapes[0].error_type_path.as_deref(),
+                    Some("$.error.type")
+                );
+                assert_eq!(
+                    def.config.error_shapes[0].message_path.as_deref(),
+                    Some("$.error.message")
+                );
+                assert!(!def.config.error_shapes[0].retryable);
+
+                let cred = def.config.credential.as_ref().expect("credential should be present");
+                assert_eq!(cred.credential_type, "ApiKey");
+                assert_eq!(cred.header.as_deref(), Some("x-api-key"));
+                assert_eq!(cred.source.as_deref(), Some("env"));
             }
             other => panic!("expected ServiceDef, got {other:?}"),
         }

@@ -14,6 +14,9 @@
 module extdeps.cloud.gcp.storage
 
 import extdeps.cloud.gcp.core { GcpProject, GcpRegion }
+import std.behavioral {
+  OperationBehavior, SideEffects, Determinism, Confidence, Severity
+}
 
 // ── Storage classes ───────────────────────────────────────────────
 
@@ -77,14 +80,109 @@ type LifecycleRule {
   condition: LifecycleCondition
 }
 
-// ── Behavioral facts ──────────────────────────────────────────────
-
-data get_is_readonly: Bool = true
-
-data get_is_idempotent: Bool = true
-
-data insert_is_idempotent: Bool = false
+// ── Behavioral constants ────────────────────────────────────────
 
 data cas_conflict_status: Int = 412
 
 data create_only_generation: Int = 0
+
+// ── Operation behaviors ─────────────────────────────────────────
+
+type GcsOperationBehavior {
+  operation: String
+  behavior: OperationBehavior
+}
+
+data operation_behaviors: List<GcsOperationBehavior> = [
+  {
+    operation: "get_object",
+    behavior: {
+      side_effects: ReadOnly,
+      idempotent: true,
+      idempotency_keys: null,
+      determinism: Deterministic,
+      failure_modes: [
+        { name: "NotFound", condition: "object_absent", http_status: 404, recoverable: false, retry_safe: false }
+      ],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [],
+      assumptions: [],
+      unknowns: []
+    }
+  },
+  {
+    operation: "insert_object",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: Deterministic,
+      failure_modes: [
+        { name: "Conflict", condition: "generation_precondition_failed", http_status: 412, recoverable: false, retry_safe: false },
+        { name: "NotFound", condition: "bucket_absent", http_status: 404, recoverable: false, retry_safe: false }
+      ],
+      edge_cases: [
+        { description: "CAS insert with ifGenerationMatch=0 is create-only (fails if object exists)", trigger: "create_only_precondition", severity: Medium }
+      ],
+      confidence: Documented,
+      prerequisites: [],
+      assumptions: [],
+      unknowns: []
+    }
+  },
+  {
+    operation: "update_object_cas",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["bucket", "key", "generation"],
+      determinism: Deterministic,
+      failure_modes: [
+        { name: "PreconditionFailed", condition: "generation_mismatch", http_status: 412, recoverable: true, retry_safe: true },
+        { name: "NotFound", condition: "object_absent", http_status: 404, recoverable: false, retry_safe: false }
+      ],
+      edge_cases: [
+        { description: "generation-based CAS: read-modify-write requires retry on 412", trigger: "concurrent_write", severity: Medium }
+      ],
+      confidence: Documented,
+      prerequisites: [],
+      assumptions: ["Client holds a valid generation number from a recent read"],
+      unknowns: []
+    }
+  },
+  {
+    operation: "delete_object",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["bucket", "key"],
+      determinism: Deterministic,
+      failure_modes: [
+        { name: "NotFound", condition: "object_absent", http_status: 404, recoverable: false, retry_safe: false }
+      ],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [],
+      assumptions: [],
+      unknowns: []
+    }
+  },
+  {
+    operation: "list_objects",
+    behavior: {
+      side_effects: ReadOnly,
+      idempotent: true,
+      idempotency_keys: null,
+      determinism: Deterministic,
+      failure_modes: [
+        { name: "NotFound", condition: "bucket_absent", http_status: 404, recoverable: false, retry_safe: false }
+      ],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [],
+      assumptions: [],
+      unknowns: []
+    }
+  }
+]

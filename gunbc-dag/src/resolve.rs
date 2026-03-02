@@ -72,39 +72,73 @@ fn declared_output_ports(outputs: &[Port]) -> Vec<(String, bool)> {
         .collect()
 }
 
+/// Execute a callable node by forwarding passthrough inputs to declared outputs.
+///
+/// Enforcement tiers:
+///
+/// 1. **Partially wired** (at least one `__out:*` input present): missing
+///    required outputs are **hard errors** — this indicates a lowerer wiring
+///    gap that must be fixed, not masked.
+///
+/// 2. **Zero wired** (no `__out:*` inputs at all): required outputs fall back
+///    to `Value::Skipped`. This is a **C10 gap**: the lowerer cannot yet
+///    desugar all return expressions into passthrough edges. Once C10 is
+///    complete, this tier collapses into tier 1 and every unwired required
+///    output becomes a hard error.
+///
+/// 3. **Optional** outputs always resolve to `Value::Skipped` when unwired,
+///    regardless of tier.
 fn execute_with_declared_output_passthrough(
     output_ports: &[(String, bool)],
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let mut outputs = HashMap::new();
-    let any_passthrough_wired = inputs
-        .keys()
-        .any(|k| k.starts_with(PortName::OUTPUT_PASSTHROUGH_PREFIX));
+
+    // Partition inputs into regular and passthrough.
+    let mut wired_passthroughs = Vec::new();
     for (key, value) in &inputs {
-        if key.starts_with(PortName::OUTPUT_PASSTHROUGH_PREFIX) {
+        if let Some(suffix) = key.strip_prefix(PortName::OUTPUT_PASSTHROUGH_PREFIX) {
+            wired_passthroughs.push(suffix.to_string());
             continue;
         }
         outputs.insert(key.clone(), value.clone());
     }
+    let any_passthrough_wired = !wired_passthroughs.is_empty();
+
     for (port_name, is_optional) in output_ports {
         let passthrough_key = format!("{}{port_name}", PortName::OUTPUT_PASSTHROUGH_PREFIX);
         if let Some(value) = inputs.get(&passthrough_key) {
             outputs.insert(port_name.clone(), value.clone());
             continue;
         }
-        if *is_optional || !any_passthrough_wired {
-            // Optional ports always get Skipped.
-            // When zero passthroughs were wired, the lowerer doesn't support
-            // this pattern yet (C10 gap) — fall back to Skipped rather than
-            // failing on every unwired function.
+
+        // Output is optional → always Skipped when unwired.
+        if *is_optional {
             outputs.insert(port_name.clone(), Value::Skipped);
             continue;
         }
-        // At least one passthrough was wired but this required one is missing.
-        // Fail-closed: this indicates a partial lowerer wiring gap.
+
+        // C10 gap: zero passthroughs wired → lowerer hasn't desugared return
+        // expressions for this callable yet. Fall back to Skipped until C10.
+        if !any_passthrough_wired {
+            outputs.insert(port_name.clone(), Value::Skipped);
+            continue;
+        }
+
+        // Fail-closed: at least one passthrough was wired, but this required
+        // output is missing. Diagnose which passthroughs ARE present vs. which
+        // are expected so the developer can trace the lowerer gap.
+        let expected: Vec<String> = output_ports
+            .iter()
+            .filter(|(_, opt)| !opt)
+            .map(|(name, _)| name.clone())
+            .collect();
         return Err(ExecError::new(format!(
-            "missing required declared output passthrough: `{}` (expected input `{}`)",
-            port_name, passthrough_key
+            "missing required declared output passthrough: `{port_name}` \
+             (expected input `{passthrough_key}`). \
+             Wired passthroughs: [{}], required outputs: [{}]",
+            wired_passthroughs.join(", "),
+            expected.join(", "),
         )));
     }
     Ok(outputs)
@@ -360,6 +394,10 @@ impl Executable for ExprComputeOp {
             if let Value::Map(fields) = &value {
                 for (field_name, field_value) in fields {
                     env.insert(format!("{port}__{field_name}"), field_value.clone());
+                }
+            } else if let Value::Json(serde_json::Value::Object(map)) = &value {
+                for (field_name, field_value) in map {
+                    env.insert(format!("{port}__{field_name}"), Value::Json(field_value.clone()));
                 }
             }
             env.insert(port.clone(), value);
@@ -669,6 +707,7 @@ pub fn resolve_lowered_dag(dag: &Dag<LoweredOp>) -> Result<Dag<DynOp>, ResolveEr
             log_detail: node.log_detail,
             kind: node.kind,
             operation_key: node.operation_key.clone(),
+            transport_class: node.transport_class,
         };
         normalize_release_resource_inputs(&mut resolved_node);
         if let Some(mode) = needs_transport_resource(node, &resolved_node) {
@@ -845,18 +884,15 @@ fn resolve_domain(
     if module == "std.resources" {
         return resolve_std_resources(name);
     }
-    let custom = match module {
-        "tools.infra" => resolve_tools_infra(name),
-        _ => None,
-    };
-    if let Some(op) = custom {
+    // 2. App-specific callables resolved via extern_ops (single dispatch table).
+    if let Some(op) = crate::extern_ops::resolve_extern_symbol(module, name) {
         return Ok(op);
     }
-    // 2. Service/workspace modules use generic transport dispatch.
+    // 3. Service/workspace modules use generic transport dispatch.
     if module.starts_with("services.") || module.starts_with("workspace.") {
         return resolve_service_transport(node_id, module, name, outputs, service_metadata);
     }
-    // 3. Service transport nodes from non-service modules (e.g., loop body
+    // 4. Service transport nodes from non-service modules (e.g., loop body
     //    transport nodes which inherit the tool module name, not the service module).
     //    Only route when the metadata has a concrete operation spec; nodes without
     //    specs (e.g., not-yet-implemented service operations) fall through to the
@@ -867,7 +903,7 @@ fn resolve_domain(
             return resolve_service_transport(node_id, module, name, outputs, service_metadata);
         }
     }
-    // 4. Default: identity callable for compiler-validated callables.
+    // 5. Default: identity callable for compiler-validated callables.
     //
     // All LoweredOp::Callable nodes are produced by the DSL compiler (the
     // lowerer only emits Callable for items in the typed project). The
@@ -904,83 +940,6 @@ fn resolve_std_resources(name: &str) -> Result<DynOp, ResolveError> {
     Ok(DynOp::new(IdentityCallableOp))
 }
 
-fn resolve_tools_infra(name: &str) -> Option<DynOp> {
-    match name {
-        "infra" => Some(DynOp::new(InfraDispatchOp)),
-        _ => None,
-    }
-}
-
-#[derive(Debug, Clone)]
-struct InfraDispatchOp;
-
-impl Executable for InfraDispatchOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let environment = inputs
-            .get("environment")
-            .and_then(Value::as_str)
-            .ok_or_else(|| {
-                ExecError::new("missing required 'environment' input for tools.infra::infra")
-            })?
-            .to_string();
-        let runtime = inputs
-            .get("runtime")
-            .and_then(Value::as_str)
-            .ok_or_else(|| {
-                ExecError::new("missing required 'runtime' input for tools.infra::infra")
-            })?
-            .to_string();
-        let spec_targets = inputs
-            .get("spec_targets")
-            .and_then(Value::as_str_list)
-            .ok_or_else(|| {
-                ExecError::new("missing required 'spec_targets' input for tools.infra::infra")
-            })?;
-        let target = inputs
-            .get("target")
-            .and_then(Value::as_str_list)
-            .unwrap_or_default();
-        let skip = inputs
-            .get("skip")
-            .and_then(Value::as_str_list)
-            .unwrap_or_default();
-        let execute = inputs
-            .get("execute")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-
-        let targeted = if target.is_empty() {
-            spec_targets.clone()
-        } else {
-            spec_targets
-                .iter()
-                .filter(|item| target.iter().any(|selected| selected == *item))
-                .cloned()
-                .collect::<Vec<_>>()
-        };
-        let planned_targets = targeted
-            .into_iter()
-            .filter(|item| !skip.iter().any(|excluded| excluded == item))
-            .collect::<Vec<_>>();
-        let target_count = planned_targets.len() as i64;
-        let mode = if execute { "apply" } else { "plan" };
-        let applied_count = if execute { target_count } else { 0 };
-        let report = format!(
-            "infra {mode} (env={environment}, runtime={runtime}): {target_count} target(s)"
-        );
-
-        OutputMap::new()
-            .str("environment", environment)
-            .str("runtime", runtime)
-            .str("mode", mode)
-            .str_list("planned_targets", planned_targets)
-            .int("target_count", target_count)
-            .int("applied_count", applied_count)
-            .str("report", report)
-            .ok()
-    }
-}
-
 // ============================================================================
 // Extern symbol resolution
 // ============================================================================
@@ -1003,17 +962,12 @@ fn resolve_extern_call(node_id: &str, symbol: &str) -> Result<DynOp, ResolveErro
     if module == "std.resources" {
         return resolve_std_resources(name);
     }
-    if let Some(op) = resolve_tools_infra(name) {
-        if module == "tools.infra" {
-            return Ok(op);
-        }
-    }
 
     Err(ResolveError {
         node_id: node_id.to_string(),
         reason: format!(
             "extern symbol `{symbol}` could not be resolved — \
-             no extern op, std.resources, or tools.infra handler found"
+             no extern op or std.resources handler found"
         ),
     })
 }
@@ -2335,6 +2289,119 @@ mod tests {
             err.reason.contains("unsupported pattern `RetryController`"),
             "error should name the unsupported pattern: {}",
             err.reason
+        );
+    }
+
+    // ============================================================================
+    // Passthrough enforcement (C19)
+    // ============================================================================
+
+    #[test]
+    fn passthrough_partially_wired_missing_required_is_error() {
+        // When at least one __out:* input is wired but a required output is
+        // missing, execution must fail with a diagnostic error.
+        let output_ports = vec![
+            ("result".to_string(), false),
+            ("status".to_string(), false),
+        ];
+        let mut inputs = HashMap::new();
+        // Wire only one passthrough — "result" — leave "status" unwired.
+        inputs.insert(
+            format!("{}result", PortName::OUTPUT_PASSTHROUGH_PREFIX),
+            Value::Str("ok".into()),
+        );
+        let err = execute_with_declared_output_passthrough(&output_ports, inputs)
+            .expect_err("should fail when required passthrough is missing");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("status"),
+            "error should name the missing output: {msg}"
+        );
+        assert!(
+            msg.contains("Wired passthroughs:"),
+            "error should list wired passthroughs: {msg}"
+        );
+        assert!(
+            msg.contains("result"),
+            "error should list the wired passthrough name: {msg}"
+        );
+    }
+
+    #[test]
+    fn passthrough_zero_wired_returns_skipped_for_required() {
+        // C10 gap: when zero __out:* inputs exist, required outputs fall back
+        // to Value::Skipped (not an error). This test documents the gap and
+        // will break once C10 is complete and this fallback is removed.
+        let output_ports = vec![("result".to_string(), false)];
+        let inputs = HashMap::new();
+        let outputs = execute_with_declared_output_passthrough(&output_ports, inputs)
+            .expect("zero-wired should not error (C10 gap)");
+        assert_eq!(
+            outputs.get("result"),
+            Some(&Value::Skipped),
+            "required output should be Skipped when zero passthroughs wired"
+        );
+    }
+
+    #[test]
+    fn passthrough_optional_output_always_skipped_when_unwired() {
+        // Optional outputs should be Skipped regardless of wiring state.
+        let output_ports = vec![
+            ("result".to_string(), false),
+            ("details".to_string(), true), // optional
+        ];
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            format!("{}result", PortName::OUTPUT_PASSTHROUGH_PREFIX),
+            Value::Str("ok".into()),
+        );
+        // Don't wire __out:details — it's optional.
+        let outputs = execute_with_declared_output_passthrough(&output_ports, inputs)
+            .expect("optional unwired output should not error");
+        assert_eq!(
+            outputs.get("result").and_then(Value::as_str),
+            Some("ok"),
+            "wired output should be forwarded"
+        );
+        assert_eq!(
+            outputs.get("details"),
+            Some(&Value::Skipped),
+            "optional unwired output should be Skipped"
+        );
+    }
+
+    #[test]
+    fn passthrough_all_wired_succeeds() {
+        // Happy path: all required outputs have passthrough inputs wired.
+        let output_ports = vec![
+            ("result".to_string(), false),
+            ("status".to_string(), false),
+        ];
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            format!("{}result", PortName::OUTPUT_PASSTHROUGH_PREFIX),
+            Value::Str("data".into()),
+        );
+        inputs.insert(
+            format!("{}status", PortName::OUTPUT_PASSTHROUGH_PREFIX),
+            Value::Str("ok".into()),
+        );
+        // Also include a non-passthrough input (should be forwarded).
+        inputs.insert("extra".to_string(), Value::Int(42));
+        let outputs = execute_with_declared_output_passthrough(&output_ports, inputs)
+            .expect("all-wired should succeed");
+        assert_eq!(
+            outputs.get("result").and_then(Value::as_str),
+            Some("data")
+        );
+        assert_eq!(
+            outputs.get("status").and_then(Value::as_str),
+            Some("ok")
+        );
+        assert_eq!(
+            outputs.get("extra"),
+            Some(&Value::Int(42)),
+            "non-passthrough inputs should be forwarded"
         );
     }
 

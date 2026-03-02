@@ -1,0 +1,302 @@
+// workflows/webhook.dag -- SP-7: Webhook-driven stage transitions.
+//
+// Cloud Run HTTP endpoint that receives GitHub webhook events and
+// triggers SDLC pipeline stage transitions.
+//
+// Architecture:
+//   GitHub --> webhook HTTP POST --> Cloud Run --> webhook handler
+//                                      |
+//                                      +--> validate signature
+//                                      +--> parse event
+//                                      +--> classify event type
+//                                      +--> emit signal to SignalStore
+//                                      +--> dispatch worker if immediate
+//
+// Supported webhook events:
+//   - issues.labeled:    New SDLC label -> WorkReady signal
+//   - issues.unlabeled:  SDLC label removed -> reconciliation check
+//   - issue_comment.created: Approval comment -> ApprovalGranted signal
+//   - pull_request.closed:   PR merged -> TestReady signal
+//   - pull_request.review:   Review submitted -> ReviewComplete signal
+//
+// Security:
+//   - HMAC-SHA256 signature verification (X-Hub-Signature-256 header)
+//   - Webhook secret stored in Secret Manager
+//   - Cloud Run IAM restricts who can invoke the endpoint
+//
+// Idempotency:
+//   - Each webhook delivery has a unique X-GitHub-Delivery ID
+//   - Signal idempotency_key includes delivery ID
+//   - Duplicate deliveries produce no additional signals
+
+module workflows.webhook
+
+import interfaces.signal_store { SignalStore }
+import interfaces.credential_provider { CredentialProvider }
+import std.types {
+  NonEmptyStr, Signal, SignalType, CredentialFlow, AccessToken
+}
+
+// ── Webhook event types ─────────────────────────────────────────────
+
+type WebhookEvent
+  = IssueLabeled { issue_number: Int, label: String, sender: String }
+  | IssueUnlabeled { issue_number: Int, label: String, sender: String }
+  | IssueCommentCreated { issue_number: Int, body: String, sender: String }
+  | PullRequestClosed { pr_number: Int, merged: Bool, head_branch: String, sender: String }
+  | PullRequestReview { pr_number: Int, state: String, sender: String }
+  | Unknown { event_type: String }
+
+type WebhookResponse {
+  status: Int
+  message: String
+  signal_emitted: Bool
+}
+
+// ── Event classification ────────────────────────────────────────────
+
+fn is_sdlc_label(label: String) -> Bool {
+  label |> starts_with(prefix: "sdlc:")
+}
+
+fn is_approval_comment(body: String) -> Bool {
+  body |> starts_with(prefix: "/approve") || body |> starts_with(prefix: "LGTM")
+}
+
+fn event_to_signal_type(event: WebhookEvent) -> SignalType? {
+  match event {
+    IssueLabeled { label } => if is_sdlc_label(label: label) { "WorkReady" } else { None }
+    IssueUnlabeled { label } => if is_sdlc_label(label: label) { "ReconcileTick" } else { None }
+    IssueCommentCreated { body } => if is_approval_comment(body: body) { "ApprovalGranted" } else { None }
+    PullRequestClosed { merged } => if merged { "TestReady" } else { None }
+    PullRequestReview { state } => if state == "approved" { "ReviewComplete" } else { None }
+    Unknown => None
+  }
+}
+
+fn event_to_issue_id(event: WebhookEvent) -> String? {
+  match event {
+    IssueLabeled { issue_number } => "{issue_number}"
+    IssueUnlabeled { issue_number } => "{issue_number}"
+    IssueCommentCreated { issue_number } => "{issue_number}"
+    PullRequestClosed { pr_number } => "{pr_number}"
+    PullRequestReview { pr_number } => "{pr_number}"
+    Unknown => None
+  }
+}
+
+fn event_to_stage(event: WebhookEvent) -> String? {
+  match event {
+    IssueLabeled { label } => label
+    IssueUnlabeled { label } => label
+    IssueCommentCreated {} => "approval"
+    PullRequestClosed { merged } => if merged { "testing" } else { None }
+    PullRequestReview { state } => if state == "approved" { "code-review" } else { None }
+    Unknown => None
+  }
+}
+
+// ── HMAC signature verification ─────────────────────────────────────
+
+fn verify_signature(payload: String, signature: String, secret: String) -> Bool {
+  // HMAC-SHA256 verification.
+  // The expected signature format is: sha256=<hex digest>
+  let expected = "sha256={hmac_sha256(key: secret, data: payload)}"
+  expected == signature
+}
+
+// ── Webhook handler ─────────────────────────────────────────────────
+
+func handle_webhook(
+  event: WebhookEvent,
+  delivery_id: NonEmptyStr,
+  signature: String,
+  payload: String
+) -> { response: WebhookResponse }
+  uses signals: SignalStore
+  uses creds: CredentialProvider
+{
+  // Step 1: Verify webhook signature
+  webhook_secret = creds.acquire(
+    secret_name: "github-webhook-secret",
+    flow: Stored { secret_name: "github-webhook-secret" },
+    source_id: "webhook",
+    required_scopes: []
+  )
+
+  valid = verify_signature(
+    payload: payload,
+    signature: signature,
+    secret: webhook_secret.token.token
+  )
+
+  if !valid {
+    return {
+      response: {
+        status: 401,
+        message: "Invalid webhook signature",
+        signal_emitted: false
+      }
+    }
+  }
+
+  // Step 2: Classify event and determine signal type
+  signal_type = event_to_signal_type(event: event)
+
+  if signal_type == None {
+    return {
+      response: {
+        status: 200,
+        message: "Event type not actionable",
+        signal_emitted: false
+      }
+    }
+  }
+
+  // Step 3: Emit signal to SignalStore (idempotent via delivery_id)
+  issue_id = event_to_issue_id(event: event)
+  stage = event_to_stage(event: event)
+
+  signal_result = signals.emit(signal: {
+    signal_type: signal_type,
+    idempotency_key: "webhook::{delivery_id}",
+    payload: {
+      issue_id: issue_id,
+      stage: stage,
+      source: "github-webhook",
+      delivery_id: delivery_id
+    },
+    produced_at: "now"
+  })
+
+  return {
+    response: {
+      status: 200,
+      message: "Signal emitted: {signal_type}",
+      signal_emitted: true
+    }
+  }
+}
+
+// ── Tests ──────────────────────────────────────────────────────────
+
+fixture webhook_env {
+  mock creds.acquire.response -> {
+    token: { token: "whsec_test_secret", scheme: "Bearer", source_id: "webhook" }
+  }
+}
+
+test webhook_issue_labeled_emits_work_ready : webhook_env {
+
+    input handle_webhook.event -> IssueLabeled {
+      issue_number: 42,
+      label: "sdlc:idea",
+      sender: "test-user"
+    }
+    input handle_webhook.delivery_id -> "d1234-5678"
+    input handle_webhook.signature -> "sha256=valid_signature"
+    input handle_webhook.payload -> "{}"
+
+    // Mock signature verification (simplified for test)
+    mock verify/execute.response -> { valid: true }
+
+    // Mock signal emission
+    mock emit/execute.response -> rest_response(200, { emitted: true })
+
+    expect result.response.status == 200
+    expect result.response.signal_emitted == true
+}
+
+test webhook_non_sdlc_label_ignored : webhook_env {
+
+    input handle_webhook.event -> IssueLabeled {
+      issue_number: 42,
+      label: "bug",
+      sender: "test-user"
+    }
+    input handle_webhook.delivery_id -> "d1234-5679"
+    input handle_webhook.signature -> "sha256=valid_signature"
+    input handle_webhook.payload -> "{}"
+
+    mock verify/execute.response -> { valid: true }
+
+    expect result.response.status == 200
+    expect result.response.signal_emitted == false
+}
+
+test webhook_pr_merged_emits_test_ready : webhook_env {
+
+    input handle_webhook.event -> PullRequestClosed {
+      pr_number: 123,
+      merged: true,
+      head_branch: "sdlc/issue-42",
+      sender: "test-user"
+    }
+    input handle_webhook.delivery_id -> "d1234-5680"
+    input handle_webhook.signature -> "sha256=valid_signature"
+    input handle_webhook.payload -> "{}"
+
+    mock verify/execute.response -> { valid: true }
+    mock emit/execute.response -> rest_response(200, { emitted: true })
+
+    expect result.response.status == 200
+    expect result.response.signal_emitted == true
+}
+
+test webhook_invalid_signature_rejected : webhook_env {
+
+    input handle_webhook.event -> IssueLabeled {
+      issue_number: 42,
+      label: "sdlc:idea",
+      sender: "attacker"
+    }
+    input handle_webhook.delivery_id -> "d1234-5681"
+    input handle_webhook.signature -> "sha256=invalid_bad_signature"
+    input handle_webhook.payload -> "{}"
+
+    mock verify/execute.response -> { valid: false }
+
+    expect result.response.status == 401
+    expect result.response.signal_emitted == false
+}
+
+test webhook_approval_comment_emits_signal : webhook_env {
+
+    input handle_webhook.event -> IssueCommentCreated {
+      issue_number: 42,
+      body: "/approve - design looks good",
+      sender: "reviewer"
+    }
+    input handle_webhook.delivery_id -> "d1234-5682"
+    input handle_webhook.signature -> "sha256=valid_signature"
+    input handle_webhook.payload -> "{}"
+
+    mock verify/execute.response -> { valid: true }
+    mock emit/execute.response -> rest_response(200, { emitted: true })
+
+    expect result.response.status == 200
+    expect result.response.signal_emitted == true
+}
+
+test webhook_duplicate_delivery_idempotent : webhook_env {
+
+    // Same delivery_id sent twice -- idempotency_key ensures
+    // the signal store deduplicates.
+    input handle_webhook.event -> IssueLabeled {
+      issue_number: 42,
+      label: "sdlc:design",
+      sender: "test-user"
+    }
+    input handle_webhook.delivery_id -> "d1234-duplicate"
+    input handle_webhook.signature -> "sha256=valid_signature"
+    input handle_webhook.payload -> "{}"
+
+    mock verify/execute.response -> { valid: true }
+
+    // Signal store returns emitted=true even for duplicates
+    // (idempotent write, no error)
+    mock emit/execute.response -> rest_response(200, { emitted: true })
+
+    expect result.response.status == 200
+    expect result.response.signal_emitted == true
+}

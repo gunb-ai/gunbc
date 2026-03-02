@@ -135,10 +135,32 @@ pub struct ResponseClassification {
     /// Attempt provider-specific body parsing for richer diagnostics.
     #[serde(default = "default_parse_provider_error_shapes")]
     pub parse_provider_error_shapes: bool,
+    /// JSON-path based error shape extraction rules (TL-16).
+    /// When present, the transport layer uses these paths to extract error
+    /// details from the response body instead of hardcoded provider parsing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_shape: Option<ErrorShapeExtraction>,
 }
 
 fn default_parse_provider_error_shapes() -> bool {
     true
+}
+
+/// JSON-path based error shape extraction (TL-16).
+///
+/// Replaces hardcoded `parse_github_error`/`parse_gcp_error`/etc. with
+/// declarative extraction rules from `error_shape {}` blocks in `.dag` files.
+/// The transport layer blindly executes these JSON-path extractions.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ErrorShapeExtraction {
+    /// JSON path to extract the error message (e.g., ".message", ".error.message").
+    pub message_path: String,
+    /// JSON path to extract the error code (e.g., ".status", ".error.code").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code_path: Option<String>,
+    /// JSON path to extract additional details (e.g., ".documentation_url", ".error.errors").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details_path: Option<String>,
 }
 
 /// Provider-specific error-shape hint.
@@ -194,6 +216,7 @@ mod tests {
                 provider: ResponseProvider::GitHub,
                 prioritize_auth_errors: true,
                 parse_provider_error_shapes: true,
+                error_shape: None,
             }),
         };
 
@@ -221,5 +244,38 @@ mod tests {
         }"#;
         let cfg: ResponseClassification = serde_json::from_str(json).expect("classification");
         assert!(cfg.parse_provider_error_shapes);
+        assert!(cfg.error_shape.is_none());
+    }
+
+    #[test]
+    fn error_shape_extraction_round_trips_through_json() {
+        let config = TransportMiddlewareConfig {
+            rate_limit: None,
+            retry: None,
+            credential: None,
+            response_classification: Some(ResponseClassification {
+                provider: ResponseProvider::GitHub,
+                prioritize_auth_errors: true,
+                parse_provider_error_shapes: false,
+                error_shape: Some(ErrorShapeExtraction {
+                    message_path: ".message".to_string(),
+                    code_path: Some(".status".to_string()),
+                    details_path: Some(".documentation_url".to_string()),
+                }),
+            }),
+        };
+
+        let json = serde_json::to_string_pretty(&config).expect("serialize");
+        let round_trip: TransportMiddlewareConfig =
+            serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(round_trip, config);
+        let shape = round_trip
+            .response_classification
+            .unwrap()
+            .error_shape
+            .unwrap();
+        assert_eq!(shape.message_path, ".message");
+        assert_eq!(shape.code_path, Some(".status".to_string()));
+        assert_eq!(shape.details_path, Some(".documentation_url".to_string()));
     }
 }

@@ -3,7 +3,9 @@
 //! Classification is used by middleware (retry, metrics, diagnostics) to make
 //! transport decisions before provider-specific parse stages run.
 
-use gunbc_ir::transport::{HttpResponse, ResponseClassification, ResponseProvider, RestResponse};
+use gunbc_ir::transport::{
+    ErrorShapeExtraction, HttpResponse, ResponseClassification, ResponseProvider, RestResponse,
+};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 
@@ -49,7 +51,10 @@ pub fn classify_rest_response(
         return None;
     }
 
-    let message = if policy.parse_provider_error_shapes {
+    // TL-16: Prefer error_shape JSON-path extraction over hardcoded provider parsing.
+    let message = if let Some(ref shape) = policy.error_shape {
+        extract_error_message_by_path(shape, &response.body)
+    } else if policy.parse_provider_error_shapes {
         provider_error_message(policy.provider, &response.body)
     } else {
         None
@@ -78,7 +83,12 @@ pub fn classify_http_response(
     }
 
     let parsed = serde_json::from_str::<JsonValue>(&response.body).ok();
-    let message = if policy.parse_provider_error_shapes {
+    // TL-16: Prefer error_shape JSON-path extraction over hardcoded provider parsing.
+    let message = if let Some(ref shape) = policy.error_shape {
+        parsed
+            .as_ref()
+            .and_then(|body| extract_error_message_by_path(shape, body))
+    } else if policy.parse_provider_error_shapes {
         parsed
             .as_ref()
             .and_then(|body| provider_error_message(policy.provider, body))
@@ -226,6 +236,48 @@ fn provider_error_message(provider: ResponseProvider, body: &JsonValue) -> Optio
     parse_provider_error(provider, body).to_message()
 }
 
+/// Extract error message from response body using JSON-path rules (TL-16).
+///
+/// Replaces hardcoded provider parsing with declarative JSON-path extraction
+/// from `error_shape {}` blocks in `.dag` files.
+fn extract_error_message_by_path(shape: &ErrorShapeExtraction, body: &JsonValue) -> Option<String> {
+    let message = resolve_json_path(&shape.message_path, body)
+        .and_then(JsonValue::as_str)
+        .map(String::from);
+
+    if message.is_some() {
+        return message;
+    }
+
+    // Fall back to code_path if message_path yields nothing.
+    shape
+        .code_path
+        .as_ref()
+        .and_then(|p| resolve_json_path(p, body))
+        .map(json_value_to_string)
+}
+
+/// Convert a JSON value to a string, stripping quotes from string values.
+fn json_value_to_string(v: &JsonValue) -> String {
+    match v {
+        JsonValue::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
+/// Resolve a dotted JSON path (e.g., ".error.message") against a JSON value.
+fn resolve_json_path<'a>(path: &str, body: &'a JsonValue) -> Option<&'a JsonValue> {
+    let path = path.strip_prefix("$.").unwrap_or(path).strip_prefix('.').unwrap_or(path);
+    let mut current = body;
+    for segment in path.split('.') {
+        if segment.is_empty() {
+            continue;
+        }
+        current = current.get(segment)?;
+    }
+    Some(current)
+}
+
 fn message_has_auth_indicator(message: Option<&str>) -> bool {
     message
         .map(|m| {
@@ -272,6 +324,7 @@ fn default_policy() -> ResponseClassification {
         provider: ResponseProvider::Generic,
         prioritize_auth_errors: true,
         parse_provider_error_shapes: true,
+        error_shape: None,
     }
 }
 
@@ -361,6 +414,7 @@ mod tests {
             provider: ResponseProvider::GitHub,
             prioritize_auth_errors: true,
             parse_provider_error_shapes: true,
+            error_shape: None,
         };
 
         let classified =
@@ -389,6 +443,7 @@ mod tests {
             provider: ResponseProvider::Gcp,
             prioritize_auth_errors: true,
             parse_provider_error_shapes: true,
+            error_shape: None,
         };
         let classified = classify_rest_response(&response, &policy).expect("classification");
         assert_eq!(classified.kind, ClassifiedErrorKind::Client);
@@ -411,6 +466,7 @@ mod tests {
             provider: ResponseProvider::Anthropic,
             prioritize_auth_errors: true,
             parse_provider_error_shapes: true,
+            error_shape: None,
         };
         let classified = classify_rest_response(&response, &policy).expect("classification");
         assert_eq!(classified.kind, ClassifiedErrorKind::Auth);
@@ -423,6 +479,7 @@ mod tests {
             provider: ResponseProvider::Gcp,
             prioritize_auth_errors: true,
             parse_provider_error_shapes: true,
+            error_shape: None,
         };
         let classified = classify_rest_response(&response, &policy).expect("classification");
         assert_eq!(classified.kind, ClassifiedErrorKind::Server);
@@ -440,6 +497,7 @@ mod tests {
             provider: ResponseProvider::OpenAi,
             prioritize_auth_errors: true,
             parse_provider_error_shapes: true,
+            error_shape: None,
         };
         let classified = classify_http_response(&response, &policy).expect("classification");
         assert_eq!(classified.kind, ClassifiedErrorKind::Auth);
@@ -575,5 +633,61 @@ mod tests {
             outputs: serde_json::json!({}),
         });
         assert!(is_success(&local));
+    }
+
+    // TL-16: JSON-path error shape extraction tests
+
+    #[test]
+    fn error_shape_extraction_uses_json_path_for_message() {
+        let response = RestResponse::new(
+            403,
+            serde_json::json!({
+                "error": {
+                    "code": 403,
+                    "message": "Permission denied on resource",
+                    "status": "PERMISSION_DENIED"
+                }
+            }),
+        );
+        let policy = ResponseClassification {
+            provider: ResponseProvider::Generic,
+            prioritize_auth_errors: true,
+            parse_provider_error_shapes: false,
+            error_shape: Some(ErrorShapeExtraction {
+                message_path: ".error.message".to_string(),
+                code_path: Some(".error.status".to_string()),
+                details_path: None,
+            }),
+        };
+        let classified = classify_rest_response(&response, &policy).expect("classification");
+        assert_eq!(classified.kind, ClassifiedErrorKind::Auth);
+        assert_eq!(
+            classified.message,
+            Some("Permission denied on resource".to_string())
+        );
+    }
+
+    #[test]
+    fn error_shape_extraction_falls_back_to_code_path() {
+        let response = RestResponse::new(
+            500,
+            serde_json::json!({ "code": "INTERNAL_ERROR" }),
+        );
+        let policy = ResponseClassification {
+            provider: ResponseProvider::Generic,
+            prioritize_auth_errors: false,
+            parse_provider_error_shapes: false,
+            error_shape: Some(ErrorShapeExtraction {
+                message_path: ".nonexistent".to_string(),
+                code_path: Some(".code".to_string()),
+                details_path: None,
+            }),
+        };
+        let classified = classify_rest_response(&response, &policy).expect("classification");
+        assert_eq!(classified.kind, ClassifiedErrorKind::Server);
+        assert_eq!(
+            classified.message,
+            Some("INTERNAL_ERROR".to_string())
+        );
     }
 }

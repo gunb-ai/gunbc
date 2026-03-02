@@ -5,10 +5,13 @@
 //! graph (target names + dependencies) while emitting Just syntax.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::Path;
 
-use daglang_driver::{compile_from_context, DriverContext};
+use daglang_driver::compile_data_from_sources;
 use serde::Deserialize;
+
+const BUILD_TARGETS_SOURCE: &str = include_str!("../../../dsl/config/build_targets.dag");
+const EXTDEPS_MAKE_SOURCE: &str = include_str!("../../../dsl/extdeps/make.dag");
 
 use crate::makegen::registry::{BuildConfig, EntrypointParam, ToolInfo, ToolRegistry};
 use gunbc_ir::CargoInvocation;
@@ -315,19 +318,16 @@ fn tool_target_deps(tool: &ToolInfo) -> Vec<String> {
     }
 }
 
-#[allow(clippy::disallowed_methods)] // Build-time DSL data loading.
 fn load_build_targets_data() -> (
     Vec<CoreWorkflowData>,
     Vec<MetaTargetData>,
     Vec<ResourceTargetEntryData>,
 ) {
-    let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dsl");
-    let dag_file = dsl_root.join("config/build_targets.dag");
-    let context = DriverContext {
-        roots: vec![dsl_root],
-        target_file: Some(dag_file),
-    };
-    let output = compile_from_context(&context).expect("build_targets.dag should compile");
+    let output = compile_data_from_sources(&[
+        (Path::new("<embedded>/extdeps/make.dag"), EXTDEPS_MAKE_SOURCE),
+        (Path::new("<embedded>/config/build_targets.dag"), BUILD_TARGETS_SOURCE),
+    ])
+    .expect("build_targets.dag should compile");
     let workflows = serde_json::from_value::<Vec<CoreWorkflowData>>(
         output
             .data_values

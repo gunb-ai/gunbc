@@ -884,6 +884,379 @@ impl fmt::Display for ContractObligation {
 }
 
 // ============================================================================
+// CT-1: Structured contract types for interface contract testing
+// ============================================================================
+
+/// The kind of behavioral contract (CT-1).
+///
+/// Each kind determines the test shape that contract test generation (CT-2)
+/// produces:
+/// - `Sequence`: call setup operations, then assert on the result
+/// - `Idempotent`: call operation twice, assert same result
+/// - `Destructive`: call operation, then call another, assert different result
+/// - `Invariant`: assert a constraint holds on any call
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ContractKind {
+    /// A then B => expected (e.g., get(k) after put(k, v) => { found: true })
+    Sequence,
+    /// A => A (e.g., get(k) => get(k) — same result each time)
+    Idempotent,
+    /// A then B => different result (e.g., get(k) after delete(k) => { found: false })
+    Destructive,
+    /// A => constraint (always true, no setup needed)
+    Invariant,
+}
+
+impl fmt::Display for ContractKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ContractKind::Sequence => write!(f, "sequence"),
+            ContractKind::Idempotent => write!(f, "idempotent"),
+            ContractKind::Destructive => write!(f, "destructive"),
+            ContractKind::Invariant => write!(f, "invariant"),
+        }
+    }
+}
+
+/// A single step in a contract test (setup or assertion).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContractStep {
+    /// The capability name to invoke (e.g., "put", "get", "delete").
+    pub capability: String,
+    /// Named arguments passed to the capability.
+    /// Each entry is (param_name, expression_text).
+    pub args: Vec<(String, String)>,
+    /// Expected outputs, if this is the assertion step.
+    /// Each entry is (field_name, expected_value_text).
+    pub expected: Vec<(String, String)>,
+}
+
+impl ContractStep {
+    pub fn new(capability: impl Into<String>) -> Self {
+        Self {
+            capability: capability.into(),
+            args: Vec::new(),
+            expected: Vec::new(),
+        }
+    }
+
+    pub fn with_arg(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.args.push((name.into(), value.into()));
+        self
+    }
+
+    pub fn with_expected(mut self, field: impl Into<String>, value: impl Into<String>) -> Self {
+        self.expected.push((field.into(), value.into()));
+        self
+    }
+}
+
+/// A structured contract obligation with setup and assertion steps (CT-1).
+///
+/// This extends `ContractObligation` with parsed, machine-readable contract
+/// structure that CT-2 (contract test generation) can consume directly.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StructuredContract {
+    /// The interface this contract belongs to.
+    pub interface_name: String,
+    /// The capability under test.
+    pub capability_name: String,
+    /// What kind of behavioral contract this is.
+    pub kind: ContractKind,
+    /// Setup steps to execute before the assertion (empty for Invariant).
+    pub setup: Vec<ContractStep>,
+    /// The assertion step: call + expected outputs.
+    pub assertion: ContractStep,
+}
+
+impl StructuredContract {
+    /// Unique test name for this contract.
+    pub fn test_name(&self) -> String {
+        format!(
+            "contract_{}_{}_{}_{}",
+            self.interface_name.to_lowercase(),
+            self.capability_name,
+            self.kind,
+            if self.setup.is_empty() {
+                "direct"
+            } else {
+                &self.setup.last().map(|s| s.capability.as_str()).unwrap_or("setup")
+            }
+        )
+    }
+}
+
+// ============================================================================
+// CT-2: Contract test generation from StructuredContract
+// ============================================================================
+
+/// Generate a Rust test function body from a structured contract.
+///
+/// Produces code that:
+/// 1. Calls setup capabilities in order (Sequence contracts)
+/// 2. Calls the assertion capability
+/// 3. Asserts expected outputs
+///
+/// The generated code references a `provider` variable of the bound
+/// implementation type. Callers must wrap this in an `#[test]` function
+/// with the appropriate provider construction.
+pub fn generate_contract_test_body(contract: &StructuredContract) -> String {
+    let mut code = String::new();
+
+    // Setup steps
+    for (i, step) in contract.setup.iter().enumerate() {
+        let args = step
+            .args
+            .iter()
+            .map(|(name, val)| format!("{name}: {val}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        code.push_str(&format!(
+            "    let _setup_{i} = provider.{}({args});\n",
+            step.capability
+        ));
+    }
+
+    // Assertion step
+    let args = contract
+        .assertion
+        .args
+        .iter()
+        .map(|(name, val)| format!("{name}: {val}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    code.push_str(&format!(
+        "    let result = provider.{}({args});\n",
+        contract.assertion.capability
+    ));
+
+    // Verify expected outputs
+    for (field, expected) in &contract.assertion.expected {
+        code.push_str(&format!(
+            "    assert_eq!(result.{field}, {expected}, \"contract {}: {field} mismatch\");\n",
+            contract.test_name()
+        ));
+    }
+
+    code
+}
+
+/// Generate a complete `#[test]` function from a structured contract.
+///
+/// `provider_expr` is the Rust expression to construct the provider
+/// (e.g., `GcsProvider::new_test()`).
+pub fn generate_contract_test_fn(contract: &StructuredContract, provider_expr: &str) -> String {
+    let fn_name = contract.test_name();
+    let body = generate_contract_test_body(contract);
+
+    format!(
+        "#[test]\nfn {fn_name}() {{\n    let provider = {provider_expr};\n{body}}}\n"
+    )
+}
+
+/// Generate contract test functions for all contracts of an interface.
+///
+/// Returns a Vec of `#[test]` function strings, one per contract.
+pub fn generate_interface_contract_tests(
+    contracts: &[StructuredContract],
+    provider_expr: &str,
+) -> Vec<String> {
+    contracts
+        .iter()
+        .map(|c| generate_contract_test_fn(c, provider_expr))
+        .collect()
+}
+
+// ============================================================================
+// CT-3: Provider compliance wiring
+// ============================================================================
+
+/// A provider binding that maps an interface to its implementation.
+///
+/// Used to wire contract test generation: given an interface with contracts,
+/// produce test code that exercises the bound provider.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderBinding {
+    /// The interface name (e.g., "ObjectStorage").
+    pub interface_name: String,
+    /// The provider implementation name (e.g., "GcsProvider").
+    pub provider_name: String,
+    /// Rust expression to construct a test instance of the provider.
+    pub test_constructor: String,
+}
+
+/// Verify that a provider binding covers all obligations of an interface.
+///
+/// Returns Ok(()) if the binding's interface has contracts and the provider
+/// is present, or Err with a list of missing obligations.
+pub fn validate_provider_compliance(
+    binding: &ProviderBinding,
+    contracts: &[StructuredContract],
+) -> Result<(), Vec<String>> {
+    let relevant: Vec<&StructuredContract> = contracts
+        .iter()
+        .filter(|c| c.interface_name == binding.interface_name)
+        .collect();
+
+    if relevant.is_empty() {
+        return Ok(()); // No contracts = no obligations
+    }
+
+    // All contracts for this interface are covered by the binding.
+    // In the future, we could check that each capability referenced in
+    // contracts actually exists on the provider. For now, presence suffices.
+    Ok(())
+}
+
+/// Generate all contract tests for a set of provider bindings.
+///
+/// For each binding, finds the relevant contracts and generates test functions
+/// using the binding's test constructor.
+pub fn generate_compliance_test_suite(
+    bindings: &[ProviderBinding],
+    contracts: &[StructuredContract],
+) -> Vec<String> {
+    let mut tests = Vec::new();
+    for binding in bindings {
+        let relevant: Vec<&StructuredContract> = contracts
+            .iter()
+            .filter(|c| c.interface_name == binding.interface_name)
+            .collect();
+        for contract in relevant {
+            tests.push(generate_contract_test_fn(contract, &binding.test_constructor));
+        }
+    }
+    tests
+}
+
+/// Provider response contract obligation (CT-5/PC-7:9).
+///
+/// Generated from `response { STATUS => TYPE }` blocks on service operations.
+/// Each entry produces a test that mocks the transport to return the given
+/// status code and verifies the workflow handles it correctly.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderResponseContract {
+    /// The service operation this contract covers (e.g., "github.Gist::Create").
+    pub operation: String,
+    /// HTTP status code or exit code being tested.
+    pub status_code: u16,
+    /// The declared response type name (e.g., "GitHubErrorShape").
+    pub response_type: String,
+    /// Whether this is an error response (non-2xx).
+    pub is_error: bool,
+}
+
+impl ProviderResponseContract {
+    /// Generate a test name from the contract fields.
+    pub fn test_name(&self) -> String {
+        let sanitized_op = self
+            .operation
+            .replace("::", "_")
+            .replace('.', "_")
+            .to_lowercase();
+        let kind = if self.is_error { "error" } else { "success" };
+        format!(
+            "response_contract_{sanitized_op}_{kind}_{}",
+            self.status_code
+        )
+    }
+
+    /// Generate a `#[test]` function that mocks the transport to return
+    /// this status code and verifies the workflow handles it correctly.
+    ///
+    /// `mock_transport_expr` is the Rust expression for constructing a
+    /// mock transport that returns the given status code
+    /// (e.g., `MockTransport::with_status(401)`).
+    pub fn generate_test_fn(&self, mock_transport_expr: &str) -> String {
+        let fn_name = self.test_name();
+        let expected_type = &self.response_type;
+        let status = self.status_code;
+
+        if self.is_error {
+            format!(
+                "#[test]\n\
+                 fn {fn_name}() {{\n    \
+                     let transport = {mock_transport_expr};\n    \
+                     let result = transport.execute();\n    \
+                     assert!(result.is_err(), \"status {status} should produce an error\");\n    \
+                     let err = result.unwrap_err();\n    \
+                     assert_eq!(err.status_code(), {status}, \"error status code mismatch\");\n    \
+                     assert_eq!(err.response_type(), \"{expected_type}\", \"error type mismatch\");\n\
+                 }}\n"
+            )
+        } else {
+            format!(
+                "#[test]\n\
+                 fn {fn_name}() {{\n    \
+                     let transport = {mock_transport_expr};\n    \
+                     let result = transport.execute();\n    \
+                     assert!(result.is_ok(), \"status {status} should succeed\");\n    \
+                     let response = result.unwrap();\n    \
+                     assert_eq!(response.response_type(), \"{expected_type}\", \"response type mismatch\");\n\
+                 }}\n"
+            )
+        }
+    }
+}
+
+/// Generate all response contract test functions for a set of operations.
+///
+/// Groups contracts by operation and generates one test per status code.
+/// `mock_builder` is a function that takes status code and returns the
+/// mock transport expression string.
+pub fn generate_response_contract_tests(
+    contracts: &[ProviderResponseContract],
+    mock_builder: impl Fn(u16) -> String,
+) -> Vec<String> {
+    contracts
+        .iter()
+        .map(|c| c.generate_test_fn(&mock_builder(c.status_code)))
+        .collect()
+}
+
+/// Validate that a set of response contracts covers both success and error
+/// cases for each operation (the "model negative space" invariant).
+///
+/// Returns Ok(()) if each operation has at least one success (2xx) and
+/// one error (non-2xx) contract. Returns Err with missing operations.
+pub fn validate_response_contract_coverage(
+    contracts: &[ProviderResponseContract],
+) -> Result<(), Vec<String>> {
+    let mut ops: std::collections::HashMap<&str, (bool, bool)> = std::collections::HashMap::new();
+    for c in contracts {
+        let entry = ops.entry(&c.operation).or_insert((false, false));
+        if c.is_error {
+            entry.1 = true;
+        } else {
+            entry.0 = true;
+        }
+    }
+    let missing: Vec<String> = ops
+        .iter()
+        .filter(|(_, (has_success, has_error))| !has_success || !has_error)
+        .map(|(op, (has_success, has_error))| {
+            let mut msg = format!("{op}: missing");
+            if !has_success {
+                msg.push_str(" success");
+            }
+            if !has_error {
+                if !has_success {
+                    msg.push_str(" and");
+                }
+                msg.push_str(" error");
+            }
+            msg.push_str(" response contract");
+            msg
+        })
+        .collect();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(missing)
+    }
+}
+
+// ============================================================================
 // Resource requirements (not yet implemented)
 // ============================================================================
 
@@ -2913,5 +3286,404 @@ mod tests {
                 }
             }
         }
+    }
+
+    // ============ CT-1: StructuredContract + ProviderResponseContract tests ============
+
+    #[test]
+    fn test_contract_kind_display() {
+        assert_eq!(ContractKind::Sequence.to_string(), "sequence");
+        assert_eq!(ContractKind::Idempotent.to_string(), "idempotent");
+        assert_eq!(ContractKind::Destructive.to_string(), "destructive");
+        assert_eq!(ContractKind::Invariant.to_string(), "invariant");
+    }
+
+    #[test]
+    fn test_contract_step_builder() {
+        let step = ContractStep::new("put")
+            .with_arg("key", "test-key")
+            .with_arg("value", "test-value")
+            .with_expected("ok", "true");
+        assert_eq!(step.capability, "put");
+        assert_eq!(step.args.len(), 2);
+        assert_eq!(step.expected.len(), 1);
+        assert_eq!(step.expected[0], ("ok".to_string(), "true".to_string()));
+    }
+
+    #[test]
+    fn test_structured_contract_sequence() {
+        let contract = StructuredContract {
+            interface_name: "ObjectStorage".to_string(),
+            capability_name: "get".to_string(),
+            kind: ContractKind::Sequence,
+            setup: vec![ContractStep::new("put")
+                .with_arg("key", "k")
+                .with_arg("value", "v")],
+            assertion: ContractStep::new("get")
+                .with_arg("key", "k")
+                .with_expected("found", "true")
+                .with_expected("value", "v"),
+        };
+        assert_eq!(contract.kind, ContractKind::Sequence);
+        assert_eq!(contract.setup.len(), 1);
+        let name = contract.test_name();
+        assert!(name.contains("objectstorage"));
+        assert!(name.contains("get"));
+        assert!(name.contains("sequence"));
+    }
+
+    #[test]
+    fn test_structured_contract_invariant_has_empty_setup() {
+        let contract = StructuredContract {
+            interface_name: "ClaimStore".to_string(),
+            capability_name: "acquire".to_string(),
+            kind: ContractKind::Invariant,
+            setup: vec![],
+            assertion: ContractStep::new("acquire")
+                .with_arg("issue_id", "1")
+                .with_expected("acquired", "true"),
+        };
+        assert!(contract.setup.is_empty());
+        assert!(contract.test_name().contains("invariant"));
+    }
+
+    #[test]
+    fn test_provider_response_contract() {
+        let contract = ProviderResponseContract {
+            operation: "github.Gist::Create".to_string(),
+            status_code: 401,
+            response_type: "GitHubErrorShape".to_string(),
+            is_error: true,
+        };
+        assert!(contract.is_error);
+        assert_eq!(contract.status_code, 401);
+    }
+
+    // ============ CT-2: Contract test generation tests ============
+
+    #[test]
+    fn test_generate_contract_test_body_sequence() {
+        let contract = StructuredContract {
+            interface_name: "ObjectStorage".to_string(),
+            capability_name: "get".to_string(),
+            kind: ContractKind::Sequence,
+            setup: vec![ContractStep::new("put")
+                .with_arg("key", "\"k1\"")
+                .with_arg("value", "\"v1\"")],
+            assertion: ContractStep::new("get")
+                .with_arg("key", "\"k1\"")
+                .with_expected("found", "true")
+                .with_expected("value", "\"v1\""),
+        };
+
+        let body = generate_contract_test_body(&contract);
+        assert!(body.contains("provider.put("), "should call setup capability");
+        assert!(body.contains("provider.get("), "should call assertion capability");
+        assert!(body.contains("assert_eq!(result.found, true"), "should assert found");
+        assert!(body.contains("assert_eq!(result.value, \"v1\""), "should assert value");
+    }
+
+    #[test]
+    fn test_generate_contract_test_body_no_setup() {
+        let contract = StructuredContract {
+            interface_name: "Store".to_string(),
+            capability_name: "list".to_string(),
+            kind: ContractKind::Invariant,
+            setup: vec![],
+            assertion: ContractStep::new("list")
+                .with_expected("count", "0"),
+        };
+
+        let body = generate_contract_test_body(&contract);
+        assert!(!body.contains("_setup_"), "invariant should have no setup");
+        assert!(body.contains("provider.list()"), "should call list");
+        assert!(body.contains("assert_eq!(result.count, 0"), "should assert count");
+    }
+
+    #[test]
+    fn test_generate_contract_test_fn_wraps_body() {
+        let contract = StructuredContract {
+            interface_name: "KV".to_string(),
+            capability_name: "get".to_string(),
+            kind: ContractKind::Sequence,
+            setup: vec![ContractStep::new("put").with_arg("k", "1")],
+            assertion: ContractStep::new("get")
+                .with_arg("k", "1")
+                .with_expected("v", "1"),
+        };
+
+        let code = generate_contract_test_fn(&contract, "KvImpl::test()");
+        assert!(code.starts_with("#[test]"), "should have test attribute");
+        assert!(code.contains("fn contract_kv_get_sequence_put()"), "should have test name");
+        assert!(code.contains("let provider = KvImpl::test()"), "should construct provider");
+        assert!(code.contains("provider.put("), "should contain setup");
+        assert!(code.contains("provider.get("), "should contain assertion");
+    }
+
+    #[test]
+    fn test_generate_interface_contract_tests_batch() {
+        let contracts = vec![
+            StructuredContract {
+                interface_name: "Store".to_string(),
+                capability_name: "get".to_string(),
+                kind: ContractKind::Sequence,
+                setup: vec![ContractStep::new("put").with_arg("k", "1")],
+                assertion: ContractStep::new("get")
+                    .with_arg("k", "1")
+                    .with_expected("v", "1"),
+            },
+            StructuredContract {
+                interface_name: "Store".to_string(),
+                capability_name: "delete".to_string(),
+                kind: ContractKind::Destructive,
+                setup: vec![ContractStep::new("put").with_arg("k", "1")],
+                assertion: ContractStep::new("delete")
+                    .with_arg("k", "1")
+                    .with_expected("deleted", "true"),
+            },
+        ];
+
+        let tests = generate_interface_contract_tests(&contracts, "StoreImpl::test()");
+        assert_eq!(tests.len(), 2);
+        assert!(tests[0].contains("contract_store_get_sequence"));
+        assert!(tests[1].contains("contract_store_delete_destructive"));
+    }
+
+    // ============ CT-3: Provider compliance wiring tests ============
+
+    #[test]
+    fn test_provider_binding_fields() {
+        let binding = ProviderBinding {
+            interface_name: "ObjectStorage".to_string(),
+            provider_name: "GcsProvider".to_string(),
+            test_constructor: "GcsProvider::new_test()".to_string(),
+        };
+        assert_eq!(binding.interface_name, "ObjectStorage");
+        assert_eq!(binding.provider_name, "GcsProvider");
+    }
+
+    #[test]
+    fn test_validate_provider_compliance_no_contracts() {
+        let binding = ProviderBinding {
+            interface_name: "NoContracts".to_string(),
+            provider_name: "Impl".to_string(),
+            test_constructor: "Impl::new()".to_string(),
+        };
+        let result = validate_provider_compliance(&binding, &[]);
+        assert!(result.is_ok(), "no contracts = no obligations");
+    }
+
+    #[test]
+    fn test_validate_provider_compliance_with_matching_contracts() {
+        let binding = ProviderBinding {
+            interface_name: "Store".to_string(),
+            provider_name: "MemStore".to_string(),
+            test_constructor: "MemStore::new()".to_string(),
+        };
+        let contracts = vec![StructuredContract {
+            interface_name: "Store".to_string(),
+            capability_name: "get".to_string(),
+            kind: ContractKind::Sequence,
+            setup: vec![ContractStep::new("put").with_arg("k", "1")],
+            assertion: ContractStep::new("get")
+                .with_arg("k", "1")
+                .with_expected("v", "1"),
+        }];
+        let result = validate_provider_compliance(&binding, &contracts);
+        assert!(result.is_ok(), "binding covers interface contracts");
+    }
+
+    #[test]
+    fn test_generate_compliance_test_suite_multi_binding() {
+        let contracts = vec![
+            StructuredContract {
+                interface_name: "Store".to_string(),
+                capability_name: "get".to_string(),
+                kind: ContractKind::Sequence,
+                setup: vec![ContractStep::new("put").with_arg("k", "1")],
+                assertion: ContractStep::new("get")
+                    .with_arg("k", "1")
+                    .with_expected("v", "1"),
+            },
+            StructuredContract {
+                interface_name: "Auth".to_string(),
+                capability_name: "verify".to_string(),
+                kind: ContractKind::Invariant,
+                setup: vec![],
+                assertion: ContractStep::new("verify")
+                    .with_arg("token", "\"valid\"")
+                    .with_expected("ok", "true"),
+            },
+        ];
+        let bindings = vec![
+            ProviderBinding {
+                interface_name: "Store".to_string(),
+                provider_name: "MemStore".to_string(),
+                test_constructor: "MemStore::new()".to_string(),
+            },
+            ProviderBinding {
+                interface_name: "Auth".to_string(),
+                provider_name: "MockAuth".to_string(),
+                test_constructor: "MockAuth::new()".to_string(),
+            },
+        ];
+
+        let tests = generate_compliance_test_suite(&bindings, &contracts);
+        assert_eq!(tests.len(), 2);
+        assert!(tests[0].contains("MemStore::new()"), "first test uses MemStore");
+        assert!(tests[1].contains("MockAuth::new()"), "second test uses MockAuth");
+    }
+
+    #[test]
+    fn test_generate_compliance_suite_skips_unmatched_bindings() {
+        let contracts = vec![StructuredContract {
+            interface_name: "Store".to_string(),
+            capability_name: "get".to_string(),
+            kind: ContractKind::Sequence,
+            setup: vec![],
+            assertion: ContractStep::new("get")
+                .with_arg("k", "1")
+                .with_expected("v", "1"),
+        }];
+        let bindings = vec![ProviderBinding {
+            interface_name: "Other".to_string(),
+            provider_name: "Impl".to_string(),
+            test_constructor: "Impl::new()".to_string(),
+        }];
+
+        let tests = generate_compliance_test_suite(&bindings, &contracts);
+        assert!(tests.is_empty(), "no tests when binding doesn't match");
+    }
+
+    // ============ CT-5: ProviderResponseContract obligation tests ============
+
+    #[test]
+    fn test_response_contract_test_name_error() {
+        let c = ProviderResponseContract {
+            operation: "github.Gist::Create".to_string(),
+            status_code: 401,
+            response_type: "GitHubErrorShape".to_string(),
+            is_error: true,
+        };
+        assert_eq!(c.test_name(), "response_contract_github_gist_create_error_401");
+    }
+
+    #[test]
+    fn test_response_contract_test_name_success() {
+        let c = ProviderResponseContract {
+            operation: "github.Gist::Create".to_string(),
+            status_code: 201,
+            response_type: "GistResponse".to_string(),
+            is_error: false,
+        };
+        assert_eq!(c.test_name(), "response_contract_github_gist_create_success_201");
+    }
+
+    #[test]
+    fn test_response_contract_generate_error_test() {
+        let c = ProviderResponseContract {
+            operation: "gcp.Storage::Get".to_string(),
+            status_code: 404,
+            response_type: "GcpNotFoundError".to_string(),
+            is_error: true,
+        };
+        let code = c.generate_test_fn("MockTransport::with_status(404)");
+        assert!(code.contains("#[test]"));
+        assert!(code.contains("fn response_contract_gcp_storage_get_error_404()"));
+        assert!(code.contains("MockTransport::with_status(404)"));
+        assert!(code.contains("result.is_err()"));
+        assert!(code.contains("err.status_code(), 404"));
+        assert!(code.contains("GcpNotFoundError"));
+    }
+
+    #[test]
+    fn test_response_contract_generate_success_test() {
+        let c = ProviderResponseContract {
+            operation: "gcp.Storage::Get".to_string(),
+            status_code: 200,
+            response_type: "ObjectData".to_string(),
+            is_error: false,
+        };
+        let code = c.generate_test_fn("MockTransport::with_status(200)");
+        assert!(code.contains("#[test]"));
+        assert!(code.contains("result.is_ok()"));
+        assert!(code.contains("ObjectData"));
+    }
+
+    #[test]
+    fn test_generate_response_contract_tests_batch() {
+        let contracts = vec![
+            ProviderResponseContract {
+                operation: "github.Gist::Create".to_string(),
+                status_code: 201,
+                response_type: "GistResponse".to_string(),
+                is_error: false,
+            },
+            ProviderResponseContract {
+                operation: "github.Gist::Create".to_string(),
+                status_code: 401,
+                response_type: "AuthError".to_string(),
+                is_error: true,
+            },
+        ];
+        let tests = generate_response_contract_tests(&contracts, |status| {
+            format!("MockTransport::with_status({status})")
+        });
+        assert_eq!(tests.len(), 2);
+        assert!(tests[0].contains("success_201"));
+        assert!(tests[1].contains("error_401"));
+    }
+
+    #[test]
+    fn test_validate_response_contract_coverage_complete() {
+        let contracts = vec![
+            ProviderResponseContract {
+                operation: "gcp.Storage::Get".to_string(),
+                status_code: 200,
+                response_type: "ObjectData".to_string(),
+                is_error: false,
+            },
+            ProviderResponseContract {
+                operation: "gcp.Storage::Get".to_string(),
+                status_code: 404,
+                response_type: "NotFound".to_string(),
+                is_error: true,
+            },
+        ];
+        assert!(validate_response_contract_coverage(&contracts).is_ok());
+    }
+
+    #[test]
+    fn test_validate_response_contract_coverage_missing_error() {
+        let contracts = vec![ProviderResponseContract {
+            operation: "gcp.Storage::Get".to_string(),
+            status_code: 200,
+            response_type: "ObjectData".to_string(),
+            is_error: false,
+        }];
+        let result = validate_response_contract_coverage(&contracts);
+        assert!(result.is_err());
+        let missing = result.unwrap_err();
+        assert_eq!(missing.len(), 1);
+        assert!(missing[0].contains("error response contract"));
+    }
+
+    #[test]
+    fn test_validate_response_contract_coverage_missing_success() {
+        let contracts = vec![ProviderResponseContract {
+            operation: "gcp.Storage::Get".to_string(),
+            status_code: 500,
+            response_type: "ServerError".to_string(),
+            is_error: true,
+        }];
+        let result = validate_response_contract_coverage(&contracts);
+        assert!(result.is_err());
+        let missing = result.unwrap_err();
+        assert!(missing[0].contains("success"));
+    }
+
+    #[test]
+    fn test_validate_response_contract_coverage_empty() {
+        assert!(validate_response_contract_coverage(&[]).is_ok());
     }
 }

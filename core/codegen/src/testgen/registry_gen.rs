@@ -8,9 +8,9 @@
 //! # Design
 //!
 //! Transport nodes in the DAG follow the prepare→execute→parse triplet
-//! pattern. The execute node's request/response types determine the transport
-//! class. For lowered DAGs, we read `ServiceTransportClass` metadata directly
-//! from `LoweredOp`; type-based fallback is only for non-lowered test DAGs.
+//! pattern. The lowerer stamps `ServiceTransportClass` on each node's
+//! `transport_class` metadata field; we read it directly from the `Node`.
+//! Type-based fallback (`from_node_context`) is only for test DAGs.
 //!
 //! The derived config is used by `build_fidelity_ladder_section()` to
 //! generate S-tier test code that installs a `VirtualTransportBackend`
@@ -19,7 +19,7 @@
 use std::collections::BTreeMap;
 
 use crate::testgen::analyze::DagAnalysis;
-use daglang_lower::{classify_service_transport, LoweredOp, ServiceTransportClass};
+use gunbc_ir::node::ServiceTransportClass;
 use gunbc_ir::Dag;
 
 /// Transport class for a transport executor node.
@@ -66,14 +66,8 @@ fn from_service_transport_class(class: ServiceTransportClass) -> TransportClass 
     }
 }
 
-fn transport_class_from_node_metadata<T: 'static>(node: &gunbc_ir::Node<T>) -> Option<TransportClass> {
-    let gunbc_ir::node::NodeBody::Opaque(op) = &node.body else {
-        return None;
-    };
-    let op_any = op as &dyn std::any::Any;
-    let lowered = op_any.downcast_ref::<LoweredOp>()?;
-    let class = classify_service_transport(lowered)?;
-    Some(from_service_transport_class(class))
+fn transport_class_from_node_metadata<T>(node: &gunbc_ir::Node<T>) -> Option<TransportClass> {
+    node.transport_class.map(from_service_transport_class)
 }
 
 /// Info about a single transport executor node.
@@ -124,10 +118,7 @@ impl VirtualBackendRequirements {
 pub fn derive_virtual_backend_requirements<T>(
     dag: &Dag<T>,
     analysis: &DagAnalysis,
-) -> VirtualBackendRequirements
-where
-    T: 'static,
-{
+) -> VirtualBackendRequirements {
     let mut requirements = VirtualBackendRequirements::default();
 
     // Build a quick lookup of node input/output types.

@@ -1,7 +1,7 @@
 //! DSL-backed workflow unit command catalog.
 
 use std::collections::{BTreeMap, HashMap};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::OnceLock;
 
 use daglang_syntax::{
@@ -10,6 +10,9 @@ use daglang_syntax::{
 };
 use gunbc_ir::NodeId;
 use gunbc_workflow::UnitCommand;
+
+const WORKFLOW_COMMANDS_SOURCE: &str =
+    include_str!("../../../dsl/config/workflow_commands.dag");
 
 static WORKFLOW_COMMANDS: OnceLock<HashMap<String, BTreeMap<NodeId, UnitCommand>>> = OnceLock::new();
 
@@ -52,18 +55,16 @@ pub fn workflow_unit_commands(
         })
 }
 
-#[allow(clippy::disallowed_methods)]
 fn load_workflow_commands_from_dsl() -> Result<HashMap<String, BTreeMap<NodeId, UnitCommand>>, String> {
-    let path = workflow_commands_file_path();
-    let source = std::fs::read_to_string(&path)
-        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
-    let parsed = parser::parse_with_file_diagnostics(&path, &source).map_err(|diagnostics| {
-        diagnostics
-            .into_iter()
-            .map(|diagnostic| diagnostic.render())
-            .collect::<Vec<_>>()
-            .join("\n")
-    })?;
+    let path = Path::new("<embedded>/config/workflow_commands.dag");
+    let parsed = parser::parse_with_file_diagnostics(path, WORKFLOW_COMMANDS_SOURCE)
+        .map_err(|diagnostics| {
+            diagnostics
+                .into_iter()
+                .map(|diagnostic| diagnostic.render())
+                .collect::<Vec<_>>()
+                .join("\n")
+        })?;
 
     let mut raw = None;
     for item in parsed.items {
@@ -169,13 +170,6 @@ fn expect_string_list_field(
     Ok(values)
 }
 
-fn workflow_commands_file_path() -> PathBuf {
-    configs_root().join("workflow_commands.dag")
-}
-
-fn configs_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../dsl/config")
-}
 
 #[cfg(test)]
 mod tests {

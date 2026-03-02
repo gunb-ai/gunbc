@@ -4952,6 +4952,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 ParamType::Str => "ParamType::Str",
                 ParamType::Int => "ParamType::Int",
                 ParamType::Bool => "ParamType::Bool",
+                ParamType::Map => "ParamType::Map",
             };
             write!(
                 schema_code,
@@ -5014,6 +5015,15 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                         assertions.push(format!(
                             "assert_eq!(result.values[\"{}\"], Value::Str(\"{}\".into()), \"string param '{}' mismatch\");\n",
                             ep.port_name, cli_escape(&value), ep.port_name
+                        ));
+                    }
+                    ParamType::Map => {
+                        // Map param: generate KEY=VALUE sample pair.
+                        argv_parts.push(format!("\"{}\"", cli_escape(&flag)));
+                        argv_parts.push(format!("\"sample_key=sample_value\""));
+                        assertions.push(format!(
+                            "assert!(result.values.get(\"{}\").is_some(), \"map param '{}' should be present\");\n",
+                            ep.port_name, ep.port_name
                         ));
                     }
                 }

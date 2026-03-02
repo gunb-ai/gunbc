@@ -1,0 +1,135 @@
+// services/sdlc/providers/llm_agent_provider.dag
+//
+// SP-3: Real LLM agent provider. Wires AgentProvider interface to
+// Anthropic/OpenAI APIs via REST transport pipeline.
+//
+// Unlike CodexAgentProvider (shell transport, CLI subprocess),
+// this provider sends prompts directly to LLM APIs and collects
+// structured responses. For code generation tasks, the agent
+// operates in a multi-turn loop:
+//   1. Send task prompt with repo context
+//   2. Receive plan/code from LLM
+//   3. Apply changes to branch
+//   4. Run verification (cargo test, cargo clippy)
+//   5. If failures, send error context back to LLM for retry
+//
+// Profile bindings: cloud_run (real API keys via credential chain)
+//
+// SC-6: Transport blocks will wire real REST calls to LLM APIs.
+
+module services.sdlc.providers.llm_agent_provider
+
+import interfaces.agent_provider { AgentProvider }
+import interfaces.credential_provider { CredentialProvider }
+import services.llm.anthropic { llm.Anthropic }
+import services.llm.openai { llm.OpenAI }
+import services.git { git.Core }
+import services.cargo { Cargo }
+import std.types {
+  NonEmptyStr, AgentStatus, ApprovalMode, CredentialFlow, AccessToken
+}
+
+// Map provider string to the correct LLM service call.
+fn build_agent_prompt(task_prompt: String, repo_path: String, branch: String) -> String {
+  "You are a software engineering agent working on branch '{branch}' in repo at '{repo_path}'.\n\nTask:\n{task_prompt}\n\nInstructions:\n1. Analyze the codebase and understand the task\n2. Implement the changes\n3. Ensure all tests pass (cargo test)\n4. Ensure no clippy warnings (cargo clippy)\n5. Commit your changes with a clear message\n\nRespond with the implementation plan and code changes."
+}
+
+fn build_system_prompt() -> String {
+  "You are an expert software engineer. You write clean, correct, well-tested Rust code. You follow existing patterns in the codebase. You never introduce clippy warnings or test failures."
+}
+
+fn parse_agent_status(stop_reason: String) -> AgentStatus {
+  match stop_reason {
+    "end_turn"    => Completed
+    "max_tokens"  => Running
+    "stop"        => Completed
+    _             => Failed
+  }
+}
+
+service LlmAgentProvider : AgentProvider {
+
+  config {
+    provider: NonEmptyStr = "anthropic"
+    default_model: NonEmptyStr = "claude-sonnet-4-20250514"
+    max_turns: Int = 5
+  }
+
+  // SC-6: spawn wires to LLM API via REST transport.
+  // Implementation: create branch -> send prompt to LLM -> parse response.
+  operation spawn {
+    input {
+      prompt: String
+      repo_path: String
+      branch: NonEmptyStr
+      model: String?
+      timeout_seconds: Int?
+      approval_mode: ApprovalMode?
+    }
+    output {
+      run_id: NonEmptyStr
+      status: AgentStatus
+      started: Bool
+    }
+  }
+
+  // SC-6: poll returns terminal state (LLM-based agents are synchronous).
+  operation poll {
+    input { run_id: NonEmptyStr }
+    output { status: AgentStatus, finished: Bool, exit_code: Int?, error: String? }
+    readonly
+  }
+
+  operation cancel {
+    input { run_id: NonEmptyStr, reason: String? }
+    output { cancelled: Bool, final_status: AgentStatus }
+  }
+
+  // SC-6: get_result uses git diff to find changed files on agent branch.
+  operation get_result {
+    input { run_id: NonEmptyStr }
+    output { status: AgentStatus, exit_code: Int?, stdout: String?, stderr: String?, files_changed: List<String> }
+    readonly
+  }
+}
+
+// ── Tests ──────────────────────────────────────────────────────────
+
+fixture llm_agent_env {
+  mock config.provider -> "anthropic"
+  mock config.default_model -> "claude-sonnet-4-20250514"
+  mock config.max_turns -> 5
+}
+
+test llm_agent_spawn_anthropic : llm_agent_env {
+
+    input spawn.prompt -> "Add a hello world function to lib.rs"
+    input spawn.repo_path -> "."
+    input spawn.branch -> "sdlc/issue-42"
+    input spawn.model -> "claude-sonnet-4-20250514"
+
+    // Mock: git checkout succeeds
+    mock checkout/execute.response -> shell_response(0, "Switched to new branch 'sdlc/issue-42'")
+
+    // Mock: Anthropic Messages API response
+    mock llm_messages/execute.response -> rest_response(200, {
+      content: [{ type: "text", text: "## Plan\n\n1. Add hello_world function\n2. Add test\n\n```rust\npub fn hello_world() -> &'static str { \"Hello, world!\" }\n```" }],
+      model: "claude-sonnet-4-20250514",
+      stop_reason: "end_turn",
+      usage: { input_tokens: 500, output_tokens: 200 }
+    })
+
+    expect result.started == true
+    expect result.run_id is NonEmpty
+}
+
+test llm_agent_get_result_with_files : llm_agent_env {
+
+    input get_result.run_id -> "sdlc/issue-42-abc123"
+
+    // Mock: git diff returns changed files
+    mock diff/execute.response -> shell_response(0, "src/lib.rs\nsrc/tests/lib_test.rs")
+
+    expect result.status == Completed
+    expect result.files_changed |> count() >= 1
+}
