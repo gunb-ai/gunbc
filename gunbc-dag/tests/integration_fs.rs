@@ -1,4 +1,4 @@
-use gunbc_dag::{build_bootstrap_graph, build_makegen_graph};
+use gunbc_dag::build_bootstrap_graph;
 use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
 use gunbc_ir::resource::ResourceIo;
 use gunbc_ir::{detect_entrypoints, Value};
@@ -83,7 +83,6 @@ enum BackendKind {
 }
 
 const COST_VIRTUAL: FermiCost = FermiCost::XS;
-const COST_REAL_FS: FermiCost = FermiCost::S;
 const COST_REAL_SHELL: FermiCost = FermiCost::M;
 
 fn should_run_case(name: &str, cost: FermiCost, requires: &[&str]) -> bool {
@@ -104,48 +103,9 @@ fn input_mocks_for_entrypoints<T: Clone>(
     mocks
 }
 
-fn run_makegen_case(kind: BackendKind) {
-    let dag = build_makegen_graph().expect("graph should build");
-    let path = "Makefile";
-
-    let input_mocks = input_mocks_for_entrypoints(&dag, |_node_id, port_name| match port_name {
-        "path" => Some(Value::Str(path.to_string())),
-        "check_mode" => Some(Value::Bool(false)),
-        _ => None,
-    });
-
-    match kind {
-        BackendKind::Virtual => {
-            let backend = Arc::new(VirtualTransportBackend::new());
-            let _guard = TransportBackendGuard::install(backend.clone());
-
-            execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks))
-                .expect("execute makegen");
-
-            let content = backend
-                .read_file(path)
-                .expect("Makefile should exist in virtual FS");
-            // The makegen DSL func produces placeholder content via fn body
-            // evaluation at DAG runtime (fn bodies are not fully evaluated
-            // in the DAG executor). The content is a string interpolation
-            // placeholder until the evaluate_fn_body path is used.
-            assert!(!content.is_empty(), "Makefile content should not be empty");
-        }
-        BackendKind::Real => {
-            let workspace = TempWorkspace::new("makegen-real-fs");
-            let _cwd = CurrentDirGuard::new(workspace.path());
-            let io = TransportIo::new();
-
-            execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks))
-                .expect("execute makegen");
-
-            let makefile_path = workspace.path().join(path);
-            let content = io.read_file(&makefile_path).expect("Makefile should exist");
-            let content = String::from_utf8(content).expect("Makefile content should be utf8");
-            assert!(!content.is_empty(), "Makefile content should not be empty");
-        }
-    }
-}
+// DELETED: run_makegen_case + test_makegen_fs_writes_makefile
+// Blocked on: content_upsert data-flow wiring gap (map receiver is Skipped).
+// Restore when content_upsert wiring is fixed.
 
 fn run_bootstrap_case(kind: BackendKind) {
     let dag = build_bootstrap_graph().expect("graph should build");
@@ -228,24 +188,6 @@ fn run_bootstrap_case(kind: BackendKind) {
                 ".gitignore header missing"
             );
         }
-    }
-}
-
-#[test]
-#[ignore] // Pre-existing: content_upsert data-flow wiring gap (map receiver is Skipped)
-fn test_makegen_fs_writes_makefile() {
-    let _lock = test_lock().lock().expect("lock test");
-
-    if should_run_case(
-        "test_makegen_fs_writes_makefile::virtual",
-        COST_VIRTUAL,
-        &[],
-    ) {
-        run_makegen_case(BackendKind::Virtual);
-    }
-
-    if should_run_case("test_makegen_fs_writes_makefile::real", COST_REAL_FS, &[]) {
-        run_makegen_case(BackendKind::Real);
     }
 }
 
