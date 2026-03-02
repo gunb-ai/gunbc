@@ -8435,9 +8435,11 @@ fn collect_expr_leaf_refs(
             } else if let Some(bound_expr) = ctx.local_let_bindings.get(name) {
                 // C10: Resolve through local let binding. The let stmt will be
                 // included in the fn body; here we collect its transitive DAG
-                // dependencies. Insert into `seen` to prevent infinite recursion.
-                seen.insert(port_name);
-                collect_expr_leaf_refs(bound_expr, ctx, refs, seen, has_local_refs);
+                // dependencies. Only recurse if not already visited (prevents
+                // infinite recursion on cyclic/self-referential bindings).
+                if seen.insert(port_name) {
+                    collect_expr_leaf_refs(bound_expr, ctx, refs, seen, has_local_refs);
+                }
             } else {
                 *has_local_refs = true;
             }
@@ -8491,10 +8493,10 @@ fn collect_expr_leaf_refs(
                 } else if let Some(bound_expr) = ctx.local_let_bindings.get(base_ident.as_str()) {
                     // C10: Field access on a local let binding. Resolve
                     // transitively through the binding's expression to capture
-                    // its DAG dependencies. The evaluator handles field access
-                    // natively on Map/JSON values.
-                    seen.insert(base_ident.to_string());
-                    collect_expr_leaf_refs(bound_expr, ctx, refs, seen, has_local_refs);
+                    // its DAG dependencies. Only recurse if not already visited.
+                    if seen.insert(base_ident.to_string()) {
+                        collect_expr_leaf_refs(bound_expr, ctx, refs, seen, has_local_refs);
+                    }
                 }
             } else {
                 collect_expr_leaf_refs(base, ctx, refs, seen, has_local_refs);

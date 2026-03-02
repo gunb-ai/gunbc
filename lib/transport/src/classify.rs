@@ -152,16 +152,28 @@ fn extract_error_message_by_path(shape: &ErrorShapeExtraction, body: &JsonValue)
         .and_then(JsonValue::as_str)
         .map(String::from);
 
-    if message.is_some() {
-        return message;
-    }
+    let primary = if let Some(msg) = message {
+        msg
+    } else {
+        // Fall back to code_path if message_path yields nothing.
+        shape
+            .code_path
+            .as_ref()
+            .and_then(|p| resolve_json_path(p, body))
+            .map(json_value_to_string)?
+    };
 
-    // Fall back to code_path if message_path yields nothing.
-    shape
-        .code_path
+    // Compose with details_path context (e.g., documentation URL) if available.
+    let details = shape
+        .details_path
         .as_ref()
         .and_then(|p| resolve_json_path(p, body))
-        .map(json_value_to_string)
+        .map(json_value_to_string);
+
+    match details {
+        Some(detail) if !detail.is_empty() => Some(format!("{primary} (see: {detail})")),
+        _ => Some(primary),
+    }
 }
 
 /// Convert a JSON value to a string, stripping quotes from string values.

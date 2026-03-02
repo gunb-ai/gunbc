@@ -1153,7 +1153,9 @@ fn compute_receipt(
     emit_manifest_path: &str,
     source_paths: &[PathBuf],
 ) -> Option<CompileReceipt> {
-    // Source digest: sha256 of sorted per-file content hashes.
+    // Source digest: sha256 of sorted path:hash pairs.
+    // Including the path prevents false cache hits when files are renamed
+    // or contents are swapped between files.
     let mut source_hashes: Vec<String> = Vec::with_capacity(source_paths.len());
     for path in source_paths {
         #[allow(clippy::disallowed_methods)]
@@ -1161,7 +1163,7 @@ fn compute_receipt(
             Ok(bytes) => bytes,
             Err(_) => return None,
         };
-        source_hashes.push(sha256_hex(&content));
+        source_hashes.push(format!("{}:{}", path.display(), sha256_hex(&content)));
     }
     source_hashes.sort();
     let source_digest = sha256_hex(source_hashes.join("\n").as_bytes());
@@ -1254,14 +1256,14 @@ pub fn compute_source_digest_for_context(
 
 /// Compute a source digest from a list of source file paths.
 ///
-/// Returns SHA-256 of sorted per-file content hashes. Returns `None`
+/// Returns SHA-256 of sorted path:hash pairs. Returns `None`
 /// if any file cannot be read.
 pub fn compute_source_digest(source_paths: &[PathBuf]) -> Option<String> {
     let mut source_hashes: Vec<String> = Vec::with_capacity(source_paths.len());
     for path in source_paths {
         #[allow(clippy::disallowed_methods)]
         let content = std::fs::read(path).ok()?;
-        source_hashes.push(sha256_hex(&content));
+        source_hashes.push(format!("{}:{}", path.display(), sha256_hex(&content)));
     }
     source_hashes.sort();
     Some(sha256_hex(source_hashes.join("\n").as_bytes()))

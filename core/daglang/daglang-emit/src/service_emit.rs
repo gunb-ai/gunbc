@@ -922,6 +922,9 @@ pub fn emit_go_middleware_config(
             if let Some(ref cp) = shape.code_path {
                 out.push_str(&format!("\t\t\tCodePath: \"{}\",\n", cp));
             }
+            if let Some(ref dp) = shape.details_path {
+                out.push_str(&format!("\t\t\tDetailsPath: \"{}\",\n", dp));
+            }
             out.push_str("\t\t},\n");
         }
     }
@@ -1015,13 +1018,20 @@ pub fn emit_c_middleware_config(
                 "static const struct {{\n\
                  \x20   const char* message_path;\n\
                  \x20   const char* code_path;\n\
+                 \x20   const char* details_path;\n\
                  }} {op_name}_error_shape = {{\n\
                  \x20   .message_path = \"{message_path}\",\n\
                  \x20   .code_path = {code_path},\n\
+                 \x20   .details_path = {details_path},\n\
                  }};\n\n",
                 message_path = shape.message_path,
                 code_path = shape
                     .code_path
+                    .as_deref()
+                    .map(|p| format!("\"{}\"", p))
+                    .unwrap_or_else(|| "NULL".to_string()),
+                details_path = shape
+                    .details_path
                     .as_deref()
                     .map(|p| format!("\"{}\"", p))
                     .unwrap_or_else(|| "NULL".to_string()),
@@ -1070,6 +1080,18 @@ pub fn emit_mips_middleware_config(
                 "{op_name}_error_message_path:\n    .asciiz \"{}\"\n",
                 shape.message_path,
             ));
+            if let Some(ref cp) = shape.code_path {
+                out.push_str(&format!(
+                    "{op_name}_error_code_path:\n    .asciiz \"{}\"\n",
+                    cp,
+                ));
+            }
+            if let Some(ref dp) = shape.details_path {
+                out.push_str(&format!(
+                    "{op_name}_error_details_path:\n    .asciiz \"{}\"\n",
+                    dp,
+                ));
+            }
         }
     }
 
