@@ -58,7 +58,7 @@ C25 depends on C24 because the generic protocol interpreters need structural inp
 
 | Metric | Value |
 |--------|-------|
-| ExprCompute nodes across all tools | ~104 unique (175 including pipeline imports) |
+| ExprCompute nodes (unique / total appearances) | 46 unique / 175 total (shared stdlib nodes appear in many files) |
 | `__`-convention identifiers in fn bodies | Hundreds (every `param.field` inside ExprCompute) |
 | `remap_expr_idents` call sites | 1 (lowerer) |
 | `evaluate_fn_body` call site | 1 (ExprComputeOp::execute) |
@@ -75,17 +75,27 @@ executables (REST, Shell, File), not N per-service executables.
 
 ## 2. ExprCompute Pattern Census
 
-ExprCompute fn bodies fall into these categories, from simplest to most complex:
+**46 unique nodes** across 9 categories, ordered by complexity. 175 total appearances
+(shared stdlib nodes appear in many files via imports). 35 of 46 nodes appear in 2+
+files. The 17 shared stdlib/utility nodes account for ~143 of the 175 appearances.
 
-### Category A: Pure Field Projection (0 remaining — handled by C24 step 1)
+### Cat 1: Pure Record Construction — 10 nodes (21.7%)
+
+Record literals mixing `Ident(...)` field references and `Literal(...)` constants.
+No Let bindings, no control flow. Used as constructor functions for structured data.
+All 10 are from `shared.dag_util` (stage/document model builders).
 
 ```
-Return([("result", Ident("param__field"))])
+Return([("result", Record { fields: [("name", Ident("name")), ("success", Ident("success")),
+    ("stdout", Literal(String(""))), ("stderr", Ident("stderr")), ("skipped", Literal(Bool(false)))] })])
 ```
 
-Simple `param.field` return expressions. Already replaced by `GetField` nodes.
+Examples: `stage_result::return`, `blank_line::return`, `doc::return`, `section::return`.
 
-### Category B: Pipe Chain on Field (most common, ~40%)
+### Cat 2: Simple Pipe Chain — 6 nodes (13.0%)
+
+Single `Pipe { receiver, call }` expression, no Let bindings. Typically
+`list |> map(fn)`, `list |> count()`, or multi-step `list |> map(f) |> join(sep)`.
 
 ```
 Return([("result", Pipe {
@@ -94,52 +104,73 @@ Return([("result", Pipe {
 })])
 ```
 
-Field extraction (`partitioned.readable`) piped through a collection operation (`map`,
-`filter`, `join`, `fold`, `count`, `all`, `any`, `first`). The lambda bodies typically
-contain further `__`-convention field access.
+Examples: `classify_files::readable`, `classify_files::skipped`, `bootstrap::crate_count`,
+`collect_core_phony_str::return`.
 
-### Category C: Match Expression (~15%)
+### Cat 3: Pipe Chain + BinOp Tail — 5 nodes (10.9%)
+
+Pipe expression whose result feeds into a comparison or logical op.
+Common pattern: `list |> count() > 0` or `list |> all(predicate)`.
 
 ```
-Return([("result", Match {
-  expr: Ident("entry__kind"),
-  arms: [
-    LoweredMatchArm { pattern: Ident("Directory"), body: Literal(String("directory")) },
-    LoweredMatchArm { pattern: Ident("Missing"), body: Literal(String("missing")) },
-    ...
-  ]
+Return([("result", Pipe {
+  receiver: Ident("scan__dirs"),
+  call: BinOp { left: Call { name: "count", args: [] }, op: Gt, right: Literal(Int(0)) }
 })])
 ```
 
-Pattern matching on sum types or strings. Scrutinee is typically a field access.
+Examples: `bootstrap::success`, `all_succeeded::return`, `has_label::return`.
 
-### Category D: String Interpolation (~10%)
+### Cat 4: Simple BinOp — 6 nodes (13.0%)
 
-```
-Return([("result", StringInterp([
-  Literal("\t@echo \"  "),
-  Expr(Ident("w__name")),
-  Literal("  - "),
-  Expr(BinOp { left: Ident("w__comment"), op: NullCoalesce, right: Ident("w__description") }),
-  Literal("\"")
-])})])
-```
-
-Template strings with embedded field access and operators.
-
-### Category E: BinOp / Conditional (~10%)
+Direct BinOp expression, no Let bindings. Equality checks, logical OR/AND,
+string concatenation with Call sub-expressions.
 
 ```
-Return([("result", BinOp {
-  left: Ident("github_result__written"),
-  op: Or,
-  right: Ident("gitlab_result__written")
-})])
+Return([("result", BinOp { left: Ident("github_result__written"), op: Or,
+    right: Ident("gitlab_result__written") })])
 ```
 
-Binary operations (arithmetic, comparison, logical) on field-accessed values.
+Examples: `is_terminal::return` (`status == "TerminalFailed"`), `cigen::written`,
+`in_block::return` (`cp >= block__start && cp <= block__end_inclusive`).
 
-### Category F: Compound with Let Bindings (~25%)
+### Cat 5: Simple Match (flat) — 4 nodes (8.7%)
+
+Match on a sum type or value returning flat literals. No nesting, no Let bindings.
+
+```
+match stage { Idea => 0, Design => 1, DesignReview => 2, ..., TerminalFailed => 8 }
+```
+
+Examples: `stage_ordinal::return`, `stage_to_label::return`, `display_width_columns::return`,
+`apply_prefix::return`.
+
+### Cat 6: Nested Match — 3 nodes (6.5%)
+
+Match expressions with Match sub-expressions in arm bodies. Most structurally complex
+pure-expression pattern. The single most complex node in the codebase is
+`validate_transition_with_budget::return` — **3-level nested Match** returning typed
+sum-type Records with StringInterp error messages.
+
+```
+match entry__kind {
+    Directory => "directory",
+    Symlink => match entry__symlink_target {
+        TargetDir => "symlink to directory", Broken => "broken symlink", ...
+    },
+    RegularFile => "binary file"
+}
+```
+
+### Cat 7: Simple IfElse — 1 node (2.2%)
+
+Direct IfElse with nested IfElse, no Let bindings. Only one node:
+`render_document_line::return` — `if line__is_blank { "" } else { if line__is_comment { ... } else { line__text } }`.
+
+### Cat 8: Compound Let + Local Computation — 8 nodes (17.4%)
+
+Let bindings that bind to local expressions (PipeChain, BinOp, IfElse, Match, StringInterp).
+Multi-step computations with intermediate variables. All pure — no service calls.
 
 ```
 Let("joined", Pipe { receiver: Ident("prereqs"), call: Call { name: "join", ... } }),
@@ -150,8 +181,28 @@ Return([("result", IfElse {
 })])
 ```
 
-The most complex category. Let bindings create local variables used in subsequent
-expressions. Some Let bindings reference service call results (not just pure computation).
+Examples: `aggregate_results::return` (count passed/failed stages),
+`render_document::return` (two-phase rendering), `resolve_resource_target::return`
+(filter + first + match), `tool_phony_names::return` (multi-part string assembly).
+
+### Cat 9: Compound Let + Service Calls — 3 nodes (6.5%)
+
+Let bindings that invoke service operations. The most effectful ExprCompute nodes.
+Only **3 nodes** in this category:
+
+1. `build_all::overall_success` — `let test = cargo.Build.Test()`, `let clippy = ...`
+2. `codegen::success` — `let run = shell.Codegen.Run()`, returns `check__needed || run__success`
+3. `codegen::ran` — `let run = shell.Codegen.Run()`, returns `!check__needed`
+
+### Summary: Migration Ordering by Category
+
+| Priority | Categories | Nodes | Approach |
+|----------|-----------|-------|----------|
+| P1 (easy wins) | Cat 4, 5 | 10 | BinaryOp + MatchDispatch nodes |
+| P2 (medium) | Cat 1, 2, 7 | 17 | RecordConstruct + Collection + Conditional nodes |
+| P3 (harder) | Cat 3, 6 | 8 | Compound subgraph decomposition |
+| P4 (hardest) | Cat 8, 9 | 11 | Let binding → intermediate node chains |
+| **Total** | | **46** | |
 
 ## 3. Decomposition Strategy
 
@@ -342,9 +393,17 @@ This recurses into the expression, creating nodes bottom-up:
 7. Pipe → Collection node (or CallableOp for non-collection methods)
 8. Let bindings → intermediate nodes feeding downstream consumers
 
-**Migration strategy: incremental.** Start with the simplest categories
-(B, C, D, E) and leave Category F (compound with Let) for last. Each
-category can be migrated independently with snapshot test updates.
+**Migration strategy: incremental by priority tier (see §2 summary table).**
+
+- **P1** (10 nodes, Cat 4+5): BinaryOp + MatchDispatch. Simplest — no pipe chains
+  or Let bindings. Pure expression → node mapping.
+- **P2** (17 nodes, Cat 1+2+7): RecordConstruct + Collection + Conditional. Record
+  constructors are mechanical. Pipe chains use existing Collection infra.
+- **P3** (8 nodes, Cat 3+6): Compound subgraphs for pipe+BinOp and nested Match.
+  Requires multi-node emission per expression.
+- **P4** (11 nodes, Cat 8+9): Let binding chains. Each Let becomes an intermediate
+  node. Cat 9 (3 nodes with service calls) is the hardest — service call results
+  must be wired as DAG dependencies, not local variables.
 
 **Verification per category:**
 - ExprCompute count decreases by expected amount
