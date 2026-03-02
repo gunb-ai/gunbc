@@ -421,6 +421,8 @@ struct ExprComputeOp {
     input_ports: Vec<String>,
     referenced_vars: Vec<String>,
     output_port: String,
+    /// Pure `fn` definitions the expression body may call at runtime.
+    sibling_fns: HashMap<String, daglang_lower::LoweredFnBody>,
 }
 
 impl Executable for ExprComputeOp {
@@ -450,8 +452,7 @@ impl Executable for ExprComputeOp {
                 env.insert(ref_name.clone(), Value::Skipped);
             }
         }
-        let sibling_fns = HashMap::new();
-        let result = daglang_lower::eval::evaluate_fn_body(&self.fn_body, &env, &sibling_fns)
+        let result = daglang_lower::eval::evaluate_fn_body(&self.fn_body, &env, &self.sibling_fns)
             .map_err(|e| ExecError::new(e.message))?;
         // The fn body returns { result: <value> }, extract and output it.
         if let Some(value) = result.get(&self.output_port) {
@@ -917,7 +918,7 @@ fn resolve_primitive(
                 output_port,
             }))
         }
-        PrimitiveOpKind::ExprCompute { fn_body } => {
+        PrimitiveOpKind::ExprCompute { fn_body, sibling_fns } => {
             let input_ports: Vec<String> = inputs.iter().map(|p| p.name.0.clone()).collect();
             let referenced_vars = collect_fn_body_idents(fn_body);
             let output_port = outputs
@@ -929,6 +930,7 @@ fn resolve_primitive(
                 input_ports,
                 referenced_vars,
                 output_port,
+                sibling_fns: sibling_fns.clone(),
             }))
         }
     }

@@ -219,6 +219,10 @@ pub enum PrimitiveOpKind {
     /// as direct wiring edges.
     ExprCompute {
         fn_body: Box<LoweredFnBody>,
+        /// Pure `fn` definitions the expression body may call at runtime.
+        /// Populated when the expression contains `Call("fn_name", ...)`
+        /// references to user-defined pure fns (e.g., `stage_from_output`).
+        sibling_fns: HashMap<String, LoweredFnBody>,
     },
     /// C24: Extract a named field from a Map/Record/JSON input.
     /// Replaces `ExprCompute` + `__` convention for simple field projections.
@@ -1242,6 +1246,10 @@ struct LoweringContext<'a> {
     /// The body statements of the current callable, for including
     /// local let stmts in ExprCompute fn bodies.
     body_stmts: &'a [Stmt],
+    /// Pre-collected lowered bodies for all pure `fn` definitions in the project.
+    /// Passed to ExprCompute nodes as `sibling_fns` so the runtime evaluator
+    /// can execute user-defined fn calls (e.g., `stage_from_output`).
+    all_fn_bodies: &'a HashMap<String, LoweredFnBody>,
 }
 
 /// Per-node expansion state for pattern lowering.
@@ -3057,6 +3065,7 @@ fn add_dependency_edges(
                 let empty_services = HashMap::new();
                 let empty_expanded = HashMap::new();
                 let empty_locals = HashMap::new();
+                let empty_fn_bodies = HashMap::new();
                 let ctx = LoweringContext {
                     module_name: &module_name,
                     item_name,
@@ -3069,6 +3078,7 @@ fn add_dependency_edges(
                     expanded_results: &empty_expanded,
                     local_let_bindings: &empty_locals,
                     body_stmts: &[],
+                    all_fn_bodies: &empty_fn_bodies,
                 };
                 expand_content_upsert_patterns(builder, &ctx, stmts, target);
                 expand_non_generic_pattern_calls(builder, project, &ctx, stmts, target);
@@ -4269,6 +4279,7 @@ fn expand_non_generic_pattern_calls(
             bound_service_sources: ctx.bound_service_sources,
             local_let_bindings: ctx.local_let_bindings,
             body_stmts: ctx.body_stmts,
+            all_fn_bodies: ctx.all_fn_bodies,
         };
         let pexp = PatternExpansionParams {
             target,
@@ -6214,6 +6225,146 @@ fn derive_service_transport_triplets(
     Ok(manifest)
 }
 
+/// Collect lowered fn bodies for all pure `fn` definitions in the project.
+///
+/// These are passed as `sibling_fns` to ExprCompute nodes so the runtime
+/// evaluator can execute calls to user-defined pure fns (e.g., `stage_from_output`)
+/// that appear inside ExprCompute expression bodies.
+fn collect_project_fn_bodies(project: &TypedProject) -> HashMap<String, LoweredFnBody> {
+    let mut fn_bodies = HashMap::new();
+    for module in &project.modules {
+        for item in &module.ast.items {
+            let Item::FnDef(def) = &item.node else {
+                continue;
+            };
+            // Build the lowered fn body from the fn's stmts.
+            let stmts = &def.body.stmts;
+            let mut fn_stmts: Vec<expr::LoweredStmt> = Vec::new();
+            for stmt in stmts {
+                match stmt {
+                    Stmt::Let(name, expr) | Stmt::Assign(name, expr) => {
+                        fn_stmts.push(expr::LoweredStmt::Let(
+                            name.clone(),
+                            remap_expr_idents(expr),
+                        ));
+                    }
+                    Stmt::Expr(expr) => {
+                        fn_stmts.push(expr::LoweredStmt::Expr(remap_expr_idents(expr)));
+                    }
+                    Stmt::Return(fields) => {
+                        fn_stmts.push(expr::LoweredStmt::Return(
+                            fields
+                                .iter()
+                                .map(|(k, v)| (k.clone(), remap_expr_idents(v)))
+                                .collect(),
+                        ));
+                    }
+                    Stmt::Node(_) => {}
+                }
+            }
+            // If the fn has params and a trailing expression but no explicit
+            // return, wrap the trailing expression as a return.
+            if fn_stmts.is_empty() {
+                continue;
+            }
+            let body = LoweredFnBody { stmts: fn_stmts };
+            fn_bodies.insert(def.name.clone(), body);
+        }
+    }
+    fn_bodies
+}
+
+/// Collect the subset of `all_fn_bodies` that an expression transitively calls.
+fn collect_called_fn_bodies(
+    expr: &Expr,
+    all_fn_bodies: &HashMap<String, LoweredFnBody>,
+) -> HashMap<String, LoweredFnBody> {
+    let mut called = HashSet::new();
+    collect_call_names(expr, &mut called);
+    let mut result = HashMap::new();
+    for name in called {
+        if let Some(body) = all_fn_bodies.get(&name) {
+            result.insert(name, body.clone());
+        }
+    }
+    result
+}
+
+fn collect_call_names(expr: &Expr, names: &mut HashSet<String>) {
+    match expr {
+        Expr::Call(name, args) => {
+            names.insert(name.clone());
+            for (_, arg) in args {
+                collect_call_names(arg, names);
+            }
+        }
+        Expr::ServiceCall(_, args) => {
+            for (_, arg) in args {
+                collect_call_names(arg, names);
+            }
+        }
+        Expr::FieldAccess(base, _) => collect_call_names(base, names),
+        Expr::BinOp(l, _, r) | Expr::Pipe(l, r) => {
+            collect_call_names(l, names);
+            collect_call_names(r, names);
+        }
+        Expr::PipeCall(recv, _, args) => {
+            collect_call_names(recv, names);
+            for (_, arg) in args {
+                collect_call_names(arg, names);
+            }
+        }
+        Expr::UnaryOp(_, inner) | Expr::Lambda(_, inner) | Expr::After(inner, _) => {
+            collect_call_names(inner, names);
+        }
+        Expr::If(c, t, e) => {
+            collect_call_names(c, names);
+            collect_call_names(t, names);
+            if let Some(e) = e {
+                collect_call_names(e, names);
+            }
+        }
+        Expr::List(items) => {
+            for item in items {
+                collect_call_names(item, names);
+            }
+        }
+        Expr::Record(_, fields) | Expr::Return(fields) => {
+            for (_, v) in fields {
+                collect_call_names(v, names);
+            }
+        }
+        Expr::Match(scrutinee, arms) => {
+            collect_call_names(scrutinee, names);
+            for arm in arms {
+                collect_call_names(&arm.body, names);
+            }
+        }
+        Expr::StringInterp(parts) => {
+            for part in parts {
+                if let daglang_syntax::ast::StringPart::Expr(inner) = part {
+                    collect_call_names(inner, names);
+                }
+            }
+        }
+        Expr::For(_, iterable, _, body) => {
+            collect_call_names(iterable, names);
+            collect_call_names(body, names);
+        }
+        Expr::Guarded(inner, guard) => {
+            collect_call_names(inner, names);
+            collect_call_names(guard, names);
+        }
+        Expr::Map(entries) => {
+            for (k, v) in entries {
+                collect_call_names(k, names);
+                collect_call_names(v, names);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn add_service_call_edges(
     builder: &mut DagBuilder,
     project: &TypedProject,
@@ -6222,6 +6373,8 @@ fn add_service_call_edges(
     profile_bound_interfaces: &HashSet<String>,
     known_interface_types: &HashSet<String>,
 ) -> Result<(), LowerError> {
+    // Collect all pure fn bodies so ExprCompute nodes can call them at runtime.
+    let all_fn_bodies = collect_project_fn_bodies(project);
     // Track transport endpoint usage across ALL modules and callables so
     // that the second caller to reference the same service operation gets
     // a cloned triplet (_c1, _c2, …) instead of wiring duplicate scalar
@@ -6598,6 +6751,7 @@ fn add_service_call_edges(
                 expanded_results: &empty_expanded,
                 local_let_bindings: &local_let_bindings,
                 body_stmts: stmts,
+                all_fn_bodies: &all_fn_bodies,
             };
             wire_fn_call_arguments(builder, &fn_ctx, stmts);
             // Wire for-loop iterable expressions to loop node "items" ports.
@@ -8180,6 +8334,24 @@ fn wire_fn_call_arguments(
                     );
                     continue;
                 }
+                // Local let binding: synthesize an ExprCompute for the binding
+                // expression and wire it to the fn endpoint's param port.
+                // This handles cases like `stages = [stage_from_output(...), ...]`
+                // passed as `aggregate_results(stages: stages)`.
+                if let Some(let_expr) = ctx.local_let_bindings.get(arg_ident) {
+                    let output_port = Port::with_cardinality(param_name, "Any", Cardinality::ONE);
+                    if let Some((src_node, src_port)) = synthesize_expr_compute(
+                        builder, ctx, let_expr, &output_port, param_name, &format!("arg_{index}"),
+                    ) {
+                        builder.add_edge(
+                            src_node.as_str(),
+                            src_port.as_str(),
+                            fn_endpoint.node_id.as_str(),
+                            param_name,
+                        );
+                        continue;
+                    }
+                }
             }
             if let Some(literal) = arg.literal.as_ref() {
                 let src = ensure_literal_source_node(
@@ -8880,7 +9052,21 @@ fn synthesize_expr_compute(
     ]));
     let fn_body = LoweredFnBody { stmts: fn_stmts };
 
-    // 4. Create the compute node.
+    // 4. Collect sibling fn bodies that the expression may call at runtime.
+    let mut sibling_fns = collect_called_fn_bodies(expr, ctx.all_fn_bodies);
+    // Also include fns called from local let bindings included in the body.
+    for stmt in ctx.body_stmts {
+        match stmt {
+            Stmt::Let(name, let_expr) | Stmt::Assign(name, let_expr)
+                if ctx.local_let_bindings.contains_key(name) =>
+            {
+                sibling_fns.extend(collect_called_fn_bodies(let_expr, ctx.all_fn_bodies));
+            }
+            _ => {}
+        }
+    }
+
+    // 5. Create the compute node.
     let node_id = format!(
         "expr_compute_{}",
         sanitize_identifier(&format!("{}_{}_{}_{}", ctx.module_name, ctx.item_name, output_name, disambiguator))
@@ -8894,6 +9080,7 @@ fn synthesize_expr_compute(
             name: format!("expr_compute::{}::{}", ctx.item_name, output_name),
             kind: PrimitiveOpKind::ExprCompute {
                 fn_body: Box::new(fn_body),
+                sibling_fns,
             },
         },
     ));

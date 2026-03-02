@@ -742,6 +742,7 @@ fn eval_pipe_method(
                     Ok(Value::List(results))
                 }
                 (Value::List(items), _) => Ok(Value::List(items)),
+                (Value::Skipped, _) => Ok(Value::List(vec![])),
                 _ => Err(EvalError::new("filter requires a list")),
             }
         }
@@ -763,6 +764,7 @@ fn eval_pipe_method(
                     Ok(Value::List(results))
                 }
                 (Value::List(items), _) => Ok(Value::List(items)),
+                (Value::Skipped, _) => Ok(Value::List(vec![])),
                 _ => Err(EvalError::new("filter_map requires a list")),
             }
         }
@@ -785,6 +787,7 @@ fn eval_pipe_method(
                     Ok(Value::List(results))
                 }
                 (Value::List(items), _) => Ok(Value::List(items)),
+                (Value::Skipped, _) => Ok(Value::List(vec![])),
                 _ => Err(EvalError::new("flat_map requires a list")),
             }
         }
@@ -809,6 +812,7 @@ fn eval_pipe_method(
                     }
                     Ok(acc)
                 }
+                (Value::Skipped, Some((_, init_expr)), _) => eval_expr(init_expr, env, sibling_fns),
                 _ => Err(EvalError::new("fold requires list, init, and f")),
             }
         }
@@ -824,6 +828,14 @@ fn eval_pipe_method(
                     }
                     Ok(Value::List(base))
                 }
+                (Value::Skipped, Some((_, items_expr))) => {
+                    let to_append = eval_expr(items_expr, env, sibling_fns)?;
+                    match to_append {
+                        Value::List(items) => Ok(Value::List(items)),
+                        other => Ok(Value::List(vec![other])),
+                    }
+                }
+                (Value::Skipped, None) => Ok(Value::List(vec![])),
                 (other, _) => Err(EvalError::new(format!(
                     "append requires a list, got {:?}",
                     other
@@ -833,6 +845,7 @@ fn eval_pipe_method(
 
         "count" => match receiver {
             Value::List(items) => Ok(Value::Int(items.len() as i64)),
+            Value::Skipped => Ok(Value::Int(0)),
             _ => Err(EvalError::new("count requires a list")),
         },
 
@@ -844,16 +857,19 @@ fn eval_pipe_method(
                     .sum();
                 Ok(Value::Int(total))
             }
+            Value::Skipped => Ok(Value::Int(0)),
             _ => Err(EvalError::new("sum requires a list")),
         },
 
         "first" => match receiver {
             Value::List(items) => Ok(items.into_iter().next().unwrap_or(Value::Unit)),
+            Value::Skipped => Ok(Value::Unit),
             _ => Err(EvalError::new("first requires a list")),
         },
 
         "last" => match receiver {
             Value::List(items) => Ok(items.into_iter().last().unwrap_or(Value::Unit)),
+            Value::Skipped => Ok(Value::Unit),
             _ => Err(EvalError::new("last requires a list")),
         },
 
@@ -871,6 +887,7 @@ fn eval_pipe_method(
                     }
                     Ok(Value::Bool(false))
                 }
+                (Value::Skipped, _) => Ok(Value::Bool(false)),
                 _ => Err(EvalError::new("any requires list and predicate")),
             }
         }
@@ -889,6 +906,7 @@ fn eval_pipe_method(
                     }
                     Ok(Value::Bool(true))
                 }
+                (Value::Skipped, _) => Ok(Value::Bool(true)),
                 _ => Err(EvalError::new("all requires list and predicate")),
             }
         }
@@ -902,6 +920,7 @@ fn eval_pipe_method(
                     let needle = eval_expr(expr, env, sibling_fns)?;
                     Ok(Value::Bool(items.contains(&needle)))
                 }
+                (Value::Skipped, _) => Ok(Value::Bool(false)),
                 _ => Err(EvalError::new("contains requires list and item")),
             }
         }
@@ -927,6 +946,7 @@ fn eval_pipe_method(
                     Ok(Value::List(keyed.into_iter().map(|(_, v)| v).collect()))
                 }
                 (Value::List(items), _) => Ok(Value::List(items)),
+                (Value::Skipped, _) => Ok(Value::List(vec![])),
                 _ => Err(EvalError::new("sort_by requires a list")),
             }
         }
@@ -1359,5 +1379,127 @@ mod tests {
             [("rec".to_string(), Value::Map(map))].into_iter().collect();
         let result = evaluate_fn_body(&body, &inputs, &empty_siblings()).unwrap();
         assert_eq!(result["return"], Value::Str("test".to_string()));
+    }
+
+    /// Pipe methods that expect a list should treat `Value::Skipped` as an empty
+    /// list rather than failing. This matches the `map` and `join` precedent and
+    /// prevents runtime errors when ExprCompute nodes receive Skipped inputs
+    /// (e.g., when pipeline stage arguments are not fully wired).
+    #[test]
+    fn pipe_methods_treat_skipped_as_empty_list() {
+        let env = Env::from_inputs(&HashMap::new());
+        let sibling_fns = HashMap::new();
+        let identity_lambda = vec![(
+            None,
+            LoweredExpr::Lambda {
+                params: vec!["x".to_string()],
+                body: Box::new(LoweredExpr::Ident("x".to_string())),
+            },
+        )];
+        let true_lambda = vec![(
+            None,
+            LoweredExpr::Lambda {
+                params: vec!["x".to_string()],
+                body: Box::new(LoweredExpr::Literal(LoweredLiteral::Bool(true))),
+            },
+        )];
+
+        // filter on Skipped -> empty list
+        let result =
+            eval_pipe_method("filter", Value::Skipped, &true_lambda, &env, &sibling_fns).unwrap();
+        assert_eq!(result, Value::List(vec![]));
+
+        // filter_map on Skipped -> empty list
+        let result = eval_pipe_method(
+            "filter_map",
+            Value::Skipped,
+            &identity_lambda,
+            &env,
+            &sibling_fns,
+        )
+        .unwrap();
+        assert_eq!(result, Value::List(vec![]));
+
+        // flat_map on Skipped -> empty list
+        let result = eval_pipe_method(
+            "flat_map",
+            Value::Skipped,
+            &identity_lambda,
+            &env,
+            &sibling_fns,
+        )
+        .unwrap();
+        assert_eq!(result, Value::List(vec![]));
+
+        // count on Skipped -> 0
+        let result =
+            eval_pipe_method("count", Value::Skipped, &[], &env, &sibling_fns).unwrap();
+        assert_eq!(result, Value::Int(0));
+
+        // sum on Skipped -> 0
+        let result =
+            eval_pipe_method("sum", Value::Skipped, &[], &env, &sibling_fns).unwrap();
+        assert_eq!(result, Value::Int(0));
+
+        // first on Skipped -> Unit
+        let result =
+            eval_pipe_method("first", Value::Skipped, &[], &env, &sibling_fns).unwrap();
+        assert_eq!(result, Value::Unit);
+
+        // last on Skipped -> Unit
+        let result =
+            eval_pipe_method("last", Value::Skipped, &[], &env, &sibling_fns).unwrap();
+        assert_eq!(result, Value::Unit);
+
+        // any on Skipped -> false
+        let result =
+            eval_pipe_method("any", Value::Skipped, &true_lambda, &env, &sibling_fns).unwrap();
+        assert_eq!(result, Value::Bool(false));
+
+        // all on Skipped -> true (vacuously true)
+        let result =
+            eval_pipe_method("all", Value::Skipped, &true_lambda, &env, &sibling_fns).unwrap();
+        assert_eq!(result, Value::Bool(true));
+
+        // contains on Skipped -> false
+        let needle_args = vec![(
+            Some("item".to_string()),
+            LoweredExpr::Literal(LoweredLiteral::String("x".to_string())),
+        )];
+        let result = eval_pipe_method(
+            "contains",
+            Value::Skipped,
+            &needle_args,
+            &env,
+            &sibling_fns,
+        )
+        .unwrap();
+        assert_eq!(result, Value::Bool(false));
+
+        // sort_by on Skipped -> empty list
+        let result = eval_pipe_method(
+            "sort_by",
+            Value::Skipped,
+            &identity_lambda,
+            &env,
+            &sibling_fns,
+        )
+        .unwrap();
+        assert_eq!(result, Value::List(vec![]));
+
+        // map on Skipped -> empty list (pre-existing behavior, verify)
+        let result =
+            eval_pipe_method("map", Value::Skipped, &identity_lambda, &env, &sibling_fns)
+                .unwrap();
+        assert_eq!(result, Value::List(vec![]));
+
+        // join on Skipped -> empty string (pre-existing behavior, verify)
+        let sep_args = vec![(
+            None,
+            LoweredExpr::Literal(LoweredLiteral::String(",".to_string())),
+        )];
+        let result =
+            eval_pipe_method("join", Value::Skipped, &sep_args, &env, &sibling_fns).unwrap();
+        assert_eq!(result, Value::Str(String::new()));
     }
 }
