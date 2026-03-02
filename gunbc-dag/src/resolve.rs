@@ -393,11 +393,11 @@ impl Executable for GetFieldOp {
             Value::Map(fields) => fields
                 .get(&self.field)
                 .cloned()
-                .unwrap_or(Value::Skipped),
+                .unwrap_or(Value::Json(serde_json::Value::Null)),
             Value::Json(serde_json::Value::Object(map)) => map
                 .get(&self.field)
                 .map(|v| Value::Json(v.clone()))
-                .unwrap_or(Value::Skipped),
+                .unwrap_or(Value::Json(serde_json::Value::Null)),
             Value::Skipped => Value::Skipped,
             _ => Value::Skipped,
         };
