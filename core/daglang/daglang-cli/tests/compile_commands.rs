@@ -54,12 +54,6 @@ fn expected_makegen_expand_snapshot() -> String {
     )
 }
 
-fn unique_temp_output_file(name: &str, extension: &str) -> PathBuf {
-    let root = unique_temp_dir(name);
-    std::fs::create_dir_all(&root).expect("failed to create temp output dir");
-    root.join(format!("{name}.{extension}"))
-}
-
 fn write_minimal_directory_compile_fixture(root: &Path) {
     std::fs::create_dir_all(root.join("dsl/sample")).expect("failed to create dsl fixture tree");
     std::fs::write(
