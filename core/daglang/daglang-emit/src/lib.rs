@@ -321,6 +321,16 @@ pub fn emit_rust_bundle(
         }
     }
 
+    // TL-14: Also collect symbols for middleware config emission.
+    let (rust_symbols, _, _) = collect_symbols_with_metadata(dag)?;
+    let rust_middleware_funcs =
+        emit_middleware_inline_funcs(&rust_symbols, service_emit::emit_rust_middleware_config);
+    if !rust_middleware_funcs.is_empty() {
+        emitted_functions.push(format!(
+            "// Transport middleware configuration (TL-14).\n{rust_middleware_funcs}"
+        ));
+    }
+
     let module_count = artifacts.tool_metadata.modules.len();
     let manifest_rendered = render_manifest(&artifacts.manifest);
 
@@ -345,6 +355,10 @@ pub fn emit_rust_bundle(
             content: backend.emit_progress_manifest(&manifest_rendered),
         },
     ];
+    // TL-14: Emit middleware config JSON manifest.
+    if let Some(manifest) = emit_middleware_manifest("rust", &rust_symbols) {
+        files.push(manifest);
+    }
     if let Some(test_file) = test_gen::emit_dry_run_completion_test("rust", &artifacts.obligations)
     {
         files.push(test_file);
@@ -383,7 +397,7 @@ pub fn emit_go_bundle(
 
     let has_service_transport = symbols.iter().any(|s| s.spec.is_some());
 
-    let symbol_funcs = symbols
+    let mut symbol_funcs = symbols
         .iter()
         .map(|sym| {
             if let Some(ref spec) = sym.spec {
@@ -400,6 +414,14 @@ pub fn emit_go_bundle(
         })
         .collect::<Vec<_>>()
         .join("\n");
+
+    // TL-14: Append inline Go middleware config functions.
+    let go_middleware_funcs =
+        emit_middleware_inline_funcs(&symbols, service_emit::emit_go_middleware_config);
+    if !go_middleware_funcs.is_empty() {
+        symbol_funcs.push_str("\n// Transport middleware configuration (TL-14).\n");
+        symbol_funcs.push_str(&go_middleware_funcs);
+    }
 
     let entrypoint_lits = entrypoints
         .iter()
@@ -450,6 +472,10 @@ pub fn emit_go_bundle(
             content: manifest_rendered,
         },
     ];
+    // TL-14: Emit middleware config JSON manifest.
+    if let Some(manifest) = emit_middleware_manifest("go", &symbols) {
+        files.push(manifest);
+    }
     if let Some(test_file) = test_gen::emit_dry_run_completion_test("go", &artifacts.obligations) {
         files.push(test_file);
     }
@@ -501,6 +527,15 @@ pub fn emit_c_bundle(
         .collect::<Vec<_>>()
         .join("\n");
 
+    // TL-14: Emit inline C middleware config structs.
+    let c_middleware_funcs =
+        emit_middleware_inline_funcs(&symbols, service_emit::emit_c_middleware_config);
+    let symbol_funcs = if c_middleware_funcs.is_empty() {
+        symbol_funcs
+    } else {
+        format!("{symbol_funcs}\n/* Transport middleware configuration (TL-14). */\n{c_middleware_funcs}\n")
+    };
+
     let entrypoint_defs = entrypoints
         .iter()
         .map(|entry| format!("\"{entry}\""))
@@ -541,6 +576,10 @@ pub fn emit_c_bundle(
             content: manifest_rendered,
         },
     ];
+    // TL-14: Emit middleware config JSON manifest.
+    if let Some(manifest) = emit_middleware_manifest("c", &symbols) {
+        files.push(manifest);
+    }
     if let Some(test_file) = test_gen::emit_dry_run_completion_test("c", &artifacts.obligations) {
         files.push(test_file);
     }
@@ -585,6 +624,10 @@ pub fn emit_mips_bundle(
         .collect::<Vec<_>>()
         .join("\n");
 
+    // TL-14: Emit inline MIPS middleware config data.
+    let mips_middleware_data =
+        emit_middleware_inline_funcs(&symbols, service_emit::emit_mips_middleware_config);
+
     let main_s = if has_makegen_asset {
         let content = require_embedded_asset(embedded_data, "mips", MAKEGEN_ASSET_KEY)?
             .content
@@ -596,9 +639,11 @@ pub fn emit_mips_bundle(
             .collect::<Vec<_>>()
             .join(", ");
         format!(
-            ".text\n.globl main\n\n{label_defs}\nmain:\n    li $a0, 1\n    la $a1, makegen_content\n    li $a2, {}\n    li $v0, 4004\n    syscall\n    li $a0, 0\n    li $v0, 4001\n    syscall\n\n.data\nmakegen_content:\n    .byte {makefile_bytes}\n",
+            ".text\n.globl main\n\n{label_defs}\nmain:\n    li $a0, 1\n    la $a1, makegen_content\n    li $a2, {}\n    li $v0, 4004\n    syscall\n    li $a0, 0\n    li $v0, 4001\n    syscall\n\n.data\nmakegen_content:\n    .byte {makefile_bytes}\n{mips_middleware_data}",
             content.len()
         )
+    } else if !mips_middleware_data.is_empty() {
+        format!(".text\n.globl main\n\n{label_defs}\nmain:\n    li $v0, 10\n    syscall\n\n.data\n{mips_middleware_data}")
     } else {
         format!(".text\n.globl main\n\n{label_defs}\nmain:\n    li $v0, 10\n    syscall\n")
     };
@@ -613,6 +658,10 @@ pub fn emit_mips_bundle(
             content: manifest_rendered,
         },
     ];
+    // TL-14: Emit middleware config JSON manifest.
+    if let Some(manifest) = emit_middleware_manifest("mips", &symbols) {
+        files.push(manifest);
+    }
     if let Some(test_file) = test_gen::emit_dry_run_completion_test("mips", &artifacts.obligations)
     {
         files.push(test_file);
@@ -637,6 +686,64 @@ struct CollectedSymbol {
     name: String,
     spec: Option<ServiceOperationSpec>,
     service_phase: Option<service_emit::ServiceTransportPhase>,
+}
+
+/// Collect middleware configs from symbols for JSON manifest emission (TL-14).
+///
+/// Returns a list of (operation_name, config) pairs, deduplicated to one entry
+/// per operation (prepare/execute/parse share the same spec).
+fn collect_middleware_configs(
+    symbols: &[CollectedSymbol],
+) -> Vec<(String, &gunbc_ir::transport::TransportMiddlewareConfig)> {
+    let mut seen = HashSet::new();
+    let mut configs = Vec::new();
+    for sym in symbols {
+        if sym.service_phase != Some(service_emit::ServiceTransportPhase::Prepare) {
+            continue;
+        }
+        let middleware = sym
+            .spec
+            .as_ref()
+            .and_then(service_emit::extract_middleware);
+        if let Some(mw) = middleware {
+            if seen.insert(&sym.name) {
+                configs.push((sym.name.clone(), mw));
+            }
+        }
+    }
+    configs
+}
+
+/// Emit middleware config as an additional JSON manifest file (TL-14).
+fn emit_middleware_manifest(
+    backend: &str,
+    symbols: &[CollectedSymbol],
+) -> Option<EmittedFile> {
+    let configs = collect_middleware_configs(symbols);
+    if configs.is_empty() {
+        return None;
+    }
+    let json = service_emit::serialize_middleware_config_json(&configs);
+    Some(EmittedFile {
+        path: format!("target/generated/{backend}/transport_middleware.json"),
+        content: json,
+    })
+}
+
+/// Emit inline middleware config functions for a specific backend (TL-14).
+fn emit_middleware_inline_funcs(
+    symbols: &[CollectedSymbol],
+    emit_fn: fn(&str, &gunbc_ir::transport::TransportMiddlewareConfig) -> String,
+) -> String {
+    let configs = collect_middleware_configs(symbols);
+    if configs.is_empty() {
+        return String::new();
+    }
+    configs
+        .iter()
+        .map(|(name, config)| emit_fn(name, config))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn collect_symbols_with_metadata(

@@ -17,6 +17,9 @@ use daglang_lower::{
     ArgvSegment, FieldSpec, RestOperationSpec, ServiceOperationSpec, ShellOperationSpec,
     ShellOutputParsing,
 };
+use gunbc_ir::transport::middleware::{
+    RateLimitAlgorithm, RetryBackoff, TransportMiddlewareConfig,
+};
 
 /// Explicit service transport phase for generated operation nodes.
 ///
@@ -699,6 +702,411 @@ fn c_path_args(template: &str, _fields: &[FieldSpec]) -> String {
 }
 
 // ===========================================================================
+// Multi-target transport middleware config emission (TL-14)
+// ===========================================================================
+
+/// Extract `TransportMiddlewareConfig` from a `ServiceOperationSpec`, if present.
+pub fn extract_middleware(spec: &ServiceOperationSpec) -> Option<&TransportMiddlewareConfig> {
+    match spec {
+        ServiceOperationSpec::Rest(rest) => rest.middleware.as_ref(),
+        _ => None,
+    }
+}
+
+/// Emit a Rust function that constructs `TransportMiddlewareConfig` for an operation.
+///
+/// The generated code links to the Target SDK types from `gunbc_ir::transport::middleware`.
+pub fn emit_rust_middleware_config(
+    op_name: &str,
+    config: &TransportMiddlewareConfig,
+) -> String {
+    let mut out = String::new();
+    out.push_str(&format!(
+        "/// Transport middleware configuration for `{op_name}`.\n\
+         pub fn {op_name}_middleware_config() -> gunbc_ir::transport::middleware::TransportMiddlewareConfig {{\n\
+         "
+    ));
+    out.push_str("    gunbc_ir::transport::middleware::TransportMiddlewareConfig {\n");
+
+    // Rate limit.
+    if let Some(ref rl) = config.rate_limit {
+        let algo = match rl.algorithm {
+            RateLimitAlgorithm::TokenBucket => "TokenBucket",
+            RateLimitAlgorithm::SlidingWindow => "SlidingWindow",
+        };
+        out.push_str(&format!(
+            "        rate_limit: Some(gunbc_ir::transport::middleware::RateLimitConfig {{\n\
+             \x20           scope_key: \"{scope_key}\".to_string(),\n\
+             \x20           algorithm: gunbc_ir::transport::middleware::RateLimitAlgorithm::{algo},\n\
+             \x20           max_burst: {max_burst},\n\
+             \x20           requests: {requests},\n\
+             \x20           window_seconds: {window_seconds},\n\
+             \x20           honor_retry_after: {honor_retry_after},\n\
+             \x20       }}),\n",
+            scope_key = rl.scope_key,
+            max_burst = rl.max_burst,
+            requests = rl.requests,
+            window_seconds = rl.window_seconds,
+            honor_retry_after = rl.honor_retry_after,
+        ));
+    } else {
+        out.push_str("        rate_limit: None,\n");
+    }
+
+    // Retry.
+    if let Some(ref retry) = config.retry {
+        let backoff = match retry.backoff {
+            RetryBackoff::Fixed => "Fixed",
+            RetryBackoff::Exponential => "Exponential",
+            RetryBackoff::ExponentialJitter => "ExponentialJitter",
+        };
+        let statuses = retry
+            .retry_statuses
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(", ");
+        out.push_str(&format!(
+            "        retry: Some(gunbc_ir::transport::middleware::RetryConfig {{\n\
+             \x20           max_attempts: {max_attempts},\n\
+             \x20           base_delay_ms: {base_delay_ms},\n\
+             \x20           max_delay_ms: {max_delay_ms},\n\
+             \x20           backoff: gunbc_ir::transport::middleware::RetryBackoff::{backoff},\n\
+             \x20           retry_statuses: vec![{statuses}],\n\
+             \x20           retry_network_errors: {retry_network_errors},\n\
+             \x20           require_idempotent_or_readonly: {require_idempotent},\n\
+             \x20           circuit_breaker: None,\n\
+             \x20       }}),\n",
+            max_attempts = retry.max_attempts,
+            base_delay_ms = retry.base_delay_ms,
+            max_delay_ms = retry.max_delay_ms,
+            retry_network_errors = retry.retry_network_errors,
+            require_idempotent = retry.require_idempotent_or_readonly,
+        ));
+    } else {
+        out.push_str("        retry: None,\n");
+    }
+
+    // Credential.
+    out.push_str("        credential: None,\n");
+
+    // Response classification with error shape.
+    if let Some(ref rc) = config.response_classification {
+        out.push_str(
+            "        response_classification: Some(gunbc_ir::transport::middleware::ResponseClassification {\n",
+        );
+        out.push_str(&format!(
+            "            provider: gunbc_ir::transport::middleware::ResponseProvider::{provider},\n",
+            provider = rust_response_provider_variant(rc.provider),
+        ));
+        out.push_str(&format!(
+            "            prioritize_auth_errors: {pae},\n",
+            pae = rc.prioritize_auth_errors,
+        ));
+        out.push_str(&format!(
+            "            parse_provider_error_shapes: {ppes},\n",
+            ppes = rc.parse_provider_error_shapes,
+        ));
+        if let Some(ref shape) = rc.error_shape {
+            out.push_str(
+                "            error_shape: Some(gunbc_ir::transport::middleware::ErrorShapeExtraction {\n",
+            );
+            out.push_str(&format!(
+                "                message_path: \"{}\".to_string(),\n",
+                shape.message_path,
+            ));
+            if let Some(ref cp) = shape.code_path {
+                out.push_str(&format!(
+                    "                code_path: Some(\"{}\".to_string()),\n",
+                    cp,
+                ));
+            } else {
+                out.push_str("                code_path: None,\n");
+            }
+            if let Some(ref dp) = shape.details_path {
+                out.push_str(&format!(
+                    "                details_path: Some(\"{}\".to_string()),\n",
+                    dp,
+                ));
+            } else {
+                out.push_str("                details_path: None,\n");
+            }
+            out.push_str("            }),\n");
+        } else {
+            out.push_str("            error_shape: None,\n");
+        }
+        out.push_str("        }),\n");
+    } else {
+        out.push_str("        response_classification: None,\n");
+    }
+
+    out.push_str("    }\n");
+    out.push_str("}\n");
+    out
+}
+
+/// Emit a Go struct literal returning `TransportMiddlewareConfig` for an operation.
+pub fn emit_go_middleware_config(
+    op_name: &str,
+    config: &TransportMiddlewareConfig,
+) -> String {
+    let mut out = String::new();
+    out.push_str(&format!(
+        "// {op_name}MiddlewareConfig returns the transport middleware configuration.\n\
+         func {op_name}MiddlewareConfig() TransportMiddlewareConfig {{\n\
+         \treturn TransportMiddlewareConfig{{\n"
+    ));
+
+    // Rate limit.
+    if let Some(ref rl) = config.rate_limit {
+        let algo = match rl.algorithm {
+            RateLimitAlgorithm::TokenBucket => "TokenBucket",
+            RateLimitAlgorithm::SlidingWindow => "SlidingWindow",
+        };
+        out.push_str(&format!(
+            "\t\tRateLimit: &RateLimitConfig{{\n\
+             \t\t\tScopeKey: \"{scope_key}\",\n\
+             \t\t\tAlgorithm: \"{algo}\",\n\
+             \t\t\tMaxBurst: {max_burst},\n\
+             \t\t\tRequests: {requests},\n\
+             \t\t\tWindowSeconds: {window_seconds},\n\
+             \t\t\tHonorRetryAfter: {honor_retry_after},\n\
+             \t\t}},\n",
+            scope_key = rl.scope_key,
+            max_burst = rl.max_burst,
+            requests = rl.requests,
+            window_seconds = rl.window_seconds,
+            honor_retry_after = rl.honor_retry_after,
+        ));
+    }
+
+    // Retry.
+    if let Some(ref retry) = config.retry {
+        let backoff = match retry.backoff {
+            RetryBackoff::Fixed => "fixed",
+            RetryBackoff::Exponential => "exponential",
+            RetryBackoff::ExponentialJitter => "exponential_jitter",
+        };
+        let statuses = retry
+            .retry_statuses
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(", ");
+        out.push_str(&format!(
+            "\t\tRetry: &RetryConfig{{\n\
+             \t\t\tMaxAttempts: {max_attempts},\n\
+             \t\t\tBaseDelayMs: {base_delay_ms},\n\
+             \t\t\tMaxDelayMs: {max_delay_ms},\n\
+             \t\t\tBackoff: \"{backoff}\",\n\
+             \t\t\tRetryStatuses: []int{{{statuses}}},\n\
+             \t\t\tRetryNetworkErrors: {retry_network_errors},\n\
+             \t\t\tRequireIdempotentOrReadonly: {require_idempotent},\n\
+             \t\t}},\n",
+            max_attempts = retry.max_attempts,
+            base_delay_ms = retry.base_delay_ms,
+            max_delay_ms = retry.max_delay_ms,
+            retry_network_errors = retry.retry_network_errors,
+            require_idempotent = retry.require_idempotent_or_readonly,
+        ));
+    }
+
+    // Error shape.
+    if let Some(ref rc) = config.response_classification {
+        if let Some(ref shape) = rc.error_shape {
+            out.push_str(&format!(
+                "\t\tErrorShape: &ErrorShapeExtraction{{\n\
+                 \t\t\tMessagePath: \"{message_path}\",\n",
+                message_path = shape.message_path,
+            ));
+            if let Some(ref cp) = shape.code_path {
+                out.push_str(&format!("\t\t\tCodePath: \"{}\",\n", cp));
+            }
+            out.push_str("\t\t},\n");
+        }
+    }
+
+    out.push_str("\t}\n}\n");
+    out
+}
+
+/// Emit C middleware config constants for an operation.
+pub fn emit_c_middleware_config(
+    op_name: &str,
+    config: &TransportMiddlewareConfig,
+) -> String {
+    let mut out = String::new();
+    out.push_str(&format!(
+        "/* {op_name}: transport middleware configuration */\n"
+    ));
+
+    if let Some(ref rl) = config.rate_limit {
+        let algo = match rl.algorithm {
+            RateLimitAlgorithm::TokenBucket => "TOKEN_BUCKET",
+            RateLimitAlgorithm::SlidingWindow => "SLIDING_WINDOW",
+        };
+        out.push_str(&format!(
+            "static const struct {{\n\
+             \x20   const char* scope_key;\n\
+             \x20   const char* algorithm;\n\
+             \x20   unsigned int max_burst;\n\
+             \x20   unsigned int requests;\n\
+             \x20   unsigned int window_seconds;\n\
+             \x20   int honor_retry_after;\n\
+             }} {op_name}_rate_limit = {{\n\
+             \x20   .scope_key = \"{scope_key}\",\n\
+             \x20   .algorithm = \"{algo}\",\n\
+             \x20   .max_burst = {max_burst},\n\
+             \x20   .requests = {requests},\n\
+             \x20   .window_seconds = {window_seconds},\n\
+             \x20   .honor_retry_after = {honor_retry_after},\n\
+             }};\n\n",
+            scope_key = rl.scope_key,
+            max_burst = rl.max_burst,
+            requests = rl.requests,
+            window_seconds = rl.window_seconds,
+            honor_retry_after = if rl.honor_retry_after { 1 } else { 0 },
+        ));
+    }
+
+    if let Some(ref retry) = config.retry {
+        let backoff = match retry.backoff {
+            RetryBackoff::Fixed => "FIXED",
+            RetryBackoff::Exponential => "EXPONENTIAL",
+            RetryBackoff::ExponentialJitter => "EXPONENTIAL_JITTER",
+        };
+        let statuses = retry
+            .retry_statuses
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(", ");
+        out.push_str(&format!(
+            "static const struct {{\n\
+             \x20   unsigned int max_attempts;\n\
+             \x20   unsigned long base_delay_ms;\n\
+             \x20   unsigned long max_delay_ms;\n\
+             \x20   const char* backoff;\n\
+             \x20   int retry_network_errors;\n\
+             \x20   int require_idempotent_or_readonly;\n\
+             }} {op_name}_retry = {{\n\
+             \x20   .max_attempts = {max_attempts},\n\
+             \x20   .base_delay_ms = {base_delay_ms},\n\
+             \x20   .max_delay_ms = {max_delay_ms},\n\
+             \x20   .backoff = \"{backoff}\",\n\
+             \x20   .retry_network_errors = {retry_network_errors},\n\
+             \x20   .require_idempotent_or_readonly = {require_idempotent},\n\
+             }};\nstatic const int {op_name}_retry_statuses[] = {{{statuses}}};\n\n",
+            max_attempts = retry.max_attempts,
+            base_delay_ms = retry.base_delay_ms,
+            max_delay_ms = retry.max_delay_ms,
+            retry_network_errors = if retry.retry_network_errors { 1 } else { 0 },
+            require_idempotent = if retry.require_idempotent_or_readonly {
+                1
+            } else {
+                0
+            },
+        ));
+    }
+
+    if let Some(ref rc) = config.response_classification {
+        if let Some(ref shape) = rc.error_shape {
+            out.push_str(&format!(
+                "static const struct {{\n\
+                 \x20   const char* message_path;\n\
+                 \x20   const char* code_path;\n\
+                 }} {op_name}_error_shape = {{\n\
+                 \x20   .message_path = \"{message_path}\",\n\
+                 \x20   .code_path = {code_path},\n\
+                 }};\n\n",
+                message_path = shape.message_path,
+                code_path = shape
+                    .code_path
+                    .as_deref()
+                    .map(|p| format!("\"{}\"", p))
+                    .unwrap_or_else(|| "NULL".to_string()),
+            ));
+        }
+    }
+
+    out
+}
+
+/// Emit MIPS data section with middleware config for an operation.
+pub fn emit_mips_middleware_config(
+    op_name: &str,
+    config: &TransportMiddlewareConfig,
+) -> String {
+    let mut out = String::new();
+    out.push_str(&format!("    # {op_name}: transport middleware config\n"));
+
+    if let Some(ref rl) = config.rate_limit {
+        out.push_str(&format!(
+            "{op_name}_rate_limit_scope:\n    .asciiz \"{scope_key}\"\n\
+             {op_name}_rate_limit_requests:\n    .word {requests}\n\
+             {op_name}_rate_limit_window:\n    .word {window_seconds}\n\
+             {op_name}_rate_limit_burst:\n    .word {max_burst}\n",
+            scope_key = rl.scope_key,
+            requests = rl.requests,
+            window_seconds = rl.window_seconds,
+            max_burst = rl.max_burst,
+        ));
+    }
+
+    if let Some(ref retry) = config.retry {
+        out.push_str(&format!(
+            "{op_name}_retry_max_attempts:\n    .word {max_attempts}\n\
+             {op_name}_retry_base_delay:\n    .word {base_delay_ms}\n\
+             {op_name}_retry_max_delay:\n    .word {max_delay_ms}\n",
+            max_attempts = retry.max_attempts,
+            base_delay_ms = retry.base_delay_ms,
+            max_delay_ms = retry.max_delay_ms,
+        ));
+    }
+
+    if let Some(ref rc) = config.response_classification {
+        if let Some(ref shape) = rc.error_shape {
+            out.push_str(&format!(
+                "{op_name}_error_message_path:\n    .asciiz \"{}\"\n",
+                shape.message_path,
+            ));
+        }
+    }
+
+    out
+}
+
+/// Serialize a `TransportMiddlewareConfig` to a JSON string.
+///
+/// Used to emit a language-agnostic middleware config manifest file alongside
+/// the generated code. Any runtime can deserialize this to configure middleware.
+pub fn serialize_middleware_config_json(
+    configs: &[(String, &TransportMiddlewareConfig)],
+) -> String {
+    let mut map = serde_json::Map::new();
+    for (name, config) in configs {
+        if let Ok(val) = serde_json::to_value(config) {
+            map.insert(name.clone(), val);
+        }
+    }
+    serde_json::to_string_pretty(&serde_json::Value::Object(map))
+        .unwrap_or_else(|_| "{}".to_string())
+}
+
+fn rust_response_provider_variant(
+    provider: gunbc_ir::transport::middleware::ResponseProvider,
+) -> &'static str {
+    use gunbc_ir::transport::middleware::ResponseProvider;
+    match provider {
+        ResponseProvider::Generic => "Generic",
+        ResponseProvider::GitHub => "GitHub",
+        ResponseProvider::Gcp => "Gcp",
+        ResponseProvider::Anthropic => "Anthropic",
+        ResponseProvider::OpenAi => "OpenAi",
+    }
+}
+
+// ===========================================================================
 // Tests
 // ===========================================================================
 
@@ -1044,6 +1452,192 @@ mod tests {
         assert!(
             code.contains("execute transport request"),
             "has description: {code}"
+        );
+    }
+
+    // -- TL-14: Multi-target middleware config emission tests --
+
+    fn sample_middleware_config() -> TransportMiddlewareConfig {
+        use gunbc_ir::transport::middleware::*;
+        TransportMiddlewareConfig {
+            rate_limit: Some(RateLimitConfig {
+                scope_key: "github:core".to_string(),
+                algorithm: RateLimitAlgorithm::TokenBucket,
+                max_burst: 20,
+                requests: 5000,
+                window_seconds: 3600,
+                honor_retry_after: true,
+            }),
+            retry: Some(RetryConfig {
+                max_attempts: 3,
+                base_delay_ms: 100,
+                max_delay_ms: 2000,
+                backoff: RetryBackoff::ExponentialJitter,
+                retry_statuses: vec![429, 500, 502, 503, 504],
+                retry_network_errors: true,
+                require_idempotent_or_readonly: false,
+                circuit_breaker: None,
+            }),
+            credential: None,
+            response_classification: Some(ResponseClassification {
+                provider: gunbc_ir::transport::middleware::ResponseProvider::GitHub,
+                prioritize_auth_errors: true,
+                parse_provider_error_shapes: false,
+                error_shape: Some(ErrorShapeExtraction {
+                    message_path: ".message".to_string(),
+                    code_path: Some(".status".to_string()),
+                    details_path: Some(".documentation_url".to_string()),
+                }),
+            }),
+        }
+    }
+
+    #[test]
+    fn rust_middleware_config_emits_constructor() {
+        let config = sample_middleware_config();
+        let code = emit_rust_middleware_config("github_gist_create", &config);
+        assert!(
+            code.contains("fn github_gist_create_middleware_config()"),
+            "has function: {code}"
+        );
+        assert!(
+            code.contains("scope_key: \"github:core\""),
+            "has rate limit scope: {code}"
+        );
+        assert!(
+            code.contains("TokenBucket"),
+            "has rate limit algorithm: {code}"
+        );
+        assert!(
+            code.contains("max_attempts: 3"),
+            "has retry max_attempts: {code}"
+        );
+        assert!(
+            code.contains("ExponentialJitter"),
+            "has retry backoff: {code}"
+        );
+        assert!(
+            code.contains("message_path: \".message\""),
+            "has error shape message path: {code}"
+        );
+        assert!(
+            code.contains("code_path: Some(\".status\""),
+            "has error shape code path: {code}"
+        );
+    }
+
+    #[test]
+    fn go_middleware_config_emits_struct() {
+        let config = sample_middleware_config();
+        let code = emit_go_middleware_config("github_gist_create", &config);
+        assert!(
+            code.contains("func github_gist_createMiddlewareConfig()"),
+            "has function: {code}"
+        );
+        assert!(
+            code.contains("ScopeKey: \"github:core\""),
+            "has rate limit scope: {code}"
+        );
+        assert!(
+            code.contains("MaxAttempts: 3"),
+            "has retry max_attempts: {code}"
+        );
+        assert!(
+            code.contains("MessagePath: \".message\""),
+            "has error shape: {code}"
+        );
+    }
+
+    #[test]
+    fn c_middleware_config_emits_structs() {
+        let config = sample_middleware_config();
+        let code = emit_c_middleware_config("github_gist_create", &config);
+        assert!(
+            code.contains("github_gist_create_rate_limit"),
+            "has rate limit struct: {code}"
+        );
+        assert!(
+            code.contains("scope_key = \"github:core\""),
+            "has scope key: {code}"
+        );
+        assert!(
+            code.contains("github_gist_create_retry"),
+            "has retry struct: {code}"
+        );
+        assert!(
+            code.contains("github_gist_create_error_shape"),
+            "has error shape struct: {code}"
+        );
+        assert!(
+            code.contains("message_path = \".message\""),
+            "has message path: {code}"
+        );
+    }
+
+    #[test]
+    fn mips_middleware_config_emits_data_section() {
+        let config = sample_middleware_config();
+        let code = emit_mips_middleware_config("github_gist_create", &config);
+        assert!(
+            code.contains("github_gist_create_rate_limit_scope"),
+            "has rate limit label: {code}"
+        );
+        assert!(
+            code.contains("\"github:core\""),
+            "has scope key: {code}"
+        );
+        assert!(
+            code.contains("github_gist_create_retry_max_attempts"),
+            "has retry label: {code}"
+        );
+        assert!(
+            code.contains(".word 3"),
+            "has retry max_attempts value: {code}"
+        );
+        assert!(
+            code.contains("github_gist_create_error_message_path"),
+            "has error shape label: {code}"
+        );
+    }
+
+    #[test]
+    fn extract_middleware_from_rest_spec() {
+        let mut spec = sample_rest_spec();
+        spec.middleware = Some(sample_middleware_config());
+        let op_spec = ServiceOperationSpec::Rest(Box::new(spec));
+        let mw = extract_middleware(&op_spec);
+        assert!(mw.is_some(), "should extract middleware from REST spec");
+        assert!(mw.unwrap().rate_limit.is_some(), "should have rate limit");
+    }
+
+    #[test]
+    fn extract_middleware_from_shell_spec_returns_none() {
+        let op_spec = ServiceOperationSpec::Shell(sample_shell_spec());
+        assert!(extract_middleware(&op_spec).is_none());
+    }
+
+    #[test]
+    fn middleware_config_empty_emits_nones() {
+        let config = TransportMiddlewareConfig::default();
+        let code = emit_rust_middleware_config("empty_op", &config);
+        assert!(code.contains("rate_limit: None"), "has None rate limit: {code}");
+        assert!(code.contains("retry: None"), "has None retry: {code}");
+        assert!(
+            code.contains("response_classification: None"),
+            "has None classification: {code}"
+        );
+    }
+
+    #[test]
+    fn serialize_middleware_config_json_produces_valid_json() {
+        let config = sample_middleware_config();
+        let json = serialize_middleware_config_json(&[
+            ("github_gist_create".to_string(), &config),
+        ]);
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        assert!(parsed.get("github_gist_create").is_some());
+        assert!(
+            parsed["github_gist_create"]["rate_limit"]["scope_key"] == "github:core"
         );
     }
 }

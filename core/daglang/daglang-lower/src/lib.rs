@@ -5294,12 +5294,13 @@ fn derive_middleware_config(
         }
     });
 
-    // Infer response provider from service name (fallback when no error_shape).
+    // TL-15: parse_provider_error_shapes is always false — the transport layer
+    // uses only error_shape JSON-path extraction.
     let response_classification = infer_response_provider(&service.name).map(|provider| {
         ResponseClassification {
             provider,
             prioritize_auth_errors: true,
-            parse_provider_error_shapes: error_shape.is_none(),
+            parse_provider_error_shapes: false,
             error_shape: error_shape.clone(),
         }
     });
