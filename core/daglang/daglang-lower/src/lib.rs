@@ -8830,6 +8830,40 @@ fn resolve_return_expr_source(
         Expr::Match(scrutinee, arms) => synthesize_match_dispatch(
             builder, ctx, scrutinee, arms, output_port, output_name, disambiguator,
         ),
+        // C24-P2: If/Else → Conditional structural node.
+        Expr::If(cond, then_, else_) => synthesize_conditional(
+            builder, ctx, cond, then_, else_.as_deref(), output_port, output_name, disambiguator,
+        ),
+        // C24-P2: UnaryOp → UnaryOp structural node.
+        Expr::UnaryOp(op, inner) => {
+            let inner_source = resolve_return_expr_source(
+                builder,
+                ctx,
+                inner,
+                output_port,
+                &format!("{output_name}_inner"),
+                &format!("{disambiguator}_inner"),
+            );
+            match inner_source {
+                Some((src_node, src_port)) => synthesize_unary_op(
+                    builder,
+                    ctx,
+                    op,
+                    &src_node,
+                    &src_port,
+                    output_port,
+                    output_name,
+                    disambiguator,
+                ),
+                None => synthesize_expr_compute(
+                    builder, ctx, expr, output_port, output_name, disambiguator,
+                ),
+            }
+        }
+        // C24-P2: Record literal → RecordConstruct structural node.
+        Expr::Record(_, fields) => synthesize_record_construct(
+            builder, ctx, fields, output_port, output_name, disambiguator,
+        ),
         // Handle complex expressions by synthesizing a dedicated compute node.
         _ => synthesize_expr_compute(builder, ctx, expr, output_port, output_name, disambiguator),
     }
@@ -9302,6 +9336,7 @@ fn synthesize_get_field(
 
 /// C24-P1: Synthesize a BinaryOp structural node.
 /// Both operands must already be resolved to (node_id, port) sources.
+#[allow(clippy::too_many_arguments)]
 fn synthesize_binary_op(
     builder: &mut DagBuilder,
     ctx: &LoweringContext<'_>,
@@ -9462,6 +9497,258 @@ fn synthesize_match_dispatch(
                 builder.add_edge(endpoint, port, &node_id, &leaf.input_port);
             }
         }
+    }
+
+    Some((node_id, result_port_name.to_string()))
+}
+
+/// C24-P2: Synthesize a Conditional structural node.
+/// Resolves condition, then, and optional else branches.
+#[allow(clippy::too_many_arguments)]
+fn synthesize_conditional(
+    builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
+    cond: &Expr,
+    then_: &Expr,
+    else_: Option<&Expr>,
+    output_port: &Port,
+    output_name: &str,
+    disambiguator: &str,
+) -> Option<(String, String)> {
+    // Collect all leaf refs from the entire if/else expression.
+    let whole_expr = Expr::If(
+        Box::new(cond.clone()),
+        Box::new(then_.clone()),
+        else_.map(|e| Box::new(e.clone())),
+    );
+    let mut refs: Vec<ExprLeafRef> = Vec::new();
+    let mut seen = HashSet::new();
+    let mut has_local_refs = false;
+    collect_expr_leaf_refs(&whole_expr, ctx, &mut refs, &mut seen, &mut has_local_refs);
+
+    if has_local_refs {
+        return synthesize_expr_compute(
+            builder,
+            ctx,
+            &whole_expr,
+            output_port,
+            output_name,
+            disambiguator,
+        );
+    }
+
+    // Build input ports: "condition", "then", "else" + all leaf refs.
+    let mut input_ports = vec![
+        Port::with_cardinality("condition", "Bool", Cardinality::ONE),
+        Port::with_cardinality("then", "Any", Cardinality::ONE),
+    ];
+    if else_.is_some() {
+        input_ports.push(Port::with_cardinality("else", "Any", Cardinality::ONE));
+    }
+
+    let result_port_name = "result";
+    let output_type = output_port.type_id.0.as_str();
+    let output_ports = vec![Port::with_cardinality(
+        result_port_name,
+        output_type,
+        Cardinality::ONE,
+    )];
+
+    let node_id = format!(
+        "conditional_{}",
+        sanitize_identifier(&format!(
+            "{}_{}_{}_{}",
+            ctx.module_name, ctx.item_name, output_name, disambiguator
+        ))
+    );
+
+    builder.add_node(Node::opaque(
+        node_id.clone(),
+        input_ports,
+        output_ports,
+        LoweredOp::Primitive {
+            module: ctx.module_name.to_string(),
+            name: format!("conditional::{}::{}", ctx.item_name, output_name),
+            kind: PrimitiveOpKind::Conditional,
+        },
+    ));
+
+    // Wire condition.
+    let cond_source = resolve_return_expr_source(
+        builder,
+        ctx,
+        cond,
+        output_port,
+        &format!("{output_name}_cond"),
+        &format!("{disambiguator}_cond"),
+    );
+    if let Some((src_node, src_port)) = cond_source {
+        builder.add_edge(&src_node, &src_port, &node_id, "condition");
+    }
+
+    // Wire then branch.
+    let then_source = resolve_return_expr_source(
+        builder,
+        ctx,
+        then_,
+        output_port,
+        &format!("{output_name}_then"),
+        &format!("{disambiguator}_then"),
+    );
+    if let Some((src_node, src_port)) = then_source {
+        builder.add_edge(&src_node, &src_port, &node_id, "then");
+    }
+
+    // Wire else branch.
+    if let Some(else_expr) = else_ {
+        let else_source = resolve_return_expr_source(
+            builder,
+            ctx,
+            else_expr,
+            output_port,
+            &format!("{output_name}_else"),
+            &format!("{disambiguator}_else"),
+        );
+        if let Some((src_node, src_port)) = else_source {
+            builder.add_edge(&src_node, &src_port, &node_id, "else");
+        }
+    }
+
+    Some((node_id, result_port_name.to_string()))
+}
+
+/// C24-P2: Synthesize a UnaryOp structural node.
+#[allow(clippy::too_many_arguments)]
+fn synthesize_unary_op(
+    builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
+    op: &daglang_syntax::ast::UnaryOp,
+    inner_node: &str,
+    inner_port: &str,
+    output_port: &Port,
+    output_name: &str,
+    disambiguator: &str,
+) -> Option<(String, String)> {
+    let lowered_op = match op {
+        daglang_syntax::ast::UnaryOp::Not => expr::LoweredUnaryOp::Not,
+        daglang_syntax::ast::UnaryOp::Neg => expr::LoweredUnaryOp::Neg,
+    };
+    let result_port_name = "result";
+    let output_type = output_port.type_id.0.as_str();
+
+    let input_ports = vec![Port::with_cardinality("operand", "Any", Cardinality::ONE)];
+    let output_ports = vec![Port::with_cardinality(
+        result_port_name,
+        output_type,
+        Cardinality::ONE,
+    )];
+
+    let node_id = format!(
+        "unary_op_{}",
+        sanitize_identifier(&format!(
+            "{}_{}_{}_{}",
+            ctx.module_name, ctx.item_name, output_name, disambiguator
+        ))
+    );
+
+    builder.add_node(Node::opaque(
+        node_id.clone(),
+        input_ports,
+        output_ports,
+        LoweredOp::Primitive {
+            module: ctx.module_name.to_string(),
+            name: format!("unary_op::{}::{}", ctx.item_name, output_name),
+            kind: PrimitiveOpKind::UnaryOp { op: lowered_op },
+        },
+    ));
+
+    builder.add_edge(inner_node, inner_port, &node_id, "operand");
+
+    Some((node_id, result_port_name.to_string()))
+}
+
+/// C24-P2: Synthesize a RecordConstruct structural node.
+/// Each field's expression is resolved to a source and wired as a named input.
+fn synthesize_record_construct(
+    builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
+    fields: &[(String, Expr)],
+    output_port: &Port,
+    output_name: &str,
+    disambiguator: &str,
+) -> Option<(String, String)> {
+    // Resolve each field to a source. If any can't be resolved, fall back.
+    let mut field_sources: Vec<(String, String, String)> = Vec::new();
+    let mut all_resolved = true;
+    for (field_name, field_expr) in fields {
+        let source = resolve_return_expr_source(
+            builder,
+            ctx,
+            field_expr,
+            output_port,
+            &format!("{output_name}_{field_name}"),
+            &format!("{disambiguator}_{field_name}"),
+        );
+        if let Some((src_node, src_port)) = source {
+            field_sources.push((field_name.clone(), src_node, src_port));
+        } else {
+            all_resolved = false;
+            break;
+        }
+    }
+
+    if !all_resolved {
+        let whole_expr = Expr::Record(
+            None,
+            fields.to_vec(),
+        );
+        return synthesize_expr_compute(
+            builder,
+            ctx,
+            &whole_expr,
+            output_port,
+            output_name,
+            disambiguator,
+        );
+    }
+
+    let field_names: Vec<String> = fields.iter().map(|(name, _)| name.clone()).collect();
+    let input_ports: Vec<Port> = field_names
+        .iter()
+        .map(|name| Port::with_cardinality(name.as_str(), "Any", Cardinality::ONE))
+        .collect();
+
+    let result_port_name = "result";
+    let output_type = output_port.type_id.0.as_str();
+    let output_ports = vec![Port::with_cardinality(
+        result_port_name,
+        output_type,
+        Cardinality::ONE,
+    )];
+
+    let node_id = format!(
+        "record_construct_{}",
+        sanitize_identifier(&format!(
+            "{}_{}_{}_{}",
+            ctx.module_name, ctx.item_name, output_name, disambiguator
+        ))
+    );
+
+    builder.add_node(Node::opaque(
+        node_id.clone(),
+        input_ports,
+        output_ports,
+        LoweredOp::Primitive {
+            module: ctx.module_name.to_string(),
+            name: format!("record_construct::{}::{}", ctx.item_name, output_name),
+            kind: PrimitiveOpKind::RecordConstruct {
+                fields: field_names,
+            },
+        },
+    ));
+
+    for (field_name, src_node, src_port) in &field_sources {
+        builder.add_edge(src_node, src_port, &node_id, field_name);
     }
 
     Some((node_id, result_port_name.to_string()))

@@ -872,7 +872,17 @@ Nodes:
       * workflows: List<CoreWorkflow> (1)
     outputs:
       * workflows: List<CoreWorkflow> (1)
-  - expr_compute_tools_makegen_fix_description_return_return_0 [primitive::ExprCompute { fn_body: LoweredFnBody { stmts: [Let("joined", Pipe { receiver: Ident("prereqs"), call: Call { name: "join", args: [(None, Literal(String(" + ")))] } }), Return([("result", IfElse { cond: BinOp { left: Ident("joined"), op: Ne, right: Literal(String("")) }, then_: StringInterp([Expr(Ident("joined")), Literal(" first")]), else_: Some(Literal(String("auto-fix"))) })])] }, sibling_fns: {} } tools.makegen.expr_compute::fix_description::return]
+  - conditional_tools_makegen_fix_description_return_return_0 [primitive::Conditional tools.makegen.conditional::fix_description::return]
+    inputs:
+      * condition: Bool (1)
+      * then: Any (1)
+      * else: Any (1)
+    outputs:
+      * result: String (1)
+  - literal_source_tools_makegen_fix_description_return_cond_rhs_return_0_cond_rhs [primitive::CallLiteralSource { literal: String("") } tools.makegen.call_literal_source::strhex:]
+    outputs:
+      * return_cond_rhs: String (1)
+  - expr_compute_tools_makegen_fix_description_return_cond_return_0_cond [primitive::ExprCompute { fn_body: LoweredFnBody { stmts: [Let("joined", Pipe { receiver: Ident("prereqs"), call: Call { name: "join", args: [(None, Literal(String(" + ")))] } }), Return([("result", BinOp { left: Ident("joined"), op: Ne, right: Literal(String("")) })])] }, sibling_fns: {} } tools.makegen.expr_compute::fix_description::return_cond]
     inputs:
       * prereqs: List<String> (1)
     outputs:
@@ -882,6 +892,12 @@ Nodes:
       * prereqs: List<String> (1)
     outputs:
       * prereqs: List<String> (1)
+  - literal_source_tools_makegen_fix_description_return_then_return_0_then [primitive::CallLiteralSource { literal: String("{joined} first") } tools.makegen.call_literal_source::strhex:7b6a6f696e65647d206669727374]
+    outputs:
+      * return_then: String (1)
+  - literal_source_tools_makegen_fix_description_return_else_return_0_else [primitive::CallLiteralSource { literal: String("auto-fix") } tools.makegen.call_literal_source::strhex:6175746f2d666978]
+    outputs:
+      * return_else: String (1)
   - literal_source_tools_makegen_render_help_meta_line_return_return_0 [primitive::CallLiteralSource { literal: String("\t{base_line}{fix_line}{check_line}") } tools.makegen.call_literal_source::strhex:097b626173655f6c696e657d7b6669785f6c696e657d7b636865636b5f6c696e657d]
     outputs:
       * return: String (1)
@@ -939,7 +955,17 @@ Nodes:
   - literal_source_tools_makegen_collect_meta_phony_str_return_return_0 [primitive::CallLiteralSource { literal: String("{base} {checks} {fixes}") } tools.makegen.call_literal_source::strhex:7b626173657d207b636865636b737d207b66697865737d]
     outputs:
       * return: String (1)
-  - expr_compute_tools_makegen_tool_phony_names_return_return_0 [primitive::ExprCompute { fn_body: LoweredFnBody { stmts: [Let("base", StringInterp([Expr(Ident("t__short_name")), Literal(" "), Expr(Ident("t__short_name")), Literal("-dry")])), Let("extras", Pipe { receiver: Pipe { receiver: Ident("t__extra_targets"), call: Call { name: "map", args: [(None, Lambda { params: ["extra"], body: StringInterp([Expr(Ident("t__short_name")), Literal("-"), Expr(Ident("extra__suffix"))]) })] } }, call: Call { name: "join", args: [(None, Literal(String(" ")))] } }), Return([("result", IfElse { cond: BinOp { left: Ident("extras"), op: Ne, right: Literal(String("")) }, then_: StringInterp([Expr(Ident("base")), Literal(" "), Expr(Ident("extras"))]), else_: Some(Ident("base")) })])] }, sibling_fns: {} } tools.makegen.expr_compute::tool_phony_names::return]
+  - conditional_tools_makegen_tool_phony_names_return_return_0 [primitive::Conditional tools.makegen.conditional::tool_phony_names::return]
+    inputs:
+      * condition: Bool (1)
+      * then: Any (1)
+      * else: Any (1)
+    outputs:
+      * result: String (1)
+  - literal_source_tools_makegen_tool_phony_names_return_cond_rhs_return_0_cond_rhs [primitive::CallLiteralSource { literal: String("") } tools.makegen.call_literal_source::strhex:]
+    outputs:
+      * return_cond_rhs: String (1)
+  - expr_compute_tools_makegen_tool_phony_names_return_cond_return_0_cond [primitive::ExprCompute { fn_body: LoweredFnBody { stmts: [Let("base", StringInterp([Expr(Ident("t__short_name")), Literal(" "), Expr(Ident("t__short_name")), Literal("-dry")])), Let("extras", Pipe { receiver: Pipe { receiver: Ident("t__extra_targets"), call: Call { name: "map", args: [(None, Lambda { params: ["extra"], body: StringInterp([Expr(Ident("t__short_name")), Literal("-"), Expr(Ident("extra__suffix"))]) })] } }, call: Call { name: "join", args: [(None, Literal(String(" ")))] } }), Return([("result", BinOp { left: Ident("extras"), op: Ne, right: Literal(String("")) })])] }, sibling_fns: {} } tools.makegen.expr_compute::tool_phony_names::return_cond]
     inputs:
       * t: DiscoveredTool (1)
     outputs:
@@ -949,6 +975,9 @@ Nodes:
       * t: DiscoveredTool (1)
     outputs:
       * t: DiscoveredTool (1)
+  - literal_source_tools_makegen_tool_phony_names_return_then_return_0_then [primitive::CallLiteralSource { literal: String("{base} {extras}") } tools.makegen.call_literal_source::strhex:7b626173657d207b6578747261737d]
+    outputs:
+      * return_then: String (1)
   - expr_compute_tools_makegen_collect_tool_phony_str_return_return_0 [primitive::ExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Pipe { receiver: Pipe { receiver: Ident("tools"), call: Call { name: "map", args: [(None, Lambda { params: ["t"], body: Call { name: "tool_phony_names", args: [(Some("t"), Ident("t"))] } })] } }, call: Call { name: "join", args: [(None, Literal(String(" ")))] } })])] }, sibling_fns: {"tool_phony_names": LoweredFnBody { stmts: [Let("base", StringInterp([Expr(Ident("t__short_name")), Literal(" "), Expr(Ident("t__short_name")), Literal("-dry")])), Let("extras", Pipe { receiver: Pipe { receiver: Ident("t__extra_targets"), call: Call { name: "map", args: [(None, Lambda { params: ["extra"], body: StringInterp([Expr(Ident("t__short_name")), Literal("-"), Expr(Ident("extra__suffix"))]) })] } }, call: Call { name: "join", args: [(None, Literal(String(" ")))] } }), Expr(IfElse { cond: BinOp { left: Ident("extras"), op: Ne, right: Literal(String("")) }, then_: StringInterp([Expr(Ident("base")), Literal(" "), Expr(Ident("extras"))]), else_: Some(Ident("base")) })] }} } tools.makegen.expr_compute::collect_tool_phony_str::return]
     inputs:
       * tools: List<DiscoveredTool> (1)
@@ -1311,8 +1340,11 @@ Edges:
   - expr_compute_tools_makegen_render_tool_targets_return_return_0.result -> tools.makegen::render_tool_targets.__out:return
   - param_source_tools_makegen_render_help_core_lines_workflows.workflows -> expr_compute_tools_makegen_render_help_core_lines_return_return_0.workflows
   - expr_compute_tools_makegen_render_help_core_lines_return_return_0.result -> tools.makegen::render_help_core_lines.__out:return
-  - param_source_tools_makegen_fix_description_prereqs.prereqs -> expr_compute_tools_makegen_fix_description_return_return_0.prereqs
-  - expr_compute_tools_makegen_fix_description_return_return_0.result -> tools.makegen::fix_description.__out:return
+  - param_source_tools_makegen_fix_description_prereqs.prereqs -> expr_compute_tools_makegen_fix_description_return_cond_return_0_cond.prereqs
+  - expr_compute_tools_makegen_fix_description_return_cond_return_0_cond.result -> conditional_tools_makegen_fix_description_return_return_0.condition
+  - literal_source_tools_makegen_fix_description_return_then_return_0_then.return_then -> conditional_tools_makegen_fix_description_return_return_0.then
+  - literal_source_tools_makegen_fix_description_return_else_return_0_else.return_else -> conditional_tools_makegen_fix_description_return_return_0.else
+  - conditional_tools_makegen_fix_description_return_return_0.result -> tools.makegen::fix_description.__out:return
   - literal_source_tools_makegen_render_help_meta_line_return_return_0.return -> tools.makegen::render_help_meta_line.__out:return
   - param_source_tools_makegen_render_help_meta_lines_metas.metas -> expr_compute_tools_makegen_render_help_meta_lines_return_return_0.metas
   - expr_compute_tools_makegen_render_help_meta_lines_return_return_0.result -> tools.makegen::render_help_meta_lines.__out:return
@@ -1326,8 +1358,10 @@ Edges:
   - param_source_tools_makegen_collect_core_phony_str_workflows.workflows -> expr_compute_tools_makegen_collect_core_phony_str_return_return_0.workflows
   - expr_compute_tools_makegen_collect_core_phony_str_return_return_0.result -> tools.makegen::collect_core_phony_str.__out:return
   - literal_source_tools_makegen_collect_meta_phony_str_return_return_0.return -> tools.makegen::collect_meta_phony_str.__out:return
-  - param_source_tools_makegen_tool_phony_names_t.t -> expr_compute_tools_makegen_tool_phony_names_return_return_0.t
-  - expr_compute_tools_makegen_tool_phony_names_return_return_0.result -> tools.makegen::tool_phony_names.__out:return
+  - param_source_tools_makegen_tool_phony_names_t.t -> expr_compute_tools_makegen_tool_phony_names_return_cond_return_0_cond.t
+  - expr_compute_tools_makegen_tool_phony_names_return_cond_return_0_cond.result -> conditional_tools_makegen_tool_phony_names_return_return_0.condition
+  - literal_source_tools_makegen_tool_phony_names_return_then_return_0_then.return_then -> conditional_tools_makegen_tool_phony_names_return_return_0.then
+  - conditional_tools_makegen_tool_phony_names_return_return_0.result -> tools.makegen::tool_phony_names.__out:return
   - param_source_tools_makegen_collect_tool_phony_str_tools.tools -> expr_compute_tools_makegen_collect_tool_phony_str_return_return_0.tools
   - expr_compute_tools_makegen_collect_tool_phony_str_return_return_0.result -> tools.makegen::collect_tool_phony_str.__out:return
   - literal_source_tools_makegen_render_naming_convention_return_return_0.return -> tools.makegen::render_naming_convention.__out:return
