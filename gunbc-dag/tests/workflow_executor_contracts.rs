@@ -30,10 +30,10 @@ fn temp_root() -> std::path::PathBuf {
 fn ci_workflow_dry_run_plans_all_units_as_execute() {
     let root = temp_root();
     let spec = ci_workflow_spec().expect("ci spec");
-    let registry = default_process_unit_registry();
+    let registry = default_process_unit_registry().expect("default registry should build");
     let plan = plan_workflow(&spec, &registry, &PlannerInputs::new(), &root).expect("plan");
 
-    let commands = ci_unit_commands();
+    let commands = ci_unit_commands().expect("ci commands should load");
     let summary = execute_workflow_plan(&spec, &plan, &commands, &root, true);
 
     // All units should be executed (no cache hits).
@@ -47,7 +47,7 @@ fn ci_workflow_dry_run_plans_all_units_as_execute() {
 #[test]
 fn ci_unit_commands_map_covers_all_non_report_nodes() {
     let spec = ci_workflow_spec().expect("ci spec");
-    let commands = ci_unit_commands();
+    let commands = ci_unit_commands().expect("ci commands should load");
     for node in &spec.dag.nodes {
         if node.id.0.ends_with(".report") {
             // Report nodes are no-ops; no command expected.
@@ -70,10 +70,10 @@ fn ci_unit_commands_map_covers_all_non_report_nodes() {
 fn ci_executor_preserves_topological_unit_ordering() {
     let root = temp_root();
     let spec = ci_workflow_spec().expect("ci spec");
-    let registry = default_process_unit_registry();
+    let registry = default_process_unit_registry().expect("default registry should build");
     let plan = plan_workflow(&spec, &registry, &PlannerInputs::new(), &root).expect("plan");
 
-    let commands = ci_unit_commands();
+    let commands = ci_unit_commands().expect("ci commands should load");
     let summary = execute_workflow_plan(&spec, &plan, &commands, &root, true);
 
     // Results should be in same order as plan nodes.
@@ -92,10 +92,10 @@ fn ci_executor_preserves_topological_unit_ordering() {
 fn test_all_workflow_dry_run_plans_all_units() {
     let root = temp_root();
     let spec = test_all_workflow_spec().expect("test-all spec");
-    let registry = default_process_unit_registry();
+    let registry = default_process_unit_registry().expect("default registry should build");
     let plan = plan_workflow(&spec, &registry, &PlannerInputs::new(), &root).expect("plan");
 
-    let commands = test_all_unit_commands();
+    let commands = test_all_unit_commands().expect("test-all commands should load");
     let summary = execute_workflow_plan(&spec, &plan, &commands, &root, true);
 
     assert!(summary.success());
@@ -107,7 +107,7 @@ fn test_all_workflow_dry_run_plans_all_units() {
 #[test]
 fn test_all_unit_commands_map_covers_all_non_report_nodes() {
     let spec = test_all_workflow_spec().expect("test-all spec");
-    let commands = test_all_unit_commands();
+    let commands = test_all_unit_commands().expect("test-all commands should load");
     for node in &spec.dag.nodes {
         if node.id.0.ends_with(".report") {
             assert!(
@@ -269,9 +269,9 @@ fn top_slow_units_excludes_cached_hits() {
 fn render_execution_report_includes_slo_and_summary() {
     let root = temp_root();
     let spec = ci_workflow_spec().expect("ci spec");
-    let registry = default_process_unit_registry();
+    let registry = default_process_unit_registry().expect("default registry should build");
     let plan = plan_workflow(&spec, &registry, &PlannerInputs::new(), &root).expect("plan");
-    let commands = ci_unit_commands();
+    let commands = ci_unit_commands().expect("ci commands should load");
     let summary = execute_workflow_plan(&spec, &plan, &commands, &root, true);
     let explain = explain_plan(&spec, &plan);
 

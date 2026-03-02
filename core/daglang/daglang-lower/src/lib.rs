@@ -7051,7 +7051,14 @@ pub(crate) fn resolve_service_call_source(
         // e.g., `fs.read(path: p)` with `uses fs: Filesystem` →
         // look up `Filesystem.read` in the service registry.
         if call_path.len() >= 2 {
-            let capability = call_path.last().cloned().unwrap_or_default();
+            let capability =
+                call_path
+                    .last()
+                    .cloned()
+                    .ok_or_else(|| LowerError::UnresolvedServiceCall {
+                        caller: caller.to_string(),
+                        service_call: call_path.join("."),
+                    })?;
             let cap_key = format!("{interface_type}.{capability}");
             if let Some(endpoint) = resolve_service_endpoint(
                 &cap_key.split('.').map(String::from).collect::<Vec<_>>(),
@@ -7071,7 +7078,14 @@ pub(crate) fn resolve_service_call_source(
         // lookup (stubs are registered there). If not found, return None
         // to let the caller skip this call (stubs handle it).
         if call_path.len() >= 2 {
-            let capability = call_path.last().cloned().unwrap_or_default();
+            let capability =
+                call_path
+                    .last()
+                    .cloned()
+                    .ok_or_else(|| LowerError::UnresolvedServiceCall {
+                        caller: caller.to_string(),
+                        service_call: call_path.join("."),
+                    })?;
             let cap_key = format!("{interface_type}.{capability}");
             if let Some(endpoint) = resolve_service_endpoint(
                 &cap_key.split('.').map(String::from).collect::<Vec<_>>(),
@@ -7104,7 +7118,14 @@ pub(crate) fn resolve_service_call_source(
         });
     };
     let implementation_type = binding.implementation_type.as_str();
-    let capability = call_path.last().cloned().unwrap_or_default();
+    let capability =
+        call_path
+            .last()
+            .cloned()
+            .ok_or_else(|| LowerError::UnresolvedServiceCall {
+                caller: caller.to_string(),
+                service_call: call_path.join("."),
+            })?;
     let mut implementation_call_path = implementation_type
         .split('.')
         .map(|segment| segment.to_string())

@@ -13,39 +13,38 @@ use gunbc_workflow::UnitCommand;
 
 const WORKFLOW_COMMANDS_SOURCE: &str = include_str!("../../../dsl/config/workflow_commands.dag");
 
-static WORKFLOW_COMMANDS: OnceLock<HashMap<String, BTreeMap<NodeId, UnitCommand>>> =
+static WORKFLOW_COMMANDS: OnceLock<Result<HashMap<String, BTreeMap<NodeId, UnitCommand>>, String>> =
     OnceLock::new();
 
-fn commands_by_workflow() -> &'static HashMap<String, BTreeMap<NodeId, UnitCommand>> {
-    WORKFLOW_COMMANDS.get_or_init(|| {
-        load_workflow_commands_from_dsl()
-            .unwrap_or_else(|error| panic!("failed to load workflow command DSL data: {error}"))
-    })
+fn commands_by_workflow() -> Result<&'static HashMap<String, BTreeMap<NodeId, UnitCommand>>, String>
+{
+    WORKFLOW_COMMANDS
+        .get_or_init(load_workflow_commands_from_dsl)
+        .as_ref()
+        .map_err(|error| error.clone())
 }
 
 /// Build command map for CI workflow units.
-pub fn ci_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
+pub fn ci_unit_commands() -> Result<BTreeMap<NodeId, UnitCommand>, String> {
     workflow_unit_commands("ci")
-        .unwrap_or_else(|error| panic!("failed to load ci commands: {error}"))
 }
 
 /// Build command map for test-all workflow units.
-pub fn test_all_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
+pub fn test_all_unit_commands() -> Result<BTreeMap<NodeId, UnitCommand>, String> {
     workflow_unit_commands("test-all")
-        .unwrap_or_else(|error| panic!("failed to load test-all commands: {error}"))
 }
 
 /// Build command map for a supported workflow name.
 pub fn workflow_unit_commands(
     workflow_name: &str,
 ) -> Result<BTreeMap<NodeId, UnitCommand>, String> {
-    let Some(variant) = super::catalog::resolve_workflow_variant(workflow_name) else {
+    let Some(variant) = super::catalog::resolve_workflow_variant(workflow_name)? else {
         return Err(format!(
             "workflow '{}' does not support execution mode; use --plan",
             workflow_name
         ));
     };
-    commands_by_workflow()
+    commands_by_workflow()?
         .get(&variant.canonical_name)
         .cloned()
         .ok_or_else(|| {
@@ -196,7 +195,7 @@ mod tests {
 
     #[test]
     fn ci_commands_cover_all_non_report_units() {
-        let commands = ci_unit_commands();
+        let commands = ci_unit_commands().expect("ci commands");
         // 10 units have commands (report is a no-op).
         assert_eq!(commands.len(), 10);
         assert!(commands.contains_key(&NodeId::from("ci.codegen")));
@@ -208,7 +207,7 @@ mod tests {
 
     #[test]
     fn test_all_commands_cover_all_non_report_units() {
-        let commands = test_all_unit_commands();
+        let commands = test_all_unit_commands().expect("test-all commands");
         // 6 units have commands (report is a no-op).
         assert_eq!(commands.len(), 6);
         assert!(commands.contains_key(&NodeId::from("test_all.codegen")));

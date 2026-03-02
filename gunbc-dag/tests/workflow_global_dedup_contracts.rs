@@ -28,7 +28,7 @@ fn global_plan_dedups_equivalent_work_across_ci_and_test_all() {
         ci_workflow_spec().expect("ci spec"),
         test_all_workflow_spec().expect("test-all spec"),
     ];
-    let registry = default_process_unit_registry();
+    let registry = default_process_unit_registry().expect("default registry should build");
     let global = plan_global_workflows(&specs, &registry, &PlannerInputsByWorkflow::new(), &root)
         .expect("global plan");
 
@@ -54,7 +54,7 @@ fn proof_and_projection_checks_hold_for_global_plan() {
         ci_workflow_spec().expect("ci spec"),
         test_all_workflow_spec().expect("test-all spec"),
     ];
-    let registry = default_process_unit_registry();
+    let registry = default_process_unit_registry().expect("default registry should build");
     let global = plan_global_workflows(&specs, &registry, &PlannerInputsByWorkflow::new(), &root)
         .expect("global plan");
 

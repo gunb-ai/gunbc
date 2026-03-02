@@ -15,14 +15,8 @@ pub type DepsGraphOp = DynOp;
 pub type InfraGraphOp = DynOp;
 
 /// Get the declared signature for the bootstrap workflow.
-pub fn bootstrap_signature() -> WorkflowSignature {
-    match build_bootstrap_graph() {
-        Ok(dag) => infer_signature(&dag),
-        Err(err) => {
-            eprintln!("warning: failed to build bootstrap DAG for signature: {err}");
-            WorkflowSignature::default()
-        }
-    }
+pub fn bootstrap_signature() -> Result<WorkflowSignature, BuilderError> {
+    build_bootstrap_graph().map(|dag| infer_signature(&dag))
 }
 
 /// Build bootstrap graph from the DSL source.
@@ -45,14 +39,8 @@ pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
 }
 
 /// Get the declared signature for the codegen workflow.
-pub fn codegen_signature() -> WorkflowSignature {
-    match build_codegen_graph() {
-        Ok(dag) => infer_signature(&dag),
-        Err(err) => {
-            eprintln!("warning: failed to build codegen DAG for signature: {err}");
-            WorkflowSignature::default()
-        }
-    }
+pub fn codegen_signature() -> Result<WorkflowSignature, BuilderError> {
+    build_codegen_graph().map(|dag| infer_signature(&dag))
 }
 
 /// Build codegen graph from the DSL source.

@@ -1327,10 +1327,11 @@ fn discover_target_module_graph_for_context(
         if !visited.insert(module_index) {
             continue;
         }
-        let imports = imports_by_index
-            .get(module_index)
-            .cloned()
-            .unwrap_or_default();
+        let imports = imports_by_index.get(module_index).cloned().ok_or_else(|| {
+            CompileError::Message(format!(
+                "internal module graph error: missing import list for module index {module_index}"
+            ))
+        })?;
         let mut dependencies = Vec::new();
         for import in imports {
             if let Some(dep_index) = module_index_by_decl.get(&import).copied() {

@@ -18,14 +18,8 @@ use std::collections::BTreeSet;
 pub type CIGraphOp = DynOp;
 
 /// Get the declared signature for the ci workflow (auto-derived from DAG).
-pub fn ci_signature() -> WorkflowSignature {
-    match build_ci_graph() {
-        Ok(dag) => infer_signature(&dag),
-        Err(err) => {
-            eprintln!("warning: failed to build ci DAG for signature: {err}");
-            WorkflowSignature::default()
-        }
-    }
+pub fn ci_signature() -> Result<WorkflowSignature, BuilderError> {
+    build_ci_graph().map(|dag| infer_signature(&dag))
 }
 
 /// Get the integrations used by the CI workflow.

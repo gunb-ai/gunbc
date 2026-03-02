@@ -24,14 +24,8 @@ pub use shared::render_makefile;
 pub type MakegenGraphOp = DynOp;
 
 /// Get the declared signature for the makegen workflow (auto-derived from DAG).
-pub fn makegen_signature() -> WorkflowSignature {
-    match build_makegen_graph() {
-        Ok(dag) => infer_signature(&dag),
-        Err(err) => {
-            eprintln!("warning: failed to build makegen DAG for signature: {err}");
-            WorkflowSignature::default()
-        }
-    }
+pub fn makegen_signature() -> Result<WorkflowSignature, BuilderError> {
+    build_makegen_graph().map(|dag| infer_signature(&dag))
 }
 
 /// Build makegen graph from the DSL source.

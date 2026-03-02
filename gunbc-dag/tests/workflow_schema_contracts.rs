@@ -88,14 +88,14 @@ fn assert_workflow_schema_contracts(
 #[test]
 fn ci_workflow_spec_satisfies_schema_contracts() {
     let spec = ci_workflow_spec().expect("ci workflow spec should build");
-    let registry = default_process_unit_registry();
+    let registry = default_process_unit_registry().expect("default registry should build");
     assert_workflow_schema_contracts(&spec, "ci.", &["ci"], &registry);
 }
 
 #[test]
 fn test_all_workflow_spec_satisfies_schema_contracts() {
     let spec = test_all_workflow_spec().expect("test-all workflow spec should build");
-    let registry = default_process_unit_registry();
+    let registry = default_process_unit_registry().expect("default registry should build");
     assert_workflow_schema_contracts(&spec, "test_all.", &["test_all"], &registry);
 }
 

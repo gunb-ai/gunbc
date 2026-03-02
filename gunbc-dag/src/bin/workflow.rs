@@ -67,7 +67,7 @@ fn run() -> Result<(), String> {
         .ok_or_else(|| "missing workflow name".to_string())?;
 
     let spec = workflow_spec_for_name(workflow_name)?;
-    let registry = default_process_unit_registry();
+    let registry = default_process_unit_registry()?;
     let plan = plan_workflow(
         &spec,
         &registry,

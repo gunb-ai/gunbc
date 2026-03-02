@@ -332,22 +332,27 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             }
             // Write compile receipt JSON when --receipt is passed.
             if parsed.receipt {
-                if let Some(receipt) = &output.receipt {
-                    let receipt_json = serde_json::to_string_pretty(receipt)
-                        .expect("compile receipt should serialize");
-                    if let Some(out_dir) = normalized_out_dir.as_ref() {
-                        let receipt_path = out_dir.join("compile_receipt.json");
-                        #[allow(clippy::disallowed_methods)]
-                        if let Err(error) = std::fs::write(&receipt_path, &receipt_json) {
-                            eprintln!("failed to write receipt: {error}");
-                            std::process::exit(1);
-                        }
-                        println!("Receipt: {}", receipt_path.display());
-                    } else {
-                        println!("{receipt_json}");
+                let Some(receipt) = &output.receipt else {
+                    eprintln!("failed to compute compile receipt");
+                    std::process::exit(1);
+                };
+                let receipt_json = match serde_json::to_string_pretty(receipt) {
+                    Ok(json) => json,
+                    Err(error) => {
+                        eprintln!("failed to serialize compile receipt: {error}");
+                        std::process::exit(1);
                     }
+                };
+                if let Some(out_dir) = normalized_out_dir.as_ref() {
+                    let receipt_path = out_dir.join("compile_receipt.json");
+                    #[allow(clippy::disallowed_methods)]
+                    if let Err(error) = std::fs::write(&receipt_path, &receipt_json) {
+                        eprintln!("failed to write receipt: {error}");
+                        std::process::exit(1);
+                    }
+                    println!("Receipt: {}", receipt_path.display());
                 } else {
-                    eprintln!("warning: receipt computation failed");
+                    println!("{receipt_json}");
                 }
             }
         }
@@ -370,9 +375,13 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                 RunMode::DryRun => {
                     ExecutionMode::DryRun(makegen_dry_run_transport_mocks(&output_path_str))
                 }
-                RunMode::CheckMode => {
-                    ExecutionMode::DryRun(makegen_check_mode_transport_mocks(&output_path_str))
-                }
+                RunMode::CheckMode => match makegen_check_mode_transport_mocks(&output_path_str) {
+                    Ok(mocks) => ExecutionMode::DryRun(mocks),
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(1);
+                    }
+                },
             };
             let context = match build_context(cwd, Some(&parsed.input_path)) {
                 Ok(context) => context,

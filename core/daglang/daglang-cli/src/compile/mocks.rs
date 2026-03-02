@@ -61,14 +61,14 @@ pub fn makegen_dry_run_transport_mocks(output_path: &str) -> BoundaryMocks {
 }
 
 /// Check-mode mocks: read existing content and intercept the write transport.
-pub fn makegen_check_mode_transport_mocks(output_path: &str) -> BoundaryMocks {
+pub fn makegen_check_mode_transport_mocks(output_path: &str) -> Result<BoundaryMocks, String> {
     let mut check_mode_mocks = BoundaryMocks::new();
     check_mode_mocks.set_value(
         "fs_env",
         "FilesystemHandle",
         Value::Str("filesystem://check-mode".to_string()),
     );
-    let existing_content = read_existing_content(output_path);
+    let existing_content = read_existing_content(output_path)?;
     check_mode_mocks.set_value(
         "execute_read_makegen",
         "response",
@@ -78,11 +78,21 @@ pub fn makegen_check_mode_transport_mocks(output_path: &str) -> BoundaryMocks {
         ))),
     );
     check_mode_mocks.set_value("execute_makegen_transport", "response", Value::Skipped);
-    check_mode_mocks
+    Ok(check_mode_mocks)
 }
 
-/// Read existing file content, returning empty string on any error.
+/// Read existing file content.
+///
+/// Returns empty string when the file does not yet exist, and errors on other
+/// filesystem failures.
 #[allow(clippy::disallowed_methods)]
-fn read_existing_content(output_path: &str) -> String {
-    std::fs::read_to_string(output_path).unwrap_or_default()
+fn read_existing_content(output_path: &str) -> Result<String, String> {
+    match std::fs::read_to_string(output_path) {
+        Ok(content) => Ok(content),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(error) => Err(format!(
+            "failed to read existing makegen output at {}: {}",
+            output_path, error
+        )),
+    }
 }
