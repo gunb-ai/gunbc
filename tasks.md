@@ -16,9 +16,8 @@ Lane 1: Compiler Critical Path
   Unblock SDLC execution — C10, C10a, then C24/C25/C26
   (C10:C26, A1:A4)
 
-Lane 2: Service Contracts & Transport
-  Transport domain modeling + multi-target emit
-  (TL-14:15)
+Lane 2: Service Contracts & Transport ✓
+  All complete (TL-14, TL-15 done)
 
 Lane 3: SDLC Ship
   Part B: Wire real transports → cloud profile works (SC-1:8)
@@ -175,11 +174,11 @@ configuration (rate limits, error shapes) from Rust into `.dag` files.
 | 2 | TL-11 | **DSL syntax for transport blocks.** Add `rate_limit {}`, `retry {}`, `error_shape {}`, `credential {}` blocks to grammar. | L | **Done** |
 | 3 | TL-12 | **Lower transport blocks to IR.** Rate limit budgets → `RateLimitConfig`. Retry policies → `RetryConfig`. | M | **Done** |
 | 4 | TL-13 | **Domain data migration.** Move hardcoded rate limits from Rust to `dsl/services/*.dag`. Delete provider-specific branches from `classify.rs`. | M | **Done** |
-| 5 | TL-14 | **Multi-target emit.** Emit transport configuration per target language. Rust links to Target SDK. Go/Python stubs for future. | XL | Open |
-| 6 | TL-15 | **Substrate cleanup.** `lib/transport/` becomes pure Target SDK. Delete `GITHUB_CORE_LIMIT` constants, `host.contains("github.com")` branches. | L | Open (needs TL-14) |
+| 5 | TL-14 | **Multi-target emit.** Emit transport configuration per target language. Rust links to Target SDK. Go/Python stubs for future. | XL | **Done** |
+| 6 | TL-15 | **Substrate cleanup.** `lib/transport/` becomes pure Target SDK. Delete `GITHUB_CORE_LIMIT` constants, `host.contains("github.com")` branches. | L | **Done** |
 | 7 | TL-16 | **Dynamic JSON-path error shapes.** Lower `error_shape {}` blocks into JSON-path extraction rules in IR. Delete `ResponseProvider` enum, `infer_response_provider()`, hardcoded `parse_*_error` functions. Transport layer blindly executes JSON-path extractions. | L | **Done** |
 
-**Remaining open**: TL-14 (XL — multi-target emit), TL-15 (L — depends on TL-14)
+**All TL tasks complete.**
 
 ---
 
