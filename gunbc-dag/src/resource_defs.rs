@@ -2,14 +2,11 @@
 //!
 //! Canonical globs and output paths are loaded from `dsl/config/resources.dag`.
 
-use daglang_driver::compile_data_from_sources;
+use daglang_driver::compile_data_from_module;
 use gunbc_ir::resource::{codegen_resource_def, InputPattern, ResourceDef, ResourceScope};
-use gunbc_ir::ResourceId;
+use gunbc_ir::{ResourceId, WorkspaceLayout};
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::OnceLock;
-
-const RESOURCES_DAG_SOURCE: &str = include_str!("../../dsl/config/resources.dag");
 
 // Canonical build resource names for repo-level composition.
 pub const BUILD_RESOURCE_GENERATED_CLI: &str = "generated_cli";
@@ -41,8 +38,11 @@ fn resource_dsl_data() -> &'static ResourceDslData {
 }
 
 fn load_resource_dsl_data() -> ResourceDslData {
-    let path = Path::new("<embedded>/config/resources.dag");
-    let output = compile_data_from_sources(&[(path, RESOURCES_DAG_SOURCE)])
+    let layout = WorkspaceLayout::from_env_manifest_dir()
+        .or_else(|_| WorkspaceLayout::from_cargo_metadata())
+        .expect("workspace layout for resource DSL data");
+    let dsl_root = layout.workspace_root.join("dsl");
+    let output = compile_data_from_module(&dsl_root, "config/resources.dag")
         .expect("config/resources.dag must compile — fix DSL syntax errors before building");
 
     let repo_source_input_globs =
