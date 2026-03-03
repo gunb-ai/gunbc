@@ -175,11 +175,12 @@ fn default_value_for_slot<T: Executable + Clone + Send>(
         return provider_rest;
     }
 
-    // Fall back to trying all response variants.
+    // Fall back to trying all response variants (REST-first since most
+    // service operations are REST-based).
     let candidates = [
+        default_rest_response(),
         default_shell_response(),
         default_file_response(),
-        default_rest_response(), // kitchen sink fallback
     ];
     for candidate in candidates {
         if response_candidate_satisfies_consumers(dag, node_id, port_name, &candidate) {
