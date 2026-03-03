@@ -6,6 +6,8 @@ license.workspace = true
 description = "Shared DAG resolution operations for service transports"
 
 [dependencies]
+daglang-derive = { path = "../daglang/daglang-derive" }
+daglang-driver = { path = "../daglang/daglang-driver" }
 daglang-lower = { path = "../daglang/daglang-lower" }
 gunbc-exec = { path = "../exec" }
 gunbc-ir = { path = "../ir" }

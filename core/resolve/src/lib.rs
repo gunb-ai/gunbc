@@ -1,6 +1,8 @@
+pub mod builder;
 pub mod resolve;
 pub mod service_ops;
 
+pub use builder::DslGraphResult;
 pub use resolve::{resolve_lowered_dag_with, ResolveError};
 
 use gunbc_exec::DynOp;

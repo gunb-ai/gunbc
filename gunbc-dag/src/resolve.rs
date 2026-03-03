@@ -9,7 +9,7 @@ use gunbc_resolve::ExternResolver;
 pub use gunbc_resolve::ResolveError;
 
 /// App-specific extern resolver that dispatches to `extern_ops`.
-struct GunbcExternResolver;
+pub(crate) struct GunbcExternResolver;
 
 impl ExternResolver for GunbcExternResolver {
     fn resolve(&self, module: &str, name: &str) -> Option<DynOp> {
