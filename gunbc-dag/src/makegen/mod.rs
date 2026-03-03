@@ -21,8 +21,8 @@ pub use model::{
     MetaTargetData, ResourceNeedData, ResourceTargetEntryData, TargetOrigin, TargetSource,
 };
 pub use registry::{
-    default_build_config, BuildCommand, BuildConfig, BuildSystem, EntrypointParam, ExtraTarget,
-    ToolInfo, ToolRegistry, WorkflowKind, WorkflowSpec,
+    default_build_config, default_registry_enriched, BuildCommand, BuildConfig, BuildSystem,
+    EntrypointParam, ExtraTarget, ToolInfo, ToolRegistry, WorkflowKind, WorkflowSpec,
 };
 pub use shared::render_makefile;
 
@@ -61,6 +61,6 @@ pub fn makegen_embedded_data() -> Result<EmbeddedData, String> {
 
 /// Compute makegen content by rendering from discovered tools.
 pub fn compute_makegen_content() -> Result<String, String> {
-    let registry = ToolRegistry::default_registry()?;
+    let registry = registry::default_registry_enriched()?;
     render_makefile(&registry).map_err(|err| err.to_string())
 }

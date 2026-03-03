@@ -21,10 +21,13 @@ pub mod entrypoint;
 pub mod fidelity;
 pub mod file_writer;
 pub mod lambda_gen;
+#[allow(clippy::vec_init_then_push)]
+pub mod makegen;
 pub mod registry;
 pub mod rest_gen;
 pub mod template;
 pub mod testgen;
+pub mod tool_discovery;
 
 pub use cli_gen::{
     generate_cli, generate_cli_with_import, generate_cli_with_subcommands, CliEntrypoint, ToolMeta,

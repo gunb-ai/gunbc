@@ -17,4 +17,5 @@ daglang-lower = { path = "../daglang/daglang-lower" }
 daglang-resolve = { path = "../daglang/daglang-resolve" }
 daglang-syntax = { path = "../daglang/daglang-syntax" }
 daglang-typecheck = { path = "../daglang/daglang-typecheck" }
+serde = { workspace = true }
 serde_json = { workspace = true }

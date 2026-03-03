@@ -156,10 +156,10 @@ impl Executable for DiscoverToolsOp {
         _inputs: HashMap<String, Value>,
     ) -> Result<HashMap<String, Value>, ExecError> {
         use crate::makegen::model::validate_target_namespace;
-        use crate::makegen::registry::{BuildConfig, ToolRegistry};
+        use crate::makegen::registry::BuildConfig;
         use gunbc_ir::cargo::{CargoCommand, Subcommand};
 
-        let registry = ToolRegistry::default_registry()
+        let registry = crate::makegen::default_registry_enriched()
             .map_err(|e| ExecError::new(format!("failed to build tool registry: {e}")))?;
         validate_target_namespace(&registry)
             .map_err(|e| ExecError::new(format!("invalid make target namespace: {e}")))?;
@@ -271,8 +271,8 @@ impl Executable for GenerateBootstrapMakefileOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         use gunbc_exec::optional_str_list_strict;
         let _ = optional_str_list_strict(&inputs, "crate_names")?;
-        use crate::makegen::{registry::ToolRegistry, shared::render_makefile};
-        let registry = ToolRegistry::default_registry()
+        use crate::makegen::shared::render_makefile;
+        let registry = crate::makegen::default_registry_enriched()
             .map_err(|e| ExecError::new(format!("failed to build tool registry: {e}")))?;
         let makefile = render_makefile(&registry)
             .map_err(|e| ExecError::new(format!("failed to render makefile: {e}")))?;
