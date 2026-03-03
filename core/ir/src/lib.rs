@@ -213,9 +213,10 @@ pub use types::{
     SemanticCarrierKind, TypeId, ValueBacking,
 };
 pub use validate::{
-    validate_fingerprint_uniqueness, validate_resource_wiring,
-    validate_resource_wiring_recursive, validate_subdag_interfaces, FingerprintConflict,
-    PortDirection, SubDagError, UnwiredResource,
+    validate_fingerprint_uniqueness, validate_required_inputs, validate_resource_wiring,
+    validate_resource_wiring_recursive, validate_subdag_interfaces, verify_dag,
+    FingerprintConflict, PortDirection, SubDagError, UnwiredInputError, UnwiredResource,
+    VerifyError,
 };
 pub use value::{
     SecretHint, SecretString, Value, ValueKind, HUMAN_TEXT_MAX_LINES, HUMAN_TEXT_MAX_LINE_WIDTH,

@@ -8,15 +8,45 @@
 
 module extdeps.make
 
+// Canonical target name in the global Make namespace.
+type TargetName = String
+
+// Where a target originates in gunbc make projections.
+type TargetOrigin =
+  Help
+  | Core
+  | Meta
+  | MetaFix
+  | MetaCheck
+  | Tool
+  | ToolDry
+  | ToolExtra
+
 // A Make target: the fundamental unit.
 type MakeTarget {
-  name: String
+  name: TargetName
   description: String
-  deps: List<String>
+  deps: List<TargetName>
   commands: List<String>
   comment: String?
   phony: Bool
 }
+
+// Canonical target used by makegen renderers after namespace validation.
+type CanonicalTarget {
+  name: TargetName
+  deps: List<TargetName>
+  commands: List<String>
+  comment: String?
+  phony: Bool
+  origin: TargetOrigin
+  owner: String
+}
+
+// Canonical global namespace for Make targets.
+// Map keys are unique by construction, so duplicate target names are
+// structurally unrepresentable in this model.
+type TargetNamespace = Map<TargetName, CanonicalTarget>
 
 // A Make variable assignment.
 type MakeVariable {
@@ -111,4 +141,10 @@ type ExtraTarget {
 type Makefile {
   variables: List<MakeVariable>
   sections: List<MakeSection>
+}
+
+// Canonical Makefile projection with uniqueness encoded in the type model.
+type CanonicalMakefile {
+  variables: List<MakeVariable>
+  targets: TargetNamespace
 }

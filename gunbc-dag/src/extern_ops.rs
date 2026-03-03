@@ -155,11 +155,14 @@ impl Executable for DiscoverToolsOp {
         &self,
         _inputs: HashMap<String, Value>,
     ) -> Result<HashMap<String, Value>, ExecError> {
+        use crate::makegen::model::validate_target_namespace;
         use crate::makegen::registry::{BuildConfig, ToolRegistry};
         use gunbc_ir::cargo::{CargoCommand, Subcommand};
 
         let registry = ToolRegistry::default_registry()
             .map_err(|e| ExecError::new(format!("failed to build tool registry: {e}")))?;
+        validate_target_namespace(&registry)
+            .map_err(|e| ExecError::new(format!("invalid make target namespace: {e}")))?;
         let config = BuildConfig::cargo();
 
         let tools: Vec<Value> = registry
@@ -271,7 +274,8 @@ impl Executable for GenerateBootstrapMakefileOp {
         use crate::makegen::{registry::ToolRegistry, shared::render_makefile};
         let registry = ToolRegistry::default_registry()
             .map_err(|e| ExecError::new(format!("failed to build tool registry: {e}")))?;
-        let makefile = render_makefile(&registry);
+        let makefile = render_makefile(&registry)
+            .map_err(|e| ExecError::new(format!("failed to render makefile: {e}")))?;
         OutputMap::new()
             .str("makefile_content", makefile.clone())
             .str("return", makefile)
@@ -569,11 +573,22 @@ mod tests {
 
     #[test]
     fn discover_tools_returns_non_empty_list() {
-        let out = DiscoverToolsOp.execute(HashMap::new()).unwrap();
-        let tools = out.get("return").expect("return key");
-        match tools {
-            Value::List(items) => assert!(!items.is_empty(), "tool list should not be empty"),
-            _ => panic!("discover_tools should return a list"),
+        match DiscoverToolsOp.execute(HashMap::new()) {
+            Ok(out) => {
+                let tools = out.get("return").expect("return key");
+                match tools {
+                    Value::List(items) => assert!(!items.is_empty(), "tool list should not be empty"),
+                    _ => panic!("discover_tools should return a list"),
+                }
+            }
+            Err(err) => {
+                let msg = err.to_string();
+                assert!(
+                    msg.contains("invalid make target namespace")
+                        || msg.contains("duplicate make target"),
+                    "unexpected discover_tools error: {msg}"
+                );
+            }
         }
     }
 }

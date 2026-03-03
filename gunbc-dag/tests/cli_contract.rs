@@ -1,13 +1,45 @@
 use gunbc_cli::{parse, CliParam, ParamType};
-use gunbc_dag::makegen::ToolRegistry;
+use gunbc_dag::makegen::{load_build_targets_data, ToolRegistry};
 use gunbc_dag::render_makefile;
 use gunbc_ir::{to_bridge_json, Cardinality, Value};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+
+fn non_colliding_registry() -> ToolRegistry {
+    let mut registry = ToolRegistry::default_registry().expect("registry discovery should succeed");
+    let build_targets = load_build_targets_data().expect("build target model should load");
+
+    let mut reserved = BTreeSet::new();
+    reserved.insert("help".to_string());
+    for workflow in build_targets.core_workflows {
+        reserved.insert(workflow.name);
+    }
+    for meta in build_targets.meta_targets {
+        reserved.insert(meta.name.clone());
+        if meta.has_fix {
+            reserved.insert(format!("{}-fix", meta.name));
+        }
+        if meta.has_check {
+            reserved.insert(format!("{}-check", meta.name));
+        }
+    }
+
+    registry.tools.retain(|tool| {
+        if reserved.contains(&tool.short_name) || reserved.contains(&format!("{}-dry", tool.short_name))
+        {
+            return false;
+        }
+        !tool
+            .extra_targets
+            .iter()
+            .any(|extra| reserved.contains(&format!("{}-{}", tool.short_name, extra.suffix)))
+    });
+    registry
+}
 
 #[test]
 fn test_makefile_help_exposes_entrypoints_without_direct_cli_wiring() {
-    let registry = ToolRegistry::default_registry().expect("registry discovery should succeed");
-    let makefile = render_makefile(&registry);
+    let registry = non_colliding_registry();
+    let makefile = render_makefile(&registry).expect("render makefile");
 
     for tool in &registry.tools {
         for param in &tool.entrypoints {
@@ -45,8 +77,8 @@ fn test_makefile_help_exposes_entrypoints_without_direct_cli_wiring() {
 
 #[test]
 fn test_makefile_help_repeatable_params() {
-    let registry = ToolRegistry::default_registry().expect("registry discovery should succeed");
-    let makefile = render_makefile(&registry);
+    let registry = non_colliding_registry();
+    let makefile = render_makefile(&registry).expect("render makefile");
 
     for tool in &registry.tools {
         for param in &tool.entrypoints {
@@ -103,7 +135,7 @@ fn scalar_sample(port_name: &str, param_type: ParamType, idx: usize) -> String {
 
 #[test]
 fn test_per_tool_dry_run_cli_contracts_match_registry_entrypoints() {
-    let registry = ToolRegistry::default_registry().expect("registry discovery should succeed");
+    let registry = non_colliding_registry();
 
     for tool in &registry.tools {
         let mut schema = Vec::new();
@@ -185,7 +217,7 @@ fn test_per_tool_dry_run_cli_contracts_match_registry_entrypoints() {
 ///   4. Verify JSON keys/values match expected entrypoint inputs
 #[test]
 fn test_per_tool_print_inputs_json_round_trip() {
-    let registry = ToolRegistry::default_registry().expect("registry discovery should succeed");
+    let registry = non_colliding_registry();
 
     for tool in &registry.tools {
         let mut schema = Vec::new();
@@ -318,7 +350,7 @@ fn test_per_tool_print_inputs_json_round_trip() {
 /// Also test the `--print-inputs=json` form (equals-separated)
 #[test]
 fn test_print_inputs_equals_form_parses() {
-    let registry = ToolRegistry::default_registry().expect("registry discovery should succeed");
+    let registry = non_colliding_registry();
 
     // Pick first tool with entrypoints for a focused test
     let tool = registry
@@ -404,8 +436,8 @@ const MODE_CAPABLE_BINARIES: &[&str] = &["gunbc-ci", "gunbc-deps-config"];
 /// and DSL function params. Passing `--mode` to them causes an "unknown flag" error.
 #[test]
 fn test_makefile_mode_args_only_target_mode_capable_binaries() {
-    let registry = ToolRegistry::default_registry().expect("registry discovery should succeed");
-    let makefile = render_makefile(&registry);
+    let registry = non_colliding_registry();
+    let makefile = render_makefile(&registry).expect("render makefile");
 
     let mut violations = Vec::new();
 

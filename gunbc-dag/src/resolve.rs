@@ -440,7 +440,8 @@ impl Executable for CollectionDelegate {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         let items = match inputs.get("items") {
             Some(Value::List(values)) => values.clone(),
-            Some(Value::Skipped) | None => Vec::new(),
+            Some(Value::Skipped) => return OutputMap::new().value("items", Value::Skipped).ok(),
+            None => Vec::new(),
             Some(value) => vec![value.clone()],
         };
         let output = daglang_lower::eval::evaluate_collection(&self.kind, items, &inputs)
@@ -669,7 +670,7 @@ impl Executable for ConditionalOp {
         let result = if daglang_lower::eval::value_truthy(&condition) {
             inputs.get("then").cloned().unwrap_or(Value::Skipped)
         } else {
-            inputs.get("else").cloned().unwrap_or(Value::Unit)
+            inputs.get("else").cloned().unwrap_or(Value::Skipped)
         };
         OutputMap::new().value(&self.output_port, result).ok()
     }
@@ -3339,5 +3340,36 @@ mod tests {
             }
             other => panic!("expected Map with _variant, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn conditional_op_without_else_returns_skipped() {
+        let op = ConditionalOp {
+            output_port: "result".to_string(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("condition".to_string(), Value::Bool(false));
+        // No "else" input → should return Skipped, not Unit
+        let outputs = op.execute(inputs).expect("should execute");
+        assert_eq!(
+            outputs.get("result"),
+            Some(&Value::Skipped),
+            "missing else branch should produce Skipped, not Unit"
+        );
+    }
+
+    #[test]
+    fn collection_delegate_skipped_input_propagates() {
+        let op = CollectionDelegate {
+            kind: CollectionOpKind::Map,
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("items".to_string(), Value::Skipped);
+        let outputs = op.execute(inputs).expect("should execute");
+        assert_eq!(
+            outputs.get("items"),
+            Some(&Value::Skipped),
+            "Skipped input should propagate as Skipped, not empty list"
+        );
     }
 }

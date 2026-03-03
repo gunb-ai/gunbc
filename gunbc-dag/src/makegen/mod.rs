@@ -4,6 +4,7 @@
 
 pub mod gitignore;
 pub mod justfile;
+pub mod model;
 pub mod registry;
 pub mod shared;
 
@@ -14,6 +15,11 @@ use std::collections::HashMap;
 
 pub use gitignore::{derive_categories, render_gitignore, GitignoreRenderer};
 pub use justfile::{render_justfile, render_justfile_with_config, JustfileRenderer};
+pub use model::{
+    index_unique_target_names, load_build_targets_data, validate_target_namespace,
+    validate_target_namespace_with_data, BuildTargetsData, CoreWorkflowData, MakegenModelError,
+    MetaTargetData, ResourceNeedData, ResourceTargetEntryData, TargetOrigin, TargetSource,
+};
 pub use registry::{
     default_build_config, BuildCommand, BuildConfig, BuildSystem, EntrypointParam, ExtraTarget,
     ToolInfo, ToolRegistry, WorkflowKind, WorkflowSpec,
@@ -56,5 +62,5 @@ pub fn makegen_embedded_data() -> Result<EmbeddedData, String> {
 /// Compute makegen content by rendering from discovered tools.
 pub fn compute_makegen_content() -> Result<String, String> {
     let registry = ToolRegistry::default_registry()?;
-    Ok(render_makefile(&registry))
+    render_makefile(&registry).map_err(|err| err.to_string())
 }

@@ -245,6 +245,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                 layer: parsed.layer.unwrap_or_default(),
                 output_dir: normalized_out_dir.clone(),
                 embedded_data,
+                ..Default::default()
             };
             let mut output = compile_target_or_exit_with_compile_options(
                 cwd,

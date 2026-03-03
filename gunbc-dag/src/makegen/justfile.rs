@@ -5,14 +5,11 @@
 //! graph (target names + dependencies) while emitting Just syntax.
 
 use std::collections::BTreeMap;
-use std::path::Path;
 
-use daglang_driver::compile_data_from_sources;
-use serde::Deserialize;
-
-const BUILD_TARGETS_SOURCE: &str = include_str!("../../../dsl/config/build_targets.dag");
-const EXTDEPS_MAKE_SOURCE: &str = include_str!("../../../dsl/extdeps/make.dag");
-
+use crate::makegen::model::{
+    load_build_targets_data, validate_target_namespace_with_data, BuildTargetsData,
+    MakegenModelError, MetaTargetData, ResourceTargetEntryData,
+};
 use crate::makegen::registry::{BuildConfig, EntrypointParam, ToolInfo, ToolRegistry};
 use gunbc_ir::cargo::{CargoCommand, Subcommand, Warnings};
 use gunbc_ir::render_ir::FileHeader;
@@ -39,7 +36,7 @@ impl<'a> JustfileRenderer<'a> {
     }
 
     /// Render the complete Justfile with header.
-    pub fn render(&self) -> String {
+    pub fn render(&self) -> Result<String, MakegenModelError> {
         let regenerate_cmd =
             CargoCommand::new(Subcommand::Run(CargoInvocation::composed("makegen", "dag")));
         let header = FileHeader {
@@ -47,21 +44,24 @@ impl<'a> JustfileRenderer<'a> {
             regenerate_command: format!("{} --format just", regenerate_cmd.to_shell()).into(),
             comment_prefix: "#".into(),
         };
-        format!(
+        Ok(format!(
             "{}\n\n{}",
             header.render(),
-            render_justfile_content(self.registry, &self.config)
-        )
+            render_justfile_content(self.registry, &self.config)?
+        ))
     }
 }
 
 /// Render a complete Justfile from the tool registry.
-pub fn render_justfile(registry: &ToolRegistry) -> String {
+pub fn render_justfile(registry: &ToolRegistry) -> Result<String, MakegenModelError> {
     JustfileRenderer::new(registry).render()
 }
 
 /// Render a complete Justfile with a specific build config.
-pub fn render_justfile_with_config(registry: &ToolRegistry, config: &BuildConfig) -> String {
+pub fn render_justfile_with_config(
+    registry: &ToolRegistry,
+    config: &BuildConfig,
+) -> Result<String, MakegenModelError> {
     JustfileRenderer::with_config(registry, config.clone()).render()
 }
 
@@ -73,43 +73,10 @@ struct Recipe {
     comment: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct CoreWorkflowData {
-    name: String,
-    description: String,
-    deps: Vec<String>,
-    body: Vec<String>,
-    comment: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ResourceNeedData {
-    resource: String,
-    mode: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct MetaTargetData {
-    name: String,
-    description: String,
-    has_check: bool,
-    has_fix: bool,
-    command: String,
-    check_command: Option<String>,
-    fix_command: Option<String>,
-    command_prefix: Option<String>,
-    resource_needs: Vec<ResourceNeedData>,
-    fix_prerequisites: Vec<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ResourceTargetEntryData {
-    resource: String,
-    ensure_target: String,
-    verify_target: String,
-}
-
-fn render_justfile_content(registry: &ToolRegistry, config: &BuildConfig) -> String {
+fn render_justfile_content(
+    registry: &ToolRegistry,
+    config: &BuildConfig,
+) -> Result<String, MakegenModelError> {
     let mut out = String::new();
     out.push_str("# NOTE: This Justfile mirrors Makefile target topology.\n");
     out.push_str("set shell := [\"bash\", \"-cu\"]\n\n");
@@ -122,7 +89,7 @@ fn render_justfile_content(registry: &ToolRegistry, config: &BuildConfig) -> Str
         out.push('\n');
     }
 
-    for recipe in build_recipes(registry, config) {
+    for recipe in build_recipes(registry, config)? {
         if let Some(comment) = recipe.comment {
             out.push_str(&format!("# {comment}\n"));
         }
@@ -141,12 +108,21 @@ fn render_justfile_content(registry: &ToolRegistry, config: &BuildConfig) -> Str
         out.push('\n');
     }
 
-    out
+    Ok(out)
 }
 
-fn build_recipes(registry: &ToolRegistry, config: &BuildConfig) -> Vec<Recipe> {
+fn build_recipes(
+    registry: &ToolRegistry,
+    config: &BuildConfig,
+) -> Result<Vec<Recipe>, MakegenModelError> {
     let mut recipes = Vec::new();
-    let (core_workflows, meta_targets, resource_targets) = load_build_targets_data();
+    let build_targets = load_build_targets_data()?;
+    validate_target_namespace_with_data(registry, &build_targets)?;
+    let BuildTargetsData {
+        core_workflows,
+        meta_targets,
+        resource_targets,
+    } = build_targets;
 
     recipes.push(Recipe {
         name: "help".to_string(),
@@ -198,7 +174,7 @@ fn build_recipes(registry: &ToolRegistry, config: &BuildConfig) -> Vec<Recipe> {
         }
     }
 
-    recipes
+    Ok(recipes)
 }
 
 fn resolve_resource_target(
@@ -320,49 +296,6 @@ fn tool_target_deps(tool: &ToolInfo) -> Vec<String> {
     }
 }
 
-fn load_build_targets_data() -> (
-    Vec<CoreWorkflowData>,
-    Vec<MetaTargetData>,
-    Vec<ResourceTargetEntryData>,
-) {
-    let output = compile_data_from_sources(&[
-        (
-            Path::new("<embedded>/extdeps/make.dag"),
-            EXTDEPS_MAKE_SOURCE,
-        ),
-        (
-            Path::new("<embedded>/config/build_targets.dag"),
-            BUILD_TARGETS_SOURCE,
-        ),
-    ])
-    .expect("build_targets.dag should compile");
-    let workflows = serde_json::from_value::<Vec<CoreWorkflowData>>(
-        output
-            .data_values
-            .get("core_workflows")
-            .cloned()
-            .expect("core_workflows data should exist"),
-    )
-    .expect("core_workflows should deserialize");
-    let metas = serde_json::from_value::<Vec<MetaTargetData>>(
-        output
-            .data_values
-            .get("meta_targets")
-            .cloned()
-            .expect("meta_targets data should exist"),
-    )
-    .expect("meta_targets should deserialize");
-    let resource_targets = serde_json::from_value::<Vec<ResourceTargetEntryData>>(
-        output
-            .data_values
-            .get("resource_targets")
-            .cloned()
-            .expect("resource_targets data should exist"),
-    )
-    .expect("resource_targets should deserialize");
-    (workflows, metas, resource_targets)
-}
-
 fn normalize_make_command_for_just(command: &str) -> String {
     command
         .replace("@$(MAKE) ", "@just ")
@@ -441,10 +374,41 @@ mod tests {
     use super::*;
     use std::collections::BTreeSet;
 
+    fn non_colliding_registry() -> ToolRegistry {
+        let mut registry = ToolRegistry::default_registry().expect("registry discovery should succeed");
+        let build_targets = load_build_targets_data().expect("build target model should load");
+
+        let mut reserved = BTreeSet::new();
+        reserved.insert("help".to_string());
+        for workflow in build_targets.core_workflows {
+            reserved.insert(workflow.name);
+        }
+        for meta in build_targets.meta_targets {
+            reserved.insert(meta.name.clone());
+            if meta.has_fix {
+                reserved.insert(format!("{}-fix", meta.name));
+            }
+            if meta.has_check {
+                reserved.insert(format!("{}-check", meta.name));
+            }
+        }
+
+        registry.tools.retain(|tool| {
+            if reserved.contains(&tool.short_name) || reserved.contains(&format!("{}-dry", tool.short_name)) {
+                return false;
+            }
+            !tool
+                .extra_targets
+                .iter()
+                .any(|extra| reserved.contains(&format!("{}-{}", tool.short_name, extra.suffix)))
+        });
+        registry
+    }
+
     #[test]
     fn test_render_justfile_has_header_and_help() {
-        let registry = ToolRegistry::default_registry().expect("registry discovery should succeed");
-        let justfile = render_justfile(&registry);
+        let registry = non_colliding_registry();
+        let justfile = render_justfile(&registry).expect("render justfile");
         assert!(justfile.contains("Generated by gunbc-makegen"));
         assert!(justfile.contains("help:"));
         assert!(justfile.contains("set shell := [\"bash\", \"-cu\"]"));
@@ -452,16 +416,16 @@ mod tests {
 
     #[test]
     fn test_justfile_target_graph_matches_makefile() {
-        let registry = ToolRegistry::default_registry().expect("registry discovery should succeed");
-        let makefile = crate::makegen::shared::render_makefile(&registry);
-        let justfile = render_justfile(&registry);
+        let registry = non_colliding_registry();
+        let makefile = crate::makegen::shared::render_makefile(&registry).expect("render makefile");
+        let justfile = render_justfile(&registry).expect("render justfile");
 
-        let make_graph = parse_target_graph(&makefile);
-        let just_graph = parse_target_graph(&justfile);
+        let make_graph = parse_target_graph(&makefile).expect("parse makefile graph");
+        let just_graph = parse_target_graph(&justfile).expect("parse justfile graph");
         assert_eq!(make_graph, just_graph);
     }
 
-    fn parse_target_graph(content: &str) -> BTreeMap<String, BTreeSet<String>> {
+    fn parse_target_graph(content: &str) -> Result<BTreeMap<String, BTreeSet<String>>, String> {
         let mut graph = BTreeMap::new();
 
         for line in content.lines() {
@@ -488,9 +452,11 @@ mod tests {
                 .filter(|dep| !dep.is_empty())
                 .map(|dep| dep.to_string())
                 .collect::<BTreeSet<_>>();
-            graph.insert(target.to_string(), deps);
+            if graph.insert(target.to_string(), deps).is_some() {
+                return Err(format!("duplicate target name in rendered content: {target}"));
+            }
         }
 
-        graph
+        Ok(graph)
     }
 }

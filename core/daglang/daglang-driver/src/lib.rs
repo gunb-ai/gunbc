@@ -176,6 +176,8 @@ pub enum CompileError {
     Lower(LowerError),
     Emit(EmitError),
     Derive(DeriveError),
+    /// Post-lowering structural verification failures.
+    Verification(Vec<gunbc_ir::VerifyError>),
     /// Ad-hoc error message (validation, I/O, configuration).
     Message(String),
 }
@@ -214,6 +216,13 @@ impl std::fmt::Display for CompileError {
             CompileError::Lower(error) => write!(f, "lower error: {error}"),
             CompileError::Emit(error) => write!(f, "emit error: {error}"),
             CompileError::Derive(error) => write!(f, "derive error: {error}"),
+            CompileError::Verification(errors) => {
+                f.write_str("verification errors:\n")?;
+                for error in errors {
+                    writeln!(f, "  {error}")?;
+                }
+                Ok(())
+            }
             CompileError::Message(message) => f.write_str(message),
         }
     }
@@ -266,7 +275,7 @@ pub struct CheckOutput {
     pub parsed_files: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompileOptions {
     pub emit_collection_nodes: bool,
     pub profile: Option<String>,
@@ -281,6 +290,28 @@ pub struct CompileOptions {
     /// Go/C/MIPS backends embed these as string literals; Rust Layer 1
     /// writes them as additional files in the generated crate.
     pub embedded_data: std::collections::HashMap<String, daglang_emit::EmbeddedData>,
+    /// Skip post-lowering structural verification (default: true during transition).
+    ///
+    /// When false, `verify_dag()` runs after lowering and rejects DAGs with
+    /// unwired required inputs, SubDag mismatches, resource gaps, or
+    /// fingerprint conflicts. Currently defaults to true because the lowerer
+    /// produces benign unwired inputs (param_source nodes, fn body cross-wiring
+    /// gaps). Set to false on specific compilation paths once lowerer gaps close.
+    pub skip_verification: bool,
+}
+
+impl Default for CompileOptions {
+    fn default() -> Self {
+        Self {
+            emit_collection_nodes: false,
+            profile: None,
+            target: CodegenTarget::default(),
+            layer: CodegenLayer::default(),
+            output_dir: None,
+            embedded_data: std::collections::HashMap::new(),
+            skip_verification: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -489,6 +520,12 @@ pub fn compile_from_module_graph_with_options(
         },
     )
     .map_err(CompileError::Lower)?;
+    if !options.skip_verification {
+        let verify_errors = gunbc_ir::verify_dag(&lowered);
+        if !verify_errors.is_empty() {
+            return Err(CompileError::Verification(verify_errors));
+        }
+    }
     let dag_paths = daglang_lower::extract_output_paths(&lowered);
     let annotation_paths = daglang_lower::extract_declared_outputs(&typed);
     let output_paths = merge_dedup_paths(dag_paths, annotation_paths);
@@ -2551,5 +2588,42 @@ fn run() -> Bool {
         );
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn verify_dag_catches_unwired_inputs_when_enabled() {
+        // Build a minimal DAG with a deliberately unwired required input,
+        // then confirm verify_dag surfaces it.
+        use gunbc_ir::validate::{validate_required_inputs, verify_dag};
+        use gunbc_ir::{build::port, Dag, Edge, Node};
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "source",
+            vec![],
+            vec![port("out", "String")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "sink",
+            vec![port("data", "String"), port("config", "String")],
+            vec![port("result", "String")],
+            (),
+        ));
+        // Wire only "data", leave "config" unwired
+        dag.add_edge(Edge::new("source", "out", "sink", "data"));
+
+        let errors = validate_required_inputs(&dag);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].port_name, "config");
+
+        let all_errors = verify_dag(&dag);
+        assert!(
+            all_errors.iter().any(|e| matches!(
+                e,
+                gunbc_ir::VerifyError::UnwiredInput(err) if err.port_name == "config"
+            )),
+            "verify_dag should detect unwired 'config' input"
+        );
     }
 }

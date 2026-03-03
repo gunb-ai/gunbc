@@ -10,6 +10,7 @@ use daglang_lower::LoweredFnBody;
 use gunbc_ir::cargo::{CargoCommand, Subcommand};
 use gunbc_ir::Value;
 
+use crate::makegen::model::{validate_target_namespace, MakegenModelError};
 use crate::makegen::registry::{BuildConfig, ToolRegistry};
 
 const MAKEGEN_SOURCE: &str = include_str!("../../../dsl/tools/makegen.dag");
@@ -40,7 +41,8 @@ const EXT_PKG_MGRS_SOURCE: &str = include_str!("../../../dsl/extdeps/tools/packa
 ///
 /// Compiles `makegen.dag`, extracts fn bodies and data declarations, then
 /// evaluates `render_makefile_content()` to produce the output string.
-pub fn render_makefile(registry: &ToolRegistry) -> String {
+pub fn render_makefile(registry: &ToolRegistry) -> Result<String, MakegenModelError> {
+    validate_target_namespace(registry)?;
     let (fns, data_values) = compile_makegen();
     let tools = registry_tools_to_value(registry);
 
@@ -64,11 +66,11 @@ pub fn render_makefile(registry: &ToolRegistry) -> String {
         .expect("render_makefile_content fn body should exist in makegen.dag");
     let result = daglang_lower::eval::evaluate_fn_body(body, &inputs, &fns)
         .expect("render_makefile_content should evaluate");
-    result
+    Ok(result
         .get("return")
         .and_then(Value::as_str)
         .expect("render_makefile_content should return a string")
-        .to_string()
+        .to_string())
 }
 
 /// Compile `makegen.dag` and extract fn bodies + data declaration values.

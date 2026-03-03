@@ -123,3 +123,7 @@ path = "../target/codegen/bin/workflow/main.rs"
 [[bin]]
 name = "gunbc-deps-config"
 path = "../target/codegen/bin/deps-config/main.rs"
+
+[[bin]]
+name = "gunbc-codegen-ensure"
+path = "../target/codegen/bin/codegen-ensure/main.rs"
