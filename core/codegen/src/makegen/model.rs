@@ -236,6 +236,27 @@ pub fn index_unique_target_names(
     Ok(index)
 }
 
+/// Collect all target names reserved by core workflows and meta targets.
+pub fn reserved_target_names(
+    build_targets: &BuildTargetsData,
+) -> std::collections::BTreeSet<String> {
+    let mut reserved = std::collections::BTreeSet::new();
+    reserved.insert("help".to_string());
+    for workflow in &build_targets.core_workflows {
+        reserved.insert(workflow.name.clone());
+    }
+    for meta in &build_targets.meta_targets {
+        reserved.insert(meta.name.clone());
+        if meta.has_fix {
+            reserved.insert(format!("{}-fix", meta.name));
+        }
+        if meta.has_check {
+            reserved.insert(format!("{}-check", meta.name));
+        }
+    }
+    reserved
+}
+
 /// Validate the target namespace using the current DSL build target model.
 pub fn validate_target_namespace(registry: &ToolRegistry) -> Result<(), MakegenModelError> {
     let build_targets = load_build_targets_data()?;

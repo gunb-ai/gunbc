@@ -9,7 +9,10 @@ use daglang_lower::LoweredFnBody;
 use gunbc_ir::cargo::{CargoCommand, Subcommand};
 use gunbc_ir::Value;
 
-use super::model::{validate_target_namespace, MakegenModelError};
+use super::model::{
+    load_build_targets_data, reserved_target_names, validate_target_namespace_with_data,
+    MakegenModelError,
+};
 use super::registry::{BuildConfig, ToolRegistry};
 
 // ============================================================================
@@ -21,9 +24,15 @@ use super::registry::{BuildConfig, ToolRegistry};
 /// Compiles `makegen.dag`, extracts fn bodies and data declarations, then
 /// evaluates `render_makefile_content()` to produce the output string.
 pub fn render_makefile(registry: &ToolRegistry) -> Result<String, MakegenModelError> {
-    validate_target_namespace(registry)?;
+    // Filter out tools whose short_name collides with a core/meta target.
+    // Core targets already have their own recipe in the Makefile; discovered
+    // tools that map to the same name should not generate a duplicate target.
+    let build_targets = load_build_targets_data()?;
+    let reserved = reserved_target_names(&build_targets);
+    let filtered = registry.without_reserved(&reserved);
+    validate_target_namespace_with_data(&filtered, &build_targets)?;
     let (fns, data_values) = compile_makegen();
-    let tools = registry_tools_to_value(registry);
+    let tools = registry_tools_to_value(&filtered);
 
     let mut inputs = HashMap::new();
     inputs.insert(

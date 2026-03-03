@@ -27,7 +27,6 @@ pub mod extern_ops;
 pub mod fidelity;
 pub mod fs_env;
 
-pub mod makegen;
 pub mod pragma;
 pub mod resolve;
 pub mod resource_defs;
@@ -51,9 +50,11 @@ pub use gunbc_lib_cloud_ops::env_requirements::{
     gcp_github_actions_env, gcp_local_env, gcp_metadata_env, CloudEnvRequirements,
     CLOUD_ENV_COMMON_OPTIONAL,
 };
-pub use makegen::{
-    build_makegen_graph, default_build_config, makegen_signature, render_gitignore,
-    render_justfile, render_makefile, BuildConfig, MakegenGraphOp, WorkflowKind, WorkflowSpec,
+pub use gunbc_codegen::makegen::{
+    gitignore::render_gitignore,
+    justfile::render_justfile,
+    registry::{default_build_config, BuildConfig, WorkflowKind, WorkflowSpec},
+    shared::render_makefile,
 };
 pub use pragma::{build_pragma_graph, pragma_signature, PragmaGraphOp};
 pub use resolve::{resolve_lowered_dag, ResolveError};
@@ -63,8 +64,10 @@ pub use resource_defs::{
 pub use testgen_dag::{TestgenGraphOp, TestgenOp};
 pub use tool_graphs::{
     bootstrap_signature, build_bootstrap_graph, build_build_graph, build_codegen_graph,
-    build_deps_graph, build_infra_graph, build_signature, codegen_signature, BootstrapGraphOp,
-    BuildGraphOp, CodegenGraphOp, DepsGraphOp, InfraGraphOp,
+    build_deps_graph, build_embedded_data, build_infra_graph, build_makegen_graph, build_signature,
+    codegen_signature, compute_makegen_content, default_registry_enriched, makegen_signature,
+    BootstrapGraphOp, BuildGraphOp, CodegenGraphOp, DepsGraphOp, InfraGraphOp, MakegenGraphOp,
+    MAKEGEN_ASSET_KEY,
 };
 pub use tool_runner::{
     freshness_steps_planned, print_tool_header, run_tool, update_freshness_manifest_if_needed,

@@ -352,11 +352,26 @@ impl ToolRegistry {
         self.tools.push(tool);
     }
 
+    /// Return a new registry excluding tools whose short_name is in the reserved set.
+    ///
+    /// Used by `render_makefile` to filter out DSL-discovered tools whose name
+    /// collides with a core or meta make target.
+    pub fn without_reserved(&self, reserved: &std::collections::BTreeSet<String>) -> Self {
+        Self {
+            tools: self
+                .tools
+                .iter()
+                .filter(|tool| !reserved.contains(&tool.short_name))
+                .cloned()
+                .collect(),
+        }
+    }
+
     /// Build the default registry with all tools discovered from DSL.
     ///
     /// NOTE: This returns an un-enriched registry (no live_secrets).
     /// Callers that need live_secrets should use the enriched wrapper
-    /// in `gunbc_dag::makegen::registry::default_registry_enriched()`.
+    /// in `gunbc_dag::tool_graphs::default_registry_enriched()`.
     pub fn default_registry() -> Result<Self, String> {
         let mut registry = Self::new();
 

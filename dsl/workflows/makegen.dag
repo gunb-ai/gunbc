@@ -17,7 +17,7 @@
 module workflows.makegen
 
 import shared.compilation { compilation_ensure }
-import tools.codegen { codegen_ensure }
+import shared.codegen { codegen_ensure }
 import tools.makegen {
   discover_tools,
   render_makefile_content

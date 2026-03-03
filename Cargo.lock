@@ -363,6 +363,7 @@ dependencies = [
  "gunbc-infra",
  "gunbc-ir",
  "gunbc-test",
+ "serde",
  "serde_json",
 ]
 
@@ -585,9 +586,15 @@ dependencies = [
 name = "gunbc-resolve"
 version = "0.1.0"
 dependencies = [
+ "daglang-derive",
+ "daglang-driver",
  "daglang-lower",
  "gunbc-exec",
  "gunbc-ir",
+ "gunbc-lib-blob",
+ "gunbc-lib-transport",
+ "gunbc-primitives",
+ "gunbc-test",
  "serde_json",
 ]
 

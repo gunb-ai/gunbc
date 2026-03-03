@@ -155,11 +155,11 @@ impl Executable for DiscoverToolsOp {
         &self,
         _inputs: HashMap<String, Value>,
     ) -> Result<HashMap<String, Value>, ExecError> {
-        use crate::makegen::model::validate_target_namespace;
-        use crate::makegen::registry::BuildConfig;
+        use gunbc_codegen::makegen::model::validate_target_namespace;
+        use gunbc_codegen::makegen::registry::BuildConfig;
         use gunbc_ir::cargo::{CargoCommand, Subcommand};
 
-        let registry = crate::makegen::default_registry_enriched()
+        let registry = crate::tool_graphs::default_registry_enriched()
             .map_err(|e| ExecError::new(format!("failed to build tool registry: {e}")))?;
         validate_target_namespace(&registry)
             .map_err(|e| ExecError::new(format!("invalid make target namespace: {e}")))?;
@@ -271,8 +271,8 @@ impl Executable for GenerateBootstrapMakefileOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         use gunbc_exec::optional_str_list_strict;
         let _ = optional_str_list_strict(&inputs, "crate_names")?;
-        use crate::makegen::shared::render_makefile;
-        let registry = crate::makegen::default_registry_enriched()
+        use gunbc_codegen::makegen::shared::render_makefile;
+        let registry = crate::tool_graphs::default_registry_enriched()
             .map_err(|e| ExecError::new(format!("failed to build tool registry: {e}")))?;
         let makefile = render_makefile(&registry)
             .map_err(|e| ExecError::new(format!("failed to render makefile: {e}")))?;
@@ -290,7 +290,7 @@ impl Executable for GenerateBootstrapGitignoreOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         use gunbc_exec::optional_str_list_strict;
         let _ = optional_str_list_strict(&inputs, "crate_names")?;
-        use crate::makegen::{gitignore::render_gitignore, registry::default_build_config};
+        use gunbc_codegen::makegen::{gitignore::render_gitignore, registry::default_build_config};
         let config = default_build_config();
         let gitignore = render_gitignore(&config)
             .map_err(|e| ExecError::new(format!("failed to render gitignore: {e}")))?;

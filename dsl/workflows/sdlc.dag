@@ -9,7 +9,7 @@
 module workflows.sdlc
 
 import shared.compilation { compilation_ensure }
-import tools.codegen { codegen_ensure }
+import shared.codegen { codegen_ensure }
 import funcs.sdlc_worker { dispatch_sdlc }
 import shared.dag_util { aggregate_results, format_report, stage_result }
 import std.types { StageResult, Summary }

@@ -1,5 +1,5 @@
 use gunbc_cli::{parse, CliParam, ParamType};
-use gunbc_dag::makegen::{load_build_targets_data, ToolRegistry};
+use gunbc_codegen::makegen::{model::load_build_targets_data, registry::ToolRegistry};
 use gunbc_dag::render_makefile;
 use gunbc_ir::{to_bridge_json, Cardinality, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
