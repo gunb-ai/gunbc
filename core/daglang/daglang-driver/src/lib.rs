@@ -452,7 +452,13 @@ pub fn compile_data_from_sources(
         Err(e) => return Err(CompileError::Lower(e)),
     }
 
-    Ok(EmbeddedCompileOutput { data_values, fns })
+    let pipelines = extract_pipelines_from_typed(&typed);
+
+    Ok(EmbeddedCompileOutput {
+        data_values,
+        fns,
+        pipelines,
+    })
 }
 
 /// Filesystem-based compilation from a DSL module path.
@@ -502,7 +508,100 @@ pub fn compile_data_from_module(
         Err(e) => return Err(CompileError::Lower(e)),
     }
 
-    Ok(EmbeddedCompileOutput { data_values, fns })
+    let pipelines = extract_pipelines_from_typed(&typed);
+
+    Ok(EmbeddedCompileOutput {
+        data_values,
+        fns,
+        pipelines,
+    })
+}
+
+/// Walk all modules in a typed project and extract pipeline definitions.
+fn extract_pipelines_from_typed(
+    typed: &TypedProject,
+) -> HashMap<String, Vec<PipelineStageInfo>> {
+    let mut pipelines = HashMap::new();
+    for module in &typed.modules {
+        for item in &module.ast.items {
+            if let Item::PipelineDef(def) = &item.node {
+                let stages = def
+                    .stages
+                    .iter()
+                    .map(|stage| PipelineStageInfo {
+                        name: stage.name.clone(),
+                        after: stage.after.clone(),
+                        modes: extract_stage_modes(stage.when.as_ref()),
+                    })
+                    .collect();
+                pipelines.insert(def.name.clone(), stages);
+            }
+        }
+    }
+    pipelines
+}
+
+/// Extract mode literals from a stage `when` condition.
+///
+/// Looks for `mode == "literal"` patterns in the expression tree,
+/// supporting `||` and `&&` conjunctions.
+fn extract_stage_modes(condition: Option<&Expr>) -> BTreeSet<String> {
+    let mut modes = BTreeSet::new();
+    if let Some(condition) = condition {
+        collect_mode_literals(condition, &mut modes);
+    }
+    modes
+}
+
+fn collect_mode_literals(expr: &Expr, modes: &mut BTreeSet<String>) {
+    match expr {
+        Expr::BinOp(lhs, op, rhs) => match op {
+            daglang_syntax::ast::BinOp::Eq => {
+                if let Some(mode) = mode_literal_from_equality(lhs, rhs) {
+                    modes.insert(mode);
+                }
+            }
+            daglang_syntax::ast::BinOp::And | daglang_syntax::ast::BinOp::Or => {
+                collect_mode_literals(lhs, modes);
+                collect_mode_literals(rhs, modes);
+            }
+            _ => {}
+        },
+        Expr::Guarded(inner, guard) => {
+            collect_mode_literals(inner, modes);
+            collect_mode_literals(guard, modes);
+        }
+        Expr::After(inner, _) => collect_mode_literals(inner, modes),
+        _ => {}
+    }
+}
+
+fn mode_literal_from_equality(lhs: &Expr, rhs: &Expr) -> Option<String> {
+    let lhs_is_mode = matches!(lhs, Expr::Ident(name) if name == "mode");
+    let rhs_is_mode = matches!(rhs, Expr::Ident(name) if name == "mode");
+    if lhs_is_mode {
+        return literal_string(rhs);
+    }
+    if rhs_is_mode {
+        return literal_string(lhs);
+    }
+    None
+}
+
+fn literal_string(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Literal(Literal::String(value)) => Some(value.clone()),
+        _ => None,
+    }
+}
+
+/// Extracted pipeline stage info from a parsed `.dag` file.
+#[derive(Debug, Clone)]
+pub struct PipelineStageInfo {
+    pub name: String,
+    pub after: Vec<String>,
+    /// Mode literals extracted from `when mode == "..."` conditions.
+    pub modes: BTreeSet<String>,
 }
 
 /// Output from compiling embedded DSL sources.
@@ -510,6 +609,8 @@ pub fn compile_data_from_module(
 pub struct EmbeddedCompileOutput {
     pub data_values: HashMap<String, serde_json::Value>,
     pub fns: HashMap<String, daglang_lower::LoweredFnBody>,
+    /// Pipeline definitions extracted from parsed AST, keyed by pipeline name.
+    pub pipelines: HashMap<String, Vec<PipelineStageInfo>>,
 }
 
 pub fn compile_from_context_with_options(

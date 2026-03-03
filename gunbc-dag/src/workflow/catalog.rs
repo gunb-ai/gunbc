@@ -1,14 +1,12 @@
 //! DSL-backed workflow catalog + derivation helpers.
 
 use std::collections::{BTreeSet, HashMap};
-use std::path::Path;
+use std::path::PathBuf;
 use std::sync::OnceLock;
 
-use daglang_syntax::{
-    ast::{Expr, Item, Literal, Stmt},
-    parser,
-};
-use gunbc_ir::{Dag, Edge, Node, Port};
+use daglang_driver::compile_data_from_module;
+use gunbc_ir::{Dag, Edge, Node, Port, WorkspaceLayout};
+use serde::Deserialize;
 
 use super::capabilities::{
     CODEGEN_ENSURE_UNIT, CODEGEN_PROCESS_ID, COMPILATION_ENSURE_UNIT, COMPILATION_PROCESS_ID,
@@ -21,34 +19,7 @@ use gunbc_workflow::{
     WorkflowUnit,
 };
 
-// Embedded DSL sources for hermetic binary operation.
-const WORKFLOW_CATALOG_SOURCE: &str = include_str!("../../../dsl/config/workflow_catalog.dag");
-const WF_BOOTSTRAP: &str = include_str!("../../../dsl/workflows/bootstrap.dag");
-const WF_BUILD_ALL: &str = include_str!("../../../dsl/workflows/build_all.dag");
-const WF_CI: &str = include_str!("../../../dsl/workflows/ci.dag");
-const WF_DEPS: &str = include_str!("../../../dsl/workflows/deps.dag");
-const WF_GIST: &str = include_str!("../../../dsl/workflows/gist.dag");
-const WF_MAKEGEN: &str = include_str!("../../../dsl/workflows/makegen.dag");
-const WF_PRAGMA: &str = include_str!("../../../dsl/workflows/pragma.dag");
-const WF_SDLC: &str = include_str!("../../../dsl/workflows/sdlc.dag");
-const WF_TEST_ALL: &str = include_str!("../../../dsl/workflows/test_all.dag");
-
-fn embedded_workflow_source(file: &str) -> Option<&'static str> {
-    match file {
-        "bootstrap.dag" => Some(WF_BOOTSTRAP),
-        "build_all.dag" => Some(WF_BUILD_ALL),
-        "ci.dag" => Some(WF_CI),
-        "deps.dag" => Some(WF_DEPS),
-        "gist.dag" => Some(WF_GIST),
-        "makegen.dag" => Some(WF_MAKEGEN),
-        "pragma.dag" => Some(WF_PRAGMA),
-        "sdlc.dag" => Some(WF_SDLC),
-        "test_all.dag" => Some(WF_TEST_ALL),
-        _ => None,
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub(super) struct WorkflowVariantDef {
     pub canonical_name: String,
     pub aliases: Vec<String>,
@@ -60,6 +31,16 @@ pub(super) struct WorkflowVariantDef {
 }
 
 static WORKFLOW_VARIANTS: OnceLock<Result<Vec<WorkflowVariantDef>, String>> = OnceLock::new();
+static DSL_ROOT: OnceLock<PathBuf> = OnceLock::new();
+
+fn dsl_root() -> &'static PathBuf {
+    DSL_ROOT.get_or_init(|| {
+        let layout = WorkspaceLayout::from_env_manifest_dir()
+            .or_else(|_| WorkspaceLayout::from_cargo_metadata())
+            .expect("workspace layout for workflow catalog");
+        layout.workspace_root.join("dsl")
+    })
+}
 
 fn workflow_variants() -> Result<&'static [WorkflowVariantDef], String> {
     WORKFLOW_VARIANTS
@@ -70,142 +51,16 @@ fn workflow_variants() -> Result<&'static [WorkflowVariantDef], String> {
 }
 
 fn load_workflow_variants_from_dsl() -> Result<Vec<WorkflowVariantDef>, String> {
-    let path = Path::new("<embedded>/config/workflow_catalog.dag");
-    let parsed = parser::parse_with_file_diagnostics(path, WORKFLOW_CATALOG_SOURCE).map_err(
-        |diagnostics| {
-            diagnostics
-                .into_iter()
-                .map(|diagnostic| diagnostic.render())
-                .collect::<Vec<_>>()
-                .join("\n")
-        },
-    )?;
-
-    let mut raw = None;
-    for item in parsed.items {
-        if let Item::DataDef(def) = item.node {
-            if def.name == "workflow_variants" {
-                raw = Some(def.value);
-                break;
-            }
-        }
-    }
-    let raw = raw.ok_or_else(|| {
-        format!(
-            "workflow catalog '{}' missing `data workflow_variants` declaration",
-            path.display()
-        )
-    })?;
-    parse_workflow_variants_expr(&raw)
-}
-
-fn parse_workflow_variants_expr(expr: &Expr) -> Result<Vec<WorkflowVariantDef>, String> {
-    let Expr::List(items) = expr else {
-        return Err("workflow_variants must be a list of records".to_string());
-    };
-    let mut variants = Vec::with_capacity(items.len());
-    for (idx, item) in items.iter().enumerate() {
-        let Expr::Record(_, fields) = item else {
-            return Err(format!(
-                "workflow_variants[{idx}] must be a record, found {:?}",
-                item
-            ));
-        };
-        variants.push(parse_workflow_variant_record(fields, idx)?);
-    }
-    Ok(variants)
-}
-
-fn parse_workflow_variant_record(
-    fields: &[(String, Expr)],
-    idx: usize,
-) -> Result<WorkflowVariantDef, String> {
-    Ok(WorkflowVariantDef {
-        canonical_name: expect_string_field(fields, "canonical_name", idx)?,
-        aliases: expect_string_list_field(fields, "aliases", idx)?,
-        file: expect_string_field(fields, "file", idx)?,
-        pipeline: expect_string_field(fields, "pipeline", idx)?,
-        mode: expect_optional_string_field(fields, "mode", idx)?,
-        namespace: expect_string_field(fields, "namespace", idx)?,
-        is_tool: expect_bool_field(fields, "is_tool", idx)?,
-    })
-}
-
-fn expect_field<'a>(
-    fields: &'a [(String, Expr)],
-    name: &str,
-    idx: usize,
-) -> Result<&'a Expr, String> {
-    fields
-        .iter()
-        .find(|(field, _)| field == name)
-        .map(|(_, value)| value)
-        .ok_or_else(|| format!("workflow_variants[{idx}] missing required field '{name}'"))
-}
-
-fn expect_string_field(
-    fields: &[(String, Expr)],
-    name: &str,
-    idx: usize,
-) -> Result<String, String> {
-    match expect_field(fields, name, idx)? {
-        Expr::Literal(Literal::String(value)) => Ok(value.clone()),
-        other => Err(format!(
-            "workflow_variants[{idx}].{name} must be String, found {:?}",
-            other
-        )),
-    }
-}
-
-fn expect_optional_string_field(
-    fields: &[(String, Expr)],
-    name: &str,
-    idx: usize,
-) -> Result<Option<String>, String> {
-    match expect_field(fields, name, idx)? {
-        Expr::Literal(Literal::String(value)) => Ok(Some(value.clone())),
-        Expr::Literal(Literal::None) => Ok(None),
-        Expr::Ident(ref id) if id == "None" || id == "none" => Ok(None),
-        other => Err(format!(
-            "workflow_variants[{idx}].{name} must be String or None, found {:?}",
-            other
-        )),
-    }
-}
-
-fn expect_string_list_field(
-    fields: &[(String, Expr)],
-    name: &str,
-    idx: usize,
-) -> Result<Vec<String>, String> {
-    let Expr::List(items) = expect_field(fields, name, idx)? else {
-        return Err(format!(
-            "workflow_variants[{idx}].{name} must be List<String>"
-        ));
-    };
-    let mut values = Vec::with_capacity(items.len());
-    for (alias_idx, item) in items.iter().enumerate() {
-        match item {
-            Expr::Literal(Literal::String(value)) => values.push(value.clone()),
-            other => {
-                return Err(format!(
-                    "workflow_variants[{idx}].{name}[{alias_idx}] must be String, found {:?}",
-                    other
-                ))
-            }
-        }
-    }
-    Ok(values)
-}
-
-fn expect_bool_field(fields: &[(String, Expr)], name: &str, idx: usize) -> Result<bool, String> {
-    match expect_field(fields, name, idx)? {
-        Expr::Literal(Literal::Bool(value)) => Ok(*value),
-        other => Err(format!(
-            "workflow_variants[{idx}].{name} must be Bool, found {:?}",
-            other
-        )),
-    }
+    let output = compile_data_from_module(dsl_root(), "config/workflow_catalog.dag")
+        .map_err(|e| format!("config/workflow_catalog.dag compilation failed: {e}"))?;
+    let value = output
+        .data_values
+        .get("workflow_variants")
+        .ok_or_else(|| {
+            "config/workflow_catalog.dag must declare `workflow_variants` data".to_string()
+        })?;
+    serde_json::from_value(value.clone())
+        .map_err(|e| format!("workflow_variants deserialization failed: {e}"))
 }
 
 #[derive(Debug, Clone)]
@@ -476,121 +331,37 @@ fn load_workflow_templates() -> Result<HashMap<String, WorkflowTemplate>, String
         if templates.contains_key(&variant.file) {
             continue;
         }
+        let module_path = format!("workflows/{}", variant.file);
+        let output = compile_data_from_module(dsl_root(), &module_path)
+            .map_err(|e| format!("workflow file '{}' compilation failed: {e}", variant.file))?;
+
+        let stages = output
+            .pipelines
+            .get(&variant.pipeline)
+            .ok_or_else(|| {
+                format!(
+                    "workflow file '{}' does not define pipeline '{}'",
+                    variant.file, variant.pipeline
+                )
+            })?
+            .iter()
+            .map(|stage| StageTemplate {
+                name: stage.name.clone(),
+                after: stage.after.clone(),
+                modes: stage.modes.clone(),
+                claims: Vec::new(),
+            })
+            .collect();
+
         templates.insert(
             variant.file.clone(),
-            parse_workflow_template(&variant.file, &variant.pipeline)?,
+            WorkflowTemplate {
+                pipeline_name: variant.pipeline.clone(),
+                stages,
+            },
         );
     }
     Ok(templates)
-}
-
-fn parse_workflow_template(file: &str, pipeline_name: &str) -> Result<WorkflowTemplate, String> {
-    let source = embedded_workflow_source(file).ok_or_else(|| {
-        format!(
-            "workflow file '{file}' not found in embedded sources — \
-             add it to embedded_workflow_source() in catalog.rs"
-        )
-    })?;
-    let path = format!("<embedded>/workflows/{file}");
-    let path = Path::new(&path);
-
-    let parsed = parser::parse_with_file_diagnostics(path, source).map_err(|diagnostics| {
-        diagnostics
-            .into_iter()
-            .map(|diagnostic| diagnostic.render())
-            .collect::<Vec<_>>()
-            .join("\n")
-    })?;
-
-    let mut pipeline_stages = None;
-    for item in parsed.items {
-        if let Item::PipelineDef(def) = item.node {
-            if def.name == pipeline_name {
-                pipeline_stages = Some(def.stages);
-                break;
-            }
-        }
-    }
-
-    let stage_defs = pipeline_stages.ok_or_else(|| {
-        format!(
-            "workflow file '{}' does not define pipeline '{}'",
-            file, pipeline_name
-        )
-    })?;
-
-    let stages = stage_defs
-        .into_iter()
-        .map(|stage| StageTemplate {
-            name: stage.name,
-            after: stage.after,
-            modes: parse_stage_modes(stage.when.as_ref()),
-            claims: parse_stage_claims(&stage.body.stmts),
-        })
-        .collect();
-
-    Ok(WorkflowTemplate {
-        pipeline_name: pipeline_name.to_string(),
-        stages,
-    })
-}
-
-fn parse_stage_modes(condition: Option<&Expr>) -> BTreeSet<String> {
-    let mut modes = BTreeSet::new();
-    let Some(condition) = condition else {
-        return modes;
-    };
-    collect_mode_literals(condition, &mut modes);
-    modes
-}
-
-fn collect_mode_literals(expr: &Expr, modes: &mut BTreeSet<String>) {
-    match expr {
-        Expr::BinOp(lhs, op, rhs) => match op {
-            daglang_syntax::ast::BinOp::Eq => {
-                if let Some(mode) = mode_literal_from_equality(lhs, rhs) {
-                    modes.insert(mode);
-                }
-            }
-            daglang_syntax::ast::BinOp::And | daglang_syntax::ast::BinOp::Or => {
-                collect_mode_literals(lhs, modes);
-                collect_mode_literals(rhs, modes);
-            }
-            _ => {}
-        },
-        Expr::Guarded(inner, guard) => {
-            collect_mode_literals(inner, modes);
-            collect_mode_literals(guard, modes);
-        }
-        Expr::After(inner, _) => collect_mode_literals(inner, modes),
-        _ => {}
-    }
-}
-
-fn mode_literal_from_equality(lhs: &Expr, rhs: &Expr) -> Option<String> {
-    let lhs_is_mode = matches!(lhs, Expr::Ident(name) if name == "mode");
-    let rhs_is_mode = matches!(rhs, Expr::Ident(name) if name == "mode");
-    if lhs_is_mode {
-        return literal_string(rhs);
-    }
-    if rhs_is_mode {
-        return literal_string(lhs);
-    }
-    None
-}
-
-fn literal_string(expr: &Expr) -> Option<String> {
-    match expr {
-        Expr::Literal(Literal::String(value)) => Some(value.clone()),
-        _ => None,
-    }
-}
-
-fn parse_stage_claims(_stmts: &[Stmt]) -> Vec<UnitClaim> {
-    // Annotations were removed from the AST; claims are no longer
-    // extracted from inline `@file`/`@tool` annotations.
-    // Known stages get default claims below via default_stage_claims().
-    Vec::new()
 }
 
 /// Default claims for well-known stages whose resource usage is known
@@ -647,23 +418,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn stage_mode_parser_extracts_mode_literals() {
-        let when = Expr::BinOp(
-            Box::new(Expr::BinOp(
-                Box::new(Expr::Ident("mode".to_string())),
-                daglang_syntax::ast::BinOp::Eq,
-                Box::new(Expr::Literal(Literal::String("gist".to_string()))),
-            )),
-            daglang_syntax::ast::BinOp::Or,
-            Box::new(Expr::BinOp(
-                Box::new(Expr::Ident("mode".to_string())),
-                daglang_syntax::ast::BinOp::Eq,
-                Box::new(Expr::Literal(Literal::String("gist-recent".to_string()))),
-            )),
-        );
-        let modes = parse_stage_modes(Some(&when));
-        assert!(modes.contains("gist"));
-        assert!(modes.contains("gist-recent"));
+    fn pipeline_extraction_includes_mode_literals() {
+        let output =
+            compile_data_from_module(dsl_root(), "workflows/gist.dag").expect("compile gist.dag");
+        let stages = output.pipelines.values().next().expect("at least one pipeline");
+        let gated: Vec<_> = stages.iter().filter(|s| !s.modes.is_empty()).collect();
+        assert!(!gated.is_empty(), "gist.dag should have mode-gated stages");
+        // Verify specific mode extraction
+        let list_files = stages.iter().find(|s| s.name == "list_files").unwrap();
+        assert!(list_files.modes.contains("gist"));
+        assert!(list_files.modes.contains("gist-snapshot"));
     }
 
     #[test]
