@@ -5,16 +5,12 @@
 //! namespace; collisions are rejected before any file content is rendered.
 
 use std::collections::BTreeMap;
-use std::path::Path;
 
-use daglang_driver::compile_data_from_sources;
+use daglang_driver::compile_data_from_module;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
 use super::registry::ToolRegistry;
-
-const BUILD_TARGETS_SOURCE: &str = include_str!("../../../../dsl/config/build_targets.dag");
-const EXTDEPS_MAKE_SOURCE: &str = include_str!("../../../../dsl/extdeps/make.dag");
 
 /// Core workflow declaration loaded from `config/build_targets.dag`.
 #[derive(Debug, Clone, Deserialize)]
@@ -126,19 +122,16 @@ impl std::error::Error for MakegenModelError {}
 
 /// Load typed build target declarations from DSL sources.
 pub fn load_build_targets_data() -> Result<BuildTargetsData, MakegenModelError> {
-    let output = compile_data_from_sources(&[
-        (
-            Path::new("<embedded>/extdeps/make.dag"),
-            EXTDEPS_MAKE_SOURCE,
-        ),
-        (
-            Path::new("<embedded>/config/build_targets.dag"),
-            BUILD_TARGETS_SOURCE,
-        ),
-    ])
-    .map_err(|details| MakegenModelError::BuildTargetsCompile {
-        details: details.to_string(),
-    })?;
+    let layout = gunbc_ir::WorkspaceLayout::from_env_manifest_dir()
+        .or_else(|_| gunbc_ir::WorkspaceLayout::from_cargo_metadata())
+        .map_err(|e| MakegenModelError::BuildTargetsCompile {
+            details: format!("workspace layout: {e}"),
+        })?;
+    let dsl_root = layout.workspace_root.join("dsl");
+    let output = compile_data_from_module(&dsl_root, "config/build_targets.dag")
+        .map_err(|details| MakegenModelError::BuildTargetsCompile {
+            details: details.to_string(),
+        })?;
 
     let core_workflows =
         deserialize_data_vec::<CoreWorkflowData>(&output.data_values, "core_workflows")?;
