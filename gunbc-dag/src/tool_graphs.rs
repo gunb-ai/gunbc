@@ -133,6 +133,13 @@ pub fn default_registry_enriched() -> Result<ToolRegistry, String> {
     Ok(registry)
 }
 
+/// Build the testgen auto-discovery graph.
+///
+/// Delegates to `testgen_dag::graph::build_testgen_graph_auto()`.
+pub fn build_testgen_graph_auto() -> Result<gunbc_ir::Dag<DynOp>, gunbc_ir::BuilderError> {
+    crate::testgen_dag::graph::build_testgen_graph_auto()
+}
+
 /// Enrich tool entries with live-secret requirements from DagSpec registrations.
 fn enrich_live_secrets(tools: &mut [ToolInfo]) {
     let mut secrets_by_tool: BTreeMap<&str, Vec<String>> = BTreeMap::new();

@@ -635,7 +635,7 @@ fn testgen_tool_def() -> ToolDef {
     )
     .returns_result()
     .mock_spec_call(r#"gunbc_test::auto_mock_spec(&dag, "testgen")"#)
-    .import("use gunbc_dag::testgen_dag::build_testgen_graph_auto;")
+    .import("use gunbc_dag::tool_graphs::build_testgen_graph_auto;")
     .output("**/generated_tests*.rs")
 }
 

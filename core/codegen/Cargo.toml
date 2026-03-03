@@ -10,9 +10,14 @@ gunbc-infra = { path = "../infra" }
 gunbc-ir = { path = "../ir" }
 gunbc-test = { path = "../test" }
 gunbc-exec = { path = "../exec" }
+gunbc-resolve = { path = "../resolve" }
 gunbc-cli = { path = "../cli" }
+gunbc-primitives = { path = "../../lib/primitives" }
+gunbc-lib-transport = { path = "../../lib/transport" }
+gunbc-lib-blob = { path = "../../lib/blob" }
 daglang-derive = { path = "../daglang/daglang-derive" }
 daglang-driver = { path = "../daglang/daglang-driver" }
+daglang-emit = { path = "../daglang/daglang-emit" }
 daglang-lower = { path = "../daglang/daglang-lower" }
 daglang-resolve = { path = "../daglang/daglang-resolve" }
 daglang-syntax = { path = "../daglang/daglang-syntax" }

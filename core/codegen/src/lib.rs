@@ -27,6 +27,7 @@ pub mod registry;
 pub mod rest_gen;
 pub mod template;
 pub mod testgen;
+pub mod testgen_dag;
 pub mod tool_discovery;
 
 pub use cli_gen::{

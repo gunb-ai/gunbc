@@ -2,8 +2,8 @@
 //!
 //! Builds a dynamic DAG with N parallel upsert chains, one per testgen target.
 
-use crate::testgen_dag::dag_test_discovery::discover_compilable_modules;
-use crate::testgen_dag::ops::TestgenOp;
+use super::dag_test_discovery::discover_compilable_modules;
+use super::ops::TestgenOp;
 use crate::{add_fs_env_root_node, wire_fs_env_write_edges};
 use gunbc_exec::{DynOp, Executable};
 use gunbc_ir::resource::RESOURCE_FILE;

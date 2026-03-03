@@ -61,7 +61,7 @@ pub use resolve::{resolve_lowered_dag, ResolveError};
 pub use resource_defs::{
     deps_config_resource_def, gitignore_resource_def, makefile_resource_def, testgen_resource_def,
 };
-pub use testgen_dag::{TestgenGraphOp, TestgenOp};
+pub use testgen_dag::{build_testgen_graph, build_testgen_graph_for_test, TestgenGraphOp, TestgenOp};
 pub use tool_graphs::{
     bootstrap_signature, build_bootstrap_graph, build_build_graph, build_codegen_graph,
     build_deps_graph, build_embedded_data, build_infra_graph, build_makegen_graph, build_signature,

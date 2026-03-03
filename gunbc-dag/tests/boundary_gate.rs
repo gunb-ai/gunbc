@@ -37,7 +37,7 @@ const ALLOWED_DIRS: &[&str] = &[
     "gunbc-dag/src/extern_ops.rs",
     // Binary entrypoints
     "gunbc-dag/src/bin/",
-    // Test generation DAG
+    // Test generation DAG (mock_interpreter + profile_discovery relocated to core/codegen in B5)
     "gunbc-dag/src/testgen_dag/",
     // Workflow orchestration
     "gunbc-dag/src/workflow/",
