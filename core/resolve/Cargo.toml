@@ -9,4 +9,10 @@ description = "Shared DAG resolution operations for service transports"
 daglang-lower = { path = "../daglang/daglang-lower" }
 gunbc-exec = { path = "../exec" }
 gunbc-ir = { path = "../ir" }
+gunbc-lib-blob = { path = "../../lib/blob" }
+gunbc-lib-transport = { path = "../../lib/transport" }
+gunbc-primitives = { path = "../../lib/primitives" }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+gunbc-test = { path = "../test" }
