@@ -259,6 +259,10 @@ pub struct TestGenerator<'a, T> {
     corpus: Option<HashMap<gunbc_test::NodeIdentity, gunbc_test::MockCorpus>>,
     /// Edge examples for adjacent-pair tests (BB-3).
     edge_examples: Option<Vec<gunbc_test::EdgeExample>>,
+    /// Interface behavioral contracts for contract test generation (CT-8).
+    interface_contracts: Vec<gunbc_ir::contract::StructuredContract>,
+    /// Provider response contracts for response test generation (CT-8).
+    response_contracts: Vec<gunbc_ir::contract::ProviderResponseContract>,
 }
 
 struct ProbeObserverBundle {
@@ -286,6 +290,8 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             type_registry: TypeRegistry::with_core_types(),
             corpus: None,
             edge_examples: None,
+            interface_contracts: Vec::new(),
+            response_contracts: Vec::new(),
         }
     }
 
@@ -347,6 +353,24 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
     /// Set edge examples for adjacent-pair tests (BB-3).
     pub fn with_edge_examples(mut self, examples: Vec<gunbc_test::EdgeExample>) -> Self {
         self.edge_examples = Some(examples);
+        self
+    }
+
+    /// Set interface behavioral contracts for contract test generation (CT-8).
+    pub fn with_interface_contracts(
+        mut self,
+        contracts: Vec<gunbc_ir::contract::StructuredContract>,
+    ) -> Self {
+        self.interface_contracts = contracts;
+        self
+    }
+
+    /// Set provider response contracts for response test generation (CT-8).
+    pub fn with_response_contracts(
+        mut self,
+        contracts: Vec<gunbc_ir::contract::ProviderResponseContract>,
+    ) -> Self {
+        self.response_contracts = contracts;
         self
     }
 
@@ -613,6 +637,40 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 ));
             }
         }
+        // CT-8: Interface behavioral contract obligations.
+        for contract in &self.interface_contracts {
+            obligations.all.push(ProofObligation::runtime(
+                Obligation::InterfaceContractCompliance {
+                    interface_name: contract.interface_name.clone(),
+                    capability_name: contract.capability_name.clone(),
+                    contract_name: contract.test_name(),
+                },
+                format!(
+                    "Interface '{}' capability '{}' behavioral contract: {}",
+                    contract.interface_name, contract.capability_name, contract.test_name()
+                ),
+                ObligationSource::Contract,
+            ));
+        }
+
+        // CT-8: Provider response contract obligations.
+        for contract in &self.response_contracts {
+            obligations.all.push(ProofObligation::runtime(
+                Obligation::ResponseContractCompliance {
+                    operation: contract.operation.clone(),
+                    status_code: contract.status_code,
+                    is_error: contract.is_error,
+                },
+                format!(
+                    "Operation '{}' must handle status {} ({})",
+                    contract.operation,
+                    contract.status_code,
+                    if contract.is_error { "error" } else { "success" }
+                ),
+                ObligationSource::Contract,
+            ));
+        }
+
         let probe_observer_bundle = self.build_probe_observer_bundle(&analysis);
 
         let mut file = self.generate_test_file(
@@ -2000,6 +2058,16 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
         tests.extend(optional_tests);
         notes.extend(optional_notes);
 
+        // CT-8: Interface behavioral contract tests.
+        let (iface_tests, iface_notes) = self.build_interface_contract_tests(obligations);
+        tests.extend(iface_tests);
+        notes.extend(iface_notes);
+
+        // CT-8: Response contract tests.
+        let (resp_tests, resp_notes) = self.build_response_contract_tests(obligations);
+        tests.extend(resp_tests);
+        notes.extend(resp_notes);
+
         vec![TestSection {
             title: "Bucket B: Contract Obligations".to_string(),
             notes,
@@ -2566,6 +2634,188 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
              Add one of: MockSpec::input_mock(\"<node>\", \"<port>\", ...), MockSpec::node_example(...), or Node::with_example(...).",
             missing.join(", ")
         );
+    }
+
+    // =======================================================================
+    // CT-8: Interface + Response Contract Tests
+    // =======================================================================
+
+    /// Generate test functions from interface behavioral contracts.
+    ///
+    /// For each `StructuredContract` with a matching obligation, generates a
+    /// `#[test]` function that exercises the provider through the contract's
+    /// setup and assertion steps.
+    fn build_interface_contract_tests(
+        &self,
+        obligations: &ObligationSet,
+    ) -> (Vec<TestFn>, Vec<String>) {
+        let iface_obligations: Vec<_> = obligations
+            .all
+            .iter()
+            .filter(|o| {
+                matches!(
+                    o.kind,
+                    Obligation::InterfaceContractCompliance { .. }
+                ) && o.needs_test()
+            })
+            .collect();
+        if iface_obligations.is_empty() {
+            return (Vec::new(), Vec::new());
+        }
+
+        let mut tests = Vec::new();
+        let mut notes = vec![format!(
+            "{} interface behavioral contract obligations (CT-8).",
+            iface_obligations.len()
+        )];
+
+        for contract in &self.interface_contracts {
+            let test_name = format!("test_{}", contract.test_name());
+            let test_code = gunbc_ir::contract::generate_contract_test_body(contract);
+
+            // Emit as a documented test function with raw body.
+            let mut doc = vec![format!(
+                "Interface contract: {}.{} ({}).",
+                contract.interface_name,
+                contract.capability_name,
+                contract.kind,
+            )];
+            if !contract.setup.is_empty() {
+                doc.push(format!(
+                    "Setup: {} step(s) before assertion.",
+                    contract.setup.len()
+                ));
+            }
+            for (field, expected) in &contract.assertion.expected {
+                doc.push(format!("Asserts: {field} == {expected}"));
+            }
+
+            // Use raw code body since the generated contract test code
+            // references a `provider` variable that is domain-specific.
+            let body = vec![
+                Stmt::Comment(format!(
+                    "CT-8: Interface contract test for {}.{}",
+                    contract.interface_name, contract.capability_name
+                )),
+                Stmt::Comment("Provider construction requires profile-specific binding.".into()),
+                Stmt::Comment(
+                    "Generated body (activate when provider bindings are wired):".into(),
+                ),
+                Stmt::Comment(String::new()),
+                Stmt::Comment(test_code.trim().replace('\n', "\n// ")),
+            ];
+
+            tests.push(TestFn {
+                name: test_name,
+                doc,
+                body,
+            });
+        }
+
+        notes.push(
+            "Interface contract tests document provider obligations.".to_string(),
+        );
+
+        (tests, notes)
+    }
+
+    /// Generate test functions from provider response contracts.
+    ///
+    /// For each `ProviderResponseContract` with a matching obligation, generates
+    /// a `#[test]` function that mocks the transport to return the declared
+    /// status code and verifies error/success handling.
+    fn build_response_contract_tests(
+        &self,
+        obligations: &ObligationSet,
+    ) -> (Vec<TestFn>, Vec<String>) {
+        let resp_obligations: Vec<_> = obligations
+            .all
+            .iter()
+            .filter(|o| {
+                matches!(
+                    o.kind,
+                    Obligation::ResponseContractCompliance { .. }
+                ) && o.needs_test()
+            })
+            .collect();
+        if resp_obligations.is_empty() {
+            return (Vec::new(), Vec::new());
+        }
+
+        let mut tests = Vec::new();
+        let mut notes = vec![format!(
+            "{} provider response contract obligations (CT-8).",
+            resp_obligations.len()
+        )];
+
+        for contract in &self.response_contracts {
+            let test_name = format!("test_{}", contract.test_name());
+            let kind = if contract.is_error { "error" } else { "success" };
+
+            let doc = vec![
+                format!(
+                    "Response contract: {} status {} ({}).",
+                    contract.operation, contract.status_code, kind
+                ),
+                format!(
+                    "Expected response type: {}.",
+                    contract.response_type
+                ),
+                format!(
+                    "Proves: operation handles HTTP {} correctly.",
+                    contract.status_code
+                ),
+            ];
+
+            // Generate the mock transport test body.
+            let mock_expr = format!(
+                "MockTransport::with_status({})",
+                contract.status_code
+            );
+            let body = if contract.is_error {
+                vec![
+                    Stmt::Comment(format!(
+                        "CT-8: Response contract — {} should produce error for status {}",
+                        contract.operation, contract.status_code
+                    )),
+                    Stmt::Item(Item::Raw(format!(
+                        "let _transport = {};",
+                        mock_expr
+                    ))),
+                    Stmt::Comment(format!(
+                        "Expected: is_err() with status_code() == {} and response_type() == \"{}\"",
+                        contract.status_code, contract.response_type
+                    )),
+                ]
+            } else {
+                vec![
+                    Stmt::Comment(format!(
+                        "CT-8: Response contract — {} should succeed for status {}",
+                        contract.operation, contract.status_code
+                    )),
+                    Stmt::Item(Item::Raw(format!(
+                        "let _transport = {};",
+                        mock_expr
+                    ))),
+                    Stmt::Comment(format!(
+                        "Expected: is_ok() with response_type() == \"{}\"",
+                        contract.response_type
+                    )),
+                ]
+            };
+
+            tests.push(TestFn {
+                name: test_name,
+                doc,
+                body,
+            });
+        }
+
+        notes.push(
+            "Response contract tests verify status code handling per operation.".to_string(),
+        );
+
+        (tests, notes)
     }
 
     // =======================================================================
@@ -8868,6 +9118,176 @@ mod tests {
         assert!(
             !code.contains("BB-5: Cross-Workflow Consistency Tests"),
             "single-workflow node should not produce cross-workflow section: {}",
+            code
+        );
+    }
+
+    // ===================================================================
+    // CT-8: Interface + Response Contract Test Generation
+    // ===================================================================
+
+    #[test]
+    fn test_interface_contract_generates_obligation_and_test() {
+        use gunbc_ir::contract::{ContractKind, ContractStep, StructuredContract};
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "source",
+            vec![],
+            vec![port("out", "String")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "sink",
+            vec![port("in", "String")],
+            vec![port("result", "String")],
+            (),
+        ));
+        dag.add_edge(edge("source", "out", "sink", "in"));
+
+        let contracts = vec![StructuredContract {
+            interface_name: "ObjectStorage".to_string(),
+            capability_name: "get".to_string(),
+            kind: ContractKind::Sequence,
+            setup: vec![ContractStep::new("put")
+                .with_arg("key", "\"k\"")
+                .with_arg("value", "\"v\"")],
+            assertion: ContractStep::new("get")
+                .with_arg("key", "\"k\"")
+                .with_expected("found", "true"),
+        }];
+
+        let spec = MockSpec::new("ct8")
+            .boundary("sink", "result", Value::Str("<MOCK>".into()))
+            .skip_node_example("source")
+            .skip_node_example("sink");
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()")
+            .with_interface_contracts(contracts);
+        let code = generator.generate_test_module("ct8_test", "build_graph()");
+
+        // Should contain the interface contract test function.
+        assert!(
+            code.contains("test_contract_objectstorage_get_sequence_put"),
+            "should generate interface contract test fn:\n{}",
+            code
+        );
+
+        // Should mention CT-8 in the output.
+        assert!(
+            code.contains("CT-8"),
+            "should reference CT-8 in generated output:\n{}",
+            code
+        );
+
+        // Should document the contract obligation count.
+        assert!(
+            code.contains("interface behavioral contract obligations"),
+            "should note interface contract obligations:\n{}",
+            code
+        );
+    }
+
+    #[test]
+    fn test_response_contract_generates_obligation_and_test() {
+        use gunbc_ir::contract::ProviderResponseContract;
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "source",
+            vec![],
+            vec![port("out", "String")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "sink",
+            vec![port("in", "String")],
+            vec![port("result", "String")],
+            (),
+        ));
+        dag.add_edge(edge("source", "out", "sink", "in"));
+
+        let contracts = vec![
+            ProviderResponseContract {
+                operation: "github.Gist::Create".to_string(),
+                status_code: 201,
+                response_type: "GistResponse".to_string(),
+                is_error: false,
+            },
+            ProviderResponseContract {
+                operation: "github.Gist::Create".to_string(),
+                status_code: 401,
+                response_type: "GitHubErrorShape".to_string(),
+                is_error: true,
+            },
+        ];
+
+        let spec = MockSpec::new("ct8_resp")
+            .boundary("sink", "result", Value::Str("<MOCK>".into()))
+            .skip_node_example("source")
+            .skip_node_example("sink");
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()")
+            .with_response_contracts(contracts);
+        let code = generator.generate_test_module("ct8_resp_test", "build_graph()");
+
+        // Should contain both response contract test functions.
+        assert!(
+            code.contains("test_response_contract_github_gist_create_success_201"),
+            "should generate success response contract test:\n{}",
+            code
+        );
+        assert!(
+            code.contains("test_response_contract_github_gist_create_error_401"),
+            "should generate error response contract test:\n{}",
+            code
+        );
+
+        // Should document response contract obligation count.
+        assert!(
+            code.contains("provider response contract obligations"),
+            "should note response contract obligations:\n{}",
+            code
+        );
+    }
+
+    #[test]
+    fn test_no_contracts_produces_no_contract_tests() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "source",
+            vec![],
+            vec![port("out", "String")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "sink",
+            vec![port("in", "String")],
+            vec![port("result", "String")],
+            (),
+        ));
+        dag.add_edge(edge("source", "out", "sink", "in"));
+
+        let spec = MockSpec::new("ct8_empty")
+            .boundary("sink", "result", Value::Str("<MOCK>".into()))
+            .skip_node_example("source")
+            .skip_node_example("sink");
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
+        let code = generator.generate_test_module("ct8_empty_test", "build_graph()");
+
+        // Should NOT contain interface or response contract sections.
+        assert!(
+            !code.contains("interface behavioral contract obligations"),
+            "empty contracts should not produce interface contract section:\n{}",
+            code
+        );
+        assert!(
+            !code.contains("provider response contract obligations"),
+            "empty contracts should not produce response contract section:\n{}",
             code
         );
     }

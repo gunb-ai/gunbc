@@ -1205,6 +1205,7 @@ mod tests {
             auth_input: None,
             middleware: None,
             response_mapping: vec![],
+            output_shape: None,
         }));
 
         let shell_spec = ServiceOperationSpec::Shell(ShellOperationSpec {

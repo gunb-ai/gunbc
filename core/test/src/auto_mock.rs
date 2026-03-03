@@ -474,6 +474,10 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
 
 /// Try executing a terminal node with each response variant and return the
 /// first one that produces the expected outputs. Falls back to Shell.
+///
+/// Probe order: provider-specific REST → generic REST → Shell → File.
+/// REST is tried first because the majority of service operations are
+/// REST-based (GitHub, OpenAI, Anthropic, GCP).
 fn probe_best_response<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     node_id: &str,
@@ -490,11 +494,12 @@ fn probe_best_response<T: Executable + Clone + Send>(
         }
     }
 
-    // Fall back to trying all response variants.
+    // Fall back to trying all response variants (REST-first since most
+    // service operations are REST-based).
     let candidates = [
+        default_rest_response(),
         default_shell_response(),
         default_file_response(),
-        default_rest_response(), // kitchen sink fallback
     ];
 
     for candidate in candidates {

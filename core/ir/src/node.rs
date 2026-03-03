@@ -4,7 +4,7 @@ use crate::boundary::detect_boundaries;
 use crate::dag::{Dag, Guard, Port};
 use crate::entrypoint::detect_entrypoints;
 use crate::log_detail::LogDetailLevel;
-use crate::types::{Cardinality, NodeId, OperationKey, PortName};
+use crate::types::{Cardinality, NodeId, OperationKey, PortName, StaticFingerprint};
 use crate::Value;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -165,6 +165,12 @@ pub struct Node<T> {
     /// through `LoweredOp`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transport_class: Option<ServiceTransportClass>,
+    /// Static fingerprint for compile-time redundancy detection (C22).
+    ///
+    /// When two transport nodes share the same fingerprint, they perform
+    /// provably identical work. The validator rejects such duplicates.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub static_fingerprint: Option<StaticFingerprint>,
 }
 
 impl<T> Node<T> {
@@ -180,6 +186,7 @@ impl<T> Node<T> {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            static_fingerprint: None,
         }
     }
 
@@ -251,6 +258,7 @@ impl<T> Node<T> {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            static_fingerprint: None,
         }
     }
 
@@ -395,6 +403,7 @@ impl<T> Node<T> {
             kind: self.kind,
             operation_key: self.operation_key,
             transport_class: self.transport_class,
+            static_fingerprint: self.static_fingerprint,
         }
     }
 

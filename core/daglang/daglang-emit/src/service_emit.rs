@@ -1218,6 +1218,7 @@ mod tests {
             auth_input: None,
             middleware: None,
             response_mapping: vec![],
+            output_shape: None,
         }
     }
 
@@ -1270,6 +1271,7 @@ mod tests {
             auth_input: None,
             middleware: None,
             response_mapping: vec![],
+            output_shape: None,
         }
     }
 
@@ -1319,6 +1321,7 @@ mod tests {
             auth_input: None,
             middleware: None,
             response_mapping: vec![],
+            output_shape: None,
         }
     }
 
@@ -1546,6 +1549,7 @@ mod tests {
                     code_path: Some(".status".to_string()),
                     details_path: Some(".documentation_url".to_string()),
                 }),
+                output_shape: None,
             }),
         }
     }

@@ -42,7 +42,7 @@ service github.PullRequest {
       url: String from "html_url"
       id: Int from "id"
       node_id: String from "node_id"
-      head_sha: String from "head.sha"
+      head_sha: String from "head/sha"
     }
     transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/pulls" }
     response {
@@ -67,8 +67,8 @@ service github.PullRequest {
       body: String from "body"
       state: String from "state"
       url: String from "html_url"
-      head_sha: String from "head.sha"
-      base_ref: String from "base.ref"
+      head_sha: String from "head/sha"
+      base_ref: String from "base/ref"
       mergeable: Bool? from "mergeable"
       merged: Bool from "merged"
     }

@@ -5453,6 +5453,7 @@ fn derive_middleware_config(
             prioritize_auth_errors: true,
             parse_provider_error_shapes: false,
             error_shape: error_shape.clone(),
+            output_shape: None, // Per-operation output shapes are on RestOperationSpec.
         });
 
     Some(TransportMiddlewareConfig {
@@ -5561,6 +5562,27 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
     // Derive response mapping from response {} blocks (SL-9).
     let response_mapping = derive_response_mapping(&operation.response);
 
+    // C29: Derive output shape extraction from output fields.
+    let output_shape = if output_fields.is_empty() {
+        None
+    } else {
+        Some(
+            gunbc_ir::transport::middleware::OutputShapeExtraction {
+                fields: output_fields
+                    .iter()
+                    .map(|f| gunbc_ir::transport::middleware::OutputFieldExtraction {
+                        name: f.name.clone(),
+                        type_id: f.type_id.clone(),
+                        json_path: f.json_path.clone(),
+                        is_secret: f.is_secret,
+                        is_raw_body: f.is_raw_body,
+                        is_optional: f.is_optional,
+                    })
+                    .collect(),
+            },
+        )
+    };
+
     Some(RestOperationSpec {
         endpoint,
         method,
@@ -5573,6 +5595,7 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
         auth_input,
         middleware,
         response_mapping,
+        output_shape,
     })
 }
 

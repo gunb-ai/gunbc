@@ -14,7 +14,7 @@ use crate::dag::{Dag, Port};
 use crate::entrypoint::detect_entrypoints;
 use crate::node::{Node, NodeBody};
 use crate::type_registry::TypeRegistry;
-use crate::types::{NodeId, PortName, SemanticCarrierKind, TypeId};
+use crate::types::{NodeId, PortName, SemanticCarrierKind, StaticFingerprint, TypeId};
 use std::fmt;
 
 /// Error from SubDag interface validation.
@@ -492,11 +492,73 @@ fn find_output_port<'a, T>(node: &'a Node<T>, port_name: &PortName) -> Option<&'
     node.outputs.iter().find(|p| &p.name == port_name)
 }
 
+// =============================================================================
+// C22: Static Fingerprint Uniqueness Validation
+// =============================================================================
+
+/// A detected fingerprint conflict between two nodes (C22).
+#[derive(Debug, Clone)]
+pub struct FingerprintConflict {
+    /// First node in the conflict pair.
+    pub node_a: NodeId,
+    /// Second node in the conflict pair.
+    pub node_b: NodeId,
+    /// The conflicting fingerprint.
+    pub fingerprint: StaticFingerprint,
+}
+
+impl fmt::Display for FingerprintConflict {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Duplicate operation: '{}' and '{}' both perform {} — redundant work detected",
+            self.node_a.0, self.node_b.0, self.fingerprint
+        )
+    }
+}
+
+/// Validate that no two transport nodes in the DAG have conflicting static
+/// fingerprints (C22: Deductive Redundancy Elimination).
+///
+/// Two nodes conflict when their `StaticFingerprint` values indicate they
+/// perform provably identical work. Dynamic provenance (computed at runtime)
+/// prevents false positives — only Literal and Edge provenance trigger conflicts.
+///
+/// Returns a list of detected conflicts (empty if the DAG is conflict-free).
+pub fn validate_fingerprint_uniqueness<T>(dag: &Dag<T>) -> Vec<FingerprintConflict> {
+    let fingerprinted: Vec<(&NodeId, &StaticFingerprint)> = dag
+        .nodes
+        .iter()
+        .filter_map(|node| {
+            node.static_fingerprint
+                .as_ref()
+                .map(|fp| (&node.id, fp))
+        })
+        .collect();
+
+    let mut conflicts = Vec::new();
+    for i in 0..fingerprinted.len() {
+        for j in (i + 1)..fingerprinted.len() {
+            let (node_a, fp_a) = fingerprinted[i];
+            let (node_b, fp_b) = fingerprinted[j];
+            if fp_a.conflicts_with(fp_b) {
+                conflicts.push(FingerprintConflict {
+                    node_a: node_a.clone(),
+                    node_b: node_b.clone(),
+                    fingerprint: fp_a.clone(),
+                });
+            }
+        }
+    }
+    conflicts
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::dag::{build::*, Dag, Edge};
-    use crate::node::{NodeBody, NodeKind};
+    use crate::node::NodeKind;
+    use crate::types::{InputProvenance, OperationKey};
 
     #[test]
     fn test_valid_subdag_passes() {
@@ -561,6 +623,7 @@ mod tests {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            static_fingerprint: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -596,6 +659,7 @@ mod tests {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            static_fingerprint: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -631,6 +695,7 @@ mod tests {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            static_fingerprint: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -668,6 +733,7 @@ mod tests {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            static_fingerprint: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -706,6 +772,7 @@ mod tests {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            static_fingerprint: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -822,6 +889,7 @@ mod tests {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            static_fingerprint: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -870,6 +938,7 @@ mod tests {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            static_fingerprint: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -905,6 +974,7 @@ mod tests {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            static_fingerprint: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -947,6 +1017,7 @@ mod tests {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            static_fingerprint: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -1058,4 +1129,150 @@ mod tests {
 
     // NOTE: validate_no_operation_overlap tests removed.
     // Replaced by C22: Deductive Redundancy Elimination using idempotency fingerprints.
+
+    // ===================================================================
+    // C22: Static Fingerprint Validation
+    // ===================================================================
+
+    #[test]
+    fn test_fingerprint_conflict_same_singleton_operation() {
+        let fp1 = StaticFingerprint::singleton(OperationKey::new("cargo", "Build"));
+        let fp2 = StaticFingerprint::singleton(OperationKey::new("cargo", "Build"));
+        assert!(fp1.conflicts_with(&fp2));
+    }
+
+    #[test]
+    fn test_fingerprint_no_conflict_different_operations() {
+        let fp1 = StaticFingerprint::singleton(OperationKey::new("cargo", "Build"));
+        let fp2 = StaticFingerprint::singleton(OperationKey::new("cargo", "Test"));
+        assert!(!fp1.conflicts_with(&fp2));
+    }
+
+    #[test]
+    fn test_fingerprint_no_conflict_dynamic_provenance() {
+        let fp1 = StaticFingerprint::with_keys(
+            OperationKey::new("github", "GetIssue"),
+            vec![("id".to_string(), InputProvenance::Dynamic)],
+        );
+        let fp2 = StaticFingerprint::with_keys(
+            OperationKey::new("github", "GetIssue"),
+            vec![("id".to_string(), InputProvenance::Dynamic)],
+        );
+        assert!(!fp1.conflicts_with(&fp2), "Dynamic provenance should not conflict");
+    }
+
+    #[test]
+    fn test_fingerprint_conflict_same_literal_keys() {
+        let fp1 = StaticFingerprint::with_keys(
+            OperationKey::new("fs", "Read"),
+            vec![("path".to_string(), InputProvenance::Literal("Makefile".to_string()))],
+        );
+        let fp2 = StaticFingerprint::with_keys(
+            OperationKey::new("fs", "Read"),
+            vec![("path".to_string(), InputProvenance::Literal("Makefile".to_string()))],
+        );
+        assert!(fp1.conflicts_with(&fp2));
+    }
+
+    #[test]
+    fn test_fingerprint_no_conflict_different_literal_keys() {
+        let fp1 = StaticFingerprint::with_keys(
+            OperationKey::new("fs", "Read"),
+            vec![("path".to_string(), InputProvenance::Literal("Makefile".to_string()))],
+        );
+        let fp2 = StaticFingerprint::with_keys(
+            OperationKey::new("fs", "Read"),
+            vec![("path".to_string(), InputProvenance::Literal("README.md".to_string()))],
+        );
+        assert!(!fp1.conflicts_with(&fp2));
+    }
+
+    #[test]
+    fn test_fingerprint_conflict_same_edge_provenance() {
+        let fp1 = StaticFingerprint::with_keys(
+            OperationKey::new("github", "GetIssue"),
+            vec![(
+                "id".to_string(),
+                InputProvenance::Edge {
+                    source_node: NodeId::new("list_issues"),
+                    source_port: PortName::new("id"),
+                },
+            )],
+        );
+        let fp2 = StaticFingerprint::with_keys(
+            OperationKey::new("github", "GetIssue"),
+            vec![(
+                "id".to_string(),
+                InputProvenance::Edge {
+                    source_node: NodeId::new("list_issues"),
+                    source_port: PortName::new("id"),
+                },
+            )],
+        );
+        assert!(fp1.conflicts_with(&fp2));
+    }
+
+    #[test]
+    fn test_validate_fingerprint_uniqueness_catches_duplicate() {
+        let mut dag: Dag<()> = Dag::new();
+        let mut n1 = Node::opaque(
+            "build1",
+            vec![port("in", "String")],
+            vec![port("out", "String")],
+            (),
+        ).with_kind(NodeKind::TransportExecute)
+         .with_operation_key(OperationKey::new("cargo", "Build"));
+        n1.static_fingerprint = Some(StaticFingerprint::singleton(
+            OperationKey::new("cargo", "Build"),
+        ));
+        dag.add_node(n1);
+
+        let mut n2 = Node::opaque(
+            "build2",
+            vec![port("in", "String")],
+            vec![port("out", "String")],
+            (),
+        ).with_kind(NodeKind::TransportExecute)
+         .with_operation_key(OperationKey::new("cargo", "Build"));
+        n2.static_fingerprint = Some(StaticFingerprint::singleton(
+            OperationKey::new("cargo", "Build"),
+        ));
+        dag.add_node(n2);
+
+        let conflicts = validate_fingerprint_uniqueness(&dag);
+        assert_eq!(conflicts.len(), 1, "should detect one conflict");
+        assert_eq!(conflicts[0].node_a.0, "build1");
+        assert_eq!(conflicts[0].node_b.0, "build2");
+    }
+
+    #[test]
+    fn test_validate_fingerprint_uniqueness_no_duplicate() {
+        let mut dag: Dag<()> = Dag::new();
+        let mut n1 = Node::opaque(
+            "build",
+            vec![port("in", "String")],
+            vec![port("out", "String")],
+            (),
+        ).with_kind(NodeKind::TransportExecute)
+         .with_operation_key(OperationKey::new("cargo", "Build"));
+        n1.static_fingerprint = Some(StaticFingerprint::singleton(
+            OperationKey::new("cargo", "Build"),
+        ));
+        dag.add_node(n1);
+
+        let mut n2 = Node::opaque(
+            "test",
+            vec![port("in", "String")],
+            vec![port("out", "String")],
+            (),
+        ).with_kind(NodeKind::TransportExecute)
+         .with_operation_key(OperationKey::new("cargo", "Test"));
+        n2.static_fingerprint = Some(StaticFingerprint::singleton(
+            OperationKey::new("cargo", "Test"),
+        ));
+        dag.add_node(n2);
+
+        let conflicts = validate_fingerprint_uniqueness(&dag);
+        assert!(conflicts.is_empty(), "different operations should not conflict");
+    }
 }

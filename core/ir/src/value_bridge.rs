@@ -139,6 +139,91 @@ pub fn from_bridge_json(json: &serde_json::Value) -> Value {
     }
 }
 
+/// Known primitive type IDs that should NOT be treated as enum types.
+const PRIMITIVE_TYPE_IDS: &[&str] = &[
+    "String", "Int", "Bool", "Unit", "Float", "Secret", "Json", "Bytes", "Any", "List", "Map",
+    "Option",
+];
+
+/// Type-aware JSON deserialization: uses the expected `type_id` to reconstruct
+/// typed values (enums, bytes) without relying on magic keys like `__enum`.
+///
+/// When `type_id` indicates a non-primitive type and JSON is a string,
+/// reconstructs `Value::Enum { ty, variant }` directly.
+/// When `type_id` is "Bytes" and JSON is an array of numbers, reconstructs
+/// `Value::Bytes`.
+///
+/// Falls through to `from_bridge_json` for primitive types or when the
+/// JSON shape doesn't match the expected type.
+pub fn from_bridge_json_typed(json: &serde_json::Value, type_id: &str) -> Value {
+    // Strip generic wrappers (e.g., "List<Foo>" → check inner type separately).
+    let base_type = type_id
+        .split('<')
+        .next()
+        .unwrap_or(type_id)
+        .split('?')
+        .next()
+        .unwrap_or(type_id);
+
+    if base_type == "Bytes" {
+        return match json {
+            serde_json::Value::Array(arr) => {
+                let bytes: Vec<u8> = arr
+                    .iter()
+                    .filter_map(|v| v.as_u64().map(|n| n as u8))
+                    .collect();
+                Value::Bytes(bytes)
+            }
+            serde_json::Value::String(s) => {
+                // Base64 or raw string → bytes.
+                Value::Bytes(s.as_bytes().to_vec())
+            }
+            // Legacy { "__bytes": N } format — reconstruct empty vec with length info.
+            serde_json::Value::Object(obj) if obj.contains_key("__bytes") => {
+                let len = obj
+                    .get("__bytes")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as usize;
+                Value::Bytes(vec![0; len])
+            }
+            _ => from_bridge_json(json),
+        };
+    }
+
+    // For non-primitive types, a JSON string is likely an enum variant name.
+    if !PRIMITIVE_TYPE_IDS.contains(&base_type) {
+        match json {
+            serde_json::Value::String(s) => {
+                return Value::Enum {
+                    ty: type_id.to_string(),
+                    variant: s.clone(),
+                };
+            }
+            // Legacy __enum format — still supported.
+            serde_json::Value::Object(obj) if obj.contains_key("__enum") => {
+                return from_bridge_json(json);
+            }
+            _ => {}
+        }
+    }
+
+    // For generic containers, recurse with inner type.
+    if let Some(inner) = type_id
+        .strip_prefix("List<")
+        .and_then(|s| s.strip_suffix('>'))
+    {
+        if let serde_json::Value::Array(arr) = json {
+            return Value::List(
+                arr.iter()
+                    .map(|item| from_bridge_json_typed(item, inner))
+                    .collect(),
+            );
+        }
+    }
+
+    from_bridge_json(json)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -219,5 +304,97 @@ mod tests {
         let val = Value::Secret(crate::value::SecretString::new("s3cret"));
         let json = to_bridge_json(&val).unwrap();
         assert_eq!(json, serde_json::Value::String("***".to_string()));
+    }
+
+    // C30: Type-aware bridging tests.
+
+    #[test]
+    fn typed_bridge_enum_from_string() {
+        let json = serde_json::json!("GET");
+        let val = from_bridge_json_typed(&json, "HttpMethod");
+        assert_eq!(
+            val,
+            Value::Enum {
+                ty: "HttpMethod".to_string(),
+                variant: "GET".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn typed_bridge_enum_legacy_format() {
+        let json = serde_json::json!({"__enum": {"ty": "HttpMethod", "variant": "POST"}});
+        let val = from_bridge_json_typed(&json, "HttpMethod");
+        assert_eq!(
+            val,
+            Value::Enum {
+                ty: "HttpMethod".to_string(),
+                variant: "POST".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn typed_bridge_bytes_from_array() {
+        let json = serde_json::json!([72, 101, 108, 108, 111]);
+        let val = from_bridge_json_typed(&json, "Bytes");
+        assert_eq!(val, Value::Bytes(vec![72, 101, 108, 108, 111]));
+    }
+
+    #[test]
+    fn typed_bridge_bytes_from_string() {
+        let json = serde_json::json!("Hello");
+        let val = from_bridge_json_typed(&json, "Bytes");
+        assert_eq!(val, Value::Bytes(b"Hello".to_vec()));
+    }
+
+    #[test]
+    fn typed_bridge_bytes_legacy_format() {
+        let json = serde_json::json!({"__bytes": 5});
+        let val = from_bridge_json_typed(&json, "Bytes");
+        assert_eq!(val, Value::Bytes(vec![0; 5]));
+    }
+
+    #[test]
+    fn typed_bridge_primitives_unchanged() {
+        assert_eq!(
+            from_bridge_json_typed(&serde_json::json!(42), "Int"),
+            Value::Int(42)
+        );
+        assert_eq!(
+            from_bridge_json_typed(&serde_json::json!(true), "Bool"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            from_bridge_json_typed(&serde_json::json!("hello"), "String"),
+            Value::Str("hello".to_string())
+        );
+        assert_eq!(
+            from_bridge_json_typed(&serde_json::Value::Null, "Unit"),
+            Value::Unit
+        );
+    }
+
+    #[test]
+    fn typed_bridge_list_of_enums() {
+        let json = serde_json::json!(["GET", "POST", "DELETE"]);
+        let val = from_bridge_json_typed(&json, "List<HttpMethod>");
+        assert_eq!(
+            val,
+            Value::List(vec![
+                Value::Enum {
+                    ty: "HttpMethod".to_string(),
+                    variant: "GET".to_string()
+                },
+                Value::Enum {
+                    ty: "HttpMethod".to_string(),
+                    variant: "POST".to_string()
+                },
+                Value::Enum {
+                    ty: "HttpMethod".to_string(),
+                    variant: "DELETE".to_string()
+                },
+            ])
+        );
     }
 }

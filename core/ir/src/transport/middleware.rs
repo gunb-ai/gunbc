@@ -149,6 +149,11 @@ pub struct ResponseClassification {
     /// response body. This is the sole error extraction mechanism (TL-15).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error_shape: Option<ErrorShapeExtraction>,
+    /// JSON-path based output shape extraction rules (C29).
+    /// When present, the parse op uses these declarative rules instead of
+    /// hardcoded field extraction. Populated from `output {}` blocks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_shape: Option<OutputShapeExtraction>,
 }
 
 fn is_false(v: &bool) -> bool {
@@ -170,6 +175,39 @@ pub struct ErrorShapeExtraction {
     /// JSON path to extract additional details (e.g., ".documentation_url", ".error.errors").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub details_path: Option<String>,
+}
+
+/// JSON-path based output shape extraction (C29).
+///
+/// Parallel to `ErrorShapeExtraction`: declares how to extract typed output
+/// fields from a response body using JSON-path rules. Each field specifies
+/// a name, type, and extraction path. The transport layer uses these rules
+/// instead of hardcoded field extraction.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OutputShapeExtraction {
+    /// Per-field extraction rules.
+    pub fields: Vec<OutputFieldExtraction>,
+}
+
+/// A single output field extraction rule.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OutputFieldExtraction {
+    /// Output field name (as exposed on the parse node's output port).
+    pub name: String,
+    /// Expected type for type-aware deserialization.
+    pub type_id: String,
+    /// JSON path for extraction (e.g., "choices/0/message/content").
+    /// When ".", extracts the entire response body.
+    pub json_path: String,
+    /// Whether this field contains a secret value.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub is_secret: bool,
+    /// Whether to use the raw response body string instead of JSON extraction.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub is_raw_body: bool,
+    /// Whether the field is optional (missing → Value::Unit).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub is_optional: bool,
 }
 
 /// Provider-specific error-shape hint.
@@ -230,6 +268,7 @@ mod tests {
                     code_path: None,
                     details_path: Some(".documentation_url".to_string()),
                 }),
+                output_shape: None,
             }),
         };
 
@@ -277,6 +316,7 @@ mod tests {
                     code_path: Some(".status".to_string()),
                     details_path: Some(".documentation_url".to_string()),
                 }),
+                output_shape: None,
             }),
         };
 

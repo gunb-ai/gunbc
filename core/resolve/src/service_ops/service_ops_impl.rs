@@ -1410,6 +1410,7 @@ mod tests {
             auth_input: None,
             middleware: None,
             response_mapping: vec![],
+            output_shape: None,
         }
     }
 
@@ -1466,6 +1467,7 @@ mod tests {
             auth_input: None,
             middleware: None,
             response_mapping: vec![],
+            output_shape: None,
         }
     }
 
@@ -1577,6 +1579,7 @@ mod tests {
             auth_input: None,
             middleware: None,
             response_mapping: vec![],
+            output_shape: None,
         };
         let op = GenericRestPrepareOp { spec };
         let error = op
@@ -1641,6 +1644,7 @@ mod tests {
             auth_input: None,
             middleware: None,
             response_mapping: vec![],
+            output_shape: None,
         };
         let op = GenericRestParseOp {
             spec,
@@ -1942,6 +1946,7 @@ mod tests {
             auth_input: None,
             middleware: None,
             response_mapping: vec![],
+            output_shape: None,
         };
 
         let op = GenericRestPrepareOp { spec };

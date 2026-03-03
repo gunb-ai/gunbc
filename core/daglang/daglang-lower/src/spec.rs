@@ -150,6 +150,12 @@ pub struct RestOperationSpec {
     /// Compiled from `response { STATUS => TYPE }` blocks.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub response_mapping: Vec<ResponseMappingEntry>,
+    /// C29: Declarative output shape extraction rules.
+    /// Populated from `output_fields` at lowering time. When present, the parse
+    /// op uses these JSON-path rules for type-aware extraction instead of
+    /// hardcoded field logic.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_shape: Option<gunbc_ir::transport::middleware::OutputShapeExtraction>,
 }
 
 /// Shell protocol specification: argv template + output parsing.
@@ -434,6 +440,7 @@ mod tests {
             auth_input: Some("auth_token".to_string()),
             middleware: None,
             response_mapping: vec![],
+            output_shape: None,
         }));
         let req = spec
             .auth_requirement()
@@ -457,6 +464,7 @@ mod tests {
             auth_input: None,
             middleware: None,
             response_mapping: vec![],
+            output_shape: None,
         }));
         assert!(spec.auth_requirement().is_none());
     }
