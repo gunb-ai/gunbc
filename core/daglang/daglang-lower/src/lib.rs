@@ -40,7 +40,7 @@ use gunbc_ir::{
     Cardinality, Dag, DagTopology, Edge, EdgeKind, Guard, InputProvenance, Node, NodeId, NodeKind,
     OperationKey, Port, PortName, StaticFingerprint, Value,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub mod eval;
 pub mod expr;
@@ -59,7 +59,7 @@ pub use spec::{
 pub use expr::LoweredFnBody;
 
 /// Lowered operation payload for daglang graph nodes.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LoweredOp {
     Callable {
         module: String,
@@ -182,14 +182,14 @@ pub struct CanonicalEdge {
 }
 
 /// Kind of lowered callable declaration.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CallableKind {
     Fn,
     Func,
     Pattern,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PrimitiveOpKind {
     FsEnv,
     CallParamSource {
@@ -264,9 +264,28 @@ pub enum PrimitiveOpKind {
         tag: String,
         fields: Vec<String>,
     },
+    /// C24: List construction — `[a, b, c]`.
+    /// Each element maps to an input port (`elem_0`, `elem_1`, ...).
+    /// Output is a Value::List of all elements in order.
+    ListConstruct {
+        count: usize,
+    },
+    /// C24: Pipe expression — `expr |> method(args)`.
+    /// Delegates to the expression evaluator (like ExprCompute) but tagged
+    /// distinctly so we can track ExprCompute elimination progress.
+    PipeOp {
+        fn_body: Box<LoweredFnBody>,
+        sibling_fns: std::collections::BTreeMap<String, LoweredFnBody>,
+    },
+    /// C24: For expression — `for x in list { body }`.
+    /// Like PipeOp, delegates to evaluator but tagged distinctly.
+    ForOp {
+        fn_body: Box<LoweredFnBody>,
+        sibling_fns: std::collections::BTreeMap<String, LoweredFnBody>,
+    },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PrimitiveLiteral {
     String(String),
     Int(i64),
@@ -275,7 +294,7 @@ pub enum PrimitiveLiteral {
     Unit,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ObligationCategory {
     None,
     ServiceTransportPrepare,
@@ -298,7 +317,7 @@ pub enum ObligationCategory {
 // compatibility with consumers that import it from daglang_lower.
 pub use gunbc_ir::ServiceTransportClass;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServiceCallMetadata {
     pub service: String,
     pub operation: String,
@@ -365,7 +384,10 @@ impl PrimitiveOpKind {
             | Self::MatchDispatch { .. }
             | Self::RecordConstruct { .. }
             | Self::NullCoalesce
-            | Self::VariantConstruct { .. } => ObligationCategory::None,
+            | Self::VariantConstruct { .. }
+            | Self::ListConstruct { .. }
+            | Self::PipeOp { .. }
+            | Self::ForOp { .. } => ObligationCategory::None,
         }
     }
 }
@@ -8314,7 +8336,7 @@ pub(crate) enum ServiceCallArgLiteral {
     None,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CollectionOpKind {
     Map,
     Filter,
@@ -8918,15 +8940,39 @@ fn resolve_return_expr_source(
                     );
                 }
             }
-            // For complex base expressions, fall through to ExprCompute.
-            None
+            // C24: For complex base expressions, try recursive resolution.
+            // If the base resolves, add a structural GetField node.
+            // If not, fall through to ExprCompute (don't force synthesis for
+            // expressions with local let bindings — the fn body evaluator handles those).
+            let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
+            let base_source = resolve_return_expr_source(
+                builder,
+                ctx,
+                base,
+                &any_port,
+                &format!("{output_name}_base"),
+                &format!("{disambiguator}_base"),
+            );
+            match base_source {
+                Some((base_node, base_port)) => synthesize_get_field_on_resolved(
+                    builder,
+                    ctx,
+                    &base_node,
+                    &base_port,
+                    field,
+                    output_port,
+                    output_name,
+                    disambiguator,
+                ),
+                None => None,
+            }
         }
         Expr::Call(name, _) => ctx
             .endpoints_by_name
             .get(name)
             .and_then(|entry| entry.clone())
             .map(|source| (source.node_id, source.primary_output)),
-        Expr::Literal(_) | Expr::StringInterp(_) | Expr::List(_) | Expr::Map(_) => {
+        Expr::Literal(_) | Expr::Map(_) => {
             let literal = return_literal_arg(expr)?;
             let src = ensure_literal_source_node(
                 builder,
@@ -8938,6 +8984,44 @@ fn resolve_return_expr_source(
                 disambiguator,
             );
             Some((src, output_name.to_string()))
+        }
+        // C24: String interpolation — try literal path first, then structural.
+        Expr::StringInterp(parts) => {
+            if let Some(literal) = return_literal_arg(expr) {
+                let src = ensure_literal_source_node(
+                    builder,
+                    ctx.module_name,
+                    ctx.item_name,
+                    output_name,
+                    output_port.type_id.0.as_str(),
+                    &literal,
+                    disambiguator,
+                );
+                Some((src, output_name.to_string()))
+            } else {
+                synthesize_string_interpolate(
+                    builder, ctx, parts, output_port, output_name, disambiguator,
+                )
+            }
+        }
+        // C24: List literal — try literal path first, then structural.
+        Expr::List(elements) => {
+            if let Some(literal) = return_literal_arg(expr) {
+                let src = ensure_literal_source_node(
+                    builder,
+                    ctx.module_name,
+                    ctx.item_name,
+                    output_name,
+                    output_port.type_id.0.as_str(),
+                    &literal,
+                    disambiguator,
+                );
+                Some((src, output_name.to_string()))
+            } else {
+                synthesize_list_construct(
+                    builder, ctx, elements, output_port, output_name, disambiguator,
+                )
+            }
         }
         // C24-P1: Direct BinOp → BinaryOp structural node.
         Expr::BinOp(left, op, right) => {
@@ -9017,7 +9101,19 @@ fn resolve_return_expr_source(
         Expr::Record(_, fields) => synthesize_record_construct(
             builder, ctx, fields, output_port, output_name, disambiguator,
         ),
-        // Handle complex expressions by synthesizing a dedicated compute node.
+        // C24: Pipe/PipeCall → tagged evaluator (distinct from ExprCompute for tracking).
+        Expr::Pipe(..) | Expr::PipeCall(..) => {
+            synthesize_tagged_evaluator(
+                builder, ctx, expr, "pipe", output_port, output_name, disambiguator,
+            )
+        }
+        // C24: For expression → tagged evaluator.
+        Expr::For(..) => {
+            synthesize_tagged_evaluator(
+                builder, ctx, expr, "for", output_port, output_name, disambiguator,
+            )
+        }
+        // Handle remaining complex expressions by synthesizing a dedicated compute node.
         _ => synthesize_expr_compute(builder, ctx, expr, output_port, output_name, disambiguator),
     }
 }
@@ -9924,24 +10020,252 @@ fn synthesize_record_construct(
     Some((node_id, result_port_name.to_string()))
 }
 
-/// Synthesize a compute node for a complex return expression.
-/// Creates a node that evaluates the expression using `evaluate_fn_body` at runtime.
-fn synthesize_expr_compute(
+/// C24: Synthesize a ListConstruct node for list literals with resolvable elements.
+/// Each element is resolved recursively; if all resolve, a structural node is emitted.
+fn synthesize_list_construct(
     builder: &mut DagBuilder,
     ctx: &LoweringContext<'_>,
-    expr: &Expr,
+    elements: &[Expr],
     output_port: &Port,
     output_name: &str,
     disambiguator: &str,
 ) -> Option<(String, String)> {
+    let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
+
+    // Resolve each element recursively.
+    let mut elem_sources: Vec<(String, String, String)> = Vec::new();
+    for (i, elem) in elements.iter().enumerate() {
+        let port_name = format!("elem_{i}");
+        let source = resolve_return_expr_source(
+            builder,
+            ctx,
+            elem,
+            &any_port,
+            &format!("{output_name}_{port_name}"),
+            &format!("{disambiguator}_{port_name}"),
+        );
+        match source {
+            Some((node, port)) => elem_sources.push((port_name, node, port)),
+            None => {
+                return synthesize_expr_compute(
+                    builder, ctx, &Expr::List(elements.to_vec()), output_port, output_name, disambiguator,
+                );
+            }
+        }
+    }
+
+    let input_ports: Vec<Port> = elem_sources
+        .iter()
+        .map(|(name, _, _)| Port::with_cardinality(name.as_str(), "Any", Cardinality::ONE))
+        .collect();
+    let result_port_name = "result";
+    let output_type = output_port.type_id.0.as_str();
+    let output_ports = vec![Port::with_cardinality(
+        result_port_name,
+        output_type,
+        Cardinality::ONE,
+    )];
+
+    let node_id = format!(
+        "list_construct_{}",
+        sanitize_identifier(&format!(
+            "{}_{}_{}_{}",
+            ctx.module_name, ctx.item_name, output_name, disambiguator
+        ))
+    );
+
+    builder.add_node(Node::opaque(
+        node_id.clone(),
+        input_ports,
+        output_ports,
+        LoweredOp::Primitive {
+            module: ctx.module_name.to_string(),
+            name: format!("list_construct::{}::{}", ctx.item_name, output_name),
+            kind: PrimitiveOpKind::ListConstruct {
+                count: elements.len(),
+            },
+        },
+    ));
+
+    for (port_name, src_node, src_port) in &elem_sources {
+        builder.add_edge(src_node, src_port, &node_id, port_name);
+    }
+
+    Some((node_id, result_port_name.to_string()))
+}
+
+/// C24: Synthesize a StringInterpolate node for string interpolations with variable refs.
+/// Each interpolated expression becomes an input port.
+fn synthesize_string_interpolate(
+    builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
+    string_parts: &[daglang_syntax::ast::StringPart],
+    output_port: &Port,
+    output_name: &str,
+    disambiguator: &str,
+) -> Option<(String, String)> {
+    let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
+
+    let mut parts: Vec<String> = Vec::new();
+    let mut input_port_names: Vec<String> = Vec::new();
+    let mut input_sources: Vec<(String, String, String)> = Vec::new();
+
+    // Walk through parts: literals become template strings, exprs become input ports.
+    let mut current_literal = String::new();
+    for (i, part) in string_parts.iter().enumerate() {
+        match part {
+            daglang_syntax::ast::StringPart::Literal(s) => {
+                current_literal.push_str(s);
+            }
+            daglang_syntax::ast::StringPart::Expr(expr) => {
+                parts.push(std::mem::take(&mut current_literal));
+                let port_name = format!("interp_{i}");
+                let source = resolve_return_expr_source(
+                    builder,
+                    ctx,
+                    expr,
+                    &any_port,
+                    &format!("{output_name}_{port_name}"),
+                    &format!("{disambiguator}_{port_name}"),
+                );
+                match source {
+                    Some((node, port)) => {
+                        input_sources.push((port_name.clone(), node, port));
+                        input_port_names.push(port_name);
+                    }
+                    None => {
+                        // Can't resolve an interpolated expression — fall back.
+                        return synthesize_expr_compute(
+                            builder,
+                            ctx,
+                            &Expr::StringInterp(string_parts.to_vec()),
+                            output_port,
+                            output_name,
+                            disambiguator,
+                        );
+                    }
+                }
+            }
+        }
+    }
+    // Final trailing literal.
+    parts.push(current_literal);
+
+    let input_ports: Vec<Port> = input_port_names
+        .iter()
+        .map(|name| Port::with_cardinality(name.as_str(), "Any", Cardinality::ONE))
+        .collect();
+    let result_port_name = "result";
+    let output_type = output_port.type_id.0.as_str();
+    let output_ports = vec![Port::with_cardinality(
+        result_port_name,
+        output_type,
+        Cardinality::ONE,
+    )];
+
+    let node_id = format!(
+        "string_interpolate_{}",
+        sanitize_identifier(&format!(
+            "{}_{}_{}_{}",
+            ctx.module_name, ctx.item_name, output_name, disambiguator
+        ))
+    );
+
+    builder.add_node(Node::opaque(
+        node_id.clone(),
+        input_ports,
+        output_ports,
+        LoweredOp::Primitive {
+            module: ctx.module_name.to_string(),
+            name: format!("string_interpolate::{}::{}", ctx.item_name, output_name),
+            kind: PrimitiveOpKind::StringInterpolate {
+                parts,
+                input_ports: input_port_names,
+            },
+        },
+    ));
+
+    for (port_name, src_node, src_port) in &input_sources {
+        builder.add_edge(src_node, src_port, &node_id, port_name);
+    }
+
+    Some((node_id, result_port_name.to_string()))
+}
+
+/// C24: Synthesize a GetField node for a complex base expression (not a direct parameter).
+/// Recursively resolves the base, then extracts the field from its output.
+#[allow(clippy::too_many_arguments)]
+fn synthesize_get_field_on_resolved(
+    builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
+    base_node: &str,
+    base_port: &str,
+    field: &str,
+    output_port: &Port,
+    output_name: &str,
+    disambiguator: &str,
+) -> Option<(String, String)> {
+    let result_port_name = "result";
+    let output_type = output_port.type_id.0.as_str();
+    let input_port_name = "base";
+    let input_ports = vec![Port::with_cardinality(
+        input_port_name,
+        "Any",
+        Cardinality::ONE,
+    )];
+    let output_ports = vec![Port::with_cardinality(
+        result_port_name,
+        output_type,
+        Cardinality::ONE,
+    )];
+
+    let node_id = format!(
+        "get_field_{}",
+        sanitize_identifier(&format!(
+            "{}_{}_{}_{}_{}",
+            ctx.module_name, ctx.item_name, field, output_name, disambiguator
+        ))
+    );
+
+    builder.add_node(Node::opaque(
+        node_id.clone(),
+        input_ports,
+        output_ports,
+        LoweredOp::Primitive {
+            module: ctx.module_name.to_string(),
+            name: format!("get_field::{}::{}::{}", ctx.item_name, output_name, field),
+            kind: PrimitiveOpKind::GetField {
+                field: field.to_string(),
+            },
+        },
+    ));
+
+    builder.add_edge(base_node, base_port, &node_id, input_port_name);
+
+    Some((node_id, result_port_name.to_string()))
+}
+
+/// Shared intermediate artifacts for evaluator/compute node synthesis.
+struct EvaluatorParts {
+    input_ports: Vec<Port>,
+    output_ports: Vec<Port>,
+    fn_body: LoweredFnBody,
+    sibling_fns: std::collections::BTreeMap<String, LoweredFnBody>,
+    refs: Vec<ExprLeafRef>,
+}
+
+/// Build the shared core of an evaluator node: leaf refs, ports, fn body, sibling fns.
+/// Returns `None` if the expression has unresolvable local references.
+fn build_evaluator_parts(
+    ctx: &LoweringContext<'_>,
+    expr: &Expr,
+    output_port: &Port,
+) -> Option<EvaluatorParts> {
     let mut refs: Vec<ExprLeafRef> = Vec::new();
     let mut seen = HashSet::new();
     let mut has_local_refs = false;
     collect_expr_leaf_refs(expr, ctx, &mut refs, &mut seen, &mut has_local_refs);
 
-    // C10: Only bail on truly unresolvable references (not local let bindings).
-    // Local let bindings are resolved transitively in collect_expr_leaf_refs
-    // and included in the fn body below.
     if has_local_refs {
         return None;
     }
@@ -9965,15 +10289,10 @@ fn synthesize_expr_compute(
         Cardinality::ONE,
     )];
 
-    // 3. Create the fn body: include local let stmts (C10) then the return.
+    // Build fn body: include local let stmts (C10) then the return.
     // Local let stmts are non-call bindings from the callable body that the
-    // return expression may reference. The evaluator processes them in order
-    // and flattens Map fields for the __ convention.
-    //
-    // C10: Skip let bindings whose name is also an input port — those are
-    // already provided via DAG edges (e.g., for-loop results from cf_for nodes,
-    // callable results from bound_callable_sources). Re-evaluating them would
-    // duplicate computation and fail on complex DAG-backed expressions.
+    // return expression may reference. Skip let bindings whose name is also
+    // an input port — those are already provided via DAG edges.
     let input_port_names: HashSet<String> = refs.iter().map(|r| r.input_port.clone()).collect();
     let mut fn_stmts: Vec<expr::LoweredStmt> = Vec::new();
     if !ctx.local_let_bindings.is_empty() {
@@ -10010,9 +10329,9 @@ fn synthesize_expr_compute(
     )]));
     let fn_body = LoweredFnBody { stmts: fn_stmts };
 
-    // 4. Collect sibling fn bodies that the expression may call at runtime.
+    // Collect sibling fn bodies that the expression may call at runtime,
+    // including fns called from local let bindings included in the body.
     let mut sibling_fns = collect_called_fn_bodies(expr, ctx.all_fn_bodies);
-    // Also include fns called from local let bindings included in the body.
     for stmt in ctx.body_stmts {
         match stmt {
             Stmt::Let(name, let_expr) | Stmt::Assign(name, let_expr)
@@ -10024,7 +10343,100 @@ fn synthesize_expr_compute(
         }
     }
 
-    // 5. Create the compute node.
+    Some(EvaluatorParts {
+        input_ports,
+        output_ports,
+        fn_body,
+        sibling_fns,
+        refs,
+    })
+}
+
+/// Wire evaluator node edges from leaf refs to the node.
+fn wire_evaluator_edges(
+    builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
+    node_id: &str,
+    refs: &[ExprLeafRef],
+) {
+    for leaf in refs {
+        match &leaf.source {
+            expr::LeafRef::Param { name, ty, .. } => {
+                let param_source_id =
+                    ensure_param_source_node(builder, ctx.module_name, ctx.item_name, name, ty);
+                builder.add_edge(&param_source_id, name, node_id, &leaf.input_port);
+            }
+            expr::LeafRef::Callable { endpoint, port }
+            | expr::LeafRef::Service { endpoint, port } => {
+                builder.add_edge(endpoint, port, node_id, &leaf.input_port);
+            }
+        }
+    }
+}
+
+/// C24: Synthesize a pipe/for expression as a tagged evaluator node.
+/// Like ExprCompute but with a distinct PrimitiveOpKind for tracking.
+#[allow(clippy::too_many_arguments)]
+fn synthesize_tagged_evaluator(
+    builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
+    expr: &Expr,
+    kind_tag: &str,
+    output_port: &Port,
+    output_name: &str,
+    disambiguator: &str,
+) -> Option<(String, String)> {
+    let parts = build_evaluator_parts(ctx, expr, output_port)?;
+
+    let kind = match kind_tag {
+        "pipe" => PrimitiveOpKind::PipeOp {
+            fn_body: Box::new(parts.fn_body),
+            sibling_fns: parts.sibling_fns,
+        },
+        "for" => PrimitiveOpKind::ForOp {
+            fn_body: Box::new(parts.fn_body),
+            sibling_fns: parts.sibling_fns,
+        },
+        _ => PrimitiveOpKind::ExprCompute {
+            fn_body: Box::new(parts.fn_body),
+            sibling_fns: parts.sibling_fns,
+        },
+    };
+
+    let node_id = format!(
+        "{kind_tag}_{}",
+        sanitize_identifier(&format!(
+            "{}_{}_{}_{}",
+            ctx.module_name, ctx.item_name, output_name, disambiguator
+        ))
+    );
+    builder.add_node(Node::opaque(
+        node_id.clone(),
+        parts.input_ports,
+        parts.output_ports,
+        LoweredOp::Primitive {
+            module: ctx.module_name.to_string(),
+            name: format!("{kind_tag}::{}::{}", ctx.item_name, output_name),
+            kind,
+        },
+    ));
+
+    wire_evaluator_edges(builder, ctx, &node_id, &parts.refs);
+    Some((node_id, "result".to_string()))
+}
+
+/// Synthesize a compute node for a complex return expression.
+/// Creates a node that evaluates the expression using `evaluate_fn_body` at runtime.
+fn synthesize_expr_compute(
+    builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
+    expr: &Expr,
+    output_port: &Port,
+    output_name: &str,
+    disambiguator: &str,
+) -> Option<(String, String)> {
+    let parts = build_evaluator_parts(ctx, expr, output_port)?;
+
     let node_id = format!(
         "expr_compute_{}",
         sanitize_identifier(&format!(
@@ -10034,33 +10446,20 @@ fn synthesize_expr_compute(
     );
     builder.add_node(Node::opaque(
         node_id.clone(),
-        input_ports,
-        output_ports,
+        parts.input_ports,
+        parts.output_ports,
         LoweredOp::Primitive {
             module: ctx.module_name.to_string(),
             name: format!("expr_compute::{}::{}", ctx.item_name, output_name),
             kind: PrimitiveOpKind::ExprCompute {
-                fn_body: Box::new(fn_body),
-                sibling_fns,
+                fn_body: Box::new(parts.fn_body),
+                sibling_fns: parts.sibling_fns,
             },
         },
     ));
 
-    for leaf in &refs {
-        match &leaf.source {
-            expr::LeafRef::Param { name, ty, .. } => {
-                let param_source_id =
-                    ensure_param_source_node(builder, ctx.module_name, ctx.item_name, name, ty);
-                builder.add_edge(&param_source_id, name, &node_id, &leaf.input_port);
-            }
-            expr::LeafRef::Callable { endpoint, port }
-            | expr::LeafRef::Service { endpoint, port } => {
-                builder.add_edge(endpoint, port, &node_id, &leaf.input_port);
-            }
-        }
-    }
-
-    Some((node_id, result_port_name.to_string()))
+    wire_evaluator_edges(builder, ctx, &node_id, &parts.refs);
+    Some((node_id, "result".to_string()))
 }
 
 fn wire_callable_return_outputs(

@@ -395,8 +395,8 @@ fn scalar_to_json(param_type: ParamType, raw: &str) -> serde_json::Value {
     }
 }
 
-/// Binaries that are hand-written and actually support `--mode=`.
-const MODE_CAPABLE_BINARIES: &[&str] = &["gunbc-deps-config", "gunbc-ci"];
+/// Binaries that accept `--mode=` (hand-written or DSL-compiled with mode parameter).
+const MODE_CAPABLE_BINARIES: &[&str] = &["gunbc-ci", "gunbc-deps-config"];
 
 /// Detect if any Makefile line passes `--mode=` to a binary that doesn't support it.
 ///

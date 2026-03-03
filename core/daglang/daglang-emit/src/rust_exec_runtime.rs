@@ -389,7 +389,10 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerClassification> {
                 | PrimitiveOpKind::MatchDispatch { .. }
                 | PrimitiveOpKind::RecordConstruct { .. }
                 | PrimitiveOpKind::NullCoalesce
-                | PrimitiveOpKind::VariantConstruct { .. },
+                | PrimitiveOpKind::VariantConstruct { .. }
+                | PrimitiveOpKind::ListConstruct { .. }
+                | PrimitiveOpKind::PipeOp { .. }
+                | PrimitiveOpKind::ForOp { .. },
             ..
         } => return Some(HandlerClassification::Handler(HandlerKind::Passthrough)),
     }

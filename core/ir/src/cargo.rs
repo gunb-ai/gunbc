@@ -804,7 +804,7 @@ mod tests {
 
     #[test]
     fn test_cargo_run_quiet_release_deny_warnings() {
-        let inv = CargoInvocation::composed("workflow", "dag");
+        let inv = CargoInvocation::composed("ci", "dag");
         let cmd = CargoCommand::new(Subcommand::Run(inv))
             .quiet()
             .release()
@@ -817,14 +817,14 @@ mod tests {
                 "-p",
                 "gunbc-dag",
                 "--bin",
-                "gunbc-workflow",
+                "gunbc-ci",
                 "-q",
                 "--release"
             ]
         );
         assert_eq!(
             cmd.to_shell_with_env(),
-            "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-workflow -q --release"
+            "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-ci -q --release"
         );
     }
 

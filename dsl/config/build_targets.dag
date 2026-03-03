@@ -98,14 +98,14 @@ data core_workflows: List<CoreWorkflow> = [
     name: "deps-config",
     description: "Ensure deps.toml matches canonical generated configuration",
     deps: ["build-release-bins"],
-    body: ["@target/release/gunbc-deps-config --mode=ensure"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-deps -q --release"],
     comment: None
   },
   {
     name: "deps-config-check",
     description: "Check if deps.toml is stale",
     deps: ["build-release-bins"],
-    body: ["@target/release/gunbc-deps-config --mode=verify"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-deps -q --release -- --dry-run"],
     comment: None
   },
   {
@@ -171,16 +171,16 @@ data core_workflows: List<CoreWorkflow> = [
   },
   {
     name: "ci",
-    description: "Run CI via workflow planner (typed units, deterministic keying)",
+    description: "Run CI via build DAG (typed units, deterministic keying)",
     deps: ["ensure-codegen"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- ci"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-ci -q --release"],
     comment: None
   },
   {
     name: "test-all",
-    description: "Run all tests via workflow planner (warm-path optimized)",
+    description: "Run all tests via cargo test workspace",
     deps: ["ensure-codegen"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- test-all"],
+    body: ["@cargo test --workspace"],
     comment: None
   }
 ]

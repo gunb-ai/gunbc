@@ -7,17 +7,18 @@
 use std::collections::HashSet;
 
 use daglang_syntax::ast;
+use serde::{Deserialize, Serialize};
 
 // ── IR types ────────────────────────────────────────────────────────────────
 
 /// A lowered function body — the unit of computation for `fn` items.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LoweredFnBody {
     pub stmts: Vec<LoweredStmt>,
 }
 
 /// Typed reference to an expression leaf source used by lowerer wiring.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LeafRef {
     Param {
         name: String,
@@ -35,7 +36,7 @@ pub enum LeafRef {
 }
 
 /// A lowered statement.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LoweredStmt {
     /// `let name = expr`
     Let(String, LoweredExpr),
@@ -46,7 +47,7 @@ pub enum LoweredStmt {
 }
 
 /// A lowered expression — fully independent of parser AST types.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LoweredExpr {
     /// Literal value
     Literal(LoweredLiteral),
@@ -119,7 +120,7 @@ pub enum LoweredExpr {
 }
 
 /// Literal value (no Float — LoweredOp requires Eq; add via ordered-float if needed).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LoweredLiteral {
     Int(i64),
     Bool(bool),
@@ -128,14 +129,14 @@ pub enum LoweredLiteral {
 }
 
 /// String interpolation part.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LoweredStringPart {
     Literal(String),
     Expr(LoweredExpr),
 }
 
 /// Binary operator.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LoweredBinOp {
     Add,
     Sub,
@@ -154,14 +155,14 @@ pub enum LoweredBinOp {
 }
 
 /// Unary operator.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LoweredUnaryOp {
     Not,
     Neg,
 }
 
 /// Match arm.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LoweredMatchArm {
     pub pattern: LoweredPattern,
     pub guard: Option<LoweredExpr>,
@@ -169,7 +170,7 @@ pub struct LoweredMatchArm {
 }
 
 /// Match pattern.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LoweredPattern {
     /// Bind to name (or unit variant)
     Ident(String),

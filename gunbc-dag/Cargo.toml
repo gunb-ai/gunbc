@@ -86,16 +86,8 @@ name = "gunbc-codegen"
 path = "src/bin/codegen_cli.rs"
 
 [[bin]]
-name = "gunbc-deps-config"
-path = "src/bin/deps_config.rs"
-
-[[bin]]
 name = "gunbc-infra"
 path = "../target/codegen/bin/infra/main.rs"
-
-[[bin]]
-name = "gunbc-workflow"
-path = "src/bin/workflow.rs"
 
 [[bin]]
 name = "gunbc-gist"
@@ -123,3 +115,11 @@ path = "../target/codegen/bin/build-all/main.rs"
 [[bin]]
 name = "gunbc-design"
 path = "../target/codegen/bin/design/main.rs"
+
+[[bin]]
+name = "gunbc-workflow"
+path = "../target/codegen/bin/workflow/main.rs"
+
+[[bin]]
+name = "gunbc-deps-config"
+path = "../target/codegen/bin/deps-config/main.rs"

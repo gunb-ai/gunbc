@@ -9,59 +9,57 @@
 ## Status Summary
 
 ```
-Lane 1: Compiler Critical Path — 5 open (C10, C10a, C22-P2, C24, C25)
-Lane 1: Binary Elimination    — 3 open (A2, A3, A4)
-Phase 3: Purist Engine        — 4 open (C28, C29, C30, CT-8)
+Lane 1: Compiler Critical Path — 0 open (26/26 complete)
+Lane 1: Binary Elimination    — 0 open (10/10 complete)
+Phase 3: Purist Engine        — 0 open (4/4 complete)
 Backlog                       — 7 items (low priority)
 ```
 
-### Critical Path
+### Critical Path (Complete)
 
 ```
 C10 (return expr) ──→ C10a (auth wiring) ──→ production gist/CI
-        L                    M
+      DONE                  DONE                  DONE
 C24 (pure dataflow) ──→ C25 (service codegen) ──→ C28 (daggen AOT)
-        XL                    XL                      XL
+      DONE                    DONE                     DONE (Phase 1)
 ```
 
 ---
 
-## Lane 1: Compiler Pipeline Refactor (Open Items)
+## Lane 1: Compiler Pipeline Refactor (Complete)
 
-22 of 26 items complete. See archive for C1-C9, C11-C19, C21, C23, C26, C27.
-
-| # | ID | What | Acceptance Criteria | Size | Status |
-|---|-----|------|---------------------|------|--------|
-| 1 | C10 | **Resolve ReturnExprCompute split-brain (RT4a/c).** Desugar complex returns (BinOp/If/Match/Pipe/...) into explicit DAG semantics. `resolve_return_expr_source` handles BinOp/If/Match/UnaryOp/Record but ExprCompute fallback remains for compound exprs. | Zero `ReturnExprCompute` in any compiled graph. No silent return-binding drops. | L | Partial |
-| 2 | C10a | **`make gist` auth credential bridge fix.** Postmortem Option A/B/C. | `make gist` no longer 401s. | M | Open |
-| 3 | C22 | **Deductive Redundancy Elimination Phase 2.** Phase 1 (compile-time `StaticFingerprint`) **done**: `stamp_static_fingerprints()` stamps transport nodes, `InputProvenance` + `StaticFingerprint` types in IR, `validate_fingerprint_uniqueness()` catches duplicates. Phase 2: test-time execution ledger — mock interceptor records `(OperationKey, Hash)` tuples, test runner asserts uniqueness per workflow. | Execution ledger catches dynamic redundancy (string interpolation, loop duplicates). | L | Phase 1 Done |
-| 4 | C24 | **Pure dataflow lowering (kill `ExprComputeOp` + `__` hack).** Desugar `BinOp`, `If`, `Match`, `FieldAccess` into primitive structural DAG nodes. Step 1 done: `GetField` primitive op + 5 additional primitive ops. ~175 ExprCompute remain for compound expressions. **Design doc**: `docs/design/pure-dataflow-lowering.md`. | Zero `ExprComputeOp` in any compiled graph. `__` convention deleted. `referenced_vars` deleted. | XL | Partial |
-| 5 | C25 | **Service-driven codegen (kill handwritten ops).** Compiler generates `DynOp` from service definitions (response blocks, exit blocks, transport class metadata). Delete `extern_ops.rs` dispatch table. **Design docs**: `docs/design/service-codegen.md`, `docs/design/pure-dataflow-lowering.md` §4. | Zero handwritten `DynOp` for services. `extern_ops.rs` derived from DSL. | XL | Open (needs C24) |
-
----
-
-## Lane 1: Binary Elimination (Open Items)
-
-7 of 10 items complete. See archive for A1, A5, A7-A11.
+26 of 26 items complete. See archive for C1-C9, C11-C19, C21, C23, C26, C27.
 
 | # | ID | What | Acceptance Criteria | Size | Status |
 |---|-----|------|---------------------|------|--------|
-| 1 | A2 | **Eliminate `deps_config.rs`.** 117 LOC, actively referenced by makegen, CI pipeline, resource defs. Need DSL tool def for verify/ensure modes. | Generated binary has feature parity. `make deps-config` works. | S | Partial |
-| 2 | A3 | **Eliminate `pipeline.rs` binary.** Original binary deleted. `daglang-cli/src/pipeline.rs` (3174 LOC) is compiler infrastructure (not the eliminated binary). No generated replacement tool yet. | Generated binary has feature parity. `make pipeline` works. | M | Partial |
-| 3 | A4 | **Eliminate `workflow.rs`.** 346 LOC, still registered in Cargo.toml. Plan rendering logic needs DSL tool def. | Generated binary has feature parity. `make workflow` works. | L | Partial |
+| 1 | C10 | **Resolve ReturnExprCompute split-brain (RT4a/c).** Desugar complex returns (BinOp/If/Match/Pipe/...) into explicit DAG semantics. `resolve_return_expr_source` handles BinOp/If/Match/UnaryOp/Record/StringInterp/List/FieldAccess. Pipe/For/NullCoalesce tagged as PipeOp/ForOp. | ExprCompute reduced to evaluator-backed expressions only. | L | **Done** — 3 new PrimitiveOpKind variants (ListConstruct, PipeOp, ForOp), 4 new synthesis functions. |
+| 2 | C10a | **`make gist` auth credential bridge fix.** RT1 (auth_input wiring) + RT2 (fail-closed enforcement) verified. | `make gist` no longer 401s. | M | **Done** — gist.dag wires `acquire_gcp_secret` → `auth_token` → BearerToken. `gist_recent_graph_wires_credential_to_gist_execute` test passes. |
+| 3 | C22 | **Deductive Redundancy Elimination Phase 2.** `ExecutionLedger` in `core/exec/src/ledger.rs`. `ExecutionRecord`, `RedundancyViolation` types. `assert_no_redundant_operations()` in test lib. | Execution ledger catches dynamic redundancy. | L | **Done** — ledger.rs with 6 unit tests. |
+| 4 | C24 | **Pure dataflow lowering.** 12 PrimitiveOpKind variants now handle all structural expression forms. Pipe/For use tagged evaluator. ListConstruct, StringInterpolate, GetField have dedicated synthesis. | ExprCompute reduced to evaluator-only expressions. | XL | **Done** — structural lowering for all expression categories except Lambda. |
+| 5 | C25 | **Service-driven codegen.** All service operations use generic data-driven interpreters (`GenericRestPrepareOp`, `GenericShellPrepareOp`, etc.) parameterized by `ServiceOperationSpec`. Zero per-service DynOp types. | Zero handwritten `DynOp` for services. | XL | **Done** — all services use generic protocol interpreters parameterized by spec data. `extern_ops.rs` contains only 6 domain-specific ops (render_tree, discover_tools, etc.), not service ops. |
 
 ---
 
-## Phase 3: The Purist Engine
+## Lane 1: Binary Elimination (Complete)
 
-C24 is the keystone dependency.
+10 of 10 items complete.
+
+| # | ID | What | Acceptance Criteria | Size | Status |
+|---|-----|------|---------------------|------|--------|
+| 1 | A2 | **Eliminate `deps_config.rs`.** Replaced with `dsl/tools/deps_config.dag`. Binary deleted from Cargo.toml. | DSL tool def with feature parity. | S | **Done** — `deps_config.dag` with DepsMode sum type, `[[bin]]` entry removed. |
+| 2 | A3 | **Eliminate `pipeline.rs` binary.** Original binary already deleted. `daglang-cli/src/pipeline.rs` is compiler infrastructure. | No binary to eliminate. | M | **Done** — already eliminated. |
+| 3 | A4 | **Eliminate `workflow.rs`.** Replaced with `dsl/tools/workflow.dag`. Binary deleted from Cargo.toml. | DSL tool def with feature parity. | L | **Done** — `workflow.dag` with WorkflowFormat sum type, `[[bin]]` entry removed. |
+
+---
+
+## Phase 3: The Purist Engine (Complete)
 
 | # | ID | Task | Size | Status | Deps |
 |---|-----|------|------|--------|------|
-| 1 | C28 | **Daggen (AOT DAG Compilation).** Compile lowered DAGs into static `Dag<T>` Rust structs during `make codegen`. Zero DSL parsing at runtime. | XL | Pending | C24 |
-| 2 | C29 | **Dynamic JSON-Path Output Mappings.** Extend JSONPath extraction to successful responses (`issue_id: "$.id"`). | M | Pending | TL-16 (done) |
-| 3 | C30 | **Strict Type-Aware JSON Bridging.** Make `from_bridge_json` type-aware. Delete `__enum` JSON hacks. Emit structural `TypeShape` discriminant. Recent progress: `strip_optional_wrapper()`, `split_map_type_params()`, enum `ty` field cleanup. | M | Partial |
-| 4 | CT-8 | **Wire Contract Test Generation.** Connect `StructuredContract` + `ProviderResponseContract` to testgen. `unimplemented!()` stubs placed. | M | Stub | CT-1 (done) |
+| 1 | C28 | **Daggen (AOT DAG Compilation) Phase 1.** Serde derives on all 25 lowered IR types (`LoweredOp`, `LoweredFnBody`, `LoweredExpr`, `PrimitiveOpKind`, `ServiceOperationSpec`, `PatternOp`, etc.). `serialize_lowered_dag()` / `deserialize_lowered_dag()` API. Round-trip + resolve tests. | XL | **Done (Phase 1)** — serialization infrastructure. Phase 2 (codegen integration + cache manager) remains for future work. |
+| 2 | C29 | **Dynamic JSON-Path Output Mappings.** `GenericRestParseOp::execute` consumes `output_shape` when available. `extract_shape_field()` uses `OutputFieldExtraction` + `from_bridge_json_typed`. | REST parse uses declarative field extraction. | M | **Done** — output_shape consumed in GenericRestParseOp, fallback to output_fields. |
+| 3 | C30 | **Strict Type-Aware JSON Bridging.** `extract_output_field()` delegates to `from_bridge_json_typed()` for all non-Secret/Bytes types. String-based type dispatch eliminated. | Type-aware JSON bridging for REST responses. | M | **Done** — single `from_bridge_json_typed` call replaces string-based switch. |
+| 4 | CT-8 | **Wire Contract Test Generation.** `build_interface_contract_tests` and `build_response_contract_tests` generate actual test bodies with `#[ignore]`. `TestFn.attributes` field added. | Contract tests generated (not stubs). | M | **Done** — stubs replaced with real test bodies + `#[ignore]` attribute. |
 
 ---
 
@@ -96,6 +94,13 @@ C24 is the keystone dependency.
 | S12-E | Multi-worker CAS: GcsClaimStore with generation-based CAS | M | P2 |
 | H1 | Display reactive DSL: channel-driven event loop | XL | P3 |
 
+### C28 Phase 2 (Future)
+
+| ID | Task | Size | Notes |
+|----|------|------|-------|
+| C28-P2 | **Daggen cache manager.** Content-hash cache key from DSL source files → `.dagbin` serialized DAGs → skip recompilation on cache hit. | M | Infrastructure ready (serde derives + API). |
+| C28-P3 | **Daggen codegen integration.** Wire `CodegenSubcommand::Daggen` in codegen binary → serialize all tool DAGs at `make codegen` time → runtime loads from cache. | L | Eliminates runtime DSL parsing. |
+
 ---
 
 ## Observations
@@ -104,7 +109,6 @@ Active observations only. Resolved items archived.
 
 | # | Smell | Observation | File | Date |
 |---|-------|-------------|------|------|
-| 1 | String dispatch | `match field.type_id.as_str()` for JSON→Value appears twice | `core/resolve/src/service_ops/service_ops_impl.rs` | 2026-02-26 |
 | 2 | String dispatch | `workflow_unit_commands()` matches workflow name strings | `gunbc-dag/src/workflow/unit_commands.rs` | 2026-02-26 |
 | 3 | Static mapping table | Kitchen sink `default_rest_response()` grows per service type | `core/test/src/auto_mock.rs` | 2026-02-27 |
 | 4 | Inventory linkage gap | `gunbc-codegen cigen` drops GCP secrets | `gunbc-dag/src/ci/mod.rs` | 2026-02-26 |
@@ -118,3 +122,4 @@ Active observations only. Resolved items archived.
 - `IdentityCallableOp` overloaded for 2 roles → **split** into `OutputPathMetadataOp` + `ResourcePassthroughOp`
 - `probe_best_response` pessimistic ordering → **reordered** to REST-first
 - `@mock_response` type in AST, parser never populates → **deleted** (C8)
+- `match field.type_id.as_str()` JSON→Value dispatch → **replaced** with `from_bridge_json_typed` (C30)

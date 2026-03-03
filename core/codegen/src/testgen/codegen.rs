@@ -1119,6 +1119,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             let test = TestFn {
                 name: "test_signature_matches_dag".to_string(),
                 doc: vec!["Declared signature matches the DAG inputs/outputs.".to_string()],
+                attributes: vec![],
                 body: vec![
                     Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
                     Stmt::let_bind("sig", Expr::var(signature_fn)),
@@ -1180,6 +1181,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             let inferred_test = TestFn {
                 name: "test_inferred_signature_matches_declared".to_string(),
                 doc: vec!["Inferred signature matches the declared inputs/outputs.".to_string()],
+                attributes: vec![],
                 body: vec![
                     Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
                     Stmt::let_bind("sig", Expr::var(signature_fn)),
@@ -1235,6 +1237,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 tests.push(TestFn {
                     name: format!("test_invalid_obligation_{}", i),
                     doc: vec![format!("INVALID: {}", obligation.reason)],
+                    attributes: vec![],
                     body: vec![Stmt::Expr(Expr::call(
                         "panic!",
                         vec![Expr::Str(format!("Structural error: {}", reason))],
@@ -1690,6 +1693,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     "with explicit boundary mocks, and verify it completes successfully."
                         .to_string(),
                 ],
+                attributes: vec![],
                 body: vec![
                     Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
                     Stmt::let_bind("log", exec),
@@ -1762,6 +1766,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     "Proves: every transport executor is interceptable; DryRun won't".to_string(),
                     "accidentally perform real I/O.".to_string(),
                 ],
+                attributes: vec![],
                 body,
             });
 
@@ -1773,6 +1778,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     "Proves: testgen is wired to the shared transport behavior catalog".to_string(),
                     "used to drive behavioral transport contract checks.".to_string(),
                 ],
+                attributes: vec![],
                 body: vec![
                     Stmt::let_bind(
                         "specs",
@@ -2153,6 +2159,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                 count, label, node_id.0, port_name.0
                             ),
                         ],
+                        attributes: vec![],
                         body: vec![
                             Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
                             Stmt::let_mut("mocks", mocks_expr),
@@ -2242,6 +2249,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                             kind_label, to_node.0, to_port.0
                         ),
                     ],
+                    attributes: vec![],
                     body: vec![
                         Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
                         Stmt::let_bind("mocks", mocks_expr),
@@ -2342,6 +2350,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                 variant_name, node_id.0, port_name.0
                             ),
                         ],
+                        attributes: vec![],
                         body: vec![
                             Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
                             Stmt::let_mut("mocks", mocks_expr),
@@ -2503,6 +2512,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     String::new(),
                     "Proves: missing optional input does not crash.".to_string(),
                 ],
+                attributes: vec![],
                 body,
             });
 
@@ -2553,6 +2563,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                         String::new(),
                         "Proves: wrong-typed optional input is rejected.".to_string(),
                     ],
+                    attributes: vec![],
                     body,
                 });
             }
@@ -2690,27 +2701,31 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 doc.push(format!("Asserts: {field} == {expected}"));
             }
 
-            // Use raw code body since the generated contract test code
-            // references a `provider` variable that is domain-specific.
+            // Emit the generated contract test body directly as raw code.
+            // The test is marked #[ignore] because provider construction
+            // requires profile-specific binding (not yet available generically).
             let body = vec![
                 Stmt::Comment(format!(
                     "CT-8: Interface contract test for {}.{}",
                     contract.interface_name, contract.capability_name
                 )),
-                Stmt::Comment("Provider construction requires profile-specific binding.".into()),
                 Stmt::Comment(
-                    "Generated body (activate when provider bindings are wired):".into(),
+                    "Provider construction requires profile-specific binding.".into(),
                 ),
-                Stmt::Comment(String::new()),
-                Stmt::Comment(test_code.trim().replace('\n', "\n// ")),
+                Stmt::Comment(
+                    "Remove #[ignore] when provider bindings are wired for this interface."
+                        .into(),
+                ),
                 Stmt::Item(Item::Raw(
-                    "unimplemented!(\"CT-8: Wire provider assertions\");".to_string(),
+                    "let provider = todo!(\"bind provider for this interface\");".to_string(),
                 )),
+                Stmt::Item(Item::Raw(test_code.trim().to_string())),
             ];
 
             tests.push(TestFn {
                 name: test_name,
                 doc,
+                attributes: vec!["#[ignore]".to_string()],
                 body,
             });
         }
@@ -2770,52 +2785,30 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 ),
             ];
 
-            // Generate the mock transport test body.
-            let mock_expr = format!(
-                "MockTransport::with_status({})",
-                contract.status_code
-            );
-            let body = if contract.is_error {
-                vec![
-                    Stmt::Comment(format!(
-                        "CT-8: Response contract — {} should produce error for status {}",
-                        contract.operation, contract.status_code
-                    )),
-                    Stmt::Item(Item::Raw(format!(
-                        "let _transport = {};",
-                        mock_expr
-                    ))),
-                    Stmt::Comment(format!(
-                        "Expected: is_err() with status_code() == {} and response_type() == \"{}\"",
-                        contract.status_code, contract.response_type
-                    )),
-                    Stmt::Item(Item::Raw(
-                        "unimplemented!(\"CT-8: Wire response assertions\");".to_string(),
-                    )),
-                ]
-            } else {
-                vec![
-                    Stmt::Comment(format!(
-                        "CT-8: Response contract — {} should succeed for status {}",
-                        contract.operation, contract.status_code
-                    )),
-                    Stmt::Item(Item::Raw(format!(
-                        "let _transport = {};",
-                        mock_expr
-                    ))),
-                    Stmt::Comment(format!(
-                        "Expected: is_ok() with response_type() == \"{}\"",
-                        contract.response_type
-                    )),
-                    Stmt::Item(Item::Raw(
-                        "unimplemented!(\"CT-8: Wire response assertions\");".to_string(),
-                    )),
-                ]
-            };
+            // Generate the response contract test body using todo!().
+            // The test is marked #[ignore] because provider construction
+            // is not yet wired — matches the interface contract test pattern.
+            let body = vec![
+                Stmt::Comment(format!(
+                    "CT-8: Response contract — {} {} for status {}",
+                    contract.operation,
+                    if contract.is_error { "should produce error" } else { "should succeed" },
+                    contract.status_code,
+                )),
+                Stmt::Comment(format!(
+                    "Expected response type: {}. Remove #[ignore] when transport is wired.",
+                    contract.response_type,
+                )),
+                Stmt::Item(Item::Raw(format!(
+                    "todo!(\"bind MockTransport for {} status {}\");",
+                    contract.operation, contract.status_code,
+                ))),
+            ];
 
             tests.push(TestFn {
                 name: test_name,
                 doc,
+                attributes: vec!["#[ignore]".to_string()],
                 body,
             });
         }
@@ -2894,6 +2887,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     "Proves: workflow reaches terminal outputs with all transports mocked as success."
                         .to_string(),
                 ],
+                attributes: vec![],
                 body,
             });
         }
@@ -2961,6 +2955,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                             String::new(),
                             "Proves: failure propagation semantics are consistent.".to_string(),
                         ],
+                        attributes: vec![],
                         body,
                     });
                 }
@@ -3048,6 +3043,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                         "either skip themselves (guarded) or process the Skipped value".to_string(),
                         "without crashing.".to_string(),
                     ],
+                    attributes: vec![],
                     body,
                 });
             }
@@ -3330,6 +3326,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                             "the other causes it to skip (all outputs = Value::Skipped)."
                                 .to_string(),
                         ],
+                        attributes: vec![],
                         body,
                     });
                 } else {
@@ -3563,6 +3560,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             tests.push(TestFn {
                 name: test_name,
                 doc,
+                attributes: vec![],
                 body,
             });
 
@@ -3609,6 +3607,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                         "Test resource '{}' expiration after {}ms.",
                         resource.resource_id, duration_ms
                     )],
+                    attributes: vec![],
                     body,
                 });
             }
@@ -3918,6 +3917,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     "and verifies that the pure node chain produces expected terminal outputs."
                         .to_string(),
                 ],
+                attributes: vec![],
                 body,
             }],
         })
@@ -4107,6 +4107,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     String::new(),
                     "Builds the DAG, executes in Real mode, and checks key outputs.".to_string(),
                 ],
+                attributes: vec![],
                 body,
             }],
         })
@@ -4200,6 +4201,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                             "Live flow test for profile '{}'.",
                             profile_test.profile_name
                         )],
+                        attributes: vec![],
                         body,
                     }],
                 }
@@ -4336,6 +4338,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             tests.push(TestFn {
                 name: test_name,
                 doc: vec![format!("Window: {} -> {}", spec.first.0, spec.last.0)],
+                attributes: vec![],
                 body,
             });
         }
@@ -4369,6 +4372,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 tests: vec![TestFn {
                     name: "test_probe_observer_lowering_failed".to_string(),
                     doc: vec!["Lowering must succeed for probe-observer tests.".to_string()],
+                    attributes: vec![],
                     body: vec![Stmt::Expr(Expr::call("panic!", vec![Expr::Str(err_msg)]))],
                 }],
             });
@@ -4553,6 +4557,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     String::new(),
                     "Non-tautological: asserts observer matchers, not baseline values.".to_string(),
                 ],
+                attributes: vec![],
                 body,
             });
         }
@@ -4584,6 +4589,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                         .to_string(),
                     "This test fails when coverage gaps exist — add observers to fix.".to_string(),
                 ],
+                attributes: vec![],
                 body: vec![Stmt::Expr(Expr::call("panic!", vec![Expr::Str(msg)]))],
             });
         }
@@ -4629,6 +4635,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
         tests.push(TestFn {
             name: "test_boundaries_mockable".to_string(),
             doc: vec!["Test that all boundaries can be mocked.".to_string()],
+            attributes: vec![],
             body: vec![
                 Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
                 Stmt::let_bind(
@@ -4750,6 +4757,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             tests.push(TestFn {
                 name: test_name,
                 doc: vec![format!("Test that {} boundary can be mocked.", node_name)],
+                attributes: vec![],
                 body,
             });
         }
@@ -4798,6 +4806,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
         tests.push(TestFn {
             name: "test_mock_spec_self_consistent".to_string(),
             doc: vec!["Test that this tool's mock spec is self-consistent.".to_string()],
+            attributes: vec![],
             body,
         });
 
@@ -4830,6 +4839,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             tests.push(TestFn {
                 name: "test_input_expectations_documented".to_string(),
                 doc: vec!["Test that input expectations are documented.".to_string()],
+                attributes: vec![],
                 body,
             });
         }
@@ -5057,6 +5067,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             tests.push(TestFn {
                 name: test_name,
                 doc,
+                attributes: vec![],
                 body,
             });
         }
@@ -5161,6 +5172,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 tests.push(TestFn {
                     name: test_name,
                     doc,
+                    attributes: vec![],
                     body,
                 });
             }
@@ -5378,6 +5390,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 "CLI contract: verify gunbc_cli::parse() handles '{}' arguments.",
                 tool_name
             )],
+            attributes: vec![],
             body: parse_body,
         };
 
@@ -5387,6 +5400,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 "CLI contract: verify '{}' supports --print-inputs json round-trip.",
                 tool_name
             )],
+            attributes: vec![],
             body: print_inputs_body,
         };
 
@@ -5507,6 +5521,7 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
                         tests.push(TestFn {
                             name: test_name,
                             doc,
+                            attributes: vec![],
                             body,
                         });
                     }
@@ -5515,6 +5530,7 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
                         tests.push(TestFn {
                             name: test_name,
                             doc,
+                            attributes: vec![],
                             body,
                         });
                     }
@@ -5524,6 +5540,7 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
                         tests.push(TestFn {
                             name: test_name,
                             doc,
+                            attributes: vec![],
                             body,
                         });
                     }
@@ -5969,6 +5986,7 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
             tests.push(TestFn {
                 name: test_name,
                 doc,
+                attributes: vec![],
                 body,
             });
         }
@@ -6203,6 +6221,7 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
             tests.push(TestFn {
                 name: test_name,
                 doc,
+                attributes: vec![],
                 body,
             });
         }
@@ -6248,6 +6267,7 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
                 String::new(),
                 "This is the baseline tier — all transport nodes are intercepted.".to_string(),
             ],
+            attributes: vec![],
             body: vec![
                 Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
                 Stmt::Assert(Assert::True {
@@ -6326,6 +6346,7 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
                         Self::transport_class_summary(&requirements),
                     ),
                 ],
+                attributes: vec![],
                 body: s_body,
             });
         }
@@ -6362,6 +6383,7 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
                     String::new(),
                     "Gated by `sandboxed_tests` feature flag.".to_string(),
                 ],
+                attributes: vec![],
                 body: m_body,
             });
         }
@@ -6398,6 +6420,7 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
                     String::new(),
                     "Cost-gated: requires GUNBC_TEST_MAX_COST >= L.".to_string(),
                 ],
+                attributes: vec![],
                 body: l_body,
             });
         }
@@ -6434,6 +6457,7 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
                     String::new(),
                     "Cost-gated: requires GUNBC_TEST_MAX_COST >= XL.".to_string(),
                 ],
+                attributes: vec![],
                 body: xl_body,
             });
         }

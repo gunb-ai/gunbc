@@ -796,6 +796,32 @@ impl Executable for VariantConstructOp {
     }
 }
 
+/// C24: List construction — collects `elem_0`, `elem_1`, ... input ports into Value::List.
+#[derive(Debug, Clone)]
+struct ListConstructOp {
+    count: usize,
+    output_port: String,
+}
+
+impl Executable for ListConstructOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let mut elements = Vec::with_capacity(self.count);
+        for i in 0..self.count {
+            let port = format!("elem_{i}");
+            let value = inputs.get(&port).cloned().unwrap_or(Value::Skipped);
+            if matches!(value, Value::Skipped) {
+                return OutputMap::new()
+                    .value(&self.output_port, Value::Skipped)
+                    .ok();
+            }
+            elements.push(value);
+        }
+        OutputMap::new()
+            .value(&self.output_port, Value::List(elements))
+            .ok()
+    }
+}
+
 /// Compute node for lowered expression evaluation.
 /// Evaluates a `LoweredFnBody` using `evaluate_fn_body` with inputs from predecessor nodes.
 #[derive(Debug, Clone)]
@@ -1386,6 +1412,39 @@ fn resolve_primitive(
                 tag: tag.clone(),
                 fields: fields.clone(),
                 output_port,
+            }))
+        }
+        PrimitiveOpKind::ListConstruct { count } => {
+            let output_port = outputs
+                .first()
+                .map(|p| p.name.0.clone())
+                .unwrap_or_else(|| "result".to_string());
+            Ok(DynOp::new(ListConstructOp {
+                count: *count,
+                output_port,
+            }))
+        }
+        PrimitiveOpKind::PipeOp {
+            fn_body,
+            sibling_fns,
+        }
+        | PrimitiveOpKind::ForOp {
+            fn_body,
+            sibling_fns,
+        } => {
+            // Same execution as ExprCompute — the distinct tag is for tracking.
+            let input_ports: Vec<String> = inputs.iter().map(|p| p.name.0.clone()).collect();
+            let referenced_vars = collect_fn_body_idents(fn_body);
+            let output_port = outputs
+                .first()
+                .map(|port| port.name.0.clone())
+                .unwrap_or_else(|| "result".to_string());
+            Ok(DynOp::new(ExprComputeOp {
+                fn_body: *fn_body.clone(),
+                input_ports,
+                referenced_vars,
+                output_port,
+                sibling_fns: sibling_fns.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
             }))
         }
         PrimitiveOpKind::ExprCompute {

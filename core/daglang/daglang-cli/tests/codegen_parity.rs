@@ -1399,3 +1399,84 @@ fn sdlc_control_plane_c_runtime_asan_ubsan_smoke_when_available() {
     std::fs::remove_dir_all(&native_out_root)
         .expect("failed to cleanup native sdlc control-plane c asan+ubsan out root");
 }
+
+// ── C28: AOT DAG Serialization Round-Trip ──────────────────────────────────
+
+/// Verify that `Dag<LoweredOp>` survives JSON serialization/deserialization
+/// with identical structure. This gates the AOT cache: if round-trip breaks,
+/// cached DAGs would produce wrong behavior at runtime.
+#[test]
+fn lowered_dag_serialization_round_trip() {
+    let dsl_root = workspace_root().join("dsl");
+    // Compile a real tool with service calls, collection ops, fn bodies, patterns
+    let context = DriverContext {
+        roots: vec![dsl_root],
+        target_file: Some(workspace_root().join("dsl/tools/makegen.dag")),
+    };
+    let output = daglang_driver::compile_from_context(&context)
+        .expect("makegen should compile successfully");
+
+    // Serialize
+    let bytes = output
+        .serialize_lowered_dag()
+        .expect("lowered DAG should serialize to JSON");
+    assert!(bytes.len() > 1000, "serialized DAG should be non-trivial");
+
+    // Deserialize
+    let restored = daglang_driver::deserialize_lowered_dag(&bytes)
+        .expect("lowered DAG should deserialize from JSON");
+
+    // Structural equality: same node count, same edge count
+    assert_eq!(
+        output.lowered_dag.nodes.len(),
+        restored.nodes.len(),
+        "node count should survive round-trip"
+    );
+    assert_eq!(
+        output.lowered_dag.edges.len(),
+        restored.edges.len(),
+        "edge count should survive round-trip"
+    );
+
+    // Re-serialize and compare bytes for determinism
+    let bytes2 =
+        serde_json::to_vec(&restored).expect("re-serialized DAG should produce valid JSON");
+    assert_eq!(
+        bytes, bytes2,
+        "double round-trip should produce identical bytes (deterministic serialization)"
+    );
+}
+
+/// Verify that a deserialized DAG can be resolved to DynOp and executed.
+#[test]
+fn deserialized_dag_resolves_and_executes() {
+    let dsl_root = workspace_root().join("dsl");
+    let context = DriverContext {
+        roots: vec![dsl_root],
+        target_file: Some(workspace_root().join("dsl/tools/pragma.dag")),
+    };
+    let output = daglang_driver::compile_from_context(&context)
+        .expect("pragma should compile successfully");
+
+    // Round-trip through JSON
+    let bytes = output
+        .serialize_lowered_dag()
+        .expect("serialize should succeed");
+    let restored = daglang_driver::deserialize_lowered_dag(&bytes)
+        .expect("deserialize should succeed");
+
+    // Resolve the deserialized DAG to DynOp — verify it doesn't panic
+    let resolved = resolve_lowered_dag(&restored)
+        .expect("deserialized DAG should resolve to DynOp");
+
+    // Resolve the original DAG for comparison
+    let original_resolved = resolve_lowered_dag(&output.lowered_dag)
+        .expect("original DAG should resolve to DynOp");
+
+    // Both resolutions should produce the same number of nodes
+    assert_eq!(
+        original_resolved.nodes.len(),
+        resolved.nodes.len(),
+        "deserialized DAG should resolve to same node count as original"
+    );
+}

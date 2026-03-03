@@ -15,6 +15,7 @@ use crate::dag::{Dag, Edge, Port};
 use crate::node::Node;
 use crate::patterns::PatternOp;
 use crate::patterns::{validate_resource_inputs, validate_resource_inputs_any, ResourceInput};
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 // ============================================================================
@@ -22,7 +23,7 @@ use std::time::Duration;
 // ============================================================================
 
 /// Policy for repetition constructs.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepeatPolicy {
     /// Maximum number of attempts (including initial)
     pub max_attempts: usize,
@@ -85,7 +86,7 @@ impl RepeatPolicy {
 }
 
 /// Backoff strategy for delays between attempts.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BackoffStrategy {
     /// Fixed delay between attempts
     Fixed,
@@ -96,7 +97,7 @@ pub enum BackoffStrategy {
 }
 
 /// Classifier for determining if a failure is retryable.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub enum FailureClassifier {
     /// Always retry on any failure
     #[default]

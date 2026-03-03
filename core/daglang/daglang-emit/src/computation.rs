@@ -454,7 +454,10 @@ fn classify_primitive(
         | PrimitiveOpKind::MatchDispatch { .. }
         | PrimitiveOpKind::RecordConstruct { .. }
         | PrimitiveOpKind::NullCoalesce
-        | PrimitiveOpKind::VariantConstruct { .. } => Err(ClassifyError::UnrecognizedOp {
+        | PrimitiveOpKind::VariantConstruct { .. }
+        | PrimitiveOpKind::ListConstruct { .. }
+        | PrimitiveOpKind::PipeOp { .. }
+        | PrimitiveOpKind::ForOp { .. } => Err(ClassifyError::UnrecognizedOp {
             node_id: name.to_string(),
             detail: format!(
                 "{kind:?} is interpreter-only and cannot be emitted"

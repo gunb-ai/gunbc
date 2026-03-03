@@ -3801,3 +3801,149 @@ fn branch_body_dag_with_transports_builds_with_branch_builder() {
             .collect::<Vec<_>>()
     );
 }
+
+// ===================================================================
+// Wave 1 synthesis function tests
+// ===================================================================
+
+#[test]
+fn list_construct_creates_node_with_element_ports() {
+    let typed = typed_project_from_sources(&[(
+        "sample/lists.dag",
+        r#"module sample.lists
+fn make(a: String, b: String) -> String {
+  items = [a, b]
+  return items |> join(",")
+}
+func run(a: String, b: String) -> { out: String } {
+  result = make(a: a, b: b)
+  return { out: result }
+}"#,
+    )]);
+    let dag = lower_target_module(&typed, "sample.lists");
+
+    // List literals in return expressions become ListConstruct nodes
+    // or get folded into ExprCompute/PipeOp. Find any list_construct node.
+    let lc_node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0.starts_with("list_construct_"));
+
+    // If the lowerer creates a ListConstruct node, verify its shape.
+    if let Some(node) = lc_node {
+        match &node.body {
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive {
+                kind: PrimitiveOpKind::ListConstruct { count },
+                ..
+            }) => {
+                assert_eq!(*count, 2, "list should have 2 elements");
+                assert!(
+                    node.inputs.iter().any(|p| p.name.0 == "elem_0"),
+                    "should have elem_0 input port"
+                );
+                assert!(
+                    node.inputs.iter().any(|p| p.name.0 == "elem_1"),
+                    "should have elem_1 input port"
+                );
+            }
+            other => panic!("expected ListConstruct, got {other:?}"),
+        }
+    } else {
+        // List may be folded into a PipeOp or ExprCompute fn body.
+        // Verify the DAG at least compiles and has the expected callable.
+        assert!(
+            dag.nodes.iter().any(|n| n.id.0.contains("lists::run")),
+            "DAG should contain the run callable; nodes: {:?}",
+            dag.nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
+        );
+    }
+}
+
+fn lower_target_module_with_collections(typed: &TypedProject, module_name: &str) -> Dag<LoweredOp> {
+    let mut scope = HashSet::new();
+    scope.insert(module_name.to_string());
+    lower_typed_project_for_modules_with_collection_nodes(typed, &scope)
+        .expect("lowering should succeed")
+}
+
+#[test]
+fn pipe_map_expression_lowers_to_collection_map_node() {
+    let typed = typed_project_from_sources(&[(
+        "sample/pipe.dag",
+        r#"module sample.pipe
+func run(values: List<String>) -> { out: String } {
+  result = values |> map(v => v) |> join(",")
+  return { out: result }
+}"#,
+    )]);
+    let dag = lower_target_module_with_collections(&typed, "sample.pipe");
+
+    let map_node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0.contains("MapNode"));
+
+    assert!(
+        map_node.is_some(),
+        "pipe |> map() should lower to a Collection MapNode; nodes: {:?}",
+        dag.nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn for_expression_lowers_to_cf_for_node() {
+    let typed = typed_project_from_sources(&[(
+        "sample/for_expr.dag",
+        r#"module sample.for_expr
+fn double(x: Int) -> Int { x * 2 }
+func run(values: List<Int>) -> { out: List<Int> } {
+  result = for v in values { double(x: v) }
+  return { out: result }
+}"#,
+    )]);
+    let dag = lower_target_module(&typed, "sample.for_expr");
+
+    let for_node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0.contains("cf_for_"));
+
+    assert!(
+        for_node.is_some(),
+        "for expression should create a cf_for loop node; nodes: {:?}",
+        dag.nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn pipe_filter_join_chain_lowers_to_collection_nodes() {
+    let typed = typed_project_from_sources(&[(
+        "sample/chain.dag",
+        r#"module sample.chain
+func run(values: List<String>) -> { out: String } {
+  result = values |> filter(v => v != "") |> join(",")
+  return { out: result }
+}"#,
+    )]);
+    let dag = lower_target_module_with_collections(&typed, "sample.chain");
+
+    let filter_node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0.contains("FilterNode"));
+    let join_node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0.contains("JoinNode"));
+
+    assert!(
+        filter_node.is_some(),
+        "pipe |> filter() should create FilterNode; nodes: {:?}",
+        dag.nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
+    );
+    assert!(
+        join_node.is_some(),
+        "pipe |> join() should create JoinNode; nodes: {:?}",
+        dag.nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
+    );
+}

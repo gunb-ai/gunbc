@@ -6,10 +6,11 @@
 //! `PatternOp` (e.g., via `From<PatternOp>` in a composed enum).
 
 use super::repeat::{FailureClassifier, RepeatPolicy};
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 /// Internal operation variants for pattern-generated nodes.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PatternOp {
     // ── NOTE: When adding new variants, update `kind_name()` below. ──
     /// Merge results from a Branch true/false subdag.

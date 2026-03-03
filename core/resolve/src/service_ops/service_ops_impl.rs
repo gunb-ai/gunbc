@@ -20,7 +20,7 @@ use gunbc_ir::transport::{
     FileOp, FileRequest, LocalRequest, RestRequest, ShellRequest, ShellResponse, TransportRequest,
     TransportResponse,
 };
-use gunbc_ir::{SecretString, Value};
+use gunbc_ir::{from_bridge_json_typed, SecretString, Value};
 
 // ============================================================================
 // REST
@@ -265,9 +265,18 @@ impl Executable for GenericRestParseOp {
                 }
 
                 let mut out = OutputMap::new();
-                for field in &self.spec.output_fields {
-                    let value = extract_output_field(field, &rest.body)?;
-                    out = out.value(&field.name, value);
+                // C29: Use output_shape for type-aware extraction when available,
+                // fall back to output_fields for backward compatibility.
+                if let Some(shape) = &self.spec.output_shape {
+                    for field in &shape.fields {
+                        let value = extract_shape_field(field, &rest.body)?;
+                        out = out.value(&field.name, value);
+                    }
+                } else {
+                    for field in &self.spec.output_fields {
+                        let value = extract_output_field(field, &rest.body)?;
+                        out = out.value(&field.name, value);
+                    }
                 }
                 out.ok()
             }
@@ -397,52 +406,34 @@ fn extract_output_field(
     // Navigate JSON path (supports dot-separated nested paths like "payload.data").
     let json_val = navigate_json_path(body, &field.json_path);
 
-    // Type-specific conversion.
-    match field.type_id.as_str() {
-        "Secret" => {
-            let s = json_val.and_then(|v| v.as_str()).unwrap_or("");
-            Ok(Value::Secret(SecretString::new(s)))
-        }
-        "Int" => {
-            let n = json_val.and_then(|v| v.as_i64()).unwrap_or(0);
-            Ok(Value::Int(n))
-        }
-        "Bool" => {
-            let b = json_val.and_then(|v| v.as_bool()).unwrap_or(false);
-            Ok(Value::Bool(b))
-        }
-        "Bytes" => {
-            // Base64-encoded payload (e.g., GCP SecretManager).
-            // Tries direct field first, then nested .data path.
-            let b64 = json_val
-                .and_then(|v| {
-                    v.as_str().map(|s| s.to_string()).or_else(|| {
-                        v.get("data")
-                            .and_then(|d| d.as_str())
-                            .map(|s| s.to_string())
-                    })
-                })
-                .unwrap_or_default();
-            let bytes = base64_decode(&b64)
-                .map_err(|e| ExecError::new(format!("base64 decode for {}: {e}", field.name)))?;
-            Ok(Value::List(
-                bytes.into_iter().map(|b| Value::Int(b as i64)).collect(),
-            ))
-        }
-        "Json" => {
-            let v = json_val.cloned().unwrap_or(serde_json::Value::Null);
-            Ok(Value::Json(v))
-        }
-        // String, Url, GistId, NonEmptyStr, etc. → all as String.
-        _ => {
-            let s = json_val.and_then(|v| v.as_str()).unwrap_or("");
-            if field.is_secret {
-                Ok(Value::Secret(SecretString::new(s)))
-            } else {
-                Ok(Value::Str(s.to_string()))
-            }
-        }
+    // C30: Secret fields always get special handling regardless of type_id.
+    if field.is_secret {
+        let s = json_val.and_then(|v| v.as_str()).unwrap_or("");
+        return Ok(Value::Secret(SecretString::new(s)));
     }
+
+    // C30: Bytes fields need base64 decoding — special case before generic path.
+    if field.type_id == "Bytes" {
+        let b64 = json_val
+            .and_then(|v| {
+                v.as_str().map(|s| s.to_string()).or_else(|| {
+                    v.get("data")
+                        .and_then(|d| d.as_str())
+                        .map(|s| s.to_string())
+                })
+            })
+            .unwrap_or_default();
+        let bytes = base64_decode(&b64)
+            .map_err(|e| ExecError::new(format!("base64 decode for {}: {e}", field.name)))?;
+        return Ok(Value::List(
+            bytes.into_iter().map(|b| Value::Int(b as i64)).collect(),
+        ));
+    }
+
+    // C30: Type-aware JSON bridging — delegate to from_bridge_json_typed
+    // which handles enums, List<T>, Map<K,V>, optionals, and all primitive types.
+    let json = json_val.cloned().unwrap_or(serde_json::Value::Null);
+    Ok(from_bridge_json_typed(&json, &field.type_id))
 }
 
 /// Navigate a JSON path supporting both `.` and `/` separators and array indices.
@@ -467,6 +458,42 @@ fn navigate_json_path<'a>(
         }
     }
     Some(current)
+}
+
+/// C29: Extract a single output field from a JSON response body using
+/// `OutputFieldExtraction` rules and type-aware deserialization.
+fn extract_shape_field(
+    field: &gunbc_ir::transport::middleware::OutputFieldExtraction,
+    body: &serde_json::Value,
+) -> Result<Value, ExecError> {
+    // Raw body: entire body as string.
+    if field.is_raw_body {
+        let text = match body {
+            serde_json::Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+        return if field.is_secret {
+            Ok(Value::Secret(SecretString::new(text)))
+        } else {
+            Ok(Value::Str(text))
+        };
+    }
+
+    // Secret fields: always extract as string.
+    if field.is_secret {
+        let s = navigate_json_path(body, &field.json_path)
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        return Ok(Value::Secret(SecretString::new(s)));
+    }
+
+    // Navigate JSON path and apply type-aware deserialization.
+    let json_val = navigate_json_path(body, &field.json_path);
+    match json_val {
+        Some(json) => Ok(from_bridge_json_typed(json, &field.type_id)),
+        None if field.is_optional => Ok(Value::Unit),
+        None => Ok(from_bridge_json_typed(&serde_json::Value::Null, &field.type_id)),
+    }
 }
 
 /// Produce a default/empty value for an output field (used for skipped responses).

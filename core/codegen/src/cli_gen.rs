@@ -807,7 +807,7 @@ fn generate_profile_block(tool: &ToolMeta) -> String {
 fn generate_dry_run_block(tool: &ToolMeta) -> String {
     let mock_setup = generate_mock_setup(&tool.mock_spec_call);
     format!(
-        "let mode = if dry_run {{\n    {}\n}} else {{\n    ExecutionMode::Real\n}};",
+        "let exec_mode = if dry_run {{\n    {}\n}} else {{\n    ExecutionMode::Real\n}};",
         mock_setup.replace('\n', "\n    ")
     )
 }
@@ -892,7 +892,7 @@ fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
          let animated = print_preamble_auto(&preamble);\n\
          \n\
          // Execute DAG with unified display\n\
-         execute_and_display(&dag, mode, animated, {success_port_arg}, Some(&input_mocks));",
+         execute_and_display(&dag, exec_mode, animated, {success_port_arg}, Some(&input_mocks));",
         arg_parsing = arg_parsing,
         mode_block = mode_block,
         profile_block = profile_block,
@@ -1109,7 +1109,7 @@ fn build_subcmd_run_fn(tool: &ToolMeta, subcmd: &crate::registry::SubcommandDef)
         None => r#"compile_error!("subcommand has no mock_spec_call")"#.to_string(),
     };
     let dry_run_block = format!(
-        "let mode = if dry_run {{\n    {}\n}} else {{\n    ExecutionMode::Real\n}};",
+        "let exec_mode = if dry_run {{\n    {}\n}} else {{\n    ExecutionMode::Real\n}};",
         mock_setup.replace('\n', "\n    ")
     );
 
@@ -1157,7 +1157,7 @@ fn build_subcmd_run_fn(tool: &ToolMeta, subcmd: &crate::registry::SubcommandDef)
          let preamble = Preamble::with_body(\"{tool_name} {subcmd_name}\", \"{description}\", body_lines);\n\
          let animated = print_preamble_auto(&preamble);\n\
          \n\
-         execute_and_display(&dag, mode, animated, {success_port_arg}, Some(&input_mocks));",
+         execute_and_display(&dag, exec_mode, animated, {success_port_arg}, Some(&input_mocks));",
         subcmd_name = subcmd.name,
         arg_parsing = arg_parsing,
         mode_block = mode_block,
@@ -1344,7 +1344,7 @@ fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDe
          let animated = print_preamble_auto(&preamble);\n\
          \n\
          // Execute DAG with unified display\n\
-         execute_and_display(&dag, mode, animated, {success_port_arg}, Some(&input_mocks));",
+         execute_and_display(&dag, exec_mode, animated, {success_port_arg}, Some(&input_mocks));",
         arg_parsing = arg_parsing,
         graph_builder_call = graph_builder_call,
         input_mocks = input_mocks,

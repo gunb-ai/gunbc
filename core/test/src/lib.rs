@@ -100,3 +100,26 @@ pub use temp::{unique_temp_dir, unique_temp_file};
 
 pub mod json;
 pub use json::ParseJsonOutput;
+
+/// Assert that no redundant operations were recorded in the execution ledger.
+///
+/// This is the test-time counterpart to compile-time fingerprint validation.
+/// Call this after executing a DAG with ledger recording enabled.
+pub fn assert_no_redundant_operations(ledger: &gunbc_exec::ExecutionLedger) {
+    let violations = ledger.check_all();
+    assert!(
+        violations.is_empty(),
+        "Redundant operations detected:\n{}",
+        violations
+            .iter()
+            .map(|v| format!(
+                "  {} ({}) executed at nodes {} and {}",
+                v.first.operation.service,
+                v.first.operation.operation,
+                v.first.node_id,
+                v.second.node_id
+            ))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}

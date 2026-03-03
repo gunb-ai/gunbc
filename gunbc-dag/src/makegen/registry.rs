@@ -105,10 +105,6 @@ pub struct BuildConfig {
     pub ci_yaml: BuildCommand,
     /// Command to regenerate tests from DAGs.
     pub testgen: BuildCommand,
-    /// Command to ensure deps.toml is up to date.
-    pub deps_config_ensure: BuildCommand,
-    /// Command to check if deps.toml is stale.
-    pub deps_config_check: BuildCommand,
     /// Command to generate bootstrap artifacts.
     pub bootstrap: BuildCommand,
     /// Command to generate pragma artifacts.
@@ -159,18 +155,6 @@ impl BuildConfig {
             testgen: c(CargoCommand::new(Subcommand::Run(CargoInvocation::composed(
                 "testgen", "dag",
             )))
-            .warnings(w)),
-            deps_config_ensure: c(CargoCommand::new(Subcommand::Run(CargoInvocation::composed(
-                "deps-config",
-                "dag",
-            )))
-            .args(BinaryArgs::with_mode(ExecMode::Ensure))
-            .warnings(w)),
-            deps_config_check: c(CargoCommand::new(Subcommand::Run(CargoInvocation::composed(
-                "deps-config",
-                "dag",
-            )))
-            .args(BinaryArgs::with_mode(ExecMode::Verify))
             .warnings(w)),
             bootstrap: c(CargoCommand::new(Subcommand::Run(CargoInvocation::composed(
                 "bootstrap",

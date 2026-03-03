@@ -120,6 +120,24 @@ impl CompileOutput {
 
         emit_data_dag(module_name, &types, &data)
     }
+
+    /// Serialize the lowered DAG to JSON bytes for AOT caching (C28).
+    ///
+    /// The serialized format includes the full `Dag<LoweredOp>` with all
+    /// `ServiceCallMetadata`, `ServiceOperationSpec`, fn bodies, and pattern ops.
+    /// Deserialize with [`deserialize_lowered_dag`].
+    pub fn serialize_lowered_dag(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(&self.lowered_dag)
+    }
+}
+
+/// Deserialize a lowered DAG from JSON bytes (C28 AOT cache).
+///
+/// Reconstitutes a `Dag<LoweredOp>` previously serialized by
+/// [`CompileOutput::serialize_lowered_dag`]. The caller must then resolve
+/// the lowered ops to `DynOp` via `resolve_lowered_dag()`.
+pub fn deserialize_lowered_dag(bytes: &[u8]) -> Result<Dag<LoweredOp>, serde_json::Error> {
+    serde_json::from_slice(bytes)
 }
 
 /// Deterministic compilation receipt.
