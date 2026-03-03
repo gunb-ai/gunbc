@@ -9097,7 +9097,12 @@ fn resolve_return_expr_source(
                 ),
             }
         }
-        // C24-P2: Record literal → RecordConstruct structural node.
+        // C24-P2: Tagged variant record → VariantConstruct; plain record → RecordConstruct.
+        Expr::Record(Some(tag), fields) if ctx.variant_names.contains(tag.as_str()) => {
+            synthesize_variant_construct(
+                builder, ctx, tag, fields, output_port, output_name, disambiguator,
+            )
+        }
         Expr::Record(_, fields) => synthesize_record_construct(
             builder, ctx, fields, output_port, output_name, disambiguator,
         ),
@@ -9927,6 +9932,108 @@ fn synthesize_unary_op(
     ));
 
     builder.add_edge(inner_node, inner_port, &node_id, "operand");
+
+    Some((node_id, result_port_name.to_string()))
+}
+
+/// Synthesize a VariantConstruct structural node for tagged sum-type constructors.
+/// Like RecordConstruct but carries the variant tag for correct `_variant` tagging at runtime.
+fn synthesize_variant_construct(
+    builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
+    tag: &str,
+    fields: &[(String, Expr)],
+    output_port: &Port,
+    output_name: &str,
+    disambiguator: &str,
+) -> Option<(String, String)> {
+    // Unit variant (no fields) → emit a literal source with the tag string.
+    if fields.is_empty() {
+        let literal = ServiceCallArgLiteral::String(tag.to_string());
+        let src = ensure_literal_source_node(
+            builder,
+            ctx.module_name,
+            ctx.item_name,
+            output_name,
+            output_port.type_id.0.as_str(),
+            &literal,
+            disambiguator,
+        );
+        return Some((src, output_name.to_string()));
+    }
+
+    // Payload variant — resolve each field, then emit VariantConstruct node.
+    let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
+    let mut field_sources: Vec<(String, String, String)> = Vec::new();
+    let mut all_resolved = true;
+    for (field_name, field_expr) in fields {
+        let source = resolve_return_expr_source(
+            builder,
+            ctx,
+            field_expr,
+            &any_port,
+            &format!("{output_name}_{field_name}"),
+            &format!("{disambiguator}_{field_name}"),
+        );
+        if let Some((src_node, src_port)) = source {
+            field_sources.push((field_name.clone(), src_node, src_port));
+        } else {
+            all_resolved = false;
+            break;
+        }
+    }
+
+    if !all_resolved {
+        // Fall back to ExprCompute which preserves the tag via remap_expr_idents.
+        return synthesize_expr_compute(
+            builder,
+            ctx,
+            &Expr::Record(Some(tag.to_string()), fields.to_vec()),
+            output_port,
+            output_name,
+            disambiguator,
+        );
+    }
+
+    let field_names: Vec<String> = fields.iter().map(|(name, _)| name.clone()).collect();
+    let input_ports: Vec<Port> = field_names
+        .iter()
+        .map(|name| Port::with_cardinality(name.as_str(), "Any", Cardinality::ONE))
+        .collect();
+
+    let result_port_name = "result";
+    let output_type = output_port.type_id.0.as_str();
+    let output_ports = vec![Port::with_cardinality(
+        result_port_name,
+        output_type,
+        Cardinality::ONE,
+    )];
+
+    let node_id = format!(
+        "variant_construct_{}",
+        sanitize_identifier(&format!(
+            "{}_{}_{}_{}",
+            ctx.module_name, ctx.item_name, output_name, disambiguator
+        ))
+    );
+
+    builder.add_node(Node::opaque(
+        node_id.clone(),
+        input_ports,
+        output_ports,
+        LoweredOp::Primitive {
+            module: ctx.module_name.to_string(),
+            name: format!("variant_construct::{}::{}", ctx.item_name, output_name),
+            kind: PrimitiveOpKind::VariantConstruct {
+                tag: tag.to_string(),
+                fields: field_names,
+            },
+        },
+    ));
+
+    for (field_name, src_node, src_port) in &field_sources {
+        builder.add_edge(src_node, src_port, &node_id, field_name);
+    }
 
     Some((node_id, result_port_name.to_string()))
 }
