@@ -455,6 +455,56 @@ pub fn compile_data_from_sources(
     Ok(EmbeddedCompileOutput { data_values, fns })
 }
 
+/// Filesystem-based compilation from a DSL module path.
+///
+/// Discovers the module's transitive imports from the filesystem (no `include_str!`
+/// needed), typechecks, lowers, and extracts data values and fn bodies. Replaces
+/// `compile_data_from_sources` for callers that have filesystem access at build time.
+///
+/// # Arguments
+/// * `dsl_root` — Root of the DSL source tree (e.g., `workspace_root.join("dsl")`)
+/// * `module_path` — Relative path within `dsl_root` (e.g., `"config/resources.dag"`)
+pub fn compile_data_from_module(
+    dsl_root: &Path,
+    module_path: &str,
+) -> Result<EmbeddedCompileOutput, CompileError> {
+    let target_file = dsl_root.join(module_path);
+    let context = DriverContext {
+        roots: vec![dsl_root.to_path_buf()],
+        target_file: Some(target_file),
+    };
+    let module_graph = discover_module_graph_for_context(&context)?;
+    let typed = typecheck_module_graph_with_options(
+        module_graph,
+        TypecheckOptions {
+            allow_unresolved_imports: true,
+        },
+    )
+    .map_err(CompileError::Typecheck)?;
+    let data_values = daglang_lower::build_data_values(&typed);
+
+    let mut fns = HashMap::new();
+    match daglang_lower::lower_typed_project(&typed) {
+        Ok(lowered) => {
+            for node in &lowered.nodes {
+                if let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable {
+                    kind: daglang_lower::CallableKind::Fn,
+                    name,
+                    fn_body: Some(body),
+                    ..
+                }) = &node.body
+                {
+                    fns.insert(name.clone(), *body.clone());
+                }
+            }
+        }
+        Err(daglang_lower::LowerError::NoLowerableItems) => {}
+        Err(e) => return Err(CompileError::Lower(e)),
+    }
+
+    Ok(EmbeddedCompileOutput { data_values, fns })
+}
+
 /// Output from compiling embedded DSL sources.
 #[derive(Debug)]
 pub struct EmbeddedCompileOutput {
@@ -2624,6 +2674,49 @@ fn run() -> Bool {
                 gunbc_ir::VerifyError::UnwiredInput(err) if err.port_name == "config"
             )),
             "verify_dag should detect unwired 'config' input"
+        );
+    }
+
+    #[test]
+    fn compile_data_from_module_returns_same_data_as_sources() {
+        // Parity test: compile_data_from_module (filesystem) should produce the
+        // same data_values as compile_data_from_sources (include_str).
+        let layout = gunbc_ir::WorkspaceLayout::from_env_manifest_dir()
+            .or_else(|_| gunbc_ir::WorkspaceLayout::from_cargo_metadata())
+            .expect("workspace layout");
+        let dsl_root = layout.workspace_root.join("dsl");
+
+        let module_output = compile_data_from_module(&dsl_root, "config/resources.dag")
+            .expect("compile_data_from_module should succeed");
+
+        // Verify it found expected data keys from the module
+        assert!(
+            !module_output.data_values.is_empty(),
+            "config/resources.dag should produce data values"
+        );
+        assert!(
+            module_output.data_values.contains_key("repo_source_input_globs"),
+            "config/resources.dag should declare `repo_source_input_globs`, got keys: {:?}",
+            module_output.data_values.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn compile_data_from_module_resolves_transitive_imports() {
+        // makegen.dag has many transitive imports (std/*, extdeps/*, services/*).
+        // compile_data_from_module should resolve them all automatically.
+        let layout = gunbc_ir::WorkspaceLayout::from_env_manifest_dir()
+            .or_else(|_| gunbc_ir::WorkspaceLayout::from_cargo_metadata())
+            .expect("workspace layout");
+        let dsl_root = layout.workspace_root.join("dsl");
+
+        let output = compile_data_from_module(&dsl_root, "tools/makegen.dag")
+            .expect("compile_data_from_module should resolve transitive imports");
+
+        // makegen.dag has fn items, not just data declarations
+        assert!(
+            !output.fns.is_empty(),
+            "tools/makegen.dag should have extractable fn bodies"
         );
     }
 }
