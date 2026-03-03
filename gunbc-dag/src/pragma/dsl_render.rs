@@ -5,43 +5,26 @@
 //! output strings.
 
 use std::collections::HashMap;
-use std::path::Path;
 
-use daglang_driver::compile_data_from_sources;
+use daglang_driver::compile_data_from_module;
 use daglang_lower::LoweredFnBody;
-use gunbc_ir::Value;
-
-const CLIPPY_POLICY_SOURCE: &str = include_str!("../../../dsl/config/clippy_policy.dag");
-const EXTDEPS_CLIPPY_SOURCE: &str = include_str!("../../../dsl/extdeps/clippy.dag");
-const ARCH_RULES_SOURCE: &str = include_str!("../../../dsl/config/arch_rules.dag");
-const CLIPPY_DISALLOWED_SOURCE: &str = include_str!("../../../dsl/config/clippy_disallowed.dag");
-const STD_LINT_SOURCE: &str = include_str!("../../../dsl/std/lint.dag");
+use gunbc_ir::{Value, WorkspaceLayout};
 
 /// Compile `config/clippy_policy.dag` and extract fn bodies + data values.
+///
+/// Uses filesystem-based import resolution to automatically discover
+/// transitive deps (std/lint.dag, extdeps/clippy.dag, config/arch_rules.dag,
+/// config/clippy_disallowed.dag).
 fn compile_clippy_policy() -> (
     HashMap<String, LoweredFnBody>,
     HashMap<String, serde_json::Value>,
 ) {
-    let output = compile_data_from_sources(&[
-        (Path::new("<embedded>/std/lint.dag"), STD_LINT_SOURCE),
-        (
-            Path::new("<embedded>/extdeps/clippy.dag"),
-            EXTDEPS_CLIPPY_SOURCE,
-        ),
-        (
-            Path::new("<embedded>/config/arch_rules.dag"),
-            ARCH_RULES_SOURCE,
-        ),
-        (
-            Path::new("<embedded>/config/clippy_disallowed.dag"),
-            CLIPPY_DISALLOWED_SOURCE,
-        ),
-        (
-            Path::new("<embedded>/config/clippy_policy.dag"),
-            CLIPPY_POLICY_SOURCE,
-        ),
-    ])
-    .expect("clippy_policy.dag should compile");
+    let layout = WorkspaceLayout::from_env_manifest_dir()
+        .or_else(|_| WorkspaceLayout::from_cargo_metadata())
+        .expect("workspace layout for clippy policy DSL");
+    let dsl_root = layout.workspace_root.join("dsl");
+    let output = compile_data_from_module(&dsl_root, "config/clippy_policy.dag")
+        .expect("clippy_policy.dag should compile");
 
     (output.fns, output.data_values)
 }
