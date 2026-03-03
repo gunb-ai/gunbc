@@ -1424,12 +1424,19 @@ mod tests {
     fn test_unwired_input_detected() {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::opaque(
+            "source",
+            vec![],
+            vec![port("out", "String")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
             "worker",
-            vec![port("data", "String")],
+            vec![port("data", "String"), port("extra", "String")],
             vec![port("result", "String")],
             (),
         ));
-        // No edges → "data" is unwired
+        // Wire "extra" so worker is not an island, but leave "data" unwired
+        dag.add_edge(Edge::new("source", "out", "worker", "extra"));
         let errors = validate_required_inputs(&dag);
         assert_eq!(errors.len(), 1, "expected 1 unwired input, got: {:?}", errors);
         assert_eq!(errors[0].node_id, "worker");
@@ -1522,13 +1529,22 @@ mod tests {
     #[test]
     fn test_verify_dag_combines_all_checks() {
         let mut dag: Dag<()> = Dag::new();
-        // Add a node with unwired required input → UnwiredInput
+        // Add a source so "lonely" is not an island node
         dag.add_node(Node::opaque(
-            "lonely",
-            vec![port("data", "String")],
+            "source",
+            vec![],
             vec![port("out", "String")],
             (),
         ));
+        // Add a node with unwired required input → UnwiredInput
+        dag.add_node(Node::opaque(
+            "lonely",
+            vec![port("data", "String"), port("wired", "String")],
+            vec![port("out", "String")],
+            (),
+        ));
+        // Wire "wired" but leave "data" unwired
+        dag.add_edge(Edge::new("source", "out", "lonely", "wired"));
         // Add a node with unwired resource → UnwiredResource
         dag.add_node(Node::opaque(
             "resource_user",
@@ -1536,6 +1552,8 @@ mod tests {
             vec![port("result", "String")],
             (),
         ));
+        // Connect resource_user so it is not an island
+        dag.add_edge(Edge::new("lonely", "out", "resource_user", "result"));
         let errors = verify_dag(&dag);
         let has_unwired_input = errors.iter().any(|e| matches!(e, VerifyError::UnwiredInput(_)));
         let has_unwired_resource = errors.iter().any(|e| matches!(e, VerifyError::UnwiredResource(_)));
@@ -1547,11 +1565,19 @@ mod tests {
     fn test_multiple_unwired_inputs_reported() {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::opaque(
-            "multi",
-            vec![port("a", "String"), port("b", "Int")],
+            "source",
+            vec![],
             vec![port("out", "String")],
             (),
         ));
+        dag.add_node(Node::opaque(
+            "multi",
+            vec![port("a", "String"), port("b", "Int"), port("c", "String")],
+            vec![port("out", "String")],
+            (),
+        ));
+        // Wire "c" so multi is not an island, but leave "a" and "b" unwired
+        dag.add_edge(Edge::new("source", "out", "multi", "c"));
         let errors = validate_required_inputs(&dag);
         assert_eq!(errors.len(), 2, "expected 2 unwired inputs, got: {:?}", errors);
         let port_names: Vec<&str> = errors.iter().map(|e| e.port_name.as_str()).collect();
