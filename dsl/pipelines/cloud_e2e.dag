@@ -220,7 +220,7 @@ test cloud_e2e_full_flow {
     })
 
     // Claim release (SC-1)
-    mock cleanup/execute.response -> rest_response(204, {})
+    mock cleanup/execute.response -> rest_response(200, { released: true })
 
     expect result is Map
 }

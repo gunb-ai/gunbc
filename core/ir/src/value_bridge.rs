@@ -156,14 +156,19 @@ const PRIMITIVE_TYPE_IDS: &[&str] = &[
 /// Falls through to `from_bridge_json` for primitive types or when the
 /// JSON shape doesn't match the expected type.
 pub fn from_bridge_json_typed(json: &serde_json::Value, type_id: &str) -> Value {
+    // Strip optional wrapper upfront: "Foo?" → ("Foo", true), "Option<Foo>" → ("Foo", true).
+    let (inner_type, is_optional) = strip_optional_wrapper(type_id);
+
+    // Handle null for optional types.
+    if is_optional && json.is_null() {
+        return Value::Unit;
+    }
+
     // Strip generic wrappers (e.g., "List<Foo>" → check inner type separately).
-    let base_type = type_id
+    let base_type = inner_type
         .split('<')
         .next()
-        .unwrap_or(type_id)
-        .split('?')
-        .next()
-        .unwrap_or(type_id);
+        .unwrap_or(inner_type);
 
     if base_type == "Bytes" {
         return match json {
@@ -191,11 +196,12 @@ pub fn from_bridge_json_typed(json: &serde_json::Value, type_id: &str) -> Value 
     }
 
     // For non-primitive types, a JSON string is likely an enum variant name.
+    // Use the stripped base_type (not original type_id) for the enum's ty field.
     if !PRIMITIVE_TYPE_IDS.contains(&base_type) {
         match json {
             serde_json::Value::String(s) => {
                 return Value::Enum {
-                    ty: type_id.to_string(),
+                    ty: base_type.to_string(),
                     variant: s.clone(),
                 };
             }
@@ -208,20 +214,69 @@ pub fn from_bridge_json_typed(json: &serde_json::Value, type_id: &str) -> Value 
     }
 
     // For generic containers, recurse with inner type.
-    if let Some(inner) = type_id
+    if let Some(list_inner) = inner_type
         .strip_prefix("List<")
         .and_then(|s| s.strip_suffix('>'))
     {
         if let serde_json::Value::Array(arr) = json {
             return Value::List(
                 arr.iter()
-                    .map(|item| from_bridge_json_typed(item, inner))
+                    .map(|item| from_bridge_json_typed(item, list_inner))
                     .collect(),
             );
         }
     }
 
+    // Map<K,V> generic container support.
+    if let Some(map_inner) = inner_type
+        .strip_prefix("Map<")
+        .and_then(|s| s.strip_suffix('>'))
+    {
+        if let serde_json::Value::Object(obj) = json {
+            // Parse "K, V" — find the comma that's not inside angle brackets.
+            if let Some(value_type) = split_map_type_params(map_inner) {
+                let mut map = std::collections::BTreeMap::new();
+                for (k, v) in obj {
+                    map.insert(k.clone(), from_bridge_json_typed(v, value_type));
+                }
+                return Value::Map(map);
+            }
+        }
+    }
+
     from_bridge_json(json)
+}
+
+/// Strip optional wrapper from a type string.
+/// Returns (inner_type, is_optional).
+fn strip_optional_wrapper(type_id: &str) -> (&str, bool) {
+    if let Some(inner) = type_id.strip_suffix('?') {
+        (inner, true)
+    } else if let Some(inner) = type_id
+        .strip_prefix("Option<")
+        .and_then(|s| s.strip_suffix('>'))
+    {
+        (inner, true)
+    } else {
+        (type_id, false)
+    }
+}
+
+/// Split Map type params "K, V" at the top-level comma, returning the value type.
+fn split_map_type_params(params: &str) -> Option<&str> {
+    let mut depth = 0;
+    for (i, c) in params.char_indices() {
+        match c {
+            '<' => depth += 1,
+            '>' => depth -= 1,
+            ',' if depth == 0 => {
+                let value_part = params[i + 1..].trim();
+                return Some(value_part);
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 #[cfg(test)]

@@ -204,7 +204,7 @@ impl Executable for FnBodyCallableOp {
         match daglang_lower::eval::evaluate_fn_body(&self.fn_body, &eval_inputs, &empty_siblings) {
             Ok(body_results) => {
                 let mut outputs = HashMap::new();
-                for (port_name, _is_optional) in &self.output_ports {
+                for (port_name, is_optional) in &self.output_ports {
                     // 1. Check passthrough (explicit DAG wiring takes priority)
                     let passthrough_key =
                         format!("{}{port_name}", PortName::OUTPUT_PASSTHROUGH_PREFIX);
@@ -219,15 +219,21 @@ impl Executable for FnBodyCallableOp {
                         outputs.insert(port_name.clone(), value.clone());
                         continue;
                     }
-                    // 3. Fallback to Skipped
-                    outputs.insert(port_name.clone(), Value::Skipped);
+                    // 3. Required output missing → error; optional → Skipped
+                    if *is_optional {
+                        outputs.insert(port_name.clone(), Value::Skipped);
+                    } else {
+                        return Err(ExecError::new(format!(
+                            "FnBody evaluation succeeded but required output `{port_name}` was not produced"
+                        )));
+                    }
                 }
                 Ok(outputs)
             }
-            Err(_) => {
-                // Fn body evaluation failed — fall back to passthrough behavior.
-                execute_with_declared_output_passthrough(&self.output_ports, inputs)
-            }
+            Err(e) => Err(ExecError::new(format!(
+                "FnBody evaluation failed: {}",
+                e.message
+            ))),
         }
     }
 }
@@ -531,6 +537,14 @@ struct StringInterpolateOp {
 
 impl Executable for StringInterpolateOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        // If any interpolated input is Skipped, propagate Skipped.
+        for port in &self.input_ports {
+            if matches!(inputs.get(port), Some(Value::Skipped) | None) {
+                return OutputMap::new()
+                    .value(&self.output_port, Value::Skipped)
+                    .ok();
+            }
+        }
         let mut result = String::new();
         for (i, part) in self.parts.iter().enumerate() {
             result.push_str(part);
@@ -560,15 +574,23 @@ impl Executable for BinaryOpOp {
         // Handle short-circuit semantics for logical/null-coalesce ops
         let result = match self.op {
             daglang_lower::expr::LoweredBinOp::And => {
-                if !daglang_lower::eval::value_truthy(&left) {
+                if matches!(left, Value::Skipped) {
+                    Value::Skipped
+                } else if !daglang_lower::eval::value_truthy(&left) {
                     Value::Bool(false)
+                } else if matches!(right, Value::Skipped) {
+                    Value::Skipped
                 } else {
                     Value::Bool(daglang_lower::eval::value_truthy(&right))
                 }
             }
             daglang_lower::expr::LoweredBinOp::Or => {
-                if daglang_lower::eval::value_truthy(&left) {
+                if matches!(left, Value::Skipped) {
+                    Value::Skipped
+                } else if daglang_lower::eval::value_truthy(&left) {
                     Value::Bool(true)
+                } else if matches!(right, Value::Skipped) {
+                    Value::Skipped
                 } else {
                     Value::Bool(daglang_lower::eval::value_truthy(&right))
                 }
@@ -580,9 +602,15 @@ impl Executable for BinaryOpOp {
                     right
                 }
             }
-            op => daglang_lower::eval::eval_binop(&left, op, &right).map_err(|e| {
-                ExecError::new(format!("BinaryOp {:?}: {}", self.op, e))
-            })?,
+            op => {
+                if matches!(left, Value::Skipped) || matches!(right, Value::Skipped) {
+                    Value::Skipped
+                } else {
+                    daglang_lower::eval::eval_binop(&left, op, &right).map_err(|e| {
+                        ExecError::new(format!("BinaryOp {:?}: {}", self.op, e))
+                    })?
+                }
+            }
         };
         OutputMap::new().value(&self.output_port, result).ok()
     }
@@ -599,6 +627,11 @@ struct UnaryOpOp {
 impl Executable for UnaryOpOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         let val = inputs.get("operand").cloned().unwrap_or(Value::Skipped);
+        if matches!(val, Value::Skipped) {
+            return OutputMap::new()
+                .value(&self.output_port, Value::Skipped)
+                .ok();
+        }
         let result = match self.op {
             daglang_lower::expr::LoweredUnaryOp::Not => {
                 Value::Bool(!daglang_lower::eval::value_truthy(&val))
@@ -619,7 +652,7 @@ impl Executable for UnaryOpOp {
 }
 
 /// C24: Conditional — selects between `then` and `else` based on `condition`.
-/// Inputs: `condition`, `then_value`, `else_value`. Output: selected branch.
+/// Inputs: `condition`, `then`, `else`. Output: selected branch.
 #[derive(Debug, Clone)]
 struct ConditionalOp {
     output_port: String,
@@ -628,13 +661,15 @@ struct ConditionalOp {
 impl Executable for ConditionalOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         let condition = inputs.get("condition").cloned().unwrap_or(Value::Bool(false));
+        if matches!(condition, Value::Skipped) {
+            return OutputMap::new()
+                .value(&self.output_port, Value::Skipped)
+                .ok();
+        }
         let result = if daglang_lower::eval::value_truthy(&condition) {
-            inputs.get("then_value").cloned().unwrap_or(Value::Skipped)
+            inputs.get("then").cloned().unwrap_or(Value::Skipped)
         } else {
-            inputs
-                .get("else_value")
-                .cloned()
-                .unwrap_or(Value::Unit)
+            inputs.get("else").cloned().unwrap_or(Value::Unit)
         };
         OutputMap::new().value(&self.output_port, result).ok()
     }
@@ -645,6 +680,7 @@ impl Executable for ConditionalOp {
 #[derive(Clone)]
 struct MatchDispatchOp {
     arms: Vec<daglang_lower::expr::LoweredMatchArm>,
+    sibling_fns: HashMap<String, daglang_lower::LoweredFnBody>,
     output_port: String,
 }
 
@@ -652,6 +688,7 @@ impl std::fmt::Debug for MatchDispatchOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MatchDispatchOp")
             .field("arms", &self.arms.len())
+            .field("sibling_fns", &self.sibling_fns.len())
             .field("output_port", &self.output_port)
             .finish()
     }
@@ -660,15 +697,19 @@ impl std::fmt::Debug for MatchDispatchOp {
 impl Executable for MatchDispatchOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         let scrutinee = inputs.get("scrutinee").cloned().unwrap_or(Value::Skipped);
+        if matches!(scrutinee, Value::Skipped) {
+            return OutputMap::new()
+                .value(&self.output_port, Value::Skipped)
+                .ok();
+        }
         // Build an env from all non-scrutinee inputs for arm body evaluation
         let env: HashMap<String, Value> = inputs
             .iter()
             .filter(|(k, _)| k.as_str() != "scrutinee")
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
-        let empty_siblings = HashMap::new();
         let result =
-            daglang_lower::eval::eval_match(&scrutinee, &self.arms, &env, &empty_siblings)
+            daglang_lower::eval::eval_match(&scrutinee, &self.arms, &env, &self.sibling_fns)
                 .map_err(|e| ExecError::new(format!("MatchDispatch: {e}")))?;
         OutputMap::new().value(&self.output_port, result).ok()
     }
@@ -687,6 +728,11 @@ impl Executable for RecordConstructOp {
         let mut map = std::collections::BTreeMap::new();
         for field in &self.fields {
             let value = inputs.get(field).cloned().unwrap_or(Value::Skipped);
+            if matches!(value, Value::Skipped) {
+                return OutputMap::new()
+                    .value(&self.output_port, Value::Skipped)
+                    .ok();
+            }
             map.insert(field.clone(), value);
         }
         OutputMap::new()
@@ -732,11 +778,16 @@ impl Executable for VariantConstructOp {
                 variant: self.tag.clone(),
             }
         } else {
-            // Payload variant
+            // Payload variant — if any field is Skipped, propagate Skipped.
             let mut map = std::collections::BTreeMap::new();
             map.insert("_variant".to_string(), Value::Str(self.tag.clone()));
             for field in &self.fields {
                 let value = inputs.get(field).cloned().unwrap_or(Value::Skipped);
+                if matches!(value, Value::Skipped) {
+                    return OutputMap::new()
+                        .value(&self.output_port, Value::Skipped)
+                        .ok();
+                }
                 map.insert(field.clone(), value);
             }
             Value::Map(map)
@@ -1298,13 +1349,14 @@ fn resolve_primitive(
                 .unwrap_or_else(|| "result".to_string());
             Ok(DynOp::new(ConditionalOp { output_port }))
         }
-        PrimitiveOpKind::MatchDispatch { arms } => {
+        PrimitiveOpKind::MatchDispatch { arms, sibling_fns } => {
             let output_port = outputs
                 .first()
                 .map(|p| p.name.0.clone())
                 .unwrap_or_else(|| "result".to_string());
             Ok(DynOp::new(MatchDispatchOp {
                 arms: arms.clone(),
+                sibling_fns: sibling_fns.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
                 output_port,
             }))
         }
@@ -1351,7 +1403,7 @@ fn resolve_primitive(
                 input_ports,
                 referenced_vars,
                 output_port,
-                sibling_fns: sibling_fns.clone(),
+                sibling_fns: sibling_fns.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
             }))
         }
     }
@@ -3012,8 +3064,8 @@ mod tests {
             "cond",
             vec![
                 Port::new("condition", "Bool"),
-                Port::new("then_value", "String"),
-                Port::new("else_value", "String"),
+                Port::new("then", "String"),
+                Port::new("else", "String"),
             ],
             vec![Port::new("result", "String")],
             LoweredOp::Primitive {
@@ -3025,8 +3077,8 @@ mod tests {
         let result = resolve_node(&node).expect("should resolve");
         let mut inputs = HashMap::new();
         inputs.insert("condition".to_string(), Value::Bool(true));
-        inputs.insert("then_value".to_string(), Value::Str("yes".to_string()));
-        inputs.insert("else_value".to_string(), Value::Str("no".to_string()));
+        inputs.insert("then".to_string(), Value::Str("yes".to_string()));
+        inputs.insert("else".to_string(), Value::Str("no".to_string()));
         let outputs = result.execute(inputs).expect("should execute");
         assert_eq!(
             outputs.get("result").and_then(Value::as_str),
@@ -3040,8 +3092,8 @@ mod tests {
             "cond",
             vec![
                 Port::new("condition", "Bool"),
-                Port::new("then_value", "String"),
-                Port::new("else_value", "String"),
+                Port::new("then", "String"),
+                Port::new("else", "String"),
             ],
             vec![Port::new("result", "String")],
             LoweredOp::Primitive {
@@ -3053,8 +3105,8 @@ mod tests {
         let result = resolve_node(&node).expect("should resolve");
         let mut inputs = HashMap::new();
         inputs.insert("condition".to_string(), Value::Bool(false));
-        inputs.insert("then_value".to_string(), Value::Str("yes".to_string()));
-        inputs.insert("else_value".to_string(), Value::Str("no".to_string()));
+        inputs.insert("then".to_string(), Value::Str("yes".to_string()));
+        inputs.insert("else".to_string(), Value::Str("no".to_string()));
         let outputs = result.execute(inputs).expect("should execute");
         assert_eq!(
             outputs.get("result").and_then(Value::as_str),
@@ -3094,6 +3146,7 @@ mod tests {
                             body: LoweredExpr::Literal(LoweredLiteral::Int(0)),
                         },
                     ],
+                    sibling_fns: std::collections::BTreeMap::new(),
                 },
             },
         );

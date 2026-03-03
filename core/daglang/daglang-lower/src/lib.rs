@@ -37,8 +37,8 @@ use gunbc_ir::transport::middleware::{
     RetryConfig, TransportMiddlewareConfig,
 };
 use gunbc_ir::{
-    Cardinality, Dag, DagTopology, Edge, EdgeKind, Guard, Node, NodeId, NodeKind, OperationKey,
-    Port, PortName, Value,
+    Cardinality, Dag, DagTopology, Edge, EdgeKind, Guard, InputProvenance, Node, NodeId, NodeKind,
+    OperationKey, Port, PortName, StaticFingerprint, Value,
 };
 use serde::Serialize;
 
@@ -217,7 +217,8 @@ pub enum PrimitiveOpKind {
         /// Pure `fn` definitions the expression body may call at runtime.
         /// Populated when the expression contains `Call("fn_name", ...)`
         /// references to user-defined pure fns (e.g., `stage_from_output`).
-        sibling_fns: HashMap<String, LoweredFnBody>,
+        /// BTreeMap for deterministic serialization in DAG snapshots.
+        sibling_fns: std::collections::BTreeMap<String, LoweredFnBody>,
     },
     /// C24: Extract a named field from a Map/Record/JSON input.
     /// Replaces `ExprCompute` + `__` convention for simple field projections.
@@ -247,6 +248,7 @@ pub enum PrimitiveOpKind {
     /// Arms are evaluated in order; first matching arm's body is the output.
     MatchDispatch {
         arms: Vec<crate::expr::LoweredMatchArm>,
+        sibling_fns: std::collections::BTreeMap<String, LoweredFnBody>,
     },
     /// C24: Record construction — `{ field1: val1, field2: val2 }`.
     /// Each field maps to an input port; output is a Value::Map.
@@ -427,6 +429,121 @@ pub fn stamp_node_kinds(dag: &mut Dag<LoweredOp>) {
         }
         if let gunbc_ir::NodeBody::SubDag(ref mut inner) = node.body {
             stamp_node_kinds(inner);
+        }
+    }
+    // C22: Stamp static fingerprints on transport execute nodes after all
+    // nodes and edges are in place.
+    stamp_static_fingerprints(dag);
+}
+
+/// Stamp static fingerprints on transport execute nodes (C22).
+///
+/// For each node with an `operation_key`, analyzes the incoming edges to
+/// determine provenance of each prepare-node input. The fingerprint enables
+/// compile-time duplicate detection: two transport nodes with identical
+/// fingerprints perform provably identical work.
+pub fn stamp_static_fingerprints(dag: &mut Dag<LoweredOp>) {
+    // Build edge index: target_node -> [(source_node, source_port, target_port)]
+    let edge_index: HashMap<String, Vec<(&str, &str, &str)>> = {
+        let mut idx: HashMap<String, Vec<(&str, &str, &str)>> = HashMap::new();
+        for edge in &dag.edges {
+            idx.entry(edge.to_node.0.clone())
+                .or_default()
+                .push((&edge.from_node.0, &edge.from_port.0, &edge.to_port.0));
+        }
+        idx
+    };
+
+    // Collect literal source node IDs for provenance classification.
+    let literal_sources: HashMap<String, Option<String>> = dag
+        .nodes
+        .iter()
+        .filter_map(|n| {
+            if let gunbc_ir::NodeBody::Opaque(LoweredOp::Primitive {
+                kind: PrimitiveOpKind::CallLiteralSource { literal },
+                ..
+            }) = &n.body
+            {
+                Some((n.id.0.clone(), Some(format!("{literal:?}"))))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Pass 1: collect fingerprints (immutable borrow).
+    let mut fingerprints: Vec<(String, StaticFingerprint)> = Vec::new();
+
+    for node in dag.nodes.iter() {
+        if node.operation_key.is_none() || node.kind != NodeKind::TransportExecute {
+            continue;
+        }
+        let op_key = node.operation_key.as_ref().unwrap().clone();
+
+        // Find the prepare node that feeds the "request" input.
+        let prepare_id = edge_index
+            .get(&node.id.0)
+            .and_then(|edges| {
+                edges
+                    .iter()
+                    .find(|(_, _, to_port)| *to_port == "request")
+                    .map(|(from_node, _, _)| from_node.to_string())
+            });
+
+        let Some(prepare_id) = prepare_id else {
+            continue;
+        };
+
+        // Analyze prepare node's incoming edges to determine input provenance.
+        let prepare_edges = edge_index.get(&prepare_id);
+        let mut keys: Vec<(String, InputProvenance)> = Vec::new();
+
+        if let Some(prepare_node) = dag.nodes.iter().find(|n| n.id.0 == prepare_id) {
+            for input_port in &prepare_node.inputs {
+                let port_name = &input_port.name.0;
+                // Skip internal ports (deps, resource, credential).
+                if port_name == PortName::DEPS
+                    || port_name.starts_with("res:")
+                    || port_name == PortName::RESOURCE_CREDENTIAL
+                {
+                    continue;
+                }
+
+                let provenance = if let Some(edges) = prepare_edges {
+                    if let Some((source_node, source_port, _)) =
+                        edges.iter().find(|(_, _, tp)| *tp == port_name.as_str())
+                    {
+                        if literal_sources.contains_key(*source_node) {
+                            let literal_val = literal_sources
+                                .get(*source_node)
+                                .and_then(|v| v.clone())
+                                .unwrap_or_default();
+                            InputProvenance::Literal(literal_val)
+                        } else {
+                            InputProvenance::Edge {
+                                source_node: NodeId::new(*source_node),
+                                source_port: PortName::new(*source_port),
+                            }
+                        }
+                    } else {
+                        InputProvenance::Dynamic
+                    }
+                } else {
+                    InputProvenance::Dynamic
+                };
+
+                keys.push((port_name.clone(), provenance));
+            }
+        }
+
+        keys.sort_by(|a, b| a.0.cmp(&b.0));
+        fingerprints.push((node.id.0.clone(), StaticFingerprint::with_keys(op_key, keys)));
+    }
+
+    // Pass 2: apply fingerprints (mutable borrow).
+    for (node_id, fp) in fingerprints {
+        if let Some(node) = dag.nodes.iter_mut().find(|n| n.id.0 == node_id) {
+            node.static_fingerprint = Some(fp);
         }
     }
 }
@@ -1291,7 +1408,7 @@ struct LoweringContext<'a> {
     /// Pre-collected lowered bodies for all pure `fn` definitions in the project.
     /// Passed to ExprCompute nodes as `sibling_fns` so the runtime evaluator
     /// can execute user-defined fn calls (e.g., `stage_from_output`).
-    all_fn_bodies: &'a HashMap<String, LoweredFnBody>,
+    all_fn_bodies: &'a std::collections::BTreeMap<String, LoweredFnBody>,
     /// C24: Known sum-type variant names for match arm lowering.
     variant_names: &'a HashSet<String>,
 }
@@ -3177,7 +3294,7 @@ fn add_dependency_edges(
                 let empty_services = HashMap::new();
                 let empty_expanded = HashMap::new();
                 let empty_locals = HashMap::new();
-                let empty_fn_bodies = HashMap::new();
+                let empty_fn_bodies = std::collections::BTreeMap::new();
                 let ctx = LoweringContext {
                     module_name: &module_name,
                     item_name,
@@ -6127,7 +6244,11 @@ fn validate_provider_config_fields(
                     return Err(LowerError::InvalidProviderConfigField {
                         service: service.name.clone(),
                         field: field.name.clone(),
-                        known_fields: allowed_fields.to_vec(),
+                        known_fields: {
+                            let mut v = allowed_fields.to_vec();
+                            v.sort();
+                            v
+                        },
                     });
                 }
             }
@@ -6146,7 +6267,12 @@ fn validate_provider_config_fields(
                     .iter()
                     .map(|f| f.name.clone())
                     .collect(),
-                known_prefixes: schemas.iter().map(|(p, _)| p.clone()).collect(),
+                known_prefixes: {
+                            let mut v: Vec<String> =
+                                schemas.iter().map(|(p, _)| p.clone()).collect();
+                            v.sort();
+                            v
+                        },
             });
         }
     }
@@ -6481,8 +6607,8 @@ fn derive_service_transport_triplets(
 /// that appear inside ExprCompute expression bodies.
 fn collect_project_fn_bodies(
     project: &TypedProject,
-) -> Result<HashMap<String, LoweredFnBody>, LowerError> {
-    let mut fn_bodies = HashMap::new();
+) -> Result<std::collections::BTreeMap<String, LoweredFnBody>, LowerError> {
+    let mut fn_bodies = std::collections::BTreeMap::new();
     for module in &project.modules {
         for item in &module.ast.items {
             let Item::FnDef(def) = &item.node else {
@@ -6533,11 +6659,11 @@ fn collect_project_fn_bodies(
 /// Collect the subset of `all_fn_bodies` that an expression transitively calls.
 fn collect_called_fn_bodies(
     expr: &Expr,
-    all_fn_bodies: &HashMap<String, LoweredFnBody>,
-) -> HashMap<String, LoweredFnBody> {
+    all_fn_bodies: &std::collections::BTreeMap<String, LoweredFnBody>,
+) -> std::collections::BTreeMap<String, LoweredFnBody> {
     let mut called = HashSet::new();
     collect_call_names(expr, &mut called);
-    let mut result = HashMap::new();
+    let mut result = std::collections::BTreeMap::new();
     for name in called {
         if let Some(body) = all_fn_bodies.get(&name) {
             result.insert(name, body.clone());
@@ -8815,11 +8941,14 @@ fn resolve_return_expr_source(
         }
         // C24-P1: Direct BinOp → BinaryOp structural node.
         Expr::BinOp(left, op, right) => {
+            // Sub-expressions may have different types from the BinOp result
+            // (e.g., `a + b > 5` — operands are Int, result is Bool).
+            let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
             let left_source = resolve_return_expr_source(
                 builder,
                 ctx,
                 left,
-                output_port,
+                &any_port,
                 &format!("{output_name}_lhs"),
                 &format!("{disambiguator}_lhs"),
             );
@@ -8827,7 +8956,7 @@ fn resolve_return_expr_source(
                 builder,
                 ctx,
                 right,
-                output_port,
+                &any_port,
                 &format!("{output_name}_rhs"),
                 &format!("{disambiguator}_rhs"),
             );
@@ -8859,11 +8988,12 @@ fn resolve_return_expr_source(
         ),
         // C24-P2: UnaryOp → UnaryOp structural node.
         Expr::UnaryOp(op, inner) => {
+            let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
             let inner_source = resolve_return_expr_source(
                 builder,
                 ctx,
                 inner,
-                output_port,
+                &any_port,
                 &format!("{output_name}_inner"),
                 &format!("{disambiguator}_inner"),
             );
@@ -9066,9 +9196,11 @@ fn collect_expr_leaf_refs(
         Expr::Match(scrutinee, arms) => {
             collect_expr_leaf_refs(scrutinee, ctx, refs, seen, has_local_refs);
             for arm in arms {
-                // C10: Mark match arm pattern bindings as locally scoped.
-                collect_pattern_bindings(&arm.pattern, seen);
-                collect_expr_leaf_refs(&arm.body, ctx, refs, seen, has_local_refs);
+                // C10: Match arm bindings are scoped to the arm — clone `seen`
+                // so bindings from one arm don't leak into subsequent arms.
+                let mut arm_seen = seen.clone();
+                collect_pattern_bindings(&arm.pattern, &mut arm_seen);
+                collect_expr_leaf_refs(&arm.body, ctx, refs, &mut arm_seen, has_local_refs);
             }
         }
         Expr::Call(_, args) => {
@@ -9094,18 +9226,20 @@ fn collect_expr_leaf_refs(
             }
         }
         Expr::Lambda(params, body) => {
-            // C10: Lambda parameters are locally scoped — mark them as seen so
-            // references inside the body don't trigger `has_local_refs`.
+            // C10: Lambda parameters are locally scoped — clone `seen` so
+            // bindings don't persist for subsequent expressions.
+            let mut lambda_seen = seen.clone();
             for param in params {
-                seen.insert(param.clone());
+                lambda_seen.insert(param.clone());
             }
-            collect_expr_leaf_refs(body, ctx, refs, seen, has_local_refs);
+            collect_expr_leaf_refs(body, ctx, refs, &mut lambda_seen, has_local_refs);
         }
         Expr::For(binding, iterable, _, body) => {
-            // C10: For-loop binding variable is locally scoped.
-            seen.insert(binding.clone());
+            // C10: Iterable uses parent scope; binding is scoped to body only.
             collect_expr_leaf_refs(iterable, ctx, refs, seen, has_local_refs);
-            collect_expr_leaf_refs(body, ctx, refs, seen, has_local_refs);
+            let mut body_seen = seen.clone();
+            body_seen.insert(binding.clone());
+            collect_expr_leaf_refs(body, ctx, refs, &mut body_seen, has_local_refs);
         }
         Expr::Return(fields) => {
             for (_, field_expr) in fields {
@@ -9441,11 +9575,12 @@ fn synthesize_match_dispatch(
         );
     }
 
-    // Build input ports: "scrutinee" + all leaf refs from arm bodies.
+    // Build input ports: "scrutinee" + all leaf refs from arm bodies (deduplicated).
     let mut input_ports = vec![Port::with_cardinality("scrutinee", "Any", Cardinality::ONE)];
+    let mut seen_ports = HashSet::new();
+    seen_ports.insert("scrutinee".to_string());
     for leaf in &refs {
-        // Skip if this is the scrutinee itself (wired separately).
-        if leaf.input_port == "scrutinee" {
+        if !seen_ports.insert(leaf.input_port.clone()) {
             continue;
         }
         let ty = match &leaf.source {
@@ -9477,6 +9612,12 @@ fn synthesize_match_dispatch(
         ))
     );
 
+    // Collect sibling fn bodies that arm expressions may call at runtime.
+    let sibling_fns: std::collections::BTreeMap<String, LoweredFnBody> =
+        collect_called_fn_bodies(&whole_expr, ctx.all_fn_bodies)
+            .into_iter()
+            .collect();
+
     builder.add_node(Node::opaque(
         node_id.clone(),
         input_ports,
@@ -9486,17 +9627,18 @@ fn synthesize_match_dispatch(
             name: format!("match_dispatch::{}::{}", ctx.item_name, output_name),
             kind: PrimitiveOpKind::MatchDispatch {
                 arms: lowered_arms,
+                sibling_fns,
             },
         },
     ));
 
-    // Wire scrutinee input.
-    // Resolve scrutinee to a source. If it fails, we can't build this node.
+    // Wire scrutinee input — use Any-typed port (scrutinee type differs from match result).
+    let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
     let scrutinee_source = resolve_return_expr_source(
         builder,
         ctx,
         scrutinee,
-        output_port,
+        &any_port,
         &format!("{output_name}_scrutinee"),
         &format!("{disambiguator}_scrutinee"),
     );
@@ -9504,9 +9646,11 @@ fn synthesize_match_dispatch(
         builder.add_edge(&src_node, &src_port, &node_id, "scrutinee");
     }
 
-    // Wire all other leaf ref inputs.
+    // Wire all other leaf ref inputs (skip already-wired ports).
+    let mut wired_ports = HashSet::new();
+    wired_ports.insert("scrutinee".to_string());
     for leaf in &refs {
-        if leaf.input_port == "scrutinee" {
+        if !wired_ports.insert(leaf.input_port.clone()) {
             continue;
         }
         match &leaf.source {
@@ -9596,12 +9740,13 @@ fn synthesize_conditional(
         },
     ));
 
-    // Wire condition.
+    // Wire condition — use Bool-typed port (condition is always Bool).
+    let bool_port = Port::with_cardinality("result", "Bool", Cardinality::ONE);
     let cond_source = resolve_return_expr_source(
         builder,
         ctx,
         cond,
-        output_port,
+        &bool_port,
         &format!("{output_name}_cond"),
         &format!("{disambiguator}_cond"),
     );
@@ -9701,6 +9846,8 @@ fn synthesize_record_construct(
     disambiguator: &str,
 ) -> Option<(String, String)> {
     // Resolve each field to a source. If any can't be resolved, fall back.
+    // Use Any-typed port for field values (individual fields differ from the record type).
+    let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
     let mut field_sources: Vec<(String, String, String)> = Vec::new();
     let mut all_resolved = true;
     for (field_name, field_expr) in fields {
@@ -9708,7 +9855,7 @@ fn synthesize_record_construct(
             builder,
             ctx,
             field_expr,
-            output_port,
+            &any_port,
             &format!("{output_name}_{field_name}"),
             &format!("{disambiguator}_{field_name}"),
         );

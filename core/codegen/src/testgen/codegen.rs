@@ -2703,6 +2703,9 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 ),
                 Stmt::Comment(String::new()),
                 Stmt::Comment(test_code.trim().replace('\n', "\n// ")),
+                Stmt::Item(Item::Raw(
+                    "unimplemented!(\"CT-8: Wire provider assertions\");".to_string(),
+                )),
             ];
 
             tests.push(TestFn {
@@ -2786,6 +2789,9 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                         "Expected: is_err() with status_code() == {} and response_type() == \"{}\"",
                         contract.status_code, contract.response_type
                     )),
+                    Stmt::Item(Item::Raw(
+                        "unimplemented!(\"CT-8: Wire response assertions\");".to_string(),
+                    )),
                 ]
             } else {
                 vec![
@@ -2800,6 +2806,9 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     Stmt::Comment(format!(
                         "Expected: is_ok() with response_type() == \"{}\"",
                         contract.response_type
+                    )),
+                    Stmt::Item(Item::Raw(
+                        "unimplemented!(\"CT-8: Wire response assertions\");".to_string(),
                     )),
                 ]
             };

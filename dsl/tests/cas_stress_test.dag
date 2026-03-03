@@ -145,7 +145,7 @@ test release_then_reacquire_monotonic {
     input release.owner -> "worker-1"
     input release.generation -> 1706745600000000
 
-    mock release/execute.response -> rest_response(204, {})
+    mock release/execute.response -> rest_response(200, { released: true })
 
     // Worker 2 acquires (object deleted, generation 0)
     input acquire.issue_id -> "100"

@@ -27,6 +27,7 @@ type RetryDecision
   | TerminalFailed { reason: String, total_attempts: Int }
   | FirstAttempt { budget: Int }
   | AlreadySucceeded
+  | AwaitingApproval
 
 // Check retry budget before stage execution.
 // Returns a RetryDecision that tells the worker whether to proceed,
@@ -47,7 +48,7 @@ func check_retry_budget(
     false => FirstAttempt { budget: max_retries }
     true  => match prior.outcome.status {
       Success         => AlreadySucceeded
-      PendingApproval => AlreadySucceeded
+      PendingApproval => AwaitingApproval
       TerminalFailed  => TerminalFailed {
         reason: "previously marked terminal",
         total_attempts: prior.outcome.attempt_count
@@ -170,6 +171,7 @@ test budget_exhausted_terminal {
     expect result.decision is TerminalFailed
 }
 
+// Success status → AlreadySucceeded (stage completed, no retry needed)
 test successful_stage_skips {
 
     input check/prepare.run_key -> "sdlc::42::design::v1"
@@ -185,6 +187,24 @@ test successful_stage_skips {
     })
 
     expect result.decision is AlreadySucceeded
+}
+
+// PendingApproval status → AwaitingApproval (not yet succeeded, waiting on human)
+test pending_approval_awaits {
+
+    input check/prepare.run_key -> "sdlc::42::design::v1"
+    input check/prepare.stage -> "design"
+
+    mock get/execute.response -> rest_response(200, {
+      found: true,
+      outcome: {
+        status: "PendingApproval",
+        attempt_count: 1,
+        retry_budget_remaining: 2
+      }
+    })
+
+    expect result.decision is AwaitingApproval
 }
 
 test record_preserves_budget {
