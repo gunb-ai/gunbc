@@ -362,7 +362,7 @@ Raw observations from any worker. Not triaged, not sized.
 | Dead scaffolding | `@mock_response` type exists in AST, parser never populates it | `daglang-syntax/src/parser.rs` | 2026-02-27 |
 | Static mapping table | Kitchen sink `default_rest_response()` grows per service type | `core/test/src/auto_mock.rs` | 2026-02-27 |
 | ~~Dual convention~~ | ~~`from` path format split: `.` separator vs `/` separator~~ — **RESOLVED**: standardized `head.sha`→`head/sha`, `base.ref`→`base/ref` in pull_request.dag | `dsl/services/` | 2026-02-27 |
-| Heuristic reimplementation | `IdentityCallableOp` overloaded for 2 roles | `gunbc-dag/src/resolve.rs` | 2026-02-27 |
+| ~~Heuristic reimplementation~~ | ~~`IdentityCallableOp` overloaded for 2 roles~~ — **RESOLVED**: split into `OutputPathMetadataOp` + `ResourcePassthroughOp` | `gunbc-dag/src/resolve.rs` | 2026-02-27 |
 | ~~Pessimistic ordering~~ | ~~`probe_best_response` tries `[Shell, File, REST]` — REST majority tried last~~ — **RESOLVED**: reordered to REST-first in both `probe_best_response` and `default_value_for_slot` | `core/test/src/auto_mock.rs` | 2026-02-27 |
 | Inventory linkage gap | `gunbc-codegen cigen` drops GCP secrets | `gunbc-dag/src/ci/mod.rs` | 2026-02-26 |
 

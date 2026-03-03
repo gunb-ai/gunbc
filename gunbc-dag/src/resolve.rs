@@ -324,11 +324,27 @@ impl Executable for PipelineDispatchOp {
     }
 }
 
-/// Simple identity callable adapter for DSL entrypoint wrappers.
+/// Passthrough for content_upsert output-path metadata nodes (FC-7).
+///
+/// These nodes exist solely to carry `@outputs("glob")` path annotations
+/// through the DAG. At execution time they are identity passthroughs.
 #[derive(Debug, Clone)]
-struct IdentityCallableOp;
+struct OutputPathMetadataOp;
 
-impl Executable for IdentityCallableOp {
+impl Executable for OutputPathMetadataOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        Ok(inputs)
+    }
+}
+
+/// Passthrough for std.resources callables that are neither acquire nor release.
+///
+/// Resource lifecycle nodes like `probe` or `check` that don't need
+/// specialized execution logic use this identity adapter.
+#[derive(Debug, Clone)]
+struct ResourcePassthroughOp;
+
+impl Executable for ResourcePassthroughOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         Ok(inputs)
     }
@@ -1216,7 +1232,7 @@ fn resolve_primitive(
         PrimitiveOpKind::IoPrepareFileWrite => Ok(DynOp::new(PrepareFileWriteCompatOp)),
         PrimitiveOpKind::IoExecuteFileWrite => Ok(DynOp::new(TransportOps::Execute)),
         // FC-7: Output path annotation nodes are metadata-only, resolve as identity.
-        PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(DynOp::new(IdentityCallableOp)),
+        PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(DynOp::new(OutputPathMetadataOp)),
         PrimitiveOpKind::GetField { field } => {
             let input_port =
                 inputs
@@ -1423,7 +1439,7 @@ fn resolve_std_resources(name: &str) -> Result<DynOp, ResolveError> {
         return Ok(DynOp::new(ResourceReleaseOp));
     }
     // Other std.resources callables pass through as identity.
-    Ok(DynOp::new(IdentityCallableOp))
+    Ok(DynOp::new(ResourcePassthroughOp))
 }
 
 // ============================================================================
