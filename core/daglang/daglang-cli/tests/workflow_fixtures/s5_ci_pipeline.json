@@ -13,7 +13,7 @@
     "std.types",
     "shared.dag_util"
   ],
-  "_count_rationale": "C24-P2: Conditional/RecordConstruct/UnaryOp decomposition adds pure + param_source nodes (2026-03-02).",
+  "_count_rationale": "FnBodyCallableOp: fn items with fn_body skip control-flow SubDag + ExprCompute return nodes; pattern nodes removed from imported modules (2026-03-04).",
   "expand_contract": {
     "status": "success",
     "error_contains": null
@@ -24,11 +24,11 @@
     "expected_json": {
       "dry_run_completion_required": true,
       "interface_contract_verification_targets": 0,
-      "pure_node_determinism_targets": 337,
+      "pure_node_determinism_targets": 174,
       "resource_acquire_targets": 4,
       "resource_provide_targets": 1,
       "resource_release_targets": 4,
-      "service_param_source_targets": 141,
+      "service_param_source_targets": 47,
       "service_transport_execute_targets": 10,
       "service_transport_external_targets": 4,
       "service_transport_hermetic_targets": 6,
@@ -37,7 +37,7 @@
       "service_transport_permission_scoped_targets": 0,
       "service_transport_prepare_targets": 10,
       "service_transport_readonly_targets": 7,
-      "total_obligations": 347,
+      "total_obligations": 184,
       "transport_execution_targets": 10
     }
   }

@@ -8,7 +8,7 @@
     "services.shell",
     "services.cargo"
   ],
-  "_count_rationale": "C24-P1: MatchDispatch replaces some ExprCompute; scrutinee GetField adds pure nodes (2026-03-02).",
+  "_count_rationale": "FnBodyCallableOp: fn items with fn_body skip control-flow SubDag + ExprCompute return nodes; pattern nodes removed from imported modules (2026-03-04).",
   "expand_contract": {
     "status": "success",
     "error_contains": null
@@ -19,11 +19,11 @@
     "expected_json": {
       "dry_run_completion_required": true,
       "interface_contract_verification_targets": 0,
-      "pure_node_determinism_targets": 71,
+      "pure_node_determinism_targets": 64,
       "resource_acquire_targets": 4,
       "resource_provide_targets": 1,
       "resource_release_targets": 4,
-      "service_param_source_targets": 17,
+      "service_param_source_targets": 14,
       "service_transport_execute_targets": 7,
       "service_transport_external_targets": 4,
       "service_transport_hermetic_targets": 3,
@@ -32,7 +32,7 @@
       "service_transport_permission_scoped_targets": 0,
       "service_transport_prepare_targets": 7,
       "service_transport_readonly_targets": 5,
-      "total_obligations": 78,
+      "total_obligations": 71,
       "transport_execution_targets": 7
     }
   }

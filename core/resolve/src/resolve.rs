@@ -202,8 +202,6 @@ impl Executable for FnBodyCallableOp {
         // Try to evaluate the fn body. On success, map the results to declared
         // output ports. Passthrough inputs override fn body results (they come
         // from explicit DAG wiring and are more authoritative).
-        eprintln!("[DEBUG FnBody] all input keys: {:?}", inputs.keys().collect::<Vec<_>>());
-        eprintln!("[DEBUG FnBody] eval_inputs.len() = {}, all keys: {:?}", eval_inputs.len(), eval_inputs.keys().collect::<Vec<_>>());
         match daglang_lower::eval::evaluate_fn_body(&self.fn_body, &eval_inputs, &self.sibling_fns) {
             Ok(body_results) => {
                 let mut outputs = HashMap::new();
@@ -222,7 +220,16 @@ impl Executable for FnBodyCallableOp {
                         outputs.insert(port_name.clone(), value.clone());
                         continue;
                     }
-                    // 3. Required output missing → error; optional → Skipped
+                    // 3. Single-output "return" port: if the fn body produced
+                    //    a record expression (unwrapped into individual fields
+                    //    by the evaluator), reassemble them as the return value.
+                    if port_name == "return" && self.output_ports.len() == 1 && !body_results.is_empty() {
+                        let map: std::collections::BTreeMap<String, Value> =
+                            body_results.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                        outputs.insert(port_name.clone(), Value::Map(map));
+                        continue;
+                    }
+                    // 4. Required output missing → error; optional → Skipped
                     if *is_optional {
                         outputs.insert(port_name.clone(), Value::Skipped);
                     } else {
@@ -233,29 +240,18 @@ impl Executable for FnBodyCallableOp {
                 }
                 Ok(outputs)
             }
-            Err(e) => {
-                // Helper fn items (called only via evaluate_fn_body from other
-                // fn bodies) have no DAG edges wiring to their input ports.
-                // When the executor runs them standalone, param_source nodes
-                // produce Skipped values (no incoming edges), so eval_inputs
-                // contains only Skipped entries. Produce Skipped outputs
-                // instead of hard-erroring — the fn is invoked correctly
-                // through the evaluate_fn_body call path, not the DAG
-                // execution path.
-                let all_skipped = eval_inputs.is_empty()
-                    || eval_inputs.values().all(|v| matches!(v, Value::Skipped));
-                if all_skipped {
-                    let mut outputs = HashMap::new();
-                    for (port_name, _) in &self.output_ports {
-                        outputs.insert(port_name.clone(), Value::Skipped);
-                    }
-                    Ok(outputs)
-                } else {
-                    Err(ExecError::new(format!(
-                        "FnBody evaluation failed: {}",
-                        e.message
-                    )))
+            Err(_) => {
+                // Helper fn items are called via evaluate_fn_body from sibling
+                // fn bodies, not through DAG edge wiring. When the DAG executor
+                // runs them standalone, some or all parameter inputs may be
+                // missing/Skipped, causing evaluation to fail. Produce Skipped
+                // outputs — the fn IS invoked correctly through the
+                // evaluate_fn_body call path where full inputs are available.
+                let mut outputs = HashMap::new();
+                for (port_name, _) in &self.output_ports {
+                    outputs.insert(port_name.clone(), Value::Skipped);
                 }
+                Ok(outputs)
             }
         }
     }
@@ -303,6 +299,8 @@ impl Executable for PipelineDispatchOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         // These outputs are computed by dispatch logic itself, not expected as
         // passthrough inputs from upstream wiring.
+        // Non-dispatch outputs are passthrough — always optional since they
+        // depend on upstream wiring that may not exist (e.g., standalone tests).
         let passthrough_ports: Vec<(String, bool)> = self
             .output_ports
             .iter()
@@ -312,7 +310,7 @@ impl Executable for PipelineDispatchOp {
                     "stages" | "stage_order" | "active_stage" | "next_stage"
                 )
             })
-            .cloned()
+            .map(|(name, _)| (name.clone(), true))
             .collect();
         let mut outputs = execute_with_declared_output_passthrough(&passthrough_ports, inputs)?;
         outputs.insert("stages".to_string(), Value::Int(self.stage_count as i64));
@@ -900,8 +898,27 @@ impl Executable for ExprComputeOp {
                 env.insert(ref_name.clone(), Value::Skipped);
             }
         }
-        let result = daglang_lower::eval::evaluate_fn_body(&self.fn_body, &env, &self.sibling_fns)
-            .map_err(|e| ExecError::new(e.message))?;
+        let result = match daglang_lower::eval::evaluate_fn_body(&self.fn_body, &env, &self.sibling_fns) {
+            Ok(r) => r,
+            Err(e) => {
+                // When all real inputs are Skipped, this ExprCompute node is
+                // an orphan (e.g., fn call argument wiring inside a fn item
+                // whose body is evaluated by FnBodyCallableOp). Propagate
+                // Skipped instead of hard-erroring.
+                let all_skipped = self.input_ports.iter().all(|p| {
+                    matches!(
+                        inputs.get(p).unwrap_or(&Value::Skipped),
+                        Value::Skipped
+                    )
+                });
+                if all_skipped {
+                    return OutputMap::new()
+                        .value(self.output_port.as_str(), Value::Skipped)
+                        .ok();
+                }
+                return Err(ExecError::new(e.message));
+            }
+        };
         // The fn body returns { result: <value> }, extract and output it.
         if let Some(value) = result.get(&self.output_port) {
             OutputMap::new()

@@ -2,67 +2,170 @@
 
 **Verification**: `cargo test --workspace` + `cargo clippy --all-targets -- -D warnings`
 **Sizing**: S (<1 day), M (1-3 days), L (3-5 days), XL (5+ days)
-**Archive**: `TODO/TODONE/tasks-archive-2026-03-02.md` (68 completed items from Lanes 1-3)
-**Verified**: 2026-03-03 — all Done items pass `cargo test --workspace` + `cargo clippy --all-targets -- -D warnings`
 **Design doc**: [`docs/design/v4/compositional-type-coverage.md`](docs/design/v4/compositional-type-coverage.md) — vision, audit, gaps, workstreams WS-1 through WS-7
+**Archive**: `TODO/TODONE/tasks-archive-2026-03-02.md` (40 completed items from Lanes 1-3)
 
 ---
 
 ## Status Summary
 
 ```
-Lane 1: Compiler Critical Path — 0 open (26/26 complete)
-Lane 1: Binary Elimination    — 0 open (10/10 complete)
-Phase 3: Purist Engine        — 0 open (4/4 complete)
-Compiler Extensibility        — 5 items (CX-1 through CX-5)
-Backlog                       — 7 items (low priority)
+Completed                          — 40/40 (archived)
+
+WS-1: std/ Primitive Vocabulary    — 0/8 complete
+WS-2: Service Type Discipline      — 0/5 complete  (blocked by WS-1)
+WS-3: Typechecker Unification      — 0/8 complete
+WS-4: Presence Axis                — 0/5 complete  (blocked by WS-3)
+WS-5: Type DAG Execution           — 0/4 complete  (blocked by WS-3)
+WS-6: Tool/Workflow Completeness   — 0/5 complete  (blocked by WS-1, WS-2)
+WS-7: Extern Linking               — 0/5 complete
+
+Backlog                            — 19 items (low priority)
 ```
 
-### Critical Path (Complete)
+### Dependency Graph
 
 ```
-C10 (return expr) ──→ C10a (auth wiring) ──→ production gist/CI
-      DONE                  DONE                  DONE
-C24 (pure dataflow) ──→ C25 (service codegen) ──→ C28 (daggen AOT)
-      DONE                    DONE                     DONE (Phase 1)
+WS-1 (std/ cleanup)  ──→  WS-2 (service discipline)  ──→  WS-6 (tool/workflow)
+                                                              ↑
+WS-3 (typechecker)   ──→  WS-4 (presence axis)        WS-7 (extern linking)
+                      ──→  WS-5 (type DAG execution)
 ```
+
+WS-1 and WS-3 can start immediately (no dependencies). WS-7 is independent.
 
 ---
 
-## Lane 1: Compiler Pipeline Refactor (Complete)
+## Completed (archived)
 
-26 of 26 items complete. See archive for C1-C9, C11-C19, C21, C23, C26, C27.
+40/40 items complete across 3 lanes. Full details: `TODO/TODONE/tasks-archive-2026-03-02.md`
+
+- **Lane 1: Compiler Pipeline** — 26/26 (C1-C30, including return expr, pure dataflow, service codegen)
+- **Lane 1: Binary Elimination** — 10/10 (A2-A11, all Rust binaries replaced with .dag)
+- **Phase 3: Purist Engine** — 4/4 (daggen AOT phase 1, JSON-path output, type-aware bridging, contract testgen)
+
+---
+
+## WS-1: std/ Primitive Vocabulary
+
+**Goal**: Make `std/` a reference-quality foundation that downstream layers build on.
+**Design ref**: `compositional-type-coverage.md` § WS-1, § "std/ Primitives"
+**Success criteria**: Zero `String` fields in `std/types.dag` where a refinement type exists. Zero duplicate type definitions. Zero stubs without `@testgen_skip` or deletion.
 
 | # | ID | What | Acceptance Criteria | Size | Status |
 |---|-----|------|---------------------|------|--------|
-| 1 | C10 | **Resolve ReturnExprCompute split-brain (RT4a/c).** Desugar complex returns (BinOp/If/Match/Pipe/...) into explicit DAG semantics. `resolve_return_expr_source` handles BinOp/If/Match/UnaryOp/Record/StringInterp/List/FieldAccess. Pipe/For/NullCoalesce tagged as PipeOp/ForOp. | ExprCompute reduced to evaluator-backed expressions only. | L | **Done** — 3 new PrimitiveOpKind variants (ListConstruct, PipeOp, ForOp), 4 new synthesis functions. |
-| 2 | C10a | **`make gist` auth credential bridge fix.** RT1 (auth_input wiring) + RT2 (fail-closed enforcement) verified. | `make gist` no longer 401s. | M | **Done** — gist.dag wires `acquire_gcp_secret` → `auth_token` → BearerToken. `gist_recent_graph_wires_credential_to_gist_execute` test passes. |
-| 3 | C22 | **Deductive Redundancy Elimination Phase 2.** `ExecutionLedger` in `core/exec/src/ledger.rs`. `ExecutionRecord`, `RedundancyViolation` types. `assert_no_redundant_operations()` in test lib. | Execution ledger catches dynamic redundancy. | L | **Done** — ledger.rs with 6 unit tests. |
-| 4 | C24 | **Pure dataflow lowering.** 12 PrimitiveOpKind variants now handle all structural expression forms. Pipe/For use tagged evaluator. ListConstruct, StringInterpolate, GetField have dedicated synthesis. | ExprCompute reduced to evaluator-only expressions. | XL | **Done** — structural lowering for all expression categories except Lambda. |
-| 5 | C25 | **Service-driven codegen.** All service operations use generic data-driven interpreters (`GenericRestPrepareOp`, `GenericShellPrepareOp`, etc.) parameterized by `ServiceOperationSpec`. Zero per-service DynOp types. | Zero handwritten `DynOp` for services. | XL | **Done** — all services use generic protocol interpreters parameterized by spec data. `extern_ops.rs` contains only 6 domain-specific ops (render_tree, discover_tools, etc.), not service ops. |
+| 1 | WS1-1 | **Timestamp consistency.** Replace ~20 `String` timestamp fields with `Timestamp` across `types.dag`, `resources.dag`. | Zero `String` fields where `Timestamp` is the semantic intent. | S | Open |
+| 2 | WS1-2 | **Enum extraction.** Convert ~15 stringly-typed enumerations to sum types: `TopologyNodeKind`, `DocSourceKind`, `SeverityLevel`, `DataSource`, `RetryTrigger`, etc. | Zero `String` fields with known closed value sets. | M | Open |
+| 3 | WS1-3 | **Brand application.** Apply `ContentHash` brand to `StageRunKey.input_hash`, `Artifact.content_hash`, `ArtifactMarker.content_hash`. | All content hash fields use branded `ContentHash` type. | S | Open |
+| 4 | WS1-4 | **Duration unit types.** Create `Seconds` and `Milliseconds` branded types. Apply consistently. | Unit-branded types distinguish seconds from milliseconds. | S | Open |
+| 5 | WS1-5 | **Duplicate resolution.** Merge two `RetryPolicy` definitions. Deduplicate `EntryKind`/`SymlinkTarget`. | Zero duplicate type definitions across std/. | S | Open |
+| 6 | WS1-6 | **Missing types.** Add: `SeverityLevel`, `DataSource`, `RetryTrigger`, `LanguageId`, `GcpRegion`, canonical error wrapper, C/MIPS/Dag language definitions. | Every semantic concept has one authoritative type. | M | Open |
+| 7 | WS1-7 | **Stub cleanup.** Address 8 stubs that look like features. Each must be implemented, deleted, or marked `@testgen_skip`. | Zero stubs that look like features. | M | Open |
+| 8 | WS1-8 | **`Filesystem.read` type fix.** Change `path: String` to `path: TextFilePath`. | Comment matches signature; refined type used. | S | Open |
 
 ---
 
-## Lane 1: Binary Elimination (Complete)
+## WS-2: Service Layer Type Discipline
 
-10 of 10 items complete.
+**Goal**: Services use the types their extdeps define.
+**Design ref**: `compositional-type-coverage.md` § WS-2, § "services/ — Type Discipline Gap"
+**Blocked by**: WS-1
+**Success criteria**: Zero dead imports. Zero `Json` escape hatches. Every GET declares `readonly`. Every BearerToken service has `auth_input`.
 
 | # | ID | What | Acceptance Criteria | Size | Status |
 |---|-----|------|---------------------|------|--------|
-| 1 | A2 | **Eliminate `deps_config.rs`.** Replaced with `dsl/tools/deps_config.dag`. Binary deleted from Cargo.toml. | DSL tool def with feature parity. | S | **Done** — `deps_config.dag` with DepsMode sum type, `[[bin]]` entry removed. |
-| 2 | A3 | **Eliminate `pipeline.rs` binary.** Original binary already deleted. `daglang-cli/src/pipeline.rs` is compiler infrastructure. | No binary to eliminate. | M | **Done** — already eliminated. |
-| 3 | A4 | **Eliminate `workflow.rs`.** Replaced with `dsl/tools/workflow.dag`. Binary deleted from Cargo.toml. | DSL tool def with feature parity. | L | **Done** — `workflow.dag` with WorkflowFormat sum type, `[[bin]]` entry removed. |
+| 1 | WS2-1 | **Dead import audit.** Use or delete every import in each service file. | Zero dead imports across all service .dag files. | S | Open |
+| 2 | WS2-2 | **Input/output type upgrades.** Replace `String`/`Json` with domain types already imported. | Zero `Json` escape hatches where typed shapes exist. | L | Open |
+| 3 | WS2-3 | **Behavioral property completion.** Add `readonly` to GET/list ops, `idempotent` to mutations. | Every GET declares `readonly`. Every idempotent op declared. | S | Open |
+| 4 | WS2-4 | **`auth_input` completion.** Add to `issues.dag`, `pull_request.dag`, `anthropic.dag`, `openai.dag`. | Every BearerToken service has `auth_input`. | S | Open |
+| 5 | WS2-5 | **`owner`/`repo` as service config params.** Formalize service-level path parameters. | Path parameters declared once at service level. | M | Open |
 
 ---
 
-## Phase 3: The Purist Engine (Complete)
+## WS-3: Unify DSL Typechecker with IR TypeRegistry
 
-| # | ID | Task | Size | Status | Deps |
-|---|-----|------|------|--------|------|
-| 1 | C28 | **Daggen (AOT DAG Compilation) Phase 1.** Serde derives on all 25 lowered IR types (`LoweredOp`, `LoweredFnBody`, `LoweredExpr`, `PrimitiveOpKind`, `ServiceOperationSpec`, `PatternOp`, etc.). `serialize_lowered_dag()` / `deserialize_lowered_dag()` API. Round-trip + resolve tests. | XL | **Done (Phase 1)** — serialization infrastructure. Phase 2 (codegen integration + cache manager) remains for future work. |
-| 2 | C29 | **Dynamic JSON-Path Output Mappings.** `GenericRestParseOp::execute` consumes `output_shape` when available. `extract_shape_field()` uses `OutputFieldExtraction` + `from_bridge_json_typed`. | REST parse uses declarative field extraction. | M | **Done** — output_shape consumed in GenericRestParseOp, fallback to output_fields. |
-| 3 | C30 | **Strict Type-Aware JSON Bridging.** `extract_output_field()` delegates to `from_bridge_json_typed()` for all non-Secret/Bytes types. String-based type dispatch eliminated. | Type-aware JSON bridging for REST responses. | M | **Done** — single `from_bridge_json_typed` call replaces string-based switch. |
-| 4 | CT-8 | **Wire Contract Test Generation.** `build_interface_contract_tests` and `build_response_contract_tests` generate actual test bodies with `#[ignore]`. `TestFn.attributes` field added. | Contract tests generated (not stubs). | M | **Done** — stubs replaced with real test bodies + `#[ignore]` attribute. |
+**Goal**: One type world. Compatibility walks type DAG per-layer, comparing explicit node contracts.
+**Design ref**: `compositional-type-coverage.md` § WS-3, § Gap 2, § Gap 3
+**No blockers** — can start immediately.
+**Success criteria**: `normalize_type_id` deleted. Every `TypeOp` carries explicit node contract. All checks walk type DAGs per-layer. Exhaustiveness is static. `readonly`/`idempotent` declarations validated against call graph. `OperationBehavior` consumed for test/retry generation.
+
+| # | ID | What | Acceptance Criteria | Size | Status |
+|---|-----|------|---------------------|------|--------|
+| 1 | WS3-1 | **Explicit node contracts on `TypeOp`.** Each variant declares its effect on all three dimensions (base type, cardinality, predicates) as `Set`/`Add`/`Inherited`. Replaces `TypeContract` reverse-engineering. New node types must declare all three — fail-closed. | Every `TypeOp` variant carries explicit three-dimension contract. | L | Open |
+| 2 | WS3-2 | **DSL type definitions → `Dag<TypeOp>` at parse time.** Each type becomes a layered DAG with explicit node contracts. | Every DSL type definition produces a `Dag<TypeOp>`. | XL | Open |
+| 3 | WS3-3 | **Typechecker uses per-layer node contract comparison.** Replace string-based `normalize_type_id` with per-layer DAG walk comparing node contracts. | `normalize_type_id` deleted. All compatibility through per-layer walk. | L | Open |
+| 4 | WS3-4 | **Optionality is a DAG layer.** `T?` → `Wrap(Optional)` with cardinality `Set([0,1])`, not string suffix. `Port::is_optional()` no longer uses `ends_with('?')`. | `T` and `T?` not interchangeable. Cardinality mismatch is type error. | L | Open |
+| 5 | WS3-5 | **Branch type unification.** `if/else` and `match` arms compute `join` (LUB) of type DAGs per-layer. | Branch arms produce unified types. Mismatch is type error. | M | Open |
+| 6 | WS3-6 | **Match exhaustiveness.** `Coproduct` variants checked statically from type DAG. | Non-exhaustive match on known sum type is compile error. | M | Open |
+| 7 | WS3-7 | **Behavioral property enforcement (Level 2).** Validate `readonly`/`idempotent` declarations against `CallableProperties` BFS results. `func snapshot() readonly` that calls non-readonly service = compile error `E5001`. Infrastructure exists (`daglang-derive` BFS); validation pass missing. | Declared behavioral properties validated against derived properties. Contradiction = compile error. | M | Open |
+| 8 | WS3-8 | **Behavioral contract consumption (Level 3).** Compiler reads `OperationBehavior` from extdeps (`idempotency_keys`, `determinism`, `failure_modes`). Generates: retry policy constraints from `idempotency_keys`, test assertion constraints from `determinism`, error classifier hints from `failure_modes`. | `OperationBehavior` data consumed by compiler. At minimum: `idempotency_keys` checked at retry sites (`E5003`). | L | Open |
+
+---
+
+## WS-4: Presence Axis on Ports
+
+**Goal**: Guard-skippable outputs cannot silently feed required inputs. I2.5 implemented.
+**Design ref**: `compositional-type-coverage.md` § WS-4, § Gap 1
+**Blocked by**: WS-3
+**Success criteria**: Zero silent `Skipped → concrete_value` coercions. `Value::Skipped` unreachable on `Required` ports. Every fallback explicit.
+
+| # | ID | What | Acceptance Criteria | Size | Status |
+|---|-----|------|---------------------|------|--------|
+| 1 | WS4-1 | **Add `presence: PresenceMode` to `Port`.** `Required \| Guardable`. Guards produce `Guardable` on outputs. | Port struct has presence field. Guard outputs are `Guardable`. | M | Open |
+| 2 | WS4-2 | **`DagBuilder::add_edge` rejects `Guardable → Required`.** Without explicit narrowing node. | Builder error on `Guardable → Required` without narrowing. | M | Open |
+| 3 | WS4-3 | **Add `default`/`require` narrowing operators.** DAG-level nodes that convert `Guardable` to `Required`. | Narrowing operators exist as DAG node types. | M | Open |
+| 4 | WS4-4 | **Eliminate 7 silent Skipped coercion sites.** Convert to errors. | Each site errors on Skipped instead of coercing. | L | Open |
+| 5 | WS4-5 | **Eliminate evaluator silent behaviors.** 12 operations that silently default instead of erroring. | Zero silent defaults in evaluator. | L | Open |
+
+---
+
+## WS-5: Type DAG Execution (The Full Vision)
+
+**Goal**: Type DAG per-layer operations become actual workflow nodes. Coercion = visible graph nodes.
+**Design ref**: `compositional-type-coverage.md` § WS-5
+**Blocked by**: WS-3
+**Success criteria**: Every coercion is a visible node. Every downcast has validation nodes. `TypeShape::Opaque` trends to zero.
+
+| # | ID | What | Acceptance Criteria | Size | Status |
+|---|-----|------|---------------------|------|--------|
+| 1 | WS5-1 | **Coercion insertion at lower time.** Lowerer inserts nodes that add/remove type DAG layers. | Coercion edges become visible graph nodes. | XL | Open |
+| 2 | WS5-2 | **Downcast validation nodes.** `as Url` inserts per-layer validation nodes. | Every `as` cast has runtime validation per constraint layer. | L | Open |
+| 3 | WS5-3 | **Witness-driven test generation.** Each layer's constraints generate boundary test cases. | L4 witnesses generate test cases automatically. | L | Open |
+| 4 | WS5-4 | **TypeShape consumed by emitters.** Replace string matching with `TypeShape` dispatch. | `TypeShape::Opaque` trends to zero. | M | Open |
+
+---
+
+## WS-6: Tool/Workflow Completeness
+
+**Goal**: All .dag files compile and have real bodies.
+**Design ref**: `compositional-type-coverage.md` § WS-6, § "tools/ and workflows/"
+**Blocked by**: WS-1, WS-2
+**Success criteria**: All `.dag` files compile. Zero empty stages. Every `func` with resource use declares `uses`.
+
+| # | ID | What | Acceptance Criteria | Size | Status |
+|---|-----|------|---------------------|------|--------|
+| 1 | WS6-1 | **Fix `testgen.dag`.** Declare missing `generate` as extern func, or implement. | `testgen.dag` compiles. | S | Open |
+| 2 | WS6-2 | **Fix `deps.dag`.** Declare missing externs or implement. | `deps.dag` compiles. | S | Open |
+| 3 | WS6-3 | **Add `uses` declarations.** `makegen`, `pragma`, `build` funcs. | Every `func` with resource use declares `uses`. | S | Open |
+| 4 | WS6-4 | **Fill `ci.dag` stage bodies.** Wire 12 stages to tool funcs. | Zero empty stages in `ci.dag`. | L | Open |
+| 5 | WS6-5 | **Fill remaining workflow stage bodies.** `gist.dag`, `pragma.dag`, others. | Zero empty stages across all pipelines. | L | Open |
+
+---
+
+## WS-7: Extern Linking
+
+**Goal**: Missing extern symbol = hard error. No fallbacks.
+**Design ref**: `compositional-type-coverage.md` § WS-7
+**No blockers** — independent.
+**Success criteria**: All extern symbols resolve through `Backend` or build fails. Zero passthrough fallbacks. Deterministic receipts.
+
+| # | ID | What | Acceptance Criteria | Size | Status |
+|---|-----|------|---------------------|------|--------|
+| 1 | WS7-1 | **Phase A: Introduce externs.** `extern func`/`extern asset` in parser/typechecker/lowering. | Extern declarations parse, typecheck, and lower correctly. | L | Open |
+| 2 | WS7-2 | **Phase B: Linker with hard errors.** `Backend` resolution. Hard-fail on unresolved. | Unresolved extern = compile error with diagnostic. | L | Open |
+| 3 | WS7-3 | **Phase C: Migrate handlers/assets.** Convert to extern declarations. Remove `(module, name)` tables. | Runtime ops declared as extern symbols. | L | Open |
+| 4 | WS7-4 | **Phase D: Remove fallback surfaces.** Delete `EMBED_REGISTRY`, `is_makegen_module()`, `UnimplementedPassthrough`, etc. | Zero fallback surfaces remain. | M | Open |
+| 5 | WS7-5 | **Phase E: Determinism hardening.** `CompileReceipt` hashes, CI gates, diagnostic ordering. | Compile receipts are deterministic. CI gates verify. | M | Open |
 
 ---
 
@@ -121,21 +224,6 @@ DERIVED (table-shaped metadata), or UNIQUE (genuinely different logic). Only tru
 
 ## Observations
 
-Active observations only. Resolved items archived.
-
 | # | Smell | Observation | File | Date |
 |---|-------|-------------|------|------|
-| 3 | Static mapping table | Kitchen sink `default_rest_response()` grows per service type | `core/test/src/auto_mock.rs` | 2026-02-27 |
-
-### Resolved Observations (archived 2026-03-03)
-
-- `workflow_unit_commands()` string dispatch → **resolved** — uses `resolve_workflow_variant()` structured dispatch (2026-03-03)
-- `gunbc-codegen cigen` drops GCP secrets → **resolved** — secrets correctly derived via testgen registry `iter_dag_specs()` (2026-03-03)
-- `passthrough_fallback_value()` hard-coded port alias table → **deleted** (C15, commit 33513ac9)
-- `looks_effectful_without_kind()` re-derives NodeKind from port strings → **deleted** (C18, commit 33513ac9)
-- `classify_module()` inflated by transitive auth callables → **documented** in doc comment
-- `from` path format split (`.` vs `/` separator) → **standardized** to `/` separator
-- `IdentityCallableOp` overloaded for 2 roles → **split** into `OutputPathMetadataOp` + `ResourcePassthroughOp`
-- `probe_best_response` pessimistic ordering → **reordered** to REST-first
-- `@mock_response` type in AST, parser never populates → **deleted** (C8)
-- `match field.type_id.as_str()` JSON→Value dispatch → **replaced** with `from_bridge_json_typed` (C30)
+| 1 | Static mapping table | Kitchen sink `default_rest_response()` grows per service type | `core/test/src/auto_mock.rs` | 2026-02-27 |

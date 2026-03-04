@@ -3,11 +3,93 @@
 **Status**: Draft
 **Date**: 2026-03-04
 
-## The Vision
+## The Principle
 
-Every type in the system is a **compositional DAG of cause-and-effect steps**, built from primitive operations starting at the bottom (`Identity` → `Validate` → `Wrap` → `Brand` → ...). Two types are compatible when they share a common DAG prefix. Coercion is adding steps (upcast/widen) or explicitly removing them (downcast/narrow). There are no ad-hoc compatibility rules — the graph structure IS the type algebra.
+**Decisions obligate. Obligations propagate. Propagation is automatic.**
 
-This is the original design intent from `dsl-design.md` Axiom 5 and the Understanding pattern from `the-gunbai`. The infrastructure exists. The wiring is incomplete.
+A type is a chain of decisions. Each decision creates obligations that automatically constrain everything downstream. You cannot make a decision without accepting its consequences, and you cannot consume a type without discharging the obligations its decisions created.
+
+- `Wrap(Optional)` = the decision "this might be absent." The obligation: every consumer must handle absence explicitly (`default`, `require`, `match Some/None`). The obligation cannot be ignored — attempting to use the value as-if-present is a compile error.
+- `Wrap(List)` = the decision "there may be many." The obligation: every consumer must handle multiplicity (iterate, aggregate, take first). Treating a list as a scalar is a compile error.
+- `Validate(NonEmpty)` = the decision "this is never empty." The obligation: to regain this proof after widening to `String`, you must re-validate. The proof does not survive coercion — it must be re-earned.
+- `Brand("CommitSha")` = the decision "this means commit SHA, not arbitrary string." The obligation: using it where plain `String` is expected requires explicitly acknowledging the semantic drop.
+- `Coproduct(variants)` = the decision "this is one of N alternatives." The obligation: every consumer must handle all N. Missing a variant is a compile error.
+
+The principle is tautological: the description IS the enforcement. You can't say "this is optional" without simultaneously saying "consumers must handle absence." They're the same statement from two directions. There is no state where you've "forgotten" to handle optionality or "accidentally" dropped a constraint, because the obligation is structurally present in the DAG and the system won't let you proceed without discharging it.
+
+### The same principle at every level
+
+This principle — decisions obligate, obligations propagate — applies at three levels in the system. Each is the same pattern: a property declared at one node creates obligations that flow to every downstream consumer.
+
+**Level 1: Type structure** (this doc's primary focus)
+
+`Wrap(Optional)` on a type → every consumer must handle absence. `Coproduct(variants)` → every consumer must handle all variants. The type DAG carries the obligation; the compiler enforces discharge.
+
+**Level 2: Behavioral properties** (the-gunbai Understanding pattern, partially ported)
+
+`readonly` on a service operation → every callable that transitively calls it inherits the property. `idempotent` → same. A `func` that calls ANY non-readonly service becomes non-readonly. The obligation propagates upward through the call graph.
+
+This is already partially implemented: `CallableProperties` in `daglang-derive` does a BFS from each callable entrypoint, collecting `idempotent` and `readonly` from all reachable `ServiceCallMetadata`. The composite property is pessimistic — one non-readonly child makes the parent non-readonly.
+
+**What's missing**: the propagation is collect-only, not enforced. If a `func` is declared `readonly` but calls a non-readonly service, there is no compile error. The obligation exists (readonly = "I promise I don't write state") but no validation checks that the promise is kept. The obligation should propagate like type obligations:
+
+```
+error[E5001]: readonly violation
+  --> tools/gist.dag:12:3
+   |
+12 |   func snapshot() readonly {
+   |                   ^^^^^^^^ declared readonly
+...
+15 |     gist.Create(...)
+   |     ^^^^^^^^^^^ calls non-readonly operation `gist.Create`
+   |
+   = note: readonly obligation requires all transitive calls to be readonly
+   = help: remove `readonly` or replace with a read-only operation
+```
+
+**Level 3: Behavioral contracts** (the-gunbai Understanding pattern, not yet ported)
+
+In the-gunbai, each Understanding declares behavioral properties with explicit propagation:
+
+```
+OperationBehavior {
+    side_effects: WritesState,
+    idempotent: true,
+    idempotency_keys: ["gist_id"],
+    determinism: NonDeterministic,
+    failure_modes: [...],
+    unknowns: ["Exact retry-after header behavior under sustained load"],
+    confidence: HighConfidence,
+}
+```
+
+This is richer than boolean `readonly`/`idempotent` — it carries the *reason* (`idempotency_keys`), the *uncertainty* (`unknowns`), and the *confidence level*. Each property creates obligations:
+
+- `idempotent: true` with `idempotency_keys: ["gist_id"]` → the caller must pass the same `gist_id` for retry safety. The key is an obligation on the caller.
+- `determinism: NonDeterministic` → test generation cannot assert exact output equality. The property constrains what test obligations are generated.
+- `unknowns: [...]` → the system acknowledges it doesn't fully understand this behavior. A confidence-sensitive consumer might reject operations with low confidence.
+
+The extdeps layer already has `OperationBehavior` declarations (see `dsl/std/behavioral.dag`). They're data — not consumed by the compiler for obligation enforcement. The full vision: the compiler reads `OperationBehavior`, propagates properties through the call graph, and generates test obligations, retry policies, and error classifiers from them automatically. Not just documentation — structural obligations.
+
+**The pattern across all three levels**:
+
+```
+Level 1 (type):      Wrap(Optional)      → consumer must handle absence
+Level 2 (behavior):  readonly            → caller must not write state
+Level 3 (contract):  idempotent(keys)    → caller must pass same keys for retry
+
+Same principle:      decision at node     → obligation on consumer
+                     obligation missed    → compile error
+                     no silent discharge  → explicit opt-out required
+```
+
+### The vision
+
+Every type is a compositional DAG of cause-and-effect steps, built from primitive operations (`Identity` → `Validate` → `Wrap` → `Brand` → ...). Two types are compatible when they share a common DAG prefix. Coercion is adding steps (upcast/widen) or explicitly removing them (downcast/narrow). There are no ad-hoc compatibility rules — the graph structure IS the type algebra.
+
+The same structure applies to behavioral properties and contracts: they are DAG nodes whose obligations propagate downstream. The type DAG, the behavioral property graph, and the contract obligations are all instances of the same compositional principle.
+
+This is the original design intent from `dsl-design.md` Axiom 5 and the Understanding pattern from `the-gunbai`. The infrastructure exists at all three levels. The wiring is incomplete. Appendix A shows concrete examples of where the principle is violated today and what compiler diagnostics would catch them.
 
 ---
 
@@ -34,20 +116,65 @@ Layer 2:  Wrap(Optional)                       ← cardinality: [0,1] ("can it b
 Layer 3:  Wrap(List)                           ← cardinality: [0,∞] ("how many?")
 ```
 
-Each layer carries three concerns:
-- **What kind of thing** — the base type at that level (String, Url, List, etc.)
-- **How many** — the cardinality at that level (exactly one, zero-or-one, zero-or-more, etc.)
-- **What constraints** — the predicates at that level (@non_empty, @pattern, @range, etc.)
+### The node contract: three required dimensions per layer
 
-### Compatibility = parallel DAG walk
+Every node in the type DAG must explicitly declare three dimensions as a baseline:
 
-Two types are compatible when you can walk both DAGs layer-by-layer and every layer widens (or stays the same). At each layer, three things must widen simultaneously:
+- **Base type** — what kind of thing at this level (`Set`, `Inherited`, or a specific type)
+- **Cardinality** — how many at this level (`Set([0,∞])`, `Inherited`)
+- **Predicates** — what constraints at this level (`Add(NonEmpty)`, `Inherited`)
+
+`Inherited` means "unchanged from the layer below — pass through." `Set` means "this layer sets the value." `Add` means "this layer adds to the set."
+
+This is the contract between layers. Each node must declare all three — you can't add a new node type and silently leave cardinality unspecified. The compiler forces every layer to be explicit about what it contributes:
+
+```
+Identity("String") {
+    base_type:    Set(String),     // this is a String
+    cardinality:  Set([1,1]),      // exactly one
+    predicates:   Inherited,       // no constraints yet
+}
+
+Validate(NonEmpty) {
+    base_type:    Inherited,       // still a String
+    cardinality:  Inherited,       // still exactly one
+    predicates:   Add(NonEmpty),   // adds non-empty constraint
+}
+
+Validate(Pattern("^https?://")) {
+    base_type:    Inherited,       // still a String
+    cardinality:  Inherited,       // still exactly one
+    predicates:   Add(Pattern),    // adds URL pattern constraint
+}
+
+Brand("Url") {
+    base_type:    Inherited,       // still a String structurally
+    cardinality:  Inherited,       // still exactly one
+    predicates:   Add(Brand),      // adds semantic brand
+}
+
+Wrap(Optional) {
+    base_type:    Inherited,       // wraps whatever is below
+    cardinality:  Set([0,1]),      // this layer: zero or one
+    predicates:   Inherited,       // no new constraints
+}
+
+Wrap(List) {
+    base_type:    Inherited,       // wraps whatever is below
+    cardinality:  Set([0,∞]),      // this layer: zero or more
+    predicates:   Inherited,       // no new constraints
+}
+```
+
+### Compatibility = parallel DAG walk, comparing node contracts
+
+Two types are compatible when you can walk both DAGs layer-by-layer and every node contract widens (or stays the same). At each layer, three things must widen simultaneously:
 
 1. **Base type widens** — `Url` → `String` is ok (dropping refinement). `String` → `Url` is not (adding constraints = narrowing).
 2. **Cardinality widens** — `[1,1]` → `[0,1]` is ok (required feeds optional). `[0,1]` → `[1,1]` is not (optional feeds required — value might be absent).
 3. **Predicates drop** — `@non_empty @pattern(...)` → `@non_empty` is ok (dropping a constraint). Adding a constraint narrows.
 
-This check happens **at every layer of the composition**, not once on the port. Connecting `List<Optional<Url>>` → `List<String>` requires checking:
+This check happens **at every layer**, not once on the port. Connecting `List<Optional<Url>>` → `List<String>` requires comparing the node contract at each position:
 
 ```
 Layer 3:  List ↔ List              ← cardinality [0,∞] ↔ [0,∞] ✓
@@ -57,23 +184,27 @@ Layer 1:  Url → String             ← predicates drop (NonEmpty, Pattern remo
 Layer 0:  String ↔ String          ← base match ✓
 ```
 
-If any layer narrows in a direction the target doesn't expect, it's a compile error — with a diagnostic identifying *which layer* failed.
+If any layer's node contract narrows in a direction the target doesn't expect, it's a compile error — with a diagnostic identifying *which layer* failed.
+
+Because the contracts are explicit on every node (not reverse-engineered by walking ancestors), the per-layer comparison is trivial: just zip the two DAGs and compare contracts at each position.
 
 ### The `TypeOp` vocabulary
 
+Each variant is a node type that carries the three-dimension contract:
+
 ```
-TypeOp = Identity       — base type (starting point)
-       | Validate(Pred)  — add a predicate constraint (narrows)
-       | Transform(Coercion) — convert between types (coercion step)
-       | Wrap(Optional|List|Set) — add a cardinality layer
-       | Unwrap          — remove a cardinality layer
-       | Product(fields) — record: named fields, each with its own type DAG
-       | Coproduct(variants) — sum type: tagged alternatives
-       | Brand(name)     — semantic tag (same structure, different meaning)
-       | Invariant(pred) — structural invariant
+TypeOp = Identity(type)      — sets base type (starting point)
+       | Validate(Pred)       — adds a predicate constraint (narrows)
+       | Transform(Coercion)  — converts between types (coercion step)
+       | Wrap(Optional|List|Set) — sets cardinality at this layer
+       | Unwrap               — removes a cardinality layer
+       | Product(fields)      — record: named fields, each with its own type DAG
+       | Coproduct(variants)  — sum type: tagged alternatives
+       | Brand(name)          — adds a semantic tag (same structure, different meaning)
+       | Invariant(pred)      — structural invariant
 ```
 
-Type checking, coercion insertion, and test generation all operate on this same DAG structure.
+Type checking, coercion insertion, and test generation all operate on this same DAG structure. The node contract ensures every variant is explicit about its effect on all three dimensions.
 
 ### DAG invariants (SPEC.md §2)
 
@@ -113,7 +244,7 @@ The DAG representation and algebra are built. The per-layer checking is not yet 
 | `Dag<TypeOp>` — types as DAGs | `core/ir/src/type_op.rs` | **Done** — 9 op variants, genuine DAG structure |
 | Type constructors | `core/ir/src/type_lib.rs` | **Done** — builds `Dag<TypeOp>` for all core types |
 | `TypeRegistry` — named lookup + coercion graph | `core/ir/src/type_registry.rs` | **Done** — BFS coercion path discovery |
-| Contract extraction (per-layer) | `core/ir/src/contract.rs` | **Done** — extracts cardinality, base type, predicates, witnesses from any `Dag<TypeOp>` |
+| Contract extraction (per-layer) | `core/ir/src/contract.rs` | **Done** — reverse-engineers cardinality, base type, predicates, witnesses from `Dag<TypeOp>` by walking the DAG. To be replaced by explicit node contracts. |
 | Lattice algebra traits | `core/ir/src/algebra.rs` | **Done** — PartialOrder, Join/MeetSemilattice, BoundedLattice |
 | `Cardinality` interval algebra | `core/ir/src/types.rs` | **Done** — join, meet, product, sum, satisfies, property-tested |
 | `TypeShape` structural extractor | `core/ir/src/type_shape.rs` | **Done** — extracts backend-facing shape from DAG |
@@ -122,7 +253,7 @@ The DAG representation and algebra are built. The per-layer checking is not yet 
 | Coercion = graph path | `type_registry.rs` | **Done** — `coercion_path()` returns explicit chain |
 | Edge validation | `builder.rs` | **Partial** — checks type + semantic + cardinality, but as a **flat check on the outermost port**, not a per-layer DAG walk |
 
-**The gap**: the infrastructure can represent per-layer types and can extract per-layer contracts — but the edge validator and DSL typechecker only check the outermost layer. The per-layer DAG walk that the design calls for is not yet wired.
+**Two gaps**: (1) The edge validator and DSL typechecker only check the outermost layer — the per-layer DAG walk is not yet wired. (2) The node contracts (base type, cardinality, predicates) are reverse-engineered by `TypeContract` after the fact, rather than declared explicitly on each `TypeOp` node. Explicit node contracts would make per-layer comparison trivial and fail-closed for new node types.
 
 ### Modeling Quality by Layer
 
@@ -307,15 +438,18 @@ WS-1 and WS-3 can start immediately. WS-7 is independent.
 
 ### WS-3: Unify DSL Typechecker with IR TypeRegistry
 
-**Goal**: One type world. Compatibility checking walks the type DAG per-layer instead of comparing strings.
+**Goal**: One type world. Compatibility checking walks the type DAG per-layer, comparing explicit node contracts, instead of comparing strings. Behavioral properties validated against call graph. Behavioral contracts consumed for obligation generation.
 
-1. DSL type definitions → `Dag<TypeOp>` at parse time (each type becomes a layered DAG)
-2. Typechecker uses per-layer `TypeContract` for compatibility (replaces string-based `normalize_type_id`)
-3. Optionality is a DAG layer (`T?` → `Wrap(Optional)` with cardinality `[0,1]`, not a string suffix)
-4. Branch type unification — `if/else` and `match` compute `join` (LUB) of type DAGs per-layer
-5. Match exhaustiveness — `Coproduct` variants known from type DAG, checked statically
+1. **Explicit node contracts on `TypeOp`** — each `TypeOp` variant declares its effect on all three dimensions (base type, cardinality, predicates) as `Set`/`Add`/`Inherited`. Replaces `TypeContract` reverse-engineering. New node types must declare all three — fail-closed by construction.
+2. DSL type definitions → `Dag<TypeOp>` at parse time (each type becomes a layered DAG with explicit contracts)
+3. Typechecker uses per-layer node contract comparison for compatibility (replaces string-based `normalize_type_id`)
+4. Optionality is a DAG layer (`T?` → `Wrap(Optional)` with cardinality `Set([0,1])`, not a string suffix)
+5. Branch type unification — `if/else` and `match` compute `join` (LUB) of type DAGs per-layer
+6. Match exhaustiveness — `Coproduct` variants known from type DAG, checked statically
+7. **Behavioral property enforcement (Level 2)** — validate `readonly`/`idempotent` declarations against `CallableProperties` BFS results. `func snapshot() readonly` that calls a non-readonly service = compile error `E5001`. Infrastructure exists (`daglang-derive` BFS); validation pass missing.
+8. **Behavioral contract consumption (Level 3)** — compiler reads `OperationBehavior` from extdeps (`idempotency_keys`, `determinism`, `failure_modes`). Generates retry constraints from `idempotency_keys` (`E5003`), test constraints from `determinism`, error classifier hints from `failure_modes`.
 
-**Done when**: `normalize_type_id` deleted. All checks walk type DAGs per-layer. `T`/`T?` not interchangeable (different cardinality layer). Exhaustiveness is static.
+**Done when**: `normalize_type_id` deleted. Every `TypeOp` carries an explicit node contract. All checks walk type DAGs per-layer comparing node contracts. `T`/`T?` not interchangeable (different cardinality layer). Exhaustiveness is static. `readonly`/`idempotent` declarations validated against derived properties. `OperationBehavior` consumed for obligation generation.
 
 ### WS-4: Presence Axis on Ports
 
@@ -378,12 +512,322 @@ The system is complete when these properties hold:
 
 4. **Every service uses its extdeps types** — zero `String` where a refined type is in scope. Zero `Json` escape hatches. Zero dead imports.
 
-5. **Every behavioral property is declared** — `readonly` on reads, `idempotent` on idempotent operations, `hermetic` on local-only. The compiler derives test classification, retry eligibility, and resource conflict analysis from these.
+5. **Every behavioral property is declared and enforced** — `readonly` on reads, `idempotent` on idempotent operations, `hermetic` on local-only. Declarations validated against `CallableProperties` BFS — contradiction is a compile error (`E5001`). The compiler derives test classification, retry eligibility, and resource conflict analysis from these.
 
 6. **Every stub is either implemented or deleted** — per the PR-gate invariant.
 
 7. **Every extern symbol resolves or the build fails** — no passthrough fallbacks, no stub asset fallbacks, no module-name dispatch tables. Deterministic compile receipts.
 
-8. **The Understanding pattern is fully ported** — extdeps behavioral models are consumed by the compiler to generate mock specs, error classifiers, and contract tests. Not just documentation.
+8. **Behavioral contracts generate obligations** — `OperationBehavior` from extdeps consumed by the compiler. `idempotency_keys` checked at retry sites (`E5003`). `determinism` constrains test assertions. `failure_modes` inform error classifiers. Not just documentation — structural obligations.
 
 When all eight hold, the type algebra is the single source of truth for correctness — if the DAG validates, the wiring is right.
+
+---
+
+## Appendix A: Worked Examples — Violations and Expected Diagnostics
+
+Each example shows a real pattern from the codebase where the "decisions obligate" principle is violated, what the violation is, and what compiler diagnostic we expect to see when the system is complete.
+
+### A.1: Skipped value used as if present (obligation: handle absence)
+
+**Current code** (`eval.rs:field_access`):
+```rust
+Value::Unit | Value::Skipped => Ok(Value::Unit),  // accessing .field on Skipped → Unit
+```
+
+**The violation**: `Value::Skipped` means "this port was not wired — the value is structurally absent." Accessing `.field` on it should be impossible, not silently produce `Unit`. The decision to skip (via guard) created an obligation: consumers must handle absence. This code discharges the obligation by pretending the value is `Unit`.
+
+**Expected diagnostic**:
+```
+error[E2105]: field access on potentially-absent value
+  --> tools/makegen.dag:47:22
+   |
+47 |     entry.ensure_target
+   |     ^^^^^ `entry` has type `MakefileTarget?` (cardinality [0,1])
+   |
+   = help: use `entry?.ensure_target` or `match entry { Some(e) => e.ensure_target, None => ... }`
+   = note: obligation from Wrap(Optional) at layer 2 not discharged
+```
+
+This applies to all 7 silent coercion sites. The pattern is the same: `Skipped`/`Unit` is treated as a concrete value instead of forcing the consumer to handle the `[0,1]` cardinality layer.
+
+### A.2: `String` where `Timestamp` is the semantic type (obligation: use what you defined)
+
+**Current code** (`types.dag`):
+```
+type Timestamp = String where pattern("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}")
+
+type ClaimLease {
+  acquired_at: String       // ← Timestamp defined but not used
+  expires_at:  String       // ← same
+}
+```
+
+**The violation**: `Timestamp` is `String + Validate(NonEmpty) + Validate(Pattern(ISO8601))`. Using `String` instead drops two predicate layers. The type DAG for `acquired_at` is shorter than it should be — it's missing the obligations that `Timestamp` creates (valid format, non-empty). Any code that writes to `acquired_at` can put `"hello"` or `""` in it.
+
+**Expected diagnostic**:
+```
+warning[W1001]: field uses weaker type than available refinement
+  --> std/types.dag:642:3
+   |
+642|   acquired_at: String
+   |   ^^^^^^^^^^^ `String` used, but `Timestamp` exists for this semantic concept
+   |
+   = note: `Timestamp` adds Validate(NonEmpty) + Validate(Pattern) layers
+   = help: change to `acquired_at: Timestamp`
+```
+
+### A.3: Service imports refined type, uses `String` (obligation: consume what you import)
+
+**Current code** (`anthropic.dag`):
+```
+import extdeps.llm.anthropic { AnthropicModel, ContentBlock, SystemPrompt, ... }
+
+operation Messages {
+  input {
+    model: String       // ← AnthropicModel imported and in scope
+    messages: Json      // ← LlmMessage imported and in scope
+    system: String?     // ← SystemPrompt imported and in scope
+  }
+  output {
+    stop_reason: String from "stop_reason"  // ← StopReason imported and in scope
+  }
+}
+```
+
+**The violation**: `AnthropicModel` is `String + Brand("AnthropicModel")` — it carries a brand layer that `String` doesn't. Using `String` drops the brand obligation: any string is accepted, not just valid model identifiers. `StopReason` is a `Coproduct` (sum type) — using `String` drops the exhaustiveness obligation: callers can't `match` on it without a runtime parse.
+
+**Expected diagnostics**:
+```
+error[E6001]: imported type not used at service boundary
+  --> services/llm/anthropic.dag:8:3
+   |
+ 8 | import extdeps.llm.anthropic { AnthropicModel, ... }
+   |                                 ^^^^^^^^^^^^^^ imported but not used in any operation
+   |
+   = note: `AnthropicModel` refines `String` via Brand("AnthropicModel")
+
+error[E6002]: weaker type used where refined import exists
+  --> services/llm/anthropic.dag:18:5
+   |
+18 |     model: String
+   |     ^^^^^ `String` used, but imported `AnthropicModel` (String + Brand) is in scope
+   |
+   = help: change to `model: AnthropicModel`
+   = note: dropping Brand layer removes semantic obligation — callers can pass any String
+
+error[E6003]: opaque Json where structured type exists
+  --> services/llm/anthropic.dag:19:5
+   |
+19 |     messages: Json
+   |     ^^^^^^^^ `Json` used, but `List<LlmMessage>` is available
+   |
+   = note: `Json` has zero layers (opaque). `List<LlmMessage>` has 4 layers
+           (Identity(LlmMessage) → Product(role, content) → Wrap(List))
+   = help: change to `messages: List<LlmMessage>`
+```
+
+### A.4: `first()` on empty list returns `Unit` silently (obligation: handle multiplicity→singleton)
+
+**Current code** (`eval.rs`):
+```rust
+PipeMethod::First => match receiver {
+    Value::List(items) => Ok(items.into_iter().next().unwrap_or(Value::Unit)),
+    ...
+},
+```
+
+**The violation**: `first()` removes a `Wrap(List)` layer (cardinality `[0,∞]`) and should produce an `Optional` (cardinality `[0,1]`). Returning `Value::Unit` is the correct runtime representation of `None`, but the type system doesn't track that the result is now optional. Downstream code accesses `.field` on it without handling absence.
+
+**Current usage** (`makegen.dag`):
+```
+let entry = matches |> first()
+match entry {
+  None => ""
+  _ => entry.ensure_target    // ← accessing .field on a value that might be Unit
+}
+```
+
+This works by accident — `None` matches `Value::Unit` (which `first()` returns for empty), and `_` catches the actual value. But the `_` arm accesses `entry.ensure_target` directly without unwrapping a `Some`. If `first()` returned a proper `Optional<MakefileTarget>`, the arm would need `Some(e) => e.ensure_target`.
+
+**Expected diagnostic**:
+```
+error[E2105]: field access on potentially-absent value
+  --> tools/makegen.dag:47:22
+   |
+45 |   let entry = matches |> first()
+   |       ----- type is `MakefileTarget?` (cardinality [0,1] from first())
+47 |     _ => entry.ensure_target
+   |          ^^^^^ accessing field on value with [0,1] cardinality
+   |
+   = help: use `Some(e) => e.ensure_target` to unwrap the Optional layer
+   = note: `first()` removes Wrap(List) and adds Wrap(Optional) — obligation to handle absence
+```
+
+### A.5: `if` without `else` silently produces `Unit` (obligation: both branches must return)
+
+**Current code** (`eval.rs`):
+```rust
+LoweredExpr::IfElse { cond, then_, else_ } => {
+    let condition = eval_expr(cond, env, sibling_fns)?;
+    if value_truthy(&condition) {
+        eval_expr(then_, env, sibling_fns)
+    } else if let Some(else_branch) = else_ {
+        eval_expr(else_branch, env, sibling_fns)
+    } else {
+        Ok(Value::Unit)  // ← no else → Unit
+    }
+}
+```
+
+**The violation**: `if cond { expr }` without `else` has two possible outcomes: the `then` branch value or `Unit`. This is an implicit `Optional` — the result has cardinality `[0,1]`. But the type system doesn't add a `Wrap(Optional)` layer, so downstream code treats the result as `[1,1]` (always present).
+
+**Expected diagnostic**:
+```
+error[E3001]: if-expression without else has Optional return type
+  --> tools/pragma.dag:23:5
+   |
+23 |   if needs_update { update_file(path) }
+   |   ^^^ expression returns `Unit` when condition is false
+   |
+   = note: result type is `T?` (cardinality [0,1]), not `T` (cardinality [1,1])
+   = help: add `else { ... }` to make both branches explicit,
+           or use `let result: T? = if ...` to acknowledge optionality
+```
+
+### A.6: Match with `_` on known sum type (obligation: handle all variants)
+
+**Current code** (`state_machines.dag`):
+```
+fn is_legal_forward(from: IssueLifecycleStage, to: IssueLifecycleStage) -> Bool {
+  match from {
+    Idea         => to == Design
+    Design       => to == DesignReview
+    DesignReview => to == Accepted
+    Accepted     => to == Implementing
+    Implementing => to == CodeReview
+    CodeReview   => to == Testing
+    Testing      => to == Done
+    _            => false    // ← Done + TerminalFailed collapsed
+  }
+}
+```
+
+**The violation**: `IssueLifecycleStage` is a `Coproduct` with 9 variants. The `Coproduct` layer creates an exhaustiveness obligation — every variant must be handled. The `_ => false` arm discharges this obligation silently. If a 10th variant `Deploying` is added, this function silently returns `false` for it instead of producing a compile error.
+
+**Expected diagnostic**:
+```
+error[E3005]: non-exhaustive match on sum type `IssueLifecycleStage`
+  --> std/state_machines.dag:72:3
+   |
+72 |   match from {
+   |   ^^^^^ missing variants: `Done`, `TerminalFailed`
+   |
+   = note: `IssueLifecycleStage` is Coproduct with 9 variants — exhaustiveness obligation
+   = help: add explicit arms for `Done` and `TerminalFailed`, or use
+           `_ => false @suppress(exhaustiveness, reason: "terminal states")` to opt out explicitly
+```
+
+### A.7: String dispatch where sum type should be used (obligation: parse at the boundary)
+
+**Current code** (`design.dag`):
+```
+content = match provider {
+  "openai" => llm.OpenAI.ChatCompletion(...)
+  _ => llm.Anthropic.Messages(...)   // ← "cohere", "", anything → Anthropic
+}
+```
+
+**The violation**: `provider` is `String` — no `Coproduct` layer, so no exhaustiveness obligation. The `_` arm silently catches every string that isn't `"openai"`, including typos, empty strings, and future provider names. The PR-gate checklist says: "new string-based dispatch → enum at intake, exhaustive match internally."
+
+**Expected diagnostic**:
+```
+error[E3006]: string dispatch should use sum type
+  --> tools/design.dag:42:19
+   |
+42 |   content = match provider {
+   |                   ^^^^^^^^ `provider` is `String` — exhaustiveness cannot be checked
+   |
+   = note: match has 1 literal arm + wildcard catch-all
+   = help: define `type LlmProvider = OpenAI | Anthropic` and change `provider: LlmProvider`
+   = note: `Coproduct` layer would create exhaustiveness obligation — new providers
+           would be compile errors instead of silent Anthropic fallback
+```
+
+### A.8: Behavioral property not enforced (obligation: readonly propagates through call graph)
+
+**Current state** (`daglang-derive`):
+```rust
+// BFS from callable entrypoint — collects properties pessimistically
+if !metadata.readonly {
+    *readonly = false;    // one non-readonly child → parent non-readonly
+}
+```
+
+`CallableProperties` correctly derives that a `func` calling a non-readonly service is itself non-readonly. But there is no validation. A `func` declared `readonly` that calls `gist.Create` (a write operation) produces no error.
+
+**Current code** (`git.dag`):
+```
+service local.Git {
+  operation Status {
+    readonly                       // ← declares readonly
+    transport shell { argv: ["git", "status", "--porcelain"] }
+    ...
+  }
+  operation CommitAll {
+                                   // ← NOT readonly (writes state)
+    transport shell { argv: ["git", "add", "-A"] }
+    ...
+  }
+}
+```
+
+If a `func` declared `readonly` calls both `Git.Status` (readonly) and `Git.CommitAll` (not readonly), the system computes `readonly = false` for the callable but never checks whether that contradicts the declaration.
+
+**The violation**: The `readonly` declaration is a decision that creates an obligation: all transitive calls must be readonly. The `CallableProperties` BFS correctly propagates the property, but never validates the result against the declaration. The obligation exists but is not enforced.
+
+**Expected diagnostic**:
+```
+error[E5001]: readonly obligation violated
+  --> tools/snapshot.dag:5:3
+   |
+ 5 |   func take_snapshot() readonly {
+   |                         ^^^^^^^^ declared readonly
+...
+ 8 |     git.CommitAll(message: "snapshot")
+   |     ^^^^^^^^^^^^^^ calls non-readonly operation `local.Git.CommitAll`
+   |
+   = note: readonly propagates pessimistically — one non-readonly call
+           makes the entire callable non-readonly
+   = help: remove `readonly` declaration, or replace with a readonly operation
+```
+
+### A.9: Behavioral contract not consumed (obligation: idempotency keys must be honored)
+
+**Current state** (`extdeps/cloud/gcp/storage.dag`):
+```
+behavior update_object_cas {
+  side_effects: WritesState
+  idempotent: true
+  idempotency_keys: ["bucket", "object", "generation"]
+  determinism: Deterministic
+}
+```
+
+This says: `update_object_cas` is idempotent IF AND ONLY IF the caller passes the same `bucket`, `object`, and `generation` values on retry. The `idempotency_keys` field is an obligation on the caller — retry is only safe if those keys match.
+
+**The violation**: `idempotency_keys` is data in the extdeps layer. The compiler never reads it. A retry wrapper that re-calls `update_object_cas` without preserving `generation` would silently produce a non-idempotent retry — violating the contract the extdeps layer declared.
+
+**Expected diagnostic**:
+```
+error[E5003]: idempotency contract not satisfied
+  --> tools/deploy.dag:22:5
+   |
+22 |     retry(attempts: 3) {
+   |     ^^^^^ retries `gcs.UpdateObject` which requires idempotency keys
+   |
+   = note: `update_object_cas` declares idempotent: true with
+           idempotency_keys: ["bucket", "object", "generation"]
+   = help: ensure retry passes the same values for bucket, object, generation
+           across all attempts, or mark retry as `@unsafe_retry`
+```

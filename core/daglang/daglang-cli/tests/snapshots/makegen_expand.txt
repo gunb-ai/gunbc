@@ -513,111 +513,6 @@ Nodes:
       * response: TransportResponse (1)
     outputs:
       * value: String? (1)
-  - tools.makegen::render_target::cf_if_0 [subdag]
-    inputs:
-      * condition: Bool (1)
-      * input: Any (1)
-    outputs:
-      * branch_taken: String (1)
-      * result: Any (1)
-  - tools.makegen::render_target::cf_match_0 [subdag]
-    inputs:
-      * condition: Bool (1)
-      * input: Any (1)
-    outputs:
-      * branch_taken: String (1)
-      * result: Any (1)
-  - tools.makegen::resolve_resource_target::cf_if_0 [subdag]
-    inputs:
-      * condition: Bool (1)
-      * input: Any (1)
-    outputs:
-      * branch_taken: String (1)
-      * result: Any (1)
-  - tools.makegen::resolve_resource_target::cf_match_0 [subdag]
-    inputs:
-      * condition: Bool (1)
-      * input: Any (1)
-    outputs:
-      * branch_taken: String (1)
-      * result: Any (1)
-  - tools.makegen::apply_prefix::cf_match_0 [subdag]
-    inputs:
-      * condition: Bool (1)
-      * input: Any (1)
-    outputs:
-      * branch_taken: String (1)
-      * result: Any (1)
-  - tools.makegen::render_meta_fix_variant::cf_match_0 [subdag]
-    inputs:
-      * condition: Bool (1)
-      * input: Any (1)
-    outputs:
-      * branch_taken: String (1)
-      * result: Any (1)
-  - tools.makegen::render_meta_check_variant::cf_match_0 [subdag]
-    inputs:
-      * condition: Bool (1)
-      * input: Any (1)
-    outputs:
-      * branch_taken: String (1)
-      * result: Any (1)
-  - tools.makegen::render_meta_target::cf_if_0 [subdag]
-    inputs:
-      * condition: Bool (1)
-      * input: Any (1)
-    outputs:
-      * branch_taken: String (1)
-      * result: Any (1)
-  - tools.makegen::render_meta_target::cf_if_1 [subdag]
-    inputs:
-      * condition: Bool (1)
-      * input: Any (1)
-    outputs:
-      * branch_taken: String (1)
-      * result: Any (1)
-  - tools.makegen::render_help_param::cf_if_0 [subdag]
-    inputs:
-      * condition: Bool (1)
-      * input: Any (1)
-    outputs:
-      * branch_taken: String (1)
-      * result: Any (1)
-  - tools.makegen::render_help_param::cf_match_0 [subdag]
-    inputs:
-      * condition: Bool (1)
-      * input: Any (1)
-    outputs:
-      * branch_taken: String (1)
-      * result: Any (1)
-  - tools.makegen::fix_description::cf_if_0 [subdag]
-    inputs:
-      * condition: Bool (1)
-      * input: Any (1)
-    outputs:
-      * branch_taken: String (1)
-      * result: Any (1)
-  - tools.makegen::render_help_meta_line::cf_if_0 [subdag]
-    inputs:
-      * condition: Bool (1)
-      * input: Any (1)
-    outputs:
-      * branch_taken: String (1)
-      * result: Any (1)
-  - tools.makegen::render_help_meta_line::cf_if_1 [subdag]
-    inputs:
-      * condition: Bool (1)
-      * input: Any (1)
-    outputs:
-      * branch_taken: String (1)
-      * result: Any (1)
-  - tools.makegen::tool_phony_names::cf_if_0 [subdag]
-    inputs:
-      * condition: Bool (1)
-      * input: Any (1)
-    outputs:
-      * branch_taken: String (1)
-      * result: Any (1)
   - prepare_read_makegen [primitive::IoPrepareFileRead tools.makegen.content_upsert::prepare_read_makegen]
     inputs:
       * path: String (1)
@@ -675,114 +570,14 @@ Nodes:
     outputs:
       * branch_taken: String (1)
       * result: Any (1)
-  - std.filesystem::skip_reason::cf_match_0 [subdag]
-    inputs:
-      * condition: Bool (1)
-      * input: Any (1)
-    outputs:
-      * branch_taken: String (1)
-      * result: Any (1)
-  - std.filesystem::skip_reason::cf_match_1 [subdag]
-    inputs:
-      * condition: Bool (1)
-      * input: Any (1)
-    outputs:
-      * branch_taken: String (1)
-      * result: Any (1)
-  - literal_source_tools_makegen_render_target_return_return_0 [primitive::CallLiteralSource { literal: String("{comment_line}{header}\n{recipe}\n") } tools.makegen.call_literal_source::strhex:7b636f6d6d656e745f6c696e657d7b6865616465727d0a7b7265636970657d0a]
-    outputs:
-      * return: String (1)
-  - literal_source_tools_makegen_render_section_header_return_return_0 [primitive::CallLiteralSource { literal: String("# ============================================================================\n# {title}\n# ============================================================================\n") } tools.makegen.call_literal_source::strhex:23203d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d0a23207b7469746c657d0a23203d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d0a]
-    outputs:
-      * return: String (1)
-  - literal_source_tools_makegen_render_phony_line_return_return_0 [primitive::CallLiteralSource { literal: String(".PHONY: {all_names}\n") } tools.makegen.call_literal_source::strhex:2e50484f4e593a207b616c6c5f6e616d65737d0a]
-    outputs:
-      * return: String (1)
-  - match_dispatch_tools_makegen_resolve_resource_target_return_return_0 [primitive::MatchDispatch { arms: [LoweredMatchArm { pattern: Literal(None), guard: None, body: Literal(String("")) }, LoweredMatchArm { pattern: Wildcard, guard: None, body: IfElse { cond: BinOp { left: Ident("mode"), op: Eq, right: Literal(String("ensure")) }, then_: FieldAccess { expr: Ident("entry"), field: "ensure_target" }, else_: Some(FieldAccess { expr: Ident("entry"), field: "verify_target" }) } }], sibling_fns: {} } tools.makegen.match_dispatch::resolve_resource_target::return]
-    inputs:
-      * scrutinee: Any (1)
-      * res_targets: List<ResourceTargetEntry> (1)
-      * resource: String (1)
-      * mode: String (1)
-    outputs:
-      * result: String (1)
-  - param_source_tools_makegen_resolve_resource_target_res_targets [primitive::CallParamSource { callable: "resolve_resource_target", param: "res_targets" } tools.makegen.call_param_source::resolve_resource_target::res_targets]
-    inputs:
-      * res_targets: List<ResourceTargetEntry> (1)
-    outputs:
-      * res_targets: List<ResourceTargetEntry> (1)
-  - param_source_tools_makegen_resolve_resource_target_resource [primitive::CallParamSource { callable: "resolve_resource_target", param: "resource" } tools.makegen.call_param_source::resolve_resource_target::resource]
-    inputs:
-      * resource: String (1)
-    outputs:
-      * resource: String (1)
-  - param_source_tools_makegen_resolve_resource_target_mode [primitive::CallParamSource { callable: "resolve_resource_target", param: "mode" } tools.makegen.call_param_source::resolve_resource_target::mode]
-    inputs:
-      * mode: String (1)
-    outputs:
-      * mode: String (1)
   - param_source_tools_makegen_resolve_meta_deps_res_targets [primitive::CallParamSource { callable: "resolve_meta_deps", param: "res_targets" } tools.makegen.call_param_source::resolve_meta_deps::res_targets]
     inputs:
       * res_targets: List<ResourceTargetEntry> (1)
     outputs:
       * res_targets: List<ResourceTargetEntry> (1)
-  - pipe_tools_makegen_resolve_meta_deps_return_return_0 [primitive::PipeOp { fn_body: LoweredFnBody { stmts: [Return([("result", Pipe { receiver: Pipe { receiver: Ident("needs"), call: Call { name: "map", args: [(None, Lambda { params: ["need"], body: Call { name: "resolve_resource_target", args: [(Some("resource"), Ident("need__resource")), (Some("mode"), Ident("need__mode")), (Some("res_targets"), Ident("res_targets"))] } })] } }, call: Call { name: "filter", args: [(None, Lambda { params: ["dep"], body: BinOp { left: Ident("dep"), op: Ne, right: Literal(String("")) } })] } })])] }, sibling_fns: {"resolve_resource_target": LoweredFnBody { stmts: [Let("matches", Pipe { receiver: Ident("res_targets"), call: Call { name: "filter", args: [(None, Lambda { params: ["rt"], body: BinOp { left: Ident("rt__resource"), op: Eq, right: Ident("resource") } })] } }), Let("entry", Pipe { receiver: Ident("matches"), call: Call { name: "first", args: [] } }), Expr(Match { expr: Ident("entry"), arms: [LoweredMatchArm { pattern: Literal(None), guard: None, body: Literal(String("")) }, LoweredMatchArm { pattern: Wildcard, guard: None, body: IfElse { cond: BinOp { left: Ident("mode"), op: Eq, right: Literal(String("ensure")) }, then_: Ident("entry__ensure_target"), else_: Some(Ident("entry__verify_target")) } }] })] }} } tools.makegen.pipe::resolve_meta_deps::return]
-    inputs:
-      * needs: List<ResourceNeed> (1)
-      * res_targets: List<ResourceTargetEntry> (1)
-    outputs:
-      * result: List<String> (1)
-  - param_source_tools_makegen_resolve_meta_deps_needs [primitive::CallParamSource { callable: "resolve_meta_deps", param: "needs" } tools.makegen.call_param_source::resolve_meta_deps::needs]
-    inputs:
-      * needs: List<ResourceNeed> (1)
-    outputs:
-      * needs: List<ResourceNeed> (1)
   - literal_source_tools_makegen_resolve_meta_fix_deps_mode_fn_1 [primitive::CallLiteralSource { literal: String("ensure") } tools.makegen.call_literal_source::strhex:656e73757265]
     outputs:
       * mode: Any (1)
-  - pipe_tools_makegen_resolve_meta_fix_deps_return_return_0 [primitive::PipeOp { fn_body: LoweredFnBody { stmts: [Return([("result", Pipe { receiver: Pipe { receiver: Ident("needs"), call: Call { name: "map", args: [(None, Lambda { params: ["need"], body: Call { name: "resolve_resource_target", args: [(Some("resource"), Ident("need__resource")), (Some("mode"), Literal(String("ensure"))), (Some("res_targets"), Ident("res_targets"))] } })] } }, call: Call { name: "filter", args: [(None, Lambda { params: ["dep"], body: BinOp { left: Ident("dep"), op: Ne, right: Literal(String("")) } })] } })])] }, sibling_fns: {"resolve_resource_target": LoweredFnBody { stmts: [Let("matches", Pipe { receiver: Ident("res_targets"), call: Call { name: "filter", args: [(None, Lambda { params: ["rt"], body: BinOp { left: Ident("rt__resource"), op: Eq, right: Ident("resource") } })] } }), Let("entry", Pipe { receiver: Ident("matches"), call: Call { name: "first", args: [] } }), Expr(Match { expr: Ident("entry"), arms: [LoweredMatchArm { pattern: Literal(None), guard: None, body: Literal(String("")) }, LoweredMatchArm { pattern: Wildcard, guard: None, body: IfElse { cond: BinOp { left: Ident("mode"), op: Eq, right: Literal(String("ensure")) }, then_: Ident("entry__ensure_target"), else_: Some(Ident("entry__verify_target")) } }] })] }} } tools.makegen.pipe::resolve_meta_fix_deps::return]
-    inputs:
-      * needs: List<ResourceNeed> (1)
-      * res_targets: List<ResourceTargetEntry> (1)
-    outputs:
-      * result: List<String> (1)
-  - param_source_tools_makegen_resolve_meta_fix_deps_needs [primitive::CallParamSource { callable: "resolve_meta_fix_deps", param: "needs" } tools.makegen.call_param_source::resolve_meta_fix_deps::needs]
-    inputs:
-      * needs: List<ResourceNeed> (1)
-    outputs:
-      * needs: List<ResourceNeed> (1)
-  - param_source_tools_makegen_resolve_meta_fix_deps_res_targets [primitive::CallParamSource { callable: "resolve_meta_fix_deps", param: "res_targets" } tools.makegen.call_param_source::resolve_meta_fix_deps::res_targets]
-    inputs:
-      * res_targets: List<ResourceTargetEntry> (1)
-    outputs:
-      * res_targets: List<ResourceTargetEntry> (1)
-  - match_dispatch_tools_makegen_apply_prefix_return_return_0 [primitive::MatchDispatch { arms: [LoweredMatchArm { pattern: Literal(None), guard: None, body: Ident("cmd") }, LoweredMatchArm { pattern: Wildcard, guard: None, body: StringInterp([Literal("@"), Expr(Ident("prefix")), Literal(" "), Expr(Ident("cmd"))]) }], sibling_fns: {} } tools.makegen.match_dispatch::apply_prefix::return]
-    inputs:
-      * scrutinee: Any (1)
-      * prefix: String? (1)
-      * cmd: String (1)
-    outputs:
-      * result: String (1)
-  - param_source_tools_makegen_apply_prefix_prefix [primitive::CallParamSource { callable: "apply_prefix", param: "prefix" } tools.makegen.call_param_source::apply_prefix::prefix]
-    inputs:
-      * prefix: String? (1)
-    outputs:
-      * prefix: String? (1)
-  - param_source_tools_makegen_apply_prefix_cmd [primitive::CallParamSource { callable: "apply_prefix", param: "cmd" } tools.makegen.call_param_source::apply_prefix::cmd]
-    inputs:
-      * cmd: String (1)
-    outputs:
-      * cmd: String (1)
-  - pipe_tools_makegen_render_core_targets_return_return_0 [primitive::PipeOp { fn_body: LoweredFnBody { stmts: [Return([("result", Pipe { receiver: Pipe { receiver: Ident("workflows"), call: Call { name: "map", args: [(None, Lambda { params: ["w"], body: Call { name: "render_target", args: [(Some("name"), Ident("w__name")), (Some("deps"), Ident("w__deps")), (Some("body"), Ident("w__body")), (Some("comment"), BinOp { left: Ident("w__comment"), op: NullCoalesce, right: Ident("w__description") })] } })] } }, call: Call { name: "join", args: [(None, Literal(String("\n")))] } })])] }, sibling_fns: {"render_target": LoweredFnBody { stmts: [Let("dep_str", Pipe { receiver: Ident("deps"), call: Call { name: "join", args: [(None, Literal(String(" ")))] } }), Let("header", IfElse { cond: BinOp { left: Ident("dep_str"), op: Ne, right: Literal(String("")) }, then_: StringInterp([Expr(Ident("name")), Literal(": "), Expr(Ident("dep_str"))]), else_: Some(StringInterp([Expr(Ident("name")), Literal(":")])) }), Let("recipe", Pipe { receiver: Pipe { receiver: Ident("body"), call: Call { name: "map", args: [(None, Lambda { params: ["cmd"], body: StringInterp([Literal("\t"), Expr(Ident("cmd"))]) })] } }, call: Call { name: "join", args: [(None, Literal(String("\n")))] } }), Let("comment_line", Match { expr: Ident("comment"), arms: [LoweredMatchArm { pattern: Literal(None), guard: None, body: Literal(String("")) }, LoweredMatchArm { pattern: Wildcard, guard: None, body: StringInterp([Literal("# "), Expr(Ident("comment")), Literal("\n")]) }] }), Expr(StringInterp([Expr(Ident("comment_line")), Expr(Ident("header")), Literal("\n"), Expr(Ident("recipe")), Literal("\n")]))] }} } tools.makegen.pipe::render_core_targets::return]
-    inputs:
-      * workflows: List<CoreWorkflow> (1)
-    outputs:
-      * result: String (1)
-  - param_source_tools_makegen_render_core_targets_workflows [primitive::CallParamSource { callable: "render_core_targets", param: "workflows" } tools.makegen.call_param_source::render_core_targets::workflows]
-    inputs:
-      * workflows: List<CoreWorkflow> (1)
-    outputs:
-      * workflows: List<CoreWorkflow> (1)
   - param_source_tools_makegen_render_meta_base_res_targets [primitive::CallParamSource { callable: "render_meta_base", param: "res_targets" } tools.makegen.call_param_source::render_meta_base::res_targets]
     inputs:
       * res_targets: List<ResourceTargetEntry> (1)
@@ -809,9 +604,6 @@ Nodes:
       * res_targets: List<ResourceTargetEntry> (1)
     outputs:
       * res_targets: List<ResourceTargetEntry> (1)
-  - literal_source_tools_makegen_render_meta_target_return_return_0 [primitive::CallLiteralSource { literal: String("{base}{fix}{check}") } tools.makegen.call_literal_source::strhex:7b626173657d7b6669787d7b636865636b7d]
-    outputs:
-      * return: String (1)
   - literal_source_tools_makegen_render_meta_targets_title_fn_0 [primitive::CallLiteralSource { literal: String("Meta Targets - Development workflow commands") } tools.makegen.call_literal_source::strhex:4d6574612054617267657473202d20446576656c6f706d656e7420776f726b666c6f7720636f6d6d616e6473]
     outputs:
       * title: Any (1)
@@ -820,110 +612,6 @@ Nodes:
       * res_targets: List<ResourceTargetEntry> (1)
     outputs:
       * res_targets: List<ResourceTargetEntry> (1)
-  - literal_source_tools_makegen_render_meta_targets_return_return_0 [primitive::CallLiteralSource { literal: String("{header}\n{body}") } tools.makegen.call_literal_source::strhex:7b6865616465727d0a7b626f64797d]
-    outputs:
-      * return: String (1)
-  - match_dispatch_tools_makegen_render_help_param_return_return_0 [primitive::MatchDispatch { arms: [LoweredMatchArm { pattern: Literal(None), guard: None, body: StringInterp([Literal("["), Expr(FieldAccess { expr: Ident("p"), field: "make_var" }), Literal("=..."), Expr(Ident("repeat_suffix")), Literal("]")]) }, LoweredMatchArm { pattern: Wildcard, guard: None, body: StringInterp([Literal("["), Expr(FieldAccess { expr: Ident("p"), field: "make_var" }), Literal("="), Expr(FieldAccess { expr: Ident("p"), field: "default" }), Expr(Ident("repeat_suffix")), Literal("]")]) }], sibling_fns: {} } tools.makegen.match_dispatch::render_help_param::return]
-    inputs:
-      * scrutinee: Any (1)
-      * p: EntrypointParam (1)
-    outputs:
-      * result: String (1)
-  - get_field_tools_makegen_render_help_param_p_default_return_0_scrutinee [primitive::GetField { field: "default" } tools.makegen.get_field::render_help_param::p::default]
-    inputs:
-      * p: EntrypointParam (1)
-    outputs:
-      * result: Any (1)
-  - param_source_tools_makegen_render_help_param_p [primitive::CallParamSource { callable: "render_help_param", param: "p" } tools.makegen.call_param_source::render_help_param::p]
-    inputs:
-      * p: EntrypointParam (1)
-    outputs:
-      * p: EntrypointParam (1)
-  - pipe_tools_makegen_render_help_params_return_return_0 [primitive::PipeOp { fn_body: LoweredFnBody { stmts: [Return([("result", Pipe { receiver: Pipe { receiver: Ident("params"), call: Call { name: "map", args: [(None, Lambda { params: ["p"], body: Call { name: "render_help_param", args: [(Some("p"), Ident("p"))] } })] } }, call: Call { name: "join", args: [(None, Literal(String(" ")))] } })])] }, sibling_fns: {"render_help_param": LoweredFnBody { stmts: [Let("repeat_suffix", IfElse { cond: Ident("p__repeatable"), then_: Literal(String(" ...")), else_: Some(Literal(String(""))) }), Expr(Match { expr: Ident("p__default"), arms: [LoweredMatchArm { pattern: Literal(None), guard: None, body: StringInterp([Literal("["), Expr(Ident("p__make_var")), Literal("=..."), Expr(Ident("repeat_suffix")), Literal("]")]) }, LoweredMatchArm { pattern: Wildcard, guard: None, body: StringInterp([Literal("["), Expr(Ident("p__make_var")), Literal("="), Expr(Ident("p__default")), Expr(Ident("repeat_suffix")), Literal("]")]) }] })] }} } tools.makegen.pipe::render_help_params::return]
-    inputs:
-      * params: List<EntrypointParam> (1)
-    outputs:
-      * result: String (1)
-  - param_source_tools_makegen_render_help_params_params [primitive::CallParamSource { callable: "render_help_params", param: "params" } tools.makegen.call_param_source::render_help_params::params]
-    inputs:
-      * params: List<EntrypointParam> (1)
-    outputs:
-      * params: List<EntrypointParam> (1)
-  - literal_source_tools_makegen_render_tool_target_return_return_0 [primitive::CallLiteralSource { literal: String("{main}\n{dry}\n{extras}") } tools.makegen.call_literal_source::strhex:7b6d61696e7d0a7b6472797d0a7b6578747261737d]
-    outputs:
-      * return: String (1)
-  - pipe_tools_makegen_render_tool_targets_return_return_0 [primitive::PipeOp { fn_body: LoweredFnBody { stmts: [Return([("result", Pipe { receiver: Pipe { receiver: Ident("tools"), call: Call { name: "map", args: [(None, Lambda { params: ["t"], body: Call { name: "render_tool_target", args: [(Some("tool"), Ident("t"))] } })] } }, call: Call { name: "join", args: [(None, Literal(String("\n")))] } })])] }, sibling_fns: {"render_tool_target": LoweredFnBody { stmts: [Let("port_list", Pipe { receiver: Pipe { receiver: Ident("tool__entrypoints"), call: Call { name: "map", args: [(None, Lambda { params: ["p"], body: StringInterp([Expr(Ident("p__port_name")), Literal(" ("), Expr(Ident("p__type_hint")), Literal(")")]) })] } }, call: Call { name: "join", args: [(None, Literal(String(", ")))] } }), Let("main", Call { name: "render_target", args: [(Some("name"), Ident("tool__short_name")), (Some("deps"), Ident("tool__deps")), (Some("body"), List([Ident("tool__command")])), (Some("comment"), StringInterp([Expr(Ident("tool__binary_name")), Literal(" entrypoints: "), Expr(Ident("port_list"))]))] }), Let("dry", Call { name: "render_target", args: [(Some("name"), StringInterp([Expr(Ident("tool__short_name")), Literal("-dry")])), (Some("deps"), Ident("tool__deps")), (Some("body"), List([Ident("tool__dry_run_command")])), (Some("comment"), Ident("None"))] }), Let("extras", Pipe { receiver: Pipe { receiver: Ident("tool__extra_targets"), call: Call { name: "map", args: [(None, Lambda { params: ["extra"], body: Call { name: "render_target", args: [(Some("name"), StringInterp([Expr(Ident("tool__short_name")), Literal("-"), Expr(Ident("extra__suffix"))])), (Some("deps"), List([Ident("tool__short_name")])), (Some("body"), Ident("extra__post_commands")), (Some("comment"), StringInterp([Expr(Ident("tool__short_name")), Literal("-"), Expr(Ident("extra__suffix")), Literal(": "), Expr(Ident("extra__description"))]))] } })] } }, call: Call { name: "join", args: [(None, Literal(String("")))] } }), Expr(StringInterp([Expr(Ident("main")), Literal("\n"), Expr(Ident("dry")), Literal("\n"), Expr(Ident("extras"))]))] }} } tools.makegen.pipe::render_tool_targets::return]
-    inputs:
-      * tools: List<DiscoveredTool> (1)
-    outputs:
-      * result: String (1)
-  - param_source_tools_makegen_render_tool_targets_tools [primitive::CallParamSource { callable: "render_tool_targets", param: "tools" } tools.makegen.call_param_source::render_tool_targets::tools]
-    inputs:
-      * tools: List<DiscoveredTool> (1)
-    outputs:
-      * tools: List<DiscoveredTool> (1)
-  - pipe_tools_makegen_render_help_core_lines_return_return_0 [primitive::PipeOp { fn_body: LoweredFnBody { stmts: [Return([("result", Pipe { receiver: Pipe { receiver: Ident("workflows"), call: Call { name: "map", args: [(None, Lambda { params: ["w"], body: StringInterp([Literal("\t@echo \"  "), Expr(Ident("w__name")), Literal("  - "), Expr(BinOp { left: Ident("w__comment"), op: NullCoalesce, right: Ident("w__description") }), Literal("\"")]) })] } }, call: Call { name: "join", args: [(None, Literal(String("\n")))] } })])] }, sibling_fns: {} } tools.makegen.pipe::render_help_core_lines::return]
-    inputs:
-      * workflows: List<CoreWorkflow> (1)
-    outputs:
-      * result: String (1)
-  - param_source_tools_makegen_render_help_core_lines_workflows [primitive::CallParamSource { callable: "render_help_core_lines", param: "workflows" } tools.makegen.call_param_source::render_help_core_lines::workflows]
-    inputs:
-      * workflows: List<CoreWorkflow> (1)
-    outputs:
-      * workflows: List<CoreWorkflow> (1)
-  - conditional_tools_makegen_fix_description_return_return_0 [primitive::Conditional tools.makegen.conditional::fix_description::return]
-    inputs:
-      * condition: Bool (1)
-      * then: Any (1)
-      * else: Any (1)
-    outputs:
-      * result: String (1)
-  - literal_source_tools_makegen_fix_description_return_cond_rhs_return_0_cond_rhs [primitive::CallLiteralSource { literal: String("") } tools.makegen.call_literal_source::strhex:]
-    outputs:
-      * return_cond_rhs: Any (1)
-  - expr_compute_tools_makegen_fix_description_return_cond_return_0_cond [primitive::ExprCompute { fn_body: LoweredFnBody { stmts: [Let("joined", Pipe { receiver: Ident("prereqs"), call: Call { name: "join", args: [(None, Literal(String(" + ")))] } }), Return([("result", BinOp { left: Ident("joined"), op: Ne, right: Literal(String("")) })])] }, sibling_fns: {} } tools.makegen.expr_compute::fix_description::return_cond]
-    inputs:
-      * prereqs: List<String> (1)
-    outputs:
-      * result: Bool (1)
-  - param_source_tools_makegen_fix_description_prereqs [primitive::CallParamSource { callable: "fix_description", param: "prereqs" } tools.makegen.call_param_source::fix_description::prereqs]
-    inputs:
-      * prereqs: List<String> (1)
-    outputs:
-      * prereqs: List<String> (1)
-  - literal_source_tools_makegen_fix_description_return_then_return_0_then [primitive::CallLiteralSource { literal: String("{joined} first") } tools.makegen.call_literal_source::strhex:7b6a6f696e65647d206669727374]
-    outputs:
-      * return_then: String (1)
-  - literal_source_tools_makegen_fix_description_return_else_return_0_else [primitive::CallLiteralSource { literal: String("auto-fix") } tools.makegen.call_literal_source::strhex:6175746f2d666978]
-    outputs:
-      * return_else: String (1)
-  - literal_source_tools_makegen_render_help_meta_line_return_return_0 [primitive::CallLiteralSource { literal: String("\t{base_line}{fix_line}{check_line}") } tools.makegen.call_literal_source::strhex:097b626173655f6c696e657d7b6669785f6c696e657d7b636865636b5f6c696e657d]
-    outputs:
-      * return: String (1)
-  - pipe_tools_makegen_render_help_meta_lines_return_return_0 [primitive::PipeOp { fn_body: LoweredFnBody { stmts: [Return([("result", Pipe { receiver: Pipe { receiver: Ident("metas"), call: Call { name: "map", args: [(None, Lambda { params: ["m"], body: Call { name: "render_help_meta_line", args: [(Some("m"), Ident("m"))] } })] } }, call: Call { name: "join", args: [(None, Literal(String("\n")))] } })])] }, sibling_fns: {"render_help_meta_line": LoweredFnBody { stmts: [Let("base_line", StringInterp([Literal("@echo \"  "), Expr(Ident("m__name")), Literal("  - "), Expr(Ident("m__description")), Literal("\"")])), Let("fix_desc", Call { name: "fix_description", args: [(Some("prereqs"), Ident("m__fix_prerequisites"))] }), Let("fix_line", IfElse { cond: Ident("m__has_fix"), then_: StringInterp([Literal("\n\t@echo \"  "), Expr(Ident("m__name")), Literal("-fix  - "), Expr(Ident("m__description")), Literal(" ("), Expr(Ident("fix_desc")), Literal(")\"")]), else_: Some(Literal(String(""))) }), Let("check_line", IfElse { cond: Ident("m__has_check"), then_: StringInterp([Literal("\n\t@echo \"  "), Expr(Ident("m__name")), Literal("-check  - "), Expr(Ident("m__description")), Literal(" (check only)\"")]), else_: Some(Literal(String(""))) }), Expr(StringInterp([Literal("\t"), Expr(Ident("base_line")), Expr(Ident("fix_line")), Expr(Ident("check_line"))]))] }} } tools.makegen.pipe::render_help_meta_lines::return]
-    inputs:
-      * metas: List<MetaTargetDef> (1)
-    outputs:
-      * result: String (1)
-  - param_source_tools_makegen_render_help_meta_lines_metas [primitive::CallParamSource { callable: "render_help_meta_lines", param: "metas" } tools.makegen.call_param_source::render_help_meta_lines::metas]
-    inputs:
-      * metas: List<MetaTargetDef> (1)
-    outputs:
-      * metas: List<MetaTargetDef> (1)
-  - literal_source_tools_makegen_render_help_tool_line_return_return_0 [primitive::CallLiteralSource { literal: String("\t{main_line}{extra_lines}") } tools.makegen.call_literal_source::strhex:097b6d61696e5f6c696e657d7b65787472615f6c696e65737d]
-    outputs:
-      * return: String (1)
-  - pipe_tools_makegen_render_help_tool_lines_return_return_0 [primitive::PipeOp { fn_body: LoweredFnBody { stmts: [Return([("result", Pipe { receiver: Pipe { receiver: Ident("tools"), call: Call { name: "map", args: [(None, Lambda { params: ["t"], body: Call { name: "render_help_tool_line", args: [(Some("t"), Ident("t"))] } })] } }, call: Call { name: "join", args: [(None, Literal(String("\n")))] } })])] }, sibling_fns: {"render_help_tool_line": LoweredFnBody { stmts: [Let("params", Call { name: "render_help_params", args: [(Some("params"), Ident("t__entrypoints"))] }), Let("main_line", StringInterp([Literal("@echo \"  "), Expr(Ident("t__short_name")), Literal(" "), Expr(Ident("params")), Literal("  - "), Expr(Ident("t__description")), Literal("\"")])), Let("extra_lines", Pipe { receiver: Pipe { receiver: Ident("t__extra_targets"), call: Call { name: "map", args: [(None, Lambda { params: ["extra"], body: StringInterp([Literal("\n\t@echo \"  "), Expr(Ident("t__short_name")), Literal("-"), Expr(Ident("extra__suffix")), Literal("  - "), Expr(Ident("extra__description")), Literal("\"")]) })] } }, call: Call { name: "join", args: [(None, Literal(String("")))] } }), Expr(StringInterp([Literal("\t"), Expr(Ident("main_line")), Expr(Ident("extra_lines"))]))] }} } tools.makegen.pipe::render_help_tool_lines::return]
-    inputs:
-      * tools: List<DiscoveredTool> (1)
-    outputs:
-      * result: String (1)
-  - param_source_tools_makegen_render_help_tool_lines_tools [primitive::CallParamSource { callable: "render_help_tool_lines", param: "tools" } tools.makegen.call_param_source::render_help_tool_lines::tools]
-    inputs:
-      * tools: List<DiscoveredTool> (1)
-    outputs:
-      * tools: List<DiscoveredTool> (1)
   - param_source_tools_makegen_render_help_target_workflows [primitive::CallParamSource { callable: "render_help_target", param: "workflows" } tools.makegen.call_param_source::render_help_target::workflows]
     inputs:
       * workflows: List<CoreWorkflow> (1)
@@ -939,58 +627,6 @@ Nodes:
       * tools: List<DiscoveredTool> (1)
     outputs:
       * tools: List<DiscoveredTool> (1)
-  - literal_source_tools_makegen_render_help_target_return_return_0 [primitive::CallLiteralSource { literal: String("{header_lines}\n{build_section}\n{dev_section}\n{tool_section}\n") } tools.makegen.call_literal_source::strhex:7b6865616465725f6c696e65737d0a7b6275696c645f73656374696f6e7d0a7b6465765f73656374696f6e7d0a7b746f6f6c5f73656374696f6e7d0a]
-    outputs:
-      * return: String (1)
-  - pipe_tools_makegen_collect_core_phony_str_return_return_0 [primitive::PipeOp { fn_body: LoweredFnBody { stmts: [Return([("result", Pipe { receiver: Pipe { receiver: Ident("workflows"), call: Call { name: "map", args: [(None, Lambda { params: ["w"], body: Ident("w__name") })] } }, call: Call { name: "join", args: [(None, Literal(String(" ")))] } })])] }, sibling_fns: {} } tools.makegen.pipe::collect_core_phony_str::return]
-    inputs:
-      * workflows: List<CoreWorkflow> (1)
-    outputs:
-      * result: String (1)
-  - param_source_tools_makegen_collect_core_phony_str_workflows [primitive::CallParamSource { callable: "collect_core_phony_str", param: "workflows" } tools.makegen.call_param_source::collect_core_phony_str::workflows]
-    inputs:
-      * workflows: List<CoreWorkflow> (1)
-    outputs:
-      * workflows: List<CoreWorkflow> (1)
-  - literal_source_tools_makegen_collect_meta_phony_str_return_return_0 [primitive::CallLiteralSource { literal: String("{base} {checks} {fixes}") } tools.makegen.call_literal_source::strhex:7b626173657d207b636865636b737d207b66697865737d]
-    outputs:
-      * return: String (1)
-  - conditional_tools_makegen_tool_phony_names_return_return_0 [primitive::Conditional tools.makegen.conditional::tool_phony_names::return]
-    inputs:
-      * condition: Bool (1)
-      * then: Any (1)
-      * else: Any (1)
-    outputs:
-      * result: String (1)
-  - literal_source_tools_makegen_tool_phony_names_return_cond_rhs_return_0_cond_rhs [primitive::CallLiteralSource { literal: String("") } tools.makegen.call_literal_source::strhex:]
-    outputs:
-      * return_cond_rhs: Any (1)
-  - expr_compute_tools_makegen_tool_phony_names_return_cond_return_0_cond [primitive::ExprCompute { fn_body: LoweredFnBody { stmts: [Let("base", StringInterp([Expr(Ident("t__short_name")), Literal(" "), Expr(Ident("t__short_name")), Literal("-dry")])), Let("extras", Pipe { receiver: Pipe { receiver: Ident("t__extra_targets"), call: Call { name: "map", args: [(None, Lambda { params: ["extra"], body: StringInterp([Expr(Ident("t__short_name")), Literal("-"), Expr(Ident("extra__suffix"))]) })] } }, call: Call { name: "join", args: [(None, Literal(String(" ")))] } }), Return([("result", BinOp { left: Ident("extras"), op: Ne, right: Literal(String("")) })])] }, sibling_fns: {} } tools.makegen.expr_compute::tool_phony_names::return_cond]
-    inputs:
-      * t: DiscoveredTool (1)
-    outputs:
-      * result: Bool (1)
-  - param_source_tools_makegen_tool_phony_names_t [primitive::CallParamSource { callable: "tool_phony_names", param: "t" } tools.makegen.call_param_source::tool_phony_names::t]
-    inputs:
-      * t: DiscoveredTool (1)
-    outputs:
-      * t: DiscoveredTool (1)
-  - literal_source_tools_makegen_tool_phony_names_return_then_return_0_then [primitive::CallLiteralSource { literal: String("{base} {extras}") } tools.makegen.call_literal_source::strhex:7b626173657d207b6578747261737d]
-    outputs:
-      * return_then: String (1)
-  - pipe_tools_makegen_collect_tool_phony_str_return_return_0 [primitive::PipeOp { fn_body: LoweredFnBody { stmts: [Return([("result", Pipe { receiver: Pipe { receiver: Ident("tools"), call: Call { name: "map", args: [(None, Lambda { params: ["t"], body: Call { name: "tool_phony_names", args: [(Some("t"), Ident("t"))] } })] } }, call: Call { name: "join", args: [(None, Literal(String(" ")))] } })])] }, sibling_fns: {"tool_phony_names": LoweredFnBody { stmts: [Let("base", StringInterp([Expr(Ident("t__short_name")), Literal(" "), Expr(Ident("t__short_name")), Literal("-dry")])), Let("extras", Pipe { receiver: Pipe { receiver: Ident("t__extra_targets"), call: Call { name: "map", args: [(None, Lambda { params: ["extra"], body: StringInterp([Expr(Ident("t__short_name")), Literal("-"), Expr(Ident("extra__suffix"))]) })] } }, call: Call { name: "join", args: [(None, Literal(String(" ")))] } }), Expr(IfElse { cond: BinOp { left: Ident("extras"), op: Ne, right: Literal(String("")) }, then_: StringInterp([Expr(Ident("base")), Literal(" "), Expr(Ident("extras"))]), else_: Some(Ident("base")) })] }} } tools.makegen.pipe::collect_tool_phony_str::return]
-    inputs:
-      * tools: List<DiscoveredTool> (1)
-    outputs:
-      * result: String (1)
-  - param_source_tools_makegen_collect_tool_phony_str_tools [primitive::CallParamSource { callable: "collect_tool_phony_str", param: "tools" } tools.makegen.call_param_source::collect_tool_phony_str::tools]
-    inputs:
-      * tools: List<DiscoveredTool> (1)
-    outputs:
-      * tools: List<DiscoveredTool> (1)
-  - literal_source_tools_makegen_render_naming_convention_return_return_0 [primitive::CallLiteralSource { literal: String("# Naming convention:\n#   make <target>      - verify only (CI-safe, fails on issues)\n#   make <target>-fix  - auto-fix then verify (for dev)\n#\n# Dev default:     make test      (ensure generated artifacts, then test)\n# Dev workflow:    make test-fix  (fmt/lint fix + ensure generated artifacts, then test)\n# CI verification: make verify    (check generated artifacts)\n") } tools.makegen.call_literal_source::strhex:23204e616d696e6720636f6e76656e74696f6e3a0a232020206d616b65203c7461726765743e2020202020202d20766572696679206f6e6c79202843492d736166652c206661696c73206f6e20697373756573290a232020206d616b65203c7461726765743e2d66697820202d206175746f2d666978207468656e207665726966792028666f7220646576290a230a23204465762064656661756c743a20202020206d616b65207465737420202020202028656e737572652067656e657261746564206172746966616374732c207468656e2074657374290a232044657620776f726b666c6f773a202020206d616b6520746573742d666978202028666d742f6c696e7420666978202b20656e737572652067656e657261746564206172746966616374732c207468656e2074657374290a2320434920766572696669636174696f6e3a206d616b65207665726966792020202028636865636b2067656e65726174656420617274696661637473290a]
-    outputs:
-      * return: String (1)
   - param_source_tools_makegen_render_makefile_body_workflows [primitive::CallParamSource { callable: "render_makefile_body", param: "workflows" } tools.makegen.call_param_source::render_makefile_body::workflows]
     inputs:
       * workflows: List<CoreWorkflow> (1)
@@ -1011,12 +647,6 @@ Nodes:
       * res_targets: List<ResourceTargetEntry> (1)
     outputs:
       * res_targets: List<ResourceTargetEntry> (1)
-  - literal_source_tools_makegen_render_makefile_body_return_return_0 [primitive::CallLiteralSource { literal: String("{convention}\n{default_goal}\n{phony}\n{core}\n{help}\n{meta}\n{tool}") } tools.makegen.call_literal_source::strhex:7b636f6e76656e74696f6e7d0a7b64656661756c745f676f616c7d0a7b70686f6e797d0a7b636f72657d0a7b68656c707d0a7b6d6574617d0a7b746f6f6c7d]
-    outputs:
-      * return: String (1)
-  - literal_source_tools_makegen_render_header_return_return_0 [primitive::CallLiteralSource { literal: String("# Generated by gunbc-makegen\n# DO NOT EDIT - regenerate with: cargo run -p gunbc-dag --bin gunbc-makegen\n") } tools.makegen.call_literal_source::strhex:232047656e6572617465642062792067756e62632d6d616b6567656e0a2320444f204e4f542045444954202d20726567656e657261746520776974683a20636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d6d616b6567656e0a]
-    outputs:
-      * return: String (1)
   - param_source_tools_makegen_render_makefile_content_workflows [primitive::CallParamSource { callable: "render_makefile_content", param: "workflows" } tools.makegen.call_param_source::render_makefile_content::workflows]
     inputs:
       * workflows: List<CoreWorkflow> (1)
@@ -1037,9 +667,6 @@ Nodes:
       * res_targets: List<ResourceTargetEntry> (1)
     outputs:
       * res_targets: List<ResourceTargetEntry> (1)
-  - literal_source_tools_makegen_render_makefile_content_return_return_0 [primitive::CallLiteralSource { literal: String("{header}{body}") } tools.makegen.call_literal_source::strhex:7b6865616465727d7b626f64797d]
-    outputs:
-      * return: String (1)
   - literal_source_tools_makegen_makegen_workflows_data_0 [primitive::CallLiteralSource { literal: Json(Array [Object {"body": Array [String("@cargo fix --workspace --all-targets --allow-dirty --allow-staged")], "comment": Null, "deps": Array [], "description": String("Preflight: auto-fix rustc warnings before running generators"), "name": String("preflight-fix")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-codegen -- codegen")], "comment": Null, "deps": Array [], "description": String("Ensure CLI entrypoints exist (bootstrap-safe)"), "name": String("ensure-codegen")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo build --workspace --release --bins")], "comment": Null, "deps": Array [String("ensure-codegen")], "description": String("Build workspace binaries once for direct tool execution"), "name": String("build-release-bins")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-pragma"), String("@cargo clippy --all-targets -- -D warnings || (cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings && cargo clippy --all-targets -- -D warnings)")], "comment": Null, "deps": Array [String("ensure-codegen"), String("preflight-fix")], "description": String("Lint upsert: fix if needed, then verify"), "name": String("lint-upsert")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-codegen-dag")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Generate CLI entrypoints (DAG upsert)"), "name": String("codegen")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo build --all-targets")], "comment": String("Full build transaction: codegen \\u{2192} testgen \\u{2192} cargo build"), "deps": Array [String("codegen"), String("testgen")], "description": String("Full build transaction"), "name": String("build")}, Object {"body": Array [String("@cargo clean")], "comment": Null, "deps": Array [], "description": String("Clean build artifacts"), "name": String("clean")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-testgen")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Regenerate tests from DAG structures and MockSpecs"), "name": String("testgen")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-testgen")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Check if generated tests are stale"), "name": String("testgen-check")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-deps -q --release")], "comment": Null, "deps": Array [String("build-release-bins")], "description": String("Ensure deps.toml matches canonical generated configuration"), "name": String("deps-config")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-deps -q --release -- --dry-run")], "comment": Null, "deps": Array [String("build-release-bins")], "description": String("Check if deps.toml is stale"), "name": String("deps-config-check")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-makegen")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Check if generated Makefile is stale"), "name": String("makegen-check")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-bootstrap")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Check if generated bootstrap artifacts are stale"), "name": String("bootstrap-check")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-pragma")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Check if pragma artifacts are stale"), "name": String("pragma-check")}, Object {"body": Array [String("@$(MAKE) deps-config-check"), String("@$(MAKE) makegen-check"), String("@$(MAKE) bootstrap-check"), String("@$(MAKE) testgen-check"), String("@$(MAKE) pragma-check")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Verify generated artifacts match their generators"), "name": String("verify")}, Object {"body": Array [String("@$(MAKE) deps-config"), String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-makegen"), String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-bootstrap"), String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-testgen"), String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-pragma")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Ensure generated artifacts are up to date"), "name": String("verify-fix")}, Object {"body": Array [String("@cargo fmt")], "comment": Null, "deps": Array [], "description": String("fmt-fix: apply formatting (alias for fmt)"), "name": String("fmt-fix")}, Object {"body": Array [String("@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings")], "comment": Null, "deps": Array [String("pragma")], "description": String("lint-fix: auto-fix lint issues where possible"), "name": String("lint-fix")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-ci -q --release")], "comment": Null, "deps": Array [String("ensure-codegen")], "description": String("Run CI via build DAG (typed units, deterministic keying)"), "name": String("ci")}, Object {"body": Array [String("@cargo test --workspace")], "comment": Null, "deps": Array [String("ensure-codegen")], "description": String("Run all tests via cargo test workspace"), "name": String("test-all")}]) } tools.makegen.call_literal_source::jsonhex:5b7b22626f6479223a5b2240636172676f20666978202d2d776f726b7370616365202d2d616c6c2d74617267657473202d2d616c6c6f772d6469727479202d2d616c6c6f772d737461676564225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b5d2c226465736372697074696f6e223a22507265666c696768743a206175746f2d666978207275737463207761726e696e6773206265666f72652072756e6e696e672067656e657261746f7273222c226e616d65223a22707265666c696768742d666978227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d636f646567656e202d2d20636f646567656e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b5d2c226465736372697074696f6e223a22456e7375726520434c4920656e747279706f696e74732065786973742028626f6f7473747261702d7361666529222c226e616d65223a22656e737572652d636f646567656e227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f206275696c64202d2d776f726b7370616365202d2d72656c65617365202d2d62696e73225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b22656e737572652d636f646567656e225d2c226465736372697074696f6e223a224275696c6420776f726b73706163652062696e6172696573206f6e636520666f722064697265637420746f6f6c20657865637574696f6e222c226e616d65223a226275696c642d72656c656173652d62696e73227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d707261676d61222c2240636172676f20636c69707079202d2d616c6c2d74617267657473202d2d202d44207761726e696e6773207c7c2028636172676f20636c69707079202d2d666978202d2d776f726b7370616365202d2d616c6c6f772d6469727479202d2d616c6c6f772d737461676564202d2d202d44207761726e696e677320262620636172676f20636c69707079202d2d616c6c2d74617267657473202d2d202d44207761726e696e677329225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b22656e737572652d636f646567656e222c22707265666c696768742d666978225d2c226465736372697074696f6e223a224c696e74207570736572743a20666978206966206e65656465642c207468656e20766572696679222c226e616d65223a226c696e742d757073657274227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d636f646567656e2d646167225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a2247656e657261746520434c4920656e747279706f696e747320284441472075707365727429222c226e616d65223a22636f646567656e227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f206275696c64202d2d616c6c2d74617267657473225d2c22636f6d6d656e74223a2246756c6c206275696c64207472616e73616374696f6e3a20636f646567656e205c5c757b323139327d207465737467656e205c5c757b323139327d20636172676f206275696c64222c2264657073223a5b22636f646567656e222c227465737467656e225d2c226465736372697074696f6e223a2246756c6c206275696c64207472616e73616374696f6e222c226e616d65223a226275696c64227d2c7b22626f6479223a5b2240636172676f20636c65616e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b5d2c226465736372697074696f6e223a22436c65616e206275696c6420617274696661637473222c226e616d65223a22636c65616e227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d7465737467656e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22526567656e65726174652074657374732066726f6d20444147207374727563747572657320616e64204d6f636b5370656373222c226e616d65223a227465737467656e227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d7465737467656e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22436865636b2069662067656e65726174656420746573747320617265207374616c65222c226e616d65223a227465737467656e2d636865636b227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d64657073202d71202d2d72656c65617365225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226275696c642d72656c656173652d62696e73225d2c226465736372697074696f6e223a22456e7375726520646570732e746f6d6c206d6174636865732063616e6f6e6963616c2067656e65726174656420636f6e66696775726174696f6e222c226e616d65223a22646570732d636f6e666967227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d64657073202d71202d2d72656c65617365202d2d202d2d6472792d72756e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226275696c642d72656c656173652d62696e73225d2c226465736372697074696f6e223a22436865636b20696620646570732e746f6d6c206973207374616c65222c226e616d65223a22646570732d636f6e6669672d636865636b227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d6d616b6567656e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22436865636b2069662067656e657261746564204d616b6566696c65206973207374616c65222c226e616d65223a226d616b6567656e2d636865636b227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d626f6f747374726170225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22436865636b2069662067656e65726174656420626f6f7473747261702061727469666163747320617265207374616c65222c226e616d65223a22626f6f7473747261702d636865636b227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d707261676d61225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22436865636b20696620707261676d612061727469666163747320617265207374616c65222c226e616d65223a22707261676d612d636865636b227d2c7b22626f6479223a5b224024284d414b452920646570732d636f6e6669672d636865636b222c224024284d414b4529206d616b6567656e2d636865636b222c224024284d414b452920626f6f7473747261702d636865636b222c224024284d414b4529207465737467656e2d636865636b222c224024284d414b452920707261676d612d636865636b225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a225665726966792067656e65726174656420617274696661637473206d617463682074686569722067656e657261746f7273222c226e616d65223a22766572696679227d2c7b22626f6479223a5b224024284d414b452920646570732d636f6e666967222c224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d6d616b6567656e222c224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d626f6f747374726170222c224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d7465737467656e222c224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d707261676d61225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22456e737572652067656e657261746564206172746966616374732061726520757020746f2064617465222c226e616d65223a227665726966792d666978227d2c7b22626f6479223a5b2240636172676f20666d74225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b5d2c226465736372697074696f6e223a22666d742d6669783a206170706c7920666f726d617474696e672028616c69617320666f7220666d7429222c226e616d65223a22666d742d666978227d2c7b22626f6479223a5b2240636172676f20636c69707079202d2d666978202d2d776f726b7370616365202d2d616c6c6f772d6469727479202d2d616c6c6f772d737461676564202d2d202d44207761726e696e6773225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b22707261676d61225d2c226465736372697074696f6e223a226c696e742d6669783a206175746f2d666978206c696e742069737375657320776865726520706f737369626c65222c226e616d65223a226c696e742d666978227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d6369202d71202d2d72656c65617365225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b22656e737572652d636f646567656e225d2c226465736372697074696f6e223a2252756e20434920766961206275696c64204441472028747970656420756e6974732c2064657465726d696e6973746963206b6579696e6729222c226e616d65223a226369227d2c7b22626f6479223a5b2240636172676f2074657374202d2d776f726b7370616365225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b22656e737572652d636f646567656e225d2c226465736372697074696f6e223a2252756e20616c6c2074657374732076696120636172676f207465737420776f726b7370616365222c226e616d65223a22746573742d616c6c227d5d]
     outputs:
       * workflows: Any (1)
@@ -1140,30 +767,6 @@ Nodes:
       * audience: String (1)
     outputs:
       * audience: String (1)
-  - literal_source_std_patterns_check_iam_binding_has_role_return_0 [primitive::CallLiteralSource { literal: Bool(false) } std.patterns.call_literal_source::bool:false]
-    outputs:
-      * has_role: Bool (1)
-  - param_source_std_patterns_add_iam_binding_bindings [primitive::CallParamSource { callable: "add_iam_binding", param: "bindings" } std.patterns.call_param_source::add_iam_binding::bindings]
-    inputs:
-      * bindings: Json (1)
-    outputs:
-      * bindings: Json (1)
-  - match_dispatch_std_filesystem_skip_reason_return_return_0 [primitive::MatchDispatch { arms: [LoweredMatchArm { pattern: Variant("Directory", []), guard: None, body: Literal(String("directory")) }, LoweredMatchArm { pattern: Variant("Missing", []), guard: None, body: Literal(String("missing")) }, LoweredMatchArm { pattern: Variant("Other", []), guard: None, body: Literal(String("special file")) }, LoweredMatchArm { pattern: Variant("Symlink", []), guard: None, body: Match { expr: FieldAccess { expr: Ident("entry"), field: "symlink_target" }, arms: [LoweredMatchArm { pattern: Variant("TargetDir", []), guard: None, body: Literal(String("symlink to directory")) }, LoweredMatchArm { pattern: Variant("Broken", []), guard: None, body: Literal(String("broken symlink")) }, LoweredMatchArm { pattern: Variant("TargetFile", []), guard: None, body: Literal(String("binary file (via symlink)")) }] } }, LoweredMatchArm { pattern: Variant("RegularFile", []), guard: None, body: Literal(String("binary file")) }], sibling_fns: {} } std.filesystem.match_dispatch::skip_reason::return]
-    inputs:
-      * scrutinee: Any (1)
-      * entry: FileEntry (1)
-    outputs:
-      * result: String (1)
-  - get_field_std_filesystem_skip_reason_entry_kind_return_0_scrutinee [primitive::GetField { field: "kind" } std.filesystem.get_field::skip_reason::entry::kind]
-    inputs:
-      * entry: FileEntry (1)
-    outputs:
-      * result: Any (1)
-  - param_source_std_filesystem_skip_reason_entry [primitive::CallParamSource { callable: "skip_reason", param: "entry" } std.filesystem.call_param_source::skip_reason::entry]
-    inputs:
-      * entry: FileEntry (1)
-    outputs:
-      * entry: FileEntry (1)
   - acquire_resource_std_resources_Filesystem [callable::Pattern std.resources.resource_lifecycle::acquire::Filesystem]
     outputs:
       * resource_handle: ResourceHandle (1)
@@ -1212,13 +815,8 @@ Edges:
   - execute_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken.response -> parse_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken.response
   - prepare_transport_services_shell_shell_Env_Get.request -> execute_transport_services_shell_shell_Env_Get.request
   - execute_transport_services_shell_shell_Env_Get.response -> parse_transport_services_shell_shell_Env_Get.response
-  - tools.makegen::render_target::cf_if_0.result -> tools.makegen::render_target.__deps
-  - tools.makegen::render_target::cf_match_0.result -> tools.makegen::render_target.__deps
-  - tools.makegen::resolve_resource_target::cf_if_0.result -> tools.makegen::resolve_resource_target.__deps
-  - tools.makegen::resolve_resource_target::cf_match_0.result -> tools.makegen::resolve_resource_target.__deps
   - tools.makegen::resolve_resource_target.return -> tools.makegen::resolve_meta_deps.__deps
   - tools.makegen::resolve_resource_target.return -> tools.makegen::resolve_meta_fix_deps.__deps
-  - tools.makegen::apply_prefix::cf_match_0.result -> tools.makegen::apply_prefix.__deps
   - tools.makegen::render_target.return -> tools.makegen::render_core_targets.__deps
   - tools.makegen::apply_prefix.return -> tools.makegen::render_meta_base.__deps
   - tools.makegen::render_target.return -> tools.makegen::render_meta_base.__deps
@@ -1226,33 +824,23 @@ Edges:
   - tools.makegen::apply_prefix.return -> tools.makegen::render_meta_fix_variant.__deps
   - tools.makegen::render_target.return -> tools.makegen::render_meta_fix_variant.__deps
   - tools.makegen::resolve_meta_fix_deps.return -> tools.makegen::render_meta_fix_variant.__deps
-  - tools.makegen::render_meta_fix_variant::cf_match_0.result -> tools.makegen::render_meta_fix_variant.__deps
   - tools.makegen::render_target.return -> tools.makegen::render_meta_check_variant.__deps
   - tools.makegen::resolve_meta_deps.return -> tools.makegen::render_meta_check_variant.__deps
-  - tools.makegen::render_meta_check_variant::cf_match_0.result -> tools.makegen::render_meta_check_variant.__deps
   - tools.makegen::render_meta_base.return -> tools.makegen::render_meta_target.__deps
   - tools.makegen::render_meta_check_variant.return -> tools.makegen::render_meta_target.__deps
   - tools.makegen::render_meta_fix_variant.return -> tools.makegen::render_meta_target.__deps
-  - tools.makegen::render_meta_target::cf_if_0.result -> tools.makegen::render_meta_target.__deps
-  - tools.makegen::render_meta_target::cf_if_1.result -> tools.makegen::render_meta_target.__deps
   - tools.makegen::render_meta_target.return -> tools.makegen::render_meta_targets.__deps
   - tools.makegen::render_section_header.return -> tools.makegen::render_meta_targets.__deps
-  - tools.makegen::render_help_param::cf_if_0.result -> tools.makegen::render_help_param.__deps
-  - tools.makegen::render_help_param::cf_match_0.result -> tools.makegen::render_help_param.__deps
   - tools.makegen::render_help_param.return -> tools.makegen::render_help_params.__deps
   - tools.makegen::render_target.return -> tools.makegen::render_tool_target.__deps
   - tools.makegen::render_tool_target.return -> tools.makegen::render_tool_targets.__deps
-  - tools.makegen::fix_description::cf_if_0.result -> tools.makegen::fix_description.__deps
   - tools.makegen::fix_description.return -> tools.makegen::render_help_meta_line.__deps
-  - tools.makegen::render_help_meta_line::cf_if_0.result -> tools.makegen::render_help_meta_line.__deps
-  - tools.makegen::render_help_meta_line::cf_if_1.result -> tools.makegen::render_help_meta_line.__deps
   - tools.makegen::render_help_meta_line.return -> tools.makegen::render_help_meta_lines.__deps
   - tools.makegen::render_help_params.return -> tools.makegen::render_help_tool_line.__deps
   - tools.makegen::render_help_tool_line.return -> tools.makegen::render_help_tool_lines.__deps
   - tools.makegen::render_help_core_lines.return -> tools.makegen::render_help_target.__deps
   - tools.makegen::render_help_meta_lines.return -> tools.makegen::render_help_target.__deps
   - tools.makegen::render_help_tool_lines.return -> tools.makegen::render_help_target.__deps
-  - tools.makegen::tool_phony_names::cf_if_0.result -> tools.makegen::tool_phony_names.__deps
   - tools.makegen::tool_phony_names.return -> tools.makegen::collect_tool_phony_str.__deps
   - tools.makegen::collect_core_phony_str.return -> tools.makegen::render_makefile_body.__deps
   - tools.makegen::collect_meta_phony_str.return -> tools.makegen::render_makefile_body.__deps
@@ -1277,6 +865,7 @@ Edges:
   - tools.makegen::render_makefile_content.return -> prepare_write_makegen.content
   - param_source_tools_makegen_makegen_path.path -> prepare_read_makegen.path
   - param_source_tools_makegen_makegen_path.path -> prepare_write_makegen.path
+  - compare_makegen_content.fresh -> tools.makegen::makegen.__out:written
   - std.filesystem::partition_entries.readable -> std.patterns::classify_files.__deps
   - std.patterns::classify_files::cf_for_0.result -> std.patterns::classify_files.__deps
   - std.patterns::github_oidc.token -> std.patterns::acquire_subject_token.__deps
@@ -1289,82 +878,24 @@ Edges:
   - std.patterns::acquire_subject_token.token -> std.patterns::credential_chain.__deps
   - std.patterns::optional_impersonation.token -> std.patterns::credential_chain.__deps
   - std.filesystem::is_text_readable.return -> std.filesystem::partition_entries.__deps
-  - std.filesystem::skip_reason::cf_match_0.result -> std.filesystem::skip_reason.__deps
-  - std.filesystem::skip_reason::cf_match_1.result -> std.filesystem::skip_reason.__deps
-  - literal_source_tools_makegen_render_target_return_return_0.return -> tools.makegen::render_target.__out:return
-  - literal_source_tools_makegen_render_section_header_return_return_0.return -> tools.makegen::render_section_header.__out:return
-  - literal_source_tools_makegen_render_phony_line_return_return_0.return -> tools.makegen::render_phony_line.__out:return
-  - param_source_tools_makegen_resolve_resource_target_res_targets.res_targets -> match_dispatch_tools_makegen_resolve_resource_target_return_return_0.res_targets
-  - param_source_tools_makegen_resolve_resource_target_resource.resource -> match_dispatch_tools_makegen_resolve_resource_target_return_return_0.resource
-  - param_source_tools_makegen_resolve_resource_target_mode.mode -> match_dispatch_tools_makegen_resolve_resource_target_return_return_0.mode
-  - match_dispatch_tools_makegen_resolve_resource_target_return_return_0.result -> tools.makegen::resolve_resource_target.__out:return
   - param_source_tools_makegen_resolve_meta_deps_res_targets.res_targets -> tools.makegen::resolve_resource_target.res_targets
-  - param_source_tools_makegen_resolve_meta_deps_needs.needs -> pipe_tools_makegen_resolve_meta_deps_return_return_0.needs
-  - param_source_tools_makegen_resolve_meta_deps_res_targets.res_targets -> pipe_tools_makegen_resolve_meta_deps_return_return_0.res_targets
-  - pipe_tools_makegen_resolve_meta_deps_return_return_0.result -> tools.makegen::resolve_meta_deps.__out:return
   - literal_source_tools_makegen_resolve_meta_fix_deps_mode_fn_1.mode -> tools.makegen::resolve_resource_target.mode
-  - param_source_tools_makegen_resolve_meta_fix_deps_needs.needs -> pipe_tools_makegen_resolve_meta_fix_deps_return_return_0.needs
-  - param_source_tools_makegen_resolve_meta_fix_deps_res_targets.res_targets -> pipe_tools_makegen_resolve_meta_fix_deps_return_return_0.res_targets
-  - pipe_tools_makegen_resolve_meta_fix_deps_return_return_0.result -> tools.makegen::resolve_meta_fix_deps.__out:return
-  - param_source_tools_makegen_apply_prefix_prefix.prefix -> match_dispatch_tools_makegen_apply_prefix_return_return_0.scrutinee
-  - param_source_tools_makegen_apply_prefix_prefix.prefix -> match_dispatch_tools_makegen_apply_prefix_return_return_0.prefix
-  - param_source_tools_makegen_apply_prefix_cmd.cmd -> match_dispatch_tools_makegen_apply_prefix_return_return_0.cmd
-  - match_dispatch_tools_makegen_apply_prefix_return_return_0.result -> tools.makegen::apply_prefix.__out:return
-  - param_source_tools_makegen_render_core_targets_workflows.workflows -> pipe_tools_makegen_render_core_targets_return_return_0.workflows
-  - pipe_tools_makegen_render_core_targets_return_return_0.result -> tools.makegen::render_core_targets.__out:return
   - param_source_tools_makegen_render_meta_base_res_targets.res_targets -> tools.makegen::resolve_meta_deps.res_targets
   - tools.makegen::resolve_meta_deps.return -> tools.makegen::render_target.deps
   - literal_source_tools_makegen_render_meta_base_comment_fn_3.comment -> tools.makegen::render_target.comment
-  - tools.makegen::render_target.return -> tools.makegen::render_meta_base.__out:return
   - param_source_tools_makegen_render_meta_fix_variant_res_targets.res_targets -> tools.makegen::resolve_meta_fix_deps.res_targets
   - literal_source_tools_makegen_render_meta_fix_variant_name_fn_0.name -> tools.makegen::render_target.name
-  - tools.makegen::render_target.return -> tools.makegen::render_meta_fix_variant.__out:return
   - param_source_tools_makegen_render_meta_target_meta.meta -> tools.makegen::render_meta_base.meta
   - param_source_tools_makegen_render_meta_target_res_targets.res_targets -> tools.makegen::render_meta_base.res_targets
   - param_source_tools_makegen_render_meta_target_meta.meta -> tools.makegen::render_meta_fix_variant.meta
   - param_source_tools_makegen_render_meta_target_res_targets.res_targets -> tools.makegen::render_meta_fix_variant.res_targets
   - param_source_tools_makegen_render_meta_target_meta.meta -> tools.makegen::render_meta_check_variant.meta
   - param_source_tools_makegen_render_meta_target_res_targets.res_targets -> tools.makegen::render_meta_check_variant.res_targets
-  - literal_source_tools_makegen_render_meta_target_return_return_0.return -> tools.makegen::render_meta_target.__out:return
   - literal_source_tools_makegen_render_meta_targets_title_fn_0.title -> tools.makegen::render_section_header.title
   - param_source_tools_makegen_render_meta_targets_res_targets.res_targets -> tools.makegen::render_meta_target.res_targets
-  - literal_source_tools_makegen_render_meta_targets_return_return_0.return -> tools.makegen::render_meta_targets.__out:return
-  - param_source_tools_makegen_render_help_param_p.p -> get_field_tools_makegen_render_help_param_p_default_return_0_scrutinee.p
-  - get_field_tools_makegen_render_help_param_p_default_return_0_scrutinee.result -> match_dispatch_tools_makegen_render_help_param_return_return_0.scrutinee
-  - param_source_tools_makegen_render_help_param_p.p -> match_dispatch_tools_makegen_render_help_param_return_return_0.p
-  - match_dispatch_tools_makegen_render_help_param_return_return_0.result -> tools.makegen::render_help_param.__out:return
-  - param_source_tools_makegen_render_help_params_params.params -> pipe_tools_makegen_render_help_params_return_return_0.params
-  - pipe_tools_makegen_render_help_params_return_return_0.result -> tools.makegen::render_help_params.__out:return
-  - literal_source_tools_makegen_render_tool_target_return_return_0.return -> tools.makegen::render_tool_target.__out:return
-  - param_source_tools_makegen_render_tool_targets_tools.tools -> pipe_tools_makegen_render_tool_targets_return_return_0.tools
-  - pipe_tools_makegen_render_tool_targets_return_return_0.result -> tools.makegen::render_tool_targets.__out:return
-  - param_source_tools_makegen_render_help_core_lines_workflows.workflows -> pipe_tools_makegen_render_help_core_lines_return_return_0.workflows
-  - pipe_tools_makegen_render_help_core_lines_return_return_0.result -> tools.makegen::render_help_core_lines.__out:return
-  - param_source_tools_makegen_fix_description_prereqs.prereqs -> expr_compute_tools_makegen_fix_description_return_cond_return_0_cond.prereqs
-  - expr_compute_tools_makegen_fix_description_return_cond_return_0_cond.result -> conditional_tools_makegen_fix_description_return_return_0.condition
-  - literal_source_tools_makegen_fix_description_return_then_return_0_then.return_then -> conditional_tools_makegen_fix_description_return_return_0.then
-  - literal_source_tools_makegen_fix_description_return_else_return_0_else.return_else -> conditional_tools_makegen_fix_description_return_return_0.else
-  - conditional_tools_makegen_fix_description_return_return_0.result -> tools.makegen::fix_description.__out:return
-  - literal_source_tools_makegen_render_help_meta_line_return_return_0.return -> tools.makegen::render_help_meta_line.__out:return
-  - param_source_tools_makegen_render_help_meta_lines_metas.metas -> pipe_tools_makegen_render_help_meta_lines_return_return_0.metas
-  - pipe_tools_makegen_render_help_meta_lines_return_return_0.result -> tools.makegen::render_help_meta_lines.__out:return
-  - literal_source_tools_makegen_render_help_tool_line_return_return_0.return -> tools.makegen::render_help_tool_line.__out:return
-  - param_source_tools_makegen_render_help_tool_lines_tools.tools -> pipe_tools_makegen_render_help_tool_lines_return_return_0.tools
-  - pipe_tools_makegen_render_help_tool_lines_return_return_0.result -> tools.makegen::render_help_tool_lines.__out:return
   - param_source_tools_makegen_render_help_target_workflows.workflows -> tools.makegen::render_help_core_lines.workflows
   - param_source_tools_makegen_render_help_target_metas.metas -> tools.makegen::render_help_meta_lines.metas
   - param_source_tools_makegen_render_help_target_tools.tools -> tools.makegen::render_help_tool_lines.tools
-  - literal_source_tools_makegen_render_help_target_return_return_0.return -> tools.makegen::render_help_target.__out:return
-  - param_source_tools_makegen_collect_core_phony_str_workflows.workflows -> pipe_tools_makegen_collect_core_phony_str_return_return_0.workflows
-  - pipe_tools_makegen_collect_core_phony_str_return_return_0.result -> tools.makegen::collect_core_phony_str.__out:return
-  - literal_source_tools_makegen_collect_meta_phony_str_return_return_0.return -> tools.makegen::collect_meta_phony_str.__out:return
-  - param_source_tools_makegen_tool_phony_names_t.t -> expr_compute_tools_makegen_tool_phony_names_return_cond_return_0_cond.t
-  - expr_compute_tools_makegen_tool_phony_names_return_cond_return_0_cond.result -> conditional_tools_makegen_tool_phony_names_return_return_0.condition
-  - literal_source_tools_makegen_tool_phony_names_return_then_return_0_then.return_then -> conditional_tools_makegen_tool_phony_names_return_return_0.then
-  - conditional_tools_makegen_tool_phony_names_return_return_0.result -> tools.makegen::tool_phony_names.__out:return
-  - param_source_tools_makegen_collect_tool_phony_str_tools.tools -> pipe_tools_makegen_collect_tool_phony_str_return_return_0.tools
-  - pipe_tools_makegen_collect_tool_phony_str_return_return_0.result -> tools.makegen::collect_tool_phony_str.__out:return
-  - literal_source_tools_makegen_render_naming_convention_return_return_0.return -> tools.makegen::render_naming_convention.__out:return
   - param_source_tools_makegen_render_makefile_body_workflows.workflows -> tools.makegen::collect_core_phony_str.workflows
   - param_source_tools_makegen_render_makefile_body_metas.metas -> tools.makegen::collect_meta_phony_str.metas
   - param_source_tools_makegen_render_makefile_body_tools.tools -> tools.makegen::collect_tool_phony_str.tools
@@ -1375,20 +906,16 @@ Edges:
   - param_source_tools_makegen_render_makefile_body_metas.metas -> tools.makegen::render_meta_targets.metas
   - param_source_tools_makegen_render_makefile_body_res_targets.res_targets -> tools.makegen::render_meta_targets.res_targets
   - param_source_tools_makegen_render_makefile_body_tools.tools -> tools.makegen::render_tool_targets.tools
-  - literal_source_tools_makegen_render_makefile_body_return_return_0.return -> tools.makegen::render_makefile_body.__out:return
-  - literal_source_tools_makegen_render_header_return_return_0.return -> tools.makegen::render_header.__out:return
   - param_source_tools_makegen_render_makefile_content_workflows.workflows -> tools.makegen::render_makefile_body.workflows
   - param_source_tools_makegen_render_makefile_content_metas.metas -> tools.makegen::render_makefile_body.metas
   - param_source_tools_makegen_render_makefile_content_tools.tools -> tools.makegen::render_makefile_body.tools
   - param_source_tools_makegen_render_makefile_content_res_targets.res_targets -> tools.makegen::render_makefile_body.res_targets
-  - literal_source_tools_makegen_render_makefile_content_return_return_0.return -> tools.makegen::render_makefile_content.__out:return
   - literal_source_tools_makegen_makegen_workflows_data_0.workflows -> tools.makegen::render_makefile_content.workflows
   - literal_source_tools_makegen_makegen_metas_data_1.metas -> tools.makegen::render_makefile_content.metas
   - tools.makegen::discover_tools.return -> tools.makegen::render_makefile_content.tools
   - literal_source_tools_makegen_makegen_res_targets_data_3.res_targets -> tools.makegen::render_makefile_content.res_targets
   - tools.makegen::render_makefile_content.return -> std.patterns::content_upsert.content
   - param_source_tools_makegen_makegen_path.path -> std.patterns::content_upsert.path
-  - std.patterns::content_upsert.written -> tools.makegen::makegen.__out:written
   - std.patterns::classify_files::cf_for_0.result -> std.filesystem::partition_entries.entries
   - param_source_std_patterns_classify_files_paths.paths -> std.patterns::classify_files::cf_for_0.items
   - std.filesystem::partition_entries.readable -> pipe_std_patterns_classify_files_readable_return_0.partitioned__readable
@@ -1426,12 +953,6 @@ Edges:
   - parse_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken.subject_token -> std.patterns::metadata_oidc.__deps
   - param_source_std_patterns_metadata_oidc_audience.audience -> prepare_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken.audience
   - parse_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken.subject_token -> std.patterns::metadata_oidc.__out:token
-  - literal_source_std_patterns_check_iam_binding_has_role_return_0.has_role -> std.patterns::check_iam_binding.__out:has_role
-  - param_source_std_patterns_add_iam_binding_bindings.bindings -> std.patterns::add_iam_binding.__out:updated_bindings
-  - param_source_std_filesystem_skip_reason_entry.entry -> get_field_std_filesystem_skip_reason_entry_kind_return_0_scrutinee.entry
-  - get_field_std_filesystem_skip_reason_entry_kind_return_0_scrutinee.result -> match_dispatch_std_filesystem_skip_reason_return_return_0.scrutinee
-  - param_source_std_filesystem_skip_reason_entry.entry -> match_dispatch_std_filesystem_skip_reason_return_return_0.entry
-  - match_dispatch_std_filesystem_skip_reason_return_return_0.result -> std.filesystem::skip_reason.__out:return
   - acquire_resource_std_resources_Filesystem.resource_handle -> release_resource_std_resources_Filesystem.resource_handle
   - acquire_resource_std_resources_Network.resource_handle -> release_resource_std_resources_Network.resource_handle
   - acquire_resource_std_resources_Clock.resource_handle -> release_resource_std_resources_Clock.resource_handle
@@ -1458,4 +979,25 @@ Edges:
   - std.patterns::iam_preflight_check.ok -> release_resource_std_resources_Network.resource_handle
   - std.patterns::credential_chain.token -> provide_resource_std_patterns_credential_chain_auth.trigger
   - provide_resource_std_patterns_credential_chain_auth.auth -> release_resource_std_resources_AuthContext.resource_handle
+  - param_source_tools_makegen_render_meta_base_res_targets.res_targets -> param_source_tools_makegen_resolve_meta_deps_res_targets.res_targets
+  - param_source_tools_makegen_render_meta_target_res_targets.res_targets -> param_source_tools_makegen_render_meta_base_res_targets.res_targets
+  - param_source_tools_makegen_render_meta_target_res_targets.res_targets -> param_source_tools_makegen_render_meta_fix_variant_res_targets.res_targets
+  - param_source_tools_makegen_render_meta_targets_res_targets.res_targets -> param_source_tools_makegen_render_meta_target_res_targets.res_targets
+  - param_source_tools_makegen_render_makefile_body_res_targets.res_targets -> param_source_tools_makegen_render_meta_targets_res_targets.res_targets
+  - param_source_tools_makegen_render_makefile_body_workflows.workflows -> param_source_tools_makegen_render_help_target_workflows.workflows
+  - param_source_tools_makegen_render_makefile_body_metas.metas -> param_source_tools_makegen_render_help_target_metas.metas
+  - param_source_tools_makegen_render_makefile_body_tools.tools -> param_source_tools_makegen_render_help_target_tools.tools
+  - param_source_tools_makegen_render_makefile_content_workflows.workflows -> param_source_tools_makegen_render_makefile_body_workflows.workflows
+  - param_source_tools_makegen_render_makefile_content_metas.metas -> param_source_tools_makegen_render_makefile_body_metas.metas
+  - param_source_tools_makegen_render_makefile_content_tools.tools -> param_source_tools_makegen_render_makefile_body_tools.tools
+  - param_source_tools_makegen_render_makefile_content_res_targets.res_targets -> param_source_tools_makegen_render_makefile_body_res_targets.res_targets
+  - literal_source_tools_makegen_makegen_workflows_data_0.workflows -> param_source_tools_makegen_render_makefile_content_workflows.workflows
+  - literal_source_tools_makegen_makegen_metas_data_1.metas -> param_source_tools_makegen_render_makefile_content_metas.metas
+  - tools.makegen::discover_tools.return -> param_source_tools_makegen_render_makefile_content_tools.tools
+  - literal_source_tools_makegen_makegen_res_targets_data_3.res_targets -> param_source_tools_makegen_render_makefile_content_res_targets.res_targets
+  - param_source_std_patterns_credential_chain_audience.audience -> param_source_std_patterns_acquire_subject_token_audience.audience
+  - param_source_tools_makegen_makegen_path.path -> param_source_std_patterns_content_upsert_path.path
+  - tools.makegen::render_makefile_content.return -> param_source_std_patterns_content_upsert_content.content
+  - param_source_std_patterns_acquire_subject_token_audience.audience -> param_source_std_patterns_github_oidc_audience.audience
+  - param_source_std_patterns_acquire_subject_token_audience.audience -> param_source_std_patterns_metadata_oidc_audience.audience
 

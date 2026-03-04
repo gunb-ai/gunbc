@@ -2214,12 +2214,25 @@ fn lower_typed_project_impl(
                     );
                     builder.add_node(node);
                 }
-                TypedItemSignature::Pattern(_) => {
-                    // Patterns are templates expanded inline by the caller.
-                    // They don't get callable nodes — the expansion machinery
-                    // (expand_content_upsert_patterns, expand_non_generic_pattern_calls)
-                    // reads pattern definitions from the AST directly.
-                    continue;
+                TypedItemSignature::Pattern(callable) => {
+                    if !include_callables {
+                        continue;
+                    }
+                    let (node, endpoint) = lower_callable(
+                        callable,
+                        &module_name,
+                        CallableKind::Pattern,
+                        false,
+                        None,
+                    );
+                    register_endpoint(
+                        &mut endpoints_by_full,
+                        &mut endpoints_by_name,
+                        &module_name,
+                        &callable.name,
+                        endpoint,
+                    );
+                    builder.add_node(node);
                 }
                 TypedItemSignature::ExternFunc(callable) => {
                     if !include_callables {
