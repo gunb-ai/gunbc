@@ -45,7 +45,7 @@ pub enum Computation {
     },
     /// Collection operation: apply an operation to each element of a list.
     Collection {
-        kind: CollectionOpKind,
+        family: EmitCollectionFamily,
         element_type: String,
     },
 }
@@ -251,19 +251,6 @@ pub struct ServiceCallMetadata {
     pub config: Vec<(String, String)>,
 }
 
-/// Collection operation variants.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CollectionOpKind {
-    /// Apply a body to each element.
-    Map,
-    /// Filter elements.
-    Filter,
-    /// Reduce elements to a single value.
-    Fold,
-    /// Sort elements.
-    Sort,
-}
-
 // ===========================================================================
 // Classification (A1.3)
 // ===========================================================================
@@ -271,6 +258,7 @@ pub enum CollectionOpKind {
 use daglang_lower::{
     LoweredOp, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind, ServiceTransportClass,
 };
+use daglang_syntax::ast::EmitCollectionFamily;
 use gunbc_ir::node::{Node, NodeBody};
 use gunbc_ir::Port;
 
@@ -497,15 +485,8 @@ fn classify_collection(
         .map(|p| p.abstract_type.clone())
         .unwrap_or_else(|| "Unknown".to_string());
 
-    let mapped_kind = match kind.emit_family() {
-        daglang_syntax::ast::EmitCollectionFamily::Map => CollectionOpKind::Map,
-        daglang_syntax::ast::EmitCollectionFamily::Filter => CollectionOpKind::Filter,
-        daglang_syntax::ast::EmitCollectionFamily::Fold => CollectionOpKind::Fold,
-        daglang_syntax::ast::EmitCollectionFamily::Sort => CollectionOpKind::Sort,
-    };
-
     Ok(Computation::Collection {
-        kind: mapped_kind,
+        family: kind.emit_family(),
         element_type,
     })
 }
@@ -1293,7 +1274,7 @@ mod tests {
         assert!(matches!(
             comp,
             Computation::Collection {
-                kind: CollectionOpKind::Map,
+                family: EmitCollectionFamily::Map,
                 ..
             }
         ));
@@ -1315,7 +1296,7 @@ mod tests {
         assert!(matches!(
             comp,
             Computation::Collection {
-                kind: CollectionOpKind::Filter,
+                family: EmitCollectionFamily::Filter,
                 ..
             }
         ));
@@ -1337,7 +1318,7 @@ mod tests {
         assert!(matches!(
             comp,
             Computation::Collection {
-                kind: CollectionOpKind::Fold,
+                family: EmitCollectionFamily::Fold,
                 ..
             }
         ));
@@ -1359,7 +1340,7 @@ mod tests {
         assert!(matches!(
             comp,
             Computation::Collection {
-                kind: CollectionOpKind::Sort,
+                family: EmitCollectionFamily::Sort,
                 ..
             }
         ));

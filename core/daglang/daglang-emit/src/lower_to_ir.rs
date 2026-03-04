@@ -9,8 +9,9 @@
 use std::collections::HashMap;
 
 use crate::computation::{
-    AggregateKind, CollectionOpKind, Computation, JsonOpKind, PureBody, StringOpKind, TransportKind,
+    AggregateKind, Computation, JsonOpKind, PureBody, StringOpKind, TransportKind,
 };
+use daglang_syntax::ast::EmitCollectionFamily;
 use crate::plan::{EmitPlan, EmitStep, InputBinding};
 use gunbc_ir::code_ir::{CallObligation, Expr, FnDef, Item, SourceFile, Stmt};
 use gunbc_ir::ValueExpr;
@@ -122,8 +123,8 @@ fn lower_step(
             handle_type,
             handle_value,
         } => lower_resource_step(step_index, handle_type, handle_value, step, output_vars),
-        Computation::Collection { kind, .. } => {
-            lower_collection_step(step_index, kind, &ordered_inputs, step, output_vars)
+        Computation::Collection { family, .. } => {
+            lower_collection_step(step_index, family, &ordered_inputs, step, output_vars)
         }
     }
 }
@@ -376,12 +377,12 @@ fn lower_resource_step(
 
 fn lower_collection_step(
     step_index: usize,
-    kind: &CollectionOpKind,
+    family: &EmitCollectionFamily,
     ordered_inputs: &[Expr],
     step: &EmitStep,
     output_vars: &HashMap<(usize, String), String>,
 ) -> Vec<Stmt> {
-    let func = format!("collection_{}", collection_kind_name(kind));
+    let func = format!("collection_{}", collection_family_name(family));
     assign_outputs(
         step_index,
         step,
@@ -500,12 +501,12 @@ fn aggregate_name(kind: &AggregateKind) -> &'static str {
     }
 }
 
-fn collection_kind_name(kind: &CollectionOpKind) -> &'static str {
-    match kind {
-        CollectionOpKind::Map => "map",
-        CollectionOpKind::Filter => "filter",
-        CollectionOpKind::Fold => "fold",
-        CollectionOpKind::Sort => "sort",
+fn collection_family_name(family: &EmitCollectionFamily) -> &'static str {
+    match family {
+        EmitCollectionFamily::Map => "map",
+        EmitCollectionFamily::Filter => "filter",
+        EmitCollectionFamily::Fold => "fold",
+        EmitCollectionFamily::Sort => "sort",
     }
 }
 

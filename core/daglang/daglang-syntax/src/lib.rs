@@ -615,6 +615,9 @@ pub mod ast {
         Any,
         All,
         Contains,
+        // Collection -> Collection (continued)
+        Split,
+        Zip,
         // String methods
         StartsWith,
         EndsWith,
@@ -646,6 +649,8 @@ pub mod ast {
                 Self::Any => "any",
                 Self::All => "all",
                 Self::Contains => "contains",
+                Self::Split => "split",
+                Self::Zip => "zip",
                 Self::StartsWith => "starts_with",
                 Self::EndsWith => "ends_with",
                 Self::Repeat => "repeat",
@@ -685,6 +690,8 @@ pub mod ast {
                 "any" => Ok(Self::Any),
                 "all" => Ok(Self::All),
                 "contains" => Ok(Self::Contains),
+                "split" => Ok(Self::Split),
+                "zip" => Ok(Self::Zip),
                 "starts_with" => Ok(Self::StartsWith),
                 "ends_with" => Ok(Self::EndsWith),
                 "repeat" => Ok(Self::Repeat),
@@ -761,6 +768,10 @@ pub mod ast {
             output_type: "Bool", collection_op: Some("all"), emit_family: Some(EmitCollectionFamily::Fold) },
         PipeMethodDef { method: PipeMethod::Contains, name: "contains", arity: 1, param_names: &["item"],
             output_type: "Bool", collection_op: Some("contains"), emit_family: Some(EmitCollectionFamily::Filter) },
+        PipeMethodDef { method: PipeMethod::Split, name: "split", arity: 1, param_names: &["delimiter"],
+            output_type: "List", collection_op: Some("split"), emit_family: Some(EmitCollectionFamily::Map) },
+        PipeMethodDef { method: PipeMethod::Zip, name: "zip", arity: 1, param_names: &["other"],
+            output_type: "List", collection_op: Some("zip"), emit_family: Some(EmitCollectionFamily::Map) },
         // String methods
         PipeMethodDef { method: PipeMethod::StartsWith, name: "starts_with", arity: 1, param_names: &["prefix"],
             output_type: "Bool", collection_op: None, emit_family: None },

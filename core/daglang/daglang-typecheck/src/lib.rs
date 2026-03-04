@@ -1396,22 +1396,6 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
             },
         ),
         (
-            "split".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["delimiter".to_string()]),
-                output: ValueType::Named("List".to_string()),
-            },
-        ),
-        (
-            "zip".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["other".to_string()]),
-                output: ValueType::Named("List".to_string()),
-            },
-        ),
-        (
             "render_cytoscape_html".to_string(),
             CallableContract {
                 arity: 1,
