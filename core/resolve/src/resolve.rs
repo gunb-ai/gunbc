@@ -677,12 +677,10 @@ impl Executable for ConditionalOp {
         }
         let result = if daglang_lower::eval::value_truthy(&condition) {
             require_input_port(&inputs, "then", "Conditional")?.clone()
+        } else if self.has_else {
+            require_input_port(&inputs, "else", "Conditional")?.clone()
         } else {
-            if self.has_else {
-                require_input_port(&inputs, "else", "Conditional")?.clone()
-            } else {
-                Value::Skipped
-            }
+            Value::Skipped
         };
         OutputMap::new().value(&self.output_port, result).ok()
     }
