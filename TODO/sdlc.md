@@ -7,6 +7,11 @@
 - `docs/design/sdlc/e2e-gap-analysis.md` — gap resolution (all resolved via DSL)
 - `docs/design/sdlc/production-gap-analysis.md` — activation blockers
 
+> **Lesson**: Prove compilation before building infrastructure. The SDLC pipeline was built 3 times
+> (Rust binary → DSL pipeline → deleted → rebuilt as 20 .dag files) with elaborate cloud infra
+> (claims, CAS, GCS, Cloud Run) layered on top — but zero compilation proof ever existed.
+> **Phase 0 is a hard gate.** No Phase 1 work until S-4 passes in CI.
+
 ---
 
 ## Current State
@@ -45,12 +50,15 @@ The pipeline is the most ambitious .dag artifact in the repo but has **zero auto
 
 **Goal**: Get `sdlc_worker.dag` through the compiler with zero errors. This is the prerequisite for everything else.
 
+> **HARD GATE**: Phase 1 work MUST NOT start until S-4 is green in CI. Building features on
+> unproven compilation is the #1 source of wasted work in this project's history.
+
 | # | ID | What | Acceptance Criteria | Size | Status |
 |---|-----|------|---------------------|------|--------|
-| 1 | S-1 | **Fix import bugs.** Wrong import in `sdlc_worker.dag:34` (`determine_stage` from wrong module). Wrong service names in `pipelines/sdlc.dag` (`Cargo` → `Build`, dotted `git.Core` selector). | All SDLC .dag files parse without import errors. | S | Open |
-| 2 | S-2 | **Fix missing type imports in `stub_providers.dag`.** Uses `TrackedIssue`, `IssueEvent`, `Signal`, `SignalType` without imports. | `stub_providers.dag` parses and typechecks. | S | Open |
-| 3 | S-3 | **Extract duplicate type definitions.** `CapabilityBehaviorContract` and `CapabilityFailureContract` duplicated across interface files. Extract to shared module. | Zero duplicate definitions. | S | Open |
-| 4 | S-4 | **Add Rust compilation test.** `builds_sdlc_worker_dsl_graph()` and `builds_sdlc_stages_dsl_graph()` in `compile_commands.rs`. | SDLC .dag files compile through full pipeline (parse → typecheck → lower). | M | Open |
+| 1 | S-1 | **Fix import bugs.** Wrong import in `sdlc_worker.dag:34` (`determine_stage` from wrong module). Wrong service names in `pipelines/sdlc.dag` (`Cargo` → `Build`, dotted `git.Core` selector). | `daglang check dsl/pipelines/sdlc_worker.dag` and `daglang check dsl/pipelines/sdlc.dag` exit 0 with zero import errors. | S | Open |
+| 2 | S-2 | **Fix missing type imports in `stub_providers.dag`.** Uses `TrackedIssue`, `IssueEvent`, `Signal`, `SignalType` without imports. | `daglang check dsl/profiles/stub_providers.dag` exits 0. All referenced types have explicit imports. | S | Open |
+| 3 | S-3 | **Extract duplicate type definitions.** `CapabilityBehaviorContract` and `CapabilityFailureContract` duplicated across interface files. Extract to shared module. | `grep -c 'type CapabilityBehaviorContract' dsl/interfaces/` returns 1. `grep -c 'type CapabilityFailureContract' dsl/interfaces/` returns 1. Shared module exists (e.g., `dsl/interfaces/shared.dag`). | S | Open |
+| 4 | S-4 | **Add Rust compilation test.** `builds_sdlc_worker_dsl_graph()` and `builds_sdlc_stages_dsl_graph()` in `compile_commands.rs`. | Two new `#[test]` functions in `gunbc-dag/tests/compile_commands.rs`. Both call `build_dsl_graph()` for SDLC modules and assert `Ok`. `cargo test -p gunbc-dag -- builds_sdlc` passes. **This is the gate for Phase 1.** | M | Open |
 
 ---
 
@@ -58,12 +66,14 @@ The pipeline is the most ambitious .dag artifact in the repo but has **zero auto
 
 **Goal**: `gunbc sdlc --profile unit_test` works end-to-end with stub providers.
 
+> **Prerequisite**: S-4 is green. Do not start until compilation is proven.
+
 | # | ID | What | Acceptance Criteria | Size | Status |
 |---|-----|------|---------------------|------|--------|
-| 5 | S-5 | **Add SDLC to workflow catalog.** Register in `config/workflow_catalog.dag` so `gunbc sdlc` command works. | `gunbc sdlc --help` shows SDLC options. | S | Open |
-| 6 | S-6 | **Wire profile binding.** Verify `unit_test` profile threads stub providers correctly through resolver. | Compilation with `--profile unit_test` produces executable DAG. | M | Open |
-| 7 | S-7 | **Dry-run execution.** `gunbc sdlc --profile unit_test --dry-run` completes all 11 stages with mock data. | All stages execute, outcomes recorded, no runtime errors. | L | Open |
-| 8 | S-8 | **Fix dispatch runtime.** `sdlc_dispatch_runtime.dag` returns static records — wire to real stage handlers in `sdlc_stages.dag`. | Dispatch routes to real handler functions. | M | Open |
+| 5 | S-5 | **Add SDLC to workflow catalog.** Register in `config/workflow_catalog.dag` so `gunbc sdlc` command works. | `gunbc sdlc --help` shows SDLC options. Entry exists in `dsl/config/workflow_catalog.dag`. | S | Open |
+| 6 | S-6 | **Wire profile binding.** Verify `unit_test` profile threads stub providers correctly through resolver. | `build_dsl_graph_with_profile("pipelines.sdlc_worker", "unit_test")` succeeds in a Rust test. All 7 interface bindings resolve to stub impls. | M | Open |
+| 7 | S-7 | **Dry-run execution.** `gunbc sdlc --profile unit_test --dry-run` completes all 11 stages with mock data. | Command exits 0. Output contains stage names for all 11 stages. No runtime panics or unresolved port errors. | L | Open |
+| 8 | S-8 | **Fix dispatch runtime.** `sdlc_dispatch_runtime.dag` returns static records — wire to real stage handlers in `sdlc_stages.dag`. | `sdlc_dispatch_runtime.dag` imports and calls functions from `sdlc_stages.dag`. No static placeholder returns. `daglang check` passes on the file. | M | Open |
 
 ---
 
@@ -71,11 +81,13 @@ The pipeline is the most ambitious .dag artifact in the repo but has **zero auto
 
 **Goal**: `gunbc sdlc --profile local` processes a real GitHub issue through design stage.
 
+> **Prerequisite**: S-7 passes (dry-run completes all stages).
+
 | # | ID | What | Acceptance Criteria | Size | Status |
 |---|-----|------|---------------------|------|--------|
-| 9 | S-9 | **Verify GitHub provider.** `IssueProvider` operations work against real GitHub API (discover, get, create, comment, set_labels). | GitHub operations return expected data. | M | Open |
-| 10 | S-10 | **Verify credential wiring.** `GITHUB_TOKEN` flows through `local` profile credential provider to service operations. | Auth token reaches GitHub REST calls. | M | Open |
-| 11 | S-11 | **End-to-end local run.** Process one issue from Idea → Design: discover issues, claim, call LLM, post comment, advance labels. | Issue has design comment and `sdlc:design-review` label. | L | Open |
+| 9 | S-9 | **Verify GitHub provider.** `IssueProvider` operations work against real GitHub API (discover, get, create, comment, set_labels). | Integration test (gated by `GITHUB_TOKEN` env var) exercises all 7 IssueProvider operations. Each returns expected data shape. | M | Open |
+| 10 | S-10 | **Verify credential wiring.** `GITHUB_TOKEN` flows through `local` profile credential provider to service operations. | `build_dsl_graph_with_profile("pipelines.sdlc_worker", "local")` succeeds. Running with `GITHUB_TOKEN` set produces authenticated API calls (not 401). | M | Open |
+| 11 | S-11 | **End-to-end local run.** Process one issue from Idea → Design: discover issues, claim, call LLM, post comment, advance labels. | Target issue has: (1) design comment from LLM, (2) `sdlc:design-review` label. Command exits 0. Outcome ledger has entry for the stage run. | L | Open |
 
 ---
 
@@ -83,23 +95,27 @@ The pipeline is the most ambitious .dag artifact in the repo but has **zero auto
 
 **Goal**: Complete pipeline: Idea → Design → DesignReview → Accepted → Implementing → CodeReview → Testing → Done.
 
+> **Prerequisite**: S-11 passes (one stage works end-to-end locally).
+
 | # | ID | What | Acceptance Criteria | Size | Status |
 |---|-----|------|---------------------|------|--------|
-| 12 | S-12 | **Agent provider wiring.** `codex.AgentProvider` spawns real agent for implementation stage. | Agent creates branch with implementation. | L | Open |
-| 13 | S-13 | **Code review wiring.** PR diff retrieval + LLM review produces approval/rejection. | Review comment posted on PR. | M | Open |
-| 14 | S-14 | **Testing stage wiring.** `cargo test` + `cargo clippy` execution with result parsing. | Test results determine stage outcome. | M | Open |
-| 15 | S-15 | **Multi-stage progression.** Issue moves through all stages without manual intervention. | Issue reaches `Done` with artifacts at each stage. | XL | Open |
+| 12 | S-12 | **Agent provider wiring.** `codex.AgentProvider` spawns real agent for implementation stage. | Agent creates branch with implementation. Branch exists on remote. PR created. | L | Open |
+| 13 | S-13 | **Code review wiring.** PR diff retrieval + LLM review produces approval/rejection. | Review comment posted on PR with structured findings. Label updated based on approval/rejection. | M | Open |
+| 14 | S-14 | **Testing stage wiring.** `cargo test` + `cargo clippy` execution with result parsing. | Test results parsed into structured outcome. Pass → advance to Done. Fail → record failure reason. | M | Open |
+| 15 | S-15 | **Multi-stage progression.** Issue moves through all stages without manual intervention. | Issue starts at `sdlc:idea`, ends at `sdlc:done`. Each stage has artifacts in outcome ledger. No manual label changes required. | XL | Open |
 
 ---
 
 ## Phase 4: Production (cloud_run profile)
 
+> **Prerequisite**: S-15 passes (full pipeline works locally).
+
 | # | ID | What | Acceptance Criteria | Size | Status |
 |---|-----|------|---------------------|------|--------|
-| 16 | S-16 | **GCS provider verification.** Claims, outcomes, artifacts stored in GCS with generation-based CAS. | Multi-worker safe operations. | L | Open |
-| 17 | S-17 | **Cloud Run deployment.** Deploy worker to Cloud Run via `deploy.dag` infrastructure. | Worker runs as Cloud Run service. | L | Open |
-| 18 | S-18 | **Signal delivery.** Pub/Sub signals trigger worker execution. | Worker responds to incoming signals. | M | Open |
-| 19 | S-19 | **Multi-worker fleet.** Multiple workers process different issues concurrently without claim conflicts. | CAS prevents double-processing. | L | Open |
+| 16 | S-16 | **GCS provider verification.** Claims, outcomes, artifacts stored in GCS with generation-based CAS. | Integration test (gated by GCP credentials) exercises claim/release/outcome operations against real GCS. Generation-based CAS prevents double-writes. | L | Open |
+| 17 | S-17 | **Cloud Run deployment.** Deploy worker to Cloud Run via `deploy.dag` infrastructure. | `gcloud run services describe gunbc-sdlc-worker` returns running service. Health check endpoint returns 200. | L | Open |
+| 18 | S-18 | **Signal delivery.** Pub/Sub signals trigger worker execution. | Publishing a test signal to the topic triggers a worker execution. Worker log shows signal received and processed. | M | Open |
+| 19 | S-19 | **Multi-worker fleet.** Multiple workers process different issues concurrently without claim conflicts. | 3+ workers processing 5+ issues. No double-processing (CAS prevents). All issues reach expected stage. | L | Open |
 
 ---
 
@@ -139,7 +155,7 @@ The pipeline is the most ambitious .dag artifact in the repo but has **zero auto
 
 ## Success Criteria
 
-1. **Phase 0**: All SDLC .dag files compile. Rust integration test proves it.
+1. **Phase 0**: All SDLC .dag files compile. Rust integration test proves it. **This gates everything.**
 2. **Phase 1**: `gunbc sdlc --profile unit_test --dry-run` completes all stages.
 3. **Phase 2**: One real GitHub issue processed through design stage locally.
 4. **Phase 3**: Full pipeline: Idea → Done without manual intervention.

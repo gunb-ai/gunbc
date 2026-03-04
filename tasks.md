@@ -10,9 +10,9 @@
 
 | Lane | Doc | Goal | Open Items |
 |------|-----|------|------------|
-| **1. Type System** | [`TODO/type-system.md`](TODO/type-system.md) | Compositional type coverage — decisions obligate, obligations propagate. WS-1 through WS-7. | 40 items across 7 workstreams |
-| **2. Compiler Debt & App Layer** | [`TODO/gunbc-dag-simplification.md`](TODO/gunbc-dag-simplification.md) | Fix compiler gaps that force runtime bridges. Rename/clean gunbc-dag. Each bridge is a compiler lesson. | 17 items across 4 phases |
-| **3. SDLC Pipeline** | [`TODO/sdlc.md`](TODO/sdlc.md) | Run the SDLC pipeline end-to-end. This is the objective of all the compiler work. | 19 items across 4 phases |
+| **1. Type System** | [`TODO/type-system.md`](TODO/type-system.md) | Compositional type coverage — decisions obligate, obligations propagate. WS-1 through WS-7. | 37 open + 3 done across 7 workstreams |
+| **2. Compiler Debt & App Layer** | [`TODO/gunbc-dag-simplification.md`](TODO/gunbc-dag-simplification.md) | Fix compiler gaps that force runtime bridges. 10 accidental bridges → delete. Each has specific files/LOC to remove. | 10 bridges + app layer cleanup |
+| **3. SDLC Pipeline** | [`TODO/sdlc.md`](TODO/sdlc.md) | Run the SDLC pipeline end-to-end. Phase 0 (prove compilation) is a **hard gate**. | 19 items across 5 phases |
 
 ### Design docs
 
@@ -32,9 +32,17 @@ Lane 2 (compiler debt) ──→  Lane 3 (SDLC) needs working compilation pipeli
 Lane 1 and Lane 2 can proceed in parallel. Lane 3 Phase 0 (prove it compiles) can start now — it doesn't need type system improvements, just basic compiler correctness.
 
 **Recommended start order**:
-1. Lane 3 Phase 0 (S-1 through S-4) — fix known bugs, prove SDLC compilation
-2. Lane 2 Phase 1 (CL-1 through CL-5) — compiler fixes that eliminate bridges
-3. Lane 1 WS-1 + WS-3 (no blockers) — in parallel
+1. Lane 3 Phase 0 (S-1 through S-4) — fix known bugs, prove SDLC compilation. **Hard gate.**
+2. Lane 2 "Delete immediately" (bridges 4, 5, 10) — trivial cleanup, ~300 LOC deleted
+3. Lane 2 "Compiler fixes" (bridges 1-3, 8-9) — each has specific deletion targets + grep verification
+4. Lane 1 WS-1 + WS-3 (no blockers) — in parallel with Lane 2
+
+**Operating principles** (from retrospective):
+- Prove before building on top. No Phase N+1 work until Phase N is green.
+- Each task names what gets **deleted** and a `grep` command to verify deletion.
+- No intermediate abstractions. Go a→f directly.
+- `@annotation` is never the final state — go straight to structural blocks.
+- Check `Cargo.toml` dependency graphs before moving code between crates.
 
 ---
 
