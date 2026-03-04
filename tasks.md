@@ -4,6 +4,7 @@
 **Sizing**: S (<1 day), M (1-3 days), L (3-5 days), XL (5+ days)
 **Archive**: `TODO/TODONE/tasks-archive-2026-03-02.md` (68 completed items from Lanes 1-3)
 **Verified**: 2026-03-03 — all Done items pass `cargo test --workspace` + `cargo clippy --all-targets -- -D warnings`
+**Design doc**: [`docs/design/v4/compositional-type-coverage.md`](docs/design/v4/compositional-type-coverage.md) — vision, audit, gaps, workstreams WS-1 through WS-7
 
 ---
 

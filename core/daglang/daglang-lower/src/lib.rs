@@ -4154,6 +4154,9 @@ fn expand_content_upsert_patterns(
 ) {
     let mut bound_callables = HashMap::<String, String>::new();
     let mut expansion_count = 0usize;
+    // Track expansion results: binding_name → ExpandedNodeOutput for "written".
+    // content_upsert's semantic output "written" maps to the compare node's "fresh" port.
+    let mut expansion_outputs = HashMap::<String, ExpandedNodeOutput>::new();
 
     for stmt in stmts {
         let maybe_binding = match stmt {
@@ -4188,6 +4191,15 @@ fn expand_content_upsert_patterns(
                 }
                 if name == "content_upsert" {
                     expansion_count += 1;
+                    let suffix = expansion_suffix(ctx.item_name, expansion_count);
+                    let compare_id = format!("compare_{suffix}_content");
+                    expansion_outputs.insert(
+                        binding.clone(),
+                        ExpandedNodeOutput {
+                            node_id: compare_id,
+                            output_port: "fresh".to_string(),
+                        },
+                    );
                     expand_single_content_upsert(
                         builder,
                         ctx,
@@ -4206,6 +4218,8 @@ fn expand_content_upsert_patterns(
             _ => {}
         }
     }
+    // Wire expansion return outputs to the caller's __out: ports.
+    wire_expansion_return_outputs(builder, stmts, target, &expansion_outputs);
 }
 
 fn expand_single_content_upsert(
@@ -4670,6 +4684,83 @@ fn expand_non_generic_pattern_calls(
                 PortName::DEPS,
             );
             expanded_results.insert(binding_name.to_string(), result);
+        }
+    }
+    // Wire expansion return outputs to the caller's __out: ports.
+    // Flatten the PatternExpansionResult return_outputs into a single
+    // mapping: binding.field → ExpandedNodeOutput.
+    let mut flat_outputs = HashMap::<String, ExpandedNodeOutput>::new();
+    for (binding, result) in &expanded_results {
+        for (field, output) in &result.return_outputs {
+            flat_outputs.insert(format!("{binding}.{field}"), output.clone());
+        }
+    }
+    wire_expansion_return_outputs(builder, stmts, target, &flat_outputs);
+}
+
+/// Wire pattern expansion return outputs to the caller's `__out:` ports.
+///
+/// Scans the caller's `return { field: binding.sub }` statement and wires
+/// matching expansion outputs to `target.__out:field`. This bridges the gap
+/// between inline pattern expansion (which creates real nodes) and the
+/// callable passthrough protocol (which requires `__out:` edges).
+///
+/// `expansion_outputs` maps lookup keys to expanded node outputs:
+/// - For `content_upsert`: key = `binding_name`, output = compare node's `fresh` port.
+///   Return `binding.written` → maps `written` to `fresh` output.
+/// - For non-generic patterns: key = `binding.field`, output = expansion return output.
+///   Return `binding.field` → direct lookup.
+fn wire_expansion_return_outputs(
+    builder: &mut DagBuilder,
+    stmts: &[Stmt],
+    target: &LoweredEndpoint,
+    expansion_outputs: &HashMap<String, ExpandedNodeOutput>,
+) {
+    if expansion_outputs.is_empty() {
+        return;
+    }
+    for stmt in stmts {
+        if let Stmt::Return(bindings) = stmt {
+            for (field_name, expr) in bindings {
+                let passthrough_port = output_passthrough_input_name(field_name.as_str());
+                if builder.has_edge_to_port(&target.node_id, &passthrough_port) {
+                    continue;
+                }
+                // Match `binding.sub` field access on expansion results.
+                if let Expr::FieldAccess(base, sub_field) = expr {
+                    if let Expr::Ident(binding) = base.as_ref() {
+                        // Try content_upsert style: key = binding_name.
+                        // content_upsert returns { written: Bool }, so any field
+                        // access on the binding maps to the compare node's output.
+                        if let Some(output) = expansion_outputs.get(binding.as_str()) {
+                            // Map DSL field name to IR output port.
+                            let mapped_port = match sub_field.as_str() {
+                                "written" => "fresh",
+                                "matches" => "fresh",
+                                "acted" => "fresh",
+                                other => other,
+                            };
+                            builder.add_edge(
+                                &output.node_id,
+                                mapped_port,
+                                &target.node_id,
+                                &passthrough_port,
+                            );
+                            continue;
+                        }
+                        // Try non-generic pattern style: key = "binding.field".
+                        let composite_key = format!("{binding}.{sub_field}");
+                        if let Some(output) = expansion_outputs.get(&composite_key) {
+                            builder.add_edge(
+                                &output.node_id,
+                                &output.output_port,
+                                &target.node_id,
+                                &passthrough_port,
+                            );
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -7301,7 +7392,17 @@ fn add_service_call_edges(
                 ..fn_ctx
             };
             wire_for_loop_iterables(builder, &loop_ctx, stmts, target);
-            wire_callable_return_outputs(builder, &fn_ctx, stmts, target, body_lossy);
+            // Skip return wiring for fn items with non-lossy fn_body:
+            // FnBodyCallableOp evaluates the body directly, making
+            // ExprCompute return nodes redundant (and they fail on local
+            // let bindings the ExprCompute can't access).
+            let is_fn_with_body = matches!(
+                &item.node,
+                Item::FnDef(def) if !def.body.lossy
+            );
+            if !is_fn_with_body {
+                wire_callable_return_outputs(builder, &fn_ctx, stmts, target, body_lossy);
+            }
         }
     }
     for module in &project.modules {

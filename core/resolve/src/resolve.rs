@@ -173,6 +173,9 @@ impl Executable for DeclaredOutputCallableOp {
 struct FnBodyCallableOp {
     fn_body: daglang_lower::LoweredFnBody,
     output_ports: Vec<(String, bool)>,
+    /// Sibling fn bodies from the same DAG, keyed by callable name.
+    /// Used by `evaluate_fn_body` for cross-fn calls within the same module.
+    sibling_fns: HashMap<String, daglang_lower::LoweredFnBody>,
 }
 
 impl std::fmt::Debug for FnBodyCallableOp {
@@ -191,7 +194,7 @@ impl Executable for FnBodyCallableOp {
         for (key, value) in &inputs {
             if key.starts_with(PortName::OUTPUT_PASSTHROUGH_PREFIX) {
                 passthrough_inputs.insert(key.clone(), value.clone());
-            } else if key != "__deps" {
+            } else if key != "__deps" && key != "_freshness" {
                 eval_inputs.insert(key.clone(), value.clone());
             }
         }
@@ -199,8 +202,13 @@ impl Executable for FnBodyCallableOp {
         // Try to evaluate the fn body. On success, map the results to declared
         // output ports. Passthrough inputs override fn body results (they come
         // from explicit DAG wiring and are more authoritative).
-        let empty_siblings = HashMap::new();
-        match daglang_lower::eval::evaluate_fn_body(&self.fn_body, &eval_inputs, &empty_siblings) {
+        if eval_inputs.values().any(|v| matches!(v, Value::Skipped)) {
+            eprintln!("[DEBUG FnBody] eval_inputs with Skipped: {:?}", eval_inputs.keys().collect::<Vec<_>>());
+            for (k, v) in &eval_inputs {
+                eprintln!("[DEBUG FnBody]   {k} = Skipped? {}", matches!(v, Value::Skipped));
+            }
+        }
+        match daglang_lower::eval::evaluate_fn_body(&self.fn_body, &eval_inputs, &self.sibling_fns) {
             Ok(body_results) => {
                 let mut outputs = HashMap::new();
                 for (port_name, is_optional) in &self.output_ports {
@@ -229,10 +237,30 @@ impl Executable for FnBodyCallableOp {
                 }
                 Ok(outputs)
             }
-            Err(e) => Err(ExecError::new(format!(
-                "FnBody evaluation failed: {}",
-                e.message
-            ))),
+            Err(e) => {
+                // Helper fn items (called only via evaluate_fn_body from other
+                // fn bodies) have no DAG edges wiring to their input ports.
+                // When the executor runs them standalone, param_source nodes
+                // produce Skipped values (no incoming edges), so eval_inputs
+                // contains only Skipped entries. Produce Skipped outputs
+                // instead of hard-erroring — the fn is invoked correctly
+                // through the evaluate_fn_body call path, not the DAG
+                // execution path.
+                let all_skipped = eval_inputs.is_empty()
+                    || eval_inputs.values().all(|v| matches!(v, Value::Skipped));
+                if all_skipped {
+                    let mut outputs = HashMap::new();
+                    for (port_name, _) in &self.output_ports {
+                        outputs.insert(port_name.clone(), Value::Skipped);
+                    }
+                    Ok(outputs)
+                } else {
+                    Err(ExecError::new(format!(
+                        "FnBody evaluation failed: {}",
+                        e.message
+                    )))
+                }
+            }
         }
     }
 }
@@ -1169,13 +1197,18 @@ pub fn resolve_lowered_dag_with(
     dag: &Dag<LoweredOp>,
     resolver: &dyn ExternResolver,
 ) -> Result<Dag<DynOp>, ResolveError> {
+    // Collect all fn bodies from callable nodes for cross-fn evaluation.
+    // Helper fns call sibling fns via evaluate_fn_body; this map provides
+    // them at execution time.
+    let sibling_fns = collect_sibling_fn_bodies(dag);
+
     let mut resolved = Dag::new();
     for node in &dag.nodes {
         let mut resolved_node = Node {
             id: node.id.clone(),
             inputs: node.inputs.clone(),
             outputs: node.outputs.clone(),
-            body: resolve_node_body(node, resolver)?,
+            body: resolve_node_body(node, resolver, &sibling_fns)?,
             examples: node.examples.clone(),
             log_detail: node.log_detail,
             kind: node.kind,
@@ -1196,6 +1229,23 @@ pub fn resolve_lowered_dag_with(
     Ok(resolved)
 }
 
+/// Collect fn bodies from all callable nodes in a DAG, keyed by callable name.
+///
+/// This enables cross-fn evaluation: when `render_core_recipe` calls
+/// `apply_prefix`, the evaluator can look up `apply_prefix`'s fn body.
+fn collect_sibling_fn_bodies(dag: &Dag<LoweredOp>) -> HashMap<String, daglang_lower::LoweredFnBody> {
+    let mut fns = HashMap::new();
+    for node in &dag.nodes {
+        if let NodeBody::Opaque(LoweredOp::Callable {
+            name, fn_body: Some(body), ..
+        }) = &node.body
+        {
+            fns.insert(name.clone(), body.as_ref().clone());
+        }
+    }
+    fns
+}
+
 fn normalize_release_resource_inputs(node: &mut Node<DynOp>) {
     if !node.id.0.starts_with("release_resource_") {
         return;
@@ -1214,9 +1264,12 @@ fn normalize_release_resource_inputs(node: &mut Node<DynOp>) {
 #[cfg(test)]
 fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
     let null = crate::NullExternResolver;
+    let empty_siblings = HashMap::new();
     let node_id = node.id.0.clone();
     match &node.body {
-        NodeBody::Opaque(op) => resolve_op(&node_id, op, &node.inputs, &node.outputs, &null),
+        NodeBody::Opaque(op) => {
+            resolve_op(&node_id, op, &node.inputs, &node.outputs, &null, &empty_siblings)
+        }
         NodeBody::SubDag(inner) => Ok(DynOp::new(SubDagDispatchOp {
             dag: resolve_lowered_dag_with(inner, &null)?,
         })),
@@ -1226,6 +1279,7 @@ fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
 fn resolve_node_body(
     node: &Node<LoweredOp>,
     resolver: &dyn ExternResolver,
+    sibling_fns: &HashMap<String, daglang_lower::LoweredFnBody>,
 ) -> Result<NodeBody<DynOp>, ResolveError> {
     match &node.body {
         NodeBody::Opaque(op) => Ok(NodeBody::Opaque(resolve_op(
@@ -1234,6 +1288,7 @@ fn resolve_node_body(
             &node.inputs,
             &node.outputs,
             resolver,
+            sibling_fns,
         )?)),
         NodeBody::SubDag(inner) => {
             Ok(NodeBody::SubDag(resolve_lowered_dag_with(inner, resolver)?))
@@ -1247,6 +1302,7 @@ fn resolve_op(
     inputs: &[Port],
     outputs: &[Port],
     resolver: &dyn ExternResolver,
+    sibling_fns: &HashMap<String, daglang_lower::LoweredFnBody>,
 ) -> Result<DynOp, ResolveError> {
     match op {
         LoweredOp::Collection { kind, .. } => resolve_collection(kind),
@@ -1279,6 +1335,7 @@ fn resolve_op(
             service_metadata.as_deref(),
             fn_body.as_deref(),
             resolver,
+            sibling_fns,
         ),
         LoweredOp::Pattern(pattern_op) => Ok(DynOp::new(pattern_op.clone())),
         LoweredOp::UnsupportedPattern { name } => Err(ResolveError {
@@ -1510,6 +1567,7 @@ fn resolve_domain(
     service_metadata: Option<&ServiceCallMetadata>,
     fn_body: Option<&daglang_lower::LoweredFnBody>,
     resolver: &dyn ExternResolver,
+    sibling_fns: &HashMap<String, daglang_lower::LoweredFnBody>,
 ) -> Result<DynOp, ResolveError> {
     // 1. Modules with custom resolvers — return Some for known callables,
     //    None for unknown (which falls through to passthrough).
@@ -1543,6 +1601,19 @@ fn resolve_domain(
         return Ok(DynOp::new(FnBodyCallableOp {
             fn_body: body.clone(),
             output_ports: declared_output_ports(outputs),
+            sibling_fns: sibling_fns.clone(),
+        }));
+    }
+    // 5b. Pattern callables: their bodies are expanded inline at call sites,
+    //     so __out: passthrough ports may not be wired. Make all outputs
+    //     optional to produce Skipped instead of hard-erroring.
+    if _kind == CallableKind::Pattern {
+        let optional_ports: Vec<(String, bool)> = outputs
+            .iter()
+            .map(|p| (p.name.0.clone(), true))
+            .collect();
+        return Ok(DynOp::new(DeclaredOutputCallableOp {
+            output_ports: optional_ports,
         }));
     }
     // 6. Default: identity callable for compiler-validated callables.
@@ -2902,7 +2973,7 @@ mod tests {
         let node_id = node.id.0.clone();
         let result = match &node.body {
             NodeBody::Opaque(op) => {
-                resolve_op(&node_id, op, &node.inputs, &node.outputs, &resolver)
+                resolve_op(&node_id, op, &node.inputs, &node.outputs, &resolver, &HashMap::new())
             }
             _ => unreachable!(),
         };

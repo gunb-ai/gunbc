@@ -362,7 +362,7 @@ Before making a decision in any of these areas, read the relevant doc.
 
 | Doc | Key decision |
 |-----|-------------|
-| [`docs/design/v4/domain-hard-error-no-fallback-plan.md`](design/v4/domain-hard-error-no-fallback-plan.md) | Compile+link no-fallback contract |
+| [`docs/design/v4/compositional-type-coverage.md`](design/v4/compositional-type-coverage.md) | Compositional type coverage: vision, audit, gaps, workstreams, extern linking |
 | [`docs/design/v4/by-construction-reachability.md`](design/v4/by-construction-reachability.md) | ReachableDag<T> — invariants via types, not passes |
 | [`docs/design/v4/externcall-same-module-port-wiring.md`](design/v4/externcall-same-module-port-wiring.md) | NF-7: lowerer limitation for same-module extern func |
 | [`docs/design/v4/dsl-design.md`](design/v4/dsl-design.md) | DSL language reference |
