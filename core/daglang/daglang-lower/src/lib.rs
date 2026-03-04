@@ -3430,15 +3430,26 @@ fn add_dependency_edges(
             if emit_collection_nodes {
                 add_collection_pipeline_nodes(builder, &module_name, stmts, target);
             }
-            let uses_binding_types = item_uses_binding_types(&item.node);
-            add_control_flow_pattern_nodes(
-                builder,
-                &module_name,
-                stmts,
-                target,
-                wctx.service_registry,
-                &uses_binding_types,
+            // Skip control flow SubDag nodes for fn items with fn_body.
+            // FnBodyCallableOp evaluates control flow (match/if/for) directly —
+            // creating redundant SubDag pattern nodes causes failures because
+            // their inner op nodes lack __out:result passthrough wiring (which
+            // can't be threaded through nested SubDag boundaries).
+            let has_fn_body = matches!(
+                &item.node,
+                Item::FnDef(def) if !def.body.lossy
             );
+            if !has_fn_body {
+                let uses_binding_types = item_uses_binding_types(&item.node);
+                add_control_flow_pattern_nodes(
+                    builder,
+                    &module_name,
+                    stmts,
+                    target,
+                    wctx.service_registry,
+                    &uses_binding_types,
+                );
+            }
         }
     }
 }

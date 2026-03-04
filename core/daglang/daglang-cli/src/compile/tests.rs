@@ -478,29 +478,31 @@ func run() -> { report: String } {
     );
 
     let output = compile_from_context(&context).expect("compile should succeed");
+    // fn items with non-lossy fn_body are evaluated via FnBodyCallableOp,
+    // which handles control flow directly — no SubDag pattern nodes needed.
     assert!(
-        output
+        !output
             .lowered_dag
             .nodes
             .iter()
             .any(|node| node.id.0.contains("::cf_if_")),
-        "if/else expression should lower into a control-flow subdag node"
+        "fn with fn_body should not have control-flow subdag nodes"
     );
     assert!(
-        output
+        !output
             .lowered_dag
             .nodes
             .iter()
             .any(|node| node.id.0.contains("::cf_match_")),
-        "match expression should lower into a control-flow subdag node"
+        "fn with fn_body should not have control-flow subdag nodes"
     );
     assert!(
-        output
+        !output
             .lowered_dag
             .nodes
             .iter()
             .any(|node| node.id.0.contains("::cf_for_")),
-        "for expression should lower into a control-flow subdag node"
+        "fn with fn_body should not have control-flow subdag nodes"
     );
     let lowered = lower(&output.lowered_dag).expect("lowered DAG should flatten function subdags");
     let resolved =

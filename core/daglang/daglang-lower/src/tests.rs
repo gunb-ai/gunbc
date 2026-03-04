@@ -446,7 +446,11 @@ fn run(values: List<String>) -> String {
 }
 
 #[test]
-fn lower_typed_project_emits_control_flow_nodes_for_if_for_match() {
+fn lower_typed_project_skips_control_flow_nodes_for_fn_with_body() {
+    // fn items with non-lossy fn_body are evaluated via FnBodyCallableOp,
+    // which handles control flow (match/if/for) directly. Creating SubDag
+    // pattern nodes is redundant and causes failures because inner op nodes
+    // lack __out:result passthrough wiring across nested SubDag boundaries.
     let typed = typed_project_from_sources(&[(
         "sample.control",
         r#"
@@ -488,32 +492,19 @@ _ => 0
         .iter()
         .map(|node| node.id.0.as_str())
         .collect::<HashSet<_>>();
+    // fn items with fn_body should NOT have control flow SubDag nodes.
     assert!(
-        node_ids.contains("sample.control::run::cf_for_0"),
-        "node ids: {node_ids:?}"
+        !node_ids.contains("sample.control::run::cf_for_0"),
+        "fn with fn_body should not have cf_for_0: {node_ids:?}"
     );
     assert!(
-        node_ids.contains("sample.control::run::cf_if_0"),
-        "node ids: {node_ids:?}"
+        !node_ids.contains("sample.control::run::cf_if_0"),
+        "fn with fn_body should not have cf_if_0: {node_ids:?}"
     );
     assert!(
-        node_ids.contains("sample.control::run::cf_if_1"),
-        "node ids: {node_ids:?}"
+        !node_ids.contains("sample.control::run::cf_match_0"),
+        "fn with fn_body should not have cf_match_0: {node_ids:?}"
     );
-    assert!(
-        node_ids.contains("sample.control::run::cf_match_0"),
-        "node ids: {node_ids:?}"
-    );
-    assert!(dag.edges.iter().any(|edge| {
-        edge.from_node.0 == "sample.control::run::cf_for_0"
-            && edge.to_node.0 == "sample.control::run"
-            && edge.to_port.0 == PortName::DEPS
-    }));
-    assert!(dag.edges.iter().any(|edge| {
-        edge.from_node.0 == "sample.control::run::cf_match_0"
-            && edge.to_node.0 == "sample.control::run"
-            && edge.to_port.0 == PortName::DEPS
-    }));
 }
 
 #[test]
