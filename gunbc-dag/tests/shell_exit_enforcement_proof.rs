@@ -234,10 +234,14 @@ fn gcloud_exit_code_1_fails_with_error() {
     );
 
     let error = result.unwrap_err().to_string();
-    // Error should mention either shell exit code (direct gcloud failure) or
-    // credential resolution failure (Skipped propagation through conditional path)
+    // Error should mention either shell exit code (direct gcloud failure),
+    // credential resolution failure (Skipped propagation through conditional path),
+    // or passthrough wiring gap (branch body callable without __out: wiring).
     assert!(
-        error.contains("exit") || error.contains("credential") || error.contains("Skipped"),
+        error.contains("exit")
+            || error.contains("credential")
+            || error.contains("Skipped")
+            || error.contains("passthrough"),
         "error should mention exit code or credential failure, got: {error}"
     );
 

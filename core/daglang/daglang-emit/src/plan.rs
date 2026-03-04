@@ -381,7 +381,8 @@ fn topo_sort_dag(dag: &Dag<LoweredOp>) -> Result<Vec<String>, PlanError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::computation::{Cardinality, CollectionOpKind, PureBody, TransportKind, TypedPort};
+    use crate::computation::{Cardinality, PureBody, TransportKind, TypedPort};
+    use daglang_syntax::ast::EmitCollectionFamily;
 
     #[test]
     fn emit_plan_round_trip() {
@@ -508,7 +509,7 @@ mod tests {
             steps: vec![EmitStep {
                 node_id: "map_items".into(),
                 computation: Computation::Collection {
-                    kind: CollectionOpKind::Map,
+                    family: EmitCollectionFamily::Map,
                     element_type: "String".into(),
                 },
                 input_sources: vec![InputBinding::FromEntrypoint {
@@ -531,7 +532,7 @@ mod tests {
         assert!(matches!(
             &plan.steps[0].computation,
             Computation::Collection {
-                kind: CollectionOpKind::Map,
+                family: EmitCollectionFamily::Map,
                 ..
             }
         ));

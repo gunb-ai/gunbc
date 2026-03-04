@@ -8,7 +8,7 @@
 module workflows.build_all
 
 import shared.compilation { compilation_ensure }
-import tools.codegen { codegen_ensure }
+import shared.codegen { codegen_ensure }
 import tools.build { build_all }
 
 pipeline build_all {

@@ -478,42 +478,63 @@ func run() -> { report: String } {
     );
 
     let output = compile_from_context(&context).expect("compile should succeed");
+    // fn items with non-lossy fn_body are evaluated via FnBodyCallableOp,
+    // which handles control flow directly — no SubDag pattern nodes needed.
     assert!(
-        output
+        !output
             .lowered_dag
             .nodes
             .iter()
             .any(|node| node.id.0.contains("::cf_if_")),
-        "if/else expression should lower into a control-flow subdag node"
+        "fn with fn_body should not have control-flow subdag nodes"
     );
     assert!(
-        output
+        !output
             .lowered_dag
             .nodes
             .iter()
             .any(|node| node.id.0.contains("::cf_match_")),
-        "match expression should lower into a control-flow subdag node"
+        "fn with fn_body should not have control-flow subdag nodes"
     );
     assert!(
-        output
+        !output
             .lowered_dag
             .nodes
             .iter()
             .any(|node| node.id.0.contains("::cf_for_")),
-        "for expression should lower into a control-flow subdag node"
+        "fn with fn_body should not have control-flow subdag nodes"
     );
     let lowered = lower(&output.lowered_dag).expect("lowered DAG should flatten function subdags");
     let resolved =
         resolve_lowered_dag(&lowered.dag).expect("resolved DAG should build from lowered graph");
-    // C10 gap: The fn-call result binding (`report = summarize(...)`) isn't wired
-    // as a DAG node endpoint — the lowerer doesn't create a __out:report edge for
-    // fn-call results in func bodies. With no passthroughs wired at all, the
-    // resolver falls back to Value::Skipped for the unwired output.
+    // C10: FnBodyCallableOp evaluates the fn body directly, producing the
+    // return value from the fn's computation instead of requiring passthrough
+    // wiring from ExprCompute nodes.
     let result = execute_resolved_dag(&resolved, ExecutionMode::Real, None);
+    assert!(result.is_ok(), "execution should succeed: {:?}", result.err());
+
+    // Verify the fn body evaluation produced the correct report string.
+    let log = result.unwrap();
+    let summarize_entry = log
+        .entries
+        .iter()
+        .find(|e| e.node_id == "sample.main::summarize");
+    assert!(summarize_entry.is_some(), "summarize node should have executed");
+    let summarize_outputs = &summarize_entry.unwrap().outputs;
+    let return_value = summarize_outputs.get("return");
     assert!(
-        result.is_ok(),
-        "execution should succeed (C10 fallback to Skipped)"
+        return_value.is_some() && !matches!(return_value, Some(gunbc_ir::Value::Skipped)),
+        "C10: fn body should produce a non-Skipped return value, got: {:?}",
+        return_value
     );
+    // The fn filters [true, false, true] with include_disabled=false → [true, true],
+    // then maps to labels, joins, and builds a report string.
+    if let Some(gunbc_ir::Value::Str(report)) = return_value {
+        assert!(
+            report.contains("count=2"),
+            "report should contain enabled count of 2, got: {report}"
+        );
+    }
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }

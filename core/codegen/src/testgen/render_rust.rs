@@ -96,6 +96,9 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
                 }
                 // Test attribute and function signature
                 out.push_str("#[test]\n");
+                for attr in &test_fn.attributes {
+                    writeln!(out, "{}", attr).unwrap();
+                }
                 writeln!(out, "fn {}() {{", test_fn.name).unwrap();
 
                 // Body

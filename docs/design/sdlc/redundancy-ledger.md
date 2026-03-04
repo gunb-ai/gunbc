@@ -1,0 +1,38 @@
+# SDLC Redundancy Ledger
+
+Tracks known duplication and overlap in the SDLC DSL subsystem.
+
+## Active Redundancies
+
+### Stub provider definitions (unit_test.dag vs stub_providers.dag)
+
+- **Files**: `profiles/unit_test.dag` lines 39–179, `services/sdlc/providers/stub_providers.dag`
+- **What**: Both define identical stub service implementations (StubIssueProvider, InMemoryClaimStore, etc.) with same operation signatures
+- **Resolution**: Remove inline definitions from `unit_test.dag`; bind to `stub_providers.dag` providers instead
+- **Status**: Deferred — requires profile bind syntax to reference cross-module services
+
+## Intentional Duplication
+
+### Pipeline vs Workflow (different abstraction layers)
+
+- **Files**: `pipelines/sdlc.dag` (479 lines), `workflows/sdlc.dag` (59 lines)
+- **Why**: Pipeline is a reference design document showing full stage logic. Workflow is the operational entry point calling `dispatch_sdlc()` from `funcs/sdlc_worker.dag`. Pipeline is demoted to reference-only (CL-7).
+
+### Profile reference vs individual files
+
+- **Files**: `profiles/sdlc.dag` (all three profiles), `profiles/{unit_test,local,cloud_run}.dag` (one each)
+- **Why**: `profiles/sdlc.dag` collects all profiles for documentation. Individual files are structured for per-profile compilation via `--profile` flag.
+
+## No Redundancy
+
+| Area | Files | Status |
+|------|-------|--------|
+| Interfaces | 7 files | Each unique; CapabilityBehaviorContract/CapabilityFailureContract extracted to std/behavioral.dag |
+| Concrete providers | 17 files | Each has distinct storage backend (file, GCS, pubsub, GitHub) |
+| Worker / Stages | 2 files | Clean separation: worker=dispatch loop, stages=per-stage handlers |
+
+## Counts
+
+- Active redundancies: **1** (stub provider defs)
+- Intentional duplicates: **2** (pipeline/workflow layer, profile reference/individual)
+- Dead code: **0** (sdlc_dispatch_runtime.dag deleted in CL-DELETE)

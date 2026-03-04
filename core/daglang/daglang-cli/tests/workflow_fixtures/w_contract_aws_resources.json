@@ -7,7 +7,7 @@
     "infra.spec",
     "infra.aws.services"
   ],
-  "_count_rationale": "Param ref wiring fix: return compute nodes now wire param_source inputs (2026-02-28).",
+  "_count_rationale": "FnBodyCallableOp: fn items with fn_body skip control-flow SubDag + ExprCompute return nodes (2026-03-04).",
   "expand_contract": {
     "status": "success",
     "error_contains": null
@@ -18,7 +18,7 @@
     "expected_json": {
       "dry_run_completion_required": true,
       "interface_contract_verification_targets": 4,
-      "pure_node_determinism_targets": 129,
+      "pure_node_determinism_targets": 128,
       "resource_acquire_targets": 5,
       "resource_provide_targets": 0,
       "resource_release_targets": 5,
@@ -31,7 +31,7 @@
       "service_transport_permission_scoped_targets": 0,
       "service_transport_prepare_targets": 56,
       "service_transport_readonly_targets": 6,
-      "total_obligations": 185,
+      "total_obligations": 184,
       "transport_execution_targets": 56
     }
   }

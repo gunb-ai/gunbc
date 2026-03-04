@@ -258,7 +258,21 @@ pub fn requires_from_transport_classes(classes: &[ServiceTransportClass]) -> Vec
 
 /// Classify an entire module by aggregating all callables' properties.
 ///
-/// Unions all transport classes across callables and classifies the aggregate.
+/// Unions all transport classes and permissions across callables and classifies
+/// the aggregate. This means a module's classification is the **join** (least
+/// upper bound) of its callables' individual classifications:
+///
+/// - If *any* callable uses `RestNetwork`, the whole module is classified as
+///   `Integration` (requires network access).
+/// - `idempotent` and `readonly` are only `true` when *all* callables are.
+/// - Auth requirements propagate transitively: if callable A calls service S
+///   which has `config { auth: BearerToken }`, the lowerer stamps A with the
+///   auth transport class, and `classify_module` unions it into the aggregate.
+///
+/// Consequence: a single authenticated callable inflates the module to
+/// `Integration` tier even if all other callables are pure. This is
+/// intentionally conservative — test classification should use per-callable
+/// properties for fine-grained budgeting.
 pub fn classify_module(
     callable_properties: &BTreeMap<String, CallableProperties>,
 ) -> FidelityClassification {

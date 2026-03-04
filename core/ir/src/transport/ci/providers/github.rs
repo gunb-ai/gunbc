@@ -356,6 +356,7 @@ mod tests {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            static_fingerprint: None,
         });
         dag.add_node(Node {
             id: "test".into(),
@@ -367,6 +368,7 @@ mod tests {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            static_fingerprint: None,
         });
         dag.add_edge(edge("build", "success", "test", "build_success"));
 

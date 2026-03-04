@@ -248,6 +248,7 @@ fn default_policy() -> ResponseClassification {
         prioritize_auth_errors: true,
         parse_provider_error_shapes: false,
         error_shape: None,
+        output_shape: None,
     }
 }
 
@@ -332,6 +333,7 @@ mod tests {
                 code_path: None,
                 details_path: Some(".documentation_url".to_string()),
             }),
+            output_shape: None,
         }
     }
 
@@ -346,6 +348,7 @@ mod tests {
                 code_path: Some(".error.status".to_string()),
                 details_path: None,
             }),
+            output_shape: None,
         }
     }
 
@@ -360,6 +363,7 @@ mod tests {
                 code_path: Some(".error.type".to_string()),
                 details_path: None,
             }),
+            output_shape: None,
         }
     }
 
@@ -374,6 +378,7 @@ mod tests {
                 code_path: Some(".error.type".to_string()),
                 details_path: None,
             }),
+            output_shape: None,
         }
     }
 
@@ -458,6 +463,7 @@ mod tests {
             prioritize_auth_errors: true,
             parse_provider_error_shapes: false,
             error_shape: None,
+            output_shape: None,
         };
         let classified = classify_rest_response(&response, &policy).expect("classification");
         assert_eq!(classified.kind, ClassifiedErrorKind::Auth);
@@ -632,6 +638,7 @@ mod tests {
                 code_path: Some(".error.status".to_string()),
                 details_path: None,
             }),
+            output_shape: None,
         };
         let classified = classify_rest_response(&response, &policy).expect("classification");
         assert_eq!(classified.kind, ClassifiedErrorKind::Auth);
@@ -653,6 +660,7 @@ mod tests {
                 code_path: Some(".code".to_string()),
                 details_path: None,
             }),
+            output_shape: None,
         };
         let classified = classify_rest_response(&response, &policy).expect("classification");
         assert_eq!(classified.kind, ClassifiedErrorKind::Server);

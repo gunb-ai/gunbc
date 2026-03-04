@@ -48,17 +48,21 @@ fn type_expr_to_rust(expr: &TypeExpr) -> String {
 }
 
 /// Map DSL primitive type names to Rust equivalents.
+///
+/// Uses the canonical `RUST_TYPE_MAPPING` table for primitive lookups,
+/// with additional entries for generic container base names (List, Map)
+/// which are not in the table (they're handled by `list_fmt`/`map_fmt`
+/// in the full `map_abstract_type` path).
 fn map_primitive(name: &str) -> String {
+    // Generic container base names (not in the primitive table).
     match name {
-        "Int" => "i64".to_string(),
-        "Float" => "f64".to_string(),
-        "Bool" => "bool".to_string(),
-        "String" => "String".to_string(),
-        "Char" => "char".to_string(),
-        "List" => "Vec".to_string(),
-        "Map" => "std::collections::HashMap".to_string(),
-        other => other.to_string(),
+        "List" => return "Vec".to_string(),
+        "Map" => return "std::collections::HashMap".to_string(),
+        _ => {}
     }
+    crate::type_mapping::lookup_primitive(&crate::type_mapping::RUST_TYPE_MAPPING, name)
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| name.to_string())
 }
 
 /// Check whether all variants of a sum type are simple (no fields).

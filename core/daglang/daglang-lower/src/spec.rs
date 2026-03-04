@@ -5,12 +5,12 @@
 //! protocol interpreter (REST, Shell, File, Local).
 
 use gunbc_ir::transport::middleware::TransportMiddlewareConfig;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Complete specification for a service operation, extracted from `.dag` declarations.
 /// Each variant parameterizes a generic protocol interpreter (REST, Shell, File).
 /// Note: RestOperationSpec is boxed to avoid large_enum_variant clippy warning.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ServiceOperationSpec {
     Rest(Box<RestOperationSpec>),
     Shell(ShellOperationSpec),
@@ -79,7 +79,7 @@ impl ServiceOperationSpec {
 ///
 /// Produced by scanning service operation specs. CI pipelines use these to
 /// determine which secrets to provision without hardcoded inventory linkage.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuthRequirement {
     /// Auth scheme (e.g., "BearerToken", "ApiKey").
     pub scheme: String,
@@ -90,7 +90,7 @@ pub struct AuthRequirement {
 }
 
 /// File protocol specification: operation type + path template.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct FileOperationSpec {
     /// File operation kind, parsed from `transport file { op: OP }`.
     pub operation: gunbc_ir::transport::FileOp,
@@ -104,7 +104,7 @@ pub struct FileOperationSpec {
 
 /// Local operation specification: pure computation, no I/O transport.
 /// Used for local services whose operations are domain-specific functions.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct LocalOperationSpec {
     pub input_fields: Vec<FieldSpec>,
     pub output_fields: Vec<OutputFieldSpec>,
@@ -114,7 +114,7 @@ pub struct LocalOperationSpec {
 ///
 /// Note: `PartialOrd`/`Ord` are derived only for fields that support it.
 /// The `middleware` field is excluded from ordering comparisons.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RestOperationSpec {
     /// Base URL from `config { endpoint: "https://..." }` on the service.
     pub endpoint: String,
@@ -150,10 +150,16 @@ pub struct RestOperationSpec {
     /// Compiled from `response { STATUS => TYPE }` blocks.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub response_mapping: Vec<ResponseMappingEntry>,
+    /// C29: Declarative output shape extraction rules.
+    /// Populated from `output_fields` at lowering time. When present, the parse
+    /// op uses these JSON-path rules for type-aware extraction instead of
+    /// hardcoded field logic.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_shape: Option<gunbc_ir::transport::middleware::OutputShapeExtraction>,
 }
 
 /// Shell protocol specification: argv template + output parsing.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ShellOperationSpec {
     /// Command + args template from `transport shell { argv: ["cmd", "arg", "{param}"] }`.
     pub argv_template: Vec<ArgvSegment>,
@@ -173,7 +179,7 @@ pub struct ShellOperationSpec {
 }
 
 /// Specification for an input field.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct FieldSpec {
     pub name: String,
     pub type_id: String,
@@ -184,7 +190,7 @@ pub struct FieldSpec {
 }
 
 /// Specification for an output field.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct OutputFieldSpec {
     pub name: String,
     pub type_id: String,
@@ -198,7 +204,7 @@ pub struct OutputFieldSpec {
 }
 
 /// Body template entry: a literal constant, an input field reference, or nested entries.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum BodyEntry {
     /// Literal JSON key-value: `"grant_type": "urn:ietf:..."`.
     Literal(String, String),
@@ -209,7 +215,7 @@ pub enum BodyEntry {
 }
 
 /// Argv segment in a shell command template.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ArgvSegment {
     /// Literal string: `"cargo"`, `"--all-targets"`.
     Literal(String),
@@ -218,7 +224,7 @@ pub enum ArgvSegment {
 }
 
 /// How to parse shell command output.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ShellOutputParsing {
     /// Single string: `trim(stdout)`.
     TrimStdout,
@@ -232,7 +238,7 @@ pub enum ShellOutputParsing {
 
 /// HTTP response contract entry: maps status codes to response types.
 /// Compiled from `response { STATUS => TYPE }` blocks in `.dag` files.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ResponseMappingEntry {
     /// Status pattern (exact code or wildcard).
     pub status: ResponseStatusPattern,
@@ -244,7 +250,7 @@ pub struct ResponseMappingEntry {
 }
 
 /// HTTP status code pattern for response contracts.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ResponseStatusPattern {
     /// Exact status code: 200, 201, 404, etc.
     Exact(u16),
@@ -260,7 +266,7 @@ pub enum ResponseStatusPattern {
 
 /// Shell exit code contract entry: maps exit codes to output types.
 /// Compiled from `exit { CODE => TYPE }` blocks in `.dag` files.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ExitMappingEntry {
     /// Exit code pattern (exact code or wildcard).
     pub code: ExitCodePattern,
@@ -272,7 +278,7 @@ pub struct ExitMappingEntry {
 }
 
 /// Shell exit code pattern for exit contracts.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ExitCodePattern {
     /// Exact exit code: 0, 1, 128, etc.
     Exact(i32),
@@ -281,7 +287,7 @@ pub enum ExitCodePattern {
 }
 
 /// Response contract completeness warning.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResponseCompletenessWarning {
     pub service: String,
     pub operation: String,
@@ -434,6 +440,7 @@ mod tests {
             auth_input: Some("auth_token".to_string()),
             middleware: None,
             response_mapping: vec![],
+            output_shape: None,
         }));
         let req = spec
             .auth_requirement()
@@ -457,6 +464,7 @@ mod tests {
             auth_input: None,
             middleware: None,
             response_mapping: vec![],
+            output_shape: None,
         }));
         assert!(spec.auth_requirement().is_none());
     }

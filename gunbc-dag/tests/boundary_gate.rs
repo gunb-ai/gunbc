@@ -37,7 +37,7 @@ const ALLOWED_DIRS: &[&str] = &[
     "gunbc-dag/src/extern_ops.rs",
     // Binary entrypoints
     "gunbc-dag/src/bin/",
-    // Test generation DAG
+    // Test generation DAG (mock_interpreter + profile_discovery relocated to core/codegen in B5)
     "gunbc-dag/src/testgen_dag/",
     // Workflow orchestration
     "gunbc-dag/src/workflow/",
@@ -47,7 +47,7 @@ const ALLOWED_DIRS: &[&str] = &[
 
 /// Current baseline: total `push_str` occurrences in non-boundary Rust files.
 /// Update this number downward when anemic rendering is migrated to DSL.
-const NON_BOUNDARY_PUSH_STR_BASELINE: usize = 100;
+const NON_BOUNDARY_PUSH_STR_BASELINE: usize = 102; // C24: StringInterpolateOp uses push_str for template assembly
 
 #[test]
 #[allow(clippy::disallowed_methods)]

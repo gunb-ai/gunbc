@@ -181,7 +181,9 @@ data allowlist_patterns: List<AllowlistPattern> = [
   { pattern: "lib/cloud-ops/", rationale: "cloud ops: file-backed config, credential policy, secret cache" },
   { pattern: "lib/gcp-ops/", rationale: "GCP ops: secret extraction for GCP service requests" },
   { pattern: "core/workflow/", rationale: "workflow executor: process coordination and filesystem access" },
-  { pattern: "core/resolve/src/service_ops/", rationale: "transport boundary: secret values marshalled into service requests" }
+  { pattern: "core/resolve/src/service_ops/", rationale: "transport boundary: secret values marshalled into service requests" },
+  { pattern: "core/codegen/src/tool_discovery.rs", rationale: "build-time DSL module discovery with filesystem cache" },
+  { pattern: "core/codegen/src/testgen_dag/profile_discovery.rs", rationale: "build-time profile discovery from filesystem" }
 ]
 
 // ── Dead code allowances ──────────────────────────────────────────────

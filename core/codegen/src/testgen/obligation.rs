@@ -225,6 +225,22 @@ pub enum Obligation {
     /// parsing and `--print-inputs json` behavior for this tool.
     CliContractRoundTrip { tool_name: String },
 
+    /// Interface behavioral contract compliance (CT-8): a provider binding
+    /// must satisfy the behavioral contract declared on its interface.
+    InterfaceContractCompliance {
+        interface_name: String,
+        capability_name: String,
+        contract_name: String,
+    },
+
+    /// Provider response contract coverage (CT-8): a service operation must
+    /// correctly handle the declared response status codes.
+    ResponseContractCompliance {
+        operation: String,
+        status_code: u16,
+        is_error: bool,
+    },
+
     // -----------------------------------------------------------------------
     // Bucket C: Scenario Coverage (graph + transport mocks)
     //

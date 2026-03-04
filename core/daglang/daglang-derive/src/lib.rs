@@ -26,7 +26,7 @@ pub use daglang_contract::{
     TestObligations, TopologyNode,
 };
 use daglang_lower::{
-    classify_obligation, classify_service_transport, CallableKind, CollectionOpKind, LoweredOp,
+    classify_obligation, classify_service_transport, CallableKind, LoweredOp,
     ObligationCategory, ServiceCallMetadata, ServiceTransportClass,
 };
 use gunbc_ir::{detect_boundaries, detect_entrypoints, Dag, Node, NodeKind};
@@ -477,24 +477,6 @@ fn derive_stage_groups(nodes: &[Node<LoweredOp>]) -> Vec<StageGroup> {
         .collect()
 }
 
-fn collection_kind_label(kind: CollectionOpKind) -> &'static str {
-    match kind {
-        CollectionOpKind::Map => "MapNode",
-        CollectionOpKind::Filter => "FilterNode",
-        CollectionOpKind::Fold => "FoldNode",
-        CollectionOpKind::Join => "JoinNode",
-        CollectionOpKind::FlatMap => "FlatMapNode",
-        CollectionOpKind::Sort => "SortNode",
-        CollectionOpKind::Dedup => "DedupNode",
-        CollectionOpKind::Any => "AnyNode",
-        CollectionOpKind::All => "AllNode",
-        CollectionOpKind::Len => "LenNode",
-        CollectionOpKind::Contains => "ContainsNode",
-        CollectionOpKind::Split => "SplitNode",
-        CollectionOpKind::Zip => "ZipNode",
-    }
-}
-
 fn derive_node_labels(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, String> {
     nodes
         .iter()
@@ -516,7 +498,7 @@ fn derive_node_labels(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, String> {
                         .unwrap_or(callable);
                     format!(
                         "{module}.{callable_label}::{}",
-                        collection_kind_label(*kind)
+                        kind.node_label()
                     )
                 }
                 gunbc_ir::node::NodeBody::Opaque(LoweredOp::Pipeline { module, name, .. }) => {
@@ -1082,7 +1064,7 @@ mod tests {
                 LoweredOp::Collection {
                     module: "tools.gist".to_string(),
                     callable: "render_snapshot".to_string(),
-                    kind: CollectionOpKind::Map,
+                    kind: daglang_lower::CollectionOpKind::Map,
                 },
             )
             .with_kind(NodeKind::Pure),
@@ -1095,7 +1077,7 @@ mod tests {
                 LoweredOp::Collection {
                     module: "tools.gist".to_string(),
                     callable: "render_snapshot".to_string(),
-                    kind: CollectionOpKind::Join,
+                    kind: daglang_lower::CollectionOpKind::Join,
                 },
             )
             .with_kind(NodeKind::Pure),

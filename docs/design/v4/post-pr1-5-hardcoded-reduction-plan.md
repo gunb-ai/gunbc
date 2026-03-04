@@ -1,7 +1,7 @@
 # Post PR1-PR5 Hardcoded Reduction Plan (Items 5-8)
 
-> **Update (2026-02-25)**: For the strict hard-error/no-fallback direction on items 5/7/8, see
-> [`domain-hard-error-no-fallback-plan.md`](./domain-hard-error-no-fallback-plan.md).
+> **Update (2026-03-04)**: For the strict hard-error/no-fallback direction on items 5/7/8, see
+> [`compositional-type-coverage.md`](./compositional-type-coverage.md) § WS-7.
 > This document remains useful as historical context and broad workstream framing.
 
 ## Scope

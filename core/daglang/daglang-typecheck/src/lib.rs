@@ -1345,69 +1345,54 @@ fn register_callable_contract(
 }
 
 fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
-    vec![
+    use daglang_syntax::ast::PIPE_METHOD_REGISTRY;
+
+    // Generate contracts from the pipe method registry.
+    // Exclude Chars — it also exists as a standalone function with different arity.
+    let mut contracts: Vec<(String, CallableContract)> = PIPE_METHOD_REGISTRY
+        .iter()
+        .filter(|def| def.method != daglang_syntax::ast::PipeMethod::Chars)
+        .map(|def| {
+            let output = if def.output_type == "Unknown" {
+                ValueType::Named("Any".to_string())
+            } else {
+                ValueType::Named(def.output_type.to_string())
+            };
+            (
+                def.name.to_string(),
+                CallableContract {
+                    arity: def.arity,
+                    params: def.param_names.iter().map(|s| s.to_string()).collect(),
+                    output,
+                },
+            )
+        })
+        .collect();
+
+    // Non-pipe-method builtins (standalone functions, render helpers, etc.).
+    contracts.extend([
         (
-            "map".to_string(),
+            "eq".to_string(),
             CallableContract {
-                arity: 1,
-                params: HashSet::from(["f".to_string()]),
-                output: ValueType::Named("List".to_string()),
-            },
-        ),
-        (
-            "filter".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["predicate".to_string()]),
-                output: ValueType::Named("List".to_string()),
-            },
-        ),
-        (
-            "filter_map".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["f".to_string()]),
-                output: ValueType::Named("List".to_string()),
-            },
-        ),
-        (
-            "flat_map".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["f".to_string()]),
-                output: ValueType::Named("List".to_string()),
-            },
-        ),
-        (
-            "max_by".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["f".to_string()]),
-                output: ValueType::Named("Any".to_string()),
-            },
-        ),
-        (
-            "starts_with".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["prefix".to_string()]),
+                arity: 2,
+                params: HashSet::from(["a".to_string(), "b".to_string()]),
                 output: ValueType::Named("Bool".to_string()),
             },
         ),
         (
-            "any".to_string(),
+            "chars".to_string(),
             CallableContract {
                 arity: 1,
-                params: HashSet::from(["predicate".to_string()]),
-                output: ValueType::Named("Bool".to_string()),
+                params: HashSet::from(["s".to_string()]),
+                output: ValueType::Named("List<Char>".to_string()),
             },
         ),
         (
-            "append".to_string(),
+            "code_point".to_string(),
             CallableContract {
                 arity: 1,
-                params: HashSet::from(["items".to_string()]),
-                output: ValueType::Named("List".to_string()),
+                params: HashSet::from(["c".to_string()]),
+                output: ValueType::Named("Int".to_string()),
             },
         ),
         (
@@ -1423,110 +1408,6 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
             CallableContract {
                 arity: 1,
                 params: HashSet::from(["snapshot".to_string()]),
-                output: ValueType::Named("String".to_string()),
-            },
-        ),
-        (
-            "join".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["separator".to_string()]),
-                output: ValueType::Named("String".to_string()),
-            },
-        ),
-        (
-            "repeat".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["n".to_string()]),
-                output: ValueType::Named("String".to_string()),
-            },
-        ),
-        (
-            "count".to_string(),
-            CallableContract {
-                arity: 0,
-                params: HashSet::new(),
-                output: ValueType::Named("Int".to_string()),
-            },
-        ),
-        (
-            "all".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["predicate".to_string()]),
-                output: ValueType::Named("Bool".to_string()),
-            },
-        ),
-        (
-            "sort_by".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["key_fn".to_string()]),
-                output: ValueType::Named("List".to_string()),
-            },
-        ),
-        (
-            "first".to_string(),
-            CallableContract {
-                arity: 0,
-                params: HashSet::new(),
-                output: ValueType::Named("Any".to_string()),
-            },
-        ),
-        (
-            "last".to_string(),
-            CallableContract {
-                arity: 0,
-                params: HashSet::new(),
-                output: ValueType::Named("Any".to_string()),
-            },
-        ),
-        (
-            "ends_with".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["suffix".to_string()]),
-                output: ValueType::Named("Bool".to_string()),
-            },
-        ),
-        (
-            "to_bytes".to_string(),
-            CallableContract {
-                arity: 0,
-                params: HashSet::from(["value".to_string()]),
-                output: ValueType::Named("Bytes".to_string()),
-            },
-        ),
-        (
-            "to_json".to_string(),
-            CallableContract {
-                arity: 0,
-                params: HashSet::from(["value".to_string()]),
-                output: ValueType::Named("Json".to_string()),
-            },
-        ),
-        (
-            "hash".to_string(),
-            CallableContract {
-                arity: 0,
-                params: HashSet::from(["value".to_string()]),
-                output: ValueType::Named("String".to_string()),
-            },
-        ),
-        (
-            "eq".to_string(),
-            CallableContract {
-                arity: 2,
-                params: HashSet::from(["a".to_string(), "b".to_string()]),
-                output: ValueType::Named("Bool".to_string()),
-            },
-        ),
-        (
-            "replace_section".to_string(),
-            CallableContract {
-                arity: 2,
-                params: HashSet::from(["section".to_string(), "replacement".to_string()]),
                 output: ValueType::Named("String".to_string()),
             },
         ),
@@ -1612,55 +1493,9 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
                 output: ValueType::Named("CloudRuntime".to_string()),
             },
         ),
-        (
-            "chars".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["s".to_string()]),
-                output: ValueType::Named("List<Char>".to_string()),
-            },
-        ),
-        (
-            "code_point".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["c".to_string()]),
-                output: ValueType::Named("Int".to_string()),
-            },
-        ),
-        (
-            "sum".to_string(),
-            CallableContract {
-                arity: 0,
-                params: HashSet::new(),
-                output: ValueType::Named("Int".to_string()),
-            },
-        ),
-        (
-            "contains".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["item".to_string()]),
-                output: ValueType::Named("Bool".to_string()),
-            },
-        ),
-        (
-            "split".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["delimiter".to_string()]),
-                output: ValueType::Named("List".to_string()),
-            },
-        ),
-        (
-            "zip".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["other".to_string()]),
-                output: ValueType::Named("List".to_string()),
-            },
-        ),
-    ]
+    ]);
+
+    contracts
 }
 
 fn collect_service_call_contracts(modules: &[ResolvedModule]) -> ServiceCallRegistry {
@@ -2772,32 +2607,13 @@ fn infer_expr_type(
                 let (_, arg_errors) = infer_expr_type(arg, local_bindings, infer_context);
                 errors.extend(arg_errors);
             }
-            match _method {
-                daglang_syntax::ast::PipeMethod::Count | daglang_syntax::ast::PipeMethod::Sum => {
-                    ValueType::Named("Int".to_string())
+            {
+                let def = _method.def();
+                if def.output_type == "Unknown" {
+                    ValueType::Unknown
+                } else {
+                    ValueType::Named(def.output_type.to_string())
                 }
-                daglang_syntax::ast::PipeMethod::Any
-                | daglang_syntax::ast::PipeMethod::All
-                | daglang_syntax::ast::PipeMethod::Contains
-                | daglang_syntax::ast::PipeMethod::StartsWith
-                | daglang_syntax::ast::PipeMethod::EndsWith => ValueType::Named("Bool".to_string()),
-                daglang_syntax::ast::PipeMethod::Join
-                | daglang_syntax::ast::PipeMethod::Repeat
-                | daglang_syntax::ast::PipeMethod::ReplaceSection
-                | daglang_syntax::ast::PipeMethod::Hash => ValueType::Named("String".to_string()),
-                daglang_syntax::ast::PipeMethod::ToBytes => ValueType::Named("Bytes".to_string()),
-                daglang_syntax::ast::PipeMethod::ToJson => ValueType::Named("Json".to_string()),
-                daglang_syntax::ast::PipeMethod::Map
-                | daglang_syntax::ast::PipeMethod::Filter
-                | daglang_syntax::ast::PipeMethod::FilterMap
-                | daglang_syntax::ast::PipeMethod::FlatMap
-                | daglang_syntax::ast::PipeMethod::SortBy
-                | daglang_syntax::ast::PipeMethod::Append
-                | daglang_syntax::ast::PipeMethod::Chars => ValueType::Named("List".to_string()),
-                daglang_syntax::ast::PipeMethod::Fold
-                | daglang_syntax::ast::PipeMethod::First
-                | daglang_syntax::ast::PipeMethod::Last
-                | daglang_syntax::ast::PipeMethod::MaxBy => ValueType::Unknown,
             }
         }
         Expr::Lambda(_, body) => {

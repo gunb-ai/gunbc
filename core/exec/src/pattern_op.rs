@@ -58,6 +58,12 @@ impl Executable for PatternOp {
                 out.ok()
             }
             PatternOp::LoopPack { output_port } => {
+                if let Some(result) =
+                    propagate_skipped(&inputs, "result", &[output_port, "iterations"])
+                {
+                    return result;
+                }
+
                 let list = list_values(&inputs, "result");
 
                 let count = optional_int(&inputs, "count").unwrap_or(list.len() as i64);
@@ -176,6 +182,18 @@ mod tests {
         let result = op.execute(inputs).unwrap();
         assert_eq!(result.get("filename"), Some(&Value::Skipped));
         assert_eq!(result.get("count"), Some(&Value::Skipped));
+    }
+
+    #[test]
+    fn test_loop_pack_propagates_skipped() {
+        let op = PatternOp::LoopPack {
+            output_port: "items".to_string(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("result".to_string(), Value::Skipped);
+        let result = op.execute(inputs).unwrap();
+        assert_eq!(result.get("items"), Some(&Value::Skipped));
+        assert_eq!(result.get("iterations"), Some(&Value::Skipped));
     }
 
     #[test]

@@ -40,6 +40,7 @@ pub mod frame_write;
 pub mod freshness;
 pub mod helpers;
 pub mod intercept;
+pub mod ledger;
 
 pub mod lower;
 pub mod pattern_op;
@@ -85,6 +86,7 @@ pub use helpers::{
     require_value, InputsExt, OutputMap, TransportResponseExt,
 };
 pub use intercept::{BoundaryMock, BoundaryMocks};
+pub use ledger::{ExecutionLedger, ExecutionRecord, RedundancyViolation};
 
 pub use lower::{lower, LoopInfo, LowerError, LowerResult};
 pub use progress::{

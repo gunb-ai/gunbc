@@ -45,7 +45,7 @@ pub enum Computation {
     },
     /// Collection operation: apply an operation to each element of a list.
     Collection {
-        kind: CollectionOpKind,
+        family: EmitCollectionFamily,
         element_type: String,
     },
 }
@@ -251,19 +251,6 @@ pub struct ServiceCallMetadata {
     pub config: Vec<(String, String)>,
 }
 
-/// Collection operation variants.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CollectionOpKind {
-    /// Apply a body to each element.
-    Map,
-    /// Filter elements.
-    Filter,
-    /// Reduce elements to a single value.
-    Fold,
-    /// Sort elements.
-    Sort,
-}
-
 // ===========================================================================
 // Classification (A1.3)
 // ===========================================================================
@@ -271,6 +258,7 @@ pub enum CollectionOpKind {
 use daglang_lower::{
     LoweredOp, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind, ServiceTransportClass,
 };
+use daglang_syntax::ast::EmitCollectionFamily;
 use gunbc_ir::node::{Node, NodeBody};
 use gunbc_ir::Port;
 
@@ -445,6 +433,15 @@ fn classify_primitive(
             node_id: name.to_string(),
             detail: "ExprCompute is interpreter-only and cannot be emitted".to_string(),
         }),
+        // C24: All remaining structural primitive ops are interpreter-only
+        // (resolved at runtime by resolve.rs). They must not reach the emitter.
+        _ => {
+            debug_assert!(kind.is_structural(), "unhandled non-structural primitive: {kind:?}");
+            Err(ClassifyError::UnrecognizedOp {
+                node_id: name.to_string(),
+                detail: format!("{kind:?} is interpreter-only and cannot be emitted"),
+            })
+        }
     }
 }
 
@@ -488,26 +485,8 @@ fn classify_collection(
         .map(|p| p.abstract_type.clone())
         .unwrap_or_else(|| "Unknown".to_string());
 
-    let mapped_kind = match kind {
-        daglang_lower::CollectionOpKind::Map
-        | daglang_lower::CollectionOpKind::FlatMap
-        | daglang_lower::CollectionOpKind::Join => CollectionOpKind::Map,
-        daglang_lower::CollectionOpKind::Filter | daglang_lower::CollectionOpKind::Contains => {
-            CollectionOpKind::Filter
-        }
-        daglang_lower::CollectionOpKind::Fold
-        | daglang_lower::CollectionOpKind::Any
-        | daglang_lower::CollectionOpKind::All
-        | daglang_lower::CollectionOpKind::Len => CollectionOpKind::Fold,
-        daglang_lower::CollectionOpKind::Sort | daglang_lower::CollectionOpKind::Dedup => {
-            CollectionOpKind::Sort
-        }
-        daglang_lower::CollectionOpKind::Split => CollectionOpKind::Map,
-        daglang_lower::CollectionOpKind::Zip => CollectionOpKind::Map,
-    };
-
     Ok(Computation::Collection {
-        kind: mapped_kind,
+        family: kind.emit_family(),
         element_type,
     })
 }
@@ -1295,7 +1274,7 @@ mod tests {
         assert!(matches!(
             comp,
             Computation::Collection {
-                kind: CollectionOpKind::Map,
+                family: EmitCollectionFamily::Map,
                 ..
             }
         ));
@@ -1317,7 +1296,7 @@ mod tests {
         assert!(matches!(
             comp,
             Computation::Collection {
-                kind: CollectionOpKind::Filter,
+                family: EmitCollectionFamily::Filter,
                 ..
             }
         ));
@@ -1339,7 +1318,7 @@ mod tests {
         assert!(matches!(
             comp,
             Computation::Collection {
-                kind: CollectionOpKind::Fold,
+                family: EmitCollectionFamily::Fold,
                 ..
             }
         ));
@@ -1361,7 +1340,7 @@ mod tests {
         assert!(matches!(
             comp,
             Computation::Collection {
-                kind: CollectionOpKind::Sort,
+                family: EmitCollectionFamily::Sort,
                 ..
             }
         ));

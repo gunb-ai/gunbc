@@ -19,7 +19,7 @@ The DSL design is the main document. Everything else is context.
 - **[`workflow-modeling-preview.md`](./workflow-modeling-preview.md)** — Phase 0.5 deliverable: builder-shape vs DSL-shape parity proofs.
 - **[`sandbox-replay-rfc.md`](./sandbox-replay-rfc.md)** — Runtime policy proposal for sandbox deny/allow/replay semantics.
 - **[`gist-recent-credential-diagnostics.md`](./gist-recent-credential-diagnostics.md)** — Baseline trace + fallback analysis for credential resolution.
-- **[`domain-hard-error-no-fallback-plan.md`](./domain-hard-error-no-fallback-plan.md)** — Domain-model plan for eliminating string tables, passthrough/stub fallbacks, and ad-hoc embed registries (post PR1-PR5 items 5/7/8).
+- **[`compositional-type-coverage.md`](./compositional-type-coverage.md)** — Compositional type coverage: vision, audit (all layers), 8 gaps, 7 workstreams (WS-1 through WS-7 including extern linking), success criteria. Single design doc for the type algebra roadmap.
 
 ## Background (how we got here)
 

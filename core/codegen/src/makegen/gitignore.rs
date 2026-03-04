@@ -12,15 +12,12 @@
 //! - `rationale`: Why these files are ignored
 
 use std::collections::HashSet;
-use std::path::Path;
 
-use daglang_driver::compile_data_from_sources;
+use daglang_driver::compile_data_from_module;
 use serde::Deserialize;
 
-const GITIGNORE_DAG_SOURCE: &str = include_str!("../../../dsl/config/gitignore.dag");
-
-use crate::dsl_registry::discover_tool_defs_from_dsl;
-use crate::makegen::registry::{BuildConfig, BuildSystem};
+use crate::tool_discovery::discover_tool_defs_from_dsl;
+use super::registry::{BuildConfig, BuildSystem};
 use gunbc_infra::workspace_model::{baseline_commit_policies, CommitReason};
 use gunbc_ir::cargo::{CargoCommand, Subcommand};
 use gunbc_ir::render_ir::{Category, FileHeader, PlainText, StructuredRenderer};
@@ -49,8 +46,11 @@ fn build_system_name(build_system: BuildSystem) -> &'static str {
 }
 
 fn load_dsl_categories(build_system: BuildSystem) -> Result<Vec<Category>, String> {
-    let path = Path::new("<embedded>/config/gitignore.dag");
-    let output = compile_data_from_sources(&[(path, GITIGNORE_DAG_SOURCE)])
+    let layout = gunbc_ir::WorkspaceLayout::from_env_manifest_dir()
+        .or_else(|_| gunbc_ir::WorkspaceLayout::from_cargo_metadata())
+        .map_err(|e| format!("workspace layout for gitignore DSL: {e}"))?;
+    let dsl_root = layout.workspace_root.join("dsl");
+    let output = compile_data_from_module(&dsl_root, "config/gitignore.dag")
         .map_err(|e| format!("config/gitignore.dag compilation failed: {e}"))?;
     let value = output
         .data_values

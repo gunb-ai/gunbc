@@ -552,6 +552,118 @@ impl fmt::Display for OperationKey {
 }
 
 // =============================================================================
+// C22: Static Fingerprint — Deductive Redundancy Elimination
+// =============================================================================
+
+/// Provenance of a value flowing into a transport operation (C22).
+///
+/// Tracks where each idempotency key value originates, enabling compile-time
+/// duplicate detection without executing the DAG.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum InputProvenance {
+    /// The value is a literal constant (e.g., `path: "Makefile"`).
+    Literal(String),
+    /// The value arrives via a DAG edge from another node's output port.
+    Edge {
+        source_node: NodeId,
+        source_port: PortName,
+    },
+    /// The value is computed at runtime (string interpolation, expression).
+    Dynamic,
+}
+
+/// A compile-time fingerprint for a transport operation (C22).
+///
+/// Two transport nodes with the same `StaticFingerprint` perform identical work.
+/// The lowerer stamps these on transport execute nodes; the validator rejects
+/// duplicates when both are either WritesState or both are ReadOnly.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StaticFingerprint {
+    /// The service operation being invoked.
+    pub operation: OperationKey,
+    /// Per-key provenance for the operation's distinguishing inputs.
+    /// Empty if the operation has no idempotency keys (singleton operations).
+    pub keys: Vec<(String, InputProvenance)>,
+}
+
+impl StaticFingerprint {
+    /// Create a fingerprint for a singleton operation (no idempotency keys).
+    pub fn singleton(operation: OperationKey) -> Self {
+        Self {
+            operation,
+            keys: Vec::new(),
+        }
+    }
+
+    /// Create a fingerprint with explicit key provenance.
+    pub fn with_keys(
+        operation: OperationKey,
+        keys: Vec<(String, InputProvenance)>,
+    ) -> Self {
+        Self { operation, keys }
+    }
+
+    /// Two fingerprints conflict when they represent provably identical operations.
+    ///
+    /// Returns `true` if the fingerprints are structurally equal — same operation
+    /// and same key provenance. Dynamic provenance never conflicts (we can't
+    /// prove equality at compile time).
+    pub fn conflicts_with(&self, other: &Self) -> bool {
+        if self.operation != other.operation {
+            return false;
+        }
+        if self.keys.len() != other.keys.len() {
+            return false;
+        }
+        // If any key is Dynamic, we can't prove conflict at compile time.
+        for (key, provenance) in &self.keys {
+            if matches!(provenance, InputProvenance::Dynamic) {
+                return false;
+            }
+            let Some(other_provenance) = other
+                .keys
+                .iter()
+                .find(|(k, _)| k == key)
+                .map(|(_, p)| p)
+            else {
+                return false;
+            };
+            if matches!(other_provenance, InputProvenance::Dynamic) {
+                return false;
+            }
+            if provenance != other_provenance {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+impl fmt::Display for StaticFingerprint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.operation)?;
+        if !self.keys.is_empty() {
+            write!(f, "(")?;
+            for (i, (key, prov)) in self.keys.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                match prov {
+                    InputProvenance::Literal(v) => write!(f, "{}={:?}", key, v)?,
+                    InputProvenance::Edge {
+                        source_node,
+                        source_port,
+                    } => write!(f, "{}=<{}.{}>", key, source_node.0, source_port.0)?,
+                    InputProvenance::Dynamic => write!(f, "{}=<dynamic>", key)?,
+                }
+            }
+            write!(f, ")")?;
+        }
+        Ok(())
+    }
+}
+
+// =============================================================================
 // Identifier types (unchanged)
 // =============================================================================
 

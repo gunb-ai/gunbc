@@ -413,7 +413,7 @@ compile .dag → auto_mock_spec() → obligation analysis → emit tests
 
 **Goal**: Eliminate string-coupled/runtime fallback behavior by adopting compile+link semantics: extern symbol resolution, hard missing-symbol errors, and deterministic receipts.
 
-**Design reference (source of truth)**: `docs/design/v4/domain-hard-error-no-fallback-plan.md`
+**Design reference (source of truth)**: `docs/design/v4/compositional-type-coverage.md` § WS-7
 
 **Scope note**: Keep this lane high-level until design review is finalized; do not implement ad-hoc shortcuts outside the design contract.
 

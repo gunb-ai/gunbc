@@ -21,31 +21,6 @@ import std.types {
   NonEmptyStr, TrackedIssue, StageOutcome, IssueState
 }
 
-// ── Configuration ──────────────────────────────────────────────────
-
-type ScaleTestConfig {
-  worker_count: Int = 5
-  issue_count: Int = 20
-  timeout_seconds: Int = 600    // 10 minutes
-  poll_interval_seconds: Int = 5
-}
-
-data default_config: ScaleTestConfig = {
-  worker_count: 5,
-  issue_count: 20,
-  timeout_seconds: 600,
-  poll_interval_seconds: 5
-}
-
-type ScaleTestResult {
-  total_issues: Int
-  terminal_count: Int
-  claim_conflicts: Int
-  lost_outcomes: Int
-  elapsed_seconds: Int
-  all_passed: Bool
-}
-
 // ── Scale test pipeline ──────────────────────────────────────────
 
 pipeline scale_test
@@ -71,7 +46,7 @@ pipeline scale_test
   }
 
   // Stage 2: Verify claims — check that no duplicate claims exist
-  stage verify_claims [after seed] {
+  stage verify_claims [after seed, when enabled] {
     claim_results = for issue in discovered.issues {
       // Try to acquire a claim (should succeed if no other worker holds it)
       claim = claims.acquire(
@@ -102,7 +77,7 @@ pipeline scale_test
   }
 
   // Stage 3: Verify outcomes — check that all issues have outcomes
-  stage verify_outcomes [after verify_claims] {
+  stage verify_outcomes [after verify_claims, when enabled] {
     outcome_results = for issue in discovered.issues {
       outcome = outcomes.get(
         run_key: "sdlc::{issue.id}",
@@ -115,7 +90,7 @@ pipeline scale_test
   }
 
   // Stage 4: Report
-  stage report [after verify_outcomes] {
+  stage report [after verify_outcomes, when enabled] {
     all_passed = claim_conflicts == 0 && lost_outcomes == 0 && release_failures == 0
   }
 }
@@ -126,7 +101,7 @@ test scale_test_skipped_when_disabled {
 
     mock gate/env_get/execute.response -> { value: null }
 
-    expect result is Map
+    expect result.gate.enabled == false
 }
 
 test scale_test_no_conflicts {
@@ -157,5 +132,7 @@ test scale_test_no_conflicts {
       outcome: { status: "Success", attempt_count: 1, retry_budget_remaining: 2 }
     })
 
-    expect result is Map
+    expect result.report.all_passed == true
+    expect result.verify_claims.claim_conflicts == 0
+    expect result.verify_outcomes.lost_outcomes == 0
 }

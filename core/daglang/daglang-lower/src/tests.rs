@@ -446,7 +446,11 @@ fn run(values: List<String>) -> String {
 }
 
 #[test]
-fn lower_typed_project_emits_control_flow_nodes_for_if_for_match() {
+fn lower_typed_project_skips_control_flow_nodes_for_fn_with_body() {
+    // fn items with non-lossy fn_body are evaluated via FnBodyCallableOp,
+    // which handles control flow (match/if/for) directly. Creating SubDag
+    // pattern nodes is redundant and causes failures because inner op nodes
+    // lack __out:result passthrough wiring across nested SubDag boundaries.
     let typed = typed_project_from_sources(&[(
         "sample.control",
         r#"
@@ -488,32 +492,19 @@ _ => 0
         .iter()
         .map(|node| node.id.0.as_str())
         .collect::<HashSet<_>>();
+    // fn items with fn_body should NOT have control flow SubDag nodes.
     assert!(
-        node_ids.contains("sample.control::run::cf_for_0"),
-        "node ids: {node_ids:?}"
+        !node_ids.contains("sample.control::run::cf_for_0"),
+        "fn with fn_body should not have cf_for_0: {node_ids:?}"
     );
     assert!(
-        node_ids.contains("sample.control::run::cf_if_0"),
-        "node ids: {node_ids:?}"
+        !node_ids.contains("sample.control::run::cf_if_0"),
+        "fn with fn_body should not have cf_if_0: {node_ids:?}"
     );
     assert!(
-        node_ids.contains("sample.control::run::cf_if_1"),
-        "node ids: {node_ids:?}"
+        !node_ids.contains("sample.control::run::cf_match_0"),
+        "fn with fn_body should not have cf_match_0: {node_ids:?}"
     );
-    assert!(
-        node_ids.contains("sample.control::run::cf_match_0"),
-        "node ids: {node_ids:?}"
-    );
-    assert!(dag.edges.iter().any(|edge| {
-        edge.from_node.0 == "sample.control::run::cf_for_0"
-            && edge.to_node.0 == "sample.control::run"
-            && edge.to_port.0 == PortName::DEPS
-    }));
-    assert!(dag.edges.iter().any(|edge| {
-        edge.from_node.0 == "sample.control::run::cf_match_0"
-            && edge.to_node.0 == "sample.control::run"
-            && edge.to_port.0 == PortName::DEPS
-    }));
 }
 
 #[test]
@@ -1598,6 +1589,36 @@ func caller(name: String, token: String) -> { id: String } {
     assert!(
         msg.contains("Secret") && msg.contains("String"),
         "error should mention expected Secret type and actual type: {msg}"
+    );
+}
+
+#[test]
+fn rest_output_from_path_rejects_dotted_json_path_syntax() {
+    let typed = typed_project_from_sources(&[(
+        "dsl/services/output_path_syntax.dag",
+        r#"module sample.output_path_syntax
+service sample.PullRequest {
+  operation Get {
+input { owner: String, repo: String, pull_number: Int }
+output { head_sha: String from "head.sha" }
+transport rest { method: GET, path: "/repos/pulls" }
+  }
+}
+func run(owner: String, repo: String, pull_number: Int) -> { head_sha: String } {
+  pr = sample.PullRequest.Get(owner: owner, repo: repo, pull_number: pull_number)
+  return { head_sha: pr.head_sha }
+}"#,
+    )]);
+
+    let err = lower_typed_project(&typed).expect_err("dotted json path should fail lowering");
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("non-canonical dotted path `head.sha`"),
+        "error should mention dotted path: {msg}"
+    );
+    assert!(
+        msg.contains("head/sha"),
+        "error should suggest slash-delimited path syntax: {msg}"
     );
 }
 
@@ -3717,6 +3738,12 @@ fn make_branch_body_dag_no_transports_has_single_op() {
     // Should have input and condition ports
     assert!(dag.nodes[0].inputs.iter().any(|p| p.name.0 == "input"));
     assert!(dag.nodes[0].inputs.iter().any(|p| p.name.0 == "condition"));
+    // No-transport case uses fn_body: Some(return { result: input }) — avoids __out:result requirement
+    if let gunbc_ir::NodeBody::Opaque(LoweredOp::Callable { fn_body, .. }) = &dag.nodes[0].body {
+        assert!(fn_body.is_some(), "no-transport branch body should have trivial fn_body passthrough");
+    } else {
+        panic!("expected Callable op");
+    }
 }
 
 #[test]
@@ -3757,6 +3784,13 @@ fn make_branch_body_dag_with_transports_has_triplets() {
         op_node.inputs.iter().any(|p| p.name.0 == "condition"),
         "op should retain condition port for guard propagation"
     );
+
+    // With-transport case uses fn_body to pass through the transport parse output
+    if let gunbc_ir::NodeBody::Opaque(LoweredOp::Callable { fn_body, .. }) = &op_node.body {
+        assert!(fn_body.is_some(), "with-transport branch body should have fn_body");
+    } else {
+        panic!("expected Callable op");
+    }
 
     // Should have 3 edges: prepare→execute, execute→parse, parse→op
     assert_eq!(dag.edges.len(), 3);
@@ -3799,5 +3833,187 @@ fn branch_body_dag_with_transports_builds_with_branch_builder() {
             .iter()
             .map(|p| &p.name.0)
             .collect::<Vec<_>>()
+    );
+}
+
+// ===================================================================
+// Wave 1 synthesis function tests
+// ===================================================================
+
+#[test]
+fn list_construct_creates_node_with_element_ports() {
+    let typed = typed_project_from_sources(&[(
+        "sample/lists.dag",
+        r#"module sample.lists
+fn make(a: String, b: String) -> String {
+  items = [a, b]
+  return items |> join(",")
+}
+func run(a: String, b: String) -> { out: String } {
+  result = make(a: a, b: b)
+  return { out: result }
+}"#,
+    )]);
+    let dag = lower_target_module(&typed, "sample.lists");
+
+    // List literals in return expressions become ListConstruct nodes
+    // or get folded into ExprCompute/PipeOp. Find any list_construct node.
+    let lc_node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0.starts_with("list_construct_"));
+
+    // If the lowerer creates a ListConstruct node, verify its shape.
+    if let Some(node) = lc_node {
+        match &node.body {
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive {
+                kind: PrimitiveOpKind::ListConstruct { count },
+                ..
+            }) => {
+                assert_eq!(*count, 2, "list should have 2 elements");
+                assert!(
+                    node.inputs.iter().any(|p| p.name.0 == "elem_0"),
+                    "should have elem_0 input port"
+                );
+                assert!(
+                    node.inputs.iter().any(|p| p.name.0 == "elem_1"),
+                    "should have elem_1 input port"
+                );
+            }
+            other => panic!("expected ListConstruct, got {other:?}"),
+        }
+    } else {
+        // List may be folded into a PipeOp or ExprCompute fn body.
+        // Verify the DAG at least compiles and has the expected callable.
+        assert!(
+            dag.nodes.iter().any(|n| n.id.0.contains("lists::run")),
+            "DAG should contain the run callable; nodes: {:?}",
+            dag.nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
+        );
+    }
+}
+
+fn lower_target_module_with_collections(typed: &TypedProject, module_name: &str) -> Dag<LoweredOp> {
+    let mut scope = HashSet::new();
+    scope.insert(module_name.to_string());
+    lower_typed_project_for_modules_with_collection_nodes(typed, &scope)
+        .expect("lowering should succeed")
+}
+
+#[test]
+fn pipe_map_expression_lowers_to_collection_map_node() {
+    let typed = typed_project_from_sources(&[(
+        "sample/pipe.dag",
+        r#"module sample.pipe
+func run(values: List<String>) -> { out: String } {
+  result = values |> map(v => v) |> join(",")
+  return { out: result }
+}"#,
+    )]);
+    let dag = lower_target_module_with_collections(&typed, "sample.pipe");
+
+    let map_node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0.contains("MapNode"));
+
+    assert!(
+        map_node.is_some(),
+        "pipe |> map() should lower to a Collection MapNode; nodes: {:?}",
+        dag.nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn for_expression_lowers_to_cf_for_node() {
+    let typed = typed_project_from_sources(&[(
+        "sample/for_expr.dag",
+        r#"module sample.for_expr
+fn double(x: Int) -> Int { x * 2 }
+func run(values: List<Int>) -> { out: List<Int> } {
+  result = for v in values { double(x: v) }
+  return { out: result }
+}"#,
+    )]);
+    let dag = lower_target_module(&typed, "sample.for_expr");
+
+    let for_node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0.contains("cf_for_"));
+
+    assert!(
+        for_node.is_some(),
+        "for expression should create a cf_for loop node; nodes: {:?}",
+        dag.nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn pipe_filter_join_chain_lowers_to_collection_nodes() {
+    let typed = typed_project_from_sources(&[(
+        "sample/chain.dag",
+        r#"module sample.chain
+func run(values: List<String>) -> { out: String } {
+  result = values |> filter(v => v != "") |> join(",")
+  return { out: result }
+}"#,
+    )]);
+    let dag = lower_target_module_with_collections(&typed, "sample.chain");
+
+    let filter_node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0.contains("FilterNode"));
+    let join_node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0.contains("JoinNode"));
+
+    assert!(
+        filter_node.is_some(),
+        "pipe |> filter() should create FilterNode; nodes: {:?}",
+        dag.nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
+    );
+    assert!(
+        join_node.is_some(),
+        "pipe |> join() should create JoinNode; nodes: {:?}",
+        dag.nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn variant_names_populated_from_sum_types() {
+    let typed = typed_project_from_sources(&[(
+        "sample/variant.dag",
+        r#"module sample.variant
+type Outcome = Ok { value: String } | Err { message: String }
+func run(s: String) -> { ok_val: String } {
+  result = Ok { value: s }
+  return { ok_val: result.value }
+}"#,
+    )]);
+
+    // Verify variant_names context is correctly populated from project types.
+    // This ensures the dispatch guard in resolve_return_expr_source correctly
+    // identifies tagged variant records vs plain records.
+    let variant_names = collect_variant_names(&typed);
+    assert!(
+        variant_names.contains("Ok"),
+        "variant_names should include 'Ok': {:?}",
+        variant_names
+    );
+    assert!(
+        variant_names.contains("Err"),
+        "variant_names should include 'Err': {:?}",
+        variant_names
+    );
+
+    // Verify lowering succeeds.
+    let dag = lower_target_module(&typed, "sample.variant");
+    assert!(
+        dag.nodes.iter().any(|n| n.id.0.contains("variant::run")),
+        "DAG should contain the run callable; nodes: {:?}",
+        dag.nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
     );
 }

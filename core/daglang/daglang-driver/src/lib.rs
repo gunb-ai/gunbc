@@ -120,6 +120,24 @@ impl CompileOutput {
 
         emit_data_dag(module_name, &types, &data)
     }
+
+    /// Serialize the lowered DAG to JSON bytes for AOT caching (C28).
+    ///
+    /// The serialized format includes the full `Dag<LoweredOp>` with all
+    /// `ServiceCallMetadata`, `ServiceOperationSpec`, fn bodies, and pattern ops.
+    /// Deserialize with [`deserialize_lowered_dag`].
+    pub fn serialize_lowered_dag(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(&self.lowered_dag)
+    }
+}
+
+/// Deserialize a lowered DAG from JSON bytes (C28 AOT cache).
+///
+/// Reconstitutes a `Dag<LoweredOp>` previously serialized by
+/// [`CompileOutput::serialize_lowered_dag`]. The caller must then resolve
+/// the lowered ops to `DynOp` via `resolve_lowered_dag()`.
+pub fn deserialize_lowered_dag(bytes: &[u8]) -> Result<Dag<LoweredOp>, serde_json::Error> {
+    serde_json::from_slice(bytes)
 }
 
 /// Deterministic compilation receipt.
@@ -158,6 +176,8 @@ pub enum CompileError {
     Lower(LowerError),
     Emit(EmitError),
     Derive(DeriveError),
+    /// Post-lowering structural verification failures.
+    Verification(Vec<gunbc_ir::VerifyError>),
     /// Ad-hoc error message (validation, I/O, configuration).
     Message(String),
 }
@@ -196,6 +216,13 @@ impl std::fmt::Display for CompileError {
             CompileError::Lower(error) => write!(f, "lower error: {error}"),
             CompileError::Emit(error) => write!(f, "emit error: {error}"),
             CompileError::Derive(error) => write!(f, "derive error: {error}"),
+            CompileError::Verification(errors) => {
+                f.write_str("verification errors:\n")?;
+                for error in errors {
+                    writeln!(f, "  {error}")?;
+                }
+                Ok(())
+            }
             CompileError::Message(message) => f.write_str(message),
         }
     }
@@ -248,7 +275,7 @@ pub struct CheckOutput {
     pub parsed_files: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompileOptions {
     pub emit_collection_nodes: bool,
     pub profile: Option<String>,
@@ -263,6 +290,28 @@ pub struct CompileOptions {
     /// Go/C/MIPS backends embed these as string literals; Rust Layer 1
     /// writes them as additional files in the generated crate.
     pub embedded_data: std::collections::HashMap<String, daglang_emit::EmbeddedData>,
+    /// Skip post-lowering structural verification (default: true during transition).
+    ///
+    /// When false, `verify_dag()` runs after lowering and rejects DAGs with
+    /// unwired required inputs, SubDag mismatches, resource gaps, or
+    /// fingerprint conflicts. Currently defaults to true because the lowerer
+    /// produces benign unwired inputs (param_source nodes, fn body cross-wiring
+    /// gaps). Set to false on specific compilation paths once lowerer gaps close.
+    pub skip_verification: bool,
+}
+
+impl Default for CompileOptions {
+    fn default() -> Self {
+        Self {
+            emit_collection_nodes: false,
+            profile: None,
+            target: CodegenTarget::default(),
+            layer: CodegenLayer::default(),
+            output_dir: None,
+            embedded_data: std::collections::HashMap::new(),
+            skip_verification: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -403,7 +452,156 @@ pub fn compile_data_from_sources(
         Err(e) => return Err(CompileError::Lower(e)),
     }
 
-    Ok(EmbeddedCompileOutput { data_values, fns })
+    let pipelines = extract_pipelines_from_typed(&typed);
+
+    Ok(EmbeddedCompileOutput {
+        data_values,
+        fns,
+        pipelines,
+    })
+}
+
+/// Filesystem-based compilation from a DSL module path.
+///
+/// Discovers the module's transitive imports from the filesystem (no `include_str!`
+/// needed), typechecks, lowers, and extracts data values and fn bodies. Replaces
+/// `compile_data_from_sources` for callers that have filesystem access at build time.
+///
+/// # Arguments
+/// * `dsl_root` — Root of the DSL source tree (e.g., `workspace_root.join("dsl")`)
+/// * `module_path` — Relative path within `dsl_root` (e.g., `"config/resources.dag"`)
+pub fn compile_data_from_module(
+    dsl_root: &Path,
+    module_path: &str,
+) -> Result<EmbeddedCompileOutput, CompileError> {
+    let target_file = dsl_root.join(module_path);
+    let context = DriverContext {
+        roots: vec![dsl_root.to_path_buf()],
+        target_file: Some(target_file),
+    };
+    let module_graph = discover_module_graph_for_context(&context)?;
+    let typed = typecheck_module_graph_with_options(
+        module_graph,
+        TypecheckOptions {
+            allow_unresolved_imports: true,
+        },
+    )
+    .map_err(CompileError::Typecheck)?;
+    let data_values = daglang_lower::build_data_values(&typed);
+
+    let mut fns = HashMap::new();
+    match daglang_lower::lower_typed_project(&typed) {
+        Ok(lowered) => {
+            for node in &lowered.nodes {
+                if let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable {
+                    kind: daglang_lower::CallableKind::Fn,
+                    name,
+                    fn_body: Some(body),
+                    ..
+                }) = &node.body
+                {
+                    fns.insert(name.clone(), *body.clone());
+                }
+            }
+        }
+        Err(daglang_lower::LowerError::NoLowerableItems) => {}
+        Err(e) => return Err(CompileError::Lower(e)),
+    }
+
+    let pipelines = extract_pipelines_from_typed(&typed);
+
+    Ok(EmbeddedCompileOutput {
+        data_values,
+        fns,
+        pipelines,
+    })
+}
+
+/// Walk all modules in a typed project and extract pipeline definitions.
+fn extract_pipelines_from_typed(
+    typed: &TypedProject,
+) -> HashMap<String, Vec<PipelineStageInfo>> {
+    let mut pipelines = HashMap::new();
+    for module in &typed.modules {
+        for item in &module.ast.items {
+            if let Item::PipelineDef(def) = &item.node {
+                let stages = def
+                    .stages
+                    .iter()
+                    .map(|stage| PipelineStageInfo {
+                        name: stage.name.clone(),
+                        after: stage.after.clone(),
+                        modes: extract_stage_modes(stage.when.as_ref()),
+                    })
+                    .collect();
+                pipelines.insert(def.name.clone(), stages);
+            }
+        }
+    }
+    pipelines
+}
+
+/// Extract mode literals from a stage `when` condition.
+///
+/// Looks for `mode == "literal"` patterns in the expression tree,
+/// supporting `||` and `&&` conjunctions.
+fn extract_stage_modes(condition: Option<&Expr>) -> BTreeSet<String> {
+    let mut modes = BTreeSet::new();
+    if let Some(condition) = condition {
+        collect_mode_literals(condition, &mut modes);
+    }
+    modes
+}
+
+fn collect_mode_literals(expr: &Expr, modes: &mut BTreeSet<String>) {
+    match expr {
+        Expr::BinOp(lhs, op, rhs) => match op {
+            daglang_syntax::ast::BinOp::Eq => {
+                if let Some(mode) = mode_literal_from_equality(lhs, rhs) {
+                    modes.insert(mode);
+                }
+            }
+            daglang_syntax::ast::BinOp::And | daglang_syntax::ast::BinOp::Or => {
+                collect_mode_literals(lhs, modes);
+                collect_mode_literals(rhs, modes);
+            }
+            _ => {}
+        },
+        Expr::Guarded(inner, guard) => {
+            collect_mode_literals(inner, modes);
+            collect_mode_literals(guard, modes);
+        }
+        Expr::After(inner, _) => collect_mode_literals(inner, modes),
+        _ => {}
+    }
+}
+
+fn mode_literal_from_equality(lhs: &Expr, rhs: &Expr) -> Option<String> {
+    let lhs_is_mode = matches!(lhs, Expr::Ident(name) if name == "mode");
+    let rhs_is_mode = matches!(rhs, Expr::Ident(name) if name == "mode");
+    if lhs_is_mode {
+        return literal_string(rhs);
+    }
+    if rhs_is_mode {
+        return literal_string(lhs);
+    }
+    None
+}
+
+fn literal_string(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Literal(Literal::String(value)) => Some(value.clone()),
+        _ => None,
+    }
+}
+
+/// Extracted pipeline stage info from a parsed `.dag` file.
+#[derive(Debug, Clone)]
+pub struct PipelineStageInfo {
+    pub name: String,
+    pub after: Vec<String>,
+    /// Mode literals extracted from `when mode == "..."` conditions.
+    pub modes: BTreeSet<String>,
 }
 
 /// Output from compiling embedded DSL sources.
@@ -411,6 +609,8 @@ pub fn compile_data_from_sources(
 pub struct EmbeddedCompileOutput {
     pub data_values: HashMap<String, serde_json::Value>,
     pub fns: HashMap<String, daglang_lower::LoweredFnBody>,
+    /// Pipeline definitions extracted from parsed AST, keyed by pipeline name.
+    pub pipelines: HashMap<String, Vec<PipelineStageInfo>>,
 }
 
 pub fn compile_from_context_with_options(
@@ -419,6 +619,59 @@ pub fn compile_from_context_with_options(
 ) -> Result<CompileOutput, CompileError> {
     let module_graph = discover_module_graph_for_context(context)?;
     compile_from_module_graph_with_options(context, module_graph, options)
+}
+
+fn primitive_requires_strict_input_wiring(kind: &daglang_lower::PrimitiveOpKind) -> bool {
+    matches!(kind, daglang_lower::PrimitiveOpKind::GetField { .. }) || kind.is_structural()
+}
+
+fn validate_structural_primitive_input_wiring(dag: &Dag<LoweredOp>) -> Vec<gunbc_ir::VerifyError> {
+    let mut errors = Vec::new();
+    validate_structural_primitive_input_wiring_recursive(dag, &mut errors);
+    errors
+}
+
+fn validate_structural_primitive_input_wiring_recursive(
+    dag: &Dag<LoweredOp>,
+    errors: &mut Vec<gunbc_ir::VerifyError>,
+) {
+    let connected_inputs: HashSet<(&str, &str)> = dag
+        .edges
+        .iter()
+        .filter(|edge| edge.kind.carries_data())
+        .map(|edge| (edge.to_node.0.as_str(), edge.to_port.0.as_str()))
+        .collect();
+
+    for node in &dag.nodes {
+        match &node.body {
+            gunbc_ir::NodeBody::Opaque(LoweredOp::Primitive { kind, .. })
+                if primitive_requires_strict_input_wiring(kind) =>
+            {
+                for port in &node.inputs {
+                    if port.name.is_resource()
+                        || port.name.is_tool()
+                        || port.name.is_internal()
+                        || port.cardinality.min == 0
+                    {
+                        continue;
+                    }
+                    if !connected_inputs.contains(&(node.id.0.as_str(), port.name.0.as_str())) {
+                        errors.push(gunbc_ir::VerifyError::UnwiredInput(
+                            gunbc_ir::UnwiredInputError {
+                                node_id: node.id.0.clone(),
+                                node_name: node.id.0.clone(),
+                                port_name: port.name.0.clone(),
+                            },
+                        ));
+                    }
+                }
+            }
+            gunbc_ir::NodeBody::SubDag(inner) => {
+                validate_structural_primitive_input_wiring_recursive(inner, errors);
+            }
+            gunbc_ir::NodeBody::Opaque(_) => {}
+        }
+    }
 }
 
 /// Compile from a pre-built module graph, skipping discovery.
@@ -471,6 +724,18 @@ pub fn compile_from_module_graph_with_options(
         },
     )
     .map_err(CompileError::Lower)?;
+    let structural_primitive_wiring_errors = validate_structural_primitive_input_wiring(&lowered);
+    if !structural_primitive_wiring_errors.is_empty() {
+        return Err(CompileError::Verification(
+            structural_primitive_wiring_errors,
+        ));
+    }
+    if !options.skip_verification {
+        let verify_errors = gunbc_ir::verify_dag(&lowered);
+        if !verify_errors.is_empty() {
+            return Err(CompileError::Verification(verify_errors));
+        }
+    }
     let dag_paths = daglang_lower::extract_output_paths(&lowered);
     let annotation_paths = daglang_lower::extract_declared_outputs(&typed);
     let output_paths = merge_dedup_paths(dag_paths, annotation_paths);
@@ -1691,10 +1956,7 @@ fn callable_scope_for_context(
 
 fn module_has_callable_items(module: &ResolvedModule) -> bool {
     module.ast.items.iter().any(|item| {
-        matches!(
-            item.node,
-            Item::FnDef(_) | Item::FuncDef(_) | Item::PatternDef(_) | Item::PipelineDef(_)
-        )
+        item.node.as_callable().is_some() || matches!(item.node, Item::PipelineDef(_))
     })
 }
 
@@ -2533,5 +2795,180 @@ fn run() -> Bool {
         );
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn verify_dag_catches_unwired_inputs_when_enabled() {
+        // Build a minimal DAG with a deliberately unwired required input,
+        // then confirm verify_dag surfaces it.
+        use gunbc_ir::validate::{validate_required_inputs, verify_dag};
+        use gunbc_ir::{build::port, Dag, Edge, Node};
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "source",
+            vec![],
+            vec![port("out", "String")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "sink",
+            vec![port("data", "String"), port("config", "String")],
+            vec![port("result", "String")],
+            (),
+        ));
+        // Wire only "data", leave "config" unwired
+        dag.add_edge(Edge::new("source", "out", "sink", "data"));
+
+        let errors = validate_required_inputs(&dag);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].port_name, "config");
+
+        let all_errors = verify_dag(&dag);
+        assert!(
+            all_errors.iter().any(|e| matches!(
+                e,
+                gunbc_ir::VerifyError::UnwiredInput(err) if err.port_name == "config"
+            )),
+            "verify_dag should detect unwired 'config' input"
+        );
+    }
+
+    #[test]
+    fn structural_primitive_validation_flags_unwired_required_input() {
+        use daglang_lower::{PrimitiveLiteral, PrimitiveOpKind};
+        use gunbc_ir::{build::port, Dag, Edge, Node, VerifyError};
+
+        let mut dag: Dag<LoweredOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "left_src",
+            vec![],
+            vec![port("out", "Any")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "left_src".to_string(),
+                kind: PrimitiveOpKind::CallLiteralSource {
+                    literal: PrimitiveLiteral::Int(1),
+                },
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "binary",
+            vec![port("left", "Any"), port("right", "Any")],
+            vec![port("result", "Any")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "binary".to_string(),
+                kind: PrimitiveOpKind::BinaryOp {
+                    op: daglang_lower::expr::LoweredBinOp::Add,
+                },
+            },
+        ));
+        dag.add_edge(Edge::new("left_src", "out", "binary", "left"));
+
+        let errors = validate_structural_primitive_input_wiring(&dag);
+        assert!(
+            errors
+                .iter()
+                .any(|error| matches!(
+                    error,
+                    VerifyError::UnwiredInput(unwired)
+                        if unwired.node_id == "binary" && unwired.port_name == "right"
+                )),
+            "expected unwired required input error for binary.right, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn structural_primitive_validation_allows_conditional_without_else_input_port() {
+        use daglang_lower::{PrimitiveLiteral, PrimitiveOpKind};
+        use gunbc_ir::{build::port, Dag, Edge, Node};
+
+        let mut dag: Dag<LoweredOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "cond_src",
+            vec![],
+            vec![port("out", "Bool")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "cond_src".to_string(),
+                kind: PrimitiveOpKind::CallLiteralSource {
+                    literal: PrimitiveLiteral::Bool(true),
+                },
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "then_src",
+            vec![],
+            vec![port("out", "Any")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "then_src".to_string(),
+                kind: PrimitiveOpKind::CallLiteralSource {
+                    literal: PrimitiveLiteral::String("ok".to_string()),
+                },
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "conditional",
+            vec![port("condition", "Bool"), port("then", "Any")],
+            vec![port("result", "Any")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "conditional".to_string(),
+                kind: PrimitiveOpKind::Conditional,
+            },
+        ));
+        dag.add_edge(Edge::new("cond_src", "out", "conditional", "condition"));
+        dag.add_edge(Edge::new("then_src", "out", "conditional", "then"));
+
+        let errors = validate_structural_primitive_input_wiring(&dag);
+        assert!(
+            errors.is_empty(),
+            "conditional without else input port should pass, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn compile_data_from_module_returns_same_data_as_sources() {
+        // Parity test: compile_data_from_module (filesystem) should produce the
+        // same data_values as compile_data_from_sources (include_str).
+        let layout = gunbc_ir::WorkspaceLayout::from_env_manifest_dir()
+            .or_else(|_| gunbc_ir::WorkspaceLayout::from_cargo_metadata())
+            .expect("workspace layout");
+        let dsl_root = layout.workspace_root.join("dsl");
+
+        let module_output = compile_data_from_module(&dsl_root, "config/resources.dag")
+            .expect("compile_data_from_module should succeed");
+
+        // Verify it found expected data keys from the module
+        assert!(
+            !module_output.data_values.is_empty(),
+            "config/resources.dag should produce data values"
+        );
+        assert!(
+            module_output.data_values.contains_key("repo_source_input_globs"),
+            "config/resources.dag should declare `repo_source_input_globs`, got keys: {:?}",
+            module_output.data_values.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn compile_data_from_module_resolves_transitive_imports() {
+        // makegen.dag has many transitive imports (std/*, extdeps/*, services/*).
+        // compile_data_from_module should resolve them all automatically.
+        let layout = gunbc_ir::WorkspaceLayout::from_env_manifest_dir()
+            .or_else(|_| gunbc_ir::WorkspaceLayout::from_cargo_metadata())
+            .expect("workspace layout");
+        let dsl_root = layout.workspace_root.join("dsl");
+
+        let output = compile_data_from_module(&dsl_root, "tools/makegen.dag")
+            .expect("compile_data_from_module should resolve transitive imports");
+
+        // makegen.dag has fn items, not just data declarations
+        assert!(
+            !output.fns.is_empty(),
+            "tools/makegen.dag should have extractable fn bodies"
+        );
     }
 }

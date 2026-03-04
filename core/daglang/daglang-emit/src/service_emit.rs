@@ -513,18 +513,7 @@ fn go_input_params(fields: &[FieldSpec]) -> String {
 }
 
 fn go_type_for_field(type_id: &str) -> String {
-    match type_id {
-        "String" | "NonEmptyStr" | "Url" | "GistId" | "ProjectId" | "ServiceAccountEmail" => {
-            "string".to_string()
-        }
-        "Int" | "i64" => "int64".to_string(),
-        "Float" | "f64" => "float64".to_string(),
-        "Bool" => "bool".to_string(),
-        "Secret" => "string".to_string(),
-        "Bytes" => "[]byte".to_string(),
-        "Json" => "interface{}".to_string(),
-        _ => "interface{}".to_string(),
-    }
+    crate::type_mapping::map_abstract_type(&crate::type_mapping::GO_TYPE_MAPPING, type_id)
 }
 
 fn go_pascal_case(name: &str) -> String {
@@ -581,15 +570,13 @@ fn go_interpolate_path(template: &str, _fields: &[FieldSpec]) -> String {
 }
 
 fn go_convert_value(var: &str, type_id: &str) -> String {
-    match type_id {
-        "String" | "NonEmptyStr" | "Url" | "GistId" | "ProjectId" | "ServiceAccountEmail" => {
-            format!("{var}.(string)")
-        }
-        "Int" | "i64" => format!("int64({var}.(float64))"),
-        "Float" | "f64" => format!("{var}.(float64)"),
-        "Bool" => format!("{var}.(bool)"),
-        "Secret" => format!("{var}.(string)"),
-        "Bytes" => format!(
+    let go_type = go_type_for_field(type_id);
+    match go_type.as_str() {
+        "string" => format!("{var}.(string)"),
+        "int64" => format!("int64({var}.(float64))"),
+        "float64" => format!("{var}.(float64)"),
+        "bool" => format!("{var}.(bool)"),
+        "[]byte" => format!(
             "func() []byte {{ switch t := {var}.(type) {{ case []byte: return t; case string: return []byte(t); default: panic(\"expected []byte or string for Bytes field\") }} }}()"
         ),
         _ => var.to_string(),
@@ -1218,6 +1205,7 @@ mod tests {
             auth_input: None,
             middleware: None,
             response_mapping: vec![],
+            output_shape: None,
         }
     }
 
@@ -1270,6 +1258,7 @@ mod tests {
             auth_input: None,
             middleware: None,
             response_mapping: vec![],
+            output_shape: None,
         }
     }
 
@@ -1319,6 +1308,7 @@ mod tests {
             auth_input: None,
             middleware: None,
             response_mapping: vec![],
+            output_shape: None,
         }
     }
 
@@ -1546,6 +1536,7 @@ mod tests {
                     code_path: Some(".status".to_string()),
                     details_path: Some(".documentation_url".to_string()),
                 }),
+                output_shape: None,
             }),
         }
     }

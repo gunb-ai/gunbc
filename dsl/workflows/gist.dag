@@ -19,7 +19,7 @@
 module workflows.gist
 
 import shared.compilation { compilation_ensure }
-import tools.codegen { codegen_ensure }
+import shared.codegen { codegen_ensure }
 
 pipeline gist {
 

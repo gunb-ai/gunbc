@@ -105,10 +105,6 @@ pub struct BuildConfig {
     pub ci_yaml: BuildCommand,
     /// Command to regenerate tests from DAGs.
     pub testgen: BuildCommand,
-    /// Command to ensure deps.toml is up to date.
-    pub deps_config_ensure: BuildCommand,
-    /// Command to check if deps.toml is stale.
-    pub deps_config_check: BuildCommand,
     /// Command to generate bootstrap artifacts.
     pub bootstrap: BuildCommand,
     /// Command to generate pragma artifacts.
@@ -159,18 +155,6 @@ impl BuildConfig {
             testgen: c(CargoCommand::new(Subcommand::Run(CargoInvocation::composed(
                 "testgen", "dag",
             )))
-            .warnings(w)),
-            deps_config_ensure: c(CargoCommand::new(Subcommand::Run(CargoInvocation::composed(
-                "deps-config",
-                "dag",
-            )))
-            .args(BinaryArgs::with_mode(ExecMode::Ensure))
-            .warnings(w)),
-            deps_config_check: c(CargoCommand::new(Subcommand::Run(CargoInvocation::composed(
-                "deps-config",
-                "dag",
-            )))
-            .args(BinaryArgs::with_mode(ExecMode::Verify))
             .warnings(w)),
             bootstrap: c(CargoCommand::new(Subcommand::Run(CargoInvocation::composed(
                 "bootstrap",
@@ -279,7 +263,7 @@ pub struct ToolInfo {
 
 impl ToolInfo {
     /// Create a ToolInfo from a codegen ToolDef.
-    pub fn from_tool_def(def: &gunbc_codegen::registry::ToolDef) -> Option<Self> {
+    pub fn from_tool_def(def: &crate::registry::ToolDef) -> Option<Self> {
         let invocation = def.invocation.as_ref()?;
         let mut info = Self {
             invocation: invocation.clone(),
@@ -368,17 +352,35 @@ impl ToolRegistry {
         self.tools.push(tool);
     }
 
+    /// Return a new registry excluding tools whose short_name is in the reserved set.
+    ///
+    /// Used by `render_makefile` to filter out DSL-discovered tools whose name
+    /// collides with a core or meta make target.
+    pub fn without_reserved(&self, reserved: &std::collections::BTreeSet<String>) -> Self {
+        Self {
+            tools: self
+                .tools
+                .iter()
+                .filter(|tool| !reserved.contains(&tool.short_name))
+                .cloned()
+                .collect(),
+        }
+    }
+
     /// Build the default registry with all tools discovered from DSL.
+    ///
+    /// NOTE: This returns an un-enriched registry (no live_secrets).
+    /// Callers that need live_secrets should use the enriched wrapper
+    /// in `gunbc_dag::tool_graphs::default_registry_enriched()`.
     pub fn default_registry() -> Result<Self, String> {
         let mut registry = Self::new();
 
-        for tool_def in crate::dsl_registry::discover_tool_defs_from_dsl()? {
+        for tool_def in crate::tool_discovery::discover_tool_defs_from_dsl()? {
             if let Some(tool_info) = ToolInfo::from_tool_def(&tool_def) {
                 registry.register_if_missing(tool_info);
             }
         }
 
-        enrich_live_secrets(&mut registry.tools);
         registry
             .tools
             .sort_by(|a, b| a.short_name.cmp(&b.short_name));
@@ -409,42 +411,6 @@ impl ToolRegistry {
     /// Daggen remains deferred.
     pub fn needs_daggen(&self) -> bool {
         false
-    }
-}
-
-/// Enrich tool entries with live-secret requirements from DagSpec registrations.
-fn enrich_live_secrets(tools: &mut [ToolInfo]) {
-    use std::collections::BTreeMap;
-
-    let mut secrets_by_tool: BTreeMap<&str, Vec<String>> = BTreeMap::new();
-    for spec in gunbc_testgen_registry::iter_dag_specs() {
-        if let Some(tool_name) = spec.meta.tool_name {
-            let entry = secrets_by_tool.entry(tool_name).or_default();
-            if let Some(required) = spec.testgen.live_required {
-                for secret in required {
-                    let s = secret.to_string();
-                    if !entry.contains(&s) {
-                        entry.push(s);
-                    }
-                }
-            }
-            if let Some(groups) = spec.testgen.live_required_any_of {
-                for group in groups {
-                    for secret in *group {
-                        let s = secret.to_string();
-                        if !entry.contains(&s) {
-                            entry.push(s);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    for tool in tools.iter_mut() {
-        if let Some(secrets) = secrets_by_tool.remove(tool.short_name.as_str()) {
-            tool.live_secrets = secrets;
-        }
     }
 }
 

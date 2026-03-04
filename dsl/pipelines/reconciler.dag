@@ -432,7 +432,7 @@ test reconciler_releases_stale_claims {
     })
 
     // Mock: release succeeds
-    mock scan_stale_claims/release/execute.response -> rest_response(204, {})
+    mock scan_stale_claims/release/execute.response -> rest_response(200, { released: true })
 
     // Mock: requeue signal emitted
     mock scan_stale_claims/signals_emit/execute.response -> rest_response(200, {

@@ -208,17 +208,22 @@ pub use types::{
     semantic_carrier_class_for_type_id, semantic_carrier_compatible,
     semantic_carrier_kind_for_type_id, value_backing_for_type_id, value_compatible_with_type_id,
     value_kind_name, Cardinality, CardinalityMismatch, CardinalitySamplingStrategy, NodeId,
-    OperationKey, PortCategory, PortName, SeedPlaceholderPolicy, SemanticCarrierClass,
+    InputProvenance, OperationKey, PortCategory, PortName, SeedPlaceholderPolicy,
+    SemanticCarrierClass, StaticFingerprint,
     SemanticCarrierKind, TypeId, ValueBacking,
 };
 pub use validate::{
-    validate_resource_wiring, validate_resource_wiring_recursive, validate_subdag_interfaces,
-    PortDirection, SubDagError, UnwiredResource,
+    validate_fingerprint_uniqueness, validate_required_inputs, validate_resource_wiring,
+    validate_resource_wiring_recursive, validate_subdag_interfaces, verify_dag,
+    FingerprintConflict, PortDirection, SubDagError, UnwiredInputError, UnwiredResource,
+    VerifyError,
 };
 pub use value::{
     SecretHint, SecretString, Value, ValueKind, HUMAN_TEXT_MAX_LINES, HUMAN_TEXT_MAX_LINE_WIDTH,
 };
-pub use value_bridge::{classify_value, from_bridge_json, to_bridge_json, ValueCategory};
+pub use value_bridge::{
+    classify_value, from_bridge_json, from_bridge_json_typed, to_bridge_json, ValueCategory,
+};
 pub use value_expr::ValueExpr;
 pub use workspace_layout::{WorkspaceLayout, WorkspaceLayoutError};
 

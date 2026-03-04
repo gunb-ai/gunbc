@@ -28,8 +28,3 @@ func codegen() -> { success: Bool, ran: Bool }
     ran: !check.needed
   }
 }
-
-// Ensure codegen capability is met
-func codegen_ensure() -> {} {
-  // handled by executor capability resolution
-}

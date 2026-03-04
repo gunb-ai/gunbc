@@ -91,6 +91,8 @@ pub struct TestFn {
     pub name: String,
     /// Doc comment lines (rendered as `///` in Rust, docstrings elsewhere).
     pub doc: Vec<String>,
+    /// Extra attributes emitted between `#[test]` and `fn` (e.g., `#[ignore]`).
+    pub attributes: Vec<String>,
     /// Ordered statements in the test body.
     pub body: Vec<Stmt>,
 }

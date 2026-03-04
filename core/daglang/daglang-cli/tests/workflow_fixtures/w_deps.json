@@ -8,7 +8,7 @@
     "std.types",
     "shared.dag_util"
   ],
-  "_count_rationale": "C24: GetField primitive op for param.field return expressions (2026-03-02).",
+  "_count_rationale": "FnBodyCallableOp: fn items with fn_body skip control-flow SubDag + ExprCompute return nodes (2026-03-04).",
   "expand_contract": {
     "status": "success",
     "error_contains": null
@@ -19,11 +19,11 @@
     "expected_json": {
       "dry_run_completion_required": true,
       "interface_contract_verification_targets": 1,
-      "pure_node_determinism_targets": 148,
+      "pure_node_determinism_targets": 94,
       "resource_acquire_targets": 4,
       "resource_provide_targets": 1,
       "resource_release_targets": 4,
-      "service_param_source_targets": 49,
+      "service_param_source_targets": 21,
       "service_transport_execute_targets": 8,
       "service_transport_external_targets": 6,
       "service_transport_hermetic_targets": 2,
@@ -32,7 +32,7 @@
       "service_transport_permission_scoped_targets": 0,
       "service_transport_prepare_targets": 8,
       "service_transport_readonly_targets": 5,
-      "total_obligations": 156,
+      "total_obligations": 102,
       "transport_execution_targets": 8
     }
   }

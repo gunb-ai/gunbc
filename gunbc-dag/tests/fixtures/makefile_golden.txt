@@ -93,13 +93,13 @@ fmt-fix:
 lint-fix: pragma
 	@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings
 
-# Run CI via workflow planner (typed units, deterministic keying)
+# Run CI via build DAG (typed units, deterministic keying)
 ci: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- ci
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-ci -q --release
 
-# Run all tests via workflow planner (warm-path optimized)
+# Run all tests via cargo test workspace
 test-all: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- test-all
+	@cargo test --workspace
 
 help:
 	@echo "gunbc tools - generated Makefile"

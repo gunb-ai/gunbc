@@ -1,0 +1,17 @@
+// tools/deps_config.dag -- Dependency config verify/ensure tool.
+//
+// DSL interface for the deps.toml content upsert workflow.
+// The actual generation logic (generate_deps_toml_from_registry, read/write)
+// stays in the Rust substrate (lib/tools/deps/).
+//
+// Replaces: gunbc-dag/src/bin/deps_config.rs (117 LOC)
+
+module tools.deps_config
+
+import std.resources { Filesystem }
+
+type DepsMode = Ensure | Verify
+
+func deps_config(mode: DepsMode) -> { success: Bool } uses fs: Filesystem(mode: Write) {
+  return { success: true }
+}
