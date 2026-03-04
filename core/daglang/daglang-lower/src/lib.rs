@@ -582,6 +582,62 @@ pub fn stamp_static_fingerprints(dag: &mut Dag<LoweredOp>) {
     }
 }
 
+/// Validate that every `Callable` node with `fn_body: None` and no transport
+/// obligation has `__out:{name}` input ports wired for all output ports.
+///
+/// Without this, such nodes resolve to `DeclaredOutputCallableOp` at runtime
+/// which hard-errors on missing passthrough inputs. Catching this at lowering
+/// time surfaces the bug in the compiler instead of at execution time.
+fn validate_callable_output_wiring(dag: &Dag<LoweredOp>) -> Result<(), LowerError> {
+    validate_callable_output_wiring_inner(dag, &[])
+}
+
+fn validate_callable_output_wiring_inner(
+    dag: &Dag<LoweredOp>,
+    path: &[&str],
+) -> Result<(), LowerError> {
+    for node in &dag.nodes {
+        if let gunbc_ir::NodeBody::Opaque(LoweredOp::Callable {
+            fn_body: None,
+            obligation,
+            name,
+            ..
+        }) = &node.body
+        {
+            // Transport roles (prepare/execute/parse) and other obligation
+            // categories are resolved via dedicated ops — they don't need
+            // __out: passthrough ports.
+            if *obligation != ObligationCategory::None {
+                continue;
+            }
+            let input_names: HashSet<&str> =
+                node.inputs.iter().map(|p| p.name.0.as_str()).collect();
+            for output_port in &node.outputs {
+                let passthrough_name =
+                    format!("{}{}", PortName::OUTPUT_PASSTHROUGH_PREFIX, output_port.name.0);
+                if !input_names.contains(passthrough_name.as_str()) {
+                    let location = if path.is_empty() {
+                        node.id.0.clone()
+                    } else {
+                        format!("{} > {}", path.join(" > "), node.id.0)
+                    };
+                    return Err(LowerError::MissingCallablePassthrough {
+                        node: location,
+                        name: name.clone(),
+                        missing_port: passthrough_name,
+                    });
+                }
+            }
+        }
+        if let gunbc_ir::NodeBody::SubDag(ref inner) = node.body {
+            let mut child_path = path.to_vec();
+            child_path.push(&node.id.0);
+            validate_callable_output_wiring_inner(inner, &child_path)?;
+        }
+    }
+    Ok(())
+}
+
 /// Map lowered obligation categories to canonical parity-kind strings.
 ///
 /// Returns `None` for unconstrained callables; callers can fall back to
@@ -1722,6 +1778,14 @@ pub enum LowerError {
     },
     /// Provider schema mapping references a type that does not exist.
     UnknownProviderSchemaType { prefix: String, schema: String },
+    /// A callable node has `fn_body: None` but no `__out:` passthrough input
+    /// for one of its output ports. This would fail at resolve time when the
+    /// node becomes a `DeclaredOutputCallableOp`.
+    MissingCallablePassthrough {
+        node: String,
+        name: String,
+        missing_port: String,
+    },
 }
 
 impl std::fmt::Display for LowerError {
@@ -1857,6 +1921,15 @@ impl std::fmt::Display for LowerError {
             Self::UnknownProviderSchemaType { prefix, schema } => write!(
                 f,
                 "provider schema mapping `{prefix}` -> `{schema}` is invalid: schema type `{schema}` not found"
+            ),
+            Self::MissingCallablePassthrough {
+                node,
+                name,
+                missing_port,
+            } => write!(
+                f,
+                "callable node `{node}` (name: `{name}`) has fn_body: None and no `{missing_port}` \
+                 input port — it will fail at resolve time"
             ),
         }
     }
@@ -2290,6 +2363,7 @@ fn lower_typed_project_impl(
 
     let mut dag = builder.into_dag();
     stamp_node_kinds(&mut dag);
+    validate_callable_output_wiring(&dag)?;
     Ok(dag)
 }
 
@@ -3625,6 +3699,8 @@ fn make_loop_body_dag(
 
     if body_transports.is_empty() {
         // No service calls in body — plain body_op callable.
+        // Provide a trivial fn_body so the resolver routes through
+        // FnBodyCallableOp instead of DeclaredOutputCallableOp.
         dag.add_node(Node::opaque(
             "body_op",
             inputs,
@@ -3637,7 +3713,12 @@ fn make_loop_body_dag(
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
-                fn_body: None,
+                fn_body: Some(Box::new(expr::LoweredFnBody {
+                    stmts: vec![expr::LoweredStmt::Return(vec![(
+                        "result".to_string(),
+                        expr::LoweredExpr::Ident(element_var.to_string()),
+                    )])],
+                })),
             },
         ));
     } else {
@@ -3665,7 +3746,12 @@ fn make_loop_body_dag(
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
-                fn_body: None,
+                fn_body: Some(Box::new(expr::LoweredFnBody {
+                    stmts: vec![expr::LoweredStmt::Return(vec![(
+                        "result".to_string(),
+                        expr::LoweredExpr::Ident(last_parse_output.clone()),
+                    )])],
+                })),
             },
         ));
         for (ti, transport) in body_transports.iter().enumerate() {
@@ -3773,6 +3859,9 @@ fn make_branch_body_dag(
 
     if body_transports.is_empty() {
         // No service calls in branch body — plain callable op.
+        // Provide a trivial fn_body so the resolver routes through
+        // FnBodyCallableOp (which evaluates the body) instead of
+        // DeclaredOutputCallableOp (which requires __out:result ports).
         dag.add_node(Node::opaque(
             "op",
             vec![
@@ -3788,7 +3877,12 @@ fn make_branch_body_dag(
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
-                fn_body: None,
+                fn_body: Some(Box::new(expr::LoweredFnBody {
+                    stmts: vec![expr::LoweredStmt::Return(vec![(
+                        "result".to_string(),
+                        expr::LoweredExpr::Ident("input".to_string()),
+                    )])],
+                })),
             },
         ));
     } else {
@@ -3820,7 +3914,12 @@ fn make_branch_body_dag(
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
-                fn_body: None,
+                fn_body: Some(Box::new(expr::LoweredFnBody {
+                    stmts: vec![expr::LoweredStmt::Return(vec![(
+                        "result".to_string(),
+                        expr::LoweredExpr::Ident(last_parse_output.clone()),
+                    )])],
+                })),
             },
         ));
         for (ti, transport) in body_transports.iter().enumerate() {

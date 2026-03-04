@@ -155,108 +155,25 @@ impl Executable for DiscoverToolsOp {
         &self,
         _inputs: HashMap<String, Value>,
     ) -> Result<HashMap<String, Value>, ExecError> {
-        use gunbc_codegen::makegen::model::validate_target_namespace;
-        use gunbc_codegen::makegen::registry::BuildConfig;
-        use gunbc_ir::cargo::{CargoCommand, Subcommand};
+        use gunbc_codegen::makegen::model::{
+            load_build_targets_data, reserved_target_names, validate_target_namespace_with_data,
+        };
+        use gunbc_codegen::makegen::shared::registry_tools_to_value;
 
         let registry = crate::tool_graphs::default_registry_enriched()
             .map_err(|e| ExecError::new(format!("failed to build tool registry: {e}")))?;
-        validate_target_namespace(&registry)
+
+        // Match the Rust-side render_makefile() pattern: filter collisions,
+        // then validate — so both paths produce identical output.
+        let build_targets = load_build_targets_data()
+            .map_err(|e| ExecError::new(format!("failed to load build targets: {e}")))?;
+        let reserved = reserved_target_names(&build_targets);
+        let filtered = registry.without_reserved(&reserved);
+        validate_target_namespace_with_data(&filtered, &build_targets)
             .map_err(|e| ExecError::new(format!("invalid make target namespace: {e}")))?;
-        let config = BuildConfig::cargo();
 
-        let tools: Vec<Value> = registry
-            .tools
-            .iter()
-            .map(|tool| {
-                let cmd = CargoCommand::new(Subcommand::Run(tool.invocation.clone()))
-                    .quiet()
-                    .release()
-                    .warnings(config.warnings);
-                let command = format!("@{}", cmd.to_shell_with_env());
-                let dry_run_command = format!("{} -- --dry-run strict", command);
-
-                let deps: Vec<Value> = if tool.needs_generated_cli {
-                    vec![Value::Str("ensure-codegen".to_string())]
-                } else {
-                    vec![]
-                };
-
-                let entrypoints: Vec<Value> = tool
-                    .entrypoints
-                    .iter()
-                    .map(|ep| {
-                        let mut map = BTreeMap::new();
-                        map.insert("port_name".to_string(), Value::Str(ep.port_name.clone()));
-                        map.insert("make_var".to_string(), Value::Str(ep.make_var.clone()));
-                        map.insert("cli_flag".to_string(), Value::Str(ep.cli_flag.clone()));
-                        map.insert("type_hint".to_string(), Value::Str(ep.type_hint.clone()));
-                        map.insert(
-                            "default".to_string(),
-                            match &ep.default {
-                                Some(d) => Value::Str(d.clone()),
-                                None => Value::Unit,
-                            },
-                        );
-                        map.insert("repeatable".to_string(), Value::Bool(ep.repeatable));
-                        Value::Map(map)
-                    })
-                    .collect();
-
-                let extra_targets: Vec<Value> = tool
-                    .extra_targets
-                    .iter()
-                    .map(|extra| {
-                        let mut map = BTreeMap::new();
-                        map.insert("suffix".to_string(), Value::Str(extra.suffix.clone()));
-                        map.insert(
-                            "description".to_string(),
-                            Value::Str(extra.description.clone()),
-                        );
-                        map.insert(
-                            "post_commands".to_string(),
-                            Value::List(
-                                extra
-                                    .post_commands
-                                    .iter()
-                                    .map(|c| Value::Str(c.clone()))
-                                    .collect(),
-                            ),
-                        );
-                        Value::Map(map)
-                    })
-                    .collect();
-
-                let live_secrets: Vec<Value> = tool
-                    .live_secrets
-                    .iter()
-                    .map(|s| Value::Str(s.clone()))
-                    .collect();
-
-                let mut map = BTreeMap::new();
-                map.insert(
-                    "short_name".to_string(),
-                    Value::Str(tool.short_name.clone()),
-                );
-                map.insert(
-                    "description".to_string(),
-                    Value::Str(tool.description.clone()),
-                );
-                map.insert(
-                    "binary_name".to_string(),
-                    Value::Str(tool.binary_name().to_string()),
-                );
-                map.insert("command".to_string(), Value::Str(command));
-                map.insert("dry_run_command".to_string(), Value::Str(dry_run_command));
-                map.insert("deps".to_string(), Value::List(deps));
-                map.insert("entrypoints".to_string(), Value::List(entrypoints));
-                map.insert("extra_targets".to_string(), Value::List(extra_targets));
-                map.insert("live_secrets".to_string(), Value::List(live_secrets));
-                Value::Map(map)
-            })
-            .collect();
-
-        OutputMap::new().value("return", Value::List(tools)).ok()
+        let tools = registry_tools_to_value(&filtered);
+        OutputMap::new().value("return", tools).ok()
     }
 }
 
@@ -573,22 +490,32 @@ mod tests {
 
     #[test]
     fn discover_tools_returns_non_empty_list() {
-        match DiscoverToolsOp.execute(HashMap::new()) {
-            Ok(out) => {
-                let tools = out.get("return").expect("return key");
-                match tools {
-                    Value::List(items) => assert!(!items.is_empty(), "tool list should not be empty"),
-                    _ => panic!("discover_tools should return a list"),
-                }
-            }
-            Err(err) => {
-                let msg = err.to_string();
-                assert!(
-                    msg.contains("invalid make target namespace")
-                        || msg.contains("duplicate make target"),
-                    "unexpected discover_tools error: {msg}"
-                );
-            }
+        let out = DiscoverToolsOp
+            .execute(HashMap::new())
+            .expect("discover_tools should succeed after filtering reserved targets");
+        let tools = out.get("return").expect("return key");
+        match tools {
+            Value::List(items) => assert!(!items.is_empty(), "tool list should not be empty"),
+            _ => panic!("discover_tools should return a list"),
         }
+    }
+
+    #[test]
+    fn discover_tools_matches_registry_tools_to_value() {
+        use gunbc_codegen::makegen::model::{load_build_targets_data, reserved_target_names};
+        use gunbc_codegen::makegen::shared::registry_tools_to_value;
+
+        let registry = crate::tool_graphs::default_registry_enriched()
+            .expect("registry should build");
+        let build_targets = load_build_targets_data().expect("build targets should load");
+        let reserved = reserved_target_names(&build_targets);
+        let filtered = registry.without_reserved(&reserved);
+        let expected = registry_tools_to_value(&filtered);
+
+        let out = DiscoverToolsOp
+            .execute(HashMap::new())
+            .expect("discover_tools should succeed");
+        let actual = out.get("return").expect("return key").clone();
+        assert_eq!(actual, expected, "DiscoverToolsOp output should match registry_tools_to_value on filtered registry");
     }
 }

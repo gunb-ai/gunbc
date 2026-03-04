@@ -3747,6 +3747,12 @@ fn make_branch_body_dag_no_transports_has_single_op() {
     // Should have input and condition ports
     assert!(dag.nodes[0].inputs.iter().any(|p| p.name.0 == "input"));
     assert!(dag.nodes[0].inputs.iter().any(|p| p.name.0 == "condition"));
+    // Should have fn_body so FnBodyCallableOp is used instead of DeclaredOutputCallableOp
+    if let gunbc_ir::NodeBody::Opaque(LoweredOp::Callable { fn_body, .. }) = &dag.nodes[0].body {
+        assert!(fn_body.is_some(), "branch body op should have fn_body for passthrough");
+    } else {
+        panic!("expected Callable op");
+    }
 }
 
 #[test]
@@ -3787,6 +3793,13 @@ fn make_branch_body_dag_with_transports_has_triplets() {
         op_node.inputs.iter().any(|p| p.name.0 == "condition"),
         "op should retain condition port for guard propagation"
     );
+
+    // Should have fn_body for passthrough
+    if let gunbc_ir::NodeBody::Opaque(LoweredOp::Callable { fn_body, .. }) = &op_node.body {
+        assert!(fn_body.is_some(), "branch body op with transports should have fn_body");
+    } else {
+        panic!("expected Callable op");
+    }
 
     // Should have 3 edges: prepare→execute, execute→parse, parse→op
     assert_eq!(dag.edges.len(), 3);
