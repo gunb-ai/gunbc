@@ -582,20 +582,29 @@ pub fn stamp_static_fingerprints(dag: &mut Dag<LoweredOp>) {
     }
 }
 
-/// Validate that every `Callable` node with `fn_body: None` and no transport
-/// obligation has `__out:{name}` input ports wired for all output ports.
+/// Validate that every top-level `Callable` node with `fn_body: None` and no
+/// transport obligation has `__out:{name}` passthrough wiring for all output
+/// ports — either via a declared input port or an incoming edge.
 ///
 /// Without this, such nodes resolve to `DeclaredOutputCallableOp` at runtime
 /// which hard-errors on missing passthrough inputs. Catching this at lowering
 /// time surfaces the bug in the compiler instead of at execution time.
+///
+/// Note: SubDag-internal nodes are NOT checked because their `__out:` wiring
+/// comes through SubDag boundary inference (not edges in the inner DAG).
+/// With-transport branch/loop body ops use `fn_body` for passthrough instead.
 fn validate_callable_output_wiring(dag: &Dag<LoweredOp>) -> Result<(), LowerError> {
-    validate_callable_output_wiring_inner(dag, &[])
-}
+    // Build edge target index: node_id → set of target port names.
+    let edge_targets: HashMap<&str, HashSet<&str>> = {
+        let mut idx: HashMap<&str, HashSet<&str>> = HashMap::new();
+        for edge in &dag.edges {
+            idx.entry(edge.to_node.0.as_str())
+                .or_default()
+                .insert(edge.to_port.0.as_str());
+        }
+        idx
+    };
 
-fn validate_callable_output_wiring_inner(
-    dag: &Dag<LoweredOp>,
-    path: &[&str],
-) -> Result<(), LowerError> {
     for node in &dag.nodes {
         if let gunbc_ir::NodeBody::Opaque(LoweredOp::Callable {
             fn_body: None,
@@ -612,27 +621,22 @@ fn validate_callable_output_wiring_inner(
             }
             let input_names: HashSet<&str> =
                 node.inputs.iter().map(|p| p.name.0.as_str()).collect();
+            let wired_ports = edge_targets.get(node.id.0.as_str());
             for output_port in &node.outputs {
                 let passthrough_name =
                     format!("{}{}", PortName::OUTPUT_PASSTHROUGH_PREFIX, output_port.name.0);
-                if !input_names.contains(passthrough_name.as_str()) {
-                    let location = if path.is_empty() {
-                        node.id.0.clone()
-                    } else {
-                        format!("{} > {}", path.join(" > "), node.id.0)
-                    };
+                let has_port = input_names.contains(passthrough_name.as_str());
+                let has_edge = wired_ports
+                    .map(|ports| ports.contains(passthrough_name.as_str()))
+                    .unwrap_or(false);
+                if !has_port && !has_edge {
                     return Err(LowerError::MissingCallablePassthrough {
-                        node: location,
+                        node: node.id.0.clone(),
                         name: name.clone(),
                         missing_port: passthrough_name,
                     });
                 }
             }
-        }
-        if let gunbc_ir::NodeBody::SubDag(ref inner) = node.body {
-            let mut child_path = path.to_vec();
-            child_path.push(&node.id.0);
-            validate_callable_output_wiring_inner(inner, &child_path)?;
         }
     }
     Ok(())
@@ -3699,8 +3703,7 @@ fn make_loop_body_dag(
 
     if body_transports.is_empty() {
         // No service calls in body — plain body_op callable.
-        // Provide a trivial fn_body so the resolver routes through
-        // FnBodyCallableOp instead of DeclaredOutputCallableOp.
+        // Result comes via __out:result passthrough wired by ExprCompute.
         dag.add_node(Node::opaque(
             "body_op",
             inputs,
@@ -3713,12 +3716,7 @@ fn make_loop_body_dag(
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
-                fn_body: Some(Box::new(expr::LoweredFnBody {
-                    stmts: vec![expr::LoweredStmt::Return(vec![(
-                        "result".to_string(),
-                        expr::LoweredExpr::Ident(element_var.to_string()),
-                    )])],
-                })),
+                fn_body: None,
             },
         ));
     } else {
@@ -3859,9 +3857,7 @@ fn make_branch_body_dag(
 
     if body_transports.is_empty() {
         // No service calls in branch body — plain callable op.
-        // Provide a trivial fn_body so the resolver routes through
-        // FnBodyCallableOp (which evaluates the body) instead of
-        // DeclaredOutputCallableOp (which requires __out:result ports).
+        // Result comes via __out:result passthrough wired by ExprCompute.
         dag.add_node(Node::opaque(
             "op",
             vec![
@@ -3877,12 +3873,7 @@ fn make_branch_body_dag(
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
-                fn_body: Some(Box::new(expr::LoweredFnBody {
-                    stmts: vec![expr::LoweredStmt::Return(vec![(
-                        "result".to_string(),
-                        expr::LoweredExpr::Ident("input".to_string()),
-                    )])],
-                })),
+                fn_body: None,
             },
         ));
     } else {

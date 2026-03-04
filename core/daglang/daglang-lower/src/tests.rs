@@ -3747,9 +3747,9 @@ fn make_branch_body_dag_no_transports_has_single_op() {
     // Should have input and condition ports
     assert!(dag.nodes[0].inputs.iter().any(|p| p.name.0 == "input"));
     assert!(dag.nodes[0].inputs.iter().any(|p| p.name.0 == "condition"));
-    // Should have fn_body so FnBodyCallableOp is used instead of DeclaredOutputCallableOp
+    // No-transport case uses fn_body: None — result flows via __out:result passthrough
     if let gunbc_ir::NodeBody::Opaque(LoweredOp::Callable { fn_body, .. }) = &dag.nodes[0].body {
-        assert!(fn_body.is_some(), "branch body op should have fn_body for passthrough");
+        assert!(fn_body.is_none(), "no-transport branch body should use __out:result passthrough");
     } else {
         panic!("expected Callable op");
     }
@@ -3794,9 +3794,9 @@ fn make_branch_body_dag_with_transports_has_triplets() {
         "op should retain condition port for guard propagation"
     );
 
-    // Should have fn_body for passthrough
+    // With-transport case uses fn_body to pass through the transport parse output
     if let gunbc_ir::NodeBody::Opaque(LoweredOp::Callable { fn_body, .. }) = &op_node.body {
-        assert!(fn_body.is_some(), "branch body op with transports should have fn_body");
+        assert!(fn_body.is_some(), "with-transport branch body should have fn_body");
     } else {
         panic!("expected Callable op");
     }
