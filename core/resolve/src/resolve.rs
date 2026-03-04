@@ -202,12 +202,8 @@ impl Executable for FnBodyCallableOp {
         // Try to evaluate the fn body. On success, map the results to declared
         // output ports. Passthrough inputs override fn body results (they come
         // from explicit DAG wiring and are more authoritative).
-        if eval_inputs.values().any(|v| matches!(v, Value::Skipped)) {
-            eprintln!("[DEBUG FnBody] eval_inputs with Skipped: {:?}", eval_inputs.keys().collect::<Vec<_>>());
-            for (k, v) in &eval_inputs {
-                eprintln!("[DEBUG FnBody]   {k} = Skipped? {}", matches!(v, Value::Skipped));
-            }
-        }
+        eprintln!("[DEBUG FnBody] all input keys: {:?}", inputs.keys().collect::<Vec<_>>());
+        eprintln!("[DEBUG FnBody] eval_inputs.len() = {}, all keys: {:?}", eval_inputs.len(), eval_inputs.keys().collect::<Vec<_>>());
         match daglang_lower::eval::evaluate_fn_body(&self.fn_body, &eval_inputs, &self.sibling_fns) {
             Ok(body_results) => {
                 let mut outputs = HashMap::new();
