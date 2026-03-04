@@ -184,47 +184,84 @@ pub enum LoweredPattern {
 
 // ── AST → LoweredExpr translation ──────────────────────────────────────────
 
+/// Controls how AST expressions are lowered — standard lowering vs. DAG port
+/// remapping mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExprLowerMode {
+    /// Standard lowering for fn/func bodies during the main lowering pass.
+    Standard,
+    /// Remapping mode: flattens `ident.field` to `ident__field` for DAG port wiring.
+    /// Used by synthesize_expr_compute and collect_project_fn_bodies.
+    Remap,
+}
+
 /// Lower an AST fn body to the compiler's expression IR.
 pub fn lower_fn_body(body: &ast::FnBody, variant_names: &HashSet<String>) -> LoweredFnBody {
+    lower_fn_body_with_mode(body, variant_names, ExprLowerMode::Standard)
+}
+
+/// Lower a single AST expression in Remap mode (flattens `ident.field` to `ident__field`).
+pub fn lower_expr_remap(expr: &ast::Expr, variant_names: &HashSet<String>) -> LoweredExpr {
+    lower_expr(expr, variant_names, ExprLowerMode::Remap)
+}
+
+/// Lower an AST fn body with an explicit lowering mode.
+///
+/// `Remap` mode flattens `ident.field` to `ident__field` for DAG port wiring
+/// and is used by `synthesize_expr_compute` and `collect_project_fn_bodies`.
+pub fn lower_fn_body_with_mode(
+    body: &ast::FnBody,
+    variant_names: &HashSet<String>,
+    mode: ExprLowerMode,
+) -> LoweredFnBody {
     LoweredFnBody {
         stmts: body
             .stmts
             .iter()
-            .map(|s| lower_stmt(s, variant_names))
+            .map(|s| lower_stmt(s, variant_names, mode))
             .collect(),
     }
 }
 
-fn lower_stmt(stmt: &ast::Stmt, variant_names: &HashSet<String>) -> LoweredStmt {
+/// Lower a single AST statement with an explicit lowering mode.
+pub fn lower_stmt_with_mode(
+    stmt: &ast::Stmt,
+    variant_names: &HashSet<String>,
+    mode: ExprLowerMode,
+) -> LoweredStmt {
+    lower_stmt(stmt, variant_names, mode)
+}
+
+fn lower_stmt(stmt: &ast::Stmt, variant_names: &HashSet<String>, mode: ExprLowerMode) -> LoweredStmt {
     match stmt {
         ast::Stmt::Let(name, expr) => {
-            LoweredStmt::Let(name.clone(), lower_expr(expr, variant_names))
+            LoweredStmt::Let(name.clone(), lower_expr(expr, variant_names, mode))
         }
         ast::Stmt::Assign(name, expr) => {
-            LoweredStmt::Let(name.clone(), lower_expr(expr, variant_names))
+            LoweredStmt::Let(name.clone(), lower_expr(expr, variant_names, mode))
         }
         ast::Stmt::Node(ns) => {
-            let mut expr = lower_expr(&ns.expr, variant_names);
+            let mut expr = lower_expr(&ns.expr, variant_names, mode);
             if let Some(guard) = &ns.when_guard {
                 expr = LoweredExpr::IfElse {
-                    cond: Box::new(lower_expr(guard, variant_names)),
+                    cond: Box::new(lower_expr(guard, variant_names, mode)),
                     then_: Box::new(expr),
                     else_: Some(Box::new(LoweredExpr::Literal(LoweredLiteral::None))),
                 };
             }
             LoweredStmt::Let(ns.name.clone(), expr)
         }
-        ast::Stmt::Expr(expr) => LoweredStmt::Expr(lower_expr(expr, variant_names)),
+        ast::Stmt::Expr(expr) => LoweredStmt::Expr(lower_expr(expr, variant_names, mode)),
         ast::Stmt::Return(fields) => LoweredStmt::Return(
             fields
                 .iter()
-                .map(|(k, v)| (k.clone(), lower_expr(v, variant_names)))
+                .map(|(k, v)| (k.clone(), lower_expr(v, variant_names, mode)))
                 .collect(),
         ),
     }
 }
 
-fn lower_expr(expr: &ast::Expr, variant_names: &HashSet<String>) -> LoweredExpr {
+fn lower_expr(expr: &ast::Expr, variant_names: &HashSet<String>, mode: ExprLowerMode) -> LoweredExpr {
     match expr {
         ast::Expr::Literal(lit) => LoweredExpr::Literal(lower_literal(lit)),
         // Bare unit variant (e.g., `Closed`)
@@ -235,8 +272,18 @@ fn lower_expr(expr: &ast::Expr, variant_names: &HashSet<String>) -> LoweredExpr 
             }
         }
         ast::Expr::Ident(name) => LoweredExpr::Ident(name.clone()),
+        // Remap mode: flatten `ident.field` to `ident__field` for DAG port wiring
+        ast::Expr::FieldAccess(base, field)
+            if mode == ExprLowerMode::Remap && matches!(base.as_ref(), ast::Expr::Ident(_)) =>
+        {
+            if let ast::Expr::Ident(base_ident) = base.as_ref() {
+                LoweredExpr::Ident(format!("{base_ident}__{field}"))
+            } else {
+                unreachable!()
+            }
+        }
         ast::Expr::FieldAccess(base, field) => LoweredExpr::FieldAccess {
-            expr: Box::new(lower_expr(base, variant_names)),
+            expr: Box::new(lower_expr(base, variant_names, mode)),
             field: field.clone(),
         },
         // Variant constructor call (e.g., `Ok(value: "x")`)
@@ -248,7 +295,7 @@ fn lower_expr(expr: &ast::Expr, variant_names: &HashSet<String>) -> LoweredExpr 
                     .enumerate()
                     .map(|(i, (k, v))| {
                         let field_name = k.clone().unwrap_or_else(|| format!("_{i}"));
-                        (field_name, lower_expr(v, variant_names))
+                        (field_name, lower_expr(v, variant_names, mode))
                     })
                     .collect(),
             }
@@ -257,7 +304,7 @@ fn lower_expr(expr: &ast::Expr, variant_names: &HashSet<String>) -> LoweredExpr 
             name: name.clone(),
             args: args
                 .iter()
-                .map(|(k, v)| (k.clone(), lower_expr(v, variant_names)))
+                .map(|(k, v)| (k.clone(), lower_expr(v, variant_names, mode)))
                 .collect(),
         },
         ast::Expr::ServiceCall(path, args) => {
@@ -266,23 +313,23 @@ fn lower_expr(expr: &ast::Expr, variant_names: &HashSet<String>) -> LoweredExpr 
                 name: path.join("."),
                 args: args
                     .iter()
-                    .map(|(k, v)| (k.clone(), lower_expr(v, variant_names)))
+                    .map(|(k, v)| (k.clone(), lower_expr(v, variant_names, mode)))
                     .collect(),
             }
         }
         ast::Expr::BinOp(left, op, right) => LoweredExpr::BinOp {
-            left: Box::new(lower_expr(left, variant_names)),
+            left: Box::new(lower_expr(left, variant_names, mode)),
             op: lower_binop(op),
-            right: Box::new(lower_expr(right, variant_names)),
+            right: Box::new(lower_expr(right, variant_names, mode)),
         },
         ast::Expr::UnaryOp(op, expr) => LoweredExpr::UnaryOp {
             op: lower_unaryop(op),
-            expr: Box::new(lower_expr(expr, variant_names)),
+            expr: Box::new(lower_expr(expr, variant_names, mode)),
         },
         ast::Expr::StringInterp(parts) => LoweredExpr::StringInterp(
             parts
                 .iter()
-                .map(|p| lower_string_part(p, variant_names))
+                .map(|p| lower_string_part(p, variant_names, mode))
                 .collect(),
         ),
         // Named variant record (e.g., `Ok { value: "x" }`)
@@ -291,7 +338,7 @@ fn lower_expr(expr: &ast::Expr, variant_names: &HashSet<String>) -> LoweredExpr 
                 tag: name.clone(),
                 fields: fields
                     .iter()
-                    .map(|(k, v)| (k.clone(), lower_expr(v, variant_names)))
+                    .map(|(k, v)| (k.clone(), lower_expr(v, variant_names, mode)))
                     .collect(),
             }
         }
@@ -299,48 +346,48 @@ fn lower_expr(expr: &ast::Expr, variant_names: &HashSet<String>) -> LoweredExpr 
             type_name: type_name.clone(),
             fields: fields
                 .iter()
-                .map(|(k, v)| (k.clone(), lower_expr(v, variant_names)))
+                .map(|(k, v)| (k.clone(), lower_expr(v, variant_names, mode)))
                 .collect(),
         },
         ast::Expr::Match(scrutinee, arms) => LoweredExpr::Match {
-            expr: Box::new(lower_expr(scrutinee, variant_names)),
+            expr: Box::new(lower_expr(scrutinee, variant_names, mode)),
             arms: arms
                 .iter()
-                .map(|a| lower_match_arm(a, variant_names))
+                .map(|a| lower_match_arm(a, variant_names, mode))
                 .collect(),
         },
         ast::Expr::If(cond, then_, else_) => LoweredExpr::IfElse {
-            cond: Box::new(lower_expr(cond, variant_names)),
-            then_: Box::new(lower_expr(then_, variant_names)),
+            cond: Box::new(lower_expr(cond, variant_names, mode)),
+            then_: Box::new(lower_expr(then_, variant_names, mode)),
             else_: else_
                 .as_ref()
-                .map(|e| Box::new(lower_expr(e, variant_names))),
+                .map(|e| Box::new(lower_expr(e, variant_names, mode))),
         },
         ast::Expr::For(binding, iterable, _passthrough, body) => LoweredExpr::For {
             binding: binding.clone(),
-            iterable: Box::new(lower_expr(iterable, variant_names)),
-            body: Box::new(lower_expr(body, variant_names)),
+            iterable: Box::new(lower_expr(iterable, variant_names, mode)),
+            body: Box::new(lower_expr(body, variant_names, mode)),
         },
         ast::Expr::Pipe(receiver, call) => LoweredExpr::Pipe {
-            receiver: Box::new(lower_expr(receiver, variant_names)),
-            call: Box::new(lower_expr(call, variant_names)),
+            receiver: Box::new(lower_expr(receiver, variant_names, mode)),
+            call: Box::new(lower_expr(call, variant_names, mode)),
         },
         ast::Expr::PipeCall(receiver, method, args) => LoweredExpr::Pipe {
-            receiver: Box::new(lower_expr(receiver, variant_names)),
+            receiver: Box::new(lower_expr(receiver, variant_names, mode)),
             call: Box::new(LoweredExpr::Call {
                 name: method.as_str().to_string(),
                 args: args
                     .iter()
-                    .map(|(k, v)| (k.clone(), lower_expr(v, variant_names)))
+                    .map(|(k, v)| (k.clone(), lower_expr(v, variant_names, mode)))
                     .collect(),
             }),
         },
         ast::Expr::Lambda(params, body) => LoweredExpr::Lambda {
             params: params.clone(),
-            body: Box::new(lower_expr(body, variant_names)),
+            body: Box::new(lower_expr(body, variant_names, mode)),
         },
         ast::Expr::List(items) => {
-            LoweredExpr::List(items.iter().map(|i| lower_expr(i, variant_names)).collect())
+            LoweredExpr::List(items.iter().map(|i| lower_expr(i, variant_names, mode)).collect())
         }
         ast::Expr::Map(entries) => {
             // Map literals → Record with string keys
@@ -350,7 +397,7 @@ fn lower_expr(expr: &ast::Expr, variant_names: &HashSet<String>) -> LoweredExpr 
                     .iter()
                     .filter_map(|(k, v)| {
                         if let ast::Expr::Literal(ast::Literal::String(key)) = k {
-                            Some((key.clone(), lower_expr(v, variant_names)))
+                            Some((key.clone(), lower_expr(v, variant_names, mode)))
                         } else {
                             None
                         }
@@ -360,16 +407,16 @@ fn lower_expr(expr: &ast::Expr, variant_names: &HashSet<String>) -> LoweredExpr 
         }
         ast::Expr::Guarded(expr, _guard) => {
             // Guards are DAG scheduling concerns — evaluate the inner expr
-            lower_expr(expr, variant_names)
+            lower_expr(expr, variant_names, mode)
         }
         ast::Expr::After(expr, _deps) => {
             // After deps are DAG scheduling concerns — evaluate the inner expr
-            lower_expr(expr, variant_names)
+            lower_expr(expr, variant_names, mode)
         }
         ast::Expr::Return(fields) => LoweredExpr::Return(
             fields
                 .iter()
-                .map(|(k, v)| (k.clone(), lower_expr(v, variant_names)))
+                .map(|(k, v)| (k.clone(), lower_expr(v, variant_names, mode)))
                 .collect(),
         ),
     }
@@ -427,18 +474,18 @@ fn lower_unaryop(op: &ast::UnaryOp) -> LoweredUnaryOp {
     }
 }
 
-fn lower_string_part(part: &ast::StringPart, variant_names: &HashSet<String>) -> LoweredStringPart {
+fn lower_string_part(part: &ast::StringPart, variant_names: &HashSet<String>, mode: ExprLowerMode) -> LoweredStringPart {
     match part {
         ast::StringPart::Literal(s) => LoweredStringPart::Literal(s.clone()),
-        ast::StringPart::Expr(expr) => LoweredStringPart::Expr(lower_expr(expr, variant_names)),
+        ast::StringPart::Expr(expr) => LoweredStringPart::Expr(lower_expr(expr, variant_names, mode)),
     }
 }
 
-pub(crate) fn lower_match_arm(arm: &ast::MatchArm, variant_names: &HashSet<String>) -> LoweredMatchArm {
+pub(crate) fn lower_match_arm(arm: &ast::MatchArm, variant_names: &HashSet<String>, mode: ExprLowerMode) -> LoweredMatchArm {
     LoweredMatchArm {
         pattern: lower_pattern(&arm.pattern, variant_names),
-        guard: arm.guard.as_ref().map(|g| lower_expr(g, variant_names)),
-        body: lower_expr(&arm.body, variant_names),
+        guard: arm.guard.as_ref().map(|g| lower_expr(g, variant_names, mode)),
+        body: lower_expr(&arm.body, variant_names, mode),
     }
 }
 
@@ -542,7 +589,7 @@ mod tests {
                 )],
             )),
         );
-        let lowered = lower_expr(&expr, &HashSet::new());
+        let lowered = lower_expr(&expr, &HashSet::new(), ExprLowerMode::Standard);
         match &lowered {
             LoweredExpr::Pipe { receiver, call } => {
                 assert!(matches!(receiver.as_ref(), LoweredExpr::Ident(n) if n == "items"));
@@ -561,7 +608,7 @@ mod tests {
                 (Some("deps".to_string()), ast::Expr::List(vec![])),
             ],
         );
-        let lowered = lower_expr(&expr, &HashSet::new());
+        let lowered = lower_expr(&expr, &HashSet::new(), ExprLowerMode::Standard);
         match &lowered {
             LoweredExpr::Call { name, args } => {
                 assert_eq!(name, "render_target");
@@ -578,7 +625,7 @@ mod tests {
         let variant_names: HashSet<String> =
             ["Closed", "Open"].iter().map(|s| s.to_string()).collect();
         let expr = ast::Expr::Ident("Closed".to_string());
-        let lowered = lower_expr(&expr, &variant_names);
+        let lowered = lower_expr(&expr, &variant_names, ExprLowerMode::Standard);
         match &lowered {
             LoweredExpr::VariantConstruct { tag, fields } => {
                 assert_eq!(tag, "Closed");
@@ -598,7 +645,7 @@ mod tests {
                 ast::Expr::Literal(ast::Literal::String("hello".to_string())),
             )],
         );
-        let lowered = lower_expr(&expr, &variant_names);
+        let lowered = lower_expr(&expr, &variant_names, ExprLowerMode::Standard);
         match &lowered {
             LoweredExpr::VariantConstruct { tag, fields } => {
                 assert_eq!(tag, "Ok");
@@ -619,7 +666,7 @@ mod tests {
                 ast::Expr::Literal(ast::Literal::String("hello".to_string())),
             )],
         );
-        let lowered = lower_expr(&expr, &variant_names);
+        let lowered = lower_expr(&expr, &variant_names, ExprLowerMode::Standard);
         match &lowered {
             LoweredExpr::VariantConstruct { tag, fields } => {
                 assert_eq!(tag, "Ok");

@@ -445,24 +445,15 @@ fn classify_primitive(
             node_id: name.to_string(),
             detail: "ExprCompute is interpreter-only and cannot be emitted".to_string(),
         }),
-        // C24: All structural primitive ops are interpreter-only (resolved at
-        // runtime by resolve.rs). They must not reach the emitter.
-        PrimitiveOpKind::StringInterpolate { .. }
-        | PrimitiveOpKind::BinaryOp { .. }
-        | PrimitiveOpKind::UnaryOp { .. }
-        | PrimitiveOpKind::Conditional
-        | PrimitiveOpKind::MatchDispatch { .. }
-        | PrimitiveOpKind::RecordConstruct { .. }
-        | PrimitiveOpKind::NullCoalesce
-        | PrimitiveOpKind::VariantConstruct { .. }
-        | PrimitiveOpKind::ListConstruct { .. }
-        | PrimitiveOpKind::PipeOp { .. }
-        | PrimitiveOpKind::ForOp { .. } => Err(ClassifyError::UnrecognizedOp {
-            node_id: name.to_string(),
-            detail: format!(
-                "{kind:?} is interpreter-only and cannot be emitted"
-            ),
-        }),
+        // C24: All remaining structural primitive ops are interpreter-only
+        // (resolved at runtime by resolve.rs). They must not reach the emitter.
+        _ => {
+            debug_assert!(kind.is_structural(), "unhandled non-structural primitive: {kind:?}");
+            Err(ClassifyError::UnrecognizedOp {
+                node_id: name.to_string(),
+                detail: format!("{kind:?} is interpreter-only and cannot be emitted"),
+            })
+        }
     }
 }
 

@@ -3,6 +3,7 @@
 **Verification**: `cargo test --workspace` + `cargo clippy --all-targets -- -D warnings`
 **Sizing**: S (<1 day), M (1-3 days), L (3-5 days), XL (5+ days)
 **Archive**: `TODO/TODONE/tasks-archive-2026-03-02.md` (68 completed items from Lanes 1-3)
+**Verified**: 2026-03-03 — all Done items pass `cargo test --workspace` + `cargo clippy --all-targets -- -D warnings`
 
 ---
 
@@ -12,6 +13,7 @@
 Lane 1: Compiler Critical Path — 0 open (26/26 complete)
 Lane 1: Binary Elimination    — 0 open (10/10 complete)
 Phase 3: Purist Engine        — 0 open (4/4 complete)
+Compiler Extensibility        — 5 items (CX-1 through CX-5)
 Backlog                       — 7 items (low priority)
 ```
 
@@ -65,12 +67,25 @@ C24 (pure dataflow) ──→ C25 (service codegen) ──→ C28 (daggen AOT)
 
 ## Backlog
 
-### Compiler Features (low priority)
+### Compiler Extensibility (parallel list consolidation)
+
+Audit 2026-03-03: Measured actual LOC at each dispatch site. Categorized as IDENTICAL (pure boilerplate),
+DERIVED (table-shaped metadata), or UNIQUE (genuinely different logic). Only truly redundant code targeted.
+
+| ID | What | Redundant / Total LOC | Size | Notes |
+|----|------|:---------------------:|------|-------|
+| CX-1 | **Pipe Method Registry.** Single `PipeMethodDef` table replaces metadata boilerplate across 10 sites (enum as_str/from_str, type inference, callable contracts, collection_op_kind, classify_collection, node labels). Eval logic (465 LOC in `eval_pipe_method`/`evaluate_collection`) stays — genuinely different per method. Also: Site 6 (`lib.rs:8399`) is a trivially eliminable re-implementation of `as_str()`. Sites 8+12 (node labels) are exact duplicates across crate boundaries. | 514 / 1,010 | M | Prerequisite for FC-CF2/CF3. 6 pipe methods have no eval impl (fall through to sibling-fn catch-all). |
+| CX-2 | **Deduplicate `lower_expr`/`remap_expr_idents`.** 85% identical (297 LOC total). Only 2 real differences: FieldAccess flattening (`param.field` → `param__field` for port naming, unique to remap) and `variant_names` awareness (unique to lower_expr). **Latent bug**: `remap_expr_idents` lacks variant_names support — variant constructors in remapped expressions silently misclassified. | 220 / 297 | S | Fix latent bug + delete ~148 lines. Single parameterized function with `remap_field_access: bool` + `variant_names: Option<&HashSet>`. |
+| CX-3 | **Type mapping consolidation.** Only 36 of 68 LOC across 5 sites could use existing `DslTypeMapping` table (3 Go/Rust type sites). 2 sites are genuinely different domains (pipe method return types, test matchers). | 36 / 68 | S | Low priority. Existing table pattern is correct — just 3 sites bypass it. Extend with refinement aliases (`NonEmptyStr`→`String`, `Url`→`String`) and `Char`→`char`. |
+| CX-4 | **Callable Item group helper.** Only FuncDef=PatternDef is truly redundant (~70 LOC copy-paste across 5 lowerer helpers). FnDef genuinely differs (single return type vs outputs list, no uses/provides). Typecheck main validation (197 LOC) has real structural differences per item type. | 70 / 304 | S | `CallableItem` trait with `name()`, `params()`, `body()`, `uses()`, `provides()` methods. FnDef adapter returns `&[]` for uses. Won't touch typecheck main validation. |
+| CX-5 | **Structural primitive `is_structural()`.** Same 11 `PrimitiveOpKind` variants in same order at 3 sites, each mapping to a "no-op" sentinel. 100% redundant. | 60 / 60 | S | `PrimitiveOpKind::is_structural()` method. Ensures new structural variants auto-propagate to all 3 sites. |
+
+### Compiler Features (low priority — unblocked by CX-1)
 
 | ID | Feature | Size | Notes |
 |----|---------|------|-------|
-| FC-CF2 | `skip(n)`: List\<T\> → List\<T\> | S | Expressible via `fold` with index tracking |
-| FC-CF3 | `enumerate()`: List\<T\> → List\<(Int, T)\> | M | Expressible via `fold` with counter accumulator |
+| FC-CF2 | `skip(n)`: List\<T\> → List\<T\> | S | After CX-1: 1 table entry instead of 10 file edits |
+| FC-CF3 | `enumerate()`: List\<T\> → List\<(Int, T)\> | M | After CX-1: 1 table entry instead of 10 file edits |
 
 ### Transport Completeness
 
@@ -109,12 +124,12 @@ Active observations only. Resolved items archived.
 
 | # | Smell | Observation | File | Date |
 |---|-------|-------------|------|------|
-| 2 | String dispatch | `workflow_unit_commands()` matches workflow name strings | `gunbc-dag/src/workflow/unit_commands.rs` | 2026-02-26 |
 | 3 | Static mapping table | Kitchen sink `default_rest_response()` grows per service type | `core/test/src/auto_mock.rs` | 2026-02-27 |
-| 4 | Inventory linkage gap | `gunbc-codegen cigen` drops GCP secrets | `gunbc-dag/src/ci/mod.rs` | 2026-02-26 |
 
-### Resolved Observations (archived 2026-03-02)
+### Resolved Observations (archived 2026-03-03)
 
+- `workflow_unit_commands()` string dispatch → **resolved** — uses `resolve_workflow_variant()` structured dispatch (2026-03-03)
+- `gunbc-codegen cigen` drops GCP secrets → **resolved** — secrets correctly derived via testgen registry `iter_dag_specs()` (2026-03-03)
 - `passthrough_fallback_value()` hard-coded port alias table → **deleted** (C15, commit 33513ac9)
 - `looks_effectful_without_kind()` re-derives NodeKind from port strings → **deleted** (C18, commit 33513ac9)
 - `classify_module()` inflated by transitive auth callables → **documented** in doc comment

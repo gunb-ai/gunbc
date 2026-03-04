@@ -24,9 +24,12 @@
 //! handle. Start with `dsl/tools/makegen.dag` (simplest) and work outward.
 
 pub mod ast_utils;
+pub mod callable;
 pub mod diagnostic;
 pub mod lexer;
 pub mod parser;
+
+pub use callable::CallableItemExt;
 
 /// Source location tracking for error messages.
 pub mod span {

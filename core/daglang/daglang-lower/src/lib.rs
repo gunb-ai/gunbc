@@ -24,6 +24,7 @@ use daglang_syntax::ast::{
     BackoffStrategy, CapabilityDef, DataDef, Expr, Field, Item, Literal, NodeStmt, OperationDef,
     RateLimitUnit, ServiceDef, Stmt, TransportBinding, TypeBody,
 };
+use daglang_syntax::CallableItemExt;
 use daglang_syntax::ast_utils::{
     canonical_resource_type_name, is_type_expr_optional, resource_type_name,
     service_call_lookup_keys, type_expr_to_string, walk_stmts,
@@ -360,6 +361,25 @@ impl LoweredOp {
 }
 
 impl PrimitiveOpKind {
+    /// Returns true for C24 structural expression primitives that are evaluated
+    /// by the interpreter, not code-generated or obligation-bearing.
+    pub fn is_structural(&self) -> bool {
+        matches!(
+            self,
+            Self::StringInterpolate { .. }
+                | Self::BinaryOp { .. }
+                | Self::UnaryOp { .. }
+                | Self::Conditional
+                | Self::MatchDispatch { .. }
+                | Self::RecordConstruct { .. }
+                | Self::NullCoalesce
+                | Self::VariantConstruct { .. }
+                | Self::ListConstruct { .. }
+                | Self::PipeOp { .. }
+                | Self::ForOp { .. }
+        )
+    }
+
     pub fn obligation_category(&self) -> ObligationCategory {
         match self {
             Self::FsEnv => ObligationCategory::ResourceProvide,
@@ -376,18 +396,11 @@ impl PrimitiveOpKind {
             Self::ContentUpsertOutputPath { .. } => ObligationCategory::None,
             Self::ExprCompute { .. } => ObligationCategory::None,
             Self::GetField { .. } => ObligationCategory::None,
-            // C24: All structural primitives are pure computation — no obligations.
-            Self::StringInterpolate { .. }
-            | Self::BinaryOp { .. }
-            | Self::UnaryOp { .. }
-            | Self::Conditional
-            | Self::MatchDispatch { .. }
-            | Self::RecordConstruct { .. }
-            | Self::NullCoalesce
-            | Self::VariantConstruct { .. }
-            | Self::ListConstruct { .. }
-            | Self::PipeOp { .. }
-            | Self::ForOp { .. } => ObligationCategory::None,
+            // C24: All remaining structural primitives are pure computation — no obligations.
+            _ => {
+                debug_assert!(self.is_structural(), "unhandled non-structural primitive: {self:?}");
+                ObligationCategory::None
+            }
         }
     }
 }
@@ -6629,7 +6642,9 @@ fn derive_service_transport_triplets(
 /// that appear inside ExprCompute expression bodies.
 fn collect_project_fn_bodies(
     project: &TypedProject,
+    variant_names: &HashSet<String>,
 ) -> Result<std::collections::BTreeMap<String, LoweredFnBody>, LowerError> {
+    let mode = expr::ExprLowerMode::Remap;
     let mut fn_bodies = std::collections::BTreeMap::new();
     for module in &project.modules {
         for item in &module.ast.items {
@@ -6641,28 +6656,14 @@ fn collect_project_fn_bodies(
             let mut fn_stmts: Vec<expr::LoweredStmt> = Vec::new();
             for stmt in stmts {
                 match stmt {
-                    Stmt::Let(name, expr) | Stmt::Assign(name, expr) => {
-                        fn_stmts.push(expr::LoweredStmt::Let(
-                            name.clone(),
-                            remap_expr_idents(expr),
-                        ));
-                    }
-                    Stmt::Expr(expr) => {
-                        fn_stmts.push(expr::LoweredStmt::Expr(remap_expr_idents(expr)));
-                    }
-                    Stmt::Return(fields) => {
-                        fn_stmts.push(expr::LoweredStmt::Return(
-                            fields
-                                .iter()
-                                .map(|(k, v)| (k.clone(), remap_expr_idents(v)))
-                                .collect(),
-                        ));
-                    }
                     Stmt::Node(ns) => {
                         return Err(LowerError::PureFnContainsEffectfulNode {
                             fn_name: def.name.clone(),
                             node_name: ns.name.clone(),
                         });
+                    }
+                    _ => {
+                        fn_stmts.push(expr::lower_stmt_with_mode(stmt, variant_names, mode));
                     }
                 }
             }
@@ -6778,7 +6779,7 @@ fn add_service_call_edges(
     known_interface_types: &HashSet<String>,
 ) -> Result<(), LowerError> {
     // Collect all pure fn bodies so ExprCompute nodes can call them at runtime.
-    let all_fn_bodies = collect_project_fn_bodies(project)?;
+    let all_fn_bodies = collect_project_fn_bodies(project, wctx.variant_names)?;
     // Track transport endpoint usage across ALL modules and callables so
     // that the second caller to reference the same service operation gets
     // a cloned triplet (_c1, _c2, …) instead of wiring duplicate scalar
@@ -6787,46 +6788,23 @@ fn add_service_call_edges(
     for module in &project.modules {
         let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
-            let (item_name, params, stmts, uses_binding_types, body_lossy) = match &item.node {
-                Item::FnDef(def) => (
-                    &def.name,
-                    &def.params,
-                    def.body.stmts.as_slice(),
-                    HashMap::new(),
-                    def.body.lossy,
-                ),
-                Item::FuncDef(def) => (
-                    &def.name,
-                    &def.params,
-                    def.body.stmts.as_slice(),
-                    def.uses
-                        .iter()
-                        .map(|usage| {
-                            (
-                                usage.binding.clone(),
-                                resource_type_name(&usage.resource_type),
-                            )
-                        })
-                        .collect::<HashMap<_, _>>(),
-                    def.body.lossy,
-                ),
-                Item::PatternDef(def) => (
-                    &def.name,
-                    &def.params,
-                    def.body.stmts.as_slice(),
-                    def.uses
-                        .iter()
-                        .map(|usage| {
-                            (
-                                usage.binding.clone(),
-                                resource_type_name(&usage.resource_type),
-                            )
-                        })
-                        .collect::<HashMap<_, _>>(),
-                    def.body.lossy,
-                ),
-                _ => continue,
+            let Some(callable) = item.node.as_callable() else {
+                continue;
             };
+            let item_name = callable.name();
+            let params = callable.params();
+            let stmts = callable.body_stmts();
+            let body_lossy = callable.body_lossy();
+            let uses_binding_types: HashMap<String, String> = callable
+                .uses_clauses()
+                .iter()
+                .map(|usage| {
+                    (
+                        usage.binding.clone(),
+                        resource_type_name(&usage.resource_type),
+                    )
+                })
+                .collect();
             let Some(target) = wctx
                 .endpoints_by_full
                 .get(&(module_name.clone(), item_name.to_string()))
@@ -8243,53 +8221,34 @@ fn hex_encode(bytes: &[u8]) -> String {
 }
 
 fn item_uses_binding_types(item: &Item) -> HashMap<String, String> {
-    match item {
-        Item::FuncDef(def) => def
-            .uses
-            .iter()
-            .map(|u| (u.binding.clone(), resource_type_name(&u.resource_type)))
-            .collect(),
-        Item::PatternDef(def) => def
-            .uses
-            .iter()
-            .map(|u| (u.binding.clone(), resource_type_name(&u.resource_type)))
-            .collect(),
-        _ => HashMap::new(),
-    }
+    item.as_callable()
+        .map(|c| {
+            c.uses_clauses()
+                .iter()
+                .map(|u| (u.binding.clone(), resource_type_name(&u.resource_type)))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn item_callable_body(item: &Item) -> Option<(&str, &[Stmt])> {
-    match item {
-        Item::FnDef(def) => Some((def.name.as_str(), def.body.stmts.as_slice())),
-        Item::FuncDef(def) => Some((def.name.as_str(), def.body.stmts.as_slice())),
-        Item::PatternDef(def) => Some((def.name.as_str(), def.body.stmts.as_slice())),
-        _ => None,
-    }
+    item.as_callable().map(|c| (c.name(), c.body_stmts()))
 }
 
 fn item_callable_interactive_flag(item: &Item) -> Option<(&str, bool)> {
-    match item {
-        Item::FnDef(def) => Some((def.name.as_str(), false)),
-        Item::FuncDef(def) => Some((def.name.as_str(), false)),
-        Item::PatternDef(def) => Some((def.name.as_str(), false)),
-        _ => None,
-    }
+    item.as_callable().map(|c| (c.name(), false))
 }
 
 fn item_callable_uses(item: &Item) -> Option<(&str, &[daglang_syntax::ast::UsesClause])> {
-    match item {
-        Item::FuncDef(def) => Some((def.name.as_str(), def.uses.as_slice())),
-        Item::PatternDef(def) => Some((def.name.as_str(), def.uses.as_slice())),
-        _ => None,
-    }
+    let c = item.as_callable()?;
+    let uses = c.uses_clauses();
+    if uses.is_empty() { None } else { Some((c.name(), uses)) }
 }
 
 fn item_callable_provides(item: &Item) -> Option<(&str, &[daglang_syntax::ast::ProvidesClause])> {
-    match item {
-        Item::FuncDef(def) => Some((def.name.as_str(), def.provides.as_slice())),
-        Item::PatternDef(def) => Some((def.name.as_str(), def.provides.as_slice())),
-        _ => None,
-    }
+    let c = item.as_callable()?;
+    let provides = c.provides_clauses();
+    if provides.is_empty() { None } else { Some((c.name(), provides)) }
 }
 
 fn is_internal_synthetic_call(name: &str) -> bool {
@@ -9355,184 +9314,6 @@ fn collect_expr_leaf_refs(
     }
 }
 
-/// Remap AST expression identifiers to use compute node input port names.
-/// `FieldAccess(Ident("build"), "success")` becomes `Ident("build__success")`.
-fn remap_expr_idents(expr: &Expr) -> expr::LoweredExpr {
-    match expr {
-        Expr::FieldAccess(base, field) => {
-            if let Expr::Ident(base_ident) = base.as_ref() {
-                expr::LoweredExpr::Ident(format!("{base_ident}__{field}"))
-            } else {
-                expr::LoweredExpr::FieldAccess {
-                    expr: Box::new(remap_expr_idents(base)),
-                    field: field.clone(),
-                }
-            }
-        }
-        Expr::Ident(name) => expr::LoweredExpr::Ident(name.clone()),
-        Expr::BinOp(left, op, right) => expr::LoweredExpr::BinOp {
-            left: Box::new(remap_expr_idents(left)),
-            op: match op {
-                daglang_syntax::ast::BinOp::Add => expr::LoweredBinOp::Add,
-                daglang_syntax::ast::BinOp::Sub => expr::LoweredBinOp::Sub,
-                daglang_syntax::ast::BinOp::Mul => expr::LoweredBinOp::Mul,
-                daglang_syntax::ast::BinOp::Div => expr::LoweredBinOp::Div,
-                daglang_syntax::ast::BinOp::Mod => expr::LoweredBinOp::Mod,
-                daglang_syntax::ast::BinOp::Eq => expr::LoweredBinOp::Eq,
-                daglang_syntax::ast::BinOp::Ne => expr::LoweredBinOp::Ne,
-                daglang_syntax::ast::BinOp::Lt => expr::LoweredBinOp::Lt,
-                daglang_syntax::ast::BinOp::Gt => expr::LoweredBinOp::Gt,
-                daglang_syntax::ast::BinOp::Le => expr::LoweredBinOp::Le,
-                daglang_syntax::ast::BinOp::Ge => expr::LoweredBinOp::Ge,
-                daglang_syntax::ast::BinOp::And => expr::LoweredBinOp::And,
-                daglang_syntax::ast::BinOp::Or => expr::LoweredBinOp::Or,
-                daglang_syntax::ast::BinOp::NullCoalesce => expr::LoweredBinOp::NullCoalesce,
-            },
-            right: Box::new(remap_expr_idents(right)),
-        },
-        Expr::UnaryOp(op, inner) => expr::LoweredExpr::UnaryOp {
-            op: match op {
-                daglang_syntax::ast::UnaryOp::Not => expr::LoweredUnaryOp::Not,
-                daglang_syntax::ast::UnaryOp::Neg => expr::LoweredUnaryOp::Neg,
-            },
-            expr: Box::new(remap_expr_idents(inner)),
-        },
-        Expr::If(cond, then_, else_) => expr::LoweredExpr::IfElse {
-            cond: Box::new(remap_expr_idents(cond)),
-            then_: Box::new(remap_expr_idents(then_)),
-            else_: else_.as_ref().map(|e| Box::new(remap_expr_idents(e))),
-        },
-        Expr::Literal(lit) => {
-            let lowered = match lit {
-                daglang_syntax::ast::Literal::Int(n) => expr::LoweredLiteral::Int(*n),
-                daglang_syntax::ast::Literal::Float(_) => {
-                    expr::LoweredLiteral::String(format!("{}", expr::lit_float_value(lit)))
-                }
-                daglang_syntax::ast::Literal::Bool(b) => expr::LoweredLiteral::Bool(*b),
-                daglang_syntax::ast::Literal::String(s) => expr::LoweredLiteral::String(s.clone()),
-                daglang_syntax::ast::Literal::None => expr::LoweredLiteral::None,
-            };
-            expr::LoweredExpr::Literal(lowered)
-        }
-        Expr::StringInterp(parts) => {
-            let lowered_parts = parts
-                .iter()
-                .map(|part| match part {
-                    daglang_syntax::ast::StringPart::Literal(s) => {
-                        expr::LoweredStringPart::Literal(s.clone())
-                    }
-                    daglang_syntax::ast::StringPart::Expr(e) => {
-                        expr::LoweredStringPart::Expr(remap_expr_idents(e))
-                    }
-                })
-                .collect();
-            expr::LoweredExpr::StringInterp(lowered_parts)
-        }
-        Expr::PipeCall(receiver, method, args) => expr::LoweredExpr::Pipe {
-            receiver: Box::new(remap_expr_idents(receiver)),
-            call: Box::new(expr::LoweredExpr::Call {
-                name: method.as_str().to_string(),
-                args: args
-                    .iter()
-                    .map(|(k, v)| (k.clone(), remap_expr_idents(v)))
-                    .collect(),
-            }),
-        },
-        Expr::Call(name, args) => expr::LoweredExpr::Call {
-            name: name.clone(),
-            args: args
-                .iter()
-                .map(|(k, v)| (k.clone(), remap_expr_idents(v)))
-                .collect(),
-        },
-        Expr::ServiceCall(path, args) => expr::LoweredExpr::Call {
-            name: path.join("."),
-            args: args
-                .iter()
-                .map(|(k, v)| (k.clone(), remap_expr_idents(v)))
-                .collect(),
-        },
-        Expr::Record(type_name, fields) => expr::LoweredExpr::Record {
-            type_name: type_name.clone(),
-            fields: fields
-                .iter()
-                .map(|(k, v)| (k.clone(), remap_expr_idents(v)))
-                .collect(),
-        },
-        Expr::Match(scrutinee, arms) => expr::LoweredExpr::Match {
-            expr: Box::new(remap_expr_idents(scrutinee)),
-            arms: arms
-                .iter()
-                .map(|arm| expr::LoweredMatchArm {
-                    pattern: remap_pattern(&arm.pattern),
-                    guard: arm.guard.as_ref().map(remap_expr_idents),
-                    body: remap_expr_idents(&arm.body),
-                })
-                .collect(),
-        },
-        Expr::Pipe(receiver, call) => expr::LoweredExpr::Pipe {
-            receiver: Box::new(remap_expr_idents(receiver)),
-            call: Box::new(remap_expr_idents(call)),
-        },
-        Expr::Lambda(params, body) => expr::LoweredExpr::Lambda {
-            params: params.clone(),
-            body: Box::new(remap_expr_idents(body)),
-        },
-        Expr::List(items) => expr::LoweredExpr::List(items.iter().map(remap_expr_idents).collect()),
-        Expr::Map(entries) => expr::LoweredExpr::Record {
-            type_name: None,
-            fields: entries
-                .iter()
-                .filter_map(|(k, v)| {
-                    if let Expr::Literal(daglang_syntax::ast::Literal::String(key)) = k {
-                        Some((key.clone(), remap_expr_idents(v)))
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
-        },
-        Expr::Guarded(inner, _guard) => remap_expr_idents(inner),
-        Expr::After(inner, _deps) => remap_expr_idents(inner),
-        Expr::For(binding, iterable, _passthrough, body) => expr::LoweredExpr::For {
-            binding: binding.clone(),
-            iterable: Box::new(remap_expr_idents(iterable)),
-            body: Box::new(remap_expr_idents(body)),
-        },
-        Expr::Return(fields) => expr::LoweredExpr::Return(
-            fields
-                .iter()
-                .map(|(k, v)| (k.clone(), remap_expr_idents(v)))
-                .collect(),
-        ),
-    }
-}
-
-fn remap_pattern(pattern: &daglang_syntax::ast::Pattern) -> expr::LoweredPattern {
-    match pattern {
-        daglang_syntax::ast::Pattern::Ident(name) => expr::LoweredPattern::Ident(name.clone()),
-        daglang_syntax::ast::Pattern::Variant(name, fields) => expr::LoweredPattern::Variant(
-            name.clone(),
-            fields
-                .iter()
-                .map(|(k, v)| (k.clone(), remap_pattern(v)))
-                .collect(),
-        ),
-        daglang_syntax::ast::Pattern::Wildcard => expr::LoweredPattern::Wildcard,
-        daglang_syntax::ast::Pattern::Literal(lit) => {
-            let lowered = match lit {
-                daglang_syntax::ast::Literal::Int(n) => expr::LoweredLiteral::Int(*n),
-                daglang_syntax::ast::Literal::Float(_) => {
-                    expr::LoweredLiteral::String(format!("{}", expr::lit_float_value(lit)))
-                }
-                daglang_syntax::ast::Literal::Bool(b) => expr::LoweredLiteral::Bool(*b),
-                daglang_syntax::ast::Literal::String(s) => expr::LoweredLiteral::String(s.clone()),
-                daglang_syntax::ast::Literal::None => expr::LoweredLiteral::None,
-            };
-            expr::LoweredPattern::Literal(lowered)
-        }
-    }
-}
 
 /// C24: Synthesize a GetField node to extract a named field from a parameter.
 /// Replaces `ExprCompute` + `__` convention for simple `param.field` projections.
@@ -9702,7 +9483,7 @@ fn synthesize_match_dispatch(
     // Lower AST match arms to LoweredMatchArms.
     let lowered_arms: Vec<expr::LoweredMatchArm> = arms
         .iter()
-        .map(|arm| expr::lower_match_arm(arm, ctx.variant_names))
+        .map(|arm| expr::lower_match_arm(arm, ctx.variant_names, expr::ExprLowerMode::Standard))
         .collect();
 
     let node_id = format!(
@@ -9984,7 +9765,7 @@ fn synthesize_variant_construct(
     }
 
     if !all_resolved {
-        // Fall back to ExprCompute which preserves the tag via remap_expr_idents.
+        // Fall back to ExprCompute which preserves the tag via lower_expr_remap.
         return synthesize_expr_compute(
             builder,
             ctx,
@@ -10405,13 +10186,14 @@ fn build_evaluator_parts(
     if !ctx.local_let_bindings.is_empty() {
         for stmt in ctx.body_stmts {
             match stmt {
-                Stmt::Let(name, let_expr) | Stmt::Assign(name, let_expr) => {
+                Stmt::Let(name, _) | Stmt::Assign(name, _) => {
                     if ctx.local_let_bindings.contains_key(name)
                         && !input_port_names.contains(name)
                     {
-                        fn_stmts.push(expr::LoweredStmt::Let(
-                            name.clone(),
-                            remap_expr_idents(let_expr),
+                        fn_stmts.push(expr::lower_stmt_with_mode(
+                            stmt,
+                            ctx.variant_names,
+                            expr::ExprLowerMode::Remap,
                         ));
                     }
                 }
@@ -10419,9 +10201,10 @@ fn build_evaluator_parts(
                     if ctx.local_let_bindings.contains_key(&node_stmt.name)
                         && !input_port_names.contains(&node_stmt.name)
                     {
-                        fn_stmts.push(expr::LoweredStmt::Let(
-                            node_stmt.name.clone(),
-                            remap_expr_idents(&node_stmt.expr),
+                        fn_stmts.push(expr::lower_stmt_with_mode(
+                            stmt,
+                            ctx.variant_names,
+                            expr::ExprLowerMode::Remap,
                         ));
                     }
                 }
@@ -10429,7 +10212,7 @@ fn build_evaluator_parts(
             }
         }
     }
-    let lowered_expr = remap_expr_idents(expr);
+    let lowered_expr = expr::lower_expr_remap(expr, ctx.variant_names);
     fn_stmts.push(expr::LoweredStmt::Return(vec![(
         result_port_name.to_string(),
         lowered_expr,
