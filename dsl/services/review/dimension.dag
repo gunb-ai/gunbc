@@ -10,13 +10,15 @@
 
 module services.review.dimension
 
+import std.types { ReviewDimension }
+
 service review.Dimension {
 
   operation PrepareDimensionPrompt {
     input {
       artifact: String
       criteria: Json
-      dimension: String
+      dimension: ReviewDimension
       depth: String
       prior_findings: String?
     }
@@ -31,7 +33,7 @@ service review.Dimension {
     input {
       answer: String
       criteria: Json
-      dimension: String
+      dimension: ReviewDimension
     }
     output {
       output: Json

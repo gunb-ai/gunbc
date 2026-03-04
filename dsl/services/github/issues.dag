@@ -23,8 +23,7 @@ module services.github.issues
 import interfaces.issue_provider { IssueProvider, IssueEvent }
 import std.types { TrackedIssue, IssueState, IssueLifecycleStage, NonEmptyStr, Url }
 import std.errors { GitHubErrorShape }
-import extdeps.github.issues { GitHubIssue, GitHubIssueState, Label, IssueComment }
-import extdeps.github.core { GitHubUser, Repository, Pagination }
+import extdeps.github.issues { Label, IssueComment }
 
 service github.Issues : IssueProvider {
   config {
@@ -66,6 +65,7 @@ service github.Issues : IssueProvider {
       issue: TrackedIssue from "."
       found: Bool from "status == 200"
     }
+    readonly
     transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}" }
     response {
       200 => TrackedIssue
@@ -132,6 +132,7 @@ service github.Issues : IssueProvider {
     output {
       ok: Bool from "status == 200"
     }
+    idempotent
     transport rest { method: PUT, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}/labels" }
     response {
       200 => List<Label>
@@ -152,6 +153,7 @@ service github.Issues : IssueProvider {
     output {
       issues: List<TrackedIssue>
     }
+    readonly
     transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues" }
     response {
       200 => List<TrackedIssue>
@@ -170,6 +172,7 @@ service github.Issues : IssueProvider {
     output {
       events: List<IssueEvent>
     }
+    readonly
     transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}/events" }
     response {
       200 => List<IssueEvent>

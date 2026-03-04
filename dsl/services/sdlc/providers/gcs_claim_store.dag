@@ -145,6 +145,7 @@ service gcs.ClaimStore : ClaimStore {
       generation: Int
     }
     output { released: Bool }
+    idempotent
     transport rest { method: DELETE, path: "/storage/v1/b/\{bucket\}/o/claims%2F\{issue_id\}%2F\{stage\}.json" }
     response {
       204 => Unit

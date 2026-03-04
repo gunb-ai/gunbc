@@ -5,8 +5,8 @@
 
 module services.gcp.iam
 
-import extdeps.cloud.gcp.core { GcpProject, GcpServiceAccount, OAuth2Scope }
-import extdeps.cloud.gcp.iam { GcpRole, GcpBinding, GcpPolicy, ImpersonationChain, TokenLifetime }
+import extdeps.cloud.gcp.core { GcpProject }
+import extdeps.cloud.gcp.iam { GcpPolicy }
 import std.errors { GcpErrorShape }
 
 service gcp.IAM {

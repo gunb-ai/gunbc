@@ -4,11 +4,8 @@
 
 module services.gcp.sts
 
-import extdeps.cloud.gcp.core { GcpProject, WifPool, WifProvider }
-import extdeps.cloud.gcp.sts {
-  SubjectTokenType, RequestedTokenType, StsGrantType,
-  StsTokenExchange, StsTokenResponse
-}
+import extdeps.cloud.gcp.core { GcpProject }
+import extdeps.cloud.gcp.sts { StsTokenResponse }
 import std.errors { GcpErrorShape, GitHubErrorShape }
 
 service gcp.STS {

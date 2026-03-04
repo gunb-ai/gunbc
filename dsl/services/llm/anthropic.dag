@@ -5,12 +5,7 @@
 
 module services.llm.anthropic
 
-import extdeps.llm.core { Role, LlmMessage, TokenUsage, StopReason }
-import extdeps.llm.anthropic {
-  AnthropicModel, AnthropicModelSpec, ContentBlock,
-  SystemPrompt, ThinkingConfig, AnthropicApiVersion
-}
-import extdeps.llm.pricing { ModelPricing, ContextWindow, ModelCapability }
+import extdeps.llm.anthropic { AnthropicModel }
 import std.errors { AnthropicErrorShape }
 
 service llm.Anthropic {

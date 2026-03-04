@@ -79,6 +79,7 @@ type SecretValue  = Secret where non_empty
 type Url          = String where pattern("^https?://")
 type SemVer       = String where pattern("^\\d+\\.\\d+\\.\\d+")
 type NonEmptyStr  = String where non_empty
+type LanguageId   = String where non_empty
 
 // Path modeling (EX-2):
 // - FilePath remains a compatibility alias for existing modules.
@@ -177,7 +178,7 @@ type ReviewConcern {
 }
 
 type DimensionReviewOutput {
-  dimension: String
+  dimension: ReviewDimension
   output: Json
   errors: Json
 }

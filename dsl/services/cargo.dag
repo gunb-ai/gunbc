@@ -9,8 +9,7 @@
 
 module services.cargo
 
-import extdeps.cargo { CargoManifest, CargoDependency, CargoProfile, CargoFeature }
-import extdeps.tools.rust_toolchain { RustChannel, CargoCommand, RustEdition }
+import extdeps.cargo { CargoManifest }
 
 service cargo.Build {
   operation Build {

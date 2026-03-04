@@ -9,7 +9,7 @@
 module services.git
 
 import std.types { CommitSha, FilePath, GitRef }
-import extdeps.git { GitCommit, GitBranch, GitRemote, GitDiffEntry, GitMergeResult }
+import extdeps.git { GitCommit }
 
 service git.Core {
   operation CurrentBranch {

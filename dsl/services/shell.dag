@@ -10,8 +10,7 @@ module services.shell
 
 import std.types { FilePath, NonEmptyStr, Secret }
 import std.errors { GcpErrorShape }
-import extdeps.cloud.gcp.core { GcpProject, GcpServiceAccount }
-import extdeps.tools.package_managers { PackageManager, InstallSource }
+import extdeps.cloud.gcp.core { GcpProject }
 
 service gcloud.Auth {
   operation Login {

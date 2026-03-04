@@ -7,8 +7,7 @@
 
 module services.github.gist
 
-import extdeps.github.gists { Gist, GistFile, GistVisibility }
-import extdeps.github.core { GitHubUser, Repository }
+import extdeps.github.gists { Gist }
 import std.errors { GitHubErrorShape }
 
 service github.Gist {
