@@ -1,11 +1,71 @@
-// funcs/sdlc_dispatch_runtime.dag -- compiled SDLC stage dispatch policy.
+// funcs/sdlc_dispatch_runtime.dag -- SDLC stage dispatch runtime adapters.
 //
-// Each function returns deterministic transition directives for a single
-// lifecycle stage. Rust selects which compiled callable to execute based on
-// the current stage, while side-effects (claim/retry/report updates) remain
-// in the worker runtime.
+// This module now delegates dispatch behavior to the real stage handlers in
+// funcs.sdlc_stages, instead of returning static placeholder records.
+//
+// The result shape remains stable for callers that still consume this module,
+// but all transition decisions come from execute_stage().
 
 module funcs.sdlc_dispatch_runtime
+
+import funcs.sdlc_stages { execute_stage }
+import interfaces.issue_provider { IssueProvider }
+import interfaces.outcome_ledger { OutcomeLedger }
+import interfaces.agent_provider { AgentProvider }
+import std.state_machines { stage_to_label }
+import std.types { IssueLifecycleStage }
+
+fn dispatch_message(
+  stage: IssueLifecycleStage,
+  run_key: String,
+  issue_id: Int,
+  owner: String,
+  repo: String,
+  worker_id: String
+) -> String {
+  "Dispatched stage `{stage_to_label(stage: stage)}` for run `{run_key}` on issue `{owner}/{repo}#{issue_id}` (worker: `{worker_id}`)"
+}
+
+func dispatch_through_stage(
+  stage: IssueLifecycleStage,
+  run_key: String,
+  worker_id: String,
+  issue_id: Int,
+  owner: String,
+  repo: String
+) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json }
+  uses issues: IssueProvider
+  uses outcomes: OutcomeLedger
+  uses agents: AgentProvider
+{
+  stage_result = execute_stage(
+    issue_id: "{issue_id}",
+    stage: stage,
+    title: "Issue #{issue_id}",
+    body: "Dispatch runtime bridge for {owner}/{repo} issue #{issue_id}",
+    run_key: run_key,
+    owner: owner,
+    repo: repo,
+    number: issue_id,
+    llm_provider: "anthropic",
+    llm_model: "claude-sonnet-4-20250514"
+  )
+
+  return {
+    next_stage: stage_to_label(stage: stage_result.next_stage),
+    awaiting_approval: stage_result.next_stage == DesignReview && !stage_result.success,
+    marker: "sdlc:{stage_to_label(stage: stage)}:{run_key}",
+    message: dispatch_message(
+      stage: stage,
+      run_key: run_key,
+      issue_id: issue_id,
+      owner: owner,
+      repo: repo,
+      worker_id: worker_id
+    ),
+    value: stage_result.value
+  }
+}
 
 func dispatch_idea(
   run_key: String,
@@ -14,13 +74,14 @@ func dispatch_idea(
   owner: String,
   repo: String
 ) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
-  return {
-    next_stage: "design",
-    awaiting_approval: false,
-    marker: "design-marker",
-    message: "Generated design prompt",
-    value: { "next_stage": "design", "awaiting_approval": false }
-  }
+  return dispatch_through_stage(
+    stage: Idea,
+    run_key: run_key,
+    worker_id: worker_id,
+    issue_id: issue_id,
+    owner: owner,
+    repo: repo
+  )
 }
 
 func dispatch_design(
@@ -30,13 +91,14 @@ func dispatch_design(
   owner: String,
   repo: String
 ) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
-  return {
-    next_stage: "design-review",
-    awaiting_approval: false,
-    marker: "sdlc:design-review",
-    message: "Design review initiated for run_key `{run_key}`",
-    value: { "next_stage": "design-review", "awaiting_approval": false }
-  }
+  return dispatch_through_stage(
+    stage: Design,
+    run_key: run_key,
+    worker_id: worker_id,
+    issue_id: issue_id,
+    owner: owner,
+    repo: repo
+  )
 }
 
 func dispatch_design_review(
@@ -46,13 +108,14 @@ func dispatch_design_review(
   owner: String,
   repo: String
 ) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
-  return {
-    next_stage: "design-review",
-    awaiting_approval: true,
-    marker: "sdlc:approval-gate",
-    message: "Awaiting explicit approval for run_key `{run_key}`; transition to `accepted` after review sign-off.",
-    value: { "next_stage": "design-review", "awaiting_approval": true }
-  }
+  return dispatch_through_stage(
+    stage: DesignReview,
+    run_key: run_key,
+    worker_id: worker_id,
+    issue_id: issue_id,
+    owner: owner,
+    repo: repo
+  )
 }
 
 func dispatch_accepted(
@@ -62,13 +125,14 @@ func dispatch_accepted(
   owner: String,
   repo: String
 ) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
-  return {
-    next_stage: "implementation",
-    awaiting_approval: false,
-    marker: "sdlc:implementation",
-    message: "Implementation started on branch `sdlc/issue-{issue_id}` for `{owner}/{repo}` (worker: `{worker_id}`)",
-    value: { "next_stage": "implementation", "awaiting_approval": false }
-  }
+  return dispatch_through_stage(
+    stage: Accepted,
+    run_key: run_key,
+    worker_id: worker_id,
+    issue_id: issue_id,
+    owner: owner,
+    repo: repo
+  )
 }
 
 func dispatch_implementation(
@@ -78,13 +142,14 @@ func dispatch_implementation(
   owner: String,
   repo: String
 ) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
-  return {
-    next_stage: "closed",
-    awaiting_approval: false,
-    marker: "sdlc:acceptance",
-    message: "Acceptance testing and close for run_key `{run_key}` in `{owner}/{repo}` (worker: `{worker_id}`)",
-    value: { "next_stage": "closed", "awaiting_approval": false }
-  }
+  return dispatch_through_stage(
+    stage: Implementing,
+    run_key: run_key,
+    worker_id: worker_id,
+    issue_id: issue_id,
+    owner: owner,
+    repo: repo
+  )
 }
 
 func dispatch_closed(
@@ -94,11 +159,12 @@ func dispatch_closed(
   owner: String,
   repo: String
 ) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
-  return {
-    next_stage: "closed",
-    awaiting_approval: false,
-    marker: "",
-    message: "",
-    value: { "next_stage": "closed", "awaiting_approval": false }
-  }
+  return dispatch_through_stage(
+    stage: Done,
+    run_key: run_key,
+    worker_id: worker_id,
+    issue_id: issue_id,
+    owner: owner,
+    repo: repo
+  )
 }

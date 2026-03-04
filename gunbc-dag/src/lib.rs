@@ -81,6 +81,7 @@ pub use workflow::{
     has_required_unit_contract, makegen_workflow_spec, plan_global_workflows, plan_workflow,
     plan_workflow_with_mode, pragma_workflow_spec, project_execute_set, prove_non_redundancy,
     render_execution_report, required_input_contract, required_output_contract,
+    sdlc_workflow_spec,
     test_all_unit_commands, test_all_workflow_spec, tool_workflow_spec, top_slow_units,
     validate_conflicting_claims, validate_effectful_claim_declarations,
     validate_projection_equivalence, validate_required_claims, validate_workflow_admission,

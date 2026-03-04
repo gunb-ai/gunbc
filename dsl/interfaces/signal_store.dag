@@ -18,16 +18,7 @@ import std.behavioral {
 }
 import std.coordination { DeliveryGuarantee, QueueSemantics, QueueOrdering }
 import std.capability { CapabilityRequirement, InfraScope, AccessLevel }
-
-type CapabilityBehaviorContract {
-  capability: String
-  behavior: OperationBehavior
-}
-
-type CapabilityFailureContract {
-  capability: String
-  failures: List<FailureMode>
-}
+import interfaces.shared { CapabilityBehaviorContract, CapabilityFailureContract }
 
 data delivery_guarantee: DeliveryGuarantee = AtLeastOnce
 

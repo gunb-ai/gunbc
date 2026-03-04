@@ -31,8 +31,9 @@ import interfaces.issue_provider { IssueProvider }
 import interfaces.claim_store { ClaimStore }
 import interfaces.outcome_ledger { OutcomeLedger }
 import interfaces.agent_provider { AgentProvider }
-import funcs.sdlc_stages { determine_stage, execute_stage }
+import funcs.sdlc_stages { execute_stage }
 import shared.dag_util { stage_result, aggregate_results, format_report }
+import std.state_machines { determine_stage }
 import std.types {
     TrackedIssue, IssueLifecycleStage, IssueState, StageOutcome, OutcomeStatus,
     StageResult, Summary, NonEmptyStr

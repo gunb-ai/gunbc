@@ -142,4 +142,14 @@ mod tests {
         assert_eq!(gist.len(), snapshot.len());
         assert!(gist.contains_key(&NodeId::from("gist.gist_create")));
     }
+
+    #[test]
+    fn workflow_unit_commands_supports_sdlc() {
+        let commands = workflow_unit_commands("sdlc").expect("sdlc commands");
+        assert!(commands.contains_key(&NodeId::from("sdlc.compilation_ensure")));
+        assert!(commands.contains_key(&NodeId::from("sdlc.codegen_ensure")));
+        assert!(commands.contains_key(&NodeId::from("sdlc.intake")));
+        assert!(commands.contains_key(&NodeId::from("sdlc.worker")));
+        assert!(!commands.contains_key(&NodeId::from("sdlc.report")));
+    }
 }

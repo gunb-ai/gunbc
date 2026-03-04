@@ -23,6 +23,19 @@ import interfaces.agent_provider { AgentProvider }
 import interfaces.signal_store { SignalStore }
 import interfaces.artifact_store { ArtifactStore }
 import interfaces.credential_provider { CredentialProvider }
+import services.sdlc.providers.stub_providers
+import services.sdlc.providers.stub_credential_provider
+import services.sdlc.providers.github_issue_provider
+import services.sdlc.providers.file_claim_store
+import services.sdlc.providers.file_outcome_ledger
+import services.sdlc.providers.codex_agent_provider
+import services.sdlc.providers.file_signal_store
+import services.sdlc.providers.inline_artifact_store
+import services.sdlc.providers.gcp_credential_provider
+import services.sdlc.providers.gcs_claim_store
+import services.sdlc.providers.gcs_outcome_ledger
+import services.sdlc.providers.pubsub_signal_store
+import services.sdlc.providers.gcs_artifact_store
 
 // =========================================================================
 // Profile binding declarations

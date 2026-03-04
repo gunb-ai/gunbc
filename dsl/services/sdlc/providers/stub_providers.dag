@@ -9,15 +9,15 @@
 
 module services.sdlc.providers.stub_providers
 
-import interfaces.issue_provider { IssueProvider }
+import interfaces.issue_provider { IssueProvider, IssueEvent }
 import interfaces.claim_store { ClaimStore }
 import interfaces.outcome_ledger { OutcomeLedger }
 import interfaces.agent_provider { AgentProvider }
 import interfaces.signal_store { SignalStore }
 import interfaces.artifact_store { ArtifactStore }
 import std.types {
-    NonEmptyStr, StageOutcome, ArtifactPayload, ArtifactMarker, ArtifactType,
-    AgentStatus, ApprovalMode, IssueState
+    NonEmptyStr, TrackedIssue, StageOutcome, ArtifactPayload, ArtifactMarker,
+    ArtifactType, AgentStatus, ApprovalMode, IssueState, Signal, SignalType
 }
 
 // =========================================================================

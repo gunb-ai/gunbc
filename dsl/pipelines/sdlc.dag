@@ -33,8 +33,8 @@ import interfaces.signal_store { SignalStore }
 import interfaces.artifact_store { ArtifactStore }
 import interfaces.agent_provider { AgentProvider }
 import services.github.pull_request { PullRequest }
-import services.cargo { Cargo }
-import services.git { git.Core }
+import services.cargo { Build }
+import services.git
 import tools.design { generate_design, review_design }
 import shared.dag_util { aggregate_results, format_report, stage_result }
 import std.types {
@@ -403,10 +403,10 @@ pipeline sdlc
     )
 
     // D10: Run cargo test on the PR branch
-    test_result = Cargo.Test()
+    test_result = Build.Test()
 
     // D10: Run cargo clippy on the PR branch
-    clippy_result = Cargo.Clippy()
+    clippy_result = Build.Clippy()
 
     // Post test results as issue comment
     ci_comment = issues.comment(

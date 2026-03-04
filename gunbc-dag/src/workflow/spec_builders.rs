@@ -34,6 +34,10 @@ pub fn test_all_workflow_spec() -> Result<WorkflowSpec, String> {
     workflow_spec("test-all")
 }
 
+pub fn sdlc_workflow_spec() -> Result<WorkflowSpec, String> {
+    workflow_spec("sdlc")
+}
+
 pub fn gist_workflow_spec() -> Result<WorkflowSpec, String> {
     workflow_spec("gist")
 }
@@ -84,6 +88,18 @@ mod tests {
     fn ci_and_test_all_are_not_tool_workflows() {
         assert!(tool_workflow_spec("ci").is_err());
         assert!(tool_workflow_spec("test-all").is_err());
+    }
+
+    #[test]
+    fn sdlc_is_not_a_tool_workflow() {
+        assert!(tool_workflow_spec("sdlc").is_err());
+    }
+
+    #[test]
+    fn sdlc_workflow_builds_successfully() {
+        let spec = sdlc_workflow_spec().expect("sdlc workflow spec");
+        assert!(spec.dag.nodes.iter().any(|node| node.id.0 == "sdlc.worker"));
+        assert!(spec.dag.nodes.iter().any(|node| node.id.0 == "sdlc.report"));
     }
 
     #[test]

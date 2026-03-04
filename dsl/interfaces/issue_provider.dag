@@ -20,6 +20,7 @@ import std.behavioral {
 }
 import std.coordination { DeliveryGuarantee }
 import std.capability { CapabilityRequirement, InfraScope, AccessLevel }
+import interfaces.shared { CapabilityBehaviorContract, CapabilityFailureContract }
 
 // IssueEvent represents a single event in an issue's history.
 type IssueEvent {
@@ -27,16 +28,6 @@ type IssueEvent {
   actor:          NonEmptyStr       // Who performed the action
   timestamp:      String
   payload:        Json?             // Event-specific data
-}
-
-type CapabilityBehaviorContract {
-  capability: String
-  behavior: OperationBehavior
-}
-
-type CapabilityFailureContract {
-  capability: String
-  failures: List<FailureMode>
 }
 
 data delivery_guarantee: DeliveryGuarantee = AtLeastOnce

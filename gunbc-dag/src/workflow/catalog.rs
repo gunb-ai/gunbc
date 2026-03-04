@@ -435,8 +435,27 @@ mod tests {
         let registry = build_process_unit_registry().expect("derive registry");
         assert!(registry.contains(&ProcessUnitRef::new("ci", "ci.codegen")));
         assert!(registry.contains(&ProcessUnitRef::new("test_all", "test_all.codegen")));
+        assert!(registry.contains(&ProcessUnitRef::new("sdlc", "sdlc.worker")));
         assert!(registry.contains(&ProcessUnitRef::new("gist", "gist.gist_create")));
         assert!(registry.contains(&compilation_ref()));
         assert!(registry.contains(&codegen_ref()));
+    }
+
+    #[test]
+    fn resolve_workflow_variant_supports_sdlc_aliases() {
+        let direct = resolve_workflow_variant("sdlc")
+            .expect("resolve sdlc")
+            .expect("sdlc variant");
+        assert_eq!(direct.canonical_name, "sdlc");
+
+        let alias = resolve_workflow_variant("sdlc_worker")
+            .expect("resolve sdlc_worker alias")
+            .expect("sdlc_worker variant");
+        assert_eq!(alias.canonical_name, "sdlc");
+
+        let hyphen_alias = resolve_workflow_variant("sdlc-worker")
+            .expect("resolve sdlc-worker alias")
+            .expect("sdlc-worker variant");
+        assert_eq!(hyphen_alias.canonical_name, "sdlc");
     }
 }
