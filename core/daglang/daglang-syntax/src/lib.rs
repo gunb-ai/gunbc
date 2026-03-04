@@ -736,14 +736,14 @@ pub mod ast {
             output_type: "List", collection_op: Some("filter"), emit_family: Some(EmitCollectionFamily::Filter) },
         PipeMethodDef { method: PipeMethod::FlatMap, name: "flat_map", arity: 1, param_names: &["f"],
             output_type: "List", collection_op: Some("flat_map"), emit_family: Some(EmitCollectionFamily::Map) },
-        PipeMethodDef { method: PipeMethod::SortBy, name: "sort_by", arity: 1, param_names: &["f"],
+        PipeMethodDef { method: PipeMethod::SortBy, name: "sort_by", arity: 1, param_names: &["key_fn"],
             output_type: "List", collection_op: Some("sort"), emit_family: Some(EmitCollectionFamily::Sort) },
         PipeMethodDef { method: PipeMethod::Append, name: "append", arity: 1, param_names: &["items"],
             output_type: "List", collection_op: Some("map"), emit_family: Some(EmitCollectionFamily::Map) },
         // Collection → Scalar
         PipeMethodDef { method: PipeMethod::Fold, name: "fold", arity: 2, param_names: &["init", "f"],
             output_type: "Unknown", collection_op: Some("fold"), emit_family: Some(EmitCollectionFamily::Fold) },
-        PipeMethodDef { method: PipeMethod::Join, name: "join", arity: 1, param_names: &["sep"],
+        PipeMethodDef { method: PipeMethod::Join, name: "join", arity: 1, param_names: &["separator"],
             output_type: "String", collection_op: Some("join"), emit_family: Some(EmitCollectionFamily::Map) },
         PipeMethodDef { method: PipeMethod::Count, name: "count", arity: 0, param_names: &[],
             output_type: "Int", collection_op: Some("len"), emit_family: Some(EmitCollectionFamily::Fold) },
@@ -773,11 +773,11 @@ pub mod ast {
         PipeMethodDef { method: PipeMethod::Chars, name: "chars", arity: 0, param_names: &[],
             output_type: "List", collection_op: None, emit_family: None },
         // Conversion methods
-        PipeMethodDef { method: PipeMethod::ToBytes, name: "to_bytes", arity: 0, param_names: &[],
+        PipeMethodDef { method: PipeMethod::ToBytes, name: "to_bytes", arity: 0, param_names: &["value"],
             output_type: "Bytes", collection_op: None, emit_family: None },
-        PipeMethodDef { method: PipeMethod::ToJson, name: "to_json", arity: 0, param_names: &[],
+        PipeMethodDef { method: PipeMethod::ToJson, name: "to_json", arity: 0, param_names: &["value"],
             output_type: "Json", collection_op: None, emit_family: None },
-        PipeMethodDef { method: PipeMethod::Hash, name: "hash", arity: 0, param_names: &[],
+        PipeMethodDef { method: PipeMethod::Hash, name: "hash", arity: 0, param_names: &["value"],
             output_type: "String", collection_op: None, emit_family: None },
     ];
 

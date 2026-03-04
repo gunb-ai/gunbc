@@ -497,22 +497,11 @@ fn classify_collection(
         .map(|p| p.abstract_type.clone())
         .unwrap_or_else(|| "Unknown".to_string());
 
-    let mapped_kind = match kind {
-        daglang_lower::CollectionOpKind::Map
-        | daglang_lower::CollectionOpKind::FlatMap
-        | daglang_lower::CollectionOpKind::Join => CollectionOpKind::Map,
-        daglang_lower::CollectionOpKind::Filter | daglang_lower::CollectionOpKind::Contains => {
-            CollectionOpKind::Filter
-        }
-        daglang_lower::CollectionOpKind::Fold
-        | daglang_lower::CollectionOpKind::Any
-        | daglang_lower::CollectionOpKind::All
-        | daglang_lower::CollectionOpKind::Len => CollectionOpKind::Fold,
-        daglang_lower::CollectionOpKind::Sort | daglang_lower::CollectionOpKind::Dedup => {
-            CollectionOpKind::Sort
-        }
-        daglang_lower::CollectionOpKind::Split => CollectionOpKind::Map,
-        daglang_lower::CollectionOpKind::Zip => CollectionOpKind::Map,
+    let mapped_kind = match kind.emit_family() {
+        daglang_syntax::ast::EmitCollectionFamily::Map => CollectionOpKind::Map,
+        daglang_syntax::ast::EmitCollectionFamily::Filter => CollectionOpKind::Filter,
+        daglang_syntax::ast::EmitCollectionFamily::Fold => CollectionOpKind::Fold,
+        daglang_syntax::ast::EmitCollectionFamily::Sort => CollectionOpKind::Sort,
     };
 
     Ok(Computation::Collection {

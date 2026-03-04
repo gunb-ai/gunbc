@@ -8330,6 +8330,39 @@ impl CollectionOpKind {
             Self::Zip => "ZipNode",
         }
     }
+
+    /// Parse a collection op name string into the corresponding variant.
+    pub fn from_name(name: &str) -> Option<Self> {
+        Some(match name {
+            "map" => Self::Map,
+            "filter" => Self::Filter,
+            "fold" => Self::Fold,
+            "join" => Self::Join,
+            "flat_map" => Self::FlatMap,
+            "sort" => Self::Sort,
+            "dedup" => Self::Dedup,
+            "any" => Self::Any,
+            "all" => Self::All,
+            "len" => Self::Len,
+            "contains" => Self::Contains,
+            "split" => Self::Split,
+            "zip" => Self::Zip,
+            _ => return None,
+        })
+    }
+
+    /// Classify this collection op into an emit-level family.
+    pub fn emit_family(&self) -> daglang_syntax::ast::EmitCollectionFamily {
+        use daglang_syntax::ast::EmitCollectionFamily;
+        match self {
+            Self::Map | Self::FlatMap | Self::Join | Self::Split | Self::Zip => {
+                EmitCollectionFamily::Map
+            }
+            Self::Filter | Self::Contains => EmitCollectionFamily::Filter,
+            Self::Fold | Self::Any | Self::All | Self::Len => EmitCollectionFamily::Fold,
+            Self::Sort | Self::Dedup => EmitCollectionFamily::Sort,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -8344,23 +8377,15 @@ struct CollectionNodeSpec {
 }
 
 fn collection_op_kind(name: &str) -> Option<CollectionOpKind> {
-    match name {
-        "map" => Some(CollectionOpKind::Map),
-        "filter" => Some(CollectionOpKind::Filter),
-        "fold" => Some(CollectionOpKind::Fold),
-        "join" => Some(CollectionOpKind::Join),
-        "flat_map" => Some(CollectionOpKind::FlatMap),
-        "sort" => Some(CollectionOpKind::Sort),
-        "dedup" => Some(CollectionOpKind::Dedup),
-        "any" => Some(CollectionOpKind::Any),
-        "all" => Some(CollectionOpKind::All),
-        "len" | "count" => Some(CollectionOpKind::Len),
-        "contains" => Some(CollectionOpKind::Contains),
-        "sum" => Some(CollectionOpKind::Fold),
-        "split" => Some(CollectionOpKind::Split),
-        "zip" => Some(CollectionOpKind::Zip),
-        _ => None,
+    // Check pipe method registry first — handles aliases like count→len, sum→fold.
+    if let Some(method) = daglang_syntax::ast::pipe_method_by_name(name) {
+        return method
+            .def()
+            .collection_op
+            .and_then(CollectionOpKind::from_name);
     }
+    // Non-pipe-method names with collection semantics (split/zip use Expr::Call syntax).
+    CollectionOpKind::from_name(name)
 }
 
 fn collect_collection_ops_from_stmts(stmts: &[Stmt], sites: &mut Vec<CollectionOpSite>) {

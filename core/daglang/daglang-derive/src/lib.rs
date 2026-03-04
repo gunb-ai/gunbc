@@ -26,7 +26,7 @@ pub use daglang_contract::{
     TestObligations, TopologyNode,
 };
 use daglang_lower::{
-    classify_obligation, classify_service_transport, CallableKind, CollectionOpKind, LoweredOp,
+    classify_obligation, classify_service_transport, CallableKind, LoweredOp,
     ObligationCategory, ServiceCallMetadata, ServiceTransportClass,
 };
 use gunbc_ir::{detect_boundaries, detect_entrypoints, Dag, Node, NodeKind};
@@ -1064,7 +1064,7 @@ mod tests {
                 LoweredOp::Collection {
                     module: "tools.gist".to_string(),
                     callable: "render_snapshot".to_string(),
-                    kind: CollectionOpKind::Map,
+                    kind: daglang_lower::CollectionOpKind::Map,
                 },
             )
             .with_kind(NodeKind::Pure),
@@ -1077,7 +1077,7 @@ mod tests {
                 LoweredOp::Collection {
                     module: "tools.gist".to_string(),
                     callable: "render_snapshot".to_string(),
-                    kind: CollectionOpKind::Join,
+                    kind: daglang_lower::CollectionOpKind::Join,
                 },
             )
             .with_kind(NodeKind::Pure),
