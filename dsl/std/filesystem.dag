@@ -11,23 +11,10 @@
 
 module std.filesystem
 
-import std.types { FilePath, ContentEncoding, MimeType }
+import std.types { FilePath, ContentEncoding, MimeType, EntryKind, SymlinkTarget }
 
-// -- Layer 0: Primitives ---------------------------------------------------
-
-// "What can a path point to?"
-type EntryKind
-  = RegularFile
-  | Directory
-  | Symlink
-  | Missing
-  | Other                        // device, socket, pipe, fifo
-
-// "What does a symlink resolve to?" (only meaningful when kind = Symlink)
-type SymlinkTarget
-  = TargetFile
-  | TargetDir
-  | Broken                       // dangling symlink
+// EntryKind and SymlinkTarget are defined in std.types (the lower module)
+// and imported here to avoid circular dependencies.
 
 // -- Layer 1: Categories ---------------------------------------------------
 

@@ -13,6 +13,7 @@ import extdeps.github.core { GitHubUser }
 import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
 }
+import std.types { Timestamp }
 
 // ── Gist model ────────────────────────────────────────────────────
 
@@ -31,8 +32,8 @@ type Gist {
   public: Bool
   files: List<GistFile>
   owner: String
-  created_at: String
-  updated_at: String
+  created_at: Timestamp
+  updated_at: Timestamp
   url: String
 }
 

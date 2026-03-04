@@ -47,29 +47,13 @@ Each bridge exists because the compiler doesn't do enough. For each: current sta
 
 ### Delete immediately (zero blockers)
 
-**Bridge 4: `OutputPathMetadataOp`** — identity node carrying `@outputs` annotations through DAG.
+**Bridge 4: `OutputPathMetadataOp`** — **DONE** (already deleted from main).
 
-- **Location**: `core/resolve/src/resolve.rs:359-365` (~7 LOC)
-- **Current**: `@outputs("glob")` creates a passthrough node at resolve time
-- **Final**: Already done. `extract_outputs_annotation()` in the lowerer extracts paths at compile time. The runtime node does literally nothing.
-- **Acceptance**: `OutputPathMetadataOp` struct **deleted** from `resolve.rs`. `grep -r 'OutputPathMetadataOp' core/` returns 0. All tests pass.
-- **Effort**: Trivial.
+**Bridge 10: `PipelineDispatchOp`** — **DONE**. `strip_pipeline_nodes()` deleted. Resolver silently skips Pipeline nodes (metadata-only, not executed). 22 LOC removed from builder.rs.
 
-**Bridge 10: `PipelineDispatchOp`** — stage routing as a runtime node.
+**Bridge 5: `dsl_builder.rs`** — **DONE**. Consolidated 6 pub fns to 1: `build_dsl_graph(module, resolver, opts: BuildOpts)`. Dead code deleted (`build_tool_graph`, `tool_signature`). 201 LOC (from ~335).
 
-- **Location**: `core/resolve/src/resolve.rs:268-352` (~85 LOC)
-- **Current**: Creates pipeline dispatch nodes with stage progression logic
-- **Final**: Pipelines are either (a) inlined as SubDag chains with edge dependencies, or (b) metadata for static generation (Makefile targets). `strip_pipeline_nodes()` in `core/resolve/src/builder.rs:92-113` already strips these before resolution.
-- **Acceptance**: If dead code: `PipelineDispatchOp` struct **deleted**. `strip_pipeline_nodes()` **deleted**. `grep -r 'PipelineDispatchOp\|strip_pipeline_nodes' core/` returns 0. If alive: design doc explaining first-class execution vs metadata-only.
-- **Effort**: Trivial if dead. Design decision if alive.
-
-**Bridge 5: `dsl_builder.rs`** — 8+ wrapper functions that each pass `GunbcExternResolver`.
-
-- **Location**: `core/resolve/src/builder.rs` (335 LOC, 8 public functions)
-- **Current**: `build_dsl_graph()`, `build_tool_graph()`, `build_dsl_graph_with_types()`, `build_dsl_graph_with_types_and_profile()`, `build_dsl_graph_with_profile()`, `build_dsl_graph_for_entry()`, `build_dsl_graph_for_entrypoint()`, `tool_signature()` — differ only in optional parameters
-- **Final**: One function: `build_dsl_graph(module, opts: BuildOpts)` where `BuildOpts` has optional `profile`, `entry_func`, `include_types`, `tool_mode`. The 8 variants become callers setting different defaults.
-- **Acceptance**: `builder.rs` has exactly 1 public `build_dsl_graph()` + `BuildOpts` struct + `tool_signature()` (if needed separately). Line count drops from 335 to ~150. `grep -c 'pub fn build_' core/resolve/src/builder.rs` returns 1.
-- **Effort**: Small.
+**Bridge 2b: Default parameter injection** — **DONE** (lowerer injects literal source nodes for omitted call args with defaults; daglang-lower/src/lib.rs:9164-9189).
 
 ---
 

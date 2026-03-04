@@ -9,6 +9,7 @@ module infra.azure.resources
 import infra.core { ObjectStorage, Compute, SecretStore, Identity, Queue, QueueMessage }
 import infra.spec { ResourceFingerprint, ReconcileAction }
 import infra.azure.services
+import std.types { Timestamp }
 
 
 // =========================================================================
@@ -234,7 +235,7 @@ resource AzureManagedIdentity implements Identity {
   capability assume {
     readonly
     input { scopes: List<String>, lifetime_seconds: Int = 3600 }
-    output { token: Secret, expires_at: String }
+    output { token: Secret, expires_at: Timestamp }
     // Azure: Acquire token via MSAL / managed identity endpoint
   }
 

@@ -354,7 +354,7 @@ Nodes:
   - std.patterns::retry [callable::Pattern std.patterns.retry]
     inputs:
       * max_attempts: Int (1)
-      * backoff_ms: Int (1)
+      * backoff_ms: Milliseconds (1)
       * __out:return: Unit (1)
       * __deps: Any (0..*)
     outputs:

@@ -12,7 +12,7 @@
 
 module services.sdlc.providers.structured_logging
 
-import std.types { NonEmptyStr, EpochMs }
+import std.types { NonEmptyStr, EpochMs, Timestamp }
 
 // Structured log entry. Each transport node execution produces one.
 // Fields match Cloud Logging structured payload format.
@@ -39,7 +39,7 @@ type StructuredLogEntry {
   message: String
 
   // Timestamp (ISO 8601)
-  timestamp: String
+  timestamp: Timestamp
 
   // Transport details (provider, operation, HTTP status)
   transport: TransportLogContext?
@@ -134,7 +134,7 @@ fn log_transport_success(
   provider: String,
   operation: String,
   http_status: Int,
-  timestamp: String
+  timestamp: Timestamp
 ) -> StructuredLogEntry {
   {
     trace_id: trace_id,
@@ -172,7 +172,7 @@ fn log_transport_error(
   error_type: String,
   error_message: String,
   retryable: Bool,
-  timestamp: String
+  timestamp: Timestamp
 ) -> StructuredLogEntry {
   {
     trace_id: trace_id,

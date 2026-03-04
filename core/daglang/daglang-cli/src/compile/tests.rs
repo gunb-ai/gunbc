@@ -398,7 +398,7 @@ fn resolve_lowered_dag_unknown_callable_module_fails_closed() {
 }
 
 #[test]
-fn resolve_lowered_dag_rejects_unstripped_pipeline_nodes() {
+fn resolve_lowered_dag_skips_pipeline_nodes() {
     let mut dag = Dag::new();
     dag.add_node(Node::opaque(
         "pipeline::ci",
@@ -416,14 +416,13 @@ fn resolve_lowered_dag_rejects_unstripped_pipeline_nodes() {
         },
     ));
 
-    // Pipeline nodes must be stripped before resolution. Unstripped pipeline
-    // nodes are a builder bug — the resolver rejects them with a clear error.
-    let result = resolve_lowered_dag(&dag);
-    assert!(result.is_err(), "unstripped pipeline nodes should fail resolution");
-    let err = result.unwrap_err().to_string();
+    // Pipeline nodes are metadata — the resolver skips them silently
+    // rather than requiring a separate strip pass.
+    let resolved = resolve_lowered_dag(&dag).expect("pipeline nodes should be skipped");
     assert!(
-        err.contains("pipeline nodes must be stripped"),
-        "unexpected error: {err}"
+        resolved.nodes.is_empty(),
+        "pipeline nodes should be filtered out, got {} nodes",
+        resolved.nodes.len()
     );
 }
 
@@ -2710,6 +2709,24 @@ fn run() -> String { greet(name: "hi") }
     assert!(!output.lowered_dag.nodes.is_empty());
     assert!(output.derived.manifest.total_nodes > 0);
     assert!(!output.emitted.files.is_empty());
+
+    // Verify the default value "!" is injected as a literal source node
+    // with an edge to the greet callable's "punctuation" port.
+    let greet_node = output
+        .lowered_dag
+        .nodes
+        .iter()
+        .find(|n| n.id.0.contains("greet"))
+        .expect("greet node should exist");
+    let has_punctuation_edge = output
+        .lowered_dag
+        .edges
+        .iter()
+        .any(|e| e.to_node.0 == greet_node.id.0 && e.to_port.0 == "punctuation");
+    assert!(
+        has_punctuation_edge,
+        "default value should create an edge to 'punctuation' port on greet node"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }

@@ -1109,8 +1109,22 @@ pub fn resolve_lowered_dag_with(
     // them at execution time.
     let sibling_fns = collect_sibling_fn_bodies(dag);
 
+    // Pipeline nodes are compile-time metadata (used by emit/derive/driver)
+    // but have no runtime representation. Collect their IDs to filter edges.
+    let pipeline_ids: std::collections::HashSet<&str> = dag
+        .nodes
+        .iter()
+        .filter_map(|node| match &node.body {
+            NodeBody::Opaque(LoweredOp::Pipeline { .. }) => Some(node.id.0.as_str()),
+            _ => None,
+        })
+        .collect();
+
     let mut resolved = Dag::new();
     for node in &dag.nodes {
+        if pipeline_ids.contains(node.id.0.as_str()) {
+            continue;
+        }
         let mut resolved_node = Node {
             id: node.id.clone(),
             inputs: node.inputs.clone(),
@@ -1131,7 +1145,16 @@ pub fn resolve_lowered_dag_with(
         }
         resolved.add_node(resolved_node);
     }
-    resolved.edges = dag.edges.clone();
+    // Filter edges referencing pipeline nodes.
+    resolved.edges = dag
+        .edges
+        .iter()
+        .filter(|edge| {
+            !pipeline_ids.contains(edge.from_node.0.as_str())
+                && !pipeline_ids.contains(edge.to_node.0.as_str())
+        })
+        .cloned()
+        .collect();
     wire_missing_filesystem_resources(&mut resolved);
     Ok(resolved)
 }
@@ -1213,13 +1236,11 @@ fn resolve_op(
 ) -> Result<DynOp, ResolveError> {
     match op {
         LoweredOp::Collection { kind, .. } => resolve_collection(kind),
-        LoweredOp::Pipeline { module, name, .. } => Err(ResolveError {
-            node_id: node_id.to_string(),
-            reason: format!(
-                "pipeline `{module}::{name}` reached resolver — \
-                 pipeline nodes must be stripped before resolution"
-            ),
-        }),
+        LoweredOp::Pipeline { .. } => {
+            // Pipeline nodes are filtered in resolve_lowered_dag_with.
+            // This arm is unreachable but kept for exhaustiveness.
+            unreachable!("pipeline nodes are skipped before resolve_node_body is called")
+        }
         LoweredOp::Primitive { kind, .. } => resolve_primitive(kind, inputs, outputs),
         LoweredOp::Callable {
             module,
@@ -1940,8 +1961,9 @@ mod tests {
     // gunbc-dag (requires GunbcExternResolver for tools.infra::infra dispatch).
 
     #[test]
-    fn resolve_pipeline_node_is_rejected() {
-        let node = Node::opaque(
+    fn resolve_pipeline_node_is_skipped() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
             "pipeline_sdlc",
             vec![],
             vec![Port::new("stages", "Int")],
@@ -1951,13 +1973,13 @@ mod tests {
                 stages: 2,
                 stage_names: vec!["fetch".to_string(), "design".to_string()],
             },
-        );
-        let err = resolve_node(&node).expect_err("pipeline nodes should be rejected");
+        ));
+        let null = crate::NullExternResolver;
+        let resolved = resolve_lowered_dag_with(&dag, &null).expect("should succeed");
         assert!(
-            err.reason
-                .contains("pipeline nodes must be stripped before resolution"),
-            "unexpected error: {}",
-            err.reason
+            resolved.nodes.is_empty(),
+            "pipeline nodes should be filtered out, got {} nodes",
+            resolved.nodes.len()
         );
     }
 

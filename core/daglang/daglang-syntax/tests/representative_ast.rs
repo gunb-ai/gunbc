@@ -147,7 +147,7 @@ fn types_file_contains_record_sum_and_alias_definitions() {
     let source = parse_dsl("std/types.dag");
     assert_eq!(
         source.items.len(),
-        115,
+        122,
         "std/types.dag item count changed unexpectedly"
     );
     assert_eq!(
@@ -197,6 +197,8 @@ fn types_file_contains_record_sum_and_alias_definitions() {
             "type Timestamp",
             "type EpochMs",
             "type Duration",
+            "type Milliseconds",
+            "type Seconds",
             "type IntentId",
             "type IssueId",
             "type RunKey",
@@ -212,6 +214,12 @@ fn types_file_contains_record_sum_and_alias_definitions() {
             "type WarningPolicy",
             "type CloudRuntime",
             "type Platform",
+            "type TopologyNodeKind",
+            "type ArtifactKind",
+            "type DocSourceKind",
+            "type AuthorSource",
+            "type ReviewSource",
+            "type SeverityLevel",
             "type ReviewDimension",
             "type FermiDepth",
             "type ReviewConcern",
@@ -281,7 +289,6 @@ fn types_file_contains_record_sum_and_alias_definitions() {
             "type RuntimeProfile",
             "type LaunchConfig",
             "type InfraIntent",
-            "type RetryPolicy",
             "type FailureClass",
             "type AgentStatus",
             "type ApprovalMode",

@@ -13,7 +13,7 @@ module extdeps.git
 import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
 }
-import std.types { CommitSha }
+import std.types { CommitSha, Timestamp }
 
 // ── Object model ──────────────────────────────────────────────────
 
@@ -22,7 +22,7 @@ type ObjectType = BlobObj | TreeObj | CommitObj | TagObj
 type GitAuthor {
   name: String
   email: String
-  timestamp: String
+  timestamp: Timestamp
 }
 
 // Git separates author (who wrote the patch) from committer (who applied

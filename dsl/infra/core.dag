@@ -21,6 +21,7 @@
 
 module infra.core
 
+import std.types { Timestamp }
 
 // =========================================================================
 // ObjectStorage -- Key-value object store
@@ -114,7 +115,7 @@ interface SecretStore {
 
 interface Identity {
   capability assume(scopes: List<String>, lifetime_seconds: Int = 3600)
-    -> { token: Secret, expires_at: String }
+    -> { token: Secret, expires_at: Timestamp }
 
   capability grant(role: NonEmptyStr, target: NonEmptyStr) -> { ok: Bool }
 
@@ -150,7 +151,7 @@ interface Queue<T> {
 type QueueMessage<T> {
   id: NonEmptyStr
   body: T
-  received_at: String
+  received_at: Timestamp
   delivery_count: Int
 }
 

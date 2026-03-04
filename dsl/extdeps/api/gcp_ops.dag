@@ -2,7 +2,7 @@
 
 module extdeps.api.gcp_ops
 
-import std.rate_limit { BackoffStrategy, RetryPolicy }
+import std.rate_limit { BackoffStrategy, RetryPolicy, RetryTrigger }
 
 type GcpApiPattern {
   service: String
@@ -74,7 +74,7 @@ data retry_configs: List<GcpRetryConfig> = [
     policy: {
       max_attempts: 5,
       backoff: Exponential { base_ms: 30000, max_ms: 120000 },
-      retry_on: ["http_429", "http_500", "http_503", "network", "timeout"]
+      retry_on: [Http429, Http500, Http503, Network, Timeout]
     }
   },
   {
@@ -82,7 +82,7 @@ data retry_configs: List<GcpRetryConfig> = [
     policy: {
       max_attempts: 4,
       backoff: Exponential { base_ms: 30000, max_ms: 120000 },
-      retry_on: ["http_429", "http_503", "api_not_enabled_yet"]
+      retry_on: [Http429, Http503, ApiNotEnabledYet]
     }
   },
   {
@@ -90,7 +90,7 @@ data retry_configs: List<GcpRetryConfig> = [
     policy: {
       max_attempts: 5,
       backoff: Exponential { base_ms: 60000, max_ms: 180000 },
-      retry_on: ["permission_not_yet_propagated", "http_403_transient"]
+      retry_on: [PermissionNotYetPropagated, Http403Transient]
     }
   }
 ]

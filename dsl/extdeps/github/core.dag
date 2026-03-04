@@ -11,6 +11,8 @@
 
 module extdeps.github.core
 
+import std.types { Timestamp }
+
 // ── Users ─────────────────────────────────────────────────────────
 
 type UserType = HumanUser | Bot | Organization
@@ -36,7 +38,7 @@ type Repository {
 type GitHubAuthToken {
   token: Secret
   scopes: List<String>
-  expires_at: String?
+  expires_at: Timestamp?
 }
 
 type GitHubScope

@@ -14,7 +14,7 @@ import extdeps.github.core { Repository }
 import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
 }
-import std.types { CommitSha }
+import std.types { CommitSha, Timestamp }
 
 // ── PR model ──────────────────────────────────────────────────────
 
@@ -40,7 +40,7 @@ type PullRequest {
   draft: Bool
   mergeable: Bool?
   merged: Bool
-  created_at: String
+  created_at: Timestamp
 }
 
 // ── Reviews ───────────────────────────────────────────────────────
@@ -52,7 +52,7 @@ type Review {
   user: String
   state: ReviewState
   body: String?
-  submitted_at: String
+  submitted_at: Timestamp
 }
 
 // ── Checks ────────────────────────────────────────────────────────

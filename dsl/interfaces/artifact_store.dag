@@ -14,20 +14,11 @@ module interfaces.artifact_store
 
 import std.types { NonEmptyStr, ArtifactPayload, ArtifactType, ArtifactMarker }
 import std.behavioral {
-  OperationBehavior, FailureMode, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+  OperationBehavior, FailureMode, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity,
+  CapabilityBehaviorContract, CapabilityFailureContract
 }
 import std.coordination { CasMechanism, DeliveryGuarantee }
 import std.capability { CapabilityRequirement, InfraScope, AccessLevel }
-
-type CapabilityBehaviorContract {
-  capability: String
-  behavior: OperationBehavior
-}
-
-type CapabilityFailureContract {
-  capability: String
-  failures: List<FailureMode>
-}
 
 data cas_mechanism: CasMechanism = GenerationBased
 data delivery_guarantee: DeliveryGuarantee = AtLeastOnce
