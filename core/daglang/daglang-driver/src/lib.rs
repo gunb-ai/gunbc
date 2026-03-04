@@ -621,6 +621,59 @@ pub fn compile_from_context_with_options(
     compile_from_module_graph_with_options(context, module_graph, options)
 }
 
+fn primitive_requires_strict_input_wiring(kind: &daglang_lower::PrimitiveOpKind) -> bool {
+    matches!(kind, daglang_lower::PrimitiveOpKind::GetField { .. }) || kind.is_structural()
+}
+
+fn validate_structural_primitive_input_wiring(dag: &Dag<LoweredOp>) -> Vec<gunbc_ir::VerifyError> {
+    let mut errors = Vec::new();
+    validate_structural_primitive_input_wiring_recursive(dag, &mut errors);
+    errors
+}
+
+fn validate_structural_primitive_input_wiring_recursive(
+    dag: &Dag<LoweredOp>,
+    errors: &mut Vec<gunbc_ir::VerifyError>,
+) {
+    let connected_inputs: HashSet<(&str, &str)> = dag
+        .edges
+        .iter()
+        .filter(|edge| edge.kind.carries_data())
+        .map(|edge| (edge.to_node.0.as_str(), edge.to_port.0.as_str()))
+        .collect();
+
+    for node in &dag.nodes {
+        match &node.body {
+            gunbc_ir::NodeBody::Opaque(LoweredOp::Primitive { kind, .. })
+                if primitive_requires_strict_input_wiring(kind) =>
+            {
+                for port in &node.inputs {
+                    if port.name.is_resource()
+                        || port.name.is_tool()
+                        || port.name.is_internal()
+                        || port.cardinality.min == 0
+                    {
+                        continue;
+                    }
+                    if !connected_inputs.contains(&(node.id.0.as_str(), port.name.0.as_str())) {
+                        errors.push(gunbc_ir::VerifyError::UnwiredInput(
+                            gunbc_ir::UnwiredInputError {
+                                node_id: node.id.0.clone(),
+                                node_name: node.id.0.clone(),
+                                port_name: port.name.0.clone(),
+                            },
+                        ));
+                    }
+                }
+            }
+            gunbc_ir::NodeBody::SubDag(inner) => {
+                validate_structural_primitive_input_wiring_recursive(inner, errors);
+            }
+            gunbc_ir::NodeBody::Opaque(_) => {}
+        }
+    }
+}
+
 /// Compile from a pre-built module graph, skipping discovery.
 ///
 /// This is the shared compilation path used by both the direct context-based
@@ -671,6 +724,12 @@ pub fn compile_from_module_graph_with_options(
         },
     )
     .map_err(CompileError::Lower)?;
+    let structural_primitive_wiring_errors = validate_structural_primitive_input_wiring(&lowered);
+    if !structural_primitive_wiring_errors.is_empty() {
+        return Err(CompileError::Verification(
+            structural_primitive_wiring_errors,
+        ));
+    }
     if !options.skip_verification {
         let verify_errors = gunbc_ir::verify_dag(&lowered);
         if !verify_errors.is_empty() {
@@ -2772,6 +2831,101 @@ fn run() -> Bool {
                 gunbc_ir::VerifyError::UnwiredInput(err) if err.port_name == "config"
             )),
             "verify_dag should detect unwired 'config' input"
+        );
+    }
+
+    #[test]
+    fn structural_primitive_validation_flags_unwired_required_input() {
+        use daglang_lower::{PrimitiveLiteral, PrimitiveOpKind};
+        use gunbc_ir::{build::port, Dag, Edge, Node, VerifyError};
+
+        let mut dag: Dag<LoweredOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "left_src",
+            vec![],
+            vec![port("out", "Any")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "left_src".to_string(),
+                kind: PrimitiveOpKind::CallLiteralSource {
+                    literal: PrimitiveLiteral::Int(1),
+                },
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "binary",
+            vec![port("left", "Any"), port("right", "Any")],
+            vec![port("result", "Any")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "binary".to_string(),
+                kind: PrimitiveOpKind::BinaryOp {
+                    op: daglang_lower::expr::LoweredBinOp::Add,
+                },
+            },
+        ));
+        dag.add_edge(Edge::new("left_src", "out", "binary", "left"));
+
+        let errors = validate_structural_primitive_input_wiring(&dag);
+        assert!(
+            errors
+                .iter()
+                .any(|error| matches!(
+                    error,
+                    VerifyError::UnwiredInput(unwired)
+                        if unwired.node_id == "binary" && unwired.port_name == "right"
+                )),
+            "expected unwired required input error for binary.right, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn structural_primitive_validation_allows_conditional_without_else_input_port() {
+        use daglang_lower::{PrimitiveLiteral, PrimitiveOpKind};
+        use gunbc_ir::{build::port, Dag, Edge, Node};
+
+        let mut dag: Dag<LoweredOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "cond_src",
+            vec![],
+            vec![port("out", "Bool")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "cond_src".to_string(),
+                kind: PrimitiveOpKind::CallLiteralSource {
+                    literal: PrimitiveLiteral::Bool(true),
+                },
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "then_src",
+            vec![],
+            vec![port("out", "Any")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "then_src".to_string(),
+                kind: PrimitiveOpKind::CallLiteralSource {
+                    literal: PrimitiveLiteral::String("ok".to_string()),
+                },
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "conditional",
+            vec![port("condition", "Bool"), port("then", "Any")],
+            vec![port("result", "Any")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "conditional".to_string(),
+                kind: PrimitiveOpKind::Conditional,
+            },
+        ));
+        dag.add_edge(Edge::new("cond_src", "out", "conditional", "condition"));
+        dag.add_edge(Edge::new("then_src", "out", "conditional", "then"));
+
+        let errors = validate_structural_primitive_input_wiring(&dag);
+        assert!(
+            errors.is_empty(),
+            "conditional without else input port should pass, got: {errors:?}"
         );
     }
 

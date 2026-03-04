@@ -1602,6 +1602,36 @@ func caller(name: String, token: String) -> { id: String } {
 }
 
 #[test]
+fn rest_output_from_path_rejects_dotted_json_path_syntax() {
+    let typed = typed_project_from_sources(&[(
+        "dsl/services/output_path_syntax.dag",
+        r#"module sample.output_path_syntax
+service sample.PullRequest {
+  operation Get {
+input { owner: String, repo: String, pull_number: Int }
+output { head_sha: String from "head.sha" }
+transport rest { method: GET, path: "/repos/pulls" }
+  }
+}
+func run(owner: String, repo: String, pull_number: Int) -> { head_sha: String } {
+  pr = sample.PullRequest.Get(owner: owner, repo: repo, pull_number: pull_number)
+  return { head_sha: pr.head_sha }
+}"#,
+    )]);
+
+    let err = lower_typed_project(&typed).expect_err("dotted json path should fail lowering");
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("non-canonical dotted path `head.sha`"),
+        "error should mention dotted path: {msg}"
+    );
+    assert!(
+        msg.contains("head/sha"),
+        "error should suggest slash-delimited path syntax: {msg}"
+    );
+}
+
+#[test]
 /// IS-3: Pipeline compilation without --profile now succeeds with stub interfaces.
 fn pipeline_stage_bound_service_call_requires_active_profile() {
     let typed = typed_project_from_sources(&[(

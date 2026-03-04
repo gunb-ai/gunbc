@@ -73,22 +73,29 @@ fn declared_output_ports(outputs: &[Port]) -> Vec<(String, bool)> {
         .collect()
 }
 
+fn require_input_port<'a>(
+    inputs: &'a HashMap<String, Value>,
+    port: &str,
+    op_name: &str,
+) -> Result<&'a Value, ExecError> {
+    inputs.get(port).ok_or_else(|| {
+        let mut available: Vec<&str> = inputs.keys().map(String::as_str).collect();
+        available.sort_unstable();
+        ExecError::new(format!(
+            "{op_name}: missing required input port `{port}`; available inputs: [{}]",
+            available.join(", ")
+        ))
+    })
+}
+
 /// Execute a callable node by forwarding passthrough inputs to declared outputs.
 ///
 /// Enforcement tiers:
 ///
-/// 1. **Partially wired** (at least one `__out:*` input present): missing
-///    required outputs are **hard errors** — this indicates a lowerer wiring
-///    gap that must be fixed, not masked.
+/// 1. **Required outputs** must have a corresponding `__out:*` input wired.
+///    Missing required passthrough outputs are always hard errors.
 ///
-/// 2. **Zero wired** (no `__out:*` inputs at all): required outputs fall back
-///    to `Value::Skipped`. This is a **C10 gap**: the lowerer cannot yet
-///    desugar all return expressions into passthrough edges. Once C10 is
-///    complete, this tier collapses into tier 1 and every unwired required
-///    output becomes a hard error.
-///
-/// 3. **Optional** outputs always resolve to `Value::Skipped` when unwired,
-///    regardless of tier.
+/// 2. **Optional** outputs always resolve to `Value::Skipped` when unwired.
 fn execute_with_declared_output_passthrough(
     output_ports: &[(String, bool)],
     inputs: HashMap<String, Value>,
@@ -104,8 +111,6 @@ fn execute_with_declared_output_passthrough(
         }
         outputs.insert(key.clone(), value.clone());
     }
-    let any_passthrough_wired = !wired_passthroughs.is_empty();
-
     for (port_name, is_optional) in output_ports {
         let passthrough_key = format!("{}{port_name}", PortName::OUTPUT_PASSTHROUGH_PREFIX);
         if let Some(value) = inputs.get(&passthrough_key) {
@@ -119,16 +124,9 @@ fn execute_with_declared_output_passthrough(
             continue;
         }
 
-        // C10 gap: zero passthroughs wired → lowerer hasn't desugared return
-        // expressions for this callable yet. Fall back to Skipped until C10.
-        if !any_passthrough_wired {
-            outputs.insert(port_name.clone(), Value::Skipped);
-            continue;
-        }
-
-        // Fail-closed: at least one passthrough was wired, but this required
-        // output is missing. Diagnose which passthroughs ARE present vs. which
-        // are expected so the developer can trace the lowerer gap.
+        // Fail-closed: required passthrough output is missing.
+        // Diagnose which passthroughs ARE present vs. which are expected so
+        // the developer can trace lowerer wiring gaps.
         let expected: Vec<String> = output_ports
             .iter()
             .filter(|(_, opt)| !opt)
@@ -541,7 +539,10 @@ impl Executable for StringInterpolateOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         // If any interpolated input is Skipped, propagate Skipped.
         for port in &self.input_ports {
-            if matches!(inputs.get(port), Some(Value::Skipped) | None) {
+            if matches!(
+                require_input_port(&inputs, port, "StringInterpolate")?,
+                Value::Skipped
+            ) {
                 return OutputMap::new()
                     .value(&self.output_port, Value::Skipped)
                     .ok();
@@ -551,7 +552,12 @@ impl Executable for StringInterpolateOp {
         for (i, part) in self.parts.iter().enumerate() {
             result.push_str(part);
             if i < self.input_ports.len() {
-                let value = inputs.get(&self.input_ports[i]).cloned().unwrap_or(Value::Skipped);
+                let value = require_input_port(
+                    &inputs,
+                    &self.input_ports[i],
+                    "StringInterpolate",
+                )?
+                .clone();
                 result.push_str(&daglang_lower::eval::value_to_string(&value));
             }
         }
@@ -571,8 +577,8 @@ struct BinaryOpOp {
 
 impl Executable for BinaryOpOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let left = inputs.get("left").cloned().unwrap_or(Value::Skipped);
-        let right = inputs.get("right").cloned().unwrap_or(Value::Skipped);
+        let left = require_input_port(&inputs, "left", "BinaryOp")?.clone();
+        let right = require_input_port(&inputs, "right", "BinaryOp")?.clone();
         // Handle short-circuit semantics for logical/null-coalesce ops
         let result = match self.op {
             daglang_lower::expr::LoweredBinOp::And => {
@@ -628,7 +634,7 @@ struct UnaryOpOp {
 
 impl Executable for UnaryOpOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let val = inputs.get("operand").cloned().unwrap_or(Value::Skipped);
+        let val = require_input_port(&inputs, "operand", "UnaryOp")?.clone();
         if matches!(val, Value::Skipped) {
             return OutputMap::new()
                 .value(&self.output_port, Value::Skipped)
@@ -658,20 +664,25 @@ impl Executable for UnaryOpOp {
 #[derive(Debug, Clone)]
 struct ConditionalOp {
     output_port: String,
+    has_else: bool,
 }
 
 impl Executable for ConditionalOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let condition = inputs.get("condition").cloned().unwrap_or(Value::Bool(false));
+        let condition = require_input_port(&inputs, "condition", "Conditional")?.clone();
         if matches!(condition, Value::Skipped) {
             return OutputMap::new()
                 .value(&self.output_port, Value::Skipped)
                 .ok();
         }
         let result = if daglang_lower::eval::value_truthy(&condition) {
-            inputs.get("then").cloned().unwrap_or(Value::Skipped)
+            require_input_port(&inputs, "then", "Conditional")?.clone()
         } else {
-            inputs.get("else").cloned().unwrap_or(Value::Skipped)
+            if self.has_else {
+                require_input_port(&inputs, "else", "Conditional")?.clone()
+            } else {
+                Value::Skipped
+            }
         };
         OutputMap::new().value(&self.output_port, result).ok()
     }
@@ -698,7 +709,7 @@ impl std::fmt::Debug for MatchDispatchOp {
 
 impl Executable for MatchDispatchOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let scrutinee = inputs.get("scrutinee").cloned().unwrap_or(Value::Skipped);
+        let scrutinee = require_input_port(&inputs, "scrutinee", "MatchDispatch")?.clone();
         if matches!(scrutinee, Value::Skipped) {
             return OutputMap::new()
                 .value(&self.output_port, Value::Skipped)
@@ -729,7 +740,7 @@ impl Executable for RecordConstructOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         let mut map = std::collections::BTreeMap::new();
         for field in &self.fields {
-            let value = inputs.get(field).cloned().unwrap_or(Value::Skipped);
+            let value = require_input_port(&inputs, field, "RecordConstruct")?.clone();
             if matches!(value, Value::Skipped) {
                 return OutputMap::new()
                     .value(&self.output_port, Value::Skipped)
@@ -752,9 +763,10 @@ struct NullCoalesceOp {
 
 impl Executable for NullCoalesceOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let value = inputs.get("value").cloned().unwrap_or(Value::Skipped);
+        let value = require_input_port(&inputs, "value", "NullCoalesce")?.clone();
+        let default_value = require_input_port(&inputs, "default", "NullCoalesce")?.clone();
         let result = if matches!(value, Value::Unit | Value::Skipped) {
-            inputs.get("default").cloned().unwrap_or(Value::Unit)
+            default_value
         } else {
             value
         };
@@ -784,7 +796,7 @@ impl Executable for VariantConstructOp {
             let mut map = std::collections::BTreeMap::new();
             map.insert("_variant".to_string(), Value::Str(self.tag.clone()));
             for field in &self.fields {
-                let value = inputs.get(field).cloned().unwrap_or(Value::Skipped);
+                let value = require_input_port(&inputs, field, "VariantConstruct")?.clone();
                 if matches!(value, Value::Skipped) {
                     return OutputMap::new()
                         .value(&self.output_port, Value::Skipped)
@@ -810,7 +822,7 @@ impl Executable for ListConstructOp {
         let mut elements = Vec::with_capacity(self.count);
         for i in 0..self.count {
             let port = format!("elem_{i}");
-            let value = inputs.get(&port).cloned().unwrap_or(Value::Skipped);
+            let value = require_input_port(&inputs, &port, "ListConstruct")?.clone();
             if matches!(value, Value::Skipped) {
                 return OutputMap::new()
                     .value(&self.output_port, Value::Skipped)
@@ -1387,7 +1399,11 @@ fn resolve_primitive(
                 .first()
                 .map(|p| p.name.0.clone())
                 .unwrap_or_else(|| "result".to_string());
-            Ok(DynOp::new(ConditionalOp { output_port }))
+            let has_else = inputs.iter().any(|port| port.name.0 == "else");
+            Ok(DynOp::new(ConditionalOp {
+                output_port,
+                has_else,
+            }))
         }
         PrimitiveOpKind::MatchDispatch { arms, sibling_fns } => {
             let output_port = outputs
@@ -2950,18 +2966,16 @@ mod tests {
     }
 
     #[test]
-    fn passthrough_zero_wired_returns_skipped_for_required() {
-        // C10 gap: when zero __out:* inputs exist, required outputs fall back
-        // to Value::Skipped (not an error). This test documents the gap and
-        // will break once C10 is complete and this fallback is removed.
+    fn passthrough_zero_wired_missing_required_is_error() {
+        // Required outputs must always be wired via __out:* passthrough inputs.
         let output_ports = vec![("result".to_string(), false)];
         let inputs = HashMap::new();
-        let outputs = execute_with_declared_output_passthrough(&output_ports, inputs)
-            .expect("zero-wired should not error (C10 gap)");
-        assert_eq!(
-            outputs.get("result"),
-            Some(&Value::Skipped),
-            "required output should be Skipped when zero passthroughs wired"
+        let err = execute_with_declared_output_passthrough(&output_ports, inputs)
+            .expect_err("zero-wired required output should error");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("missing required declared output passthrough: `result`"),
+            "error should report missing required passthrough output: {msg}"
         );
     }
 
@@ -3346,6 +3360,7 @@ mod tests {
     fn conditional_op_without_else_returns_skipped() {
         let op = ConditionalOp {
             output_port: "result".to_string(),
+            has_else: false,
         };
         let mut inputs = HashMap::new();
         inputs.insert("condition".to_string(), Value::Bool(false));
@@ -3355,6 +3370,61 @@ mod tests {
             outputs.get("result"),
             Some(&Value::Skipped),
             "missing else branch should produce Skipped, not Unit"
+        );
+    }
+
+    #[test]
+    fn conditional_op_missing_condition_errors() {
+        let op = ConditionalOp {
+            output_port: "result".to_string(),
+            has_else: true,
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("then".to_string(), Value::Str("yes".to_string()));
+        inputs.insert("else".to_string(), Value::Str("no".to_string()));
+        let err = op
+            .execute(inputs)
+            .expect_err("missing condition should be a hard error");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("missing required input port `condition`"),
+            "diagnostic should mention missing condition port: {msg}"
+        );
+    }
+
+    #[test]
+    fn binary_op_missing_right_errors() {
+        let op = BinaryOpOp {
+            op: daglang_lower::expr::LoweredBinOp::Add,
+            output_port: "result".to_string(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("left".to_string(), Value::Int(1));
+        let err = op
+            .execute(inputs)
+            .expect_err("missing right input should be a hard error");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("missing required input port `right`"),
+            "diagnostic should mention missing right port: {msg}"
+        );
+    }
+
+    #[test]
+    fn record_construct_missing_field_errors() {
+        let op = RecordConstructOp {
+            fields: vec!["x".to_string(), "y".to_string()],
+            output_port: "result".to_string(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("x".to_string(), Value::Int(1));
+        let err = op
+            .execute(inputs)
+            .expect_err("missing field input should be a hard error");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("missing required input port `y`"),
+            "diagnostic should mention missing field port: {msg}"
         );
     }
 

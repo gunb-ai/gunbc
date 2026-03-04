@@ -2286,6 +2286,8 @@ fn lower_typed_project_impl(
         return Err(LowerError::NoLowerableItems);
     }
 
+    wire_param_source_inputs(&mut builder);
+
     let mut dag = builder.into_dag();
     stamp_node_kinds(&mut dag);
     Ok(dag)
@@ -5465,6 +5467,72 @@ fn is_env_map_field(field: &daglang_syntax::ast::Field) -> bool {
     field.name == "env" && type_expr_to_string(&field.ty) == "Map<String, String>"
 }
 
+fn is_noncanonical_dot_output_path(path: &str) -> bool {
+    if path == "." || path.contains('/') || !path.contains('.') {
+        return false;
+    }
+    if path.chars().any(|ch| {
+        ch.is_whitespace()
+            || matches!(
+                ch,
+                '='
+                    | '!'
+                    | '<'
+                    | '>'
+                    | '('
+                    | ')'
+                    | '"'
+                    | '\''
+                    | '?'
+                    | ':'
+                    | '['
+                    | ']'
+                    | '{'
+                    | '}'
+                    | '+'
+                    | '*'
+                    | '%'
+                    | '&'
+                    | '|'
+            )
+    }) {
+        return false;
+    }
+    path.split('.').all(|segment| {
+        !segment.is_empty()
+            && segment
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+    })
+}
+
+fn validate_rest_output_field_paths(
+    service: &ServiceDef,
+    operation: &OperationDef,
+) -> Result<(), LowerError> {
+    let Some(TransportBinding::Rest { .. }) = &operation.transport else {
+        return Ok(());
+    };
+    for field in &operation.outputs {
+        let Some(path) = field.from_path.as_deref() else {
+            continue;
+        };
+        if is_noncanonical_dot_output_path(path) {
+            return Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!(
+                    "output field `{}` uses non-canonical dotted path `{}`; use slash-delimited JSON path `{}`",
+                    field.name,
+                    path,
+                    path.replace('.', "/")
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
 // ============================================================================
 // ServiceOperationSpec extraction from annotations
 // ============================================================================
@@ -6423,6 +6491,7 @@ fn derive_service_transport_triplets(
                         continue;
                     }
                 }
+                validate_rest_output_field_paths(service, operation)?;
                 let service_metadata =
                     derive_service_call_metadata(service, operation, &data_registry);
                 // RT4: Fail-closed when a service operation has no transport
@@ -8160,6 +8229,66 @@ fn ensure_param_source_node(
     node_id
 }
 
+/// Post-processing: wire param_source inputs from the same sources that feed
+/// their parent callable's param input port.
+///
+/// Param_source nodes are boundary injection points for callable parameters.
+/// For the top-level entrypoint, their values arrive via `set_input()`. For
+/// inner callables (fn A calls fn B, forwarding a param), the param_source
+/// node has no incoming edge — it never receives the value.
+///
+/// This pass finds each param_source node, identifies the callable it belongs
+/// to, and duplicates any incoming edge to that callable's param port so the
+/// param_source also receives the value.
+fn wire_param_source_inputs(builder: &mut DagBuilder) {
+    // Collect param_source info: (param_source_node_id, callable_node_id, param_name)
+    let param_sources: Vec<(String, String, String)> = builder
+        .dag
+        .nodes
+        .iter()
+        .filter_map(|node| {
+            if let gunbc_ir::NodeBody::Opaque(LoweredOp::Primitive {
+                module,
+                kind: PrimitiveOpKind::CallParamSource { callable, param },
+                ..
+            }) = &node.body
+            {
+                let callable_node_id = lowered_node_id(module, callable);
+                Some((node.id.0.clone(), callable_node_id, param.clone()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // For each param_source, find edges feeding into the callable's param port
+    // and duplicate them to feed the param_source.
+    for (ps_node_id, callable_node_id, param_name) in &param_sources {
+        // Skip if the param_source already has an incoming edge (e.g., top-level entrypoint
+        // where boundary injection handles it, or already wired by a previous iteration).
+        if builder.has_edge_to_port(ps_node_id, param_name) {
+            continue;
+        }
+
+        // Find edges that deliver data to the callable's param input port.
+        let sources: Vec<(String, String)> = builder
+            .dag
+            .edges
+            .iter()
+            .filter(|e| {
+                e.to_node.0 == *callable_node_id
+                    && e.to_port.0 == *param_name
+                    && e.kind.carries_data()
+            })
+            .map(|e| (e.from_node.0.clone(), e.from_port.0.clone()))
+            .collect();
+
+        for (from_node, from_port) in sources {
+            builder.add_edge(&from_node, &from_port, ps_node_id, param_name);
+        }
+    }
+}
+
 fn ensure_literal_source_node(
     builder: &mut DagBuilder,
     module_name: &str,
@@ -9488,6 +9617,27 @@ fn synthesize_match_dispatch(
         .map(|arm| expr::lower_match_arm(arm, ctx.variant_names, expr::ExprLowerMode::Standard))
         .collect();
 
+    // Wire scrutinee input — use Any-typed port (scrutinee type differs from match result).
+    let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
+    let scrutinee_source = resolve_return_expr_source(
+        builder,
+        ctx,
+        scrutinee,
+        &any_port,
+        &format!("{output_name}_scrutinee"),
+        &format!("{disambiguator}_scrutinee"),
+    );
+    let Some((scrutinee_node, scrutinee_port)) = scrutinee_source else {
+        return synthesize_expr_compute(
+            builder,
+            ctx,
+            &whole_expr,
+            output_port,
+            output_name,
+            disambiguator,
+        );
+    };
+
     let node_id = format!(
         "match_dispatch_{}",
         sanitize_identifier(&format!(
@@ -9515,20 +9665,7 @@ fn synthesize_match_dispatch(
             },
         },
     ));
-
-    // Wire scrutinee input — use Any-typed port (scrutinee type differs from match result).
-    let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
-    let scrutinee_source = resolve_return_expr_source(
-        builder,
-        ctx,
-        scrutinee,
-        &any_port,
-        &format!("{output_name}_scrutinee"),
-        &format!("{disambiguator}_scrutinee"),
-    );
-    if let Some((src_node, src_port)) = scrutinee_source {
-        builder.add_edge(&src_node, &src_port, &node_id, "scrutinee");
-    }
+    builder.add_edge(&scrutinee_node, &scrutinee_port, &node_id, "scrutinee");
 
     // Wire all other leaf ref inputs (skip already-wired ports).
     let mut wired_ports = HashSet::new();
@@ -9605,6 +9742,71 @@ fn synthesize_conditional(
         Cardinality::ONE,
     )];
 
+    // Wire condition — use Bool-typed port (condition is always Bool).
+    let bool_port = Port::with_cardinality("result", "Bool", Cardinality::ONE);
+    let cond_source = resolve_return_expr_source(
+        builder,
+        ctx,
+        cond,
+        &bool_port,
+        &format!("{output_name}_cond"),
+        &format!("{disambiguator}_cond"),
+    );
+    let Some((cond_node, cond_port)) = cond_source else {
+        return synthesize_expr_compute(
+            builder,
+            ctx,
+            &whole_expr,
+            output_port,
+            output_name,
+            disambiguator,
+        );
+    };
+
+    // Wire then branch.
+    let then_source = resolve_return_expr_source(
+        builder,
+        ctx,
+        then_,
+        output_port,
+        &format!("{output_name}_then"),
+        &format!("{disambiguator}_then"),
+    );
+    let Some((then_node, then_port)) = then_source else {
+        return synthesize_expr_compute(
+            builder,
+            ctx,
+            &whole_expr,
+            output_port,
+            output_name,
+            disambiguator,
+        );
+    };
+
+    let else_source = if let Some(else_expr) = else_ {
+        let source = resolve_return_expr_source(
+            builder,
+            ctx,
+            else_expr,
+            output_port,
+            &format!("{output_name}_else"),
+            &format!("{disambiguator}_else"),
+        );
+        let Some((else_node, else_port)) = source else {
+            return synthesize_expr_compute(
+                builder,
+                ctx,
+                &whole_expr,
+                output_port,
+                output_name,
+                disambiguator,
+            );
+        };
+        Some((else_node, else_port))
+    } else {
+        None
+    };
+
     let node_id = format!(
         "conditional_{}",
         sanitize_identifier(&format!(
@@ -9623,47 +9825,12 @@ fn synthesize_conditional(
             kind: PrimitiveOpKind::Conditional,
         },
     ));
-
-    // Wire condition — use Bool-typed port (condition is always Bool).
-    let bool_port = Port::with_cardinality("result", "Bool", Cardinality::ONE);
-    let cond_source = resolve_return_expr_source(
-        builder,
-        ctx,
-        cond,
-        &bool_port,
-        &format!("{output_name}_cond"),
-        &format!("{disambiguator}_cond"),
-    );
-    if let Some((src_node, src_port)) = cond_source {
-        builder.add_edge(&src_node, &src_port, &node_id, "condition");
-    }
-
-    // Wire then branch.
-    let then_source = resolve_return_expr_source(
-        builder,
-        ctx,
-        then_,
-        output_port,
-        &format!("{output_name}_then"),
-        &format!("{disambiguator}_then"),
-    );
-    if let Some((src_node, src_port)) = then_source {
-        builder.add_edge(&src_node, &src_port, &node_id, "then");
-    }
+    builder.add_edge(&cond_node, &cond_port, &node_id, "condition");
+    builder.add_edge(&then_node, &then_port, &node_id, "then");
 
     // Wire else branch.
-    if let Some(else_expr) = else_ {
-        let else_source = resolve_return_expr_source(
-            builder,
-            ctx,
-            else_expr,
-            output_port,
-            &format!("{output_name}_else"),
-            &format!("{disambiguator}_else"),
-        );
-        if let Some((src_node, src_port)) = else_source {
-            builder.add_edge(&src_node, &src_port, &node_id, "else");
-        }
+    if let Some((else_node, else_port)) = else_source {
+        builder.add_edge(&else_node, &else_port, &node_id, "else");
     }
 
     Some((node_id, result_port_name.to_string()))
