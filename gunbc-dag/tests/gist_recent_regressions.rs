@@ -1,13 +1,13 @@
 #![allow(clippy::disallowed_methods)]
 
-use gunbc_dag::dsl_builder::build_dsl_graph_for_entry;
+use gunbc_dag::dsl_builder::build_dsl_graph_for_entrypoint;
 use gunbc_exec::{execute_with_mode_and_inputs, lower, BoundaryMocks, ExecutionMode};
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_test::auto_mock_spec;
 
 #[test]
 fn gist_recent_graph_no_ls_files() {
-    let dag = build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_recent")
+    let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist_recent"))
         .expect("gist-recent graph should build");
     let ls_files_nodes: Vec<&str> = dag
         .nodes
@@ -23,7 +23,7 @@ fn gist_recent_graph_no_ls_files() {
 
 #[test]
 fn gist_recent_graph_wires_diff_base_input() {
-    let dag = build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_recent")
+    let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist_recent"))
         .expect("gist-recent graph should build");
     let lowered = lower(&dag).expect("lowered gist-recent");
 
@@ -43,7 +43,7 @@ fn gist_recent_graph_wires_diff_base_input() {
 /// node's `res:credential` port.
 #[test]
 fn gist_recent_graph_wires_credential_to_gist_execute() {
-    let dag = build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_recent")
+    let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist_recent"))
         .expect("gist-recent graph should build");
     let lowered = lower(&dag).expect("lowered gist-recent");
 
@@ -76,7 +76,7 @@ fn gist_recent_graph_wires_credential_to_gist_execute() {
 #[test]
 #[ignore] // Pre-existing: GetField on credential token fails in DryRun (gist pipeline)
 fn gist_recent_end_to_end_emits_gist_url() {
-    let dag = build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_recent")
+    let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist_recent"))
         .expect("gist-recent graph should build");
 
     let spec = auto_mock_spec(&dag, "gist_recent");

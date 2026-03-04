@@ -1505,6 +1505,8 @@ struct LoweringContext<'a> {
     all_fn_bodies: &'a std::collections::BTreeMap<String, LoweredFnBody>,
     /// C24: Known sum-type variant names for match arm lowering.
     variant_names: &'a HashSet<String>,
+    /// Default expressions for callable parameters, keyed by callable name.
+    callable_param_defaults: &'a HashMap<String, Vec<(String, daglang_syntax::ast::Expr)>>,
 }
 
 /// Per-node expansion state for pattern lowering.
@@ -1532,6 +1534,9 @@ struct DagWiringContext<'a> {
     service_registry: &'a ServiceEndpointRegistry,
     data_values: &'a HashMap<String, serde_json::Value>,
     variant_names: &'a HashSet<String>,
+    /// Default expressions for callable parameters, keyed by callable name.
+    /// Used to inject literal source nodes for omitted call args with defaults.
+    callable_param_defaults: &'a HashMap<String, Vec<(String, daglang_syntax::ast::Expr)>>,
 }
 
 /// Wraps a `Dag` with O(1) deduplication tracking for nodes and edges.
@@ -2287,12 +2292,14 @@ fn lower_typed_project_impl(
     builder.apply_manifest(&transport_manifest);
     let mut service_registry = transport_manifest.registry;
     let data_values = build_data_values(project);
+    let callable_param_defaults = collect_callable_param_defaults(project);
     let wctx = DagWiringContext {
         endpoints_by_full: &endpoints_by_full,
         endpoints_by_name: &endpoints_by_name,
         service_registry: &service_registry,
         data_values: &data_values,
         variant_names: &variant_names,
+        callable_param_defaults: &callable_param_defaults,
     };
     add_dependency_edges(
         &mut builder,
@@ -2319,6 +2326,7 @@ fn lower_typed_project_impl(
         service_registry: &service_registry,
         data_values: &data_values,
         variant_names: &variant_names,
+        callable_param_defaults: &callable_param_defaults,
     };
     add_service_call_edges(
         &mut builder,
@@ -3421,6 +3429,7 @@ fn add_dependency_edges(
                     body_stmts: &[],
                     all_fn_bodies: &empty_fn_bodies,
                     variant_names: wctx.variant_names,
+                    callable_param_defaults: wctx.callable_param_defaults,
                 };
                 expand_content_upsert_patterns(builder, &ctx, stmts, target);
                 expand_non_generic_pattern_calls(builder, project, &ctx, stmts, target);
@@ -3500,11 +3509,16 @@ struct IfBranchSite {
     else_service_call_paths: Vec<Vec<String>>,
 }
 
-/// Detected match expression with service call paths across all arms.
+/// Detected match expression with per-arm service call paths.
 /// Populated from `scope::ScopedBody` via `collect_match_sites_from_scoped`.
 #[derive(Debug)]
 struct MatchBranchSite {
     arm_count: usize,
+    /// Service call paths per arm: `per_arm_service_call_paths[arm_idx]` is
+    /// the list of service call paths for that arm.
+    #[allow(dead_code)]
+    per_arm_service_call_paths: Vec<Vec<Vec<String>>>,
+    /// Flattened union of all per-arm paths (for top-level dedup in add_service_call_edges).
     all_service_call_paths: Vec<Vec<String>>,
 }
 
@@ -3602,11 +3616,15 @@ fn collect_match_sites_from_scoped(body: &scope::ScopedBody, out: &mut Vec<Match
         match item {
             scope::ScopedItem::MatchBranch { arms } => {
                 let mut all_paths = Vec::new();
+                let mut per_arm = Vec::new();
                 for arm in arms {
-                    all_paths.extend(collect_service_paths_from_scoped_body(&arm.body));
+                    let arm_paths = collect_service_paths_from_scoped_body(&arm.body);
+                    all_paths.extend(arm_paths.clone());
+                    per_arm.push(arm_paths);
                 }
                 out.push(MatchBranchSite {
                     arm_count: arms.len(),
+                    per_arm_service_call_paths: per_arm,
                     all_service_call_paths: all_paths,
                 });
                 for arm in arms {
@@ -4124,6 +4142,11 @@ fn add_control_flow_pattern_nodes(
     for (index, site) in match_sites.iter().enumerate() {
         let node_id = format!("{}::cf_match_{index}", target.node_id);
         // Resolve match-arm service calls to transport entries.
+        // NOTE: Currently all arms' transports go into both branches because
+        // the match condition isn't wired to the BranchBuilder's condition port.
+        // Both branches execute and the fn_body evaluation picks the correct arm.
+        // Per-arm transport isolation requires proper match condition routing
+        // (per_arm_service_call_paths is tracked for future use).
         let mut match_transports = Vec::new();
         for call_path in &site.all_service_call_paths {
             if let Some(transport) =
@@ -4687,6 +4710,7 @@ fn expand_non_generic_pattern_calls(
             body_stmts: ctx.body_stmts,
             all_fn_bodies: ctx.all_fn_bodies,
             variant_names: ctx.variant_names,
+            callable_param_defaults: ctx.callable_param_defaults,
         };
         let pexp = PatternExpansionParams {
             target,
@@ -7409,6 +7433,7 @@ fn add_service_call_edges(
                 body_stmts: stmts,
                 all_fn_bodies: &all_fn_bodies,
                 variant_names: wctx.variant_names,
+                callable_param_defaults: wctx.callable_param_defaults,
             };
             wire_fn_call_arguments(builder, &fn_ctx, stmts);
             // Wire for-loop iterable expressions to loop node "items" ports.
@@ -8973,6 +8998,38 @@ pub fn build_data_values(project: &TypedProject) -> HashMap<String, serde_json::
     values
 }
 
+/// Collect default expressions for callable parameters across all modules.
+///
+/// Returns a map from callable name → vec of (param_name, default_expr) for
+/// params that have default values. Used by `wire_fn_call_arguments` to inject
+/// literal source nodes for omitted call args.
+fn collect_callable_param_defaults(
+    project: &TypedProject,
+) -> HashMap<String, Vec<(String, daglang_syntax::ast::Expr)>> {
+    let mut defaults = HashMap::new();
+    for module in &project.modules {
+        for item in &module.ast.items {
+            let Some(callable) = item.node.as_callable() else {
+                continue;
+            };
+            let param_defaults: Vec<(String, daglang_syntax::ast::Expr)> = callable
+                .params()
+                .iter()
+                .filter_map(|param| {
+                    param
+                        .default
+                        .as_ref()
+                        .map(|expr| (param.name.clone(), expr.clone()))
+                })
+                .collect();
+            if !param_defaults.is_empty() {
+                defaults.insert(callable.name().to_string(), param_defaults);
+            }
+        }
+    }
+    defaults
+}
+
 fn wire_fn_call_arguments(builder: &mut DagBuilder, ctx: &LoweringContext<'_>, stmts: &[Stmt]) {
     let mut fn_calls = Vec::new();
     collect_fn_calls_with_args(stmts, &mut fn_calls);
@@ -9102,6 +9159,32 @@ fn wire_fn_call_arguments(builder: &mut DagBuilder, ctx: &LoweringContext<'_>, s
                     fn_endpoint.node_id.as_str(),
                     param_name,
                 );
+            }
+        }
+        // Inject default values for callable params that were omitted from the call.
+        if let Some(param_defaults) = ctx.callable_param_defaults.get(&fn_call.name) {
+            for (param_name, default_expr) in param_defaults {
+                if builder.has_edge_to_port(fn_endpoint.node_id.as_str(), param_name) {
+                    continue;
+                }
+                if let Some(json_val) = expr_to_json_literal(default_expr, ctx.variant_names) {
+                    let literal = ServiceCallArgLiteral::Json(json_val);
+                    let src = ensure_literal_source_node(
+                        builder,
+                        ctx.module_name,
+                        ctx.item_name,
+                        param_name,
+                        "Any",
+                        &literal,
+                        &format!("default_{param_name}"),
+                    );
+                    builder.add_edge(
+                        src.as_str(),
+                        param_name,
+                        fn_endpoint.node_id.as_str(),
+                        param_name,
+                    );
+                }
             }
         }
     }

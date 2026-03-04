@@ -12,6 +12,35 @@
 
 ---
 
+## Postmortem: `make gist` Credential Chain Failure (2026-03-04)
+
+**Symptom**: `make gist` fails with DNS error trying to reach `metadata.google.internal` on a local WSL2 machine. The `audience` parameter arrives as the string `"true"` (a boolean) instead of `"sigstore"`.
+
+**Root cause**: Two compounding compiler bugs, both caused by the dual execution model (Bridges 1+2).
+
+### Bug 1: Unguarded transport nodes for non-matching match arms
+
+The credential chain has `match runtime { LocalDev => local_auth(), Metadata => metadata_oidc(audience) }`. The fn body evaluator (`evaluate_fn_body()`) correctly picks `local_auth()`. But the DAG lowerer creates transport triplets for **all** service calls referenced in the module — including `gcp.Metadata.GetIdentityToken` from the `metadata_oidc` branch. These transport nodes are top-level DAG nodes with no guards, so they execute unconditionally regardless of which match arm was taken.
+
+**Fix**: Bridge 1+2 elimination. When fn bodies are lowered to SubDags, match arms become guarded SubDag branches. Transport nodes inside the `Metadata` branch would be guarded and produce `Value::Skipped` when runtime ≠ Metadata.
+
+### Bug 2: Default parameter values not injected into DAG
+
+`acquire_gcp_secret(audience: NonEmptyStr = "sigstore")` is called without passing `audience`. The lowerer creates a port for `audience` but does NOT create a literal source node with the default `"sigstore"`. The port has no incoming edge, so the executor fills it with a mock value (`Bool(true)` → string `"true"` via `input_as_string`).
+
+**Fix**: Lowerer must emit literal source nodes for parameters with defaults when callers omit them. This is a missing compiler feature, independent of but exacerbated by Bridges 1+2.
+
+### Why this matters
+
+This is exactly what the compiler is supposed to prevent. The DSL declarations are correct — types are right, match arms are right, defaults are right. But the compiler's dual execution model (interpreter for fn bodies + DAG executor for transport) means:
+- Conditional logic doesn't suppress unreachable transport nodes
+- Default values don't flow through to nested service calls
+- The failure manifests as an opaque DNS error, not a compile-time diagnostic
+
+**This postmortem is the case study for why Bridges 1+2 are the highest-priority compiler fixes.**
+
+---
+
 ## The 10 Accidental Bridges
 
 Each bridge exists because the compiler doesn't do enough. For each: current state, final state, what to delete.
@@ -64,8 +93,17 @@ Each bridge exists because the compiler doesn't do enough. For each: current sta
 - **Final state**: All fn bodies are lowered to SubDag form at compile time. No `LoweredFnBody` in the runtime IR. `evaluate_fn_body()` exists only in the lowerer for compile-time evaluation (data declarations, config rendering). Runtime never evaluates fn bodies — it executes SubDag nodes.
 - **Acceptance**: `FnBodyCallableOp` struct **deleted**. `fn_body` field **deleted** from `LoweredOp::Callable`. `grep -r 'FnBodyCallableOp\|LoweredFnBody' core/resolve/` returns 0. `evaluate_fn_body()` remains in `daglang-lower/src/eval.rs` but is only called at compile time.
 - **Depends on**: Bridge 1 (SubDag direct lowering).
-- **Enables**: RF-E5 test restoration (`makegen_runtime_differential`).
+- **Enables**: RF-E5 test restoration (`makegen_runtime_differential`). **Fixes `make gist` postmortem Bug 1** (unguarded transport nodes for non-matching match arms).
 - **Effort**: Medium.
+
+**Bridge 2b: Default parameter injection** — missing compiler feature.
+
+- **Location**: `core/daglang/daglang-lower/src/lib.rs`, `wire_fn_call_arguments()` (~lines 8976-9108)
+- **Current**: When a caller omits a parameter with a default value (e.g., `audience: NonEmptyStr = "sigstore"`), the lowerer creates a port but does NOT inject a literal source node with the default. The port has no incoming edge. At runtime, the executor fills it with a mock/garbage value.
+- **Final state**: Lowerer reads `param.default` from the callee's `Param` definition. For any parameter not explicitly passed by the caller, creates a `PrimitiveLiteral` source node with the default expression's value and wires it to the port.
+- **Acceptance**: Test: `func f(x: String = "hello") -> { out: String } { return { out: x } }` called as `f()` produces `"hello"`. `make gist` no longer sends `audience=true`. Default values flow through nested pattern/func calls.
+- **Fixes**: `make gist` postmortem Bug 2 (default parameter values not injected).
+- **Effort**: Small-Medium. The `Param.default` field already exists in the AST.
 
 **Bridge 3: `CollectionDelegate`** — collection ops (map/filter/fold) delegate to evaluator.
 
@@ -156,11 +194,12 @@ Everything else either moves into the compiler (bridges 1-3, 8-9), gets deleted 
 
 ## Execution Order
 
-| Priority | Items | Effort | Deleted |
-|----------|-------|--------|---------|
-| **Now** | Delete bridges 4, 5, 10 | 1-2 days | `OutputPathMetadataOp` (7 LOC), `PipelineDispatchOp` (85 LOC), `strip_pipeline_nodes()` (22 LOC), 6 redundant builder functions (~185 LOC) |
-| **Next** | Bridge 1 + Bridge 2 | 3-5 days | `DeclaredOutputCallableOp` (9 LOC), `FnBodyCallableOp` (86 LOC), `LoweredFnBody` type, `fn_body` field on `LoweredOp::Callable` |
-| **Next** | Bridge 3 + Bridge 8 | 3-5 days | `CollectionDelegate` (17 LOC), `evaluate_collection()` (50 LOC), `LoweredOp::Collection` variant, `add_fs_env_root_node()` (14 LOC), `DslFsEnvOp` |
+| Priority | Items | Effort | Deleted | Proves |
+|----------|-------|--------|---------|--------|
+| **Now** | Delete bridges 4, 5, 10 | 1-2 days | `OutputPathMetadataOp` (7 LOC), `PipelineDispatchOp` (85 LOC), `strip_pipeline_nodes()` (22 LOC), 6 redundant builder functions (~185 LOC) | Dead code removal |
+| **Now** | Bridge 2b (default params) | 1-2 days | N/A (new feature) | `make gist` Bug 2 fixed. Default values flow through call chains. |
+| **Next** | Bridge 1 + Bridge 2 | 3-5 days | `DeclaredOutputCallableOp` (9 LOC), `FnBodyCallableOp` (86 LOC), `LoweredFnBody` type, `fn_body` field on `LoweredOp::Callable` | `make gist` Bug 1 fixed. Match arms properly guard transport nodes. |
+| **Next** | Bridge 3 + Bridge 8 | 3-5 days | `CollectionDelegate` (17 LOC), `evaluate_collection()` (50 LOC), `LoweredOp::Collection` variant, `add_fs_env_root_node()` (14 LOC), `DslFsEnvOp` | Evaluator delegation eliminated. |
 | **Next** | Bridge 9 | 2-3 days | `GenericFilePrepareOp` (44 LOC), `GenericFileParseOp` (50 LOC) |
 | **Then** | Rename crate, output dir consolidation | 1-2 days | Hardcoded path constants in `workspace_layout.rs` |
 | **Later** | Bridges 6-7 (artifact emission) | 1-2 weeks | `registry_tools_to_value()` (95 LOC), `DiscoverToolsOp` (28 LOC) |

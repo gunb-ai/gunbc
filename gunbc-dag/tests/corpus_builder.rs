@@ -7,7 +7,7 @@
 #![allow(clippy::disallowed_methods)]
 
 use gunbc_codegen::testgen::mock_corpus::{build_corpus, WorkflowInfo};
-use gunbc_dag::dsl_builder::build_dsl_graph_for_entry;
+use gunbc_dag::dsl_builder::build_dsl_graph_for_entrypoint;
 use gunbc_test::auto_mock_spec;
 use gunbc_test::MockSpec;
 
@@ -17,10 +17,10 @@ use gunbc_test::MockSpec;
 
 fn compile_tool(
     dag_file: &str,
-    entry_node: &str,
+    entry_func: &str,
     workflow_name: &str,
 ) -> Option<(gunbc_ir::Dag<gunbc_exec::DynOp>, MockSpec, WorkflowInfo)> {
-    let dag = build_dsl_graph_for_entry(dag_file, entry_node).ok()?;
+    let dag = build_dsl_graph_for_entrypoint(dag_file, Some(entry_func)).ok()?;
     let spec = auto_mock_spec(&dag, workflow_name);
     let info = WorkflowInfo {
         name: workflow_name.to_string(),
@@ -36,7 +36,7 @@ fn compile_tool(
 #[test]
 fn single_tool_produces_nonempty_corpus() {
     let (dag, spec, info) =
-        match compile_tool("tools/pragma.dag", "tools.pragma::pragma_lint", "pragma") {
+        match compile_tool("tools/pragma.dag", "pragma_lint", "pragma") {
             Some(t) => t,
             None => {
                 eprintln!("skipping: pragma tool failed to compile");
@@ -62,8 +62,8 @@ fn single_tool_produces_nonempty_corpus() {
 #[test]
 fn multi_workflow_accumulates_shared_nodes() {
     // Compile two tools that might share nodes (e.g., content_upsert pattern)
-    let pragma = compile_tool("tools/pragma.dag", "tools.pragma::pragma_lint", "pragma");
-    let makegen = compile_tool("tools/makegen.dag", "tools.makegen::makegen", "makegen");
+    let pragma = compile_tool("tools/pragma.dag", "pragma_lint", "pragma");
+    let makegen = compile_tool("tools/makegen.dag", "makegen", "makegen");
 
     // Collect compiled tools into owned storage
     let mut compiled: Vec<(gunbc_ir::Dag<gunbc_exec::DynOp>, MockSpec, WorkflowInfo)> = Vec::new();
@@ -115,7 +115,7 @@ fn multi_workflow_accumulates_shared_nodes() {
 #[test]
 fn corpus_node_identities_are_well_formed() {
     let (dag, spec, info) =
-        match compile_tool("tools/pragma.dag", "tools.pragma::pragma_lint", "pragma") {
+        match compile_tool("tools/pragma.dag", "pragma_lint", "pragma") {
             Some(t) => t,
             None => {
                 eprintln!("skipping: pragma tool failed to compile");
@@ -152,7 +152,7 @@ fn corpus_node_identities_are_well_formed() {
 #[test]
 fn edge_examples_have_valid_port_mappings() {
     let (dag, spec, info) =
-        match compile_tool("tools/pragma.dag", "tools.pragma::pragma_lint", "pragma") {
+        match compile_tool("tools/pragma.dag", "pragma_lint", "pragma") {
             Some(t) => t,
             None => {
                 eprintln!("skipping: pragma tool failed to compile");

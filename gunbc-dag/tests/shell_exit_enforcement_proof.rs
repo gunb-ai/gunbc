@@ -21,7 +21,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use gunbc_dag::dsl_builder::build_dsl_graph_for_entry;
+use gunbc_dag::dsl_builder::build_dsl_graph_for_entrypoint;
 use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
 use gunbc_ir::transport::{
     HttpMethod, RestResponse, ShellResponse, TransportRequest, TransportResponse,
@@ -88,7 +88,16 @@ impl TransportBackend for GcloudExpiredBackend {
                     "ERROR: (gcloud.secrets.versions.access) There was a problem refreshing your current auth tokens",
                 )))
             }
-            // REST endpoint should never be reached if gcloud fails
+            // Credential chain STS/OAuth REST calls — fail to simulate
+            // credential resolution failure (these fire because default param
+            // injection provides `audience` to the credential chain).
+            TransportRequest::Rest(rest) if !rest.url.ends_with("/gists") => {
+                Err(TransportError::new(format!(
+                    "credential REST call should not succeed when gcloud fails: {}",
+                    rest.url
+                )))
+            }
+            // Gist REST endpoint should never be reached if credential fails
             TransportRequest::Rest(_) => Ok(TransportResponse::Rest(RestResponse::new(
                 201,
                 serde_json::json!({
@@ -182,7 +191,7 @@ impl TransportBackend for Rest401Backend {
 }
 
 fn build_gist_recent_with_inputs() -> (gunbc_ir::Dag<gunbc_exec::DynOp>, BoundaryMocks) {
-    let dag = build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_recent")
+    let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist_recent"))
         .expect("gist-recent graph should build");
 
     let mut input_mocks = BoundaryMocks::new();
@@ -245,18 +254,22 @@ fn gcloud_exit_code_1_fails_with_error() {
         "error should mention exit code or credential failure, got: {error}"
     );
 
-    // Verify that the REST endpoint was never called — the failure should
-    // stop the flow before reaching the GitHub API
+    // Verify that the gist REST endpoint was never called — the failure should
+    // stop the flow before reaching the GitHub API. Credential chain REST calls
+    // (OIDC, STS, metadata) may fire and fail; only count gist API calls.
     let captured = requests.lock().expect("capture lock");
-    let rest_calls: Vec<_> = captured
+    let gist_rest_calls: Vec<_> = captured
         .iter()
-        .filter(|r| matches!(r, TransportRequest::Rest(_)))
+        .filter(|r| match r {
+            TransportRequest::Rest(rest) => rest.url.ends_with("/gists"),
+            _ => false,
+        })
         .collect();
     assert!(
-        rest_calls.is_empty(),
-        "REST endpoint should NOT be called when gcloud credential retrieval fails — \
-         found {} REST call(s), proving the empty token would have been sent as auth",
-        rest_calls.len()
+        gist_rest_calls.is_empty(),
+        "Gist REST endpoint should NOT be called when gcloud credential retrieval fails — \
+         found {} gist REST call(s), proving the empty token would have been sent as auth",
+        gist_rest_calls.len()
     );
 }
 
@@ -294,7 +307,7 @@ fn rest_401_response_surfaces_as_error() {
 /// exit code 1 (expired gcloud session) or HTTP 401 (bad credentials).
 #[test]
 fn auto_mock_spec_always_produces_success_responses() {
-    let dag = build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_recent")
+    let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist_recent"))
         .expect("gist-recent graph should build");
 
     let spec = gunbc_test::auto_mock_spec(&dag, "gist_recent");

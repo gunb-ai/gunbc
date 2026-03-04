@@ -11,6 +11,7 @@
 module extdeps.cloud.gcp.sts
 
 import extdeps.cloud.core { CloudAuthScheme }
+import std.types { Url }
 import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
 }
@@ -47,7 +48,7 @@ type StsTokenResponse {
 
 // ── Constants ─────────────────────────────────────────────────────
 
-data sts_endpoint: String = "https://sts.googleapis.com/v1/token"
+data sts_endpoint: Url = "https://sts.googleapis.com/v1/token"
 
 data default_grant_type: String = "urn:ietf:params:oauth:grant-type:token-exchange"
 

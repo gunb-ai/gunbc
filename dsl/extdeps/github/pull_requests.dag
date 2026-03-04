@@ -14,6 +14,7 @@ import extdeps.github.core { Repository }
 import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
 }
+import std.types { CommitSha }
 
 // ── PR model ──────────────────────────────────────────────────────
 
@@ -23,7 +24,7 @@ type PrState = PrOpen | PrClosed
 
 type PrBranchRef {
   ref: String
-  sha: String
+  sha: CommitSha
   repo: String
 }
 

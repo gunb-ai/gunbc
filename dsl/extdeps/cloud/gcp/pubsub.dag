@@ -9,6 +9,8 @@
 
 module extdeps.cloud.gcp.pubsub
 
+import std.types { Url }
+
 import extdeps.cloud.gcp.core { GcpProject }
 import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
@@ -33,7 +35,7 @@ type DeadLetterPolicy {
 type PushAuthMethod = OidcPushAuth { service_account: String, audience: String? }
 
 type PushConfig {
-  endpoint: String
+  endpoint: Url
   auth_method: PushAuthMethod?
 }
 

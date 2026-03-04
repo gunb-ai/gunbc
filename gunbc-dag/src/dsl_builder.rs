@@ -58,17 +58,6 @@ pub fn build_dsl_graph_with_profile(
     )
 }
 
-pub fn build_dsl_graph_for_entry(
-    relative_module: &str,
-    entry_node_id: &str,
-) -> Result<Dag<DynOp>, BuilderError> {
-    gunbc_resolve::builder::build_dsl_graph_for_entry(
-        relative_module,
-        entry_node_id,
-        &GunbcExternResolver,
-    )
-}
-
 /// Compile a DSL module and resolve to `Dag<DynOp>` by selecting an inferred entrypoint.
 ///
 /// - `entry_func: None` — use the sole inferred entrypoint (errors if multiple)

@@ -13,6 +13,7 @@ module extdeps.git
 import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
 }
+import std.types { CommitSha }
 
 // ── Object model ──────────────────────────────────────────────────
 
@@ -28,11 +29,11 @@ type GitAuthor {
 // it to the tree — e.g., merge queue, bot, maintainer). Both are needed
 // for SLSA provenance and accurate attribution in automated workflows.
 type GitCommit {
-  sha: String
+  sha: CommitSha
   message: String
   author: GitAuthor
   committer: GitAuthor
-  parent_shas: List<String>
+  parent_shas: List<CommitSha>
 }
 
 // ── Refs ──────────────────────────────────────────────────────────
@@ -40,7 +41,7 @@ type GitCommit {
 type GitRef
   = BranchRef { name: String }
   | TagRef { name: String }
-  | CommitRef { sha: String }
+  | CommitRef { sha: CommitSha }
 
 type GitBranch {
   name: String

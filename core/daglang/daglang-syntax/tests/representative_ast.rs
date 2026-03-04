@@ -147,7 +147,7 @@ fn types_file_contains_record_sum_and_alias_definitions() {
     let source = parse_dsl("std/types.dag");
     assert_eq!(
         source.items.len(),
-        114,
+        115,
         "std/types.dag item count changed unexpectedly"
     );
     assert_eq!(
@@ -179,6 +179,7 @@ fn types_file_contains_record_sum_and_alias_definitions() {
         vec![
             "type Char",
             "type CommitSha",
+            "type Sha256",
             "type RetryCount",
             "type HttpStatus",
             "type Email",

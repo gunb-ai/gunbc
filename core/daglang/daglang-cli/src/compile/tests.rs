@@ -4,11 +4,10 @@ use daglang_derive::derive_artifacts;
 use daglang_lower::{
     CallableKind, LoweredOp, ObligationCategory, ServiceCallMetadata, ServiceTransportClass,
 };
-use gunbc_exec::{lower, Executable, ExecutionMode};
-use gunbc_ir::{node::NodeBody, Dag, Edge, Node, Port};
+use gunbc_exec::{lower, ExecutionMode};
+use gunbc_ir::{Dag, Edge, Node, Port};
 use gunbc_test::{unique_temp_dir, unique_temp_file};
 use serde_json::Value;
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 fn workspace_dsl_root() -> PathBuf {
@@ -399,7 +398,7 @@ fn resolve_lowered_dag_unknown_callable_module_fails_closed() {
 }
 
 #[test]
-fn resolve_lowered_dag_defers_pipeline_nodes() {
+fn resolve_lowered_dag_rejects_unstripped_pipeline_nodes() {
     let mut dag = Dag::new();
     dag.add_node(Node::opaque(
         "pipeline::ci",
@@ -417,26 +416,15 @@ fn resolve_lowered_dag_defers_pipeline_nodes() {
         },
     ));
 
-    // Pipeline nodes resolve to PipelineDispatchOp via resolve_op's Pipeline arm.
-    let resolved = resolve_lowered_dag(&dag).expect("pipeline nodes should resolve");
-    assert_eq!(resolved.nodes.len(), 1);
-    let debug = format!("{:?}", resolved.nodes[0].body);
+    // Pipeline nodes must be stripped before resolution. Unstripped pipeline
+    // nodes are a builder bug — the resolver rejects them with a clear error.
+    let result = resolve_lowered_dag(&dag);
+    assert!(result.is_err(), "unstripped pipeline nodes should fail resolution");
+    let err = result.unwrap_err().to_string();
     assert!(
-        debug.contains("PipelineDispatchOp"),
-        "unexpected op debug: {debug}"
+        err.contains("pipeline nodes must be stripped"),
+        "unexpected error: {err}"
     );
-    let NodeBody::Opaque(op) = &resolved.nodes[0].body else {
-        panic!("pipeline fixture should not contain subdag nodes")
-    };
-    // PipelineDispatchOp uses output passthrough. With no passthroughs wired,
-    // the resolver falls back to Skipped (C10 gap).
-    let result = op.execute(HashMap::new());
-    assert!(
-        result.is_ok(),
-        "pipeline op should succeed with Skipped fallback"
-    );
-    let outs = result.unwrap();
-    assert_eq!(outs.get("out"), Some(&gunbc_ir::Value::Skipped));
 }
 
 #[test]

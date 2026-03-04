@@ -261,21 +261,6 @@ pub fn build_dsl_graph_with_profile(
     })
 }
 
-pub fn build_dsl_graph_for_entry(
-    relative_module: &str,
-    entry_node_id: &str,
-    resolver: &dyn ExternResolver,
-) -> Result<Dag<DynOp>, BuilderError> {
-    let result = compile_lowered(relative_module)?;
-    let lowered = strip_pipeline_nodes(result.dag);
-    let lowered = slice_dag_from_entry(lowered, entry_node_id)?;
-    resolve_lowered_dag_with(&lowered, resolver).map_err(|error| {
-        BuilderError::InternalInvariant(format!(
-            "failed to resolve lowered DAG for `{relative_module}` entry `{entry_node_id}`: {error}"
-        ))
-    })
-}
-
 /// Compile a DSL module and resolve to `Dag<DynOp>` by selecting an inferred entrypoint.
 ///
 /// - `entry_func: None` — use the sole inferred entrypoint (errors if multiple)
