@@ -698,6 +698,104 @@ pub mod ast {
         }
     }
 
+    /// Emit-level collection family for code generation classification.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum EmitCollectionFamily {
+        Map,
+        Filter,
+        Fold,
+        Sort,
+    }
+
+    /// Static metadata for a pipe method, used by all compiler stages.
+    pub struct PipeMethodDef {
+        pub method: PipeMethod,
+        pub name: &'static str,
+        /// Number of required arguments (excluding the receiver).
+        pub arity: usize,
+        /// Parameter names for the callable contract.
+        pub param_names: &'static [&'static str],
+        /// Output type category: "List", "Bool", "String", "Int", "Bytes", "Json", "Unknown".
+        pub output_type: &'static str,
+        /// Collection operation name, matching lowerer's `CollectionOpKind` string key.
+        /// None for string/conversion methods that aren't collection operations.
+        pub collection_op: Option<&'static str>,
+        /// Emit-level collection classification family.
+        pub emit_family: Option<EmitCollectionFamily>,
+    }
+
+    /// Canonical registry of all pipe methods. Adding a new pipe method requires
+    /// only adding an entry here (plus the eval implementation in eval.rs).
+    pub static PIPE_METHOD_REGISTRY: &[PipeMethodDef] = &[
+        // Collection → Collection
+        PipeMethodDef { method: PipeMethod::Map, name: "map", arity: 1, param_names: &["f"],
+            output_type: "List", collection_op: Some("map"), emit_family: Some(EmitCollectionFamily::Map) },
+        PipeMethodDef { method: PipeMethod::Filter, name: "filter", arity: 1, param_names: &["predicate"],
+            output_type: "List", collection_op: Some("filter"), emit_family: Some(EmitCollectionFamily::Filter) },
+        PipeMethodDef { method: PipeMethod::FilterMap, name: "filter_map", arity: 1, param_names: &["f"],
+            output_type: "List", collection_op: Some("filter"), emit_family: Some(EmitCollectionFamily::Filter) },
+        PipeMethodDef { method: PipeMethod::FlatMap, name: "flat_map", arity: 1, param_names: &["f"],
+            output_type: "List", collection_op: Some("flat_map"), emit_family: Some(EmitCollectionFamily::Map) },
+        PipeMethodDef { method: PipeMethod::SortBy, name: "sort_by", arity: 1, param_names: &["f"],
+            output_type: "List", collection_op: Some("sort"), emit_family: Some(EmitCollectionFamily::Sort) },
+        PipeMethodDef { method: PipeMethod::Append, name: "append", arity: 1, param_names: &["items"],
+            output_type: "List", collection_op: Some("map"), emit_family: Some(EmitCollectionFamily::Map) },
+        // Collection → Scalar
+        PipeMethodDef { method: PipeMethod::Fold, name: "fold", arity: 2, param_names: &["init", "f"],
+            output_type: "Unknown", collection_op: Some("fold"), emit_family: Some(EmitCollectionFamily::Fold) },
+        PipeMethodDef { method: PipeMethod::Join, name: "join", arity: 1, param_names: &["sep"],
+            output_type: "String", collection_op: Some("join"), emit_family: Some(EmitCollectionFamily::Map) },
+        PipeMethodDef { method: PipeMethod::Count, name: "count", arity: 0, param_names: &[],
+            output_type: "Int", collection_op: Some("len"), emit_family: Some(EmitCollectionFamily::Fold) },
+        PipeMethodDef { method: PipeMethod::Sum, name: "sum", arity: 0, param_names: &[],
+            output_type: "Int", collection_op: Some("fold"), emit_family: Some(EmitCollectionFamily::Fold) },
+        PipeMethodDef { method: PipeMethod::First, name: "first", arity: 0, param_names: &[],
+            output_type: "Unknown", collection_op: Some("filter"), emit_family: Some(EmitCollectionFamily::Filter) },
+        PipeMethodDef { method: PipeMethod::Last, name: "last", arity: 0, param_names: &[],
+            output_type: "Unknown", collection_op: Some("filter"), emit_family: Some(EmitCollectionFamily::Filter) },
+        PipeMethodDef { method: PipeMethod::MaxBy, name: "max_by", arity: 1, param_names: &["f"],
+            output_type: "Unknown", collection_op: Some("fold"), emit_family: Some(EmitCollectionFamily::Fold) },
+        PipeMethodDef { method: PipeMethod::Any, name: "any", arity: 1, param_names: &["predicate"],
+            output_type: "Bool", collection_op: Some("any"), emit_family: Some(EmitCollectionFamily::Fold) },
+        PipeMethodDef { method: PipeMethod::All, name: "all", arity: 1, param_names: &["predicate"],
+            output_type: "Bool", collection_op: Some("all"), emit_family: Some(EmitCollectionFamily::Fold) },
+        PipeMethodDef { method: PipeMethod::Contains, name: "contains", arity: 1, param_names: &["item"],
+            output_type: "Bool", collection_op: Some("contains"), emit_family: Some(EmitCollectionFamily::Filter) },
+        // String methods
+        PipeMethodDef { method: PipeMethod::StartsWith, name: "starts_with", arity: 1, param_names: &["prefix"],
+            output_type: "Bool", collection_op: None, emit_family: None },
+        PipeMethodDef { method: PipeMethod::EndsWith, name: "ends_with", arity: 1, param_names: &["suffix"],
+            output_type: "Bool", collection_op: None, emit_family: None },
+        PipeMethodDef { method: PipeMethod::Repeat, name: "repeat", arity: 1, param_names: &["n"],
+            output_type: "String", collection_op: None, emit_family: None },
+        PipeMethodDef { method: PipeMethod::ReplaceSection, name: "replace_section", arity: 2, param_names: &["section", "replacement"],
+            output_type: "String", collection_op: None, emit_family: None },
+        PipeMethodDef { method: PipeMethod::Chars, name: "chars", arity: 0, param_names: &[],
+            output_type: "List", collection_op: None, emit_family: None },
+        // Conversion methods
+        PipeMethodDef { method: PipeMethod::ToBytes, name: "to_bytes", arity: 0, param_names: &[],
+            output_type: "Bytes", collection_op: None, emit_family: None },
+        PipeMethodDef { method: PipeMethod::ToJson, name: "to_json", arity: 0, param_names: &[],
+            output_type: "Json", collection_op: None, emit_family: None },
+        PipeMethodDef { method: PipeMethod::Hash, name: "hash", arity: 0, param_names: &[],
+            output_type: "String", collection_op: None, emit_family: None },
+    ];
+
+    impl PipeMethod {
+        /// Look up this method's definition in the registry.
+        pub fn def(&self) -> &'static PipeMethodDef {
+            PIPE_METHOD_REGISTRY
+                .iter()
+                .find(|d| d.method == *self)
+                .expect("all PipeMethod variants have registry entries")
+        }
+    }
+
+    /// Look up a pipe method by name.
+    pub fn pipe_method_by_name(name: &str) -> Option<PipeMethod> {
+        PIPE_METHOD_REGISTRY.iter().find(|d| d.name == name).map(|d| d.method)
+    }
+
     #[derive(Debug, Clone)]
     pub enum Literal {
         Int(i64),

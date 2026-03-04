@@ -477,24 +477,6 @@ fn derive_stage_groups(nodes: &[Node<LoweredOp>]) -> Vec<StageGroup> {
         .collect()
 }
 
-fn collection_kind_label(kind: CollectionOpKind) -> &'static str {
-    match kind {
-        CollectionOpKind::Map => "MapNode",
-        CollectionOpKind::Filter => "FilterNode",
-        CollectionOpKind::Fold => "FoldNode",
-        CollectionOpKind::Join => "JoinNode",
-        CollectionOpKind::FlatMap => "FlatMapNode",
-        CollectionOpKind::Sort => "SortNode",
-        CollectionOpKind::Dedup => "DedupNode",
-        CollectionOpKind::Any => "AnyNode",
-        CollectionOpKind::All => "AllNode",
-        CollectionOpKind::Len => "LenNode",
-        CollectionOpKind::Contains => "ContainsNode",
-        CollectionOpKind::Split => "SplitNode",
-        CollectionOpKind::Zip => "ZipNode",
-    }
-}
-
 fn derive_node_labels(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, String> {
     nodes
         .iter()
@@ -516,7 +498,7 @@ fn derive_node_labels(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, String> {
                         .unwrap_or(callable);
                     format!(
                         "{module}.{callable_label}::{}",
-                        collection_kind_label(*kind)
+                        kind.node_label()
                     )
                 }
                 gunbc_ir::node::NodeBody::Opaque(LoweredOp::Pipeline { module, name, .. }) => {

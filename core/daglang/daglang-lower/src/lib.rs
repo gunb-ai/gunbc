@@ -24,7 +24,6 @@ use daglang_syntax::ast::{
     BackoffStrategy, CapabilityDef, DataDef, Expr, Field, Item, Literal, NodeStmt, OperationDef,
     RateLimitUnit, ServiceDef, Stmt, TransportBinding, TypeBody,
 };
-use daglang_syntax::CallableItemExt;
 use daglang_syntax::ast_utils::{
     canonical_resource_type_name, is_type_expr_optional, resource_type_name,
     service_call_lookup_keys, type_expr_to_string, walk_stmts,
@@ -2579,7 +2578,7 @@ mod parity {
                 canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, true, None)
             }
             gunbc_ir::node::NodeBody::Opaque(LoweredOp::Collection { kind, .. }) => {
-                collection_kind_node_label(*kind).to_string()
+                kind.node_label().to_string()
             }
             gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { obligation, .. }) => {
                 canonical_kind_from_shape(
@@ -8312,6 +8311,27 @@ pub enum CollectionOpKind {
     Zip,
 }
 
+impl CollectionOpKind {
+    /// Node label used in DAG visualization and naming.
+    pub fn node_label(&self) -> &'static str {
+        match self {
+            Self::Map => "MapNode",
+            Self::Filter => "FilterNode",
+            Self::Fold => "FoldNode",
+            Self::Join => "JoinNode",
+            Self::FlatMap => "FlatMapNode",
+            Self::Sort => "SortNode",
+            Self::Dedup => "DedupNode",
+            Self::Any => "AnyNode",
+            Self::All => "AllNode",
+            Self::Len => "LenNode",
+            Self::Contains => "ContainsNode",
+            Self::Split => "SplitNode",
+            Self::Zip => "ZipNode",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CollectionOpSite {
     kind: CollectionOpKind,
@@ -8355,33 +8375,7 @@ fn collect_collection_ops_from_stmts(stmts: &[Stmt], sites: &mut Vec<CollectionO
             sites.push(CollectionOpSite { kind });
         }
         Expr::PipeCall(_, method, _) => {
-            let method_name = match method {
-                daglang_syntax::ast::PipeMethod::Map => "map",
-                daglang_syntax::ast::PipeMethod::Filter => "filter",
-                daglang_syntax::ast::PipeMethod::FilterMap => "filter_map",
-                daglang_syntax::ast::PipeMethod::FlatMap => "flat_map",
-                daglang_syntax::ast::PipeMethod::SortBy => "sort_by",
-                daglang_syntax::ast::PipeMethod::Append => "append",
-                daglang_syntax::ast::PipeMethod::Fold => "fold",
-                daglang_syntax::ast::PipeMethod::Join => "join",
-                daglang_syntax::ast::PipeMethod::Count => "count",
-                daglang_syntax::ast::PipeMethod::Sum => "sum",
-                daglang_syntax::ast::PipeMethod::First => "first",
-                daglang_syntax::ast::PipeMethod::Last => "last",
-                daglang_syntax::ast::PipeMethod::MaxBy => "max_by",
-                daglang_syntax::ast::PipeMethod::Any => "any",
-                daglang_syntax::ast::PipeMethod::All => "all",
-                daglang_syntax::ast::PipeMethod::Contains => "contains",
-                daglang_syntax::ast::PipeMethod::StartsWith => "starts_with",
-                daglang_syntax::ast::PipeMethod::EndsWith => "ends_with",
-                daglang_syntax::ast::PipeMethod::Repeat => "repeat",
-                daglang_syntax::ast::PipeMethod::ReplaceSection => "replace_section",
-                daglang_syntax::ast::PipeMethod::Chars => "chars",
-                daglang_syntax::ast::PipeMethod::ToBytes => "to_bytes",
-                daglang_syntax::ast::PipeMethod::ToJson => "to_json",
-                daglang_syntax::ast::PipeMethod::Hash => "hash",
-            };
-            if let Some(kind) = collection_op_kind(method_name) {
+            if let Some(kind) = collection_op_kind(method.as_str()) {
                 sites.push(CollectionOpSite { kind });
             }
         }
@@ -8399,7 +8393,7 @@ fn derive_collection_node_specs(callable_node_id: &str, stmts: &[Stmt]) -> Vec<C
         .map(|(index, site)| CollectionNodeSpec {
             node_id: format!(
                 "{callable_node_id}::{}_{index}",
-                collection_kind_node_label(site.kind)
+                site.kind.node_label()
             ),
             kind: site.kind,
         })
@@ -8412,23 +8406,6 @@ struct CollectionLoweringPlan {
     edges: Vec<(String, String, String, String)>,
 }
 
-fn collection_kind_node_label(kind: CollectionOpKind) -> &'static str {
-    match kind {
-        CollectionOpKind::Map => "MapNode",
-        CollectionOpKind::Filter => "FilterNode",
-        CollectionOpKind::Fold => "FoldNode",
-        CollectionOpKind::Join => "JoinNode",
-        CollectionOpKind::FlatMap => "FlatMapNode",
-        CollectionOpKind::Sort => "SortNode",
-        CollectionOpKind::Dedup => "DedupNode",
-        CollectionOpKind::Any => "AnyNode",
-        CollectionOpKind::All => "AllNode",
-        CollectionOpKind::Len => "LenNode",
-        CollectionOpKind::Contains => "ContainsNode",
-        CollectionOpKind::Split => "SplitNode",
-        CollectionOpKind::Zip => "ZipNode",
-    }
-}
 
 fn build_collection_lowering_plan(
     module_name: &str,

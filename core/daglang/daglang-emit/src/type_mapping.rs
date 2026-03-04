@@ -37,6 +37,21 @@ pub struct DslTypeMapping {
     pub fallback: &'static str,
 }
 
+/// Look up a primitive type name in the mapping table.
+///
+/// Returns the mapped target name, or `None` if not found. Unlike
+/// [`map_abstract_type`], this does NOT handle generics or fallback — callers
+/// that handle generic structure themselves (e.g., `type_expr_to_rust`) should
+/// use this to avoid double-wrapping.
+pub fn lookup_primitive(mapping: &DslTypeMapping, name: &str) -> Option<&'static str> {
+    for entry in mapping.primitives {
+        if entry.dsl_names.contains(&name) {
+            return Some(entry.target);
+        }
+    }
+    None
+}
+
 /// Resolve an abstract type string using the given mapping table.
 ///
 /// Handles primitives, `List<T>`, `Optional<T>`, and `Map<K,V>` generics
@@ -100,7 +115,7 @@ pub fn map_abstract_type(mapping: &DslTypeMapping, abstract_type: &str) -> Strin
 pub static RUST_TYPE_MAPPING: DslTypeMapping = DslTypeMapping {
     primitives: &[
         PrimitiveMapping {
-            dsl_names: &["String", "Path"],
+            dsl_names: &["String", "Path", "NonEmptyStr", "Url", "GistId", "ProjectId", "ServiceAccountEmail"],
             target: "String",
         },
         PrimitiveMapping {
@@ -114,6 +129,22 @@ pub static RUST_TYPE_MAPPING: DslTypeMapping = DslTypeMapping {
         PrimitiveMapping {
             dsl_names: &["Float", "f64"],
             target: "f64",
+        },
+        PrimitiveMapping {
+            dsl_names: &["Char"],
+            target: "char",
+        },
+        PrimitiveMapping {
+            dsl_names: &["Secret"],
+            target: "String",
+        },
+        PrimitiveMapping {
+            dsl_names: &["Bytes"],
+            target: "Vec<u8>",
+        },
+        PrimitiveMapping {
+            dsl_names: &["Json"],
+            target: "serde_json::Value",
         },
         PrimitiveMapping {
             dsl_names: &["ToolRegistry"],
@@ -142,7 +173,7 @@ pub static RUST_TYPE_MAPPING: DslTypeMapping = DslTypeMapping {
 pub static GO_TYPE_MAPPING: DslTypeMapping = DslTypeMapping {
     primitives: &[
         PrimitiveMapping {
-            dsl_names: &["String", "Path"],
+            dsl_names: &["String", "Path", "NonEmptyStr", "Url", "GistId", "ProjectId", "ServiceAccountEmail"],
             target: "string",
         },
         PrimitiveMapping {
@@ -156,6 +187,22 @@ pub static GO_TYPE_MAPPING: DslTypeMapping = DslTypeMapping {
         PrimitiveMapping {
             dsl_names: &["Float", "f64"],
             target: "float64",
+        },
+        PrimitiveMapping {
+            dsl_names: &["Char"],
+            target: "rune",
+        },
+        PrimitiveMapping {
+            dsl_names: &["Secret"],
+            target: "string",
+        },
+        PrimitiveMapping {
+            dsl_names: &["Bytes"],
+            target: "[]byte",
+        },
+        PrimitiveMapping {
+            dsl_names: &["Json"],
+            target: "interface{}",
         },
         PrimitiveMapping {
             dsl_names: &["ToolRegistry"],

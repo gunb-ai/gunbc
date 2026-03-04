@@ -15,7 +15,6 @@ use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
 use daglang_syntax::ast::{Expr, Item, Literal, ModulePath, PipelineDef, StageDef, Stmt, TypeBody};
 use daglang_syntax::ast_utils::type_expr_to_string;
 use daglang_syntax::parser;
-use daglang_syntax::CallableItemExt;
 use daglang_typecheck::{
     typecheck_module_graph_with_options, TypeError, TypecheckOptions, TypedProject,
 };
