@@ -1,125 +1,163 @@
-# Lane 2: gunbc-dag Simplification
+# Lane 2: Compiler Debt & Application Layer Cleanup
 
-**Goal**: Reduce gunbc-dag to the minimum necessary Rust — thin wrappers, binary entrypoints, and extern operations blocked on compiler features. Everything expressible in .dag should be in .dag.
-
-**Question for design review**: Is the current architecture overcomplicated? The crate has 5,265 LOC across 27 files. ~2,200 LOC is infrastructure that can't migrate. ~1,000 LOC is already-migrated thin wrappers. The real question is whether the remaining ~2,000 LOC (testgen engine, extern ops, resource defs) can be simplified or restructured.
-
----
-
-## Current State
-
-### What's already migrated (DSL core + thin Rust wrapper)
-
-| Module | LOC | .dag equivalent |
-|--------|-----|-----------------|
-| `pragma/mod.rs` | 21 | `tools/pragma.dag` |
-| `ci/mod.rs` | 93 | `pipelines/ci.dag` |
-| `docgen/mod.rs` | 18 | `tools/docgen.dag` |
-| `tool_graphs.rs` | 207 | `tools/{bootstrap,build,codegen,deps,infra,makegen}.dag` |
-| `workflow/catalog.rs` | 442 | `config/workflow_catalog.dag` + `config/workflow_commands.dag` |
-| `workflow/commands.rs` | 145 | `config/workflow_commands.dag` |
-| `workflow/spec_builders.rs` | 95 | `config/workflow_catalog.dag` |
-| **Total** | **1,021** | |
-
-### Infrastructure (cannot migrate — binary/runtime plumbing)
-
-| Module | LOC | Why it stays |
-|--------|-----|--------------|
-| `bin/ci.rs` | 267 | Bootstrap CI — runs before codegen generates other binaries |
-| `bin/codegen_cli.rs` | 959 | Code generator — creates all other binaries, Cargo.toml manipulation |
-| `resolve.rs` | 26 | App-specific `GunbcExternResolver` |
-| `dsl_builder.rs` | 65 | Thin wrappers passing `GunbcExternResolver` |
-| `tool_runner.rs` | 123 | Shared binary entry point helpers |
-| `lib.rs` | 168 | Module aggregator |
-| `testgen_dag/ops.rs` | 233 | `TestgenOp` executable — calls `build_dsl_graph_with_types()` at runtime |
-| `workflow/capabilities.rs` | 231 | Codegen/compilation unit definitions |
-| Re-export wrappers | 71 | `dsl_registry.rs`, `fs_env.rs`, `dry_run.rs`, `testgen_dag/mod.rs`, `workflow/mod.rs`, `fidelity.rs` |
-| **Total** | **2,143** | |
-
-### Partially migrated (DSL + Rust bridge)
-
-| Module | LOC | What's in DSL | What's still in Rust |
-|--------|-----|---------------|----------------------|
-| `pragma/dsl_render.rs` | 112 | `config/clippy_policy.dag` (3 fn items) | `evaluate_fn_body()` bridge; clippy_toml blocked on FC-CF5 |
-| `testgen_dag/dag_test_discovery.rs` | 929 | `config/test_policy.dag` (classification) | Test discovery, compilation, mock interpretation |
-| `testgen_dag/graph.rs` | 313 | — | Dynamic DAG building (N upsert chains per target) |
-| `resource_defs.rs` | 202 | `config/resources.dag` (globs, paths) | Resource trait definitions |
-| **Total** | **1,556** | | |
-
-### Extern operations (`extern_ops.rs` — 521 LOC)
-
-11 extern operations, dispatch table at line 13-37. Status:
-
-| # | Operation | LOC | Status | Blocker |
-|---|-----------|-----|--------|---------|
-| 1 | `render_tree` | 49 | Blocked | FC-CF6 (recursive fns) |
-| 2 | `build_snapshot_content` | 46 | Blocked | Runtime string formatting |
-| 3 | `discover_tools` | 29 | **Actionable** | Needs refactor (Plan A) |
-| 4 | `discover_ci_config` | 37 | **Actionable** | Cross-module extern func calls |
-| 5 | `render_bootstrap_makefile` | 17 | Blocked | DSL template layer not designed |
-| 6 | `render_bootstrap_gitignore` | 17 | Blocked | DSL template layer not designed |
-| 7 | `render_clippy_toml_content` | 11 | **Actionable** | FC-CF5 (partially done — VariantConstruct exists) |
-| 8 | `render_disallowed_methods_allowlist_content` | — | **Done** | Evaluates DSL fn |
-| 9 | `render_pragma_lint_policy_content` | — | **Done** | Evaluates DSL fn |
-| 10 | `infra` | — | **Done** | Pure DSL (legacy dispatch point) |
-| 11 | (deleted ops) | — | **Done** | — |
+> We're at an early stage. Debt this early is bizarre — it's design via implementation.
+> For each piece of debt: think ahead to the truly minimal final representation.
+> Go a → f directly, not a → b → c → d → e → f.
 
 ---
 
-## Open Items
+## The 10 Accidental Bridges
 
-### Phase 1: Quick wins (no compiler changes needed)
+Each bridge exists because the compiler doesn't do enough. For each: current state, final state, and whether we can skip the intermediate steps.
 
-| # | ID | What | Acceptance Criteria | Size | Status |
-|---|-----|------|---------------------|------|--------|
-| 1 | DAG-1 | **Plan A: `discover_tools` refactor.** Consolidate registry filtering logic, eliminate ~95 LOC duplication with `registry_tools_to_value()`. Add parity test. | `discover_tools` uses consolidated path. | S | Open |
-| 2 | DAG-2 | **Delete dead `infra` extern dispatch.** The `infra` entry in `extern_ops.rs` dispatches to pure DSL — the extern wrapper is unnecessary. | `infra` extern removed from dispatch table. | S | Open |
-| 3 | DAG-3 | **Plan B: Branch body passthrough fix.** Add trivial `fn_body: return { result: input }` to branch/loop body ops. Add `validate_callable_output_wiring(dag)` in lowerer. | Branch bodies don't crash on missing `__out:result`. | S | Open |
+### Delete immediately (zero blockers)
 
-### Phase 2: Unblock with small compiler fixes
+**Bridge 4: `OutputPathMetadataOp`** — identity node carrying `@outputs` annotations through DAG.
 
-| # | ID | What | Acceptance Criteria | Size | Status |
-|---|-----|------|---------------------|------|--------|
-| 4 | DAG-4 | **FC-CF5 completion: sum type variant tag access.** Unblocks `render_clippy_toml` migration (11 LOC extern → pure DSL). | `render_clippy_toml_content` extern deleted. | M | Open |
-| 5 | DAG-5 | **Cross-module extern func call fix.** Lowerer currently breaks same-module calls. Fix unblocks `discover_ci_config` migration (37 LOC). | `discover_ci_config` extern deleted. | S | Open |
+- **Current**: `@outputs("glob")` creates a passthrough node at resolve time
+- **Final**: Already done. `extract_outputs_annotation()` in the lowerer extracts paths at compile time. The runtime node does literally nothing. Delete it.
+- **Effort**: Trivial. Delete ~15 lines in `resolve.rs`, remove creation site.
 
-### Phase 3: Larger compiler features (deferred)
+**Bridge 10: `PipelineDispatchOp`** — stage routing as a runtime node.
 
-| # | ID | What | Blocker | LOC freed |
-|---|-----|------|---------|-----------|
-| 6 | DAG-6 | **Recursive fns (FC-CF6).** Unblocks `render_tree` (49 LOC). | Non-trivial type/lowering work | 49 |
-| 7 | DAG-7 | **DSL template layer.** Unblocks `render_bootstrap_makefile` + `render_bootstrap_gitignore` (34 LOC). | Design needed | 34 |
-| 8 | DAG-8 | **Runtime string formatting.** Unblocks `build_snapshot_content` (46 LOC). | Design needed | 46 |
+- **Current**: Creates pipeline dispatch nodes with stage progression logic
+- **Final**: Pipelines are either (a) inlined as SubDag chains with edge dependencies, or (b) metadata for static generation (Makefile targets). Current code already strips pipeline nodes before resolution (`strip_pipeline_nodes()`). This op may be dead code.
+- **Action**: Verify if used. If dead, delete. If alive, decide: first-class execution or metadata-only.
+- **Effort**: Trivial if dead. Design decision if alive.
 
-### Phase 4: Structural simplification (needs design review)
+**Bridge 5: `dsl_builder.rs`** — 7 wrapper functions that each pass `GunbcExternResolver`.
 
-| # | ID | What | Question |
-|---|-----|------|----------|
-| 9 | DAG-9 | **Testgen engine simplification.** `dag_test_discovery.rs` (929 LOC) + `graph.rs` (313 LOC) = 1,242 LOC of test discovery/compilation/mock interpretation. Is this overcomplicated? Can it be restructured? | Needs design review — the N-dynamic-DAG pattern may have a simpler DSL-native expression. |
-| 10 | DAG-10 | **Resource defs simplification.** `resource_defs.rs` (202 LOC) loads from DSL but defines Rust traits. Can the Rust traits be eliminated? | Needs design review — depends on whether resource types need runtime Rust dispatch or can be pure DSL data. |
+- **Current**: `build_dsl_graph()`, `build_tool_graph()`, `build_dsl_graph_with_types()`, etc. — 7 functions that differ only in optional parameters
+- **Final**: One function: `build_dsl_graph(module, opts: BuildOpts)` where `BuildOpts` has optional `profile`, `entry_func`, `include_types`. The 7 variants are callers setting different defaults.
+- **Effort**: Small. Refactor to single entry point + options struct.
 
 ---
 
-## Deleted Tests (re-add when root cause fixed)
+### Compiler fixes (medium effort, go directly to final state)
 
-| ID | Tests | Blocker |
-|----|-------|---------|
-| RF-E5 | `makegen_runtime_differential_interpreter_vs_generated_rust_layer1` | FnBodyDelegate gap |
-| RF-E6 | `makegen_exec_runtime_e2e`, `pragma_exec_runtime_e2e`, `makegen_e2e_generated_binary`, `pragma_e2e_generated_binary` | Exec-runtime emitter |
+**Bridge 1: `DeclaredOutputCallableOp`** — SubDag wrapper that maps inner results to outer ports.
 
-## Future (post-simplification)
+- **Current**: Lowerer creates `Callable` node with `fn_body`. Resolver wraps in `DeclaredOutputCallableOp` to passthrough `__out:field` → declared output ports.
+- **Incremental trap**: Make the wrapper smarter, add port introspection, etc.
+- **Final state**: Lowerer produces SubDag directly for fn/func/pattern items. No Callable wrapper. SubDag's internal unconnected ports map directly to parent DAG ports (this is what SubDag already does for non-callable items). No resolver wrapper needed.
+- **Why a→f works**: SubDag already has this port-mapping semantics (I2.4 invariant). The Callable→SubDag indirection exists because the lowerer historically didn't produce SubDags for callables.
+- **Effort**: Medium. Modify `lower_fn_item()` in daglang-lower to return SubDag. Delete DeclaredOutputCallableOp (~70 lines). Test with box_draw.dag, markdown_render.dag.
 
-| ID | Task | Size | Notes |
-|----|------|------|-------|
-| C28-P2 | **Daggen cache manager.** Content-hash → `.dagbin` → skip recompilation. | M | Infrastructure ready. |
-| C28-P3 | **Daggen codegen integration.** Serialize all tool DAGs at `make codegen` time. | L | Eliminates runtime DSL parsing. |
+**Bridge 2: `FnBodyCallableOp`** — evaluates fn bodies at runtime via `evaluate_fn_body()`.
+
+- **Current**: Pure DSL fn items are stored as `LoweredFnBody` in the IR. At runtime, resolver creates `FnBodyCallableOp` which calls `evaluate_fn_body()`.
+- **Incremental trap**: Cache fn evaluations, add memoization, etc.
+- **Final state**: All fn bodies are lowered to SubDag form at compile time. No `LoweredFnBody` in the runtime IR. `evaluate_fn_body()` exists only in the lowerer for compile-time evaluation (data declarations, config rendering). Runtime never evaluates fn bodies — it executes SubDag nodes.
+- **Depends on**: Bridge 1 (SubDag direct lowering).
+- **Effort**: Medium. Remove `fn_body` field from `LoweredOp::Callable`. All fn call sites lower to SubDag invocation.
+
+**Bridge 3: `CollectionDelegate`** — collection ops (map/filter/fold) delegate to evaluator.
+
+- **Current**: `LoweredOp::Collection` nodes are resolved as `CollectionDelegate` which calls `evaluate_collection()` from the lowerer at runtime.
+- **Incremental trap**: Move evaluator functions into resolver, create per-op structs.
+- **Final state**: Collection operations are proper IR nodes (`MapNode`, `FilterNode`, `FoldNode` already exist in `core/ir/src/patterns/`). The lowerer produces these IR nodes. The executor handles them. No evaluator delegation.
+- **Why a→f works**: The IR node types already exist. The lowerer just doesn't use them — it creates `Collection` variants that delegate instead.
+- **Effort**: Medium. Wire lowerer to emit IR collection nodes instead of `LoweredOp::Collection`. Extend executor for any missing collection types.
+
+**Bridge 8: `FsEnvRootOp`** — filesystem resource injected at resolver time.
+
+- **Current**: `add_fs_env_root_node()` called by DSL builders after lowering to inject filesystem capability.
+- **Incremental trap**: Make injection configurable, add resource composition.
+- **Final state**: Lowerer detects file I/O operations during lowering and auto-injects resource acquisition nodes. DSL already has `uses fs: Filesystem(mode: Write)` declarations — the lowerer should honor them by inserting the resource nodes, not leave it to the resolver.
+- **Effort**: Medium. Move `add_fs_env_root_node()` logic into lowerer when `uses` declarations or file operations are present. Delete resolver-time injection.
+
+**Bridge 9: `FileReadPrepareOp`/`FileWritePrepareOp`** — generic adapters for file transport.
+
+- **Current**: File I/O goes through `GenericFilePrepareOp`/`GenericFileParseOp` — generic adapters that interpret `FileOp::Read`/`Write`/etc.
+- **Incremental trap**: Unify all file ops into one adapter, add caching.
+- **Final state**: File transport is handled by typed IR nodes, same as REST/Shell. `transport file { op: READ, path: "..." }` lowers to a `FileRequest` builder node (simple data struct) + `FileResponse` parser node. No generic adapter indirection.
+- **Effort**: Medium. Define file-specific IR node types (or extend service transport nodes). Modify lowerer to produce them.
+
+---
+
+### Blocked on larger design work
+
+**Bridge 6: `registry_tools_to_value()`** — manual Rust struct → `Value::Map` conversion for tool registry.
+**Bridge 7: `discover_tools_op`** — runtime tool registry discovery.
+
+- **Current**: Tool registry lives as Rust structs built from `inventory`. Runtime converts to `Value::Map` for DSL consumption.
+- **Final state**: Tool registry is a compile-time artifact. Compiler scans `dsl/tools/*.dag`, extracts entrypoints, emits `dsl/generated/tool_registry.dag`. Makegen/bootstrap import this artifact directly. No runtime discovery. No struct→Value conversion.
+- **Cannot go a→f yet**: Requires compiler artifact emission (Phase 7b from extern bridge analysis). 2-3 items of work. But this IS the final state — don't build intermediate caching or optimization layers.
+- **Interim**: Keep as-is, don't optimize. These will be deleted, not improved.
+
+---
+
+## Application Layer Cleanup
+
+Once compiler fixes land, the application layer (currently gunbc-dag) becomes simple:
+
+### Rename
+
+`gunbc-dag` → `gunbc-app` (or `gunbc-bin`). It's the application entry point, not a DAG definition crate.
+
+### Output directory: single source of truth
+
+Currently output paths are specified in three places:
+1. `core/ir/src/workspace_layout.rs` — hardcoded `"target/codegen/bin"` constants
+2. `codegen_cli.rs` — calls `WorkspaceLayout` with string fallback
+3. `gunbc-dag/Cargo.toml` — `[[bin]]` entries: `path = "../target/codegen/bin/*/main.rs"`
+
+Plus `dsl/config/codegen_paths.dag` which declares intent but isn't consumed.
+
+**Final state**: DSL config is the source of truth. `WorkspaceLayout` derives from it. `Cargo.toml` `[[bin]]` entries are generated by codegen from the same source. One declaration, three consumers.
+
+### Testgen engine
+
+Testgen is split between `core/codegen/src/testgen/` (14,400 LOC library) and `gunbc-dag/src/testgen_dag/` (1,500 LOC orchestration) due to a real circular dependency with testgen-registry.
+
+**Question**: Is the meta-circular testgen (testgen is itself a DAG that generates tests) the right design? Or should `daglang compile --emit=tests` be a compiler mode? The latter would eliminate the testgen DAG, the circular dependency, and the 1,500 LOC orchestration layer entirely.
+
+### What remains after cleanup
+
+| Component | LOC | Why it stays |
+|-----------|-----|--------------|
+| `bin/ci.rs` | 267 | Bootstrap (runs before codegen) |
+| `bin/codegen_cli.rs` | 959 | The generator (can't generate itself) |
+| `resolve.rs` | ~30 | `GunbcExternResolver` (app-specific extern dispatch) |
+| `extern_ops.rs` | shrinking | Only operations blocked on missing compiler features |
+| 17 generated `[[bin]]` entries | — | Templates pointing to generated main.rs |
+
+Everything else either moves into the compiler (bridges 1-3, 8-9), gets deleted (bridges 4-5, 10), or waits for artifact emission (bridges 6-7).
+
+---
+
+## Execution Order
+
+| Priority | Items | Effort | Effect |
+|----------|-------|--------|--------|
+| **Now** | Delete bridges 4, 5, 10 | 1-2 days | Remove ~100 LOC of dead/boilerplate code |
+| **Next** | Bridge 1 (SubDag direct lowering) + Bridge 2 (compile-time fn bodies) | 3-5 days | Eliminate 2 resolver ops, simplify fn call pipeline |
+| **Next** | Bridge 3 (IR collection nodes) + Bridge 8 (lowerer resource injection) | 3-5 days | Eliminate evaluator delegation, clean resource model |
+| **Next** | Bridge 9 (typed file transport) | 2-3 days | Eliminate generic file adapters |
+| **Then** | Rename crate, output dir consolidation | 1-2 days | Naming + single source of truth |
+| **Later** | Bridges 6-7 (artifact emission) | 1-2 weeks | Eliminate runtime tool discovery entirely |
+
+## Deleted Tests (re-add when bridges eliminated)
+
+| ID | Tests | Fixed by |
+|----|-------|----------|
+| RF-E5 | `makegen_runtime_differential_interpreter_vs_generated_rust_layer1` | Bridge 2 (FnBodyCallableOp elimination) |
+| RF-E6 | `makegen_exec_runtime_e2e`, `pragma_exec_runtime_e2e` + generated variants | Bridge 1 + 2 (SubDag lowering) |
+
+## Future (post-cleanup)
+
+| ID | Task | Notes |
+|----|------|-------|
+| C28-P2 | Daggen cache manager (content-hash → `.dagbin` → skip recompilation) | Infrastructure ready |
+| C28-P3 | Daggen codegen integration (serialize at `make codegen` time) | Eliminates runtime DSL parsing |
 
 ---
 
 ## Success Criteria
 
-1. Zero extern operations that could be pure DSL (given current compiler features)
-2. Testgen engine reviewed for simplification opportunities
-3. `extern_ops.rs` dispatch table matches exactly the set of compiler-blocked operations
-4. All soundness fixes (Plan A + Plan B) landed
-5. Re-export wrappers reduced to minimum necessary
+1. **Zero accidental bridges** — every remaining bridge is architecturally necessary
+2. **Lowerer does the work** — fn bodies lowered to SubDag, resource nodes injected at lower time, collection ops as IR nodes
+3. **Resolver is thin** — resolves extern symbols, that's it
+4. **Output directory** specified once, derived everywhere
+5. **Crate named correctly** — reflects that it's the application layer
+6. **No intermediate refactors** — each change goes directly to final state

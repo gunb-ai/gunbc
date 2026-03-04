@@ -3712,7 +3712,8 @@ fn make_loop_body_dag(
 
     if body_transports.is_empty() {
         // No service calls in body — plain body_op callable.
-        // Result comes via __out:result passthrough wired by ExprCompute.
+        // Provide a trivial fn_body that passes element through as result,
+        // so FnBodyCallableOp handles it (avoids __out:result passthrough requirement).
         dag.add_node(Node::opaque(
             "body_op",
             inputs,
@@ -3725,7 +3726,12 @@ fn make_loop_body_dag(
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
-                fn_body: None,
+                fn_body: Some(Box::new(expr::LoweredFnBody {
+                    stmts: vec![expr::LoweredStmt::Return(vec![(
+                        "result".to_string(),
+                        expr::LoweredExpr::Ident(element_var.to_string()),
+                    )])],
+                })),
             },
         ));
     } else {
@@ -3866,7 +3872,8 @@ fn make_branch_body_dag(
 
     if body_transports.is_empty() {
         // No service calls in branch body — plain callable op.
-        // Result comes via __out:result passthrough wired by ExprCompute.
+        // Provide a trivial fn_body that passes input through as result,
+        // so FnBodyCallableOp handles it (avoids __out:result passthrough requirement).
         dag.add_node(Node::opaque(
             "op",
             vec![
@@ -3882,7 +3889,12 @@ fn make_branch_body_dag(
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
-                fn_body: None,
+                fn_body: Some(Box::new(expr::LoweredFnBody {
+                    stmts: vec![expr::LoweredStmt::Return(vec![(
+                        "result".to_string(),
+                        expr::LoweredExpr::Ident("input".to_string()),
+                    )])],
+                })),
             },
         ));
     } else {

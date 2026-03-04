@@ -11,7 +11,7 @@
 | Lane | Doc | Goal | Open Items |
 |------|-----|------|------------|
 | **1. Type System** | [`TODO/type-system.md`](TODO/type-system.md) | Compositional type coverage — decisions obligate, obligations propagate. WS-1 through WS-7. | 40 items across 7 workstreams |
-| **2. gunbc-dag Simplification** | [`TODO/gunbc-dag-simplification.md`](TODO/gunbc-dag-simplification.md) | Reduce gunbc-dag to minimum Rust. Migrate what can be .dag, simplify what can't. | 10 items across 4 phases |
+| **2. Compiler Debt & App Layer** | [`TODO/gunbc-dag-simplification.md`](TODO/gunbc-dag-simplification.md) | Fix compiler gaps that force runtime bridges. Rename/clean gunbc-dag. Each bridge is a compiler lesson. | 17 items across 4 phases |
 | **3. SDLC Pipeline** | [`TODO/sdlc.md`](TODO/sdlc.md) | Run the SDLC pipeline end-to-end. This is the objective of all the compiler work. | 19 items across 4 phases |
 
 ### Design docs
@@ -26,14 +26,14 @@
 
 ```
 Lane 1 (type system)  ──→  Lane 3 (SDLC) uses the type system
-Lane 2 (gunbc-dag)    ──→  Lane 3 (SDLC) needs working compilation pipeline
+Lane 2 (compiler debt) ──→  Lane 3 (SDLC) needs working compilation pipeline
 ```
 
 Lane 1 and Lane 2 can proceed in parallel. Lane 3 Phase 0 (prove it compiles) can start now — it doesn't need type system improvements, just basic compiler correctness.
 
 **Recommended start order**:
-1. Lane 3 Phase 0 (S-1 through S-4) — fix known bugs, prove compilation
-2. Lane 2 Phase 1 (DAG-1 through DAG-3) — quick wins
+1. Lane 3 Phase 0 (S-1 through S-4) — fix known bugs, prove SDLC compilation
+2. Lane 2 Phase 1 (CL-1 through CL-5) — compiler fixes that eliminate bridges
 3. Lane 1 WS-1 + WS-3 (no blockers) — in parallel
 
 ---

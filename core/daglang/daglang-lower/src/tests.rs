@@ -3738,9 +3738,9 @@ fn make_branch_body_dag_no_transports_has_single_op() {
     // Should have input and condition ports
     assert!(dag.nodes[0].inputs.iter().any(|p| p.name.0 == "input"));
     assert!(dag.nodes[0].inputs.iter().any(|p| p.name.0 == "condition"));
-    // No-transport case uses fn_body: None — result flows via __out:result passthrough
+    // No-transport case uses fn_body: Some(return { result: input }) — avoids __out:result requirement
     if let gunbc_ir::NodeBody::Opaque(LoweredOp::Callable { fn_body, .. }) = &dag.nodes[0].body {
-        assert!(fn_body.is_none(), "no-transport branch body should use __out:result passthrough");
+        assert!(fn_body.is_some(), "no-transport branch body should have trivial fn_body passthrough");
     } else {
         panic!("expected Callable op");
     }

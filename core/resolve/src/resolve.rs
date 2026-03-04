@@ -1617,10 +1617,12 @@ fn resolve_domain(
             sibling_fns: sibling_fns.clone(),
         }));
     }
-    // 5b. Pattern callables: their bodies are expanded inline at call sites,
-    //     so __out: passthrough ports may not be wired. Make all outputs
-    //     optional to produce Skipped instead of hard-erroring.
-    if _kind == CallableKind::Pattern {
+    // 5b. Pattern and Func callables without fn_body: their bodies are either
+    //     expanded inline (patterns) or lossy-parsed (func items with complex
+    //     control flow the parser can't handle). In both cases, __out:
+    //     passthrough ports may not be wired. Make all outputs optional to
+    //     produce Skipped instead of hard-erroring.
+    if _kind == CallableKind::Pattern || _kind == CallableKind::Func {
         let optional_ports: Vec<(String, bool)> = outputs
             .iter()
             .map(|p| (p.name.0.clone(), true))
