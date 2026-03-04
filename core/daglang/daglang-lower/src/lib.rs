@@ -2214,27 +2214,12 @@ fn lower_typed_project_impl(
                     );
                     builder.add_node(node);
                 }
-                TypedItemSignature::Pattern(callable) => {
-                    if !include_callables {
-                        continue;
-                    }
-                    let (node, endpoint) = lower_callable(
-                        callable,
-                        &module_name,
-                        CallableKind::Pattern,
-                        *interactive_by_callable
-                            .get(callable.name.as_str())
-                            .unwrap_or(&false),
-                        None,
-                    );
-                    register_endpoint(
-                        &mut endpoints_by_full,
-                        &mut endpoints_by_name,
-                        &module_name,
-                        &callable.name,
-                        endpoint,
-                    );
-                    builder.add_node(node);
+                TypedItemSignature::Pattern(_) => {
+                    // Patterns are templates expanded inline by the caller.
+                    // They don't get callable nodes — the expansion machinery
+                    // (expand_content_upsert_patterns, expand_non_generic_pattern_calls)
+                    // reads pattern definitions from the AST directly.
+                    continue;
                 }
                 TypedItemSignature::ExternFunc(callable) => {
                     if !include_callables {
@@ -7692,7 +7677,8 @@ fn wire_auth_credential_edges(
         for item in &module.ast.items {
             let stmts = match &item.node {
                 Item::FuncDef(def) => def.body.stmts.as_slice(),
-                Item::PatternDef(def) => def.body.stmts.as_slice(),
+                // Patterns are templates expanded inline; their bodies
+                // don't produce DAG nodes, so no auth wiring needed.
                 _ => continue,
             };
 
