@@ -18,7 +18,7 @@ import interfaces.outcome_ledger { OutcomeLedger }
 import interfaces.signal_store { SignalStore }
 import interfaces.artifact_store { ArtifactStore }
 import interfaces.credential_provider { CredentialProvider }
-import services.shell { shell.Env }
+import extdeps.shell { shell.Env }
 import std.types {
   TrackedIssue, IssueLifecycleStage, StageOutcome, NonEmptyStr,
   Signal, SignalType, ArtifactPayload

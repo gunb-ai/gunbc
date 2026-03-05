@@ -1,11 +1,9 @@
 {
-  "module": "services.shell",
-  "path": "services/shell.dag",
-  "items": 9,
+  "module": "extdeps.shell",
+  "path": "extdeps/shell.dag",
+  "items": 3,
   "dependencies": [
-    "std.types",
-    "std.errors",
-    "extdeps.cloud.gcp.core"
+    "std.types"
   ],
   "_count_rationale": "FnBodyCallableOp: fn items with fn_body skip control-flow SubDag + ExprCompute return nodes (2026-03-04).",
   "expand_contract": {
@@ -18,21 +16,21 @@
     "expected_json": {
       "dry_run_completion_required": true,
       "interface_contract_verification_targets": 0,
-      "pure_node_determinism_targets": 74,
+      "pure_node_determinism_targets": 56,
       "resource_acquire_targets": 0,
       "resource_provide_targets": 0,
       "resource_release_targets": 0,
       "service_param_source_targets": 0,
-      "service_transport_execute_targets": 37,
-      "service_transport_external_targets": 27,
-      "service_transport_hermetic_targets": 10,
-      "service_transport_idempotent_targets": 1,
-      "service_transport_parse_targets": 37,
+      "service_transport_execute_targets": 28,
+      "service_transport_external_targets": 25,
+      "service_transport_hermetic_targets": 3,
+      "service_transport_idempotent_targets": 0,
+      "service_transport_parse_targets": 28,
       "service_transport_permission_scoped_targets": 0,
-      "service_transport_prepare_targets": 37,
-      "service_transport_readonly_targets": 8,
-      "total_obligations": 111,
-      "transport_execution_targets": 37
+      "service_transport_prepare_targets": 28,
+      "service_transport_readonly_targets": 4,
+      "total_obligations": 84,
+      "transport_execution_targets": 28
     }
   }
 }

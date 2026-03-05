@@ -21,10 +21,10 @@ module services.sdlc.providers.llm_agent_provider
 
 import interfaces.agent_provider { AgentProvider }
 import interfaces.credential_provider { CredentialProvider }
-import services.llm.anthropic { llm.Anthropic }
-import services.llm.openai { llm.OpenAI }
-import services.git { git.Core }
-import services.cargo { Cargo }
+import extdeps.llm.anthropic { llm.Anthropic }
+import extdeps.llm.openai { llm.OpenAI }
+import extdeps.git { git.Core }
+import extdeps.cargo { Cargo }
 import std.types {
   NonEmptyStr, AgentStatus, ApprovalMode, CredentialFlow, AccessToken
 }

@@ -1229,7 +1229,7 @@ mod tests {
             vec![Port::scalar("model", "String")],
             vec![Port::scalar("request", "TransportRequest")],
             LoweredOp::Callable {
-                module: "services.llm.anthropic".to_string(),
+                module: "extdeps.llm.anthropic".to_string(),
                 kind: CallableKind::Func,
                 name: "service_transport::prepare::llm.Anthropic::Messages".to_string(),
                 obligation: ObligationCategory::ServiceTransportPrepare,
@@ -1254,7 +1254,7 @@ mod tests {
             vec![Port::scalar("request", "TransportRequest")],
             vec![Port::scalar("response", "TransportResponse")],
             LoweredOp::Callable {
-                module: "services.llm.anthropic".to_string(),
+                module: "extdeps.llm.anthropic".to_string(),
                 kind: CallableKind::Func,
                 name: "service_transport::execute::llm.Anthropic::Messages".to_string(),
                 obligation: ObligationCategory::ServiceTransportExecute,
@@ -1279,7 +1279,7 @@ mod tests {
             vec![Port::scalar("response", "TransportResponse")],
             vec![Port::scalar("content", "String")],
             LoweredOp::Callable {
-                module: "services.llm.anthropic".to_string(),
+                module: "extdeps.llm.anthropic".to_string(),
                 kind: CallableKind::Func,
                 name: "service_transport::parse::llm.Anthropic::Messages".to_string(),
                 obligation: ObligationCategory::ServiceTransportParse,
@@ -1304,7 +1304,7 @@ mod tests {
             vec![],
             vec![Port::scalar("request", "TransportRequest")],
             LoweredOp::Callable {
-                module: "services.cargo".to_string(),
+                module: "extdeps.cargo".to_string(),
                 kind: CallableKind::Func,
                 name: "service_transport::prepare::cargo.Cargo::Build".to_string(),
                 obligation: ObligationCategory::ServiceTransportPrepare,
@@ -1329,7 +1329,7 @@ mod tests {
             vec![Port::scalar("response", "TransportResponse")],
             vec![Port::scalar("success", "Bool")],
             LoweredOp::Callable {
-                module: "services.cargo".to_string(),
+                module: "extdeps.cargo".to_string(),
                 kind: CallableKind::Func,
                 name: "service_transport::parse::cargo.Cargo::Build".to_string(),
                 obligation: ObligationCategory::ServiceTransportParse,

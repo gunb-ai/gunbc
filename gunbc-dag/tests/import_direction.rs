@@ -38,10 +38,10 @@ const KNOWN_VIOLATIONS: &[(&str, &str)] = &[
     // std.patterns defines compositional patterns (credential_chain, oidc, etc.)
     // that inherently reference service operations. Future: move to a higher layer
     // or split service-specific patterns into a separate module.
-    ("std/patterns.dag", "services.gcp.secret_manager"),
-    ("std/patterns.dag", "services.gcp.iam"),
-    ("std/patterns.dag", "services.gcp.sts"),
-    ("std/patterns.dag", "services.shell"),
+    ("std/patterns.dag", "extdeps.cloud.gcp.secret_manager"),
+    ("std/patterns.dag", "extdeps.cloud.gcp.iam"),
+    ("std/patterns.dag", "extdeps.cloud.gcp.sts"),
+    ("std/patterns.dag", "extdeps.shell"),
     // sdlc_stages invokes design tools as workflow steps.
     ("funcs/sdlc_stages.dag", "tools.design"),
 ];

@@ -63,7 +63,7 @@ const WORKFLOW_FIXTURES: &[WorkflowFixture] = &[
     },
     WorkflowFixture {
         scenario: "W-auth",
-        module: "services.shell",
+        module: "extdeps.shell",
         fixture_file: "w_auth.json",
     },
     WorkflowFixture {

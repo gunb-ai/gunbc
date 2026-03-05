@@ -26,10 +26,10 @@ import std.types {
   ServiceAccountEmail
 }
 import std.filesystem { partition_entries, is_text_readable }
-import services.gcp.secret_manager
-import services.gcp.iam
-import services.gcp.sts
-import services.shell
+import extdeps.cloud.gcp.secret_manager
+import extdeps.cloud.gcp.iam
+import extdeps.cloud.gcp.sts
+import extdeps.shell
 
 // =====================================================================
 // Fundamental Steps

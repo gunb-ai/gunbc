@@ -5,7 +5,6 @@
 // review → merged/closed.
 //
 // Consumers:
-//   services/github/pull_request.dag — transport wiring
 //   funcs/sdlc_stages.dag           — code review stage
 
 module extdeps.github.pull_requests
@@ -15,6 +14,7 @@ import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
 }
 import std.types { CommitSha, Timestamp }
+import std.errors { GitHubErrorShape }
 
 // ── PR model ──────────────────────────────────────────────────────
 
@@ -181,3 +181,237 @@ data operation_behaviors: List<PrOperationBehavior> = [
     }
   }
 ]
+
+// ── Service: REST transport wiring ──────────────────────────────
+
+service github.PullRequest {
+  config {
+    endpoint: "https://api.github.com"
+    auth: BearerToken
+    // GitHub API rate limits: 5000 requests/hour for authenticated users
+    rate_limit: { requests: 5000, per: hour, scope: core }
+    // Retry on rate limit and server errors with exponential backoff
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503, 504] }
+  }
+
+  operation Create {
+    input {
+      owner: String
+      repo: String
+      title: String
+      body: String
+      head: String
+      base: String = "main"
+      draft: Bool = false
+    }
+    output {
+      number: Int from "number"
+      url: String from "html_url"
+      id: Int from "id"
+      node_id: String from "node_id"
+      head_sha: String from "head/sha"
+    }
+    transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/pulls" }
+    response {
+      201 => PullRequest
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation Get {
+    input {
+      owner: String
+      repo: String
+      number: Int
+    }
+    output {
+      number: Int from "number"
+      title: String from "title"
+      body: String from "body"
+      state: String from "state"
+      url: String from "html_url"
+      head_sha: String from "head/sha"
+      base_ref: String from "base/ref"
+      mergeable: Bool? from "mergeable"
+      merged: Bool from "merged"
+    }
+    readonly
+    transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/pulls/\{number\}" }
+    response {
+      200 => PullRequest
+      301 => GitHubErrorShape
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation AddComment {
+    input {
+      owner: String
+      repo: String
+      number: Int
+      body: String
+    }
+    output {
+      id: Int from "id"
+      url: String from "html_url"
+    }
+    transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/issues/\{number\}/comments" }
+    response {
+      201 => Json
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation Merge {
+    input {
+      owner: String
+      repo: String
+      number: Int
+      merge_method: String = "squash"
+      commit_title: String?
+      commit_message: String?
+    }
+    output {
+      merged: Bool from "merged"
+      sha: String from "sha"
+      message: String from "message"
+    }
+    idempotent
+    transport rest { method: PUT, path: "/repos/\{owner\}/\{repo\}/pulls/\{number\}/merge" }
+    response {
+      200 => Json
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      405 => GitHubErrorShape
+      409 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation ListFiles {
+    input {
+      owner: String
+      repo: String
+      number: Int
+      per_page: Int = 100
+    }
+    output {
+      files: Json
+    }
+    readonly
+    transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/pulls/\{number\}/files" }
+    response {
+      200 => List<PrFile>
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation RequestReview {
+    input {
+      owner: String
+      repo: String
+      number: Int
+      reviewers: List<String>?
+      team_reviewers: List<String>?
+    }
+    output {
+      url: String from "html_url"
+    }
+    transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/pulls/\{number\}/requested_reviewers" }
+    response {
+      201 => PullRequest
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation ListReviews {
+    input {
+      owner: String
+      repo: String
+      number: Int
+    }
+    output {
+      reviews: Json
+    }
+    readonly
+    transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/pulls/\{number\}/reviews" }
+    response {
+      200 => List<Review>
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+}
+
+// ── Tests ──────────────────────────────────────────────────────────
+
+fixture github_auth {
+    mock cloud_env.config -> { provider: "github", runtime: "local-dev" }
+    mock cloud_env.credential -> { token: "<MOCK_GH_TOKEN>", source_type: "static", scheme: "bearer" }
+}
+
+test create_pr : github_auth {
+
+    input create/prepare.owner -> "gunb-ai"
+    input create/prepare.repo -> "gunbc"
+    input create/prepare.title -> "feat: implement issue #42"
+    input create/prepare.body -> "Implements the design from issue #42."
+    input create/prepare.head -> "feature/issue-42"
+
+    mock create/execute.response -> rest_response(201, {
+        number: 99,
+        html_url: "https://github.com/gunb-ai/gunbc/pull/99",
+        id: 9876543,
+        node_id: "PR_mock",
+        head: { sha: "abc123def456" }
+    })
+
+    expect result.number == 99
+    expect result.url contains "pull/99"
+}
+
+test merge_pr : github_auth {
+
+    input merge/prepare.owner -> "gunb-ai"
+    input merge/prepare.repo -> "gunbc"
+    input merge/prepare.number -> 99
+    input merge/prepare.merge_method -> "squash"
+
+    mock merge/execute.response -> rest_response(200, {
+        merged: true,
+        sha: "merge-sha-001",
+        message: "Pull Request successfully merged"
+    })
+
+    expect result.merged == true
+}
+
+test list_pr_files : github_auth {
+
+    input list_files/prepare.owner -> "gunb-ai"
+    input list_files/prepare.repo -> "gunbc"
+    input list_files/prepare.number -> 99
+
+    mock list_files/execute.response -> rest_response(200, [
+        { filename: "src/main.rs", status: "modified", additions: 10, deletions: 2 },
+        { filename: "tests/test.rs", status: "added", additions: 50, deletions: 0 }
+    ])
+
+    expect result.files is List
+}

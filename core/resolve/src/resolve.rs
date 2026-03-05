@@ -1505,7 +1505,7 @@ fn resolve_domain(
     //    for nodes that ARE transport roles (prepare/execute/parse) or have
     //    service metadata. Pure fn items in provider modules fall through to
     //    the default DeclaredOutputCallableOp passthrough.
-    if (module.starts_with("services.") || module.starts_with("workspace."))
+    if (module.starts_with("services.") || module.starts_with("workspace.") || module.starts_with("extdeps."))
         && (TransportRole::from_name(name).is_some() || service_metadata.is_some())
     {
         return resolve_service_transport(node_id, module, name, outputs, service_metadata);
@@ -2145,7 +2145,7 @@ mod tests {
         for (name, metadata, expected_debug) in cases {
             let node = service_callable_node(
                 name,
-                "services.shell",
+                "extdeps.shell",
                 name,
                 ObligationCategory::None,
                 metadata,
@@ -2422,25 +2422,25 @@ mod tests {
     fn resolve_services_gcp_transport_ops() {
         let cases = [
             (
-                "services.gcp.sts",
+                "extdeps.cloud.gcp.sts",
                 "service_transport::prepare::gcp.STS::Exchange",
                 sts_exchange_metadata(),
                 "GenericRestPrepareOp",
             ),
             (
-                "services.gcp.sts",
+                "extdeps.cloud.gcp.sts",
                 "service_transport::parse::gcp.STS::Exchange",
                 sts_exchange_metadata(),
                 "GenericRestParseOp",
             ),
             (
-                "services.gcp.secret_manager",
+                "extdeps.cloud.gcp.secret_manager",
                 "service_transport::prepare::gcp.SecretManager::AccessVersion",
                 secret_manager_metadata(),
                 "GenericRestPrepareOp",
             ),
             (
-                "services.gcp.secret_manager",
+                "extdeps.cloud.gcp.secret_manager",
                 "service_transport::parse::gcp.SecretManager::AccessVersion",
                 secret_manager_metadata(),
                 "GenericRestParseOp",
@@ -2555,7 +2555,7 @@ mod tests {
     fn resolve_unknown_service_transport_prepare_fails() {
         let node = callable_node(
             "bad_service_prepare",
-            "services.gcp.sts",
+            "extdeps.cloud.gcp.sts",
             "service_transport::prepare::gcp.STS::Refresh",
             ObligationCategory::ServiceTransportPrepare,
         );

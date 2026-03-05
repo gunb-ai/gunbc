@@ -24,9 +24,9 @@ import interfaces.outcome_ledger { OutcomeLedger }
 import interfaces.agent_provider { AgentProvider }
 import interfaces.artifact_store { ArtifactStore }
 import tools.design { generate_design, review_design }
-import services.github.pull_request { PullRequest }
-import services.cargo { Build }
-import services.llm.anthropic
+import extdeps.github.pull_requests { PullRequest }
+import extdeps.cargo { Build }
+import extdeps.llm.anthropic
 import std.types {
     IssueLifecycleStage, StageOutcome, OutcomeStatus, ApprovalMode,
     NonEmptyStr, ArtifactPayload, ArtifactType, ArtifactMarker, MarkerKind

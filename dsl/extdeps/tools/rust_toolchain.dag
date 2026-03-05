@@ -5,6 +5,7 @@ module extdeps.tools.rust_toolchain
 import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
 }
+import std.types { NonEmptyStr }
 
 type RustChannel = Stable | Beta | Nightly { date: String? }
 
@@ -129,3 +130,17 @@ data operation_behaviors: List<ToolchainOperationBehavior> = [
     }
   }
 ]
+
+// ── Service: shell transport wiring ─────────────────────────────
+
+service rustup.Component {
+  operation Add {
+    input { component: NonEmptyStr }
+    output { success: Bool }
+    transport shell { argv: ["rustup", "component", "add", "{component}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Failed to add component"
+    }
+  }
+}

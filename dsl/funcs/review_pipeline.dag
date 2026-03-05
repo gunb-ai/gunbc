@@ -14,8 +14,8 @@ import std.types {
   NonEmptyStr, ReviewConcern, DimensionReviewOutput, MergedReviewOutput
 }
 import services.review.dimension
-import services.llm.anthropic
-import services.git
+import extdeps.llm.anthropic
+import extdeps.git
 
 // ── Generic dimension review func ─────────────────────────────────────
 // One func handles any single dimension. The caller instantiates it

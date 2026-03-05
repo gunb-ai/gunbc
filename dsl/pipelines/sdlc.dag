@@ -32,9 +32,9 @@ import interfaces.outcome_ledger { OutcomeLedger }
 import interfaces.signal_store { SignalStore }
 import interfaces.artifact_store { ArtifactStore }
 import interfaces.agent_provider { AgentProvider }
-import services.github.pull_request { PullRequest }
-import services.cargo { Cargo }
-import services.git { git.Core }
+import extdeps.github.pull_requests { PullRequest }
+import extdeps.cargo { Cargo }
+import extdeps.git { git.Core }
 import tools.design { generate_design, review_design }
 import shared.dag_util { aggregate_results, format_report, stage_result }
 import std.types {
