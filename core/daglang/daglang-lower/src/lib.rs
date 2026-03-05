@@ -11236,23 +11236,5 @@ pub fn infer_entrypoints(dag: &gunbc_ir::Dag<LoweredOp>) -> Vec<InferredEntrypoi
     entrypoints
 }
 
-/// Extract declared output path patterns from `func` items.
-///
-/// Walks the typed project collecting `declared_outputs` from `func` definitions.
-/// Returns a sorted, deduplicated list.
-pub fn extract_declared_outputs(project: &TypedProject) -> Vec<String> {
-    let mut paths = std::collections::BTreeSet::new();
-    for module in &project.modules {
-        for item in &module.ast.items {
-            if let Item::FuncDef(def) = &item.node {
-                for s in &def.declared_outputs {
-                    paths.insert(s.clone());
-                }
-            }
-        }
-    }
-    paths.into_iter().collect()
-}
-
 #[cfg(test)]
 mod tests;
