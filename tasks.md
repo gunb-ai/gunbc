@@ -210,7 +210,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 | ID | What | Size | Deps | Source | Status |
 |----|------|------|------|--------|--------|
 | CP-40 | `ExternRegistry` — validate externs in typecheck, carry `ExternId` | M | CP-23 | CP | Open |
-| CP-43 | Typecheck borrows `&ModuleGraph` (subsumes CP-32 field duplication) | M | CP-36 | CP | Open |
+| CP-43 | Typecheck borrows `&ModuleGraph` (subsumes CP-32 field duplication) | M | CP-36 | CP | **Done** — `typecheck_module_graph[_with_options]` takes `&ModuleGraph`. Clone derived on all 24 AST types + `SourceFile` + `Item` + `ResolvedModule` + `ModuleGraph`. Callers retain graph after typechecking. Eliminated redundant `discover_module_graph_for_context` in `compile_from_module_graph_with_options`. `source_paths` clone deferred to point of use. |
 | CP-44 | `LowerOutput` bundles computed fields (subsumes CP-33 re-extraction) | M | CP-43 | CP | Open |
 | CP-45 | Consolidate Execute entry points → one `fn execute(dag, config)` | S | — | CP | **Done** — `ExecuteConfig` struct + `execute_dag()` unified entry point. All 10 existing `execute_*` variants delegate to it. Backward compatible. |
 | CP-47 | `RuntimeBindings` replaces `ExternResolver` trait | M | CP-40 | CP | Open |

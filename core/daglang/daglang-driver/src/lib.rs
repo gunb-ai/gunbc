@@ -419,7 +419,7 @@ pub fn compile_data_from_sources(
 
     let module_graph = ModuleGraph { modules: resolved };
     let typed = typecheck_module_graph_with_options(
-        module_graph,
+        &module_graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
         },
@@ -469,7 +469,7 @@ pub fn compile_data_from_module(
     };
     let module_graph = discover_module_graph_for_context(&context)?;
     let typed = typecheck_module_graph_with_options(
-        module_graph,
+        &module_graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
         },
@@ -724,19 +724,13 @@ pub fn compile_from_module_graph_with_options(
         Some((scope, entry)) => (Some(scope), Some(entry)),
         None => (None, None),
     };
-    // Save source file paths before typechecking consumes the module graph.
-    let source_paths: Vec<PathBuf> = module_graph
-        .modules
-        .iter()
-        .map(|m| m.path.clone())
-        .collect();
     validate_module_path_consistency(
         &module_graph,
         &context.roots,
         context.target_file.as_deref(),
     )?;
     let typed = typecheck_module_graph_with_options(
-        module_graph,
+        &module_graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -766,10 +760,10 @@ pub fn compile_from_module_graph_with_options(
             #[allow(clippy::disallowed_methods)]
             std::fs::canonicalize(tf).ok()
         };
-        let module_graph = discover_module_graph_for_context(context)?;
+        // CP-43: module_graph is still available (typecheck borrows, doesn't consume).
         module_graph
             .modules
-            .into_iter()
+            .iter()
             .find(|m| m.path == *tf || canonical.as_ref().is_some_and(|c| m.path == *c))
             .map(|m| m.module_path.as_dotted())
     } else {
@@ -793,6 +787,7 @@ pub fn compile_from_module_graph_with_options(
     let data_values = daglang_lower::build_data_values(&typed);
     let available_profiles = collect_available_profiles(&typed);
 
+    let source_paths: Vec<PathBuf> = module_graph.modules.iter().map(|m| m.path.clone()).collect();
     let receipt = compute_receipt(
         &lowered,
         &emitted,
@@ -934,7 +929,7 @@ pub fn check_from_context(context: &DriverContext) -> Result<CheckOutput, Compil
 pub fn check_from_module_graph(module_graph: ModuleGraph) -> Result<CheckOutput, CompileError> {
     let parsed_files = module_graph.modules.len();
     if let Err(errors) = typecheck_module_graph_with_options(
-        module_graph,
+        &module_graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -951,7 +946,7 @@ pub fn check_from_module_graph(module_graph: ModuleGraph) -> Result<CheckOutput,
 pub fn load_pipeline_params(context: &DriverContext) -> Result<Vec<PipelineParam>, CompileError> {
     let module_graph = discover_module_graph_for_context(context)?;
     let typed = typecheck_module_graph_with_options(
-        module_graph,
+        &module_graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
         },
@@ -971,7 +966,7 @@ pub fn generate_types_from_context(
     let module_graph = discover_module_graph_for_context(context)?;
     // Type generation only needs structural defs, not service bindings.
     let typed = typecheck_module_graph_with_options(
-        module_graph,
+        &module_graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
         },
@@ -1003,7 +998,7 @@ pub fn lint_report_coverage_from_context(
 ) -> Result<Vec<ReportCoverageIssue>, CompileError> {
     let module_graph = discover_module_graph_for_context(context)?;
     let typed = typecheck_module_graph_with_options(
-        module_graph,
+        &module_graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },

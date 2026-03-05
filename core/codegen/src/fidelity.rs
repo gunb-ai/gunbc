@@ -124,7 +124,7 @@ fn build_embedded_stdlib_graph() -> ModuleGraph {
 
 fn compile_stdlib_fns() -> HashMap<String, LoweredFnBody> {
     let graph = build_embedded_stdlib_graph();
-    let typed = daglang_typecheck::typecheck_module_graph(graph)
+    let typed = daglang_typecheck::typecheck_module_graph(&graph)
         .unwrap_or_else(|errs| panic!("embedded stdlib typecheck failed: {errs:?}"));
     let lowered = daglang_lower::lower_typed_project(&typed)
         .unwrap_or_else(|e| panic!("embedded stdlib lowering failed: {e}"));

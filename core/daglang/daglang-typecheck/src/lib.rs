@@ -732,13 +732,16 @@ impl TypeError {
 }
 
 /// Typecheck a discovered module graph and produce typed module signatures.
-pub fn typecheck_module_graph(graph: ModuleGraph) -> Result<TypedProject, Vec<TypeError>> {
+pub fn typecheck_module_graph(graph: &ModuleGraph) -> Result<TypedProject, Vec<TypeError>> {
     typecheck_module_graph_with_options(graph, TypecheckOptions::default())
 }
 
 /// Typecheck a discovered module graph with explicit options.
+///
+/// Borrows the graph (CP-43) — callers retain access after typechecking.
+/// `TypedModule` clones the AST, path, and module_path from each resolved module.
 pub fn typecheck_module_graph_with_options(
-    graph: ModuleGraph,
+    graph: &ModuleGraph,
     options: TypecheckOptions,
 ) -> Result<TypedProject, Vec<TypeError>> {
     let known_types = collect_known_types(&graph.modules);
@@ -773,7 +776,7 @@ pub fn typecheck_module_graph_with_options(
         allow_unresolved_references: options.allow_unresolved_imports,
     };
 
-    for module in graph.modules {
+    for module in &graph.modules {
         let imports: Vec<ModulePath> = module
             .ast
             .imports
@@ -792,13 +795,13 @@ pub fn typecheck_module_graph_with_options(
                 }
             }
         }
-        let (signatures, sig_errors) = collect_signatures(&module, &context, &module_name);
+        let (signatures, sig_errors) = collect_signatures(module, &context, &module_name);
         errors.extend(sig_errors);
         typed_modules.push(TypedModule {
-            path: module.path,
-            module_path: module.module_path,
+            path: module.path.clone(),
+            module_path: module.module_path.clone(),
             imports,
-            ast: module.ast,
+            ast: module.ast.clone(),
             signatures,
         });
     }

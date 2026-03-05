@@ -55,7 +55,7 @@ pub mod ast {
     // ── Top-level ───────────────────────────────────────────────────
 
     /// A complete .dag source file.
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct SourceFile {
         pub module_path: Option<Spanned<ModulePath>>,
         pub imports: Vec<Spanned<Import>>,
@@ -113,7 +113,7 @@ pub mod ast {
     }
 
     /// Top-level declaration.
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub enum Item {
         TypeDef(TypeDef),
         FnDef(FnDef),
@@ -139,7 +139,7 @@ pub mod ast {
     }
 
     /// Module-level parameter: `param name: Type` or `param name: Type = default`
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct ParamDecl {
         pub name: String,
         pub ty: TypeExpr,
@@ -147,7 +147,7 @@ pub mod ast {
     }
 
     /// Module-level static data declaration: `data name: Type = value`.
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct DataDef {
         pub name: String,
         pub ty: TypeExpr,
@@ -155,7 +155,7 @@ pub mod ast {
     }
 
     /// `extern func name(input1: Type1, input2: Type2) -> { output1: Type1, output2: Type2 }`
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct ExternFuncDecl {
         pub name: String,
         pub inputs: Vec<Field>,
@@ -163,7 +163,7 @@ pub mod ast {
     }
 
     /// `extern asset name: Type`
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct ExternAssetDecl {
         pub name: String,
         pub ty: TypeExpr,
@@ -216,7 +216,7 @@ pub mod ast {
     // ── Functions ───────────────────────────────────────────────────
 
     /// Pure function: `fn name(params) -> ReturnType { body }`
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct FnDef {
         pub name: String,
         pub type_params: Vec<String>,
@@ -226,7 +226,7 @@ pub mod ast {
     }
 
     /// Effectful function: `func name(params) -> { outputs } uses ... { body }`
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct FuncDef {
         pub name: String,
         pub type_params: Vec<String>,
@@ -238,7 +238,7 @@ pub mod ast {
     }
 
     /// Reusable DAG template: `pattern name(params) -> { outputs } uses ... provides ... { body }`
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct PatternDef {
         pub name: String,
         pub type_params: Vec<String>,
@@ -271,7 +271,7 @@ pub mod ast {
 
     // ── Services ────────────────────────────────────────────────────
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct ServiceDef {
         pub name: String,
         pub implements: Option<String>,
@@ -279,7 +279,7 @@ pub mod ast {
         pub config: ServiceConfig,
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct OperationDef {
         pub name: String,
         pub inputs: Vec<Field>,
@@ -336,7 +336,7 @@ pub mod ast {
 
     // ── Resources ───────────────────────────────────────────────────
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct ResourceDef {
         pub name: String,
         pub implements: Option<String>,
@@ -347,7 +347,7 @@ pub mod ast {
         pub capabilities: Vec<CapabilityDef>,
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct CapabilityDef {
         pub name: String,
         pub inputs: Vec<Field>,
@@ -358,7 +358,7 @@ pub mod ast {
 
     // ── Interfaces ──────────────────────────────────────────────────
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct InterfaceDef {
         pub name: String,
         pub type_params: Vec<String>,
@@ -369,14 +369,14 @@ pub mod ast {
 
     // ── Pipelines ───────────────────────────────────────────────────
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct PipelineDef {
         pub name: String,
         pub uses: Vec<UsesClause>,
         pub stages: Vec<StageDef>,
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct StageDef {
         pub name: String,
         pub body: FuncBody,
@@ -386,13 +386,13 @@ pub mod ast {
 
     // ── Profiles ────────────────────────────────────────────────────
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct ProfileDef {
         pub name: String,
         pub binds: Vec<ProfileBind>,
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct ProfileBind {
         pub interface_type: String,
         pub implementation_type: String,
@@ -401,37 +401,37 @@ pub mod ast {
 
     // ── SDLC & Infra Blocks ─────────────────────────────────────────
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct ProjectDef {
         pub name: String,
         pub properties: Vec<(String, Expr)>,
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct FeatureDef {
         pub name: String,
         pub properties: Vec<(String, Expr)>,
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct TaskDef {
         pub name: String,
         pub properties: Vec<(String, Expr)>,
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct DesignDef {
         pub name: String,
         pub properties: Vec<(String, Expr)>,
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct ComponentDef {
         pub name: String,
         pub properties: Vec<(String, Expr)>,
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct EnvironmentDef {
         pub name: String,
         pub properties: Vec<(String, Expr)>,

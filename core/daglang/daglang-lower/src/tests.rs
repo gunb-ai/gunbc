@@ -27,8 +27,9 @@ fn typed_project_from_sources(sources: &[(&str, &str)]) -> TypedProject {
             }
         })
         .collect();
+    let graph = ModuleGraph { modules };
     typecheck_module_graph_with_options(
-        ModuleGraph { modules },
+        &graph,
         daglang_typecheck::TypecheckOptions {
             allow_unresolved_imports: true,
         },
@@ -92,8 +93,9 @@ fn typed_project_for_module_with_dependency_closure(module_name: &str) -> TypedP
             .collect::<Vec<_>>();
         modules.push(module);
     }
+    let graph = ModuleGraph { modules };
     typecheck_module_graph_with_options(
-        ModuleGraph { modules },
+        &graph,
         daglang_typecheck::TypecheckOptions {
             allow_unresolved_imports: true,
         },
@@ -3234,7 +3236,7 @@ fn lower_typed_project_for_module_with_dependency_closure_and_entry(
     }
 
     let typed = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         daglang_typecheck::TypecheckOptions {
             allow_unresolved_imports: true,
         },

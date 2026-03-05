@@ -54,7 +54,7 @@ pub fn discover_dag_files(root: &Path) -> Result<Vec<PathBuf>, ResolveError> {
 }
 
 /// A resolved module in the dependency graph.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ResolvedModule {
     /// Filesystem path to the `.dag` file.
     pub path: PathBuf,
@@ -67,7 +67,7 @@ pub struct ResolvedModule {
 }
 
 /// The complete module graph for a project.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ModuleGraph {
     /// Modules in dependency order (leaves first).
     pub modules: Vec<ResolvedModule>,

@@ -31,7 +31,7 @@ fn typecheck_accepts_makegen_module() {
     let source = fs::read_to_string(file).expect("should read makegen source");
     let graph = module_graph_from_sources(&[("dsl/tools/makegen.dag", &source)]);
     let typed = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
         },
@@ -56,7 +56,7 @@ fn duplicate_param_names_are_reported() {
         "dup_params.dag",
         "module sample.dup\nfn bad(a: String, a: Int) -> String { a }",
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("duplicate params should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("duplicate params should fail");
     assert!(errors
         .iter()
         .any(|error| matches!(error, TypeError::DuplicateParameter { item, param } if item == "bad" && param == "a")));
@@ -72,7 +72,7 @@ func run() -> { ok: Bool, ok: Bool } {
 }
 "#,
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("duplicate outputs should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("duplicate outputs should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::DuplicateOutputField { item, field }
@@ -86,7 +86,7 @@ fn undefined_types_are_reported() {
         "unknown_type.dag",
         "module sample.unknown\nfn run(input: MissingType) -> String { \"ok\" }",
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("unknown type should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("unknown type should fail");
     assert!(errors.iter().any(
         |error| matches!(error, TypeError::UndefinedType(msg) if msg.contains("MissingType"))
     ));
@@ -103,7 +103,7 @@ func run() -> { ok: Bool } {
 }
 "#,
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("duplicate item name should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("duplicate item name should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::DuplicateDefinition { module, name }
@@ -134,7 +134,7 @@ service FsStorage implements Storage {
 "#,
     )]);
     let errors =
-        typecheck_module_graph(graph).expect_err("duplicate interface definitions should fail");
+        typecheck_module_graph(&graph).expect_err("duplicate interface definitions should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::DuplicateDefinition { module, name }
@@ -170,7 +170,7 @@ service FsStorage implements Storage {
 "#,
     )]);
     let errors = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -197,7 +197,7 @@ fn strict_mode_reports_unresolved_imports() {
     let options = TypecheckOptions {
         allow_unresolved_imports: false,
     };
-    let errors = typecheck_module_graph_with_options(graph, options)
+    let errors = typecheck_module_graph_with_options(&graph, options)
         .expect_err("strict mode should fail on unresolved import");
     assert!(errors.iter().any(|error| matches!(
         error,
@@ -212,7 +212,7 @@ fn call_arity_mismatch_is_reported() {
         "arity_mismatch.dag",
         "module sample.calls\nfn fmt(value: String) -> String { value }\nfn run() -> String { fmt() }",
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("call arity mismatch should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("call arity mismatch should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::CallArityMismatch {
@@ -230,7 +230,7 @@ fn call_with_too_many_args_is_reported() {
         "arity_overflow.dag",
         "module sample.calls\nfn fmt(value: String) -> String { value }\nfn run() -> String { fmt(\"a\", \"b\") }",
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("too many call args should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("too many call args should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::CallArityMismatch {
@@ -255,7 +255,7 @@ fn run() -> String {
 }"#,
     )]);
     let typed = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -278,7 +278,7 @@ fn run() -> Bool {
 }"#,
     )]);
     let typed = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -304,7 +304,7 @@ fn strict_mode_reports_ambiguous_call_target() {
         ),
     ]);
     let errors = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -327,7 +327,7 @@ fn helper() -> String { "b" }
 fn run() -> String { helper() }"#,
     )]);
     let errors = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -355,7 +355,7 @@ fn helper() -> String { "b" }
 fn run() -> String { helper() }"#,
     )]);
     let errors = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
         },
@@ -380,7 +380,7 @@ fn strict_mode_reports_unresolved_call_target() {
         "module sample.main\nfn run() -> String { missing(value: \"ok\") }",
     )]);
     let errors = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -400,7 +400,7 @@ fn relaxed_mode_allows_unresolved_call_target() {
         "module sample.main\nfn run() -> String { missing(value: \"ok\") }",
     )]);
     let typed = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
         },
@@ -427,7 +427,7 @@ fn summarize(stages: List<Stage>) -> Int {
 }"#,
     )]);
     let typed = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -465,7 +465,7 @@ required_scopes: ["gist"]
 "#,
     )]);
     let typed = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -487,7 +487,7 @@ fn relay<T>(value: T) -> T {
 }"#,
     )]);
     let typed = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -510,7 +510,7 @@ fn relay<T>(value: T) -> T {
 }"#,
     )]);
     let typed = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -533,7 +533,7 @@ fn result() -> StageResult {
 }"#,
     )]);
     let typed = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -558,7 +558,7 @@ fn gcp_dev_storage() -> GcsBucket.Config {
 }"#,
     )]);
     let typed = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -577,7 +577,7 @@ fn identity(value: Secret) -> Secret {
 }"#,
     )]);
     let typed = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -596,7 +596,7 @@ fn apply(value: Int, callback: fn(Int) -> Int) -> Int {
 }"#,
     )]);
     let typed = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -615,7 +615,7 @@ fn apply(callback: fn(Int) -> Int) -> Int {
 }"#,
     )]);
     let errors = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -647,7 +647,7 @@ fn make_gcp() -> CloudConfig {
 "#,
     )]);
     let typed = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -670,7 +670,7 @@ fn make_gcp() -> CloudConfig {
 "#,
     )]);
     let errors = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -698,7 +698,7 @@ fn env() -> Environment {
 }"#,
     )]);
     let typed = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -725,7 +725,7 @@ AwsConfig { ... } => Aws
 }"#,
     )]);
     let typed = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -740,7 +740,7 @@ fn unknown_named_call_argument_is_reported() {
         "unknown_arg.dag",
         "module sample.calls\nfn fmt(value: String) -> String { value }\nfn run() -> String { fmt(text: \"ok\") }",
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("unknown named argument should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("unknown named argument should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::UnknownCallArgument {
@@ -757,7 +757,7 @@ fn duplicate_named_call_argument_is_reported() {
         "duplicate_arg.dag",
         "module sample.calls\nfn fmt(value: String) -> String { value }\nfn run() -> String { fmt(value: \"a\", value: \"b\") }",
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("duplicate named argument should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("duplicate named argument should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::DuplicateCallArgument {
@@ -788,7 +788,7 @@ func run() -> { ok: Bool } {
 }"#,
     )]);
     let errors =
-        typecheck_module_graph(graph).expect_err("service call arity mismatch should fail");
+        typecheck_module_graph(&graph).expect_err("service call arity mismatch should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::ServiceCallArityMismatch {
@@ -817,7 +817,7 @@ func run() -> { ok: Bool } {
 }"#,
     )]);
     let errors =
-        typecheck_module_graph(graph).expect_err("too many service call arguments should fail");
+        typecheck_module_graph(&graph).expect_err("too many service call arguments should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::ServiceCallArityMismatch {
@@ -846,7 +846,7 @@ func run() -> { ok: Bool } {
 }"#,
     )]);
     let typed = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -872,7 +872,7 @@ func run(path: String) -> { body: String } uses fs: Filesystem {
 }"#,
     )]);
     let typed = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -898,7 +898,7 @@ func run() -> { ok: Bool } uses fs: Filesystem {
 }"#,
     )]);
     let errors = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -929,7 +929,7 @@ func run(path: String) -> { body: String } {
 }"#,
     )]);
     let errors = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -971,7 +971,7 @@ func run(path: String) -> { body: String } {
         ),
     ]);
     let errors = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -1009,7 +1009,7 @@ func run(path: String) -> { body: String } {
 }"#,
     )]);
     let errors = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -1052,7 +1052,7 @@ func run(path: String) -> { body: String } {
 }"#,
     )]);
     let errors = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
         },
@@ -1083,7 +1083,7 @@ func run(path: String) -> { body: String } {
 }"#,
     )]);
     let typed = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
         },
@@ -1112,7 +1112,7 @@ func run(path: String) -> { body: String } {
 }"#,
     )]);
     let errors =
-        typecheck_module_graph(graph).expect_err("unknown named service call argument should fail");
+        typecheck_module_graph(&graph).expect_err("unknown named service call argument should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::UnknownServiceCallArgument {
@@ -1142,7 +1142,7 @@ func run(path: String) -> { body: String } {
   return { body: response.body }
 }"#,
     )]);
-    let errors = typecheck_module_graph(graph)
+    let errors = typecheck_module_graph(&graph)
         .expect_err("duplicate named service call argument should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
@@ -1177,7 +1177,7 @@ output { body: String }
 }"#,
     )]);
     let errors =
-        typecheck_module_graph(graph).expect_err("missing interface capability should fail");
+        typecheck_module_graph(&graph).expect_err("missing interface capability should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::MissingCapability {
@@ -1194,7 +1194,7 @@ fn unresolved_interface_on_resource_is_reported() {
         "missing_interface.dag",
         "module sample.resources\nresource Disk implements MissingStorage {}",
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("unknown interface should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("unknown interface should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::UnresolvedInterface { implementor, interface }
@@ -1218,7 +1218,7 @@ fn ambiguous_interface_on_resource_is_reported() {
             "module sample.main\nresource Disk implements Storage { capability read { input { path: String } output { body: String } } }",
         ),
     ]);
-    let errors = typecheck_module_graph(graph).expect_err("ambiguous interface should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("ambiguous interface should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::AmbiguousInterface {
@@ -1247,7 +1247,7 @@ service FsStorage implements Storage {
   operation read(path: String) -> { body: String }
 }"#,
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("missing operation should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("missing operation should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::MissingOperation {
@@ -1264,7 +1264,7 @@ fn unresolved_interface_on_service_is_reported() {
         "missing_service_interface.dag",
         "module sample.services\nservice FsStorage implements MissingStorage { operation read(path: String) -> { body: String } }",
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("unknown interface should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("unknown interface should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::UnresolvedInterface { implementor, interface }
@@ -1288,7 +1288,7 @@ fn ambiguous_interface_on_service_is_reported() {
             "module sample.main\nservice FsStorage implements Storage { operation read(path: String) -> { body: String } }",
         ),
     ]);
-    let errors = typecheck_module_graph(graph).expect_err("ambiguous interface should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("ambiguous interface should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::AmbiguousInterface {
@@ -1316,7 +1316,7 @@ output { body: String }
   }
 }"#,
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("signature mismatch should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("signature mismatch should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::InterfaceSignatureMismatch {
@@ -1346,7 +1346,7 @@ service FsStorage implements Storage {
   operation read(path: String) -> { body: Int }
 }"#,
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("signature mismatch should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("signature mismatch should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::InterfaceSignatureMismatch {
@@ -1368,7 +1368,7 @@ fn strict_mode_reports_unknown_used_resource_type() {
         "module sample.uses\nfunc run() -> { ok: Bool } uses fs: MissingResource { return { ok: true } }",
     )]);
     let errors = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -1395,7 +1395,7 @@ func run() -> { ok: Bool } uses fs: Filesystem(mode: ReadWrite) {
 }"#,
     )]);
     let typed = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -1424,7 +1424,7 @@ func run() -> { ok: Bool } uses fs: SharedResource {
         ),
     ]);
     let errors = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -1452,7 +1452,7 @@ func run() -> { ok: Bool } uses fs: SharedResource {
 }"#,
     )]);
     let errors = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -1480,7 +1480,7 @@ fn relaxed_mode_allows_unknown_used_resource_type() {
         "module sample.uses\nfunc run() -> { ok: Bool } uses fs: MissingResource { return { ok: true } }",
     )]);
     let typed = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
         },
@@ -1501,7 +1501,7 @@ func run() -> { ok: Bool } uses fs: SharedResource {
 }"#,
     )]);
     let errors = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
         },
@@ -1529,7 +1529,7 @@ fn strict_mode_reports_unknown_provided_resource_type() {
         "module sample.provides\nfunc run() -> { ok: Bool } provides out: MissingResource { return { ok: true } }",
     )]);
     let errors = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -1556,7 +1556,7 @@ func run() -> { ok: Bool } provides out: ArtifactStore(kind: temporary) {
 }"#,
     )]);
     let typed = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -1576,7 +1576,7 @@ func run() -> { ok: Bool } provides out: ArtifactStore {
 }"#,
     )]);
     let typed = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -1605,7 +1605,7 @@ func run() -> { ok: Bool } provides out: SharedResource {
         ),
     ]);
     let errors = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -1633,7 +1633,7 @@ func run() -> { ok: Bool } provides out: SharedResource {
 }"#,
     )]);
     let errors = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
         },
@@ -1666,7 +1666,7 @@ func run() -> { ok: Bool } provides out: SharedResource {
 }"#,
     )]);
     let errors = typecheck_module_graph_with_options(
-        graph,
+        &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
@@ -1702,7 +1702,7 @@ func run() -> { ok: Bool } uses fs: Storage uses fs: Storage {
   return { ok: true }
 }"#,
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("duplicate uses should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("duplicate uses should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::DuplicateUsesBinding { item, binding }
@@ -1725,7 +1725,7 @@ func run() -> { ok: Bool } provides out: Storage provides out: Storage {
   return { ok: true }
 }"#,
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("duplicate provides should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("duplicate provides should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::DuplicateProvidesBinding { item, binding }
@@ -1748,7 +1748,7 @@ func run() -> { ok: Bool } uses io: Storage provides io: Storage {
   return { ok: true }
 }"#,
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("binding conflict should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("binding conflict should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::UseProvideBindingConflict { item, binding }
@@ -1763,7 +1763,7 @@ fn type_mismatch_in_fn_return_is_reported() {
         r#"module sample.types
 fn run() -> String { return 42 }"#,
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("type mismatch should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("type mismatch should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::TypeMismatch { expected, got }
@@ -1779,7 +1779,7 @@ fn implicit_type_mismatch_in_fn_return_is_reported() {
 fn run() -> String { 42 }"#,
     )]);
     let errors =
-        typecheck_module_graph(graph).expect_err("implicit return type mismatch should fail");
+        typecheck_module_graph(&graph).expect_err("implicit return type mismatch should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::TypeMismatch { expected, got }
@@ -1794,7 +1794,7 @@ fn missing_tail_expression_in_fn_return_is_reported_as_unit_mismatch() {
         r#"module sample.types
 fn run() -> String { let x = 42 }"#,
     )]);
-    let errors = typecheck_module_graph(graph)
+    let errors = typecheck_module_graph(&graph)
         .expect_err("missing tail expression should fail for non-unit return type");
     assert!(errors.iter().any(|error| matches!(
         error,
@@ -1811,7 +1811,7 @@ fn missing_tail_expression_is_allowed_for_unit_return_type() {
 fn run() -> Unit { let x = 42 }"#,
     )]);
     let typed =
-        typecheck_module_graph(graph).expect("unit return type should allow no tail expression");
+        typecheck_module_graph(&graph).expect("unit return type should allow no tail expression");
     assert_eq!(typed.modules.len(), 1);
 }
 
@@ -1825,7 +1825,7 @@ func run() -> { body: String } {
   return { body: payload.missing }
 }"#,
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("no such field should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("no such field should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::NoSuchField { ty, field } if ty == "Record" && field == "missing"
@@ -1841,7 +1841,7 @@ type Payload { body: String }
 fn run(input: Payload) -> String { input.missing }"#,
     )]);
     let errors =
-        typecheck_module_graph(graph).expect_err("no such field on named record should fail");
+        typecheck_module_graph(&graph).expect_err("no such field on named record should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::NoSuchField { ty, field } if ty == "Payload" && field == "missing"
@@ -1855,7 +1855,7 @@ fn unsatisfiable_refinement_is_reported() {
         r#"module sample.refinement
 fn run(value: Int where range(min: 5, max: 1)) -> Int { value }"#,
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("unsatisfiable range should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("unsatisfiable range should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::UnsatisfiableRefinement { ty, constraint }
@@ -1870,7 +1870,7 @@ fn generic_arity_mismatch_is_reported() {
         r#"module sample.generics
 fn run(items: Map<String>) -> Int { 1 }"#,
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("generic arity mismatch should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("generic arity mismatch should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::ArityMismatch {
@@ -1890,7 +1890,7 @@ type Box<T> = T
 fn run(value: Box<String, Int>) -> String { value }"#,
     )]);
     let errors =
-        typecheck_module_graph(graph).expect_err("user-defined generic arity mismatch should fail");
+        typecheck_module_graph(&graph).expect_err("user-defined generic arity mismatch should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::ArityMismatch {
@@ -1911,7 +1911,7 @@ pipeline ci {
 }"#,
     )]);
     let errors =
-        typecheck_module_graph(graph).expect_err("unknown pipeline stage dependency should fail");
+        typecheck_module_graph(&graph).expect_err("unknown pipeline stage dependency should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::UnknownPipelineStageDependency {
@@ -1932,7 +1932,7 @@ pipeline ci {
   stage build {}
 }"#,
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("duplicate pipeline stage should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("duplicate pipeline stage should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::DuplicatePipelineStage { pipeline, stage }
@@ -1952,7 +1952,7 @@ fn check(flag: Bool) -> String {
   if flag { "hello" } else { 42 }
 }"#,
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("mismatched branches should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("mismatched branches should fail");
     assert!(
         errors.iter().any(|e| matches!(
             e,
@@ -1973,7 +1973,7 @@ fn pick(flag: Bool) -> String {
   if flag { "hello" } else { "world" }
 }"#,
     )]);
-    let result = typecheck_module_graph(graph);
+    let result = typecheck_module_graph(&graph);
     assert!(result.is_ok(), "same-type branches should pass: {result:?}");
 }
 
@@ -1990,7 +1990,7 @@ fn check(x: Int) -> String {
   }
 }"#,
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("mismatched match arms should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("mismatched match arms should fail");
     assert!(
         errors.iter().any(|e| matches!(
             e,
@@ -2017,7 +2017,7 @@ fn pick(x: Int) -> Color {
   }
 }"#,
     )]);
-    let result = typecheck_module_graph(graph);
+    let result = typecheck_module_graph(&graph);
     assert!(
         result.is_ok(),
         "same-parent variant arms should pass: {result:?}"
@@ -2036,7 +2036,7 @@ fn pick(flag: Bool) -> Status {
   if flag { Active } else { Inactive }
 }"#,
     )]);
-    let result = typecheck_module_graph(graph);
+    let result = typecheck_module_graph(&graph);
     assert!(
         result.is_ok(),
         "same-parent variant if/else should pass: {result:?}"
@@ -2112,7 +2112,7 @@ pipeline ci {
   stage build [when 42] {}
 }"#,
     )]);
-    let errors = typecheck_module_graph(graph).expect_err("non-bool when should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("non-bool when should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::PipelineStageWhenTypeMismatch { pipeline, stage, got }
