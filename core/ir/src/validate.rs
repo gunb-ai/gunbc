@@ -635,6 +635,12 @@ pub fn validate_required_inputs<T>(dag: &Dag<T>) -> Vec<UnwiredInputError> {
         if !nodes_with_edges.contains(node.id.0.as_str()) {
             continue;
         }
+        // Skip SubDag nodes — their inputs are auto-inferred from the inner
+        // DAG's boundary ports and are populated by the SubDag executor or
+        // fn body evaluator, not by incoming DAG edges.
+        if matches!(node.body, crate::node::NodeBody::SubDag(..)) {
+            continue;
+        }
         for port in &node.inputs {
             // Skip non-user ports (resource, tool, internal)
             if port.name.is_resource() || port.name.is_tool() || port.name.is_internal() {

@@ -31,7 +31,7 @@ use daglang_syntax::ast_utils::{
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
 use gunbc_ir::patterns::branch::IfBuilder;
 use gunbc_ir::patterns::{BranchBuilder, LoopBuilder, PatternOp};
-use gunbc_ir::resource::{AccessMode, RESOURCE_FILE};
+use gunbc_ir::resource::{AccessMode, RESOURCE_FILE, RESOURCE_FILE_PREFIX};
 use gunbc_ir::transport::middleware::{
     RateLimitAlgorithm, RateLimitConfig, ResponseClassification, ResponseProvider, RetryBackoff,
     RetryConfig, TransportMiddlewareConfig,
@@ -2643,6 +2643,7 @@ fn lower_typed_project_impl(
 
     wire_param_source_inputs(&mut builder);
     wire_empty_list_defaults(&mut builder);
+    wire_filesystem_resource_edges(&mut builder);
 
     let mut dag = builder.into_dag();
     stamp_node_kinds(&mut dag);
@@ -8948,6 +8949,55 @@ fn wire_empty_list_defaults(builder: &mut DagBuilder) {
             },
         ));
         builder.add_edge(&literal_node_id, port_name, node_id, port_name);
+    }
+}
+
+/// Bridge 8: Wire filesystem resource edges at lower time.
+///
+/// Scans for `res:file` / `res:file:*` input ports without incoming edges and
+/// auto-injects an `fs_env` root node that provides the `FilesystemHandle`.
+/// Previously done at resolve time (`wire_missing_filesystem_resources`); moving
+/// here lets verification pass before resolution.
+fn wire_filesystem_resource_edges(builder: &mut DagBuilder) {
+    let mut pending: Vec<(String, String)> = Vec::new();
+    for node in &builder.dag.nodes {
+        for port in &node.inputs {
+            let is_fs_resource = port.type_id.0 == "FilesystemHandle"
+                && (port.name.0 == RESOURCE_FILE || port.name.0.starts_with(RESOURCE_FILE_PREFIX));
+            if !is_fs_resource {
+                continue;
+            }
+            if builder.has_edge_to_port(&node.id.0, &port.name.0) {
+                continue;
+            }
+            pending.push((node.id.0.clone(), port.name.0.clone()));
+        }
+    }
+    if pending.is_empty() {
+        return;
+    }
+
+    let fs_node_id = "fs_env";
+    // Add fs_env root node if it doesn't already exist.
+    let fs_exists = builder.dag.nodes.iter().any(|n| n.id.0 == fs_node_id);
+    if !fs_exists {
+        builder.add_node(
+            Node::opaque(
+                fs_node_id,
+                vec![],
+                vec![Port::new("FilesystemHandle", "FilesystemHandle")],
+                LoweredOp::Primitive {
+                    module: "std.resources".to_string(),
+                    name: "fs_env".to_string(),
+                    kind: PrimitiveOpKind::FsEnv,
+                },
+            )
+            .with_kind(NodeKind::ResourceEnvironment),
+        );
+    }
+
+    for (node_id, port_name) in &pending {
+        builder.add_edge(fs_node_id, "FilesystemHandle", node_id, port_name);
     }
 }
 

@@ -736,6 +736,9 @@ Nodes:
       * trigger: Any (1)
     outputs:
       * auth: AuthContext (1)
+  - fs_env [primitive::FsEnv std.resources.fs_env]
+    outputs:
+      * FilesystemHandle: FilesystemHandle (1)
 Edges:
   - prepare_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion.request -> execute_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion.request
   - execute_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion.response -> parse_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion.response
@@ -934,4 +937,13 @@ Edges:
   - tools.makegen::render_makefile_content.return -> param_source_std_patterns_content_upsert_content.content
   - param_source_std_patterns_acquire_subject_token_audience.audience -> param_source_std_patterns_github_oidc_audience.audience
   - param_source_std_patterns_acquire_subject_token_audience.audience -> param_source_std_patterns_metadata_oidc_audience.audience
+  - fs_env.FilesystemHandle -> execute_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion.res:file
+  - fs_env.FilesystemHandle -> execute_transport_extdeps_cloud_gcp_sts_gcp_STS_Exchange.res:file
+  - fs_env.FilesystemHandle -> execute_transport_extdeps_cloud_gcp_sts_github_OIDC_GetToken.res:file
+  - fs_env.FilesystemHandle -> execute_transport_extdeps_cloud_gcp_sts_gcp_Metadata_GetIdentityToken.res:file
+  - fs_env.FilesystemHandle -> execute_transport_extdeps_shell_shell_Env_Get.res:file
+  - fs_env.FilesystemHandle -> prepare_read_makegen.res:file:Makefile
+  - fs_env.FilesystemHandle -> execute_read_makegen.res:file
+  - fs_env.FilesystemHandle -> execute_makegen_transport.res:file
+  - fs_env.FilesystemHandle -> execute_transport_extdeps_shell_shell_Env_Get_c1.res:file
 
