@@ -639,9 +639,24 @@ fn primitive_requires_strict_input_wiring(kind: &daglang_lower::PrimitiveOpKind)
     matches!(kind, daglang_lower::PrimitiveOpKind::GetField { .. }) || kind.is_structural()
 }
 
-fn validate_structural_primitive_input_wiring(dag: &Dag<LoweredOp>) -> Vec<gunbc_ir::VerifyError> {
+/// Unified verification for lowered DAGs (CP-41).
+///
+/// Combines two checks into a single validation step:
+/// 1. Generic IR verification (SubDag interfaces, resource wiring, fingerprints, required inputs)
+/// 2. Structural primitive input wiring (LoweredOp-specific: GetField + structural ops)
+///
+/// The structural check always runs. The generic IR check runs when `skip_verification` is false.
+fn verify_lowered_dag(
+    dag: &Dag<LoweredOp>,
+    skip_generic_verification: bool,
+) -> Vec<gunbc_ir::VerifyError> {
     let mut errors = Vec::new();
+    // Structural primitive wiring — always runs (these are compiler bugs, not user errors).
     validate_structural_primitive_input_wiring_recursive(dag, &mut errors);
+    // Generic IR verification — conditional (many pre-existing gaps from pattern expansion).
+    if !skip_generic_verification {
+        errors.extend(gunbc_ir::verify_dag(dag));
+    }
     errors
 }
 
@@ -738,17 +753,9 @@ pub fn compile_from_module_graph_with_options(
         },
     )
     .map_err(CompileError::Lower)?;
-    let structural_primitive_wiring_errors = validate_structural_primitive_input_wiring(&lowered);
-    if !structural_primitive_wiring_errors.is_empty() {
-        return Err(CompileError::Verification(
-            structural_primitive_wiring_errors,
-        ));
-    }
-    if !options.skip_verification {
-        let verify_errors = gunbc_ir::verify_dag(&lowered);
-        if !verify_errors.is_empty() {
-            return Err(CompileError::Verification(verify_errors));
-        }
+    let verify_errors = verify_lowered_dag(&lowered, options.skip_verification);
+    if !verify_errors.is_empty() {
+        return Err(CompileError::Verification(verify_errors));
     }
     let output_paths = daglang_lower::extract_output_paths(&lowered);
 
@@ -2879,7 +2886,7 @@ fn run() -> Bool {
         ));
         dag.add_edge(Edge::new("left_src", "out", "binary", "left"));
 
-        let errors = validate_structural_primitive_input_wiring(&dag);
+        let errors = verify_lowered_dag(&dag, true);
         assert!(
             errors
                 .iter()
@@ -2935,7 +2942,7 @@ fn run() -> Bool {
         dag.add_edge(Edge::new("cond_src", "out", "conditional", "condition"));
         dag.add_edge(Edge::new("then_src", "out", "conditional", "then"));
 
-        let errors = validate_structural_primitive_input_wiring(&dag);
+        let errors = verify_lowered_dag(&dag, true);
         assert!(
             errors.is_empty(),
             "conditional without else input port should pass, got: {errors:?}"
