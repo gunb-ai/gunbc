@@ -1509,6 +1509,22 @@ struct LoweringContext<'a> {
     callable_param_defaults: &'a HashMap<String, Vec<(String, daglang_syntax::ast::Expr)>>,
 }
 
+/// A resolved (node_id, port_name) reference for wiring synthesized nodes.
+struct ResolvedRef<'a> {
+    node: &'a str,
+    port: &'a str,
+}
+
+/// Target location for a synthesized structural node.
+///
+/// Bundles the common trailing parameters passed to all `synthesize_*`
+/// functions: the output port, a human-readable name, and a disambiguator.
+struct SynthesizeTarget<'a> {
+    port: &'a Port,
+    name: &'a str,
+    disambiguator: &'a str,
+}
+
 /// Per-node expansion state for pattern lowering.
 ///
 /// Groups the suffix, target, and argument-mapping state that flows through
@@ -9573,16 +9589,12 @@ fn resolve_return_expr_source(
                 &format!("{disambiguator}_base"),
             );
             match base_source {
-                Some((base_node, base_port)) => synthesize_get_field_on_resolved(
-                    builder,
-                    ctx,
-                    &base_node,
-                    &base_port,
-                    field,
-                    output_port,
-                    output_name,
-                    disambiguator,
-                ),
+                Some((base_node, base_port)) => {
+                    let target = SynthesizeTarget { port: output_port, name: output_name, disambiguator };
+                    synthesize_get_field_on_resolved(
+                        builder, ctx, &base_node, &base_port, field, &target,
+                    )
+                }
                 None => None,
             }
         }
@@ -9664,31 +9676,27 @@ fn resolve_return_expr_source(
                 &format!("{disambiguator}_rhs"),
             );
             match (left_source, right_source) {
-                (Some((l_node, l_port)), Some((r_node, r_port))) => synthesize_binary_op(
-                    builder,
-                    ctx,
-                    op,
-                    &l_node,
-                    &l_port,
-                    &r_node,
-                    &r_port,
-                    output_port,
-                    output_name,
-                    disambiguator,
-                ),
+                (Some((l_node, l_port)), Some((r_node, r_port))) => {
+                    let target = SynthesizeTarget { port: output_port, name: output_name, disambiguator };
+                    let left = ResolvedRef { node: &l_node, port: &l_port };
+                    let right = ResolvedRef { node: &r_node, port: &r_port };
+                    synthesize_binary_op(builder, ctx, op, &left, &right, &target)
+                }
                 _ => synthesize_expr_compute(
                     builder, ctx, expr, output_port, output_name, disambiguator,
                 ),
             }
         }
         // C24-P1: Direct Match → MatchDispatch structural node.
-        Expr::Match(scrutinee, arms) => synthesize_match_dispatch(
-            builder, ctx, scrutinee, arms, output_port, output_name, disambiguator,
-        ),
+        Expr::Match(scrutinee, arms) => {
+            let target = SynthesizeTarget { port: output_port, name: output_name, disambiguator };
+            synthesize_match_dispatch(builder, ctx, scrutinee, arms, &target)
+        }
         // C24-P2: If/Else → Conditional structural node.
-        Expr::If(cond, then_, else_) => synthesize_conditional(
-            builder, ctx, cond, then_, else_.as_deref(), output_port, output_name, disambiguator,
-        ),
+        Expr::If(cond, then_, else_) => {
+            let target = SynthesizeTarget { port: output_port, name: output_name, disambiguator };
+            synthesize_conditional(builder, ctx, cond, then_, else_.as_deref(), &target)
+        }
         // C24-P2: UnaryOp → UnaryOp structural node.
         Expr::UnaryOp(op, inner) => {
             let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
@@ -9701,16 +9709,10 @@ fn resolve_return_expr_source(
                 &format!("{disambiguator}_inner"),
             );
             match inner_source {
-                Some((src_node, src_port)) => synthesize_unary_op(
-                    builder,
-                    ctx,
-                    op,
-                    &src_node,
-                    &src_port,
-                    output_port,
-                    output_name,
-                    disambiguator,
-                ),
+                Some((src_node, src_port)) => {
+                    let target = SynthesizeTarget { port: output_port, name: output_name, disambiguator };
+                    synthesize_unary_op(builder, ctx, op, &src_node, &src_port, &target)
+                }
                 None => synthesize_expr_compute(
                     builder, ctx, expr, output_port, output_name, disambiguator,
                 ),
@@ -9727,15 +9729,13 @@ fn resolve_return_expr_source(
         ),
         // C24: Pipe/PipeCall → tagged evaluator (distinct from ExprCompute for tracking).
         Expr::Pipe(..) | Expr::PipeCall(..) => {
-            synthesize_tagged_evaluator(
-                builder, ctx, expr, "pipe", output_port, output_name, disambiguator,
-            )
+            let target = SynthesizeTarget { port: output_port, name: output_name, disambiguator };
+            synthesize_tagged_evaluator(builder, ctx, expr, "pipe", &target)
         }
         // C24: For expression → tagged evaluator.
         Expr::For(..) => {
-            synthesize_tagged_evaluator(
-                builder, ctx, expr, "for", output_port, output_name, disambiguator,
-            )
+            let target = SynthesizeTarget { port: output_port, name: output_name, disambiguator };
+            synthesize_tagged_evaluator(builder, ctx, expr, "for", &target)
         }
         // Handle remaining complex expressions by synthesizing a dedicated compute node.
         _ => synthesize_expr_compute(builder, ctx, expr, output_port, output_name, disambiguator),
@@ -10035,22 +10035,17 @@ fn synthesize_get_field(
 
 /// C24-P1: Synthesize a BinaryOp structural node.
 /// Both operands must already be resolved to (node_id, port) sources.
-#[allow(clippy::too_many_arguments)]
 fn synthesize_binary_op(
     builder: &mut DagBuilder,
     ctx: &LoweringContext<'_>,
     op: &daglang_syntax::ast::BinOp,
-    left_node: &str,
-    left_port: &str,
-    right_node: &str,
-    right_port: &str,
-    output_port: &Port,
-    output_name: &str,
-    disambiguator: &str,
+    left: &ResolvedRef<'_>,
+    right: &ResolvedRef<'_>,
+    target: &SynthesizeTarget<'_>,
 ) -> Option<(String, String)> {
     let lowered_op = expr::lower_binop(op);
     let result_port_name = "result";
-    let output_type = output_port.type_id.0.as_str();
+    let output_type = target.port.type_id.0.as_str();
 
     let input_ports = vec![
         Port::with_cardinality("left", "Any", Cardinality::ONE),
@@ -10066,7 +10061,7 @@ fn synthesize_binary_op(
         "binary_op_{}",
         sanitize_identifier(&format!(
             "{}_{}_{}_{}",
-            ctx.module_name, ctx.item_name, output_name, disambiguator
+            ctx.module_name, ctx.item_name, target.name, target.disambiguator
         ))
     );
 
@@ -10076,13 +10071,13 @@ fn synthesize_binary_op(
         output_ports,
         LoweredOp::Primitive {
             module: ctx.module_name.to_string(),
-            name: format!("binary_op::{}::{}", ctx.item_name, output_name),
+            name: format!("binary_op::{}::{}", ctx.item_name, target.name),
             kind: PrimitiveOpKind::BinaryOp { op: lowered_op },
         },
     ));
 
-    builder.add_edge(left_node, left_port, &node_id, "left");
-    builder.add_edge(right_node, right_port, &node_id, "right");
+    builder.add_edge(left.node, left.port, &node_id, "left");
+    builder.add_edge(right.node, right.port, &node_id, "right");
 
     Some((node_id, result_port_name.to_string()))
 }
@@ -10095,10 +10090,11 @@ fn synthesize_match_dispatch(
     ctx: &LoweringContext<'_>,
     scrutinee: &Expr,
     arms: &[daglang_syntax::ast::MatchArm],
-    output_port: &Port,
-    output_name: &str,
-    disambiguator: &str,
+    target: &SynthesizeTarget<'_>,
 ) -> Option<(String, String)> {
+    let output_port = target.port;
+    let output_name = target.name;
+    let disambiguator = target.disambiguator;
     // Collect all leaf refs from the entire match expression.
     let whole_expr = Expr::Match(Box::new(scrutinee.clone()), arms.to_vec());
     let mut refs: Vec<ExprLeafRef> = Vec::new();
@@ -10221,17 +10217,17 @@ fn synthesize_match_dispatch(
 
 /// C24-P2: Synthesize a Conditional structural node.
 /// Resolves condition, then, and optional else branches.
-#[allow(clippy::too_many_arguments)]
 fn synthesize_conditional(
     builder: &mut DagBuilder,
     ctx: &LoweringContext<'_>,
     cond: &Expr,
     then_: &Expr,
     else_: Option<&Expr>,
-    output_port: &Port,
-    output_name: &str,
-    disambiguator: &str,
+    target: &SynthesizeTarget<'_>,
 ) -> Option<(String, String)> {
+    let output_port = target.port;
+    let output_name = target.name;
+    let disambiguator = target.disambiguator;
     // Collect all leaf refs from the entire if/else expression.
     let whole_expr = Expr::If(
         Box::new(cond.clone()),
@@ -10366,17 +10362,17 @@ fn synthesize_conditional(
 }
 
 /// C24-P2: Synthesize a UnaryOp structural node.
-#[allow(clippy::too_many_arguments)]
 fn synthesize_unary_op(
     builder: &mut DagBuilder,
     ctx: &LoweringContext<'_>,
     op: &daglang_syntax::ast::UnaryOp,
     inner_node: &str,
     inner_port: &str,
-    output_port: &Port,
-    output_name: &str,
-    disambiguator: &str,
+    target: &SynthesizeTarget<'_>,
 ) -> Option<(String, String)> {
+    let output_port = target.port;
+    let output_name = target.name;
+    let disambiguator = target.disambiguator;
     let lowered_op = match op {
         daglang_syntax::ast::UnaryOp::Not => expr::LoweredUnaryOp::Not,
         daglang_syntax::ast::UnaryOp::Neg => expr::LoweredUnaryOp::Neg,
@@ -10780,17 +10776,17 @@ fn synthesize_string_interpolate(
 
 /// C24: Synthesize a GetField node for a complex base expression (not a direct parameter).
 /// Recursively resolves the base, then extracts the field from its output.
-#[allow(clippy::too_many_arguments)]
 fn synthesize_get_field_on_resolved(
     builder: &mut DagBuilder,
     ctx: &LoweringContext<'_>,
     base_node: &str,
     base_port: &str,
     field: &str,
-    output_port: &Port,
-    output_name: &str,
-    disambiguator: &str,
+    target: &SynthesizeTarget<'_>,
 ) -> Option<(String, String)> {
+    let output_port = target.port;
+    let output_name = target.name;
+    let disambiguator = target.disambiguator;
     let result_port_name = "result";
     let output_type = output_port.type_id.0.as_str();
     let input_port_name = "base";
@@ -10964,16 +10960,16 @@ fn wire_evaluator_edges(
 
 /// C24: Synthesize a pipe/for expression as a tagged evaluator node.
 /// Like ExprCompute but with a distinct PrimitiveOpKind for tracking.
-#[allow(clippy::too_many_arguments)]
 fn synthesize_tagged_evaluator(
     builder: &mut DagBuilder,
     ctx: &LoweringContext<'_>,
     expr: &Expr,
     kind_tag: &str,
-    output_port: &Port,
-    output_name: &str,
-    disambiguator: &str,
+    target: &SynthesizeTarget<'_>,
 ) -> Option<(String, String)> {
+    let output_port = target.port;
+    let output_name = target.name;
+    let disambiguator = target.disambiguator;
     let parts = build_evaluator_parts(ctx, expr, output_port)?;
 
     let kind = match kind_tag {
