@@ -403,7 +403,10 @@ impl PrimitiveOpKind {
             Self::GetField { .. } => ObligationCategory::None,
             // C24: All remaining structural primitives are pure computation — no obligations.
             _ => {
-                debug_assert!(self.is_structural(), "unhandled non-structural primitive: {self:?}");
+                debug_assert!(
+                    self.is_structural(),
+                    "unhandled non-structural primitive: {self:?}"
+                );
                 ObligationCategory::None
             }
         }
@@ -487,9 +490,11 @@ pub fn stamp_static_fingerprints(dag: &mut Dag<LoweredOp>) {
     let edge_index: HashMap<String, Vec<(&str, &str, &str)>> = {
         let mut idx: HashMap<String, Vec<(&str, &str, &str)>> = HashMap::new();
         for edge in &dag.edges {
-            idx.entry(edge.to_node.0.clone())
-                .or_default()
-                .push((&edge.from_node.0, &edge.from_port.0, &edge.to_port.0));
+            idx.entry(edge.to_node.0.clone()).or_default().push((
+                &edge.from_node.0,
+                &edge.from_port.0,
+                &edge.to_port.0,
+            ));
         }
         idx
     };
@@ -521,14 +526,12 @@ pub fn stamp_static_fingerprints(dag: &mut Dag<LoweredOp>) {
         let op_key = node.operation_key.as_ref().unwrap().clone();
 
         // Find the prepare node that feeds the "request" input.
-        let prepare_id = edge_index
-            .get(&node.id.0)
-            .and_then(|edges| {
-                edges
-                    .iter()
-                    .find(|(_, _, to_port)| *to_port == "request")
-                    .map(|(from_node, _, _)| from_node.to_string())
-            });
+        let prepare_id = edge_index.get(&node.id.0).and_then(|edges| {
+            edges
+                .iter()
+                .find(|(_, _, to_port)| *to_port == "request")
+                .map(|(from_node, _, _)| from_node.to_string())
+        });
 
         let Some(prepare_id) = prepare_id else {
             continue;
@@ -577,7 +580,10 @@ pub fn stamp_static_fingerprints(dag: &mut Dag<LoweredOp>) {
         }
 
         keys.sort_by(|a, b| a.0.cmp(&b.0));
-        fingerprints.push((node.id.0.clone(), StaticFingerprint::with_keys(op_key, keys)));
+        fingerprints.push((
+            node.id.0.clone(),
+            StaticFingerprint::with_keys(op_key, keys),
+        ));
     }
 
     // Pass 2: apply fingerprints (mutable borrow).
@@ -629,8 +635,11 @@ fn validate_callable_output_wiring(dag: &Dag<LoweredOp>) -> Result<(), LowerErro
                 node.inputs.iter().map(|p| p.name.0.as_str()).collect();
             let wired_ports = edge_targets.get(node.id.0.as_str());
             for output_port in &node.outputs {
-                let passthrough_name =
-                    format!("{}{}", PortName::OUTPUT_PASSTHROUGH_PREFIX, output_port.name.0);
+                let passthrough_name = format!(
+                    "{}{}",
+                    PortName::OUTPUT_PASSTHROUGH_PREFIX,
+                    output_port.name.0
+                );
                 let has_port = input_names.contains(passthrough_name.as_str());
                 let has_edge = wired_ports
                     .map(|ports| ports.contains(passthrough_name.as_str()))
@@ -2228,13 +2237,8 @@ fn lower_typed_project_impl(
                     if !include_callables {
                         continue;
                     }
-                    let (node, endpoint) = lower_callable(
-                        callable,
-                        &module_name,
-                        CallableKind::Pattern,
-                        false,
-                        None,
-                    );
+                    let (node, endpoint) =
+                        lower_callable(callable, &module_name, CallableKind::Pattern, false, None);
                     register_endpoint(
                         &mut endpoints_by_full,
                         &mut endpoints_by_name,
@@ -4999,7 +5003,7 @@ fn resolve_pattern_return_expr(
             } else {
                 lower_warn(
                     "resolve_pattern_return_expr: non-ident base in field access — \
-                     return field unresolved"
+                     return field unresolved",
                 );
                 None
             }
@@ -5719,8 +5723,7 @@ fn is_noncanonical_dot_output_path(path: &str) -> bool {
         ch.is_whitespace()
             || matches!(
                 ch,
-                '='
-                    | '!'
+                '=' | '!'
                     | '<'
                     | '>'
                     | '('
@@ -6029,21 +6032,19 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
     let output_shape = if output_fields.is_empty() {
         None
     } else {
-        Some(
-            gunbc_ir::transport::middleware::OutputShapeExtraction {
-                fields: output_fields
-                    .iter()
-                    .map(|f| gunbc_ir::transport::middleware::OutputFieldExtraction {
-                        name: f.name.clone(),
-                        type_id: f.type_id.clone(),
-                        json_path: f.json_path.clone(),
-                        is_secret: f.is_secret,
-                        is_raw_body: f.is_raw_body,
-                        is_optional: f.is_optional,
-                    })
-                    .collect(),
-            },
-        )
+        Some(gunbc_ir::transport::middleware::OutputShapeExtraction {
+            fields: output_fields
+                .iter()
+                .map(|f| gunbc_ir::transport::middleware::OutputFieldExtraction {
+                    name: f.name.clone(),
+                    type_id: f.type_id.clone(),
+                    json_path: f.json_path.clone(),
+                    is_secret: f.is_secret,
+                    is_raw_body: f.is_raw_body,
+                    is_optional: f.is_optional,
+                })
+                .collect(),
+        })
     };
 
     Some(RestOperationSpec {
@@ -6614,11 +6615,10 @@ fn validate_provider_config_fields(
                     .map(|f| f.name.clone())
                     .collect(),
                 known_prefixes: {
-                            let mut v: Vec<String> =
-                                schemas.iter().map(|(p, _)| p.clone()).collect();
-                            v.sort();
-                            v
-                        },
+                    let mut v: Vec<String> = schemas.iter().map(|(p, _)| p.clone()).collect();
+                    v.sort();
+                    v
+                },
             });
         }
     }
@@ -8626,13 +8626,21 @@ fn item_callable_interactive_flag(item: &Item) -> Option<(&str, bool)> {
 fn item_callable_uses(item: &Item) -> Option<(&str, &[daglang_syntax::ast::UsesClause])> {
     let c = item.as_callable()?;
     let uses = c.uses_clauses();
-    if uses.is_empty() { None } else { Some((c.name(), uses)) }
+    if uses.is_empty() {
+        None
+    } else {
+        Some((c.name(), uses))
+    }
 }
 
 fn item_callable_provides(item: &Item) -> Option<(&str, &[daglang_syntax::ast::ProvidesClause])> {
     let c = item.as_callable()?;
     let provides = c.provides_clauses();
-    if provides.is_empty() { None } else { Some((c.name(), provides)) }
+    if provides.is_empty() {
+        None
+    } else {
+        Some((c.name(), provides))
+    }
 }
 
 fn is_internal_synthetic_call(name: &str) -> bool {
@@ -8801,10 +8809,7 @@ fn derive_collection_node_specs(callable_node_id: &str, stmts: &[Stmt]) -> Vec<C
         .into_iter()
         .enumerate()
         .map(|(index, site)| CollectionNodeSpec {
-            node_id: format!(
-                "{callable_node_id}::{}_{index}",
-                site.kind.node_label()
-            ),
+            node_id: format!("{callable_node_id}::{}_{index}", site.kind.node_label()),
             kind: site.kind,
         })
         .collect()
@@ -8815,7 +8820,6 @@ struct CollectionLoweringPlan {
     nodes: Vec<Node<LoweredOp>>,
     edges: Vec<(String, String, String, String)>,
 }
-
 
 fn build_collection_lowering_plan(
     module_name: &str,
@@ -9404,7 +9408,12 @@ fn resolve_return_expr_source(
                 Some((src, output_name.to_string()))
             } else {
                 synthesize_string_interpolate(
-                    builder, ctx, parts, output_port, output_name, disambiguator,
+                    builder,
+                    ctx,
+                    parts,
+                    output_port,
+                    output_name,
+                    disambiguator,
                 )
             }
         }
@@ -9423,7 +9432,12 @@ fn resolve_return_expr_source(
                 Some((src, output_name.to_string()))
             } else {
                 synthesize_list_construct(
-                    builder, ctx, elements, output_port, output_name, disambiguator,
+                    builder,
+                    ctx,
+                    elements,
+                    output_port,
+                    output_name,
+                    disambiguator,
                 )
             }
         }
@@ -9462,17 +9476,35 @@ fn resolve_return_expr_source(
                     disambiguator,
                 ),
                 _ => synthesize_expr_compute(
-                    builder, ctx, expr, output_port, output_name, disambiguator,
+                    builder,
+                    ctx,
+                    expr,
+                    output_port,
+                    output_name,
+                    disambiguator,
                 ),
             }
         }
         // C24-P1: Direct Match → MatchDispatch structural node.
         Expr::Match(scrutinee, arms) => synthesize_match_dispatch(
-            builder, ctx, scrutinee, arms, output_port, output_name, disambiguator,
+            builder,
+            ctx,
+            scrutinee,
+            arms,
+            output_port,
+            output_name,
+            disambiguator,
         ),
         // C24-P2: If/Else → Conditional structural node.
         Expr::If(cond, then_, else_) => synthesize_conditional(
-            builder, ctx, cond, then_, else_.as_deref(), output_port, output_name, disambiguator,
+            builder,
+            ctx,
+            cond,
+            then_,
+            else_.as_deref(),
+            output_port,
+            output_name,
+            disambiguator,
         ),
         // C24-P2: UnaryOp → UnaryOp structural node.
         Expr::UnaryOp(op, inner) => {
@@ -9497,31 +9529,55 @@ fn resolve_return_expr_source(
                     disambiguator,
                 ),
                 None => synthesize_expr_compute(
-                    builder, ctx, expr, output_port, output_name, disambiguator,
+                    builder,
+                    ctx,
+                    expr,
+                    output_port,
+                    output_name,
+                    disambiguator,
                 ),
             }
         }
         // C24-P2: Tagged variant record → VariantConstruct; plain record → RecordConstruct.
         Expr::Record(Some(tag), fields) if ctx.variant_names.contains(tag.as_str()) => {
             synthesize_variant_construct(
-                builder, ctx, tag, fields, output_port, output_name, disambiguator,
+                builder,
+                ctx,
+                tag,
+                fields,
+                output_port,
+                output_name,
+                disambiguator,
             )
         }
         Expr::Record(_, fields) => synthesize_record_construct(
-            builder, ctx, fields, output_port, output_name, disambiguator,
+            builder,
+            ctx,
+            fields,
+            output_port,
+            output_name,
+            disambiguator,
         ),
         // C24: Pipe/PipeCall → tagged evaluator (distinct from ExprCompute for tracking).
-        Expr::Pipe(..) | Expr::PipeCall(..) => {
-            synthesize_tagged_evaluator(
-                builder, ctx, expr, "pipe", output_port, output_name, disambiguator,
-            )
-        }
+        Expr::Pipe(..) | Expr::PipeCall(..) => synthesize_tagged_evaluator(
+            builder,
+            ctx,
+            expr,
+            "pipe",
+            output_port,
+            output_name,
+            disambiguator,
+        ),
         // C24: For expression → tagged evaluator.
-        Expr::For(..) => {
-            synthesize_tagged_evaluator(
-                builder, ctx, expr, "for", output_port, output_name, disambiguator,
-            )
-        }
+        Expr::For(..) => synthesize_tagged_evaluator(
+            builder,
+            ctx,
+            expr,
+            "for",
+            output_port,
+            output_name,
+            disambiguator,
+        ),
         // Handle remaining complex expressions by synthesizing a dedicated compute node.
         _ => synthesize_expr_compute(builder, ctx, expr, output_port, output_name, disambiguator),
     }
@@ -9759,7 +9815,6 @@ fn collect_expr_leaf_refs(
     }
 }
 
-
 /// C24: Synthesize a GetField node to extract a named field from a parameter.
 /// Replaces `ExprCompute` + `__` convention for simple `param.field` projections.
 fn synthesize_get_field(
@@ -9914,7 +9969,11 @@ fn synthesize_match_dispatch(
             expr::LeafRef::Param { ty, .. } => ty.as_str(),
             _ => "Any",
         };
-        input_ports.push(Port::with_cardinality(leaf.input_port.as_str(), ty, Cardinality::ONE));
+        input_ports.push(Port::with_cardinality(
+            leaf.input_port.as_str(),
+            ty,
+            Cardinality::ONE,
+        ));
     }
 
     let result_port_name = "result";
@@ -10335,10 +10394,7 @@ fn synthesize_record_construct(
     }
 
     if !all_resolved {
-        let whole_expr = Expr::Record(
-            None,
-            fields.to_vec(),
-        );
+        let whole_expr = Expr::Record(None, fields.to_vec());
         return synthesize_expr_compute(
             builder,
             ctx,
@@ -10419,7 +10475,12 @@ fn synthesize_list_construct(
             Some((node, port)) => elem_sources.push((port_name, node, port)),
             None => {
                 return synthesize_expr_compute(
-                    builder, ctx, &Expr::List(elements.to_vec()), output_port, output_name, disambiguator,
+                    builder,
+                    ctx,
+                    &Expr::List(elements.to_vec()),
+                    output_port,
+                    output_name,
+                    disambiguator,
                 );
             }
         }
@@ -10670,8 +10731,7 @@ fn build_evaluator_parts(
         for stmt in ctx.body_stmts {
             match stmt {
                 Stmt::Let(name, _) | Stmt::Assign(name, _) => {
-                    if ctx.local_let_bindings.contains_key(name)
-                        && !input_port_names.contains(name)
+                    if ctx.local_let_bindings.contains_key(name) && !input_port_names.contains(name)
                     {
                         fn_stmts.push(expr::lower_stmt_with_mode(
                             stmt,

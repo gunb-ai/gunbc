@@ -91,9 +91,7 @@ profile local {
   }
   bind ClaimStore -> extdeps.sdlc.providers.file_claim_store.file.ClaimStore
   bind OutcomeLedger -> extdeps.sdlc.providers.file_outcome_ledger.file.OutcomeLedger
-  bind AgentProvider -> extdeps.sdlc.providers.codex_agent_provider.codex.AgentProvider {
-    credential: env("CODEX_API_KEY")
-  }
+  bind AgentProvider -> extdeps.sdlc.providers.codex_agent_provider.codex.AgentProvider
   bind SignalStore -> extdeps.sdlc.providers.file_signal_store.file.SignalStore
   bind ArtifactStore -> extdeps.sdlc.providers.inline_artifact_store.file.ArtifactStore
   bind CredentialProvider -> extdeps.sdlc.providers.gcp_credential_provider.GcpWifCredentialProvider {
@@ -110,9 +108,7 @@ profile cloud_run {
   }
   bind ClaimStore -> extdeps.sdlc.providers.gcs_claim_store.gcs.ClaimStore
   bind OutcomeLedger -> extdeps.sdlc.providers.gcs_outcome_ledger.gcs.OutcomeLedger
-  bind AgentProvider -> extdeps.sdlc.providers.codex_agent_provider.codex.AgentProvider {
-    credential: secret("codex-api-key")
-  }
+  bind AgentProvider -> extdeps.sdlc.providers.codex_agent_provider.codex.AgentProvider
   bind SignalStore -> extdeps.sdlc.providers.pubsub_signal_store.pubsub.SignalStore {
     topic: "sdlc-signals",
     subscription: "sdlc-worker",

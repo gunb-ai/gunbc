@@ -1,8 +1,10 @@
-// profiles/gist.dag -- Deployment profiles for gist credential binding.
+// profiles/gist.dag -- Legacy gist profile surface retained for command/test wiring.
 //
-// Binds the CredentialProvider interface to concrete implementations:
-// - local/dev: LocalCredentialProvider (reads GITHUB_TOKEN from env)
-// - test/prod: GcpWifCredentialProvider (full GCP WIF chain for CI)
+// The active gist workflow currently resolves GitHub auth through
+// `shared.credentials` and does not directly consume `CredentialProvider`.
+// These bindings remain because some command/test paths still compile the gist
+// graph with a profile, and the broader profile-bound credential substrate is
+// still under repair.
 
 module profiles.gist
 

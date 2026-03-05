@@ -73,8 +73,8 @@ fn compile_makegen() -> (
         .or_else(|_| gunbc_ir::WorkspaceLayout::from_cargo_metadata())
         .expect("workspace layout for makegen DSL");
     let dsl_root = layout.workspace_root.join("dsl");
-    let output = compile_data_from_module(&dsl_root, "tools/makegen.dag")
-        .expect("makegen should compile");
+    let output =
+        compile_data_from_module(&dsl_root, "tools/makegen.dag").expect("makegen should compile");
 
     (output.fns, output.data_values)
 }
@@ -95,7 +95,10 @@ pub fn registry_tools_to_value(registry: &ToolRegistry) -> Value {
             // Tools with profiles default to the `*.local` profile for make targets.
             // Profile names are fully-qualified (e.g., "profiles.gist.local"), so we
             // find the one ending in ".local" and pass it as-is to --profile.
-            let local_profile = tool.available_profiles.iter().find(|p| p.ends_with(".local"));
+            let local_profile = tool
+                .available_profiles
+                .iter()
+                .find(|p| p.ends_with(".local"));
             let (command, dry_run_command) = if let Some(profile) = local_profile {
                 let cmd = format!("{} -- --profile {}", base_command, profile);
                 let dry_cmd = format!("{} -- --profile {} --dry-run strict", base_command, profile);

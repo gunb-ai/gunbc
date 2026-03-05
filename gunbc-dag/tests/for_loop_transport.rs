@@ -20,8 +20,8 @@ use gunbc_test::auto_mock_spec;
 
 #[test]
 fn gist_graph_has_read_text_files_node() {
-    let dag =
-        build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist"), None).expect("build gist graph");
+    let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist"), None)
+        .expect("build gist graph");
     let lowered = lower(&dag).expect("lower gist graph");
 
     // After consolidation, gist uses read_text_files pattern.
@@ -46,8 +46,8 @@ fn gist_graph_has_read_text_files_node() {
 
 #[test]
 fn gist_graph_has_gist_callable_node() {
-    let dag =
-        build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist"), None).expect("build gist graph");
+    let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist"), None)
+        .expect("build gist graph");
     let lowered = lower(&dag).expect("lower gist graph");
 
     // build_snapshot_content is an extern call inside tools.gist::gist, so it
@@ -77,8 +77,8 @@ fn gist_graph_has_gist_callable_node() {
 #[test]
 #[ignore] // Pre-existing: GetField on credential token fails in DryRun (gist pipeline)
 fn gist_snapshot_dry_run_completes() {
-    let dag =
-        build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist"), None).expect("build gist graph");
+    let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist"), None)
+        .expect("build gist graph");
 
     let spec = auto_mock_spec(&dag, "gist");
     let dry_run_mocks = spec.to_dry_run_mocks();

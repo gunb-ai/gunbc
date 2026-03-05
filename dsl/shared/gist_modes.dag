@@ -16,7 +16,7 @@ module shared.gist_modes
 
 import extdeps.git
 import extdeps.github.gists
-import extdeps.shell
+import shared.credentials { resolve_github_token }
 import std.resources { Network }
 import std.types { CommitSha, Url }
 
@@ -44,16 +44,12 @@ func resolve_recent_base(since: String = "3.days.ago") -> { base_ref: CommitSha,
 func gist_upload(markdown: String, branch: String, base_ref: CommitSha?, public: Bool = false) -> { url: Url }
   uses net: Network
 {
-  secret = shell.GCloud.SecretManagerAccessVersion(
-    project_id: "gunbai-secrets",
-    secret_name: "github-token"
-  )
-
+  token = resolve_github_token(allow_secret_manager_fallback: true)
   result = github.Gist.Create(
     description: branch,
     content: markdown,
     public: public,
-    auth_token: secret.secret_value
+    auth_token: token.token
   )
 
   return { url: result.html_url as Url }

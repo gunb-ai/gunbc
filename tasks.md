@@ -22,6 +22,14 @@ Source of truth: [`TODO/rolling-postmortem.md`](TODO/rolling-postmortem.md)
 1. **RR-1 (P0)**: Replace heuristic test-time confidence with measured runtime budget checks for `test-xs/s/m/l/xl` (maps to RC-P0-004).
 2. **RR-2 (P1)**: Split monolithic exhaustive tests into bounded shards or explicit integration-only flows; default loops should stay interactive (maps to RC-P1-005/006).
 
+### Cross-Cutting Auth Architecture
+
+Source of truth: [`TODO/rolling-postmortem.md`](TODO/rolling-postmortem.md)
+
+1. **AUTH-1 (P0)**: Define the final structural auth model. Services declare auth requirements semantically in their own models; workflows/tools never acquire tokens or call credential helpers directly.
+2. **AUTH-2 (P1)**: Add provider auth models under `dsl/extdeps/<provider>/auth.dag` starting with GitHub, so provider-specific concepts (PAT permissions, OAuth scopes, webhook secrets) sit on top of shared auth vocabulary instead of ad hoc helper logic.
+3. **AUTH-3 (P1)**: Finish lowerer/runtime auth injection so `AuthContext`/provider realization is real-mode safe for authenticated services, then delete interim `shared.credentials` workflow helper paths.
+
 ### Cross-Cutting `.dag` Migration
 
 Source of truth: [`TODO/gunbc-dag-simplification.md`](TODO/gunbc-dag-simplification.md)

@@ -14,7 +14,7 @@
 
 | ID | Observation / Hack | Evidence | Risk | Status |
 | --- | --- | --- | --- | --- |
-| RP-001 | `gist` auth path currently uses direct env + gcloud token lookup instead of profile-bound `CredentialProvider` path. | `dsl/tools/gist.dag` `resolve_github_token` uses `shell.Env.Get` and `shell.GCloud.SecretManagerAccessVersion`. | Profile selection is bypassed for gist auth path; policy drift risk across environments. | Open (intentional interim workaround) |
+| RP-001 | GitHub workflow callers still rely on a shared concrete credential helper instead of a modeled provider path. | `dsl/shared/credentials.dag` (`resolve_github_token`) and `dsl/tools/gist.dag` / `dsl/funcs/sdlc_worker.dag` call sites. | Profile selection is bypassed for GitHub auth and policy can still drift across environments. | Open (centralized interim workaround) |
 | RP-002 | Interface-implementing services without explicit operation transport lower to `InterfaceStub`. | `core/daglang/daglang-lower/src/lib.rs` (`None if service.implements.is_some() => InterfaceStub`). | Real mode can fail late with profile-stub execution error. | Open |
 | RP-003 | DryRun auto-mocks `InterfaceStub` execute while Real mode hard-fails. | `core/resolve/src/service_ops/service_ops_impl.rs` (`InterfaceStubExecuteOp`). | DryRun success can mask Real mode profile-binding regressions. | Open |
 | RP-004 | Some gist end-to-end tests are ignored due pre-existing DryRun field-access gap. | `gunbc-dag/tests/gist_recent_regressions.rs` and `gunbc-dag/tests/for_loop_transport.rs` have ignored gist e2e tests. | Confidence gap for real command path; regressions can slip through. | Open |
@@ -38,7 +38,7 @@ Canonical deep-dive docs:
 
 Lane status snapshot:
 
-1. Acute runtime workaround is active: gist auth resolves token through concrete env/gcloud path.
+1. Acute runtime workaround is active: GitHub auth resolves through a shared credential helper, but still uses concrete env/gcloud lookup.
 2. Confidence gap remains: profile-driven credential path and DryRun/Real equivalence are not fully enforced by tests.
 
 ### Lane: Test Runtime Governance
@@ -57,7 +57,7 @@ Lane status snapshot:
 
 ### P1 (modeling and coverage hardening)
 
-1. RC-P1-001: Replace gist interim token workaround with profile-driven `CredentialProvider` path once provider operation transport modeling is explicit and validated.
+1. RC-P1-001: Replace the shared GitHub credential helper with a modeled provider path once provider operation transport modeling is explicit and validated.
 2. RC-P1-002: Unignore or replace ignored gist e2e tests with deterministic contract tests.
 3. RC-P1-003: Expand testgen obligations for REST error status coverage and shell non-zero exit semantics.
 4. RC-P1-004: Add stale-path/fixture drift checks for key compile-command tests.

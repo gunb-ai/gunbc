@@ -381,7 +381,10 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerClassification> {
         } => return Some(HandlerClassification::Handler(HandlerKind::Passthrough)),
         // C24: All remaining structural primitive ops use passthrough stubs.
         LoweredOp::Primitive { kind, .. } => {
-            debug_assert!(kind.is_structural(), "unhandled non-structural primitive: {kind:?}");
+            debug_assert!(
+                kind.is_structural(),
+                "unhandled non-structural primitive: {kind:?}"
+            );
             return Some(HandlerClassification::Handler(HandlerKind::Passthrough));
         }
     }

@@ -8,10 +8,9 @@
 
 module tools.gist
 
-import extdeps.cloud.gcp.core { shell.GCloud }
 import extdeps.git
 import extdeps.github.gists
-import extdeps.shell { shell.Env }
+import shared.credentials { resolve_github_token }
 import std.resources { Filesystem, Network }
 import std.patterns { read_text_files }
 import std.types { CommitSha, Url }
@@ -20,21 +19,6 @@ import std.types { CommitSha, Url }
 
 fn render_diff_markdown(diff: String, branch: String, base_ref: CommitSha) -> String {
   "# Diff: {branch} vs {base_ref}\n\n```diff\n{diff}\n```\n"
-}
-
-// Effectful helper (must be `func`, not `fn`) because it invokes transport calls.
-func resolve_github_token() -> { token: Secret } {
-  env = shell.Env.Get(name: "GITHUB_TOKEN")
-  match env.value {
-    Some(token) => return { token: token }
-    None => {
-      secret = shell.GCloud.SecretManagerAccessVersion(
-        project_id: "gunbai-secrets",
-        secret_name: "github-token"
-      )
-      return { token: secret.secret_value }
-    }
-  }
 }
 
 // Recursive markdown assembly stays in Rust until recursive DSL modeling ships.
@@ -62,7 +46,7 @@ func gist(public: Bool = false) -> { url: Url }
     file_contents: result.files |> map(f => f.content),
     skipped: result.skipped
   )
-  token = resolve_github_token()
+  token = resolve_github_token(allow_secret_manager_fallback: true)
   gist_result = github.Gist.Create(
     description: branch_info.branch,
     content: content,
@@ -79,7 +63,7 @@ func gist_diff(base_ref: CommitSha = "HEAD~1", public: Bool = false) -> { url: U
   current = git.Core.CurrentBranch()
   changes = git.Core.Diff(base: base_ref)
   markdown = render_diff_markdown(diff: changes.diff, branch: current.branch, base_ref: base_ref)
-  token = resolve_github_token()
+  token = resolve_github_token(allow_secret_manager_fallback: true)
   result = github.Gist.Create(
     description: current.branch,
     content: markdown,
@@ -101,7 +85,7 @@ func gist_recent(since: String = "3.days.ago", public: Bool = false) -> { url: U
     branch: current.branch,
     base_ref: base.base_ref
   )
-  token = resolve_github_token()
+  token = resolve_github_token(allow_secret_manager_fallback: true)
   result = github.Gist.Create(
     description: current.branch,
     content: markdown,

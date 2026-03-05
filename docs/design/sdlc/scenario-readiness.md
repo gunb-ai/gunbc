@@ -37,8 +37,8 @@ What is still not continuously proven in CI:
 
 As of 2026-03-05, credentialing is not yet fully modeled end-to-end for SDLC:
 
-- `tools/gist.dag` currently resolves GitHub token via explicit env -> gcloud fallback logic.
-- `profiles.sdlc.local` still binds provider credentials through `env("GITHUB_TOKEN")` and `env("CODEX_API_KEY")`.
+- `tools/gist.dag` and `funcs/sdlc_worker.dag` share centralized DSL credential helpers in `dsl/shared/credentials.dag`, but that path is still a concrete helper path, not the final modeled provider path.
+- `profiles.sdlc.local` still binds GitHub provider auth through `env("GITHUB_TOKEN")`; Codex auth remains environment-inherited rather than flowing through `CredentialProvider`.
 - Profile `secret("...")` bindings lower to literal `secret:<name>` values on `res:credential`; transport execution does not resolve those refs through `CredentialProvider`.
 - `codex.AgentProvider` auth is effectively environment-inherited; profile `credential` binding is not the active auth path for its shell operations.
 
@@ -78,7 +78,7 @@ Profile:
 Required secrets/env (current state, transitional):
 
 - `GITHUB_TOKEN`
-- `CODEX_API_KEY`
+- `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` (matching `SDLC_LLM_PROVIDER`)
 - `SDLC_GITHUB_OWNER`
 - `SDLC_GITHUB_REPO`
 - `SDLC_TEST_ISSUE_NUMBER`

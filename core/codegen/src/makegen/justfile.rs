@@ -375,7 +375,8 @@ mod tests {
     use std::collections::BTreeSet;
 
     fn non_colliding_registry() -> ToolRegistry {
-        let mut registry = ToolRegistry::default_registry().expect("registry discovery should succeed");
+        let mut registry =
+            ToolRegistry::default_registry().expect("registry discovery should succeed");
         let build_targets = load_build_targets_data().expect("build target model should load");
 
         let mut reserved = BTreeSet::new();
@@ -394,7 +395,9 @@ mod tests {
         }
 
         registry.tools.retain(|tool| {
-            if reserved.contains(&tool.short_name) || reserved.contains(&format!("{}-dry", tool.short_name)) {
+            if reserved.contains(&tool.short_name)
+                || reserved.contains(&format!("{}-dry", tool.short_name))
+            {
                 return false;
             }
             !tool
@@ -453,7 +456,9 @@ mod tests {
                 .map(|dep| dep.to_string())
                 .collect::<BTreeSet<_>>();
             if graph.insert(target.to_string(), deps).is_some() {
-                return Err(format!("duplicate target name in rendered content: {target}"));
+                return Err(format!(
+                    "duplicate target name in rendered content: {target}"
+                ));
             }
         }
 

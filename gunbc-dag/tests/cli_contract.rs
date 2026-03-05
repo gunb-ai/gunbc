@@ -24,7 +24,8 @@ fn non_colliding_registry() -> ToolRegistry {
     }
 
     registry.tools.retain(|tool| {
-        if reserved.contains(&tool.short_name) || reserved.contains(&format!("{}-dry", tool.short_name))
+        if reserved.contains(&tool.short_name)
+            || reserved.contains(&format!("{}-dry", tool.short_name))
         {
             return false;
         }

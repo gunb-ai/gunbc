@@ -436,7 +436,10 @@ fn classify_primitive(
         // C24: All remaining structural primitive ops are interpreter-only
         // (resolved at runtime by resolve.rs). They must not reach the emitter.
         _ => {
-            debug_assert!(kind.is_structural(), "unhandled non-structural primitive: {kind:?}");
+            debug_assert!(
+                kind.is_structural(),
+                "unhandled non-structural primitive: {kind:?}"
+            );
             Err(ClassifyError::UnrecognizedOp {
                 node_id: name.to_string(),
                 detail: format!("{kind:?} is interpreter-only and cannot be emitted"),

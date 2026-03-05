@@ -518,9 +518,7 @@ pub fn compile_data_from_module(
 }
 
 /// Walk all modules in a typed project and extract pipeline definitions.
-fn extract_pipelines_from_typed(
-    typed: &TypedProject,
-) -> HashMap<String, Vec<PipelineStageInfo>> {
+fn extract_pipelines_from_typed(typed: &TypedProject) -> HashMap<String, Vec<PipelineStageInfo>> {
     let mut pipelines = HashMap::new();
     for module in &typed.modules {
         for item in &module.ast.items {
@@ -1956,9 +1954,11 @@ fn callable_scope_for_context(
 }
 
 fn module_has_callable_items(module: &ResolvedModule) -> bool {
-    module.ast.items.iter().any(|item| {
-        item.node.as_callable().is_some() || matches!(item.node, Item::PipelineDef(_))
-    })
+    module
+        .ast
+        .items
+        .iter()
+        .any(|item| item.node.as_callable().is_some() || matches!(item.node, Item::PipelineDef(_)))
 }
 
 /// Merge two sorted path lists into one sorted, deduplicated list.
@@ -2863,13 +2863,11 @@ fn run() -> Bool {
 
         let errors = validate_structural_primitive_input_wiring(&dag);
         assert!(
-            errors
-                .iter()
-                .any(|error| matches!(
-                    error,
-                    VerifyError::UnwiredInput(unwired)
-                        if unwired.node_id == "binary" && unwired.port_name == "right"
-                )),
+            errors.iter().any(|error| matches!(
+                error,
+                VerifyError::UnwiredInput(unwired)
+                    if unwired.node_id == "binary" && unwired.port_name == "right"
+            )),
             "expected unwired required input error for binary.right, got: {errors:?}"
         );
     }
@@ -2942,7 +2940,9 @@ fn run() -> Bool {
             "config/resources.dag should produce data values"
         );
         assert!(
-            module_output.data_values.contains_key("repo_source_input_globs"),
+            module_output
+                .data_values
+                .contains_key("repo_source_input_globs"),
             "config/resources.dag should declare `repo_source_input_globs`, got keys: {:?}",
             module_output.data_values.keys().collect::<Vec<_>>()
         );

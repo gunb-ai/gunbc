@@ -26,8 +26,8 @@ pub use daglang_contract::{
     TestObligations, TopologyNode,
 };
 use daglang_lower::{
-    classify_obligation, classify_service_transport, CallableKind, LoweredOp,
-    ObligationCategory, ServiceCallMetadata, ServiceTransportClass,
+    classify_obligation, classify_service_transport, CallableKind, LoweredOp, ObligationCategory,
+    ServiceCallMetadata, ServiceTransportClass,
 };
 use gunbc_ir::{detect_boundaries, detect_entrypoints, Dag, Node, NodeKind};
 
@@ -493,10 +493,7 @@ fn derive_node_labels(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, String> {
                     let callable_label = callable
                         .strip_prefix(&format!("{module}::"))
                         .unwrap_or(callable);
-                    format!(
-                        "{module}.{callable_label}::{}",
-                        kind.node_label()
-                    )
+                    format!("{module}.{callable_label}::{}", kind.node_label())
                 }
                 gunbc_ir::node::NodeBody::Opaque(LoweredOp::Pipeline { module, name, .. }) => {
                     format!("{module}.{name}")

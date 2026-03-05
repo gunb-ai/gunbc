@@ -2018,10 +2018,7 @@ mod tests {
             enable_step_mode: false,
             mock_spec_call: Some("mock()".into()),
             enable_mode: false,
-            available_profiles: vec![
-                "local".to_string(),
-                "unit_test".to_string(),
-            ],
+            available_profiles: vec!["local".to_string(), "unit_test".to_string()],
         };
         let entrypoints = vec![];
 
