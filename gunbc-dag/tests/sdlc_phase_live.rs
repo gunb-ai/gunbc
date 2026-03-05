@@ -13,7 +13,6 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const SDLC_LOCAL_PROFILE: &str = "profiles.sdlc.local";
-const SDLC_CLOUD_RUN_PROFILE: &str = "profiles.sdlc.cloud_run";
 
 fn should_run(name: &str, cost: FermiCost, requires: &[&str], secrets: &[&str]) -> bool {
     guard_test(name, TestClass::Integration, cost, requires, secrets)
@@ -520,29 +519,6 @@ fn s12_to_s15_local_pipeline_wiring_is_present() {
         assert!(
             has_prefix(&ids, prefix),
             "local profile graph should include phase 3 marker node `{prefix}`"
-        );
-    }
-}
-
-#[test]
-fn s16_to_s19_cloud_run_wiring_is_present() {
-    let dag = build_dsl_graph_with_profile("funcs/sdlc_worker.dag", SDLC_CLOUD_RUN_PROFILE)
-        .expect("cloud_run profile worker graph should compile");
-    let ids = node_ids(&dag);
-
-    let expected_prefixes = [
-        "execute_transport_extdeps_sdlc_providers_gcs_claim_store_gcs_ClaimStore_acquire",
-        "execute_transport_extdeps_sdlc_providers_gcs_outcome_ledger_gcs_OutcomeLedger_upsert",
-        "execute_transport_extdeps_sdlc_providers_gcs_artifact_store_gcs_ArtifactStore_store",
-        "execute_transport_extdeps_sdlc_providers_pubsub_signal_store_pubsub_SignalStore_emit",
-        "execute_transport_extdeps_sdlc_providers_pubsub_signal_store_pubsub_SignalStore_consume",
-        "execute_transport_extdeps_sdlc_providers_github_issue_provider_github_IssueProvider_discover",
-    ];
-
-    for prefix in &expected_prefixes {
-        assert!(
-            has_prefix(&ids, prefix),
-            "cloud_run profile graph should include phase 4 marker node `{prefix}`"
         );
     }
 }

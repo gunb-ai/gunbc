@@ -94,13 +94,6 @@ fn builds_sdlc_worker_local_profile_dsl_graph() {
 }
 
 #[test]
-fn builds_sdlc_worker_cloud_run_profile_dsl_graph() {
-    let dag = build_dsl_graph_with_profile("funcs/sdlc_worker.dag", "profiles.sdlc.cloud_run")
-        .expect("sdlc worker cloud_run profile graph should resolve");
-    assert!(!dag.nodes.is_empty());
-}
-
-#[test]
 fn sdlc_pipeline_unit_test_profile_resolves_stub_provider_nodes() {
     let dag = build_dsl_graph_with_profile("funcs/sdlc_worker.dag", "profiles.sdlc.unit_test")
         .expect("sdlc pipeline unit_test profile graph should resolve");

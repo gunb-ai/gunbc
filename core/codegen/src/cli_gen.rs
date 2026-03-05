@@ -2019,7 +2019,6 @@ mod tests {
             mock_spec_call: Some("mock()".into()),
             enable_mode: false,
             available_profiles: vec![
-                "cloud_run".to_string(),
                 "local".to_string(),
                 "unit_test".to_string(),
             ],
@@ -2038,10 +2037,6 @@ mod tests {
         assert!(
             code.contains("valid_profiles"),
             "should have profile validation"
-        );
-        assert!(
-            code.contains("\"cloud_run\""),
-            "should list cloud_run profile"
         );
         assert!(code.contains("\"local\""), "should list local profile");
         assert!(
