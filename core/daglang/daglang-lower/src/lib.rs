@@ -643,6 +643,79 @@ fn validate_callable_output_wiring(dag: &Dag<LoweredOp>) -> Result<(), LowerErro
     Ok(())
 }
 
+/// Validate that every required (min ≥ 1) input port on structural nodes has
+/// at least one incoming edge (CP-29).
+///
+/// This catches the `make gist` class of bugs — a content_upsert `expected_content`
+/// port with no source — at compile time instead of at execution time.
+///
+/// Exemptions (inputs that arrive from outside the DAG or at resolve time):
+/// - `param_source_*` and `CallParamSource`/`CallLiteralSource` nodes (boundary injection)
+/// - Internal ports (`__*`, `tool:*`, `res:*`)
+/// - Top-level `Callable` nodes with `ObligationCategory::None` (entrypoint inputs from CLI)
+pub fn validate_required_inputs(dag: &Dag<LoweredOp>) -> Vec<LowerError> {
+    // Build edge target index: (node_id, port_name) → has incoming edge.
+    let mut wired: HashSet<(&str, &str)> = HashSet::new();
+    for edge in &dag.edges {
+        wired.insert((edge.to_node.0.as_str(), edge.to_port.0.as_str()));
+    }
+
+    let mut errors = Vec::new();
+
+    for node in &dag.nodes {
+        let node_id = node.id.0.as_str();
+
+        // Skip boundary injection nodes — their values come from outside the DAG.
+        if node_id.starts_with("param_source_") {
+            continue;
+        }
+
+        // Skip top-level callable/entrypoint nodes and param source ops.
+        if let gunbc_ir::NodeBody::Opaque(op) = &node.body {
+            match op {
+                LoweredOp::Primitive {
+                    kind: PrimitiveOpKind::CallParamSource { .. } | PrimitiveOpKind::CallLiteralSource { .. },
+                    ..
+                } => {
+                    continue;
+                }
+                LoweredOp::Callable {
+                    obligation: ObligationCategory::None,
+                    ..
+                } => {
+                    // Top-level callable — inputs supplied by caller.
+                    continue;
+                }
+                _ => {}
+            }
+        }
+
+        for port in &node.inputs {
+            let port_name = port.name.0.as_str();
+
+            // Skip internal, tool, and resource ports.
+            if port.name.is_internal() || port.name.is_tool() || port.name.is_resource() {
+                continue;
+            }
+
+            // Skip optional ports (min == 0).
+            if port.cardinality.min == 0 {
+                continue;
+            }
+
+            // Required port with no incoming edge → error.
+            if !wired.contains(&(node_id, port_name)) {
+                errors.push(LowerError::UnwiredRequiredInput {
+                    node: node_id.to_string(),
+                    port: port_name.to_string(),
+                });
+            }
+        }
+    }
+
+    errors
+}
+
 /// Map lowered obligation categories to canonical parity-kind strings.
 ///
 /// Returns `None` for unconstrained callables; callers can fall back to
@@ -1815,6 +1888,12 @@ pub enum LowerError {
         name: String,
         missing_port: String,
     },
+    /// A required (scalar) input port has no incoming edge after lowering (CP-29).
+    /// Catches the `make gist` class of bugs at compile time.
+    UnwiredRequiredInput {
+        node: String,
+        port: String,
+    },
 }
 
 impl LowerError {
@@ -1845,6 +1924,7 @@ impl LowerError {
             Self::UnknownProviderPrefix { .. } => "LOW022",
             Self::UnknownProviderSchemaType { .. } => "LOW023",
             Self::MissingCallablePassthrough { .. } => "LOW024",
+            Self::UnwiredRequiredInput { .. } => "LOW025",
         }
     }
 
@@ -1869,6 +1949,9 @@ impl LowerError {
             Self::NoLowerableItems => Some(
                 "add fn, func, or pipeline definitions — data-only modules cannot be lowered".to_string()
             ),
+            Self::UnwiredRequiredInput { port, .. } => Some(format!(
+                "wire a data source to `{port}` or mark the port optional"
+            )),
             _ => None,
         }
     }
@@ -2016,6 +2099,10 @@ impl std::fmt::Display for LowerError {
                 f,
                 "callable node `{node}` (name: `{name}`) has fn_body: None and no `{missing_port}` \
                  input port — it will fail at resolve time"
+            ),
+            Self::UnwiredRequiredInput { node, port } => write!(
+                f,
+                "node `{node}` has unwired required input port `{port}`"
             ),
         }
     }

@@ -4013,3 +4013,86 @@ func run(s: String) -> { ok_val: String } {
         dag.nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn validate_required_inputs_catches_unwired_port() {
+    use gunbc_ir::{Dag, Node};
+
+    // Build a minimal DAG with one node that has a required input port
+    // and no incoming edge.
+    let mut dag: Dag<LoweredOp> = Dag::new();
+    dag.add_node(Node::opaque(
+        "test_node",
+        vec![
+            Port::scalar("expected_content", "String"),
+            Port::scalar("actual_content", "String"),
+        ],
+        vec![Port::scalar("matches", "Bool")],
+        LoweredOp::Primitive {
+            module: "test".to_string(),
+            name: "compare".to_string(),
+            kind: PrimitiveOpKind::CompareEquality,
+        },
+    ));
+
+    let errors = validate_required_inputs(&dag);
+    assert_eq!(errors.len(), 2, "both unwired required ports should be caught");
+    assert!(errors.iter().any(|e| matches!(e,
+        LowerError::UnwiredRequiredInput { node, port }
+        if node == "test_node" && port == "expected_content"
+    )));
+    assert!(errors.iter().any(|e| matches!(e,
+        LowerError::UnwiredRequiredInput { node, port }
+        if node == "test_node" && port == "actual_content"
+    )));
+}
+
+#[test]
+fn validate_required_inputs_skips_optional_and_internal_ports() {
+    use gunbc_ir::{Cardinality, Dag, Node};
+
+    let mut dag: Dag<LoweredOp> = Dag::new();
+    dag.add_node(Node::opaque(
+        "test_node",
+        vec![
+            Port::with_cardinality("optional_port", "String", Cardinality::ZERO_OR_ONE),
+            Port::scalar("__deps", "Unit"),
+            Port::scalar("tool:clippy", "ToolHandle"),
+            Port::scalar("res:file", "FileHandle"),
+        ],
+        vec![Port::scalar("result", "Bool")],
+        LoweredOp::Primitive {
+            module: "test".to_string(),
+            name: "compare".to_string(),
+            kind: PrimitiveOpKind::CompareEquality,
+        },
+    ));
+
+    let errors = validate_required_inputs(&dag);
+    assert!(errors.is_empty(), "optional and internal ports should be skipped: {:?}", errors);
+}
+
+#[test]
+fn validate_required_inputs_skips_callable_entrypoints() {
+    use gunbc_ir::{Dag, Node};
+
+    let mut dag: Dag<LoweredOp> = Dag::new();
+    dag.add_node(Node::opaque(
+        "tools.clippy::clippy_lint",
+        vec![Port::scalar("workspace", "String")],
+        vec![Port::scalar("clean", "Bool")],
+        LoweredOp::Callable {
+            module: "tools.clippy".to_string(),
+            kind: CallableKind::Func,
+            name: "clippy_lint".to_string(),
+            obligation: ObligationCategory::None,
+            service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
+            fn_body: None,
+        },
+    ));
+
+    let errors = validate_required_inputs(&dag);
+    assert!(errors.is_empty(), "callable entrypoints should be skipped: {:?}", errors);
+}

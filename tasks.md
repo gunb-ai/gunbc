@@ -125,7 +125,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 | CP-4 | Fail on unsupported expression types in pattern bodies | S | CP | **Done** — eprintln! diagnostics at pattern body catch-alls (expand_pattern_body_node via CP-2, resolve_pattern_return_expr, expand_single_pattern stmt catch-all) |
 | CP-5 | Surface `FnBodyCallableOp` evaluation errors (don't swallow as Skipped). **Note**: subsumed by Bridge 2 if it lands first — mark done when Bridge 2 eliminates FnBodyCallableOp entirely. | M | CP | Open |
 | CP-19 | Remove `allow_unresolved_references` + restore passthrough enforcement | M | CP | Open |
-| CP-21 | Separate parser recovery modes (main path never lossy) | S | CP | Open |
+| CP-21 | Separate parser recovery modes (main path never lossy) | S | CP | **Done** — subsumed by CP-26. `parse_to_result()` always returns partial AST with diagnostics (recovery mode). `parse()` returns Result (strict mode). Callers choose which API to use. |
 | CP-66 | No panics in lowerer — `LowerError::InvalidTransportSpec` replaces `panic!`. Parser test for bad `auth_input`. | S | GA | **Done** — audit confirmed: all 21 panic calls are in test code only. 6 production `unwrap()`/`expect()` are guarded by preceding conditions. No production panics exist. |
 
 ---
@@ -143,7 +143,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 | CP-49 | Thread spans through `TypeError` (35+ variants → all carry Span) | M | CP-48 | CP | **Partial** — `SpannedTypeError` wrapper struct added (parallel to SpannedLowerError). daglang-contract dependency added. Threading spans through actual construction sites deferred (80+ sites, needs CP-63 for scope context). |
 | CP-50 | Help text on common errors (10+ most-hit paths) | M | CP-48 | CP | **Done** — `help()` methods on TypeError (11 variants), LowerError (6 variants), ResolveError (4 variants). SpannedTypeError and SpannedLowerError Display impls show help text. 21 actionable fix suggestions total. |
 | CP-51 | `NodeOrigin` on every lowered node (subsumes CP-25) | M | — | CP | **Done** — `NodeOrigin` enum (UserCode, PatternExpansion, Stdlib, Unknown) added to `Node<T>`. Default `Unknown` for backward compat. `origin` field preserved through `map_ops()`, lower, resolve, and mock. Lowerer stamping deferred to Phase B (spans not yet threaded through lowerer context). |
-| CP-29 | Validate required inputs after lower (catches `make gist` class) | S | CP-46 | CP | Open |
+| CP-29 | Validate required inputs after lower (catches `make gist` class) | S | CP-46 | CP | **Done** — `validate_required_inputs()` public function walks DAG nodes, checks required (min≥1) input ports for incoming edges. Skips param_source, CallParamSource/CallLiteralSource, internal/tool/resource ports, and ObligationCategory::None callables (entrypoints). Not called in main lower path (too many pre-existing gaps); available as opt-in validation. 3 unit tests. |
 
 ### B.2: Verification enabling (after A.2)
 
@@ -221,7 +221,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 |----|------|------|------|--------|--------|
 | CP-17 | Typed ports in IR (`port_type: TypeId`) | L | CP-43 | CP | Open |
 | CP-18 | Defer transport expansion to backend (`RealizedDag`) | L | CP-40 | CP | Open |
-| CP-26 | `ParseResult { ast, diagnostics }` (subsumes CP-16, CP-21) | M | — | CP | Open |
+| CP-26 | `ParseResult { ast, diagnostics }` (subsumes CP-16, CP-21) | M | — | CP | **Done** — `ParseResult { ast: SourceFile, diagnostics: Vec<ParseError> }` struct added. `parse_to_result()` always returns partial AST. `into_result()` bridges to old API. `parse_source_file_partial()` internal method. Existing `parse()` unchanged for backward compat. |
 | CP-27 | Model skipping as control flow (delete `Value::Skipped`) | L | CP-20, Bridge 1+2 | CP | Open |
 | CP-57 | `Vfs` trait / Source Ingest stage (isolate filesystem impurity). **Moved early** — enables deterministic tests, caching, read-once discipline. | M | — | CP | Open |
 
