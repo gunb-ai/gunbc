@@ -139,9 +139,9 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 
 | ID | What | Size | Deps | Source | Status |
 |----|------|------|------|--------|--------|
-| CP-46 | Structured `LowerError` enum with spans (subsumes CP-14) | M | CP-48 | CP | Open |
-| CP-49 | Thread spans through `TypeError` (35+ variants → all carry Span) | M | CP-48 | CP | Open |
-| CP-50 | Help text on common errors (10+ most-hit paths) | M | CP-48 | CP | Open |
+| CP-46 | Structured `LowerError` enum with spans (subsumes CP-14) | M | CP-48 | CP | **Partial** — `SpannedLowerError` wrapper struct added with file/span/module/item fields, builder methods (`at`, `with_span`, `with_location`), Display impl with location prefix. Threading span info through actual error construction sites deferred to CP-63 (scope.rs integration). |
+| CP-49 | Thread spans through `TypeError` (35+ variants → all carry Span) | M | CP-48 | CP | **Partial** — `SpannedTypeError` wrapper struct added (parallel to SpannedLowerError). daglang-contract dependency added. Threading spans through actual construction sites deferred (80+ sites, needs CP-63 for scope context). |
+| CP-50 | Help text on common errors (10+ most-hit paths) | M | CP-48 | CP | **Done** — `help()` methods on TypeError (11 variants), LowerError (6 variants), ResolveError (4 variants). SpannedTypeError and SpannedLowerError Display impls show help text. 21 actionable fix suggestions total. |
 | CP-51 | `NodeOrigin` on every lowered node (subsumes CP-25) | M | — | CP | **Done** — `NodeOrigin` enum (UserCode, PatternExpansion, Stdlib, Unknown) added to `Node<T>`. Default `Unknown` for backward compat. `origin` field preserved through `map_ops()`, lower, resolve, and mock. Lowerer stamping deferred to Phase B (spans not yet threaded through lowerer context). |
 | CP-29 | Validate required inputs after lower (catches `make gist` class) | S | CP-46 | CP | Open |
 
@@ -170,7 +170,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 
 | ID | What | Size | Deps | Source | Status |
 |----|------|------|------|--------|--------|
-| CP-62 | `LoweringContext` struct — group 8-11 params. Delete 18 `#[allow(clippy::too_many_arguments)]`. | L | — | GA | Open |
+| CP-62 | `LoweringContext` struct — group 8-11 params. Delete 18 `#[allow(clippy::too_many_arguments)]`. | L | — | GA | **Done** — `LoweringContext` struct (14 fields) already existed. Added `SynthesizeTarget` and `ResolvedRef` structs for common trailing params. All 5 remaining `#[allow(clippy::too_many_arguments)]` eliminated. Total 18→0. |
 | CP-63 | Integrate `scope.rs` — wire callers, delete `IfBranchSite`. (615 lines exist, partially wired) | M | CP-62 | GA | Open |
 | CP-64 | Extract transport derivation — `transport.rs` returning `TransportManifest`. Invariant: every service call → exactly one triplet. | M | CP-62 | GA | Open |
 | CP-65 | Dead AST scaffolding cleanup — delete `MockResponseDef` (before RT-1 re-adds it properly), `@retry` rejection, `hermetic` warning. | S | — | GA | **Done** — MockResponseDef deleted, @retry rejected by parser (C8 in archive) |
