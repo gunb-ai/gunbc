@@ -2459,8 +2459,6 @@ impl Parser {
         let mut tier = None;
         let mut hermetic = false;
         let mut skip = false;
-        let auto_mock = false;
-        let mock_helpers = None;
 
         // Parse typed test metadata keywords before mock/input/expect
         loop {
@@ -2516,8 +2514,6 @@ impl Parser {
             tier,
             hermetic,
             skip,
-            auto_mock,
-            mock_helpers,
         })
     }
 

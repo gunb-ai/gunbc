@@ -484,8 +484,6 @@ pub mod ast {
         pub tier: Option<String>,
         pub hermetic: bool,
         pub skip: bool,
-        pub auto_mock: bool,
-        pub mock_helpers: Option<String>,
     }
 
     /// A mock declaration: `mock <node_path>.<port> -> <value>`.
