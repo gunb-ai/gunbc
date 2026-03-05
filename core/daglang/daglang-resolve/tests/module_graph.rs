@@ -315,7 +315,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("tools.deps_config".into(), 1),
         ("tools.design".into(), 2),
         ("tools.docgen".into(), 4),
-        ("tools.gist".into(), 6),
+        ("tools.gist".into(), 7),
         ("tools.infra".into(), 0),
         ("tools.justgen".into(), 3),
         ("tools.makegen".into(), 3),

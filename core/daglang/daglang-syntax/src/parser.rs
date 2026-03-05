@@ -842,8 +842,10 @@ impl Parser {
                                 "headers" => {
                                     headers = Some(self.parse_expr(0)?);
                                 }
-                                _ => {
-                                    self.advance();
+                                other => {
+                                    return Err(self.err(format!(
+                                        "unknown REST transport field `{other}`: expected `method`, `path`, `body`, or `headers`"
+                                    )));
                                 }
                             }
                         }
@@ -872,8 +874,10 @@ impl Parser {
                                 }
                                 self.expect(&TokenKind::RBracket)?;
                             }
-                        } else {
-                            self.advance();
+                        } else if field_name != "argv" {
+                            return Err(self.err(format!(
+                                "unknown shell transport field `{field_name}`: expected `argv`"
+                            )));
                         }
                     } else {
                         self.advance();
@@ -901,8 +905,10 @@ impl Parser {
                                         fpath = self.expect_ident()?;
                                     }
                                 }
-                                _ => {
-                                    self.advance();
+                                other => {
+                                    return Err(self.err(format!(
+                                        "unknown file transport field `{other}`: expected `op` or `path`"
+                                    )));
                                 }
                             }
                         }
@@ -913,10 +919,14 @@ impl Parser {
                 }
                 TransportBinding::File { op, path: fpath }
             }
-            _ => {
-                // Unknown transport kind — consume block and treat as Local
+            "local" => {
                 self.consume_brace_block_contents()?;
                 return Ok(TransportBinding::Local);
+            }
+            other => {
+                return Err(self.err(format!(
+                    "unknown transport type `{other}`: expected `rest`, `shell`, `file`, or `local`"
+                )));
             }
         };
         self.expect(&TokenKind::RBrace)?;
@@ -1957,8 +1967,19 @@ impl Parser {
                     response = self.parse_response_block()?;
                 } else if self.check(&TokenKind::Exit) {
                     exit = self.parse_exit_block()?;
+                } else if self.eat(&TokenKind::Uses) {
+                    // Consume `uses` clause — resource requirements are structurally
+                    // derived from the operation's transport, not stored in the AST.
+                    let _uses = self.parse_uses_clause()?;
+                } else if self.eat(&TokenKind::Provides) {
+                    let _provides = self.parse_provides_clause()?;
+                } else if self.check(&TokenKind::RBrace) {
+                    break;
                 } else {
-                    self.advance();
+                    let tok_desc = format!("{:?}", self.peek().kind);
+                    return Err(self.err(format!(
+                        "unexpected token in operation body: {tok_desc}"
+                    )));
                 }
             }
             self.expect(&TokenKind::RBrace)?;

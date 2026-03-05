@@ -286,9 +286,10 @@ struct CallParamSourceOp {
 impl Executable for CallParamSourceOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         // Value arrives via set_input() from boundary injection.
+        // No fallback to arbitrary inputs — if the named param isn't found,
+        // use Value::Skipped so downstream nodes can detect the gap.
         let value = inputs
             .get(&self.param)
-            .or_else(|| inputs.values().next())
             .cloned()
             .unwrap_or(Value::Skipped);
         Ok(HashMap::from([(self.output_port.clone(), value)]))

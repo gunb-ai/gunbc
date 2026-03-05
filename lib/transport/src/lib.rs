@@ -46,7 +46,6 @@ pub mod retry;
 pub mod transport_types;
 
 pub mod ops;
-pub mod preflight;
 pub mod resource_io;
 pub mod test_backend;
 

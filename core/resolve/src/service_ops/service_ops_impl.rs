@@ -1293,7 +1293,7 @@ impl Executable for GenericLocalParseOp {
                         Some(serde_json::Value::String(s)) => out.str(&field.name, s.clone()),
                         Some(serde_json::Value::Bool(b)) => out.bool(&field.name, *b),
                         Some(other) => out.str(&field.name, other.to_string()),
-                        None => out.str(&field.name, String::new()),
+                        None => out.value(&field.name, Value::Unit),
                     };
                 }
                 out.ok()
@@ -1301,7 +1301,11 @@ impl Executable for GenericLocalParseOp {
             // Backward compat: accept Shell responses from the old echo-based carrier.
             Some(Value::Response(TransportResponse::Shell(shell))) => {
                 let parsed: serde_json::Value =
-                    serde_json::from_str(shell.stdout.trim()).unwrap_or_default();
+                    serde_json::from_str(shell.stdout.trim()).map_err(|e| {
+                        ExecError::new(format!(
+                            "GenericLocalParse: failed to parse shell stdout as JSON: {e}"
+                        ))
+                    })?;
                 let mut out = OutputMap::new();
                 for field in &self.spec.output_fields {
                     let val = parsed.get(&field.name);
@@ -1309,7 +1313,7 @@ impl Executable for GenericLocalParseOp {
                         Some(serde_json::Value::String(s)) => out.str(&field.name, s.clone()),
                         Some(serde_json::Value::Bool(b)) => out.bool(&field.name, *b),
                         Some(other) => out.str(&field.name, other.to_string()),
-                        None => out.str(&field.name, String::new()),
+                        None => out.value(&field.name, Value::Unit),
                     };
                 }
                 out.ok()
