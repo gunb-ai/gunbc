@@ -142,7 +142,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 | CP-46 | Structured `LowerError` enum with spans (subsumes CP-14) | M | CP-48 | CP | Open |
 | CP-49 | Thread spans through `TypeError` (35+ variants → all carry Span) | M | CP-48 | CP | Open |
 | CP-50 | Help text on common errors (10+ most-hit paths) | M | CP-48 | CP | Open |
-| CP-51 | `NodeOrigin` on every lowered node (subsumes CP-25) | M | — | CP | Open |
+| CP-51 | `NodeOrigin` on every lowered node (subsumes CP-25) | M | — | CP | **Done** — `NodeOrigin` enum (UserCode, PatternExpansion, Stdlib, Unknown) added to `Node<T>`. Default `Unknown` for backward compat. `origin` field preserved through `map_ops()`, lower, resolve, and mock. Lowerer stamping deferred to Phase B (spans not yet threaded through lowerer context). |
 | CP-29 | Validate required inputs after lower (catches `make gist` class) | S | CP-46 | CP | Open |
 
 ### B.2: Verification enabling (after A.2)
@@ -150,7 +150,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 | ID | What | Size | Deps | Source | Status |
 |----|------|------|------|--------|--------|
 | CP-6 | Wire `param_source` nodes to caller scope | M | CP-2,3 | CP | Open |
-| CP-7 | Wire default argument literal nodes | M | — | CP | Open |
+| CP-7 | Wire default argument literal nodes | M | — | CP | **Done** — `collect_callable_param_defaults()` gathers defaults from all callable params across modules. `wire_fn_call_arguments()` (line 9304) injects `ensure_literal_source_node` for omitted call args via `expr_to_json_literal`. Already fully implemented. |
 | CP-30 | Emit transport resource ports (`res:file`) during lower | M | — | CP | Open |
 
 ### B.3: Verification gate (after B.2)
@@ -162,7 +162,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 | CP-41 | Merge `validate_structural_primitive_wiring()` into `verify()` | S | CP-23 | CP | Open |
 | CP-42 | `Dag<T>.map_bodies()` for topology preservation | S | — | CP | **Done** — already exists as `Dag<T>::map_ops()` (dag.rs:85). Maps opaque bodies T→U, recurses into SubDags, preserves all node metadata + edges. |
 | CP-24 | Resolution topology invariant (assert same node/edge counts) | S | CP-42 | CP | **Done** — `debug_assert!` in `resolve_lowered_dag_with()` verifies non-pipeline node count preserved and edge count only grows (resource edges added). Accounts for pipeline node filtering. |
-| CP-15 | Implement `DryRunStrictness` | M | CP-37 | CP | Open |
+| CP-15 | Implement `DryRunStrictness` | M | CP-37 | CP | **Done** — `DryRunStrictness` enum wired into `ExecuteConfig.strictness` field (not `ExecutionMode` variant — avoids massive ripple). `ExecutionMode::is_intercepting()` method added. Phase 2 (Strict behavior: poison values, fail-fast) deferred to CP-27 (model skipping as control flow). |
 
 ### B.4: Lowerer restructuring (after B.2, parallel with B.3)
 
@@ -348,7 +348,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 
 | ID | What | Size | Deps | Status |
 |----|------|------|------|--------|
-| CP-52 | Preserve service provider metadata on lowered nodes | M | — | Open |
+| CP-52 | Preserve service provider metadata on lowered nodes | M | — | **Done** — Added `OperationKey::provider()` method (extracts first segment of service path). Auto-mock now uses `resolve_mock_provider()` which reads `node.operation_key` metadata instead of fragile `infer_provider_from_node_id()` string heuristic. Legacy fallback retained for non-service nodes. |
 | CP-53 | Flow response contracts through IR to testgen | L | CP-18 beneficial | Open |
 | CP-54 | Derive behavioral properties once, flow to testgen | S | — | **Done** — Lowerer stamps `ServiceCallMetadata { idempotent, readonly }` once per transport node. Derive pass BFS-aggregates per callable into `CallableProperties`. Testgen/fidelity reads pre-aggregated `CallableProperties` from `DerivedArtifacts`. No re-derivation exists. |
 | CP-55 | Obligation provenance tracking (`CompilerGap` ratchet metric) | M | — | Open |

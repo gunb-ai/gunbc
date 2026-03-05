@@ -87,7 +87,41 @@ fn default_file_response() -> Value {
     }))
 }
 
-/// Infer the mock provider from a node ID (e.g., "github.Gist.Create/execute").
+/// Resolve MockProvider from a node's OperationKey metadata.
+///
+/// Uses the typed `OperationKey` instead of parsing node ID strings.
+/// Falls back to node ID heuristic only when no operation_key is present
+/// (e.g., nodes not stamped by the lowerer).
+fn resolve_mock_provider<T>(dag: &Dag<T>, node_id: &str) -> MockProvider {
+    if let Some(node) = dag.get_node(&NodeId::from(node_id)) {
+        if let Some(op_key) = &node.operation_key {
+            return operation_key_to_mock_provider(op_key);
+        }
+    }
+    // Fallback for nodes without operation_key (legacy or non-service nodes).
+    infer_provider_from_node_id(node_id)
+}
+
+/// Resolve MockProvider from an OperationKey's full service path.
+///
+/// Handles LLM sub-providers: "llm.Anthropic" → Anthropic, "llm.OpenAI" → OpenAi.
+fn operation_key_to_mock_provider(op_key: &gunbc_ir::OperationKey) -> MockProvider {
+    let service_lower = op_key.service.to_lowercase();
+    if service_lower.starts_with("github") {
+        MockProvider::GitHub
+    } else if service_lower.starts_with("gcp") {
+        MockProvider::Gcp
+    } else if service_lower.contains("anthropic") {
+        MockProvider::Anthropic
+    } else if service_lower.contains("openai") {
+        MockProvider::OpenAi
+    } else {
+        MockProvider::Generic
+    }
+}
+
+/// Legacy fallback: infer the mock provider from a node ID string.
+/// Only used when no OperationKey metadata is available on the node.
 fn infer_provider_from_node_id(node_id: &str) -> MockProvider {
     let lower = node_id.to_lowercase();
     if lower.starts_with("github.") || lower.contains("/github.") || lower.contains("gist") {
@@ -168,8 +202,8 @@ fn default_value_for_slot<T: Executable + Clone + Send>(
         return default_value_for_port(type_id, cardinality);
     }
 
-    // Try provider-specific REST response first (based on node ID patterns).
-    let provider = infer_provider_from_node_id(node_id);
+    // Try provider-specific REST response first (using OperationKey metadata).
+    let provider = resolve_mock_provider(dag, node_id);
     let provider_rest = rest_response_for_provider(provider);
     if response_candidate_satisfies_consumers(dag, node_id, port_name, &provider_rest) {
         return provider_rest;
@@ -484,8 +518,8 @@ fn probe_best_response<T: Executable + Clone + Send>(
     node_id: &str,
     partial_example: &NodeExample,
 ) -> Value {
-    // Try provider-specific REST response first.
-    let provider = infer_provider_from_node_id(node_id);
+    // Try provider-specific REST response first (using OperationKey metadata).
+    let provider = resolve_mock_provider(dag, node_id);
     let provider_rest = rest_response_for_provider(provider);
     {
         let mut inputs = partial_example.inputs.clone();

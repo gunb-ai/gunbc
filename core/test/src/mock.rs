@@ -173,6 +173,7 @@ impl<'a, T> ScriptedDagBuilder<'a, T> {
                 operation_key: node.operation_key.clone(),
                 transport_class: node.transport_class,
                 static_fingerprint: None,
+                origin: node.origin.clone(),
             });
         }
 

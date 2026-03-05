@@ -141,7 +141,9 @@ pub use layout::{
 };
 pub use log_detail::LogDetailLevel;
 pub use makefile_render::MakefileStructuredRenderer;
-pub use node::{Node, NodeBody, NodeIoExample, NodeKind, ServiceTransportClass, SubDagKind};
+pub use node::{
+    Node, NodeBody, NodeIoExample, NodeKind, NodeOrigin, ServiceTransportClass, SubDagKind,
+};
 pub use patterns::{
     canonical_authenticate_chain,
     content_upsert::{add_content_upsert_chain, ContentUpsertChain},

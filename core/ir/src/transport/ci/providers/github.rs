@@ -278,6 +278,7 @@ fn render_github_step(step: &SharedStep, _config: &RenderConfig) -> String {
 mod tests {
     use super::*;
     use crate::cargo::CargoInvocation;
+    use crate::node::NodeOrigin;
     use crate::transport::ci::command::FileLocation;
 
     #[test]
@@ -357,6 +358,7 @@ mod tests {
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: NodeOrigin::default(),
         });
         dag.add_node(Node {
             id: "test".into(),
@@ -369,6 +371,7 @@ mod tests {
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: NodeOrigin::default(),
         });
         dag.add_edge(edge("build", "success", "test", "build_success"));
 

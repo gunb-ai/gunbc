@@ -1137,6 +1137,7 @@ pub fn resolve_lowered_dag_with(
             operation_key: node.operation_key.clone(),
             transport_class: node.transport_class,
             static_fingerprint: None,
+            origin: node.origin.clone(),
         };
         normalize_release_resource_inputs(&mut resolved_node);
         if let Some(mode) = needs_transport_resource(node, &resolved_node) {

@@ -460,6 +460,7 @@ mod tests {
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: crate::node::NodeOrigin::default(),
         });
         dag.add_node(Node {
             id: "test".into(),
@@ -472,6 +473,7 @@ mod tests {
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: crate::node::NodeOrigin::default(),
         });
         dag.add_edge(edge("build", "success", "test", "build_success"));
 

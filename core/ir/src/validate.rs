@@ -697,7 +697,7 @@ pub fn verify_dag<T>(dag: &Dag<T>) -> Vec<VerifyError> {
 mod tests {
     use super::*;
     use crate::dag::{build::*, Dag, Edge};
-    use crate::node::{NodeKind, SubDagKind};
+    use crate::node::{NodeKind, NodeOrigin, SubDagKind};
     use crate::types::{Cardinality, InputProvenance, OperationKey};
 
     #[test]
@@ -764,6 +764,7 @@ mod tests {
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: NodeOrigin::default(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -800,6 +801,7 @@ mod tests {
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: NodeOrigin::default(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -836,6 +838,7 @@ mod tests {
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: NodeOrigin::default(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -874,6 +877,7 @@ mod tests {
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: NodeOrigin::default(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -913,6 +917,7 @@ mod tests {
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: NodeOrigin::default(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -1030,6 +1035,7 @@ mod tests {
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: NodeOrigin::default(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -1079,6 +1085,7 @@ mod tests {
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: NodeOrigin::default(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -1115,6 +1122,7 @@ mod tests {
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: NodeOrigin::default(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -1158,6 +1166,7 @@ mod tests {
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: NodeOrigin::default(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -1508,6 +1517,7 @@ mod tests {
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: NodeOrigin::default(),
         };
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(bad_node);

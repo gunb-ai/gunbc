@@ -69,11 +69,9 @@ pub enum ExecutionMode {
 }
 
 impl ExecutionMode {
-    /// Create a dry-run mode with the given mocks and strictness.
-    pub fn dry_run_with_strictness(mocks: BoundaryMocks, _strictness: DryRunStrictness) -> Self {
-        // Phase 1: strictness stored but behavior unchanged (always lenient).
-        // Phase 2+3 will wire strictness into mock generation and poison values.
-        ExecutionMode::DryRun(mocks)
+    /// Returns true if this is a dry-run or simulate mode (not real execution).
+    pub fn is_intercepting(&self) -> bool {
+        matches!(self, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_))
     }
 }
 
@@ -274,6 +272,10 @@ pub struct ExecuteConfig<'a> {
     pub observer: Option<&'a mut dyn ProgressObserver>,
     /// Execution log detail level. Default: IncludeInputs.
     pub log_detail: LogDetailLevel,
+    /// Dry-run strictness (CP-15). In Lenient mode (default), missing
+    /// resource/env inputs get default mocks. In Strict mode, missing inputs
+    /// produce diagnostic warnings.
+    pub strictness: DryRunStrictness,
 }
 
 impl Default for ExecuteConfig<'_> {
@@ -283,6 +285,7 @@ impl Default for ExecuteConfig<'_> {
             input_mocks: None,
             observer: None,
             log_detail: LogDetailLevel::IncludeInputs,
+            strictness: DryRunStrictness::default(),
         }
     }
 }
@@ -448,6 +451,7 @@ pub fn execute_with_progress_and_mode_and_inputs_and_detail<T: Executable + Clon
             observer: Some(observer),
             input_mocks,
             log_detail,
+            ..Default::default()
         },
     )
 }

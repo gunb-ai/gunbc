@@ -543,6 +543,14 @@ impl OperationKey {
             operation: operation.into(),
         }
     }
+
+    /// Extract the provider prefix from the service path.
+    ///
+    /// For "github.Gist" returns "github", for "gcp.SecretManager" returns "gcp".
+    /// Returns the full service string if no dot separator exists.
+    pub fn provider(&self) -> &str {
+        self.service.split('.').next().unwrap_or(&self.service)
+    }
 }
 
 impl fmt::Display for OperationKey {
