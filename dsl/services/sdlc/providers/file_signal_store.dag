@@ -38,12 +38,14 @@ service file.SignalStore : SignalStore {
   operation consume {
     input { signal_types: List<SignalType>, limit: Int? }
     output { signals: List<Signal> }
+    readonly
     transport file { op: READ, path: "\{dir\}/signals/" }
   }
 
   operation ack {
     input { idempotency_key: NonEmptyStr }
     output { acked: Bool }
+    idempotent
     transport file { op: DELETE, path: "\{dir\}/signals/\{idempotency_key\}.json" }
   }
 }

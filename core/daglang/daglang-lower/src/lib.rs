@@ -49,12 +49,7 @@ pub(crate) mod scope;
 pub mod spec;
 pub(crate) mod transport;
 
-/// Emit a lowerer diagnostic to stderr when DAGLANG_LOWER_WARNINGS=1.
-fn lower_warn(msg: &str) {
-    if std::env::var("DAGLANG_LOWER_WARNINGS").as_deref() == Ok("1") {
-        eprintln!("daglang-lower: {msg}");
-    }
-}
+// lower_warn deleted (CP-2): pattern expansion failures are now LowerError variants.
 
 pub use spec::{
     check_response_completeness, ArgvSegment, AuthRequirement, BodyEntry, ExitCodePattern,
@@ -424,7 +419,7 @@ pub fn classify_obligation(op: &LoweredOp) -> ObligationCategory {
 pub fn obligation_to_node_kind(node: &Node<LoweredOp>) -> NodeKind {
     let cat = match &node.body {
         gunbc_ir::NodeBody::Opaque(op) => op.obligation_category(),
-        gunbc_ir::NodeBody::SubDag(_) => ObligationCategory::None,
+        gunbc_ir::NodeBody::SubDag(..) => ObligationCategory::None,
     };
 
     // ToolConsumer: any node that consumes a ToolHandle input, unless it's
@@ -467,7 +462,7 @@ pub fn stamp_node_kinds(dag: &mut Dag<LoweredOp>) {
                 node.transport_class = Some(meta.transport);
             }
         }
-        if let gunbc_ir::NodeBody::SubDag(ref mut inner) = node.body {
+        if let gunbc_ir::NodeBody::SubDag(ref mut inner, _) = node.body {
             stamp_node_kinds(inner);
         }
     }
@@ -686,7 +681,7 @@ pub fn topology_with_obligation_kinds(dag: &Dag<LoweredOp>) -> DagTopology {
         gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive { kind, .. }) => {
             canonical_kind_for_obligation(kind.obligation_category()).map(str::to_string)
         }
-        gunbc_ir::node::NodeBody::Opaque(_) | gunbc_ir::node::NodeBody::SubDag(_) => None,
+        gunbc_ir::node::NodeBody::Opaque(_) | gunbc_ir::node::NodeBody::SubDag(..) => None,
     })
 }
 
@@ -1802,6 +1797,38 @@ pub enum LowerError {
     },
 }
 
+impl LowerError {
+    /// Stable, grep-able error code for this variant (CP-59).
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::UnknownPattern(..) => "LOW001",
+            Self::MissingTransport { .. } => "LOW002",
+            Self::InvalidAcquireBlock { .. } => "LOW003",
+            Self::UnresolvedInterface { .. } => "LOW004",
+            Self::UnresolvedServiceCall { .. } => "LOW005",
+            Self::UnresolvedUsedResource { .. } => "LOW006",
+            Self::AmbiguousUsedResource { .. } => "LOW007",
+            Self::UnresolvedProvidedResource { .. } => "LOW008",
+            Self::AmbiguousProvidedResource { .. } => "LOW009",
+            Self::UnknownProfile { .. } => "LOW010",
+            Self::AmbiguousProfile { .. } => "LOW011",
+            Self::InvalidProfileBinding { .. } => "LOW012",
+            Self::ProfileRequiredForBoundServiceCall { .. } => "LOW013",
+            Self::MissingProfileBinding { .. } => "LOW014",
+            Self::InvalidFileOp { .. } => "LOW015",
+            Self::InvalidTransportSpec { .. } => "LOW016",
+            Self::MissingProfileConfigEnv { .. } => "LOW017",
+            Self::NoLowerableItems => "LOW018",
+            Self::PureFnContainsEffectfulNode { .. } => "LOW019",
+            Self::InvalidAuthInput { .. } => "LOW020",
+            Self::InvalidProviderConfigField { .. } => "LOW021",
+            Self::UnknownProviderPrefix { .. } => "LOW022",
+            Self::UnknownProviderSchemaType { .. } => "LOW023",
+            Self::MissingCallablePassthrough { .. } => "LOW024",
+        }
+    }
+}
+
 impl std::fmt::Display for LowerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -2375,6 +2402,7 @@ fn lower_typed_project_impl(
     }
 
     wire_param_source_inputs(&mut builder);
+    wire_empty_list_defaults(&mut builder);
 
     let mut dag = builder.into_dag();
     stamp_node_kinds(&mut dag);
@@ -2620,7 +2648,7 @@ mod parity {
                 inputs: canonicalize_ports(&node.inputs),
                 outputs: canonicalize_ports(&node.outputs),
                 subdag: match &node.body {
-                    gunbc_ir::node::NodeBody::SubDag(inner) => {
+                    gunbc_ir::node::NodeBody::SubDag(inner, _) => {
                         Some(Box::new(canonicalize_dag(inner, kind_of, label_of)))
                     }
                     gunbc_ir::node::NodeBody::Opaque(_) => None,
@@ -2664,7 +2692,7 @@ mod parity {
 
     fn canonical_kind_lowered(node: &Node<LoweredOp>) -> String {
         match &node.body {
-            gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
+            gunbc_ir::node::NodeBody::SubDag(..) => "subdag".to_string(),
             gunbc_ir::node::NodeBody::Opaque(LoweredOp::Pipeline { .. }) => {
                 canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, true, None)
             }
@@ -2707,7 +2735,7 @@ mod parity {
 
     fn canonical_kind_reference<T>(node: &Node<T>) -> String {
         match &node.body {
-            gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
+            gunbc_ir::node::NodeBody::SubDag(..) => "subdag".to_string(),
             gunbc_ir::node::NodeBody::Opaque(_) => {
                 canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, false, None)
             }
@@ -3360,6 +3388,7 @@ fn add_dependency_edges(
     project: &TypedProject,
     wctx: &DagWiringContext<'_>,
     emit_collection_nodes: bool,
+    #[allow(unused_variables)]
     entry_module: Option<&str>,
 ) {
     for module in &project.modules {
@@ -4905,11 +4934,12 @@ fn expand_single_pattern(
                     last_node_id.clone_from(&output.node_id);
                     node_outputs.insert(ns.name.clone(), output);
                 } else {
-                    lower_warn(&format!(
-                        "pattern `{}` node `{}` expansion failed — \
+                    // CP-2: Always visible (not gated by env var).
+                    eprintln!(
+                        "daglang-lower: pattern `{}` node `{}` expansion failed — \
                          node dropped from expanded pattern",
                         ctx.item_name, ns.name
-                    ));
+                    );
                 }
             }
             Stmt::Let(name, expr) | Stmt::Assign(name, expr) => {
@@ -4932,7 +4962,12 @@ fn expand_single_pattern(
             Stmt::Return(_) => {
                 // Handled below when building return_outputs.
             }
-            _ => {}
+            _ => {
+                eprintln!(
+                    "daglang-lower: pattern `{}` has unsupported statement type — skipped",
+                    ctx.item_name
+                );
+            }
         }
     }
 
@@ -4997,9 +5032,10 @@ fn resolve_pattern_return_expr(
                     output_port: mapped_port,
                 })
             } else {
-                lower_warn(
-                    "resolve_pattern_return_expr: non-ident base in field access — \
-                     return field unresolved"
+                // CP-2: Always visible (not gated by env var).
+                eprintln!(
+                    "daglang-lower: resolve_pattern_return_expr: non-ident base in field access \
+                     — return field unresolved"
                 );
                 None
             }
@@ -5041,7 +5077,12 @@ fn resolve_pattern_return_expr(
 
             first_arg_node.cloned()
         }
-        _ => None,
+        _ => {
+            eprintln!(
+                "daglang-lower: resolve_pattern_return_expr: unsupported expression type in return — field unresolved"
+            );
+            None
+        }
     }
 }
 
@@ -5171,11 +5212,12 @@ fn expand_pattern_body_node(
             })
         }
         _ => {
-            lower_warn(&format!(
-                "pattern body node `{node_name}` has unsupported expression type {:?} — \
-                 node will be silently skipped (only ServiceCall, eq(), and pattern calls are supported)",
-                std::mem::discriminant(expr)
-            ));
+            // CP-2: Always visible (not gated by env var).
+            eprintln!(
+                "daglang-lower: pattern `{}` node `{node_name}` has unsupported expression type \
+                 — skipped (only ServiceCall, eq(), and pattern calls are supported)",
+                ctx.item_name
+            );
             None
         }
     }
@@ -7236,6 +7278,11 @@ fn add_service_call_edges(
                             .get(index)
                             .map(String::as_str)
                     }) else {
+                        eprintln!(
+                            "daglang-lower: service call `{}` arg #{} cannot be resolved to a named input — skipped",
+                            call.path.join("."),
+                            index,
+                        );
                         continue;
                     };
                     // Skip auth_input args — they are wired to res:credential below.
@@ -7278,6 +7325,12 @@ fn add_service_call_edges(
                             );
                             continue;
                         }
+                        eprintln!(
+                            "daglang-lower: service call `{}` arg `{}` (for input `{}`) — ident not found in params, callables, or services",
+                            call.path.join("."),
+                            arg_ident,
+                            prepare_input,
+                        );
                         continue;
                     }
                     if let Some((base_ident, field_name)) = arg.field_access.as_ref() {
@@ -7312,6 +7365,12 @@ fn add_service_call_edges(
                         }
                     }
                     let Some(literal) = arg.literal.as_ref() else {
+                        eprintln!(
+                            "daglang-lower: service call `{}` arg #{} for input `{}` — no ident, field_access, call, or literal; arg dropped",
+                            call.path.join("."),
+                            index,
+                            prepare_input,
+                        );
                         continue;
                     };
                     let literal_source = ensure_literal_source_node(
@@ -8545,6 +8604,59 @@ fn wire_param_source_inputs(builder: &mut DagBuilder) {
     }
 }
 
+/// CP-20: Wire explicit empty-list literal nodes for ZERO_OR_MORE input ports
+/// that have no incoming data edge. This replaces the executor's runtime auto-fill
+/// (execute/mod.rs lines 806-814, 1396-1403) with compile-time wiring, so that
+/// missing list inputs are visible in the DAG rather than silently injected.
+fn wire_empty_list_defaults(builder: &mut DagBuilder) {
+    // Collect ports that need default wiring. We collect first to avoid
+    // borrow conflicts when mutating the builder.
+    let unwired: Vec<(String, String, String)> = builder
+        .dag
+        .nodes
+        .iter()
+        .flat_map(|node| {
+            node.inputs.iter().filter_map(|port| {
+                if port.cardinality.is_list()
+                    && port.cardinality.allows_empty()
+                    && !port.name.is_internal()
+                    && !port.name.is_tool()
+                    && !port.name.is_resource()
+                    && !builder.has_edge_to_port(&node.id.0, &port.name.0)
+                {
+                    Some((
+                        node.id.0.clone(),
+                        port.name.0.clone(),
+                        port.type_id.0.clone(),
+                    ))
+                } else {
+                    None
+                }
+            })
+        })
+        .collect();
+
+    for (node_id, port_name, port_type) in &unwired {
+        let literal_node_id = format!(
+            "empty_list_default_{}",
+            sanitize_identifier(&format!("{node_id}_{port_name}"))
+        );
+        builder.add_node(Node::opaque(
+            literal_node_id.clone(),
+            vec![],
+            vec![Port::list(port_name.as_str(), port_type.as_str())],
+            LoweredOp::Primitive {
+                module: String::new(),
+                name: "empty_list_default".to_string(),
+                kind: PrimitiveOpKind::CallLiteralSource {
+                    literal: PrimitiveLiteral::Json(serde_json::Value::Array(vec![])),
+                },
+            },
+        ));
+        builder.add_edge(&literal_node_id, port_name, node_id, port_name);
+    }
+}
+
 fn ensure_literal_source_node(
     builder: &mut DagBuilder,
     module_name: &str,
@@ -9158,8 +9270,18 @@ fn wire_fn_call_arguments(builder: &mut DagBuilder, ctx: &LoweringContext<'_>, s
                             param_name,
                         );
                         continue;
+                    } else {
+                        eprintln!(
+                            "daglang-lower: fn call arg `{}` for param `{}` — let binding found but synthesize_expr_compute returned None",
+                            arg_ident, param_name,
+                        );
                     }
+                    continue;
                 }
+                eprintln!(
+                    "daglang-lower: fn call arg `{}` for param `{}` — ident not found in params, callables, services, data, or let bindings",
+                    arg_ident, param_name,
+                );
             }
             if let Some(literal) = arg.literal.as_ref() {
                 let src = ensure_literal_source_node(
@@ -10878,11 +11000,11 @@ fn wire_callable_return_outputs(
             // local variables (has_local_refs) that can't be resolved as
             // compute node inputs. These are known gaps (e.g. fn bodies with
             // `let` bindings flowing into return expressions).
-            lower_warn(&format!(
-                "wire_callable_return_outputs: `{}` output `{}` \
+            eprintln!(
+                "daglang-lower: wire_callable_return_outputs: `{}` output `{}` \
                  can't be wired (RT4c — likely local-ref expression)",
                 target.node_id, output_name
-            ));
+            );
             continue;
         };
         if source_node == target.node_id {
@@ -11142,7 +11264,7 @@ fn collect_output_paths_recursive(
                 paths.insert(path.clone());
             }
         }
-        if let gunbc_ir::node::NodeBody::SubDag(sub) = &node.body {
+        if let gunbc_ir::node::NodeBody::SubDag(sub, _) = &node.body {
             collect_output_paths_recursive(&sub.nodes, paths);
         }
     }

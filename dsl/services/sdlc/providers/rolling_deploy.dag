@@ -79,6 +79,7 @@ service cloudrun.Deploy {
       splits: List<TrafficSplit>
     }
     output { applied: Bool }
+    idempotent
     transport rest {
       method: PATCH,
       path: "/v2/projects/\{project_id\}/locations/\{region\}/services/\{service_name\}"
@@ -104,6 +105,7 @@ service cloudrun.Deploy {
       latest_revision: String
     }
     readonly
+    idempotent
     transport rest {
       method: GET,
       path: "/v2/projects/\{project_id\}/locations/\{region\}/services/\{service_name\}"
@@ -131,6 +133,7 @@ service cloudrun.Deploy {
       total_replicas: Int
     }
     readonly
+    idempotent
     transport rest {
       method: GET,
       path: "/v2/projects/\{project_id\}/locations/\{region\}/services/\{service_name\}/revisions/\{revision_name\}"

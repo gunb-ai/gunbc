@@ -486,7 +486,7 @@ pub fn execute_single_node<T: Executable + Clone + Send>(
             enforce_runtime_file_guard(node, &outputs, file_guard_enabled)?;
             Ok(outputs)
         }
-        NodeBody::SubDag(_) => Err(ExecError::new(format!(
+        NodeBody::SubDag(..) => Err(ExecError::new(format!(
             "node '{}' is a SubDag — this should not happen after lowering",
             node_id
         ))),
@@ -885,7 +885,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
                             }
                         }
                     }
-                    NodeBody::SubDag(_) => {
+                    NodeBody::SubDag(..) => {
                         let err = ExecError::new(format!(
                             "node '{}' is a SubDag — DAG must be lowered before execution",
                             node_id.0
@@ -1758,7 +1758,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         });
                         in_flight += 1;
                     }
-                    NodeBody::SubDag(_) => {
+                    NodeBody::SubDag(..) => {
                         let err = ExecError::new(format!(
                             "node '{}' is a SubDag — DAG must be lowered before execution",
                             node_id.0

@@ -50,9 +50,7 @@ pub struct CompileOutput {
     /// make DSL-defined types visible to testgen.
     pub dsl_type_registry: TypeRegistry,
     /// Compile receipt with deterministic digests.
-    ///
-    /// `None` if receipt computation was not requested.
-    pub receipt: Option<CompileReceipt>,
+    pub receipt: CompileReceipt,
     /// Data declaration values evaluated at compile time.
     ///
     /// Keys are both qualified (`module.name`) and unqualified (`name`).
@@ -666,7 +664,7 @@ fn validate_structural_primitive_input_wiring_recursive(
                     }
                 }
             }
-            gunbc_ir::NodeBody::SubDag(inner) => {
+            gunbc_ir::NodeBody::SubDag(inner, _) => {
                 validate_structural_primitive_input_wiring_recursive(inner, errors);
             }
             gunbc_ir::NodeBody::Opaque(_) => {}
@@ -772,12 +770,12 @@ pub fn compile_from_module_graph_with_options(
     let data_values = daglang_lower::build_data_values(&typed);
     let available_profiles = collect_available_profiles(&typed);
 
-    let receipt = Some(compute_receipt(
+    let receipt = compute_receipt(
         &lowered,
         &emitted,
         &emit_manifest_path,
         &source_paths,
-    )?);
+    )?;
 
     Ok(CompileOutput {
         lowered_dag: lowered,
@@ -1869,7 +1867,13 @@ fn parse_target_module_file(
         .module_path
         .as_ref()
         .map(|module| module.node.clone())
-        .unwrap_or_else(|| daglang_resolve::path_to_module_path(path, roots, canonical_roots));
+        .map_or_else(
+            || {
+                daglang_resolve::path_to_module_path(path, roots, canonical_roots)
+                    .map_err(CompileError::Resolve)
+            },
+            Ok,
+        )?;
     let imports: Vec<ModulePath> = ast
         .imports
         .iter()
@@ -2684,9 +2688,7 @@ fn run() -> Bool {
         };
         let output =
             compile_from_context(&context).expect("compile should succeed for determinism test");
-        output
-            .receipt
-            .expect("receipt should be computed for determinism test")
+        output.receipt
     }
 
     #[test]

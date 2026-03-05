@@ -284,7 +284,7 @@ fn validate_resource_wiring_recursive_impl<T>(
     // Recurse into SubDag nodes, carrying forward any resource inputs
     // exposed on the SubDag wrapper.
     for node in &dag.nodes {
-        if let NodeBody::SubDag(ref inner) = node.body {
+        if let NodeBody::SubDag(ref inner, _) = node.body {
             let mut next_inherited = inherited_resources.clone();
             for port in &node.inputs {
                 if port.name.is_resource() {
@@ -298,7 +298,7 @@ fn validate_resource_wiring_recursive_impl<T>(
 
 fn validate_dag_recursive<T>(dag: &Dag<T>, errors: &mut Vec<SubDagError>, registry: &TypeRegistry) {
     for node in &dag.nodes {
-        if let NodeBody::SubDag(ref inner) = node.body {
+        if let NodeBody::SubDag(ref inner, _) = node.body {
             validate_single_subdag(node, inner, registry, errors);
             // Recurse into the inner DAG
             let mut nested_errors = Vec::new();
@@ -697,7 +697,7 @@ pub fn verify_dag<T>(dag: &Dag<T>) -> Vec<VerifyError> {
 mod tests {
     use super::*;
     use crate::dag::{build::*, Dag, Edge};
-    use crate::node::NodeKind;
+    use crate::node::{NodeKind, SubDagKind};
     use crate::types::{Cardinality, InputProvenance, OperationKey};
 
     #[test]
@@ -757,7 +757,7 @@ mod tests {
             id: NodeId::new("wrapper"),
             inputs: vec![port("data", "String")], // "data" != "config"
             outputs: vec![port("result", "String")],
-            body: NodeBody::SubDag(inner),
+            body: NodeBody::SubDag(inner, SubDagKind::default()),
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
@@ -793,7 +793,7 @@ mod tests {
             id: NodeId::new("wrapper"),
             inputs: vec![port("data", "String")],
             outputs: vec![port("result", "String")], // "result" != "output"
-            body: NodeBody::SubDag(inner),
+            body: NodeBody::SubDag(inner, SubDagKind::default()),
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
@@ -829,7 +829,7 @@ mod tests {
             id: NodeId::new("wrapper"),
             inputs: vec![port("data", "String")],
             outputs: vec![port("result", "String")],
-            body: NodeBody::SubDag(inner),
+            body: NodeBody::SubDag(inner, SubDagKind::default()),
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
@@ -867,7 +867,7 @@ mod tests {
             id: NodeId::new("wrapper"),
             inputs: vec![port("data", "String")],
             outputs: vec![port("result", "String")],
-            body: NodeBody::SubDag(inner),
+            body: NodeBody::SubDag(inner, SubDagKind::default()),
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
@@ -906,7 +906,7 @@ mod tests {
             id: NodeId::new("wrapper"),
             inputs: vec![port("auth", "Credential")],
             outputs: vec![port("result", "String")],
-            body: NodeBody::SubDag(inner),
+            body: NodeBody::SubDag(inner, SubDagKind::default()),
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
@@ -1023,7 +1023,7 @@ mod tests {
             id: NodeId::new("broken"),
             inputs: vec![port("in1", "String"), port("in2", "Int")],
             outputs: vec![port("out", "String")],
-            body: NodeBody::SubDag(inner),
+            body: NodeBody::SubDag(inner, SubDagKind::default()),
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
@@ -1072,7 +1072,7 @@ mod tests {
             id: NodeId::new("wrapper"),
             inputs: vec![port("data", "String")],
             outputs: vec![port("result", "String")],
-            body: NodeBody::SubDag(inner),
+            body: NodeBody::SubDag(inner, SubDagKind::default()),
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
@@ -1108,7 +1108,7 @@ mod tests {
             id: NodeId::new("wrapper"),
             inputs: vec![port("data", "String")],
             outputs: vec![port("result", "String")],
-            body: NodeBody::SubDag(inner),
+            body: NodeBody::SubDag(inner, SubDagKind::default()),
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
@@ -1151,7 +1151,7 @@ mod tests {
             id: NodeId::new("wrapper"),
             inputs: vec![port("data", "String")],
             outputs: vec![port("result", "String")],
-            body: NodeBody::SubDag(inner),
+            body: NodeBody::SubDag(inner, SubDagKind::default()),
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
@@ -1501,7 +1501,7 @@ mod tests {
             id: NodeId::new("broken"),
             inputs: vec![port("x", "String")],
             outputs: vec![],
-            body: NodeBody::SubDag(inner),
+            body: NodeBody::SubDag(inner, SubDagKind::default()),
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,

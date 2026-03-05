@@ -52,6 +52,7 @@ service gcs.ArtifactStore : ArtifactStore {
       content_hash: NonEmptyStr
     }
     output { stored: Bool, conflict: Bool }
+    idempotent
     transport rest { method: PUT, path: "/upload/storage/v1/b/\{bucket\}/o?uploadType=media&name=artifacts/\{artifact_id\}" }
     response {
       200 => Json
@@ -71,6 +72,7 @@ service gcs.ArtifactStore : ArtifactStore {
     }
     output { found: Bool, payload: ArtifactPayload?, content_hash: NonEmptyStr? }
     readonly
+    idempotent
     transport rest { method: GET, path: "/storage/v1/b/\{bucket\}/o/artifacts%2F\{artifact_id\}?alt=media" }
     response {
       200 => Json
@@ -88,6 +90,7 @@ service gcs.ArtifactStore : ArtifactStore {
       marker: ArtifactMarker
     }
     output { stored: Bool }
+    idempotent
     transport rest { method: PUT, path: "/upload/storage/v1/b/\{bucket\}/o?uploadType=media&name=markers/\{marker.run_key\}/\{marker.artifact_type\}/\{marker.kind\}.json" }
     response {
       200 => Json
@@ -108,6 +111,7 @@ service gcs.ArtifactStore : ArtifactStore {
     }
     output { found: Bool, marker: ArtifactMarker? }
     readonly
+    idempotent
     transport rest { method: GET, path: "/storage/v1/b/\{bucket\}/o/markers%2F\{run_key\}%2F\{artifact_type\}%2FCanonical.json?alt=media" }
     response {
       200 => Json

@@ -6,7 +6,7 @@
 
 use gunbc_ir::{
     detect_boundaries, detect_entrypoints, Dag, Edge, LogDetailLevel, Node, NodeBody, NodeId,
-    PortName,
+    PortName, SubDagKind,
 };
 use std::collections::HashMap;
 use thiserror::Error;
@@ -126,12 +126,33 @@ fn build_subdag_mapping<T>(
     })
 }
 
-/// Detect whether a SubDag's inner DAG follows the loop pattern:
-/// nodes "unpack" (Opaque), "body" (SubDag), "pack" (Opaque).
-fn detect_loop_pattern<T>(inner_dag: &Dag<T>) -> Option<LoopPatternInfo<T>>
+/// Detect whether a SubDag follows the loop pattern.
+///
+/// Primary path: reads `SubDagKind::Loop` metadata stamped by `LoopBuilder`.
+/// Fallback: topology heuristic for DAGs serialized before `SubDagKind` existed.
+fn detect_loop_pattern<T>(inner_dag: &Dag<T>, kind: &SubDagKind) -> Option<LoopPatternInfo<T>>
 where
     T: Clone,
 {
+    // Primary path: stamped metadata.
+    if let SubDagKind::Loop {
+        element_port,
+        extra_input_ports,
+    } = kind
+    {
+        let body = inner_dag.nodes.iter().find(|n| n.id.0 == "body")?;
+        let body_dag = match &body.body {
+            NodeBody::SubDag(dag, _) => dag.clone(),
+            _ => return None,
+        };
+        return Some(LoopPatternInfo {
+            element_port: element_port.clone(),
+            body_dag,
+            extra_input_ports: extra_input_ports.clone(),
+        });
+    }
+
+    // Fallback: topology heuristic for backward compat with pre-SubDagKind DAGs.
     if inner_dag.nodes.len() != 3 {
         return None;
     }
@@ -140,7 +161,6 @@ where
     let body = inner_dag.nodes.iter().find(|n| n.id.0 == "body")?;
     let pack = inner_dag.nodes.iter().find(|n| n.id.0 == "pack")?;
 
-    // Unpack and pack must be opaque; body must be a SubDag
     if !matches!(&unpack.body, NodeBody::Opaque(_)) {
         return None;
     }
@@ -151,30 +171,21 @@ where
         return None;
     }
 
-    // Find the element port: the edge from unpack → body (not "count")
     let element_edge = inner_dag
         .edges
         .iter()
         .find(|e| e.from_node.0 == "unpack" && e.to_node.0 == "body" && e.from_port.0 != "count")?;
     let element_port = element_edge.from_port.0.clone();
 
-    // Extract body SubDag
     let body_dag = match &body.body {
-        NodeBody::SubDag(dag) => dag.clone(),
+        NodeBody::SubDag(dag, _) => dag.clone(),
         _ => return None,
     };
-
-    // Detect extra input ports: unpack's inputs that are also entrypoints
-    // in the body DAG (e.g., repo_path flows through unpack into body).
-    // We identify these as unpack input ports that are NOT the main element
-    // input (i.e., not the port with the same name as the element port's
-    // source on the unpack's input side).
-    let extra_input_ports = vec![];
 
     Some(LoopPatternInfo {
         element_port,
         body_dag,
-        extra_input_ports,
+        extra_input_ports: vec![],
     })
 }
 
@@ -221,9 +232,9 @@ fn lower_with_log_detail<T: Clone>(
                 lowered_node.log_detail = effective_node_log_detail;
                 result.add_node(lowered_node);
             }
-            NodeBody::SubDag(subdag) => {
+            NodeBody::SubDag(subdag, kind) => {
                 // Check for loop pattern before recursing
-                if let Some(loop_info) = detect_loop_pattern(subdag) {
+                if let Some(loop_info) = detect_loop_pattern(subdag, kind) {
                     // Loop pattern detected: flatten unpack+pack but keep body as template
                     let (loop_result, mapping) = lower_loop_subdag(
                         node,
@@ -401,8 +412,8 @@ fn apply_log_detail_context<T: Clone>(
         let effective_node_log_detail = node.log_detail.or(inherited_log_detail);
         let body = match &node.body {
             NodeBody::Opaque(op) => NodeBody::Opaque(op.clone()),
-            NodeBody::SubDag(inner) => {
-                NodeBody::SubDag(apply_log_detail_context(inner, effective_node_log_detail))
+            NodeBody::SubDag(inner, kind) => {
+                NodeBody::SubDag(apply_log_detail_context(inner, effective_node_log_detail), kind.clone())
             }
         };
         contextual.add_node(Node {

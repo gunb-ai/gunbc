@@ -63,6 +63,7 @@ service file.OutcomeLedger : OutcomeLedger {
     input { issue_id: NonEmptyStr }
     output { outcomes: List<StageOutcome> }
     readonly
+    idempotent
     transport file { op: READ, path: "\{dir\}/outcomes/\{issue_id\}/" }
   }
 }

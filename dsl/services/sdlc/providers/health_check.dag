@@ -130,6 +130,7 @@ service sdlc.HealthCheck {
       uptime_seconds: Int
     }
     readonly
+    idempotent
     transport rest { method: GET, path: "/health" }
     response {
       200 => HealthResponse
@@ -141,6 +142,7 @@ service sdlc.HealthCheck {
     input {}
     output { ready: Bool }
     readonly
+    idempotent
     transport rest { method: GET, path: "/ready" }
     response {
       200 => Json
@@ -152,6 +154,7 @@ service sdlc.HealthCheck {
     input {}
     output { alive: Bool }
     readonly
+    idempotent
     transport rest { method: GET, path: "/alive" }
     response {
       200 => Json

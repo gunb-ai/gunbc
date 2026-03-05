@@ -153,7 +153,7 @@ impl<'a, T> ScriptedDagBuilder<'a, T> {
                     node_id: node.id.0.clone(),
                     behavior,
                 }),
-                NodeBody::SubDag(_) => {
+                NodeBody::SubDag(..) => {
                     // For now, don't support sub-DAGs in mock builder
                     return Err(format!(
                         "node '{}' is a SubDag — mock builder doesn't support sub-DAGs yet",

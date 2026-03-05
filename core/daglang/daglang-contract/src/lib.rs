@@ -1,6 +1,232 @@
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use serde::Serialize;
+
+// ── Verdict: the one result type for all pipeline stages ──────────────
+
+/// Every stage API returns `Verdict<T>`. PASS = `Ok(T)`, FAIL = `Err(Diagnostics)`.
+/// No third state. No "continue with partial."
+pub type Verdict<T> = Result<T, Diagnostics>;
+
+/// A collection of diagnostics. Non-empty `errors` means FAIL.
+#[derive(Debug, Clone, Default)]
+pub struct Diagnostics {
+    pub errors: Vec<Diagnostic>,
+}
+
+impl Diagnostics {
+    pub fn new() -> Self {
+        Self { errors: Vec::new() }
+    }
+
+    pub fn single(diag: Diagnostic) -> Self {
+        Self {
+            errors: vec![diag],
+        }
+    }
+
+    pub fn push(&mut self, diag: Diagnostic) {
+        self.errors.push(diag);
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.errors.is_empty()
+    }
+
+    pub fn merge(&mut self, other: Diagnostics) {
+        self.errors.extend(other.errors);
+    }
+
+    /// Convert to Verdict: Ok(()) if no errors, Err(self) otherwise.
+    pub fn into_result(self) -> Verdict<()> {
+        if self.is_empty() {
+            Ok(())
+        } else {
+            Err(self)
+        }
+    }
+}
+
+impl std::fmt::Display for Diagnostics {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (i, diag) in self.errors.iter().enumerate() {
+            if i > 0 {
+                writeln!(f)?;
+            }
+            write!(f, "{diag}")?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for Diagnostics {}
+
+impl From<Diagnostic> for Diagnostics {
+    fn from(diag: Diagnostic) -> Self {
+        Self::single(diag)
+    }
+}
+
+// ── Diagnostic: every error answers what, where, and how to fix ───────
+
+/// A single diagnostic. Every user-facing error must carry a span (source location).
+#[derive(Debug, Clone)]
+pub struct Diagnostic {
+    /// Machine-readable error code (e.g. "PAR001", "TC014", "LOW003").
+    pub code: &'static str,
+    /// Human-readable message describing the contradiction.
+    pub message: String,
+    /// Source location. Not optional for user-facing errors.
+    pub span: Option<Span>,
+    /// Which `.dag` file.
+    pub file: Option<PathBuf>,
+    /// Structured context for programmatic handling.
+    pub context: DiagnosticContext,
+    /// Concrete suggestion for resolving the contradiction.
+    pub help: Option<String>,
+    /// Secondary source locations (e.g. "first defined here").
+    pub related: Vec<RelatedSpan>,
+}
+
+impl Diagnostic {
+    /// Create a diagnostic with the minimum required fields.
+    pub fn new(code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            span: None,
+            file: None,
+            context: DiagnosticContext::Note(String::new()),
+            help: None,
+            related: Vec::new(),
+        }
+    }
+
+    pub fn with_span(mut self, span: Span) -> Self {
+        self.span = Some(span);
+        self
+    }
+
+    pub fn with_file(mut self, file: PathBuf) -> Self {
+        self.file = Some(file);
+        self
+    }
+
+    pub fn with_context(mut self, context: DiagnosticContext) -> Self {
+        self.context = context;
+        self
+    }
+
+    pub fn with_help(mut self, help: impl Into<String>) -> Self {
+        self.help = Some(help.into());
+        self
+    }
+
+    pub fn with_related(mut self, related: Vec<RelatedSpan>) -> Self {
+        self.related = related;
+        self
+    }
+}
+
+impl std::fmt::Display for Diagnostic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // [CODE] file:line: message
+        write!(f, "[{}]", self.code)?;
+        if let Some(file) = &self.file {
+            write!(f, " {}", file.display())?;
+            if let Some(span) = &self.span {
+                write!(f, ":{}", span.start)?;
+            }
+        }
+        write!(f, ": {}", self.message)?;
+        if let Some(help) = &self.help {
+            write!(f, "\n  help: {help}")?;
+        }
+        Ok(())
+    }
+}
+
+/// Structured context so tooling can act on errors programmatically.
+#[derive(Debug, Clone)]
+pub enum DiagnosticContext {
+    /// Type mismatch: expected X, got Y.
+    TypeMismatch { expected: String, got: String },
+    /// Missing required item (import, arg, port, field).
+    Missing {
+        kind: &'static str,
+        name: String,
+        available: Vec<String>,
+    },
+    /// Duplicate definition.
+    Duplicate { name: String, first: Option<Span> },
+    /// Unsupported feature (NYI diagnostic).
+    Unsupported { feature: String },
+    /// Generic note (escape hatch for rare cases).
+    Note(String),
+}
+
+/// A secondary source location referenced by a diagnostic.
+#[derive(Debug, Clone)]
+pub struct RelatedSpan {
+    pub span: Span,
+    pub file: Option<PathBuf>,
+    pub label: String,
+}
+
+// ── Span: source location (byte offset range) ────────────────────────
+
+/// Byte offset range in a source file. This is the contract-level span
+/// shared across all pipeline stages. Stage-specific crates may define
+/// richer span types that convert to/from this.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Span {
+    pub start: usize,
+    pub end: usize,
+}
+
+impl Span {
+    pub fn new(start: usize, end: usize) -> Self {
+        Self { start, end }
+    }
+
+    pub fn empty() -> Self {
+        Self { start: 0, end: 0 }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.start == self.end && self.start == 0
+    }
+}
+
+// ── Interned identity types ───────────────────────────────────────────
+// Each stage introduces IDs for its domain. Later stages carry IDs, not strings.
+
+macro_rules! interned_id {
+    ($name:ident, $doc:expr) => {
+        #[doc = $doc]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+        pub struct $name(pub u32);
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{}({})", stringify!($name), self.0)
+            }
+        }
+    };
+}
+
+interned_id!(FileId, "Stable file identity within one compilation (Stage 0: Ingest).");
+interned_id!(ModuleId, "Index into ModuleGraph.modules (Stage 2: Module Resolve).");
+interned_id!(DefId, "Any named definition (Stage 3: Typecheck).");
+interned_id!(CallableId, "fn/func/pattern/extern func (Stage 3: Typecheck).");
+interned_id!(ServiceOpId, "Service operation (Stage 3: Typecheck).");
+interned_id!(ExternId, "Extern func via ExternRegistry (Stage 3: Typecheck).");
+interned_id!(TypeId, "Type arena entry (Stage 3: Typecheck).");
+interned_id!(DataId, "Evaluated data declaration (Stage 4: Lower).");
+interned_id!(PatternInstanceId, "Expanded pattern — triplet, chain, loop (Stage 4: Lower).");
+
+// ── Manifest + obligation contract types ──────────────────────────────
 
 /// Progress-manifest contract derived from lowered DAG topology.
 ///
@@ -121,4 +347,81 @@ pub struct TestObligations {
     pub resource_acquire_targets: usize,
     pub resource_release_targets: usize,
     pub interface_contract_verification_targets: usize,
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn verdict_ok_is_pass() {
+        let v: Verdict<i32> = make_verdict_ok(42);
+        assert!(v.is_ok());
+    }
+
+    fn make_verdict_ok(n: i32) -> Verdict<i32> {
+        Ok(n)
+    }
+
+    #[test]
+    fn verdict_err_is_fail() {
+        let diags = Diagnostics::single(Diagnostic::new("TEST001", "test error"));
+        assert_eq!(diags.errors.len(), 1);
+        assert_eq!(diags.errors[0].code, "TEST001");
+        let v: Verdict<i32> = Err(diags);
+        assert!(v.is_err());
+    }
+
+    #[test]
+    fn diagnostics_into_result_empty_is_ok() {
+        let d = Diagnostics::new();
+        assert!(d.into_result().is_ok());
+    }
+
+    #[test]
+    fn diagnostics_into_result_nonempty_is_err() {
+        let mut d = Diagnostics::new();
+        d.push(Diagnostic::new("E001", "bad"));
+        assert!(d.into_result().is_err());
+    }
+
+    #[test]
+    fn diagnostic_display_with_file_and_span() {
+        let d = Diagnostic::new("TC014", "type mismatch: expected String, got Int")
+            .with_file(PathBuf::from("tools/gist.dag"))
+            .with_span(Span::new(42, 55))
+            .with_help("change argument type to String");
+        let s = d.to_string();
+        assert!(s.contains("[TC014]"));
+        assert!(s.contains("tools/gist.dag"));
+        assert!(s.contains("type mismatch"));
+        assert!(s.contains("help:"));
+    }
+
+    #[test]
+    fn diagnostics_merge_combines_errors() {
+        let mut a = Diagnostics::single(Diagnostic::new("E001", "first"));
+        let b = Diagnostics::single(Diagnostic::new("E002", "second"));
+        a.merge(b);
+        assert_eq!(a.errors.len(), 2);
+    }
+
+    #[test]
+    fn interned_ids_are_distinct_types() {
+        let f = FileId(0);
+        let m = ModuleId(0);
+        // These are different types even with the same inner value
+        assert_eq!(format!("{f}"), "FileId(0)");
+        assert_eq!(format!("{m}"), "ModuleId(0)");
+    }
+
+    #[test]
+    fn span_empty_is_zero() {
+        let s = Span::empty();
+        assert!(s.is_empty());
+        assert_eq!(s.start, 0);
+        assert_eq!(s.end, 0);
+    }
 }

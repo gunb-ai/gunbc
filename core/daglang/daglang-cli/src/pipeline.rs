@@ -503,7 +503,20 @@ fn parse_files(files: Vec<FileSource>, roots: &[PathBuf]) -> (Vec<ParsedModule>,
                     .as_ref()
                     .map(|module| module.node.clone())
                     .unwrap_or_else(|| {
-                        daglang_resolve::path_to_module_path(&file.path, roots, &canonical_roots)
+                        match daglang_resolve::path_to_module_path(&file.path, roots, &canonical_roots) {
+                            Ok(mp) => mp,
+                            Err(e) => {
+                                diagnostics.push(Diagnostic::new(
+                                    DiagnosticKind::Resolve,
+                                    format!("{e}"),
+                                ).with_file(&file.path));
+                                // Fallback for CLI diagnostic display
+                                ModulePath::new(vec![file.path.file_stem()
+                                    .and_then(|s| s.to_str())
+                                    .unwrap_or("error")
+                                    .to_string()])
+                            }
+                        }
                     });
                 let imports: Vec<ModulePath> = ast
                     .imports

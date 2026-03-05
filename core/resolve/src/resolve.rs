@@ -1201,7 +1201,7 @@ fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
         NodeBody::Opaque(op) => {
             resolve_op(&node_id, op, &node.inputs, &node.outputs, &null, &empty_siblings)
         }
-        NodeBody::SubDag(inner) => Ok(DynOp::new(SubDagDispatchOp {
+        NodeBody::SubDag(inner, _) => Ok(DynOp::new(SubDagDispatchOp {
             dag: resolve_lowered_dag_with(inner, &null)?,
         })),
     }
@@ -1221,8 +1221,8 @@ fn resolve_node_body(
             resolver,
             sibling_fns,
         )?)),
-        NodeBody::SubDag(inner) => {
-            Ok(NodeBody::SubDag(resolve_lowered_dag_with(inner, resolver)?))
+        NodeBody::SubDag(inner, kind) => {
+            Ok(NodeBody::SubDag(resolve_lowered_dag_with(inner, resolver)?, kind.clone()))
         }
     }
 }
@@ -2719,7 +2719,7 @@ mod tests {
             .get_node(&"wrapper".into())
             .expect("wrapper node should exist");
         assert!(
-            matches!(wrapper.body, NodeBody::SubDag(_)),
+            matches!(wrapper.body, NodeBody::SubDag(..)),
             "production resolver should preserve SubDag structure, not flatten it"
         );
     }

@@ -333,11 +333,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             }
             // Write compile receipt JSON when --receipt is passed.
             if parsed.receipt {
-                let Some(receipt) = &output.receipt else {
-                    eprintln!("failed to compute compile receipt");
-                    std::process::exit(1);
-                };
-                let receipt_json = match serde_json::to_string_pretty(receipt) {
+                let receipt_json = match serde_json::to_string_pretty(&output.receipt) {
                     Ok(json) => json,
                     Err(error) => {
                         eprintln!("failed to serialize compile receipt: {error}");

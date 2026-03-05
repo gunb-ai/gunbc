@@ -177,18 +177,32 @@ pub fn derive_artifacts(dag: &Dag<LoweredOp>) -> Result<DerivedArtifacts, Derive
     })
 }
 
-/// Derive transport triplets by following TransportRequest/TransportResponse edges.
+/// Derive transport triplets using `Node.kind` classification.
+///
+/// Identifies prepare→execute→parse chains by checking `NodeKind` stamps
+/// set during lowering, rather than port type string heuristics.
 pub fn derive_transport_triplets(dag: &Dag<LoweredOp>) -> Vec<TransportTriplet> {
-    let node_by_id = dag
+    use gunbc_ir::node::NodeKind;
+
+    let node_by_id: HashMap<&str, &Node<LoweredOp>> = dag
         .nodes
         .iter()
         .map(|node| (node.id.0.as_str(), node))
-        .collect::<HashMap<_, _>>();
-    // Use Vec with manual dedup on (prepare, execute, parse) keys.
-    // We avoid BTreeSet since ServiceCallMetadata doesn't implement Ord (TL-12).
+        .collect();
+
+    // Build adjacency: for each edge, record (from_node, to_node).
+    let mut successors: HashMap<&str, Vec<&str>> = HashMap::new();
+    for edge in &dag.edges {
+        successors
+            .entry(edge.from_node.0.as_str())
+            .or_default()
+            .push(edge.to_node.0.as_str());
+    }
+
     let mut triplets = Vec::<TransportTriplet>::new();
     let mut seen_keys = std::collections::HashSet::<(String, String, Vec<String>)>::new();
 
+    // Find all prepare→execute pairs via edges.
     for edge in &dag.edges {
         let Some(prepare_node) = node_by_id.get(edge.from_node.0.as_str()).copied() else {
             continue;
@@ -196,32 +210,28 @@ pub fn derive_transport_triplets(dag: &Dag<LoweredOp>) -> Vec<TransportTriplet> 
         let Some(execute_node) = node_by_id.get(edge.to_node.0.as_str()).copied() else {
             continue;
         };
-        if node_output_port_type(prepare_node, edge.from_port.0.as_str())
-            != Some("TransportRequest")
-            || node_input_port_type(execute_node, edge.to_port.0.as_str())
-                != Some("TransportRequest")
+        if prepare_node.kind != NodeKind::TransportPrepare
+            || execute_node.kind != NodeKind::TransportExecute
         {
             continue;
         }
 
-        let mut parse_nodes = dag
-            .edges
-            .iter()
-            .filter(|next_edge| next_edge.from_node.0 == edge.to_node.0)
-            .filter_map(|next_edge| {
-                let parse_node = node_by_id.get(next_edge.to_node.0.as_str()).copied()?;
-                (node_output_port_type(execute_node, next_edge.from_port.0.as_str())
-                    == Some("TransportResponse")
-                    && node_input_port_type(parse_node, next_edge.to_port.0.as_str())
-                        == Some("TransportResponse"))
-                .then_some(next_edge.to_node.0.clone())
+        // Find parse nodes: successors of execute that are TransportParse.
+        let mut parse_nodes: Vec<String> = successors
+            .get(execute_node.id.0.as_str())
+            .into_iter()
+            .flatten()
+            .filter_map(|succ_id| {
+                let succ = node_by_id.get(succ_id)?;
+                (succ.kind == NodeKind::TransportParse).then(|| succ.id.0.clone())
             })
-            .collect::<Vec<_>>();
+            .collect();
         parse_nodes.sort();
         parse_nodes.dedup();
+
         let service_metadata = match &execute_node.body {
             gunbc_ir::node::NodeBody::Opaque(op) => op.service_call_metadata().cloned(),
-            gunbc_ir::node::NodeBody::SubDag(_) => None,
+            gunbc_ir::node::NodeBody::SubDag(..) => None,
         };
 
         let key = (
@@ -247,20 +257,6 @@ pub fn derive_transport_triplets(dag: &Dag<LoweredOp>) -> Vec<TransportTriplet> 
         ))
     });
     triplets
-}
-
-fn node_input_port_type<'a>(node: &'a Node<LoweredOp>, port_name: &str) -> Option<&'a str> {
-    node.inputs
-        .iter()
-        .find(|port| port.name.0 == port_name)
-        .map(|port| port.type_id.0.as_str())
-}
-
-fn node_output_port_type<'a>(node: &'a Node<LoweredOp>, port_name: &str) -> Option<&'a str> {
-    node.outputs
-        .iter()
-        .find(|port| port.name.0 == port_name)
-        .map(|port| port.type_id.0.as_str())
 }
 
 fn compute_waves(dag: &Dag<LoweredOp>) -> Result<Vec<Vec<String>>, DeriveError> {
@@ -367,7 +363,7 @@ fn derive_subdag_boundaries(nodes: &[Node<LoweredOp>]) -> Vec<SubDagBoundary> {
     let mut boundaries = nodes
         .iter()
         .filter_map(|node| match &node.body {
-            gunbc_ir::node::NodeBody::SubDag(subdag) => {
+            gunbc_ir::node::NodeBody::SubDag(subdag, _) => {
                 let mut inner_nodes: Vec<String> =
                     subdag.nodes.iter().map(|n| n.id.0.clone()).collect();
                 inner_nodes.sort();
@@ -510,7 +506,7 @@ fn derive_node_labels(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, String> {
                 gunbc_ir::node::NodeBody::Opaque(LoweredOp::ExternCall { symbol }) => {
                     format!("extern_call:{symbol}")
                 }
-                gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
+                gunbc_ir::node::NodeBody::SubDag(..) => "subdag".to_string(),
             };
             (node.id.0.clone(), label)
         })
@@ -749,7 +745,7 @@ impl NodeBodyExt for gunbc_ir::node::NodeBody<LoweredOp> {
     fn as_opaque(&self) -> Option<&LoweredOp> {
         match self {
             gunbc_ir::node::NodeBody::Opaque(op) => Some(op),
-            gunbc_ir::node::NodeBody::SubDag(_) => None,
+            gunbc_ir::node::NodeBody::SubDag(..) => None,
         }
     }
 }
@@ -818,7 +814,7 @@ fn derive_callable_properties(dag: &Dag<LoweredOp>) -> BTreeMap<String, Callable
                 );
 
                 // Recurse into SubDag inner nodes
-                if let gunbc_ir::node::NodeBody::SubDag(subdag) = &node.body {
+                if let gunbc_ir::node::NodeBody::SubDag(subdag, _) = &node.body {
                     for inner_node in &subdag.nodes {
                         collect_service_metadata_from_node(
                             inner_node,

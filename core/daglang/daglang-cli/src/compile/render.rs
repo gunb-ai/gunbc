@@ -54,7 +54,7 @@ pub fn render_expand(dag: &Dag<LoweredOp>) -> String {
             gunbc_ir::node::NodeBody::Opaque(LoweredOp::ExternCall { symbol }) => {
                 format!("extern_call::{symbol}")
             }
-            gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
+            gunbc_ir::node::NodeBody::SubDag(..) => "subdag".to_string(),
         };
 
         writeln!(out, "  - {} [{kind}]", node.id.0).ok();

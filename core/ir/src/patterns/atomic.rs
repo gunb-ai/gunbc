@@ -256,7 +256,7 @@ mod tests {
         assert!(node.is_subdag());
 
         match &node.body {
-            NodeBody::SubDag(dag) => {
+            NodeBody::SubDag(dag, _) => {
                 assert_eq!(dag.nodes.len(), 1);
                 assert_eq!(dag.edges.len(), 0);
             }
@@ -273,7 +273,7 @@ mod tests {
             .build();
 
         match &node.body {
-            NodeBody::SubDag(dag) => {
+            NodeBody::SubDag(dag, _) => {
                 assert_eq!(dag.nodes.len(), 3);
                 assert_eq!(dag.edges.len(), 4);
 

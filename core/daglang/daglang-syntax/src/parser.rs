@@ -2103,6 +2103,7 @@ impl Parser {
         self.expect(&TokenKind::LBrace)?;
         let mut capabilities = Vec::new();
         let mut typed_contracts: Vec<ContractDef> = Vec::new();
+        let mut type_defs = Vec::new();
         while !self.check(&TokenKind::RBrace) && !self.at_eof() {
             if self.check(&TokenKind::Operation) {
                 let op = self.parse_operation_def()?;
@@ -2118,7 +2119,9 @@ impl Parser {
             } else if self.check(&TokenKind::Fn) {
                 capabilities.push(self.parse_interface_fn()?);
             } else if self.check(&TokenKind::Type) {
-                let _ = self.parse_type_def();
+                if let Ok(td) = self.parse_type_def() {
+                    type_defs.push(td);
+                }
             } else if self.check(&TokenKind::Contract) {
                 // Typed contract: `contract <text>`
                 self.advance();
@@ -2148,6 +2151,7 @@ impl Parser {
             type_params,
             capabilities,
             contracts: typed_contracts,
+            type_defs,
         })
     }
 

@@ -263,6 +263,56 @@ pub enum TypeError {
         binding: String,
         resource_type: String,
     },
+    /// Service config declares an unrecognized auth scheme.
+    InvalidAuthScheme {
+        service: String,
+        scheme: String,
+    },
+}
+
+impl TypeError {
+    /// Stable, grep-able error code for this variant (CP-59).
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::UndefinedType(..) => "TC001",
+            Self::NoSuchField { .. } => "TC002",
+            Self::TypeMismatch { .. } => "TC003",
+            Self::MissingCapability { .. } => "TC004",
+            Self::UnsatisfiableRefinement { .. } => "TC005",
+            Self::ArityMismatch { .. } => "TC006",
+            Self::DuplicateDefinition { .. } => "TC007",
+            Self::DuplicatePipelineStage { .. } => "TC008",
+            Self::DuplicatePipelineStageDependency { .. } => "TC009",
+            Self::UnknownPipelineStageDependency { .. } => "TC010",
+            Self::PipelineStageSelfDependency { .. } => "TC011",
+            Self::PipelineStageWhenTypeMismatch { .. } => "TC012",
+            Self::DuplicateParameter { .. } => "TC013",
+            Self::DuplicateOutputField { .. } => "TC014",
+            Self::UnresolvedImport { .. } => "TC015",
+            Self::UnresolvedInterface { .. } => "TC016",
+            Self::AmbiguousInterface { .. } => "TC017",
+            Self::MissingOperation { .. } => "TC018",
+            Self::InterfaceSignatureMismatch { .. } => "TC019",
+            Self::CallArityMismatch { .. } => "TC020",
+            Self::UnknownCallArgument { .. } => "TC021",
+            Self::DuplicateCallArgument { .. } => "TC022",
+            Self::AmbiguousCallTarget { .. } => "TC023",
+            Self::UnresolvedCallTarget { .. } => "TC024",
+            Self::ServiceCallArityMismatch { .. } => "TC025",
+            Self::UnresolvedServiceCall { .. } => "TC026",
+            Self::AmbiguousServiceCall { .. } => "TC027",
+            Self::UnknownServiceCallArgument { .. } => "TC028",
+            Self::DuplicateServiceCallArgument { .. } => "TC029",
+            Self::UnknownUsedResourceType { .. } => "TC030",
+            Self::AmbiguousUsedResourceType { .. } => "TC031",
+            Self::DuplicateUsesBinding { .. } => "TC032",
+            Self::DuplicateProvidesBinding { .. } => "TC033",
+            Self::UseProvideBindingConflict { .. } => "TC034",
+            Self::UnknownProvidedResourceType { .. } => "TC035",
+            Self::AmbiguousProvidedResourceType { .. } => "TC036",
+            Self::InvalidAuthScheme { .. } => "TC037",
+        }
+    }
 }
 
 impl std::fmt::Display for TypeError {
@@ -483,7 +533,13 @@ impl std::fmt::Display for TypeError {
             } => write!(
                 f,
                 "ambiguous provided resource type `{resource_type}` for binding `{binding}` in `{item}`"
-            ),        }
+            ),
+            Self::InvalidAuthScheme { service, scheme } => write!(
+                f,
+                "service `{service}` declares unknown auth scheme `{scheme}` \
+                 (valid: BearerToken, Basic, ApiKey, Header(\"...\"), None)"
+            ),
+        }
     }
 }
 
@@ -828,6 +884,14 @@ fn collect_signatures(
                     def,
                     context.interface_registry,
                 ));
+                if let Some(ref scheme) = def.config.auth {
+                    if !is_valid_auth_scheme(scheme) {
+                        errors.push(TypeError::InvalidAuthScheme {
+                            service: def.name.clone(),
+                            scheme: scheme.clone(),
+                        });
+                    }
+                }
                 signatures.push(TypedItemSignature::Service {
                     name: def.name.clone(),
                     operations: def.operations.len(),
@@ -2258,9 +2322,6 @@ fn validate_callable_body(
                 None => trailing_expr_type.unwrap_or_else(|| ValueType::Named("Unit".to_string())),
             };
             let mismatches = push_type_mismatch_if_needed(ty, &inferred);
-            if !mismatches.is_empty() {
-                eprintln!("[DEBUG callable_body] caller={caller:?} return_ty={ty:?} inferred={inferred:?}");
-            }
             errors.extend(mismatches);
         }
     }
@@ -2278,7 +2339,6 @@ fn validate_return_stmt(
     match return_contract {
         ReturnContract::Single { ty } => {
             if fields.len() != 1 {
-                eprintln!("[DEBUG validate_return] caller={caller:?} expected single return type={ty:?} but got {len} fields", len=fields.len());
                 errors.push(TypeError::TypeMismatch {
                     expected: ty.clone(),
                     got: "Record".to_string(),
@@ -2293,9 +2353,6 @@ fn validate_return_stmt(
             );
             errors.extend(infer_errors);
             let mismatches = push_type_mismatch_if_needed(ty, &inferred);
-            if !mismatches.is_empty() {
-                eprintln!("[DEBUG return_single] caller={caller:?} ty={ty:?} inferred={inferred:?} fields={:?}", fields.iter().map(|(n,_)| n.as_str()).collect::<Vec<_>>());
-            }
             errors.extend(mismatches);
         }
         ReturnContract::Record { fields: expected } => {
@@ -2310,9 +2367,6 @@ fn validate_return_stmt(
                 let (inferred, infer_errors) = infer_expr_type(expr, local_bindings, infer_context);
                 errors.extend(infer_errors);
                 let mismatches = push_type_mismatch_if_needed(expected_ty, &inferred);
-                if !mismatches.is_empty() {
-                    eprintln!("[DEBUG return_record] caller={caller:?} field={field:?} expected_ty={expected_ty:?} inferred={inferred:?}");
-                }
                 errors.extend(mismatches);
             }
         }
@@ -2356,7 +2410,6 @@ fn infer_expr_type_for_expected_named_record(
             &normalize_type_id(&inferred_name),
             &normalize_type_id(expected_field_ty),
         ) {
-            eprintln!("[DEBUG field_mismatch] expected_type={expected_type:?} field={name:?} expected_field_ty={expected_field_ty:?} inferred={inferred_name:?}");
             errors.push(TypeError::TypeMismatch {
                 expected: expected_field_ty.clone(),
                 got: inferred_name,
@@ -2683,13 +2736,6 @@ fn push_type_mismatch_if_needed(expected: &str, inferred: &ValueType) -> Vec<Typ
     if !gunbc_ir::type_registry::TypeRegistry::with_core_types()
         .is_compatible(&normalize_type_id(&got), &normalize_type_id(expected))
     {
-        eprintln!("[DEBUG type_mismatch] expected={expected:?} got={got:?} inferred={inferred:?} backtrace:");
-        // Print a short backtrace to identify call site
-        let bt = std::backtrace::Backtrace::force_capture();
-        let bt_str = format!("{bt}");
-        for line in bt_str.lines().take(20) {
-            eprintln!("  {line}");
-        }
         vec![TypeError::TypeMismatch {
             expected: expected.to_string(),
             got,
@@ -2857,6 +2903,14 @@ fn validate_signature_map(
         }
     }
     errors
+}
+
+/// Check whether an auth scheme string is in the recognized set.
+fn is_valid_auth_scheme(scheme: &str) -> bool {
+    matches!(
+        scheme,
+        "BearerToken" | "Basic" | "ApiKey" | "None"
+    ) || scheme.starts_with("Header(")
 }
 
 fn validate_service_interface_conformance(

@@ -679,7 +679,7 @@ transport rest { method: GET, path: "/read" }
         gunbc_ir::node::NodeBody::Opaque(op) => op
             .service_call_metadata()
             .expect("service metadata should be preserved"),
-        gunbc_ir::node::NodeBody::SubDag(_) => {
+        gunbc_ir::node::NodeBody::SubDag(..) => {
             panic!("expected opaque lowered node for execute transport")
         }
     };
@@ -720,7 +720,7 @@ transport shell { argv: ["cat", "{path}"] }
                 .expect("service metadata should be present")
                 .readonly,
         ),
-        gunbc_ir::node::NodeBody::SubDag(_) => {
+        gunbc_ir::node::NodeBody::SubDag(..) => {
             panic!("expected opaque lowered node for prepare transport")
         }
     };
@@ -741,7 +741,7 @@ fn shell_output_parsing_for_node(dag: &Dag<LoweredOp>, node_id: &str) -> ShellOu
         gunbc_ir::node::NodeBody::Opaque(op) => op
             .service_call_metadata()
             .expect("service metadata should be present"),
-        gunbc_ir::node::NodeBody::SubDag(_) => {
+        gunbc_ir::node::NodeBody::SubDag(..) => {
             panic!("expected opaque lowered node for transport metadata")
         }
     };
@@ -826,7 +826,7 @@ func run() -> { out: String } {
         gunbc_ir::node::NodeBody::Opaque(op) => op
             .service_call_metadata()
             .expect("service metadata should be present"),
-        gunbc_ir::node::NodeBody::SubDag(_) => {
+        gunbc_ir::node::NodeBody::SubDag(..) => {
             panic!("expected opaque lowered node for prepare transport")
         }
     };
@@ -2670,7 +2670,7 @@ func prompt() -> { ok: Bool } {
         .find(|node| node.id.0 == "sample.ui::prompt")
         .and_then(|node| match &node.body {
             gunbc_ir::node::NodeBody::Opaque(op) => Some(op),
-            gunbc_ir::node::NodeBody::SubDag(_) => None,
+            gunbc_ir::node::NodeBody::SubDag(..) => None,
         })
         .expect("callable node should exist");
     assert!(matches!(

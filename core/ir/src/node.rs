@@ -252,7 +252,7 @@ impl<T> Node<T> {
             id: id.into(),
             inputs,
             outputs,
-            body: NodeBody::SubDag(dag),
+            body: NodeBody::SubDag(dag, SubDagKind::default()),
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
@@ -390,7 +390,7 @@ impl<T> Node<T> {
     {
         let body = match self.body {
             NodeBody::Opaque(op) => NodeBody::Opaque(f(op)),
-            NodeBody::SubDag(dag) => NodeBody::SubDag(dag.map_ops(f)),
+            NodeBody::SubDag(dag, kind) => NodeBody::SubDag(dag.map_ops(f), kind),
         };
 
         Node {
@@ -414,8 +414,26 @@ impl<T> Node<T> {
 
     /// Check if this node is a sub-DAG.
     pub fn is_subdag(&self) -> bool {
-        matches!(self.body, NodeBody::SubDag(_))
+        matches!(self.body, NodeBody::SubDag(..))
     }
+}
+
+/// Structural classification of a SubDag node (CP-35).
+///
+/// Stamped at build time by `LoopBuilder`/`BranchBuilder` so that the executor
+/// can dispatch without reverse-engineering the internal DAG topology.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub enum SubDagKind {
+    /// Unclassified composition (default for backward compat).
+    #[default]
+    Regular,
+    /// Loop pattern: unpack → body → pack.
+    Loop {
+        /// Port name carrying the per-element value into the body.
+        element_port: String,
+        /// Non-element input ports forwarded from the unpack node.
+        extra_input_ports: Vec<String>,
+    },
 }
 
 /// The body of a node: either an opaque operation or a nested sub-DAG.
@@ -423,8 +441,9 @@ impl<T> Node<T> {
 pub enum NodeBody<T> {
     /// An opaque operation — we trust it, don't look inside
     Opaque(T),
-    /// A nested sub-DAG — same structure, recursive
-    SubDag(Dag<T>),
+    /// A nested sub-DAG — same structure, recursive.
+    /// The `SubDagKind` classifies the pattern (loop, branch, regular).
+    SubDag(Dag<T>, SubDagKind),
 }
 
 /// An I/O example for a node, used by testgen to generate per-node unit tests.

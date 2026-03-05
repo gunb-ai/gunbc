@@ -293,7 +293,7 @@ impl std::fmt::Display for ClassifyError {
 pub fn classify_computation(node: &Node<LoweredOp>) -> Result<Computation, ClassifyError> {
     let op = match &node.body {
         NodeBody::Opaque(op) => op,
-        NodeBody::SubDag(_) => return Err(ClassifyError::SubDagNode(node.id.0.clone())),
+        NodeBody::SubDag(..) => return Err(ClassifyError::SubDagNode(node.id.0.clone())),
     };
 
     let inputs: Vec<TypedPort> = node.inputs.iter().map(port_to_typed).collect();

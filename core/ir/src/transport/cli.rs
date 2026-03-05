@@ -1118,7 +1118,7 @@ mod tests {
 
     fn subdag_from(node: Node<CliToolOp>) -> Dag<CliToolOp> {
         match node.body {
-            crate::node::NodeBody::SubDag(dag) => dag,
+            crate::node::NodeBody::SubDag(dag, _) => dag,
             _ => panic!("expected build_cli_upsert to produce a subdag node"),
         }
     }

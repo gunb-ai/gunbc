@@ -202,7 +202,7 @@ mod tests {
         let node = build_makefile_subdag();
 
         match &node.body {
-            NodeBody::SubDag(dag) => {
+            NodeBody::SubDag(dag, _) => {
                 assert_eq!(dag.nodes.len(), 2);
 
                 let node_ids: Vec<_> = dag.nodes.iter().map(|n| n.id.0.as_str()).collect();

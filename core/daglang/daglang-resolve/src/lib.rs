@@ -136,7 +136,10 @@ impl ModuleGraph {
                         .module_path
                         .as_ref()
                         .map(|mp| mp.node.clone())
-                        .unwrap_or_else(|| path_to_module_path(path, roots, &canonical_roots));
+                        .map_or_else(
+                            || path_to_module_path(path, roots, &canonical_roots),
+                            Ok,
+                        )?;
                     let imports: Vec<ModulePath> = ast
                         .imports
                         .iter()
@@ -165,8 +168,14 @@ impl ModuleGraph {
         for (path, mod_path, imports, ast) in parsed {
             let mut deps: Vec<usize> = Vec::new();
             for imp in &imports {
-                if let Some(dep) = mod_index.get(imp) {
-                    deps.push(*dep);
+                match mod_index.get(imp) {
+                    Some(dep) => deps.push(*dep),
+                    None => {
+                        return Err(ResolveError::UnresolvedImport {
+                            importing_module: mod_path.clone(),
+                            target: imp.clone(),
+                        });
+                    }
                 }
             }
             modules.push(ResolvedModule {
@@ -289,12 +298,13 @@ pub fn canonicalize_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
 }
 
 /// Resolve a filesystem path to a module path using canonical path comparison.
+/// Returns an error if the path cannot be resolved relative to any known root.
 #[allow(clippy::disallowed_methods)]
 pub fn path_to_module_path(
     path: &Path,
     roots: &[PathBuf],
     canonical_roots: &[PathBuf],
-) -> ModulePath {
+) -> Result<ModulePath, ResolveError> {
     let canonical_path = std::fs::canonicalize(path).ok();
     let mut best_relative: Option<PathBuf> = None;
     for root in roots {
@@ -313,13 +323,12 @@ pub fn path_to_module_path(
         }
     }
     if let Some(relative) = best_relative {
-        return relative_path_to_module_path(&relative);
+        return Ok(relative_path_to_module_path(&relative));
     }
-    ModulePath::new(vec![path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("unknown")
-        .to_string()])
+    Err(ResolveError::InvalidRootPath {
+        path: path.to_path_buf(),
+        reason: "file is not under any known DSL root directory".to_string(),
+    })
 }
 
 /// Stable topological sort: leaves (no deps) first.
@@ -426,6 +435,22 @@ pub enum ResolveError {
     InvalidExtensionCase(PathBuf),
     /// Internal invariant violation while resolving modules.
     InternalInvariant(String),
+}
+
+impl ResolveError {
+    /// Stable, grep-able error code for this variant (CP-59).
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::IoError(..) => "MOD001",
+            Self::ParseErrors(..) => "MOD002",
+            Self::UnresolvedImport { .. } => "MOD003",
+            Self::CyclicDependency(..) => "MOD004",
+            Self::DuplicateModule(..) => "MOD005",
+            Self::InvalidRootPath { .. } => "MOD006",
+            Self::InvalidExtensionCase(..) => "MOD007",
+            Self::InternalInvariant(..) => "MOD008",
+        }
+    }
 }
 
 impl std::fmt::Display for ResolveError {

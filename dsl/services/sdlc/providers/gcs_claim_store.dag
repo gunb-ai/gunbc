@@ -126,6 +126,7 @@ service gcs.ClaimStore : ClaimStore {
       }>
     }
     readonly
+    idempotent
     transport rest { method: GET, path: "/storage/v1/b/\{bucket\}/o?prefix=claims/" }
     response {
       200 => Json

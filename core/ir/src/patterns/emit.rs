@@ -295,7 +295,7 @@ mod tests {
         let node = build_test_emit();
 
         match &node.body {
-            NodeBody::SubDag(dag) => {
+            NodeBody::SubDag(dag, _) => {
                 assert_eq!(dag.nodes.len(), 6);
                 assert_eq!(dag.edges.len(), 6);
 

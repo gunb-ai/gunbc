@@ -23,8 +23,6 @@ import interfaces.agent_provider { AgentProvider }
 import interfaces.credential_provider { CredentialProvider }
 import extdeps.llm.anthropic { llm.Anthropic }
 import extdeps.llm.openai { llm.OpenAI }
-import extdeps.git { git.Core }
-import extdeps.cargo { Cargo }
 import std.types {
   NonEmptyStr, AgentStatus, ApprovalMode, CredentialFlow, AccessToken
 }
@@ -78,6 +76,7 @@ service LlmAgentProvider : AgentProvider {
     input { run_id: NonEmptyStr }
     output { status: AgentStatus, finished: Bool, exit_code: Int?, error: String? }
     readonly
+    idempotent
   }
 
   operation cancel {
@@ -90,6 +89,7 @@ service LlmAgentProvider : AgentProvider {
     input { run_id: NonEmptyStr }
     output { status: AgentStatus, exit_code: Int?, stdout: String?, stderr: String?, files_changed: List<String> }
     readonly
+    idempotent
   }
 }
 

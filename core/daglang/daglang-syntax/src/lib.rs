@@ -364,6 +364,7 @@ pub mod ast {
         pub type_params: Vec<String>,
         pub capabilities: Vec<CapabilityDef>,
         pub contracts: Vec<ContractDef>,
+        pub type_defs: Vec<TypeDef>,
     }
 
     // ── Pipelines ───────────────────────────────────────────────────

@@ -224,7 +224,7 @@ fn classify_nodes_with_config(
 
         let op = match &node.body {
             NodeBody::Opaque(op) => op,
-            NodeBody::SubDag(_) => continue,
+            NodeBody::SubDag(..) => continue,
         };
 
         let handler = match classify_handler(op) {

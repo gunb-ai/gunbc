@@ -46,6 +46,7 @@ service codex.AgentProvider : AgentProvider {
     input { run_id: NonEmptyStr }
     output { status: AgentStatus, finished: Bool, exit_code: Int?, error: String? }
     readonly
+    idempotent
     transport shell { argv: ["codex", "status", "\{run_id\}"] }
   }
 
@@ -59,6 +60,7 @@ service codex.AgentProvider : AgentProvider {
     input { run_id: NonEmptyStr }
     output { status: AgentStatus, exit_code: Int?, stdout: String?, stderr: String?, files_changed: List<String> }
     readonly
+    idempotent
     transport shell { argv: ["codex", "result", "\{run_id\}"] }
   }
 }

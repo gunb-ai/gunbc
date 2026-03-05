@@ -267,7 +267,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("services.sdlc.providers.github_issue_provider".into(), 3),
         ("services.sdlc.providers.health_check".into(), 1),
         ("services.sdlc.providers.inline_artifact_store".into(), 2),
-        ("services.sdlc.providers.llm_agent_provider".into(), 7),
+        ("services.sdlc.providers.llm_agent_provider".into(), 5),
         (
             "services.sdlc.providers.local_credential_provider".into(),
             4,
@@ -556,21 +556,18 @@ fn invalid_root_path_error_display_includes_path_and_reason() {
 }
 
 #[test]
-fn unresolved_imports_are_tolerated_for_phase_zero_discovery() {
+fn unresolved_imports_are_rejected_during_discovery() {
     let root = unique_temp_dir("unresolved");
     write_file(
         &root.join("a/main.dag"),
         "module a.main\nimport missing.dep\nfn run() -> Unit {}",
     );
 
-    let graph = ModuleGraph::discover(std::slice::from_ref(&root))
-        .expect("expected graph discovery success");
-    assert_eq!(graph.modules.len(), 1);
-    assert_eq!(graph.modules[0].module_path.as_dotted(), "a.main");
-    assert!(
-        graph.modules[0].dependencies.is_empty(),
-        "unresolved imports should be ignored in phase-0 graph construction"
-    );
+    let result = ModuleGraph::discover(std::slice::from_ref(&root));
+    assert!(result.is_err(), "unresolved imports should be reported as errors");
+    let err = result.unwrap_err();
+    let rendered = err.to_string();
+    assert!(rendered.contains("unresolved import"), "error should mention unresolved import: {rendered}");
 
     fs::remove_dir_all(root).expect("failed to clean temp directory");
 }

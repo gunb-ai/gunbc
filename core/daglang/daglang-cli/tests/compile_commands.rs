@@ -8459,11 +8459,14 @@ fn compile_command_directory_mode_fails_on_unresolved_imports() {
         "directory compile should fail on unresolved imports"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert_typecheck_stage_failure(&stderr);
-    assert!(stderr.contains("unresolved import"));
+    // CP-1: unresolved imports now fail at resolve stage (earlier than typecheck)
     assert!(
-        !stderr.contains("lower error"),
-        "unresolved imports should fail in typecheck stage: {stderr}"
+        stderr.contains("unresolved import"),
+        "expected unresolved import error: {stderr}"
+    );
+    assert!(
+        stderr.contains("missing.dep"),
+        "expected missing.dep in error: {stderr}"
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");

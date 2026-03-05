@@ -153,7 +153,7 @@ impl<T> Dag<T> {
 
         // Recursively render subdags
         for node in &self.nodes {
-            if let crate::node::NodeBody::SubDag(ref subdag) = node.body {
+            if let crate::node::NodeBody::SubDag(ref subdag, _) = node.body {
                 let subdag_name = format!("{}::{}", name, node.id.0);
                 out.push_str(&subdag.to_mermaid_impl(&subdag_name, depth + 1));
 
@@ -213,7 +213,7 @@ impl<T> Dag<T> {
         }
 
         for node in sorted_nodes {
-            if let crate::node::NodeBody::SubDag(ref subdag) = node.body {
+            if let crate::node::NodeBody::SubDag(ref subdag, _) = node.body {
                 let subdag_name = format!("{name}::{}", node.id.0);
                 out.push_str(&subdag.to_ascii_impl(&subdag_name, depth + 1));
             }

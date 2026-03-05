@@ -4,8 +4,8 @@
 >
 > **Thesis**: The entire purpose of gunbc is moving contradiction discovery from
 > runtime to static analysis. The compiler pipeline IS the product. Every silent
-> drop, every auto-fill, every swallowed error moves a contradiction back to
-> runtime — exactly what the compiler exists to prevent.
+> drop, every auto-fill, every swallowed error, every unclear interface moves a
+> contradiction back to runtime — exactly what the compiler exists to prevent.
 >
 > The interpreted path (Dag<DynOp> executor) is the only real runtime today.
 > The compiled path (emit → rustc → binary) exists but is underused and incomplete.
@@ -13,13 +13,16 @@
 > This lane hardens the shared pipeline and closes the gaps that make the emit path
 > a second-class citizen.
 >
-> **Three invariants** (see design doc "Three Invariants" section):
+> **Four invariants** (see design doc "Four Invariants" section):
 > 1. **Binary logic** — every signal is PASS or FAIL. No ternary states.
 >    No `lossy`, no `Value::Skipped`, no `allow_unresolved`, no `skip_verification`.
 > 2. **Minimalism** — no redundancy between stages. Each stage adds new information,
 >    never restates what an earlier stage computed.
 > 3. **Resolve early** — if information is available at Stage N, resolve it there.
 >    Every deferral creates ambiguity that later stages handle with fallbacks.
+> 4. **Clear contracts** — every stage is a pure function with typed I/O. The
+>    signature IS the contract. No hidden state, no growing parameter lists, no
+>    ambient globals. Strong boundaries between participants.
 >
 > The strategy is to **delete all the forgiveness**.
 >
@@ -48,6 +51,11 @@
 >   during lowering destroys semantic intent and causes deduplication conflicts.
 >   Keep high-level nodes; let the backend expand.
 > - **Carry types forward**: the typechecker proves types, the lowerer erases them.
+> - **Cross-lane dependency**: Lane 2 Bridge 1+2 (SubDag lowering for fn bodies)
+>   is the single biggest open pain point — it causes the `make gist` unguarded
+>   transport bug and `make install` compute node failures. This is Lane 2 work
+>   that directly enables Lane 4's strict verification (CP-8, CP-23). Don't
+>   duplicate it here; just know it's a prerequisite for the hardest CP items.
 >   Typed ports would make edge validation automatic and emit trivial.
 
 ---
@@ -167,8 +175,14 @@
 
 ## WS-4: Diagnostic Quality
 
-> When something goes wrong, the error message should point to the .dag source
-> location, not to an internal compiler node ID or port name.
+> When the compiler finds a contradiction, the error message is its **last act
+> of usefulness** before stopping. Every diagnostic must answer: what went wrong
+> (the contradiction), where (source location), and how to fix it (suggestion).
+> Each stage is responsible for emitting errors loud enough, and with enough I/O
+> context, that users (and earlier stages) can correlate to the actual failure.
+>
+> See design doc "When You Can't Store Tautology, Fail Helpfully" for the full
+> principle and per-stage diagnostic contracts.
 
 ### CP-13: Remove debug eprintln from typecheck (S)
 
@@ -180,8 +194,9 @@
 ### CP-14: Source spans on lowerer errors (M)
 
 **Problem**: Lowerer errors reference node names and port names, not .dag source locations. When lowering fails, users must mentally map node IDs back to their source.
-**Fix**: Thread `Span` information from the AST through lowering. `LowerError` variants should carry `span: Option<Span>` for source attribution.
+**Fix**: Thread `Span` information from the AST through lowering. `LowerError` variants should carry `span: Span` (not Option) for source attribution.
 **Verify**: At least service call arg errors (CP-3) and pattern expansion errors (CP-2) carry source spans.
+**Note**: Subsumed by CP-46 (structured LowerError enum). Implement together.
 
 ### CP-15: Implement DryRunStrictness (M)
 
@@ -196,6 +211,60 @@
 **Problem**: Multi-statement brace blocks silently return empty Record with no diagnostic.
 **Fix**: Emit a `ParseError::UnsupportedMultiStmtBlock { span }` diagnostic (can be non-fatal warning) so users know their lambda body was discarded.
 **Verify**: `cargo test -p daglang-syntax` + test for multi-stmt lambda → warning emitted.
+
+### CP-48: Unified Diagnostic type with span + context + help (M)
+
+**Problem**: 10 different error types across 10 crates. No shared structure. Spans exist at parse, lost everywhere else. No help/suggestion field anywhere. Each stage's `Display` impl bakes suggestions into format strings — not machine-readable.
+**Fix**: Introduce shared `Diagnostic` type (see design doc "Shared Types"):
+```rust
+struct Diagnostic {
+    code: &'static str,          // "E0401" — machine-readable
+    message: String,             // human-readable: the contradiction
+    span: Span,                  // NOT optional for user-facing errors
+    file: PathBuf,               // which .dag file
+    context: DiagnosticContext,  // structured: TypeMismatch, Missing, Duplicate, Unsupported
+    help: Option<String>,        // concrete fix suggestion
+    related: Vec<RelatedSpan>,   // secondary locations ("first defined here")
+}
+```
+Stage-specific error enums convert to `Vec<Diagnostic>` via `Into<Diagnostics>`. The `Verdict<T>` return type carries `Diagnostics` on FAIL.
+**Impact**: Foundation for all other diagnostic improvements. Machine-readable errors enable IDE integration, programmatic error handling, and consistent rendering.
+**Verify**: `cargo test --workspace` + all stage FAIL paths produce `Diagnostics` with non-empty `span` and `file`.
+**Note**: Foundation item — land alongside or shortly after CP-36 (Verdict<T>).
+
+### CP-49: Thread spans through TypeError (M)
+
+**File**: `core/daglang/daglang-typecheck/src/lib.rs`
+**Problem**: `TypeError` has 35+ structured variants but zero spans. The typechecker reads AST nodes that carry `Spanned<T>` wrappers — the span is right there but not attached to the error.
+**Fix**: Add `span: Span` to every `TypeError` variant. When constructing errors, extract the span from the `Spanned<T>` AST node being checked. Convert to `Diagnostic` with context (`TypeMismatch { expected, got }`, `Missing`, etc.) and file path from `TypedProject.graph`.
+**Example**: `TypeError::TypeMismatch { expected: "String", got: "Int" }` becomes `Diagnostic { code: "E0308", span: (42, 55), file: "tools/gist.dag", context: TypeMismatch { expected: "String", got: "Int" }, help: Some("change argument type to String") }`.
+**Verify**: `cargo test -p daglang-typecheck` + every `TypeError` variant carries a span. `grep -r 'TypeError::' core/daglang/daglang-typecheck/src/ | grep -v 'span'` returns 0 hits.
+
+### CP-50: Help text on common errors (M)
+
+**Problem**: No error anywhere in the pipeline carries a fix suggestion. Users see what's wrong but not how to fix it. Fix suggestions are the highest-value diagnostic improvement for a DSL where users are often learning the language.
+**Fix**: Add `help: Option<String>` to the most common error paths:
+  - Parse: `"expected '}' to close block opened at line 12"`
+  - Module Resolve: `"import std.rendor not found — did you mean std.render?"` (Levenshtein on available modules)
+  - Typecheck: `"expected String, got Int for arg 'id' — change type or add cast"`
+  - Lower: `"service call gist.Create missing required arg 'description' (String) — add description: \"...\" to the call"`
+  - Verify: `"node compare_content has unwired input 'expected_content' — add content source or wire a default"`
+  - Execute (DryRun): `"unmocked transport node 'execute_gist_create' — add mock in test fixture or run in Real mode"`
+**Verify**: At least 10 of the most-hit error paths carry non-empty `help` text. Measure via test that constructs each error variant and asserts `help.is_some()`.
+
+### CP-51: NodeOrigin on every lowered node for span traceability (M)
+
+**Problem**: Lowered DAG nodes carry `NodeId` (a string) but no link to the source `.dag` location. Verify/derive/emit errors reference node IDs that users must manually correlate to source. Pattern-expanded nodes (transport triplets, content_upsert chains) have no link to the source pattern.
+**Fix**: Add `origin: NodeOrigin` to every `Node<LoweredOp>`:
+```rust
+enum NodeOrigin {
+    UserCode { span: Span, file: PathBuf },
+    PatternExpansion { instance_id: PatternInstanceId, local_idx: u8 },
+}
+```
+The lowerer sets `UserCode` for nodes derived from AST items. Pattern expansions set `PatternExpansion` with a backref to the source pattern instance (which itself carries the span). Verify/derive/emit read `origin` for error attribution.
+**Impact**: All post-lowering errors can point to the `.dag` source. Subsumes CP-25 (pattern instance backrefs) for the span-tracing aspect.
+**Verify**: `cargo test -p daglang-lower` + every node in a lowered DAG has `origin != None`. Test that transport triplet nodes trace back to the service call span.
 
 ---
 
@@ -460,6 +529,153 @@ All main-path stage APIs (`parse`, `discover_module_graph`, `typecheck_strict`, 
 
 ---
 
+## WS-10: Stage Interface Cleanup (clear contracts)
+
+> Every stage should be a pure function with typed I/O. The signature IS the
+> contract. See design doc "Target Stage Interfaces" for the full specification.
+
+### CP-43: Typecheck borrows ModuleGraph instead of moving it (M)
+
+**File**: `core/daglang/daglang-typecheck/src/lib.rs`
+**Problem**: `typecheck_module_graph(graph: ModuleGraph)` takes ownership. Later stages that need module data must get it from the `TypedProject` copy. This forces TypedModule to duplicate `path`, `module_path`, `imports`, `ast`.
+**Fix**: Change signature to `typecheck(graph: &ModuleGraph, externs: &ExternRegistry) -> Verdict<TypedProject>`. `TypedProject` holds `graph: &'a ModuleGraph` (by reference) plus its own `signatures` map. CP-32 (eliminate field duplication) becomes a natural consequence.
+**Impact**: Eliminates forced copy. `ModuleGraph` stays alive in the caller (driver). `TypedProject<'a>` is a lifetime-scoped overlay, not a standalone blob.
+**Verify**: `cargo test --workspace` + `TypedModule` struct has no `path`, `module_path`, `imports`, or `ast` fields.
+**Note**: Subsumes CP-32. Implement together.
+
+### CP-44: LowerOutput replaces driver re-extraction (M)
+
+**File**: `core/daglang/daglang-lower/src/lib.rs`, `core/daglang/daglang-driver/src/lib.rs`
+**Problem**: After lowering, the driver re-walks the DAG and TypedProject to extract `output_paths`, `data_values`, `inferred_entrypoints`, `pipeline_params`, `dsl_type_registry`, `available_profiles`. These are all derivable during lowering but computed after the fact.
+**Fix**: Lower returns `LowerOutput { dag, output_paths, data_values, entrypoints }`. The driver consumes these directly — no re-extraction functions. (Type registry and profiles come from `TypedProject`, computed during typecheck.)
+**Impact**: Eliminates 6 post-hoc extraction functions from the driver. Each piece of data is computed once, during its canonical stage.
+**Verify**: `cargo test --workspace` + `grep -r 'extract_output_paths\|infer_entrypoints\|build_data_values' core/daglang/daglang-driver/` returns 0 hits.
+**Note**: Subsumes CP-33. Implement together.
+
+### CP-45: Consolidate Execute entry points into one (S)
+
+**File**: `core/exec/src/execute/mod.rs`
+**Problem**: Four progressively wider entry points: `execute()`, `execute_with_mode()`, `execute_with_mode_and_inputs()`, `execute_with_mode_and_inputs_and_detail()`. Growing parameter lists hide the real contract.
+**Fix**: One entry point: `fn execute(dag: &Dag<DynOp>, config: &ExecConfig) -> Verdict<ExecResult>`. `ExecConfig` carries mode, mocks, and detail level. `ExecResult` carries outputs + log.
+**Verify**: `cargo test --workspace` + `grep -r 'execute_with_mode' core/exec/` returns 0 hits (only `execute` remains).
+
+### CP-46: Structured LowerError with spans (M)
+
+**File**: `core/daglang/daglang-lower/src/lib.rs`
+**Problem**: `LowerError { node_id: Option<String>, reason: String }` — unstructured, no span, `Option` for required context. When lowering fails, users get a bare string with no source location.
+**Fix**: Replace with a proper enum:
+```rust
+enum LowerError {
+    UnwiredRequiredInput { node: NodeId, port: PortName, span: Span },
+    PatternExpansionFailed { pattern: String, span: Span, reason: String },
+    UnresolvedServiceArg { service: String, arg: String, span: Span },
+    UnsupportedExpr { expr_kind: String, span: Span },
+    // ... one variant per failure mode
+}
+```
+Every variant carries a `Span` for source attribution. No `Option<String>` node IDs.
+**Impact**: Lowerer errors point to the `.dag` source line, not internal node names. Pairs with CP-36 (Verdict<T>) for consistent error reporting.
+**Verify**: `cargo test -p daglang-lower` + `LowerError` has no `String`-only reason fields.
+**Note**: Subsumes CP-14 (source spans on lowerer errors). Implement together.
+
+### CP-47: RuntimeBindings replaces ExternResolver trait (M, after CP-40)
+
+**File**: `core/resolve/src/lib.rs`
+**Problem**: `ExternResolver` is a trait with `resolve(module: &str, name: &str) -> Option<DynOp>`. Stringly-typed, partial (returns `Option`), runtime lookup. After CP-40 (ExternRegistry), extern symbols have validated `ExternId`s.
+**Fix**: Replace `dyn ExternResolver` with `RuntimeBindings { externs: HashMap<ExternId, DynOp> }`. The binding is total — every `ExternId` has a value. Resolution via `map_bodies()` indexes by `ExternId`, not string lookup.
+**Impact**: Resolution becomes total (cannot fail on missing externs). Eliminates the `ExternResolver` trait, `NullExternResolver`, `GunbcExternResolver`. The resolve stage signature becomes `fn resolve(verified: &VerifiedDag<LoweredOp>, bindings: &RuntimeBindings) -> Verdict<Dag<DynOp>>`.
+**Verify**: `cargo test --workspace` + `grep -r 'dyn ExternResolver' core/` returns 0 hits.
+
+---
+
+## WS-11: Obligation Boundary (move proofs from testgen to compiler)
+
+> Today, when the compiler can't prove a property, it punts to testgen as a
+> proof obligation. Testgen then re-derives metadata that the DSL author already
+> declared. The goal: preserve enough metadata through the IR that testgen can
+> trust the compiler's output directly, instead of guessing.
+>
+> See design doc "The obligation boundary" for the full motivation.
+
+### CP-52: Preserve service provider metadata on lowered nodes (M)
+
+**Problem**: The DSL declares `service github.Gist { operation Create { ... } }`. The lowerer knows this is a GitHub service. But after lowering, testgen's `auto_mock.rs` re-infers the provider by parsing the node ID string: `if node_id.to_lowercase().contains("gist") { MockProvider::GitHub }`. This is fragile — if a service is misnamed, provider inference fails and testgen falls back to a "kitchen sink" mock with fields from all providers.
+**Fix**: Add `provider: Option<String>` and `operation: Option<String>` to `ServiceCallMetadata` (already exists on `LoweredOp::Callable`). The lowerer sets these from the service definition. Testgen reads `service_metadata.provider` instead of parsing node IDs.
+**Impact**: Eliminates `infer_provider_from_node_id()` heuristic in `auto_mock.rs`. Mock responses are precise per-provider. Kitchen sink fallback becomes rare.
+**Verify**: `cargo test -p gunbc-test` + `grep -r 'infer_provider_from_node_id' core/test/` returns 0 hits.
+
+### CP-53: Flow response contracts through IR to testgen (L)
+
+**Problem**: The DSL declares `response { 200 => GistResponse, 404 => NotFound }` on service operations. The parser and typechecker validate this. But the response type map doesn't flow through to the lowered IR. When testgen needs to synthesize mock responses, it probe-executes downstream consumer nodes in `Real` mode to find which response shape "fits" — executing the DAG at mock-generation time. This is slow, fragile, and wrong (side effects during test generation).
+**Fix**: Add `response_contract: Option<Vec<(StatusCode, TypeId)>>` to `ServiceCallMetadata`. The lowerer populates it from the parsed `response { }` block. `derive_artifacts()` extracts it into `DerivedArtifacts`. Testgen reads the contract directly to synthesize correctly-typed mock responses.
+**Impact**: Eliminates `response_candidate_satisfies_consumers()` probe-execution. Mock responses are typed from source declarations. Testgen never executes the DAG during generation.
+**Verify**: `cargo test -p gunbc-codegen` + `grep -r 'response_candidate_satisfies' core/test/` returns 0 hits. Auto-mock no longer calls `execute()` at generation time.
+
+### CP-54: Derive behavioral properties once, flow to testgen (S)
+
+**Problem**: `readonly` and `idempotent` are declared on service operations and validated by the typechecker. But testgen re-derives them via `CallableProperties` BFS graph walk in `daglang-derive`. The derive pass walks the entire graph from each func entrypoint, collecting transport classes and behavioral flags — work that the typechecker already did.
+**Fix**: Attach `readonly: bool` and `idempotent: bool` to `ServiceCallMetadata` during lowering. The derive pass reads these flags directly instead of BFS-walking the graph. Testgen reads from `DerivedArtifacts.callable_properties` which are now pre-computed.
+**Impact**: Eliminates redundant BFS walks. `CallableProperties` derivation becomes a lookup, not a graph traversal. Aligns with Invariant 2 (minimalism — no redundancy).
+**Verify**: `cargo test -p daglang-derive` + derive pass no longer BFS-walks for `readonly`/`idempotent` (reads from node metadata).
+
+### CP-55: Track obligation provenance — what the compiler proved vs what testgen must check (M)
+
+**Problem**: Testgen's `collect_obligations()` generates proof obligations for properties the compiler couldn't prove. But there's no tracking of *why* — which compiler stage should have proved it, and what information was missing. Without this, we can't measure whether pipeline improvements are actually moving the obligation boundary left.
+**Fix**: Add `provenance: ObligationProvenance` to `ProofObligation`:
+```rust
+enum ObligationProvenance {
+    CompilerGap { stage: &'static str, reason: String },
+    InherentlyRuntime { reason: String },
+}
+```
+`CompilerGap` means "the compiler should have proved this but couldn't" (with the stage and reason). `InherentlyRuntime` means "this can only be tested at runtime by design" (e.g., live API response shapes). Count of `CompilerGap` obligations is a ratchet — it should only go down.
+**Impact**: Measurable metric for obligation boundary movement. Each CP item that improves the compiler should reduce `CompilerGap` count. CI can enforce the ratchet.
+**Verify**: `cargo test -p gunbc-codegen` + `CompilerGap` count is tracked per testgen run. Baseline established.
+
+### CP-56: Eliminate testgen re-derivation of transport triplets (S)
+
+**Problem**: `derive_transport_triplets()` in `daglang-derive` identifies transport nodes by matching port type strings ("TransportRequest", "TransportResponse"). This is a heuristic that re-derives structure the lowerer already created. CP-34 addresses the derive side, but testgen also independently walks the DAG to find transport executor nodes via `NodeKind::TransportExecute`.
+**Fix**: After CP-34 (derive uses `Node.kind`), ensure testgen also reads from `DerivedArtifacts.transport_triplets` instead of independently walking the DAG. Testgen's `analyze.rs` should consume derive output, not re-analyze the graph.
+**Impact**: Single source of truth for transport structure. Testgen analysis becomes a lookup, not a graph walk.
+**Verify**: `cargo test -p gunbc-codegen` + testgen's `analyze.rs` reads from `DerivedArtifacts`, not from raw DAG inspection.
+
+### CP-57: Vfs trait / Source Ingest stage — isolate filesystem impurity (M)
+
+**Problem**: Module resolve interleaves filesystem reads (walking directories, reading `.dag` files) with parsing and graph construction. This means the parser, typechecker, and lowerer are all transitively impure — they can't be tested with synthetic inputs without mocking the filesystem.
+**Fix**: Introduce a `Vfs` trait (`read_to_string`, `list_files`) and a Stage 0: Ingest that captures all filesystem access into an immutable `SourceBundle`. Module resolve becomes a pure function over `SourceBundle` — it doesn't read the filesystem.
+**Impact**: Every stage after ingest is a pure function of its inputs. Tests can use synthetic `SourceBundle` values without filesystem mocking. Enables parallel compilation (each source bundle is independent).
+**Verify**: `cargo test --workspace` + `grep -r 'std::fs::read_to_string' core/daglang/daglang-resolve/` returns 0 hits (all reads go through `Vfs`).
+**Note**: See design doc "Stage 0: Ingest" for the full interface sketch.
+
+### CP-58: Contracts crate — shared interface types only (S)
+
+**Problem**: Stage crates have ad-hoc error types and no shared interface boundary. Each stage invents its own result type (`Vec<ParseError>`, `Vec<TypeError>`, `LowerError { .. }`, etc.). Shared types like `Verdict<T>`, `Diagnostics`, `Span`, `FileId`, `ExternId` have no single home.
+**Fix**: Create `core/daglang/daglang-contracts/` containing only: `Verdict<T>`, `Diagnostics`, `Diagnostic`, `Span`, `FileId`, `ModuleId`, `ExternId`, `TypeId`, and the stage function signatures. Zero implementation code. All stage crates depend on it.
+**Impact**: Turns the "pure function" interface style into an enforced boundary. Adding a hidden dependency requires changing the contract crate, which is visible to everyone.
+**Verify**: `daglang-contracts` crate exists. `cargo test -p daglang-contracts` passes. All stage crates list it as a dependency.
+**Note**: Land alongside or shortly after CP-36 + CP-48 (which create the types that live here).
+
+---
+
+## Pain Point Correlation
+
+These are real bugs from recent weeks, mapped to the CP items that would have
+prevented them. Items marked **DONE** have already been fixed. Items marked
+**GAP** were not covered until this audit.
+
+| Bug | Root cause | Caught by | Status |
+|-----|-----------|-----------|--------|
+| `make gist` DNS error (Bug 1) | Transport nodes for unreachable match arms | CP-18 (defer expansion) + Lane 2 Bridge 1+2 | Open (Lane 2) |
+| `make gist` audience=true (Bug 2) | Default params not injected into DAG | CP-7 | **DONE** (Bridge 2b) |
+| `gunbc-ci` false failure | Complex return exprs silently dropped | CP-2, CP-4 | Open |
+| `make gist` 401 | No credential wiring to execute node | CP-6 (param_source), CP-29 (validate required inputs) | Open |
+| SDLC won't compile | Unresolved imports silently dropped | CP-1 | Open |
+| Testgen kitchen sink mocks | Provider metadata lost after lowering | CP-52 | Open (**GAP** — added) |
+| Testgen probe-execution | Response contracts not tracked through IR | CP-53 | Open (**GAP** — added) |
+| Testgen redundant BFS | Behavioral properties re-derived | CP-54 | Open (**GAP** — added) |
+
+---
+
 ## Summary
 
 | WS | Items | Theme | Invariant |
@@ -467,12 +683,15 @@ All main-path stage APIs (`parse`, `discover_module_graph`, `typecheck_strict`, 
 | WS-1 | CP-1 through CP-5 | Eliminate silent failures | Binary logic |
 | WS-2 | CP-6 through CP-8 | Enable strict DAG verification | Binary logic |
 | WS-3 | CP-9 through CP-12 | Interpreted/compiled parity | Minimalism |
-| WS-4 | CP-13 through CP-16 | Diagnostic quality | Binary logic |
-| WS-5 | CP-17 through CP-22 | Tautology enforcement | All three |
+| WS-4 | CP-13 through CP-16, CP-48 through CP-51 | Diagnostic quality | Binary logic + Clear contracts |
+| WS-5 | CP-17 through CP-22 | Tautology enforcement | All four |
 | WS-6 | CP-23 through CP-28 | Structural invariants | Binary logic + Minimalism |
 | WS-7 | CP-29 through CP-35 | Resolve early | Resolve early + Minimalism |
-| WS-8 | CP-36 through CP-39 | Cross-cutting patterns | All three |
-| WS-9 | CP-40 through CP-42 | Extern & verification consolidation | All three |
+| WS-8 | CP-36 through CP-39 | Cross-cutting patterns | All four |
+| WS-9 | CP-40 through CP-42 | Extern & verification consolidation | All four |
+| WS-10 | CP-43 through CP-47 | Stage interface cleanup | Clear contracts |
+| WS-11 | CP-52 through CP-56 | Obligation boundary (testgen) | Minimalism + Resolve early |
+| WS-12 | CP-57, CP-58 | Purity & boundaries | Clear contracts |
 
 ## Ordering
 
@@ -490,25 +709,66 @@ CP-36 (Verdict<T>)  ──→  WS-1 (silent failures)  ──→  WS-2 (strict v
           WS-8 (cross-cutting) ───────────────────────────────────-┘
                                                                    |
           WS-9 (extern + verify consolidation) ────────────────────┘
+                                                                   |
+          WS-10 (interface cleanup) ───────────────────────────────┘
+                                                                   |
+          WS-11 (obligation boundary) ─────────────────────────────┘
 ```
 
-CP-36 (Verdict<T>) is a foundation item — land it first so all new error paths
-use the unified type. WS-1 → WS-2 → WS-3 remains the critical path.
+### Subsumption
 
-WS-7 has the highest density of small, independent items (CP-29, CP-31, CP-34,
-CP-35, CP-37, CP-38 are all S-sized). These can land in parallel with WS-1 work.
+Some later items subsume earlier ones. When implementing, do them together:
 
-WS-9 items can interleave: CP-41 (merge validation) pairs with CP-8 (flip
-skip_verification). CP-42 (map_bodies) pairs with CP-24. CP-40 (ExternRegistry)
-is independently valuable and unlocks total resolution.
+| Later item | Subsumes | Reason |
+|------------|----------|--------|
+| CP-43 (typecheck borrows ModuleGraph) | CP-32 (eliminate TypedModule duplication) | Borrowing eliminates the copy — no duplication to fix |
+| CP-44 (LowerOutput) | CP-33 (compute CompileOutput fields once) | LowerOutput bundles the computed fields at source |
+| CP-46 (structured LowerError) | CP-14 (source spans on lowerer errors) | Structured enum with spans covers the span requirement |
+| CP-47 (RuntimeBindings) | Part of CP-40 (ExternRegistry) | CP-40 creates ExternId; CP-47 consumes it |
+| CP-51 (NodeOrigin) | Part of CP-25 (pattern instance backrefs) | NodeOrigin covers the span-tracing aspect of pattern instances |
 
-**Recommended start**: CP-36 (Verdict type) first, then CP-1 + CP-13 + CP-28 +
-CP-29 + CP-31 + CP-37 + CP-38 + CP-41 + CP-42 (all S, independent) as warm-up.
-Then CP-2 through CP-5 (close silent failures). Then CP-6 + CP-7 → CP-8 + CP-41
-→ CP-23 (verification as type gate). Then CP-40 (ExternRegistry, independently
-high-value).
+### Dependencies
+
+**Foundation tier** (land first — everything depends on these):
+- CP-36 (Verdict<T>) — unified result type for all stages
+- CP-48 (unified Diagnostic type) — shared error structure with span + context + help
+
+**Warm-up tier** (S-sized, independent, can land in parallel):
+- CP-1, CP-13, CP-16, CP-28, CP-29, CP-31, CP-37, CP-38, CP-41, CP-42, CP-45
+
+**Critical path**: WS-1 → WS-2 → WS-3 (silent failures → strict verification → parity)
+
+**Diagnostic path** (parallel with critical path, accelerates everything):
+- CP-48 (Diagnostic type) → CP-49 (TypeError spans) → CP-50 (help text) → CP-51 (NodeOrigin)
+- CP-48 + CP-46 together (both reshape error types)
+- CP-51 enables span-rich errors in verify/derive/emit
+
+WS-9 items interleave: CP-41 pairs with CP-8. CP-42 pairs with CP-24. CP-40
+is independently high-value and unlocks CP-47.
+
+WS-10 depends on CP-36 (Verdict) and CP-40 (ExternRegistry for CP-47).
+CP-43 and CP-45 are independent. CP-44 pairs with CP-43. CP-46 pairs with CP-48.
+
+WS-11 (obligation boundary) can start anytime — CP-52 and CP-54 are independent
+of other workstreams. CP-53 (response contracts) benefits from CP-18 (defer
+transport expansion) but can land before it. CP-55 (provenance tracking) is
+independent infrastructure. CP-56 depends on CP-34.
+
+**Recommended start**: CP-36 + CP-48 + CP-58 (foundation: Verdict + Diagnostic +
+contracts crate) first. Then S-sized warm-ups: CP-1 + CP-13 + CP-16 + CP-28 +
+CP-29 + CP-31 + CP-37 + CP-38 + CP-41 + CP-42 + CP-45 + CP-52 + CP-54. Then
+CP-2 through CP-5 (close silent failures). Then CP-49 + CP-50 + CP-51
+(diagnostic quality, parallel with WS-1). Then CP-6 + CP-7 → CP-8 + CP-41 →
+CP-23 (verification as type gate). Then CP-40 → CP-47 (ExternRegistry →
+RuntimeBindings). Then CP-43 + CP-44 + CP-46 (interface reshape). Then CP-53 +
+CP-55 (response contracts + provenance — higher effort, high impact). CP-57
+(Vfs/Ingest) can land anytime — independent of the critical path.
 
 **Highest-leverage single change**: `VerifiedDag<LoweredOp>` (CP-23) required
 for both Resolve and Emit — then work backwards eliminating every reason
 verification currently can't be strict (param_source CP-6, implicit defaults
 CP-7/CP-20, silent drops CP-2/CP-3, unresolveds CP-1/CP-19).
+
+**Measurable progress**: CP-55 (obligation provenance) establishes a ratchet —
+count of `CompilerGap` obligations tracked per testgen run. Each pipeline
+improvement should reduce this count. CI can enforce it never increases.
