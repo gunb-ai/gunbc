@@ -1157,6 +1157,31 @@ pub fn resolve_lowered_dag_with(
         .cloned()
         .collect();
     wire_missing_filesystem_resources(&mut resolved);
+
+    // CP-24: Topology preservation invariant.
+    // Resolution must not drop non-pipeline nodes or non-pipeline edges.
+    debug_assert!(
+        resolved.nodes.len() >= dag.nodes.len() - pipeline_ids.len(),
+        "resolution dropped non-pipeline nodes: {} input (minus {} pipeline) > {} output",
+        dag.nodes.len(),
+        pipeline_ids.len(),
+        resolved.nodes.len(),
+    );
+    let input_edge_count = dag
+        .edges
+        .iter()
+        .filter(|e| {
+            !pipeline_ids.contains(e.from_node.0.as_str())
+                && !pipeline_ids.contains(e.to_node.0.as_str())
+        })
+        .count();
+    debug_assert!(
+        resolved.edges.len() >= input_edge_count,
+        "resolution dropped non-pipeline edges: {} input > {} output",
+        input_edge_count,
+        resolved.edges.len(),
+    );
+
     Ok(resolved)
 }
 

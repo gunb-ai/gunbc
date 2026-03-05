@@ -161,7 +161,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 | CP-23 | `VerifiedDag<T>` type wrapper (gates Resolve + Emit) | M | CP-8 | CP | Open |
 | CP-41 | Merge `validate_structural_primitive_wiring()` into `verify()` | S | CP-23 | CP | Open |
 | CP-42 | `Dag<T>.map_bodies()` for topology preservation | S | — | CP | **Done** — already exists as `Dag<T>::map_ops()` (dag.rs:85). Maps opaque bodies T→U, recurses into SubDags, preserves all node metadata + edges. |
-| CP-24 | Resolution topology invariant (assert same node/edge counts) | S | CP-42 | CP | Open |
+| CP-24 | Resolution topology invariant (assert same node/edge counts) | S | CP-42 | CP | **Done** — `debug_assert!` in `resolve_lowered_dag_with()` verifies non-pipeline node count preserved and edge count only grows (resource edges added). Accounts for pipeline node filtering. |
 | CP-15 | Implement `DryRunStrictness` | M | CP-37 | CP | Open |
 
 ### B.4: Lowerer restructuring (after B.2, parallel with B.3)
@@ -175,7 +175,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 | CP-64 | Extract transport derivation — `transport.rs` returning `TransportManifest`. Invariant: every service call → exactly one triplet. | M | CP-62 | GA | Open |
 | CP-65 | Dead AST scaffolding cleanup — delete `MockResponseDef` (before RT-1 re-adds it properly), `@retry` rejection, `hermetic` warning. | S | — | GA | **Done** — MockResponseDef deleted, @retry rejected by parser (C8 in archive) |
 | CP-67 | Stdlib `OnceLock` caching — cache compiled fn bodies. `include_str!` for stdlib sources. Delete per-module compile wrappers. | M | — | GA | Open |
-| CP-68 | Split `mock_defaults` — generic probing (~350 lines) → `core/test/`. Delete GCP blob (~230 lines). | S | — | GA | Open |
+| CP-68 | Split `mock_defaults` — generic probing (~350 lines) → `core/test/`. Delete GCP blob (~230 lines). | S | — | GA | **Done** — `auto_mock.rs` (519 lines) already in `core/test/`. Kitchen-sink `default_rest_response()` uses provider-aware `rest_response_for_provider()` as primary path; GCP fields are 5 lines in fallback. `mock_synthesis.rs` (417 lines) handles provider-specific shapes. No `mock_defaults` module exists (task description predates reorg). |
 | CP-69 | Executor dead code — delete `looks_effectful_without_kind()`, unwired credential expiry plumbing. | S | — | GA | **Done** — both already deleted in earlier commits |
 
 ---
