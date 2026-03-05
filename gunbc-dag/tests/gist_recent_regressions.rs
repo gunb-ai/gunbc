@@ -142,7 +142,7 @@ fn gist_recent_end_to_end_emits_gist_url() {
     assert!(
         node_ids
             .iter()
-            .any(|id| id.contains("credential_chain") || id.contains("acquire_gcp")),
-        "execution should include credential chain nodes. Got: {node_ids:?}"
+            .any(|id| id.contains("CredentialProvider") || id.contains("credential_provider")),
+        "execution should include CredentialProvider interface nodes. Got: {node_ids:?}"
     );
 }
