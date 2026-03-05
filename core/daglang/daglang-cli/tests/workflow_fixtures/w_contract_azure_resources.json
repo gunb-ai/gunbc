@@ -18,21 +18,21 @@
     "error_contains": null,
     "expected_json": {
       "dry_run_completion_required": true,
-      "interface_contract_verification_targets": 4,
-      "pure_node_determinism_targets": 114,
-      "resource_acquire_targets": 5,
-      "resource_provide_targets": 0,
-      "resource_release_targets": 5,
-      "service_param_source_targets": 0,
-      "service_transport_execute_targets": 49,
-      "service_transport_external_targets": 49,
-      "service_transport_hermetic_targets": 0,
-      "service_transport_idempotent_targets": 5,
-      "service_transport_parse_targets": 49,
-      "service_transport_prepare_targets": 49,
-      "service_transport_readonly_targets": 6,
-      "total_obligations": 163,
-      "transport_execution_targets": 49
+      "interface_contract_verification_targets": 5,
+      "pure_node_determinism_targets": 215,
+      "resource_acquire_targets": 9,
+      "resource_provide_targets": 1,
+      "resource_release_targets": 9,
+      "service_param_source_targets": 14,
+      "service_transport_execute_targets": 72,
+      "service_transport_external_targets": 64,
+      "service_transport_hermetic_targets": 8,
+      "service_transport_idempotent_targets": 12,
+      "service_transport_parse_targets": 72,
+      "service_transport_prepare_targets": 72,
+      "service_transport_readonly_targets": 21,
+      "total_obligations": 287,
+      "transport_execution_targets": 72
     }
   }
 }
