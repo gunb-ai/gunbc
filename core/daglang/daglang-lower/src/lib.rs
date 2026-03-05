@@ -1847,6 +1847,31 @@ impl LowerError {
             Self::MissingCallablePassthrough { .. } => "LOW024",
         }
     }
+
+    /// Help text with fix suggestions for common errors (CP-50).
+    pub fn help(&self) -> Option<String> {
+        match self {
+            Self::MissingTransport { operation, .. } => Some(format!(
+                "add `transport rest {{ method: ..., path: ... }}` or `transport shell {{ argv: [...] }}` to `{operation}`"
+            )),
+            Self::UnresolvedServiceCall { service_call, .. } => Some(format!(
+                "`{service_call}` not found — check import and service operation name"
+            )),
+            Self::UnresolvedUsedResource { resource_type, .. } => Some(format!(
+                "add `resource {resource_type} {{ ... }}` definition or check import"
+            )),
+            Self::InvalidAuthInput { service, .. } => Some(format!(
+                "add `auth_input: <param_name>` to the service config in `{service}`"
+            )),
+            Self::PureFnContainsEffectfulNode { fn_name, .. } => Some(format!(
+                "change `fn {fn_name}(...)` to `func {fn_name}(...)` for effectful operations"
+            )),
+            Self::NoLowerableItems => Some(
+                "add fn, func, or pipeline definitions — data-only modules cannot be lowered".to_string()
+            ),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for LowerError {
@@ -2061,7 +2086,11 @@ impl std::fmt::Display for SpannedLowerError {
                 write!(f, "{}: ", file)?;
             }
         }
-        write!(f, "[{}] {}", self.error.code(), self.error)
+        write!(f, "[{}] {}", self.error.code(), self.error)?;
+        if let Some(help) = self.error.help() {
+            write!(f, "\n  help: {help}")?;
+        }
+        Ok(())
     }
 }
 

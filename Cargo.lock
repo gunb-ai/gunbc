@@ -240,6 +240,7 @@ version = "0.1.0"
 name = "daglang-typecheck"
 version = "0.1.0"
 dependencies = [
+ "daglang-contract",
  "daglang-resolve",
  "daglang-syntax",
  "gunbc-ir",

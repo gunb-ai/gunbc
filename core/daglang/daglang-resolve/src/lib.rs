@@ -451,6 +451,27 @@ impl ResolveError {
             Self::InternalInvariant(..) => "MOD008",
         }
     }
+
+    /// Help text with fix suggestions for common errors (CP-50).
+    pub fn help(&self) -> Option<String> {
+        match self {
+            Self::IoError(path, _) => Some(format!(
+                "check that `{}` exists and is readable", path.display()
+            )),
+            Self::UnresolvedImport { target, .. } => Some(format!(
+                "create `{}.dag` or check the import path — did you mean a different module?",
+                target.as_dotted().replace('.', "/")
+            )),
+            Self::CyclicDependency(cycle) => {
+                let names: Vec<_> = cycle.iter().map(|m| m.as_dotted()).collect();
+                Some(format!("break the cycle: {}", names.join(" → ")))
+            }
+            Self::InvalidExtensionCase(path) => Some(format!(
+                "rename `{}` to use lowercase `.dag` extension", path.display()
+            )),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for ResolveError {

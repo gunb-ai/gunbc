@@ -313,6 +313,55 @@ impl TypeError {
             Self::InvalidAuthScheme { .. } => "TC037",
         }
     }
+
+    /// Help text with fix suggestions for common errors (CP-50).
+    pub fn help(&self) -> Option<String> {
+        match self {
+            Self::UndefinedType(name) => Some(format!(
+                "check spelling of `{name}` — common types: String, Int, Bool, List<T>, Map<K,V>, Option<T>"
+            )),
+            Self::TypeMismatch { expected, got } => Some(format!(
+                "change argument type to `{expected}` or add a conversion from `{got}`"
+            )),
+            Self::ArityMismatch {
+                name,
+                expected,
+                got,
+            } => Some(format!(
+                "`{name}` expects {expected} type parameter(s), got {got}"
+            )),
+            Self::UnresolvedImport { target, .. } => Some(format!(
+                "`{target}` not found — check the module path and ensure the .dag file exists"
+            )),
+            Self::UnresolvedCallTarget { callee, .. } => Some(format!(
+                "`{callee}` is not defined — check spelling or add an import"
+            )),
+            Self::CallArityMismatch {
+                callee,
+                expected,
+                got,
+                ..
+            } => Some(format!(
+                "`{callee}` expects {expected} argument(s), got {got} — check parameter names"
+            )),
+            Self::UnknownCallArgument { argument, callee, .. } => Some(format!(
+                "remove `{argument}:` from call to `{callee}` or check parameter names"
+            )),
+            Self::DuplicateDefinition { name, .. } => Some(format!(
+                "rename one of the `{name}` definitions — each name must be unique within a module"
+            )),
+            Self::InvalidAuthScheme { scheme, .. } => Some(format!(
+                "change `{scheme}` to one of: BearerToken, Basic, ApiKey, Header(\"...\"), None"
+            )),
+            Self::UnresolvedServiceCall { service_call, .. } => Some(format!(
+                "`{service_call}` not found — check service import and operation name"
+            )),
+            Self::NoSuchField { ty, field } => Some(format!(
+                "type `{ty}` has no field `{field}` — check field names in the type definition"
+            )),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for TypeError {
@@ -540,6 +589,103 @@ impl std::fmt::Display for TypeError {
                  (valid: BearerToken, Basic, ApiKey, Header(\"...\"), None)"
             ),
         }
+    }
+}
+
+/// A `TypeError` annotated with source location (CP-49).
+///
+/// Wraps a `TypeError` with optional file path and byte span for
+/// diagnostic rendering. Use `TypeError::at()` to create.
+#[derive(Debug)]
+pub struct SpannedTypeError {
+    /// The underlying error.
+    pub error: TypeError,
+    /// Source file path (relative to DSL root).
+    pub file: Option<String>,
+    /// Byte span in the source file.
+    pub span: Option<daglang_contract::Span>,
+    /// Module path (e.g., "tools.clippy").
+    pub module: Option<String>,
+    /// Item name (e.g., "clippy_lint").
+    pub item: Option<String>,
+}
+
+impl SpannedTypeError {
+    /// Create a spanned error from a bare `TypeError`.
+    pub fn new(error: TypeError) -> Self {
+        Self {
+            error,
+            file: None,
+            span: None,
+            module: None,
+            item: None,
+        }
+    }
+
+    /// Attach source location.
+    pub fn with_location(
+        mut self,
+        file: impl Into<String>,
+        module: impl Into<String>,
+        item: impl Into<String>,
+    ) -> Self {
+        self.file = Some(file.into());
+        self.module = Some(module.into());
+        self.item = Some(item.into());
+        self
+    }
+
+    /// Attach byte span.
+    pub fn with_span(mut self, span: daglang_contract::Span) -> Self {
+        self.span = Some(span);
+        self
+    }
+
+    /// Delegate to inner error code.
+    pub fn code(&self) -> &'static str {
+        self.error.code()
+    }
+}
+
+impl std::fmt::Display for SpannedTypeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(file) = &self.file {
+            if let Some(span) = &self.span {
+                write!(f, "{}:{}..{}: ", file, span.start, span.end)?;
+            } else {
+                write!(f, "{}: ", file)?;
+            }
+        }
+        write!(f, "[{}] {}", self.error.code(), self.error)?;
+        if let Some(help) = self.error.help() {
+            write!(f, "\n  help: {help}")?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for SpannedTypeError {}
+
+impl From<TypeError> for SpannedTypeError {
+    fn from(error: TypeError) -> Self {
+        Self::new(error)
+    }
+}
+
+impl TypeError {
+    /// Wrap this error with source location to produce a `SpannedTypeError`.
+    pub fn at(
+        self,
+        file: impl Into<String>,
+        module: impl Into<String>,
+        item: impl Into<String>,
+    ) -> SpannedTypeError {
+        SpannedTypeError::new(self).with_location(file, module, item)
+    }
+
+    /// Wrap into a `SpannedTypeError` with no location.
+    pub fn into_spanned(self) -> SpannedTypeError {
+        SpannedTypeError::new(self)
     }
 }
 
