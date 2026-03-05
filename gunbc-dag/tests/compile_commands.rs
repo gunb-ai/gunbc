@@ -220,6 +220,16 @@ fn dispatch_sdlc_unit_test_profile_dry_run_completes() {
             continue;
         }
         match port_name.0.as_str() {
+            "auth_token" => input_mocks.set_input(
+                node_id.0.clone(),
+                port_name.0.clone(),
+                Value::Str("test-github-token".to_string()),
+            ),
+            "api_key" => input_mocks.set_input(
+                node_id.0.clone(),
+                port_name.0.clone(),
+                Value::Str("test-api-key".to_string()),
+            ),
             "owner" => input_mocks.set_input(
                 node_id.0.clone(),
                 port_name.0.clone(),
