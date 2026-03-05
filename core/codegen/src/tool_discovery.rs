@@ -6,21 +6,18 @@
 //! Makefile targets, and gitignore entries.
 //!
 //! Convention: tool name = func_name with `_` → `-`.
-//!
-//! Special case: testgen has a custom builder (no DSL module) and is
-//! hardcoded as the sole exception.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 
+use crate::cli_gen::CliEntrypoint;
+use crate::registry::{SubcommandDef, ToolDef};
 use daglang_driver::{
     compile_from_context, compute_source_digest_for_context, CachedDiscoveryEntry,
     CachedEntrypoint, CachedFuncParam, DriverContext, InferredEntrypoint,
 };
 use daglang_syntax::ast::{Expr, Item, Literal, TypeExpr};
 use gunbc_cli::ParamType;
-use crate::cli_gen::CliEntrypoint;
-use crate::registry::{SubcommandDef, ToolDef};
 use gunbc_ir::{cargo, Cardinality, WorkspaceLayout};
 
 /// A DSL func parameter, extracted from the AST.
@@ -34,7 +31,7 @@ struct DslParam {
 
 /// Bump when cache format changes (e.g., new fields in CachedDiscoveryEntry).
 /// Stale caches with a different version are discarded on load.
-const CACHE_VERSION: u32 = 3;
+const CACHE_VERSION: u32 = 4;
 
 /// Persistent discovery cache for incremental compilation (C26).
 ///
@@ -107,14 +104,14 @@ impl DiscoveryCache {
 /// (structurally inferred entrypoints). Each entrypoint produces a
 /// [`ToolDef`] with:
 /// - CLI entrypoints derived from func params (convention-based)
-/// - Outputs from DSL compilation (`CompileOutput.output_paths`)
+/// - Outputs from DSL compilation (`CompileOutput.output_paths`) plus
+///   optional `data output_paths: List<String>` declarations for dynamic cases
 /// - Invocation as `cargo run -p gunbc-dag --bin gunbc-{name}`
 /// - MockSpec as `auto_mock_spec(&dag, "{name}")`
 ///
 /// Uses content-hash-based incremental caching (C26): unchanged modules
 /// skip parse+typecheck+lower+emit entirely.
 ///
-/// Testgen is the sole hardcoded exception (custom builder, no DSL module).
 pub fn discover_tool_defs_from_dsl() -> Result<Vec<ToolDef>, String> {
     try_discover_tool_defs_from_dsl()
 }
@@ -162,10 +159,6 @@ pub fn try_discover_tool_defs_from_dsl() -> Result<Vec<ToolDef>, String> {
             }
         }
     }
-
-    // Special case: testgen (custom builder, no DSL module)
-    let testgen = testgen_tool_def();
-    tool_map.insert(testgen.meta.tool_name.to_string(), testgen);
 
     // Persist cache if anything changed
     if cache_dirty {
@@ -231,6 +224,10 @@ fn discover_from_dag_file_cached(
     let source = std::fs::read_to_string(path).map_err(|e| format!("read: {e}"))?;
     let ast = daglang_syntax::parser::parse(&source).map_err(|e| format!("parse: {e:?}"))?;
     let compile_output = compile_from_context(&context).map_err(|e| format!("compile: {e}"))?;
+    let output_paths = merge_output_paths(
+        &compile_output.output_paths,
+        &declared_output_paths(&compile_output.data_values)?,
+    );
 
     let module_entrypoints: Vec<&InferredEntrypoint> = compile_output
         .inferred_entrypoints
@@ -254,7 +251,7 @@ fn discover_from_dag_file_cached(
             .copied()
             .cloned()
             .collect::<Vec<_>>(),
-        &compile_output.output_paths,
+        &output_paths,
         &compile_output.available_profiles,
         &func_params,
     );
@@ -267,7 +264,7 @@ fn discover_from_dag_file_cached(
             .iter()
             .map(|ep| CachedEntrypoint::from(*ep))
             .collect(),
-        output_paths: compile_output.output_paths,
+        output_paths,
         available_profiles: compile_output.available_profiles,
         func_params: cached_params,
     };
@@ -352,6 +349,32 @@ fn dsl_params_to_cached(
             (name.clone(), cached)
         })
         .collect()
+}
+
+fn declared_output_paths(
+    data_values: &std::collections::HashMap<String, serde_json::Value>,
+) -> Result<Vec<String>, String> {
+    let Some(value) = data_values.get("output_paths") else {
+        return Ok(Vec::new());
+    };
+    let serde_json::Value::Array(items) = value else {
+        return Err("data output_paths must be a List<String>".to_string());
+    };
+    let mut output_paths = Vec::with_capacity(items.len());
+    for item in items {
+        match item {
+            serde_json::Value::String(path) => output_paths.push(path.clone()),
+            _ => return Err("data output_paths must contain only strings".to_string()),
+        }
+    }
+    Ok(output_paths)
+}
+
+fn merge_output_paths(inferred: &[String], declared: &[String]) -> Vec<String> {
+    let mut merged = BTreeSet::new();
+    merged.extend(inferred.iter().cloned());
+    merged.extend(declared.iter().cloned());
+    merged.into_iter().collect()
 }
 
 fn encode_cached_cardinality(cardinality: Cardinality) -> String {
@@ -631,23 +654,6 @@ fn capitalize(s: &str) -> String {
     }
 }
 
-// ── Hardcoded exceptions ───────────────────────────────────────────
-
-/// Testgen: custom builder, no DSL module.
-fn testgen_tool_def() -> ToolDef {
-    ToolDef::new(
-        "gunbc-dag",
-        "testgen",
-        "Generate tests from DAG mock specifications",
-        "build_testgen_graph_auto",
-        "",
-    )
-    .returns_result()
-    .mock_spec_call(r#"gunbc_test::auto_mock_spec(&dag, "testgen")"#)
-    .import("use gunbc_dag::tool_graphs::build_testgen_graph_auto;")
-    .output("**/generated_tests*.rs")
-}
-
 // ── Tests ──────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -702,7 +708,7 @@ mod tests {
             "gist should have gist-recent subcommand"
         );
 
-        // Testgen (hardcoded)
+        // testgen is now discovered from tools/testgen.dag like every other tool
         assert!(names.contains(&"testgen"), "missing testgen");
     }
 
@@ -712,9 +718,6 @@ mod tests {
 
         for tool in &tools {
             let name = tool.meta.tool_name.as_ref();
-            if name == "testgen" {
-                continue;
-            }
             assert!(
                 tool.invocation.is_some(),
                 "{} should have an invocation",
@@ -797,9 +800,6 @@ mod tests {
     fn tools_use_entrypoint_builder() {
         let tools = discover_tool_defs_from_dsl().expect("tool discovery should succeed");
         for tool in &tools {
-            if tool.meta.tool_name == "testgen" {
-                continue;
-            }
             assert_eq!(
                 tool.meta.graph_builder_call.as_ref(),
                 "build_dsl_graph_for_entrypoint",
@@ -807,6 +807,22 @@ mod tests {
                 tool.meta.tool_name,
             );
         }
+    }
+
+    #[test]
+    fn testgen_declares_generated_test_outputs_in_dsl() {
+        let tools = discover_tool_defs_from_dsl().expect("tool discovery should succeed");
+        let testgen = tools
+            .iter()
+            .find(|t| t.meta.tool_name == "testgen")
+            .unwrap();
+        assert!(
+            testgen
+                .outputs
+                .iter()
+                .any(|path| path == "**/generated_tests*.rs"),
+            "testgen should declare its generated output glob in DSL",
+        );
     }
 
     #[test]

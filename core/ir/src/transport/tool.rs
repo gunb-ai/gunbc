@@ -995,5 +995,4 @@ mod tests {
         assert!(super::is_satisfiable(&super::CLIPPY, &available, &registry).is_ok());
         assert!(super::is_satisfiable(&super::RUSTFMT, &available, &registry).is_ok());
     }
-
 }

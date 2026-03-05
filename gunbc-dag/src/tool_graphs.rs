@@ -28,7 +28,11 @@ pub fn bootstrap_signature() -> Result<WorkflowSignature, BuilderError> {
 
 /// Build bootstrap graph from the DSL source.
 pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
-    crate::dsl_builder::build_dsl_graph_for_entrypoint("tools/bootstrap.dag", Some("bootstrap"), None)
+    crate::dsl_builder::build_dsl_graph_for_entrypoint(
+        "tools/bootstrap.dag",
+        Some("bootstrap"),
+        None,
+    )
 }
 
 /// Get the declared signature for the build workflow.
@@ -131,13 +135,6 @@ pub fn default_registry_enriched() -> Result<ToolRegistry, String> {
         .tools
         .sort_by(|a, b| a.short_name.cmp(&b.short_name));
     Ok(registry)
-}
-
-/// Build the testgen auto-discovery graph.
-///
-/// Delegates to `testgen_dag::graph::build_testgen_graph_auto()`.
-pub fn build_testgen_graph_auto() -> Result<gunbc_ir::Dag<DynOp>, gunbc_ir::BuilderError> {
-    crate::testgen_dag::graph::build_testgen_graph_auto()
 }
 
 /// Enrich tool entries with live-secret requirements from DagSpec registrations.
