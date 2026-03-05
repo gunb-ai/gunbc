@@ -47,21 +47,26 @@ fn gist_recent_graph_wires_diff_base_input() {
     );
 }
 
-/// Structural: the CredentialProvider interface stub must be present
-/// in the gist_recent graph (credentials flow through the interface,
-/// not a direct credential chain).
+/// Structural: gist_recent must include concrete token-resolution wiring.
 #[test]
-fn gist_recent_graph_has_credential_provider_interface() {
+fn gist_recent_graph_has_token_resolution_path() {
     let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist_recent"), None)
         .expect("gist-recent graph should build");
     let lowered = lower(&dag).expect("lowered gist-recent");
 
-    let has_credential_node = lowered.dag.nodes.iter().any(|n| {
-        n.id.0.contains("CredentialProvider") || n.id.0.contains("credential_provider")
-    });
+    let has_env_get = lowered
+        .dag
+        .nodes
+        .iter()
+        .any(|n| n.id.0.contains("shell_Env_Get"));
+    let has_resolver_fn = lowered
+        .dag
+        .nodes
+        .iter()
+        .any(|n| n.id.0.contains("resolve_github_token"));
     assert!(
-        has_credential_node,
-        "gist-recent must have CredentialProvider interface node. \
+        has_env_get && has_resolver_fn,
+        "gist-recent must include env token lookup and resolver function. \
          All nodes: {:?}",
         lowered
             .dag
@@ -140,9 +145,7 @@ fn gist_recent_end_to_end_emits_gist_url() {
         "execution should include Gist_Create transport. Got: {node_ids:?}"
     );
     assert!(
-        node_ids
-            .iter()
-            .any(|id| id.contains("CredentialProvider") || id.contains("credential_provider")),
-        "execution should include CredentialProvider interface nodes. Got: {node_ids:?}"
+        node_ids.iter().any(|id| id.contains("shell_Env_Get")),
+        "execution should include shell.Env.Get transport. Got: {node_ids:?}"
     );
 }

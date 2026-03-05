@@ -28,7 +28,7 @@ fn makegen_file() -> PathBuf {
 }
 
 fn ci_pipeline_file() -> PathBuf {
-    workspace_root().join("dsl/pipelines/ci.dag")
+    workspace_root().join("dsl/workflows/ci.dag")
 }
 
 fn deps_file() -> PathBuf {
@@ -1668,13 +1668,18 @@ fn compile_command_canonical_json_is_deterministic_for_ci_pipeline() {
         .and_then(Value::as_array)
         .expect("canonical-json should include edges array");
     assert!(
-        nodes.len() > 20,
-        "ci canonical-json should include substantial node topology"
+        !nodes.is_empty(),
+        "ci canonical-json should include at least one node"
     );
     assert!(
-        edges.len() > 20,
-        "ci canonical-json should include substantial edge topology"
+        nodes.iter().any(|node| {
+            node.get("id")
+                .and_then(Value::as_str)
+                .is_some_and(|id| id == "workflows.ci::ci")
+        }),
+        "ci canonical-json should include workflow entry callable `workflows.ci::ci`"
     );
+    assert!(edges.len() <= nodes.len(), "workflow compile should remain compact");
 }
 
 #[test]
@@ -6840,18 +6845,18 @@ fn progress_command_ci_json_includes_stage_groups() {
             group
                 .get("stage_id")
                 .and_then(Value::as_str)
-                .is_some_and(|stage| stage.ends_with(":cloud_env"))
+                .is_some_and(|stage| stage.ends_with(":lint_upsert"))
         }),
-        "ci progress should include cloud_env stage group"
+        "ci progress should include lint_upsert stage group"
     );
     assert!(
         stage_groups.iter().any(|group| {
             group
                 .get("stage_id")
                 .and_then(Value::as_str)
-                .is_some_and(|stage| stage.ends_with(":bootstrap_stage"))
+                .is_some_and(|stage| stage.ends_with(":report"))
         }),
-        "ci progress should include explicit bootstrap_stage group"
+        "ci progress should include report stage group"
     );
 }
 
@@ -6873,9 +6878,9 @@ fn progress_command_ci_text_renders_collapsible_stage_group_sections() {
     assert_no_stage_failures(&stderr);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("> [collapsed] pipelines.ci.ci"));
-    assert!(stdout.contains("- cloud_env:"));
-    assert!(stdout.contains("- bootstrap_stage:"));
+    assert!(stdout.contains("> [collapsed] workflows.ci.ci"));
+    assert!(stdout.contains("- lint_upsert:"));
+    assert!(stdout.contains("- report:"));
 }
 
 #[test]
