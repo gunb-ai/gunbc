@@ -1689,7 +1689,11 @@ impl DagBuilder {
     }
 }
 
-/// Errors during lowering.
+/// Errors during lowering (CP-46: structured errors with optional source spans).
+///
+/// Each variant carries enough context to produce a human-readable diagnostic.
+/// The `code()` method returns a stable, grep-able error code.
+/// Use `with_span()` or `with_file()` to attach source location after construction.
 #[derive(Debug)]
 pub enum LowerError {
     /// A pattern could not be expanded (e.g., unknown pattern name).
@@ -1973,6 +1977,95 @@ impl std::fmt::Display for LowerError {
                  input port — it will fail at resolve time"
             ),
         }
+    }
+}
+
+/// A `LowerError` annotated with source location (CP-46).
+///
+/// Wraps a `LowerError` with optional file path and byte span for
+/// diagnostic rendering. Use `LowerError::at()` to create.
+#[derive(Debug)]
+pub struct SpannedLowerError {
+    /// The underlying error.
+    pub error: LowerError,
+    /// Source file path (relative to DSL root).
+    pub file: Option<String>,
+    /// Byte span in the source file.
+    pub span: Option<daglang_contract::Span>,
+    /// Module path (e.g., "tools.clippy").
+    pub module: Option<String>,
+    /// Item name (e.g., "clippy_lint").
+    pub item: Option<String>,
+}
+
+impl SpannedLowerError {
+    /// Create a spanned error from a bare `LowerError`.
+    pub fn new(error: LowerError) -> Self {
+        Self {
+            error,
+            file: None,
+            span: None,
+            module: None,
+            item: None,
+        }
+    }
+
+    /// Attach source location.
+    pub fn with_location(
+        mut self,
+        file: impl Into<String>,
+        module: impl Into<String>,
+        item: impl Into<String>,
+    ) -> Self {
+        self.file = Some(file.into());
+        self.module = Some(module.into());
+        self.item = Some(item.into());
+        self
+    }
+
+    /// Attach byte span.
+    pub fn with_span(mut self, span: daglang_contract::Span) -> Self {
+        self.span = Some(span);
+        self
+    }
+
+    /// Delegate to inner error code.
+    pub fn code(&self) -> &'static str {
+        self.error.code()
+    }
+}
+
+impl std::fmt::Display for SpannedLowerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Prefix with location if available
+        if let Some(file) = &self.file {
+            if let Some(span) = &self.span {
+                write!(f, "{}:{}..{}: ", file, span.start, span.end)?;
+            } else {
+                write!(f, "{}: ", file)?;
+            }
+        }
+        write!(f, "[{}] {}", self.error.code(), self.error)
+    }
+}
+
+impl std::error::Error for SpannedLowerError {}
+
+impl From<LowerError> for SpannedLowerError {
+    fn from(error: LowerError) -> Self {
+        Self::new(error)
+    }
+}
+
+impl LowerError {
+    /// Wrap this error with source location to produce a `SpannedLowerError`.
+    pub fn at(self, file: impl Into<String>, module: impl Into<String>, item: impl Into<String>) -> SpannedLowerError {
+        SpannedLowerError::new(self).with_location(file, module, item)
+    }
+
+    /// Wrap into a `SpannedLowerError` with no location.
+    pub fn into_spanned(self) -> SpannedLowerError {
+        SpannedLowerError::new(self)
     }
 }
 

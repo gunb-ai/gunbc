@@ -213,6 +213,7 @@ dependencies = [
 name = "daglang-lower"
 version = "0.1.0"
 dependencies = [
+ "daglang-contract",
  "daglang-resolve",
  "daglang-syntax",
  "daglang-typecheck",

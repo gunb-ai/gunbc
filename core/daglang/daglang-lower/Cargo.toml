@@ -6,6 +6,7 @@ license.workspace = true
 description = "Lowers typed .dag AST to gunbc GraphIR (Dag/Node/Port/Edge)"
 
 [dependencies]
+daglang-contract = { path = "../daglang-contract" }
 daglang-syntax = { path = "../daglang-syntax" }
 daglang-typecheck = { path = "../daglang-typecheck" }
 gunbc-ir = { path = "../../ir" }
