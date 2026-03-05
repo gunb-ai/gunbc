@@ -260,6 +260,16 @@ pub enum TypeError {
         service: String,
         scheme: String,
     },
+    /// if/else branches produce incompatible types.
+    BranchTypeMismatch {
+        then_type: String,
+        else_type: String,
+    },
+    /// Match arms produce incompatible types.
+    MatchArmTypeMismatch {
+        first_type: String,
+        mismatched_type: String,
+    },
 }
 
 impl TypeError {
@@ -303,6 +313,8 @@ impl TypeError {
             Self::UnknownProvidedResourceType { .. } => "TC035",
             Self::AmbiguousProvidedResourceType { .. } => "TC036",
             Self::InvalidAuthScheme { .. } => "TC037",
+            Self::BranchTypeMismatch { .. } => "TC038",
+            Self::MatchArmTypeMismatch { .. } => "TC039",
         }
     }
 
@@ -350,6 +362,12 @@ impl TypeError {
             )),
             Self::NoSuchField { ty, field } => Some(format!(
                 "type `{ty}` has no field `{field}` — check field names in the type definition"
+            )),
+            Self::BranchTypeMismatch { then_type, else_type } => Some(format!(
+                "if/else branches must produce the same type — `{then_type}` vs `{else_type}`"
+            )),
+            Self::MatchArmTypeMismatch { first_type, mismatched_type } => Some(format!(
+                "all match arms must produce the same type — first arm is `{first_type}`, found `{mismatched_type}`"
             )),
             _ => None,
         }
@@ -580,6 +598,20 @@ impl std::fmt::Display for TypeError {
                 "service `{service}` declares unknown auth scheme `{scheme}` \
                  (valid: BearerToken, Basic, ApiKey, Header(\"...\"), None)"
             ),
+            Self::BranchTypeMismatch {
+                then_type,
+                else_type,
+            } => write!(
+                f,
+                "if/else branch type mismatch: then-branch is `{then_type}`, else-branch is `{else_type}`"
+            ),
+            Self::MatchArmTypeMismatch {
+                first_type,
+                mismatched_type,
+            } => write!(
+                f,
+                "match arm type mismatch: first arm is `{first_type}`, found arm with `{mismatched_type}`"
+            ),
         }
     }
 }
@@ -694,6 +726,7 @@ pub fn typecheck_module_graph_with_options(
     let known_types = collect_known_types(&graph.modules);
     let generic_arity_registry = collect_generic_arities(&graph.modules);
     let record_type_registry = collect_record_types(&graph.modules);
+    let variant_parents = collect_variant_parents(&graph.modules);
     let callable_registry = collect_unique_callables(&graph.modules);
     let pattern_callable_names = collect_pattern_callable_names(&graph.modules);
     let service_call_registry = collect_service_call_contracts(&graph.modules);
@@ -717,6 +750,7 @@ pub fn typecheck_module_graph_with_options(
         interface_registry: &interface_registry,
         resource_type_registry: &resource_type_registry,
         resource_capability_registry: &resource_capability_registry,
+        variant_parents: &variant_parents,
         allow_unresolved_references: options.allow_unresolved_imports,
     };
 
@@ -769,6 +803,7 @@ struct TypecheckContext<'a> {
     interface_registry: &'a InterfaceRegistry,
     resource_type_registry: &'a ResourceTypeRegistry,
     resource_capability_registry: &'a ResourceCapabilityRegistry,
+    variant_parents: &'a HashMap<String, String>,
     allow_unresolved_references: bool,
 }
 
@@ -797,6 +832,7 @@ fn collect_signatures(
         interface_registry: context.interface_registry,
         resource_type_registry: context.resource_type_registry,
         resource_capability_registry: context.resource_capability_registry,
+        variant_parents: context.variant_parents,
         allow_unresolved_references: context.allow_unresolved_references,
     };
     let pipeline_param_bindings = collect_pipeline_param_bindings(module);
@@ -1193,6 +1229,7 @@ fn validate_pipeline_def(
         service_call_registry: body_context.service_call_registry,
         bound_service_registry: &empty_bound_services,
         param_callable_contracts: &empty_param_callable_contracts,
+        variant_parents: body_context.variant_parents,
     };
 
     for stage in &def.stages {
@@ -1372,6 +1409,26 @@ fn collect_record_types(modules: &[ResolvedModule]) -> RecordTypeRegistry {
         }
     }
     registry
+}
+
+/// Maps variant names to their parent sum type name (WS3-5).
+///
+/// For `type Result = Ok { value: T } | Err { error: E }`, returns
+/// `{"Ok" => "Result", "Err" => "Result"}`.
+fn collect_variant_parents(modules: &[ResolvedModule]) -> HashMap<String, String> {
+    let mut parents = HashMap::new();
+    for module in modules {
+        for item in &module.ast.items {
+            if let Item::TypeDef(def) = &item.node {
+                if let daglang_syntax::ast::TypeBody::Sum(variants) = &def.body {
+                    for variant in variants {
+                        parents.insert(variant.name.clone(), def.name.clone());
+                    }
+                }
+            }
+        }
+    }
+    parents
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1812,6 +1869,7 @@ struct BodyInferenceContext<'a> {
     interface_registry: &'a InterfaceRegistry,
     resource_type_registry: &'a ResourceTypeRegistry,
     resource_capability_registry: &'a ResourceCapabilityRegistry,
+    variant_parents: &'a HashMap<String, String>,
     allow_unresolved_references: bool,
 }
 
@@ -1840,6 +1898,7 @@ struct ExprInferenceContext<'a> {
     service_call_registry: &'a ServiceCallRegistry,
     bound_service_registry: &'a BoundServiceCallRegistry,
     param_callable_contracts: &'a HashMap<String, CallableContract>,
+    variant_parents: &'a HashMap<String, String>,
 }
 
 struct CallableBodyRef<'a> {
@@ -2258,6 +2317,7 @@ fn validate_callable_body(
         service_call_registry: body_context.service_call_registry,
         bound_service_registry: &bound_service_registry,
         param_callable_contracts: &param_callable_contracts,
+        variant_parents: body_context.variant_parents,
     };
     let mut calls = Vec::new();
     collect_calls_from_stmts(body.stmts, &mut calls);
@@ -2737,13 +2797,35 @@ fn infer_expr_type(
         Expr::Match(scrutinee, arms) => {
             let (_, scr_errors) = infer_expr_type(scrutinee, local_bindings, infer_context);
             errors.extend(scr_errors);
+            let mut arm_types: Vec<String> = Vec::new();
             for arm in arms {
                 if let Some(guard) = &arm.guard {
                     let (_, guard_errors) = infer_expr_type(guard, local_bindings, infer_context);
                     errors.extend(guard_errors);
                 }
-                let (_, body_errors) = infer_expr_type(&arm.body, local_bindings, infer_context);
+                let (arm_ty, body_errors) =
+                    infer_expr_type(&arm.body, local_bindings, infer_context);
                 errors.extend(body_errors);
+                if let Some(name) = arm_ty.display_name() {
+                    arm_types.push(name);
+                }
+            }
+            // Check compatibility across arms and emit errors for clear mismatches.
+            // Return ValueType::Unknown (preserving pre-WS3-5 behavior) to avoid
+            // cascading downstream type inference changes.
+            if arm_types.len() >= 2 {
+                let first = &arm_types[0];
+                for other in &arm_types[1..] {
+                    let (compat, confident) =
+                        are_branch_types_compatible(first, other, infer_context.variant_parents);
+                    if !compat && confident {
+                        errors.push(TypeError::MatchArmTypeMismatch {
+                            first_type: first.clone(),
+                            mismatched_type: other.clone(),
+                        });
+                        break;
+                    }
+                }
             }
             ValueType::Unknown
         }
@@ -2758,13 +2840,36 @@ fn infer_expr_type(
                 ty
             });
             match else_ty {
-                Some(otherwise)
-                    if then_ty.display_name().is_some()
-                        && then_ty.display_name() == otherwise.display_name() =>
-                {
-                    then_ty
+                Some(ref otherwise) => {
+                    match (then_ty.display_name(), otherwise.display_name()) {
+                        (Some(ref t), Some(ref e)) => {
+                            let (compat, confident) = are_branch_types_compatible(
+                                t,
+                                e,
+                                infer_context.variant_parents,
+                            );
+                            if compat {
+                                // Preserve pre-WS3-5 behavior: return then_ty when
+                                // names match exactly, Unknown otherwise.
+                                if then_ty.display_name() == otherwise.display_name() {
+                                    then_ty
+                                } else {
+                                    ValueType::Unknown
+                                }
+                            } else {
+                                if confident {
+                                    errors.push(TypeError::BranchTypeMismatch {
+                                        then_type: t.clone(),
+                                        else_type: e.clone(),
+                                    });
+                                }
+                                ValueType::Unknown
+                            }
+                        }
+                        _ => ValueType::Unknown,
+                    }
                 }
-                _ => ValueType::Unknown,
+                None => ValueType::Unknown,
             }
         }
         Expr::For(binding, iterable, passthrough, body) => {
@@ -2864,6 +2969,49 @@ impl ValueType {
             Self::Record(_) => Some("Record".to_string()),
             Self::Unknown => None,
         }
+    }
+}
+
+/// Check if two type names are compatible for branch unification (WS3-5).
+///
+/// Resolves variant names to their parent sum types (e.g., `Proceed` and
+/// `TerminalFailed` are both `RetryDecision` variants → compatible).
+/// Strips `?` for optionality (`T` and `T?` are branch-compatible).
+///
+/// Returns `(compatible, confident)`:
+/// - `compatible=true`: types are known to be the same (after resolution)
+/// - `compatible=false, confident=true`: types are clearly incompatible
+///   (at least one is a known primitive and they differ)
+/// - `compatible=false, confident=false`: types differ but both are DSL-defined;
+///   don't emit errors (insufficient info for type system to judge)
+fn are_branch_types_compatible(
+    a: &str,
+    b: &str,
+    variant_parents: &HashMap<String, String>,
+) -> (bool, bool) {
+    let a_resolved = variant_parents.get(a).map(|s| s.as_str()).unwrap_or(a);
+    let b_resolved = variant_parents.get(b).map(|s| s.as_str()).unwrap_or(b);
+    // Strip trailing `?` for optionality — `T` and `T?` are branch-compatible.
+    let a_base = a_resolved.trim_end_matches('?');
+    let b_base = b_resolved.trim_end_matches('?');
+    // Direct name equality (after variant + optionality resolution)
+    if a_base == b_base {
+        return (true, true);
+    }
+    let a_id = normalize_type_id(a_base);
+    let b_id = normalize_type_id(b_base);
+    let registry = gunbc_ir::type_registry::TypeRegistry::with_core_types();
+    let a_known = registry.resolve_type(&a_id).is_some();
+    let b_known = registry.resolve_type(&b_id).is_some();
+    if a_known || b_known {
+        // At least one type is a known primitive — use registry for compatibility
+        let compat =
+            registry.is_compatible(&a_id, &b_id) || registry.is_compatible(&b_id, &a_id);
+        (compat, true)
+    } else {
+        // Both types are DSL-defined and unknown to the IR registry.
+        // Can't confidently say they're incompatible.
+        (false, false)
     }
 }
 
