@@ -9,9 +9,9 @@
 //! top level. The existing `collect_service_calls_from_stmts` flattens
 //! all calls regardless of scope. This module preserves that structure.
 //!
-//! Note: Types in this module are actively being integrated into the main
-//! lowering pipeline. They replace the ad-hoc IfBranchSite/MatchBranchSite
-//! structs and detect_*_branches_in_stmts functions in lib.rs.
+//! The main lowering pipeline uses these types directly via the
+//! `collect_for_loops`, `collect_if_branches`, `collect_match_branches`,
+//! and `nested_service_call_paths` methods on `ScopedBody`.
 
 #[cfg(test)]
 use daglang_syntax::ast::MatchArm;
@@ -87,6 +87,25 @@ pub(crate) struct MatchArmScope {
     pub body: ScopedBody,
 }
 
+/// Discriminant for selecting ScopedItem variants during recursive walks.
+#[derive(Debug, Clone, Copy)]
+enum ItemKind {
+    ForLoop,
+    IfBranch,
+    MatchBranch,
+}
+
+impl ScopedItem {
+    fn matches_kind(&self, kind: ItemKind) -> bool {
+        matches!(
+            (self, kind),
+            (ScopedItem::ForLoop { .. }, ItemKind::ForLoop)
+                | (ScopedItem::IfBranch { .. }, ItemKind::IfBranch)
+                | (ScopedItem::MatchBranch { .. }, ItemKind::MatchBranch)
+        )
+    }
+}
+
 /// A scoped body — a sequence of items at a given nesting level.
 ///
 /// Represents the scope tree for one callable's body. Service calls
@@ -157,6 +176,87 @@ impl ScopedBody {
     /// Recursively count total service calls across all scopes.
     pub fn total_service_call_count(&self) -> usize {
         self.all_service_calls().len()
+    }
+
+    /// Collect all ForLoop items recursively across the scope tree.
+    pub fn collect_for_loops(&self) -> Vec<&ScopedItem> {
+        let mut result = Vec::new();
+        self.collect_items_by_kind(ItemKind::ForLoop, &mut result);
+        result
+    }
+
+    /// Collect all IfBranch items recursively across the scope tree.
+    pub fn collect_if_branches(&self) -> Vec<&ScopedItem> {
+        let mut result = Vec::new();
+        self.collect_items_by_kind(ItemKind::IfBranch, &mut result);
+        result
+    }
+
+    /// Collect all MatchBranch items recursively across the scope tree.
+    pub fn collect_match_branches(&self) -> Vec<&ScopedItem> {
+        let mut result = Vec::new();
+        self.collect_items_by_kind(ItemKind::MatchBranch, &mut result);
+        result
+    }
+
+    /// Collect service call paths that are nested inside control flow
+    /// (for-loops, if/else, match), not at the top level of this scope.
+    pub fn nested_service_call_paths(&self) -> Vec<Vec<String>> {
+        let mut result = Vec::new();
+        for item in &self.items {
+            match item {
+                ScopedItem::ForLoop { body, .. } => {
+                    result.extend(body.all_service_calls().into_iter().map(|c| c.path.clone()));
+                }
+                ScopedItem::IfBranch {
+                    then_body,
+                    else_body,
+                } => {
+                    result
+                        .extend(then_body.all_service_calls().into_iter().map(|c| c.path.clone()));
+                    if let Some(else_body) = else_body {
+                        result.extend(
+                            else_body.all_service_calls().into_iter().map(|c| c.path.clone()),
+                        );
+                    }
+                }
+                ScopedItem::MatchBranch { arms } => {
+                    for arm in arms {
+                        result.extend(
+                            arm.body.all_service_calls().into_iter().map(|c| c.path.clone()),
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+        result
+    }
+
+    fn collect_items_by_kind<'a>(&'a self, kind: ItemKind, out: &mut Vec<&'a ScopedItem>) {
+        for item in &self.items {
+            if item.matches_kind(kind) {
+                out.push(item);
+            }
+            match item {
+                ScopedItem::ForLoop { body, .. } => body.collect_items_by_kind(kind, out),
+                ScopedItem::IfBranch {
+                    then_body,
+                    else_body,
+                } => {
+                    then_body.collect_items_by_kind(kind, out);
+                    if let Some(else_body) = else_body {
+                        else_body.collect_items_by_kind(kind, out);
+                    }
+                }
+                ScopedItem::MatchBranch { arms } => {
+                    for arm in arms {
+                        arm.body.collect_items_by_kind(kind, out);
+                    }
+                }
+                _ => {}
+            }
+        }
     }
 }
 

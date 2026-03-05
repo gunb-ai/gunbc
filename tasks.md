@@ -149,7 +149,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 
 | ID | What | Size | Deps | Source | Status |
 |----|------|------|------|--------|--------|
-| CP-6 | Wire `param_source` nodes to caller scope | M | CP-2,3 | CP | Open |
+| CP-6 | Wire `param_source` nodes to caller scope | M | CP-2,3 | CP | **Done** — `wire_param_source_inputs()` already forwards edges from callers to inner param_source nodes. IR `validate_required_inputs()` enhanced to skip `NodeKind::ParamSource` and source-only nodes (entrypoints/patterns). Verification errors reduced from 31 to 3 (remaining 3 are transport prepare arg gaps, not param_source issues). |
 | CP-7 | Wire default argument literal nodes | M | — | CP | **Done** — `collect_callable_param_defaults()` gathers defaults from all callable params across modules. `wire_fn_call_arguments()` (line 9304) injects `ensure_literal_source_node` for omitted call args via `expr_to_json_literal`. Already fully implemented. |
 | CP-30 | Emit transport resource ports (`res:file`) during lower | M | — | CP | **Done** — All content_upsert execute nodes (IoExecuteFileRead: Read, IoExecuteFileWrite: Write) and all 4 ServiceTransportExecute creation sites now emit `Port::resource("file", "FilesystemHandle", mode)` directly during lowering. Removed `needs_transport_resource()` from resolve (now always no-op). `wire_missing_filesystem_resources()` retained for fs_env edge wiring. Snapshot updated. |
 
@@ -171,7 +171,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 | ID | What | Size | Deps | Source | Status |
 |----|------|------|------|--------|--------|
 | CP-62 | `LoweringContext` struct — group 8-11 params. Delete 18 `#[allow(clippy::too_many_arguments)]`. | L | — | GA | **Done** — `LoweringContext` struct (14 fields) already existed. Added `SynthesizeTarget` and `ResolvedRef` structs for common trailing params. All 5 remaining `#[allow(clippy::too_many_arguments)]` eliminated. Total 18→0. |
-| CP-63 | Integrate `scope.rs` — wire callers, delete `IfBranchSite`. (615 lines exist, partially wired) | M | CP-62 | GA | Open |
+| CP-63 | Integrate `scope.rs` — wire callers, delete `IfBranchSite`. (615 lines exist, partially wired) | M | CP-62 | GA | **Done** — Deleted `IterableRef`, `ForLoopSite`, `IfBranchSite`, `MatchBranchSite` structs + 7 bridge functions (~190 lines). Consumers now use `ScopedBody::collect_for_loops()`, `collect_if_branches()`, `collect_match_branches()`, `nested_service_call_paths()` directly. |
 | CP-64 | Extract transport derivation — `transport.rs` returning `TransportManifest`. Invariant: every service call → exactly one triplet. | M | CP-62 | GA | Open |
 | CP-65 | Dead AST scaffolding cleanup — delete `MockResponseDef` (before RT-1 re-adds it properly), `@retry` rejection, `hermetic` warning. | S | — | GA | **Done** — MockResponseDef deleted, @retry rejected by parser (C8 in archive) |
 | CP-67 | Stdlib `OnceLock` caching — cache compiled fn bodies. `include_str!` for stdlib sources. Delete per-module compile wrappers. | M | — | GA | **Partial** — OnceLock caching added for `clippy_policy.dag` (3x→1x, pragma/dsl_render.rs) and `build_targets.dag` (model.rs). workflow_catalog.dag and workflow_commands.dag already had OnceLock. Remaining: `include_str!` for stdlib sources, per-module compile wrapper consolidation. |
@@ -191,7 +191,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 | Bridge 1 | SubDag direct lowering (delete `DeclaredOutputCallableOp`) | M | — | **Done** — Fn items with fn_body now lower as SubDag nodes wrapping FnBodyCompute. FnBodyComputeOp in resolver evaluates fn bodies. DeclaredOutputCallableOp still used for Func/Pattern (Bridge 2 scope). |
 | Bridge 2 | `FnBodyCallableOp` elimination (fn bodies as SubDags) | M | Bridge 1 | **Done** — `FnBodyCallableOp` struct deleted from resolver. All 4 `Callable { fn_body: Some(...) }` sites (loop body + branch body ops) converted to `Primitive { kind: FnBodyCompute }`. `debug_assert!` in resolve_domain catches regressions. |
 | Bridge 3 | `CollectionDelegate` → proper IR nodes | M | — | Open |
-| Bridge 8 | `add_fs_env_root_node()` → resource injection at lower time | M | — | Open |
+| Bridge 8 | `add_fs_env_root_node()` → resource injection at lower time | M | — | **Done** — `wire_filesystem_resource_edges()` in lowerer scans for unconnected `FilesystemHandle` inputs, adds `fs_env` node + edges. `validate_required_inputs()` skips SubDag nodes. |
 | Bridge 9 | `GenericFilePrepareOp`/`ParseOp` → typed file transport | M | — | Open |
 | Bridge 11 | Shell hermeticity annotation | M | — | **Done** — `Hermeticity` enum + `ShellProducerSemantics` in IR. `with_semantics()` on `ShellRequest`. `is_hermetic()` on `ServiceTransportClass`. Derive pass counts `service_transport_hermetic_targets` in `ObligationCounts`. CLI/snapshot render. Git, file transports = Hermetic. GitHub CLI, REST = External. Testgen mock strategy variation (using hermeticity to skip full transport mocking for hermetic targets) deferred to RT-2 error scenario work. |
 | Bridge 6+7 | Tool registry artifact emission | L | Design needed | Blocked |

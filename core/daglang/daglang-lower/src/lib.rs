@@ -3810,196 +3810,6 @@ fn add_collection_pipeline_nodes(
 
 // ── Control Flow Pattern Lowering (for / if) ───────────────────────
 
-#[derive(Debug)]
-enum IterableRef {
-    /// `for x in some_var { ... }`
-    Ident(String),
-    /// `for x in some_var.field { ... }`
-    FieldAccess(String, String),
-}
-
-#[derive(Debug)]
-struct ForLoopSite {
-    element_var: String,
-    iterable: Option<IterableRef>,
-    passthrough: Vec<String>,
-    /// Service call paths found inside the for-loop body expression.
-    /// Each entry is the dot-separated path (e.g., `["fs", "read"]`).
-    body_service_call_paths: Vec<Vec<String>>,
-}
-
-/// Detected if/else branch with service call paths per branch.
-/// Populated from `scope::ScopedBody` via `collect_if_sites_from_scoped`.
-#[derive(Debug)]
-struct IfBranchSite {
-    has_else: bool,
-    then_service_call_paths: Vec<Vec<String>>,
-    else_service_call_paths: Vec<Vec<String>>,
-}
-
-/// Detected match expression with per-arm service call paths.
-/// Populated from `scope::ScopedBody` via `collect_match_sites_from_scoped`.
-#[derive(Debug)]
-struct MatchBranchSite {
-    arm_count: usize,
-    /// Service call paths per arm: `per_arm_service_call_paths[arm_idx]` is
-    /// the list of service call paths for that arm.
-    #[allow(dead_code)]
-    per_arm_service_call_paths: Vec<Vec<Vec<String>>>,
-    /// Flattened union of all per-arm paths (for top-level dedup in add_service_call_edges).
-    all_service_call_paths: Vec<Vec<String>>,
-}
-
-fn collect_service_paths_from_scoped_body(body: &scope::ScopedBody) -> Vec<Vec<String>> {
-    body.all_service_calls()
-        .into_iter()
-        .map(|call| call.path.clone())
-        .collect()
-}
-
-fn collect_for_loop_sites_from_scoped(body: &scope::ScopedBody, out: &mut Vec<ForLoopSite>) {
-    for item in &body.items {
-        match item {
-            scope::ScopedItem::ForLoop {
-                element_var,
-                iterable,
-                passthrough,
-                body,
-            } => {
-                let iterable_ref = match iterable {
-                    scope::ExprRef::Ident(name) => Some(IterableRef::Ident(name.clone())),
-                    scope::ExprRef::FieldAccess { base, field } => {
-                        Some(IterableRef::FieldAccess(base.clone(), field.clone()))
-                    }
-                    scope::ExprRef::Literal(_) | scope::ExprRef::Opaque => None,
-                };
-                out.push(ForLoopSite {
-                    element_var: element_var.clone(),
-                    iterable: iterable_ref,
-                    passthrough: passthrough.clone(),
-                    body_service_call_paths: collect_service_paths_from_scoped_body(body),
-                });
-                collect_for_loop_sites_from_scoped(body, out);
-            }
-            scope::ScopedItem::IfBranch {
-                then_body,
-                else_body,
-            } => {
-                collect_for_loop_sites_from_scoped(then_body, out);
-                if let Some(else_body) = else_body {
-                    collect_for_loop_sites_from_scoped(else_body, out);
-                }
-            }
-            scope::ScopedItem::MatchBranch { arms } => {
-                for arm in arms {
-                    collect_for_loop_sites_from_scoped(&arm.body, out);
-                }
-            }
-            scope::ScopedItem::ServiceCall(_)
-            | scope::ScopedItem::FnCall { .. }
-            | scope::ScopedItem::Binding { .. }
-            | scope::ScopedItem::Other => {}
-        }
-    }
-}
-
-fn collect_if_sites_from_scoped(body: &scope::ScopedBody, out: &mut Vec<IfBranchSite>) {
-    for item in &body.items {
-        match item {
-            scope::ScopedItem::IfBranch {
-                then_body,
-                else_body,
-            } => {
-                out.push(IfBranchSite {
-                    has_else: else_body.is_some(),
-                    then_service_call_paths: collect_service_paths_from_scoped_body(then_body),
-                    else_service_call_paths: else_body
-                        .as_ref()
-                        .map(collect_service_paths_from_scoped_body)
-                        .unwrap_or_default(),
-                });
-                collect_if_sites_from_scoped(then_body, out);
-                if let Some(else_body) = else_body {
-                    collect_if_sites_from_scoped(else_body, out);
-                }
-            }
-            scope::ScopedItem::ForLoop { body, .. } => {
-                collect_if_sites_from_scoped(body, out);
-            }
-            scope::ScopedItem::MatchBranch { arms } => {
-                for arm in arms {
-                    collect_if_sites_from_scoped(&arm.body, out);
-                }
-            }
-            scope::ScopedItem::ServiceCall(_)
-            | scope::ScopedItem::FnCall { .. }
-            | scope::ScopedItem::Binding { .. }
-            | scope::ScopedItem::Other => {}
-        }
-    }
-}
-
-fn collect_match_sites_from_scoped(body: &scope::ScopedBody, out: &mut Vec<MatchBranchSite>) {
-    for item in &body.items {
-        match item {
-            scope::ScopedItem::MatchBranch { arms } => {
-                let mut all_paths = Vec::new();
-                let mut per_arm = Vec::new();
-                for arm in arms {
-                    let arm_paths = collect_service_paths_from_scoped_body(&arm.body);
-                    all_paths.extend(arm_paths.clone());
-                    per_arm.push(arm_paths);
-                }
-                out.push(MatchBranchSite {
-                    arm_count: arms.len(),
-                    per_arm_service_call_paths: per_arm,
-                    all_service_call_paths: all_paths,
-                });
-                for arm in arms {
-                    collect_match_sites_from_scoped(&arm.body, out);
-                }
-            }
-            scope::ScopedItem::IfBranch {
-                then_body,
-                else_body,
-            } => {
-                collect_match_sites_from_scoped(then_body, out);
-                if let Some(else_body) = else_body {
-                    collect_match_sites_from_scoped(else_body, out);
-                }
-            }
-            scope::ScopedItem::ForLoop { body, .. } => {
-                collect_match_sites_from_scoped(body, out);
-            }
-            scope::ScopedItem::ServiceCall(_)
-            | scope::ScopedItem::FnCall { .. }
-            | scope::ScopedItem::Binding { .. }
-            | scope::ScopedItem::Other => {}
-        }
-    }
-}
-
-fn detect_for_loops_in_stmts(stmts: &[Stmt]) -> Vec<ForLoopSite> {
-    let scoped = scope::ScopedBody::from_stmts(stmts);
-    let mut sites = Vec::new();
-    collect_for_loop_sites_from_scoped(&scoped, &mut sites);
-    sites
-}
-
-fn detect_if_branches_in_stmts(stmts: &[Stmt]) -> Vec<IfBranchSite> {
-    let scoped = scope::ScopedBody::from_stmts(stmts);
-    let mut sites = Vec::new();
-    collect_if_sites_from_scoped(&scoped, &mut sites);
-    sites
-}
-
-fn detect_match_branches_in_stmts(stmts: &[Stmt]) -> Vec<MatchBranchSite> {
-    let scoped = scope::ScopedBody::from_stmts(stmts);
-    let mut sites = Vec::new();
-    collect_match_sites_from_scoped(&scoped, &mut sites);
-    sites
-}
-
 /// Metadata for a resolved loop-body service call (transport triplet info).
 struct LoopBodyTransport {
     metadata: ServiceCallMetadata,
@@ -4381,12 +4191,26 @@ fn add_control_flow_pattern_nodes(
     service_registry: &ServiceEndpointRegistry,
     uses_binding_types: &HashMap<String, String>,
 ) {
-    let for_sites = detect_for_loops_in_stmts(stmts);
-    for (index, site) in for_sites.iter().enumerate() {
+    let scoped = scope::ScopedBody::from_stmts(stmts);
+
+    for (index, item) in scoped.collect_for_loops().iter().enumerate() {
+        let scope::ScopedItem::ForLoop {
+            element_var,
+            passthrough,
+            body,
+            ..
+        } = item
+        else {
+            unreachable!()
+        };
         let node_id = format!("{}::cf_for_{index}", target.node_id);
-        // Resolve body service calls to LoopBodyTransport entries.
+        let body_paths: Vec<Vec<String>> = body
+            .all_service_calls()
+            .iter()
+            .map(|c| c.path.clone())
+            .collect();
         let mut body_transports = Vec::new();
-        for call_path in &site.body_service_call_paths {
+        for call_path in &body_paths {
             if let Some(transport) =
                 resolve_loop_body_service_call(call_path, uses_binding_types, service_registry)
             {
@@ -4397,13 +4221,13 @@ fn add_control_flow_pattern_nodes(
             module_name,
             &target.node_id,
             index,
-            &site.element_var,
-            &site.passthrough,
+            element_var,
+            passthrough,
             &body_transports,
         );
         let loop_node = LoopBuilder::new(node_id.clone())
             .with_input("items", "Any", Cardinality::ONE)
-            .with_element(&site.element_var, "Any")
+            .with_element(element_var, "Any")
             .with_body(body_dag)
             .with_output("result", "Any")
             .build();
@@ -4411,12 +4235,32 @@ fn add_control_flow_pattern_nodes(
         builder.add_edge(&node_id, "result", &target.node_id, PortName::DEPS);
     }
 
-    let if_sites = detect_if_branches_in_stmts(stmts);
-    for (index, site) in if_sites.iter().enumerate() {
+    for (index, item) in scoped.collect_if_branches().iter().enumerate() {
+        let scope::ScopedItem::IfBranch {
+            then_body,
+            else_body,
+        } = item
+        else {
+            unreachable!()
+        };
         let node_id = format!("{}::cf_if_{index}", target.node_id);
-        // Resolve branch-body service calls to transport entries.
+        let then_paths: Vec<Vec<String>> = then_body
+            .all_service_calls()
+            .iter()
+            .map(|c| c.path.clone())
+            .collect();
+        let else_paths: Vec<Vec<String>> = else_body
+            .as_ref()
+            .map(|b| {
+                b.all_service_calls()
+                    .iter()
+                    .map(|c| c.path.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+
         let mut then_transports = Vec::new();
-        for call_path in &site.then_service_call_paths {
+        for call_path in &then_paths {
             if let Some(transport) =
                 resolve_loop_body_service_call(call_path, uses_binding_types, service_registry)
             {
@@ -4424,7 +4268,7 @@ fn add_control_flow_pattern_nodes(
             }
         }
         let mut else_transports = Vec::new();
-        for call_path in &site.else_service_call_paths {
+        for call_path in &else_paths {
             if let Some(transport) =
                 resolve_loop_body_service_call(call_path, uses_binding_types, service_registry)
             {
@@ -4432,7 +4276,7 @@ fn add_control_flow_pattern_nodes(
             }
         }
 
-        if site.has_else {
+        if else_body.is_some() {
             let true_dag = make_branch_body_dag(
                 module_name,
                 &target.node_id,
@@ -4470,24 +4314,32 @@ fn add_control_flow_pattern_nodes(
         builder.add_edge(&node_id, "result", &target.node_id, PortName::DEPS);
     }
 
-    let match_sites = detect_match_branches_in_stmts(stmts);
-    for (index, site) in match_sites.iter().enumerate() {
+    for (index, item) in scoped.collect_match_branches().iter().enumerate() {
+        let scope::ScopedItem::MatchBranch { arms } = item else {
+            unreachable!()
+        };
         let node_id = format!("{}::cf_match_{index}", target.node_id);
-        // Resolve match-arm service calls to transport entries.
         // NOTE: Currently all arms' transports go into both branches because
         // the match condition isn't wired to the BranchBuilder's condition port.
         // Both branches execute and the fn_body evaluation picks the correct arm.
-        // Per-arm transport isolation requires proper match condition routing
-        // (per_arm_service_call_paths is tracked for future use).
+        let all_paths: Vec<Vec<String>> = arms
+            .iter()
+            .flat_map(|arm| {
+                arm.body
+                    .all_service_calls()
+                    .into_iter()
+                    .map(|c| c.path.clone())
+            })
+            .collect();
         let mut match_transports = Vec::new();
-        for call_path in &site.all_service_call_paths {
+        for call_path in &all_paths {
             if let Some(transport) =
                 resolve_loop_body_service_call(call_path, uses_binding_types, service_registry)
             {
                 match_transports.push(transport);
             }
         }
-        if site.arm_count > 1 {
+        if arms.len() > 1 {
             let true_dag = make_branch_body_dag(
                 module_name,
                 &target.node_id,
@@ -7487,17 +7339,8 @@ fn add_service_call_edges(
             // We count nested occurrences per path and remove that many from the
             // flat list (back-to-front), preserving top-level calls that share
             // the same operation path as a nested call.
-            let mut nested_call_paths = Vec::<Vec<String>>::new();
-            for site in detect_for_loops_in_stmts(stmts) {
-                nested_call_paths.extend(site.body_service_call_paths);
-            }
-            for site in detect_if_branches_in_stmts(stmts) {
-                nested_call_paths.extend(site.then_service_call_paths);
-                nested_call_paths.extend(site.else_service_call_paths);
-            }
-            for site in detect_match_branches_in_stmts(stmts) {
-                nested_call_paths.extend(site.all_service_call_paths);
-            }
+            let nested_call_paths =
+                scope::ScopedBody::from_stmts(stmts).nested_service_call_paths();
             if !nested_call_paths.is_empty() {
                 let mut nested_counts: HashMap<Vec<String>, usize> = HashMap::new();
                 for path in &nested_call_paths {
@@ -11414,31 +11257,31 @@ fn wire_for_loop_iterables(
     stmts: &[Stmt],
     target: &LoweredEndpoint,
 ) {
-    let for_sites = detect_for_loops_in_stmts(stmts);
-    for (index, site) in for_sites.iter().enumerate() {
-        let loop_node_id = format!("{}::cf_for_{index}", target.node_id);
-        let Some(iterable) = &site.iterable else {
-            continue;
+    let scoped = scope::ScopedBody::from_stmts(stmts);
+    for (index, item) in scoped.collect_for_loops().iter().enumerate() {
+        let scope::ScopedItem::ForLoop { iterable, .. } = item else {
+            unreachable!()
         };
+        let loop_node_id = format!("{}::cf_for_{index}", target.node_id);
         match iterable {
-            IterableRef::FieldAccess(base_ident, field_name) => {
-                if let Some(source) = ctx.bound_callable_sources.get(base_ident) {
+            scope::ExprRef::FieldAccess { base, field } => {
+                if let Some(source) = ctx.bound_callable_sources.get(base.as_str()) {
                     builder.add_edge(
                         source.node_id.as_str(),
-                        field_name.as_str(),
+                        field.as_str(),
                         loop_node_id.as_str(),
                         "items",
                     );
-                } else if let Some(source) = ctx.bound_service_sources.get(base_ident) {
+                } else if let Some(source) = ctx.bound_service_sources.get(base.as_str()) {
                     builder.add_edge(
                         source.parse.node_id.as_str(),
-                        field_name.as_str(),
+                        field.as_str(),
                         loop_node_id.as_str(),
                         "items",
                     );
                 }
             }
-            IterableRef::Ident(name) => {
+            scope::ExprRef::Ident(name) => {
                 if let Some(param_ty) = ctx.param_types.get(name) {
                     let src = ensure_param_source_node(
                         builder,
@@ -11464,6 +11307,7 @@ fn wire_for_loop_iterables(
                     );
                 }
             }
+            scope::ExprRef::Literal(_) | scope::ExprRef::Opaque => continue,
         }
     }
 }

@@ -3691,19 +3691,33 @@ fn detect_if_branches_collects_service_call_paths() {
         ))),
     ))];
 
-    let sites = detect_if_branches_in_stmts(&stmts);
-    assert_eq!(sites.len(), 1);
-    assert!(sites[0].has_else);
-    assert_eq!(sites[0].then_service_call_paths.len(), 1);
-    assert_eq!(
-        sites[0].then_service_call_paths[0],
-        vec!["gcp", "Storage", "ReadObject"]
-    );
-    assert_eq!(sites[0].else_service_call_paths.len(), 1);
-    assert_eq!(
-        sites[0].else_service_call_paths[0],
-        vec!["gcp", "Storage", "WriteObject"]
-    );
+    let scoped = scope::ScopedBody::from_stmts(&stmts);
+    let branches = scoped.collect_if_branches();
+    assert_eq!(branches.len(), 1);
+    let scope::ScopedItem::IfBranch {
+        then_body,
+        else_body,
+    } = branches[0]
+    else {
+        panic!("expected IfBranch");
+    };
+    let then_paths: Vec<Vec<String>> = then_body
+        .all_service_calls()
+        .iter()
+        .map(|c| c.path.clone())
+        .collect();
+    assert_eq!(then_paths.len(), 1);
+    assert_eq!(then_paths[0], vec!["gcp", "Storage", "ReadObject"]);
+    assert!(else_body.is_some());
+    let else_paths: Vec<Vec<String>> = else_body
+        .as_ref()
+        .unwrap()
+        .all_service_calls()
+        .iter()
+        .map(|c| c.path.clone())
+        .collect();
+    assert_eq!(else_paths.len(), 1);
+    assert_eq!(else_paths[0], vec!["gcp", "Storage", "WriteObject"]);
 }
 
 #[test]
@@ -3732,18 +3746,25 @@ fn detect_match_branches_collects_service_call_paths() {
         ],
     ))];
 
-    let sites = detect_match_branches_in_stmts(&stmts);
-    assert_eq!(sites.len(), 1);
-    assert_eq!(sites[0].arm_count, 2);
-    assert_eq!(sites[0].all_service_call_paths.len(), 2);
-    assert_eq!(
-        sites[0].all_service_call_paths[0],
-        vec!["github", "Gist", "Create"]
-    );
-    assert_eq!(
-        sites[0].all_service_call_paths[1],
-        vec!["github", "Gist", "Update"]
-    );
+    let scoped = scope::ScopedBody::from_stmts(&stmts);
+    let matches = scoped.collect_match_branches();
+    assert_eq!(matches.len(), 1);
+    let scope::ScopedItem::MatchBranch { arms } = matches[0] else {
+        panic!("expected MatchBranch");
+    };
+    assert_eq!(arms.len(), 2);
+    let all_paths: Vec<Vec<String>> = arms
+        .iter()
+        .flat_map(|arm| {
+            arm.body
+                .all_service_calls()
+                .into_iter()
+                .map(|c| c.path.clone())
+        })
+        .collect();
+    assert_eq!(all_paths.len(), 2);
+    assert_eq!(all_paths[0], vec!["github", "Gist", "Create"]);
+    assert_eq!(all_paths[1], vec!["github", "Gist", "Update"]);
 }
 
 #[test]
