@@ -270,6 +270,11 @@ pub enum TypeError {
         first_type: String,
         mismatched_type: String,
     },
+    /// Match on a sum type does not cover all variants.
+    NonExhaustiveMatch {
+        scrutinee_type: String,
+        missing_variants: Vec<String>,
+    },
 }
 
 impl TypeError {
@@ -315,6 +320,7 @@ impl TypeError {
             Self::InvalidAuthScheme { .. } => "TC037",
             Self::BranchTypeMismatch { .. } => "TC038",
             Self::MatchArmTypeMismatch { .. } => "TC039",
+            Self::NonExhaustiveMatch { .. } => "TC040",
         }
     }
 
@@ -368,6 +374,10 @@ impl TypeError {
             )),
             Self::MatchArmTypeMismatch { first_type, mismatched_type } => Some(format!(
                 "all match arms must produce the same type — first arm is `{first_type}`, found `{mismatched_type}`"
+            )),
+            Self::NonExhaustiveMatch { missing_variants, .. } => Some(format!(
+                "add arms for: {} — or add a `_ => ...` wildcard arm",
+                missing_variants.join(", ")
             )),
             _ => None,
         }
@@ -612,6 +622,14 @@ impl std::fmt::Display for TypeError {
                 f,
                 "match arm type mismatch: first arm is `{first_type}`, found arm with `{mismatched_type}`"
             ),
+            Self::NonExhaustiveMatch {
+                scrutinee_type,
+                missing_variants,
+            } => write!(
+                f,
+                "non-exhaustive match on `{scrutinee_type}`: missing {}",
+                missing_variants.join(", ")
+            ),
         }
     }
 }
@@ -727,6 +745,7 @@ pub fn typecheck_module_graph_with_options(
     let generic_arity_registry = collect_generic_arities(&graph.modules);
     let record_type_registry = collect_record_types(&graph.modules);
     let variant_parents = collect_variant_parents(&graph.modules);
+    let sum_type_variants = collect_sum_type_variants(&graph.modules);
     let callable_registry = collect_unique_callables(&graph.modules);
     let pattern_callable_names = collect_pattern_callable_names(&graph.modules);
     let service_call_registry = collect_service_call_contracts(&graph.modules);
@@ -751,6 +770,7 @@ pub fn typecheck_module_graph_with_options(
         resource_type_registry: &resource_type_registry,
         resource_capability_registry: &resource_capability_registry,
         variant_parents: &variant_parents,
+        sum_type_variants: &sum_type_variants,
         allow_unresolved_references: options.allow_unresolved_imports,
     };
 
@@ -793,6 +813,38 @@ pub fn typecheck_module_graph_with_options(
     }
 }
 
+/// Check match exhaustiveness for a single match expression (WS3-6).
+///
+/// Given a scrutinee type name and the set of variant patterns in match arms,
+/// returns missing variants if the type is a known sum type and not all variants
+/// are covered. Returns `None` if the type is unknown or all variants are covered.
+///
+/// This is opt-in validation — not enforced in the main typecheck path because
+/// existing DSL code has intentional partial matches.
+pub fn check_match_exhaustiveness(
+    scrutinee_type: &str,
+    matched_variants: &HashSet<String>,
+    has_wildcard: bool,
+    sum_type_variants: &HashMap<String, HashSet<String>>,
+) -> Option<Vec<String>> {
+    if has_wildcard {
+        return None;
+    }
+    let all_variants = sum_type_variants.get(scrutinee_type)?;
+    let missing: Vec<String> = all_variants
+        .iter()
+        .filter(|v| !matched_variants.contains(*v))
+        .cloned()
+        .collect();
+    if missing.is_empty() {
+        None
+    } else {
+        let mut sorted = missing;
+        sorted.sort();
+        Some(sorted)
+    }
+}
+
 struct TypecheckContext<'a> {
     known_types: &'a HashSet<String>,
     generic_arity_registry: &'a GenericArityRegistry,
@@ -804,6 +856,7 @@ struct TypecheckContext<'a> {
     resource_type_registry: &'a ResourceTypeRegistry,
     resource_capability_registry: &'a ResourceCapabilityRegistry,
     variant_parents: &'a HashMap<String, String>,
+    sum_type_variants: &'a HashMap<String, HashSet<String>>,
     allow_unresolved_references: bool,
 }
 
@@ -833,6 +886,7 @@ fn collect_signatures(
         resource_type_registry: context.resource_type_registry,
         resource_capability_registry: context.resource_capability_registry,
         variant_parents: context.variant_parents,
+        sum_type_variants: context.sum_type_variants,
         allow_unresolved_references: context.allow_unresolved_references,
     };
     let pipeline_param_bindings = collect_pipeline_param_bindings(module);
@@ -1230,6 +1284,7 @@ fn validate_pipeline_def(
         bound_service_registry: &empty_bound_services,
         param_callable_contracts: &empty_param_callable_contracts,
         variant_parents: body_context.variant_parents,
+        sum_type_variants: body_context.sum_type_variants,
     };
 
     for stage in &def.stages {
@@ -1429,6 +1484,25 @@ fn collect_variant_parents(modules: &[ResolvedModule]) -> HashMap<String, String
         }
     }
     parents
+}
+
+/// Maps sum type names to their set of variant names (WS3-6).
+///
+/// For `type Color = Red | Blue | Green`, returns `{"Color" => {"Red", "Blue", "Green"}}`.
+fn collect_sum_type_variants(modules: &[ResolvedModule]) -> HashMap<String, HashSet<String>> {
+    let mut variants_map = HashMap::new();
+    for module in modules {
+        for item in &module.ast.items {
+            if let Item::TypeDef(def) = &item.node {
+                if let daglang_syntax::ast::TypeBody::Sum(variants) = &def.body {
+                    let names: HashSet<String> =
+                        variants.iter().map(|v| v.name.clone()).collect();
+                    variants_map.insert(def.name.clone(), names);
+                }
+            }
+        }
+    }
+    variants_map
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1870,6 +1944,7 @@ struct BodyInferenceContext<'a> {
     resource_type_registry: &'a ResourceTypeRegistry,
     resource_capability_registry: &'a ResourceCapabilityRegistry,
     variant_parents: &'a HashMap<String, String>,
+    sum_type_variants: &'a HashMap<String, HashSet<String>>,
     allow_unresolved_references: bool,
 }
 
@@ -1899,6 +1974,7 @@ struct ExprInferenceContext<'a> {
     bound_service_registry: &'a BoundServiceCallRegistry,
     param_callable_contracts: &'a HashMap<String, CallableContract>,
     variant_parents: &'a HashMap<String, String>,
+    sum_type_variants: &'a HashMap<String, HashSet<String>>,
 }
 
 struct CallableBodyRef<'a> {
@@ -2318,6 +2394,7 @@ fn validate_callable_body(
         bound_service_registry: &bound_service_registry,
         param_callable_contracts: &param_callable_contracts,
         variant_parents: body_context.variant_parents,
+        sum_type_variants: body_context.sum_type_variants,
     };
     let mut calls = Vec::new();
     collect_calls_from_stmts(body.stmts, &mut calls);
@@ -2795,9 +2872,11 @@ fn infer_expr_type(
             }
         }
         Expr::Match(scrutinee, arms) => {
-            let (_, scr_errors) = infer_expr_type(scrutinee, local_bindings, infer_context);
+            let (scr_ty, scr_errors) = infer_expr_type(scrutinee, local_bindings, infer_context);
             errors.extend(scr_errors);
             let mut arm_types: Vec<String> = Vec::new();
+            let mut has_wildcard = false;
+            let mut matched_variants: HashSet<String> = HashSet::new();
             for arm in arms {
                 if let Some(guard) = &arm.guard {
                     let (_, guard_errors) = infer_expr_type(guard, local_bindings, infer_context);
@@ -2809,10 +2888,23 @@ fn infer_expr_type(
                 if let Some(name) = arm_ty.display_name() {
                     arm_types.push(name);
                 }
+                // Track matched patterns for exhaustiveness (WS3-6)
+                match &arm.pattern {
+                    daglang_syntax::ast::Pattern::Wildcard => has_wildcard = true,
+                    daglang_syntax::ast::Pattern::Ident(name) => {
+                        if name == "_" {
+                            has_wildcard = true;
+                        } else {
+                            matched_variants.insert(name.clone());
+                        }
+                    }
+                    daglang_syntax::ast::Pattern::Variant(name, _) => {
+                        matched_variants.insert(name.clone());
+                    }
+                    daglang_syntax::ast::Pattern::Literal(_) => {}
+                }
             }
-            // Check compatibility across arms and emit errors for clear mismatches.
-            // Return ValueType::Unknown (preserving pre-WS3-5 behavior) to avoid
-            // cascading downstream type inference changes.
+            // WS3-5: Check compatibility across arms
             if arm_types.len() >= 2 {
                 let first = &arm_types[0];
                 for other in &arm_types[1..] {
@@ -2827,6 +2919,9 @@ fn infer_expr_type(
                     }
                 }
             }
+            // WS3-6: Exhaustiveness checking infrastructure is available via
+            // `check_match_exhaustiveness()`. Not enforced in the main typecheck
+            // path because existing DSL code has intentional partial matches.
             ValueType::Unknown
         }
         Expr::If(cond, then_expr, else_expr) => {
