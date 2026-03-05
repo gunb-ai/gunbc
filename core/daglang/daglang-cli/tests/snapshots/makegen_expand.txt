@@ -440,6 +440,7 @@ Nodes:
   - execute_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion [callable::Pattern extdeps.cloud.gcp.secret_manager.service_transport::execute::gcp.SecretManager::AccessVersion]
     inputs:
       * request: TransportRequest (1)
+      * res:file: FilesystemHandle (1)
       * res:credential: Credential (0..1)
     outputs:
       * response: TransportResponse (1)
@@ -458,6 +459,7 @@ Nodes:
   - execute_transport_extdeps_cloud_gcp_sts_gcp_STS_Exchange [callable::Pattern extdeps.cloud.gcp.sts.service_transport::execute::gcp.STS::Exchange]
     inputs:
       * request: TransportRequest (1)
+      * res:file: FilesystemHandle (1)
     outputs:
       * response: TransportResponse (1)
   - parse_transport_extdeps_cloud_gcp_sts_gcp_STS_Exchange [callable::Pattern extdeps.cloud.gcp.sts.service_transport::parse::gcp.STS::Exchange]
@@ -476,6 +478,7 @@ Nodes:
   - execute_transport_extdeps_cloud_gcp_sts_github_OIDC_GetToken [callable::Pattern extdeps.cloud.gcp.sts.service_transport::execute::github.OIDC::GetToken]
     inputs:
       * request: TransportRequest (1)
+      * res:file: FilesystemHandle (1)
     outputs:
       * response: TransportResponse (1)
   - parse_transport_extdeps_cloud_gcp_sts_github_OIDC_GetToken [callable::Pattern extdeps.cloud.gcp.sts.service_transport::parse::github.OIDC::GetToken]
@@ -491,6 +494,7 @@ Nodes:
   - execute_transport_extdeps_cloud_gcp_sts_gcp_Metadata_GetIdentityToken [callable::Pattern extdeps.cloud.gcp.sts.service_transport::execute::gcp.Metadata::GetIdentityToken]
     inputs:
       * request: TransportRequest (1)
+      * res:file: FilesystemHandle (1)
     outputs:
       * response: TransportResponse (1)
   - parse_transport_extdeps_cloud_gcp_sts_gcp_Metadata_GetIdentityToken [callable::Pattern extdeps.cloud.gcp.sts.service_transport::parse::gcp.Metadata::GetIdentityToken]
@@ -506,6 +510,7 @@ Nodes:
   - execute_transport_extdeps_shell_shell_Env_Get [callable::Pattern extdeps.shell.service_transport::execute::shell.Env::Get]
     inputs:
       * request: TransportRequest (1)
+      * res:file: FilesystemHandle (1)
     outputs:
       * response: TransportResponse (1)
   - parse_transport_extdeps_shell_shell_Env_Get [callable::Pattern extdeps.shell.service_transport::parse::shell.Env::Get]
@@ -524,6 +529,7 @@ Nodes:
     inputs:
       * request: TransportRequest (1)
       * skip: Bool (1)
+      * res:file: FilesystemHandle (1)
     outputs:
       * response: TransportResponse (1)
   - compare_makegen_content [primitive::CompareEquality tools.makegen.content_upsert::compare_makegen_content]
@@ -747,6 +753,7 @@ Nodes:
   - execute_transport_extdeps_shell_shell_Env_Get_c1 [callable::Pattern extdeps.shell.service_transport::execute::shell.Env::Get]
     inputs:
       * request: TransportRequest (1)
+      * res:file: FilesystemHandle (1)
     outputs:
       * response: TransportResponse (1)
   - parse_transport_extdeps_shell_shell_Env_Get_c1 [callable::Pattern extdeps.shell.service_transport::parse::shell.Env::Get]
@@ -957,6 +964,8 @@ Edges:
   - acquire_resource_std_resources_Network.resource_handle -> release_resource_std_resources_Network.resource_handle
   - acquire_resource_std_resources_Clock.resource_handle -> release_resource_std_resources_Clock.resource_handle
   - acquire_resource_std_resources_AuthContext.resource_handle -> release_resource_std_resources_AuthContext.resource_handle
+  - acquire_resource_std_resources_Filesystem.resource_handle -> tools.makegen::makegen.__deps
+  - tools.makegen::makegen.written -> release_resource_std_resources_Filesystem.resource_handle
   - acquire_resource_std_resources_Filesystem.resource_handle -> std.patterns::file_content_matches.__deps
   - std.patterns::file_content_matches.matches -> release_resource_std_resources_Filesystem.resource_handle
   - acquire_resource_std_resources_Filesystem.resource_handle -> std.patterns::classify_files.__deps

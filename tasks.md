@@ -151,7 +151,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 |----|------|------|------|--------|--------|
 | CP-6 | Wire `param_source` nodes to caller scope | M | CP-2,3 | CP | Open |
 | CP-7 | Wire default argument literal nodes | M | — | CP | **Done** — `collect_callable_param_defaults()` gathers defaults from all callable params across modules. `wire_fn_call_arguments()` (line 9304) injects `ensure_literal_source_node` for omitted call args via `expr_to_json_literal`. Already fully implemented. |
-| CP-30 | Emit transport resource ports (`res:file`) during lower | M | — | CP | Open |
+| CP-30 | Emit transport resource ports (`res:file`) during lower | M | — | CP | **Done** — All content_upsert execute nodes (IoExecuteFileRead: Read, IoExecuteFileWrite: Write) and all 4 ServiceTransportExecute creation sites now emit `Port::resource("file", "FilesystemHandle", mode)` directly during lowering. Removed `needs_transport_resource()` from resolve (now always no-op). `wire_missing_filesystem_resources()` retained for fs_env edge wiring. Snapshot updated. |
 
 ### B.3: Verification gate (after B.2)
 

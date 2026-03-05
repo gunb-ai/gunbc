@@ -1459,7 +1459,10 @@ fn derive_interface_stub_transport_triplets(
                 };
                 let execute_node = Node::opaque(
                     execute_id.clone(),
-                    vec![Port::scalar("request", "TransportRequest")],
+                    vec![
+                        Port::scalar("request", "TransportRequest"),
+                        Port::resource("file", "FilesystemHandle", AccessMode::Read),
+                    ],
                     typed_outputs.clone(),
                     LoweredOp::Callable {
                         module: module_name.clone(),
@@ -4074,7 +4077,10 @@ fn make_loop_body_dag(
             ));
             let execute_node = Node::opaque(
                 execute_id.clone(),
-                vec![Port::scalar("request", "TransportRequest")],
+                vec![
+                    Port::scalar("request", "TransportRequest"),
+                    Port::resource("file", "FilesystemHandle", AccessMode::Read),
+                ],
                 vec![Port::scalar("response", "TransportResponse")],
                 LoweredOp::Callable {
                     module: module_name.to_string(),
@@ -4241,7 +4247,10 @@ fn make_branch_body_dag(
             ));
             let execute_node = Node::opaque(
                 execute_id.clone(),
-                vec![Port::scalar("request", "TransportRequest")],
+                vec![
+                    Port::scalar("request", "TransportRequest"),
+                    Port::resource("file", "FilesystemHandle", AccessMode::Read),
+                ],
                 vec![Port::scalar("response", "TransportResponse")],
                 LoweredOp::Callable {
                     module: module_name.to_string(),
@@ -4571,6 +4580,7 @@ fn expand_single_content_upsert(
         vec![
             Port::scalar("request", "TransportRequest"),
             Port::scalar("skip", "Bool"),
+            Port::resource("file", "FilesystemHandle", AccessMode::Read),
         ],
         vec![Port::scalar("response", "TransportResponse")],
         LoweredOp::Primitive {
@@ -4605,20 +4615,13 @@ fn expand_single_content_upsert(
             kind: PrimitiveOpKind::IoPrepareFileWrite,
         },
     ));
-    let mut execute_transport_inputs = vec![
-        Port::scalar("request", "TransportRequest"),
-        Port::scalar("skip", "Bool"),
-    ];
-    if is_makegen_expansion {
-        execute_transport_inputs.push(Port::resource(
-            "file",
-            "FilesystemHandle",
-            AccessMode::Write,
-        ));
-    }
     builder.add_node(Node::opaque(
         execute_transport_id.clone(),
-        execute_transport_inputs,
+        vec![
+            Port::scalar("request", "TransportRequest"),
+            Port::scalar("skip", "Bool"),
+            Port::resource("file", "FilesystemHandle", AccessMode::Write),
+        ],
         vec![Port::scalar("response", "TransportResponse")],
         LoweredOp::Primitive {
             module: ctx.module_name.to_string(),
@@ -7092,7 +7095,10 @@ fn derive_service_transport_triplets(
                     &service_metadata.spec,
                     Some(ServiceOperationSpec::Rest(spec)) if spec.auth_scheme.is_some()
                 );
-                let mut execute_inputs = vec![Port::scalar("request", "TransportRequest")];
+                let mut execute_inputs = vec![
+                    Port::scalar("request", "TransportRequest"),
+                    Port::resource("file", "FilesystemHandle", AccessMode::Read),
+                ];
                 if has_auth {
                     execute_inputs.push(Port::with_cardinality(
                         PortName::RESOURCE_CREDENTIAL,

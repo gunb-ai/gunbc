@@ -32,7 +32,7 @@ use daglang_lower::{
 };
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
-use gunbc_ir::resource::{AccessMode, RESOURCE_FILE, RESOURCE_FILE_PREFIX};
+use gunbc_ir::resource::{RESOURCE_FILE, RESOURCE_FILE_PREFIX};
 use gunbc_ir::transport::{FileRequest, TransportRequest};
 use gunbc_ir::types::PortName;
 use gunbc_ir::{Cardinality, Dag, Edge, Node, Port, Value};
@@ -1140,11 +1140,6 @@ pub fn resolve_lowered_dag_with(
             origin: node.origin.clone(),
         };
         normalize_release_resource_inputs(&mut resolved_node);
-        if let Some(mode) = needs_transport_resource(node, &resolved_node) {
-            resolved_node
-                .inputs
-                .push(Port::resource(RESOURCE_FILE, "FilesystemHandle", mode));
-        }
         resolved.add_node(resolved_node);
     }
     // Filter edges referencing pipeline nodes.
@@ -1820,44 +1815,6 @@ fn unknown_callable(node_id: &str, module: &str, name: &str) -> ResolveError {
     }
 }
 
-/// Check if a transport execute node needs a filesystem resource input added.
-///
-/// Returns `Some(AccessMode)` if the node is a transport execute node
-/// (content_upsert or service_transport) that doesn't already have a
-/// filesystem resource input. The resource system requires all transport
-/// execute nodes to declare their resource access.
-fn needs_transport_resource(
-    lowered: &Node<LoweredOp>,
-    resolved: &Node<DynOp>,
-) -> Option<AccessMode> {
-    let mode = match &lowered.body {
-        NodeBody::Opaque(LoweredOp::Primitive {
-            kind: PrimitiveOpKind::IoExecuteFileWrite,
-            ..
-        }) => AccessMode::Write,
-        NodeBody::Opaque(LoweredOp::Primitive {
-            kind: PrimitiveOpKind::IoExecuteFileRead,
-            ..
-        }) => AccessMode::Read,
-        _ if lowered.kind == gunbc_ir::NodeKind::TransportExecute => {
-            // Service transport execute nodes need filesystem access.
-            AccessMode::Read
-        }
-        _ => return None,
-    };
-
-    // Only add if not already present.
-    let already_has = resolved.inputs.iter().any(|port| {
-        port.type_id.0 == "FilesystemHandle"
-            && (port.name.0 == RESOURCE_FILE || port.name.0.starts_with(RESOURCE_FILE_PREFIX))
-    });
-    if already_has {
-        None
-    } else {
-        Some(mode)
-    }
-}
-
 fn wire_missing_filesystem_resources(dag: &mut Dag<DynOp>) {
     let mut pending = Vec::new();
     for node in &dag.nodes {
@@ -1927,6 +1884,7 @@ fn wire_missing_filesystem_resources(dag: &mut Dag<DynOp>) {
 mod tests {
     use super::*;
     use daglang_lower::{CallableKind, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind};
+    use gunbc_ir::resource::AccessMode;
     use gunbc_ir::{Node, Port};
 
     fn callable_node(
@@ -2614,28 +2572,6 @@ mod tests {
         assert_eq!(resolved.edges.len(), 1);
         assert_eq!(resolved.edges[0].from_node.0, "render");
         assert_eq!(resolved.edges[0].to_node.0, "prepare_read");
-    }
-
-    #[test]
-    fn needs_transport_resource_respects_existing_res_file_port() {
-        let lowered = primitive_node(
-            "execute_read_makegen",
-            "tools.makegen",
-            "content_upsert::execute_read_makegen",
-            PrimitiveOpKind::IoExecuteFileRead,
-        );
-        let resolved = Node::opaque(
-            "execute_read_makegen",
-            vec![Port::resource("file", "FilesystemHandle", AccessMode::Read)],
-            vec![Port::new("response", "TransportResponse")],
-            DynOp::new(DslFsEnvOp),
-        );
-
-        let mode = needs_transport_resource(&lowered, &resolved);
-        assert!(
-            mode.is_none(),
-            "existing `res:file` input should prevent duplicate resource port injection"
-        );
     }
 
     #[test]
