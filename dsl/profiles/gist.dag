@@ -7,6 +7,8 @@
 module profiles.gist
 
 import interfaces.credential_provider { CredentialProvider }
+import services.sdlc.providers.local_credential_provider { LocalCredentialProvider }
+import services.sdlc.providers.gcp_credential_provider { GcpWifCredentialProvider }
 
 // Local development -- reads GITHUB_TOKEN from environment.
 profile local {

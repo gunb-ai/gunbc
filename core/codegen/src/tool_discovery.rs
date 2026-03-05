@@ -34,7 +34,7 @@ struct DslParam {
 
 /// Bump when cache format changes (e.g., new fields in CachedDiscoveryEntry).
 /// Stale caches with a different version are discarded on load.
-const CACHE_VERSION: u32 = 2;
+const CACHE_VERSION: u32 = 3;
 
 /// Persistent discovery cache for incremental compilation (C26).
 ///
