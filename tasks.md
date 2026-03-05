@@ -15,6 +15,13 @@
 | **3. SDLC Pipeline** | [`TODO/sdlc.md`](TODO/sdlc.md) | Run the SDLC pipeline end-to-end. Phase 0 (prove compilation) is a **hard gate**. | 10 done + 9 in progress across 5 phases |
 | **4. Compiler Pipeline** | [`TODO/compiler-pipeline.md`](TODO/compiler-pipeline.md) | End-to-end pipeline hardening + interpreted/compiled parity. Three invariants: binary logic, minimalism, resolve early. | 42 items across 9 workstreams |
 
+### Cross-Cutting Reliability Lane
+
+Source of truth: [`TODO/rolling-postmortem.md`](TODO/rolling-postmortem.md)
+
+1. **RR-1 (P0)**: Replace heuristic test-time confidence with measured runtime budget checks for `test-xs/s/m/l/xl` (maps to RC-P0-004).
+2. **RR-2 (P1)**: Split monolithic exhaustive tests into bounded shards or explicit integration-only flows; default loops should stay interactive (maps to RC-P1-005/006).
+
 ### Design docs
 
 | Doc | Scope |
