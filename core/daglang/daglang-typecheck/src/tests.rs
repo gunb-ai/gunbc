@@ -2043,6 +2043,66 @@ fn pick(flag: Bool) -> Status {
     );
 }
 
+// --- WS3-6: Match exhaustiveness ---
+
+#[test]
+fn exhaustiveness_all_variants_covered() {
+    let mut variants = HashMap::new();
+    variants.insert(
+        "Color".to_string(),
+        HashSet::from(["Red".to_string(), "Blue".to_string(), "Green".to_string()]),
+    );
+    let matched = HashSet::from(["Red".to_string(), "Blue".to_string(), "Green".to_string()]);
+    let result = check_match_exhaustiveness("Color", &matched, false, &variants);
+    assert!(result.is_none(), "all variants covered should return None");
+}
+
+#[test]
+fn exhaustiveness_missing_variants() {
+    let mut variants = HashMap::new();
+    variants.insert(
+        "Color".to_string(),
+        HashSet::from(["Red".to_string(), "Blue".to_string(), "Green".to_string()]),
+    );
+    let matched = HashSet::from(["Red".to_string()]);
+    let missing = check_match_exhaustiveness("Color", &matched, false, &variants)
+        .expect("should report missing variants");
+    assert_eq!(missing, vec!["Blue", "Green"]);
+}
+
+#[test]
+fn exhaustiveness_wildcard_suppresses_check() {
+    let mut variants = HashMap::new();
+    variants.insert(
+        "Color".to_string(),
+        HashSet::from(["Red".to_string(), "Blue".to_string(), "Green".to_string()]),
+    );
+    let matched = HashSet::from(["Red".to_string()]);
+    let result = check_match_exhaustiveness("Color", &matched, true, &variants);
+    assert!(result.is_none(), "wildcard should suppress exhaustiveness check");
+}
+
+#[test]
+fn exhaustiveness_unknown_type_returns_none() {
+    let variants = HashMap::new();
+    let matched = HashSet::from(["Foo".to_string()]);
+    let result = check_match_exhaustiveness("UnknownType", &matched, false, &variants);
+    assert!(result.is_none(), "unknown scrutinee type should return None");
+}
+
+#[test]
+fn non_exhaustive_match_error_format() {
+    let err = TypeError::NonExhaustiveMatch {
+        scrutinee_type: "Color".to_string(),
+        missing_variants: vec!["Blue".to_string(), "Green".to_string()],
+    };
+    assert_eq!(err.code(), "TC040");
+    let msg = format!("{err}");
+    assert!(msg.contains("Color"), "error should mention type name");
+    assert!(msg.contains("Blue"), "error should mention missing variant");
+    assert!(msg.contains("Green"), "error should mention missing variant");
+}
+
 #[test]
 fn pipeline_when_condition_must_be_bool() {
     let graph = module_graph_from_sources(&[(
