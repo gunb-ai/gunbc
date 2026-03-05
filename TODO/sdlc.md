@@ -6,6 +6,7 @@
 - `docs/design/sdlc/domain-modeling-comprehensive.md` — entity/relationship/state machine model
 - `docs/design/sdlc/e2e-gap-analysis.md` — gap resolution (all resolved via DSL)
 - `docs/design/sdlc/production-gap-analysis.md` — activation blockers
+- `docs/design/sdlc/scenario-readiness.md` — practical go/no-go scenarios (demo -> local pilot -> cloud canary)
 
 > **Lesson**: Prove compilation before building infrastructure. The SDLC pipeline was built 3 times
 > (Rust binary → DSL pipeline → deleted → rebuilt as 20 .dag files) with elaborate cloud infra
