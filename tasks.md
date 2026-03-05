@@ -174,7 +174,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 | CP-63 | Integrate `scope.rs` — wire callers, delete `IfBranchSite`. (615 lines exist, partially wired) | M | CP-62 | GA | Open |
 | CP-64 | Extract transport derivation — `transport.rs` returning `TransportManifest`. Invariant: every service call → exactly one triplet. | M | CP-62 | GA | Open |
 | CP-65 | Dead AST scaffolding cleanup — delete `MockResponseDef` (before RT-1 re-adds it properly), `@retry` rejection, `hermetic` warning. | S | — | GA | **Done** — MockResponseDef deleted, @retry rejected by parser (C8 in archive) |
-| CP-67 | Stdlib `OnceLock` caching — cache compiled fn bodies. `include_str!` for stdlib sources. Delete per-module compile wrappers. | M | — | GA | Open |
+| CP-67 | Stdlib `OnceLock` caching — cache compiled fn bodies. `include_str!` for stdlib sources. Delete per-module compile wrappers. | M | — | GA | **Partial** — OnceLock caching added for `clippy_policy.dag` (3x→1x, pragma/dsl_render.rs) and `build_targets.dag` (model.rs). workflow_catalog.dag and workflow_commands.dag already had OnceLock. Remaining: `include_str!` for stdlib sources, per-module compile wrapper consolidation. |
 | CP-68 | Split `mock_defaults` — generic probing (~350 lines) → `core/test/`. Delete GCP blob (~230 lines). | S | — | GA | **Done** — `auto_mock.rs` (519 lines) already in `core/test/`. Kitchen-sink `default_rest_response()` uses provider-aware `rest_response_for_provider()` as primary path; GCP fields are 5 lines in fallback. `mock_synthesis.rs` (417 lines) handles provider-specific shapes. No `mock_defaults` module exists (task description predates reorg). |
 | CP-69 | Executor dead code — delete `looks_effectful_without_kind()`, unwired credential expiry plumbing. | S | — | GA | **Done** — both already deleted in earlier commits |
 
@@ -321,8 +321,8 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 
 | ID | What | Size | Status |
 |----|------|------|--------|
-| WS6-1 | Fix `testgen.dag` (missing extern func) | S | Open |
-| WS6-2 | Fix `deps.dag` (missing externs) | S | Open |
+| WS6-1 | Fix `testgen.dag` (missing extern func) | S | **Done** — Added `extern func generate_test_content`, `import std.resources { Filesystem }`. `generate_tests()` fn delegates to extern. |
+| WS6-2 | Fix `deps.dag` (missing externs) | S | **Done** — Added `extern func parse_deps_toml`, `shell_check`, `shell_exec`. Fixed `FilePath` → `String` for manifest_path. Added `uses fs: Filesystem(mode: ReadWrite)` on `deps_generate`. |
 | WS6-3 | Add `uses` declarations to makegen, pragma, build funcs | S | **Done** — Added `uses fs: Filesystem(mode: ReadWrite)` to makegen, pragma, cigen, justgen. Added `uses net: Network` to design generate_design and review_design. |
 | WS6-4 | Fill `ci.dag` stage bodies (12 stages) | L | Open |
 | WS6-5 | Fill remaining workflow stage bodies | L | Open |
@@ -382,7 +382,7 @@ Source: [`TODO/gist-auth-postmortem.md`](TODO/gist-auth-postmortem.md) RT-I + [`
 | ID | What | Size | Status |
 |----|------|------|--------|
 | S-11 | End-to-end local run (one issue: Idea → Design) | L | In Progress |
-| BT-E1 | **Transport deduplication** — `endpoint_use_count` resets per module; fix to global across compiled graph. Unblocks `gunbc-sdlc --dry-run` (fails at 408/494 nodes). | M | Open |
+| BT-E1 | **Transport deduplication** — `endpoint_use_count` resets per module; fix to global across compiled graph. Unblocks `gunbc-sdlc --dry-run` (fails at 408/494 nodes). | M | **Done** — `endpoint_use_count` HashMap declared outside the module loop (global scope). Test `cross_module_service_dedup_clones_transport_triplet` verifies cross-module dedup. |
 
 ### Phase 3: Full Pipeline (after S-11)
 
