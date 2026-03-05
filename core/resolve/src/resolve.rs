@@ -1699,7 +1699,6 @@ fn resolve_service_transport(
                             .auth_scheme
                             .clone()
                             .unwrap_or_else(|| "none".to_string()),
-                        permissions: metadata.permissions.clone(),
                     }));
                 }
                 (ServiceOperationSpec::Shell(shell_spec), Some(TransportRole::Prepare)) => {
@@ -2040,7 +2039,6 @@ mod tests {
             transport: ServiceTransportClass::ShellLocal,
             idempotent: false,
             readonly: true,
-            permissions: vec![],
             spec: Some(ServiceOperationSpec::Shell(ShellOperationSpec {
                 argv_template: vec![
                     ArgvSegment::Literal("test".to_string()),
@@ -2071,7 +2069,6 @@ mod tests {
             transport: ServiceTransportClass::ShellLocal,
             idempotent: false,
             readonly: false,
-            permissions: vec![],
             spec: Some(ServiceOperationSpec::Shell(ShellOperationSpec {
                 argv_template: vec![
                     ArgvSegment::Literal("cargo".to_string()),
@@ -2303,7 +2300,6 @@ mod tests {
             transport: ServiceTransportClass::RestNetwork,
             idempotent: true,
             readonly: false,
-            permissions: vec![],
             spec: Some(ServiceOperationSpec::Rest(Box::new(RestOperationSpec {
                 endpoint: "https://sts.googleapis.com".to_string(),
                 method: "POST".to_string(),
@@ -2361,7 +2357,6 @@ mod tests {
             transport: ServiceTransportClass::RestNetwork,
             idempotent: true,
             readonly: true,
-            permissions: vec!["secretmanager.versions.access".to_string()],
             spec: Some(ServiceOperationSpec::Rest(Box::new(RestOperationSpec {
                 endpoint: "https://secretmanager.googleapis.com".to_string(),
                 method: "GET".to_string(),

@@ -286,7 +286,6 @@ pub mod ast {
         pub outputs: Vec<Field>,
         pub idempotent: bool,
         pub readonly: bool,
-        pub permissions: Vec<String>,
         pub transport: Option<TransportBinding>,
         /// Response contract: maps HTTP status codes/patterns to response types.
         pub response: Vec<ResponseEntry>,

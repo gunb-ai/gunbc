@@ -1910,7 +1910,6 @@ impl Parser {
         let mut outputs = Vec::new();
         let mut idempotent = false;
         let mut readonly = false;
-        let permissions: Vec<String> = Vec::new();
         let mut transport: Option<TransportBinding> = None;
         let mut response: Vec<ResponseEntry> = Vec::new();
         let mut exit: Vec<ExitEntry> = Vec::new();
@@ -1988,7 +1987,6 @@ impl Parser {
             outputs,
             idempotent,
             readonly,
-            permissions,
             transport,
             response,
             exit,

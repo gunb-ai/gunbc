@@ -331,7 +331,6 @@ pub struct ServiceCallMetadata {
     pub transport: ServiceTransportClass,
     pub idempotent: bool,
     pub readonly: bool,
-    pub permissions: Vec<String>,
     /// Full protocol spec extracted from DSL service/operation declarations.
     /// Used by generic protocol interpreters to replace per-service adapters.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1331,7 +1330,6 @@ fn derive_interface_stub_transport_triplets(
                     transport: ServiceTransportClass::InterfaceStub,
                     idempotent: capability.idempotent,
                     readonly: capability.readonly,
-                    permissions: vec![],
                     spec: Some(ServiceOperationSpec::InterfaceStub {
                         interface: interface.name.clone(),
                         capability: capability.name.clone(),
@@ -5604,9 +5602,6 @@ fn derive_service_call_metadata(
         None if service.implements.is_some() => ServiceTransportClass::InterfaceStub,
         None => ServiceTransportClass::Unknown,
     };
-    let mut permissions = operation.permissions.clone();
-    permissions.sort();
-    permissions.dedup();
 
     let spec = derive_operation_spec(service, operation, transport, data_registry);
 
@@ -5624,7 +5619,6 @@ fn derive_service_call_metadata(
         transport,
         idempotent: operation.idempotent,
         readonly,
-        permissions,
         spec,
     }
 }

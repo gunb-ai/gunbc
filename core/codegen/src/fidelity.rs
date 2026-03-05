@@ -258,8 +258,8 @@ pub fn requires_from_transport_classes(classes: &[ServiceTransportClass]) -> Vec
 
 /// Classify an entire module by aggregating all callables' properties.
 ///
-/// Unions all transport classes and permissions across callables and classifies
-/// the aggregate. This means a module's classification is the **join** (least
+/// Unions all transport classes across callables and classifies the aggregate.
+/// This means a module's classification is the **join** (least
 /// upper bound) of its callables' individual classifications:
 ///
 /// - If *any* callable uses `RestNetwork`, the whole module is classified as
@@ -285,10 +285,6 @@ pub fn classify_module(
 
     let aggregate = CallableProperties {
         transport_classes: all_classes,
-        permissions: callable_properties
-            .values()
-            .flat_map(|p| p.permissions.iter().cloned())
-            .collect(),
         idempotent: callable_properties.values().all(|p| p.idempotent),
         readonly: callable_properties.values().all(|p| p.readonly),
         service_operations: callable_properties
@@ -310,7 +306,6 @@ mod tests {
     fn classify_pure_callable_is_unit() {
         let props = CallableProperties {
             transport_classes: vec![],
-            permissions: vec![],
             idempotent: true,
             readonly: true,
             service_operations: vec![],
@@ -325,7 +320,6 @@ mod tests {
     fn classify_shell_callable_is_hermetic() {
         let props = CallableProperties {
             transport_classes: vec![ServiceTransportClass::ShellLocal],
-            permissions: vec![],
             idempotent: true,
             readonly: true,
             service_operations: vec![("git".to_string(), "status".to_string())],
@@ -340,7 +334,6 @@ mod tests {
     fn classify_rest_callable_is_integration() {
         let props = CallableProperties {
             transport_classes: vec![ServiceTransportClass::RestNetwork],
-            permissions: vec!["repo".to_string()],
             idempotent: false,
             readonly: false,
             service_operations: vec![("github".to_string(), "create_issue".to_string())],
@@ -358,7 +351,6 @@ mod tests {
                 ServiceTransportClass::ShellLocal,
                 ServiceTransportClass::RestNetwork,
             ],
-            permissions: vec![],
             idempotent: true,
             readonly: true,
             service_operations: vec![],
@@ -374,7 +366,6 @@ mod tests {
     fn classify_local_direct_is_hermetic_xs() {
         let props = CallableProperties {
             transport_classes: vec![ServiceTransportClass::LocalDirect],
-            permissions: vec![],
             idempotent: true,
             readonly: true,
             service_operations: vec![],
@@ -389,7 +380,6 @@ mod tests {
     fn classify_interface_stub_is_hermetic_xs() {
         let props = CallableProperties {
             transport_classes: vec![ServiceTransportClass::InterfaceStub],
-            permissions: vec![],
             idempotent: true,
             readonly: true,
             service_operations: vec![],
@@ -407,7 +397,6 @@ mod tests {
             "mod::pure_fn".to_string(),
             CallableProperties {
                 transport_classes: vec![],
-                permissions: vec![],
                 idempotent: true,
                 readonly: true,
                 service_operations: vec![],
@@ -417,7 +406,6 @@ mod tests {
             "mod::shell_fn".to_string(),
             CallableProperties {
                 transport_classes: vec![ServiceTransportClass::ShellLocal],
-                permissions: vec![],
                 idempotent: true,
                 readonly: true,
                 service_operations: vec![("git".to_string(), "status".to_string())],

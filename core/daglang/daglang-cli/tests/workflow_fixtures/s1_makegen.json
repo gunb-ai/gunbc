@@ -28,7 +28,6 @@
       "service_transport_hermetic_targets": 2,
       "service_transport_idempotent_targets": 2,
       "service_transport_parse_targets": 6,
-      "service_transport_permission_scoped_targets": 0,
       "service_transport_prepare_targets": 8,
       "service_transport_readonly_targets": 5,
       "total_obligations": 131,
