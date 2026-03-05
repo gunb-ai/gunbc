@@ -107,11 +107,11 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 | CP-28 | Emit `todo!()` → `EmitError::UnsupportedFeature` | S | CP | **Done** — no `todo!()` calls exist; `EmitError::UnsupportedConstruct` already defined |
 | CP-31 | Validate auth scheme in typecheck | S | CP | **Done** |
 | CP-34 | Derive uses `Node.kind`, not port string heuristics | S | CP | **Done** |
-| CP-35 | Stamp loop metadata on SubDag (kill `detect_loop_pattern()`) | S | CP | Open — `detect_loop_pattern()` already runs at lower time, not re-detected at exec |
+| CP-35 | Stamp loop metadata on SubDag (kill `detect_loop_pattern()`) | S | CP | **Done** — `SubDagKind` enum on `NodeBody::SubDag`. `LoopBuilder::build()` stamps `SubDagKind::Loop { element_port, extra_input_ports }`. `detect_loop_pattern()` reads metadata first, falls back to topology heuristic for backward compat. |
 | CP-37 | `side_effecting` annotation for DryRun | S | CP | **Done** — `NodeKind` + `should_intercept_by_kind()` already implements this structurally |
 | CP-38 | Parser keeps interface type defs (don't discard) | S | CP | **Done** |
 | CP-39 | `CompileReceipt` is not `Option` | S | CP | **Done** |
-| WS1-7 | std/ stub cleanup (implement, delete, or `@testgen_skip`) | M | TS | Open |
+| WS1-7 | std/ stub cleanup (implement, delete, or `@testgen_skip`) | M | TS | **Done** — Only 3 stubs remain (all in `patterns.dag`): `check_iam_binding`, `add_iam_binding` (pure fn stubs, marked with STUB comments — blocked on FC-CF5 JSON iteration), `iam_preflight_check` (func, `@testgen_skip` added). All other 23 std/ .dag files are fully implemented. |
 | WS2-1 | Dead import audit in `dsl/services/` | S | TS | **Done** — removed 2 dead imports from `llm_agent_provider.dag` |
 | WS2-3 | `readonly`/`idempotent` completion on service ops | S | TS | **Done** — added `idempotent` to ~20 ops across 12 service files |
 | WS2-4 | `auth_input` completion (github, llm services) | S | TS | **Done** — all services with `auth: BearerToken` already declare `auth_input` |
@@ -212,7 +212,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 | CP-40 | `ExternRegistry` — validate externs in typecheck, carry `ExternId` | M | CP-23 | CP | Open |
 | CP-43 | Typecheck borrows `&ModuleGraph` (subsumes CP-32 field duplication) | M | CP-36 | CP | Open |
 | CP-44 | `LowerOutput` bundles computed fields (subsumes CP-33 re-extraction) | M | CP-43 | CP | Open |
-| CP-45 | Consolidate Execute entry points → one `fn execute(dag, config)` | S | — | CP | Open |
+| CP-45 | Consolidate Execute entry points → one `fn execute(dag, config)` | S | — | CP | **Done** — `ExecuteConfig` struct + `execute_dag()` unified entry point. All 10 existing `execute_*` variants delegate to it. Backward compatible. |
 | CP-47 | `RuntimeBindings` replaces `ExternResolver` trait | M | CP-40 | CP | Open |
 
 ### D.2: Architecture (after D.1)
@@ -350,9 +350,9 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 |----|------|------|------|--------|
 | CP-52 | Preserve service provider metadata on lowered nodes | M | — | Open |
 | CP-53 | Flow response contracts through IR to testgen | L | CP-18 beneficial | Open |
-| CP-54 | Derive behavioral properties once, flow to testgen | S | — | Open |
+| CP-54 | Derive behavioral properties once, flow to testgen | S | — | **Done** — Lowerer stamps `ServiceCallMetadata { idempotent, readonly }` once per transport node. Derive pass BFS-aggregates per callable into `CallableProperties`. Testgen/fidelity reads pre-aggregated `CallableProperties` from `DerivedArtifacts`. No re-derivation exists. |
 | CP-55 | Obligation provenance tracking (`CompilerGap` ratchet metric) | M | — | Open |
-| CP-56 | Eliminate testgen re-derivation of transport triplets | S | CP-34 | Open |
+| CP-56 | Eliminate testgen re-derivation of transport triplets | S | CP-34 | **Done** — testgen already uses `NodeKind::TransportExecute/Prepare/Parse` (from CP-34) for all transport identification. No port-type string heuristics remain in codegen/testgen. |
 
 ### G.2: Testgen error-scenario hardening
 
@@ -362,8 +362,8 @@ Source: [`TODO/gist-auth-postmortem.md`](TODO/gist-auth-postmortem.md) RT-I + [`
 |----|------|------|------|--------|
 | RT-1 | **`@mock_response` adoption** — implement parser → lowerer → testgen pipeline for `MockResponseDef`. Add success + error annotations to all REST service ops (29 ops). | L | CP-65 (dead AST cleanup first) | Open |
 | RT-2 | **Testgen Bucket C error scenarios** — extend `SingleTransportFailure` to inject realistic error responses (401/403/500 for REST, exit 1 for shell), not just `Value::Skipped`. | L | RT-1 beneficial | Open |
-| RT-3 | **REST status-code checking in parse layer** — `GenericRestParseOp` checks status before field extraction. Non-2xx → error. Currently 401 detection is by accident (missing field). | M | — | Open |
-| RT-4 | **Shell exit code enforcement** — add exit code check to remaining parse modes (`TrimStdout`, `SplitLines`). RT-I4 partially done on separate branch. | S | — | Partial |
+| RT-3 | **REST status-code checking in parse layer** — `GenericRestParseOp` checks status before field extraction. Non-2xx → error. Currently 401 detection is by accident (missing field). | M | — | **Done** — `validate_status_declared()` + `!rest.is_success()` check with auth context decoration, service metadata, and transport context. Implemented in `service_ops_impl.rs`. |
+| RT-4 | **Shell exit code enforcement** — add exit code check to remaining parse modes (`TrimStdout`, `SplitLines`). RT-I4 partially done on separate branch. | S | — | **Done** — `TrimStdout`: errors on non-zero exit (returns `Value::Skipped` for optional fields). `SplitLines`: returns empty list on non-zero (by design — `find`/`ls-files` exit 1 for no results). `ExitCodeBool`/`SuccessStdoutStderr` already map exit code. |
 | RT-5 | **`CredentialChainIntegrity` obligation** — for every service with `config { auth }`, trace DAG backwards to credential source, assert edge exists. | M | — | Open |
 | RT-6 | **Wire `credential_chain` into gist** — replace raw `shell.GCloud.SecretManagerAccessVersion` with `credential_chain(runtime: LocalDev)` in all 3 gist entrypoints. | M | RT-4 | Open |
 | RT-7 | **Credential expiry wiring** — lowerer reads `expires` from resource properties, executor checks `Secret.is_valid()`, testgen generates expiry-scenario tests. Infrastructure exists in IR (`Secret.expires_at`, `ResourceType::Credential`) but is disconnected. | L | RT-5 | Open |

@@ -416,14 +416,17 @@ func local_auth() -> { token: String }
 // Ensure the service account has the required IAM bindings.
 // Uses getIamPolicy -> check -> conditional setIamPolicy.
 
+// STUB: always returns false — requires JSON array iteration (FC-CF5 prerequisite)
 fn check_iam_binding(bindings: Json, service_account: String, role: String) -> { has_role: Bool } {
   return { has_role: false }
 }
 
+// STUB: identity — requires JSON array append (FC-CF5 prerequisite)
 fn add_iam_binding(bindings: Json, service_account: String, role: String) -> { updated_bindings: Json } {
   return { updated_bindings: bindings }
 }
 
+@testgen_skip(true)
 func iam_preflight_check(
   access_token: Secret,
   project_id: ProjectId,
