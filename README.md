@@ -31,7 +31,7 @@ After installation, run `make help` to see all available targets.
 
 ## Quick Context
 
-gunbc is a **DSL-first workflow compiler** where **everything is a DAG**. The primary authoring surface is the `.dag` language — declarative definitions that compile to a typed Graph IR. The compiler pipeline is: `.dag` → parse → typecheck → lower → emit (Rust/Go/C/MIPS). The system aims for **structural soundness**: if a DAG validates, its wiring is correct.
+gunbc is a **DSL-first workflow compiler** where **everything is a DAG**. The primary authoring surface is the `.dag` language — declarative definitions that compile to a typed Graph IR. The compiler pipeline is: `.dag` → parse → typecheck → lower → emit (Rust/Go/C/MIPS). The core thesis is **moving contradiction discovery from runtime to static analysis** — if a DAG validates, its wiring is correct, its types are sound, and its execution intent is unambiguous. Every pipeline stage is a lossless semantic translation; stages must never silently drop data, invent defaults, or swallow errors. See `docs/design/compilation-pipeline.md` for the full pipeline map and architectural principles.
 
 ### Compositional modeling
 

@@ -6,18 +6,20 @@
 
 ---
 
-## Three Lanes
+## Four Lanes
 
 | Lane | Doc | Goal | Open Items |
 |------|-----|------|------------|
 | **1. Type System** | [`TODO/type-system.md`](TODO/type-system.md) | Compositional type coverage — decisions obligate, obligations propagate. WS-1 through WS-7. | 29 open + 11 done across 7 workstreams |
 | **2. Compiler Debt & App Layer** | [`TODO/gunbc-dag-simplification.md`](TODO/gunbc-dag-simplification.md) | Fix compiler gaps that force runtime bridges. 10 accidental bridges → delete. Each has specific files/LOC to remove. | 10 bridges + app layer cleanup |
 | **3. SDLC Pipeline** | [`TODO/sdlc.md`](TODO/sdlc.md) | Run the SDLC pipeline end-to-end. Phase 0 (prove compilation) is a **hard gate**. | 10 done + 9 in progress across 5 phases |
+| **4. Compiler Pipeline** | [`TODO/compiler-pipeline.md`](TODO/compiler-pipeline.md) | End-to-end pipeline hardening + interpreted/compiled parity. Three invariants: binary logic, minimalism, resolve early. | 42 items across 9 workstreams |
 
 ### Design docs
 
 | Doc | Scope |
 |-----|-------|
+| [`docs/design/compilation-pipeline.md`](docs/design/compilation-pipeline.md) | Full pipeline map (.dag → execution), data shapes at each stage, gap analysis |
 | [`docs/design/v4/compiler-densification-roadmap.md`](docs/design/v4/compiler-densification-roadmap.md) | Prioritized roadmap: kill interpreter, hermeticity, dual-encoding, service codegen |
 | [`docs/design/v4/compositional-type-coverage.md`](docs/design/v4/compositional-type-coverage.md) | Type system vision, audit, gaps, workstreams, worked examples |
 | [`docs/design/sdlc/domain-modeling-comprehensive.md`](docs/design/sdlc/domain-modeling-comprehensive.md) | SDLC entity/relationship/state machine model |
@@ -26,11 +28,13 @@
 ### Dependency between lanes
 
 ```
-Lane 1 (type system)  ──→  Lane 3 (SDLC) uses the type system
-Lane 2 (compiler debt) ──→  Lane 3 (SDLC) needs working compilation pipeline
+Lane 1 (type system)    ──→  Lane 3 (SDLC) uses the type system
+Lane 2 (compiler debt)  ──→  Lane 3 (SDLC) needs working compilation pipeline
+Lane 4 (pipeline)       ──→  Lane 2 (bridges) benefits from pipeline hardening
+Lane 4 (pipeline)       ──→  Lane 3 (SDLC) needs reliable compilation + emit
 ```
 
-Lane 1 and Lane 2 can proceed in parallel. Lane 3 Phase 0 (prove it compiles) can start now — it doesn't need type system improvements, just basic compiler correctness.
+Lane 1 and Lane 2 can proceed in parallel. Lane 3 Phase 0 (prove it compiles) can start now — it doesn't need type system improvements, just basic compiler correctness. Lane 4 is independent groundwork — hardening the pipeline benefits all other lanes.
 
 **Recommended start order**:
 1. Lane 3 Phase 0 (S-1 through S-4) — fix known bugs, prove SDLC compilation. **Hard gate.**

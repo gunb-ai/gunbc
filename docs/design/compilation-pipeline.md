@@ -7,6 +7,489 @@
 
 ---
 
+## Why This Matters
+
+The entire purpose of gunbc is **moving contradiction discovery from runtime to
+static analysis**. The compiler pipeline is not a build tool — it IS the product.
+If a `.dag` definition validates, its wiring is correct, its types are sound, and
+its execution intent is unambiguous. Contradictions that would surface as opaque
+runtime failures in a hand-wired system are caught at compile time as typed
+diagnostics pointing to the source location.
+
+Every piece of "forgiveness" in the pipeline — every silent drop, every auto-fill,
+every swallowed error — is a direct failure of this mission. It moves a
+contradiction back to runtime, which is exactly what the compiler exists to prevent.
+
+---
+
+## Four Invariants
+
+These are the hard rules for the compiler pipeline. Every design decision,
+refactor, and new feature must satisfy all four.
+
+### 1. Binary Logic — Every signal is PASS or FAIL
+
+No ternary states. No "maybe." No "deferred." Every stage either succeeds
+with correct output or fails with a diagnostic. There are exactly two
+outcomes, never three.
+
+**Violations to eliminate** (audit 2026-03-05, 9 found):
+
+| Signal | Location | The forbidden third state |
+|--------|----------|--------------------------|
+| `lossy: true` | parser `FnBody` | Not-parsed-but-not-error |
+| `allow_unresolved_references` | typecheck options | Not-checked-but-not-rejected |
+| `lower_warn()` + `continue` | lowerer pattern expansion | Not-lowered-but-not-error |
+| `skip_verification` | driver | Not-verified-but-not-rejected |
+| `Value::Skipped` | executor | Not-a-value-but-not-an-error |
+| `has_edge_to_port()` → skip | lowerer wiring | Not-wired-but-not-failed |
+| `param_source` without edges | lowerer | Not-connected-but-not-error |
+| `synthesize_expr_compute()` → None | lowerer RT4c | Not-wired-but-not-failed |
+| `propagate_skipped()` conflation | executor | Guard-skip conflated with absent |
+
+### 2. Minimalism — No redundancy between stages
+
+Each stage adds new information. No stage restates what a previous stage
+already computed. If the same data appears in two stages, one is redundant.
+
+**Redundancies to eliminate** (audit 2026-03-05, 11 found):
+
+| What | Canonical owner | Restated in | Fix |
+|------|-----------------|-------------|-----|
+| `path`, `module_path`, `ast` | `ResolvedModule` | `TypedModule` (copied) | TypedModule references by index |
+| Callable signatures | `TypedCallableSignature` | Node ports (re-derived from AST) | Derive ports from signatures |
+| Type constraints | Typecheck (rich) | Lower (erased to strings) | Carry `TypeId` on ports |
+| `output_paths` | Lowered DAG | Driver (re-extracted) | Compute once during lower |
+| `pipeline_params` | TypedProject | Driver (re-scanned) | Attach during typecheck |
+| `dsl_type_registry` | TypedProject | Driver (re-extracted) | Compute once during typecheck |
+| `available_profiles` | TypedProject | Driver (re-scanned) | Attach during typecheck |
+| `data_values` | TypedProject | Driver (re-evaluated) | Evaluate once during lower |
+| Transport triplet structure | Lowerer (`Node.kind`) | Derive (re-parsed from port strings) | Use `Node.kind` directly |
+| Loop pattern structure | Lowerer (created SubDag) | Executor (`detect_loop_pattern()`) | Stamp `LoopInfo` on SubDag |
+| `inferred_entrypoints` | Lowered DAG topology | Driver (re-inferred) | Compute once during lower |
+
+### 3. Resolve Early — Don't defer decisions
+
+If information is available at Stage N, resolve it at Stage N. Every deferral
+creates an ambiguous intermediate state that later stages must handle with
+fallbacks — which violates Invariant 1 (binary logic).
+
+**Deferrals to eliminate** (audit 2026-03-05, 9 remaining):
+
+| Decision | Deferred from | To | Fix |
+|----------|--------------|-----|-----|
+| Selective import validation | Parse | Typecheck | Validate names against module symbols |
+| Auth scheme validation | Typecheck | Lower/Resolve | Validate enum in typecheck |
+| Missing required input detection | Lower | Executor | Validate after lower: every required port has an edge |
+| Transport resource ports (`res:file`) | Lower | Resolve | Emit resource ports during lower |
+| Default list ports (`[]`) | Lower | Executor (auto-fill) | Wire `MakeLiteral([])` during lower |
+| Default callable params | Lower (post-pass) | Lower (post-pass) | Wire inline during call lowering |
+| Profile binding wiring | Lower | Resolve | Require `--profile` at lower time |
+| `param_source` edge wiring | Lower | Lower (post-pass) | Wire during initial lowering |
+| ~~Variant constructor resolution~~ | ~~Lower~~ | ~~Executor~~ | **DONE** (VariantConstruct) |
+
+### 4. Clear Contracts — Every stage is a pure function with typed I/O
+
+Each pipeline stage is a **pure function**: explicit inputs, explicit outputs, no
+hidden state, no ambient globals, no mutation of shared structures. The function
+signature IS the contract. If you can read the signature, you know exactly what
+the stage needs and what it produces.
+
+This serves as a strong **boundary between participants** — whether those are
+humans, agents, or teams. Everyone knows what they need to produce, provide,
+and accept at all times. No implicit coupling, no "you need to also call X
+first" that isn't visible in the types.
+
+**Contract violations to eliminate** (audit 2026-03-05):
+
+| Violation | Location | Problem |
+|-----------|----------|---------|
+| Typecheck takes ownership of `ModuleGraph` | `typecheck_module_graph(graph: ModuleGraph)` | Moves input, later stages can't reference it |
+| TypedModule copies ModuleGraph fields | `TypedModule { path, module_path, imports, ast }` | Duplicates input instead of referencing |
+| CompileOutput is a grab-bag | 11 fields, many re-extracted | Output conflates multiple concerns |
+| Execute has 4 progressively wider entry points | `execute` → `..._with_mode` → `..._and_inputs` → `..._and_detail` | Growing parameter lists hide the real contract |
+| ExternResolver is stringly-typed | `resolve(module: &str, name: &str) -> Option<DynOp>` | Runtime string lookup instead of validated ID |
+| LowerError is ad-hoc | `{ node_id: Option<String>, reason: String }` | No structured error, no span, Option for required context |
+| verify_dag has no output type | Validation only, doesn't produce `VerifiedDag` | No type-level proof that verification happened |
+| Driver re-extracts stage outputs | `extract_output_paths()`, `infer_entrypoints()` after lower | Re-walks structures that earlier stages already computed |
+
+---
+
+## Architectural Principles
+
+These principles follow from the four invariants above.
+
+### The Tautology Rule
+
+A correct compiler pipeline is a chain of **lossless semantic translations**.
+Each stage restates the exact same truth, translated into a vocabulary suited for
+the next stage. You never lose information, you never guess, and you never
+implicitly invent meaning.
+
+In a perfectly tautological compiler:
+- The **parser** is a strict historian — it records exactly what the user wrote.
+- The **typechecker** is an absolute gatekeeper — if it passes, soundness is proven.
+- The **lowerer** makes implicit intent explicit — every data flow is a wire.
+- The **executor** is maximally dumb — it blindly traverses a verified graph.
+
+When bugs appear, it is because a stage broke the tautology by:
+(1) lying by omission (dropping data), (2) lying by invention (auto-filling),
+or (3) swallowing errors (pretending invalid state is valid).
+
+The strategy is to **delete all the "forgiveness"**: search for `lossy`, `skip`,
+`allow_unresolved`, `lower_warn`, and `unwrap_or_else` in Stages 1-4.
+
+### Per-Stage Tautologies
+
+| Stage | Tautology | Guarantee |
+|-------|-----------|-----------|
+| Parse | `AST == Source Text` | 1:1 structural record. No drops, no substitutions. |
+| Module Resolve | `ModuleGraph == Physical Reality` | Every import resolves to a real file, or it's an error. |
+| Typecheck | `TypedProject == Sound Program` | If it passes, all references resolve and all types match. |
+| Lower | `DAG == Explicit Execution Intent` | Every data flow is an edge. No magic materialization. |
+| Resolve/Execute | `Execution == Blind Traversal` | Executor only knows what the graph tells it. |
+
+### Push Magic to the Left
+
+Implicit runtime behavior should be reified into explicit compiler constructs.
+Every piece of "forgiveness" in the runtime is a contradiction that escaped
+static analysis — exactly the thing the project exists to prevent.
+
+---
+
+## Implementation Patterns
+
+Concrete Rust patterns that enforce the three invariants across the pipeline.
+
+### Verdict<T> — one result type for all stages
+
+Every stage API on the main compilation path returns `Verdict<T>`:
+
+```rust
+type Verdict<T> = Result<T, Diagnostics>;
+
+struct Diagnostics {
+    errors: Vec<Diagnostic>,   // non-empty => FAIL
+    warnings: Vec<Diagnostic>, // never affects PASS/FAIL
+}
+```
+
+- **PASS**: `Ok(T)` — downstream can assume all invariants hold.
+- **FAIL**: `Err(Diagnostics)` — downstream MUST NOT run. No "continue with partial."
+
+Lossy/IDE helpers are separate APIs (`parse_for_ide`, `typecheck_partial`), never
+reachable from `compile_strict`.
+
+### The Strict Pipeline
+
+The primary compilation path is a single function where every `?` is a PASS/FAIL
+boundary:
+
+```rust
+fn compile_strict(context: Context, opts: Options) -> Verdict<CompileOutput> {
+    let graph    = discover_module_graph(context)?;           // Parse + Resolve
+    let externs  = build_extern_registry(&opts.externs);      // ExternId table
+    let typed    = typecheck_strict(&graph, &externs, &opts.tc)?; // Sound + externs resolved
+    let dag      = lower_strict(&typed, &opts.lower)?;        // Explicit DAG or FAIL
+    let verified = verify_dag(&dag, &typed.type_registry)?;   // Wiring correct or FAIL
+    let derived  = derive_artifacts(&verified)?;               // Obligations, manifest
+    let emitted  = emit_with_options(&verified, &derived, opts.emit)?;
+
+    Ok(CompileOutput { verified, derived, emitted, ... })
+}
+```
+
+And the interpreted runtime path:
+
+```rust
+let realized = realize_for_backend(&verified)?;              // expand ServiceCall → triplets (total)
+let resolved = verified.dag.map_bodies(|op| resolver.resolve(op)); // topology-preserving
+let result   = execute_with_mode(&resolved, mode)?;          // no auto-fills
+```
+
+### NodeOutcome — execution result per node
+
+Replace `Value::Skipped` with a per-node execution outcome:
+
+```rust
+enum NodeOutcome {
+    Executed(HashMap<String, Value>),  // ran, produced outputs
+    Skipped,                            // guard evaluated to false
+    Failed(ExecError),                  // real error, propagate
+}
+```
+
+The executor keeps `HashMap<NodeId, NodeOutcome>` instead of mapping ports to
+`Value::Skipped`. When a node is `Skipped`, its outputs don't exist — downstream
+nodes are **transitively bypassed** (never scheduled, not "given Skipped values"):
+
+```rust
+if node.control_edge_evaluates_false() {
+    outcomes.insert(node.id, NodeOutcome::Skipped);
+    for dependent in node.downstream_dependents() {
+        outcomes.insert(dependent, NodeOutcome::Skipped);
+    }
+    continue;
+}
+```
+
+Downstream nodes that need actual values despite an upstream skip must have
+explicit default values wired by the lowerer. The executor never invents data.
+
+### NodeOrigin — traceability from IR to source
+
+Every node in the lowered DAG carries its origin:
+
+```rust
+enum NodeOrigin {
+    UserCode { span: Span },
+    PatternExpansion { instance_id: PatternInstanceId, local_idx: u8 },
+}
+```
+
+Pattern instances are tracked in the DAG metadata:
+
+```rust
+struct PatternInstance {
+    kind: PatternKind,       // ServiceCall, ContentUpsert, Loop, Branch
+    source_span: Span,
+    node_ids: Vec<NodeId>,
+}
+```
+
+### side_effecting annotation for DryRun
+
+The lowerer stamps each node with `side_effecting: bool`. In `DryRun(Strict)`,
+encountering a `side_effecting` node without an explicit mock is
+`ExecError::StrictDryRunBlocked { node_id }` — not a silent skip.
+
+### One owner per kind of truth
+
+| Truth | Owner | Referenced by |
+|-------|-------|---------------|
+| Module facts (paths, imports, files) | `ModuleGraph` | `TypedProject.graph` (by ref) |
+| Typing facts (signatures, constraints) | `TypedProject` | `Dag<LoweredOp>` port types |
+| Extern symbol signatures | `ExternRegistry` | Typecheck (validation), Lower (`ExternId`) |
+| Execution topology | `Dag<LoweredOp>` | `VerifiedDag<LoweredOp>` wrapper |
+| Verification proof | `VerifiedDag<LoweredOp>` | Resolve + Emit (required input) |
+| Backend expansion | `RealizedDag<LoweredOp>` | Executor / emitter (provably total) |
+| Runtime bindings | `Dag<DynOp>` / `EmissionBundle` | Executor / compiled binary |
+
+### CompileDb arena (target architecture)
+
+The minimalism invariant implies a shared database rather than per-stage output
+types that copy earlier fields. The target architecture:
+
+```rust
+struct CompileDb {
+    files: FileTable,           // file contents + spans
+    parsed: ParsedTable,        // SourceFile per FileId
+    modules: ModuleTable,       // ModuleId, ModulePath, FileId, imports
+    symbols: SymbolTable,       // DefId, name -> DefId
+    types: TypeTable,           // TypeId arena, constraints
+    externs: ExternRegistry,    // ExternId -> ExternSymbol (signature + module)
+    lowered: Option<Dag<LoweredOp>>,
+    verified: Option<VerifiedDag<LoweredOp>>,
+}
+```
+
+Each stage mutates the shared database:
+
+```rust
+fn parse_all(db: &mut CompileDb) -> Verdict<()> { ... }
+fn resolve_modules(db: &mut CompileDb) -> Verdict<()> { ... }
+fn typecheck(db: &mut CompileDb) -> Verdict<()> { ... }
+fn lower(db: &mut CompileDb) -> Verdict<()> { ... }
+fn verify(db: &mut CompileDb) -> Verdict<()> { ... }
+```
+
+No `TypedProject` duplicating `path/module_path/imports/ast`. Those are already
+in `db.modules` + `db.parsed`. Typed info references IDs. This eliminates the
+"which copy is authoritative?" class of bugs entirely.
+
+> **Note**: This is the long-term target. The incremental path starts with the
+> ECS overlay pattern (below), which achieves the same property locally.
+
+### ECS overlay pattern (incremental step)
+
+`TypedProject` doesn't copy the AST — it holds a reference to `ModuleGraph` and
+overlays proofs onto AST node IDs:
+
+```rust
+struct TypedProject<'a> {
+    graph: &'a ModuleGraph,                          // canonical module facts
+    signatures: HashMap<SymbolId, TypedItemSignature>, // proven types (NEW info)
+}
+```
+
+No field in `TypedProject` duplicates a field in `ModuleGraph`. The AST lives
+in exactly one place in memory.
+
+### ExternRegistry — push extern validation left
+
+Today extern symbol resolution happens at Stage 5a (Resolve), meaning unknown
+externs aren't detected until you try to run the graph. The fix: validate extern
+calls in typecheck, carry typed IDs through lowering.
+
+```rust
+struct ExternRegistry {
+    symbols: Vec<ExternSymbol>,
+}
+
+struct ExternSymbol {
+    module: String,
+    name: String,
+    signature: TypedCallableSignature,
+    id: ExternId,
+}
+```
+
+Typecheck consumes `ExternRegistry` and proves every `extern_call` resolves to
+an `ExternId` with a matching signature. The lowerer carries `ExternId`, not
+`(module, name)` strings. Stage 5a resolve becomes total — it cannot fail on
+missing externs because typecheck already proved they exist.
+
+---
+
+### Preserve High-Level Intent Through Lowering (Decision vs Realization)
+
+The lowerer currently expands service calls into 3-node transport triplets and
+content_upsert into 5-node chains. This destroys semantic intent and creates
+deduplication conflicts when multiple callables reference the same service.
+
+There's an apparent tension between "resolve early" and "preserve intent," but
+the two are compatible if you split **decision** from **mechanical realization**:
+
+- **Decision** (happens early): typecheck proves the service op exists, args
+  match, auth is present, transport kind is known. All choices are made.
+- **Realization** (happens in backend): expand the fully-resolved ServiceCall
+  node into transport triplets. This is a provably total mechanical expansion
+  that cannot fail because all decisions were already made.
+
+The canonical DAG keeps `ServiceCall` as a single node with all decisions
+resolved:
+
+```rust
+LoweredOp::ServiceCall {
+    op: ServiceOpId,              // resolved in typecheck
+    args: Vec<ArgBinding>,        // fully bound (no silent drops)
+    result_ports: Vec<PortSpec>,  // typed outputs
+    transport_kind: TransportKind,
+    auth: AuthSpec,               // proven present / validated
+    origin: Origin,
+}
+```
+
+Backend expansion produces `RealizedDag<LoweredOp>` — a separate type from
+`VerifiedDag<LoweredOp>`:
+
+```rust
+VerifiedDag<LoweredOp>  // canonical, high-level intent preserved
+    ↓ backend expand (provably total)
+RealizedDag<LoweredOp>  // transport triplets materialized
+```
+
+Canonical verification happens once on `VerifiedDag`. Backend expansion is a
+total function (cannot fail) because all choices were already made.
+
+### Carry Types Forward
+
+The typechecker proves types, but the lowerer erases them into untyped
+`LoweredExpr`. Ports should carry type information so that:
+
+- Edge validation can check `from_port.type == to_port.type` at wire time
+- The emitter can generate typed code without reconstructing type info
+- Runtime type mismatches trace directly to the source location
+
+Types proven by Stage 3 should be carried as far right as possible. If the
+parser found an AST node, keep it. If the typechecker proved a type, attach it
+to the DAG port. The truth should accumulate, never erode.
+
+### One Canonical IR
+
+All front-end phases (Parse → Module Resolve → Typecheck → Lower) are a
+semantics-preserving normalization into one canonical object:
+
+> **`Dag<LoweredOp>` + extern symbol table + data values**
+
+Both the interpreted and compiled paths are realizations of this same object.
+The interpreted path binds symbols to `DynOp` and traverses the graph. The
+compiled path emits source code that, when compiled, traverses the same graph.
+
+This means:
+- Verification happens once, on the canonical IR, before either path runs.
+- Both paths must produce identical outputs for the same inputs (the parity test).
+- A `VerifiedDag<T>` type wrapper should gate entry to both Resolve and Emit —
+  making verification a structural requirement, not a boolean flag.
+
+### Resolution Preserves Topology
+
+The Resolve stage (`Dag<LoweredOp>` → `Dag<DynOp>`) must be a **pure
+relabeling**: it swaps the `body` of each node from symbolic to executable,
+but never adds, removes, or rewires nodes or edges. Graph topology is fixed
+after lowering. If resolution needs to change the graph, that change belongs
+in the lowerer.
+
+This invariant should be enforced structurally via `Dag<T>.map_bodies()`:
+
+```rust
+impl<T> Dag<T> {
+    fn map_bodies<U>(self, f: impl FnMut(T) -> U) -> Dag<U> {
+        // same nodes, same edges, same ports — only body labels change
+    }
+}
+```
+
+This makes it impossible for resolution to accidentally modify topology. The
+test `assert_eq!(resolved.nodes.len(), lowered.nodes.len())` becomes redundant
+because the type system prevents it.
+
+### Pattern Instance Tracking
+
+When the lowerer expands patterns (service call → 3-node triplet, content_upsert
+→ 5-node chain, loop → unpack/body/pack), it should tag the generated nodes
+with a backref to the original pattern:
+
+```
+PatternInstance { kind: ServiceCall, source_span: Span, inner_node_ids: Vec<NodeId> }
+```
+
+This gives:
+- Better error messages ("this transport node was generated from service call at line 42")
+- Verification can recognize "this 5-node chain IS a content_upsert" structurally
+- Emit can reconstruct high-level intent without reverse-engineering the graph
+
+### Skipping as Control Flow, Not Magic Values
+
+`Value::Skipped` is currently a variant in the `Value` enum, meaning every value
+consumer must handle "what if this is Skipped?" This is a type-level hack.
+
+The tautological alternative: skipping is a **per-node control edge effect**.
+A node with a guard that evaluates to false is not executed, and its outputs
+are never materialized. Downstream nodes that depend on those outputs must
+either:
+
+- Be part of the same skip group (transitively skipped via control edges), or
+- Have explicit default values wired by the lowerer.
+
+This eliminates an entire class of "what does Skipped mean here?" bugs and
+makes the skip behavior visible in the graph structure, not hidden in values.
+
+### Stages Add Information, Never Restate It
+
+Each pipeline stage should add new information on top of the previous stage's
+output, not copy it:
+
+- `ModuleGraph` owns module paths, file paths, imports, and raw ASTs.
+- `TypedProject` adds type signatures and validation — it references modules
+  by index into `ModuleGraph`, not by copying their fields.
+- `Dag<LoweredOp>` adds execution topology — it doesn't carry raw ASTs.
+
+When stages restate information, it creates synchronization bugs and makes it
+unclear which copy is authoritative.
+
+---
+
 ## Overview
 
 ```
@@ -441,9 +924,9 @@ typecheck_module_graph_with_options()      Type validation
          |
 lower_with_config()                        DAG construction
          |
-validate_structural_primitive_wiring()     [unconditional]
+validate_structural_primitive_wiring()     [unconditional] ← TARGET: merge into verify()
          |
-verify_dag()                               [conditional: skip_verification]
+verify_dag()                               [conditional: skip_verification] ← TARGET: mandatory
          |
 extract_output_paths()                     From content_upsert + @outputs
          |
