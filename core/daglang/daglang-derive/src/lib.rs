@@ -27,7 +27,7 @@ pub use daglang_contract::{
 };
 use daglang_lower::{
     classify_obligation, classify_service_transport, CallableKind, LoweredOp,
-    ObligationCategory, ServiceCallMetadata, ServiceTransportClass,
+    ObligationCategory, PrimitiveOpKind, ServiceCallMetadata, ServiceTransportClass,
 };
 use gunbc_ir::{detect_boundaries, detect_entrypoints, Dag, Node, NodeKind};
 
@@ -506,7 +506,13 @@ fn derive_node_labels(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, String> {
                 gunbc_ir::node::NodeBody::Opaque(LoweredOp::ExternCall { symbol }) => {
                     format!("extern_call:{symbol}")
                 }
-                gunbc_ir::node::NodeBody::SubDag(..) => "subdag".to_string(),
+                gunbc_ir::node::NodeBody::SubDag(..) => {
+                    if let Some((module, name)) = subdag_fn_body_info(&node.body) {
+                        format!("{module}.{name}")
+                    } else {
+                        "subdag".to_string()
+                    }
+                }
             };
             (node.id.0.clone(), label)
         })
@@ -604,29 +610,48 @@ fn derive_resources(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, Vec<ResourceU
 fn derive_module_metadata(nodes: &[Node<LoweredOp>]) -> Vec<ModuleMetadata> {
     let mut by_module: BTreeMap<String, ModuleMetadata> = BTreeMap::new();
     for node in nodes {
-        let Some(op) = node.body.as_opaque() else {
-            continue;
-        };
-        let (module, is_pipeline) = match op {
-            LoweredOp::Callable { module, .. }
-            | LoweredOp::Primitive { module, .. }
-            | LoweredOp::Collection { module, .. } => (module, false),
-            LoweredOp::Pipeline { module, .. } => (module, true),
-            LoweredOp::Pattern(_)
-            | LoweredOp::UnsupportedPattern { .. }
-            | LoweredOp::ExternCall { .. } => continue,
-        };
-        let entry = by_module
-            .entry(module.clone())
-            .or_insert_with(|| ModuleMetadata {
-                module: module.clone(),
-                callable_count: 0,
-                pipeline_count: 0,
-            });
-        if is_pipeline {
-            entry.pipeline_count += 1;
-        } else {
-            entry.callable_count += 1;
+        match &node.body {
+            gunbc_ir::NodeBody::Opaque(op) => {
+                let (module, is_pipeline) = match op {
+                    LoweredOp::Callable { module, .. }
+                    | LoweredOp::Primitive { module, .. }
+                    | LoweredOp::Collection { module, .. } => (module, false),
+                    LoweredOp::Pipeline { module, .. } => (module, true),
+                    LoweredOp::Pattern(_)
+                    | LoweredOp::UnsupportedPattern { .. }
+                    | LoweredOp::ExternCall { .. } => continue,
+                };
+                let entry = by_module
+                    .entry(module.clone())
+                    .or_insert_with(|| ModuleMetadata {
+                        module: module.clone(),
+                        callable_count: 0,
+                        pipeline_count: 0,
+                    });
+                if is_pipeline {
+                    entry.pipeline_count += 1;
+                } else {
+                    entry.callable_count += 1;
+                }
+            }
+            // Bridge 1: SubDag fn items — count the inner FnBodyCompute node's module.
+            gunbc_ir::NodeBody::SubDag(inner, _) => {
+                for inner_node in &inner.nodes {
+                    if let gunbc_ir::NodeBody::Opaque(LoweredOp::Primitive {
+                        module, ..
+                    }) = &inner_node.body
+                    {
+                        let entry = by_module
+                            .entry(module.clone())
+                            .or_insert_with(|| ModuleMetadata {
+                                module: module.clone(),
+                                callable_count: 0,
+                                pipeline_count: 0,
+                            });
+                        entry.callable_count += 1;
+                    }
+                }
+            }
         }
     }
     by_module.into_values().collect()
@@ -748,6 +773,23 @@ impl NodeBodyExt for gunbc_ir::node::NodeBody<LoweredOp> {
             gunbc_ir::node::NodeBody::SubDag(..) => None,
         }
     }
+}
+
+/// Bridge 1 helper: extract module and name from a SubDag containing FnBodyCompute.
+fn subdag_fn_body_info(body: &gunbc_ir::node::NodeBody<LoweredOp>) -> Option<(&str, &str)> {
+    if let gunbc_ir::node::NodeBody::SubDag(inner, _) = body {
+        for inner_node in &inner.nodes {
+            if let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive {
+                kind: PrimitiveOpKind::FnBodyCompute { .. },
+                module,
+                name,
+            }) = &inner_node.body
+            {
+                return Some((module.as_str(), name.as_str()));
+            }
+        }
+    }
+    None
 }
 
 /// Derive per-callable structural properties via graph walk.

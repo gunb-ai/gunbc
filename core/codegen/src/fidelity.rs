@@ -131,14 +131,32 @@ fn compile_stdlib_fns() -> HashMap<String, LoweredFnBody> {
 
     let mut fns = HashMap::new();
     for node in &lowered.nodes {
-        if let NodeBody::Opaque(LoweredOp::Callable {
-            kind: CallableKind::Fn,
-            name,
-            fn_body: Some(body),
-            ..
-        }) = &node.body
-        {
-            fns.insert(name.clone(), *body.clone());
+        match &node.body {
+            // Legacy path: Callable with fn_body
+            NodeBody::Opaque(LoweredOp::Callable {
+                kind: CallableKind::Fn,
+                name,
+                fn_body: Some(body),
+                ..
+            }) => {
+                fns.insert(name.clone(), *body.clone());
+            }
+            // Bridge 1: SubDag containing FnBodyCompute
+            NodeBody::SubDag(inner, _) => {
+                for inner_node in &inner.nodes {
+                    if let NodeBody::Opaque(LoweredOp::Primitive {
+                        kind: daglang_lower::PrimitiveOpKind::FnBodyCompute {
+                            fn_body, ..
+                        },
+                        name,
+                        ..
+                    }) = &inner_node.body
+                    {
+                        fns.insert(name.clone(), *fn_body.clone());
+                    }
+                }
+            }
+            _ => {}
         }
     }
     fns

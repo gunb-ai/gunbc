@@ -465,8 +465,8 @@ func run() -> { report: String } {
     );
 
     let output = compile_from_context(&context).expect("compile should succeed");
-    // fn items with non-lossy fn_body are evaluated via FnBodyCallableOp,
-    // which handles control flow directly — no SubDag pattern nodes needed.
+    // Bridge 1: fn items are lowered as SubDag nodes with inner FnBodyCompute.
+    // Control flow is handled by fn body evaluation — no pattern SubDag nodes needed.
     assert!(
         !output
             .lowered_dag
@@ -501,11 +501,13 @@ func run() -> { report: String } {
     assert!(result.is_ok(), "execution should succeed: {:?}", result.err());
 
     // Verify the fn body evaluation produced the correct report string.
+    // Bridge 1: fn items are lowered as SubDag nodes. After exec lowering
+    // (flattening), the inner node is prefixed: "sample.main::summarize/body".
     let log = result.unwrap();
     let summarize_entry = log
         .entries
         .iter()
-        .find(|e| e.node_id == "sample.main::summarize");
+        .find(|e| e.node_id.starts_with("sample.main::summarize"));
     assert!(summarize_entry.is_some(), "summarize node should have executed");
     let summarize_outputs = &summarize_entry.unwrap().outputs;
     let return_value = summarize_outputs.get("return");

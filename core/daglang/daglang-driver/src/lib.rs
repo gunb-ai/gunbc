@@ -432,17 +432,7 @@ pub fn compile_data_from_sources(
     let mut fns = HashMap::new();
     match daglang_lower::lower_typed_project(&typed) {
         Ok(lowered) => {
-            for node in &lowered.nodes {
-                if let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable {
-                    kind: daglang_lower::CallableKind::Fn,
-                    name,
-                    fn_body: Some(body),
-                    ..
-                }) = &node.body
-                {
-                    fns.insert(name.clone(), *body.clone());
-                }
-            }
+            extract_fn_bodies_from_dag(&lowered, &mut fns);
         }
         Err(daglang_lower::LowerError::NoLowerableItems) => {
             // Data-only module — no fns to extract, data_values is enough.
@@ -490,17 +480,7 @@ pub fn compile_data_from_module(
     let mut fns = HashMap::new();
     match daglang_lower::lower_typed_project(&typed) {
         Ok(lowered) => {
-            for node in &lowered.nodes {
-                if let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable {
-                    kind: daglang_lower::CallableKind::Fn,
-                    name,
-                    fn_body: Some(body),
-                    ..
-                }) = &node.body
-                {
-                    fns.insert(name.clone(), *body.clone());
-                }
-            }
+            extract_fn_bodies_from_dag(&lowered, &mut fns);
         }
         Err(daglang_lower::LowerError::NoLowerableItems) => {}
         Err(e) => return Err(CompileError::Lower(e)),
@@ -513,6 +493,42 @@ pub fn compile_data_from_module(
         fns,
         pipelines,
     })
+}
+
+/// Extract fn bodies from a lowered DAG, including those inside SubDag nodes
+/// (Bridge 1: fn items lowered as SubDag with FnBodyCompute inner node).
+fn extract_fn_bodies_from_dag(
+    dag: &gunbc_ir::Dag<daglang_lower::LoweredOp>,
+    fns: &mut HashMap<String, daglang_lower::LoweredFnBody>,
+) {
+    use daglang_lower::{CallableKind, LoweredOp, PrimitiveOpKind};
+    for node in &dag.nodes {
+        match &node.body {
+            // Legacy path: Callable nodes with fn_body (e.g., loop body ops).
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable {
+                kind: CallableKind::Fn,
+                name,
+                fn_body: Some(body),
+                ..
+            }) => {
+                fns.insert(name.clone(), *body.clone());
+            }
+            // Bridge 1: SubDag nodes containing FnBodyCompute.
+            gunbc_ir::node::NodeBody::SubDag(inner, _) => {
+                for inner_node in &inner.nodes {
+                    if let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive {
+                        kind: PrimitiveOpKind::FnBodyCompute { fn_body, .. },
+                        name,
+                        ..
+                    }) = &inner_node.body
+                    {
+                        fns.insert(name.clone(), *fn_body.clone());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Walk all modules in a typed project and extract pipeline definitions.

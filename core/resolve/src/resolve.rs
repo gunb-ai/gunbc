@@ -826,6 +826,62 @@ impl Executable for ExprComputeOp {
     }
 }
 
+/// Bridge 1: Multi-output fn body evaluation op.
+///
+/// Evaluates a complete fn body and maps results to declared output ports.
+/// Lives inside SubDag nodes that replace `LoweredOp::Callable` for Fn items.
+#[derive(Clone)]
+struct FnBodyComputeOp {
+    fn_body: daglang_lower::LoweredFnBody,
+    input_ports: Vec<String>,
+    output_ports: Vec<String>,
+    sibling_fns: HashMap<String, daglang_lower::LoweredFnBody>,
+}
+
+impl Executable for FnBodyComputeOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let mut env = HashMap::new();
+        for port in &self.input_ports {
+            let value = inputs.get(port).cloned().unwrap_or(Value::Skipped);
+            // Flatten Map fields into `parent__field` env vars for field access.
+            if let Value::Map(fields) = &value {
+                for (field_name, field_value) in fields {
+                    env.insert(format!("{port}__{field_name}"), field_value.clone());
+                }
+            }
+            env.insert(port.clone(), value);
+        }
+        let result = daglang_lower::eval::evaluate_fn_body(&self.fn_body, &env, &self.sibling_fns)
+            .map_err(|e| ExecError::new(e.message))?;
+        // Map fn body results to declared output ports.
+        let mut outputs = HashMap::new();
+        for port_name in &self.output_ports {
+            let value = result
+                .get(port_name)
+                .or_else(|| {
+                    // Single "return" port: fn body may produce {"return": val}
+                    if self.output_ports.len() == 1 {
+                        result.get("return")
+                    } else {
+                        None
+                    }
+                })
+                .cloned()
+                .unwrap_or(Value::Skipped);
+            outputs.insert(port_name.clone(), value);
+        }
+        Ok(outputs)
+    }
+}
+
+impl std::fmt::Debug for FnBodyComputeOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FnBodyComputeOp")
+            .field("output_ports", &self.output_ports)
+            .finish()
+    }
+}
+
 /// Collect all `Ident` names referenced in a lowered fn body.
 ///
 /// Used to pre-seed the expression environment with `Value::Skipped` for
@@ -1492,6 +1548,19 @@ fn resolve_primitive(
                 input_ports,
                 referenced_vars,
                 output_port,
+                sibling_fns: sibling_fns.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+            }))
+        }
+        PrimitiveOpKind::FnBodyCompute {
+            fn_body,
+            sibling_fns,
+            output_ports,
+        } => {
+            let input_ports: Vec<String> = inputs.iter().map(|p| p.name.0.clone()).collect();
+            Ok(DynOp::new(FnBodyComputeOp {
+                fn_body: *fn_body.clone(),
+                input_ports,
+                output_ports: output_ports.clone(),
                 sibling_fns: sibling_fns.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
             }))
         }

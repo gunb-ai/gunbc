@@ -285,6 +285,14 @@ pub enum PrimitiveOpKind {
         fn_body: Box<LoweredFnBody>,
         sibling_fns: std::collections::BTreeMap<String, LoweredFnBody>,
     },
+    /// Bridge 1: fn body evaluation as a SubDag-internal node.
+    /// Evaluates the complete fn body and produces all declared outputs.
+    /// Used inside SubDag nodes that replace `LoweredOp::Callable` for Fn items.
+    FnBodyCompute {
+        fn_body: Box<LoweredFnBody>,
+        sibling_fns: std::collections::BTreeMap<String, LoweredFnBody>,
+        output_ports: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -395,6 +403,7 @@ impl PrimitiveOpKind {
             Self::CompareEquality => ObligationCategory::InterfaceContractVerification,
             Self::ContentUpsertOutputPath { .. } => ObligationCategory::None,
             Self::ExprCompute { .. } => ObligationCategory::None,
+            Self::FnBodyCompute { .. } => ObligationCategory::None,
             Self::GetField { .. } => ObligationCategory::None,
             // C24: All remaining structural primitives are pure computation — no obligations.
             _ => {
@@ -2447,6 +2456,7 @@ fn lower_typed_project_impl(
                             .get(callable.name.as_str())
                             .unwrap_or(&false),
                         body,
+                        &fn_bodies,
                     );
                     register_endpoint(
                         &mut endpoints_by_full,
@@ -2469,6 +2479,7 @@ fn lower_typed_project_impl(
                             .get(callable.name.as_str())
                             .unwrap_or(&false),
                         None,
+                        &fn_bodies,
                     );
                     register_endpoint(
                         &mut endpoints_by_full,
@@ -2489,6 +2500,7 @@ fn lower_typed_project_impl(
                         CallableKind::Pattern,
                         false,
                         None,
+                        &fn_bodies,
                     );
                     register_endpoint(
                         &mut endpoints_by_full,
@@ -3477,6 +3489,7 @@ fn lower_callable(
     kind: CallableKind,
     is_interactive: bool,
     fn_body: Option<Box<LoweredFnBody>>,
+    sibling_fn_bodies: &HashMap<&str, LoweredFnBody>,
 ) -> (Node<LoweredOp>, LoweredEndpoint) {
     let node_id = lowered_node_id(module_name, &callable.name);
     let outputs = if callable.outputs.is_empty() {
@@ -3490,6 +3503,62 @@ fn lower_callable(
             })
             .collect()
     };
+    let primary_output = outputs
+        .first()
+        .map(|port| port.name.0.clone())
+        .unwrap_or_else(|| "return".to_string());
+
+    // Bridge 1: Fn items with fn_body → SubDag with inner FnBodyCompute node.
+    // The SubDag's boundary inference auto-infers the interface from the inner
+    // node's unconnected ports. No __out:* passthrough wiring needed.
+    if kind == CallableKind::Fn {
+        if let Some(body) = fn_body {
+            let output_port_names: Vec<String> =
+                outputs.iter().map(|p| p.name.0.clone()).collect();
+            // Build sibling fns map (exclude self to avoid circular reference)
+            let siblings: BTreeMap<String, LoweredFnBody> = sibling_fn_bodies
+                .iter()
+                .filter(|(name, _)| **name != callable.name)
+                .map(|(name, body)| (name.to_string(), body.clone()))
+                .collect();
+            let inner_inputs: Vec<Port> = callable
+                .params
+                .iter()
+                .map(|binding| {
+                    Port::with_cardinality(
+                        binding.name.as_str(),
+                        binding.ty.as_str(),
+                        Cardinality::ONE,
+                    )
+                })
+                .collect();
+            let inner_node = Node::opaque(
+                "body",
+                inner_inputs,
+                outputs.clone(),
+                LoweredOp::Primitive {
+                    kind: PrimitiveOpKind::FnBodyCompute {
+                        fn_body: body,
+                        sibling_fns: siblings,
+                        output_ports: output_port_names,
+                    },
+                    module: module_name.to_string(),
+                    name: callable.name.clone(),
+                },
+            );
+            let mut inner_dag = Dag::new();
+            inner_dag.add_node(inner_node);
+            return (
+                Node::subdag(node_id.clone(), inner_dag),
+                LoweredEndpoint {
+                    node_id,
+                    primary_output,
+                },
+            );
+        }
+    }
+
+    // Non-SubDag path: Func/Pattern items and Fn items without fn_body.
     let mut inputs = callable
         .params
         .iter()
@@ -3510,10 +3579,6 @@ fn lower_callable(
         Cardinality::ZERO_OR_MORE,
     ));
     let obligation = infer_fn_obligation(&callable.name, kind, &outputs);
-    let primary_output = outputs
-        .first()
-        .map(|port| port.name.0.clone())
-        .unwrap_or_else(|| "return".to_string());
     (
         Node::opaque(
             node_id.clone(),
@@ -3527,7 +3592,7 @@ fn lower_callable(
                 service_metadata: None,
                 is_interactive,
                 resource_target: None,
-                fn_body,
+                fn_body: None,
             },
         ),
         LoweredEndpoint {

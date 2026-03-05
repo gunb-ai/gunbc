@@ -745,7 +745,7 @@ pub fn typecheck_module_graph_with_options(
     let generic_arity_registry = collect_generic_arities(&graph.modules);
     let record_type_registry = collect_record_types(&graph.modules);
     let variant_parents = collect_variant_parents(&graph.modules);
-    let sum_type_variants = collect_sum_type_variants(&graph.modules);
+    let _sum_type_variants = collect_sum_type_variants(&graph.modules);
     let callable_registry = collect_unique_callables(&graph.modules);
     let pattern_callable_names = collect_pattern_callable_names(&graph.modules);
     let service_call_registry = collect_service_call_contracts(&graph.modules);
@@ -770,7 +770,6 @@ pub fn typecheck_module_graph_with_options(
         resource_type_registry: &resource_type_registry,
         resource_capability_registry: &resource_capability_registry,
         variant_parents: &variant_parents,
-        sum_type_variants: &sum_type_variants,
         allow_unresolved_references: options.allow_unresolved_imports,
     };
 
@@ -856,7 +855,6 @@ struct TypecheckContext<'a> {
     resource_type_registry: &'a ResourceTypeRegistry,
     resource_capability_registry: &'a ResourceCapabilityRegistry,
     variant_parents: &'a HashMap<String, String>,
-    sum_type_variants: &'a HashMap<String, HashSet<String>>,
     allow_unresolved_references: bool,
 }
 
@@ -886,7 +884,6 @@ fn collect_signatures(
         resource_type_registry: context.resource_type_registry,
         resource_capability_registry: context.resource_capability_registry,
         variant_parents: context.variant_parents,
-        sum_type_variants: context.sum_type_variants,
         allow_unresolved_references: context.allow_unresolved_references,
     };
     let pipeline_param_bindings = collect_pipeline_param_bindings(module);
@@ -1284,7 +1281,6 @@ fn validate_pipeline_def(
         bound_service_registry: &empty_bound_services,
         param_callable_contracts: &empty_param_callable_contracts,
         variant_parents: body_context.variant_parents,
-        sum_type_variants: body_context.sum_type_variants,
     };
 
     for stage in &def.stages {
@@ -1944,7 +1940,6 @@ struct BodyInferenceContext<'a> {
     resource_type_registry: &'a ResourceTypeRegistry,
     resource_capability_registry: &'a ResourceCapabilityRegistry,
     variant_parents: &'a HashMap<String, String>,
-    sum_type_variants: &'a HashMap<String, HashSet<String>>,
     allow_unresolved_references: bool,
 }
 
@@ -1974,7 +1969,6 @@ struct ExprInferenceContext<'a> {
     bound_service_registry: &'a BoundServiceCallRegistry,
     param_callable_contracts: &'a HashMap<String, CallableContract>,
     variant_parents: &'a HashMap<String, String>,
-    sum_type_variants: &'a HashMap<String, HashSet<String>>,
 }
 
 struct CallableBodyRef<'a> {
@@ -2394,7 +2388,6 @@ fn validate_callable_body(
         bound_service_registry: &bound_service_registry,
         param_callable_contracts: &param_callable_contracts,
         variant_parents: body_context.variant_parents,
-        sum_type_variants: body_context.sum_type_variants,
     };
     let mut calls = Vec::new();
     collect_calls_from_stmts(body.stmts, &mut calls);
@@ -2872,11 +2865,9 @@ fn infer_expr_type(
             }
         }
         Expr::Match(scrutinee, arms) => {
-            let (scr_ty, scr_errors) = infer_expr_type(scrutinee, local_bindings, infer_context);
+            let (_scr_ty, scr_errors) = infer_expr_type(scrutinee, local_bindings, infer_context);
             errors.extend(scr_errors);
             let mut arm_types: Vec<String> = Vec::new();
-            let mut has_wildcard = false;
-            let mut matched_variants: HashSet<String> = HashSet::new();
             for arm in arms {
                 if let Some(guard) = &arm.guard {
                     let (_, guard_errors) = infer_expr_type(guard, local_bindings, infer_context);
@@ -2887,21 +2878,6 @@ fn infer_expr_type(
                 errors.extend(body_errors);
                 if let Some(name) = arm_ty.display_name() {
                     arm_types.push(name);
-                }
-                // Track matched patterns for exhaustiveness (WS3-6)
-                match &arm.pattern {
-                    daglang_syntax::ast::Pattern::Wildcard => has_wildcard = true,
-                    daglang_syntax::ast::Pattern::Ident(name) => {
-                        if name == "_" {
-                            has_wildcard = true;
-                        } else {
-                            matched_variants.insert(name.clone());
-                        }
-                    }
-                    daglang_syntax::ast::Pattern::Variant(name, _) => {
-                        matched_variants.insert(name.clone());
-                    }
-                    daglang_syntax::ast::Pattern::Literal(_) => {}
                 }
             }
             // WS3-5: Check compatibility across arms

@@ -379,6 +379,10 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerClassification> {
             kind: PrimitiveOpKind::ExprCompute { .. },
             ..
         } => return Some(HandlerClassification::Handler(HandlerKind::Passthrough)),
+        LoweredOp::Primitive {
+            kind: PrimitiveOpKind::FnBodyCompute { .. },
+            ..
+        } => return Some(HandlerClassification::Handler(HandlerKind::Passthrough)),
         // C24: All remaining structural primitive ops use passthrough stubs.
         LoweredOp::Primitive { kind, .. } => {
             debug_assert!(kind.is_structural(), "unhandled non-structural primitive: {kind:?}");
