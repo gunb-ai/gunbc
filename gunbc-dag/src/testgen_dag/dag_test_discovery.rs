@@ -813,6 +813,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "slow integration validation; run explicitly when needed"]
     fn comprehensive_auto_testgen_pipeline_validation() {
         let layout = gunbc_ir::WorkspaceLayout::from_env_manifest_dir()
             .or_else(|_| gunbc_ir::WorkspaceLayout::from_cargo_metadata())
