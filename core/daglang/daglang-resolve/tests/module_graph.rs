@@ -251,7 +251,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("pipelines.sdlc".into(), 13),
         ("pipelines.sdlc_ci".into(), 10),
         ("profiles.cloud_run".into(), 8),
-        ("profiles.gist".into(), 1),
+        ("profiles.gist".into(), 3),
         ("profiles.local".into(), 8),
         ("profiles.sdlc".into(), 7),
         ("profiles.unit_test".into(), 7),
