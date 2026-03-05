@@ -243,11 +243,24 @@ pub fn validate_subdag_interfaces<T>(dag: &Dag<T>) -> Vec<SubDagError> {
 /// Validate that all `res:*` input ports are wired.
 ///
 /// Returns a list of unwired resource inputs (unconnected entrypoints).
+///
+/// Skips resource ports with optional cardinality (min == 0), since those
+/// are legitimately unwired when no provider is configured (e.g., `res:credential`
+/// on transport execute nodes for services without auth).
 pub fn validate_resource_wiring<T>(dag: &Dag<T>) -> Vec<UnwiredResource> {
-    detect_entrypoints(dag)
+    let entrypoints = detect_entrypoints(dag);
+    entrypoints
         .entrypoint_ports
         .iter()
         .filter(|(_, port_name, _)| port_name.is_resource())
+        .filter(|(node_id, port_name, _)| {
+            // Look up the port on its node to check cardinality.
+            dag.nodes
+                .iter()
+                .find(|n| n.id == *node_id)
+                .and_then(|n| n.inputs.iter().find(|p| p.name == *port_name))
+                .is_none_or(|p| p.cardinality.min > 0)
+        })
         .map(|(node_id, port_name, _)| UnwiredResource {
             node: node_id.clone(),
             port: port_name.clone(),

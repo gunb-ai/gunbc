@@ -157,7 +157,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 
 | ID | What | Size | Deps | Source | Status |
 |----|------|------|------|--------|--------|
-| CP-8 | Flip `skip_verification` to false | S | CP-6,7 + Bridge 1+2 | CP | Open |
+| CP-8 | Flip `skip_verification` to false | S | CP-6,7 + Bridge 1+2 | CP | **Partial** — Fixed: (1) transport prepare ports with defaults use ZERO_OR_ONE cardinality, (2) resource wiring validation respects optional cardinality. Blocked: pattern expansion can't resolve resource capability calls (e.g., `fs.read` inside `file_content_matches`), causing `compare_content_upsert_check` unwired port. Needs pattern expansion to handle resource capabilities. |
 | CP-23 | `VerifiedDag<T>` type wrapper (gates Resolve + Emit) | M | CP-8 | CP | Open |
 | CP-41 | Merge `validate_structural_primitive_wiring()` into `verify()` | S | CP-23 | CP | Open |
 | CP-42 | `Dag<T>.map_bodies()` for topology preservation | S | — | CP | **Done** — already exists as `Dag<T>::map_ops()` (dag.rs:85). Maps opaque bodies T→U, recurses into SubDags, preserves all node metadata + edges. |

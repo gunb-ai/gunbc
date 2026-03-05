@@ -69,24 +69,32 @@ impl TransportManifest {
 // ============================================================================
 
 fn service_prepare_ports(operation: &OperationDef, metadata: &ServiceCallMetadata) -> Vec<Port> {
-    let declared_inputs = match metadata.spec.as_ref() {
+    // Carry (name, type, has_default) so we can set optional cardinality for defaulted inputs.
+    let declared_inputs: Vec<(String, String, bool)> = match metadata.spec.as_ref() {
         Some(spec) if !spec.input_fields().is_empty() => spec
             .input_fields()
             .iter()
-            .map(|field| (field.name.clone(), field.type_id.clone()))
-            .collect::<Vec<_>>(),
+            .map(|field| (field.name.clone(), field.type_id.clone(), field.default.is_some()))
+            .collect(),
         _ => operation
             .inputs
             .iter()
             .map(|field| {
                 let ty = type_expr_to_string(&field.ty);
-                (field.name.clone(), ty)
+                (field.name.clone(), ty, field.default.is_some())
             })
-            .collect::<Vec<_>>(),
+            .collect(),
     };
     declared_inputs
         .into_iter()
-        .map(|(name, ty)| Port::with_cardinality(name.as_str(), ty.as_str(), Cardinality::ONE))
+        .map(|(name, ty, has_default)| {
+            let cardinality = if has_default {
+                Cardinality::ZERO_OR_ONE
+            } else {
+                Cardinality::ONE
+            };
+            Port::with_cardinality(name.as_str(), ty.as_str(), cardinality)
+        })
         .collect()
 }
 
@@ -97,24 +105,31 @@ fn capability_prepare_ports(
     // When a spec with explicit input fields is available (e.g., File operations),
     // use the spec's field declarations. Otherwise fall back to the capability's
     // declared inputs from the interface definition.
-    let declared_inputs = match metadata.spec.as_ref() {
+    let declared_inputs: Vec<(String, String, bool)> = match metadata.spec.as_ref() {
         Some(spec) if !spec.input_fields().is_empty() => spec
             .input_fields()
             .iter()
-            .map(|field| (field.name.clone(), field.type_id.clone()))
-            .collect::<Vec<_>>(),
+            .map(|field| (field.name.clone(), field.type_id.clone(), field.default.is_some()))
+            .collect(),
         _ => capability
             .inputs
             .iter()
             .map(|field| {
                 let ty = type_expr_to_string(&field.ty);
-                (field.name.clone(), ty)
+                (field.name.clone(), ty, field.default.is_some())
             })
-            .collect::<Vec<_>>(),
+            .collect(),
     };
     declared_inputs
         .into_iter()
-        .map(|(name, ty)| Port::with_cardinality(name.as_str(), ty.as_str(), Cardinality::ONE))
+        .map(|(name, ty, has_default)| {
+            let cardinality = if has_default {
+                Cardinality::ZERO_OR_ONE
+            } else {
+                Cardinality::ONE
+            };
+            Port::with_cardinality(name.as_str(), ty.as_str(), cardinality)
+        })
         .collect()
 }
 
