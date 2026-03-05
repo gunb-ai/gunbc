@@ -63,6 +63,63 @@ pub fn byte_to_line_col(source: &str, byte_offset: usize) -> (usize, usize) {
     (line, col)
 }
 
+/// Parse result that always returns an AST (possibly partial) plus diagnostics (CP-26).
+///
+/// Unlike `Result<SourceFile, Vec<ParseError>>`, this type never throws away
+/// successfully-parsed items. Callers can inspect `diagnostics` to decide
+/// whether to proceed with a partial AST.
+#[derive(Debug)]
+pub struct ParseResult {
+    /// The parsed AST (may be partial if diagnostics are present).
+    pub ast: SourceFile,
+    /// Parse errors encountered during parsing (empty if fully successful).
+    pub diagnostics: Vec<ParseError>,
+}
+
+impl ParseResult {
+    /// Returns `true` if parsing completed without errors.
+    pub fn is_ok(&self) -> bool {
+        self.diagnostics.is_empty()
+    }
+
+    /// Convert to `Result`, discarding the partial AST if there were errors.
+    ///
+    /// Backward-compatible with the old `parse()` API.
+    pub fn into_result(self) -> Result<SourceFile, Vec<ParseError>> {
+        if self.diagnostics.is_empty() {
+            Ok(self.ast)
+        } else {
+            Err(self.diagnostics)
+        }
+    }
+}
+
+/// Parse source text, always returning an AST (possibly partial) plus diagnostics.
+///
+/// Preferred over `parse()` when callers want to inspect partial results
+/// (e.g., IDE/LSP, diagnostic rendering, incremental compilation).
+pub fn parse_to_result(source: &str) -> ParseResult {
+    let (tokens, lex_diagnostics) = Lexer::tokenize_with_diagnostics(source);
+    if !lex_diagnostics.is_empty() {
+        return ParseResult {
+            ast: SourceFile {
+                module_path: None,
+                imports: Vec::new(),
+                items: Vec::new(),
+            },
+            diagnostics: lex_diagnostics
+                .into_iter()
+                .map(|diagnostic| ParseError {
+                    message: diagnostic.message,
+                    span: diagnostic.span.unwrap_or(Span { start: 0, end: 0 }),
+                })
+                .collect(),
+        };
+    }
+    let mut p = Parser::new(tokens);
+    p.parse_source_file_partial()
+}
+
 pub fn parse(source: &str) -> Result<SourceFile, Vec<ParseError>> {
     let (tokens, lex_diagnostics) = Lexer::tokenize_with_diagnostics(source);
     if !lex_diagnostics.is_empty() {
@@ -1179,6 +1236,53 @@ impl Parser {
             })
         } else {
             Err(std::mem::take(&mut self.errors))
+        }
+    }
+
+    /// Parse a source file, always returning the (possibly partial) AST plus diagnostics.
+    fn parse_source_file_partial(&mut self) -> ParseResult {
+        let module_path = if self.check(&TokenKind::Module) {
+            match self.parse_module_decl() {
+                Ok(mp) => Some(mp),
+                Err(e) => {
+                    self.record_err(e);
+                    self.sync_to_item();
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        let mut imports = Vec::new();
+        while self.check(&TokenKind::Import) {
+            match self.parse_import() {
+                Ok(imp) => imports.push(imp),
+                Err(e) => {
+                    self.record_err(e);
+                    self.sync_to_item();
+                }
+            }
+        }
+
+        let mut items = Vec::new();
+        while !self.at_eof() {
+            match self.parse_item() {
+                Ok(item) => items.push(item),
+                Err(e) => {
+                    self.record_err(e);
+                    self.sync_to_item();
+                }
+            }
+        }
+
+        ParseResult {
+            ast: SourceFile {
+                module_path,
+                imports,
+                items,
+            },
+            diagnostics: std::mem::take(&mut self.errors),
         }
     }
 
