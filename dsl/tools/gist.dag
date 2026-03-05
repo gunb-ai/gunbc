@@ -22,18 +22,17 @@ fn render_diff_markdown(diff: String, branch: String, base_ref: CommitSha) -> St
   "# Diff: {branch} vs {base_ref}\n\n```diff\n{diff}\n```\n"
 }
 
-// Extract the raw Secret from an AccessToken record.
-// Workaround: the lowerer can't wire two-level field access (cred.token.token).
-fn resolve_github_token() -> Secret {
+// Effectful helper (must be `func`, not `fn`) because it invokes transport calls.
+func resolve_github_token() -> { token: Secret } {
   env = shell.Env.Get(name: "GITHUB_TOKEN")
   match env.value {
-    Some(token) => token
+    Some(token) => return { token: token }
     None => {
       secret = shell.GCloud.SecretManagerAccessVersion(
         project_id: "gunbai-secrets",
         secret_name: "github-token"
       )
-      secret.secret_value
+      return { token: secret.secret_value }
     }
   }
 }
@@ -63,12 +62,12 @@ func gist(public: Bool = false) -> { url: Url }
     file_contents: result.files |> map(f => f.content),
     skipped: result.skipped
   )
-  raw = resolve_github_token()
+  token = resolve_github_token()
   gist_result = github.Gist.Create(
     description: branch_info.branch,
     content: content,
     public: public,
-    auth_token: raw
+    auth_token: token.token
   )
   return { url: gist_result.html_url as Url }
 }
@@ -80,12 +79,12 @@ func gist_diff(base_ref: CommitSha = "HEAD~1", public: Bool = false) -> { url: U
   current = git.Core.CurrentBranch()
   changes = git.Core.Diff(base: base_ref)
   markdown = render_diff_markdown(diff: changes.diff, branch: current.branch, base_ref: base_ref)
-  raw = resolve_github_token()
+  token = resolve_github_token()
   result = github.Gist.Create(
     description: current.branch,
     content: markdown,
     public: public,
-    auth_token: raw
+    auth_token: token.token
   )
   return { url: result.html_url as Url }
 }
@@ -102,12 +101,12 @@ func gist_recent(since: String = "3.days.ago", public: Bool = false) -> { url: U
     branch: current.branch,
     base_ref: base.base_ref
   )
-  raw = resolve_github_token()
+  token = resolve_github_token()
   result = github.Gist.Create(
     description: current.branch,
     content: markdown,
     public: public,
-    auth_token: raw
+    auth_token: token.token
   )
   return { url: result.html_url as Url }
 }
