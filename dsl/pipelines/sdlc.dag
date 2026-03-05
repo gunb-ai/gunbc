@@ -53,6 +53,8 @@ import std.state_machines {
 // CLI args, polling loop). Matches design version in
 // docs/design/sdlc/sdlc.dag (Gap J: Pipeline parameters).
 
+param auth_token: Secret
+param api_key: Secret
 param repo_owner: String = "gunb-ai"
 param repo_name: String = "gunbc"
 param issue_number: Int = 1
@@ -166,6 +168,7 @@ pipeline sdlc
   // Guard: claim acquired AND current stage is Idea
   stage design [after claim_design, when design_claim.acquired && current_stage == Idea] {
     design_output = generate_design(
+      api_key: api_key,
       idea: issue_result.issue.body,
       context: issue_result.issue.title,
       provider: llm_provider,
@@ -207,6 +210,7 @@ pipeline sdlc
   // Stage 4: Design review (LLM call)
   stage design_review [after design] {
     review_output = review_design(
+      api_key: api_key,
       design: design_output.content,
       provider: llm_provider,
       model: llm_model
@@ -299,6 +303,7 @@ pipeline sdlc
 
     // D11: Create PR from agent branch after completion
     pr_result = PullRequest.Create(
+      auth_token: auth_token,
       owner: repo_owner,
       repo: repo_name,
       title: "SDLC: {issue_result.issue.title}",
@@ -327,6 +332,7 @@ pipeline sdlc
   stage code_review [after implementation, when agent_result.exit_code == 0] {
     // Fetch list of changed files from the PR
     pr_files = PullRequest.ListFiles(
+      auth_token: auth_token,
       owner: repo_owner,
       repo: repo_name,
       number: pr_result.number
@@ -340,6 +346,7 @@ pipeline sdlc
 
     // LLM-based code review against the diff
     code_review_output = review_design(
+      api_key: api_key,
       design: pr_diff.diff,
       provider: llm_provider,
       model: llm_model
@@ -347,6 +354,7 @@ pipeline sdlc
 
     // Post review findings as PR comment
     cr_comment = PullRequest.AddComment(
+      auth_token: auth_token,
       owner: repo_owner,
       repo: repo_name,
       number: pr_result.number,
@@ -420,6 +428,7 @@ pipeline sdlc
 
     // D11: Merge PR if tests pass
     merge_result = PullRequest.Merge(
+      auth_token: auth_token,
       owner: repo_owner,
       repo: repo_name,
       number: pr_result.number,
@@ -482,6 +491,8 @@ pipeline sdlc
 test sdlc_idea_to_design {
 
     // Pipeline parameters
+    input auth_token -> "<MOCK_GH_TOKEN>"
+    input api_key -> "<MOCK_API_KEY>"
     input repo_owner -> "gunb-ai"
     input repo_name -> "gunbc"
     input issue_number -> 42

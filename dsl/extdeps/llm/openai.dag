@@ -133,6 +133,7 @@ service llm.OpenAI {
   config {
     endpoint: "https://api.openai.com"
     auth: BearerToken
+    auth_input: api_key
     // OpenAI API rate limits: varies by tier (500-3500 RPM), use conservative default
     rate_limit: { requests: 500, per: minute, scope: chat }
     // Retry on rate limit and server errors with exponential backoff
@@ -141,6 +142,7 @@ service llm.OpenAI {
 
   operation ChatCompletion {
     input {
+      api_key: Secret
       model: String
       messages: Json
       temperature: Float?
@@ -167,6 +169,7 @@ service llm.OpenAI {
 
   operation Responses {
     input {
+      api_key: Secret
       model: String
       input: Json
       instructions: String?
@@ -209,6 +212,7 @@ fixture llm_cloud_env {
 test openai_chat_completion : llm_cloud_env {
 
     // Inputs
+    input chat_completion/prepare.api_key -> "<MOCK_API_KEY>"
     input chat_completion/prepare.provider -> "openai"
     input chat_completion/prepare.model -> "gpt-4o"
     input chat_completion/prepare.messages -> [{ role: "user", content: "Hello" }]
@@ -228,6 +232,7 @@ test openai_chat_completion : llm_cloud_env {
 test anthropic_chat_completion : llm_cloud_env {
 
     // Inputs
+    input chat_completion/prepare.api_key -> "<MOCK_API_KEY>"
     input chat_completion/prepare.provider -> "anthropic"
     input chat_completion/prepare.model -> "claude-sonnet-4-20250514"
     input chat_completion/prepare.messages -> [{ role: "user", content: "Hello" }]
@@ -248,6 +253,7 @@ test anthropic_chat_completion : llm_cloud_env {
 test code_review_completion : llm_cloud_env {
 
     // Inputs
+    input chat_completion/prepare.api_key -> "<MOCK_API_KEY>"
     input chat_completion/prepare.provider -> "openai"
     input chat_completion/prepare.model -> "gpt-4o"
     input chat_completion/prepare.messages -> [{ role: "system", content: "Review this code" }, { role: "user", content: "fn main() {}" }]

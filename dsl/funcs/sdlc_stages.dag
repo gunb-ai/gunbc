@@ -64,6 +64,8 @@ fn code_review_user_prompt(title: String, files_summary: String, diff: String) -
 // Routes by current stage to the appropriate handler.
 
 func execute_stage(
+  auth_token: Secret,
+  api_key: Secret,
   issue_id: NonEmptyStr,
   stage: IssueLifecycleStage,
   title: String,
@@ -81,11 +83,13 @@ func execute_stage(
 {
   result = match stage {
     Idea            => handle_idea_to_design(
+                           api_key: api_key,
                            issue_id: issue_id, title: title, body: body,
                            run_key: run_key, owner: owner, repo: repo,
                            number: number, llm_provider: llm_provider,
                            llm_model: llm_model)
     Design          => handle_design_to_review(
+                           api_key: api_key,
                            issue_id: issue_id, body: body, run_key: run_key,
                            owner: owner, repo: repo, number: number,
                            llm_provider: llm_provider, llm_model: llm_model)
@@ -96,9 +100,12 @@ func execute_stage(
                            issue_id: issue_id, body: body, run_key: run_key,
                            owner: owner, repo: repo, number: number)
     Implementing    => handle_implementing_to_code_review(
+                           auth_token: auth_token,
                            issue_id: issue_id, run_key: run_key,
                            owner: owner, repo: repo, number: number)
     CodeReview      => handle_code_review_to_testing(
+                           auth_token: auth_token,
+                           api_key: api_key,
                            issue_id: issue_id, run_key: run_key,
                            owner: owner, repo: repo, number: number,
                            llm_provider: llm_provider, llm_model: llm_model)
@@ -132,6 +139,7 @@ func execute_stage(
 // Posts design as issue comment. Transitions: sdlc:idea -> sdlc:design.
 
 func handle_idea_to_design(
+  api_key: Secret,
   issue_id: NonEmptyStr,
   title: String,
   body: String,
@@ -147,6 +155,7 @@ func handle_idea_to_design(
 {
   // Generate design via LLM
   design = generate_design(
+    api_key: api_key,
     idea: body,
     context: title,
     provider: llm_provider,
@@ -174,6 +183,7 @@ func handle_idea_to_design(
 // Transitions: sdlc:design -> sdlc:design-review.
 
 func handle_design_to_review(
+  api_key: Secret,
   issue_id: NonEmptyStr,
   body: String,
   run_key: NonEmptyStr,
@@ -188,6 +198,7 @@ func handle_design_to_review(
 {
   // Review design via LLM
   review = review_design(
+    api_key: api_key,
     design: body,
     provider: llm_provider,
     model: llm_model
@@ -299,6 +310,7 @@ func handle_accepted_to_implementing(
 // Transitions: sdlc:implementing -> sdlc:code-review.
 
 func handle_implementing_to_code_review(
+  auth_token: Secret,
   issue_id: NonEmptyStr,
   run_key: NonEmptyStr,
   owner: String,
@@ -325,6 +337,7 @@ func handle_implementing_to_code_review(
 
   // Create PR from agent branch
   pr = PullRequest.Create(
+    auth_token: auth_token,
     owner: owner,
     repo: repo,
     title: "feat: implement issue #{number}",
@@ -354,6 +367,8 @@ func handle_implementing_to_code_review(
 // Transitions: sdlc:code-review -> sdlc:testing.
 
 func handle_code_review_to_testing(
+  auth_token: Secret,
+  api_key: Secret,
   issue_id: NonEmptyStr,
   run_key: NonEmptyStr,
   owner: String,
@@ -366,6 +381,7 @@ func handle_code_review_to_testing(
 {
   // Find the PR for this issue (convention: PR head = sdlc/issue-{number})
   pr = PullRequest.Get(
+    auth_token: auth_token,
     owner: owner,
     repo: repo,
     number: number
@@ -373,6 +389,7 @@ func handle_code_review_to_testing(
 
   // List changed files in the PR
   files = PullRequest.ListFiles(
+    auth_token: auth_token,
     owner: owner,
     repo: repo,
     number: number
@@ -390,6 +407,7 @@ func handle_code_review_to_testing(
 
   // Run LLM code review
   review_response = llm.Anthropic.Messages(
+    api_key: api_key,
     model: llm_model,
     messages: [{
       role: "user",
@@ -408,6 +426,7 @@ func handle_code_review_to_testing(
 
   // Post code review as PR comment
   pr_comment = PullRequest.AddComment(
+    auth_token: auth_token,
     owner: owner,
     repo: repo,
     number: number,
@@ -516,6 +535,8 @@ func handle_done(
 
 test stage_dispatch_idea {
 
+    input execute/prepare.auth_token -> "<MOCK_GH_TOKEN>"
+    input execute/prepare.api_key -> "<MOCK_API_KEY>"
     input execute/prepare.issue_id -> "42"
     input execute/prepare.stage -> Idea
     input execute/prepare.title -> "Add feature X"
@@ -544,6 +565,8 @@ test stage_dispatch_idea {
 
 test stage_dispatch_design_review {
 
+    input execute/prepare.auth_token -> "<MOCK_GH_TOKEN>"
+    input execute/prepare.api_key -> "<MOCK_API_KEY>"
     input execute/prepare.issue_id -> "42"
     input execute/prepare.stage -> DesignReview
     input execute/prepare.title -> "Add feature X"
@@ -564,6 +587,8 @@ test stage_dispatch_design_review {
 
 test stage_code_review_with_pr_diff {
 
+    input execute/prepare.auth_token -> "<MOCK_GH_TOKEN>"
+    input execute/prepare.api_key -> "<MOCK_API_KEY>"
     input execute/prepare.issue_id -> "42"
     input execute/prepare.stage -> CodeReview
     input execute/prepare.title -> "Add feature X"
@@ -618,6 +643,8 @@ test stage_code_review_with_pr_diff {
 
 test stage_testing_cargo_pass {
 
+    input execute/prepare.auth_token -> "<MOCK_GH_TOKEN>"
+    input execute/prepare.api_key -> "<MOCK_API_KEY>"
     input execute/prepare.issue_id -> "42"
     input execute/prepare.stage -> Testing
     input execute/prepare.title -> "Add feature X"
@@ -644,6 +671,8 @@ test stage_testing_cargo_pass {
 
 test stage_testing_cargo_fail {
 
+    input execute/prepare.auth_token -> "<MOCK_GH_TOKEN>"
+    input execute/prepare.api_key -> "<MOCK_API_KEY>"
     input execute/prepare.issue_id -> "42"
     input execute/prepare.stage -> Testing
     input execute/prepare.title -> "Add feature X"
@@ -675,6 +704,8 @@ test full_stage_chain {
     // through: idea -> design -> design-review -> accepted ->
     // implementing -> code-review -> testing -> done
 
+    input execute/prepare.auth_token -> "<MOCK_GH_TOKEN>"
+    input execute/prepare.api_key -> "<MOCK_API_KEY>"
     input execute/prepare.stage -> Idea
     input execute/prepare.issue_id -> "99"
     input execute/prepare.title -> "Full chain test"

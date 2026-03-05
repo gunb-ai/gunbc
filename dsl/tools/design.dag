@@ -33,6 +33,7 @@ fn summarize_design(content: String) -> String {
 }
 
 func generate_design(
+  api_key: Secret,
   idea: String,
   context: String?,
   provider: String = "anthropic",
@@ -41,6 +42,7 @@ func generate_design(
   prompt = design_user_prompt(idea: idea, context: context)
   content = match provider {
     "openai" => llm.OpenAI.ChatCompletion(
+      api_key: api_key,
       model: model,
       messages: [
         { role: "system", content: design_system_prompt() },
@@ -50,6 +52,7 @@ func generate_design(
       max_tokens: 4096
     ).content
     _ => llm.Anthropic.Messages(
+      api_key: api_key,
       model: model,
       messages: [{ role: "user", content: prompt }],
       system: design_system_prompt(),
@@ -67,6 +70,7 @@ func generate_design(
 }
 
 func review_design(
+  api_key: Secret,
   design: String,
   provider: String = "anthropic",
   model: String = "claude-sonnet-4-20250514"
@@ -74,6 +78,7 @@ func review_design(
   prompt = review_user_prompt(design: design)
   review_text = match provider {
     "openai" => llm.OpenAI.ChatCompletion(
+      api_key: api_key,
       model: model,
       messages: [
         { role: "system", content: review_system_prompt() },
@@ -83,6 +88,7 @@ func review_design(
       max_tokens: 2048
     ).content
     _ => llm.Anthropic.Messages(
+      api_key: api_key,
       model: model,
       messages: [{ role: "user", content: prompt }],
       system: review_system_prompt(),

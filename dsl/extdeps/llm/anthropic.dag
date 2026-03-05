@@ -118,11 +118,10 @@ data operation_behaviors: List<AnthropicOperationBehavior> = [
 // ── Service: REST transport wiring ──────────────────────────────
 
 service llm.Anthropic {
-  // TODO(RT-A3): add auth_input: api_key — requires threading api_key: Secret through
-  // all callers (design.dag, sdlc_stages.dag, review_pipeline.dag).
   config {
     endpoint: "https://api.anthropic.com"
     auth: Header("x-api-key")
+    auth_input: api_key
     // Anthropic API rate limits: varies by tier (1000-4000 RPM), use conservative default
     rate_limit: { requests: 1000, per: minute, scope: messages }
     // Retry on overload and server errors with exponential backoff
@@ -131,6 +130,7 @@ service llm.Anthropic {
 
   operation Messages {
     input {
+      api_key: Secret
       model: String
       messages: Json
       max_tokens: Int = 4096

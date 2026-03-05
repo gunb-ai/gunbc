@@ -190,6 +190,7 @@ service github.Issues {
   config {
     endpoint: "https://api.github.com"
     auth: BearerToken
+    auth_input: auth_token
     // GitHub API rate limits: 5000 requests/hour for authenticated users
     rate_limit: { requests: 5000, per: hour, scope: core }
     // Retry on rate limit and server errors with exponential backoff
@@ -200,6 +201,7 @@ service github.Issues {
 
   operation create {
     input {
+      auth_token: Secret
       title: NonEmptyStr
       body: String
       labels: List<String>
@@ -220,6 +222,7 @@ service github.Issues {
 
   operation get {
     input {
+      auth_token: Secret
       id: NonEmptyStr
     }
     output {
@@ -239,6 +242,7 @@ service github.Issues {
 
   operation close {
     input {
+      auth_token: Secret
       id: NonEmptyStr
     }
     output {
@@ -261,6 +265,7 @@ service github.Issues {
 
   operation comment {
     input {
+      auth_token: Secret
       id: NonEmptyStr
       body: String
       marker: NonEmptyStr?
@@ -287,6 +292,7 @@ service github.Issues {
 
   operation set_labels {
     input {
+      auth_token: Secret
       id: NonEmptyStr
       labels: List<String>
     }
@@ -308,6 +314,7 @@ service github.Issues {
 
   operation discover {
     input {
+      auth_token: Secret
       labels: List<String>
       state: IssueState? = Open
     }
@@ -327,6 +334,7 @@ service github.Issues {
 
   operation list_events {
     input {
+      auth_token: Secret
       id: NonEmptyStr
       since: String?
     }
@@ -353,6 +361,7 @@ fixture github_auth {
 
 test create_issue : github_auth {
 
+    input create/prepare.auth_token -> "<MOCK_GH_TOKEN>"
     input create/prepare.owner -> "gunb-ai"
     input create/prepare.repo -> "gunbc"
     input create/prepare.title -> "Implement feature X"
@@ -372,6 +381,7 @@ test create_issue : github_auth {
 
 test add_comment : github_auth {
 
+    input comment/prepare.auth_token -> "<MOCK_GH_TOKEN>"
     input comment/prepare.owner -> "gunb-ai"
     input comment/prepare.repo -> "gunbc"
     input comment/prepare.number -> 42
@@ -387,6 +397,7 @@ test add_comment : github_auth {
 
 test list_issues_by_label : github_auth {
 
+    input list/prepare.auth_token -> "<MOCK_GH_TOKEN>"
     input list/prepare.owner -> "gunb-ai"
     input list/prepare.repo -> "gunbc"
     input list/prepare.labels -> "idea"

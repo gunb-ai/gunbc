@@ -23,6 +23,7 @@ import extdeps.git
 // name and system prompt preamble.
 
 func dimension_review(
+  api_key: Secret,
   concern: ReviewConcern,
   artifact: NonEmptyStr,
   criteria: Json,
@@ -41,6 +42,7 @@ func dimension_review(
   )
 
   llm_response = llm.Anthropic.Messages(
+    api_key: api_key,
     model: model,
     messages: [{ role: "user", content: prompt.question }],
     system: prompt.system_prompt,
@@ -65,6 +67,7 @@ func dimension_review(
 
 func diff_dimension_review(
   base_ref: String,
+  api_key: Secret,
   provider: NonEmptyStr,
   model: NonEmptyStr,
   coherence_criteria: Json?,
@@ -80,6 +83,7 @@ func diff_dimension_review(
   // ── Parallel dimensions ─────────────────────────────────────────
   coherence_result = if coherence_criteria != None {
     dimension_review(
+      api_key: api_key,
       concern: ReviewConcern {
         dimension: "coherence",
         system_prompt_preamble: "You are reviewing for internal consistency -- bugs, contradictions, state mismatches."
@@ -94,6 +98,7 @@ func diff_dimension_review(
 
   quality_result = if quality_criteria != None {
     dimension_review(
+      api_key: api_key,
       concern: ReviewConcern {
         dimension: "quality",
         system_prompt_preamble: "You are reviewing against coding standards and quality best practices."
@@ -108,6 +113,7 @@ func diff_dimension_review(
 
   requirements_result = if requirements_criteria != None {
     dimension_review(
+      api_key: api_key,
       concern: ReviewConcern {
         dimension: "requirements",
         system_prompt_preamble: "You are reviewing whether the code accomplishes its stated requirements."
@@ -129,6 +135,7 @@ func diff_dimension_review(
     )
 
     dimension_review(
+      api_key: api_key,
       concern: ReviewConcern {
         dimension: "aspirational",
         system_prompt_preamble: "You are performing a final synthesis -- classifying each finding as must-fix, defer, or accept."

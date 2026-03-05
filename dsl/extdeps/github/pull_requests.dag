@@ -188,6 +188,7 @@ service github.PullRequest {
   config {
     endpoint: "https://api.github.com"
     auth: BearerToken
+    auth_input: auth_token
     // GitHub API rate limits: 5000 requests/hour for authenticated users
     rate_limit: { requests: 5000, per: hour, scope: core }
     // Retry on rate limit and server errors with exponential backoff
@@ -196,6 +197,7 @@ service github.PullRequest {
 
   operation Create {
     input {
+      auth_token: Secret
       owner: String
       repo: String
       title: String
@@ -224,6 +226,7 @@ service github.PullRequest {
 
   operation Get {
     input {
+      auth_token: Secret
       owner: String
       repo: String
       number: Int
@@ -251,6 +254,7 @@ service github.PullRequest {
 
   operation AddComment {
     input {
+      auth_token: Secret
       owner: String
       repo: String
       number: Int
@@ -273,6 +277,7 @@ service github.PullRequest {
 
   operation Merge {
     input {
+      auth_token: Secret
       owner: String
       repo: String
       number: Int
@@ -301,6 +306,7 @@ service github.PullRequest {
 
   operation ListFiles {
     input {
+      auth_token: Secret
       owner: String
       repo: String
       number: Int
@@ -321,6 +327,7 @@ service github.PullRequest {
 
   operation RequestReview {
     input {
+      auth_token: Secret
       owner: String
       repo: String
       number: Int
@@ -342,6 +349,7 @@ service github.PullRequest {
 
   operation ListReviews {
     input {
+      auth_token: Secret
       owner: String
       repo: String
       number: Int
@@ -368,6 +376,7 @@ fixture github_auth {
 
 test create_pr : github_auth {
 
+    input create/prepare.auth_token -> "<MOCK_GH_TOKEN>"
     input create/prepare.owner -> "gunb-ai"
     input create/prepare.repo -> "gunbc"
     input create/prepare.title -> "feat: implement issue #42"
@@ -388,6 +397,7 @@ test create_pr : github_auth {
 
 test merge_pr : github_auth {
 
+    input merge/prepare.auth_token -> "<MOCK_GH_TOKEN>"
     input merge/prepare.owner -> "gunb-ai"
     input merge/prepare.repo -> "gunbc"
     input merge/prepare.number -> 99
@@ -404,6 +414,7 @@ test merge_pr : github_auth {
 
 test list_pr_files : github_auth {
 
+    input list_files/prepare.auth_token -> "<MOCK_GH_TOKEN>"
     input list_files/prepare.owner -> "gunb-ai"
     input list_files/prepare.repo -> "gunbc"
     input list_files/prepare.number -> 99
