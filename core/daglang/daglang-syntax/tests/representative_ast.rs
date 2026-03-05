@@ -147,7 +147,7 @@ fn types_file_contains_record_sum_and_alias_definitions() {
     let source = parse_dsl("std/types.dag");
     assert_eq!(
         source.items.len(),
-        123,
+        124,
         "std/types.dag item count changed unexpectedly"
     );
     assert_eq!(
@@ -189,6 +189,7 @@ fn types_file_contains_record_sum_and_alias_definitions() {
             "type Url",
             "type SemVer",
             "type NonEmptyStr",
+            "type LanguageId",
             "type PathSegment",
             "type GlobSegment",
             "type FilePathParts",
@@ -349,18 +350,18 @@ fn patterns_file_contains_pattern_defs() {
 
 #[test]
 fn shell_service_file_contains_service_defs() {
-    let source = parse_dsl("services/shell.dag");
+    let source = parse_dsl("extdeps/shell.dag");
     assert_eq!(
         source.items.len(),
         9,
-        "services/shell.dag item count changed unexpectedly"
+        "extdeps/shell.dag item count changed unexpectedly"
     );
     assert_eq!(
         source
             .module_path
             .as_ref()
             .map(|module| module.node.segments.clone()),
-        Some(vec!["services".into(), "shell".into()])
+        Some(vec!["extdeps".into(), "shell".into()])
     );
     assert!(source
         .items
@@ -369,14 +370,8 @@ fn shell_service_file_contains_service_defs() {
     assert_eq!(
         item_signatures(&source),
         vec![
-            "service gcloud.Auth",
-            "service oauth2.Google",
             "service shell.Find",
-            "service shell.Codegen",
-            "service rustup.Component",
             "service shell.Env",
-            "service shell.OAuth2",
-            "service shell.GCloud",
             "service shell.Which",
         ]
     );
