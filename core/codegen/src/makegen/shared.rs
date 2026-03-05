@@ -91,8 +91,16 @@ pub fn registry_tools_to_value(registry: &ToolRegistry) -> Value {
                 .quiet()
                 .release()
                 .warnings(config.warnings);
-            let command = format!("@{}", cmd.to_shell_with_env());
-            let dry_run_command = format!("{} -- --dry-run strict", command);
+            let base_command = format!("@{}", cmd.to_shell_with_env());
+            // Tools with profiles default to --profile local for make targets.
+            let (command, dry_run_command) = if tool.available_profiles.contains(&"local".to_string()) {
+                let cmd = format!("{} -- --profile local", base_command);
+                let dry_cmd = format!("{} -- --profile local --dry-run strict", base_command);
+                (cmd, dry_cmd)
+            } else {
+                let dry_cmd = format!("{} -- --dry-run strict", base_command);
+                (base_command, dry_cmd)
+            };
 
             let deps: Vec<Value> = if tool.needs_generated_cli {
                 vec![Value::Str("ensure-codegen".to_string())]

@@ -28,7 +28,7 @@ pub fn bootstrap_signature() -> Result<WorkflowSignature, BuilderError> {
 
 /// Build bootstrap graph from the DSL source.
 pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
-    crate::dsl_builder::build_dsl_graph_for_entrypoint("tools/bootstrap.dag", Some("bootstrap"))
+    crate::dsl_builder::build_dsl_graph_for_entrypoint("tools/bootstrap.dag", Some("bootstrap"), None)
 }
 
 /// Get the declared signature for the build workflow.
@@ -42,7 +42,7 @@ pub fn build_signature() -> Result<WorkflowSignature, BuilderError> {
     builder = "crate::build_build_graph().unwrap()"
 )]
 pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
-    crate::dsl_builder::build_dsl_graph_for_entrypoint("tools/build.dag", Some("build_all"))
+    crate::dsl_builder::build_dsl_graph_for_entrypoint("tools/build.dag", Some("build_all"), None)
 }
 
 /// Get the declared signature for the codegen workflow.
@@ -56,12 +56,12 @@ pub fn codegen_signature() -> Result<WorkflowSignature, BuilderError> {
     builder = "crate::build_codegen_graph().unwrap()"
 )]
 pub fn build_codegen_graph() -> Result<Dag<CodegenGraphOp>, BuilderError> {
-    crate::dsl_builder::build_dsl_graph_for_entrypoint("tools/codegen.dag", Some("codegen"))
+    crate::dsl_builder::build_dsl_graph_for_entrypoint("tools/codegen.dag", Some("codegen"), None)
 }
 
 /// Build deps graph from the DSL source.
 pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
-    crate::dsl_builder::build_dsl_graph_for_entrypoint("tools/deps.dag", Some("deps"))
+    crate::dsl_builder::build_dsl_graph_for_entrypoint("tools/deps.dag", Some("deps"), None)
 }
 
 /// Build infra graph from the DSL source.
@@ -70,7 +70,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     builder = "crate::build_infra_graph().unwrap()"
 )]
 pub fn build_infra_graph() -> Result<Dag<InfraGraphOp>, BuilderError> {
-    crate::dsl_builder::build_dsl_graph_for_entrypoint("tools/infra.dag", Some("infra"))
+    crate::dsl_builder::build_dsl_graph_for_entrypoint("tools/infra.dag", Some("infra"), None)
 }
 
 // ============================================================================
@@ -87,7 +87,7 @@ pub fn makegen_signature() -> Result<WorkflowSignature, BuilderError> {
 
 /// Build makegen graph from the DSL source.
 pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
-    crate::dsl_builder::build_dsl_graph_for_entrypoint("tools/makegen.dag", Some("makegen"))
+    crate::dsl_builder::build_dsl_graph_for_entrypoint("tools/makegen.dag", Some("makegen"), None)
 }
 
 /// Embedded asset key for precomputed makegen content.

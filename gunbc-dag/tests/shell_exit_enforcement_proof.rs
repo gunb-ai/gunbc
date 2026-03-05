@@ -191,7 +191,7 @@ impl TransportBackend for Rest401Backend {
 }
 
 fn build_gist_recent_with_inputs() -> (gunbc_ir::Dag<gunbc_exec::DynOp>, BoundaryMocks) {
-    let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist_recent"))
+    let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist_recent"), None)
         .expect("gist-recent graph should build");
 
     let mut input_mocks = BoundaryMocks::new();
@@ -307,7 +307,7 @@ fn rest_401_response_surfaces_as_error() {
 /// exit code 1 (expired gcloud session) or HTTP 401 (bad credentials).
 #[test]
 fn auto_mock_spec_always_produces_success_responses() {
-    let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist_recent"))
+    let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist_recent"), None)
         .expect("gist-recent graph should build");
 
     let spec = gunbc_test::auto_mock_spec(&dag, "gist_recent");

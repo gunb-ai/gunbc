@@ -20,7 +20,7 @@ fn compile_tool(
     entry_func: &str,
     workflow_name: &str,
 ) -> Option<(gunbc_ir::Dag<gunbc_exec::DynOp>, MockSpec, WorkflowInfo)> {
-    let dag = build_dsl_graph_for_entrypoint(dag_file, Some(entry_func)).ok()?;
+    let dag = build_dsl_graph_for_entrypoint(dag_file, Some(entry_func), None).ok()?;
     let spec = auto_mock_spec(&dag, workflow_name);
     let info = WorkflowInfo {
         name: workflow_name.to_string(),
