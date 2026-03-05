@@ -12,6 +12,7 @@
 //! - `rationale`: Why these files are ignored
 
 use std::collections::HashSet;
+use std::sync::OnceLock;
 
 use daglang_driver::compile_data_from_module;
 use serde::Deserialize;
@@ -45,7 +46,32 @@ fn build_system_name(build_system: BuildSystem) -> &'static str {
     }
 }
 
+/// Cached gitignore categories from DSL (CP-67).
+static GITIGNORE_CATEGORIES: OnceLock<Result<Vec<DslGitignoreCategory>, String>> = OnceLock::new();
+
 fn load_dsl_categories(build_system: BuildSystem) -> Result<Vec<Category>, String> {
+    let parsed = GITIGNORE_CATEGORIES
+        .get_or_init(load_dsl_categories_uncached)
+        .as_ref()
+        .map_err(|e| e.clone())?;
+    let build_system_name = build_system_name(build_system);
+    Ok(parsed
+        .iter()
+        .filter(|entry| match entry.when_build_system.as_deref() {
+            None => true,
+            Some(required) => required == build_system_name,
+        })
+        .filter(|entry| !entry.items.is_empty())
+        .map(|entry| Category {
+            name: entry.name.clone().into(),
+            source: entry.source.clone().map(Into::into),
+            items: entry.items.iter().cloned().map(Into::into).collect(),
+            rationale: entry.rationale.clone().map(Into::into),
+        })
+        .collect())
+}
+
+fn load_dsl_categories_uncached() -> Result<Vec<DslGitignoreCategory>, String> {
     let layout = gunbc_ir::WorkspaceLayout::from_env_manifest_dir()
         .or_else(|_| gunbc_ir::WorkspaceLayout::from_cargo_metadata())
         .map_err(|e| format!("workspace layout for gitignore DSL: {e}"))?;
@@ -56,23 +82,8 @@ fn load_dsl_categories(build_system: BuildSystem) -> Result<Vec<Category>, Strin
         .data_values
         .get("categories")
         .ok_or_else(|| "config/gitignore.dag must declare `categories` data".to_string())?;
-    let parsed: Vec<DslGitignoreCategory> = serde_json::from_value(value.clone())
-        .map_err(|e| format!("config/gitignore.dag categories deserialization failed: {e}"))?;
-    let build_system_name = build_system_name(build_system);
-    Ok(parsed
-        .into_iter()
-        .filter(|entry| match entry.when_build_system.as_deref() {
-            None => true,
-            Some(required) => required == build_system_name,
-        })
-        .filter(|entry| !entry.items.is_empty())
-        .map(|entry| Category {
-            name: entry.name.into(),
-            source: entry.source.map(Into::into),
-            items: entry.items.into_iter().map(Into::into).collect(),
-            rationale: entry.rationale.map(Into::into),
-        })
-        .collect())
+    serde_json::from_value(value.clone())
+        .map_err(|e| format!("config/gitignore.dag categories deserialization failed: {e}"))
 }
 
 /// Derive ignore categories from BuildConfig.

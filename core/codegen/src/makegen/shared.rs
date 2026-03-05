@@ -3,6 +3,7 @@
 //! The Makefile renderer evaluates DSL fn bodies compiled from `makegen.dag`.
 
 use std::collections::{BTreeMap, HashMap};
+use std::sync::OnceLock;
 
 use daglang_driver::compile_data_from_module;
 use daglang_lower::LoweredFnBody;
@@ -61,22 +62,33 @@ pub fn render_makefile(registry: &ToolRegistry) -> Result<String, MakegenModelEr
         .to_string())
 }
 
+/// Cached makegen compilation result (CP-67).
+static MAKEGEN_CACHE: OnceLock<(
+    HashMap<String, LoweredFnBody>,
+    HashMap<String, serde_json::Value>,
+)> = OnceLock::new();
+
 /// Compile `tools/makegen.dag` and extract fn bodies + data declaration values.
 ///
 /// Uses filesystem-based import resolution to automatically discover all 19
 /// transitive dependencies (std/*, extdeps/*, services/*, config/*).
+/// Result is cached via OnceLock (CP-67) since render_makefile and
+/// render_justfile may both call this.
 fn compile_makegen() -> (
     HashMap<String, LoweredFnBody>,
     HashMap<String, serde_json::Value>,
 ) {
-    let layout = gunbc_ir::WorkspaceLayout::from_env_manifest_dir()
-        .or_else(|_| gunbc_ir::WorkspaceLayout::from_cargo_metadata())
-        .expect("workspace layout for makegen DSL");
-    let dsl_root = layout.workspace_root.join("dsl");
-    let output = compile_data_from_module(&dsl_root, "tools/makegen.dag")
-        .expect("makegen should compile");
-
-    (output.fns, output.data_values)
+    MAKEGEN_CACHE
+        .get_or_init(|| {
+            let layout = gunbc_ir::WorkspaceLayout::from_env_manifest_dir()
+                .or_else(|_| gunbc_ir::WorkspaceLayout::from_cargo_metadata())
+                .expect("workspace layout for makegen DSL");
+            let dsl_root = layout.workspace_root.join("dsl");
+            let output = compile_data_from_module(&dsl_root, "tools/makegen.dag")
+                .expect("makegen should compile");
+            (output.fns, output.data_values)
+        })
+        .clone()
 }
 
 /// Convert a `ToolRegistry`'s tools into `Value::List` matching the DSL
