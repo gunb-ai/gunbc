@@ -10,15 +10,22 @@ module tools.gist
 
 import extdeps.git
 import extdeps.github.gists
-import cloud.gcp.credential { acquire_gcp_secret }
+import interfaces.credential_provider { CredentialProvider }
+import profiles.gist
 import std.resources { Filesystem, Network }
 import std.patterns { read_text_files }
-import std.types { CloudRuntime, CommitSha, Url }
+import std.types { AccessToken, CommitSha, CredentialFlow, Url }
 
 // ── Helpers ────────────────────────────────────────────────────────
 
 fn render_diff_markdown(diff: String, branch: String, base_ref: CommitSha) -> String {
   "# Diff: {branch} vs {base_ref}\n\n```diff\n{diff}\n```\n"
+}
+
+// Extract the raw Secret from an AccessToken record.
+// Workaround: the lowerer can't wire two-level field access (cred.token.token).
+fn unwrap_token_secret(tok: AccessToken) -> Secret {
+  tok.token
 }
 
 // Recursive markdown assembly stays in Rust until recursive DSL modeling ships.
@@ -34,6 +41,7 @@ extern func build_snapshot_content(
 func gist(public: Bool = false) -> { url: Url }
   uses fs: Filesystem(mode: Read)
   uses net: Network
+  uses creds: CredentialProvider
 {
   branch_info = git.Core.CurrentBranch()
   listing = git.Core.LsFiles()
@@ -46,20 +54,19 @@ func gist(public: Bool = false) -> { url: Url }
     file_contents: result.files |> map(f => f.content),
     skipped: result.skipped
   )
-  cred = acquire_gcp_secret(
-    runtime: LocalDev,
-    project_id: "gunbai-secrets",
+  cred = creds.acquire(
     secret_name: "github-token",
-    service_account: null,
-    header_name: null,
+    flow: Stored { secret_name: "github-token" },
+    scheme: Bearer,
     source_id: "gist",
-    required_scopes: ["https://www.googleapis.com/auth/cloud-platform"]
+    required_scopes: []
   )
+  raw = unwrap_token_secret(tok: cred.token)
   gist_result = github.Gist.Create(
     description: branch_info.branch,
     content: content,
     public: public,
-    auth_token: cred.secret
+    auth_token: raw
   )
   return { url: gist_result.html_url as Url }
 }
@@ -67,24 +74,24 @@ func gist(public: Bool = false) -> { url: Url }
 func gist_diff(base_ref: CommitSha = "HEAD~1", public: Bool = false) -> { url: Url }
   uses fs: Filesystem(mode: Read)
   uses net: Network
+  uses creds: CredentialProvider
 {
   current = git.Core.CurrentBranch()
   changes = git.Core.Diff(base: base_ref)
   markdown = render_diff_markdown(diff: changes.diff, branch: current.branch, base_ref: base_ref)
-  cred = acquire_gcp_secret(
-    runtime: LocalDev,
-    project_id: "gunbai-secrets",
+  cred = creds.acquire(
     secret_name: "github-token",
-    service_account: null,
-    header_name: null,
+    flow: Stored { secret_name: "github-token" },
+    scheme: Bearer,
     source_id: "gist",
-    required_scopes: ["https://www.googleapis.com/auth/cloud-platform"]
+    required_scopes: []
   )
+  raw = unwrap_token_secret(tok: cred.token)
   result = github.Gist.Create(
     description: current.branch,
     content: markdown,
     public: public,
-    auth_token: cred.secret
+    auth_token: raw
   )
   return { url: result.html_url as Url }
 }
@@ -92,6 +99,7 @@ func gist_diff(base_ref: CommitSha = "HEAD~1", public: Bool = false) -> { url: U
 func gist_recent(since: String = "3.days.ago", public: Bool = false) -> { url: Url }
   uses fs: Filesystem(mode: Read)
   uses net: Network
+  uses creds: CredentialProvider
 {
   current = git.Core.CurrentBranch()
   base = git.Core.RevListBase(since: since)
@@ -101,21 +109,19 @@ func gist_recent(since: String = "3.days.ago", public: Bool = false) -> { url: U
     branch: current.branch,
     base_ref: base.base_ref
   )
-  cred = acquire_gcp_secret(
-    runtime: LocalDev,
-    project_id: "gunbai-secrets",
+  cred = creds.acquire(
     secret_name: "github-token",
-    service_account: null,
-    header_name: null,
+    flow: Stored { secret_name: "github-token" },
+    scheme: Bearer,
     source_id: "gist",
-    required_scopes: ["https://www.googleapis.com/auth/cloud-platform"]
+    required_scopes: []
   )
+  raw = unwrap_token_secret(tok: cred.token)
   result = github.Gist.Create(
     description: current.branch,
     content: markdown,
     public: public,
-    auth_token: cred.secret
+    auth_token: raw
   )
   return { url: result.html_url as Url }
 }
-
