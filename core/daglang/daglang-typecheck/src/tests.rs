@@ -30,7 +30,13 @@ fn typecheck_accepts_makegen_module() {
     let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
     let source = fs::read_to_string(file).expect("should read makegen source");
     let graph = module_graph_from_sources(&[("dsl/tools/makegen.dag", &source)]);
-    let typed = typecheck_module_graph(graph).expect("makegen should typecheck");
+    let typed = typecheck_module_graph_with_options(
+        graph,
+        TypecheckOptions {
+            allow_unresolved_imports: true,
+        },
+    )
+    .expect("makegen should typecheck");
 
     assert_eq!(typed.modules.len(), 1);
     assert_eq!(typed.modules[0].module_path.as_dotted(), "tools.makegen");
@@ -348,8 +354,13 @@ fn helper() -> String { "a" }
 fn helper() -> String { "b" }
 fn run() -> String { helper() }"#,
     )]);
-    let errors = typecheck_module_graph(graph)
-        .expect_err("relaxed mode should still fail for duplicate callable definition");
+    let errors = typecheck_module_graph_with_options(
+        graph,
+        TypecheckOptions {
+            allow_unresolved_imports: true,
+        },
+    )
+    .expect_err("relaxed mode should still fail for duplicate callable definition");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::DuplicateDefinition { module, name }
@@ -388,8 +399,13 @@ fn relaxed_mode_allows_unresolved_call_target() {
         "sample/main.dag",
         "module sample.main\nfn run() -> String { missing(value: \"ok\") }",
     )]);
-    let typed = typecheck_module_graph(graph)
-        .expect("relaxed mode should allow unresolved callable target");
+    let typed = typecheck_module_graph_with_options(
+        graph,
+        TypecheckOptions {
+            allow_unresolved_imports: true,
+        },
+    )
+    .expect("relaxed mode should allow unresolved callable target");
     assert_eq!(typed.modules.len(), 1);
 }
 
@@ -1035,8 +1051,13 @@ func run(path: String) -> { body: String } {
   return { body: response.body }
 }"#,
     )]);
-    let errors = typecheck_module_graph(graph)
-        .expect_err("relaxed mode should still fail for duplicate service definition");
+    let errors = typecheck_module_graph_with_options(
+        graph,
+        TypecheckOptions {
+            allow_unresolved_imports: true,
+        },
+    )
+    .expect_err("relaxed mode should still fail for duplicate service definition");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::DuplicateDefinition { module, name }
@@ -1061,8 +1082,13 @@ func run(path: String) -> { body: String } {
   return { body: response.body }
 }"#,
     )]);
-    let typed = typecheck_module_graph(graph)
-        .expect("relaxed mode should allow unresolved service call for lower-stage validation");
+    let typed = typecheck_module_graph_with_options(
+        graph,
+        TypecheckOptions {
+            allow_unresolved_imports: true,
+        },
+    )
+    .expect("relaxed mode should allow unresolved service call for lower-stage validation");
     assert_eq!(typed.modules.len(), 1);
 }
 
@@ -1453,7 +1479,13 @@ fn relaxed_mode_allows_unknown_used_resource_type() {
         "unknown_uses_relaxed.dag",
         "module sample.uses\nfunc run() -> { ok: Bool } uses fs: MissingResource { return { ok: true } }",
     )]);
-    let typed = typecheck_module_graph(graph).expect("relaxed mode should allow unknown uses");
+    let typed = typecheck_module_graph_with_options(
+        graph,
+        TypecheckOptions {
+            allow_unresolved_imports: true,
+        },
+    )
+    .expect("relaxed mode should allow unknown uses");
     assert_eq!(typed.modules.len(), 1);
 }
 
@@ -1468,8 +1500,13 @@ func run() -> { ok: Bool } uses fs: SharedResource {
   return { ok: true }
 }"#,
     )]);
-    let errors = typecheck_module_graph(graph)
-        .expect_err("relaxed mode should still fail for duplicate resource definition");
+    let errors = typecheck_module_graph_with_options(
+        graph,
+        TypecheckOptions {
+            allow_unresolved_imports: true,
+        },
+    )
+    .expect_err("relaxed mode should still fail for duplicate resource definition");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::DuplicateDefinition { module, name }
@@ -1595,8 +1632,13 @@ func run() -> { ok: Bool } provides out: SharedResource {
   return { ok: true }
 }"#,
     )]);
-    let errors = typecheck_module_graph(graph)
-        .expect_err("relaxed mode should still fail for duplicate resource definition");
+    let errors = typecheck_module_graph_with_options(
+        graph,
+        TypecheckOptions {
+            allow_unresolved_imports: true,
+        },
+    )
+    .expect_err("relaxed mode should still fail for duplicate resource definition");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::DuplicateDefinition { module, name }

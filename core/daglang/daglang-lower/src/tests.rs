@@ -1,7 +1,7 @@
 use super::*;
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::parser;
-use daglang_typecheck::typecheck_module_graph;
+use daglang_typecheck::typecheck_module_graph_with_options;
 use gunbc_dag::{build_bootstrap_graph, build_codegen_graph, build_deps_graph, build_pragma_graph};
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::{Edge, Port};
@@ -27,7 +27,13 @@ fn typed_project_from_sources(sources: &[(&str, &str)]) -> TypedProject {
             }
         })
         .collect();
-    typecheck_module_graph(ModuleGraph { modules }).expect("typecheck should succeed")
+    typecheck_module_graph_with_options(
+        ModuleGraph { modules },
+        daglang_typecheck::TypecheckOptions {
+            allow_unresolved_imports: true,
+        },
+    )
+    .expect("typecheck should succeed")
 }
 
 fn callable_stmts_from_source(source: &str) -> Vec<Stmt> {
@@ -86,7 +92,13 @@ fn typed_project_for_module_with_dependency_closure(module_name: &str) -> TypedP
             .collect::<Vec<_>>();
         modules.push(module);
     }
-    typecheck_module_graph(ModuleGraph { modules }).expect("typecheck should succeed")
+    typecheck_module_graph_with_options(
+        ModuleGraph { modules },
+        daglang_typecheck::TypecheckOptions {
+            allow_unresolved_imports: true,
+        },
+    )
+    .expect("typecheck should succeed")
 }
 
 fn lower_target_module(typed: &TypedProject, module_name: &str) -> Dag<LoweredOp> {
@@ -3221,7 +3233,13 @@ fn lower_typed_project_for_module_with_dependency_closure_and_entry(
         }
     }
 
-    let typed = typecheck_module_graph(graph).expect("typecheck should succeed");
+    let typed = typecheck_module_graph_with_options(
+        graph,
+        daglang_typecheck::TypecheckOptions {
+            allow_unresolved_imports: true,
+        },
+    )
+    .expect("typecheck should succeed");
 
     // Build the scope: target module + all its transitive dependencies.
     let module_lookup: HashMap<String, usize> = typed

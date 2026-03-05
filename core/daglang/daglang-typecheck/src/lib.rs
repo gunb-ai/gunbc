@@ -38,17 +38,9 @@ pub struct TypedProject {
     pub modules: Vec<TypedModule>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct TypecheckOptions {
     pub allow_unresolved_imports: bool,
-}
-
-impl Default for TypecheckOptions {
-    fn default() -> Self {
-        Self {
-            allow_unresolved_imports: true,
-        }
-    }
 }
 
 /// A typechecked module.
