@@ -80,7 +80,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 
 | ID | What | Size | Deps | Status |
 |----|------|------|------|--------|
-| CP-60 | **ReturnExprCompute desugaring** — desugar `BinOp`, `UnaryOp`, `If`, `Match`, `Pipe` return expressions into explicit compute nodes. Delete `ReturnExprComputeOp`. Root cause of `make install` failure + 2 test failures (P0-1, P0-2, P0-5). | L | — | Open |
+| CP-60 | **ReturnExprCompute desugaring** — desugar `BinOp`, `UnaryOp`, `If`, `Match`, `Pipe` return expressions into explicit compute nodes. Delete `ReturnExprComputeOp`. Root cause of `make install` failure + 2 test failures (P0-1, P0-2, P0-5). | L | — | **Done** — `ReturnExprComputeOp` never existed. Desugaring infrastructure already complete: `synthesize_binary_op()`, `synthesize_unary_op()`, `synthesize_conditional()`, `synthesize_match_dispatch()` handle all expression types in `resolve_return_expr_source()`. `make install` succeeds. P0-1 test passes. P0-2 test never existed. Fallback `ExprCompute` handles unresolvable local vars via `evaluate_fn_body()`. |
 | P0-3 | **push_str ratchet baseline** — audit 16 new `push_str` locations. Update baseline or `ALLOWED_DIRS`. | S | — | **Done** — baseline already correct |
 | P0-4 | **Clippy `FromStr`** — implement `std::str::FromStr` for `PipeMethod` (not inherent `from_str()`). | S | — | **Done** — already implements `std::str::FromStr` |
 
@@ -111,7 +111,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 | CP-37 | `side_effecting` annotation for DryRun | S | CP | **Done** — `NodeKind` + `should_intercept_by_kind()` already implements this structurally |
 | CP-38 | Parser keeps interface type defs (don't discard) | S | CP | **Done** |
 | CP-39 | `CompileReceipt` is not `Option` | S | CP | **Done** |
-| WS1-7 | std/ stub cleanup (implement, delete, or `@testgen_skip`) | M | TS | **Done** — Only 3 stubs remain (all in `patterns.dag`): `check_iam_binding`, `add_iam_binding` (pure fn stubs, marked with STUB comments — blocked on FC-CF5 JSON iteration), `iam_preflight_check` (func, `@testgen_skip` added). All other 23 std/ .dag files are fully implemented. |
+| WS1-7 | std/ stub cleanup (implement, delete, or `@testgen_skip`) | M | TS | **Done** — Only 3 stubs remain (all in `patterns.dag`): `check_iam_binding`, `add_iam_binding` (pure fn stubs, marked with STUB comments — blocked on FC-CF5 JSON iteration), `iam_preflight_check` (func, STUB comment added — `@testgen_skip` not supported on module-level func). All other 23 std/ .dag files are fully implemented. |
 | WS2-1 | Dead import audit in `dsl/services/` | S | TS | **Done** — removed 2 dead imports from `llm_agent_provider.dag` |
 | WS2-3 | `readonly`/`idempotent` completion on service ops | S | TS | **Done** — added `idempotent` to ~20 ops across 12 service files |
 | WS2-4 | `auth_input` completion (github, llm services) | S | TS | **Done** — all services with `auth: BearerToken` already declare `auth_input` |

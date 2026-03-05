@@ -426,7 +426,7 @@ fn add_iam_binding(bindings: Json, service_account: String, role: String) -> { u
   return { updated_bindings: bindings }
 }
 
-@testgen_skip(true)
+// STUB: depends on check_iam_binding + add_iam_binding stubs above
 func iam_preflight_check(
   access_token: Secret,
   project_id: ProjectId,
