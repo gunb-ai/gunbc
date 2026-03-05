@@ -1,6 +1,6 @@
 # Postmortem: `make gist` Real Mode Failed Despite Green Compile/Test Signals
 
-Canonical rolling tracker: `TODO/gist-rolling-postmortem.md`
+Canonical rolling tracker: `TODO/rolling-postmortem.md`
 
 > **Date**: 2026-03-05  
 > **Severity**: High (trust regression)  
