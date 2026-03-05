@@ -2743,17 +2743,17 @@ fn run() -> Bool {
     }
 
     #[test]
-    fn determinism_ci_pipeline_compile_produces_identical_receipts() {
+    fn determinism_ci_tool_compile_produces_identical_receipts() {
         let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
         let root = workspace.join("dsl");
-        let file = root.join("pipelines/ci.dag");
+        let file = root.join("tools/ci.dag");
 
         let receipt_a = compile_with_receipt(&root, Some(&file));
         let receipt_b = compile_with_receipt(&root, Some(&file));
 
         assert_eq!(
             receipt_a, receipt_b,
-            "two compilations of the CI pipeline must produce identical receipts"
+            "two compilations of the CI tool must produce identical receipts"
         );
     }
 

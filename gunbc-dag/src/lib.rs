@@ -40,7 +40,7 @@ pub mod resources {
     pub use crate::resource_defs::*;
 }
 // Re-exports for convenience
-pub use ci::{build_ci_graph, ci_signature, ci_workflow_config, CIGraphOp};
+pub use ci::ci_live_test_secrets;
 pub use docgen::{build_docgen_graph, DocgenGraphOp};
 pub use dry_run::wire_fs_env_write_mock;
 pub use fs_env::{add_fs_env_root_node, wire_fs_env_write_edges};

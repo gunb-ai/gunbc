@@ -1,0 +1,47 @@
+// tools/ci.dag -- CI orchestration tool.
+//
+// Runs codegen, bootstrap, then cargo build, test, and clippy (serialized
+// to avoid target/ lock contention). Aggregates results into a summary.
+//
+// This is a func (not pipeline) so it produces an executable DAG, following
+// the same pattern as build.dag, gist.dag, pragma.dag, etc.
+//
+// Replaces: gunbc-dag/src/bin/ci.rs (handwritten binary)
+//
+// Deferred stages (need extern bridges for runtime input discovery):
+//   - pragma (needs load_pragma_directives() extern func)
+//   - testgen (needs discover_testgen_targets() extern func)
+//   - deps check (needs check_deps_config() func)
+//   - guardrails (needs run_guardrail_checks() func)
+//   - verification (needs verify_*_output() funcs)
+
+module tools.ci
+
+import std.types { Summary, StageResult }
+import extdeps.cargo
+import shared.dag_util { aggregate_results, format_report, stage_from_output }
+
+func ci() -> { success: Bool, report: String } {
+  // Phase 1: Build (must succeed before test/clippy)
+  build = cargo.Build.Build()
+
+  // Phase 2: Test (serialized after build to avoid target/ lock contention)
+  test = cargo.Build.Test() [after build, when build.success]
+
+  // Phase 3: Clippy (serialized after test to avoid target/ lock contention)
+  clippy = cargo.Build.Clippy() [after test]
+
+  // Phase 4: Aggregate using shared helper
+  stages = [
+    stage_from_output(name: "build",  success: build.success,  stdout: build.stdout,  stderr: build.stderr,  skipped: false),
+    stage_from_output(name: "test",   success: test.success,   stdout: test.stdout,   stderr: test.stderr,   skipped: !build.success),
+    stage_from_output(name: "clippy", success: clippy.success, stdout: clippy.stdout, stderr: clippy.stderr, skipped: !build.success)
+  ]
+  summary = aggregate_results(stages: stages)
+  report = format_report(summary: summary, stages: stages)
+
+  return {
+    success: build.success && test.success && clippy.success,
+    report: report
+  }
+}

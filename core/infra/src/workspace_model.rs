@@ -3,7 +3,7 @@
 //! The hardcoded `workspace_crates()` (32 CrateSpec entries) and
 //! `known_generator_edges()` (6 GeneratorEdge entries) have been removed.
 //! Crate structure is derivable from `cargo metadata`. Generator edges
-//! are modeled in `dsl/pipelines/ci.dag` and `CompileOutput.output_paths`.
+//! are modeled in DSL tool definitions and `CompileOutput.output_paths`.
 //!
 //! What remains: commit policies (used by .gitignore generation) and
 //! toolchain requirements.

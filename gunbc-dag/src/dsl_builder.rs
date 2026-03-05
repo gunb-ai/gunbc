@@ -151,11 +151,8 @@ mod tests {
 
     #[test]
     fn builds_ci_dsl_graph() {
-        let dag = build_dsl_graph("pipelines/ci.dag").expect("ci DSL graph should resolve");
+        let dag = build_dsl_graph_for_entrypoint("tools/ci.dag", Some("ci"), None)
+            .expect("ci DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
-        assert!(
-            !dag.nodes.iter().any(|node| node.id.0 == "pipelines.ci::ci"),
-            "runtime CI graph should not include pipeline metadata nodes"
-        );
     }
 }

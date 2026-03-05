@@ -1730,15 +1730,15 @@ mod tests {
     #[test]
     fn test_generate_step_mode_cli() {
         let tool = ToolMeta {
-            crate_name: "gunbc-ci".into(),
-            tool_name: "ci".into(),
-            description: "CI pipeline".into(),
-            graph_builder_call: "build_ci_graph".into(),
+            crate_name: "gunbc-build-all".into(),
+            tool_name: "build-all".into(),
+            description: "Build pipeline".into(),
+            graph_builder_call: "build_build_graph".into(),
             graph_builder_args: "".into(),
             returns_result: true,
             success_port: Some("overall_success".into()),
             enable_step_mode: true,
-            mock_spec_call: Some("ci_mock_spec()".into()),
+            mock_spec_call: Some("build_mock_spec()".into()),
             enable_mode: false,
             available_profiles: vec![],
         };
@@ -1762,10 +1762,10 @@ mod tests {
     #[test]
     fn test_generate_cli_with_result_builder() {
         let tool = ToolMeta {
-            crate_name: "gunbc-ci".into(),
-            tool_name: "ci".into(),
+            crate_name: "gunbc-build-all".into(),
+            tool_name: "build-all".into(),
             description: "Test".into(),
-            graph_builder_call: "build_ci_graph".into(),
+            graph_builder_call: "build_build_graph".into(),
             graph_builder_args: "".into(),
             returns_result: true,
             success_port: None,
@@ -1777,7 +1777,7 @@ mod tests {
         let entrypoints = vec![];
 
         let code = generate_cli(&tool, &entrypoints);
-        assert!(code.contains("match build_ci_graph()"));
+        assert!(code.contains("match build_build_graph()"));
         assert!(code.contains("Ok(d) => d"));
         assert!(code.contains("process::exit(1)"));
     }
@@ -1820,10 +1820,10 @@ mod tests {
     #[test]
     fn test_step_mode_source_file_structure() {
         let tool = ToolMeta {
-            crate_name: "gunbc-ci".into(),
-            tool_name: "ci".into(),
-            description: "CI".into(),
-            graph_builder_call: "build_ci_graph".into(),
+            crate_name: "gunbc-build-all".into(),
+            tool_name: "build-all".into(),
+            description: "Build".into(),
+            graph_builder_call: "build_build_graph".into(),
             graph_builder_args: "".into(),
             returns_result: true,
             success_port: Some("overall_success".into()),

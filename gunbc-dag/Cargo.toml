@@ -54,10 +54,6 @@ glob = { workspace = true }
 
 
 [[bin]]
-name = "gunbc-ci"
-path = "src/bin/ci.rs"
-
-[[bin]]
 name = "gunbc-cigen"
 path = "../target/codegen/bin/cigen/main.rs"
 
@@ -127,3 +123,7 @@ path = "../target/codegen/bin/deps-config/main.rs"
 [[bin]]
 name = "gunbc-justgen"
 path = "../target/codegen/bin/justgen/main.rs"
+
+[[bin]]
+name = "gunbc-ci"
+path = "../target/codegen/bin/ci/main.rs"
