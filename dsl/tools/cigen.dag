@@ -18,6 +18,7 @@
 module tools.cigen
 
 import std.patterns { content_upsert }
+import std.resources { Filesystem }
 import extdeps.yaml {
   yaml_header, yaml_indent, yaml_indented_mapping,
   yaml_indented_item, yaml_sequence_block
@@ -216,7 +217,9 @@ fn gitlab_output_path() -> String {
 
 // ── Entry point ────────────────────────────────────────────────────
 
-func cigen() -> { written: Bool } {
+func cigen() -> { written: Bool }
+  uses fs: Filesystem(mode: ReadWrite)
+{
   discovery = discover_ci_config()
 
   github_yaml = render_github_workflow(discovery: discovery)

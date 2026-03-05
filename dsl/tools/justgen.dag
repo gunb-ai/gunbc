@@ -7,6 +7,7 @@
 module tools.justgen
 
 import std.patterns { content_upsert }
+import std.resources { Filesystem }
 import extdeps.make {
   CoreWorkflow, MetaTargetDef, ResourceTargetEntry,
   ResourceNeed, DiscoveredTool, ExtraTarget, EntrypointParam
@@ -167,7 +168,9 @@ extern func just_discover_tools() -> List<DiscoveredTool>
 
 // ── Entry point ──────────────────────────────────────────────────────
 
-func justgen(path: String = "Justfile") -> { written: Bool } {
+func justgen(path: String = "Justfile") -> { written: Bool }
+  uses fs: Filesystem(mode: ReadWrite)
+{
   tools = just_discover_tools()
   content = render_justfile_content(workflows: core_workflows, metas: meta_targets, tools: tools, res_targets: resource_targets)
   result = content_upsert(content: content, path: path)

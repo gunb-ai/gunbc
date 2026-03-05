@@ -5,6 +5,7 @@
 
 module tools.design
 
+import std.resources { Network }
 import extdeps.llm.openai
 import extdeps.llm.anthropic
 
@@ -38,7 +39,9 @@ func generate_design(
   context: String?,
   provider: String = "anthropic",
   model: String = "claude-sonnet-4-20250514"
-) -> { content: String, summary: String, source: String, sections: Json? } {
+) -> { content: String, summary: String, source: String, sections: Json? }
+  uses net: Network
+{
   prompt = design_user_prompt(idea: idea, context: context)
   content = match provider {
     "openai" => llm.OpenAI.ChatCompletion(
@@ -74,7 +77,9 @@ func review_design(
   design: String,
   provider: String = "anthropic",
   model: String = "claude-sonnet-4-20250514"
-) -> { findings: Json, approved: Bool, summary: String } {
+) -> { findings: Json, approved: Bool, summary: String }
+  uses net: Network
+{
   prompt = review_user_prompt(design: design)
   review_text = match provider {
     "openai" => llm.OpenAI.ChatCompletion(

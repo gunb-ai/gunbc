@@ -323,7 +323,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 |----|------|------|--------|
 | WS6-1 | Fix `testgen.dag` (missing extern func) | S | Open |
 | WS6-2 | Fix `deps.dag` (missing externs) | S | Open |
-| WS6-3 | Add `uses` declarations to makegen, pragma, build funcs | S | Open |
+| WS6-3 | Add `uses` declarations to makegen, pragma, build funcs | S | **Done** — Added `uses fs: Filesystem(mode: ReadWrite)` to makegen, pragma, cigen, justgen. Added `uses net: Network` to design generate_design and review_design. |
 | WS6-4 | Fill `ci.dag` stage bodies (12 stages) | L | Open |
 | WS6-5 | Fill remaining workflow stage bodies | L | Open |
 | WS7-3 | Migrate remaining extern impls to DSL (10 → 0 or justified) | L | Open |
@@ -351,7 +351,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 | CP-52 | Preserve service provider metadata on lowered nodes | M | — | **Done** — Added `OperationKey::provider()` method (extracts first segment of service path). Auto-mock now uses `resolve_mock_provider()` which reads `node.operation_key` metadata instead of fragile `infer_provider_from_node_id()` string heuristic. Legacy fallback retained for non-service nodes. |
 | CP-53 | Flow response contracts through IR to testgen | L | CP-18 beneficial | Open |
 | CP-54 | Derive behavioral properties once, flow to testgen | S | — | **Done** — Lowerer stamps `ServiceCallMetadata { idempotent, readonly }` once per transport node. Derive pass BFS-aggregates per callable into `CallableProperties`. Testgen/fidelity reads pre-aggregated `CallableProperties` from `DerivedArtifacts`. No re-derivation exists. |
-| CP-55 | Obligation provenance tracking (`CompilerGap` ratchet metric) | M | — | Open |
+| CP-55 | Obligation provenance tracking (`CompilerGap` ratchet metric) | M | — | **Done** — `ObligationProvenance` enum (CompilerGap/InherentlyRuntime) on `ProofObligation`. `new()` defaults to CompilerGap, `runtime()` defaults to InherentlyRuntime. `with_gap()` builder, `is_compiler_gap()` predicate. `compiler_gap_count()` on `ObligationSet`, `compiler_gaps` field on `ObligationStats` + Display. Ratchet: gap count should only decrease. |
 | CP-56 | Eliminate testgen re-derivation of transport triplets | S | CP-34 | **Done** — testgen already uses `NodeKind::TransportExecute/Prepare/Parse` (from CP-34) for all transport identification. No port-type string heuristics remain in codegen/testgen. |
 
 ### G.2: Testgen error-scenario hardening

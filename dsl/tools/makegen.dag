@@ -7,6 +7,7 @@
 module tools.makegen
 
 import std.patterns { content_upsert }
+import std.resources { Filesystem }
 import extdeps.make {
   MakeTarget, ToolTarget, EntrypointParam,
   CoreWorkflow, MetaTargetDef, ResourceTargetEntry,
@@ -271,7 +272,9 @@ fn render_makefile_content(workflows: List<CoreWorkflow>, metas: List<MetaTarget
 
 // ── Entry point ───────────────────────────────────────────────────────
 
-func makegen(path: String = "Makefile") -> { written: Bool } {
+func makegen(path: String = "Makefile") -> { written: Bool }
+  uses fs: Filesystem(mode: ReadWrite)
+{
   tools = discover_tools()
   content = render_makefile_content(workflows: core_workflows, metas: meta_targets, tools: tools, res_targets: resource_targets)
   result = content_upsert(content: content, path: path)
