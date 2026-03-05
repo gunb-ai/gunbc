@@ -1940,6 +1940,109 @@ pipeline ci {
     )));
 }
 
+// --- WS3-5: Branch type unification ---
+
+#[test]
+fn if_else_branch_type_mismatch_string_vs_int() {
+    let graph = module_graph_from_sources(&[(
+        "branch_mismatch.dag",
+        r#"module test.branch_mismatch
+
+fn check(flag: Bool) -> String {
+  if flag { "hello" } else { 42 }
+}"#,
+    )]);
+    let errors = typecheck_module_graph(graph).expect_err("mismatched branches should fail");
+    assert!(
+        errors.iter().any(|e| matches!(
+            e,
+            TypeError::BranchTypeMismatch { then_type, else_type }
+                if then_type == "String" && else_type == "Int"
+        )),
+        "expected BranchTypeMismatch(String, Int), got: {errors:?}"
+    );
+}
+
+#[test]
+fn if_else_same_type_no_error() {
+    let graph = module_graph_from_sources(&[(
+        "branch_ok.dag",
+        r#"module test.branch_ok
+
+fn pick(flag: Bool) -> String {
+  if flag { "hello" } else { "world" }
+}"#,
+    )]);
+    let result = typecheck_module_graph(graph);
+    assert!(result.is_ok(), "same-type branches should pass: {result:?}");
+}
+
+#[test]
+fn match_arm_type_mismatch_string_vs_bool() {
+    let graph = module_graph_from_sources(&[(
+        "match_mismatch.dag",
+        r#"module test.match_mismatch
+
+fn check(x: Int) -> String {
+  match x {
+    1 => "one"
+    _ => true
+  }
+}"#,
+    )]);
+    let errors = typecheck_module_graph(graph).expect_err("mismatched match arms should fail");
+    assert!(
+        errors.iter().any(|e| matches!(
+            e,
+            TypeError::MatchArmTypeMismatch { first_type, mismatched_type }
+                if first_type == "String" && mismatched_type == "Bool"
+        )),
+        "expected MatchArmTypeMismatch(String, Bool), got: {errors:?}"
+    );
+}
+
+#[test]
+fn match_arms_same_sum_type_variants_no_error() {
+    let graph = module_graph_from_sources(&[(
+        "match_variants.dag",
+        r#"module test.match_variants
+
+type Color = Red | Blue | Green
+
+fn pick(x: Int) -> Color {
+  match x {
+    1 => Red
+    2 => Blue
+    _ => Green
+  }
+}"#,
+    )]);
+    let result = typecheck_module_graph(graph);
+    assert!(
+        result.is_ok(),
+        "same-parent variant arms should pass: {result:?}"
+    );
+}
+
+#[test]
+fn if_else_same_sum_type_variants_no_error() {
+    let graph = module_graph_from_sources(&[(
+        "if_variants.dag",
+        r#"module test.if_variants
+
+type Status = Active | Inactive
+
+fn pick(flag: Bool) -> Status {
+  if flag { Active } else { Inactive }
+}"#,
+    )]);
+    let result = typecheck_module_graph(graph);
+    assert!(
+        result.is_ok(),
+        "same-parent variant if/else should pass: {result:?}"
+    );
+}
+
 #[test]
 fn pipeline_when_condition_must_be_bool() {
     let graph = module_graph_from_sources(&[(

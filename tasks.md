@@ -256,7 +256,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 | WS3-2 | DSL types → `Dag<TypeOp>` at parse time | XL | Open |
 | WS3-3 | Typechecker per-layer comparison (delete `normalize_type_id`) | L | Open |
 | WS3-4 | Optionality as DAG layer (not string suffix) | L | Open |
-| WS3-5 | Branch type unification (if/else, match arms) | M | Open |
+| WS3-5 | Branch type unification (if/else, match arms) | M | **Done** — `BranchTypeMismatch` (TC038) and `MatchArmTypeMismatch` (TC039) errors with help text. Variant→parent resolution via `collect_variant_parents()` (same sum type variants are compatible). `are_branch_types_compatible()` with confidence scoring — only flags clear primitive mismatches (String vs Int), not unresolved DSL types. 5 unit tests. Return types preserved (no downstream inference changes). |
 | WS3-6 | Match exhaustiveness (static coproduct check) | M | Open |
 | WS3-7 | Behavioral property enforcement Level 2 (readonly/idempotent vs call graph) | M | Open |
 | WS3-8 | Behavioral contract consumption Level 3 (OperationBehavior) | L | Open |
