@@ -547,9 +547,6 @@ fn render_obligations_json_emits_expected_keys() {
     assert!(parsed.get("service_transport_idempotent_targets").is_some());
     assert!(parsed.get("service_transport_readonly_targets").is_some());
     assert!(parsed
-        .get("service_transport_permission_scoped_targets")
-        .is_some());
-    assert!(parsed
         .get("interface_contract_verification_targets")
         .is_some());
 }
@@ -604,7 +601,6 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 transport: ServiceTransportClass::ShellLocal,
                 idempotent: true,
                 readonly: true,
-                permissions: vec![],
                 spec: None,
             })),
             is_interactive: false,
@@ -627,7 +623,6 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 transport: ServiceTransportClass::ShellLocal,
                 idempotent: true,
                 readonly: true,
-                permissions: vec![],
                 spec: None,
             })),
             is_interactive: false,
@@ -650,7 +645,6 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 transport: ServiceTransportClass::ShellLocal,
                 idempotent: true,
                 readonly: true,
-                permissions: vec![],
                 spec: None,
             })),
             is_interactive: false,

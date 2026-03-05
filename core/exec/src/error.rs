@@ -53,14 +53,9 @@ pub struct RestErrorLayer {
 /// The [`AcquisitionDiagnostic`] contains both the lock (what resource) and
 /// key (what credential) identity, so the error system delegates formatting
 /// to the types themselves.
-///
-/// `required_permissions` surfaces the scopes/permissions the operation
-/// requires (from `permissions` declarations on operations). Empty when
-/// the operation declares no permission requirements.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AcquisitionErrorLayer {
     pub diagnostic: AcquisitionDiagnostic,
-    pub required_permissions: Vec<String>,
 }
 
 /// Service-level failure information.
@@ -429,7 +424,6 @@ pub enum TransportContext {
 pub struct AuthContext {
     pub scheme: Option<String>,
     pub credential_ref: Option<String>,
-    pub required_permissions: Vec<String>,
     pub lock_target: String,
 }
 
@@ -491,7 +485,6 @@ pub fn decorate_service_failure(
                 },
                 key,
             },
-            required_permissions: auth.required_permissions,
         }));
     }
 
@@ -602,7 +595,6 @@ mod tests {
                         .unwrap_or_else(|| "static".into()),
                 }),
             },
-            required_permissions: vec![],
         })
     }
 
@@ -877,7 +869,6 @@ mod tests {
                     source: "env:GITHUB_TOKEN".into(),
                 }),
             },
-            required_permissions: vec![],
         };
         assert_eq!(
             layer.diagnostic.to_string(),
@@ -902,25 +893,6 @@ mod tests {
             reason: Some("Forbidden".into()),
         }));
         assert_eq!(err.classification(), ErrorClass::Auth);
-    }
-
-    #[test]
-    fn acquisition_layer_with_permissions() {
-        let layer = AcquisitionErrorLayer {
-            diagnostic: AcquisitionDiagnostic {
-                lock: LockIdentity {
-                    resource: "AuthContext".into(),
-                    mode: "Read".into(),
-                    target: "GET https://storage.googleapis.com/bucket".into(),
-                },
-                key: None,
-            },
-            required_permissions: vec!["storage.read".into(), "storage.inspect".into()],
-        };
-        assert_eq!(
-            layer.required_permissions,
-            vec!["storage.read", "storage.inspect"]
-        );
     }
 
     #[test]
@@ -953,7 +925,6 @@ mod tests {
             Some(AuthContext {
                 scheme: Some("BearerToken".into()),
                 credential_ref: Some("GITHUB_TOKEN".into()),
-                required_permissions: vec!["gist:write".into()],
                 lock_target: "POST https://api.github.com/gists".into(),
             }),
         );

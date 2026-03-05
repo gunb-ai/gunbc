@@ -1152,7 +1152,6 @@ mod tests {
             transport: ServiceTransportClass::ShellLocal,
             idempotent: true,
             readonly: false,
-            permissions: vec![],
             spec: None,
         };
         let node = make_node(
@@ -1191,7 +1190,6 @@ mod tests {
             transport: ServiceTransportClass::RestNetwork,
             idempotent: true,
             readonly: true,
-            permissions: vec!["repo:read".into()],
             spec: None,
         };
         let node = make_node(
@@ -1227,7 +1225,6 @@ mod tests {
             transport: ServiceTransportClass::RestNetwork,
             idempotent: true,
             readonly: true,
-            permissions: vec![],
             spec: None,
         };
         let node = make_node(

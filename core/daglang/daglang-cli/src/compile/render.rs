@@ -275,7 +275,6 @@ pub fn render_obligations(derived: &DerivedArtifacts, format: OutputFormat) -> S
             "service_transport_external_targets": obligations.service_transport_external_targets,
             "service_transport_idempotent_targets": obligations.service_transport_idempotent_targets,
             "service_transport_readonly_targets": obligations.service_transport_readonly_targets,
-            "service_transport_permission_scoped_targets": obligations.service_transport_permission_scoped_targets,
             "service_param_source_targets": obligations.service_param_source_targets,
             "resource_provide_targets": obligations.resource_provide_targets,
             "resource_acquire_targets": obligations.resource_acquire_targets,
@@ -353,12 +352,6 @@ fn render_obligations_text(obligations: &TestObligations) -> String {
         out,
         "  service_transport_readonly_targets: {}",
         obligations.service_transport_readonly_targets
-    )
-    .ok();
-    writeln!(
-        out,
-        "  service_transport_permission_scoped_targets: {}",
-        obligations.service_transport_permission_scoped_targets
     )
     .ok();
     writeln!(

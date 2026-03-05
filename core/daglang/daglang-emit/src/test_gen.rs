@@ -526,7 +526,6 @@ mod tests {
             service_transport_external_targets: 0,
             service_transport_idempotent_targets: 0,
             service_transport_readonly_targets: 0,
-            service_transport_permission_scoped_targets: 0,
             service_param_source_targets: 0,
             resource_provide_targets: 0,
             resource_acquire_targets: 0,
