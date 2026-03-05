@@ -33,6 +33,20 @@ What is still not continuously proven in CI:
 - Cloud profile mutation path (claim/outcome/artifact/signal in hosted infra).
 - Multi-worker cloud contention behavior.
 
+## 2.1 Credentialing Postmortem (No-Fallback Direction)
+
+As of 2026-03-05, credentialing is not yet fully modeled end-to-end for SDLC:
+
+- `tools/gist.dag` currently resolves GitHub token via explicit env -> gcloud fallback logic.
+- `profiles.sdlc.local` still binds provider credentials through `env("GITHUB_TOKEN")` and `env("CODEX_API_KEY")`.
+- Profile `secret("...")` bindings lower to literal `secret:<name>` values on `res:credential`; transport execution does not resolve those refs through `CredentialProvider`.
+- `codex.AgentProvider` auth is effectively environment-inherited; profile `credential` binding is not the active auth path for its shell operations.
+
+Conclusion:
+
+- Do not copy gist fallback behavior into SDLC.
+- Treat strict modeled credentialing as an explicit migration track: profile-bound acquisition and runtime secret-ref resolution, with no per-test/per-user ad-hoc secret selection.
+
 ## 3. Scenario Ladder
 
 ### Scenario A: Demo Safe (Now)
@@ -61,7 +75,7 @@ Profile:
 
 - `profiles.sdlc.local`
 
-Required secrets/env:
+Required secrets/env (current state, transitional):
 
 - `GITHUB_TOKEN`
 - `CODEX_API_KEY`
@@ -162,4 +176,3 @@ For each scenario, decide with three questions:
 3. Cost: Is operator effort acceptable for current stage of adoption?
 
 If any answer is "no", remain on the previous scenario and fix gaps there.
-

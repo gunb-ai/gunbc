@@ -40,6 +40,18 @@ method = "brew"
 packages = ["gh"]
 
 [[dependency]]
+name = "gcloud"
+verify = "gcloud --version"
+
+[dependency.install.linux]
+method = "apt"
+packages = ["google-cloud-cli"]
+
+[dependency.install.macos]
+method = "brew"
+packages = ["google-cloud-sdk"]
+
+[[dependency]]
 name = "git"
 verify = "git --version"
 
