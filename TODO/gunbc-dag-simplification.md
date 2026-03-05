@@ -77,7 +77,7 @@ Each bridge exists because the compiler doesn't do enough. For each: current sta
 - **Final state**: All fn bodies are lowered to SubDag form at compile time. No `LoweredFnBody` in the runtime IR. `evaluate_fn_body()` exists only in the lowerer for compile-time evaluation (data declarations, config rendering). Runtime never evaluates fn bodies — it executes SubDag nodes.
 - **Acceptance**: `FnBodyCallableOp` struct **deleted**. `fn_body` field **deleted** from `LoweredOp::Callable`. `grep -r 'FnBodyCallableOp\|LoweredFnBody' core/resolve/` returns 0. `evaluate_fn_body()` remains in `daglang-lower/src/eval.rs` but is only called at compile time.
 - **Depends on**: Bridge 1 (SubDag direct lowering).
-- **Enables**: RF-E5 test restoration (`makegen_runtime_differential`). **Fixes `make gist` postmortem Bug 1** (unguarded transport nodes for non-matching match arms).
+- **Enables**: RF-E5 test restoration (`makegen_runtime_differential`). **Fixes `make gist` postmortem Bug 1** (unguarded transport nodes for non-matching match arms). **Also fixes P0-5 / P1-1** from `docs/review/gap-analysis-tasks.md` (`make install` fails on unresolvable compute nodes).
 - **Effort**: Medium.
 
 **Bridge 2b: Default parameter injection** — missing compiler feature.
@@ -114,6 +114,17 @@ Each bridge exists because the compiler doesn't do enough. For each: current sta
 - **Incremental trap**: Unify all file ops into one adapter, add caching.
 - **Final state**: File transport handled by typed IR nodes, same as REST/Shell. `transport file { op: READ, path: "..." }` lowers to a `FileRequest` builder node + `FileResponse` parser node. No generic adapter indirection.
 - **Acceptance**: `GenericFilePrepareOp` and `GenericFileParseOp` structs **deleted**. `grep -r 'GenericFilePrepareOp\|GenericFileParseOp' core/` returns 0. File transport uses same prepare/execute/parse triplet pattern as REST and Shell.
+- **Effort**: Medium.
+
+**Bridge 11: Shell hermeticity annotation** — hermetic vs external classification erased at transport layer.
+
+- **Location**: `core/ir/src/transport/mod.rs` (ShellRequest struct)
+- **Design doc**: `docs/design/shell-hermeticity-annotation.md`
+- **Current**: `TransportRequest::Shell(ShellRequest)` erases whether the producer is hermetic (local, deterministic, no external network/auth) or external. `git ls-files` and `gh gist create` become structurally identical after lowering.
+- **Incremental trap**: Infer hermeticity from command string prefixes ("git" → hermetic).
+- **Final state**: `ShellProducerSemantics` struct with `Hermeticity` enum (Hermetic | External) as optional field on `ShellRequest`. Producers set it at construction time. Testgen categorization uses it. Strict mode rejects `None` for classified workflows.
+- **Acceptance**: `ShellProducerSemantics` + `Hermeticity` types exist in `core/ir/src/transport/mod.rs`. `ShellRequest.semantics` field populated by git, cargo, gist, shell producers. Testgen reads `semantics.hermeticity`. `grep -r 'ShellProducerSemantics' core/ir/` returns 2+ hits (definition + usage). `grep -r 'Hermeticity' core/ir/` returns 2+ hits.
+- **Depends on**: Nothing. Can run in parallel with all other bridges.
 - **Effort**: Medium.
 
 ---
@@ -180,9 +191,10 @@ Everything else either moves into the compiler (bridges 1-3, 8-9), gets deleted 
 
 | Priority | Items | Effort | Deleted | Proves |
 |----------|-------|--------|---------|--------|
-| **Now** | Delete bridges 4, 5, 10 | 1-2 days | `OutputPathMetadataOp` (7 LOC), `PipelineDispatchOp` (85 LOC), `strip_pipeline_nodes()` (22 LOC), 6 redundant builder functions (~185 LOC) | Dead code removal |
-| **Now** | Bridge 2b (default params) | 1-2 days | N/A (new feature) | `make gist` Bug 2 fixed. Default values flow through call chains. |
-| **Next** | Bridge 1 + Bridge 2 | 3-5 days | `DeclaredOutputCallableOp` (9 LOC), `FnBodyCallableOp` (86 LOC), `LoweredFnBody` type, `fn_body` field on `LoweredOp::Callable` | `make gist` Bug 1 fixed. Match arms properly guard transport nodes. |
+| **Done** | Delete bridges 4, 5, 10 | — | `OutputPathMetadataOp` (7 LOC), `PipelineDispatchOp` (85 LOC), `strip_pipeline_nodes()` (22 LOC), 6 redundant builder functions (~185 LOC) | Dead code removal |
+| **Done** | Bridge 2b (default params) | — | N/A (new feature) | `make gist` Bug 2 fixed. Default values flow through call chains. |
+| **Now** | Bridge 1 + Bridge 2 | 3-5 days | `DeclaredOutputCallableOp` (9 LOC), `FnBodyCallableOp` (86 LOC), `LoweredFnBody` type, `fn_body` field on `LoweredOp::Callable` | `make gist` Bug 1 fixed. Match arms properly guard transport nodes. Also P0-5 (`make install`). |
+| **Now** | Bridge 11 (hermeticity) | 2-3 days | N/A (new feature) | Effect classification structural. Test scope classification reliable. Parallel with 1+2. |
 | **Next** | Bridge 3 + Bridge 8 | 3-5 days | `CollectionDelegate` (17 LOC), `evaluate_collection()` (50 LOC), `LoweredOp::Collection` variant, `add_fs_env_root_node()` (14 LOC), `DslFsEnvOp` | Evaluator delegation eliminated. |
 | **Next** | Bridge 9 | 2-3 days | `GenericFilePrepareOp` (44 LOC), `GenericFileParseOp` (50 LOC) |
 | **Then** | Rename crate, output dir consolidation | 1-2 days | Hardcoded path constants in `workspace_layout.rs` |
