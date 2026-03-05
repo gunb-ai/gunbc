@@ -1,8 +1,8 @@
 //! Cloud provider baseline config for secret management.
 //!
 //! This is provider-neutral and intended to keep DAGs and tests from being
-//! hardwired to a single cloud. Concrete implementations live in
-//! provider-specific crates (gcp-ops, aws-ops, azure-ops).
+//! hardwired to a single cloud. Concrete implementations now live in `.dag`
+//! extdep modules rather than handwritten provider crates.
 
 use serde::{Deserialize, Serialize};
 
@@ -47,7 +47,7 @@ pub enum CloudRuntimeKind {
     GitHubActions,
     /// Cloud metadata server (GCE/GKE, EC2/EKS, Azure IMDS).
     CloudMetadata,
-    /// Local developer workstation (e.g., gcloud CLI auth).
+    /// Local developer workstation.
     LocalDev,
 }
 

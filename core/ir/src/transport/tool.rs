@@ -555,26 +555,6 @@ pub static GIT: ToolDef = ToolDef {
     depends_on: &[],
 };
 
-/// Google Cloud CLI.
-///
-/// Provides `gcloud` for local auth/token and Secret Manager operations.
-pub static GCLOUD: ToolDef = ToolDef {
-    id: "gcloud",
-    command: "gcloud",
-    verify: "gcloud --version",
-    install_options: &[
-        InstallOption {
-            via: "apt",
-            inputs: InstallInputs::packages(&["google-cloud-cli"]),
-        },
-        InstallOption {
-            via: "brew",
-            inputs: InstallInputs::packages(&["google-cloud-sdk"]),
-        },
-    ],
-    depends_on: &[],
-};
-
 /// Rust toolchain (rustc).
 ///
 /// The base of the Rust toolchain dependency chain:
@@ -718,7 +698,6 @@ pub fn default_tool_registry() -> ToolRegistry {
     registry.register(&CLIPPY);
     registry.register(&RUSTFMT);
     registry.register(&GH_TOOL);
-    registry.register(&GCLOUD);
     registry
 }
 
@@ -1017,19 +996,4 @@ mod tests {
         assert!(super::is_satisfiable(&super::RUSTFMT, &available, &registry).is_ok());
     }
 
-    #[test]
-    fn test_gcloud_satisfiable_on_apt() {
-        let registry = super::default_tool_registry();
-        let available: HashSet<&str> = ["apt"].into_iter().collect();
-
-        assert!(super::is_satisfiable(&super::GCLOUD, &available, &registry).is_ok());
-    }
-
-    #[test]
-    fn test_gcloud_satisfiable_on_brew() {
-        let registry = super::default_tool_registry();
-        let available: HashSet<&str> = ["brew"].into_iter().collect();
-
-        assert!(super::is_satisfiable(&super::GCLOUD, &available, &registry).is_ok());
-    }
 }

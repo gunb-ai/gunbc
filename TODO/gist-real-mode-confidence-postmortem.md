@@ -2,8 +2,8 @@
 
 Canonical rolling tracker: `TODO/rolling-postmortem.md`
 
-> **Date**: 2026-03-05  
-> **Severity**: High (trust regression)  
+> **Date**: 2026-03-05
+> **Severity**: High (trust regression)
 > **Impact**: `make gist` failed in Real mode with a profile-stub error after successful compile and broad test pass signals.
 
 ---
@@ -24,11 +24,44 @@ The result is a trust-model violation: green compile/tests did not provide high 
 
 ---
 
+## Architectural Clarification
+
+This incident exposed a deeper design problem than one broken tool:
+
+1. `profile` leaked domain/configuration decisions into user-facing tooling and compiler/runtime surfaces.
+2. Credential selection was modeled as a workflow concern instead of a domain-model concern.
+3. The repo mixed architectural layers:
+   - abstract credential requirement in workflow/interface space
+   - profile binding in compiler/runtime space
+   - concrete local/cloud fallback logic inside a single tool path
+
+That layering is not where we want to end up.
+
+### Target Direction
+
+The intended model is:
+
+1. Workflows declare abstract credentialing/capability requirements.
+2. Domain modeling resolves the concrete credential path from caller setup and modeled environment.
+3. Local development, CI, and cloud execution are domain facts, not `--profile` flags.
+4. Workflows should not contain fallback trees like "try env, otherwise gcloud" to compensate for missing domain modeling.
+5. Rust should not carry repo-specific `gcloud` acquisition/install residue for this path; the concrete operational model belongs in `.dag`.
+
+### Current State, Fairly Stated
+
+As of this branch:
+
+1. The specific `CredentialProvider.acquire requires --profile` failure was avoided by moving gist credential resolution out of the old profile-bound interface path.
+2. That is an immediate reliability improvement for `make gist`.
+3. It is still transitional, not the desired end state, because the tool now contains credential-resolution policy directly and still encodes a fallback path in the workflow itself.
+
+---
+
 ## User Expectation vs Actual Behavior
 
 ### Expected
 
-If the repo compiles and tests pass, running `make gist` should have high probability of success (or fail earlier with a compile/test-time signal).
+If the repo compiles and tests pass, running `make gist` should have high probability of success, or fail earlier with a compile/test-time signal.
 
 ### Actual
 
@@ -60,32 +93,24 @@ This mismatch creates false confidence for command-level reliability.
 
 ---
 
-## Technical Root Cause
+## Incident Root Cause
 
-### 1. Profile flag is present, so failure is not a CLI parsing issue
+At the time of the failure:
 
-- `make gist` passes `--profile profiles.gist.local`.
-- Generated `gunbc-gist` CLI accepts and validates that profile.
+1. `make gist` passed `--profile profiles.gist.local`.
+2. The generated CLI accepted that flag.
+3. Runtime still reached an unresolved `CredentialProvider` interface-stub execute path.
+4. Real mode failed fast on that unresolved stub, while DryRun auto-mocked it.
 
-So the failure is downstream of argument parsing.
+So the immediate bug was real, but the larger lesson is that the system made user success depend on profile plumbing that should not be first-class to begin with.
 
-### 2. Credential provider operation was treated as interface-stub transport in the failing runtime path
+### Why This Happened
 
-Lowering classifies service operations with no explicit `transport { ... }` as `InterfaceStub` when the service implements an interface.
+1. Credential realization depended on active profile binding.
+2. The compile/test path did not prove that the real command path was concretely realized.
+3. DryRun and Real mode diverged in exactly the place where unresolved profile/interface binding mattered.
 
-`LocalCredentialProvider` implements `CredentialProvider`, and `acquire` lacks explicit transport binding at operation level in current modeling style.
-
-Runtime resolver behavior for `InterfaceStubExecuteOp` is fail-fast in Real mode by design:
-
-- Real mode: always errors with `requires --profile`.
-- DryRun mode: auto-mocked, so execution appears healthy.
-
-This design is useful for unresolved interfaces, but it also means a bad/ambiguous lowering path can escape compile-time validation and fail only in live command execution.
-
-### 3. Existing gist test suite did not exercise the same command contract
-
-Current gist tests mostly build graphs with `profile=None`, and several end-to-end tests are ignored.  
-This means the tested graph shape is not equivalent to `make gist` real invocation shape.
+The failure mode was specific, but the architectural problem was broader: user-facing success depended on a profile concept that should eventually disappear.
 
 ---
 
@@ -102,10 +127,11 @@ So DryRun success is not currently sufficient evidence for Real mode success whe
 
 ## Contributing Gaps
 
-1. **Contract gap**: No enforced invariant that profile-selected tools must not contain unresolved interface-stub execute nodes in Real mode paths.
-2. **Coverage gap**: Gist tests primarily validate `profile=None` graphs and structural properties, not command-level real-profile execution contracts.
-3. **Signal gap**: Runtime error message says “no active profile bindings”, but in this incident a profile was passed; the message does not expose selected profile + resolved bindings + why stub remained.
-4. **CI noise gap**: unrelated failing tests (e.g., stale `dsl/pipelines/ci.dag` path in daglang-cli tests) dilute confidence in “all green means safe to run”.
+1. **Architecture gap**: profile selection remained a required runtime/compiler concern for a user tool path.
+2. **Contract gap**: tests did not prove the concrete command path used by `make gist`.
+3. **Coverage gap**: several gist end-to-end tests were ignored or exercised a different graph shape than the real command path.
+4. **Signal gap**: runtime error said “no active profile bindings” even though the user did pass a profile, which obscured the real failure mode.
+5. **CI noise gap**: unrelated failing tests (e.g., stale `dsl/pipelines/ci.dag` path in daglang-cli tests) dilute confidence in “all green means safe to run”.
 
 ---
 
@@ -120,47 +146,56 @@ For tool entrypoints (`make <tool>` / generated CLIs), enforce:
 
 ## Proposed Repo-Level Fixes
 
-### P0: Add profile-realization invariant test for each profile-bound tool
-
-For each tool/profile pair used by make targets (starting with gist):
-
-1. Build graph with the same profile as make target.
-2. Assert no unresolved interface-stub execute nodes exist for required interface calls.
-3. Assert expected concrete provider nodes are present.
-
-This catches profile-binding regressions before runtime.
-
 ### P0: Add command-contract tests for generated CLIs
 
 Add tests that execute generated binaries with:
 
-1. `--profile ... --print-inputs json` parsing checks.
-2. Real-mode graph build + lowered-node contract checks (without external network side effects).
+1. the same invocation shape users actually run
+2. real-mode graph build + lowered-node contract checks (without external network side effects)
 
 Focus is parity with actual user command invocation, not just library-level graph construction.
 
-### P0: Strengthen diagnostics for stub execution errors
+### P0: Keep concrete credential/runtime modeling in `.dag`, not Rust residue
 
-When Real mode hits interface-stub execute, include:
+Clean out repo-specific Rust-side `gcloud` acquisition/install residue for this path.
 
-1. Selected profile value.
-2. Whether profile bindings were discovered.
-3. Interface key looked up and candidate bindings.
-4. Suggested fix path (missing bind vs unresolved implementation vs wrong profile name).
+If a concrete `gcloud`-based local-dev path still exists, it should be modeled in `.dag` as part of the domain/runtime model, not as ad hoc Rust-side tool acquisition policy.
 
-This reduces debugging time and avoids misleading “no active profile bindings” ambiguity.
+### P1: Remove profile as a user-facing/runtime binding concept
 
-### P1: Explicit policy for DryRun/Real mode confidence boundary
+Move from:
 
-Document and enforce:
+1. workflow asks for abstract credential
+2. user/tool passes `--profile`
+3. compiler/runtime selects concrete implementation
 
-1. DryRun is structural and mock-path validation.
-2. DryRun alone is not sufficient for profile-bound interface resolution correctness.
-3. Each profile-bound command must have at least one non-ignored real-mode contract test with controlled backend/mocks.
+To:
+
+1. workflow asks for abstract credential
+2. domain model resolves concrete provider from modeled caller/runtime context
+3. command execution uses that realization directly
+
+### P1: Eliminate workflow-local credential fallback trees
+
+The desired end state is not "better fallback logic." The desired end state is "no fallback logic in the workflow."
+
+If local development uses `gcloud`, that should emerge from the modeled local-dev credential path, not from per-tool branches like:
+
+1. try `GITHUB_TOKEN`
+2. otherwise call `gcloud`
+
+### P1: Strengthen diagnostics while profile machinery still exists
+
+Until profile surfaces are removed, stub-execution errors should at least print:
+
+1. selected profile
+2. discovered bindings
+3. interface lookup key
+4. why resolution still produced a stub
 
 ### P1: Unignore or replace currently ignored gist e2e tests
 
-Ignored tests hide active regressions in the exact tool where confidence is required.  
+Ignored tests hide active regressions in the exact tool where confidence is required.
 Convert to deterministic contract tests where possible (transport backend injection).
 
 ### P1: CI stability cleanup of known stale test paths
@@ -171,12 +206,11 @@ Fix known stale references like `dsl/pipelines/ci.dag` vs `dsl/workflows/ci.dag`
 
 ## Immediate Action Plan
 
-1. Add `gist` profile-realization contract test:
-   - Build `tools/gist.dag` with `profiles.gist.local`.
-   - Fail if execute nodes include unresolved interface-stub path for `CredentialProvider.acquire`.
-2. Fix stale CI pipeline test path references in `daglang-cli` tests.
-3. Improve interface-stub Real-mode error to print active profile resolution context.
-4. Track all profile-bound tool targets and add the same invariant test template.
+1. Document clearly that the old failure was caused by profile-coupled credential realization.
+2. Record that the current gist fix is tactical, not the long-term credential architecture.
+3. Remove Rust-side `gcloud` residue that should live in `.dag`.
+4. Follow up by removing remaining profile plumbing from tool/compiler/runtime surfaces.
+5. Fix stale CI pipeline test path references so command reliability signals are trustworthy.
 
 ---
 
@@ -184,10 +218,11 @@ Fix known stale references like `dsl/pipelines/ci.dag` vs `dsl/workflows/ci.dag`
 
 This incident is closed only when:
 
-1. `make gist` path is covered by automated tests that mirror real invocation profile selection.
-2. A regression in profile resolution fails tests before user-facing runtime.
-3. Error diagnostics clearly identify profile-selection and binding-resolution state.
+1. `make gist` path is covered by automated tests that mirror real user invocation.
+2. A regression in credential realization fails tests before user-facing runtime.
+3. Credential/runtime realization is modeled in `.dag`, not split between `.dag`, profile flags, and Rust residue.
 4. No ignored tests remain for core gist command contracts.
+5. Profile is no longer required to make user-facing tool paths work.
 
 ---
 
@@ -195,6 +230,6 @@ This incident is closed only when:
 
 The repo should treat this as a product-level quality contract:
 
-> A user running a first-class command (`make gist`, `make ci`, etc.) should not discover a profile-resolution failure that our compile/test gates could have detected.
+> A user running a first-class command (`make gist`, `make ci`, etc.) should not discover a credential-realization failure that our compile/test gates could have detected.
 
 This is not only a gist bug; it is a command-reliability systems issue.

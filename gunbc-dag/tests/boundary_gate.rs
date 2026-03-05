@@ -27,8 +27,6 @@ const ALLOWED_DIRS: &[&str] = &[
     "lib/tools/",
     // Cloud ops rendering
     "lib/cloud-ops/",
-    // GCP ops
-    "lib/gcp-ops/",
     // Primitive data formatting
     "lib/primitives/",
     // Makegen (Rust-side rendering, migrating to DSL)

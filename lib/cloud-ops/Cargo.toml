@@ -5,10 +5,7 @@ edition = "2021"
 
 [dependencies]
 gunbc-exec = { path = "../../core/exec" }
-gunbc-delegate-macros = { path = "../../core/delegate-macros" }
 gunbc-ir = { path = "../../core/ir" }
-gunbc-lib-gcp-ops = { path = "../gcp-ops" }
-gunbc-lib-transport = { path = "../transport" }
 gunbc-testgen-registry = { path = "../../core/testgen-registry" }
 gunbc-testgen-registry-macros = { path = "../../core/testgen-registry-macros" }
 serde = { workspace = true }

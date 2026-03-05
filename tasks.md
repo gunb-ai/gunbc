@@ -22,6 +22,12 @@ Source of truth: [`TODO/rolling-postmortem.md`](TODO/rolling-postmortem.md)
 1. **RR-1 (P0)**: Replace heuristic test-time confidence with measured runtime budget checks for `test-xs/s/m/l/xl` (maps to RC-P0-004).
 2. **RR-2 (P1)**: Split monolithic exhaustive tests into bounded shards or explicit integration-only flows; default loops should stay interactive (maps to RC-P1-005/006).
 
+### Cross-Cutting `.dag` Migration
+
+Source of truth: [`TODO/gunbc-dag-simplification.md`](TODO/gunbc-dag-simplification.md)
+
+1. **DM-1 (P0) — DONE (2026-03-05)**: Deleted the remaining dead handwritten cloud/provider crates that now have `.dag` replacements: `lib/gcp-ops` and `lib/aws-ops`, following the earlier removal of `lib/gcp-ops/src/ops.rs`, `lib/gcp-ops/src/services/local_auth.rs`, and `lib/cloud-ops/src/infra_*`. Workspace/config/guardrail references were updated in `Cargo.toml`, `dsl/config/workspace.dag`, `dsl/config/arch_rules.dag`, `dsl/extdeps/gunbc.dag`, `gunbc-dag/tests/boundary_gate.rs`, and `lib/transport/src/pragma_lint.rs`. Audit result: the acceptance grep now returns compiler/framework internals, thin `.dag` entrypoint shims (`gunbc-dag/src/dsl_builder.rs`, `gunbc-dag/src/tool_graphs.rs`, `gunbc-dag/src/pragma/mod.rs`), and one explicitly scheduled survivor: `gunbc-dag/src/testgen_dag/graph.rs`, whose replacement is [`dsl/tools/testgen.dag`](dsl/tools/testgen.dag) once inventory-backed target discovery is expressed without a handwritten Rust graph builder. Rule remains: no new provider/runtime logic lands in Rust unless the compiler cannot yet express it.
+
 ### Design docs
 
 | Doc | Scope |

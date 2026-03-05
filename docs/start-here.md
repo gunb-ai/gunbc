@@ -330,7 +330,6 @@ core/                         Compiler + runtime infrastructure
 lib/
 ├── transport/                I/O boundary (the ONLY place with std::fs)
 ├── cloud-ops/                Cloud provider abstractions
-├── gcp-ops/                  GCP-specific operations
 └── primitives/               Stable hashing
 
 gunbc-dag/                    Workspace DAG assembly

@@ -2219,9 +2219,9 @@ mod tests {
     fn shell_spec_secret_output() -> ShellOperationSpec {
         ShellOperationSpec {
             argv_template: vec![
-                ArgvSegment::Literal("gcloud".to_string()),
+                ArgvSegment::Literal("secretctl".to_string()),
                 ArgvSegment::Literal("auth".to_string()),
-                ArgvSegment::Literal("print-access-token".to_string()),
+                ArgvSegment::Literal("print-token".to_string()),
             ],
             input_fields: vec![],
             output_fields: vec![OutputFieldSpec {
