@@ -235,7 +235,6 @@ pub mod ast {
         pub uses: Vec<UsesClause>,
         pub provides: Vec<ProvidesClause>,
         pub body: FuncBody,
-        pub declared_outputs: Vec<String>,
     }
 
     /// Reusable DAG template: `pattern name(params) -> { outputs } uses ... provides ... { body }`

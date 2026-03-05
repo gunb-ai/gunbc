@@ -260,7 +260,6 @@ impl Parser {
             TokenKind::Where => "where",
             TokenKind::Transport => "transport",
             TokenKind::Response => "response",
-            TokenKind::Outputs => "outputs",
             TokenKind::Idempotent => "idempotent",
             TokenKind::Readonly => "readonly",
             TokenKind::Hermetic => "hermetic",
@@ -1767,7 +1766,6 @@ impl Parser {
             uses,
             provides,
             body,
-            declared_outputs: Vec::new(),
         })
     }
 
