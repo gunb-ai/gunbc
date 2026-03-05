@@ -160,104 +160,6 @@ impl Executable for DeclaredOutputCallableOp {
     }
 }
 
-/// C10: Callable op for `fn` items that evaluates the fn body directly.
-///
-/// Instead of relying on passthrough wiring from ExprCompute nodes, this op
-/// evaluates the fn's lowered body using the expression evaluator. The fn body
-/// can handle if/else, for-loops, match, pipes, records, and all other pure
-/// expression forms — producing the return value directly from the fn's logic.
-///
-/// Falls back to passthrough behavior when fn body evaluation fails (e.g.,
-/// the fn body references DAG-only constructs that the evaluator can't handle).
-#[derive(Clone)]
-struct FnBodyCallableOp {
-    fn_body: daglang_lower::LoweredFnBody,
-    output_ports: Vec<(String, bool)>,
-    /// Sibling fn bodies from the same DAG, keyed by callable name.
-    /// Used by `evaluate_fn_body` for cross-fn calls within the same module.
-    sibling_fns: HashMap<String, daglang_lower::LoweredFnBody>,
-}
-
-impl std::fmt::Debug for FnBodyCallableOp {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("FnBodyCallableOp")
-            .field("output_ports", &self.output_ports)
-            .finish()
-    }
-}
-
-impl Executable for FnBodyCallableOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        // Build the fn body evaluation environment from non-passthrough inputs.
-        let mut eval_inputs = HashMap::new();
-        let mut passthrough_inputs = HashMap::new();
-        for (key, value) in &inputs {
-            if key.starts_with(PortName::OUTPUT_PASSTHROUGH_PREFIX) {
-                passthrough_inputs.insert(key.clone(), value.clone());
-            } else if key != "__deps" && key != "_freshness" {
-                eval_inputs.insert(key.clone(), value.clone());
-            }
-        }
-
-        // Try to evaluate the fn body. On success, map the results to declared
-        // output ports. Passthrough inputs override fn body results (they come
-        // from explicit DAG wiring and are more authoritative).
-        match daglang_lower::eval::evaluate_fn_body(&self.fn_body, &eval_inputs, &self.sibling_fns) {
-            Ok(body_results) => {
-                let mut outputs = HashMap::new();
-                for (port_name, is_optional) in &self.output_ports {
-                    // 1. Check passthrough (explicit DAG wiring takes priority)
-                    let passthrough_key =
-                        format!("{}{port_name}", PortName::OUTPUT_PASSTHROUGH_PREFIX);
-                    if let Some(value) = inputs.get(&passthrough_key) {
-                        if !matches!(value, Value::Skipped) {
-                            outputs.insert(port_name.clone(), value.clone());
-                            continue;
-                        }
-                    }
-                    // 2. Check fn body evaluation result
-                    if let Some(value) = body_results.get(port_name) {
-                        outputs.insert(port_name.clone(), value.clone());
-                        continue;
-                    }
-                    // 3. Single-output "return" port: if the fn body produced
-                    //    a record expression (unwrapped into individual fields
-                    //    by the evaluator), reassemble them as the return value.
-                    if port_name == "return" && self.output_ports.len() == 1 && !body_results.is_empty() {
-                        let map: std::collections::BTreeMap<String, Value> =
-                            body_results.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-                        outputs.insert(port_name.clone(), Value::Map(map));
-                        continue;
-                    }
-                    // 4. Required output missing → error; optional → Skipped
-                    if *is_optional {
-                        outputs.insert(port_name.clone(), Value::Skipped);
-                    } else {
-                        return Err(ExecError::new(format!(
-                            "FnBody evaluation succeeded but required output `{port_name}` was not produced"
-                        )));
-                    }
-                }
-                Ok(outputs)
-            }
-            Err(_) => {
-                // Helper fn items are called via evaluate_fn_body from sibling
-                // fn bodies, not through DAG edge wiring. When the DAG executor
-                // runs them standalone, some or all parameter inputs may be
-                // missing/Skipped, causing evaluation to fail. Produce Skipped
-                // outputs — the fn IS invoked correctly through the
-                // evaluate_fn_body call path where full inputs are available.
-                let mut outputs = HashMap::new();
-                for (port_name, _) in &self.output_ports {
-                    outputs.insert(port_name.clone(), Value::Skipped);
-                }
-                Ok(outputs)
-            }
-        }
-    }
-}
-
-
 /// Passthrough for std.resources callables that are neither acquire nor release.
 ///
 /// Resource lifecycle nodes like `probe` or `check` that don't need
@@ -798,7 +700,7 @@ impl Executable for ExprComputeOp {
             Err(e) => {
                 // When all real inputs are Skipped, this ExprCompute node is
                 // an orphan (e.g., fn call argument wiring inside a fn item
-                // whose body is evaluated by FnBodyCallableOp). Propagate
+                // whose body is evaluated by FnBodyComputeOp). Propagate
                 // Skipped instead of hard-erroring.
                 let all_skipped = self.input_ports.iter().all(|p| {
                     matches!(
@@ -1581,7 +1483,7 @@ fn resolve_domain(
     service_metadata: Option<&ServiceCallMetadata>,
     fn_body: Option<&daglang_lower::LoweredFnBody>,
     resolver: &dyn ExternResolver,
-    sibling_fns: &HashMap<String, daglang_lower::LoweredFnBody>,
+    _sibling_fns: &HashMap<String, daglang_lower::LoweredFnBody>,
 ) -> Result<DynOp, ResolveError> {
     // 1. Modules with custom resolvers — return Some for known callables,
     //    None for unknown (which falls through to passthrough).
@@ -1608,16 +1510,12 @@ fn resolve_domain(
     if TransportRole::from_name(name).is_some() {
         return resolve_service_transport(node_id, module, name, outputs, service_metadata);
     }
-    // 5. C10: fn items with fn bodies use FnBodyCallableOp to evaluate the
-    //    body directly, producing outputs from the fn's computation rather
-    //    than relying on passthrough wiring from ExprCompute nodes.
-    if let Some(body) = fn_body {
-        return Ok(DynOp::new(FnBodyCallableOp {
-            fn_body: body.clone(),
-            output_ports: declared_output_ports(outputs),
-            sibling_fns: sibling_fns.clone(),
-        }));
-    }
+    // Bridge 2: fn items with fn_body no longer reach here (they're lowered as
+    // SubDag+FnBodyCompute). Assert so any regression is caught immediately.
+    debug_assert!(
+        fn_body.is_none(),
+        "Callable node `{name}` has fn_body — should have been lowered as SubDag (Bridge 1/2)"
+    );
     // 5b. Pattern and Func callables without fn_body: their bodies are either
     //     expanded inline (patterns) or lossy-parsed (func items with complex
     //     control flow the parser can't handle). In both cases, __out:

@@ -123,7 +123,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 | CP-2 | Fail on pattern node expansion failure (kill `lower_warn()`) | S | CP | **Done** — `lower_warn()` deleted; all 4 call sites converted to always-visible `eprintln!`. Hard errors not viable: existing patterns rely on silent skip for non-expandable fn calls. |
 | CP-3 | Fail on unresolved service call arguments | S | CP | **Done** — eprintln! diagnostics at 5 silent failure points in add_service_call_edges() and wire_fn_call_arguments() |
 | CP-4 | Fail on unsupported expression types in pattern bodies | S | CP | **Done** — eprintln! diagnostics at pattern body catch-alls (expand_pattern_body_node via CP-2, resolve_pattern_return_expr, expand_single_pattern stmt catch-all) |
-| CP-5 | Surface `FnBodyCallableOp` evaluation errors (don't swallow as Skipped). **Note**: subsumed by Bridge 2 if it lands first — mark done when Bridge 2 eliminates FnBodyCallableOp entirely. | M | CP | Open |
+| CP-5 | Surface `FnBodyCallableOp` evaluation errors (don't swallow as Skipped). **Note**: subsumed by Bridge 2 if it lands first — mark done when Bridge 2 eliminates FnBodyCallableOp entirely. | M | CP | **Done** — subsumed by Bridge 2. `FnBodyCallableOp` deleted; fn body evaluation now happens via `FnBodyComputeOp` (inside SubDag nodes) which propagates errors directly. |
 | CP-19 | Remove `allow_unresolved_references` + restore passthrough enforcement | M | CP | **Done** — Flipped `TypecheckOptions::default()` to `allow_unresolved_imports: false` (strict). Main compilation path (`compile_from_context`, `check_from_module_graph`) already strict. Utility paths (data extraction, type gen, param loading) keep explicit `true`. Updated 7 relaxed_mode tests + 3 lowerer helpers to use explicit permissive mode. |
 | CP-21 | Separate parser recovery modes (main path never lossy) | S | CP | **Done** — subsumed by CP-26. `parse_to_result()` always returns partial AST with diagnostics (recovery mode). `parse()` returns Result (strict mode). Callers choose which API to use. |
 | CP-66 | No panics in lowerer — `LowerError::InvalidTransportSpec` replaces `panic!`. Parser test for bad `auth_input`. | S | GA | **Done** — audit confirmed: all 21 panic calls are in test code only. 6 production `unwrap()`/`expect()` are guarded by preceding conditions. No production panics exist. |
@@ -188,8 +188,8 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 
 | ID | What | Size | Deps | Status |
 |----|------|------|------|--------|
-| Bridge 1 | SubDag direct lowering (delete `DeclaredOutputCallableOp`) | M | — | Open |
-| Bridge 2 | `FnBodyCallableOp` elimination (fn bodies as SubDags) | M | Bridge 1 | Open |
+| Bridge 1 | SubDag direct lowering (delete `DeclaredOutputCallableOp`) | M | — | **Done** — Fn items with fn_body now lower as SubDag nodes wrapping FnBodyCompute. FnBodyComputeOp in resolver evaluates fn bodies. DeclaredOutputCallableOp still used for Func/Pattern (Bridge 2 scope). |
+| Bridge 2 | `FnBodyCallableOp` elimination (fn bodies as SubDags) | M | Bridge 1 | **Done** — `FnBodyCallableOp` struct deleted from resolver. All 4 `Callable { fn_body: Some(...) }` sites (loop body + branch body ops) converted to `Primitive { kind: FnBodyCompute }`. `debug_assert!` in resolve_domain catches regressions. |
 | Bridge 3 | `CollectionDelegate` → proper IR nodes | M | — | Open |
 | Bridge 8 | `add_fs_env_root_node()` → resource injection at lower time | M | — | Open |
 | Bridge 9 | `GenericFilePrepareOp`/`ParseOp` → typed file transport | M | — | Open |

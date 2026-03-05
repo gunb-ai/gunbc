@@ -4056,27 +4056,26 @@ fn make_loop_body_dag(
     let mut dag: Dag<LoweredOp> = Dag::new();
 
     if body_transports.is_empty() {
-        // No service calls in body — plain body_op callable.
-        // Provide a trivial fn_body that passes element through as result,
-        // so FnBodyCallableOp handles it (avoids __out:result passthrough requirement).
+        // No service calls in body — plain body_op primitive.
+        // Bridge 2: Use FnBodyCompute directly instead of Callable+fn_body.
+        let body = Box::new(expr::LoweredFnBody {
+            stmts: vec![expr::LoweredStmt::Return(vec![(
+                "result".to_string(),
+                expr::LoweredExpr::Ident(element_var.to_string()),
+            )])],
+        });
         dag.add_node(Node::opaque(
             "body_op",
             inputs,
             vec![Port::scalar("result", "Any")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: module_name.to_string(),
-                kind: CallableKind::Fn,
                 name: format!("{callable_node_id}::for_{index}_body"),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
-                fn_body: Some(Box::new(expr::LoweredFnBody {
-                    stmts: vec![expr::LoweredStmt::Return(vec![(
-                        "result".to_string(),
-                        expr::LoweredExpr::Ident(element_var.to_string()),
-                    )])],
-                })),
+                kind: PrimitiveOpKind::FnBodyCompute {
+                    fn_body: body,
+                    sibling_fns: std::collections::BTreeMap::new(),
+                    output_ports: vec!["result".to_string()],
+                },
             },
         ));
     } else {
@@ -4092,24 +4091,24 @@ fn make_loop_body_dag(
             .expect("body_transports is non-empty")
             .parse_output;
         let body_op_inputs = vec![Port::scalar(last_parse_output.as_str(), "Any")];
+        let body = Box::new(expr::LoweredFnBody {
+            stmts: vec![expr::LoweredStmt::Return(vec![(
+                "result".to_string(),
+                expr::LoweredExpr::Ident(last_parse_output.clone()),
+            )])],
+        });
         dag.add_node(Node::opaque(
             "body_op",
             body_op_inputs,
             vec![Port::scalar("result", "Any")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: module_name.to_string(),
-                kind: CallableKind::Fn,
                 name: format!("{callable_node_id}::for_{index}_body"),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
-                fn_body: Some(Box::new(expr::LoweredFnBody {
-                    stmts: vec![expr::LoweredStmt::Return(vec![(
-                        "result".to_string(),
-                        expr::LoweredExpr::Ident(last_parse_output.clone()),
-                    )])],
-                })),
+                kind: PrimitiveOpKind::FnBodyCompute {
+                    fn_body: body,
+                    sibling_fns: std::collections::BTreeMap::new(),
+                    output_ports: vec!["result".to_string()],
+                },
             },
         ));
         for (ti, transport) in body_transports.iter().enumerate() {
@@ -4219,9 +4218,14 @@ fn make_branch_body_dag(
     let mut dag: Dag<LoweredOp> = Dag::new();
 
     if body_transports.is_empty() {
-        // No service calls in branch body — plain callable op.
-        // Provide a trivial fn_body that passes input through as result,
-        // so FnBodyCallableOp handles it (avoids __out:result passthrough requirement).
+        // No service calls in branch body — plain primitive op.
+        // Bridge 2: Use FnBodyCompute directly instead of Callable+fn_body.
+        let body = Box::new(expr::LoweredFnBody {
+            stmts: vec![expr::LoweredStmt::Return(vec![(
+                "result".to_string(),
+                expr::LoweredExpr::Ident("input".to_string()),
+            )])],
+        });
         dag.add_node(Node::opaque(
             "op",
             vec![
@@ -4229,20 +4233,14 @@ fn make_branch_body_dag(
                 Port::scalar("condition", "Bool"),
             ],
             vec![Port::scalar("result", "Any")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: module_name.to_string(),
-                kind: CallableKind::Fn,
                 name: format!("{callable_node_id}::if_{index}_{branch_label}"),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
-                fn_body: Some(Box::new(expr::LoweredFnBody {
-                    stmts: vec![expr::LoweredStmt::Return(vec![(
-                        "result".to_string(),
-                        expr::LoweredExpr::Ident("input".to_string()),
-                    )])],
-                })),
+                kind: PrimitiveOpKind::FnBodyCompute {
+                    fn_body: body,
+                    sibling_fns: std::collections::BTreeMap::new(),
+                    output_ports: vec!["result".to_string()],
+                },
             },
         ));
     } else {
@@ -4262,24 +4260,24 @@ fn make_branch_body_dag(
             Port::scalar("input", "Any"),
             Port::scalar("condition", "Bool"),
         ];
+        let body = Box::new(expr::LoweredFnBody {
+            stmts: vec![expr::LoweredStmt::Return(vec![(
+                "result".to_string(),
+                expr::LoweredExpr::Ident(last_parse_output.clone()),
+            )])],
+        });
         dag.add_node(Node::opaque(
             "op",
             body_op_inputs,
             vec![Port::scalar("result", "Any")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: module_name.to_string(),
-                kind: CallableKind::Fn,
                 name: format!("{callable_node_id}::if_{index}_{branch_label}"),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
-                fn_body: Some(Box::new(expr::LoweredFnBody {
-                    stmts: vec![expr::LoweredStmt::Return(vec![(
-                        "result".to_string(),
-                        expr::LoweredExpr::Ident(last_parse_output.clone()),
-                    )])],
-                })),
+                kind: PrimitiveOpKind::FnBodyCompute {
+                    fn_body: body,
+                    sibling_fns: std::collections::BTreeMap::new(),
+                    output_ports: vec!["result".to_string()],
+                },
             },
         ));
         for (ti, transport) in body_transports.iter().enumerate() {
