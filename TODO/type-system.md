@@ -19,7 +19,7 @@ WS-3: Typechecker Unification      — 0/8 complete
 WS-4: Presence Axis                — 0/5 complete  (blocked by WS-3)
 WS-5: Type DAG Execution           — 0/4 complete  (blocked by WS-3)
 WS-6: Tool/Workflow Completeness   — 0/5 complete  (blocked by WS-1, WS-2)
-WS-7: Extern Linking               — 3/5 complete  (NF-1:6 landed most of this)
+WS-7: Extern Linking               — 4/5 complete  (NF-1:6 landed most of this)
 ```
 
 ### Dependency Graph
@@ -48,7 +48,7 @@ WS-1 and WS-3 can start immediately. WS-7 is mostly done.
 | 3 | WS1-3 | **Brand application.** Apply `ContentHash` brand to `StageRunKey.input_hash`, `Artifact.content_hash`, `ArtifactMarker.content_hash`. | Fields reference `ContentHash` type (not bare `String`). Verify in `dsl/std/types.dag`. | S | **Done** |
 | 4 | WS1-4 | **Duration unit types.** Create `Seconds` and `Milliseconds` branded types. Apply consistently. | `type Seconds = Int @brand("Seconds")` and `type Milliseconds = Int @brand("Milliseconds")` exist in `dsl/std/`. All duration fields use one or the other. | S | **Done** |
 | 5 | WS1-5 | **Duplicate resolution.** Merge two `RetryPolicy` definitions. Deduplicate `EntryKind`/`SymlinkTarget`. | `grep -c 'type RetryPolicy' dsl/` returns 1. `grep -c 'type EntryKind' dsl/` returns 1. | S | **Done** |
-| 6 | WS1-6 | **Missing types.** Add: `SeverityLevel`, `DataSource`, `RetryTrigger`, `LanguageId`, `GcpRegion`, canonical error wrapper, C/MIPS/Dag language definitions. | Each type exists as a sum type or branded alias in `dsl/std/`. No stringly-typed references to these concepts elsewhere. | M | **Partial** (SeverityLevel, RetryTrigger done; LanguageId, GcpRegion remain) |
+| 6 | WS1-6 | **Missing types.** Add: `SeverityLevel`, `DataSource`, `RetryTrigger`, `LanguageId`, `GcpRegion`, canonical error wrapper, C/MIPS/Dag language definitions. | Each type exists as a sum type or branded alias in `dsl/std/`. No stringly-typed references to these concepts elsewhere. | M | **Done** (`LanguageId` at `std/types.dag:82`, `GcpRegion` at `extdeps/cloud/gcp/core.dag:88`) |
 | 7 | WS1-7 | **Stub cleanup.** Address 8 stubs that look like features. Each must be implemented, deleted, or marked `@testgen_skip`. | `grep -r '@testgen_skip' dsl/std/` accounts for all remaining stubs. Zero unmarked stubs. | M | Open |
 | 8 | WS1-8 | **`Filesystem.read` type fix.** Change `path: String` to `path: TextFilePath`. | `dsl/std/resources.dag` Filesystem.read signature uses `TextFilePath`. | S | **Done** |
 

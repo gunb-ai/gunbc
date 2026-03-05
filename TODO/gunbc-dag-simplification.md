@@ -116,17 +116,6 @@ Each bridge exists because the compiler doesn't do enough. For each: current sta
 - **Acceptance**: `GenericFilePrepareOp` and `GenericFileParseOp` structs **deleted**. `grep -r 'GenericFilePrepareOp\|GenericFileParseOp' core/` returns 0. File transport uses same prepare/execute/parse triplet pattern as REST and Shell.
 - **Effort**: Medium.
 
-**Bridge 11: Shell hermeticity annotation** — hermetic vs external classification erased at transport layer.
-
-- **Location**: `core/ir/src/transport/mod.rs` (ShellRequest struct)
-- **Design doc**: `docs/design/shell-hermeticity-annotation.md`
-- **Current**: `TransportRequest::Shell(ShellRequest)` erases whether the producer is hermetic (local, deterministic, no external network/auth) or external. `git ls-files` and `gh gist create` become structurally identical after lowering.
-- **Incremental trap**: Infer hermeticity from command string prefixes ("git" → hermetic).
-- **Final state**: `ShellProducerSemantics` struct with `Hermeticity` enum (Hermetic | External) as optional field on `ShellRequest`. Producers set it at construction time. Testgen categorization uses it. Strict mode rejects `None` for classified workflows.
-- **Acceptance**: `ShellProducerSemantics` + `Hermeticity` types exist in `core/ir/src/transport/mod.rs`. `ShellRequest.semantics` field populated by git, cargo, gist, shell producers. Testgen reads `semantics.hermeticity`. `grep -r 'ShellProducerSemantics' core/ir/` returns 2+ hits (definition + usage). `grep -r 'Hermeticity' core/ir/` returns 2+ hits.
-- **Depends on**: Nothing. Can run in parallel with all other bridges.
-- **Effort**: Medium.
-
 **Bridge 11: Shell hermeticity annotation** -- hermetic vs external classification erased at transport layer.
 
 - **Location**: `core/ir/src/transport/mod.rs` (ShellRequest struct)
