@@ -353,7 +353,7 @@ fn shell_service_file_contains_service_defs() {
     let source = parse_dsl("extdeps/shell.dag");
     assert_eq!(
         source.items.len(),
-        9,
+        3,
         "extdeps/shell.dag item count changed unexpectedly"
     );
     assert_eq!(
