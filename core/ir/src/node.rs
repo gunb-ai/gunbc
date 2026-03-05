@@ -108,7 +108,7 @@ impl ServiceTransportClass {
 ///
 /// Enables post-lowering stages (verify, derive, emit, error reporting) to
 /// point errors at the original source location rather than generated node IDs.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NodeOrigin {
     /// Node derived directly from a user-authored AST item.
     UserCode {
@@ -140,13 +140,8 @@ pub enum NodeOrigin {
         module: String,
     },
     /// Origin not tracked (backward compat with pre-CP-51 DAGs).
+    #[default]
     Unknown,
-}
-
-impl Default for NodeOrigin {
-    fn default() -> Self {
-        NodeOrigin::Unknown
-    }
 }
 
 /// A node in the DAG, generic over its operation type.

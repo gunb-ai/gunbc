@@ -5,6 +5,7 @@
 //! namespace; collisions are rejected before any file content is rendered.
 
 use std::collections::BTreeMap;
+use std::sync::OnceLock;
 
 use daglang_driver::compile_data_from_module;
 use serde::de::DeserializeOwned;
@@ -120,8 +121,20 @@ impl std::fmt::Display for MakegenModelError {
 
 impl std::error::Error for MakegenModelError {}
 
+/// Cached build target data (CP-67). Compiled once from `config/build_targets.dag`.
+static BUILD_TARGETS_CACHE: OnceLock<Result<BuildTargetsData, MakegenModelError>> = OnceLock::new();
+
 /// Load typed build target declarations from DSL sources.
+///
+/// Result is cached via `OnceLock` (CP-67) since multiple callers
+/// (Makefile render, Justfile render, target validation) need the same data.
 pub fn load_build_targets_data() -> Result<BuildTargetsData, MakegenModelError> {
+    BUILD_TARGETS_CACHE
+        .get_or_init(load_build_targets_data_uncached)
+        .clone()
+}
+
+fn load_build_targets_data_uncached() -> Result<BuildTargetsData, MakegenModelError> {
     let layout = gunbc_ir::WorkspaceLayout::from_env_manifest_dir()
         .or_else(|_| gunbc_ir::WorkspaceLayout::from_cargo_metadata())
         .map_err(|e| MakegenModelError::BuildTargetsCompile {

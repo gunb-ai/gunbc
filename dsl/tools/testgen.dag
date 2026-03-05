@@ -10,10 +10,13 @@
 module tools.testgen
 
 import std.patterns { content_upsert }
+import std.resources { Filesystem }
 import std.types { CodegenTarget }
 
+extern func generate_test_content(target: CodegenTarget) -> { content: String }
+
 fn generate_tests(target: CodegenTarget) -> String {
-  target |> generate()
+  generate_test_content(target: target).content
 }
 
 func testgen(targets: List<CodegenTarget>) -> { success: Bool, all_fresh: Bool }

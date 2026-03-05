@@ -193,7 +193,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 | Bridge 3 | `CollectionDelegate` → proper IR nodes | M | — | Open |
 | Bridge 8 | `add_fs_env_root_node()` → resource injection at lower time | M | — | Open |
 | Bridge 9 | `GenericFilePrepareOp`/`ParseOp` → typed file transport | M | — | Open |
-| Bridge 11 | Shell hermeticity annotation | M | — | Partial (types done) |
+| Bridge 11 | Shell hermeticity annotation | M | — | **Done** — `Hermeticity` enum + `ShellProducerSemantics` in IR. `with_semantics()` on `ShellRequest`. `is_hermetic()` on `ServiceTransportClass`. Derive pass counts `service_transport_hermetic_targets` in `ObligationCounts`. CLI/snapshot render. Git, file transports = Hermetic. GitHub CLI, REST = External. Testgen mock strategy variation (using hermeticity to skip full transport mocking for hermetic targets) deferred to RT-2 error scenario work. |
 | Bridge 6+7 | Tool registry artifact emission | L | Design needed | Blocked |
 
 **Cross-lane note**: Bridge 1+2 directly enables CP-8 (strict verification). Fixes `make gist` unguarded transport bug + `make install` compute node failures. Don't duplicate — just know it's a prerequisite for the hardest Phase B items.
@@ -364,7 +364,7 @@ Source: [`TODO/gist-auth-postmortem.md`](TODO/gist-auth-postmortem.md) RT-I + [`
 | RT-2 | **Testgen Bucket C error scenarios** — extend `SingleTransportFailure` to inject realistic error responses (401/403/500 for REST, exit 1 for shell), not just `Value::Skipped`. | L | RT-1 beneficial | Open |
 | RT-3 | **REST status-code checking in parse layer** — `GenericRestParseOp` checks status before field extraction. Non-2xx → error. Currently 401 detection is by accident (missing field). | M | — | **Done** — `validate_status_declared()` + `!rest.is_success()` check with auth context decoration, service metadata, and transport context. Implemented in `service_ops_impl.rs`. |
 | RT-4 | **Shell exit code enforcement** — add exit code check to remaining parse modes (`TrimStdout`, `SplitLines`). RT-I4 partially done on separate branch. | S | — | **Done** — `TrimStdout`: errors on non-zero exit (returns `Value::Skipped` for optional fields). `SplitLines`: returns empty list on non-zero (by design — `find`/`ls-files` exit 1 for no results). `ExitCodeBool`/`SuccessStdoutStderr` already map exit code. |
-| RT-5 | **`CredentialChainIntegrity` obligation** — for every service with `config { auth }`, trace DAG backwards to credential source, assert edge exists. | M | — | Open |
+| RT-5 | **`CredentialChainIntegrity` obligation** — for every service with `config { auth }`, trace DAG backwards to credential source, assert edge exists. | M | — | **Done** — `CredentialChainIntegrity` obligation variant collected in `collect_resource_obligations()`. Iterates all `TransportExecute` nodes, checks for `res:credential` input port + incoming edge. Connected = discharged. Disconnected = invalidated (exact gist 401 bug pattern). Testgen emits failing test for disconnected credential chains. |
 | RT-6 | **Wire `credential_chain` into gist** — replace raw `shell.GCloud.SecretManagerAccessVersion` with `credential_chain(runtime: LocalDev)` in all 3 gist entrypoints. | M | RT-4 | Open |
 | RT-7 | **Credential expiry wiring** — lowerer reads `expires` from resource properties, executor checks `Secret.is_valid()`, testgen generates expiry-scenario tests. Infrastructure exists in IR (`Secret.expires_at`, `ResourceType::Credential`) but is disconnected. | L | RT-5 | Open |
 | RT-8 | **Verify `credential_chain` e2e** — pattern at `dsl/std/patterns.dag:236-283` references `gcp.STS.Exchange`, `local_auth()`, `gcp.SecretManager.AccessVersion` (REST). Verify all lower correctly with auth fixes. | M | RT-6 | Open |
@@ -464,10 +464,10 @@ Source: [`TODO/gist-auth-postmortem.md`](TODO/gist-auth-postmortem.md) RT-I + [`
 |----|------|------|-------|
 | CP-12 | Go/C/MIPS callable orchestration | XL | Future — Rust parity first |
 | CX-1 | Pipe Method Registry consolidation | M | Prereq for FC-CF2/3 |
-| CX-2 | Deduplicate `lower_expr`/`remap_expr_idents` (latent bug) | S | |
-| CX-3 | Type mapping consolidation (3 Go/Rust sites) | S | Low priority |
-| CX-4 | `CallableItem` group helper | S | Low priority |
-| CX-5 | Structural primitive `is_structural()` | S | Low priority |
+| CX-2 | Deduplicate `lower_expr`/`remap_expr_idents` (latent bug) | S | **Done** — `remap_expr_idents` no longer exists; `lower_expr` in `expr.rs` is the single expression lowering path. |
+| CX-3 | Type mapping consolidation (3 Go/Rust sites) | S | **Done** — `type_mapping.rs` in daglang-emit centralizes `DslTypeMapping` + `PrimitiveMapping` + `RUST_TYPE_MAPPING`/`GO_TYPE_MAPPING`. All emit backends (lower_rust, lower_go, service_emit, type_codegen) use shared `map_abstract_type()`/`lookup_primitive()`. |
+| CX-4 | `CallableItem` group helper | S | **Done** — `CallableItemExt` trait in daglang-syntax/callable.rs implements shared methods (name, params, body_lossy) for FnDef, FuncDef, PatternDef. `Item::as_callable()` returns `&dyn CallableItemExt`. |
+| CX-5 | Structural primitive `is_structural()` | S | **Done** — `PrimitiveOpKind::is_structural()` method exists. Used by emit backends to distinguish structural ops (passthrough stubs) from non-structural (codegen needed). |
 | FC-CF2 | `skip(n)` pipe method | S | After CX-1 |
 | FC-CF3 | `enumerate()` pipe method | M | After CX-1 |
 | C28-P2 | Daggen cache manager (content-hash → `.dagbin`) | M | Infrastructure ready |

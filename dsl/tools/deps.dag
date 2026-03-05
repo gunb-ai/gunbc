@@ -24,6 +24,10 @@ type DepEntry {
   platform: Platform?
 }
 
+extern func parse_deps_toml(content: String) -> { return: DepsManifest }
+extern func shell_check(command: String) -> { exists: Bool }
+extern func shell_exec(script: String) -> { success: Bool }
+
 fn render_deps_toml(registry: ToolRegistry) -> String {
   let header = generated_header(tool: "deps")
   let entries = registry.tools
@@ -40,7 +44,7 @@ fn select_platform_deps(manifest: DepsManifest, platform: Platform) -> List<DepE
     })
 }
 
-func deps(manifest_path: FilePath = "deps.toml", platform: Platform) -> { all_installed: Bool }
+func deps(manifest_path: String = "deps.toml", platform: Platform) -> { all_installed: Bool }
   uses fs: Filesystem(mode: Read)
 {
   manifest_content = fs.read(path: manifest_path)
@@ -56,7 +60,9 @@ func deps(manifest_path: FilePath = "deps.toml", platform: Platform) -> { all_in
   return { all_installed: results |> all(r => r.success) }
 }
 
-func deps_generate(registry: ToolRegistry) -> { written: Bool } {
+func deps_generate(registry: ToolRegistry) -> { written: Bool }
+  uses fs: Filesystem(mode: ReadWrite)
+{
   content = render_deps_toml(registry: registry)
   result = content_upsert(content: content, path: "deps.toml")
   return { written: result.written }
