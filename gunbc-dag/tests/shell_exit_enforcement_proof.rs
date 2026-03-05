@@ -62,9 +62,9 @@ fn connected_subdag<T: Clone>(dag: &gunbc_ir::Dag<T>, seed_prefix: &str) -> gunb
 
     let mut subdag = dag.clone();
     subdag.nodes.retain(|node| visited.contains(&node.id.0));
-    subdag.edges.retain(|edge| {
-        visited.contains(&edge.from_node.0) && visited.contains(&edge.to_node.0)
-    });
+    subdag
+        .edges
+        .retain(|edge| visited.contains(&edge.from_node.0) && visited.contains(&edge.to_node.0));
     subdag
 }
 
@@ -127,9 +127,9 @@ impl TransportBackend for GcloudExpiredBackend {
                     "ERROR: (gcloud.secrets.versions.access) There was a problem refreshing your current auth tokens",
                 )))
             }
-            // Credential chain STS/OAuth REST calls — fail to simulate
-            // credential resolution failure (these fire because default param
-            // injection provides `audience` to the credential chain).
+            // Any non-gist REST call here would be a regression in the current
+            // gist credential helper, which should resolve via shell-only
+            // env/gcloud paths before the GitHub API request.
             TransportRequest::Rest(rest) if !rest.url.ends_with("/gists") => {
                 Err(TransportError::new(format!(
                     "credential REST call should not succeed when gcloud fails: {}",
@@ -198,8 +198,8 @@ impl TransportBackend for Rest401Backend {
                     "oldest-commit\n",
                 )))
             }
-            // Credential chain probes CI environment via printenv; return empty
-            // to simulate non-CI, forcing fallback to gcloud.
+            // Shared gist credential helper probes the local env first; return
+            // empty to force the GCP Secret Manager fallback path.
             TransportRequest::Shell(shell) if shell.command == "printenv" => {
                 Ok(TransportResponse::Shell(ShellResponse::ok("")))
             }
@@ -231,7 +231,7 @@ impl TransportBackend for Rest401Backend {
 
 fn build_gist_recent_with_inputs() -> (gunbc_ir::Dag<gunbc_exec::DynOp>, BoundaryMocks) {
     let dag = build_dsl_graph_with_profile("tools/gist.dag", "profiles.gist.local")
-    .expect("gist-recent graph should build");
+        .expect("gist-recent graph should build");
     let dag = connected_subdag(&dag, "tools.gist::gist_recent");
 
     let mut input_mocks = BoundaryMocks::new();
@@ -265,10 +265,9 @@ fn build_gist_recent_with_inputs() -> (gunbc_ir::Dag<gunbc_exec::DynOp>, Boundar
 /// then flow to the GitHub API as the auth token, causing a 401 error that
 /// was misdiagnosed as a token permission issue.
 ///
-/// After RT-I4, the credential chain fails — either via shell exit code
-/// checking (exit 1 from gcloud) or via credential Skipped propagation
-/// (when the WIF conditional path skips). Either way, execution fails
-/// rather than silently sending an unauthenticated request.
+/// After RT-I4, the shared gist credential helper fails closed when the
+/// `gcloud` fallback exits non-zero. Execution now stops before sending an
+/// unauthenticated gist request.
 #[test]
 fn gcloud_exit_code_1_fails_with_error() {
     let (dag, input_mocks) = build_gist_recent_with_inputs();
@@ -302,8 +301,7 @@ fn gcloud_exit_code_1_fails_with_error() {
     );
 
     // Verify that the gist REST endpoint was never called — the failure should
-    // stop the flow before reaching the GitHub API. Credential chain REST calls
-    // (OIDC, STS, metadata) may fire and fail; only count gist API calls.
+    // stop the flow before reaching the GitHub API.
     let captured = requests.lock().expect("capture lock");
     let gist_rest_calls: Vec<_> = captured
         .iter()
@@ -355,7 +353,7 @@ fn rest_401_response_surfaces_as_error() {
 #[test]
 fn auto_mock_spec_always_produces_success_responses() {
     let dag = build_dsl_graph_with_profile("tools/gist.dag", "profiles.gist.local")
-    .expect("gist-recent graph should build");
+        .expect("gist-recent graph should build");
     let dag = connected_subdag(&dag, "tools.gist::gist_recent");
 
     let spec = gunbc_test::auto_mock_spec(&dag, "gist_recent");

@@ -498,7 +498,11 @@ func run() -> { report: String } {
     // return value from the fn's computation instead of requiring passthrough
     // wiring from ExprCompute nodes.
     let result = execute_resolved_dag(&resolved, ExecutionMode::Real, None);
-    assert!(result.is_ok(), "execution should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "execution should succeed: {:?}",
+        result.err()
+    );
 
     // Verify the fn body evaluation produced the correct report string.
     let log = result.unwrap();
@@ -506,7 +510,10 @@ func run() -> { report: String } {
         .entries
         .iter()
         .find(|e| e.node_id == "sample.main::summarize");
-    assert!(summarize_entry.is_some(), "summarize node should have executed");
+    assert!(
+        summarize_entry.is_some(),
+        "summarize node should have executed"
+    );
     let summarize_outputs = &summarize_entry.unwrap().outputs;
     let return_value = summarize_outputs.get("return");
     assert!(

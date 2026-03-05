@@ -83,9 +83,16 @@ pub struct TargetSource {
 /// Typed model-level errors for make target invariants.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MakegenModelError {
-    BuildTargetsCompile { details: String },
-    MissingData { key: &'static str },
-    DeserializeData { key: &'static str, details: String },
+    BuildTargetsCompile {
+        details: String,
+    },
+    MissingData {
+        key: &'static str,
+    },
+    DeserializeData {
+        key: &'static str,
+        details: String,
+    },
     DuplicateTargetName {
         name: String,
         first: TargetSource,
@@ -103,7 +110,10 @@ impl std::fmt::Display for MakegenModelError {
                 write!(f, "build target model missing data declaration `{key}`")
             }
             MakegenModelError::DeserializeData { key, details } => {
-                write!(f, "failed to deserialize `{key}` from build target model: {details}")
+                write!(
+                    f,
+                    "failed to deserialize `{key}` from build target model: {details}"
+                )
             }
             MakegenModelError::DuplicateTargetName {
                 name,
@@ -128,9 +138,11 @@ pub fn load_build_targets_data() -> Result<BuildTargetsData, MakegenModelError> 
             details: format!("workspace layout: {e}"),
         })?;
     let dsl_root = layout.workspace_root.join("dsl");
-    let output = compile_data_from_module(&dsl_root, "config/build_targets.dag")
-        .map_err(|details| MakegenModelError::BuildTargetsCompile {
-            details: details.to_string(),
+    let output =
+        compile_data_from_module(&dsl_root, "config/build_targets.dag").map_err(|details| {
+            MakegenModelError::BuildTargetsCompile {
+                details: details.to_string(),
+            }
         })?;
 
     let core_workflows =
@@ -336,7 +348,11 @@ mod tests {
 
         let err = index_unique_target_names(&registry, &build_targets).expect_err("must collide");
         match err {
-            MakegenModelError::DuplicateTargetName { name, first, second } => {
+            MakegenModelError::DuplicateTargetName {
+                name,
+                first,
+                second,
+            } => {
                 assert_eq!(name, "codegen");
                 assert_eq!(first.origin, TargetOrigin::Core);
                 assert_eq!(second.origin, TargetOrigin::Tool);

@@ -1063,11 +1063,7 @@ fn sdlc_control_plane_go_runtime_executes_when_go_available() {
 
     let native_out_root =
         unique_workspace_target_dir("runtime_native_sdlc_control_plane_go_strict");
-    compile_module_for_target(
-        "dsl/tools/infra.dag",
-        "go",
-        &native_out_root.join("go"),
-    );
+    compile_module_for_target("dsl/tools/infra.dag", "go", &native_out_root.join("go"));
     let go = run_infra_generated_go(&native_out_root.join("go"));
 
     match go {
@@ -1129,11 +1125,7 @@ fn sdlc_control_plane_c_runtime_executes_when_cc_and_curl_headers_available() {
     }
 
     let native_out_root = unique_workspace_target_dir("runtime_native_sdlc_control_plane_c_strict");
-    compile_module_for_target(
-        "dsl/tools/infra.dag",
-        "c",
-        &native_out_root.join("c"),
-    );
+    compile_module_for_target("dsl/tools/infra.dag", "c", &native_out_root.join("c"));
     let c = run_infra_generated_c(&native_out_root.join("c"));
 
     match c {
@@ -1191,11 +1183,7 @@ fn sdlc_control_plane_mips_runtime_executes_when_mips_toolchain_available() {
 
     let native_out_root =
         unique_workspace_target_dir("runtime_native_sdlc_control_plane_mips_strict");
-    compile_module_for_target(
-        "dsl/tools/infra.dag",
-        "mips",
-        &native_out_root.join("mips"),
-    );
+    compile_module_for_target("dsl/tools/infra.dag", "mips", &native_out_root.join("mips"));
     let mips = run_infra_generated_mips(&native_out_root.join("mips"));
 
     match mips {
@@ -1220,16 +1208,8 @@ fn sdlc_control_plane_runtime_smoke_go_and_c_emit_runnable_binaries() {
         return;
     }
     let native_out_root = unique_workspace_target_dir("runtime_native_sdlc_control_plane");
-    compile_module_for_target(
-        "dsl/tools/infra.dag",
-        "go",
-        &native_out_root.join("go"),
-    );
-    compile_module_for_target(
-        "dsl/tools/infra.dag",
-        "c",
-        &native_out_root.join("c"),
-    );
+    compile_module_for_target("dsl/tools/infra.dag", "go", &native_out_root.join("go"));
+    compile_module_for_target("dsl/tools/infra.dag", "c", &native_out_root.join("c"));
 
     let go = run_infra_generated_go(&native_out_root.join("go"));
     let c = run_infra_generated_c(&native_out_root.join("c"));
@@ -1271,11 +1251,7 @@ fn sdlc_control_plane_runtime_smoke_mips_emits_runnable_binary_when_available() 
         return;
     }
     let native_out_root = unique_workspace_target_dir("runtime_native_sdlc_control_plane_mips");
-    compile_module_for_target(
-        "dsl/tools/infra.dag",
-        "mips",
-        &native_out_root.join("mips"),
-    );
+    compile_module_for_target("dsl/tools/infra.dag", "mips", &native_out_root.join("mips"));
 
     let mips = run_infra_generated_mips(&native_out_root.join("mips"));
     match mips {
@@ -1321,11 +1297,7 @@ fn sdlc_control_plane_c_runtime_asan_smoke_when_available() {
         return;
     }
     let native_out_root = unique_workspace_target_dir("runtime_native_sdlc_control_plane_c_asan");
-    compile_module_for_target(
-        "dsl/tools/infra.dag",
-        "c",
-        &native_out_root.join("c"),
-    );
+    compile_module_for_target("dsl/tools/infra.dag", "c", &native_out_root.join("c"));
     match run_generated_c_with_asan(&native_out_root.join("c")) {
         RuntimeOutcome::Ran { stdout, stderr } => {
             assert!(
@@ -1378,11 +1350,7 @@ fn sdlc_control_plane_c_runtime_asan_ubsan_smoke_when_available() {
     }
     let native_out_root =
         unique_workspace_target_dir("runtime_native_sdlc_control_plane_c_asan_ubsan");
-    compile_module_for_target(
-        "dsl/tools/infra.dag",
-        "c",
-        &native_out_root.join("c"),
-    );
+    compile_module_for_target("dsl/tools/infra.dag", "c", &native_out_root.join("c"));
     match run_generated_c_with_asan_ubsan(&native_out_root.join("c")) {
         RuntimeOutcome::Ran { stdout, stderr } => {
             assert!(
@@ -1457,23 +1425,23 @@ fn deserialized_dag_resolves_and_executes() {
         roots: vec![dsl_root],
         target_file: Some(workspace_root().join("dsl/tools/pragma.dag")),
     };
-    let output = daglang_driver::compile_from_context(&context)
-        .expect("pragma should compile successfully");
+    let output =
+        daglang_driver::compile_from_context(&context).expect("pragma should compile successfully");
 
     // Round-trip through JSON
     let bytes = output
         .serialize_lowered_dag()
         .expect("serialize should succeed");
-    let restored = daglang_driver::deserialize_lowered_dag(&bytes)
-        .expect("deserialize should succeed");
+    let restored =
+        daglang_driver::deserialize_lowered_dag(&bytes).expect("deserialize should succeed");
 
     // Resolve the deserialized DAG to DynOp — verify it doesn't panic
-    let resolved = resolve_lowered_dag(&restored)
-        .expect("deserialized DAG should resolve to DynOp");
+    let resolved =
+        resolve_lowered_dag(&restored).expect("deserialized DAG should resolve to DynOp");
 
     // Resolve the original DAG for comparison
-    let original_resolved = resolve_lowered_dag(&output.lowered_dag)
-        .expect("original DAG should resolve to DynOp");
+    let original_resolved =
+        resolve_lowered_dag(&output.lowered_dag).expect("original DAG should resolve to DynOp");
 
     // Both resolutions should produce the same number of nodes
     assert_eq!(

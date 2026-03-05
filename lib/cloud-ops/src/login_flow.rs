@@ -35,7 +35,10 @@ pub fn inspect_login_flow(spec: &InfraSpec) -> LoginDiagnostics {
 
     let mut recommendations = Vec::new();
     if !adc_exists {
-        recommendations.push("ADC credentials are missing; refresh local application-default credentials.".to_string());
+        recommendations.push(
+            "ADC credentials are missing; refresh local application-default credentials."
+                .to_string(),
+        );
     } else if !adc_has_refresh_token {
         recommendations.push(
             "ADC is present but missing refresh_token; refresh local application-default credentials."

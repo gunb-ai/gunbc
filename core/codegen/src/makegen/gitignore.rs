@@ -16,8 +16,8 @@ use std::collections::HashSet;
 use daglang_driver::compile_data_from_module;
 use serde::Deserialize;
 
-use crate::tool_discovery::discover_tool_defs_from_dsl;
 use super::registry::{BuildConfig, BuildSystem};
+use crate::tool_discovery::discover_tool_defs_from_dsl;
 use gunbc_infra::workspace_model::{baseline_commit_policies, CommitReason};
 use gunbc_ir::cargo::{CargoCommand, Subcommand};
 use gunbc_ir::render_ir::{Category, FileHeader, PlainText, StructuredRenderer};

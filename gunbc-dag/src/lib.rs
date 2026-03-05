@@ -44,19 +44,18 @@ pub use ci::ci_live_test_secrets;
 pub use docgen::{build_docgen_graph, DocgenGraphOp};
 pub use dry_run::wire_fs_env_write_mock;
 pub use fs_env::{add_fs_env_root_node, wire_fs_env_write_edges};
-pub use gunbc_ir::CODEGEN_STAMP_PATH;
 pub use gunbc_codegen::makegen::{
     gitignore::render_gitignore,
     justfile::render_justfile,
     registry::{default_build_config, BuildConfig, WorkflowKind, WorkflowSpec},
     shared::render_makefile,
 };
+pub use gunbc_ir::CODEGEN_STAMP_PATH;
 pub use pragma::{build_pragma_graph, pragma_signature, PragmaGraphOp};
 pub use resolve::{resolve_lowered_dag, ResolveError};
 pub use resource_defs::{
     deps_config_resource_def, gitignore_resource_def, makefile_resource_def, testgen_resource_def,
 };
-pub use testgen_dag::{build_testgen_graph, build_testgen_graph_for_test, TestgenGraphOp, TestgenOp};
 pub use tool_graphs::{
     bootstrap_signature, build_bootstrap_graph, build_build_graph, build_codegen_graph,
     build_deps_graph, build_embedded_data, build_infra_graph, build_makegen_graph, build_signature,
@@ -75,8 +74,7 @@ pub use workflow::{
     explain_plan, gist_diff_workflow_spec, gist_recent_workflow_spec, gist_workflow_spec,
     has_required_unit_contract, makegen_workflow_spec, plan_global_workflows, plan_workflow,
     plan_workflow_with_mode, pragma_workflow_spec, project_execute_set, prove_non_redundancy,
-    render_execution_report, required_input_contract, required_output_contract,
-    sdlc_workflow_spec,
+    render_execution_report, required_input_contract, required_output_contract, sdlc_workflow_spec,
     test_all_unit_commands, test_all_workflow_spec, tool_workflow_spec, top_slow_units,
     validate_conflicting_claims, validate_effectful_claim_declarations,
     validate_projection_equivalence, validate_required_claims, validate_workflow_admission,

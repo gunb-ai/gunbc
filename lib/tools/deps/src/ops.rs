@@ -680,8 +680,8 @@ echo "Installing git..."
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::STRICT_DRY_RUN_ENV;
     use crate::test_support::with_env_lock;
+    use crate::STRICT_DRY_RUN_ENV;
 
     #[test]
     fn test_generate_scripts_with_manifest_content() {

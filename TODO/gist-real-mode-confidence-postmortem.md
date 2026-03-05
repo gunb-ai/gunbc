@@ -44,7 +44,7 @@ The intended model is:
 1. Workflows declare abstract credentialing/capability requirements.
 2. Domain modeling resolves the concrete credential path from caller setup and modeled environment.
 3. Local development, CI, and cloud execution are domain facts, not `--profile` flags.
-4. Workflows should not contain fallback trees like "try env, otherwise gcloud" to compensate for missing domain modeling.
+4. Workflow-facing helpers should not be forced to contain fallback trees like "try env, otherwise gcloud" to compensate for missing domain modeling.
 5. Rust should not carry repo-specific `gcloud` acquisition/install residue for this path; the concrete operational model belongs in `.dag`.
 
 ### Current State, Fairly Stated
@@ -53,7 +53,7 @@ As of this branch:
 
 1. The specific `CredentialProvider.acquire requires --profile` failure was avoided by moving gist credential resolution out of the old profile-bound interface path.
 2. That is an immediate reliability improvement for `make gist`.
-3. It is still transitional, not the desired end state, because the tool now contains credential-resolution policy directly and still encodes a fallback path in the workflow itself.
+3. It is still transitional, not the desired end state, because gist still depends on a shared concrete credential helper that encodes fallback behavior outside the modeled provider path.
 
 ---
 
@@ -179,7 +179,7 @@ To:
 
 The desired end state is not "better fallback logic." The desired end state is "no fallback logic in the workflow."
 
-If local development uses `gcloud`, that should emerge from the modeled local-dev credential path, not from per-tool branches like:
+If local development uses `gcloud`, that should emerge from the modeled local-dev credential path, not from helper-level branches like:
 
 1. try `GITHUB_TOKEN`
 2. otherwise call `gcloud`

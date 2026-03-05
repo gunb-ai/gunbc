@@ -32,6 +32,7 @@ import interfaces.claim_store { ClaimStore }
 import interfaces.outcome_ledger { OutcomeLedger }
 import interfaces.agent_provider { AgentProvider }
 import funcs.sdlc_stages { execute_stage }
+import shared.credentials { resolve_github_token, resolve_llm_api_key }
 import shared.dag_util { stage_result, aggregate_results, format_report }
 import std.state_machines { determine_stage }
 import std.types {
@@ -69,8 +70,8 @@ fn make_run_key(owner: String, repo: String, number: Int, stage: IssueLifecycleS
 // (or use --until-stable flag once implemented).
 
 func dispatch_sdlc(
-  auth_token: Secret,
-  api_key: Secret,
+  auth_token: Secret?,
+  api_key: Secret?,
   owner: String,
   repo: String,
   worker_id: String,
@@ -82,6 +83,16 @@ func dispatch_sdlc(
   uses outcomes: OutcomeLedger
   uses agents: AgentProvider
 {
+  resolved_auth_token = match auth_token {
+    Some(token) => token
+    None => resolve_github_token().token
+  }
+
+  resolved_api_key = match api_key {
+    Some(token) => token
+    None => resolve_llm_api_key(provider: llm_provider).token
+  }
+
   // Step 4a: Discover all open issues with SDLC labels
   discovered = issues.discover(
     labels: ["sdlc:idea", "sdlc:design", "sdlc:design-review", "sdlc:accepted",
@@ -125,8 +136,8 @@ func dispatch_sdlc(
       } else {
         // Step 1 (gap analysis): dispatch to multi-stage handler
         stage_outcome = execute_stage(
-          auth_token: auth_token,
-          api_key: api_key,
+          auth_token: resolved_auth_token,
+          api_key: resolved_api_key,
           issue_id: issue_id,
           stage: stage,
           title: issue.title,

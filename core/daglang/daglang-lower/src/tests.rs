@@ -3738,7 +3738,10 @@ fn make_branch_body_dag_no_transports_has_single_op() {
     assert!(dag.nodes[0].inputs.iter().any(|p| p.name.0 == "condition"));
     // No-transport case uses fn_body: Some(return { result: input }) — avoids __out:result requirement
     if let gunbc_ir::NodeBody::Opaque(LoweredOp::Callable { fn_body, .. }) = &dag.nodes[0].body {
-        assert!(fn_body.is_some(), "no-transport branch body should have trivial fn_body passthrough");
+        assert!(
+            fn_body.is_some(),
+            "no-transport branch body should have trivial fn_body passthrough"
+        );
     } else {
         panic!("expected Callable op");
     }
@@ -3784,7 +3787,10 @@ fn make_branch_body_dag_with_transports_has_triplets() {
 
     // With-transport case uses fn_body to pass through the transport parse output
     if let gunbc_ir::NodeBody::Opaque(LoweredOp::Callable { fn_body, .. }) = &op_node.body {
-        assert!(fn_body.is_some(), "with-transport branch body should have fn_body");
+        assert!(
+            fn_body.is_some(),
+            "with-transport branch body should have fn_body"
+        );
     } else {
         panic!("expected Callable op");
     }
@@ -3908,10 +3914,7 @@ func run(values: List<String>) -> { out: String } {
     )]);
     let dag = lower_target_module_with_collections(&typed, "sample.pipe");
 
-    let map_node = dag
-        .nodes
-        .iter()
-        .find(|node| node.id.0.contains("MapNode"));
+    let map_node = dag.nodes.iter().find(|node| node.id.0.contains("MapNode"));
 
     assert!(
         map_node.is_some(),
@@ -3933,10 +3936,7 @@ func run(values: List<Int>) -> { out: List<Int> } {
     )]);
     let dag = lower_target_module(&typed, "sample.for_expr");
 
-    let for_node = dag
-        .nodes
-        .iter()
-        .find(|node| node.id.0.contains("cf_for_"));
+    let for_node = dag.nodes.iter().find(|node| node.id.0.contains("cf_for_"));
 
     assert!(
         for_node.is_some(),
@@ -3961,10 +3961,7 @@ func run(values: List<String>) -> { out: String } {
         .nodes
         .iter()
         .find(|node| node.id.0.contains("FilterNode"));
-    let join_node = dag
-        .nodes
-        .iter()
-        .find(|node| node.id.0.contains("JoinNode"));
+    let join_node = dag.nodes.iter().find(|node| node.id.0.contains("JoinNode"));
 
     assert!(
         filter_node.is_some(),

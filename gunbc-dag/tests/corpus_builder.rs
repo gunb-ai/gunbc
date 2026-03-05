@@ -35,14 +35,13 @@ fn compile_tool(
 
 #[test]
 fn single_tool_produces_nonempty_corpus() {
-    let (dag, spec, info) =
-        match compile_tool("tools/pragma.dag", "pragma_lint", "pragma") {
-            Some(t) => t,
-            None => {
-                eprintln!("skipping: pragma tool failed to compile");
-                return;
-            }
-        };
+    let (dag, spec, info) = match compile_tool("tools/pragma.dag", "pragma_lint", "pragma") {
+        Some(t) => t,
+        None => {
+            eprintln!("skipping: pragma tool failed to compile");
+            return;
+        }
+    };
 
     let (corpus_map, _edges) =
         build_corpus(&[(info, &dag, &spec)], |_| true).expect("strict corpus build should pass");
@@ -114,14 +113,13 @@ fn multi_workflow_accumulates_shared_nodes() {
 
 #[test]
 fn corpus_node_identities_are_well_formed() {
-    let (dag, spec, info) =
-        match compile_tool("tools/pragma.dag", "pragma_lint", "pragma") {
-            Some(t) => t,
-            None => {
-                eprintln!("skipping: pragma tool failed to compile");
-                return;
-            }
-        };
+    let (dag, spec, info) = match compile_tool("tools/pragma.dag", "pragma_lint", "pragma") {
+        Some(t) => t,
+        None => {
+            eprintln!("skipping: pragma tool failed to compile");
+            return;
+        }
+    };
 
     let (corpus_map, _) =
         build_corpus(&[(info, &dag, &spec)], |_| true).expect("strict corpus build should pass");
@@ -151,14 +149,13 @@ fn corpus_node_identities_are_well_formed() {
 
 #[test]
 fn edge_examples_have_valid_port_mappings() {
-    let (dag, spec, info) =
-        match compile_tool("tools/pragma.dag", "pragma_lint", "pragma") {
-            Some(t) => t,
-            None => {
-                eprintln!("skipping: pragma tool failed to compile");
-                return;
-            }
-        };
+    let (dag, spec, info) = match compile_tool("tools/pragma.dag", "pragma_lint", "pragma") {
+        Some(t) => t,
+        None => {
+            eprintln!("skipping: pragma tool failed to compile");
+            return;
+        }
+    };
 
     let (_, edges) =
         build_corpus(&[(info, &dag, &spec)], |_| true).expect("strict corpus build should pass");

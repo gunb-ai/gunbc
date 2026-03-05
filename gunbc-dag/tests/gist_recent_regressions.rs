@@ -6,6 +6,29 @@ use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_test::auto_mock_spec;
 
 #[test]
+fn shared_gist_upload_graph_builds_with_shared_credential_helper() {
+    let dag = build_dsl_graph_for_entrypoint("shared/gist_modes.dag", Some("share_content"), None)
+        .expect("shared share_content graph should build");
+    let lowered = lower(&dag).expect("lowered shared share_content");
+
+    assert!(
+        lowered
+            .dag
+            .nodes
+            .iter()
+            .any(|n| n.id.0.contains("resolve_github_token")),
+        "shared gist_upload should compile against resolve_github_token. \
+         All nodes: {:?}",
+        lowered
+            .dag
+            .nodes
+            .iter()
+            .map(|n| &n.id.0)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn gist_recent_graph_no_ls_files() {
     let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist_recent"), None)
         .expect("gist-recent graph should build");
@@ -27,12 +50,13 @@ fn gist_recent_graph_wires_diff_base_input() {
         .expect("gist-recent graph should build");
     let lowered = lower(&dag).expect("lowered gist-recent");
 
-    // After CredentialProvider migration, git Diff transport nodes still exist
-    // but node naming may differ. Check that any Diff-related prepare node
-    // receives a "base" input edge.
-    let has_base_edge = lowered.dag.edges.iter().any(|edge| {
-        edge.to_node.0.contains("Diff") && edge.to_port.0 == "base"
-    });
+    // gist_recent still relies on the shared credential helper, but the diff
+    // transport still needs a concrete base input edge.
+    let has_base_edge = lowered
+        .dag
+        .edges
+        .iter()
+        .any(|edge| edge.to_node.0.contains("Diff") && edge.to_port.0 == "base");
     assert!(
         has_base_edge,
         "gist-recent must wire a base ref into git diff prepare node. \
@@ -42,7 +66,10 @@ fn gist_recent_graph_wires_diff_base_input() {
             .edges
             .iter()
             .filter(|e| e.to_node.0.contains("Diff") || e.from_node.0.contains("Diff"))
-            .map(|e| format!("{}:{} -> {}:{}", e.from_node.0, e.from_port.0, e.to_node.0, e.to_port.0))
+            .map(|e| format!(
+                "{}:{} -> {}:{}",
+                e.from_node.0, e.from_port.0, e.to_node.0, e.to_port.0
+            ))
             .collect::<Vec<_>>()
     );
 }
@@ -77,12 +104,35 @@ fn gist_recent_graph_has_token_resolution_path() {
     );
 }
 
+#[test]
+fn gist_recent_graph_uses_shared_credential_helper() {
+    let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist_recent"), None)
+        .expect("gist-recent graph should build");
+    let lowered = lower(&dag).expect("lowered gist-recent");
+
+    let has_shared_helper = lowered
+        .dag
+        .nodes
+        .iter()
+        .any(|n| n.id.0.contains("resolve_github_token"));
+    assert!(
+        has_shared_helper,
+        "gist-recent should route gist creation through shared.credentials::resolve_github_token. \
+         All nodes: {:?}",
+        lowered
+            .dag
+            .nodes
+            .iter()
+            .map(|n| &n.id.0)
+            .collect::<Vec<_>>()
+    );
+}
+
 /// End-to-end DryRun: gist_recent completes with auto-mocked transport nodes.
 ///
-/// Validates that the full pipeline (git, credential chain, gist create) is
-/// structurally connected and executes without errors. Uses DryRun mode because
-/// the credential chain's `local_auth()` func contains effectful conditionals
-/// that the lowerer cannot extract into flat transport nodes.
+/// Validates that the full pipeline (git, shared credential helper, gist create)
+/// is structurally connected and executes without errors. Uses DryRun mode because
+/// the credential helper still contains effectful env/secret-manager branches.
 #[test]
 #[ignore] // Pre-existing: GetField on credential token fails in DryRun (gist pipeline)
 fn gist_recent_end_to_end_emits_gist_url() {

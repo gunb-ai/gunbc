@@ -69,6 +69,13 @@ pub enum AutoTestgenResult {
     Skipped { reason: String },
 }
 
+/// Rendered output for one auto-generated test module.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenderedTestgenModule {
+    pub content: String,
+    pub path: String,
+}
+
 /// Discover all compilable `.dag` modules under `dsl_root`.
 ///
 /// Scans recursively for `.dag` files containing callable items — `fn`, `func`,
@@ -81,6 +88,11 @@ pub fn discover_compilable_modules(dsl_root: &Path) -> Vec<CompilableModule> {
     collect_dag_files(dsl_root, dsl_root, &mut modules);
     modules.sort_by(|a, b| a.dsl_path.cmp(&b.dsl_path));
     modules
+}
+
+/// Discover one compilable `.dag` module by relative path from `dsl_root`.
+pub fn find_compilable_module(dsl_root: &Path, dsl_path: &str) -> Option<CompilableModule> {
+    analyze_compilable_module(dsl_root, &dsl_root.join(dsl_path))
 }
 
 #[allow(clippy::disallowed_methods)]
@@ -96,89 +108,84 @@ fn collect_dag_files(base: &Path, dir: &Path, out: &mut Vec<CompilableModule>) {
             collect_dag_files(base, &path, out);
             continue;
         }
-        if path.extension().and_then(|e| e.to_str()) != Some("dag") {
-            continue;
+        if let Some(module) = analyze_compilable_module(base, &path) {
+            out.push(module);
         }
+    }
+}
 
-        let source = match std::fs::read_to_string(&path) {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
+#[allow(clippy::disallowed_methods)]
+fn analyze_compilable_module(base: &Path, path: &Path) -> Option<CompilableModule> {
+    if path.extension().and_then(|e| e.to_str()) != Some("dag") {
+        return None;
+    }
 
-        let ast = match daglang_syntax::parser::parse(&source) {
-            Ok(ast) => ast,
-            Err(_) => continue,
-        };
+    let source = std::fs::read_to_string(path).ok()?;
+    let ast = daglang_syntax::parser::parse(&source).ok()?;
 
-        // Count callable items — these are the item types that produce executable DAGs.
-        // Mirrors `module_has_callable_items()` in `daglang-driver/src/lib.rs`.
-        use daglang_syntax::ast::Item;
-        let callable_count = ast
-            .items
-            .iter()
-            .filter(|item| {
-                matches!(
-                    item.node,
-                    Item::FnDef(_) | Item::FuncDef(_) | Item::PatternDef(_) | Item::PipelineDef(_)
-                )
-            })
-            .count();
+    // Count callable items — these are the item types that produce executable DAGs.
+    // Mirrors `module_has_callable_items()` in `daglang-driver/src/lib.rs`.
+    use daglang_syntax::ast::Item;
+    let callable_count = ast
+        .items
+        .iter()
+        .filter(|item| {
+            matches!(
+                item.node,
+                Item::FnDef(_) | Item::FuncDef(_) | Item::PatternDef(_) | Item::PipelineDef(_)
+            )
+        })
+        .count();
 
-        if callable_count == 0 {
-            continue;
-        }
+    if callable_count == 0 {
+        return None;
+    }
 
-        let has_test_blocks = ast
-            .items
-            .iter()
-            .any(|item| matches!(item.node, daglang_syntax::ast::Item::TestDef(_)));
+    let has_test_blocks = ast
+        .items
+        .iter()
+        .any(|item| matches!(item.node, daglang_syntax::ast::Item::TestDef(_)));
 
-        // Collect interface type names from `import interfaces.*` statements.
-        let interface_imports: HashSet<String> = ast
-            .imports
-            .iter()
-            .filter(|import| {
-                import
-                    .node
-                    .path
-                    .segments
-                    .first()
-                    .is_some_and(|s| s == "interfaces")
-            })
-            .flat_map(|import| {
-                import
-                    .node
-                    .bindings
-                    .as_deref()
-                    .unwrap_or_default()
-                    .iter()
-                    .cloned()
-            })
-            .collect();
+    // Collect interface type names from `import interfaces.*` statements.
+    let interface_imports: HashSet<String> = ast
+        .imports
+        .iter()
+        .filter(|import| {
+            import
+                .node
+                .path
+                .segments
+                .first()
+                .is_some_and(|s| s == "interfaces")
+        })
+        .flat_map(|import| {
+            import
+                .node
+                .bindings
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .cloned()
+        })
+        .collect();
 
-        let requires_profile = !interface_imports.is_empty();
+    let rel_path = path
+        .strip_prefix(base)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .to_string();
 
-        // Build relative path from dsl root
-        let rel_path = path
-            .strip_prefix(base)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .to_string();
-
-        let module_name = rel_path
+    Some(CompilableModule {
+        module_name: rel_path
             .strip_suffix(".dag")
             .unwrap_or(&rel_path)
-            .replace('/', ".");
-
-        out.push(CompilableModule {
-            dsl_path: rel_path,
-            module_name,
-            callable_count,
-            has_test_blocks,
-            interface_imports,
-            requires_profile,
-        });
-    }
+            .replace('/', "."),
+        dsl_path: rel_path,
+        callable_count,
+        has_test_blocks,
+        requires_profile: !interface_imports.is_empty(),
+        interface_imports,
+    })
 }
 
 /// Run the auto-testgen pipeline on a single compilable module.
@@ -247,11 +254,7 @@ pub fn auto_testgen_for_module(
     let requires = gunbc_codegen::fidelity::requires_from_transport_classes(&all_transport_classes);
 
     // 3. Build TestgenTargetDef
-    let output_path = format!(
-        "{}/generated_tests_{}.rs",
-        output_dir.display(),
-        module.module_name.replace('.', "_"),
-    );
+    let output_path = output_path_for_module(output_dir, module);
     let module_test_name = format!("{}_generated_tests", module.module_name.replace('.', "_"));
 
     // RT24: dag_builder_call uses profile when required.
@@ -322,6 +325,40 @@ pub fn auto_testgen_for_module(
         target_def,
         test_code,
     }
+}
+
+/// Render generated test content for one module, including placeholder output
+/// when structural compilation is not currently possible.
+pub fn render_auto_testgen_for_module(
+    module: &CompilableModule,
+    output_dir: &Path,
+    profiles: &[super::profile_discovery::DiscoveredProfile],
+) -> RenderedTestgenModule {
+    match auto_testgen_for_module(module, output_dir, profiles) {
+        AutoTestgenResult::Generated {
+            target_def,
+            test_code,
+        } => RenderedTestgenModule {
+            content: test_code,
+            path: target_def.output_path.into_owned(),
+        },
+        AutoTestgenResult::Skipped { reason } => RenderedTestgenModule {
+            content: format!(
+                "// Auto-testgen skipped for '{}': {}\n",
+                module.module_name, reason
+            ),
+            path: output_path_for_module(output_dir, module),
+        },
+    }
+}
+
+/// Compute the generated Rust test path for a compilable module.
+pub fn output_path_for_module(output_dir: &Path, module: &CompilableModule) -> String {
+    format!(
+        "{}/generated_tests_{}.rs",
+        output_dir.display(),
+        module.module_name.replace('.', "_"),
+    )
 }
 
 /// Derive fermi cost from a profile's test class and environment requirements.
@@ -521,22 +558,7 @@ pub fn compile_dag_for_test(dsl_module: &str) -> Result<Dag<DynOp>, BuilderError
 /// This is the expression emitted in generated test code so tests can rebuild
 /// the DAG at test runtime.
 pub fn dag_builder_call_for_module(dsl_module: &str) -> String {
-    // Map dsl module path to the corresponding Rust builder function.
-    // These are defined in gunbc-dag/src/dsl_builder.rs.
-    let stem = dsl_module
-        .strip_prefix("tools/")
-        .and_then(|s| s.strip_suffix(".dag"))
-        .unwrap_or(dsl_module);
-
-    match stem {
-        "testgen" => {
-            "crate::testgen_dag::graph::build_testgen_graph_auto().expect(\"graph should build\")"
-                .to_string()
-        }
-        _ => format!(
-            "crate::dsl_builder::build_dsl_graph(\"{dsl_module}\").expect(\"graph should build\")"
-        ),
-    }
+    format!("crate::dsl_builder::build_dsl_graph(\"{dsl_module}\").expect(\"graph should build\")")
 }
 
 // ── Internal helpers ────────────────────────────────────────────────
@@ -811,5 +833,4 @@ mod tests {
         assert!(call.contains("build_dsl_graph"));
         assert!(call.contains("unknown.dag"));
     }
-
 }

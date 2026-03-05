@@ -207,10 +207,9 @@ pub use types::{
     boundary_label, parse_map_type_id, seed_placeholder_policy_for_type_id,
     semantic_carrier_class_for_type_id, semantic_carrier_compatible,
     semantic_carrier_kind_for_type_id, value_backing_for_type_id, value_compatible_with_type_id,
-    value_kind_name, Cardinality, CardinalityMismatch, CardinalitySamplingStrategy, NodeId,
-    InputProvenance, OperationKey, PortCategory, PortName, SeedPlaceholderPolicy,
-    SemanticCarrierClass, StaticFingerprint,
-    SemanticCarrierKind, TypeId, ValueBacking,
+    value_kind_name, Cardinality, CardinalityMismatch, CardinalitySamplingStrategy,
+    InputProvenance, NodeId, OperationKey, PortCategory, PortName, SeedPlaceholderPolicy,
+    SemanticCarrierClass, SemanticCarrierKind, StaticFingerprint, TypeId, ValueBacking,
 };
 pub use validate::{
     validate_fingerprint_uniqueness, validate_required_inputs, validate_resource_wiring,

@@ -31,6 +31,8 @@ pub fn resolve_extern_symbol(module: &str, name: &str) -> Option<DynOp> {
             Some(DynOp::new(RenderPragmaLintPolicyContentOp))
         }
         ("tools.cigen", "discover_ci_config") => Some(DynOp::new(DiscoverCiConfigOp)),
+        ("tools.testgen", "discover_testgen_modules") => Some(DynOp::new(DiscoverTestgenModulesOp)),
+        ("tools.testgen", "render_testgen_module") => Some(DynOp::new(RenderTestgenModuleOp)),
         ("tools.infra", "infra") => Some(DynOp::new(InfraDispatchOp)),
         _ => None,
     }
@@ -305,6 +307,66 @@ impl Executable for DiscoverCiConfigOp {
 }
 
 // ============================================================================
+// tools.testgen extern impls
+// ============================================================================
+
+#[derive(Debug, Clone)]
+struct DiscoverTestgenModulesOp;
+
+impl Executable for DiscoverTestgenModulesOp {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        let (dsl_root, _) = testgen_workspace_paths()?;
+        let modules = crate::testgen_dag::discover_compilable_modules(&dsl_root)
+            .into_iter()
+            .map(|module| Value::Str(module.dsl_path))
+            .collect::<Vec<_>>();
+        OutputMap::new().value("return", Value::List(modules)).ok()
+    }
+}
+
+#[derive(Debug, Clone)]
+struct RenderTestgenModuleOp;
+
+impl Executable for RenderTestgenModuleOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let dsl_path = inputs
+            .get("dsl_path")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                ExecError::new(
+                    "missing required 'dsl_path' input for tools.testgen::render_testgen_module",
+                )
+            })?;
+        let (dsl_root, output_dir) = testgen_workspace_paths()?;
+        let module =
+            crate::testgen_dag::find_compilable_module(&dsl_root, dsl_path).ok_or_else(|| {
+                ExecError::new(format!("testgen module is not compilable: {dsl_path}"))
+            })?;
+        let profiles = crate::testgen_dag::discover_profiles(&dsl_root);
+        let rendered =
+            crate::testgen_dag::render_auto_testgen_for_module(&module, &output_dir, &profiles);
+
+        OutputMap::new()
+            .str("content", rendered.content)
+            .str("path", rendered.path)
+            .ok()
+    }
+}
+
+fn testgen_workspace_paths() -> Result<(std::path::PathBuf, std::path::PathBuf), ExecError> {
+    let layout = gunbc_ir::WorkspaceLayout::from_env_manifest_dir()
+        .or_else(|_| gunbc_ir::WorkspaceLayout::from_cargo_metadata())
+        .map_err(|e| ExecError::new(format!("workspace layout for testgen externs: {e}")))?;
+    Ok((
+        layout.workspace_root.join("dsl"),
+        layout.workspace_root.join("gunbc-dag").join("src"),
+    ))
+}
+
+// ============================================================================
 // Tree rendering + language hints (shared helpers)
 // ============================================================================
 
@@ -505,8 +567,8 @@ mod tests {
         use gunbc_codegen::makegen::model::{load_build_targets_data, reserved_target_names};
         use gunbc_codegen::makegen::shared::registry_tools_to_value;
 
-        let registry = crate::tool_graphs::default_registry_enriched()
-            .expect("registry should build");
+        let registry =
+            crate::tool_graphs::default_registry_enriched().expect("registry should build");
         let build_targets = load_build_targets_data().expect("build targets should load");
         let reserved = reserved_target_names(&build_targets);
         let filtered = registry.without_reserved(&reserved);
@@ -516,6 +578,50 @@ mod tests {
             .execute(HashMap::new())
             .expect("discover_tools should succeed");
         let actual = out.get("return").expect("return key").clone();
-        assert_eq!(actual, expected, "DiscoverToolsOp output should match registry_tools_to_value on filtered registry");
+        assert_eq!(
+            actual, expected,
+            "DiscoverToolsOp output should match registry_tools_to_value on filtered registry"
+        );
+    }
+
+    #[test]
+    fn discover_testgen_modules_includes_testgen_tool() {
+        let out = DiscoverTestgenModulesOp
+            .execute(HashMap::new())
+            .expect("discover_testgen_modules should succeed");
+        let modules = out
+            .get("return")
+            .and_then(Value::as_str_list)
+            .expect("discover_testgen_modules should return List<String>");
+        assert!(
+            modules.iter().any(|module| module == "tools/testgen.dag"),
+            "tools/testgen.dag should be part of the discovered testgen set",
+        );
+    }
+
+    #[test]
+    fn render_testgen_module_renders_generated_test_content() {
+        let out = RenderTestgenModuleOp
+            .execute(HashMap::from([(
+                "dsl_path".to_string(),
+                Value::Str("tools/makegen.dag".to_string()),
+            )]))
+            .expect("render_testgen_module should succeed");
+        let path = out
+            .get("path")
+            .and_then(Value::as_str)
+            .expect("path output");
+        let content = out
+            .get("content")
+            .and_then(Value::as_str)
+            .expect("content output");
+        assert!(
+            path.ends_with("generated_tests_tools_makegen.rs"),
+            "unexpected generated path: {path}",
+        );
+        assert!(
+            content.contains("#[test]"),
+            "rendered testgen content should contain test functions",
+        );
     }
 }

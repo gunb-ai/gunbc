@@ -22,11 +22,19 @@ Source of truth: [`TODO/rolling-postmortem.md`](TODO/rolling-postmortem.md)
 1. **RR-1 (P0)**: Replace heuristic test-time confidence with measured runtime budget checks for `test-xs/s/m/l/xl` (maps to RC-P0-004).
 2. **RR-2 (P1)**: Split monolithic exhaustive tests into bounded shards or explicit integration-only flows; default loops should stay interactive (maps to RC-P1-005/006).
 
+### Cross-Cutting Auth Architecture
+
+Source of truth: [`TODO/rolling-postmortem.md`](TODO/rolling-postmortem.md)
+
+1. **AUTH-1 (P0)**: Define the final structural auth model. Services declare auth requirements semantically in their own models; workflows/tools never acquire tokens or call credential helpers directly.
+2. **AUTH-2 (P1)**: Add provider auth models under `dsl/extdeps/<provider>/auth.dag` starting with GitHub, so provider-specific concepts (PAT permissions, OAuth scopes, webhook secrets) sit on top of shared auth vocabulary instead of ad hoc helper logic.
+3. **AUTH-3 (P1)**: Finish lowerer/runtime auth injection so `AuthContext`/provider realization is real-mode safe for authenticated services, then delete interim `shared.credentials` workflow helper paths.
+
 ### Cross-Cutting `.dag` Migration
 
 Source of truth: [`TODO/gunbc-dag-simplification.md`](TODO/gunbc-dag-simplification.md)
 
-1. **DM-1 (P0) — DONE (2026-03-05)**: Deleted the remaining dead handwritten cloud/provider crates that now have `.dag` replacements: `lib/gcp-ops` and `lib/aws-ops`, following the earlier removal of `lib/gcp-ops/src/ops.rs`, `lib/gcp-ops/src/services/local_auth.rs`, and `lib/cloud-ops/src/infra_*`. Workspace/config/guardrail references were updated in `Cargo.toml`, `dsl/config/workspace.dag`, `dsl/config/arch_rules.dag`, `dsl/extdeps/gunbc.dag`, `gunbc-dag/tests/boundary_gate.rs`, and `lib/transport/src/pragma_lint.rs`. Audit result: the acceptance grep now returns compiler/framework internals, thin `.dag` entrypoint shims (`gunbc-dag/src/dsl_builder.rs`, `gunbc-dag/src/tool_graphs.rs`, `gunbc-dag/src/pragma/mod.rs`), and one explicitly scheduled survivor: `gunbc-dag/src/testgen_dag/graph.rs`, whose replacement is [`dsl/tools/testgen.dag`](dsl/tools/testgen.dag) once inventory-backed target discovery is expressed without a handwritten Rust graph builder. Rule remains: no new provider/runtime logic lands in Rust unless the compiler cannot yet express it.
+1. **DM-1 (P0) — DONE (2026-03-05)**: Deleted the remaining dead handwritten cloud/provider crates that now have `.dag` replacements: `lib/gcp-ops` and `lib/aws-ops`, following the earlier removal of `lib/gcp-ops/src/ops.rs`, `lib/gcp-ops/src/services/local_auth.rs`, and `lib/cloud-ops/src/infra_*`. Workspace/config/guardrail references were updated in `Cargo.toml`, `dsl/config/workspace.dag`, `dsl/config/arch_rules.dag`, `dsl/extdeps/gunbc.dag`, `gunbc-dag/tests/boundary_gate.rs`, and `lib/transport/src/pragma_lint.rs`. Update later on 2026-03-05: the last scheduled handwritten survivor in this lane, `gunbc-dag/src/testgen_dag/graph.rs`, was deleted and replaced by [`dsl/tools/testgen.dag`](dsl/tools/testgen.dag), with Rust reduced to narrow discovery/render extern bridges. Audit result: the acceptance grep now returns compiler/framework internals and thin `.dag` entrypoint shims (`gunbc-dag/src/dsl_builder.rs`, `gunbc-dag/src/tool_graphs.rs`, `gunbc-dag/src/pragma/mod.rs`), not handwritten provider/workflow graphs. Rule remains: no new provider/runtime logic lands in Rust unless the compiler cannot yet express it.
 
 ### Design docs
 

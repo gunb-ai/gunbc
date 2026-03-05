@@ -489,7 +489,10 @@ fn extract_shape_field(
     match json_val {
         Some(json) => Ok(from_bridge_json_typed(json, &field.type_id)),
         None if field.is_optional => Ok(Value::Unit),
-        None => Ok(from_bridge_json_typed(&serde_json::Value::Null, &field.type_id)),
+        None => Ok(from_bridge_json_typed(
+            &serde_json::Value::Null,
+            &field.type_id,
+        )),
     }
 }
 

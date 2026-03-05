@@ -1,8 +1,6 @@
 use gunbc_dag::dsl_builder::{build_dsl_graph, build_dsl_graph_with_profile};
 use gunbc_dag::sdlc_workflow_spec;
-use gunbc_exec::{
-    execute_with_mode_and_inputs, lower, BoundaryMocks, ExecutionMode,
-};
+use gunbc_exec::{execute_with_mode_and_inputs, lower, BoundaryMocks, ExecutionMode};
 use gunbc_ir::{detect_entrypoints, Dag, Value};
 use gunbc_test::auto_mock_spec;
 use std::collections::{HashSet, VecDeque};
@@ -46,30 +44,30 @@ fn connected_subdag<T: Clone>(dag: &Dag<T>, seed_prefix: &str) -> Dag<T> {
 
     let mut subdag = dag.clone();
     subdag.nodes.retain(|node| visited.contains(&node.id.0));
-    subdag.edges.retain(|edge| {
-        visited.contains(&edge.from_node.0) && visited.contains(&edge.to_node.0)
-    });
+    subdag
+        .edges
+        .retain(|edge| visited.contains(&edge.from_node.0) && visited.contains(&edge.to_node.0));
     subdag
 }
 
 #[test]
 fn builds_sdlc_worker_dsl_graph() {
-    let dag = build_dsl_graph("funcs/sdlc_worker.dag")
-        .expect("sdlc worker DSL graph should resolve");
+    let dag =
+        build_dsl_graph("funcs/sdlc_worker.dag").expect("sdlc worker DSL graph should resolve");
     assert!(!dag.nodes.is_empty());
 }
 
 #[test]
 fn builds_sdlc_stages_dsl_graph() {
-    let dag = build_dsl_graph("funcs/sdlc_stages.dag")
-        .expect("sdlc stages DSL graph should resolve");
+    let dag =
+        build_dsl_graph("funcs/sdlc_stages.dag").expect("sdlc stages DSL graph should resolve");
     assert!(!dag.nodes.is_empty());
 }
 
 #[test]
 fn builds_sdlc_workflow_dsl_graph() {
-    let dag = build_dsl_graph("workflows/sdlc.dag")
-        .expect("sdlc workflow DSL graph should resolve");
+    let dag =
+        build_dsl_graph("workflows/sdlc.dag").expect("sdlc workflow DSL graph should resolve");
     assert!(!dag.nodes.is_empty());
 }
 
@@ -82,10 +80,8 @@ fn builds_sdlc_worker_unit_test_profile_dsl_graph() {
 
 #[test]
 fn builds_sdlc_worker_local_profile_dsl_graph() {
-    if std::env::var("GITHUB_TOKEN").is_err() || std::env::var("CODEX_API_KEY").is_err() {
-        eprintln!(
-            "skipping local profile compile test (requires GITHUB_TOKEN and CODEX_API_KEY)"
-        );
+    if std::env::var("GITHUB_TOKEN").is_err() {
+        eprintln!("skipping local profile compile test (requires GITHUB_TOKEN)");
         return;
     }
     let dag = build_dsl_graph_with_profile("funcs/sdlc_worker.dag", "profiles.sdlc.local")
@@ -300,7 +296,10 @@ fn sdlc_pipeline_unit_test_profile_contains_all_stage_markers() {
             "code_review",
             "execute_transport_extdeps_github_pull_requests_github_PullRequest_ListFiles",
         ),
-        ("acceptance", "execute_transport_extdeps_cargo_cargo_Build_Test"),
+        (
+            "acceptance",
+            "execute_transport_extdeps_cargo_cargo_Build_Test",
+        ),
         (
             "close",
             "execute_transport_extdeps_sdlc_providers_stub_providers_stub_IssueProvider_close",

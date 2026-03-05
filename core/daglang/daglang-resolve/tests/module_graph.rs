@@ -216,10 +216,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("extdeps.sdlc.providers.gcs_outcome_ledger".into(), 3),
         ("extdeps.sdlc.providers.github_issue_provider".into(), 3),
         ("extdeps.sdlc.providers.inline_artifact_store".into(), 2),
-        (
-            "extdeps.sdlc.providers.local_credential_provider".into(),
-            4,
-        ),
+        ("extdeps.sdlc.providers.local_credential_provider".into(), 4),
         ("extdeps.sdlc.providers.pubsub_signal_store".into(), 3),
         ("extdeps.sdlc.providers.stub_credential_provider".into(), 2),
         ("extdeps.sdlc.providers.stub_providers".into(), 7),
