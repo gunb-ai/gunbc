@@ -61,7 +61,7 @@ pub fn strict_dry_run_enabled() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Mutex, OnceLock};
+    use crate::test_support::with_env_lock;
 
     #[test]
     fn strict_dry_run_flag_controls_platform_mock_default() {
@@ -88,21 +88,5 @@ mod tests {
                 "unknown"
             );
         });
-    }
-
-    fn with_env_lock<F>(f: F)
-    where
-        F: FnOnce() + std::panic::UnwindSafe,
-    {
-        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        let _guard = ENV_LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let result = std::panic::catch_unwind(f);
-        std::env::remove_var(STRICT_DRY_RUN_ENV);
-        if let Err(panic) = result {
-            std::panic::resume_unwind(panic);
-        }
     }
 }

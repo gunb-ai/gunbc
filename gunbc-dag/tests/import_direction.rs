@@ -50,8 +50,6 @@ const KNOWN_VIOLATIONS: &[(&str, &str)] = &[
     ("std/patterns.dag", "extdeps.shell"),
     // sdlc_stages invokes design tools as workflow steps.
     ("funcs/sdlc_stages.dag", "tools.design"),
-    // gist tool currently imports profile binding definitions.
-    ("tools/gist.dag", "profiles.gist"),
 ];
 
 struct ImportViolation {

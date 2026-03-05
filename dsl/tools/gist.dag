@@ -8,13 +8,13 @@
 
 module tools.gist
 
+import extdeps.cloud.gcp.core { shell.GCloud }
 import extdeps.git
 import extdeps.github.gists
-import interfaces.credential_provider { CredentialProvider }
-import profiles.gist
+import extdeps.shell { shell.Env }
 import std.resources { Filesystem, Network }
 import std.patterns { read_text_files }
-import std.types { AccessToken, CommitSha, CredentialFlow, Url }
+import std.types { CommitSha, Url }
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -22,10 +22,19 @@ fn render_diff_markdown(diff: String, branch: String, base_ref: CommitSha) -> St
   "# Diff: {branch} vs {base_ref}\n\n```diff\n{diff}\n```\n"
 }
 
-// Extract the raw Secret from an AccessToken record.
-// Workaround: the lowerer can't wire two-level field access (cred.token.token).
-fn unwrap_token_secret(tok: AccessToken) -> Secret {
-  tok.token
+// Effectful helper (must be `func`, not `fn`) because it invokes transport calls.
+func resolve_github_token() -> { token: Secret } {
+  env = shell.Env.Get(name: "GITHUB_TOKEN")
+  match env.value {
+    Some(token) => return { token: token }
+    None => {
+      secret = shell.GCloud.SecretManagerAccessVersion(
+        project_id: "gunbai-secrets",
+        secret_name: "github-token"
+      )
+      return { token: secret.secret_value }
+    }
+  }
 }
 
 // Recursive markdown assembly stays in Rust until recursive DSL modeling ships.
@@ -41,7 +50,6 @@ extern func build_snapshot_content(
 func gist(public: Bool = false) -> { url: Url }
   uses fs: Filesystem(mode: Read)
   uses net: Network
-  uses creds: CredentialProvider
 {
   branch_info = git.Core.CurrentBranch()
   listing = git.Core.LsFiles()
@@ -54,19 +62,12 @@ func gist(public: Bool = false) -> { url: Url }
     file_contents: result.files |> map(f => f.content),
     skipped: result.skipped
   )
-  cred = creds.acquire(
-    secret_name: "github-token",
-    flow: Stored { secret_name: "github-token" },
-    scheme: Bearer,
-    source_id: "gist",
-    required_scopes: []
-  )
-  raw = unwrap_token_secret(tok: cred.token)
+  token = resolve_github_token()
   gist_result = github.Gist.Create(
     description: branch_info.branch,
     content: content,
     public: public,
-    auth_token: raw
+    auth_token: token.token
   )
   return { url: gist_result.html_url as Url }
 }
@@ -74,24 +75,16 @@ func gist(public: Bool = false) -> { url: Url }
 func gist_diff(base_ref: CommitSha = "HEAD~1", public: Bool = false) -> { url: Url }
   uses fs: Filesystem(mode: Read)
   uses net: Network
-  uses creds: CredentialProvider
 {
   current = git.Core.CurrentBranch()
   changes = git.Core.Diff(base: base_ref)
   markdown = render_diff_markdown(diff: changes.diff, branch: current.branch, base_ref: base_ref)
-  cred = creds.acquire(
-    secret_name: "github-token",
-    flow: Stored { secret_name: "github-token" },
-    scheme: Bearer,
-    source_id: "gist",
-    required_scopes: []
-  )
-  raw = unwrap_token_secret(tok: cred.token)
+  token = resolve_github_token()
   result = github.Gist.Create(
     description: current.branch,
     content: markdown,
     public: public,
-    auth_token: raw
+    auth_token: token.token
   )
   return { url: result.html_url as Url }
 }
@@ -99,7 +92,6 @@ func gist_diff(base_ref: CommitSha = "HEAD~1", public: Bool = false) -> { url: U
 func gist_recent(since: String = "3.days.ago", public: Bool = false) -> { url: Url }
   uses fs: Filesystem(mode: Read)
   uses net: Network
-  uses creds: CredentialProvider
 {
   current = git.Core.CurrentBranch()
   base = git.Core.RevListBase(since: since)
@@ -109,19 +101,12 @@ func gist_recent(since: String = "3.days.ago", public: Bool = false) -> { url: U
     branch: current.branch,
     base_ref: base.base_ref
   )
-  cred = creds.acquire(
-    secret_name: "github-token",
-    flow: Stored { secret_name: "github-token" },
-    scheme: Bearer,
-    source_id: "gist",
-    required_scopes: []
-  )
-  raw = unwrap_token_secret(tok: cred.token)
+  token = resolve_github_token()
   result = github.Gist.Create(
     description: current.branch,
     content: markdown,
     public: public,
-    auth_token: raw
+    auth_token: token.token
   )
   return { url: result.html_url as Url }
 }
