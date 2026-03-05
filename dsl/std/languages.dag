@@ -15,6 +15,8 @@
 
 module std.languages
 
+import std.types { LanguageId }
+
 // ── Layer 0: Primitives ──────────────────────────────────────────────
 
 // "How are identifiers cased?" -- universal across all languages.
@@ -59,7 +61,7 @@ type TypeMapping {
 
 // "What is a language?" -- the complete invariant.
 type Language {
-  id: String
+  id: LanguageId
   name: String
   extensions: List<String>
   comment: CommentSyntax
@@ -69,7 +71,7 @@ type Language {
 
 // "What is a markup format?" -- subset for non-Turing languages.
 type MarkupFormat {
-  id: String
+  id: LanguageId
   name: String
   extensions: List<String>
   comment: CommentSyntax
@@ -78,7 +80,7 @@ type MarkupFormat {
 
 // "What is a config format?" -- subset for configuration files.
 type ConfigFormat {
-  id: String
+  id: LanguageId
   name: String
   extensions: List<String>
   comment: CommentSyntax

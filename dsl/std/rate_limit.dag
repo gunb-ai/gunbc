@@ -2,30 +2,44 @@
 
 module std.rate_limit
 
+import std.types { Milliseconds, Seconds }
+
 type ResetStrategy = FixedWindow | SlidingWindow | TokenBucket
 
 type RateLimit {
   scope: String
   requests_per_window: Int
-  window_seconds: Int
+  window_seconds: Seconds
   burst: Int?
   reset_strategy: ResetStrategy
 }
 
 type BackoffStrategy
-  = Exponential { base_ms: Int, max_ms: Int }
-  | Linear { step_ms: Int }
-  | JitteredExponential { base_ms: Int, max_ms: Int }
+  = Exponential { base_ms: Milliseconds, max_ms: Milliseconds }
+  | Linear { step_ms: Milliseconds }
+  | JitteredExponential { base_ms: Milliseconds, max_ms: Milliseconds }
+
+type RetryTrigger
+  = RateLimit
+  | Timeout
+  | Http429
+  | Http500
+  | Http503
+  | Http5xx
+  | Http403Transient
+  | Network
+  | ApiNotEnabledYet
+  | PermissionNotYetPropagated
 
 type RetryPolicy {
   max_attempts: Int
   backoff: BackoffStrategy
-  retry_on: List<String>
+  retry_on: List<RetryTrigger>
 }
 
 type PropagationDelay {
-  typical_ms: Int
-  max_ms: Int
+  typical_ms: Milliseconds
+  max_ms: Milliseconds
   description: String
 }
 
@@ -49,11 +63,11 @@ data github_search_limit: RateLimit = {
 data default_jittered_retry: RetryPolicy = {
   max_attempts: 5,
   backoff: JitteredExponential { base_ms: 200, max_ms: 8000 },
-  retry_on: ["rate_limit", "timeout", "http_429", "http_5xx", "network"]
+  retry_on: [RateLimit, Timeout, Http429, Http5xx, Network]
 }
 
 data conservative_retry: RetryPolicy = {
   max_attempts: 3,
   backoff: Exponential { base_ms: 500, max_ms: 5000 },
-  retry_on: ["http_429", "http_503", "network"]
+  retry_on: [Http429, Http503, Network]
 }

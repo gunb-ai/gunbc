@@ -736,9 +736,7 @@ pub fn compile_from_module_graph_with_options(
             return Err(CompileError::Verification(verify_errors));
         }
     }
-    let dag_paths = daglang_lower::extract_output_paths(&lowered);
-    let annotation_paths = daglang_lower::extract_declared_outputs(&typed);
-    let output_paths = merge_dedup_paths(dag_paths, annotation_paths);
+    let output_paths = daglang_lower::extract_output_paths(&lowered);
 
     let derived = derive_artifacts(&lowered).map_err(CompileError::Derive)?;
 
@@ -836,9 +834,12 @@ fn collect_pipeline_params(typed: &TypedProject) -> Vec<PipelineParam> {
 fn collect_available_profiles(typed: &TypedProject) -> Vec<String> {
     let mut profiles = Vec::new();
     for module in &typed.modules {
+        let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             if let Item::ProfileDef(def) = &item.node {
-                profiles.push(def.name.clone());
+                // Use fully-qualified name (module.profile_name) to avoid
+                // ambiguity when multiple modules define the same profile name.
+                profiles.push(format!("{module_name}.{}", def.name));
             }
         }
     }
@@ -1961,12 +1962,6 @@ fn module_has_callable_items(module: &ResolvedModule) -> bool {
 }
 
 /// Merge two sorted path lists into one sorted, deduplicated list.
-fn merge_dedup_paths(a: Vec<String>, b: Vec<String>) -> Vec<String> {
-    let mut set: std::collections::BTreeSet<String> = a.into_iter().collect();
-    set.extend(b);
-    set.into_iter().collect()
-}
-
 fn validate_module_path_consistency(
     graph: &ModuleGraph,
     roots: &[PathBuf],

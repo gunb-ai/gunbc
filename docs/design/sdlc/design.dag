@@ -30,8 +30,8 @@
 
 module tools.design
 
-import services.llm.openai
-import services.llm.anthropic
+import extdeps.llm.openai
+import extdeps.llm.anthropic
 import std.types { Url, DesignOutput, DesignReviewOutput, DesignFinding, DesignSections }
 
 // --- Design generation ---------------------------------------------------

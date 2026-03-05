@@ -13,7 +13,7 @@
 ## Status
 
 ```
-WS-1: std/ Primitive Vocabulary    — 0/8 complete
+WS-1: std/ Primitive Vocabulary    — 7/8 complete
 WS-2: Service Type Discipline      — 0/5 complete  (blocked by WS-1)
 WS-3: Typechecker Unification      — 0/8 complete
 WS-4: Presence Axis                — 0/5 complete  (blocked by WS-3)
@@ -43,14 +43,14 @@ WS-1 and WS-3 can start immediately. WS-7 is mostly done.
 
 | # | ID | What | Acceptance Criteria | Size | Status |
 |---|-----|------|---------------------|------|--------|
-| 1 | WS1-1 | **Timestamp consistency.** Replace ~20 `String` timestamp fields with `Timestamp` across `types.dag`, `resources.dag`. | `grep -r 'created_at: String\|updated_at: String\|timestamp: String' dsl/std/` returns 0 hits. | S | Open |
-| 2 | WS1-2 | **Enum extraction.** Convert ~15 stringly-typed enumerations to sum types: `TopologyNodeKind`, `DocSourceKind`, `SeverityLevel`, `DataSource`, `RetryTrigger`, etc. | Each converted type is a `type X = A \| B \| C` sum type. `grep 'kind: String' dsl/std/` returns 0 hits for known closed sets. | M | Open |
-| 3 | WS1-3 | **Brand application.** Apply `ContentHash` brand to `StageRunKey.input_hash`, `Artifact.content_hash`, `ArtifactMarker.content_hash`. | Fields reference `ContentHash` type (not bare `String`). Verify in `dsl/std/types.dag`. | S | Open |
-| 4 | WS1-4 | **Duration unit types.** Create `Seconds` and `Milliseconds` branded types. Apply consistently. | `type Seconds = Int @brand("Seconds")` and `type Milliseconds = Int @brand("Milliseconds")` exist in `dsl/std/`. All duration fields use one or the other. | S | Open |
-| 5 | WS1-5 | **Duplicate resolution.** Merge two `RetryPolicy` definitions. Deduplicate `EntryKind`/`SymlinkTarget`. | `grep -c 'type RetryPolicy' dsl/` returns 1. `grep -c 'type EntryKind' dsl/` returns 1. | S | Open |
-| 6 | WS1-6 | **Missing types.** Add: `SeverityLevel`, `DataSource`, `RetryTrigger`, `LanguageId`, `GcpRegion`, canonical error wrapper, C/MIPS/Dag language definitions. | Each type exists as a sum type or branded alias in `dsl/std/`. No stringly-typed references to these concepts elsewhere. | M | Open |
+| 1 | WS1-1 | **Timestamp consistency.** Replace ~20 `String` timestamp fields with `Timestamp` across `types.dag`, `resources.dag`. | `grep -r 'created_at: String\|updated_at: String\|timestamp: String' dsl/std/` returns 0 hits. | S | **Done** |
+| 2 | WS1-2 | **Enum extraction.** Convert ~15 stringly-typed enumerations to sum types: `TopologyNodeKind`, `DocSourceKind`, `SeverityLevel`, `DataSource`, `RetryTrigger`, etc. | Each converted type is a `type X = A \| B \| C` sum type. `grep 'kind: String' dsl/std/` returns 0 hits for known closed sets. | M | **Done** |
+| 3 | WS1-3 | **Brand application.** Apply `ContentHash` brand to `StageRunKey.input_hash`, `Artifact.content_hash`, `ArtifactMarker.content_hash`. | Fields reference `ContentHash` type (not bare `String`). Verify in `dsl/std/types.dag`. | S | **Done** |
+| 4 | WS1-4 | **Duration unit types.** Create `Seconds` and `Milliseconds` branded types. Apply consistently. | `type Seconds = Int @brand("Seconds")` and `type Milliseconds = Int @brand("Milliseconds")` exist in `dsl/std/`. All duration fields use one or the other. | S | **Done** |
+| 5 | WS1-5 | **Duplicate resolution.** Merge two `RetryPolicy` definitions. Deduplicate `EntryKind`/`SymlinkTarget`. | `grep -c 'type RetryPolicy' dsl/` returns 1. `grep -c 'type EntryKind' dsl/` returns 1. | S | **Done** |
+| 6 | WS1-6 | **Missing types.** Add: `SeverityLevel`, `DataSource`, `RetryTrigger`, `LanguageId`, `GcpRegion`, canonical error wrapper, C/MIPS/Dag language definitions. | Each type exists as a sum type or branded alias in `dsl/std/`. No stringly-typed references to these concepts elsewhere. | M | **Partial** (SeverityLevel, RetryTrigger done; LanguageId, GcpRegion remain) |
 | 7 | WS1-7 | **Stub cleanup.** Address 8 stubs that look like features. Each must be implemented, deleted, or marked `@testgen_skip`. | `grep -r '@testgen_skip' dsl/std/` accounts for all remaining stubs. Zero unmarked stubs. | M | Open |
-| 8 | WS1-8 | **`Filesystem.read` type fix.** Change `path: String` to `path: TextFilePath`. | `dsl/std/resources.dag` Filesystem.read signature uses `TextFilePath`. | S | Open |
+| 8 | WS1-8 | **`Filesystem.read` type fix.** Change `path: String` to `path: TextFilePath`. | `dsl/std/resources.dag` Filesystem.read signature uses `TextFilePath`. | S | **Done** |
 
 ---
 

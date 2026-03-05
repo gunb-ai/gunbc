@@ -982,17 +982,14 @@ fn eval_pipe_method(
                 (Value::List(mut items), Some(LoweredExpr::Lambda { params, body })) => {
                     let param = params.first().cloned().unwrap_or_else(|| "_".to_string());
                     // Compute sort keys, then sort
-                    let mut keyed: Vec<(String, Value)> = items
-                        .drain(..)
-                        .map(|item| {
-                            let mut child_env = env.child();
-                            child_env.bind(param.clone(), item.clone());
-                            let key = eval_expr(body, &child_env, sibling_fns)
-                                .map(|v| value_to_string(&v))
-                                .unwrap_or_default();
-                            (key, item)
-                        })
-                        .collect();
+                    let mut keyed: Vec<(String, Value)> = Vec::with_capacity(items.len());
+                    for item in items.drain(..) {
+                        let mut child_env = env.child();
+                        child_env.bind(param.clone(), item.clone());
+                        let key = eval_expr(body, &child_env, sibling_fns)
+                            .map(|v| value_to_string(&v))?;
+                        keyed.push((key, item));
+                    }
                     keyed.sort_by(|a, b| a.0.cmp(&b.0));
                     Ok(Value::List(keyed.into_iter().map(|(_, v)| v).collect()))
                 }

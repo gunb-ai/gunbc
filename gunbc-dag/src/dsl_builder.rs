@@ -5,33 +5,29 @@ use gunbc_exec::DynOp;
 use gunbc_ir::{BuilderError, Dag};
 
 pub use gunbc_resolve::builder::DslGraphResult;
+pub use gunbc_resolve::BuildOpts;
 
 use crate::resolve::GunbcExternResolver;
 
 /// Compile a DSL module and resolve lowered ops into `Dag<DynOp>`.
 pub fn build_dsl_graph(relative_module: &str) -> Result<Dag<DynOp>, BuilderError> {
-    gunbc_resolve::builder::build_dsl_graph(relative_module, &GunbcExternResolver)
-}
-
-/// Convention-based tool graph builder.
-///
-/// `build_tool_graph("bootstrap")` -> `build_dsl_graph("tools/bootstrap.dag")`.
-pub fn build_tool_graph(tool_name: &str) -> Result<Dag<DynOp>, BuilderError> {
-    gunbc_resolve::builder::build_tool_graph(tool_name, &GunbcExternResolver)
-}
-
-/// Infer the workflow signature for a convention-based tool.
-pub fn tool_signature(
-    tool_name: &str,
-) -> Result<gunbc_ir::WorkflowSignature, BuilderError> {
-    gunbc_resolve::builder::tool_signature(tool_name, &GunbcExternResolver)
+    Ok(gunbc_resolve::builder::build_dsl_graph(
+        relative_module,
+        &GunbcExternResolver,
+        BuildOpts::default(),
+    )?
+    .dag)
 }
 
 /// Compile a DSL module and resolve lowered ops, also returning DSL type registry.
 pub(crate) fn build_dsl_graph_with_types(
     relative_module: &str,
 ) -> Result<DslGraphResult, BuilderError> {
-    gunbc_resolve::builder::build_dsl_graph_with_types(relative_module, &GunbcExternResolver)
+    gunbc_resolve::builder::build_dsl_graph(
+        relative_module,
+        &GunbcExternResolver,
+        BuildOpts::default(),
+    )
 }
 
 /// Compile a DSL module with an active profile and resolve, returning full result (RT24).
@@ -39,10 +35,13 @@ pub(crate) fn build_dsl_graph_with_types_and_profile(
     relative_module: &str,
     profile: &str,
 ) -> Result<DslGraphResult, BuilderError> {
-    gunbc_resolve::builder::build_dsl_graph_with_types_and_profile(
+    gunbc_resolve::builder::build_dsl_graph(
         relative_module,
-        profile,
         &GunbcExternResolver,
+        BuildOpts {
+            profile: Some(profile),
+            ..BuildOpts::default()
+        },
     )
 }
 
@@ -51,37 +50,34 @@ pub fn build_dsl_graph_with_profile(
     relative_module: &str,
     profile: &str,
 ) -> Result<Dag<DynOp>, BuilderError> {
-    gunbc_resolve::builder::build_dsl_graph_with_profile(
+    Ok(gunbc_resolve::builder::build_dsl_graph(
         relative_module,
-        profile,
         &GunbcExternResolver,
-    )
-}
-
-pub fn build_dsl_graph_for_entry(
-    relative_module: &str,
-    entry_node_id: &str,
-) -> Result<Dag<DynOp>, BuilderError> {
-    gunbc_resolve::builder::build_dsl_graph_for_entry(
-        relative_module,
-        entry_node_id,
-        &GunbcExternResolver,
-    )
+        BuildOpts {
+            profile: Some(profile),
+            ..BuildOpts::default()
+        },
+    )?
+    .dag)
 }
 
 /// Compile a DSL module and resolve to `Dag<DynOp>` by selecting an inferred entrypoint.
 ///
-/// - `entry_func: None` — use the sole inferred entrypoint (errors if multiple)
-/// - `entry_func: Some("name")` — select the named entrypoint
+/// When `profile` is `Some`, the named profile's interface bindings are activated.
 pub fn build_dsl_graph_for_entrypoint(
     relative_module: &str,
     entry_func: Option<&str>,
+    profile: Option<&str>,
 ) -> Result<Dag<DynOp>, BuilderError> {
-    gunbc_resolve::builder::build_dsl_graph_for_entrypoint(
+    Ok(gunbc_resolve::builder::build_dsl_graph(
         relative_module,
-        entry_func,
         &GunbcExternResolver,
-    )
+        BuildOpts {
+            entry_func,
+            profile,
+        },
+    )?
+    .dag)
 }
 
 #[cfg(test)]
@@ -90,14 +86,14 @@ mod tests {
 
     #[test]
     fn builds_makegen_dsl_graph() {
-        let dag = build_dsl_graph_for_entrypoint("tools/makegen.dag", Some("makegen"))
+        let dag = build_dsl_graph_for_entrypoint("tools/makegen.dag", Some("makegen"), None)
             .expect("makegen DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
     #[test]
     fn builds_pragma_dsl_graph() {
-        let dag = build_dsl_graph_for_entrypoint("tools/pragma.dag", Some("pragma"))
+        let dag = build_dsl_graph_for_entrypoint("tools/pragma.dag", Some("pragma"), None)
             .expect("pragma DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
@@ -148,7 +144,7 @@ mod tests {
 
     #[test]
     fn builds_gist_dsl_graph() {
-        let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist"))
+        let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist"), None)
             .expect("gist DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }

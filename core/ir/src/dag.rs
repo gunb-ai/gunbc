@@ -496,6 +496,12 @@ pub struct Port {
     /// Resource access mode for `res:*` ports (used by resource accounting)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resource_access: Option<AccessMode>,
+    /// Whether this port's type is nullable (`T?` in DSL).
+    ///
+    /// Structural representation of optionality — replaces the string-suffix
+    /// check `type_id.ends_with('?')`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub type_optional: bool,
     /// Optional execution log detail override for this input port.
     ///
     /// When set, this takes precedence over node/subdag/root defaults for
@@ -516,12 +522,14 @@ impl Port {
             type_id.0,
             name.0
         );
+        let type_optional = type_id.0.ends_with('?');
         Self {
             name,
             type_id,
             cardinality: Cardinality::ONE,
             guard: None,
             resource_access: None,
+            type_optional,
             log_detail: None,
         }
     }
@@ -540,22 +548,24 @@ impl Port {
             type_id.0,
             name.0
         );
+        let type_optional = type_id.0.ends_with('?');
         Self {
             name,
             type_id,
             cardinality,
             guard: None,
             resource_access: None,
+            type_optional,
             log_detail: None,
         }
     }
 
-    /// Whether this port's type is optional (type_id ends with `?`).
+    /// Whether this port's type is nullable (`T?` in DSL).
     ///
-    /// Centralizes the optionality check so callers don't inspect the raw
-    /// type_id string suffix. Long-term: represent optionality structurally.
+    /// Uses the structural `type_optional` flag set at construction time
+    /// from the type_id suffix. Callers should not inspect the raw type_id.
     pub fn is_optional(&self) -> bool {
-        self.type_id.0.ends_with('?')
+        self.type_optional
     }
 
     /// Create a resource port for `res:*` convention.
@@ -583,12 +593,14 @@ impl Port {
             type_id.0,
             full_name
         );
+        let type_optional = type_id.0.ends_with('?');
         Self {
             name: full_name.into(),
             type_id,
             cardinality: Cardinality::ONE,
             guard: None,
             resource_access: Some(mode),
+            type_optional,
             log_detail: None,
         }
     }
@@ -639,12 +651,15 @@ impl Port {
         type_id: impl Into<TypeId>,
         expected: Value,
     ) -> Self {
+        let type_id = type_id.into();
+        let type_optional = type_id.0.ends_with('?');
         Self {
             name: name.into(),
-            type_id: type_id.into(),
+            type_id,
             cardinality: Cardinality::ONE,
             guard: Some(Guard::Eq(expected)),
             resource_access: None,
+            type_optional,
             log_detail: None,
         }
     }
@@ -659,12 +674,15 @@ impl Port {
         cardinality: Cardinality,
         guard: Guard,
     ) -> Self {
+        let type_id = type_id.into();
+        let type_optional = type_id.0.ends_with('?');
         Self {
             name: name.into(),
-            type_id: type_id.into(),
+            type_id,
             cardinality,
             guard: Some(guard),
             resource_access: None,
+            type_optional,
             log_detail: None,
         }
     }
@@ -796,12 +814,15 @@ pub mod build {
     /// The executor skips the node when `check_guard(value)` returns false.
     /// Useful for testing guard/skip branch coverage.
     pub fn guarded(name: &str, type_id: &str, expected: Value) -> Port {
+        let type_id: TypeId = type_id.into();
+        let type_optional = type_id.0.ends_with('?');
         Port {
             name: name.into(),
-            type_id: type_id.into(),
+            type_id,
             cardinality: Cardinality::ONE,
             guard: Some(Guard::Eq(expected)),
             resource_access: None,
+            type_optional,
             log_detail: None,
         }
     }

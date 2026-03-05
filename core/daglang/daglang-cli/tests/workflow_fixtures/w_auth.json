@@ -1,12 +1,9 @@
 {
-  "module": "services.shell",
-  "path": "services/shell.dag",
-  "items": 9,
+  "module": "extdeps.shell",
+  "path": "extdeps/shell.dag",
+  "items": 3,
   "dependencies": [
-    "std.types",
-    "std.errors",
-    "extdeps.cloud.gcp.core",
-    "extdeps.tools.package_managers"
+    "std.types"
   ],
   "_count_rationale": "FnBodyCallableOp: fn items with fn_body skip control-flow SubDag + ExprCompute return nodes (2026-03-04).",
   "expand_contract": {
@@ -18,22 +15,21 @@
     "error_contains": null,
     "expected_json": {
       "dry_run_completion_required": true,
-      "interface_contract_verification_targets": 0,
-      "pure_node_determinism_targets": 74,
-      "resource_acquire_targets": 0,
-      "resource_provide_targets": 0,
-      "resource_release_targets": 0,
-      "service_param_source_targets": 0,
-      "service_transport_execute_targets": 37,
-      "service_transport_external_targets": 27,
-      "service_transport_hermetic_targets": 10,
-      "service_transport_idempotent_targets": 1,
-      "service_transport_parse_targets": 37,
-      "service_transport_permission_scoped_targets": 0,
-      "service_transport_prepare_targets": 37,
-      "service_transport_readonly_targets": 8,
-      "total_obligations": 111,
-      "transport_execution_targets": 37
+      "interface_contract_verification_targets": 1,
+      "pure_node_determinism_targets": 283,
+      "resource_acquire_targets": 4,
+      "resource_provide_targets": 1,
+      "resource_release_targets": 4,
+      "service_param_source_targets": 14,
+      "service_transport_execute_targets": 114,
+      "service_transport_external_targets": 102,
+      "service_transport_hermetic_targets": 12,
+      "service_transport_idempotent_targets": 18,
+      "service_transport_parse_targets": 114,
+      "service_transport_prepare_targets": 114,
+      "service_transport_readonly_targets": 30,
+      "total_obligations": 397,
+      "transport_execution_targets": 114
     }
   }
 }

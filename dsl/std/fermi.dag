@@ -11,7 +11,7 @@
 
 module std.fermi
 
-import std.types { FermiDepth }
+import std.types { FermiDepth, Milliseconds }
 
 // --- Ordinal mapping (like stage_ordinal in state_machines.dag) -----
 
@@ -61,7 +61,7 @@ fn fermi_within_budget(depth: FermiDepth, budget: FermiDepth) -> Bool {
 
 type FermiTimeout {
   depth: FermiDepth
-  timeout_ms: Int
+  timeout_ms: Milliseconds
   label: String
 }
 

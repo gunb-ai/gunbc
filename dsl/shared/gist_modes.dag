@@ -14,9 +14,9 @@
 
 module shared.gist_modes
 
-import services.git
-import services.github.gist
-import services.shell
+import extdeps.git
+import extdeps.github.gists
+import extdeps.shell
 import std.resources { Network }
 import std.types { CommitSha, Url }
 

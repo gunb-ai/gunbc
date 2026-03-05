@@ -9,8 +9,9 @@ module tools.clippy
 
 import std.patterns { upsert }
 import std.resources { Filesystem }
-import services.shell { shell.Which, rustup.Component }
-import services.cargo
+import extdeps.shell { shell.Which }
+import extdeps.tools.rust_toolchain { rustup.Component }
+import extdeps.cargo
 
 resource Clippy {
   kind: Capability

@@ -55,10 +55,17 @@ The pipeline is the most ambitious .dag artifact in the repo but has **zero auto
 
 | # | ID | What | Acceptance Criteria | Size | Status |
 |---|-----|------|---------------------|------|--------|
+<<<<<<< HEAD
 | 1 | S-1 | **Fix import bugs.** Wrong import in `sdlc_worker.dag:34` (`determine_stage` from wrong module). Wrong service names in `pipelines/sdlc.dag` (`Cargo` → `Build`, dotted `git.Core` selector). | `daglang check dsl/pipelines/sdlc_worker.dag` and `daglang check dsl/pipelines/sdlc.dag` exit 0 with zero import errors. | S | Done |
 | 2 | S-2 | **Fix missing type imports in `stub_providers.dag`.** Uses `TrackedIssue`, `IssueEvent`, `Signal`, `SignalType` without imports. | `daglang check dsl/profiles/stub_providers.dag` exits 0. All referenced types have explicit imports. | S | Done |
 | 3 | S-3 | **Extract duplicate type definitions.** `CapabilityBehaviorContract` and `CapabilityFailureContract` duplicated across interface files. Extract to shared module. | `grep -c 'type CapabilityBehaviorContract' dsl/interfaces/` returns 1. `grep -c 'type CapabilityFailureContract' dsl/interfaces/` returns 1. Shared module exists (e.g., `dsl/interfaces/shared.dag`). | S | Done |
 | 4 | S-4 | **Add Rust compilation test.** `builds_sdlc_worker_dsl_graph()` and `builds_sdlc_stages_dsl_graph()` in `compile_commands.rs`. | Two new `#[test]` functions in `gunbc-dag/tests/compile_commands.rs`. Both call `build_dsl_graph()` for SDLC modules and assert `Ok`. `cargo test -p gunbc-dag -- builds_sdlc` passes. **This is the gate for Phase 1.** | M | Done |
+=======
+| 1 | S-1 | **Fix import bugs.** Wrong import in `sdlc_worker.dag:34` (`determine_stage` from wrong module). Wrong service names in `pipelines/sdlc.dag` (`Cargo` → `Build`, dotted `git.Core` selector). | `daglang check dsl/pipelines/sdlc_worker.dag` and `daglang check dsl/pipelines/sdlc.dag` exit 0 with zero import errors. | S | Done (`codex/lane-3-phase0`) |
+| 2 | S-2 | **Fix missing type imports in `stub_providers.dag`.** Uses `TrackedIssue`, `IssueEvent`, `Signal`, `SignalType` without imports. | `daglang check dsl/profiles/stub_providers.dag` exits 0. All referenced types have explicit imports. | S | Done (`codex/lane-3-phase0`) |
+| 3 | S-3 | **Extract duplicate type definitions.** `CapabilityBehaviorContract` and `CapabilityFailureContract` duplicated across interface files. Extract to shared module. | `grep -c 'type CapabilityBehaviorContract' dsl/interfaces/` returns 1. `grep -c 'type CapabilityFailureContract' dsl/interfaces/` returns 1. Shared module exists (e.g., `dsl/interfaces/shared.dag`). | S | Done (`codex/lane-3-phase0`) |
+| 4 | S-4 | **Add Rust compilation test.** `builds_sdlc_worker_dsl_graph()` and `builds_sdlc_stages_dsl_graph()` in `compile_commands.rs`. | Two new `#[test]` functions in `gunbc-dag/tests/compile_commands.rs`. Both call `build_dsl_graph()` for SDLC modules and assert `Ok`. `cargo test -p gunbc-dag -- builds_sdlc` passes. **This is the gate for Phase 1.** | M | Done (`codex/lane-3-phase0`) |
+>>>>>>> main
 
 ---
 
@@ -70,10 +77,17 @@ The pipeline is the most ambitious .dag artifact in the repo but has **zero auto
 
 | # | ID | What | Acceptance Criteria | Size | Status |
 |---|-----|------|---------------------|------|--------|
+<<<<<<< HEAD
 | 5 | S-5 | **Add SDLC to workflow catalog.** Register in `config/workflow_catalog.dag` so `gunbc sdlc` command works. | `gunbc sdlc --help` shows SDLC options. Entry exists in `dsl/config/workflow_catalog.dag`. | S | Done |
 | 6 | S-6 | **Wire profile binding.** Verify `unit_test` profile threads stub providers correctly through resolver. | `build_dsl_graph_with_profile("pipelines.sdlc_worker", "unit_test")` succeeds in a Rust test. All 7 interface bindings resolve to stub impls. | M | Done |
 | 7 | S-7 | **Dry-run execution.** `gunbc sdlc --profile unit_test --dry-run` completes all 11 stages with mock data. | Command exits 0. Output contains stage names for all 11 stages. No runtime panics or unresolved port errors. | L | Done |
 | 8 | S-8 | **Fix dispatch runtime.** `sdlc_dispatch_runtime.dag` returns static records — wire to real stage handlers in `sdlc_stages.dag`. | `sdlc_dispatch_runtime.dag` imports and calls functions from `sdlc_stages.dag`. No static placeholder returns. `daglang check` passes on the file. | M | Done |
+=======
+| 5 | S-5 | **Add SDLC to workflow catalog.** Register in `config/workflow_catalog.dag` so `gunbc sdlc` command works. | `gunbc sdlc --help` shows SDLC options. Entry exists in `dsl/config/workflow_catalog.dag`. | S | Done (`codex/lane-3-phase0`) |
+| 6 | S-6 | **Wire profile binding.** Verify `unit_test` profile threads stub providers correctly through resolver. | `build_dsl_graph_with_profile("pipelines.sdlc_worker", "unit_test")` succeeds in a Rust test. All 7 interface bindings resolve to stub impls. | M | Done (`codex/lane-3-phase0`) |
+| 7 | S-7 | **Dry-run execution.** `gunbc sdlc --profile unit_test --dry-run` completes all 11 stages with mock data. | Command exits 0. Output contains stage names for all 11 stages. No runtime panics or unresolved port errors. | L | Done (`codex/lane-3-phase0`) |
+| 8 | S-8 | **Fix dispatch runtime.** `sdlc_dispatch_runtime.dag` returns static records — wire to real stage handlers in `sdlc_stages.dag`. | `sdlc_dispatch_runtime.dag` imports and calls functions from `sdlc_stages.dag`. No static placeholder returns. `daglang check` passes on the file. | M | Done (`codex/lane-3-phase0`) |
+>>>>>>> main
 
 ---
 
@@ -85,9 +99,15 @@ The pipeline is the most ambitious .dag artifact in the repo but has **zero auto
 
 | # | ID | What | Acceptance Criteria | Size | Status |
 |---|-----|------|---------------------|------|--------|
+<<<<<<< HEAD
 | 9 | S-9 | **Verify GitHub provider.** `IssueProvider` operations work against real GitHub API (discover, get, create, comment, set_labels). | Integration test (gated by `GITHUB_TOKEN` env var) exercises all 7 IssueProvider operations. Each returns expected data shape. | M | Done (env-gated live test in `gunbc-dag/tests/sdlc_phase_live.rs`) |
 | 10 | S-10 | **Verify credential wiring.** `GITHUB_TOKEN` flows through `local` profile credential provider to service operations. | `build_dsl_graph_with_profile("pipelines.sdlc_worker", "local")` succeeds. Running with `GITHUB_TOKEN` set produces authenticated API calls (not 401). | M | Done (env-gated compile+auth test in `gunbc-dag/tests/sdlc_phase_live.rs`) |
 | 11 | S-11 | **End-to-end local run.** Process one issue from Idea → Design: discover issues, claim, call LLM, post comment, advance labels. | Target issue has: (1) design comment from LLM, (2) `sdlc:design-review` label. Command exits 0. Outcome ledger has entry for the stage run. | L | In Progress (env-gated live e2e harness added; requires secrets + mutable test issue) |
+=======
+| 9 | S-9 | **Verify GitHub provider.** `IssueProvider` operations work against real GitHub API (discover, get, create, comment, set_labels). | Integration test (gated by `GITHUB_TOKEN` env var) exercises all 7 IssueProvider operations. Each returns expected data shape. | M | Done (`codex/lane-3-phase0`, env-gated live test in `gunbc-dag/tests/sdlc_phase_live.rs`) |
+| 10 | S-10 | **Verify credential wiring.** `GITHUB_TOKEN` flows through `local` profile credential provider to service operations. | `build_dsl_graph_with_profile("pipelines.sdlc_worker", "local")` succeeds. Running with `GITHUB_TOKEN` set produces authenticated API calls (not 401). | M | Done (`codex/lane-3-phase0`, env-gated compile+auth test in `gunbc-dag/tests/sdlc_phase_live.rs`) |
+| 11 | S-11 | **End-to-end local run.** Process one issue from Idea → Design: discover issues, claim, call LLM, post comment, advance labels. | Target issue has: (1) design comment from LLM, (2) `sdlc:design-review` label. Command exits 0. Outcome ledger has entry for the stage run. | L | In Progress (`codex/lane-3-phase0`, env-gated live e2e harness added; requires secrets + mutable test issue) |
+>>>>>>> main
 
 ---
 
@@ -99,10 +119,17 @@ The pipeline is the most ambitious .dag artifact in the repo but has **zero auto
 
 | # | ID | What | Acceptance Criteria | Size | Status |
 |---|-----|------|---------------------|------|--------|
+<<<<<<< HEAD
 | 12 | S-12 | **Agent provider wiring.** `codex.AgentProvider` spawns real agent for implementation stage. | Agent creates branch with implementation. Branch exists on remote. PR created. | L | In Progress (local profile structural wiring + env-gated live harness added) |
 | 13 | S-13 | **Code review wiring.** PR diff retrieval + LLM review produces approval/rejection. | Review comment posted on PR with structured findings. Label updated based on approval/rejection. | M | In Progress (local profile structural wiring + env-gated live harness added) |
 | 14 | S-14 | **Testing stage wiring.** `cargo test` + `cargo clippy` execution with result parsing. | Test results parsed into structured outcome. Pass → advance to Done. Fail → record failure reason. | M | In Progress (local profile structural wiring + env-gated live harness added) |
 | 15 | S-15 | **Multi-stage progression.** Issue moves through all stages without manual intervention. | Issue starts at `sdlc:idea`, ends at `sdlc:done`. Each stage has artifacts in outcome ledger. No manual label changes required. | XL | In Progress (env-gated live progression harness added; requires secrets + mutable test issue) |
+=======
+| 12 | S-12 | **Agent provider wiring.** `codex.AgentProvider` spawns real agent for implementation stage. | Agent creates branch with implementation. Branch exists on remote. PR created. | L | In Progress (`codex/lane-3-phase0`, structural wiring + env-gated live harness added) |
+| 13 | S-13 | **Code review wiring.** PR diff retrieval + LLM review produces approval/rejection. | Review comment posted on PR with structured findings. Label updated based on approval/rejection. | M | In Progress (`codex/lane-3-phase0`, structural wiring + env-gated live harness added) |
+| 14 | S-14 | **Testing stage wiring.** `cargo test` + `cargo clippy` execution with result parsing. | Test results parsed into structured outcome. Pass → advance to Done. Fail → record failure reason. | M | In Progress (`codex/lane-3-phase0`, structural wiring + env-gated live harness added) |
+| 15 | S-15 | **Multi-stage progression.** Issue moves through all stages without manual intervention. | Issue starts at `sdlc:idea`, ends at `sdlc:done`. Each stage has artifacts in outcome ledger. No manual label changes required. | XL | In Progress (`codex/lane-3-phase0`, env-gated live progression harness added; requires secrets + mutable test issue) |
+>>>>>>> main
 
 ---
 
@@ -112,10 +139,17 @@ The pipeline is the most ambitious .dag artifact in the repo but has **zero auto
 
 | # | ID | What | Acceptance Criteria | Size | Status |
 |---|-----|------|---------------------|------|--------|
+<<<<<<< HEAD
 | 16 | S-16 | **GCS provider verification.** Claims, outcomes, artifacts stored in GCS with generation-based CAS. | Integration test (gated by GCP credentials) exercises claim/release/outcome operations against real GCS. Generation-based CAS prevents double-writes. | L | In Progress (cloud_run structural wiring + env-gated CAS/live harness added) |
 | 17 | S-17 | **Cloud Run deployment.** Deploy worker to Cloud Run via `deploy.dag` infrastructure. | `gcloud run services describe gunbc-sdlc-worker` returns running service. Health check endpoint returns 200. | L | In Progress (env-gated deploy/health live harness added) |
 | 18 | S-18 | **Signal delivery.** Pub/Sub signals trigger worker execution. | Publishing a test signal to the topic triggers a worker execution. Worker log shows signal received and processed. | M | In Progress (env-gated Pub/Sub + log verification harness added) |
 | 19 | S-19 | **Multi-worker fleet.** Multiple workers process different issues concurrently without claim conflicts. | 3+ workers processing 5+ issues. No double-processing (CAS prevents). All issues reach expected stage. | L | In Progress (env-gated parallel CAS contention harness added) |
+=======
+| 16 | S-16 | **GCS provider verification.** Claims, outcomes, artifacts stored in GCS with generation-based CAS. | Integration test (gated by GCP credentials) exercises claim/release/outcome operations against real GCS. Generation-based CAS prevents double-writes. | L | In Progress (`codex/lane-3-phase0`, cloud_run structural wiring + env-gated CAS/live harness added) |
+| 17 | S-17 | **Cloud Run deployment.** Deploy worker to Cloud Run via `deploy.dag` infrastructure. | `gcloud run services describe gunbc-sdlc-worker` returns running service. Health check endpoint returns 200. | L | In Progress (`codex/lane-3-phase0`, env-gated deploy/health live harness added) |
+| 18 | S-18 | **Signal delivery.** Pub/Sub signals trigger worker execution. | Publishing a test signal to the topic triggers a worker execution. Worker log shows signal received and processed. | M | In Progress (`codex/lane-3-phase0`, env-gated Pub/Sub + log verification harness added) |
+| 19 | S-19 | **Multi-worker fleet.** Multiple workers process different issues concurrently without claim conflicts. | 3+ workers processing 5+ issues. No double-processing (CAS prevents). All issues reach expected stage. | L | In Progress (`codex/lane-3-phase0`, env-gated parallel CAS contention harness added) |
+>>>>>>> main
 
 ---
 

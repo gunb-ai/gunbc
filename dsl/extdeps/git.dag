@@ -4,7 +4,8 @@
 // Facts about Git's data model, not how we invoke it (that's services/git.dag).
 //
 // Consumers:
-//   services/git.dag               — shell transport wiring
+//   tools/gist.dag                    — branch name
+//   shared/gist_modes.dag             — git operations
 //   extdeps/github/pull_requests.dag — PR branch refs
 //   tools/build.dag                — branch detection
 
@@ -13,6 +14,7 @@ module extdeps.git
 import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
 }
+import std.types { CommitSha, FilePath, GitRef, Timestamp }
 
 // ── Object model ──────────────────────────────────────────────────
 
@@ -21,18 +23,18 @@ type ObjectType = BlobObj | TreeObj | CommitObj | TagObj
 type GitAuthor {
   name: String
   email: String
-  timestamp: String
+  timestamp: Timestamp
 }
 
 // Git separates author (who wrote the patch) from committer (who applied
 // it to the tree — e.g., merge queue, bot, maintainer). Both are needed
 // for SLSA provenance and accurate attribution in automated workflows.
 type GitCommit {
-  sha: String
+  sha: CommitSha
   message: String
   author: GitAuthor
   committer: GitAuthor
-  parent_shas: List<String>
+  parent_shas: List<CommitSha>
 }
 
 // ── Refs ──────────────────────────────────────────────────────────
@@ -40,7 +42,7 @@ type GitCommit {
 type GitRef
   = BranchRef { name: String }
   | TagRef { name: String }
-  | CommitRef { sha: String }
+  | CommitRef { sha: CommitSha }
 
 type GitBranch {
   name: String
@@ -175,3 +177,85 @@ data operation_behaviors: List<GitOperationBehavior> = [
     }
   }
 ]
+
+// ── Service: shell transport wiring ─────────────────────────────
+
+service git.Core {
+  operation CurrentBranch {
+    input {}
+    output { branch: String }
+    readonly
+    transport shell { argv: ["git", "rev-parse", "--abbrev-ref", "HEAD"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation RemoteBranches {
+    input {}
+    output { branches: List<String> }
+    readonly
+    transport shell { argv: ["git", "branch", "-r", "--format=%(refname:short)"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation LsFiles {
+    input {}
+    output { files: List<FilePath> }
+    readonly
+    transport shell { argv: ["git", "ls-files"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation Diff {
+    input { base: GitRef, head: GitRef = "HEAD" }
+    output { diff: String }
+    readonly
+    transport shell { argv: ["git", "diff", "\{base\}", "\{head\}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation RevList {
+    input { since: String }
+    output { commits: List<CommitSha> }
+    readonly
+    transport shell { argv: ["git", "rev-list", "\{since\}..HEAD"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation RevListBase {
+    input { since: String }
+    output { base_ref: CommitSha }
+    readonly
+    transport shell { argv: ["git", "merge-base", "HEAD", "\{since\}"] }
+    exit {
+      0 => Unit
+      1 => String "No common ancestor found"
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation Show {
+    input { ref: GitRef, path: FilePath }
+    output { content: String }
+    readonly
+    transport shell { argv: ["git", "show", "\{ref\}:\{path\}"] }
+    exit {
+      0 => Unit
+      128 => String "File not found or invalid ref"
+    }
+  }
+}

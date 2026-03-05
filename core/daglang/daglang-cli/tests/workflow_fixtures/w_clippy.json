@@ -5,8 +5,9 @@
   "dependencies": [
     "std.patterns",
     "std.resources",
-    "services.shell",
-    "services.cargo"
+    "extdeps.shell",
+    "extdeps.tools.rust_toolchain",
+    "extdeps.cargo"
   ],
   "_count_rationale": "FnBodyCallableOp: fn items with fn_body skip control-flow SubDag + ExprCompute return nodes (2026-03-04).",
   "expand_contract": {
@@ -29,7 +30,6 @@
       "service_transport_hermetic_targets": 3,
       "service_transport_idempotent_targets": 2,
       "service_transport_parse_targets": 7,
-      "service_transport_permission_scoped_targets": 0,
       "service_transport_prepare_targets": 7,
       "service_transport_readonly_targets": 5,
       "total_obligations": 71,

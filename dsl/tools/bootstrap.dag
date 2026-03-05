@@ -10,7 +10,7 @@ module tools.bootstrap
 
 import std.patterns { content_upsert }
 import std.resources { Filesystem }
-import services.shell { shell.Find }
+import extdeps.shell { shell.Find }
 
 // ── Render helpers ──────────────────────────────────────────────────
 

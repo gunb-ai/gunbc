@@ -45,6 +45,7 @@ fn no_new_direct_execution_helpers_outside_engine_surfaces() {
         if rel_norm.starts_with("target/")
             || rel_norm.contains("/target/")
             || rel_norm.contains("/buck-out/")
+            || rel_norm.starts_with(".claude/")
             || rel_norm.starts_with("docs/")
             || rel_norm.starts_with("TODO/")
             || rel_norm.contains("/tests/")

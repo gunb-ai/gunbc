@@ -1,36 +1,41 @@
-// profiles/gist.dag -- Deployment profiles for gist upload credential flow.
+// profiles/gist.dag -- Deployment profiles for gist credential binding.
 //
-// The credential chain in std/patterns.dag selects an auth strategy via
-// match runtime { GitHubActions => github_oidc(), LocalDev => local_auth() }.
-//
-// github_oidc() reads ACTIONS_ID_TOKEN_REQUEST_URL / _TOKEN via
-// shell.Env.Get and passes them as explicit data-flow inputs to
-// github.OIDC.GetToken.  When the env vars are absent (not on
-// GitHub Actions), the values propagate as Skipped and the transport
-// triplet is skipped by the compiler guard on the execute node.
-//
-// These profile stubs document the runtime contract per environment.
+// Binds the CredentialProvider interface to concrete implementations:
+// - local/dev: LocalCredentialProvider (reads GITHUB_TOKEN from env)
+// - test/prod: GcpWifCredentialProvider (full GCP WIF chain for CI)
 
 module profiles.gist
 
-import std.types { CloudRuntime }
+import interfaces.credential_provider { CredentialProvider }
+import services.sdlc.providers.local_credential_provider { LocalCredentialProvider }
+import services.sdlc.providers.gcp_credential_provider { GcpWifCredentialProvider }
 
-// Local development -- OIDC unavailable.
-// credential_chain selects local_auth() which uses ADC / gcloud CLI.
-// github.OIDC transport triplet skips via Skipped propagation.
+// Local development -- reads GITHUB_TOKEN from environment.
 profile local {
+  bind CredentialProvider -> services.sdlc.providers.local_credential_provider.LocalCredentialProvider {
+    cache_dir: "~/.gunbc/credentials"
+  }
 }
 
 // Development -- same as local.
 profile dev {
+  bind CredentialProvider -> services.sdlc.providers.local_credential_provider.LocalCredentialProvider {
+    cache_dir: "~/.gunbc/credentials"
+  }
 }
 
-// CI / GitHub Actions -- OIDC available via per-job env vars.
-// GH Actions injects ACTIONS_ID_TOKEN_REQUEST_URL and _TOKEN when
-// the workflow declares `permissions: { id-token: write }`.
+// CI / GitHub Actions -- full GCP WIF credential chain.
 profile test {
+  bind CredentialProvider -> services.sdlc.providers.gcp_credential_provider.GcpWifCredentialProvider {
+    runtime: GitHubActions,
+    project_id: "gunbai-secrets"
+  }
 }
 
 // Production -- same as test (runs on GitHub Actions).
 profile prod {
+  bind CredentialProvider -> services.sdlc.providers.gcp_credential_provider.GcpWifCredentialProvider {
+    runtime: GitHubActions,
+    project_id: "gunbai-secrets"
+  }
 }

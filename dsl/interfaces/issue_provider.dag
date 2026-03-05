@@ -13,10 +13,11 @@
 module interfaces.issue_provider
 
 import std.types {
-    TrackedIssue, IssueState, IssueLifecycleStage, NonEmptyStr, Url
+    TrackedIssue, IssueState, IssueLifecycleStage, NonEmptyStr, Url, Timestamp
 }
 import std.behavioral {
-  OperationBehavior, FailureMode, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+  OperationBehavior, FailureMode, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity,
+  CapabilityBehaviorContract, CapabilityFailureContract
 }
 import std.coordination { DeliveryGuarantee }
 import std.capability { CapabilityRequirement, InfraScope, AccessLevel }
@@ -26,7 +27,7 @@ import interfaces.shared { CapabilityBehaviorContract, CapabilityFailureContract
 type IssueEvent {
   event_type:     NonEmptyStr       // "labeled", "unlabeled", "commented", etc.
   actor:          NonEmptyStr       // Who performed the action
-  timestamp:      String
+  timestamp:      Timestamp
   payload:        Json?             // Event-specific data
 }
 

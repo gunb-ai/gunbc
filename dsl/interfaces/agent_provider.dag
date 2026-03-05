@@ -13,11 +13,11 @@ module interfaces.agent_provider
 
 import std.types { NonEmptyStr, AgentStatus, ApprovalMode }
 import std.behavioral {
-  OperationBehavior, FailureMode, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+  OperationBehavior, FailureMode, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity,
+  CapabilityBehaviorContract, CapabilityFailureContract
 }
 import std.coordination { DeliveryGuarantee, QueueSemantics, QueueOrdering }
 import std.capability { CapabilityRequirement, InfraScope, AccessLevel }
-import interfaces.shared { CapabilityBehaviorContract, CapabilityFailureContract }
 
 data execution_delivery: DeliveryGuarantee = AtLeastOnce
 

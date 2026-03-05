@@ -257,112 +257,6 @@ impl Executable for FnBodyCallableOp {
     }
 }
 
-/// Pipeline dispatch op for resolved `LoweredOp::Pipeline` nodes.
-///
-/// When a pipeline is invoked as a node in another DAG, this op represents
-/// the execution dispatch to the compiled pipeline's stages. The individual
-/// stage bodies are lowered elsewhere; this op provides deterministic stage
-/// ordering metadata and next-stage progression derived from the lowered
-/// stage sequence.
-#[derive(Clone)]
-struct PipelineDispatchOp {
-    _module: String,
-    _name: String,
-    stage_count: usize,
-    stage_names: Vec<String>,
-    output_ports: Vec<(String, bool)>,
-}
-
-impl std::fmt::Debug for PipelineDispatchOp {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PipelineDispatchOp")
-            .field("compat_mode", &"DeclaredOutputCallableOp")
-            .field("stage_count", &self.stage_count)
-            .field("stage_names", &self.stage_names)
-            .field("output_ports", &self.output_ports)
-            .finish()
-    }
-}
-
-impl Executable for PipelineDispatchOp {
-    /// Execute pipeline dispatch with explicit stage progression contract.
-    ///
-    /// **Stage progression contract**:
-    /// - `stages`: total stage count (always emitted)
-    /// - `stage_order`: ordered list of stage names (always emitted)
-    /// - `active_stage`: defaults to the first stage (always emitted if stages exist)
-    /// - If `current_stage` is provided:
-    ///   - Must be a non-empty string matching a known stage name
-    ///   - `next_stage` is set to the following stage, or to `current_stage` itself
-    ///     if already at the last stage (terminal self-loop)
-    /// - If `current_stage` is absent: no `next_stage` is emitted
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        // These outputs are computed by dispatch logic itself, not expected as
-        // passthrough inputs from upstream wiring.
-        // Non-dispatch outputs are passthrough — always optional since they
-        // depend on upstream wiring that may not exist (e.g., standalone tests).
-        let passthrough_ports: Vec<(String, bool)> = self
-            .output_ports
-            .iter()
-            .filter(|(name, _)| {
-                !matches!(
-                    name.as_str(),
-                    "stages" | "stage_order" | "active_stage" | "next_stage"
-                )
-            })
-            .map(|(name, _)| (name.clone(), true))
-            .collect();
-        let mut outputs = execute_with_declared_output_passthrough(&passthrough_ports, inputs)?;
-        outputs.insert("stages".to_string(), Value::Int(self.stage_count as i64));
-        outputs.insert(
-            "stage_order".to_string(),
-            Value::str_list(self.stage_names.clone()),
-        );
-        if let Some(first) = self.stage_names.first() {
-            outputs.insert("active_stage".to_string(), Value::Str(first.clone()));
-        }
-        if let Some(current_stage) = outputs.get("current_stage").and_then(Value::as_str) {
-            // Fail closed on empty current_stage — this is a wiring bug.
-            if current_stage.is_empty() {
-                return Err(ExecError::new(
-                    "pipeline dispatch received empty `current_stage` value — expected a valid stage name",
-                ));
-            }
-            let Some(position) = self
-                .stage_names
-                .iter()
-                .position(|stage| stage == current_stage)
-            else {
-                return Err(ExecError::new(format!(
-                    "pipeline dispatch received unknown `current_stage` value `{current_stage}` \
-                     (valid stages: {})",
-                    self.stage_names.join(", ")
-                )));
-            };
-            // Terminal stage: next_stage is self (no progression past the end).
-            let next_stage = self
-                .stage_names
-                .get(position + 1)
-                .cloned()
-                .unwrap_or_else(|| current_stage.to_string());
-            outputs.insert("next_stage".to_string(), Value::Str(next_stage));
-        }
-        Ok(outputs)
-    }
-}
-
-/// Passthrough for content_upsert output-path metadata nodes (FC-7).
-///
-/// These nodes exist solely to carry `@outputs("glob")` path annotations
-/// through the DAG. At execution time they are identity passthroughs.
-#[derive(Debug, Clone)]
-struct OutputPathMetadataOp;
-
-impl Executable for OutputPathMetadataOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        Ok(inputs)
-    }
-}
 
 /// Passthrough for std.resources callables that are neither acquire nor release.
 ///
@@ -392,9 +286,10 @@ struct CallParamSourceOp {
 impl Executable for CallParamSourceOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         // Value arrives via set_input() from boundary injection.
+        // No fallback to arbitrary inputs — if the named param isn't found,
+        // use Value::Skipped so downstream nodes can detect the gap.
         let value = inputs
             .get(&self.param)
-            .or_else(|| inputs.values().next())
             .cloned()
             .unwrap_or(Value::Skipped);
         Ok(HashMap::from([(self.output_port.clone(), value)]))
@@ -1215,8 +1110,22 @@ pub fn resolve_lowered_dag_with(
     // them at execution time.
     let sibling_fns = collect_sibling_fn_bodies(dag);
 
+    // Pipeline nodes are compile-time metadata (used by emit/derive/driver)
+    // but have no runtime representation. Collect their IDs to filter edges.
+    let pipeline_ids: std::collections::HashSet<&str> = dag
+        .nodes
+        .iter()
+        .filter_map(|node| match &node.body {
+            NodeBody::Opaque(LoweredOp::Pipeline { .. }) => Some(node.id.0.as_str()),
+            _ => None,
+        })
+        .collect();
+
     let mut resolved = Dag::new();
     for node in &dag.nodes {
+        if pipeline_ids.contains(node.id.0.as_str()) {
+            continue;
+        }
         let mut resolved_node = Node {
             id: node.id.clone(),
             inputs: node.inputs.clone(),
@@ -1237,7 +1146,16 @@ pub fn resolve_lowered_dag_with(
         }
         resolved.add_node(resolved_node);
     }
-    resolved.edges = dag.edges.clone();
+    // Filter edges referencing pipeline nodes.
+    resolved.edges = dag
+        .edges
+        .iter()
+        .filter(|edge| {
+            !pipeline_ids.contains(edge.from_node.0.as_str())
+                && !pipeline_ids.contains(edge.to_node.0.as_str())
+        })
+        .cloned()
+        .collect();
     wire_missing_filesystem_resources(&mut resolved);
     Ok(resolved)
 }
@@ -1319,18 +1237,11 @@ fn resolve_op(
 ) -> Result<DynOp, ResolveError> {
     match op {
         LoweredOp::Collection { kind, .. } => resolve_collection(kind),
-        LoweredOp::Pipeline {
-            module,
-            name,
-            stages,
-            stage_names,
-        } => Ok(DynOp::new(PipelineDispatchOp {
-            _module: module.clone(),
-            _name: name.clone(),
-            stage_count: *stages,
-            stage_names: stage_names.clone(),
-            output_ports: declared_output_ports(outputs),
-        })),
+        LoweredOp::Pipeline { .. } => {
+            // Pipeline nodes are filtered in resolve_lowered_dag_with.
+            // This arm is unreachable but kept for exhaustiveness.
+            unreachable!("pipeline nodes are skipped before resolve_node_body is called")
+        }
         LoweredOp::Primitive { kind, .. } => resolve_primitive(kind, inputs, outputs),
         LoweredOp::Callable {
             module,
@@ -1403,7 +1314,7 @@ fn resolve_primitive(
         PrimitiveOpKind::IoPrepareFileWrite => Ok(DynOp::new(PrepareFileWriteCompatOp)),
         PrimitiveOpKind::IoExecuteFileWrite => Ok(DynOp::new(TransportOps::Execute)),
         // FC-7: Output path annotation nodes are metadata-only, resolve as identity.
-        PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(DynOp::new(OutputPathMetadataOp)),
+        PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(DynOp::new(ResourcePassthroughOp)),
         PrimitiveOpKind::GetField { field } => {
             let input_port =
                 inputs
@@ -1595,7 +1506,7 @@ fn resolve_domain(
     //    for nodes that ARE transport roles (prepare/execute/parse) or have
     //    service metadata. Pure fn items in provider modules fall through to
     //    the default DeclaredOutputCallableOp passthrough.
-    if (module.starts_with("services.") || module.starts_with("workspace."))
+    if (module.starts_with("services.") || module.starts_with("workspace.") || module.starts_with("extdeps."))
         && (TransportRole::from_name(name).is_some() || service_metadata.is_some())
     {
         return resolve_service_transport(node_id, module, name, outputs, service_metadata);
@@ -1788,7 +1699,6 @@ fn resolve_service_transport(
                             .auth_scheme
                             .clone()
                             .unwrap_or_else(|| "none".to_string()),
-                        permissions: metadata.permissions.clone(),
                     }));
                 }
                 (ServiceOperationSpec::Shell(shell_spec), Some(TransportRole::Prepare)) => {
@@ -2051,63 +1961,9 @@ mod tests {
     // gunbc-dag (requires GunbcExternResolver for tools.infra::infra dispatch).
 
     #[test]
-    fn resolve_pipeline_dispatch_reports_stage_count() {
-        let node = Node::opaque(
-            "pipeline_sdlc",
-            vec![],
-            vec![Port::new("stages", "Int")],
-            LoweredOp::Pipeline {
-                module: "pipelines.sdlc".to_string(),
-                name: "sdlc".to_string(),
-                stages: 8,
-                stage_names: vec![
-                    "fetch".to_string(),
-                    "claim_design".to_string(),
-                    "design".to_string(),
-                    "design_review".to_string(),
-                    "record_design_outcome".to_string(),
-                    "accept_design".to_string(),
-                    "implementation".to_string(),
-                    "close".to_string(),
-                ],
-            },
-        );
-        let op = resolve_node(&node).expect("pipeline node should resolve");
-        let mut inputs = HashMap::new();
-        inputs.insert(
-            "current_stage".to_string(),
-            Value::Str("design_review".to_string()),
-        );
-        let outputs = op
-            .execute(inputs)
-            .expect("pipeline dispatch should execute");
-        assert_eq!(outputs.get("stages"), Some(&Value::Int(8)));
-        assert_eq!(
-            outputs.get("active_stage"),
-            Some(&Value::Str("fetch".to_string()))
-        );
-        assert_eq!(
-            outputs.get("next_stage"),
-            Some(&Value::Str("record_design_outcome".to_string()))
-        );
-        assert_eq!(
-            outputs.get("stage_order"),
-            Some(&Value::str_list(vec![
-                "fetch".to_string(),
-                "claim_design".to_string(),
-                "design".to_string(),
-                "design_review".to_string(),
-                "record_design_outcome".to_string(),
-                "accept_design".to_string(),
-                "implementation".to_string(),
-                "close".to_string(),
-            ]))
-        );
-    }
-
-    #[test]
-    fn resolve_pipeline_dispatch_fails_closed_for_unknown_stage() {
-        let node = Node::opaque(
+    fn resolve_pipeline_node_is_skipped() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
             "pipeline_sdlc",
             vec![],
             vec![Port::new("stages", "Int")],
@@ -2117,78 +1973,13 @@ mod tests {
                 stages: 2,
                 stage_names: vec!["fetch".to_string(), "design".to_string()],
             },
-        );
-        let op = resolve_node(&node).expect("pipeline node should resolve");
-        let mut inputs = HashMap::new();
-        inputs.insert(
-            "current_stage".to_string(),
-            Value::Str("unknown-stage".to_string()),
-        );
-        let error = op
-            .execute(inputs)
-            .expect_err("unknown stage should fail closed");
+        ));
+        let null = crate::NullExternResolver;
+        let resolved = resolve_lowered_dag_with(&dag, &null).expect("should succeed");
         assert!(
-            error
-                .to_string()
-                .contains("pipeline dispatch received unknown `current_stage`"),
-            "unexpected error: {error}"
-        );
-        // FC-6: error message should include valid stage names for diagnostics
-        assert!(
-            error.to_string().contains("fetch") && error.to_string().contains("design"),
-            "error should list valid stages: {error}"
-        );
-    }
-
-    #[test]
-    fn resolve_pipeline_dispatch_fails_closed_for_empty_stage() {
-        let node = Node::opaque(
-            "pipeline_sdlc",
-            vec![],
-            vec![Port::new("stages", "Int")],
-            LoweredOp::Pipeline {
-                module: "pipelines.sdlc".to_string(),
-                name: "sdlc".to_string(),
-                stages: 2,
-                stage_names: vec!["fetch".to_string(), "design".to_string()],
-            },
-        );
-        let op = resolve_node(&node).expect("pipeline node should resolve");
-        let mut inputs = HashMap::new();
-        inputs.insert("current_stage".to_string(), Value::Str(String::new()));
-        let error = op
-            .execute(inputs)
-            .expect_err("empty current_stage should fail closed");
-        assert!(
-            error.to_string().contains("empty `current_stage`"),
-            "unexpected error: {error}"
-        );
-    }
-
-    #[test]
-    fn resolve_pipeline_dispatch_last_stage_loops_to_self() {
-        let node = Node::opaque(
-            "pipeline_sdlc",
-            vec![],
-            vec![Port::new("stages", "Int")],
-            LoweredOp::Pipeline {
-                module: "pipelines.sdlc".to_string(),
-                name: "sdlc".to_string(),
-                stages: 2,
-                stage_names: vec!["fetch".to_string(), "design".to_string()],
-            },
-        );
-        let op = resolve_node(&node).expect("pipeline node should resolve");
-        let mut inputs = HashMap::new();
-        inputs.insert(
-            "current_stage".to_string(),
-            Value::Str("design".to_string()),
-        );
-        let outputs = op.execute(inputs).expect("last stage should not error");
-        assert_eq!(
-            outputs.get("next_stage"),
-            Some(&Value::Str("design".to_string())),
-            "last stage should loop to self as terminal"
+            resolved.nodes.is_empty(),
+            "pipeline nodes should be filtered out, got {} nodes",
+            resolved.nodes.len()
         );
     }
 
@@ -2248,7 +2039,6 @@ mod tests {
             transport: ServiceTransportClass::ShellLocal,
             idempotent: false,
             readonly: true,
-            permissions: vec![],
             spec: Some(ServiceOperationSpec::Shell(ShellOperationSpec {
                 argv_template: vec![
                     ArgvSegment::Literal("test".to_string()),
@@ -2279,7 +2069,6 @@ mod tests {
             transport: ServiceTransportClass::ShellLocal,
             idempotent: false,
             readonly: false,
-            permissions: vec![],
             spec: Some(ServiceOperationSpec::Shell(ShellOperationSpec {
                 argv_template: vec![
                     ArgvSegment::Literal("cargo".to_string()),
@@ -2354,7 +2143,7 @@ mod tests {
         for (name, metadata, expected_debug) in cases {
             let node = service_callable_node(
                 name,
-                "services.shell",
+                "extdeps.shell",
                 name,
                 ObligationCategory::None,
                 metadata,
@@ -2511,7 +2300,6 @@ mod tests {
             transport: ServiceTransportClass::RestNetwork,
             idempotent: true,
             readonly: false,
-            permissions: vec![],
             spec: Some(ServiceOperationSpec::Rest(Box::new(RestOperationSpec {
                 endpoint: "https://sts.googleapis.com".to_string(),
                 method: "POST".to_string(),
@@ -2569,7 +2357,6 @@ mod tests {
             transport: ServiceTransportClass::RestNetwork,
             idempotent: true,
             readonly: true,
-            permissions: vec!["secretmanager.versions.access".to_string()],
             spec: Some(ServiceOperationSpec::Rest(Box::new(RestOperationSpec {
                 endpoint: "https://secretmanager.googleapis.com".to_string(),
                 method: "GET".to_string(),
@@ -2631,25 +2418,25 @@ mod tests {
     fn resolve_services_gcp_transport_ops() {
         let cases = [
             (
-                "services.gcp.sts",
+                "extdeps.cloud.gcp.sts",
                 "service_transport::prepare::gcp.STS::Exchange",
                 sts_exchange_metadata(),
                 "GenericRestPrepareOp",
             ),
             (
-                "services.gcp.sts",
+                "extdeps.cloud.gcp.sts",
                 "service_transport::parse::gcp.STS::Exchange",
                 sts_exchange_metadata(),
                 "GenericRestParseOp",
             ),
             (
-                "services.gcp.secret_manager",
+                "extdeps.cloud.gcp.secret_manager",
                 "service_transport::prepare::gcp.SecretManager::AccessVersion",
                 secret_manager_metadata(),
                 "GenericRestPrepareOp",
             ),
             (
-                "services.gcp.secret_manager",
+                "extdeps.cloud.gcp.secret_manager",
                 "service_transport::parse::gcp.SecretManager::AccessVersion",
                 secret_manager_metadata(),
                 "GenericRestParseOp",
@@ -2764,7 +2551,7 @@ mod tests {
     fn resolve_unknown_service_transport_prepare_fails() {
         let node = callable_node(
             "bad_service_prepare",
-            "services.gcp.sts",
+            "extdeps.cloud.gcp.sts",
             "service_transport::prepare::gcp.STS::Refresh",
             ObligationCategory::ServiceTransportPrepare,
         );

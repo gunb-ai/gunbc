@@ -235,7 +235,6 @@ pub mod ast {
         pub uses: Vec<UsesClause>,
         pub provides: Vec<ProvidesClause>,
         pub body: FuncBody,
-        pub declared_outputs: Vec<String>,
     }
 
     /// Reusable DAG template: `pattern name(params) -> { outputs } uses ... provides ... { body }`
@@ -287,7 +286,6 @@ pub mod ast {
         pub outputs: Vec<Field>,
         pub idempotent: bool,
         pub readonly: bool,
-        pub permissions: Vec<String>,
         pub transport: Option<TransportBinding>,
         /// Response contract: maps HTTP status codes/patterns to response types.
         pub response: Vec<ResponseEntry>,
@@ -485,8 +483,6 @@ pub mod ast {
         pub tier: Option<String>,
         pub hermetic: bool,
         pub skip: bool,
-        pub auto_mock: bool,
-        pub mock_helpers: Option<String>,
     }
 
     /// A mock declaration: `mock <node_path>.<port> -> <value>`.

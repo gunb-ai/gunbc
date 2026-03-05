@@ -17,5 +17,5 @@ pub fn pragma_signature() -> Result<WorkflowSignature, BuilderError> {
 
 /// Build pragma graph from the DSL source.
 pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
-    crate::dsl_builder::build_dsl_graph_for_entrypoint("tools/pragma.dag", Some("pragma"))
+    crate::dsl_builder::build_dsl_graph_for_entrypoint("tools/pragma.dag", Some("pragma"), None)
 }

@@ -20,15 +20,16 @@ import std.types {
   AuthScheme,
   CloudRuntime,
   FilePath,
+  Milliseconds,
   NonEmptyStr,
   ProjectId,
   ServiceAccountEmail
 }
 import std.filesystem { partition_entries, is_text_readable }
-import services.gcp.secret_manager
-import services.gcp.iam
-import services.gcp.sts
-import services.shell
+import extdeps.cloud.gcp.secret_manager
+import extdeps.cloud.gcp.iam
+import extdeps.cloud.gcp.sts
+import extdeps.shell
 
 // =====================================================================
 // Fundamental Steps
@@ -303,7 +304,7 @@ pattern transaction<Begin: -> R, Body, Commit, Rollback>(
 
 // --- Retry ------------------------------------------------------------
 
-pattern retry<Op>(max_attempts: Int = 3, backoff_ms: Int = 1000) -> {} {
+pattern retry<Op>(max_attempts: Int = 3, backoff_ms: Milliseconds = 1000) -> {} {
   node op: Op
 }
 

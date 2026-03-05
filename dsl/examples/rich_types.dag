@@ -31,6 +31,7 @@
 module examples.rich_types
 
 import infra.core { ObjectStorage }
+import std.types { Timestamp }
 
 
 // =========================================================================
@@ -71,7 +72,7 @@ type Page<T> {
 // Validated wrapper -- carries proof of validation
 type Validated<T> {
   value: T
-  validated_at: String
+  validated_at: Timestamp
   validator: String
 }
 
@@ -263,7 +264,7 @@ type DateRange {
 
 type ReviewArtifact<M: Serializable> {
   id: String where format(uuid)
-  created_at: String where pattern("^\\d{4}-\\d{2}-\\d{2}T")
+  created_at: Timestamp
   author: UserId
   metadata: M
   content: NonEmptyStr
@@ -272,7 +273,7 @@ type ReviewArtifact<M: Serializable> {
 
 type ReviewStatus
   = Pending
-  | InProgress { reviewer: UserId, started_at: String }
+  | InProgress { reviewer: UserId, started_at: Timestamp }
   | Completed { reviewer: UserId, score: Int where range(min: 1, max: 5) }
   | Rejected { reason: String }
 

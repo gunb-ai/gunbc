@@ -36,11 +36,6 @@ pub fn render_triplets(derived: &DerivedArtifacts, format: OutputFormat) -> Stri
                     writeln!(out, "    operation: {}", metadata.operation).ok();
                     writeln!(out, "    idempotent: {}", metadata.idempotent).ok();
                     writeln!(out, "    readonly: {}", metadata.readonly).ok();
-                    if metadata.permissions.is_empty() {
-                        out.push_str("    permissions: (none)\n");
-                    } else {
-                        writeln!(out, "    permissions: {}", metadata.permissions.join(", ")).ok();
-                    }
                 }
             }
             out

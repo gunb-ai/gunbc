@@ -39,6 +39,17 @@ type Prerequisite {
   kind: PrerequisiteKind
 }
 
+// Shared contract types used by all interface definitions.
+type CapabilityBehaviorContract {
+  capability: String
+  behavior: OperationBehavior
+}
+
+type CapabilityFailureContract {
+  capability: String
+  failures: List<FailureMode>
+}
+
 // Canonical behavior payload attached to operations and capabilities.
 type OperationBehavior {
   side_effects: SideEffects

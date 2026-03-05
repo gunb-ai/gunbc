@@ -34,7 +34,7 @@ struct DslParam {
 
 /// Bump when cache format changes (e.g., new fields in CachedDiscoveryEntry).
 /// Stale caches with a different version are discarded on load.
-const CACHE_VERSION: u32 = 2;
+const CACHE_VERSION: u32 = 3;
 
 /// Persistent discovery cache for incremental compilation (C26).
 ///
@@ -220,6 +220,7 @@ fn discover_from_dag_file_cached(
                     &module_name,
                     &cached_entrypoints,
                     &cached.output_paths,
+                    &cached.available_profiles,
                     &func_params,
                 ));
             }
@@ -254,6 +255,7 @@ fn discover_from_dag_file_cached(
             .cloned()
             .collect::<Vec<_>>(),
         &compile_output.output_paths,
+        &compile_output.available_profiles,
         &func_params,
     );
 
@@ -387,6 +389,7 @@ fn build_tool_defs_from_cached_params(
     module_name: &str,
     module_entrypoints: &[InferredEntrypoint],
     output_paths: &[String],
+    available_profiles: &[String],
     func_params: &BTreeMap<String, Vec<DslParam>>,
 ) -> Option<Vec<ToolDef>> {
     if module_entrypoints.is_empty() {
@@ -444,6 +447,9 @@ fn build_tool_defs_from_cached_params(
         .import("use gunbc_dag::dsl_builder::build_dsl_graph_for_entrypoint;")
         .invocation(cargo::CargoInvocation::composed(&module_tool_name, "dag"));
 
+        if !available_profiles.is_empty() {
+            tool = tool.available_profiles(available_profiles.to_vec());
+        }
         for output_path in output_paths {
             tool = tool.output(output_path.clone());
         }
@@ -478,6 +484,9 @@ fn build_tool_defs_from_cached_params(
         .import("use gunbc_dag::dsl_builder::build_dsl_graph_for_entrypoint;")
         .invocation(cargo::CargoInvocation::composed(&tool_name, "dag"));
 
+        if !available_profiles.is_empty() {
+            tool = tool.available_profiles(available_profiles.to_vec());
+        }
         for output_path in output_paths {
             tool = tool.output(output_path.clone());
         }

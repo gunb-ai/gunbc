@@ -259,6 +259,8 @@ pub struct ToolInfo {
     pub needs_generated_cli: bool,
     /// Secret environment variables required for live execution.
     pub live_secrets: Vec<String>,
+    /// Available profiles for --profile flag (PT-4).
+    pub available_profiles: Vec<String>,
 }
 
 impl ToolInfo {
@@ -274,6 +276,7 @@ impl ToolInfo {
             has_declarative_dag: def.meta.tool_name == "makegen",
             needs_generated_cli: true,
             live_secrets: Vec::new(),
+            available_profiles: def.meta.available_profiles.clone(),
         };
 
         for ep in &def.entrypoints {
@@ -474,6 +477,7 @@ mod tests {
             has_declarative_dag: false,
             needs_generated_cli: true,
             live_secrets: Vec::new(),
+            available_profiles: Vec::new(),
         });
         registry.register(ToolInfo {
             invocation: CargoInvocation::composed("manual", "dag"),
@@ -484,6 +488,7 @@ mod tests {
             has_declarative_dag: false,
             needs_generated_cli: false,
             live_secrets: Vec::new(),
+            available_profiles: Vec::new(),
         });
         let codegen = registry.tools_needing_codegen();
         assert_eq!(codegen.len(), 1);
@@ -501,6 +506,7 @@ mod tests {
             has_declarative_dag: false,
             needs_generated_cli: true,
             live_secrets: Vec::new(),
+            available_profiles: Vec::new(),
         };
         let manual = ToolInfo {
             invocation: CargoInvocation::composed("beta", "dag"),
@@ -511,6 +517,7 @@ mod tests {
             has_declarative_dag: false,
             needs_generated_cli: false,
             live_secrets: Vec::new(),
+            available_profiles: Vec::new(),
         };
         let generated_spec = generated.workflow_spec();
         let manual_spec = manual.workflow_spec();

@@ -4,7 +4,7 @@
 //! using the `gh pr` subcommand family.
 
 use crate::transport::agent::{PullRequestResult, PullRequestSpec};
-use crate::transport::ShellRequest;
+use crate::transport::{Hermeticity, ShellRequest};
 
 use super::cli::GH_TOOL;
 
@@ -27,7 +27,9 @@ pub fn build_pr_create_request(spec: &PullRequestSpec) -> ShellRequest {
     if spec.draft {
         args.push("--draft".to_string());
     }
-    ShellRequest::new(GH_TOOL.command).args(args)
+    ShellRequest::new(GH_TOOL.command)
+        .args(args)
+        .with_semantics("github.pr.create", Hermeticity::External)
 }
 
 /// Build a `gh pr comment` shell request.
@@ -37,15 +39,17 @@ pub fn build_pr_comment_request(
     pr_number: u64,
     body: &str,
 ) -> ShellRequest {
-    ShellRequest::new(GH_TOOL.command).args([
-        "pr",
-        "comment",
-        &pr_number.to_string(),
-        "--repo",
-        &format!("{owner}/{repo}"),
-        "--body",
-        body,
-    ])
+    ShellRequest::new(GH_TOOL.command)
+        .args([
+            "pr",
+            "comment",
+            &pr_number.to_string(),
+            "--repo",
+            &format!("{owner}/{repo}"),
+            "--body",
+            body,
+        ])
+        .with_semantics("github.pr.comment", Hermeticity::External)
 }
 
 /// Build a `gh pr merge` shell request.
@@ -68,7 +72,7 @@ pub fn build_pr_merge_request(
     } else {
         req = req.arg("--merge");
     }
-    req
+    req.with_semantics("github.pr.merge", Hermeticity::External)
 }
 
 /// Parse the stdout of `gh pr create` into a `PullRequestResult`.

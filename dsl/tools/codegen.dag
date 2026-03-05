@@ -9,7 +9,7 @@
 module tools.codegen
 
 import std.resources { Filesystem }
-import services.shell { shell.Codegen }
+import extdeps.gunbc { shell.Codegen }
 
 func codegen() -> { success: Bool, ran: Bool }
   uses fs: Filesystem(mode: ReadWrite)

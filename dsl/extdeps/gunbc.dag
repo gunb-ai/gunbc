@@ -10,6 +10,7 @@
 //   config/arch_rules.dag    — exemption scopes reference packages
 //   config/clippy_policy.dag — crate policies reference roles
 //   tools/makegen.dag        — registry references workspace binaries
+//   tools/codegen.dag        — codegen shell operations
 
 module extdeps.gunbc
 
@@ -122,3 +123,33 @@ data packages: List<WorkspacePackage> = [
     description: "Dependency management tool",
     io_boundary: false }
 ]
+
+// ── Service: codegen shell operations ───────────────────────────
+
+service shell.Codegen {
+  operation Check {
+    input {}
+    output { needed: Bool }
+    readonly
+    // Checks if codegen output files exist / are stale
+    transport shell { argv: ["test", "-f", "target/codegen/.stamp"] }
+    exit {
+      0 => Unit "File exists"
+      1 => Unit "File does not exist"
+    }
+  }
+
+  operation Run {
+    input {}
+    output {
+      success: Bool
+      stdout: String
+      stderr: String
+    }
+    transport shell { argv: ["cargo", "run", "--bin", "gunbc-codegen", "--", "codegen"] }
+    exit {
+      0 => Unit
+      nonzero => String "Codegen failed"
+    }
+  }
+}

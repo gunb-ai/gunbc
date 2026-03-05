@@ -18,8 +18,9 @@
 module std.state_machines
 
 import std.types {
-    IssueLifecycleStage, RetryPolicy, OutcomeStatus, NonEmptyStr
+    IssueLifecycleStage, OutcomeStatus, NonEmptyStr
 }
+import std.rate_limit { RetryPolicy }
 
 // --- Stage ordinal mapping -----------------------------------------------
 // Maps each stage to a numeric position for forward/backward determination.

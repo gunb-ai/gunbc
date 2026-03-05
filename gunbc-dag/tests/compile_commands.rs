@@ -295,9 +295,9 @@ fn sdlc_pipeline_unit_test_profile_contains_all_stage_markers() {
         ),
         (
             "code_review",
-            "execute_transport_services_github_pull_request_github_PullRequest_ListFiles",
+            "execute_transport_extdeps_github_pull_requests_github_PullRequest_ListFiles",
         ),
-        ("acceptance", "execute_transport_services_cargo_cargo_Build_Test"),
+        ("acceptance", "execute_transport_extdeps_cargo_cargo_Build_Test"),
         (
             "close",
             "execute_transport_profiles_unit_test_StubIssueProvider_close",

@@ -69,6 +69,7 @@ type Char = Int where brand("Char"), range(min: 0, max: 1114111)
 //   3. Documentation of expected shapes
 
 type CommitSha    = String where pattern("^[a-f0-9]{40}$")
+type Sha256       = String where pattern("^[a-f0-9]{64}$")
 type RetryCount   = Int where range(min: 1, max: 5)
 type HttpStatus   = Int where range(min: 100, max: 599)
 type Email        = String where pattern("^[^@]+@[^@]+\\.[^@]+$")
@@ -78,6 +79,7 @@ type SecretValue  = Secret where non_empty
 type Url          = String where pattern("^https?://")
 type SemVer       = String where pattern("^\\d+\\.\\d+\\.\\d+")
 type NonEmptyStr  = String where non_empty
+type LanguageId   = String where non_empty
 
 // Path modeling (EX-2):
 // - FilePath remains a compatibility alias for existing modules.
@@ -105,8 +107,10 @@ type FilePath      = String where non_empty
 //   ⟦EpochMs⟧   ⊂ ⟦Int⟧
 
 type Timestamp    = String where pattern("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}")
-type EpochMs      = Int where range(min: 0)
-type Duration     = Int where range(min: 0)
+type EpochMs       = Int where range(min: 0)
+type Duration      = Int where range(min: 0)
+type Milliseconds  = Int where range(min: 0), brand("Milliseconds")
+type Seconds       = Int where range(min: 0), brand("Seconds")
 
 // --- Branded nominal types (Level 1+8: Refinement + Brand) ----------------
 // Addresses deficit D15 from domain-modeling-comprehensive.md §9.
@@ -150,6 +154,15 @@ type WarningPolicy = DenyAll | Default                    // |⟦WarningPolicy�
 type CloudRuntime = GitHubActions | Metadata | LocalDev  // |⟦CloudRuntime⟧| = 3
 type Platform     = Linux | Macos | Windows              // aligned with canonical Os tokens
 
+// --- Extracted enums (WS1-2: stringly-typed → sum types) ---------------
+
+type TopologyNodeKind = Pure | Transport | SubDag | Env
+type ArtifactKind     = Design | Review | Plan | CiReport
+type DocSourceKind    = Template | Generated | Static
+type AuthorSource     = Llm | Human
+type ReviewSource     = Llm | Human | Policy
+type SeverityLevel    = Blocking | Suggestion | Info
+
 // --- Review model (Level 3+4: D-1 compositional concern types) --------
 // Four abstract review dimensions. Each is a concern that parameterizes
 // the generic dimension_review pattern. Phasing (parallel vs sequential)
@@ -165,7 +178,7 @@ type ReviewConcern {
 }
 
 type DimensionReviewOutput {
-  dimension: String
+  dimension: ReviewDimension
   output: Json
   errors: Json
 }
@@ -215,8 +228,7 @@ type RuntimePlatform {
 
 // --- Filesystem entry kinds (Level 4: Finite Coproducts) ----------------
 // "What can a path point to?" -- exhaustive over POSIX entry types.
-// Canonical definitions live in std/filesystem.dag; these are the base
-// sum types that FileClassification uses.
+// Canonical definition. Re-used by std/filesystem.dag's FileEntry.
 
 type EntryKind
   = RegularFile
@@ -318,7 +330,7 @@ type AuthScheme
 type AccessToken {
   token: Secret
   scheme: AuthScheme
-  expires_at: String?          // Level 5: Optional -- ⟦String⟧ ∪ {none}
+  expires_at: Timestamp?       // Level 5: Optional -- ⟦Timestamp⟧ ∪ {none}
 }
 
 type CloudSecretConfig {
@@ -349,7 +361,7 @@ type TestResult {
   ok: Bool
   stdout: String
   stderr: String
-  duration_ms: Int
+  duration_ms: Milliseconds
 }
 
 type Summary {
@@ -424,7 +436,7 @@ type DagTopology {
 type TopologyNode {
   id: String
   label: String
-  kind: String           // "pure" | "transport" | "subdag" | "env"
+  kind: TopologyNodeKind
   parent: String?        // SubDag parent id
 }
 
@@ -502,8 +514,8 @@ type TrackedIssue {
   url: Url?                     // Web URL if the provider has one
   author: String?
   labels: List<String>          // Provider labels/tags
-  created_at: String?
-  updated_at: String?
+  created_at: Timestamp?
+  updated_at: Timestamp?
 }
 
 // Abstract design output. The content blob is markdown.
@@ -511,7 +523,7 @@ type TrackedIssue {
 type DesignOutput {
   content: String               // Markdown document
   summary: String               // One-line summary
-  source: String                // "llm" | "human"
+  source: AuthorSource
   sections: DesignSections?     // Structured section breakdown (optional)
 }
 
@@ -525,7 +537,7 @@ type DesignSections {
   interfaces: String?
   risks: List<String>?
   test_plan: String?
-  scope: String?                // "S" | "M" | "L" | "XL"
+  scope: FermiDepth?
 }
 
 // Design review output. Mirrors ReviewOutput but for designs.
@@ -533,21 +545,21 @@ type DesignReviewOutput {
   findings: List<DesignFinding>
   approved: Bool
   summary: String
-  source: String                // "llm" | "human" | "policy"
+  source: ReviewSource
 }
 
 type DesignFinding {
   check_id: String              // Which criteria check
   issue_key: String             // Stable content-based key
   observation: String
-  severity: String              // "blocking" | "suggestion" | "info"
+  severity: SeverityLevel
   suggestion: String?
 }
 
 // Implementation plan: the bridge between design and code.
 type ImplementationPlan {
   tasks: List<ImplementationTask>
-  estimated_scope: String       // "S" | "M" | "L" | "XL"
+  estimated_scope: FermiDepth
   summary: String
 }
 
@@ -565,14 +577,14 @@ type PipelineRun {
   issue_id: String
   stages_completed: List<IssueLifecycleStage>
   current_stage: IssueLifecycleStage
-  started_at: String
-  updated_at: String
+  started_at: Timestamp
+  updated_at: Timestamp
   artifacts: List<PipelineArtifact>
 }
 
 type PipelineArtifact {
   stage: IssueLifecycleStage
-  kind: String                  // "design" | "review" | "plan" | "ci-report"
+  kind: ArtifactKind
   content: String               // The artifact content (markdown)
   url: Url?                     // Link to where it was posted
 }
@@ -607,7 +619,7 @@ type IntentSheet {
   labels:           List<String>      // Initial labels (e.g., ["sdlc:idea"])
   owner:            NonEmptyStr       // GitHub owner (org or user)
   repo:             NonEmptyStr       // GitHub repository name
-  created_at:       String            // When the intent was first submitted
+  created_at:       Timestamp         // When the intent was first submitted
   metadata:         Json?             // Optional structured metadata
 }
 
@@ -617,7 +629,7 @@ type IssueBinding {
   intent_id:        NonEmptyStr       // FK to IntentSheet
   issue_id:         NonEmptyStr       // Provider-specific issue identifier
   provider:         NonEmptyStr       // Which provider manages this issue
-  created_at:       String            // When binding was established
+  created_at:       Timestamp         // When binding was established
   binding_status:   BindingStatus     // Active | Conflicted | Terminated
 }
 
@@ -628,7 +640,7 @@ type IssueBinding {
 type StageRunKey {
   issue_id:         NonEmptyStr
   stage:            IssueLifecycleStage
-  input_hash:       NonEmptyStr       // Hash of normalized stage inputs
+  input_hash:       ContentHash       // Hash of normalized stage inputs
   policy_version:   NonEmptyStr       // Version of stage policy (retry budget, etc.)
 }
 
@@ -641,9 +653,9 @@ type ClaimLease {
   stage:            IssueLifecycleStage
   owner:            NonEmptyStr       // Worker identity (e.g., pod name)
   generation:       Int               // CAS generation counter
-  acquired_at:      String
-  expires_at:       String            // acquired_at + lease_ttl
-  lease_ttl_ms:     Int               // Lease duration in milliseconds
+  acquired_at:      Timestamp
+  expires_at:       Timestamp         // acquired_at + lease_ttl
+  lease_ttl_ms:     Milliseconds      // Lease duration in milliseconds
 }
 
 // Outcome status for stage execution results.
@@ -666,9 +678,9 @@ type StageOutcome {
   error:                  String?           // Error details if failed
   attempt_count:          Int               // How many times this stage has been attempted
   retry_budget_remaining: Int               // Remaining retries for this stage
-  next_attempt_at:        String?           // When retry is scheduled (if retryable)
-  created_at:             String
-  updated_at:             String
+  next_attempt_at:        Timestamp?        // When retry is scheduled (if retryable)
+  created_at:             Timestamp
+  updated_at:             Timestamp
 }
 
 // Artifact types produced during stage execution.
@@ -694,8 +706,8 @@ type Artifact {
   run_key:          NonEmptyStr       // FK to StageRunKey
   artifact_type:    ArtifactType
   payload:          ArtifactPayload   // Inline or blob reference
-  content_hash:     NonEmptyStr       // Hash of normalized payload
-  created_at:       String
+  content_hash:     ContentHash       // Hash of normalized payload
+  created_at:       Timestamp
 }
 
 // Marker kinds for the two-phase artifact commit protocol.
@@ -709,9 +721,9 @@ type ArtifactMarker {
   run_key:          NonEmptyStr
   artifact_type:    ArtifactType
   marker_kind:      MarkerKind
-  content_hash:     NonEmptyStr
+  content_hash:     ContentHash
   lease_generation: Int?              // Present for provisional markers
-  created_at:       String
+  created_at:       Timestamp
 }
 
 // Signal types for durable at-least-once work discovery messages.
@@ -720,7 +732,7 @@ type SignalType
   = IntentSubmitted     { intent_id: NonEmptyStr, intent_version: Int }
   | WorkReady           { issue_id: NonEmptyStr, stage: IssueLifecycleStage, stage_epoch: Int }
   | ApprovalGranted     { issue_id: NonEmptyStr, stage: IssueLifecycleStage, approval_epoch: Int }
-  | RetryDue            { issue_id: NonEmptyStr, stage: IssueLifecycleStage, run_key: NonEmptyStr, next_attempt_at: String }
+  | RetryDue            { issue_id: NonEmptyStr, stage: IssueLifecycleStage, run_key: NonEmptyStr, next_attempt_at: Timestamp }
   | LeaseExpired        { issue_id: NonEmptyStr, stage: IssueLifecycleStage, lease_generation: Int }
   | ReconcileTick       { window_id: NonEmptyStr }
   | InfraIntentChanged  { intent_fingerprint: NonEmptyStr }
@@ -731,8 +743,8 @@ type Signal {
   signal_type:      SignalType
   idempotency_key:  NonEmptyStr       // Deterministic dedup key
   payload:          Json              // Signal-specific data
-  produced_at:      String
-  consumed_at:      String?           // Null until consumed
+  produced_at:      Timestamp
+  consumed_at:      Timestamp?        // Null until consumed
 }
 
 // Runtime profile for infrastructure intent.
@@ -755,19 +767,13 @@ type InfraIntent {
   infra_fingerprint:    NonEmptyStr   // Hash of the full intent for change detection
 }
 
-// Retry policy configuration per stage.
-type RetryPolicy {
-  max_attempts:     Int               // Total attempts (including first). Default: 3
-  backoff_base_ms:  Int               // Base backoff duration. Default: 5000
-  backoff_max_ms:   Int               // Maximum backoff. Default: 60000
-  jitter:           Bool              // Add randomized jitter. Default: true
-}
+// RetryPolicy: canonical definition in std/rate_limit.dag (uses BackoffStrategy sum type).
 
 // Failure classification for stage execution errors.
 type FailureClass
   = Retryable {
       reason: String
-      next_attempt_at: String         // Computed from backoff policy
+      next_attempt_at: Timestamp      // Computed from backoff policy
     }
   | NonRetryable {
       reason: String                  // Terminal failure
@@ -822,8 +828,8 @@ type CredentialBinding {
 type ExecutionMetrics {
   run_key:              NonEmptyStr
   stage:                IssueLifecycleStage
-  duration_ms:          Int
-  approval_latency_ms:  Int?          // Time spent in PENDING_APPROVAL
+  duration_ms:          Milliseconds
+  approval_latency_ms:  Milliseconds? // Time spent in PENDING_APPROVAL
   retry_attempts:       Int
   llm_cost_units:       Float?        // Estimated LLM cost
   transport_calls:      Int           // Number of external API calls
@@ -841,7 +847,7 @@ type AuditAction
   | TransitionedTo { from_state: String, to_state: String }
 
 type AuditEntry {
-  timestamp:        String
+  timestamp:        Timestamp
   actor:            NonEmptyStr       // Worker ID or system
   action:           AuditAction
   entity_type:      NonEmptyStr       // "ClaimLease", "StageOutcome", etc.
@@ -854,5 +860,5 @@ type AuditEntry {
 
 type DocSource {
   path: FilePath
-  kind: String           // "template" | "generated" | "static"
+  kind: DocSourceKind
 }

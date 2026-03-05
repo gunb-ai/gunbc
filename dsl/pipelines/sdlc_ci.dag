@@ -23,8 +23,8 @@ import interfaces.outcome_ledger { OutcomeLedger }
 import interfaces.signal_store { SignalStore }
 import interfaces.artifact_store { ArtifactStore }
 import interfaces.agent_provider { AgentProvider }
-import services.shell { shell.Env }
-import services.cargo { Cargo }
+import extdeps.shell { shell.Env }
+import extdeps.cargo { Cargo }
 import std.types {
   TrackedIssue, IssueLifecycleStage, StageResult, Summary, NonEmptyStr
 }

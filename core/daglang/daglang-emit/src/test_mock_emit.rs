@@ -108,8 +108,6 @@ impl TestFile {
                         tier: t.tier.clone(),
                         hermetic: t.hermetic,
                         skip: t.skip,
-                        auto_mock: t.auto_mock,
-                        mock_helpers: t.mock_helpers.clone(),
                     });
                 }
                 _ => {} // Ignore non-test items (types, imports, etc.)
@@ -137,24 +135,6 @@ pub fn emit_test_mock_file(test_file: &TestFile, config: &TestEmitConfig) -> Str
 
     // Filter out tests marked with `skip`.
     let active_tests: Vec<&TestDef> = test_file.tests.iter().filter(|t| !t.skip).collect();
-
-    // Emit Rust mock helper annotations as documentation comments.
-    let rust_helpers: Vec<&str> = active_tests
-        .iter()
-        .filter_map(|t| t.mock_helpers.clone())
-        .collect::<Vec<_>>()
-        .into_iter()
-        .map(|s| s.leak() as &str) // Static lifetime for dedup — emitter runs once.
-        .collect();
-    if !rust_helpers.is_empty() {
-        let mut seen = std::collections::BTreeSet::new();
-        for helper in &rust_helpers {
-            if seen.insert(*helper) {
-                writeln!(out, "// Rust mock helpers: {helper}").unwrap();
-            }
-        }
-        writeln!(out).unwrap();
-    }
 
     // Emit fixture helpers
     for fixture in test_file.fixtures.values() {
@@ -854,46 +834,6 @@ test sentinel_check {
 
         let output = emit_test_mock_file(&test_file, &config);
         assert!(output.contains(TERMINAL_NODE_SENTINEL));
-    }
-
-    #[test]
-    fn rust_mock_helpers_annotation_emitted_as_comment() {
-        // mock_helpers has no typed DSL syntax (parser always returns None).
-        // Construct TestFile directly to verify emit logic for mock_helpers.
-        let test_file = TestFile {
-            fixtures: BTreeMap::new(),
-            tests: vec![TestDef {
-                name: "with_helpers".to_string(),
-                fixture: None,
-                lets: vec![],
-                mocks: vec![MockDecl {
-                    node_segments: vec!["execute".to_string()],
-                    port: "data".to_string(),
-                    value: Expr::Record(
-                        None,
-                        vec![("ok".to_string(), Expr::Literal(Literal::Bool(true)))],
-                    ),
-                }],
-                inputs: vec![],
-                expects: vec![],
-                tier: None,
-                hermetic: false,
-                skip: false,
-                auto_mock: false,
-                mock_helpers: Some("gunbc_lib_review::graph_mock".to_string()),
-            }],
-        };
-
-        let config = TestEmitConfig {
-            dag_builder: "crate::build_graph()".to_string(),
-            auto_mock_fn: "crate::auto_mock_spec".to_string(),
-            output_dir: "test".to_string(),
-            tool_name: None,
-            signature_fn: None,
-        };
-
-        let output = emit_test_mock_file(&test_file, &config);
-        assert!(output.contains("// Rust mock helpers: gunbc_lib_review::graph_mock"));
     }
 
     #[test]

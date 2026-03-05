@@ -16,7 +16,7 @@ import interfaces.issue_provider { IssueProvider }
 import interfaces.claim_store { ClaimStore }
 import interfaces.outcome_ledger { OutcomeLedger }
 import interfaces.signal_store { SignalStore }
-import services.shell { shell.Env }
+import extdeps.shell { shell.Env }
 import std.types {
   NonEmptyStr, TrackedIssue, StageOutcome, IssueState
 }

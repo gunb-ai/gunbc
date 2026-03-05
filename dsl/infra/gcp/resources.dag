@@ -17,6 +17,7 @@ module infra.gcp.resources
 import infra.core { ObjectStorage, Compute, SecretStore, Identity, Queue, QueueMessage }
 import infra.spec { ResourceFingerprint, ReconcileAction }
 import infra.gcp.services
+import std.types { Timestamp }
 
 
 // =========================================================================
@@ -271,7 +272,7 @@ resource GcpServiceAccount implements Identity {
   capability assume {
     readonly
     input { scopes: List<String>, lifetime_seconds: Int = 3600 }
-    output { token: Secret, expires_at: String }
+    output { token: Secret, expires_at: Timestamp }
   }
 
   capability grant {

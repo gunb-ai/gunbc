@@ -688,8 +688,6 @@ transport rest { method: GET, path: "/read" }
     assert_eq!(metadata.transport, ServiceTransportClass::RestNetwork);
     assert!(metadata.idempotent);
     assert!(metadata.readonly, "REST GET should auto-derive readonly");
-    // Note: permissions not yet expressible in typed syntax (parser gap).
-    assert!(metadata.permissions.is_empty());
 }
 
 #[test]
@@ -3755,7 +3753,6 @@ fn make_branch_body_dag_with_transports_has_triplets() {
             transport: ServiceTransportClass::RestNetwork,
             idempotent: true,
             readonly: true,
-            permissions: vec![],
             spec: None,
         },
         prepare_inputs: vec!["bucket".to_string(), "path".to_string()],
@@ -3807,7 +3804,6 @@ fn branch_body_dag_with_transports_builds_with_branch_builder() {
             transport: ServiceTransportClass::RestNetwork,
             idempotent: true,
             readonly: true,
-            permissions: vec![],
             spec: None,
         },
         prepare_inputs: vec!["bucket".to_string()],

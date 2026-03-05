@@ -4,11 +4,10 @@ use daglang_derive::derive_artifacts;
 use daglang_lower::{
     CallableKind, LoweredOp, ObligationCategory, ServiceCallMetadata, ServiceTransportClass,
 };
-use gunbc_exec::{lower, Executable, ExecutionMode};
-use gunbc_ir::{node::NodeBody, Dag, Edge, Node, Port};
+use gunbc_exec::{lower, ExecutionMode};
+use gunbc_ir::{Dag, Edge, Node, Port};
 use gunbc_test::{unique_temp_dir, unique_temp_file};
 use serde_json::Value;
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 fn workspace_dsl_root() -> PathBuf {
@@ -399,7 +398,7 @@ fn resolve_lowered_dag_unknown_callable_module_fails_closed() {
 }
 
 #[test]
-fn resolve_lowered_dag_defers_pipeline_nodes() {
+fn resolve_lowered_dag_skips_pipeline_nodes() {
     let mut dag = Dag::new();
     dag.add_node(Node::opaque(
         "pipeline::ci",
@@ -417,26 +416,14 @@ fn resolve_lowered_dag_defers_pipeline_nodes() {
         },
     ));
 
-    // Pipeline nodes resolve to PipelineDispatchOp via resolve_op's Pipeline arm.
-    let resolved = resolve_lowered_dag(&dag).expect("pipeline nodes should resolve");
-    assert_eq!(resolved.nodes.len(), 1);
-    let debug = format!("{:?}", resolved.nodes[0].body);
+    // Pipeline nodes are metadata — the resolver skips them silently
+    // rather than requiring a separate strip pass.
+    let resolved = resolve_lowered_dag(&dag).expect("pipeline nodes should be skipped");
     assert!(
-        debug.contains("PipelineDispatchOp"),
-        "unexpected op debug: {debug}"
+        resolved.nodes.is_empty(),
+        "pipeline nodes should be filtered out, got {} nodes",
+        resolved.nodes.len()
     );
-    let NodeBody::Opaque(op) = &resolved.nodes[0].body else {
-        panic!("pipeline fixture should not contain subdag nodes")
-    };
-    // PipelineDispatchOp uses output passthrough. With no passthroughs wired,
-    // the resolver falls back to Skipped (C10 gap).
-    let result = op.execute(HashMap::new());
-    assert!(
-        result.is_ok(),
-        "pipeline op should succeed with Skipped fallback"
-    );
-    let outs = result.unwrap();
-    assert_eq!(outs.get("out"), Some(&gunbc_ir::Value::Skipped));
 }
 
 #[test]
@@ -560,9 +547,6 @@ fn render_obligations_json_emits_expected_keys() {
     assert!(parsed.get("service_transport_idempotent_targets").is_some());
     assert!(parsed.get("service_transport_readonly_targets").is_some());
     assert!(parsed
-        .get("service_transport_permission_scoped_targets")
-        .is_some());
-    assert!(parsed
         .get("interface_contract_verification_targets")
         .is_some());
 }
@@ -617,7 +601,6 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 transport: ServiceTransportClass::ShellLocal,
                 idempotent: true,
                 readonly: true,
-                permissions: vec![],
                 spec: None,
             })),
             is_interactive: false,
@@ -640,7 +623,6 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 transport: ServiceTransportClass::ShellLocal,
                 idempotent: true,
                 readonly: true,
-                permissions: vec![],
                 spec: None,
             })),
             is_interactive: false,
@@ -663,7 +645,6 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 transport: ServiceTransportClass::ShellLocal,
                 idempotent: true,
                 readonly: true,
-                permissions: vec![],
                 spec: None,
             })),
             is_interactive: false,
@@ -2722,6 +2703,24 @@ fn run() -> String { greet(name: "hi") }
     assert!(!output.lowered_dag.nodes.is_empty());
     assert!(output.derived.manifest.total_nodes > 0);
     assert!(!output.emitted.files.is_empty());
+
+    // Verify the default value "!" is injected as a literal source node
+    // with an edge to the greet callable's "punctuation" port.
+    let greet_node = output
+        .lowered_dag
+        .nodes
+        .iter()
+        .find(|n| n.id.0.contains("greet"))
+        .expect("greet node should exist");
+    let has_punctuation_edge = output
+        .lowered_dag
+        .edges
+        .iter()
+        .any(|e| e.to_node.0 == greet_node.id.0 && e.to_port.0 == "punctuation");
+    assert!(
+        has_punctuation_edge,
+        "default value should create an edge to 'punctuation' port on greet node"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }

@@ -1,19 +1,21 @@
 // extdeps/cloud/gcp/core.dag -- "What is GCP?"
 //
 // GCP identity model: projects, service accounts, OAuth2 scopes,
-// Workload Identity Federation, API endpoint patterns, regions.
+// Workload Identity Federation, API endpoint patterns, regions,
+// and shell/REST transport wiring for GCP auth operations.
 //
 // Complements extdeps/api/gcp_ops.dag (which covers retries,
 // propagation delays, and operational constraints).
 //
 // Consumers:
 //   extdeps/cloud/gcp/{storage,pubsub,iam,secret_manager,cloud_run,sts}.dag
-//   services/gcp/*        — transport wiring
 //   cloud/gcp/credential.dag — credential chain
 
 module extdeps.cloud.gcp.core
 
 import extdeps.cloud.core { ServiceEndpoint, CloudAuthScheme }
+import std.types { FilePath, NonEmptyStr, Secret }
+import std.errors { GcpErrorShape }
 
 // ── Projects ──────────────────────────────────────────────────────
 
@@ -97,3 +99,93 @@ data regions: List<GcpRegion> = [
   { name: "us", zones: [], multi_region: true },
   { name: "eu", zones: [], multi_region: true }
 ]
+
+// ── Service: GCP auth operations (shell + REST transport) ───────
+
+service gcloud.Auth {
+  operation Login {
+    input { update_adc: Bool = true }
+    output { ok: Bool }
+    transport shell { argv: ["gcloud", "auth", "login", "--update-adc"] }
+    exit {
+      0 => Unit
+      nonzero => String "Authentication failed"
+    }
+  }
+
+  operation ReadADC {
+    input { path: FilePath = "~/.config/gcloud/application_default_credentials.json" }
+    output {
+      client_id: String
+      client_secret: Secret
+      refresh_token: Secret
+    }
+    readonly
+    // Parses JSON: extracts client_id, client_secret, refresh_token
+    transport file { op: READ, path: "\{path\}" }
+  }
+}
+
+service oauth2.Google {
+  config { endpoint: "https://oauth2.googleapis.com" }
+
+  operation Refresh {
+    input {
+      client_id: String
+      client_secret: Secret
+      refresh_token: Secret
+    }
+    output {
+      access_token: Secret from "access_token"
+      expires_in: Int from "expires_in"
+    }
+    idempotent
+    transport rest { method: POST, path: "/token" }
+    response {
+      200 => Json
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+}
+
+service shell.OAuth2 {
+  operation RefreshToken {
+    input { refresh_token: Secret }
+    output { access_token: Secret, valid: Bool }
+    transport shell { argv: ["curl", "-s", "-X", "POST", "https://oauth2.googleapis.com/token", "-d", "grant_type=refresh_token&refresh_token={refresh_token}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Token refresh failed"
+    }
+  }
+}
+
+service shell.GCloud {
+  operation AuthPrintAccessToken {
+    input {}
+    output { access_token: Secret }
+    readonly
+    transport shell { argv: ["gcloud", "auth", "print-access-token"] }
+    exit {
+      0 => Unit
+      nonzero => String "Failed to get access token"
+    }
+  }
+
+  operation SecretManagerAccessVersion {
+    input {
+      project_id: NonEmptyStr
+      secret_name: NonEmptyStr
+      version: NonEmptyStr = "latest"
+    }
+    output { secret_value: Secret }
+    readonly
+    transport shell { argv: ["gcloud", "secrets", "versions", "access", "{version}", "--secret={secret_name}", "--project={project_id}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Failed to access secret"
+    }
+  }
+}

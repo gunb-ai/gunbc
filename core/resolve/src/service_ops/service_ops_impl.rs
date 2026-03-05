@@ -176,7 +176,6 @@ pub struct GenericRestParseOp {
     pub service_name: String,
     pub operation_name: String,
     pub auth_scheme: String,
-    pub permissions: Vec<String>,
 }
 
 impl Executable for GenericRestParseOp {
@@ -223,25 +222,23 @@ impl Executable for GenericRestParseOp {
                     // Attach auth context when we have auth metadata OR when
                     // the HTTP status implies auth failure.
                     let is_auth_status = rest.status == 401 || rest.status == 403;
-                    let auth =
-                        if !scheme.is_empty() || is_auth_status || !self.permissions.is_empty() {
-                            Some(AuthContext {
-                                scheme: if scheme.is_empty() {
-                                    None
-                                } else {
-                                    Some(scheme)
-                                },
-                                credential_ref: cred_ref,
-                                required_permissions: self.permissions.clone(),
-                                lock_target: rest_lock_target(
-                                    &self.spec.method,
-                                    &self.spec.endpoint,
-                                    &self.spec.path_template,
-                                ),
-                            })
-                        } else {
-                            None
-                        };
+                    let auth = if !scheme.is_empty() || is_auth_status {
+                        Some(AuthContext {
+                            scheme: if scheme.is_empty() {
+                                None
+                            } else {
+                                Some(scheme)
+                            },
+                            credential_ref: cred_ref,
+                            lock_target: rest_lock_target(
+                                &self.spec.method,
+                                &self.spec.endpoint,
+                                &self.spec.path_template,
+                            ),
+                        })
+                    } else {
+                        None
+                    };
 
                     let err = decorate_service_failure(
                         ExecError::new(detail),
@@ -1293,7 +1290,7 @@ impl Executable for GenericLocalParseOp {
                         Some(serde_json::Value::String(s)) => out.str(&field.name, s.clone()),
                         Some(serde_json::Value::Bool(b)) => out.bool(&field.name, *b),
                         Some(other) => out.str(&field.name, other.to_string()),
-                        None => out.str(&field.name, String::new()),
+                        None => out.value(&field.name, Value::Unit),
                     };
                 }
                 out.ok()
@@ -1301,7 +1298,11 @@ impl Executable for GenericLocalParseOp {
             // Backward compat: accept Shell responses from the old echo-based carrier.
             Some(Value::Response(TransportResponse::Shell(shell))) => {
                 let parsed: serde_json::Value =
-                    serde_json::from_str(shell.stdout.trim()).unwrap_or_default();
+                    serde_json::from_str(shell.stdout.trim()).map_err(|e| {
+                        ExecError::new(format!(
+                            "GenericLocalParse: failed to parse shell stdout as JSON: {e}"
+                        ))
+                    })?;
                 let mut out = OutputMap::new();
                 for field in &self.spec.output_fields {
                     let val = parsed.get(&field.name);
@@ -1309,7 +1310,7 @@ impl Executable for GenericLocalParseOp {
                         Some(serde_json::Value::String(s)) => out.str(&field.name, s.clone()),
                         Some(serde_json::Value::Bool(b)) => out.bool(&field.name, *b),
                         Some(other) => out.str(&field.name, other.to_string()),
-                        None => out.str(&field.name, String::new()),
+                        None => out.value(&field.name, Value::Unit),
                     };
                 }
                 out.ok()
@@ -1627,7 +1628,6 @@ mod tests {
             service_name: String::new(),
             operation_name: String::new(),
             auth_scheme: String::new(),
-            permissions: vec![],
         };
         let response = RestResponse::ok(serde_json::json!({ "id": "abc-123" }));
         let mut inputs = HashMap::new();
@@ -1678,7 +1678,6 @@ mod tests {
             service_name: String::new(),
             operation_name: String::new(),
             auth_scheme: String::new(),
-            permissions: vec![],
         };
         let response = RestResponse::ok(serde_json::json!({
             "access_token": "ya29.secret-token",
@@ -1707,7 +1706,6 @@ mod tests {
             service_name: String::new(),
             operation_name: String::new(),
             auth_scheme: String::new(),
-            permissions: vec![],
         };
         let response = RestResponse::ok(serde_json::json!({
             "name": "projects/p/secrets/s/versions/1",

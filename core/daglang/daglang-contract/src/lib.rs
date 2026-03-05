@@ -95,9 +95,8 @@ pub struct ResourceUsage {
 ///   `resource_release_targets`, `interface_contract_verification_targets`
 ///
 /// **Semantic attributes on `ServiceTransportExecute` nodes:**
-/// - `hermetic` vs `external` — *mutually exclusive* (no permissions → hermetic)
-/// - `idempotent`, `readonly`, `permission_scoped` — *independent overlays*
-///   (a single node can be both idempotent and permission-scoped)
+/// - `hermetic` vs `external` — *mutually exclusive*
+/// - `idempotent`, `readonly` — *independent overlays*
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TestObligations {
     pub dry_run_completion_required: bool,
@@ -117,8 +116,6 @@ pub struct TestObligations {
     pub service_transport_idempotent_targets: usize,
     /// Independent attribute overlay (can combine with hermetic/external).
     pub service_transport_readonly_targets: usize,
-    /// Independent attribute overlay (can combine with hermetic/external).
-    pub service_transport_permission_scoped_targets: usize,
     pub service_param_source_targets: usize,
     pub resource_provide_targets: usize,
     pub resource_acquire_targets: usize,

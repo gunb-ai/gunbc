@@ -320,6 +320,7 @@ mod tests {
             has_declarative_dag: false,
             needs_generated_cli: true,
             live_secrets: Vec::new(),
+            available_profiles: Vec::new(),
         });
         let build_targets = BuildTargetsData {
             core_workflows: vec![CoreWorkflowData {
@@ -356,6 +357,7 @@ mod tests {
             has_declarative_dag: false,
             needs_generated_cli: true,
             live_secrets: Vec::new(),
+            available_profiles: Vec::new(),
         });
         let build_targets = BuildTargetsData {
             core_workflows: vec![CoreWorkflowData {

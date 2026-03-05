@@ -11,6 +11,8 @@
 
 module std.resources
 
+import std.types { Timestamp, FilePath, TextFilePath }
+
 // --- Filesystem -------------------------------------------------------
 
 resource Filesystem {
@@ -40,7 +42,7 @@ resource Filesystem {
   // were binary, the probe step would have classified it as
   // BinaryFilePath and this capability would never be called.
   capability read {
-    input { path: String }
+    input { path: TextFilePath }
     output { content: String }
   }
 
@@ -77,7 +79,7 @@ resource Clock {
 
   capability now {
     input {}
-    output { timestamp: String }
+    output { timestamp: Timestamp }
   }
   // Clock.now() is deterministic in tests (seeded from run_id).
   // In production it reads the system clock -- a hermetic, read-only

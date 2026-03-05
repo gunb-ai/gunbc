@@ -4,7 +4,6 @@
 // chains, token lifetimes.
 //
 // Consumers:
-//   services/gcp/iam.dag           — transport wiring
 //   cloud/gcp/credential.dag       — impersonation chain
 //   std/patterns.dag               — credential_chain pattern
 
@@ -14,6 +13,7 @@ import extdeps.cloud.gcp.core { GcpServiceAccount, GcpProject }
 import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
 }
+import std.errors { GcpErrorShape }
 
 // ── Roles ─────────────────────────────────────────────────────────
 
@@ -134,3 +134,77 @@ data operation_behaviors: List<IamOperationBehavior> = [
     }
   }
 ]
+
+// ── Service: REST transport wiring ──────────────────────────────
+
+service gcp.IAM {
+  config {
+    endpoint: "https://iamcredentials.googleapis.com"
+    auth: BearerToken
+    auth_input: access_token
+    // GCP IAM Credentials rate limits: 60 requests/min per service account
+    rate_limit: { requests: 60, per: minute, scope: iam_credentials }
+    // Retry on quota exceeded and server errors with exponential backoff
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 503] }
+  }
+
+  operation GenerateAccessToken {
+    input {
+      access_token: Secret
+      target_sa: ServiceAccountEmail
+      lifetime_seconds: Int where range(min: 1, max: 3600)= 3600
+    }
+    output {
+      access_token: Secret from "accessToken"
+      expire_time: String from "expireTime"
+    }
+    idempotent
+    transport rest { method: POST, path: "/v1/projects/-/serviceAccounts/\{target_sa\}:generateAccessToken" }
+    response {
+      200 => Json
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+}
+
+service gcp.ResourceManager {
+  config { endpoint: "https://cloudresourcemanager.googleapis.com", auth: BearerToken, auth_input: access_token }
+
+  operation GetIamPolicy {
+    input { access_token: Secret, project_id: ProjectId }
+    output { bindings: Json, etag: String }
+    readonly
+    transport rest { method: POST, path: "/v1/projects/\{project_id\}:getIamPolicy" }
+    response {
+      200 => GcpPolicy
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation SetIamPolicy {
+    input {
+      access_token: Secret
+      project_id: ProjectId
+      bindings: Json
+      etag: NonEmptyStr
+    }
+    output { ok: Bool }
+    transport rest { method: POST, path: "/v1/projects/\{project_id\}:setIamPolicy" }
+    response {
+      200 => GcpPolicy
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      409 => GcpErrorShape
+      412 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+}

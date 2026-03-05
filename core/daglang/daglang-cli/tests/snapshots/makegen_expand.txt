@@ -354,7 +354,7 @@ Nodes:
   - std.patterns::retry [callable::Pattern std.patterns.retry]
     inputs:
       * max_attempts: Int (1)
-      * backoff_ms: Int (1)
+      * backoff_ms: Milliseconds (1)
       * __out:return: Unit (1)
       * __deps: Any (0..*)
     outputs:
@@ -430,85 +430,85 @@ Nodes:
       * __deps: Any (0..*)
     outputs:
       * return: String (1)
-  - prepare_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion [callable::Pattern services.gcp.secret_manager.service_transport::prepare::gcp.SecretManager::AccessVersion]
+  - prepare_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion [callable::Pattern extdeps.cloud.gcp.secret_manager.service_transport::prepare::gcp.SecretManager::AccessVersion]
     inputs:
       * project_id: ProjectId (1)
       * secret: NonEmptyStr (1)
       * version: NonEmptyStr (1)
     outputs:
       * request: TransportRequest (1)
-  - execute_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion [callable::Pattern services.gcp.secret_manager.service_transport::execute::gcp.SecretManager::AccessVersion]
+  - execute_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion [callable::Pattern extdeps.cloud.gcp.secret_manager.service_transport::execute::gcp.SecretManager::AccessVersion]
     inputs:
       * request: TransportRequest (1)
       * res:credential: Credential (0..1)
     outputs:
       * response: TransportResponse (1)
-  - parse_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion [callable::Pattern services.gcp.secret_manager.service_transport::parse::gcp.SecretManager::AccessVersion]
+  - parse_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion [callable::Pattern extdeps.cloud.gcp.secret_manager.service_transport::parse::gcp.SecretManager::AccessVersion]
     inputs:
       * response: TransportResponse (1)
     outputs:
       * payload: Bytes (1)
       * name: String (1)
-  - prepare_transport_services_gcp_sts_gcp_STS_Exchange [callable::Pattern services.gcp.sts.service_transport::prepare::gcp.STS::Exchange]
+  - prepare_transport_extdeps_cloud_gcp_sts_gcp_STS_Exchange [callable::Pattern extdeps.cloud.gcp.sts.service_transport::prepare::gcp.STS::Exchange]
     inputs:
       * subject_token: Secret (1)
       * audience: NonEmptyStr (1)
     outputs:
       * request: TransportRequest (1)
-  - execute_transport_services_gcp_sts_gcp_STS_Exchange [callable::Pattern services.gcp.sts.service_transport::execute::gcp.STS::Exchange]
+  - execute_transport_extdeps_cloud_gcp_sts_gcp_STS_Exchange [callable::Pattern extdeps.cloud.gcp.sts.service_transport::execute::gcp.STS::Exchange]
     inputs:
       * request: TransportRequest (1)
     outputs:
       * response: TransportResponse (1)
-  - parse_transport_services_gcp_sts_gcp_STS_Exchange [callable::Pattern services.gcp.sts.service_transport::parse::gcp.STS::Exchange]
+  - parse_transport_extdeps_cloud_gcp_sts_gcp_STS_Exchange [callable::Pattern extdeps.cloud.gcp.sts.service_transport::parse::gcp.STS::Exchange]
     inputs:
       * response: TransportResponse (1)
     outputs:
       * access_token: Secret (1)
       * expires_in: Int (1)
-  - prepare_transport_services_gcp_sts_github_OIDC_GetToken [callable::Pattern services.gcp.sts.service_transport::prepare::github.OIDC::GetToken]
+  - prepare_transport_extdeps_cloud_gcp_sts_github_OIDC_GetToken [callable::Pattern extdeps.cloud.gcp.sts.service_transport::prepare::github.OIDC::GetToken]
     inputs:
       * audience: NonEmptyStr (1)
       * request_url: String (1)
       * request_token: Secret (1)
     outputs:
       * request: TransportRequest (1)
-  - execute_transport_services_gcp_sts_github_OIDC_GetToken [callable::Pattern services.gcp.sts.service_transport::execute::github.OIDC::GetToken]
+  - execute_transport_extdeps_cloud_gcp_sts_github_OIDC_GetToken [callable::Pattern extdeps.cloud.gcp.sts.service_transport::execute::github.OIDC::GetToken]
     inputs:
       * request: TransportRequest (1)
     outputs:
       * response: TransportResponse (1)
-  - parse_transport_services_gcp_sts_github_OIDC_GetToken [callable::Pattern services.gcp.sts.service_transport::parse::github.OIDC::GetToken]
+  - parse_transport_extdeps_cloud_gcp_sts_github_OIDC_GetToken [callable::Pattern extdeps.cloud.gcp.sts.service_transport::parse::github.OIDC::GetToken]
     inputs:
       * response: TransportResponse (1)
     outputs:
       * subject_token: Secret (1)
-  - prepare_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken [callable::Pattern services.gcp.sts.service_transport::prepare::gcp.Metadata::GetIdentityToken]
+  - prepare_transport_extdeps_cloud_gcp_sts_gcp_Metadata_GetIdentityToken [callable::Pattern extdeps.cloud.gcp.sts.service_transport::prepare::gcp.Metadata::GetIdentityToken]
     inputs:
       * audience: NonEmptyStr (1)
     outputs:
       * request: TransportRequest (1)
-  - execute_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken [callable::Pattern services.gcp.sts.service_transport::execute::gcp.Metadata::GetIdentityToken]
+  - execute_transport_extdeps_cloud_gcp_sts_gcp_Metadata_GetIdentityToken [callable::Pattern extdeps.cloud.gcp.sts.service_transport::execute::gcp.Metadata::GetIdentityToken]
     inputs:
       * request: TransportRequest (1)
     outputs:
       * response: TransportResponse (1)
-  - parse_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken [callable::Pattern services.gcp.sts.service_transport::parse::gcp.Metadata::GetIdentityToken]
+  - parse_transport_extdeps_cloud_gcp_sts_gcp_Metadata_GetIdentityToken [callable::Pattern extdeps.cloud.gcp.sts.service_transport::parse::gcp.Metadata::GetIdentityToken]
     inputs:
       * response: TransportResponse (1)
     outputs:
       * subject_token: Secret (1)
-  - prepare_transport_services_shell_shell_Env_Get [callable::Pattern services.shell.service_transport::prepare::shell.Env::Get]
+  - prepare_transport_extdeps_shell_shell_Env_Get [callable::Pattern extdeps.shell.service_transport::prepare::shell.Env::Get]
     inputs:
       * name: NonEmptyStr (1)
     outputs:
       * request: TransportRequest (1)
-  - execute_transport_services_shell_shell_Env_Get [callable::Pattern services.shell.service_transport::execute::shell.Env::Get]
+  - execute_transport_extdeps_shell_shell_Env_Get [callable::Pattern extdeps.shell.service_transport::execute::shell.Env::Get]
     inputs:
       * request: TransportRequest (1)
     outputs:
       * response: TransportResponse (1)
-  - parse_transport_services_shell_shell_Env_Get [callable::Pattern services.shell.service_transport::parse::shell.Env::Get]
+  - parse_transport_extdeps_shell_shell_Env_Get [callable::Pattern extdeps.shell.service_transport::parse::shell.Env::Get]
     inputs:
       * response: TransportResponse (1)
     outputs:
@@ -739,17 +739,17 @@ Nodes:
   - literal_source_std_patterns_github_oidc_name_0_0 [primitive::CallLiteralSource { literal: String("ACTIONS_ID_TOKEN_REQUEST_URL") } std.patterns.call_literal_source::strhex:414354494f4e535f49445f544f4b454e5f524551554553545f55524c]
     outputs:
       * name: Any (1)
-  - prepare_transport_services_shell_shell_Env_Get_c1 [callable::Pattern services.shell.service_transport::prepare::shell.Env::Get]
+  - prepare_transport_extdeps_shell_shell_Env_Get_c1 [callable::Pattern extdeps.shell.service_transport::prepare::shell.Env::Get]
     inputs:
       * name: NonEmptyStr (1)
     outputs:
       * request: TransportRequest (1)
-  - execute_transport_services_shell_shell_Env_Get_c1 [callable::Pattern services.shell.service_transport::execute::shell.Env::Get]
+  - execute_transport_extdeps_shell_shell_Env_Get_c1 [callable::Pattern extdeps.shell.service_transport::execute::shell.Env::Get]
     inputs:
       * request: TransportRequest (1)
     outputs:
       * response: TransportResponse (1)
-  - parse_transport_services_shell_shell_Env_Get_c1 [callable::Pattern services.shell.service_transport::parse::shell.Env::Get]
+  - parse_transport_extdeps_shell_shell_Env_Get_c1 [callable::Pattern extdeps.shell.service_transport::parse::shell.Env::Get]
     inputs:
       * response: TransportResponse (1)
     outputs:
@@ -805,16 +805,16 @@ Nodes:
     outputs:
       * auth: AuthContext (1)
 Edges:
-  - prepare_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion.request -> execute_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion.request
-  - execute_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion.response -> parse_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion.response
-  - prepare_transport_services_gcp_sts_gcp_STS_Exchange.request -> execute_transport_services_gcp_sts_gcp_STS_Exchange.request
-  - execute_transport_services_gcp_sts_gcp_STS_Exchange.response -> parse_transport_services_gcp_sts_gcp_STS_Exchange.response
-  - prepare_transport_services_gcp_sts_github_OIDC_GetToken.request -> execute_transport_services_gcp_sts_github_OIDC_GetToken.request
-  - execute_transport_services_gcp_sts_github_OIDC_GetToken.response -> parse_transport_services_gcp_sts_github_OIDC_GetToken.response
-  - prepare_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken.request -> execute_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken.request
-  - execute_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken.response -> parse_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken.response
-  - prepare_transport_services_shell_shell_Env_Get.request -> execute_transport_services_shell_shell_Env_Get.request
-  - execute_transport_services_shell_shell_Env_Get.response -> parse_transport_services_shell_shell_Env_Get.response
+  - prepare_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion.request -> execute_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion.request
+  - execute_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion.response -> parse_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion.response
+  - prepare_transport_extdeps_cloud_gcp_sts_gcp_STS_Exchange.request -> execute_transport_extdeps_cloud_gcp_sts_gcp_STS_Exchange.request
+  - execute_transport_extdeps_cloud_gcp_sts_gcp_STS_Exchange.response -> parse_transport_extdeps_cloud_gcp_sts_gcp_STS_Exchange.response
+  - prepare_transport_extdeps_cloud_gcp_sts_github_OIDC_GetToken.request -> execute_transport_extdeps_cloud_gcp_sts_github_OIDC_GetToken.request
+  - execute_transport_extdeps_cloud_gcp_sts_github_OIDC_GetToken.response -> parse_transport_extdeps_cloud_gcp_sts_github_OIDC_GetToken.response
+  - prepare_transport_extdeps_cloud_gcp_sts_gcp_Metadata_GetIdentityToken.request -> execute_transport_extdeps_cloud_gcp_sts_gcp_Metadata_GetIdentityToken.request
+  - execute_transport_extdeps_cloud_gcp_sts_gcp_Metadata_GetIdentityToken.response -> parse_transport_extdeps_cloud_gcp_sts_gcp_Metadata_GetIdentityToken.response
+  - prepare_transport_extdeps_shell_shell_Env_Get.request -> execute_transport_extdeps_shell_shell_Env_Get.request
+  - execute_transport_extdeps_shell_shell_Env_Get.response -> parse_transport_extdeps_shell_shell_Env_Get.response
   - tools.makegen::resolve_resource_target.return -> tools.makegen::resolve_meta_deps.__deps
   - tools.makegen::resolve_resource_target.return -> tools.makegen::resolve_meta_fix_deps.__deps
   - tools.makegen::render_target.return -> tools.makegen::render_core_targets.__deps
@@ -927,32 +927,32 @@ Edges:
   - param_source_std_patterns_content_upsert_path.path -> std.patterns::file_content_matches.path
   - param_source_std_patterns_content_upsert_content.content -> std.patterns::file_content_matches.expected
   - std.patterns::ensure.acted -> std.patterns::content_upsert.__out:written
-  - parse_transport_services_gcp_sts_gcp_STS_Exchange.access_token -> std.patterns::credential_chain.__deps
-  - std.patterns::acquire_subject_token.token -> prepare_transport_services_gcp_sts_gcp_STS_Exchange.subject_token
-  - param_source_std_patterns_credential_chain_audience.audience -> prepare_transport_services_gcp_sts_gcp_STS_Exchange.audience
-  - parse_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion.payload -> std.patterns::credential_chain.__deps
-  - param_source_std_patterns_credential_chain_project_id.project_id -> prepare_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion.project_id
-  - param_source_std_patterns_credential_chain_secret_name.secret_name -> prepare_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion.secret
-  - std.patterns::optional_impersonation.token -> execute_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion.res:credential
+  - parse_transport_extdeps_cloud_gcp_sts_gcp_STS_Exchange.access_token -> std.patterns::credential_chain.__deps
+  - std.patterns::acquire_subject_token.token -> prepare_transport_extdeps_cloud_gcp_sts_gcp_STS_Exchange.subject_token
+  - param_source_std_patterns_credential_chain_audience.audience -> prepare_transport_extdeps_cloud_gcp_sts_gcp_STS_Exchange.audience
+  - parse_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion.payload -> std.patterns::credential_chain.__deps
+  - param_source_std_patterns_credential_chain_project_id.project_id -> prepare_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion.project_id
+  - param_source_std_patterns_credential_chain_secret_name.secret_name -> prepare_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion.secret
+  - std.patterns::optional_impersonation.token -> execute_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion.res:credential
   - param_source_std_patterns_credential_chain_runtime.runtime -> std.patterns::acquire_subject_token.runtime
   - param_source_std_patterns_credential_chain_audience.audience -> std.patterns::acquire_subject_token.audience
-  - parse_transport_services_gcp_sts_gcp_STS_Exchange.access_token -> std.patterns::optional_impersonation.access_token
+  - parse_transport_extdeps_cloud_gcp_sts_gcp_STS_Exchange.access_token -> std.patterns::optional_impersonation.access_token
   - param_source_std_patterns_credential_chain_service_account.service_account -> std.patterns::optional_impersonation.service_account
   - param_source_std_patterns_credential_chain_lifetime_seconds.lifetime_seconds -> std.patterns::optional_impersonation.lifetime_seconds
-  - parse_transport_services_shell_shell_Env_Get.value -> std.patterns::github_oidc.__deps
-  - literal_source_std_patterns_github_oidc_name_0_0.name -> prepare_transport_services_shell_shell_Env_Get.name
-  - prepare_transport_services_shell_shell_Env_Get_c1.request -> execute_transport_services_shell_shell_Env_Get_c1.request
-  - execute_transport_services_shell_shell_Env_Get_c1.response -> parse_transport_services_shell_shell_Env_Get_c1.response
-  - parse_transport_services_shell_shell_Env_Get_c1.value -> std.patterns::github_oidc.__deps
-  - literal_source_std_patterns_github_oidc_name_1_0.name -> prepare_transport_services_shell_shell_Env_Get_c1.name
-  - parse_transport_services_gcp_sts_github_OIDC_GetToken.subject_token -> std.patterns::github_oidc.__deps
-  - param_source_std_patterns_github_oidc_audience.audience -> prepare_transport_services_gcp_sts_github_OIDC_GetToken.audience
-  - parse_transport_services_shell_shell_Env_Get_c1.value -> prepare_transport_services_gcp_sts_github_OIDC_GetToken.request_url
-  - parse_transport_services_shell_shell_Env_Get_c1.value -> prepare_transport_services_gcp_sts_github_OIDC_GetToken.request_token
-  - parse_transport_services_gcp_sts_github_OIDC_GetToken.subject_token -> std.patterns::github_oidc.__out:token
-  - parse_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken.subject_token -> std.patterns::metadata_oidc.__deps
-  - param_source_std_patterns_metadata_oidc_audience.audience -> prepare_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken.audience
-  - parse_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken.subject_token -> std.patterns::metadata_oidc.__out:token
+  - parse_transport_extdeps_shell_shell_Env_Get.value -> std.patterns::github_oidc.__deps
+  - literal_source_std_patterns_github_oidc_name_0_0.name -> prepare_transport_extdeps_shell_shell_Env_Get.name
+  - prepare_transport_extdeps_shell_shell_Env_Get_c1.request -> execute_transport_extdeps_shell_shell_Env_Get_c1.request
+  - execute_transport_extdeps_shell_shell_Env_Get_c1.response -> parse_transport_extdeps_shell_shell_Env_Get_c1.response
+  - parse_transport_extdeps_shell_shell_Env_Get_c1.value -> std.patterns::github_oidc.__deps
+  - literal_source_std_patterns_github_oidc_name_1_0.name -> prepare_transport_extdeps_shell_shell_Env_Get_c1.name
+  - parse_transport_extdeps_cloud_gcp_sts_github_OIDC_GetToken.subject_token -> std.patterns::github_oidc.__deps
+  - param_source_std_patterns_github_oidc_audience.audience -> prepare_transport_extdeps_cloud_gcp_sts_github_OIDC_GetToken.audience
+  - parse_transport_extdeps_shell_shell_Env_Get_c1.value -> prepare_transport_extdeps_cloud_gcp_sts_github_OIDC_GetToken.request_url
+  - parse_transport_extdeps_shell_shell_Env_Get_c1.value -> prepare_transport_extdeps_cloud_gcp_sts_github_OIDC_GetToken.request_token
+  - parse_transport_extdeps_cloud_gcp_sts_github_OIDC_GetToken.subject_token -> std.patterns::github_oidc.__out:token
+  - parse_transport_extdeps_cloud_gcp_sts_gcp_Metadata_GetIdentityToken.subject_token -> std.patterns::metadata_oidc.__deps
+  - param_source_std_patterns_metadata_oidc_audience.audience -> prepare_transport_extdeps_cloud_gcp_sts_gcp_Metadata_GetIdentityToken.audience
+  - parse_transport_extdeps_cloud_gcp_sts_gcp_Metadata_GetIdentityToken.subject_token -> std.patterns::metadata_oidc.__out:token
   - acquire_resource_std_resources_Filesystem.resource_handle -> release_resource_std_resources_Filesystem.resource_handle
   - acquire_resource_std_resources_Network.resource_handle -> release_resource_std_resources_Network.resource_handle
   - acquire_resource_std_resources_Clock.resource_handle -> release_resource_std_resources_Clock.resource_handle

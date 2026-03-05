@@ -45,13 +45,12 @@ pub struct DerivedArtifacts {
 
 /// Structural properties of a callable, extracted by graph walk.
 ///
-/// These are raw facts about what transports, permissions, and behavioral
-/// flags a callable transitively reaches. Classification into test tiers
+/// These are raw facts about what transports and behavioral flags a callable
+/// transitively reaches. Classification into test tiers
 /// is the DSL's job (via `config/test_policy.dag`), not ours.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct CallableProperties {
     pub transport_classes: Vec<ServiceTransportClass>,
-    pub permissions: Vec<String>,
     pub idempotent: bool,
     pub readonly: bool,
     pub service_operations: Vec<(String, String)>,
@@ -155,8 +154,6 @@ pub fn derive_artifacts(dag: &Dag<LoweredOp>) -> Result<DerivedArtifacts, Derive
         service_transport_idempotent_targets: obligation_counts
             .service_transport_idempotent_targets,
         service_transport_readonly_targets: obligation_counts.service_transport_readonly_targets,
-        service_transport_permission_scoped_targets: obligation_counts
-            .service_transport_permission_scoped_targets,
         service_param_source_targets: obligation_counts.service_param_source_targets,
         resource_provide_targets: obligation_counts.resource_provide_targets,
         resource_acquire_targets: obligation_counts.resource_acquire_targets,
@@ -650,7 +647,6 @@ struct ObligationCounts {
     service_transport_external_targets: usize,
     service_transport_idempotent_targets: usize,
     service_transport_readonly_targets: usize,
-    service_transport_permission_scoped_targets: usize,
     service_param_source_targets: usize,
     resource_provide_targets: usize,
     resource_acquire_targets: usize,
@@ -687,18 +683,11 @@ fn derive_obligation_counts(nodes: &[Node<LoweredOp>]) -> ObligationCounts {
             ObligationCategory::ServiceTransportExecute => {
                 counts.service_transport_execute_targets += 1;
                 match classify_service_transport(op) {
-                    Some(ServiceTransportClass::LocalDirect) => {
+                    Some(ServiceTransportClass::LocalDirect)
+                    | Some(ServiceTransportClass::ShellLocal) => {
                         counts.service_transport_hermetic_targets += 1;
                     }
-                    Some(ServiceTransportClass::ShellLocal)
-                        if op
-                            .service_call_metadata()
-                            .is_some_and(|metadata| metadata.permissions.is_empty()) =>
-                    {
-                        counts.service_transport_hermetic_targets += 1;
-                    }
-                    Some(ServiceTransportClass::ShellLocal)
-                    | Some(ServiceTransportClass::RestNetwork)
+                    Some(ServiceTransportClass::RestNetwork)
                     | Some(ServiceTransportClass::FileBoundary)
                     | Some(ServiceTransportClass::Unknown)
                     | None => {
@@ -721,12 +710,6 @@ fn derive_obligation_counts(nodes: &[Node<LoweredOp>]) -> ObligationCounts {
                     .is_some_and(|metadata| metadata.readonly)
                 {
                     counts.service_transport_readonly_targets += 1;
-                }
-                if op
-                    .service_call_metadata()
-                    .is_some_and(|metadata| !metadata.permissions.is_empty())
-                {
-                    counts.service_transport_permission_scoped_targets += 1;
                 }
             }
             ObligationCategory::ServiceTransportParse => {
@@ -774,7 +757,7 @@ impl NodeBodyExt for gunbc_ir::node::NodeBody<LoweredOp> {
 /// Derive per-callable structural properties via graph walk.
 ///
 /// For each callable (Func/Fn) entrypoint, BFS through reachable nodes
-/// and collect transport classes, permissions, idempotent/readonly flags,
+/// and collect transport classes, idempotent/readonly flags,
 /// and service operations. SubDag inner nodes are recursively traversed.
 fn derive_callable_properties(dag: &Dag<LoweredOp>) -> BTreeMap<String, CallableProperties> {
     let node_by_id: HashMap<&str, &Node<LoweredOp>> =
@@ -808,7 +791,6 @@ fn derive_callable_properties(dag: &Dag<LoweredOp>) -> BTreeMap<String, Callable
 
     for (entry_id, module, name) in callable_entries {
         let mut transport_classes = BTreeSet::new();
-        let mut permissions = BTreeSet::new();
         let mut idempotent = true;
         let mut readonly = true;
         let mut service_operations = BTreeSet::new();
@@ -829,7 +811,6 @@ fn derive_callable_properties(dag: &Dag<LoweredOp>) -> BTreeMap<String, Callable
                 collect_service_metadata_from_node(
                     node,
                     &mut transport_classes,
-                    &mut permissions,
                     &mut idempotent,
                     &mut readonly,
                     &mut service_operations,
@@ -842,7 +823,6 @@ fn derive_callable_properties(dag: &Dag<LoweredOp>) -> BTreeMap<String, Callable
                         collect_service_metadata_from_node(
                             inner_node,
                             &mut transport_classes,
-                            &mut permissions,
                             &mut idempotent,
                             &mut readonly,
                             &mut service_operations,
@@ -869,8 +849,6 @@ fn derive_callable_properties(dag: &Dag<LoweredOp>) -> BTreeMap<String, Callable
         let key = format!("{module}::{name}");
         let mut transport_vec: Vec<ServiceTransportClass> = transport_classes.into_iter().collect();
         transport_vec.sort();
-        let mut perms_vec: Vec<String> = permissions.into_iter().collect();
-        perms_vec.sort();
         let mut ops_vec: Vec<(String, String)> = service_operations.into_iter().collect();
         ops_vec.sort();
 
@@ -878,7 +856,6 @@ fn derive_callable_properties(dag: &Dag<LoweredOp>) -> BTreeMap<String, Callable
             key,
             CallableProperties {
                 transport_classes: transport_vec,
-                permissions: perms_vec,
                 idempotent,
                 readonly,
                 service_operations: ops_vec,
@@ -892,7 +869,6 @@ fn derive_callable_properties(dag: &Dag<LoweredOp>) -> BTreeMap<String, Callable
 fn collect_service_metadata_from_node(
     node: &Node<LoweredOp>,
     transport_classes: &mut BTreeSet<ServiceTransportClass>,
-    permissions: &mut BTreeSet<String>,
     idempotent: &mut bool,
     readonly: &mut bool,
     service_operations: &mut BTreeSet<(String, String)>,
@@ -904,9 +880,6 @@ fn collect_service_metadata_from_node(
     if let Some(metadata) = op.service_call_metadata() {
         *has_service_metadata = true;
         transport_classes.insert(metadata.transport);
-        for perm in &metadata.permissions {
-            permissions.insert(perm.clone());
-        }
         if !metadata.idempotent {
             *idempotent = false;
         }
@@ -1271,12 +1244,6 @@ mod tests {
             0
         );
         assert_eq!(artifacts.obligations.service_transport_readonly_targets, 0);
-        assert_eq!(
-            artifacts
-                .obligations
-                .service_transport_permission_scoped_targets,
-            0
-        );
         assert_eq!(artifacts.obligations.service_param_source_targets, 1);
         assert_eq!(artifacts.obligations.resource_provide_targets, 1);
         assert_eq!(artifacts.obligations.resource_acquire_targets, 1);
@@ -1344,7 +1311,6 @@ mod tests {
                         transport: ServiceTransportClass::ShellLocal,
                         idempotent: true,
                         readonly: true,
-                        permissions: vec![],
                         spec: None,
                     })),
                     is_interactive: false,
@@ -1370,7 +1336,6 @@ mod tests {
                         transport: ServiceTransportClass::RestNetwork,
                         idempotent: false,
                         readonly: false,
-                        permissions: vec!["gist.write".to_string()],
                         spec: None,
                     })),
                     is_interactive: false,
@@ -1390,12 +1355,6 @@ mod tests {
             1
         );
         assert_eq!(artifacts.obligations.service_transport_readonly_targets, 1);
-        assert_eq!(
-            artifacts
-                .obligations
-                .service_transport_permission_scoped_targets,
-            1
-        );
         assert_eq!(
             artifacts
                 .obligations

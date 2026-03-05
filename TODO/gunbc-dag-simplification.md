@@ -12,35 +12,48 @@
 
 ---
 
+## Postmortem: `make gist` Credential Chain Failure (2026-03-04)
+
+**Symptom**: `make gist` fails with DNS error trying to reach `metadata.google.internal` on a local WSL2 machine. The `audience` parameter arrives as the string `"true"` (a boolean) instead of `"sigstore"`.
+
+**Root cause**: Two compounding compiler bugs, both caused by the dual execution model (Bridges 1+2).
+
+### Bug 1: Unguarded transport nodes for non-matching match arms
+
+The credential chain has `match runtime { LocalDev => local_auth(), Metadata => metadata_oidc(audience) }`. The fn body evaluator (`evaluate_fn_body()`) correctly picks `local_auth()`. But the DAG lowerer creates transport triplets for **all** service calls referenced in the module — including `gcp.Metadata.GetIdentityToken` from the `metadata_oidc` branch. These transport nodes are top-level DAG nodes with no guards, so they execute unconditionally regardless of which match arm was taken.
+
+**Fix**: Bridge 1+2 elimination. When fn bodies are lowered to SubDags, match arms become guarded SubDag branches. Transport nodes inside the `Metadata` branch would be guarded and produce `Value::Skipped` when runtime ≠ Metadata.
+
+### Bug 2: Default parameter values not injected into DAG
+
+`acquire_gcp_secret(audience: NonEmptyStr = "sigstore")` is called without passing `audience`. The lowerer creates a port for `audience` but does NOT create a literal source node with the default `"sigstore"`. The port has no incoming edge, so the executor fills it with a mock value (`Bool(true)` → string `"true"` via `input_as_string`).
+
+**Fix**: Lowerer must emit literal source nodes for parameters with defaults when callers omit them. This is a missing compiler feature, independent of but exacerbated by Bridges 1+2.
+
+### Why this matters
+
+This is exactly what the compiler is supposed to prevent. The DSL declarations are correct — types are right, match arms are right, defaults are right. But the compiler's dual execution model (interpreter for fn bodies + DAG executor for transport) means:
+- Conditional logic doesn't suppress unreachable transport nodes
+- Default values don't flow through to nested service calls
+- The failure manifests as an opaque DNS error, not a compile-time diagnostic
+
+**This postmortem is the case study for why Bridges 1+2 are the highest-priority compiler fixes.**
+
+---
+
 ## The 10 Accidental Bridges
 
 Each bridge exists because the compiler doesn't do enough. For each: current state, final state, what to delete.
 
 ### Delete immediately (zero blockers)
 
-**Bridge 4: `OutputPathMetadataOp`** — identity node carrying `@outputs` annotations through DAG.
+**Bridge 4: `OutputPathMetadataOp`** — **DONE** (already deleted from main).
 
-- **Location**: `core/resolve/src/resolve.rs:359-365` (~7 LOC)
-- **Current**: `@outputs("glob")` creates a passthrough node at resolve time
-- **Final**: Already done. `extract_outputs_annotation()` in the lowerer extracts paths at compile time. The runtime node does literally nothing.
-- **Acceptance**: `OutputPathMetadataOp` struct **deleted** from `resolve.rs`. `grep -r 'OutputPathMetadataOp' core/` returns 0. All tests pass.
-- **Effort**: Trivial.
+**Bridge 10: `PipelineDispatchOp`** — **DONE**. `strip_pipeline_nodes()` deleted. Resolver silently skips Pipeline nodes (metadata-only, not executed). 22 LOC removed from builder.rs.
 
-**Bridge 10: `PipelineDispatchOp`** — stage routing as a runtime node.
+**Bridge 5: `dsl_builder.rs`** — **DONE**. Consolidated 6 pub fns to 1: `build_dsl_graph(module, resolver, opts: BuildOpts)`. Dead code deleted (`build_tool_graph`, `tool_signature`). 201 LOC (from ~335).
 
-- **Location**: `core/resolve/src/resolve.rs:268-352` (~85 LOC)
-- **Current**: Creates pipeline dispatch nodes with stage progression logic
-- **Final**: Pipelines are either (a) inlined as SubDag chains with edge dependencies, or (b) metadata for static generation (Makefile targets). `strip_pipeline_nodes()` in `core/resolve/src/builder.rs:92-113` already strips these before resolution.
-- **Acceptance**: If dead code: `PipelineDispatchOp` struct **deleted**. `strip_pipeline_nodes()` **deleted**. `grep -r 'PipelineDispatchOp\|strip_pipeline_nodes' core/` returns 0. If alive: design doc explaining first-class execution vs metadata-only.
-- **Effort**: Trivial if dead. Design decision if alive.
-
-**Bridge 5: `dsl_builder.rs`** — 8+ wrapper functions that each pass `GunbcExternResolver`.
-
-- **Location**: `core/resolve/src/builder.rs` (335 LOC, 8 public functions)
-- **Current**: `build_dsl_graph()`, `build_tool_graph()`, `build_dsl_graph_with_types()`, `build_dsl_graph_with_types_and_profile()`, `build_dsl_graph_with_profile()`, `build_dsl_graph_for_entry()`, `build_dsl_graph_for_entrypoint()`, `tool_signature()` — differ only in optional parameters
-- **Final**: One function: `build_dsl_graph(module, opts: BuildOpts)` where `BuildOpts` has optional `profile`, `entry_func`, `include_types`, `tool_mode`. The 8 variants become callers setting different defaults.
-- **Acceptance**: `builder.rs` has exactly 1 public `build_dsl_graph()` + `BuildOpts` struct + `tool_signature()` (if needed separately). Line count drops from 335 to ~150. `grep -c 'pub fn build_' core/resolve/src/builder.rs` returns 1.
-- **Effort**: Small.
+**Bridge 2b: Default parameter injection** — **DONE** (lowerer injects literal source nodes for omitted call args with defaults; daglang-lower/src/lib.rs:9164-9189).
 
 ---
 
@@ -64,8 +77,17 @@ Each bridge exists because the compiler doesn't do enough. For each: current sta
 - **Final state**: All fn bodies are lowered to SubDag form at compile time. No `LoweredFnBody` in the runtime IR. `evaluate_fn_body()` exists only in the lowerer for compile-time evaluation (data declarations, config rendering). Runtime never evaluates fn bodies — it executes SubDag nodes.
 - **Acceptance**: `FnBodyCallableOp` struct **deleted**. `fn_body` field **deleted** from `LoweredOp::Callable`. `grep -r 'FnBodyCallableOp\|LoweredFnBody' core/resolve/` returns 0. `evaluate_fn_body()` remains in `daglang-lower/src/eval.rs` but is only called at compile time.
 - **Depends on**: Bridge 1 (SubDag direct lowering).
-- **Enables**: RF-E5 test restoration (`makegen_runtime_differential`).
+- **Enables**: RF-E5 test restoration (`makegen_runtime_differential`). **Fixes `make gist` postmortem Bug 1** (unguarded transport nodes for non-matching match arms). **Also fixes P0-5 / P1-1** from `docs/review/gap-analysis-tasks.md` (`make install` fails on unresolvable compute nodes).
 - **Effort**: Medium.
+
+**Bridge 2b: Default parameter injection** — missing compiler feature.
+
+- **Location**: `core/daglang/daglang-lower/src/lib.rs`, `wire_fn_call_arguments()` (~lines 8976-9108)
+- **Current**: When a caller omits a parameter with a default value (e.g., `audience: NonEmptyStr = "sigstore"`), the lowerer creates a port but does NOT inject a literal source node with the default. The port has no incoming edge. At runtime, the executor fills it with a mock/garbage value.
+- **Final state**: Lowerer reads `param.default` from the callee's `Param` definition. For any parameter not explicitly passed by the caller, creates a `PrimitiveLiteral` source node with the default expression's value and wires it to the port.
+- **Acceptance**: Test: `func f(x: String = "hello") -> { out: String } { return { out: x } }` called as `f()` produces `"hello"`. `make gist` no longer sends `audience=true`. Default values flow through nested pattern/func calls.
+- **Fixes**: `make gist` postmortem Bug 2 (default parameter values not injected).
+- **Effort**: Small-Medium. The `Param.default` field already exists in the AST.
 
 **Bridge 3: `CollectionDelegate`** — collection ops (map/filter/fold) delegate to evaluator.
 
@@ -93,6 +115,29 @@ Each bridge exists because the compiler doesn't do enough. For each: current sta
 - **Final state**: File transport handled by typed IR nodes, same as REST/Shell. `transport file { op: READ, path: "..." }` lowers to a `FileRequest` builder node + `FileResponse` parser node. No generic adapter indirection.
 - **Acceptance**: `GenericFilePrepareOp` and `GenericFileParseOp` structs **deleted**. `grep -r 'GenericFilePrepareOp\|GenericFileParseOp' core/` returns 0. File transport uses same prepare/execute/parse triplet pattern as REST and Shell.
 - **Effort**: Medium.
+
+**Bridge 11: Shell hermeticity annotation** — hermetic vs external classification erased at transport layer.
+
+- **Location**: `core/ir/src/transport/mod.rs` (ShellRequest struct)
+- **Design doc**: `docs/design/shell-hermeticity-annotation.md`
+- **Current**: `TransportRequest::Shell(ShellRequest)` erases whether the producer is hermetic (local, deterministic, no external network/auth) or external. `git ls-files` and `gh gist create` become structurally identical after lowering.
+- **Incremental trap**: Infer hermeticity from command string prefixes ("git" → hermetic).
+- **Final state**: `ShellProducerSemantics` struct with `Hermeticity` enum (Hermetic | External) as optional field on `ShellRequest`. Producers set it at construction time. Testgen categorization uses it. Strict mode rejects `None` for classified workflows.
+- **Acceptance**: `ShellProducerSemantics` + `Hermeticity` types exist in `core/ir/src/transport/mod.rs`. `ShellRequest.semantics` field populated by git, cargo, gist, shell producers. Testgen reads `semantics.hermeticity`. `grep -r 'ShellProducerSemantics' core/ir/` returns 2+ hits (definition + usage). `grep -r 'Hermeticity' core/ir/` returns 2+ hits.
+- **Depends on**: Nothing. Can run in parallel with all other bridges.
+- **Effort**: Medium.
+
+**Bridge 11: Shell hermeticity annotation** -- hermetic vs external classification erased at transport layer.
+
+- **Location**: `core/ir/src/transport/mod.rs` (ShellRequest struct)
+- **Design doc**: `docs/design/shell-hermeticity-annotation.md`
+- **Current**: `TransportRequest::Shell(ShellRequest)` erases whether the producer is hermetic (local, deterministic, no external network/auth) or external. `git ls-files` and `gh gist create` become structurally identical after lowering.
+- **Incremental trap**: Infer hermeticity from command string prefixes ("git" -> hermetic).
+- **Final state**: `ShellProducerSemantics` struct with `Hermeticity` enum (Hermetic | External) as optional field on `ShellRequest`. Producers set it at construction time. Testgen categorization uses it. Strict mode rejects `None` for classified workflows.
+- **Acceptance**: `ShellProducerSemantics` + `Hermeticity` types exist in `core/ir/src/transport/mod.rs`. `ShellRequest.semantics` field populated by git, cargo, gist, shell producers. Testgen reads `semantics.hermeticity`. `grep -r 'ShellProducerSemantics' core/ir/` returns 2+ hits (definition + usage). `grep -r 'Hermeticity' core/ir/` returns 2+ hits.
+- **Depends on**: Nothing. Can run in parallel with all other bridges.
+- **Effort**: Medium.
+- **Status**: Types + field + builder method DONE. Git (Hermetic), GitHub CLI (External), Cargo (Hermetic), GCP auth (External), GitHub PR (External) producers annotated.
 
 ---
 
@@ -156,11 +201,13 @@ Everything else either moves into the compiler (bridges 1-3, 8-9), gets deleted 
 
 ## Execution Order
 
-| Priority | Items | Effort | Deleted |
-|----------|-------|--------|---------|
-| **Now** | Delete bridges 4, 5, 10 | 1-2 days | `OutputPathMetadataOp` (7 LOC), `PipelineDispatchOp` (85 LOC), `strip_pipeline_nodes()` (22 LOC), 6 redundant builder functions (~185 LOC) |
-| **Next** | Bridge 1 + Bridge 2 | 3-5 days | `DeclaredOutputCallableOp` (9 LOC), `FnBodyCallableOp` (86 LOC), `LoweredFnBody` type, `fn_body` field on `LoweredOp::Callable` |
-| **Next** | Bridge 3 + Bridge 8 | 3-5 days | `CollectionDelegate` (17 LOC), `evaluate_collection()` (50 LOC), `LoweredOp::Collection` variant, `add_fs_env_root_node()` (14 LOC), `DslFsEnvOp` |
+| Priority | Items | Effort | Deleted | Proves |
+|----------|-------|--------|---------|--------|
+| **Done** | Delete bridges 4, 5, 10 | — | `OutputPathMetadataOp` (7 LOC), `PipelineDispatchOp` (85 LOC), `strip_pipeline_nodes()` (22 LOC), 6 redundant builder functions (~185 LOC) | Dead code removal |
+| **Done** | Bridge 2b (default params) | — | N/A (new feature) | `make gist` Bug 2 fixed. Default values flow through call chains. |
+| **Now** | Bridge 1 + Bridge 2 | 3-5 days | `DeclaredOutputCallableOp` (9 LOC), `FnBodyCallableOp` (86 LOC), `LoweredFnBody` type, `fn_body` field on `LoweredOp::Callable` | `make gist` Bug 1 fixed. Match arms properly guard transport nodes. Also P0-5 (`make install`). |
+| **Now** | Bridge 11 (hermeticity) | 2-3 days | N/A (new feature) | Effect classification structural. Test scope classification reliable. Parallel with 1+2. |
+| **Next** | Bridge 3 + Bridge 8 | 3-5 days | `CollectionDelegate` (17 LOC), `evaluate_collection()` (50 LOC), `LoweredOp::Collection` variant, `add_fs_env_root_node()` (14 LOC), `DslFsEnvOp` | Evaluator delegation eliminated. |
 | **Next** | Bridge 9 | 2-3 days | `GenericFilePrepareOp` (44 LOC), `GenericFileParseOp` (50 LOC) |
 | **Then** | Rename crate, output dir consolidation | 1-2 days | Hardcoded path constants in `workspace_layout.rs` |
 | **Later** | Bridges 6-7 (artifact emission) | 1-2 weeks | `registry_tools_to_value()` (95 LOC), `DiscoverToolsOp` (28 LOC) |

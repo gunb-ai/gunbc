@@ -4,7 +4,7 @@
 // Simpler than issues/PRs — gists are standalone code snippets.
 //
 // Consumers:
-//   services/github/gist.dag — transport wiring
+//   shared/gist_modes.dag     — gist operations
 //   tools/gist.dag           — gist creation workflow
 
 module extdeps.github.gists
@@ -13,6 +13,8 @@ import extdeps.github.core { GitHubUser }
 import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
 }
+import std.types { Timestamp }
+import std.errors { GitHubErrorShape }
 
 // ── Gist model ────────────────────────────────────────────────────
 
@@ -31,8 +33,8 @@ type Gist {
   public: Bool
   files: List<GistFile>
   owner: String
-  created_at: String
-  updated_at: String
+  created_at: Timestamp
+  updated_at: Timestamp
   url: String
 }
 
@@ -92,3 +94,38 @@ data operation_behaviors: List<GistOperationBehavior> = [
     }
   }
 ]
+
+// ── Service: REST transport wiring ──────────────────────────────
+
+service github.Gist {
+  config {
+    endpoint: "https://api.github.com"
+    auth: BearerToken
+    auth_input: auth_token
+    // GitHub API rate limits: 5000 requests/hour for authenticated users
+    rate_limit: { requests: 5000, per: hour, scope: core }
+    // Retry on rate limit and server errors with exponential backoff
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503, 504] }
+  }
+
+  operation Create {
+    input {
+      description: String
+      content: String
+      public: Bool = false
+      auth_token: Secret
+    }
+    output {
+      id: GistId
+      html_url: Url
+    }
+    transport rest { method: POST, path: "/gists" }
+    response {
+      201 => Gist
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+}

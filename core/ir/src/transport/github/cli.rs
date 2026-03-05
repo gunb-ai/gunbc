@@ -154,7 +154,18 @@ pub fn gh_cli_commands() -> Vec<GHCommand> {
 ///     .stdin("# My Gist Content");
 /// ```
 pub fn gh_cli_request(subcommand: &[&str]) -> ShellRequest {
-    ShellRequest::new(GH_TOOL.command).args(subcommand.iter().map(|s| s.to_string()))
+    let producer = if subcommand.first() == Some(&"gist") {
+        "github.gist"
+    } else if subcommand.first() == Some(&"pr") {
+        "github.pr"
+    } else if subcommand.first() == Some(&"api") {
+        "github.api"
+    } else {
+        "github.cli"
+    };
+    ShellRequest::new(GH_TOOL.command)
+        .args(subcommand.iter().map(|s| s.to_string()))
+        .with_semantics(producer, super::super::Hermeticity::External)
 }
 
 // ============================================================================

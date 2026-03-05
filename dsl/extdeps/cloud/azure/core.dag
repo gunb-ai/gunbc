@@ -10,6 +10,7 @@
 module extdeps.cloud.azure.core
 
 import extdeps.cloud.core { CloudAuthScheme, ServiceEndpoint }
+import std.types { Url }
 
 // ── Subscriptions ─────────────────────────────────────────────────
 
@@ -72,6 +73,6 @@ type ResourceGroup {
 
 // ── Constants ─────────────────────────────────────────────────────
 
-data auth_endpoint: String = "https://login.microsoftonline.com"
+data auth_endpoint: Url = "https://login.microsoftonline.com"
 
-data management_endpoint: String = "https://management.azure.com"
+data management_endpoint: Url = "https://management.azure.com"

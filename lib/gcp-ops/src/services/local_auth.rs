@@ -81,7 +81,7 @@ impl LocalAuthService for GcloudCli {
             }
         }
 
-        req
+        req.with_semantics("gcp.local_auth.login", gunbc_ir::transport::Hermeticity::External)
     }
 }
 

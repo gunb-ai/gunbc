@@ -363,6 +363,7 @@ fn cmd_cigen(dry_run: bool) {
     let dag = match gunbc_dag::dsl_builder::build_dsl_graph_for_entrypoint(
         "tools/cigen.dag",
         Some("cigen"),
+        None,
     ) {
         Ok(dag) => dag,
         Err(e) => {
