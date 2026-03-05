@@ -629,6 +629,23 @@ pub fn validate_required_inputs<T>(dag: &Dag<T>) -> Vec<UnwiredInputError> {
         .flat_map(|e| [e.from_node.0.as_str(), e.to_node.0.as_str()])
         .collect();
 
+    // Detect nodes with incoming user-facing data: nodes that receive at least
+    // one data edge to a non-resource, non-tool, non-internal port. Nodes
+    // without such edges are callable definitions (entrypoints, patterns)
+    // whose user-facing inputs are supplied externally (CLI args, pattern
+    // expansion, etc.), not by DAG edges.
+    let nodes_with_incoming_user_data: HashSet<&str> = dag
+        .edges
+        .iter()
+        .filter(|e| {
+            e.kind.carries_data()
+                && !e.to_port.is_resource()
+                && !e.to_port.is_tool()
+                && !e.to_port.is_internal()
+        })
+        .map(|e| e.to_node.0.as_str())
+        .collect();
+
     let mut errors = Vec::new();
     for node in &dag.nodes {
         // Skip island nodes (no edges at all)
@@ -639,6 +656,17 @@ pub fn validate_required_inputs<T>(dag: &Dag<T>) -> Vec<UnwiredInputError> {
         // DAG's boundary ports and are populated by the SubDag executor or
         // fn body evaluator, not by incoming DAG edges.
         if matches!(node.body, crate::node::NodeBody::SubDag(..)) {
+            continue;
+        }
+        // Skip ParamSource nodes — boundary injection points whose values
+        // arrive from outside the DAG (CLI args, set_input, etc.).
+        if node.kind == crate::node::NodeKind::ParamSource {
+            continue;
+        }
+        // Skip nodes without incoming user-facing data edges — these are
+        // callable definitions (entrypoints, patterns) whose inputs
+        // are supplied externally (CLI, pattern expansion), not by DAG edges.
+        if !nodes_with_incoming_user_data.contains(node.id.0.as_str()) {
             continue;
         }
         for port in &node.inputs {
