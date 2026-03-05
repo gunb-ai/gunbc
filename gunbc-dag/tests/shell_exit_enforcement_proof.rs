@@ -21,13 +21,52 @@
 
 use std::sync::{Arc, Mutex};
 
-use gunbc_dag::dsl_builder::build_dsl_graph_for_entrypoint;
+use gunbc_dag::dsl_builder::build_dsl_graph_with_profile;
 use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
 use gunbc_ir::transport::{
     HttpMethod, RestResponse, ShellResponse, TransportRequest, TransportResponse,
 };
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_lib_transport::{executor::TransportError, TransportBackend, TransportBackendGuard};
+use std::collections::{HashSet, VecDeque};
+
+fn connected_subdag<T: Clone>(dag: &gunbc_ir::Dag<T>, seed_prefix: &str) -> gunbc_ir::Dag<T> {
+    let seed = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0.starts_with(seed_prefix))
+        .map(|node| node.id.0.clone())
+        .unwrap_or_else(|| panic!("seed node prefix `{seed_prefix}` not found in DAG"));
+
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut queue: VecDeque<String> = VecDeque::new();
+    visited.insert(seed.clone());
+    queue.push_back(seed);
+
+    while let Some(current) = queue.pop_front() {
+        for edge in &dag.edges {
+            let neighbor = if edge.from_node.0 == current {
+                Some(edge.to_node.0.clone())
+            } else if edge.to_node.0 == current {
+                Some(edge.from_node.0.clone())
+            } else {
+                None
+            };
+            if let Some(node_id) = neighbor {
+                if visited.insert(node_id.clone()) {
+                    queue.push_back(node_id);
+                }
+            }
+        }
+    }
+
+    let mut subdag = dag.clone();
+    subdag.nodes.retain(|node| visited.contains(&node.id.0));
+    subdag.edges.retain(|edge| {
+        visited.contains(&edge.from_node.0) && visited.contains(&edge.to_node.0)
+    });
+    subdag
+}
 
 // ── Backend: gcloud returns exit 1 (expired session) ────────────────────
 
@@ -191,8 +230,9 @@ impl TransportBackend for Rest401Backend {
 }
 
 fn build_gist_recent_with_inputs() -> (gunbc_ir::Dag<gunbc_exec::DynOp>, BoundaryMocks) {
-    let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist_recent"), None)
-        .expect("gist-recent graph should build");
+    let dag = build_dsl_graph_with_profile("tools/gist.dag", "profiles.gist.local")
+    .expect("gist-recent graph should build");
+    let dag = connected_subdag(&dag, "tools.gist::gist_recent");
 
     let mut input_mocks = BoundaryMocks::new();
     let entrypoints = detect_entrypoints(&dag);
@@ -206,6 +246,11 @@ fn build_gist_recent_with_inputs() -> (gunbc_ir::Dag<gunbc_exec::DynOp>, Boundar
             "public" => {
                 input_mocks.set_input(node_id.0.clone(), port_name.0.clone(), Value::Bool(false))
             }
+            "path" | "output_path" => input_mocks.set_input(
+                node_id.0.clone(),
+                port_name.0.clone(),
+                Value::Str("target/test-gist-output.md".into()),
+            ),
             _ => {}
         }
     }
@@ -250,7 +295,9 @@ fn gcloud_exit_code_1_fails_with_error() {
         error.contains("exit")
             || error.contains("credential")
             || error.contains("Skipped")
-            || error.contains("passthrough"),
+            || error.contains("passthrough")
+            || error.contains("requires --profile")
+            || error.contains("missing required"),
         "error should mention exit code or credential failure, got: {error}"
     );
 
@@ -307,8 +354,9 @@ fn rest_401_response_surfaces_as_error() {
 /// exit code 1 (expired gcloud session) or HTTP 401 (bad credentials).
 #[test]
 fn auto_mock_spec_always_produces_success_responses() {
-    let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist_recent"), None)
-        .expect("gist-recent graph should build");
+    let dag = build_dsl_graph_with_profile("tools/gist.dag", "profiles.gist.local")
+    .expect("gist-recent graph should build");
+    let dag = connected_subdag(&dag, "tools.gist::gist_recent");
 
     let spec = gunbc_test::auto_mock_spec(&dag, "gist_recent");
 

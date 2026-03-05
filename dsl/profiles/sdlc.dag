@@ -23,19 +23,19 @@ import interfaces.agent_provider { AgentProvider }
 import interfaces.signal_store { SignalStore }
 import interfaces.artifact_store { ArtifactStore }
 import interfaces.credential_provider { CredentialProvider }
-import services.sdlc.providers.stub_providers
-import services.sdlc.providers.stub_credential_provider
-import services.sdlc.providers.github_issue_provider
-import services.sdlc.providers.file_claim_store
-import services.sdlc.providers.file_outcome_ledger
-import services.sdlc.providers.codex_agent_provider
-import services.sdlc.providers.file_signal_store
-import services.sdlc.providers.inline_artifact_store
-import services.sdlc.providers.gcp_credential_provider
-import services.sdlc.providers.gcs_claim_store
-import services.sdlc.providers.gcs_outcome_ledger
-import services.sdlc.providers.pubsub_signal_store
-import services.sdlc.providers.gcs_artifact_store
+import extdeps.sdlc.providers.stub_providers
+import extdeps.sdlc.providers.stub_credential_provider
+import extdeps.sdlc.providers.github_issue_provider
+import extdeps.sdlc.providers.file_claim_store
+import extdeps.sdlc.providers.file_outcome_ledger
+import extdeps.sdlc.providers.codex_agent_provider
+import extdeps.sdlc.providers.file_signal_store
+import extdeps.sdlc.providers.inline_artifact_store
+import extdeps.sdlc.providers.gcp_credential_provider
+import extdeps.sdlc.providers.gcs_claim_store
+import extdeps.sdlc.providers.gcs_outcome_ledger
+import extdeps.sdlc.providers.pubsub_signal_store
+import extdeps.sdlc.providers.gcs_artifact_store
 
 // =========================================================================
 // Profile binding declarations
@@ -74,55 +74,55 @@ import services.sdlc.providers.gcs_artifact_store
 //   ArtifactStore   -> gcs_artifact_store.gcs.ArtifactStore
 
 profile unit_test {
-  bind IssueProvider -> services.sdlc.providers.stub_providers.stub.IssueProvider
-  bind ClaimStore -> services.sdlc.providers.stub_providers.stub.ClaimStore
-  bind OutcomeLedger -> services.sdlc.providers.stub_providers.stub.OutcomeLedger
-  bind AgentProvider -> services.sdlc.providers.stub_providers.stub.AgentProvider
-  bind SignalStore -> services.sdlc.providers.stub_providers.stub.SignalStore
-  bind ArtifactStore -> services.sdlc.providers.stub_providers.stub.ArtifactStore
-  bind CredentialProvider -> services.sdlc.providers.stub_credential_provider.StubCredentialProvider
+  bind IssueProvider -> extdeps.sdlc.providers.stub_providers.stub.IssueProvider
+  bind ClaimStore -> extdeps.sdlc.providers.stub_providers.stub.ClaimStore
+  bind OutcomeLedger -> extdeps.sdlc.providers.stub_providers.stub.OutcomeLedger
+  bind AgentProvider -> extdeps.sdlc.providers.stub_providers.stub.AgentProvider
+  bind SignalStore -> extdeps.sdlc.providers.stub_providers.stub.SignalStore
+  bind ArtifactStore -> extdeps.sdlc.providers.stub_providers.stub.ArtifactStore
+  bind CredentialProvider -> extdeps.sdlc.providers.stub_credential_provider.StubCredentialProvider
 }
 
 profile local {
-  bind IssueProvider -> services.sdlc.providers.github_issue_provider.github.IssueProvider {
+  bind IssueProvider -> extdeps.sdlc.providers.github_issue_provider.github.IssueProvider {
     owner: "gunb-ai",
     repo: "gunbc",
     credential: env("GITHUB_TOKEN")
   }
-  bind ClaimStore -> services.sdlc.providers.file_claim_store.file.ClaimStore
-  bind OutcomeLedger -> services.sdlc.providers.file_outcome_ledger.file.OutcomeLedger
-  bind AgentProvider -> services.sdlc.providers.codex_agent_provider.codex.AgentProvider {
+  bind ClaimStore -> extdeps.sdlc.providers.file_claim_store.file.ClaimStore
+  bind OutcomeLedger -> extdeps.sdlc.providers.file_outcome_ledger.file.OutcomeLedger
+  bind AgentProvider -> extdeps.sdlc.providers.codex_agent_provider.codex.AgentProvider {
     credential: env("CODEX_API_KEY")
   }
-  bind SignalStore -> services.sdlc.providers.file_signal_store.file.SignalStore
-  bind ArtifactStore -> services.sdlc.providers.inline_artifact_store.file.ArtifactStore
-  bind CredentialProvider -> services.sdlc.providers.gcp_credential_provider.GcpWifCredentialProvider {
+  bind SignalStore -> extdeps.sdlc.providers.file_signal_store.file.SignalStore
+  bind ArtifactStore -> extdeps.sdlc.providers.inline_artifact_store.file.ArtifactStore
+  bind CredentialProvider -> extdeps.sdlc.providers.gcp_credential_provider.GcpWifCredentialProvider {
     runtime: LocalDev,
     project_id: "gunbai-auto"
   }
 }
 
 profile cloud_run {
-  bind IssueProvider -> services.sdlc.providers.github_issue_provider.github.IssueProvider {
+  bind IssueProvider -> extdeps.sdlc.providers.github_issue_provider.github.IssueProvider {
     owner: "gunb-ai",
     repo: "gunbc",
     credential: secret("github-token")
   }
-  bind ClaimStore -> services.sdlc.providers.gcs_claim_store.gcs.ClaimStore
-  bind OutcomeLedger -> services.sdlc.providers.gcs_outcome_ledger.gcs.OutcomeLedger
-  bind AgentProvider -> services.sdlc.providers.codex_agent_provider.codex.AgentProvider {
+  bind ClaimStore -> extdeps.sdlc.providers.gcs_claim_store.gcs.ClaimStore
+  bind OutcomeLedger -> extdeps.sdlc.providers.gcs_outcome_ledger.gcs.OutcomeLedger
+  bind AgentProvider -> extdeps.sdlc.providers.codex_agent_provider.codex.AgentProvider {
     credential: secret("codex-api-key")
   }
-  bind SignalStore -> services.sdlc.providers.pubsub_signal_store.pubsub.SignalStore {
+  bind SignalStore -> extdeps.sdlc.providers.pubsub_signal_store.pubsub.SignalStore {
     topic: "sdlc-signals",
     subscription: "sdlc-worker",
     project_id: "gunbai-auto"
   }
-  bind ArtifactStore -> services.sdlc.providers.gcs_artifact_store.gcs.ArtifactStore {
+  bind ArtifactStore -> extdeps.sdlc.providers.gcs_artifact_store.gcs.ArtifactStore {
     bucket: "gunbai-auto-sdlc-artifacts",
     project_id: "gunbai-auto"
   }
-  bind CredentialProvider -> services.sdlc.providers.gcp_credential_provider.GcpWifCredentialProvider {
+  bind CredentialProvider -> extdeps.sdlc.providers.gcp_credential_provider.GcpWifCredentialProvider {
     runtime: GitHubActions,
     project_id: "gunbai-auto"
   }

@@ -1,4 +1,4 @@
-// services/sdlc/providers/github_issue_provider.dag
+// extdeps/sdlc/providers/github_issue_provider.dag
 //
 // Layer 3 concrete implementation: GitHubIssueProvider implements IssueProvider.
 //
@@ -8,7 +8,7 @@
 // Gap A resolution: promotes concrete service to interface implementation.
 // Step 6 (gap analysis): real GitHub transport for enhanced dry-run.
 
-module services.sdlc.providers.github_issue_provider
+module extdeps.sdlc.providers.github_issue_provider
 
 import interfaces.issue_provider { IssueProvider, IssueEvent }
 import std.types { TrackedIssue, IssueState, NonEmptyStr, Url }

@@ -9,7 +9,7 @@
 //
 // Consumers:
 //   extdeps/cloud/gcp/{storage,pubsub,iam,secret_manager,cloud_run,sts}.dag
-//   cloud/gcp/credential.dag — credential chain
+//   extdeps/sdlc/providers/gcp_credential_provider.dag — credential chain
 
 module extdeps.cloud.gcp.core
 

@@ -45,11 +45,6 @@ pub use docgen::{build_docgen_graph, DocgenGraphOp};
 pub use dry_run::wire_fs_env_write_mock;
 pub use fs_env::{add_fs_env_root_node, wire_fs_env_write_edges};
 pub use gunbc_ir::CODEGEN_STAMP_PATH;
-pub use gunbc_lib_cloud_ops::env_requirements::{
-    aws_github_actions_env_stub, azure_github_actions_env_stub, cloud_env_matrix,
-    gcp_github_actions_env, gcp_local_env, gcp_metadata_env, CloudEnvRequirements,
-    CLOUD_ENV_COMMON_OPTIONAL,
-};
 pub use gunbc_codegen::makegen::{
     gitignore::render_gitignore,
     justfile::render_justfile,
@@ -114,12 +109,13 @@ pub fn dag_specs() -> Vec<&'static gunbc_testgen_registry::DagSpecDef> {
 // ============================================================================
 // These tests require inventory symbols from gcp-ops, aws-ops, and transport
 // to be linked. gunbc-dag depends on all three, so they run here.
-// gcp-ops is transitively linked through cloud-ops; aws-ops needs an explicit
-// `use ... as _` to force the linker to include its inventory registrations.
+// gcp-ops and aws-ops need explicit `use ... as _` imports to force the
+// linker to include their inventory registrations.
 
 #[cfg(test)]
 mod system_model_integration {
     use gunbc_lib_aws_ops as _;
+    use gunbc_lib_gcp_ops as _;
 
     use gunbc_ir::system_model::{
         default_system_models, derive_contract_test_specs, generate_contract_test_harnesses,

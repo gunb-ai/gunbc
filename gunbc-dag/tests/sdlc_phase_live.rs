@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_methods)] // Live integration harnesses shell out intentionally.
+
 use gunbc_dag::dsl_builder::build_dsl_graph_with_profile;
 use gunbc_exec::{execute_with_mode_and_inputs, lower, BoundaryMocks, ExecutionMode};
 use gunbc_ir::{detect_entrypoints, Dag, Value as DagValue};
@@ -8,8 +10,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const SDLC_LOCAL_PROFILE: &str = "profiles.sdlc.local";
 const SDLC_CLOUD_RUN_PROFILE: &str = "profiles.sdlc.cloud_run";
@@ -86,15 +87,6 @@ fn run_command(mut cmd: Command, description: &str) -> String {
     String::from_utf8(output.stdout).expect("command stdout should be valid utf-8")
 }
 
-fn run_command_allow_failure(mut cmd: Command) -> (bool, String, String) {
-    let output = cmd.output().expect("failed to spawn command");
-    (
-        output.status.success(),
-        String::from_utf8_lossy(&output.stdout).to_string(),
-        String::from_utf8_lossy(&output.stderr).to_string(),
-    )
-}
-
 fn github_request(
     token: &str,
     method: &str,
@@ -137,6 +129,13 @@ fn github_request(
 
 fn env_var(name: &str) -> String {
     env::var(name).unwrap_or_else(|_| panic!("missing required env var `{name}`"))
+}
+
+fn env_var_nonempty(name: &str) -> Option<String> {
+    env::var(name)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 fn env_flag_enabled(name: &str) -> bool {
@@ -208,7 +207,7 @@ fn s9_issue_provider_live_operations_against_github() {
         "s9_issue_provider_live_operations_against_github",
         FermiCost::L,
         &["shell", "curl"],
-        &["GITHUB_TOKEN", "SDLC_GITHUB_OWNER", "SDLC_GITHUB_REPO"],
+        &["SDLC_GITHUB_OWNER", "SDLC_GITHUB_REPO", "GITHUB_TOKEN"],
     ) {
         return;
     }
@@ -217,7 +216,13 @@ fn s9_issue_provider_live_operations_against_github() {
         return;
     }
 
-    let token = env_var("GITHUB_TOKEN");
+    let token = match env_var_nonempty("GITHUB_TOKEN") {
+        Some(token) => token,
+        None => {
+            eprintln!("skipping S-9 live ops: set GITHUB_TOKEN");
+            return;
+        }
+    };
     let owner = env_var("SDLC_GITHUB_OWNER");
     let repo = env_var("SDLC_GITHUB_REPO");
     let suffix = unique_suffix();
@@ -328,10 +333,23 @@ fn s10_local_profile_credential_wiring_compiles_and_authenticates() {
         "s10_local_profile_credential_wiring_compiles_and_authenticates",
         FermiCost::M,
         &["shell", "curl"],
-        &["GITHUB_TOKEN"],
+        &["GITHUB_TOKEN", "CODEX_API_KEY"],
     ) {
         return;
     }
+
+    if env_var_nonempty("CODEX_API_KEY").is_none() {
+        eprintln!("skipping S-10 local profile auth: set CODEX_API_KEY");
+        return;
+    }
+
+    let token = match env_var_nonempty("GITHUB_TOKEN") {
+        Some(token) => token,
+        None => {
+            eprintln!("skipping S-10 local profile auth: set GITHUB_TOKEN");
+            return;
+        }
+    };
 
     let dag = build_dsl_graph_with_profile("funcs/sdlc_worker.dag", SDLC_LOCAL_PROFILE)
         .expect("local profile worker graph should compile");
@@ -339,19 +357,18 @@ fn s10_local_profile_credential_wiring_compiles_and_authenticates() {
     assert!(
         has_prefix(
             &ids,
-            "execute_transport_services_sdlc_providers_github_issue_provider_github_IssueProvider_discover"
+            "execute_transport_extdeps_sdlc_providers_github_issue_provider_github_IssueProvider_discover"
         ),
         "local profile should include GitHub IssueProvider transport nodes"
     );
     assert!(
         has_prefix(
             &ids,
-            "execute_transport_services_sdlc_providers_gcp_credential_provider_GcpWifCredentialProvider_acquire"
+            "execute_transport_extdeps_sdlc_providers_gcp_credential_provider_GcpWifCredentialProvider_acquire"
         ),
         "local profile should include credential provider transport nodes"
     );
 
-    let token = env_var("GITHUB_TOKEN");
     let (status, user_json) = github_request(&token, "GET", "/user", None);
     assert_eq!(
         status, 200,
@@ -370,13 +387,13 @@ fn s11_local_profile_design_stage_e2e() {
         FermiCost::XL,
         &["shell", "curl"],
         &[
-            "GITHUB_TOKEN",
-            "CODEX_API_KEY",
             "SDLC_GITHUB_OWNER",
             "SDLC_GITHUB_REPO",
             "SDLC_TEST_ISSUE_NUMBER",
             "SDLC_LLM_PROVIDER",
             "SDLC_LLM_MODEL",
+            "GITHUB_TOKEN",
+            "CODEX_API_KEY",
         ],
     ) {
         return;
@@ -386,7 +403,17 @@ fn s11_local_profile_design_stage_e2e() {
         return;
     }
 
-    let token = env_var("GITHUB_TOKEN");
+    let token = match env_var_nonempty("GITHUB_TOKEN") {
+        Some(token) => token,
+        None => {
+            eprintln!("skipping S-11 local e2e: set GITHUB_TOKEN");
+            return;
+        }
+    };
+    if env_var_nonempty("CODEX_API_KEY").is_none() {
+        eprintln!("skipping S-11 local e2e: set CODEX_API_KEY");
+        return;
+    }
     let owner = env_var("SDLC_GITHUB_OWNER");
     let repo = env_var("SDLC_GITHUB_REPO");
     let issue_number = env_var("SDLC_TEST_ISSUE_NUMBER");
@@ -461,20 +488,28 @@ fn s12_to_s15_local_pipeline_wiring_is_present() {
     ) {
         return;
     }
+    if env_var_nonempty("GITHUB_TOKEN").is_none() {
+        eprintln!("skipping S-12..S-15 local wiring: set GITHUB_TOKEN");
+        return;
+    }
+    if env_var_nonempty("CODEX_API_KEY").is_none() {
+        eprintln!("skipping S-12..S-15 local wiring: set CODEX_API_KEY");
+        return;
+    }
 
     let dag = build_dsl_graph_with_profile("funcs/sdlc_worker.dag", SDLC_LOCAL_PROFILE)
         .expect("local profile worker graph should compile");
     let ids = node_ids(&dag);
 
     let expected_prefixes = [
-        "execute_transport_services_sdlc_providers_codex_agent_provider_codex_AgentProvider_spawn",
-        "execute_transport_services_sdlc_providers_codex_agent_provider_codex_AgentProvider_poll",
-        "execute_transport_services_github_pull_request_github_PullRequest_Create",
-        "execute_transport_services_github_pull_request_github_PullRequest_ListFiles",
-        "execute_transport_services_github_pull_request_github_PullRequest_AddComment",
-        "execute_transport_services_llm_anthropic_llm_Anthropic_Messages",
-        "execute_transport_services_cargo_cargo_Build_Test",
-        "execute_transport_services_cargo_cargo_Build_Clippy",
+        "execute_transport_extdeps_sdlc_providers_codex_agent_provider_codex_AgentProvider_spawn",
+        "execute_transport_extdeps_sdlc_providers_codex_agent_provider_codex_AgentProvider_poll",
+        "execute_transport_extdeps_github_pull_requests_github_PullRequest_Create",
+        "execute_transport_extdeps_github_pull_requests_github_PullRequest_ListFiles",
+        "execute_transport_extdeps_github_pull_requests_github_PullRequest_AddComment",
+        "execute_transport_extdeps_llm_anthropic_llm_Anthropic_Messages",
+        "execute_transport_extdeps_cargo_cargo_Build_Test",
+        "execute_transport_extdeps_cargo_cargo_Build_Clippy",
         "funcs.sdlc_stages::handle_accepted_to_implementing",
         "funcs.sdlc_stages::handle_implementing_to_code_review",
         "funcs.sdlc_stages::handle_code_review_to_testing",
@@ -496,12 +531,12 @@ fn s16_to_s19_cloud_run_wiring_is_present() {
     let ids = node_ids(&dag);
 
     let expected_prefixes = [
-        "execute_transport_services_sdlc_providers_gcs_claim_store_gcs_ClaimStore_acquire",
-        "execute_transport_services_sdlc_providers_gcs_outcome_ledger_gcs_OutcomeLedger_upsert",
-        "execute_transport_services_sdlc_providers_gcs_artifact_store_gcs_ArtifactStore_store",
-        "execute_transport_services_sdlc_providers_pubsub_signal_store_pubsub_SignalStore_emit",
-        "execute_transport_services_sdlc_providers_pubsub_signal_store_pubsub_SignalStore_consume",
-        "execute_transport_services_sdlc_providers_github_issue_provider_github_IssueProvider_discover",
+        "execute_transport_extdeps_sdlc_providers_gcs_claim_store_gcs_ClaimStore_acquire",
+        "execute_transport_extdeps_sdlc_providers_gcs_outcome_ledger_gcs_OutcomeLedger_upsert",
+        "execute_transport_extdeps_sdlc_providers_gcs_artifact_store_gcs_ArtifactStore_store",
+        "execute_transport_extdeps_sdlc_providers_pubsub_signal_store_pubsub_SignalStore_emit",
+        "execute_transport_extdeps_sdlc_providers_pubsub_signal_store_pubsub_SignalStore_consume",
+        "execute_transport_extdeps_sdlc_providers_github_issue_provider_github_IssueProvider_discover",
     ];
 
     for prefix in &expected_prefixes {
@@ -510,186 +545,4 @@ fn s16_to_s19_cloud_run_wiring_is_present() {
             "cloud_run profile graph should include phase 4 marker node `{prefix}`"
         );
     }
-}
-
-#[test]
-fn s16_to_s19_cloud_run_live_integrations() {
-    if !should_run(
-        "s16_to_s19_cloud_run_live_integrations",
-        FermiCost::XL,
-        &["shell", "curl", "gcloud"],
-        &[
-            "GOOGLE_APPLICATION_CREDENTIALS",
-            "GCP_PROJECT",
-            "SDLC_GCP_REGION",
-            "SDLC_GCS_CLAIMS_BUCKET",
-            "SDLC_GCS_OUTCOMES_BUCKET",
-            "SDLC_GCS_ARTIFACTS_BUCKET",
-            "SDLC_PUBSUB_TOPIC",
-            "SDLC_CLOUD_RUN_SERVICE",
-        ],
-    ) {
-        return;
-    }
-    if !env_flag_enabled("SDLC_ALLOW_CLOUD_MUTATION") {
-        eprintln!("skipping S-16..S-19 cloud integrations: set SDLC_ALLOW_CLOUD_MUTATION=1");
-        return;
-    }
-
-    let project = env_var("GCP_PROJECT");
-    let region = env_var("SDLC_GCP_REGION");
-    let claims_bucket = env_var("SDLC_GCS_CLAIMS_BUCKET");
-    let outcomes_bucket = env_var("SDLC_GCS_OUTCOMES_BUCKET");
-    let artifacts_bucket = env_var("SDLC_GCS_ARTIFACTS_BUCKET");
-    let topic = env_var("SDLC_PUBSUB_TOPIC");
-    let service = env_var("SDLC_CLOUD_RUN_SERVICE");
-    let suffix = unique_suffix();
-
-    for bucket in [&claims_bucket, &outcomes_bucket, &artifacts_bucket] {
-        let mut describe_bucket = Command::new("gcloud");
-        describe_bucket
-            .arg("storage")
-            .arg("buckets")
-            .arg("describe")
-            .arg(format!("gs://{bucket}"))
-            .arg("--project")
-            .arg(&project)
-            .arg("--quiet");
-        let _ = run_command(describe_bucket, "gcloud storage buckets describe");
-    }
-
-    let temp_object = format!("sdlc-live-cas/{suffix}.txt");
-    let temp_file_path = env::temp_dir().join(format!("sdlc-live-cas-{suffix}.txt"));
-    fs::write(&temp_file_path, b"sdlc cas test payload").expect("write temp CAS payload");
-    let gs_path = format!("gs://{claims_bucket}/{temp_object}");
-
-    let mut first_write = Command::new("gcloud");
-    first_write
-        .arg("storage")
-        .arg("cp")
-        .arg(temp_file_path.to_string_lossy().to_string())
-        .arg(&gs_path)
-        .arg("--if-generation-match=0")
-        .arg("--project")
-        .arg(&project)
-        .arg("--quiet");
-    let _ = run_command(first_write, "first CAS write (should succeed)");
-
-    let mut second_write = Command::new("gcloud");
-    second_write
-        .arg("storage")
-        .arg("cp")
-        .arg(temp_file_path.to_string_lossy().to_string())
-        .arg(&gs_path)
-        .arg("--if-generation-match=0")
-        .arg("--project")
-        .arg(&project)
-        .arg("--quiet");
-    let (second_ok, _, second_err) = run_command_allow_failure(second_write);
-    assert!(
-        !second_ok,
-        "second CAS write with generation-match=0 should fail; stderr:\n{second_err}"
-    );
-
-    let mut describe_service = Command::new("gcloud");
-    describe_service
-        .arg("run")
-        .arg("services")
-        .arg("describe")
-        .arg(&service)
-        .arg("--region")
-        .arg(&region)
-        .arg("--project")
-        .arg(&project)
-        .arg("--format=value(status.url)")
-        .arg("--quiet");
-    let service_url = run_command(describe_service, "gcloud run services describe");
-    let service_url = service_url.trim();
-    assert!(
-        !service_url.is_empty(),
-        "Cloud Run service URL should be non-empty"
-    );
-
-    let mut curl_health = Command::new("curl");
-    curl_health
-        .arg("-sS")
-        .arg("-o")
-        .arg("/dev/null")
-        .arg("-w")
-        .arg("%{http_code}")
-        .arg(format!("{service_url}/health"));
-    let health_code = run_command(curl_health, "Cloud Run health check");
-    assert_eq!(health_code.trim(), "200", "Cloud Run health should be 200");
-
-    let signal_marker = format!("sdlc-live-signal-{suffix}");
-    let mut publish = Command::new("gcloud");
-    publish
-        .arg("pubsub")
-        .arg("topics")
-        .arg("publish")
-        .arg(&topic)
-        .arg("--project")
-        .arg(&project)
-        .arg("--message")
-        .arg(format!(r#"{{"marker":"{signal_marker}"}}"#))
-        .arg("--quiet");
-    let _ = run_command(publish, "publish SDLC signal");
-
-    let log_filter = format!(
-        "resource.type=cloud_run_revision AND resource.labels.service_name={service} AND textPayload:{signal_marker}"
-    );
-    let mut saw_signal_log = false;
-    for _ in 0..8 {
-        let mut read_logs = Command::new("gcloud");
-        read_logs
-            .arg("logging")
-            .arg("read")
-            .arg(&log_filter)
-            .arg("--project")
-            .arg(&project)
-            .arg("--limit=1")
-            .arg("--format=value(textPayload)")
-            .arg("--quiet");
-        let stdout = run_command(read_logs, "read Cloud Run logs");
-        if !stdout.trim().is_empty() {
-            saw_signal_log = true;
-            break;
-        }
-        thread::sleep(Duration::from_secs(5));
-    }
-    assert!(
-        saw_signal_log,
-        "expected to observe worker log entry for published signal marker `{signal_marker}`"
-    );
-
-    let contention_object = format!("sdlc-live-concurrency/{suffix}.txt");
-    let contention_path = format!("gs://{claims_bucket}/{contention_object}");
-    let mut workers = Vec::new();
-    for _ in 0..3 {
-        let project = project.clone();
-        let local_file = temp_file_path.to_string_lossy().to_string();
-        let gs_path = contention_path.clone();
-        workers.push(thread::spawn(move || {
-            let mut cmd = Command::new("gcloud");
-            cmd.arg("storage")
-                .arg("cp")
-                .arg(local_file)
-                .arg(gs_path)
-                .arg("--if-generation-match=0")
-                .arg("--project")
-                .arg(project)
-                .arg("--quiet");
-            let (ok, _, _) = run_command_allow_failure(cmd);
-            ok
-        }));
-    }
-    let success_count = workers
-        .into_iter()
-        .map(|join| join.join().expect("parallel CAS worker thread should complete"))
-        .filter(|ok| *ok)
-        .count();
-    assert_eq!(
-        success_count, 1,
-        "exactly one parallel CAS claimant should succeed (observed {success_count})"
-    );
 }

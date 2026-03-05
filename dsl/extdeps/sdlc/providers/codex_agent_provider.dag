@@ -1,4 +1,4 @@
-// services/sdlc/providers/codex_agent_provider.dag
+// extdeps/sdlc/providers/codex_agent_provider.dag
 //
 // Layer 3 concrete implementation: CodexAgentProvider implements AgentProvider.
 //
@@ -8,7 +8,7 @@
 //
 // Gap I partial resolution: concrete agent provider with branch management.
 
-module services.sdlc.providers.codex_agent_provider
+module extdeps.sdlc.providers.codex_agent_provider
 
 import interfaces.agent_provider { AgentProvider }
 import std.types { NonEmptyStr, AgentStatus, ApprovalMode }

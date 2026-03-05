@@ -12,6 +12,12 @@
 use std::path::{Path, PathBuf};
 
 fn layer_rank(module_prefix: &str) -> Option<u8> {
+    // SDLC provider adapters live under extdeps/ for migration reasons but
+    // behave as service-layer implementations that may depend on interfaces.
+    if module_prefix.starts_with("extdeps.sdlc.providers") {
+        return Some(4);
+    }
+
     // Extract the top-level module segment.
     let top = module_prefix.split('.').next().unwrap_or(module_prefix);
     match top {
@@ -44,6 +50,8 @@ const KNOWN_VIOLATIONS: &[(&str, &str)] = &[
     ("std/patterns.dag", "extdeps.shell"),
     // sdlc_stages invokes design tools as workflow steps.
     ("funcs/sdlc_stages.dag", "tools.design"),
+    // gist tool currently imports profile binding definitions.
+    ("tools/gist.dag", "profiles.gist"),
 ];
 
 struct ImportViolation {

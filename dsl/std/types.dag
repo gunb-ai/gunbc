@@ -489,7 +489,7 @@ type PragmaDirective {
 // Similarly:
 //   TrackedIssue/DesignOutput = abstract (std.types)
 //   github/issues.dag        = concrete service binding
-//   pipelines/sdlc.dag       = works against abstract types
+//   funcs/sdlc_worker.dag    = works against abstract types
 
 // Lifecycle stages. Each maps to a label (GitHub), status (Linear),
 // or row state (local DB). The pipeline doesn't care which.

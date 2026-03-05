@@ -1,4 +1,4 @@
-// services/sdlc/providers/inline_artifact_store.dag
+// extdeps/sdlc/providers/inline_artifact_store.dag
 //
 // Layer 3 concrete implementation: InlineArtifactStore implements ArtifactStore.
 //
@@ -11,7 +11,7 @@
 //
 // Profile binding: local
 
-module services.sdlc.providers.inline_artifact_store
+module extdeps.sdlc.providers.inline_artifact_store
 
 import interfaces.artifact_store { ArtifactStore }
 import std.types { NonEmptyStr, ArtifactPayload, ArtifactType, ArtifactMarker }

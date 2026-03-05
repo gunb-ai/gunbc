@@ -2191,8 +2191,8 @@ func store_artifact_azure(key: String, content: String) -> { ok: Bool } uses sto
 fn cross_provider_auth_calls_resolve_all_credential_chains() {
     let typed = typed_project_from_sources(&[
         (
-            "dsl/cloud/gcp/credential.dag",
-            r#"module cloud.gcp.credential
+            "dsl/extdeps/sdlc/providers/gcp_credential_provider.dag",
+            r#"module extdeps.sdlc.providers.gcp_credential_provider
 func acquire_gcp_secret() -> { token: String } {
   return { token: "gcp" }
 }"#,
@@ -2214,7 +2214,7 @@ func acquire_azure_secret() -> { token: String } {
         (
             "dsl/examples/auth.dag",
             r#"module examples.auth
-import cloud.gcp.credential { acquire_gcp_secret }
+import extdeps.sdlc.providers.gcp_credential_provider { acquire_gcp_secret }
 import cloud.aws.credential { acquire_aws_secret }
 import cloud.azure.credential { acquire_azure_secret }
 
@@ -2229,7 +2229,7 @@ func cross_provider_auth() -> { ok: Bool } {
     let dag = lower_typed_project(&typed).expect("lowering should succeed");
     let caller = "examples.auth::cross_provider_auth";
     for callee in [
-        "cloud.gcp.credential::acquire_gcp_secret",
+        "extdeps.sdlc.providers.gcp_credential_provider::acquire_gcp_secret",
         "cloud.aws.credential::acquire_aws_secret",
         "cloud.azure.credential::acquire_azure_secret",
     ] {

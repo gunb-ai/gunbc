@@ -28,7 +28,7 @@ fn makegen_file() -> PathBuf {
 }
 
 fn ci_pipeline_file() -> PathBuf {
-    workspace_root().join("dsl/pipelines/ci.dag")
+    workspace_root().join("dsl/pipelines/cloud_e2e.dag")
 }
 
 fn deps_file() -> PathBuf {
@@ -6840,18 +6840,18 @@ fn progress_command_ci_json_includes_stage_groups() {
             group
                 .get("stage_id")
                 .and_then(Value::as_str)
-                .is_some_and(|stage| stage.ends_with(":cloud_env"))
+                .is_some_and(|stage| stage.ends_with(":gate"))
         }),
-        "ci progress should include cloud_env stage group"
+        "progress should include gate stage group"
     );
     assert!(
         stage_groups.iter().any(|group| {
             group
                 .get("stage_id")
                 .and_then(Value::as_str)
-                .is_some_and(|stage| stage.ends_with(":bootstrap_stage"))
+                .is_some_and(|stage| stage.ends_with(":report"))
         }),
-        "ci progress should include explicit bootstrap_stage group"
+        "progress should include report stage group"
     );
 }
 
@@ -6873,9 +6873,9 @@ fn progress_command_ci_text_renders_collapsible_stage_group_sections() {
     assert_no_stage_failures(&stderr);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("> [collapsed] pipelines.ci.ci"));
-    assert!(stdout.contains("- cloud_env:"));
-    assert!(stdout.contains("- bootstrap_stage:"));
+    assert!(stdout.contains("> [collapsed] pipelines.cloud_e2e.cloud_e2e"));
+    assert!(stdout.contains("- gate:"));
+    assert!(stdout.contains("- report:"));
 }
 
 #[test]

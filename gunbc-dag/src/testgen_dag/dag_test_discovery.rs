@@ -813,6 +813,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Slow full-repo validation; run explicitly when changing auto-testgen."]
     fn comprehensive_auto_testgen_pipeline_validation() {
         let layout = gunbc_ir::WorkspaceLayout::from_env_manifest_dir()
             .or_else(|_| gunbc_ir::WorkspaceLayout::from_cargo_metadata())

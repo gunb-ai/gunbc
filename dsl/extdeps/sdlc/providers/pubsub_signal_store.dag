@@ -1,4 +1,4 @@
-// services/sdlc/providers/pubsub_signal_store.dag
+// extdeps/sdlc/providers/pubsub_signal_store.dag
 //
 // Layer 3 concrete implementation: PubSubSignalStore implements SignalStore.
 //
@@ -8,7 +8,7 @@
 //
 // Profile binding: cloud_run
 
-module services.sdlc.providers.pubsub_signal_store
+module extdeps.sdlc.providers.pubsub_signal_store
 
 import interfaces.signal_store { SignalStore }
 import std.types { NonEmptyStr, Signal, SignalType }

@@ -1,4 +1,4 @@
-// services/sdlc/providers/gcs_artifact_store.dag
+// extdeps/sdlc/providers/gcs_artifact_store.dag
 //
 // Layer 3 concrete implementation: GcsArtifactStore implements ArtifactStore.
 //
@@ -18,7 +18,7 @@
 //   parse-layer handling, but the precondition is not compiler-enforced.
 //   See: tasks.md RT-PC1 (parameterized header injection)
 
-module services.sdlc.providers.gcs_artifact_store
+module extdeps.sdlc.providers.gcs_artifact_store
 
 import interfaces.artifact_store { ArtifactStore }
 import std.types { NonEmptyStr, ArtifactPayload, ArtifactType, ArtifactMarker }

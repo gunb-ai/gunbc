@@ -771,21 +771,21 @@ fn render_manifest_reuses_obligations_text_block() {
 
 #[test]
 fn render_manifest_groups_stage_groups_into_collapsible_sections() {
-    let context = workspace_single_file_context("pipelines/sdlc_ci.dag");
+    let context = workspace_single_file_context("pipelines/cloud_e2e.dag");
     let output = compile_from_context(&context).expect("compile should succeed");
 
     let manifest = render_manifest(&output.derived);
     assert!(
-        manifest.contains("  stage_groups:\n    > [collapsed] pipelines.sdlc_ci.sdlc_ci"),
-        "manifest text should render sdlc_ci stage groups as collapsible section"
+        manifest.contains("  stage_groups:\n    > [collapsed] pipelines.cloud_e2e.cloud_e2e"),
+        "manifest text should render cloud_e2e stage groups as collapsible section"
     );
     assert!(
-        manifest.contains("      - build:"),
-        "manifest text should render build stage inside section"
+        manifest.contains("      - gate:"),
+        "manifest text should render gate stage inside section"
     );
     assert!(
-        manifest.contains("      - hermetic:"),
-        "manifest text should render hermetic stage inside section"
+        manifest.contains("      - acquire_credential:"),
+        "manifest text should render acquire_credential stage inside section"
     );
 }
 

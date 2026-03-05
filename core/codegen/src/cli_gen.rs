@@ -2008,7 +2008,7 @@ mod tests {
     #[test]
     fn test_generate_cli_with_profile_flag() {
         let tool = ToolMeta {
-            crate_name: "gunbc-sdlc".into(),
+            crate_name: "gunbc-workflow".into(),
             tool_name: "sdlc".into(),
             description: "SDLC pipeline".into(),
             graph_builder_call: "build_sdlc_graph".into(),

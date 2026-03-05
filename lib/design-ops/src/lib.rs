@@ -118,7 +118,7 @@ mod tests {
             context: Some("Current flow duplicates issue comments".to_string()),
             acceptance_tests: vec![
                 "cargo test -q -p gunbc-dag --test sdlc_cli".to_string(),
-                "cargo run -q -p gunbc-dag --bin gunbc-sdlc -- intake --dry-run".to_string(),
+                "cargo run -q -p gunbc-dag --bin gunbc-workflow -- --help".to_string(),
             ],
         });
         assert!(prompt.contains("Title: Improve intake idempotency"));

@@ -394,7 +394,6 @@ dependencies = [
  "gunbc-ir",
  "gunbc-lib-aws-ops",
  "gunbc-lib-blob",
- "gunbc-lib-cloud-ops",
  "gunbc-lib-gcp-ops",
  "gunbc-lib-llm-ops",
  "gunbc-lib-review",

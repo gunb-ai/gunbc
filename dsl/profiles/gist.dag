@@ -7,26 +7,26 @@
 module profiles.gist
 
 import interfaces.credential_provider { CredentialProvider }
-import services.sdlc.providers.local_credential_provider { LocalCredentialProvider }
-import services.sdlc.providers.gcp_credential_provider { GcpWifCredentialProvider }
+import extdeps.sdlc.providers.local_credential_provider { LocalCredentialProvider }
+import extdeps.sdlc.providers.gcp_credential_provider { GcpWifCredentialProvider }
 
 // Local development -- reads GITHUB_TOKEN from environment.
 profile local {
-  bind CredentialProvider -> services.sdlc.providers.local_credential_provider.LocalCredentialProvider {
+  bind CredentialProvider -> extdeps.sdlc.providers.local_credential_provider.LocalCredentialProvider {
     cache_dir: "~/.gunbc/credentials"
   }
 }
 
 // Development -- same as local.
 profile dev {
-  bind CredentialProvider -> services.sdlc.providers.local_credential_provider.LocalCredentialProvider {
+  bind CredentialProvider -> extdeps.sdlc.providers.local_credential_provider.LocalCredentialProvider {
     cache_dir: "~/.gunbc/credentials"
   }
 }
 
 // CI / GitHub Actions -- full GCP WIF credential chain.
 profile test {
-  bind CredentialProvider -> services.sdlc.providers.gcp_credential_provider.GcpWifCredentialProvider {
+  bind CredentialProvider -> extdeps.sdlc.providers.gcp_credential_provider.GcpWifCredentialProvider {
     runtime: GitHubActions,
     project_id: "gunbai-secrets"
   }
@@ -34,7 +34,7 @@ profile test {
 
 // Production -- same as test (runs on GitHub Actions).
 profile prod {
-  bind CredentialProvider -> services.sdlc.providers.gcp_credential_provider.GcpWifCredentialProvider {
+  bind CredentialProvider -> extdeps.sdlc.providers.gcp_credential_provider.GcpWifCredentialProvider {
     runtime: GitHubActions,
     project_id: "gunbai-secrets"
   }

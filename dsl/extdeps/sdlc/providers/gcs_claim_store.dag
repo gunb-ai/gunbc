@@ -1,4 +1,4 @@
-// services/sdlc/providers/gcs_claim_store.dag
+// extdeps/sdlc/providers/gcs_claim_store.dag
 //
 // Layer 3 concrete implementation: GcsClaimStore implements ClaimStore.
 //
@@ -24,7 +24,7 @@
 //   actual header injection is not compiler-verified.
 //   See: tasks.md RT-PC1 (parameterized header injection)
 
-module services.sdlc.providers.gcs_claim_store
+module extdeps.sdlc.providers.gcs_claim_store
 
 import interfaces.claim_store { ClaimStore }
 import std.types { NonEmptyStr }

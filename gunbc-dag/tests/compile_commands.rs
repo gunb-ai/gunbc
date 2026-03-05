@@ -102,7 +102,7 @@ fn builds_sdlc_worker_cloud_run_profile_dsl_graph() {
 
 #[test]
 fn sdlc_pipeline_unit_test_profile_resolves_stub_provider_nodes() {
-    let dag = build_dsl_graph_with_profile("pipelines/sdlc.dag", "profiles.sdlc.unit_test")
+    let dag = build_dsl_graph_with_profile("funcs/sdlc_worker.dag", "profiles.sdlc.unit_test")
         .expect("sdlc pipeline unit_test profile graph should resolve");
     assert!(!dag.nodes.is_empty());
 }
@@ -116,31 +116,31 @@ fn sdlc_worker_unit_test_profile_binds_all_interfaces_to_stub_implementations() 
     let expected_stub_execute_prefixes = [
         (
             "IssueProvider",
-            "execute_transport_profiles_unit_test_StubIssueProvider_",
+            "execute_transport_extdeps_sdlc_providers_stub_providers_stub_IssueProvider_",
         ),
         (
             "ClaimStore",
-            "execute_transport_profiles_unit_test_InMemoryClaimStore_",
+            "execute_transport_extdeps_sdlc_providers_stub_providers_stub_ClaimStore_",
         ),
         (
             "OutcomeLedger",
-            "execute_transport_profiles_unit_test_InMemoryOutcomeLedger_",
+            "execute_transport_extdeps_sdlc_providers_stub_providers_stub_OutcomeLedger_",
         ),
         (
             "AgentProvider",
-            "execute_transport_profiles_unit_test_StubAgentProvider_",
+            "execute_transport_extdeps_sdlc_providers_stub_providers_stub_AgentProvider_",
         ),
         (
             "SignalStore",
-            "execute_transport_profiles_unit_test_InMemorySignalStore_",
+            "execute_transport_extdeps_sdlc_providers_stub_providers_stub_SignalStore_",
         ),
         (
             "ArtifactStore",
-            "execute_transport_profiles_unit_test_InMemoryArtifactStore_",
+            "execute_transport_extdeps_sdlc_providers_stub_providers_stub_ArtifactStore_",
         ),
         (
             "CredentialProvider",
-            "execute_transport_services_sdlc_providers_stub_credential_provider_StubCredentialProvider_",
+            "execute_transport_extdeps_sdlc_providers_stub_credential_provider_StubCredentialProvider_",
         ),
     ];
 
@@ -276,32 +276,32 @@ fn dispatch_sdlc_unit_test_profile_dry_run_completes() {
 
 #[test]
 fn sdlc_pipeline_unit_test_profile_contains_all_stage_markers() {
-    let dag = build_dsl_graph_with_profile("pipelines/sdlc.dag", "profiles.sdlc.unit_test")
+    let dag = build_dsl_graph_with_profile("funcs/sdlc_worker.dag", "profiles.sdlc.unit_test")
         .expect("build sdlc pipeline graph with unit_test profile");
     let node_ids: Vec<String> = dag.nodes.iter().map(|node| node.id.0.clone()).collect();
 
     let expected_stage_markers = [
         (
             "fetch",
-            "execute_transport_profiles_unit_test_StubIssueProvider_get",
+            "execute_transport_extdeps_sdlc_providers_stub_providers_stub_IssueProvider_get",
         ),
         (
             "claim_design",
-            "execute_transport_profiles_unit_test_InMemoryClaimStore_acquire",
+            "execute_transport_extdeps_sdlc_providers_stub_providers_stub_ClaimStore_acquire",
         ),
         ("design", "tools.design::generate_design"),
         ("design_review", "tools.design::review_design"),
         (
             "record_design_outcome",
-            "execute_transport_profiles_unit_test_InMemoryOutcomeLedger_upsert",
+            "execute_transport_extdeps_sdlc_providers_stub_providers_stub_OutcomeLedger_upsert",
         ),
         (
             "accept_design",
-            "execute_transport_profiles_unit_test_StubIssueProvider_set_labels",
+            "execute_transport_extdeps_sdlc_providers_stub_providers_stub_IssueProvider_set_labels",
         ),
         (
             "implementation",
-            "execute_transport_profiles_unit_test_StubAgentProvider_spawn",
+            "execute_transport_extdeps_sdlc_providers_stub_providers_stub_AgentProvider_spawn",
         ),
         (
             "code_review",
@@ -310,7 +310,7 @@ fn sdlc_pipeline_unit_test_profile_contains_all_stage_markers() {
         ("acceptance", "execute_transport_extdeps_cargo_cargo_Build_Test"),
         (
             "close",
-            "execute_transport_profiles_unit_test_StubIssueProvider_close",
+            "execute_transport_extdeps_sdlc_providers_stub_providers_stub_IssueProvider_close",
         ),
         ("report", "shared.dag_util::format_report"),
     ];
