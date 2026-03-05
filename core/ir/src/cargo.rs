@@ -603,7 +603,8 @@ impl CargoCommand {
         for (k, v) in self.env() {
             req = req.env(k, v);
         }
-        req
+        let producer = format!("cargo.{}", self.subcommand.as_str());
+        req.with_semantics(producer, crate::transport::Hermeticity::Hermetic)
     }
 }
 

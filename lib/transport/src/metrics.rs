@@ -481,6 +481,7 @@ mod tests {
                 stdin: None,
                 timeout_ms: None,
                 passthrough: false,
+                semantics: None,
             })),
             "shell"
         );

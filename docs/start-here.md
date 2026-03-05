@@ -219,6 +219,14 @@ total effort than one root-cause fix.
 Deleting non-semantic metadata from a compiled graph must not change observable
 behavior. If a node carries metadata (pipeline structure, output path annotations,
 profiling tags), the system behaves identically with or without it. This is the
+litmus test for whether something is truly "metadata" vs "hidden behavior" -- if
+removing it changes results, it's not metadata, it's a bug.
+
+### I13. Metadata erasure is semantics-preserving
+
+Deleting non-semantic metadata from a compiled graph must not change observable
+behavior. If a node carries metadata (pipeline structure, output path annotations,
+profiling tags), the system behaves identically with or without it. This is the
 litmus test for whether something is truly "metadata" vs "hidden behavior" — if
 removing it changes results, it's not metadata, it's a bug.
 
@@ -373,6 +381,7 @@ Before making a decision in any of these areas, read the relevant doc.
 | Doc | Key decision |
 |-----|-------------|
 | [`docs/design/v4/compiler-densification-roadmap.md`](design/v4/compiler-densification-roadmap.md) | Prioritized bridge elimination roadmap: kill interpreter → hermeticity → service codegen |
+| [`docs/design/v4/compiler-densification-roadmap.md`](design/v4/compiler-densification-roadmap.md) | Prioritized bridge elimination roadmap: kill interpreter -> hermeticity -> service codegen |
 | [`docs/design/v4/compositional-type-coverage.md`](design/v4/compositional-type-coverage.md) | Compositional type coverage: vision, audit, gaps, workstreams, extern linking |
 | [`docs/design/v4/by-construction-reachability.md`](design/v4/by-construction-reachability.md) | ReachableDag<T> — invariants via types, not passes |
 | [`docs/design/v4/externcall-same-module-port-wiring.md`](design/v4/externcall-same-module-port-wiring.md) | NF-7: lowerer limitation for same-module extern func |

@@ -127,6 +127,18 @@ Each bridge exists because the compiler doesn't do enough. For each: current sta
 - **Depends on**: Nothing. Can run in parallel with all other bridges.
 - **Effort**: Medium.
 
+**Bridge 11: Shell hermeticity annotation** -- hermetic vs external classification erased at transport layer.
+
+- **Location**: `core/ir/src/transport/mod.rs` (ShellRequest struct)
+- **Design doc**: `docs/design/shell-hermeticity-annotation.md`
+- **Current**: `TransportRequest::Shell(ShellRequest)` erases whether the producer is hermetic (local, deterministic, no external network/auth) or external. `git ls-files` and `gh gist create` become structurally identical after lowering.
+- **Incremental trap**: Infer hermeticity from command string prefixes ("git" -> hermetic).
+- **Final state**: `ShellProducerSemantics` struct with `Hermeticity` enum (Hermetic | External) as optional field on `ShellRequest`. Producers set it at construction time. Testgen categorization uses it. Strict mode rejects `None` for classified workflows.
+- **Acceptance**: `ShellProducerSemantics` + `Hermeticity` types exist in `core/ir/src/transport/mod.rs`. `ShellRequest.semantics` field populated by git, cargo, gist, shell producers. Testgen reads `semantics.hermeticity`. `grep -r 'ShellProducerSemantics' core/ir/` returns 2+ hits (definition + usage). `grep -r 'Hermeticity' core/ir/` returns 2+ hits.
+- **Depends on**: Nothing. Can run in parallel with all other bridges.
+- **Effort**: Medium.
+- **Status**: Types + field + builder method DONE. Git (Hermetic), GitHub CLI (External), Cargo (Hermetic), GCP auth (External), GitHub PR (External) producers annotated.
+
 ---
 
 ### Blocked on larger design work

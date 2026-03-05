@@ -21,7 +21,7 @@
 //! assert_eq!(files, vec!["src/main.rs", "README.md"]);
 //! ```
 
-use super::{ShellRequest, TransportRequest};
+use super::{Hermeticity, ShellRequest, TransportRequest};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -298,6 +298,17 @@ impl GitRequest {
         if let Some(ref cwd) = self.cwd {
             req = req.cwd(cwd.as_str());
         }
+
+        let producer = match &self.subcommand {
+            GitSubcommand::LsFiles => "git.ls_files",
+            GitSubcommand::Diff { .. } => "git.diff",
+            GitSubcommand::DiffNameOnly { .. } => "git.diff_name_only",
+            GitSubcommand::CurrentBranch => "git.current_branch",
+            GitSubcommand::RemoteBranchesAtHead => "git.remote_branches_at_head",
+            GitSubcommand::MergeBase { .. } => "git.merge_base",
+            GitSubcommand::RevListBefore { .. } => "git.rev_list_before",
+        };
+        req = req.with_semantics(producer, Hermeticity::Hermetic);
 
         TransportRequest::Shell(req)
     }

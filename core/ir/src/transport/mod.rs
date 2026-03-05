@@ -216,6 +216,31 @@ pub struct LocalResponse {
     pub outputs: serde_json::Value,
 }
 
+/// Whether a shell command is hermetic (local, deterministic, no external network/auth)
+/// or external (reaches out to remote services).
+///
+/// Set at the producer boundary -- never inferred from command strings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Hermeticity {
+    /// Local, deterministic, no external network or auth (e.g., `git ls-files`, `cargo build`).
+    Hermetic,
+    /// Reaches external services (e.g., `gh gist create`, `gcloud auth`).
+    External,
+}
+
+/// Producer-level semantic classification for shell commands.
+///
+/// Attached at construction time by the API that creates the `ShellRequest`.
+/// Downstream consumers (testgen, fidelity classification, DryRun enforcement)
+/// use this instead of command-string heuristics.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ShellProducerSemantics {
+    /// Originating API (e.g., "git.ls_files", "github.gist.create").
+    pub producer: String,
+    /// Hermetic vs external classification.
+    pub hermeticity: Hermeticity,
+}
+
 /// Shell command request.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ShellRequest {
@@ -240,6 +265,9 @@ pub struct ShellRequest {
     /// require live prompts and browser URLs.
     #[serde(default, skip_serializing_if = "is_false")]
     pub passthrough: bool,
+    /// Producer-level semantic classification. `None` for raw/generic shell commands.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub semantics: Option<ShellProducerSemantics>,
 }
 
 /// Shell command response.
@@ -264,6 +292,7 @@ impl ShellRequest {
             stdin: None,
             timeout_ms: None,
             passthrough: false,
+            semantics: None,
         }
     }
 
@@ -311,6 +340,27 @@ impl ShellRequest {
     pub fn passthrough(mut self, enabled: bool) -> Self {
         self.passthrough = enabled;
         self
+    }
+
+    /// Set producer-level semantic classification.
+    pub fn with_semantics(mut self, producer: impl Into<String>, hermeticity: Hermeticity) -> Self {
+        self.semantics = Some(ShellProducerSemantics {
+            producer: producer.into(),
+            hermeticity,
+        });
+        self
+    }
+
+    /// Returns `true` if this request is classified as hermetic.
+    /// Returns `false` if classified as external or unclassified.
+    pub fn is_hermetic(&self) -> bool {
+        matches!(
+            self.semantics,
+            Some(ShellProducerSemantics {
+                hermeticity: Hermeticity::Hermetic,
+                ..
+            })
+        )
     }
 
     /// Wrap this request in a [`TransportRequest::Shell`].
