@@ -834,9 +834,12 @@ fn collect_pipeline_params(typed: &TypedProject) -> Vec<PipelineParam> {
 fn collect_available_profiles(typed: &TypedProject) -> Vec<String> {
     let mut profiles = Vec::new();
     for module in &typed.modules {
+        let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             if let Item::ProfileDef(def) = &item.node {
-                profiles.push(def.name.clone());
+                // Use fully-qualified name (module.profile_name) to avoid
+                // ambiguity when multiple modules define the same profile name.
+                profiles.push(format!("{module_name}.{}", def.name));
             }
         }
     }
