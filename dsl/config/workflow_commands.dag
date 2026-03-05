@@ -45,6 +45,15 @@ data workflow_commands: List<WorkflowCommandSet> = [
     ]
   },
   {
+    workflow: "sdlc",
+    commands: [
+      { node_id: "sdlc.compilation_ensure", label: "compilation ensure", program: "cargo", args: ["build", "--workspace", "--bins"] },
+      { node_id: "sdlc.codegen_ensure", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-codegen-dag"] },
+      { node_id: "sdlc.intake", label: "sdlc intake check", program: "cargo", args: ["run", "-p", "daglang-cli", "--", "check", "dsl/workflows/sdlc.dag"] },
+      { node_id: "sdlc.worker", label: "sdlc worker check", program: "cargo", args: ["run", "-p", "daglang-cli", "--", "check", "dsl/funcs/sdlc_worker.dag"] }
+    ]
+  },
+  {
     workflow: "gist",
     commands: [
       { node_id: "gist.compilation_ensure", label: "compilation ensure", program: "cargo", args: ["build", "--workspace", "--bins"] },

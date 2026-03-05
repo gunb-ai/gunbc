@@ -35,6 +35,15 @@ data workflow_variants: List<WorkflowVariantDef> = [
     namespace: "test_all",
     is_tool: false
   },
+  {
+    canonical_name: "sdlc",
+    aliases: ["sdlc_worker", "sdlc-worker"],
+    file: "sdlc.dag",
+    pipeline: "sdlc",
+    mode: None,
+    namespace: "sdlc",
+    is_tool: false
+  },
 
   // Tool workflow variants
   {

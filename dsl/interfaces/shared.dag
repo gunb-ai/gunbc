@@ -1,0 +1,18 @@
+// interfaces/shared.dag -- Shared interface contract helper types.
+//
+// Single source of truth for common capability contract record shapes used
+// across provider-fungible interface definitions.
+
+module interfaces.shared
+
+import std.behavioral { OperationBehavior, FailureMode }
+
+type CapabilityBehaviorContract {
+  capability: String
+  behavior: OperationBehavior
+}
+
+type CapabilityFailureContract {
+  capability: String
+  failures: List<FailureMode>
+}

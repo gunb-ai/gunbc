@@ -125,6 +125,7 @@ pub fn expected_dsl_files_sorted() -> Vec<&'static str> {
         "interfaces/credential_provider.dag",
         "interfaces/issue_provider.dag",
         "interfaces/outcome_ledger.dag",
+        "interfaces/shared.dag",
         "interfaces/signal_store.dag",
         "pipelines/ci.dag",
         "pipelines/cloud_e2e.dag",

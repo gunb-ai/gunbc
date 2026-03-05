@@ -33,7 +33,7 @@ import interfaces.signal_store { SignalStore }
 import interfaces.artifact_store { ArtifactStore }
 import interfaces.agent_provider { AgentProvider }
 import extdeps.github.pull_requests { PullRequest }
-import extdeps.cargo { Cargo }
+import extdeps.cargo { Build }
 import extdeps.git { git.Core }
 import tools.design { generate_design, review_design }
 import shared.dag_util { aggregate_results, format_report, stage_result }
@@ -411,10 +411,10 @@ pipeline sdlc
     )
 
     // D10: Run cargo test on the PR branch
-    test_result = Cargo.Test()
+    test_result = Build.Test()
 
     // D10: Run cargo clippy on the PR branch
-    clippy_result = Cargo.Clippy()
+    clippy_result = Build.Clippy()
 
     // Post test results as issue comment
     ci_comment = issues.comment(

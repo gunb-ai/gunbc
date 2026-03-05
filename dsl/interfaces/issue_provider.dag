@@ -21,6 +21,7 @@ import std.behavioral {
 }
 import std.coordination { DeliveryGuarantee }
 import std.capability { CapabilityRequirement, InfraScope, AccessLevel }
+import interfaces.shared { CapabilityBehaviorContract, CapabilityFailureContract }
 
 // IssueEvent represents a single event in an issue's history.
 type IssueEvent {

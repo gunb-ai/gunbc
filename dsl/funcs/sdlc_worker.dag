@@ -31,8 +31,9 @@ import interfaces.issue_provider { IssueProvider }
 import interfaces.claim_store { ClaimStore }
 import interfaces.outcome_ledger { OutcomeLedger }
 import interfaces.agent_provider { AgentProvider }
-import funcs.sdlc_stages { determine_stage, execute_stage }
+import funcs.sdlc_stages { execute_stage }
 import shared.dag_util { stage_result, aggregate_results, format_report }
+import std.state_machines { determine_stage }
 import std.types {
     TrackedIssue, IssueLifecycleStage, IssueState, StageOutcome, OutcomeStatus,
     StageResult, Summary, NonEmptyStr
@@ -68,6 +69,8 @@ fn make_run_key(owner: String, repo: String, number: Int, stage: IssueLifecycleS
 // (or use --until-stable flag once implemented).
 
 func dispatch_sdlc(
+  auth_token: Secret,
+  api_key: Secret,
   owner: String,
   repo: String,
   worker_id: String,
@@ -122,6 +125,8 @@ func dispatch_sdlc(
       } else {
         // Step 1 (gap analysis): dispatch to multi-stage handler
         stage_outcome = execute_stage(
+          auth_token: auth_token,
+          api_key: api_key,
           issue_id: issue_id,
           stage: stage,
           title: issue.title,
@@ -194,6 +199,8 @@ func dispatch_sdlc(
 
 test worker_dispatches_and_advances_stage {
 
+    input dispatch/prepare.auth_token -> "test-github-token"
+    input dispatch/prepare.api_key -> "test-api-key"
     input dispatch/prepare.owner -> "gunb-ai"
     input dispatch/prepare.repo -> "gunbc"
     input dispatch/prepare.worker_id -> "test-worker-1"
@@ -253,6 +260,8 @@ test worker_dispatches_and_advances_stage {
 
 test worker_skips_on_claim_conflict {
 
+    input dispatch/prepare.auth_token -> "test-github-token"
+    input dispatch/prepare.api_key -> "test-api-key"
     input dispatch/prepare.owner -> "gunb-ai"
     input dispatch/prepare.repo -> "gunbc"
     input dispatch/prepare.worker_id -> "test-worker-2"
@@ -287,6 +296,8 @@ test worker_skips_on_claim_conflict {
 
 test worker_replay_skips_completed_stage {
 
+    input dispatch/prepare.auth_token -> "test-github-token"
+    input dispatch/prepare.api_key -> "test-api-key"
     input dispatch/prepare.owner -> "gunb-ai"
     input dispatch/prepare.repo -> "gunbc"
     input dispatch/prepare.worker_id -> "test-worker-3"
@@ -328,6 +339,8 @@ test worker_replay_skips_completed_stage {
 
 test worker_retries_failed_stage {
 
+    input dispatch/prepare.auth_token -> "test-github-token"
+    input dispatch/prepare.api_key -> "test-api-key"
     input dispatch/prepare.owner -> "gunb-ai"
     input dispatch/prepare.repo -> "gunbc"
     input dispatch/prepare.worker_id -> "test-worker-4"
