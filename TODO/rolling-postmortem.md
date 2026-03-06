@@ -22,6 +22,10 @@
 | RP-006 | Long-running exhaustive auto-testgen validation made `make test-all` appear hung. | `gunbc_dag::testgen_dag::dag_test_discovery::comprehensive_auto_testgen_pipeline_validation` (~1398s debug runtime). | Developer feedback loop degraded; real failures masked by wall-clock cost. | Open (currently mitigated via `#[ignore]`) |
 | RP-007 | Test size tiers were previously unclear for fast triage loops; explicit XS/S/M/L/XL targets now exist. | `dsl/config/build_targets.dag` and generated `Makefile` include `test-xs/s/m/l/xl` plus aliases. | Without this, developers overrun local loops and skip tests ad hoc. | Resolved |
 | RP-008 | Test-runtime sizing still relies on coarse heuristics, not measured per-test budgets. | `core/test/src/fermi.rs` hardcoded cost timeouts + `gunbc-dag/src/testgen_dag/dag_test_discovery.rs` `profile_fermi_cost` heuristic mapping. | Misclassified tests can be unexpectedly slow or skipped, reducing confidence in target labels. | Open |
+| RP-009 | CI YAML generation bypassed `config.ci` and hardcoded cache/env/trigger policy in `tools/cigen.dag`, including `target/` in cache paths. | `dsl/tools/cigen.dag` previously inlined GitHub/GitLab cache sections; `dsl/config/ci.dag` and `core/ir/src/transport/ci/render.rs` already modeled a smaller cache. | Policy drift produced oversized CI caches and runner disk exhaustion (`No space left on device`). | Resolved on branch; keep regression test |
+| RP-010 | CI provider schema is still modeled anemically in DSL: `tools/cigen.dag` renders YAML via string concatenation instead of building typed `Workflow`/`Pipeline` values from `extdeps.github_actions` / `extdeps.gitlab_ci`. | `dsl/extdeps/github_actions.dag`, `dsl/extdeps/gitlab_ci.dag`, and `dsl/tools/cigen.dag`. | Static policy can still drift into render helpers, and provider-specific invariants stay weakly enforced. | Open |
+| RP-011 | CI discovery still crosses the DAG boundary as raw shell text (`tool_command`, `bootstrap_script`) rather than typed steps/commands. | `dsl/tools/cigen.dag` `type CiDiscovery`; `gunbc-app/src/extern_ops.rs` `discover_ci_config`. | Step structure, command semantics, and freshness scope remain stringly and harder to validate minimally. | Open |
+| RP-012 | CI rendering still has duplicate policy surfaces in Rust and DSL. | `core/ir/src/transport/ci/render.rs` `CacheConfig::rust()` vs `dsl/config/ci.dag` + `dsl/tools/cigen.dag`. | Parallel render paths invite future drift; the Rust renderer can silently diverge from generated CI policy. | Open (next PR: migrate/delete Rust-side CI rendering path) |
 
 ## Incident Ledger
 
@@ -63,6 +67,9 @@ Lane status snapshot:
 4. RC-P1-004: Add stale-path/fixture drift checks for key compile-command tests.
 5. RC-P1-005: Decompose monolithic exhaustive tests into bounded shards (or explicit integration workflows) so default test targets remain predictable and interactive.
 6. RC-P1-006: Require explicit justification + annotation for any test expected to exceed normal local feedback budgets.
+7. RC-P1-007: Finish CI modeling cleanup by deleting string-built provider YAML in `tools/cigen.dag` and rendering from typed CI values end-to-end.
+8. RC-P1-008: Migrate or delete `core/ir/src/transport/ci/render.rs` so CI policy has exactly one source of truth in the DSL/config path.
+9. RC-P1-009: Replace raw `CiDiscovery.tool_command` / `bootstrap_script` strings with typed CI step inputs so cache/freshness/step scope can be validated structurally.
 
 ### P2 (workflow hygiene)
 

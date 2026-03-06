@@ -24,9 +24,16 @@ import extdeps.yaml {
   yaml_indented_item, yaml_sequence_block
 }
 import extdeps.github_actions {
+  Checkout, EnvVar, Permission, Trigger,
   checkout_action, rust_toolchain_action, cache_action, output_dir
 }
-import extdeps.gitlab_ci { default_image, output_path }
+import extdeps.gitlab_ci { output_path }
+import config.ci {
+  ci_cache_key, ci_cache_paths, ci_cache_restore_keys, ci_checkout, ci_env,
+  ci_generator, ci_gitlab_cache_key, ci_gitlab_cache_paths, ci_gitlab_image,
+  ci_permissions, ci_regen_command, ci_runner, ci_stages, ci_timeout_minutes,
+  ci_trigger, ci_workflow_name
+}
 
 // ── Extern bridge ──────────────────────────────────────────────────
 
@@ -44,38 +51,30 @@ fn gha_secret_ref(name: String) -> String {
   "$\{\{ secrets.{name} \}\}"
 }
 
-fn gha_runner_os_ref() -> String {
-  "$\{\{ runner.os \}\}"
-}
-
-fn gha_hashfiles_ref(pattern: String) -> String {
-  "$\{\{ hashFiles('{pattern}') \}\}"
-}
-
 // ── GitHub Actions: rendering ──────────────────────────────────────
 
-fn render_gha_trigger(push_branches: List<String>, pr_branches: List<String>) -> String {
+fn render_gha_trigger(trigger: Trigger) -> String {
   "on:\n" +
-    yaml_sequence_block(header: "  push:\n    branches:", level: 3, items: push_branches) +
+    yaml_sequence_block(header: "  push:\n    branches:", level: 3, items: trigger.push_branches) +
     "\n" +
-    yaml_sequence_block(header: "  pull_request:\n    branches:", level: 3, items: pr_branches)
+    yaml_sequence_block(header: "  pull_request:\n    branches:", level: 3, items: trigger.pr_branches)
 }
 
-fn render_gha_permissions(perms: List<{ scope: String, level: String }>) -> String {
+fn render_gha_permissions(perms: List<Permission>) -> String {
   let lines = perms
     |> map(p => yaml_indented_mapping(level: 1, key: p.scope, value: p.level))
     |> join("\n")
   "permissions:\n{lines}"
 }
 
-fn render_gha_env(env: List<{ key: String, value: String }>) -> String {
+fn render_gha_env(env: List<EnvVar>) -> String {
   let lines = env
     |> map(e => yaml_indented_mapping(level: 1, key: e.key, value: e.value))
     |> join("\n")
   "env:\n{lines}"
 }
 
-fn render_gha_step_env(env: List<{ key: String, value: String }>) -> String {
+fn render_gha_step_env(env: List<EnvVar>) -> String {
   if env |> count() == 0 { return "" }
   let lines = env
     |> map(e => yaml_indented_mapping(level: 5, key: e.key, value: e.value))
@@ -87,16 +86,24 @@ fn render_gha_uses_step(name: String, action: String, with_block: String) -> Str
   "      - name: {name}\n        uses: {action}{with_block}"
 }
 
-fn render_gha_run_step(name: String, command: String, env: List<{ key: String, value: String }>) -> String {
+fn render_gha_run_step(name: String, command: String, env: List<EnvVar>) -> String {
   let env_block = render_gha_step_env(env: env)
   "      - name: {name}\n        run: {command}{env_block}"
 }
 
-fn render_checkout_step() -> String {
+fn render_checkout_step(checkout: Checkout) -> String {
+  let fetch_depth_line = match checkout.fetch_depth {
+    null => ""
+    depth => "\n          fetch-depth: {depth}"
+  }
+  let submodules_line = match checkout.submodules {
+    null => ""
+    submodules => "\n          submodules: {submodules}"
+  }
   render_gha_uses_step(
     name: "Checkout",
     action: checkout_action,
-    with_block: "\n        with:\n          fetch-depth: 1"
+    with_block: "\n        with:{fetch_depth_line}{submodules_line}"
   )
 }
 
@@ -108,18 +115,17 @@ fn render_rust_setup_step() -> String {
   )
 }
 
-fn render_cache_step() -> String {
-  let cache_key = "cargo-{gha_runner_os_ref()}-{gha_hashfiles_ref(pattern: "**/Cargo.lock")}"
-  let restore_key = "cargo-{gha_runner_os_ref()}-"
-  let paths = ["~/.cargo/bin/", "~/.cargo/registry/index/", "~/.cargo/registry/cache/", "~/.cargo/git/db/", "target/"]
+fn render_cache_step(paths: List<String>, key: String, restore_keys: List<String>) -> String {
   let path_block = paths
     |> map(p => yaml_indent(level: 6, text: p))
     |> join("\n")
-  let restore_block = yaml_indent(level: 6, text: restore_key)
+  let restore_block = restore_keys
+    |> map(k => yaml_indent(level: 6, text: k))
+    |> join("\n")
   render_gha_uses_step(
     name: "Cache Cargo",
     action: cache_action,
-    with_block: "\n        with:\n          path: |\n{path_block}\n\n          key: {cache_key}\n          restore-keys: |\n{restore_block}"
+    with_block: "\n        with:\n          path: |\n{path_block}\n\n          key: {key}\n          restore-keys: |\n{restore_block}"
   )
 }
 
@@ -136,9 +142,13 @@ fn render_ci_run_step(discovery: CiDiscovery) -> String {
 }
 
 fn render_github_steps(discovery: CiDiscovery) -> String {
-  let checkout = render_checkout_step()
+  let checkout = render_checkout_step(checkout: ci_checkout)
   let setup = render_rust_setup_step()
-  let cache = render_cache_step()
+  let cache = render_cache_step(
+    paths: ci_cache_paths,
+    key: ci_cache_key,
+    restore_keys: ci_cache_restore_keys
+  )
   let bootstrap = match discovery.bootstrap_script {
     null => ""
     script => "\n\n" + render_bootstrap_step(script: script)
@@ -148,27 +158,18 @@ fn render_github_steps(discovery: CiDiscovery) -> String {
 }
 
 fn render_github_workflow(discovery: CiDiscovery) -> String {
-  let header = yaml_header(generator: "gunbc-codegen", regen_command: "cargo run -p gunbc-app --bin gunbc-codegen -- cigen")
-  let trigger = render_gha_trigger(
-    push_branches: ["main"],
-    pr_branches: ["main"]
-  )
-  let perms = render_gha_permissions(perms: [
-    { scope: "contents", level: "read" },
-    { scope: "id-token", level: "write" }
-  ])
-  let env = render_gha_env(env: [
-    { key: "CARGO_TERM_COLOR", value: "always" },
-    { key: "RUSTFLAGS", value: "-D warnings" }
-  ])
+  let header = yaml_header(generator: ci_generator, regen_command: ci_regen_command)
+  let trigger = render_gha_trigger(trigger: ci_trigger)
+  let perms = render_gha_permissions(perms: ci_permissions)
+  let env = render_gha_env(env: ci_env)
   let steps = render_github_steps(discovery: discovery)
-  let job = "  ci:\n    runs-on: ubuntu-latest\n    timeout-minutes: 30\n    steps:\n{steps}"
-  "{header}\n\nname: ci\n\n{trigger}\n\n{perms}\n\n{env}\n\njobs:\n{job}\n"
+  let job = "  {ci_workflow_name}:\n    runs-on: {ci_runner.id}\n    timeout-minutes: {ci_timeout_minutes}\n    steps:\n{steps}"
+  "{header}\n\nname: {ci_workflow_name}\n\n{trigger}\n\n{perms}\n\n{env}\n\njobs:\n{job}\n"
 }
 
 // ── GitLab CI: rendering ───────────────────────────────────────────
 
-fn render_gitlab_variables(env: List<{ key: String, value: String }>, secrets: List<String>) -> String {
+fn render_gitlab_variables(env: List<EnvVar>, secrets: List<String>) -> String {
   let env_lines = env
     |> map(e => yaml_indented_mapping(level: 1, key: e.key, value: "\"{e.value}\""))
     |> join("\n")
@@ -182,27 +183,31 @@ fn render_gitlab_variables(env: List<{ key: String, value: String }>, secrets: L
   }
 }
 
-fn render_gitlab_cache() -> String {
-  "cache:\n  key: cargo-$\{CI_COMMIT_REF_SLUG\}\n  paths:\n    - .cargo/\n    - target/"
+fn render_gitlab_cache(paths: List<String>, key: String) -> String {
+  let lines = paths
+    |> map(p => yaml_indented_item(level: 2, value: p))
+    |> join("\n")
+  "cache:\n  key: {key}\n  paths:\n{lines}"
 }
 
-fn render_gitlab_job(tool_command: String) -> String {
-  "ci:\n  stage: ci\n  script:\n    - {tool_command}"
+fn render_gitlab_job(job_name: String, stage_name: String, tool_command: String) -> String {
+  "{job_name}:\n  stage: {stage_name}\n  script:\n    - {tool_command}"
 }
 
 fn render_gitlab_pipeline(discovery: CiDiscovery) -> String {
-  let header = yaml_header(generator: "gunbc-codegen", regen_command: "cargo run -p gunbc-app --bin gunbc-codegen -- cigen")
+  let header = yaml_header(generator: ci_generator, regen_command: ci_regen_command)
   let vars = render_gitlab_variables(
-    env: [
-      { key: "CARGO_TERM_COLOR", value: "always" },
-      { key: "RUSTFLAGS", value: "-D warnings" }
-    ],
+    env: ci_env,
     secrets: discovery.secrets
   )
-  let stages = yaml_sequence_block(header: "stages:", level: 1, items: ["ci"])
-  let cache = render_gitlab_cache()
-  let job = render_gitlab_job(tool_command: discovery.tool_command)
-  "{header}\n\nimage: {default_image}\n\n{vars}\n\n{stages}\n\n{cache}\n\n{job}\n"
+  let stages = yaml_sequence_block(header: "stages:", level: 1, items: ci_stages)
+  let cache = render_gitlab_cache(paths: ci_gitlab_cache_paths, key: ci_gitlab_cache_key)
+  let job = render_gitlab_job(
+    job_name: ci_workflow_name,
+    stage_name: ci_stages |> first() ?? "ci",
+    tool_command: discovery.tool_command
+  )
+  "{header}\n\nimage: {ci_gitlab_image}\n\n{vars}\n\n{stages}\n\n{cache}\n\n{job}\n"
 }
 
 // ── Output paths ───────────────────────────────────────────────────

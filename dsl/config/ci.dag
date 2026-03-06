@@ -14,7 +14,7 @@ import extdeps.github_actions {
   EnvVar, Permission, RunnerImage, Trigger, Checkout, Cache,
   ubuntu_latest
 }
-import extdeps.gitlab_ci { CacheConfig }
+import extdeps.gitlab_ci { CacheConfig, default_image }
 
 // ── Trigger ─────────────────────────────────────────────────────────
 
@@ -52,6 +52,22 @@ data ci_cache_paths: List<String> = [
   "~/.cargo/git/db/"
 ]
 
+data ci_cache_key: String = "cargo-$\{\{ runner.os \}\}-$\{\{ hashFiles('**/Cargo.lock') \}\}"
+data ci_cache_restore_keys: List<String> = ["cargo-$\{\{ runner.os \}\}-"]
+data ci_gitlab_cache_paths: List<String> = [".cargo/"]
+data ci_gitlab_cache_key: String = "cargo-$\{CI_COMMIT_REF_SLUG\}"
+
+data ci_github_cache: Cache = {
+  key: ci_cache_key,
+  paths: ci_cache_paths,
+  restore_keys: ci_cache_restore_keys
+}
+
+data ci_gitlab_cache: CacheConfig = {
+  key: ci_gitlab_cache_key,
+  paths: ci_gitlab_cache_paths
+}
+
 // ── Checkout ────────────────────────────────────────────────────────
 
 data ci_checkout: Checkout = {
@@ -64,3 +80,5 @@ data ci_checkout: Checkout = {
 data ci_workflow_name: String = "ci"
 data ci_generator: String = "gunbc-codegen"
 data ci_regen_command: String = "cargo run -p gunbc-app --bin gunbc-codegen -- cigen"
+data ci_stages: List<String> = ["ci"]
+data ci_gitlab_image: String = default_image
