@@ -2174,6 +2174,8 @@ pub struct LoweringConfig<'a> {
     pub active_profile: Option<&'a str>,
     /// Entry module for single-tool lowering.
     pub entry_module: Option<&'a str>,
+    /// Permit data-only lowering to produce an empty DAG plus metadata.
+    pub allow_empty_dag: bool,
 }
 
 /// Bundled lower-stage outputs for callers that need more than the DAG itself.
@@ -2204,6 +2206,7 @@ pub fn lower_to_output_with_config(
         config.emit_collection_nodes,
         config.active_profile,
         config.entry_module,
+        config.allow_empty_dag,
     )
 }
 
@@ -2342,6 +2345,7 @@ pub fn lower_typed_project_for_modules_with_entry_and_collection_nodes(
             active_profile,
             entry_module,
             emit_collection_nodes: true,
+            ..Default::default()
         },
     )
 }
@@ -2352,6 +2356,7 @@ fn lower_typed_project_impl(
     emit_collection_nodes: bool,
     active_profile: Option<&str>,
     entry_module: Option<&str>,
+    allow_empty_dag: bool,
 ) -> Result<LowerOutput, LowerError> {
     let mut builder = DagBuilder::new();
     let mut endpoints_by_full = HashMap::<(String, String), LoweredEndpoint>::new();
@@ -2572,7 +2577,7 @@ fn lower_typed_project_impl(
     )?;
     add_interface_contract_verification_nodes(&mut builder, project, &resource_registry);
 
-    if builder.dag.nodes.is_empty() {
+    if builder.dag.nodes.is_empty() && !allow_empty_dag {
         return Err(LowerError::NoLowerableItems);
     }
 

@@ -14,10 +14,11 @@ use daglang_lower::{lower_to_output_with_config, LowerError, LoweredOp, Lowering
 use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
 use daglang_syntax::ast::{Expr, Item, Literal, ModulePath, PipelineDef, StageDef, Stmt};
 use daglang_syntax::parser;
+pub use daglang_typecheck::PipelineParam;
 use daglang_typecheck::{
-    typecheck_module_graph_with_options, PipelineParam, TypeError, TypecheckOptions, TypedProject,
+    typecheck_module_graph_with_options, TypeError, TypecheckOptions, TypedProject,
 };
-use gunbc_ir::{Dag, ProgramSymbolId, ReachableDag, VerifiedDag};
+use gunbc_ir::{Dag, ProgramSymbolId, ReachableDag, TypeRegistry, VerifiedDag};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -144,14 +145,6 @@ pub struct CompileReceipt {
     pub program_ir_digest: String,
     /// SHA-256 of the sorted emit manifest JSON.
     pub emit_manifest_digest: String,
-}
-
-/// A pipeline-level parameter declaration from `param name: Type = default`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PipelineParam {
-    pub name: String,
-    pub type_id: String,
-    pub default_value: Option<String>,
 }
 
 /// Structured compiler error preserving phase-specific context.
@@ -403,20 +396,17 @@ pub fn compile_data_from_sources(
         },
     )
     .map_err(CompileError::Typecheck)?;
-    // Lowering is best-effort: data-only modules have no callable/pipeline
-    // declarations, so the lowerer correctly returns NoLowerableItems.
     let mut fns = HashMap::new();
-    let data_values = match daglang_lower::lower_to_output(&typed) {
-        Ok(lower_output) => {
-            extract_fn_bodies_from_dag(&lower_output.dag, &mut fns);
-            lower_output.data_values
-        }
-        Err(daglang_lower::LowerError::NoLowerableItems) => {
-            // Data-only module — no lowered dag, but constants are still available.
-            daglang_lower::build_data_values(&typed)
-        }
-        Err(e) => return Err(CompileError::Lower(e)),
-    };
+    let lower_output = daglang_lower::lower_to_output_with_config(
+        &typed,
+        &daglang_lower::LoweringConfig {
+            allow_empty_dag: true,
+            ..Default::default()
+        },
+    )
+    .map_err(CompileError::Lower)?;
+    extract_fn_bodies_from_dag(&lower_output.dag, &mut fns);
+    let data_values = lower_output.data_values;
 
     let pipelines = extract_pipelines_from_typed(&typed);
 
@@ -464,18 +454,14 @@ pub fn compile_data_from_module(
         .replace('/', ".");
     let lower_config = daglang_lower::LoweringConfig {
         entry_module: Some(&entry_module),
+        allow_empty_dag: true,
         ..Default::default()
     };
-    let data_values = match daglang_lower::lower_to_output_with_config(&typed, &lower_config) {
-        Ok(lower_output) => {
-            extract_fn_bodies_from_dag(&lower_output.dag, &mut fns);
-            lower_output.data_values
-        }
-        Err(daglang_lower::LowerError::NoLowerableItems) => {
-            daglang_lower::build_data_values(&typed)
-        }
-        Err(e) => return Err(CompileError::Lower(e)),
-    };
+    let lower_output =
+        daglang_lower::lower_to_output_with_config(&typed, &lower_config)
+            .map_err(CompileError::Lower)?;
+    extract_fn_bodies_from_dag(&lower_output.dag, &mut fns);
+    let data_values = lower_output.data_values;
 
     let pipelines = extract_pipelines_from_typed(&typed);
 
@@ -523,7 +509,9 @@ fn extract_fn_bodies_from_dag(
 }
 
 /// Walk all modules in a typed project and extract pipeline definitions.
-fn extract_pipelines_from_typed(typed: &TypedProject<'_>) -> HashMap<String, Vec<PipelineStageInfo>> {
+fn extract_pipelines_from_typed(
+    typed: &TypedProject<'_>,
+) -> HashMap<String, Vec<PipelineStageInfo>> {
     let mut pipelines = HashMap::new();
     for module in typed.modules() {
         for item in &module.ast.items {
@@ -732,6 +720,7 @@ pub fn compile_from_module_graph_with_options(
             emit_collection_nodes: options.emit_collection_nodes,
             active_profile: options.profile.as_deref(),
             entry_module: entry_module_name.as_deref(),
+            ..Default::default()
         },
     )
     .map_err(CompileError::Lower)?;
@@ -749,8 +738,7 @@ pub fn compile_from_module_graph_with_options(
             inferred_entrypoints,
             data_values,
         } = lower_output;
-        let verified_dag =
-            VerifiedDag::verify(lowered_dag).map_err(CompileError::Verification)?;
+        let verified_dag = VerifiedDag::verify(lowered_dag).map_err(CompileError::Verification)?;
 
         let derived = derive_artifacts(&verified_dag).map_err(CompileError::Derive)?;
 

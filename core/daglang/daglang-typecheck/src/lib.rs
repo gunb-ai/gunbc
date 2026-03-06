@@ -24,8 +24,8 @@ use std::collections::{HashMap, HashSet};
 
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{
-    Expr, Field, Item, Literal, ModulePath, Param, PipelineDef, ProvidesClause, Refinement,
-    Stmt, TypeBody, TypeExpr, UsesClause,
+    Expr, Field, Item, Literal, ModulePath, Param, PipelineDef, ProvidesClause, Refinement, Stmt,
+    TypeBody, TypeExpr, UsesClause,
 };
 use daglang_syntax::ast_utils::{
     resource_type_name, service_call_lookup_keys, type_expr_to_string, walk_stmts,
@@ -343,10 +343,7 @@ pub enum TypeError {
         resource_type: String,
     },
     /// Service config declares an unrecognized auth scheme.
-    InvalidAuthScheme {
-        service: String,
-        scheme: String,
-    },
+    InvalidAuthScheme { service: String, scheme: String },
     /// if/else branches produce incompatible types.
     BranchTypeMismatch {
         then_type: String,
@@ -855,7 +852,9 @@ impl TypeError {
 }
 
 /// Typecheck a discovered module graph and produce typed module signatures.
-pub fn typecheck_module_graph<'a>(graph: &'a ModuleGraph) -> Result<TypedProject<'a>, Vec<TypeError>> {
+pub fn typecheck_module_graph<'a>(
+    graph: &'a ModuleGraph,
+) -> Result<TypedProject<'a>, Vec<TypeError>> {
     typecheck_module_graph_with_options(graph, TypecheckOptions::default())
 }
 
@@ -1750,8 +1749,7 @@ fn collect_sum_type_variants(modules: &[ResolvedModule]) -> HashMap<String, Hash
         for item in &module.ast.items {
             if let Item::TypeDef(def) = &item.node {
                 if let daglang_syntax::ast::TypeBody::Sum(variants) = &def.body {
-                    let names: HashSet<String> =
-                        variants.iter().map(|v| v.name.clone()).collect();
+                    let names: HashSet<String> = variants.iter().map(|v| v.name.clone()).collect();
                     variants_map.insert(def.name.clone(), names);
                 }
             }
@@ -3173,11 +3171,8 @@ fn infer_expr_type(
                 Some(ref otherwise) => {
                     match (then_ty.display_name(), otherwise.display_name()) {
                         (Some(ref t), Some(ref e)) => {
-                            let (compat, confident) = are_branch_types_compatible(
-                                t,
-                                e,
-                                infer_context.variant_parents,
-                            );
+                            let (compat, confident) =
+                                are_branch_types_compatible(t, e, infer_context.variant_parents);
                             if compat {
                                 // Preserve pre-WS3-5 behavior: return then_ty when
                                 // names match exactly, Unknown otherwise.
@@ -3335,8 +3330,7 @@ fn are_branch_types_compatible(
     let b_known = registry.resolve_type(&b_id).is_some();
     if a_known || b_known {
         // At least one type is a known primitive — use registry for compatibility
-        let compat =
-            registry.is_compatible(&a_id, &b_id) || registry.is_compatible(&b_id, &a_id);
+        let compat = registry.is_compatible(&a_id, &b_id) || registry.is_compatible(&b_id, &a_id);
         (compat, true)
     } else {
         // Both types are DSL-defined and unknown to the IR registry.
@@ -3523,10 +3517,7 @@ fn validate_signature_map(
 
 /// Check whether an auth scheme string is in the recognized set.
 fn is_valid_auth_scheme(scheme: &str) -> bool {
-    matches!(
-        scheme,
-        "BearerToken" | "Basic" | "ApiKey" | "None"
-    ) || scheme.starts_with("Header(")
+    matches!(scheme, "BearerToken" | "Basic" | "ApiKey" | "None") || scheme.starts_with("Header(")
 }
 
 fn validate_service_interface_conformance(

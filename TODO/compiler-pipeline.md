@@ -547,9 +547,9 @@ All main-path stage APIs (`parse`, `discover_module_graph`, `typecheck_strict`, 
 **Impact**: Eliminates forced copy. `ModuleGraph` stays alive in the caller (driver). `TypedProject<'a>` is a lifetime-scoped overlay, not a standalone blob.
 **Verify**: `cargo test --workspace` + `TypedModule` struct has no `path`, `module_path`, `imports`, or `ast` fields.
 **Note**: Subsumes CP-32. Implement together.
-**Current branch note (2026-03-06)**: The borrow landed, but `TypedModule`
-still clones module facts. Treat CP-43/CP-32 as only partially complete until
-the typed overlay stops duplicating `ResolvedModule` data.
+**Current branch note (2026-03-06)**: Landed. `TypedProject` now keeps the
+canonical `ModuleGraph`, and `TypedModule` stores only `graph_index` plus
+`signatures`, so CP-32 is fully subsumed.
 
 ### CP-44: LowerOutput replaces driver re-extraction (M)
 
@@ -559,10 +559,11 @@ the typed overlay stops duplicating `ResolvedModule` data.
 **Impact**: Eliminates 6 post-hoc extraction functions from the driver. Each piece of data is computed once, during its canonical stage.
 **Verify**: `cargo test --workspace` + `grep -r 'extract_output_paths\|infer_entrypoints\|build_data_values' core/daglang/daglang-driver/` returns 0 hits.
 **Note**: Subsumes CP-33. Implement together.
-**Current branch note (2026-03-06)**: `LowerOutput` now exists and the main
-compile path consumes bundled `output_paths`, `inferred_entrypoints`, and
-`data_values`. Helper/embedded paths still use some legacy extraction helpers,
-so the single-owner cleanup is not fully finished yet.
+**Current branch note (2026-03-06)**: Landed. `LowerOutput` now owns
+`output_paths`/`inferred_entrypoints`/`data_values`, `TypedProject` owns
+`pipeline_params`/`dsl_type_registry`/`available_profiles`, and the driver no
+longer calls `build_data_values()`, `extract_output_paths()`, or
+`infer_entrypoints()`.
 
 ### CP-45: Consolidate Execute entry points into one (S)
 
@@ -737,7 +738,7 @@ Some later items subsume earlier ones. When implementing, do them together:
 
 | Later item | Subsumes | Reason |
 |------------|----------|--------|
-| CP-43 (typecheck borrows ModuleGraph) | CP-32 (eliminate TypedModule duplication) | Borrowing removes the forced move; full subsumption only lands once `TypedModule` stops cloning module facts |
+| CP-43 (typecheck borrows ModuleGraph) | CP-32 (eliminate TypedModule duplication) | `TypedModule` now stores only graph indices plus signatures, so module facts have a single owner |
 | CP-44 (LowerOutput) | CP-33 (compute CompileOutput fields once) | LowerOutput bundles the computed fields at source |
 | CP-46 (structured LowerError) | CP-14 (source spans on lowerer errors) | Structured enum with spans covers the span requirement |
 | CP-47 (RuntimeBindings) | Part of CP-40 (ExternRegistry) | CP-40 creates `ExternId`; full subsumption only lands once `RuntimeBindings` binds by ID instead of string lookup |

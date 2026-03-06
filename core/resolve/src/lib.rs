@@ -10,6 +10,7 @@ pub use fs_env::{add_fs_env_root_node, wire_fs_env_write_edges};
 pub use resolve::{resolve_lowered_dag_with, ResolveError};
 
 use gunbc_exec::DynOp;
+use gunbc_ir::ProgramSymbolId;
 
 /// Trait for resolving extern symbols to concrete `DynOp` implementations.
 ///
@@ -35,8 +36,9 @@ impl ExternResolver for NullExternResolver {
 ///
 /// Replaces the trait-based `ExternResolver` with a data-driven lookup table.
 /// Implements `ExternResolver` as a bridge during incremental migration.
+#[derive(Debug, Clone)]
 pub struct RuntimeBindings {
-    bindings: std::collections::HashMap<(String, String), DynOp>,
+    bindings: std::collections::HashMap<ProgramSymbolId, DynOp>,
 }
 
 impl RuntimeBindings {
@@ -47,14 +49,27 @@ impl RuntimeBindings {
         }
     }
 
+    /// Register a concrete operation for a canonical program symbol.
+    pub fn register_symbol(&mut self, symbol: impl Into<ProgramSymbolId>, op: DynOp) {
+        self.bindings.insert(symbol.into(), op);
+    }
+
     /// Register a concrete operation for an extern symbol.
     pub fn register(&mut self, module: impl Into<String>, name: impl Into<String>, op: DynOp) {
-        self.bindings.insert((module.into(), name.into()), op);
+        let module = module.into();
+        let name = name.into();
+        self.register_symbol(ProgramSymbolId::from_parts(&module, &name), op);
+    }
+
+    /// Look up a binding by canonical symbol.
+    pub fn get_symbol(&self, symbol: &ProgramSymbolId) -> Option<&DynOp> {
+        self.bindings.get(symbol)
     }
 
     /// Look up a binding by (module, name).
     pub fn get(&self, module: &str, name: &str) -> Option<&DynOp> {
-        self.bindings.get(&(module.to_string(), name.to_string()))
+        let symbol = ProgramSymbolId::from_parts(module, name);
+        self.get_symbol(&symbol)
     }
 
     /// Check if any bindings are registered.
@@ -72,8 +87,6 @@ impl Default for RuntimeBindings {
 // Bridge: RuntimeBindings satisfies the ExternResolver trait for incremental migration.
 impl ExternResolver for RuntimeBindings {
     fn resolve(&self, module: &str, name: &str) -> Option<DynOp> {
-        self.bindings
-            .get(&(module.to_string(), name.to_string()))
-            .cloned()
+        self.get(module, name).cloned()
     }
 }

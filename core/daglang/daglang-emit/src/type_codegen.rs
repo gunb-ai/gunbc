@@ -815,8 +815,7 @@ pub fn generate_types_for_modules(
     }
 
     for fd in &fn_defs {
-        let mut fn_data_names: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
+        let mut fn_data_names: std::collections::HashSet<String> = std::collections::HashSet::new();
         for dd in &data_defs {
             fn_data_names.insert(dd.name.clone());
         }

@@ -132,14 +132,14 @@ already computed. If the same data appears in two stages, one is redundant.
 
 | What | Canonical owner | Restated in | Fix |
 |------|-----------------|-------------|-----|
-| `path`, `module_path`, `ast` | `ResolvedModule` | `TypedModule` (copied) | TypedModule references by index |
+| `path`, `module_path`, `ast` | `ResolvedModule` | Resolved in current branch | `TypedModule` now references modules by graph index |
 | Callable signatures | `TypedCallableSignature` | Node ports (re-derived from AST) | Derive ports from signatures |
 | Type constraints | Typecheck (rich) | Lower (erased to strings) | Carry `TypeId` on ports |
-| `output_paths` | Lowered DAG | Driver (re-extracted) | Compute once during lower |
-| `pipeline_params` | TypedProject | Driver (re-scanned) | Attach during typecheck |
-| `dsl_type_registry` | TypedProject | Driver (re-extracted) | Compute once during typecheck |
-| `available_profiles` | TypedProject | Driver (re-scanned) | Attach during typecheck |
-| `data_values` | TypedProject | Driver (re-evaluated) | Evaluate once during lower |
+| `output_paths` | Lowered DAG | Resolved in current branch | Computed once during lower |
+| `pipeline_params` | TypedProject | Resolved in current branch | Attached during typecheck |
+| `dsl_type_registry` | TypedProject | Resolved in current branch | Computed once during typecheck |
+| `available_profiles` | TypedProject | Resolved in current branch | Attached during typecheck |
+| `data_values` | Lowered output | Resolved in current branch | Lower computes it once, including data-only helper flows via empty-DAG lowering |
 | Transport triplet structure | Lowerer (`Node.kind`) | Derive (re-parsed from port strings) | Use `Node.kind` directly |
 | Loop pattern structure | Lowerer (created SubDag) | Executor (`detect_loop_pattern()`) | Stamp `LoopInfo` on SubDag |
 | `inferred_entrypoints` | Lowered DAG topology | Driver (re-inferred) | Compute once during lower |
@@ -180,8 +180,6 @@ first" that isn't visible in the types.
 
 | Gap | Current state | Remaining mismatch |
 |-----|---------------|--------------------|
-| TypedProject ownership | `typecheck_module_graph()` now borrows `&ModuleGraph` | `TypedModule` still clones `path`, `module_path`, `imports`, and `ast` instead of referencing canonical module storage |
-| Lower-stage outputs | Main compile path now consumes `LowerOutput` | Helper and embedded compile flows still rely on some legacy extraction helpers, so lower-stage ownership is not fully canonical yet |
 | Diagnostics | Shared `daglang-contract::Diagnostic` exists | `span`/`file` remain optional, and `TypeError`/`LowerError` still flow through `Spanned*` wrappers instead of a single diagnostic path |
 | Verification gate | `VerifiedDag<T>` exists and gates compile output | `VerifiedDag::from_verified()` remains an escape hatch, so proof is not yet forced at every construction site |
 | Runtime bindings | `RuntimeBindings` centralizes extern registration | Bindings are still keyed by `(module, name)` strings and bridge `ExternResolver`; ExternId-keyed total linking is still target-state work |
@@ -1228,7 +1226,7 @@ ModuleGraph  ──>  TypedProject (validated signatures)
 | **Crate** | `core/daglang/daglang-typecheck` |
 | **Entry** | `typecheck_module_graph_with_options(graph, options) -> Result<TypedProject, Vec<TypeError>>` |
 | **Input** | `&ModuleGraph` (all modules with raw ASTs) |
-| **Output** | `TypedProject { modules: Vec<TypedModule> }` |
+| **Output** | `TypedProject { graph, typed_modules, pipeline_params, dsl_type_registry, available_profiles }` |
 
 Validates type references, field access, refinement constraints, interface
 conformance, generics, function signatures, service operations, and pipeline
@@ -1239,11 +1237,9 @@ signatures but does not transform the tree.
 
 ```
 TypedProject
-  +-- modules: Vec<TypedModule>
-        +-- path: PathBuf
-        +-- module_path: ModulePath
-        +-- imports: Vec<ModulePath>
-        +-- ast: SourceFile              (same AST, now validated)
+  +-- graph: &ModuleGraph | ModuleGraph
+  +-- typed_modules: Vec<TypedModule>
+        +-- graph_index: usize
         +-- signatures: Vec<TypedItemSignature>
               +-- Fn(TypedCallableSignature)
               +-- Func(TypedCallableSignature)
@@ -1251,13 +1247,15 @@ TypedProject
               +-- Interface { name, capabilities }
               +-- Pipeline { name, stages, stage_names }
               +-- ...
+  +-- pipeline_params: Vec<PipelineParam>
+  +-- dsl_type_registry: TypeRegistry
+  +-- available_profiles: Vec<String>
 ```
 
 ### Known gaps
 
 | Issue | Severity | Detail |
 |-------|----------|--------|
-| TypedModule duplicates module facts | High | `TypedModule` still clones `path`, `module_path`, `imports`, and `ast` from `ResolvedModule` instead of referencing canonical module storage. |
 | Relaxed utility mode exists | Medium | Some helper paths still typecheck with `allow_unresolved_imports = true` for partial tooling flows; the strict compile path is fail-closed, but the typecheck contract is not uniform yet. |
 | Generic type constraints not fully validated | Medium | Generic instantiation arity is checked, but constraint satisfaction and higher-order function types are not. |
 | Pipe method argument types unchecked | Medium | Pipe method call arguments are not validated against method signatures. |

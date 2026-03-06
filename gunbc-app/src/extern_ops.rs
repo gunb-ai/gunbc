@@ -1,6 +1,7 @@
 //! Explicit extern operation implementations for DSL `extern func` declarations.
 
 use std::collections::{BTreeMap, HashMap};
+use std::sync::OnceLock;
 
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::Value;
@@ -14,8 +15,73 @@ pub struct GunbcExternResolver;
 
 impl ExternResolver for GunbcExternResolver {
     fn resolve(&self, module: &str, name: &str) -> Option<DynOp> {
-        resolve_extern_symbol(module, name)
+        runtime_bindings().resolve(module, name)
     }
+}
+
+fn runtime_bindings() -> &'static gunbc_resolve::RuntimeBindings {
+    static RUNTIME_BINDINGS: OnceLock<gunbc_resolve::RuntimeBindings> = OnceLock::new();
+    RUNTIME_BINDINGS.get_or_init(|| {
+        let mut bindings = gunbc_resolve::RuntimeBindings::new();
+        bindings.register("std.markdown", "render_tree", DynOp::new(RenderTreeOp));
+        bindings.register(
+            "tools.gist",
+            "build_snapshot_content",
+            DynOp::new(BuildSnapshotContentOp),
+        );
+        bindings.register(
+            "tools.makegen",
+            "discover_tools",
+            DynOp::new(DiscoverToolsOp),
+        );
+        bindings.register(
+            "tools.bootstrap",
+            "render_bootstrap_makefile",
+            DynOp::new(GenerateBootstrapMakefileOp),
+        );
+        bindings.register(
+            "tools.bootstrap",
+            "render_bootstrap_gitignore",
+            DynOp::new(GenerateBootstrapGitignoreOp),
+        );
+        bindings.register(
+            "tools.pragma",
+            "render_clippy_toml_content",
+            DynOp::new(RenderPragmaClippyTomlContentOp),
+        );
+        bindings.register(
+            "tools.pragma",
+            "render_disallowed_methods_allowlist_content",
+            DynOp::new(RenderPragmaDisallowedMethodsAllowlistContentOp),
+        );
+        bindings.register(
+            "tools.pragma",
+            "render_pragma_lint_policy_content",
+            DynOp::new(RenderPragmaLintPolicyContentOp),
+        );
+        bindings.register(
+            "tools.cigen",
+            "discover_ci_config",
+            DynOp::new(DiscoverCiConfigOp),
+        );
+        bindings.register(
+            "tools.testgen",
+            "discover_testgen_modules",
+            DynOp::new(DiscoverTestgenModulesOp),
+        );
+        bindings.register(
+            "tools.testgen",
+            "render_testgen_module",
+            DynOp::new(RenderTestgenModuleOp),
+        );
+        bindings.register("tools.infra", "infra", DynOp::new(InfraDispatchOp));
+        bindings.register(
+            "tools.readme",
+            "discover_readme_tools",
+            DynOp::new(DiscoverReadmeToolsOp),
+        );
+        bindings
+    })
 }
 
 /// Build the app-specific runtime bindings table.
@@ -23,65 +89,7 @@ impl ExternResolver for GunbcExternResolver {
 /// This is the data-driven replacement for `GunbcExternResolver`.
 /// All extern symbols are registered with their concrete DynOp implementations.
 pub fn gunbc_runtime_bindings() -> gunbc_resolve::RuntimeBindings {
-    let mut b = gunbc_resolve::RuntimeBindings::new();
-    b.register("std.markdown", "render_tree", DynOp::new(RenderTreeOp));
-    b.register(
-        "tools.gist",
-        "build_snapshot_content",
-        DynOp::new(BuildSnapshotContentOp),
-    );
-    b.register(
-        "tools.makegen",
-        "discover_tools",
-        DynOp::new(DiscoverToolsOp),
-    );
-    b.register(
-        "tools.bootstrap",
-        "render_bootstrap_makefile",
-        DynOp::new(GenerateBootstrapMakefileOp),
-    );
-    b.register(
-        "tools.bootstrap",
-        "render_bootstrap_gitignore",
-        DynOp::new(GenerateBootstrapGitignoreOp),
-    );
-    b.register(
-        "tools.pragma",
-        "render_clippy_toml_content",
-        DynOp::new(RenderPragmaClippyTomlContentOp),
-    );
-    b.register(
-        "tools.pragma",
-        "render_disallowed_methods_allowlist_content",
-        DynOp::new(RenderPragmaDisallowedMethodsAllowlistContentOp),
-    );
-    b.register(
-        "tools.pragma",
-        "render_pragma_lint_policy_content",
-        DynOp::new(RenderPragmaLintPolicyContentOp),
-    );
-    b.register(
-        "tools.cigen",
-        "discover_ci_config",
-        DynOp::new(DiscoverCiConfigOp),
-    );
-    b.register(
-        "tools.testgen",
-        "discover_testgen_modules",
-        DynOp::new(DiscoverTestgenModulesOp),
-    );
-    b.register(
-        "tools.testgen",
-        "render_testgen_module",
-        DynOp::new(RenderTestgenModuleOp),
-    );
-    b.register("tools.infra", "infra", DynOp::new(InfraDispatchOp));
-    b.register(
-        "tools.readme",
-        "discover_readme_tools",
-        DynOp::new(DiscoverReadmeToolsOp),
-    );
-    b
+    runtime_bindings().clone()
 }
 
 /// Resolve an extern symbol to a concrete runtime operation.
@@ -90,32 +98,7 @@ pub fn gunbc_runtime_bindings() -> gunbc_resolve::RuntimeBindings {
 /// dispatch table for `extern func` declarations and domain-specific
 /// callable implementations (e.g., `tools.infra::infra`).
 pub fn resolve_extern_symbol(module: &str, name: &str) -> Option<DynOp> {
-    match (module, name) {
-        ("std.markdown", "render_tree") => Some(DynOp::new(RenderTreeOp)),
-        ("tools.gist", "build_snapshot_content") => Some(DynOp::new(BuildSnapshotContentOp)),
-        ("tools.makegen", "discover_tools") => Some(DynOp::new(DiscoverToolsOp)),
-        ("tools.bootstrap", "render_bootstrap_makefile") => {
-            Some(DynOp::new(GenerateBootstrapMakefileOp))
-        }
-        ("tools.bootstrap", "render_bootstrap_gitignore") => {
-            Some(DynOp::new(GenerateBootstrapGitignoreOp))
-        }
-        ("tools.pragma", "render_clippy_toml_content") => {
-            Some(DynOp::new(RenderPragmaClippyTomlContentOp))
-        }
-        ("tools.pragma", "render_disallowed_methods_allowlist_content") => {
-            Some(DynOp::new(RenderPragmaDisallowedMethodsAllowlistContentOp))
-        }
-        ("tools.pragma", "render_pragma_lint_policy_content") => {
-            Some(DynOp::new(RenderPragmaLintPolicyContentOp))
-        }
-        ("tools.cigen", "discover_ci_config") => Some(DynOp::new(DiscoverCiConfigOp)),
-        ("tools.testgen", "discover_testgen_modules") => Some(DynOp::new(DiscoverTestgenModulesOp)),
-        ("tools.testgen", "render_testgen_module") => Some(DynOp::new(RenderTestgenModuleOp)),
-        ("tools.infra", "infra") => Some(DynOp::new(InfraDispatchOp)),
-        ("tools.readme", "discover_readme_tools") => Some(DynOp::new(DiscoverReadmeToolsOp)),
-        _ => None,
-    }
+    runtime_bindings().resolve(module, name)
 }
 
 // ============================================================================
@@ -283,7 +266,10 @@ impl Executable for DiscoverReadmeToolsOp {
             .iter()
             .map(|def| {
                 let mut map = BTreeMap::new();
-                map.insert("name".to_string(), Value::Str(def.meta.tool_name.to_string()));
+                map.insert(
+                    "name".to_string(),
+                    Value::Str(def.meta.tool_name.to_string()),
+                );
                 map.insert(
                     "description".to_string(),
                     Value::Str(def.meta.description.to_string()),
@@ -806,7 +792,10 @@ mod tests {
         let mock_tools = Value::List(vec![{
             let mut m = BTreeMap::new();
             m.insert("name".to_string(), Value::Str("test-tool".to_string()));
-            m.insert("description".to_string(), Value::Str("A test tool".to_string()));
+            m.insert(
+                "description".to_string(),
+                Value::Str("A test tool".to_string()),
+            );
             Value::Map(m)
         }]);
 
@@ -821,7 +810,10 @@ mod tests {
             .expect("render_readme should return a string");
 
         assert!(content.starts_with("# gunbc"), "should start with title");
-        assert!(content.contains("## Install"), "should have install section");
+        assert!(
+            content.contains("## Install"),
+            "should have install section"
+        );
         assert!(content.contains("## Tools"), "should have tools section");
         assert!(content.contains("test-tool"), "should include mock tool");
         assert!(

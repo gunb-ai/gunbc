@@ -258,8 +258,8 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 | ID | What | Size | Deps | Source | Status |
 |----|------|------|------|--------|--------|
 | CP-40 | `ExternRegistry` — validate externs in typecheck, carry `ExternId` | M | CP-23 | CP | **Done** — `ExternRegistry` struct in `daglang-typecheck/src/extern_registry.rs`. `TypecheckOptions.extern_registry: Option<ExternRegistry>`. `TypeError::UnregisteredExtern` (TC041), `TypeError::ExternArityMismatch` (TC042) with `code()` and `help()`. Validation loop in `typecheck_module_graph_with_options`. `gunbc_runtime_bindings()` builder in app layer. |
-| CP-43 | Typecheck borrows `&ModuleGraph` (subsumes CP-32 field duplication) | M | CP-36 | CP | **Phase 1 complete** — `typecheck_module_graph[_with_options]` takes `&ModuleGraph`, so callers retain the discovered graph. `TypedModule` still clones `path`, `module_path`, `imports`, and `ast`, so canonical module ownership/minimalism is not finished and CP-32 is only partially subsumed. |
-| CP-44 | `LowerOutput` bundles computed fields (subsumes CP-33 re-extraction) | M | CP-43 | CP | **Phase 1 complete** — `LowerOutput` now exists in daglang-lower and the main compile path consumes bundled `output_paths`, `inferred_entrypoints`, and `data_values` instead of re-extracting them. Legacy helper paths still call some lowerer extraction helpers, so full single-owner cleanup is not finished yet. |
+| CP-43 | Typecheck borrows `&ModuleGraph` (subsumes CP-32 field duplication) | M | CP-36 | CP | **Done** — `TypedProject<'a>` now holds the canonical `ModuleGraph` by reference or ownership, and `TypedModule` stores only `graph_index + signatures`. Module facts (`path`, `module_path`, `imports`, `ast`) are read through the graph overlay, so CP-32 is fully subsumed. |
+| CP-44 | `LowerOutput` bundles computed fields (subsumes CP-33 re-extraction) | M | CP-43 | CP | **Done** — `LowerOutput` owns `output_paths`, `inferred_entrypoints`, and `data_values`, and `TypedProject` owns `pipeline_params`, `dsl_type_registry`, and `available_profiles`. The driver no longer calls `build_data_values`, `extract_output_paths`, or `infer_entrypoints`, so compile metadata is now produced at its canonical stage instead of being re-extracted. |
 | CP-45 | Consolidate Execute entry points → one `fn execute(dag, config)` | S | — | CP | **Done** — `ExecuteConfig` struct + `execute_dag()` unified entry point. All 10 existing `execute_*` variants delegate to it. Backward compatible. |
 | CP-47 | `RuntimeBindings` replaces `ExternResolver` trait | M | CP-40 | CP | **Bridge landed** — `RuntimeBindings` centralizes registration in `core/resolve/src/lib.rs`, and `gunbc_runtime_bindings()` registers all 12 extern symbols. The map is still keyed by `(module, name)` strings and still implements the old `ExternResolver` trait as a migration bridge; ExternId-keyed total binding remains open. |
 
@@ -705,7 +705,7 @@ Interpret the remaining `S-*` tasks as proofs of the modeling above, not as isol
 
 | Later item | Subsumes | Reason |
 |------------|----------|--------|
-| CP-43 (typecheck borrows ModuleGraph) | CP-32 | Borrowing removes the forced move, but full subsumption only happens once `TypedModule` stops cloning module facts |
+| CP-43 (typecheck borrows ModuleGraph) | CP-32 | `TypedModule` now stores only graph indices plus signatures, so canonical module facts live in exactly one place |
 | CP-44 (LowerOutput) | CP-33 | Bundles computed fields at source |
 | CP-46 (structured LowerError) | CP-14 | Structured enum with spans covers span requirement |
 | CP-47 (RuntimeBindings) | Part of CP-40 | CP-40 creates `ExternId`; full subsumption only lands once RuntimeBindings binds by ID instead of string lookup |
