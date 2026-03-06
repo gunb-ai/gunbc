@@ -55,11 +55,11 @@ pub fn render_expand(dag: &Dag<LoweredOp>) -> String {
                 format!("extern_call::{symbol}")
             }
             gunbc_ir::node::NodeBody::SubDag(inner, _) => {
-                // Bridge 1: SubDag wrapping FnBodyCompute — show as callable::Fn
+                // Bridge 1: SubDag wrapping ExprCompute — show as callable::Fn
                 let mut label = None;
                 for inner_node in &inner.nodes {
                     if let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive {
-                        kind: daglang_lower::PrimitiveOpKind::FnBodyCompute { .. },
+                        kind: daglang_lower::PrimitiveOpKind::ExprCompute { .. },
                         module,
                         name,
                         ..

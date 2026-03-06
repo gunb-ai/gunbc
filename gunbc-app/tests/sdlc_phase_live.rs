@@ -1,6 +1,6 @@
 #![allow(clippy::disallowed_methods)] // Live integration harness shells out intentionally.
 
-use gunbc_dag::extern_ops::GunbcExternResolver;
+use gunbc_app::extern_ops::GunbcExternResolver;
 use gunbc_exec::{execute_with_mode_and_inputs, lower, BoundaryMocks, ExecutionMode};
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};

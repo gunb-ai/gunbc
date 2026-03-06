@@ -1,4 +1,4 @@
-use gunbc_dag::extern_ops::GunbcExternResolver;
+use gunbc_app::extern_ops::GunbcExternResolver;
 use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
 use gunbc_ir::resource::ResourceIo;
 use gunbc_ir::{detect_entrypoints, Value};

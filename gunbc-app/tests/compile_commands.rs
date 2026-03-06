@@ -1,5 +1,5 @@
-use gunbc_dag::extern_ops::GunbcExternResolver;
-use gunbc_dag::sdlc_workflow_spec;
+use gunbc_app::extern_ops::GunbcExternResolver;
+use gunbc_app::sdlc_workflow_spec;
 use gunbc_exec::{execute_with_mode_and_inputs, lower, BoundaryMocks, DynOp, ExecutionMode};
 use gunbc_ir::{detect_entrypoints, Dag, Value};
 use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};

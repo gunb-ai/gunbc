@@ -418,7 +418,7 @@ fn dsl_graph_builder_args(rel_path: &str, entry_func: &str) -> String {
 }
 
 fn extern_resolver_import() -> &'static str {
-    "use gunbc_dag::extern_ops::GunbcExternResolver;"
+    "use gunbc_app::extern_ops::GunbcExternResolver;"
 }
 
 /// Build ToolDefs from pre-extracted func params (shared by cache-hit and cache-miss paths).

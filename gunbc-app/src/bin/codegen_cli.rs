@@ -362,7 +362,7 @@ fn cmd_cigen(dry_run: bool) {
 
     let dag = match gunbc_resolve::builder::build_dsl_graph(
         "tools/cigen.dag",
-        &gunbc_dag::extern_ops::GunbcExternResolver,
+        &gunbc_app::extern_ops::GunbcExternResolver,
         gunbc_resolve::BuildOpts {
             entry_func: Some("cigen"),
             profile: None,

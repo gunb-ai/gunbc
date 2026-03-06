@@ -4,7 +4,7 @@ use daglang_derive::derive_artifacts;
 use daglang_lower::{
     CallableKind, LoweredOp, ObligationCategory, ServiceCallMetadata, ServiceTransportClass,
 };
-use gunbc_dag::extern_ops::GunbcExternResolver;
+use gunbc_app::extern_ops::GunbcExternResolver;
 use gunbc_exec::{lower, ExecutionMode};
 use gunbc_ir::{Dag, Edge, Node, Port};
 use gunbc_resolve::resolve_lowered_dag_with;

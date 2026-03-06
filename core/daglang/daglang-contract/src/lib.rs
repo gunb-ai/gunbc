@@ -111,9 +111,8 @@ impl Diagnostic {
 
     /// Create a diagnostic without source location.
     ///
-    /// Deprecated: prefer `Diagnostic::located()` which enforces source location.
-    /// This exists only for migration — call sites should be updated to provide spans.
-    #[deprecated(note = "use Diagnostic::located() with a LocatedSpan instead")]
+    /// Prefer `Diagnostic::located()` which enforces source location.
+    /// Call sites should be updated to provide spans.
     pub fn new(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             code,

@@ -324,7 +324,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 
 | ID | What | Size | Deps | Status |
 |----|------|------|------|--------|
-| CP-61 | **CLI generator** — generated CLIs accept `--profile` enum flag, `--mode ensure|verify`, subcommand dispatch for multi-func modules. `KEY=VALUE` arg parsing for infra-style tools. | L | — | Open |
+| CP-61 | **CLI generator** — generated CLIs accept `--mode ensure|verify`, subcommand dispatch for multi-func modules, and `KEY=VALUE` arg parsing for infra-style tools. Any remaining concrete-binding selection must not reintroduce repo-facing `--profile`; it should flow through the final DSL-owned binding/link model. | L | — | Open |
 
 ### F.2: Binary elimination (after CP-61)
 
@@ -407,6 +407,57 @@ Source: [`TODO/gist-auth-postmortem.md`](TODO/gist-auth-postmortem.md) RT-I + [`
 **Goal**: End-to-end SDLC: Idea → Design → DesignReview → Accepted → Implementing → CodeReview → Testing → Done.
 **Mostly independent**: Benefits from pipeline improvements but not blocked by most.
 **Source**: [`TODO/sdlc.md`](TODO/sdlc.md)
+**Active planning surface**: this section in `tasks.md` is the source of truth for SDLC work planning on this branch.
+**Current reality (2026-03-05)**: Current proof is the worker compile/dry-run path plus the env-gated local live harness. `dsl/profiles/sdlc.dag` remains a temporary compatibility path for local real-mode proof only; AUTH-4 and DM-3A track its removal in favor of concrete binding/link artifacts.
+
+### H.0 Reference docs (not the active plan)
+
+- [`docs/design/sdlc/mega-modeling-design.md`](docs/design/sdlc/mega-modeling-design.md): runtime topology, signal ownership, core abstractions, idempotency rules
+- [`docs/design/sdlc/domain-modeling-comprehensive.md`](docs/design/sdlc/domain-modeling-comprehensive.md): entity model and invariants
+- [`TODO/sdlc.md`](TODO/sdlc.md): branch-status snapshot and SDLC notes
+- [`docs/design/sdlc/scenario-readiness.md`](docs/design/sdlc/scenario-readiness.md): rollout/readiness inputs derived from practical scenarios
+- [`docs/design/sdlc/production-gap-analysis.md`](docs/design/sdlc/production-gap-analysis.md): historical blocker baseline before current compile/dry-run proof
+
+### H.1 Modeling frame
+
+Design rule: the SDLC model must cover scenario variation structurally. "Local dev testing", "local real testing", "remote dev testing", and "remote real runs" are not separate products or separate architectures. They are scenario inputs that should influence the same domain model.
+
+What this means:
+
+- Deployment split is a transport concern. Co-located local execution and split hosted execution must preserve the same stage semantics.
+- Scenario differences should flow through modeled inputs, authorities, bindings, credentials, triggers, and operator controls rather than handwritten branching logic.
+- The model must make authoritative state, trigger ownership, mutation permission, and rollout safety explicit.
+
+### H.2 Scenario-derived dimensions the domain must encode
+
+| Dimension | Values the model must cover | Why this must be modeled |
+|-----------|-----------------------------|--------------------------|
+| Execution topology | co-located local loop, single hosted worker, split worker/reconciler, multi-worker fleet | Local-first correctness and hosted scale must preserve the same orchestration semantics |
+| Effect surface | hermetic dry-run, controlled real mutation in dev repo, hosted non-prod mutation, hosted real queue/repo | "real vs fake" is not one bit; the model needs explicit mutation/scope boundaries |
+| State authorities | mock/in-memory, file-backed local state, cloud-backed CAS/stateful services | Claim/outcome/signal/artifact invariants must survive backend swaps |
+| Credential realization | none, env-provided secret, Secret Manager, WIF / hosted identity | Auth intent and auth realization must stay explicit and fail closed |
+| Trigger model | manual dispatch, rediscovery scan, durable signals, scheduled reconcile | The worker must stay store-driven and idempotent regardless of trigger source |
+| Safety envelope | mutation opt-in, target repo/project scope, drain mode, rollback, observability/reporting | Local experimentation and real hosted rollout need first-class controls, not operator folklore |
+| Concurrency envelope | single operator, single worker, fleet with CAS contention | Exact-once-ish stage ownership depends on explicit concurrency assumptions |
+
+### H.3 Modeling tasks still needed
+
+| ID | What | Size | Why it matters |
+|----|------|------|----------------|
+| SM-1 | **Execution-context model.** Define the authoritative SDLC model for execution topology, target scope, and mutation policy so scenarios become structured inputs rather than doc-only prose. | M | This is the root abstraction for local vs hosted, dev vs real, and dry-run vs mutation. |
+| SM-2 | **Concrete binding/link model.** Define the final artifact/model that selects concrete providers and authorities for a given scenario, then use it to replace the temporary `dsl/profiles/sdlc.dag` path. | L | This is the design prerequisite for AUTH-4 and DM-3A. |
+| SM-3 | **Credential intent vs realization model.** Define how GitHub/LLM/cloud credential intent maps to env/secret/WIF realization and startup preflight checks. | M | Local and hosted real-mode safety depends on explicit credential modeling with no fallback logic. |
+| SM-4 | **Authority/backing model.** Make claim store, outcome ledger, signal store, and artifact store backings explicit variants of the same contracts with shared invariants. | M | File-backed local proof and GCS/PubSub hosted proof should differ only in backing, not in semantics. |
+| SM-5 | **Operator-safety model.** Model drain/rollback/reporting/mutation gates as domain inputs or contracts, not ad hoc deployment convention. | M | Remote real runs should be blocked by missing modeled safety, not by vague ops discomfort. |
+| SM-6 | **Proof matrix from scenarios.** For each practical scenario, declare required inputs, required proof, and which existing tests/harnesses satisfy it. | S | Prevents future drift between docs, tests, and claimed readiness. |
+
+### H.4 Proof and activation tasks
+
+Interpret the remaining `S-*` tasks as proofs of the modeling above, not as isolated rollout checkboxes:
+
+- `S-11` through `S-15` prove that co-located local execution with real providers preserves the intended semantics and stage transitions.
+- `S-16` through `S-18` prove that hosted authorities/bindings preserve those semantics in non-prod infrastructure.
+- `S-19` proves that the model survives fleet concurrency rather than only single-worker runs.
 
 ### Phase 2: Local Real Run (in progress)
 

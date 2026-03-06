@@ -10,7 +10,7 @@ use daglang_emit::{
 };
 pub use daglang_lower::is_user_param_port;
 pub use daglang_lower::InferredEntrypoint;
-use daglang_lower::{lower_to_output, LowerError, LoweredOp, LoweringConfig};
+use daglang_lower::{lower_with_config, LowerError, LoweredOp, LoweringConfig};
 use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
 use daglang_syntax::ast::{Expr, Item, Literal, ModulePath, PipelineDef, StageDef, Stmt, TypeBody};
 use daglang_syntax::ast_utils::type_expr_to_string;
@@ -50,7 +50,7 @@ pub struct CompileOutput {
     /// make DSL-defined types visible to testgen.
     pub dsl_type_registry: TypeRegistry,
     /// Compile receipt with deterministic digests.
-    pub receipt: CompileReceipt,
+    pub receipt: Option<CompileReceipt>,
     /// Data declaration values evaluated at compile time.
     ///
     /// Keys are both qualified (`module.name`) and unqualified (`name`).
@@ -486,7 +486,7 @@ pub fn compile_data_from_module(
 }
 
 /// Extract fn bodies from a lowered DAG, including those inside SubDag nodes
-/// (Bridge 1: fn items lowered as SubDag with FnBodyCompute inner node).
+/// (Bridge 1: fn items lowered as SubDag with ExprCompute inner node).
 fn extract_fn_bodies_from_dag(
     dag: &gunbc_ir::Dag<daglang_lower::LoweredOp>,
     fns: &mut HashMap<String, daglang_lower::LoweredFnBody>,
@@ -494,7 +494,7 @@ fn extract_fn_bodies_from_dag(
     use daglang_lower::{CallableKind, LoweredOp, PrimitiveOpKind};
     for node in &dag.nodes {
         match &node.body {
-            // Legacy path: Callable nodes with fn_body (e.g., loop body ops).
+            // Callable nodes with fn_body (e.g., loop body ops).
             gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable {
                 kind: CallableKind::Fn,
                 name,
@@ -503,11 +503,11 @@ fn extract_fn_bodies_from_dag(
             }) => {
                 fns.insert(name.clone(), *body.clone());
             }
-            // Bridge 1: SubDag nodes containing FnBodyCompute.
+            // Bridge 1: SubDag nodes containing ExprCompute.
             gunbc_ir::node::NodeBody::SubDag(inner, _) => {
                 for inner_node in &inner.nodes {
                     if let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive {
-                        kind: PrimitiveOpKind::FnBodyCompute { fn_body, .. },
+                        kind: PrimitiveOpKind::ExprCompute { fn_body, .. },
                         name,
                         ..
                     }) = &inner_node.body
@@ -634,17 +634,9 @@ fn primitive_requires_strict_input_wiring(kind: &daglang_lower::PrimitiveOpKind)
 /// 2. Structural primitive input wiring (LoweredOp-specific: GetField + structural ops)
 ///
 /// The structural check always runs. The generic IR check runs when `skip_verification` is false.
-fn verify_lowered_dag(
-    dag: &Dag<LoweredOp>,
-    skip_generic_verification: bool,
-) -> Vec<gunbc_ir::VerifyError> {
+fn validate_structural_primitive_input_wiring(dag: &Dag<LoweredOp>) -> Vec<gunbc_ir::VerifyError> {
     let mut errors = Vec::new();
-    // Structural primitive wiring — always runs (these are compiler bugs, not user errors).
     validate_structural_primitive_input_wiring_recursive(dag, &mut errors);
-    // Generic IR verification — conditional (many pre-existing gaps from pattern expansion).
-    if !skip_generic_verification {
-        errors.extend(gunbc_ir::verify_dag(dag));
-    }
     errors
 }
 
@@ -712,6 +704,12 @@ pub fn compile_from_module_graph_with_options(
         Some((scope, entry)) => (Some(scope), Some(entry)),
         None => (None, None),
     };
+    // Save source file paths before typechecking consumes the module graph.
+    let source_paths: Vec<PathBuf> = module_graph
+        .modules
+        .iter()
+        .map(|m| m.path.clone())
+        .collect();
     validate_module_path_consistency(
         &module_graph,
         &context.roots,
@@ -725,8 +723,7 @@ pub fn compile_from_module_graph_with_options(
     )
     .map_err(CompileError::Typecheck)?;
     let extern_assets = collect_extern_assets(&typed);
-    // CP-44: lower_to_output bundles DAG + metadata in one call.
-    let lower_output = lower_to_output(
+    let lowered = lower_with_config(
         &typed,
         &LoweringConfig {
             callable_modules: callable_scope.as_ref(),
@@ -736,11 +733,20 @@ pub fn compile_from_module_graph_with_options(
         },
     )
     .map_err(CompileError::Lower)?;
-    let verify_errors = verify_lowered_dag(&lower_output.dag, options.skip_verification);
-    if !verify_errors.is_empty() {
-        return Err(CompileError::Verification(verify_errors));
+    let structural_primitive_wiring_errors = validate_structural_primitive_input_wiring(&lowered);
+    if !structural_primitive_wiring_errors.is_empty() {
+        return Err(CompileError::Verification(
+            structural_primitive_wiring_errors,
+        ));
     }
-    let verified_dag = VerifiedDag::from_verified(lower_output.dag);
+    if !options.skip_verification {
+        let verify_errors = gunbc_ir::verify_dag(&lowered);
+        if !verify_errors.is_empty() {
+            return Err(CompileError::Verification(verify_errors));
+        }
+    }
+    let output_paths = daglang_lower::extract_output_paths(&lowered);
+    let verified_dag = VerifiedDag::from_verified(lowered);
 
     let derived = derive_artifacts(&verified_dag).map_err(CompileError::Derive)?;
 
@@ -749,7 +755,6 @@ pub fn compile_from_module_graph_with_options(
             #[allow(clippy::disallowed_methods)]
             std::fs::canonicalize(tf).ok()
         };
-        // CP-43: module_graph is still available (typecheck borrows, doesn't consume).
         module_graph
             .modules
             .iter()
@@ -771,6 +776,7 @@ pub fn compile_from_module_graph_with_options(
     let emit_manifest_path = append_emit_manifest(&mut emitted, target, layer)?;
 
     let pipeline_params = collect_pipeline_params(&typed);
+    let inferred_entrypoints = daglang_lower::infer_entrypoints(&verified_dag);
     let dsl_type_registry = extract_dsl_type_registry(&typed);
     let data_values = daglang_lower::build_data_values(&typed);
     let receipt = Some(compute_receipt(
@@ -785,9 +791,9 @@ pub fn compile_from_module_graph_with_options(
         derived,
         emitted,
         emit_manifest_path,
-        output_paths: lower_output.output_paths,
+        output_paths,
         pipeline_params,
-        inferred_entrypoints: lower_output.inferred_entrypoints,
+        inferred_entrypoints,
         dsl_type_registry,
         receipt,
         data_values,
@@ -2669,7 +2675,7 @@ fn run() -> Bool {
         };
         let output =
             compile_from_context(&context).expect("compile should succeed for determinism test");
-        output.receipt
+        output.receipt.expect("receipt should be present")
     }
 
     #[test]
@@ -2844,7 +2850,7 @@ fn run() -> Bool {
         ));
         dag.add_edge(Edge::new("left_src", "out", "binary", "left"));
 
-        let errors = verify_lowered_dag(&dag, true);
+        let errors = validate_structural_primitive_input_wiring(&dag);
         assert!(
             errors.iter().any(|error| matches!(
                 error,
@@ -2898,7 +2904,7 @@ fn run() -> Bool {
         dag.add_edge(Edge::new("cond_src", "out", "conditional", "condition"));
         dag.add_edge(Edge::new("then_src", "out", "conditional", "then"));
 
-        let errors = verify_lowered_dag(&dag, true);
+        let errors = validate_structural_primitive_input_wiring(&dag);
         assert!(
             errors.is_empty(),
             "conditional without else input port should pass, got: {errors:?}"

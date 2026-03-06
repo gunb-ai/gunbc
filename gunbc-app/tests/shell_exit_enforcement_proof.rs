@@ -21,7 +21,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use gunbc_dag::extern_ops::GunbcExternResolver;
+use gunbc_app::extern_ops::GunbcExternResolver;
 use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
 use gunbc_ir::transport::{
     HttpMethod, RestResponse, ShellResponse, TransportRequest, TransportResponse,

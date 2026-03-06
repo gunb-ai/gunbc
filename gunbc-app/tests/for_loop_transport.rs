@@ -10,7 +10,7 @@
 
 #![allow(clippy::disallowed_methods)]
 
-use gunbc_dag::extern_ops::GunbcExternResolver;
+use gunbc_app::extern_ops::GunbcExternResolver;
 use gunbc_exec::{execute_with_mode_and_inputs, lower, ExecutionMode};
 use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
 use gunbc_test::auto_mock_spec;

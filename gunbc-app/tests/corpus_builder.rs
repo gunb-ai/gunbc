@@ -7,7 +7,7 @@
 #![allow(clippy::disallowed_methods)]
 
 use gunbc_codegen::testgen::mock_corpus::{build_corpus, WorkflowInfo};
-use gunbc_dag::extern_ops::GunbcExternResolver;
+use gunbc_app::extern_ops::GunbcExternResolver;
 use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
 use gunbc_test::auto_mock_spec;
 use gunbc_test::MockSpec;

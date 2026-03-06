@@ -631,7 +631,7 @@ fn derive_module_metadata(nodes: &[Node<LoweredOp>]) -> Vec<ModuleMetadata> {
                     entry.callable_count += 1;
                 }
             }
-            // Bridge 1: SubDag fn items — count the inner FnBodyCompute node's module.
+            // Bridge 1: SubDag fn items — count the inner ExprCompute node's module.
             gunbc_ir::NodeBody::SubDag(inner, _) => {
                 for inner_node in &inner.nodes {
                     if let gunbc_ir::NodeBody::Opaque(LoweredOp::Primitive {
@@ -772,12 +772,12 @@ impl NodeBodyExt for gunbc_ir::node::NodeBody<LoweredOp> {
     }
 }
 
-/// Bridge 1 helper: extract module and name from a SubDag containing FnBodyCompute.
+/// Bridge 1 helper: extract module and name from a SubDag containing ExprCompute.
 fn subdag_fn_body_info(body: &gunbc_ir::node::NodeBody<LoweredOp>) -> Option<(&str, &str)> {
     if let gunbc_ir::node::NodeBody::SubDag(inner, _) = body {
         for inner_node in &inner.nodes {
             if let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive {
-                kind: PrimitiveOpKind::FnBodyCompute { .. },
+                kind: PrimitiveOpKind::ExprCompute { .. },
                 module,
                 name,
             }) = &inner_node.body

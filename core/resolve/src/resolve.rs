@@ -33,7 +33,7 @@ use daglang_lower::{
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::patterns::PatternOp;
-use gunbc_ir::resource::{RESOURCE_FILE, RESOURCE_FILE_PREFIX};
+use gunbc_ir::resource::{AccessMode, RESOURCE_FILE, RESOURCE_FILE_PREFIX};
 use gunbc_ir::transport::{FileRequest, TransportRequest};
 use gunbc_ir::types::PortName;
 use gunbc_ir::{Cardinality, Dag, Edge, Node, Port, Value};
@@ -161,8 +161,6 @@ impl Executable for DeclaredOutputCallableOp {
     }
 }
 
-<<<<<<< HEAD
-=======
 /// C10: Callable op for `fn` items that evaluates the fn body directly.
 ///
 /// Instead of relying on passthrough wiring from ExprCompute nodes, this op
@@ -266,7 +264,6 @@ impl Executable for FnBodyCallableOp {
     }
 }
 
->>>>>>> origin/main
 /// Passthrough for std.resources callables that are neither acquire nor release.
 ///
 /// Resource lifecycle nodes like `probe` or `check` that don't need
@@ -774,25 +771,6 @@ impl Executable for ExprComputeOp {
                 env.insert(ref_name.clone(), Value::Skipped);
             }
         }
-<<<<<<< HEAD
-        let result = match daglang_lower::eval::evaluate_fn_body(&self.fn_body, &env, &self.sibling_fns) {
-            Ok(r) => r,
-            Err(e) => {
-                // When all real inputs are Skipped, this ExprCompute node is
-                // an orphan (e.g., fn call argument wiring inside a fn item
-                // whose body is evaluated by FnBodyComputeOp). Propagate
-                // Skipped instead of hard-erroring.
-                let all_skipped = self.input_ports.iter().all(|p| {
-                    matches!(
-                        inputs.get(p).unwrap_or(&Value::Skipped),
-                        Value::Skipped
-                    )
-                });
-                if all_skipped {
-                    return OutputMap::new()
-                        .value(self.output_port.as_str(), Value::Skipped)
-                        .ok();
-=======
         let result =
             match daglang_lower::eval::evaluate_fn_body(&self.fn_body, &env, &self.sibling_fns) {
                 Ok(r) => r,
@@ -810,7 +788,6 @@ impl Executable for ExprComputeOp {
                             .ok();
                     }
                     return Err(ExecError::new(e.message));
->>>>>>> origin/main
                 }
             };
         // The fn body returns { result: <value> }, extract and output it.
@@ -822,62 +799,6 @@ impl Executable for ExprComputeOp {
             // Fallback: return whatever the fn body produced.
             Ok(result)
         }
-    }
-}
-
-/// Bridge 1: Multi-output fn body evaluation op.
-///
-/// Evaluates a complete fn body and maps results to declared output ports.
-/// Lives inside SubDag nodes that replace `LoweredOp::Callable` for Fn items.
-#[derive(Clone)]
-struct FnBodyComputeOp {
-    fn_body: daglang_lower::LoweredFnBody,
-    input_ports: Vec<String>,
-    output_ports: Vec<String>,
-    sibling_fns: HashMap<String, daglang_lower::LoweredFnBody>,
-}
-
-impl Executable for FnBodyComputeOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let mut env = HashMap::new();
-        for port in &self.input_ports {
-            let value = inputs.get(port).cloned().unwrap_or(Value::Skipped);
-            // Flatten Map fields into `parent__field` env vars for field access.
-            if let Value::Map(fields) = &value {
-                for (field_name, field_value) in fields {
-                    env.insert(format!("{port}__{field_name}"), field_value.clone());
-                }
-            }
-            env.insert(port.clone(), value);
-        }
-        let result = daglang_lower::eval::evaluate_fn_body(&self.fn_body, &env, &self.sibling_fns)
-            .map_err(|e| ExecError::new(e.message))?;
-        // Map fn body results to declared output ports.
-        let mut outputs = HashMap::new();
-        for port_name in &self.output_ports {
-            let value = result
-                .get(port_name)
-                .or_else(|| {
-                    // Single "return" port: fn body may produce {"return": val}
-                    if self.output_ports.len() == 1 {
-                        result.get("return")
-                    } else {
-                        None
-                    }
-                })
-                .cloned()
-                .unwrap_or(Value::Skipped);
-            outputs.insert(port_name.clone(), value);
-        }
-        Ok(outputs)
-    }
-}
-
-impl std::fmt::Debug for FnBodyComputeOp {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("FnBodyComputeOp")
-            .field("output_ports", &self.output_ports)
-            .finish()
     }
 }
 
@@ -1195,6 +1116,11 @@ pub fn resolve_lowered_dag_with(
             origin: node.origin.clone(),
         };
         normalize_release_resource_inputs(&mut resolved_node);
+        if let Some(mode) = needs_transport_resource(node, &resolved_node) {
+            resolved_node
+                .inputs
+                .push(Port::resource(RESOURCE_FILE, "FilesystemHandle", mode));
+        }
         resolved.add_node(resolved_node);
     }
     // Filter edges referencing pipeline nodes.
@@ -1208,31 +1134,6 @@ pub fn resolve_lowered_dag_with(
         .cloned()
         .collect();
     wire_missing_filesystem_resources(&mut resolved);
-
-    // CP-24: Topology preservation invariant.
-    // Resolution must not drop non-pipeline nodes or non-pipeline edges.
-    debug_assert!(
-        resolved.nodes.len() >= dag.nodes.len() - pipeline_ids.len(),
-        "resolution dropped non-pipeline nodes: {} input (minus {} pipeline) > {} output",
-        dag.nodes.len(),
-        pipeline_ids.len(),
-        resolved.nodes.len(),
-    );
-    let input_edge_count = dag
-        .edges
-        .iter()
-        .filter(|e| {
-            !pipeline_ids.contains(e.from_node.0.as_str())
-                && !pipeline_ids.contains(e.to_node.0.as_str())
-        })
-        .count();
-    debug_assert!(
-        resolved.edges.len() >= input_edge_count,
-        "resolution dropped non-pipeline edges: {} input > {} output",
-        input_edge_count,
-        resolved.edges.len(),
-    );
-
     Ok(resolved)
 }
 
@@ -1278,12 +1179,6 @@ fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
     let empty_siblings = HashMap::new();
     let node_id = node.id.0.clone();
     match &node.body {
-<<<<<<< HEAD
-        NodeBody::Opaque(op) => {
-            resolve_op(&node_id, op, &node.inputs, &node.outputs, &null, &empty_siblings)
-        }
-        NodeBody::SubDag(inner, _) => Ok(DynOp::new(SubDagDispatchOp {
-=======
         NodeBody::Opaque(op) => resolve_op(
             &node_id,
             op,
@@ -1292,8 +1187,7 @@ fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
             &null,
             &empty_siblings,
         ),
-        NodeBody::SubDag(inner) => Ok(DynOp::new(SubDagDispatchOp {
->>>>>>> origin/main
+        NodeBody::SubDag(inner, _kind) => Ok(DynOp::new(SubDagDispatchOp {
             dag: resolve_lowered_dag_with(inner, &null)?,
         })),
     }
@@ -1313,13 +1207,7 @@ fn resolve_node_body(
             resolver,
             sibling_fns,
         )?)),
-<<<<<<< HEAD
-        NodeBody::SubDag(inner, kind) => {
-            Ok(NodeBody::SubDag(resolve_lowered_dag_with(inner, resolver)?, kind.clone()))
-        }
-=======
-        NodeBody::SubDag(inner) => Ok(NodeBody::SubDag(resolve_lowered_dag_with(inner, resolver)?)),
->>>>>>> origin/main
+        NodeBody::SubDag(inner, kind) => Ok(NodeBody::SubDag(resolve_lowered_dag_with(inner, resolver)?, kind.clone())),
     }
 }
 
@@ -1579,19 +1467,6 @@ fn resolve_primitive(
                     .collect(),
             }))
         }
-        PrimitiveOpKind::FnBodyCompute {
-            fn_body,
-            sibling_fns,
-            output_ports,
-        } => {
-            let input_ports: Vec<String> = inputs.iter().map(|p| p.name.0.clone()).collect();
-            Ok(DynOp::new(FnBodyComputeOp {
-                fn_body: *fn_body.clone(),
-                input_ports,
-                output_ports: output_ports.clone(),
-                sibling_fns: sibling_fns.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
-            }))
-        }
     }
 }
 
@@ -1609,7 +1484,7 @@ fn resolve_domain(
     service_metadata: Option<&ServiceCallMetadata>,
     fn_body: Option<&daglang_lower::LoweredFnBody>,
     resolver: &dyn ExternResolver,
-    _sibling_fns: &HashMap<String, daglang_lower::LoweredFnBody>,
+    sibling_fns: &HashMap<String, daglang_lower::LoweredFnBody>,
 ) -> Result<DynOp, ResolveError> {
     // 1. Modules with custom resolvers — return Some for known callables,
     //    None for unknown (which falls through to passthrough).
@@ -1638,12 +1513,16 @@ fn resolve_domain(
     if TransportRole::from_name(name).is_some() {
         return resolve_service_transport(node_id, module, name, outputs, service_metadata);
     }
-    // Bridge 2: fn items with fn_body no longer reach here (they're lowered as
-    // SubDag+FnBodyCompute). Assert so any regression is caught immediately.
-    debug_assert!(
-        fn_body.is_none(),
-        "Callable node `{name}` has fn_body — should have been lowered as SubDag (Bridge 1/2)"
-    );
+    // 5. C10: fn items with fn bodies use FnBodyCallableOp to evaluate the
+    //    body directly, producing outputs from the fn's computation rather
+    //    than relying on passthrough wiring from ExprCompute nodes.
+    if let Some(body) = fn_body {
+        return Ok(DynOp::new(FnBodyCallableOp {
+            fn_body: body.clone(),
+            output_ports: declared_output_ports(outputs),
+            sibling_fns: sibling_fns.clone(),
+        }));
+    }
     // 5b. Pattern and Func callables without fn_body: their bodies are either
     //     expanded inline (patterns) or lossy-parsed (func items with complex
     //     control flow the parser can't handle). In both cases, __out:
@@ -1908,6 +1787,44 @@ fn unknown_callable(node_id: &str, module: &str, name: &str) -> ResolveError {
     }
 }
 
+/// Check if a transport execute node needs a filesystem resource input added.
+///
+/// Returns `Some(AccessMode)` if the node is a transport execute node
+/// (content_upsert or service_transport) that doesn't already have a
+/// filesystem resource input. The resource system requires all transport
+/// execute nodes to declare their resource access.
+fn needs_transport_resource(
+    lowered: &Node<LoweredOp>,
+    resolved: &Node<DynOp>,
+) -> Option<AccessMode> {
+    let mode = match &lowered.body {
+        NodeBody::Opaque(LoweredOp::Primitive {
+            kind: PrimitiveOpKind::IoExecuteFileWrite,
+            ..
+        }) => AccessMode::Write,
+        NodeBody::Opaque(LoweredOp::Primitive {
+            kind: PrimitiveOpKind::IoExecuteFileRead,
+            ..
+        }) => AccessMode::Read,
+        _ if lowered.kind == gunbc_ir::NodeKind::TransportExecute => {
+            // Service transport execute nodes need filesystem access.
+            AccessMode::Read
+        }
+        _ => return None,
+    };
+
+    // Only add if not already present.
+    let already_has = resolved.inputs.iter().any(|port| {
+        port.type_id.0 == "FilesystemHandle"
+            && (port.name.0 == RESOURCE_FILE || port.name.0.starts_with(RESOURCE_FILE_PREFIX))
+    });
+    if already_has {
+        None
+    } else {
+        Some(mode)
+    }
+}
+
 fn wire_missing_filesystem_resources(dag: &mut Dag<DynOp>) {
     let mut pending = Vec::new();
     for node in &dag.nodes {
@@ -1977,7 +1894,6 @@ fn wire_missing_filesystem_resources(dag: &mut Dag<DynOp>) {
 mod tests {
     use super::*;
     use daglang_lower::{CallableKind, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind};
-    use gunbc_ir::resource::AccessMode;
     use gunbc_ir::{Node, Port};
 
     fn callable_node(
@@ -2035,7 +1951,7 @@ mod tests {
     }
 
     // NOTE: resolve_tools_infra_entrypoint_emits_plan_summary test moved to
-    // gunbc-app (requires GunbcExternResolver for tools.infra::infra dispatch).
+    // gunbc-dag (requires GunbcExternResolver for tools.infra::infra dispatch).
 
     #[test]
     fn resolve_pipeline_node_is_skipped() {
@@ -2151,7 +2067,7 @@ mod tests {
                     ArgvSegment::Literal("cargo".to_string()),
                     ArgvSegment::Literal("run".to_string()),
                     ArgvSegment::Literal("-p".to_string()),
-                    ArgvSegment::Literal("gunbc-app".to_string()),
+                    ArgvSegment::Literal("gunbc-dag".to_string()),
                     ArgvSegment::Literal("--bin".to_string()),
                     ArgvSegment::Literal("gunbc-codegen".to_string()),
                     ArgvSegment::Literal("--".to_string()),
@@ -2622,7 +2538,7 @@ mod tests {
     }
 
     // NOTE: resolve_infra_callable_maps_to_infra_dispatch_op test moved to
-    // gunbc-app (requires GunbcExternResolver for tools.infra::infra dispatch).
+    // gunbc-dag (requires GunbcExternResolver for tools.infra::infra dispatch).
 
     #[test]
     fn resolve_unknown_service_transport_prepare_fails() {
@@ -2666,6 +2582,28 @@ mod tests {
         assert_eq!(resolved.edges.len(), 1);
         assert_eq!(resolved.edges[0].from_node.0, "render");
         assert_eq!(resolved.edges[0].to_node.0, "prepare_read");
+    }
+
+    #[test]
+    fn needs_transport_resource_respects_existing_res_file_port() {
+        let lowered = primitive_node(
+            "execute_read_makegen",
+            "tools.makegen",
+            "content_upsert::execute_read_makegen",
+            PrimitiveOpKind::IoExecuteFileRead,
+        );
+        let resolved = Node::opaque(
+            "execute_read_makegen",
+            vec![Port::resource("file", "FilesystemHandle", AccessMode::Read)],
+            vec![Port::new("response", "TransportResponse")],
+            DynOp::new(DslFsEnvOp),
+        );
+
+        let mode = needs_transport_resource(&lowered, &resolved);
+        assert!(
+            mode.is_none(),
+            "existing `res:file` input should prevent duplicate resource port injection"
+        );
     }
 
     #[test]

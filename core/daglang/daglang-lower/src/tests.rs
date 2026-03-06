@@ -2,7 +2,7 @@ use super::*;
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::parser;
 use daglang_typecheck::typecheck_module_graph;
-use gunbc_dag::extern_ops::GunbcExternResolver;
+use gunbc_app::extern_ops::GunbcExternResolver;
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::{Edge, Port};
 use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
@@ -44,7 +44,7 @@ fn typed_project_from_sources(sources: &[(&str, &str)]) -> TypedProject {
             }
         })
         .collect();
-    typecheck_module_graph(ModuleGraph { modules }).expect("typecheck should succeed")
+    typecheck_module_graph(&ModuleGraph { modules }).expect("typecheck should succeed")
 }
 
 fn callable_stmts_from_source(source: &str) -> Vec<Stmt> {
@@ -103,7 +103,7 @@ fn typed_project_for_module_with_dependency_closure(module_name: &str) -> TypedP
             .collect::<Vec<_>>();
         modules.push(module);
     }
-    typecheck_module_graph(ModuleGraph { modules }).expect("typecheck should succeed")
+    typecheck_module_graph(&ModuleGraph { modules }).expect("typecheck should succeed")
 }
 
 fn lower_target_module(typed: &TypedProject, module_name: &str) -> Dag<LoweredOp> {
@@ -696,7 +696,7 @@ transport rest { method: GET, path: "/read" }
         gunbc_ir::node::NodeBody::Opaque(op) => op
             .service_call_metadata()
             .expect("service metadata should be preserved"),
-        gunbc_ir::node::NodeBody::SubDag(_) => {
+        gunbc_ir::node::NodeBody::SubDag(..) => {
             panic!("expected opaque lowered node for execute transport")
         }
     };
@@ -737,7 +737,7 @@ transport shell { argv: ["cat", "{path}"] }
                 .expect("service metadata should be present")
                 .readonly,
         ),
-        gunbc_ir::node::NodeBody::SubDag(_) => {
+        gunbc_ir::node::NodeBody::SubDag(..) => {
             panic!("expected opaque lowered node for prepare transport")
         }
     };
@@ -758,7 +758,7 @@ fn shell_output_parsing_for_node(dag: &Dag<LoweredOp>, node_id: &str) -> ShellOu
         gunbc_ir::node::NodeBody::Opaque(op) => op
             .service_call_metadata()
             .expect("service metadata should be present"),
-        gunbc_ir::node::NodeBody::SubDag(_) => {
+        gunbc_ir::node::NodeBody::SubDag(..) => {
             panic!("expected opaque lowered node for transport metadata")
         }
     };
@@ -843,7 +843,7 @@ func run() -> { out: String } {
         gunbc_ir::node::NodeBody::Opaque(op) => op
             .service_call_metadata()
             .expect("service metadata should be present"),
-        gunbc_ir::node::NodeBody::SubDag(_) => {
+        gunbc_ir::node::NodeBody::SubDag(..) => {
             panic!("expected opaque lowered node for prepare transport")
         }
     };
@@ -2687,7 +2687,7 @@ func prompt() -> { ok: Bool } {
         .find(|node| node.id.0 == "sample.ui::prompt")
         .and_then(|node| match &node.body {
             gunbc_ir::node::NodeBody::Opaque(op) => Some(op),
-            gunbc_ir::node::NodeBody::SubDag(_) => None,
+            gunbc_ir::node::NodeBody::SubDag(..) => None,
         })
         .expect("callable node should exist");
     assert!(matches!(
@@ -3238,7 +3238,7 @@ fn lower_typed_project_for_module_with_dependency_closure_and_entry(
         }
     }
 
-    let typed = typecheck_module_graph(graph).expect("typecheck should succeed");
+    let typed = typecheck_module_graph(&graph).expect("typecheck should succeed");
 
     // Build the scope: target module + all its transitive dependencies.
     let module_lookup: HashMap<String, usize> = typed
