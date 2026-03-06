@@ -645,6 +645,10 @@ Interpret the remaining `S-*` tasks as proofs of the modeling above, not as isol
 | RF-TC4 | Stub provider transport completeness (28 ops) | M | After SDLC |
 | RF-TC5 | Infrastructure stub transports (140 ops) | L | Deferred |
 | H10 | Compute stack orchestration (Cloud Run/GCS/LB lifecycle) | L | Post-pipeline |
+| RV-1 | `Expr::Struct` trailing comma fix — empty fields + rest produces `{ , ..base }` | S | Catch from review 2026-03-06. Fix in render_rust.rs and render_go.rs (Go: emit error for `rest`). |
+| RV-2 | ExternId-keyed total binding (CP-47 completion) — `RuntimeBindings` keys by `ExternId` not `ProgramSymbolId` | M | Needs ExternId interner shared between typecheck and resolve. Currently `ExternId` is defined but no intern table exists. |
+| RV-3 | Golden fixture `gunbc-dag` → `gunbc-app` binary name revert — `dag-snapshot`, `dag-viz` binaries should keep `gunbc-dag-*` prefix | S | Catch from review 2026-03-06. Affects makefile_golden.txt and justfile_golden.txt. |
+| RV-4 | Testgen failure variant integration — wire `auto_mock_failure_variants()` into testgen pipeline to generate error-path tests | M | API landed (2026-03-06); not yet consumed by `auto_testgen_for_module()`. |
 
 ---
 

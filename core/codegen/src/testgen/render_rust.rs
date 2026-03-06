@@ -164,12 +164,16 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
                     .map(|(k, v)| format!("{}: {}", k, self.render_expr(v)))
                     .collect();
                 if let Some(base) = rest {
-                    format!(
-                        "{} {{ {}, ..{} }}",
-                        name,
-                        field_strs.join(", "),
-                        self.render_expr(base)
-                    )
+                    if field_strs.is_empty() {
+                        format!("{} {{ ..{} }}", name, self.render_expr(base))
+                    } else {
+                        format!(
+                            "{} {{ {}, ..{} }}",
+                            name,
+                            field_strs.join(", "),
+                            self.render_expr(base)
+                        )
+                    }
                 } else {
                     format!("{} {{ {} }}", name, field_strs.join(", "))
                 }

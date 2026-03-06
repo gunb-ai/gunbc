@@ -635,12 +635,14 @@ wider parameter lists.
 >
 > **Landed**: `TypedProject` borrows `&ModuleGraph` (CP-43), `LowerOutput`
 > owns computed fields (CP-44), execution consolidated behind `execute_dag`
-> + `ExecuteConfig` (CP-45).
+> + `ExecuteConfig` (CP-45), `SpannedTypeError` carries AST spans and
+> resolves line:col from source text, `NodeOrigin::Unknown` fallbacks
+> panic (all 5 lowerer sites now hard-fail instead of silent default),
+> testgen failure variant synthesis (`auto_mock_failure_variants()`).
 >
-> **Still transitional**: mandatory located diagnostics, full `NodeOrigin`
-> stamping (defaults to `Unknown` for backward compat), ExternId-keyed
-> runtime bindings (currently `ProgramSymbolId`-keyed), and a standalone
-> `SourceBundle` ingest stage.
+> **Still transitional**: ExternId-keyed runtime bindings (currently
+> `ProgramSymbolId`-keyed), a standalone `SourceBundle` ingest stage,
+> and `Diagnostic::located()` adoption across all error sites.
 
 ```rust
 /// The one result type. PASS = Ok, FAIL = Err. No third state.

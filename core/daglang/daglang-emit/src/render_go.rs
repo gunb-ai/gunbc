@@ -349,18 +349,15 @@ fn render_expr(expr: &Expr) -> String {
         Expr::RefMut(expr) => format!("&{}", render_expr(expr)), // Go has no &mut.
         Expr::Path(segments) => segments.join("."),              // Go uses dots, not ::.
         Expr::Struct { name, fields, rest } => {
-            let field_strs: Vec<String> = fields
-                .iter()
-                .map(|(k, v)| format!("{}: {}", k, render_expr(v)))
-                .collect();
-            if let Some(base) = rest {
-                format!(
-                    "{}{{ {}, ..{} }}",
-                    name,
-                    field_strs.join(", "),
-                    render_expr(base)
-                )
+            if rest.is_some() {
+                // Go has no struct update syntax (`..base`). Emit a TODO comment
+                // so the output is clearly invalid rather than silently wrong.
+                format!("{}{{ {} /* ERROR: Go has no struct update syntax */ }}", name, fields.iter().map(|(k, v)| format!("{}: {}", k, render_expr(v))).collect::<Vec<_>>().join(", "))
             } else {
+                let field_strs: Vec<String> = fields
+                    .iter()
+                    .map(|(k, v)| format!("{}: {}", k, render_expr(v)))
+                    .collect();
                 format!("{}{{ {} }}", name, field_strs.join(", "))
             }
         }
