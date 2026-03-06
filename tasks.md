@@ -44,7 +44,7 @@ Source of truth: [`TODO/gunbc-dag-simplification.md`](TODO/gunbc-dag-simplificat
 1. **DM-1 (P0) — DONE (2026-03-05)**: Deleted the remaining dead handwritten cloud/provider crates that now have `.dag` replacements: `lib/gcp-ops` and `lib/aws-ops`, following the earlier removal of `lib/gcp-ops/src/ops.rs`, `lib/gcp-ops/src/services/local_auth.rs`, and `lib/cloud-ops/src/infra_*`. Workspace/config/guardrail references were updated in `Cargo.toml`, `dsl/config/workspace.dag`, `dsl/config/arch_rules.dag`, `dsl/extdeps/gunbc.dag`, `gunbc-dag/tests/boundary_gate.rs`, and `lib/transport/src/pragma_lint.rs`. Update later on 2026-03-05: the last scheduled handwritten survivor in this lane, `gunbc-dag/src/testgen_dag/graph.rs`, was deleted and replaced by [`dsl/tools/testgen.dag`](dsl/tools/testgen.dag), with Rust reduced to narrow discovery/render extern bridges. Follow-on cleanup the same day deleted the temporary thin shim layer in `gunbc-dag`, so this lane now ends with compiler/framework internals plus narrow app extern bindings, not handwritten provider/workflow graphs. Rule remains: no new provider/runtime logic lands in Rust unless the compiler cannot yet express it.
 2. **DM-2 (P0) — DONE (2026-03-05)**: Deleted the remaining thin app-layer shim surfaces in `gunbc-dag`: `src/tool_graphs.rs`, `src/pragma/mod.rs`, `src/docgen/mod.rs`, `src/dsl_builder.rs`, `src/fs_env.rs`, `src/dry_run.rs`, `src/dsl_registry.rs`, and `src/resolve.rs`. Generated callers, tests, and tool discovery now use direct `gunbc_resolve::builder::build_dsl_graph(...)` / `gunbc_resolve::resolve_lowered_dag_with(...)` calls with the real app binding point, [`gunbc-dag/src/extern_ops.rs`](gunbc-dag/src/extern_ops.rs) `GunbcExternResolver`. Supporting logic that still belongs in app code was narrowed to [`gunbc-dag/src/makegen_support.rs`](gunbc-dag/src/makegen_support.rs) and [`gunbc-dag/src/resource_targets.rs`](gunbc-dag/src/resource_targets.rs). Follow-on cleanup the same day also deleted the dead handwritten Rust Justfile renderer in `core/codegen/src/makegen/justfile.rs` and stripped stale makegen tool-projection fields (`live_secrets`, local-profile injection, unused build toggles) that only existed for the old registry/profile path. Acceptance: `rg -n 'pub fn build_.*graph|pub fn .*signature' gunbc-dag/src` returns no results, and source/generated Rust no longer imports repo-local wrapper modules for DSL graph building or resolution.
 3. **DM-3 (P0) — PARTIAL (2026-03-05)**: Repo-facing profile/auth cleanup is largely landed. Deleted `available_profiles` plumbing from tool discovery, CLI generation, and makegen projections; removed generated/user `--profile` handling; added provider auth modules under `dsl/extdeps/{github,llm}/auth.dag`; deleted `dsl/shared/credentials.dag` and `dsl/profiles/gist.dag`; and rewrote active runtime diagnostics to talk about missing concrete bindings instead of `--profile`. A temporary `dsl/profiles/sdlc.dag` compatibility path has been reintroduced only to unblock local SDLC real-mode proof while compiler cleanup happens elsewhere. Remaining residue is compiler-internal plus that temporary SDLC compatibility module: lowerer profile types, interface-stub compatibility fixtures under `dsl/profiles/`, and historical design docs.
-4. **DM-4 (P0) — Large Sweep: Runtime Bridge Deletion**: Delete the remaining evaluator-era runtime bridges in one pass. Scope: Bridges 1, 2, 3, 8, and 9 from `TODO/gunbc-dag-simplification.md` — `DeclaredOutputCallableOp`, `FnBodyCallableOp`, `CollectionDelegate`, resolver-time FS injection, and generic file adapters. Final state: lowerer emits SubDags/pattern IR directly; resolver only resolves externs and executes typed IR. Acceptance: `rg -n 'DeclaredOutputCallableOp|FnBodyCallableOp|CollectionDelegate|add_fs_env_root_node|GenericFilePrepareOp|GenericFileParseOp' core/` returns 0.
+4. **DM-4 (P0) — DONE (2026-03-05)**: All 5 targets (`DeclaredOutputCallableOp`, `FnBodyCallableOp`, `CollectionDelegate`, `GenericFilePrepareOp`, `add_fs_env_root_node`) already deleted in prior work. `rg -n` acceptance query returns 0 hits.
 5. **DM-5 (P1) — PARTIAL (2026-03-05)**: The repo-owned makegen lane moved out of `core/codegen` into `gunbc-dag/src/makegen/`, and the handwritten Rust Justfile renderer plus profile-specific tool-projection hacks were deleted. Remaining work is the real end-state cutover: remove runtime `DiscoverToolsOp`/`render_makefile_from_dsl_discovery`, and stop loading build-target/gitignore DSL data from Rust at execution time.
 6. **DM-6 (P1) — Large Sweep: Extern and Artifact Collapse**: Shrink `gunbc-dag/src/extern_ops.rs` to the irreducible minimum by deleting app externs that exist only because the compiler cannot yet emit artifacts or express a pattern. Scope: `DiscoverToolsOp`, bootstrap render externs that should become generated artifacts, and the remaining repo-specific render/discovery helpers as DSL features land (`render_tree`, `build_snapshot_content`, CI config discovery, infra dispatch). Acceptance: `rg -n 'DiscoverToolsOp|render_tree|build_snapshot_content|DiscoverCiConfigOp|InfraDispatchOp' gunbc-dag/src core/codegen -g'*.rs'` trends to 0, with any remaining hits explicitly justified in `TODO/gunbc-dag-simplification.md`.
 7. **DM-7 (P1) — PARTIAL (2026-03-05)**: Removed the hardcoded `CODEGEN_*` constants from `core/ir` and the app re-export from `gunbc-dag`, so output layout is no longer duplicated there. Remaining duplication lives in `core/ir/src/workspace_layout.rs`, generated-bin paths in `gunbc-dag/Cargo.toml`, and fallback/default path strings like `gunbc-dag/src/bin/codegen_cli.rs`.
@@ -170,8 +170,8 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 
 | ID | What | Size | Deps | Source | Status |
 |----|------|------|------|--------|--------|
-| CP-46 | Structured `LowerError` enum with spans (subsumes CP-14) | M | CP-48 | CP | **Partial** — `SpannedLowerError` wrapper struct added with file/span/module/item fields, builder methods (`at`, `with_span`, `with_location`), Display impl with location prefix. Threading span info through actual error construction sites deferred to CP-63 (scope.rs integration). |
-| CP-49 | Thread spans through `TypeError` (35+ variants → all carry Span) | M | CP-48 | CP | **Partial** — `SpannedTypeError` wrapper struct added (parallel to SpannedLowerError). daglang-contract dependency added. Threading spans through actual construction sites deferred (80+ sites, needs CP-63 for scope context). |
+| CP-46 | Structured `LowerError` enum with spans (subsumes CP-14) | M | CP-48 | CP | **Phase 1 complete** — `SpannedLowerError` wrapper struct, `code()` method (LOW001–LOW024), `help()` method (6 common variants). Phase 2 (threading spans through 64 construction sites) deferred to CP-63. |
+| CP-49 | Thread spans through `TypeError` (35+ variants → all carry Span) | M | CP-48 | CP | **Phase 1 complete** — `SpannedTypeError` wrapper struct, daglang-contract dependency. Phase 2 (threading through 80+ sites) deferred to CP-63. |
 | CP-50 | Help text on common errors (10+ most-hit paths) | M | CP-48 | CP | **Done** — `help()` methods on TypeError (11 variants), LowerError (6 variants), ResolveError (4 variants). SpannedTypeError and SpannedLowerError Display impls show help text. 21 actionable fix suggestions total. |
 | CP-51 | `NodeOrigin` on every lowered node (subsumes CP-25) | M | — | CP | **Done** — `NodeOrigin` enum (UserCode, PatternExpansion, Stdlib, Unknown) added to `Node<T>`. Default `Unknown` for backward compat. `origin` field preserved through `map_ops()`, lower, resolve, and mock. Lowerer stamping deferred to Phase B (spans not yet threaded through lowerer context). |
 | CP-29 | Validate required inputs after lower (catches `make gist` class) | S | CP-46 | CP | **Done** — `validate_required_inputs()` public function walks DAG nodes, checks required (min≥1) input ports for incoming edges. Skips param_source, CallParamSource/CallLiteralSource, internal/tool/resource ports, and ObligationCategory::None callables (entrypoints). Not called in main lower path (too many pre-existing gaps); available as opt-in validation. 3 unit tests. |
@@ -240,20 +240,20 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 
 | ID | What | Size | Deps | Source | Status |
 |----|------|------|------|--------|--------|
-| CP-40 | `ExternRegistry` — validate externs in typecheck, carry `ExternId` | M | CP-23 | CP | Open |
+| CP-40 | `ExternRegistry` — validate externs in typecheck, carry `ExternId` | M | CP-23 | CP | **Done** — `ExternRegistry` struct in `daglang-typecheck/src/extern_registry.rs`. `TypecheckOptions.extern_registry: Option<ExternRegistry>`. `TypeError::UnregisteredExtern` (TC041), `TypeError::ExternArityMismatch` (TC042) with `code()` and `help()`. Validation loop in `typecheck_module_graph_with_options`. `gunbc_runtime_bindings()` builder in app layer. |
 | CP-43 | Typecheck borrows `&ModuleGraph` (subsumes CP-32 field duplication) | M | CP-36 | CP | **Done** — `typecheck_module_graph[_with_options]` takes `&ModuleGraph`. Clone derived on all 24 AST types + `SourceFile` + `Item` + `ResolvedModule` + `ModuleGraph`. Callers retain graph after typechecking. Eliminated redundant `discover_module_graph_for_context` in `compile_from_module_graph_with_options`. `source_paths` clone deferred to point of use. |
 | CP-44 | `LowerOutput` bundles computed fields (subsumes CP-33 re-extraction) | M | CP-43 | CP | **Done** — `LowerOutput` struct in daglang-lower bundles `dag`, `output_paths`, `inferred_entrypoints`, `data_values`. `lower_to_output()` computes all in one call. Driver uses bundled output, eliminating 3 re-extraction calls (`extract_output_paths`, `infer_entrypoints`, `build_data_values`). Backward-compatible: `lower_with_config` still returns bare `Dag<LoweredOp>`. |
 | CP-45 | Consolidate Execute entry points → one `fn execute(dag, config)` | S | — | CP | **Done** — `ExecuteConfig` struct + `execute_dag()` unified entry point. All 10 existing `execute_*` variants delegate to it. Backward compatible. |
-| CP-47 | `RuntimeBindings` replaces `ExternResolver` trait | M | CP-40 | CP | Open |
+| CP-47 | `RuntimeBindings` replaces `ExternResolver` trait | M | CP-40 | CP | **Done** — `RuntimeBindings` struct in `core/resolve/src/lib.rs` with `ExternResolver` bridge impl. `gunbc_runtime_bindings()` registers all 12 extern symbols. `GunbcExternResolver` retained for backward compat. |
 
 ### D.2: Architecture (after D.1)
 
 | ID | What | Size | Deps | Source | Status |
 |----|------|------|------|--------|--------|
-| CP-17 | Typed ports in IR (`port_type: TypeId`) | L | CP-43 | CP | Open |
+| CP-17 | Typed ports in IR (`port_type: TypeId`) | L | CP-43 | CP | **Phase 1 complete** — `TypeCategory` enum, typed `TypeId` constructors (`bool()`, `string()`, `int()`, etc.), `category()` method, 8 unit tests. Phase 2 (migrating all string-literal construction sites) deferred. |
 | CP-18 | Defer transport expansion to backend (`RealizedDag`) | L | CP-40 | CP | Open |
 | CP-26 | `ParseResult { ast, diagnostics }` (subsumes CP-16, CP-21) | M | — | CP | **Done** — `ParseResult { ast: SourceFile, diagnostics: Vec<ParseError> }` struct added. `parse_to_result()` always returns partial AST. `into_result()` bridges to old API. `parse_source_file_partial()` internal method. Existing `parse()` unchanged for backward compat. |
-| CP-27 | Model skipping as control flow (delete `Value::Skipped`) | L | CP-20, Bridge 1+2 | CP | Open |
+| CP-27 | Model skipping as control flow (delete `Value::Skipped`) | L | CP-20, Bridge 1+2 | CP | **Phase 1 complete** — `ControlFlow` enum (Continue/Skipped) in `value.rs` with `from_value()`, `into_legacy_value()`, `into_value()`, `unwrap()` bridge methods. 4 unit tests. Phase 2 (migrating 467 `Value::Skipped` references) deferred to WS4-4/WS4-5. |
 | CP-57 | `Vfs` trait / Source Ingest stage (isolate filesystem impurity). **Moved early** — enables deterministic tests, caching, read-once discipline. | M | — | CP | **Done** — `Vfs` trait + `RealVfs` impl + `DirEntry` in daglang-resolve. `ModuleGraph::discover_with_vfs()` entrypoint. All `std::fs` calls routed through `Vfs`. `InMemoryVfs` + 4 unit tests prove synthetic discovery. `discover()`/`discover_strict()` unchanged for backward compat. |
 
 ### D.3: Interpreted/Compiled Parity (after D.2)
@@ -262,7 +262,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 |----|------|------|------|--------|--------|
 | CP-9 | Parity test harness (interpreted vs compiled output) | M | CP-8 | CP | Open |
 | CP-10 | Callable orchestration in Rust emit (topo-sorted execution) | L | CP-9 | CP | Open |
-| CP-11 | PureRender / fn body classification in exec-runtime | M | CP-10 | CP | Open |
+| CP-11 | PureRender / fn body classification in exec-runtime | M | CP-10 | CP | **Phase 1 complete** — `FnBodyClassification` enum (PureRender/PureCompute/Effectful) with `needs_mocks()` and `is_deterministic()`. `classify_fn_body()` walks DAG nodes for resource ports and transport naming conventions. 6 unit tests. Phase 2 (integration into EmitPlan steps) deferred. |
 
 ---
 
@@ -296,8 +296,8 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 
 | ID | What | Size | Status |
 |----|------|------|--------|
-| WS4-1 | `PresenceMode` on `Port` (Required / Guardable) | M | Open |
-| WS4-2 | `add_edge` rejects Guardable → Required | M | Open |
+| WS4-1 | `PresenceMode` on `Port` (Required / Guardable) | M | **Done** — `PresenceMode` enum (Required/Optional/Guardable) in `types.rs`. `presence` field on `Port`, derived from `type_optional` in all constructors. `Port::guardable()` constructor. |
+| WS4-2 | `add_edge` rejects Guardable → Required | M | **Done** — `validate_presence_wiring()` in `validate.rs`. `PresenceWiringError` struct with Display. 3 unit tests (guardable→required rejected, guardable→optional accepted, required→required accepted). |
 | WS4-3 | Narrowing operators (`default`/`require`) | M | Open |
 | WS4-4 | Eliminate 7 silent Skipped coercion sites | L | Open |
 | WS4-5 | Eliminate 12 evaluator silent defaults | L | Open |
@@ -324,7 +324,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 
 | ID | What | Size | Deps | Status |
 |----|------|------|------|--------|
-| CP-61 | **CLI generator** — generated CLIs accept `--mode ensure|verify`, subcommand dispatch for multi-func modules, and `KEY=VALUE` arg parsing for infra-style tools. Any remaining concrete-binding selection must not reintroduce repo-facing `--profile`; it should flow through the final DSL-owned binding/link model. | L | — | Open |
+| CP-61 | **CLI generator** — generated CLIs accept `--mode ensure|verify`, subcommand dispatch for multi-func modules, and `KEY=VALUE` arg parsing for infra-style tools. Any remaining concrete-binding selection must not reintroduce repo-facing `--profile`; it should flow through the final DSL-owned binding/link model. | L | — | **Partial** — `enable_mode` auto-derives from `output_paths` presence in `build_tool_defs_from_cached_params()` (both multi-entrypoint and single-entrypoint paths). 2 tests (`pragma_tool_has_enable_mode`, `clippy_tool_no_enable_mode`). Remaining: subcommand dispatch, KEY=VALUE parsing. |
 
 ### F.2: Binary elimination (after CP-61)
 
@@ -414,6 +414,7 @@ Source: [`TODO/gist-auth-postmortem.md`](TODO/gist-auth-postmortem.md) RT-I + [`
 
 - [`docs/design/sdlc/mega-modeling-design.md`](docs/design/sdlc/mega-modeling-design.md): runtime topology, signal ownership, core abstractions, idempotency rules
 - [`docs/design/sdlc/domain-modeling-comprehensive.md`](docs/design/sdlc/domain-modeling-comprehensive.md): entity model and invariants
+- [`docs/design/sdlc/execution-intent-binding-plan.md`](docs/design/sdlc/execution-intent-binding-plan.md): `SM-1` / `SM-2` design for execution intent, binding plan, and reusable fact models
 - [`TODO/sdlc.md`](TODO/sdlc.md): branch-status snapshot and SDLC notes
 - [`docs/design/sdlc/scenario-readiness.md`](docs/design/sdlc/scenario-readiness.md): rollout/readiness inputs derived from practical scenarios
 - [`docs/design/sdlc/production-gap-analysis.md`](docs/design/sdlc/production-gap-analysis.md): historical blocker baseline before current compile/dry-run proof
@@ -427,6 +428,22 @@ What this means:
 - Deployment split is a transport concern. Co-located local execution and split hosted execution must preserve the same stage semantics.
 - Scenario differences should flow through modeled inputs, authorities, bindings, credentials, triggers, and operator controls rather than handwritten branching logic.
 - The model must make authoritative state, trigger ownership, mutation permission, and rollout safety explicit.
+- Prefer reusable, objective facts over SDLC-specific scenario enums. The model should describe what is true about execution, not encode one-off labels like "local_real" as first-class semantics.
+- If we introduce a top-level execution-intent/context record, it should be a thin composition root that points to orthogonal models rather than a monolith that re-embeds every concern.
+
+### H.1.1 Separation rule
+
+The target design is:
+
+- one thin composition record for "this run/worker/invocation"
+- multiple reusable fact models for binding selection, credential realization, mutation policy, target scope, execution topology, state authorities, and safety controls
+- scenario names only as derived presets, test fixtures, or operator shorthand
+
+The target design is not:
+
+- a new SDLC-only profile system with renamed fields
+- one giant `ExecutionContext` record that hardcodes local/cloud/dev/real branches
+- scenario-specific logic embedded in worker/runtime code
 
 ### H.2 Scenario-derived dimensions the domain must encode
 
@@ -442,14 +459,59 @@ What this means:
 
 ### H.3 Modeling tasks still needed
 
-| ID | What | Size | Why it matters |
-|----|------|------|----------------|
-| SM-1 | **Execution-context model.** Define the authoritative SDLC model for execution topology, target scope, and mutation policy so scenarios become structured inputs rather than doc-only prose. | M | This is the root abstraction for local vs hosted, dev vs real, and dry-run vs mutation. |
-| SM-2 | **Concrete binding/link model.** Define the final artifact/model that selects concrete providers and authorities for a given scenario, then use it to replace the temporary `dsl/profiles/sdlc.dag` path. | L | This is the design prerequisite for AUTH-4 and DM-3A. |
-| SM-3 | **Credential intent vs realization model.** Define how GitHub/LLM/cloud credential intent maps to env/secret/WIF realization and startup preflight checks. | M | Local and hosted real-mode safety depends on explicit credential modeling with no fallback logic. |
-| SM-4 | **Authority/backing model.** Make claim store, outcome ledger, signal store, and artifact store backings explicit variants of the same contracts with shared invariants. | M | File-backed local proof and GCS/PubSub hosted proof should differ only in backing, not in semantics. |
-| SM-5 | **Operator-safety model.** Model drain/rollback/reporting/mutation gates as domain inputs or contracts, not ad hoc deployment convention. | M | Remote real runs should be blocked by missing modeled safety, not by vague ops discomfort. |
-| SM-6 | **Proof matrix from scenarios.** For each practical scenario, declare required inputs, required proof, and which existing tests/harnesses satisfy it. | S | Prevents future drift between docs, tests, and claimed readiness. |
+Status note: `SM-1` through `SM-6` are blocked pending review of the draft design in `docs/design/sdlc/execution-intent-binding-plan.md`.
+
+| ID | What | Size | Why it matters | Status |
+|----|------|------|----------------|--------|
+| SM-1 | **Execution-context composition root.** Define a thin authoritative run/invocation model that references execution topology, target scope, and mutation policy without collapsing them into one giant scenario enum. | M | This gives us one entrypoint for planning/execution while preserving separation of concerns. | Blocked — Needs review |
+| SM-2 | **Concrete binding/link model.** Define the reusable artifact/model that selects concrete providers and authorities for a given run, then use it to replace the temporary `dsl/profiles/sdlc.dag` path. | L | This is the design prerequisite for AUTH-4 and DM-3A and should be reusable beyond SDLC. | Blocked — Needs review |
+| SM-3 | **Credential intent vs realization model.** Define how GitHub/LLM/cloud credential intent maps to env/secret/WIF realization and startup preflight checks. | M | Local and hosted real-mode safety depends on explicit credential modeling with no fallback logic. | Blocked — Needs review |
+| SM-4 | **Authority/backing model.** Make claim store, outcome ledger, signal store, and artifact store backings explicit variants of the same contracts with shared invariants. | M | File-backed local proof and GCS/PubSub hosted proof should differ only in backing, not in semantics. | Blocked — Needs review |
+| SM-5 | **Operator-safety model.** Model drain/rollback/reporting/mutation gates as reusable domain inputs or contracts, not SDLC-only deployment convention. | M | Remote real runs should be blocked by missing modeled safety, not by vague ops discomfort. | Blocked — Needs review |
+| SM-6 | **Proof matrix from scenarios.** For each practical scenario, declare required inputs, required proof, and which existing tests/harnesses satisfy it. | S | Prevents future drift between docs, tests, and claimed readiness. | Blocked — Needs review |
+
+### H.3.1 Design reference
+
+The detailed `SM-1` / `SM-2` design, including proposed DSL types, supporting fact models, invariants, and migration notes, lives in:
+
+- [`docs/design/sdlc/execution-intent-binding-plan.md`](docs/design/sdlc/execution-intent-binding-plan.md)
+
+Key decisions locked in by that draft:
+
+- one thin composition root for execution intent
+- one reusable binding/link realization model
+- orthogonal fact models for topology, effect policy, scope, triggers, safety, and authorities
+- practical scenarios only as derived presets over those fact models
+
+### H.3.2 Acceptance criteria for SM-1 through SM-6
+
+| ID | Done when | Verification sketch |
+|----|-----------|---------------------|
+| SM-1 | `ExecutionIntent` (or final equivalent name) exists as a thin composition type that references orthogonal concern models; no giant scenario enum is introduced | `rg -n 'type (ExecutionIntent|RunIntent)' dsl/std docs` plus review that topology/scope/policy are separate types |
+| SM-2 | `BindingPlan` (or final equivalent) exists and the SDLC active path can select concrete providers without `profiles.sdlc.local` | `rg -n 'module profiles\\.sdlc|profiles\\.sdlc\\.local' dsl gunbc-app docs` only finds historical references after cutover |
+| SM-3 | Credential intent and credential realization are explicitly linked; startup preflight requirements are modeled fail-closed | active docs/types no longer describe workflow-local credential fallback logic |
+| SM-4 | File/local/cloud authorities are represented as backing facts with shared invariants rather than ad hoc provider-only config | local and hosted proof paths differ by authority facts/binding data, not by stage-logic branching |
+| SM-5 | Mutation gates, drain behavior, and reporting/audit requirements are modeled inputs/contracts | remote-real readiness can be expressed as modeled safety requirements rather than prose-only cautions |
+| SM-6 | `tasks.md` contains a scenario/proof matrix that ties practical scenarios to required facts and proof | matrix stays updated alongside `S-11` through `S-19` status |
+
+### H.3.3 Initial scenario/proof matrix
+
+| Practical scenario | Required fact composition | Current proof | Missing proof |
+|--------------------|---------------------------|---------------|---------------|
+| Local dev testing | local co-located topology + hermetic effect policy + mocked/local authorities + manual trigger | compile tests + worker dry-run | codify as preset over final fact models |
+| Local real testing | local co-located topology + mutating effect policy + explicit opt-in + integration repo scope + file-backed authorities + real credentials | `s10_local_profile_binds_real_local_providers`; `s11_local_profile_design_stage_e2e` | replace temporary profile path with final binding model; make proof repeatable |
+| Remote dev testing | hosted topology + mutating effect policy + non-prod scope + cloud authorities + durable signals + strict safety policy | structural wiring/env-gated hosted harnesses | concrete binding/link cutover; single-worker canary proof |
+| Remote real runs | hosted fleet topology + mutating effect policy + prod scope + cloud authorities + strongest safety policy + concurrency guarantees | none yet | fleet CAS proof, rollback/drain proof, observability proof |
+
+### H.3.4 Recommended sequencing
+
+| Order | Task | Why first / after what |
+|-------|------|------------------------|
+| 1 | SM-1 | Establish the thin composition root before expanding binding and policy models |
+| 2 | SM-2 | Replace the temporary profile path with the final reusable binding/link mechanism |
+| 3 | SM-3 + SM-4 | Credential realization and authority/backing facts can be refined in parallel once the composition and binding shapes exist |
+| 4 | SM-5 | Safety policy should attach to the now-defined execution intent / scope / authority models |
+| 5 | SM-6 | Freeze the scenario/proof matrix after the model vocabulary is stable enough to map real tests onto it |
 
 ### H.4 Proof and activation tasks
 

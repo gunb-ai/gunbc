@@ -704,6 +704,85 @@ fn classify_by_name(
 }
 
 // ===========================================================================
+// Fn Body Classification (CP-11)
+// ===========================================================================
+
+/// Classification of a callable's body based on its computational nature.
+///
+/// Used by the emit pipeline to decide code generation strategy:
+/// - **PureRender**: only string/template operations, no I/O — can be
+///   const-evaluated or inlined.
+/// - **PureCompute**: deterministic computation with data transforms but
+///   no transport — can be tested without mocks.
+/// - **Effectful**: contains transport or resource operations — requires
+///   mocks for testing, I/O runtime at execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FnBodyClassification {
+    /// Pure string/template rendering — no computation, no I/O.
+    PureRender,
+    /// Deterministic computation — no I/O but may include logic/data ops.
+    PureCompute,
+    /// Contains transport or resource operations — requires I/O runtime.
+    Effectful,
+}
+
+impl FnBodyClassification {
+    /// Whether this classification requires mocks for testing.
+    pub fn needs_mocks(&self) -> bool {
+        matches!(self, FnBodyClassification::Effectful)
+    }
+
+    /// Whether this classification is guaranteed deterministic.
+    pub fn is_deterministic(&self) -> bool {
+        matches!(
+            self,
+            FnBodyClassification::PureRender | FnBodyClassification::PureCompute
+        )
+    }
+}
+
+/// Classify a callable's fn body by walking its SubDag nodes.
+///
+/// Inspects the inner DAG for transport/resource nodes:
+/// - If any node is Transport or ResourceAcquire → `Effectful`
+/// - If any node is Pure with non-trivial body → `PureCompute`
+/// - If all nodes are Pure with literal/identity bodies → `PureRender`
+pub fn classify_fn_body<T: std::fmt::Debug>(dag: &gunbc_ir::Dag<T>) -> FnBodyClassification {
+    let mut has_compute = false;
+    for node in &dag.nodes {
+        // Check for transport/resource patterns in the node
+        for port in &node.inputs {
+            if port.name.0.starts_with("res:") {
+                return FnBodyClassification::Effectful;
+            }
+        }
+        for port in &node.outputs {
+            if port.name.0.starts_with("res:") {
+                return FnBodyClassification::Effectful;
+            }
+        }
+        // Check for transport node naming conventions
+        let id = &node.id.0;
+        if id.starts_with("prepare_transport_")
+            || id.starts_with("execute_transport_")
+            || id.starts_with("parse_transport_")
+            || id.contains("_transport")
+        {
+            return FnBodyClassification::Effectful;
+        }
+        // Any non-trivial node means at least PureCompute
+        if !node.inputs.is_empty() || !node.outputs.is_empty() {
+            has_compute = true;
+        }
+    }
+    if has_compute {
+        FnBodyClassification::PureCompute
+    } else {
+        FnBodyClassification::PureRender
+    }
+}
+
+// ===========================================================================
 // Tests
 // ===========================================================================
 
@@ -1376,5 +1455,88 @@ mod tests {
         let node = Node::subdag("sub", inner);
         let result = classify_computation(&node);
         assert!(matches!(result, Err(ClassifyError::SubDagNode(_))));
+    }
+
+    #[test]
+    fn classify_fn_body_empty_dag_is_pure_render() {
+        let dag: gunbc_ir::Dag<LoweredOp> = gunbc_ir::Dag::new();
+        assert_eq!(classify_fn_body(&dag), FnBodyClassification::PureRender);
+    }
+
+    #[test]
+    fn classify_fn_body_with_ports_is_pure_compute() {
+        let mut dag: gunbc_ir::Dag<LoweredOp> = gunbc_ir::Dag::new();
+        dag.add_node(make_node(
+            "compute",
+            vec![Port::scalar("input", "String")],
+            vec![Port::scalar("output", "String")],
+            LoweredOp::Callable {
+                module: "test".into(),
+                kind: CallableKind::Fn,
+                name: "transform".into(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+                fn_body: None,
+            },
+        ));
+        assert_eq!(classify_fn_body(&dag), FnBodyClassification::PureCompute);
+    }
+
+    #[test]
+    fn classify_fn_body_with_resource_port_is_effectful() {
+        let mut dag: gunbc_ir::Dag<LoweredOp> = gunbc_ir::Dag::new();
+        dag.add_node(make_node(
+            "effectful",
+            vec![Port::scalar("res:file:path", "String")],
+            vec![Port::scalar("output", "String")],
+            LoweredOp::Callable {
+                module: "test".into(),
+                kind: CallableKind::Func,
+                name: "read_file".into(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+                fn_body: None,
+            },
+        ));
+        assert_eq!(classify_fn_body(&dag), FnBodyClassification::Effectful);
+    }
+
+    #[test]
+    fn classify_fn_body_with_transport_node_is_effectful() {
+        let mut dag: gunbc_ir::Dag<LoweredOp> = gunbc_ir::Dag::new();
+        dag.add_node(make_node(
+            "prepare_transport_github",
+            vec![Port::scalar("url", "String")],
+            vec![Port::scalar("request", "TransportRequest")],
+            LoweredOp::Callable {
+                module: "test".into(),
+                kind: CallableKind::Func,
+                name: "prepare".into(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+                fn_body: None,
+            },
+        ));
+        assert_eq!(classify_fn_body(&dag), FnBodyClassification::Effectful);
+    }
+
+    #[test]
+    fn fn_body_classification_needs_mocks() {
+        assert!(!FnBodyClassification::PureRender.needs_mocks());
+        assert!(!FnBodyClassification::PureCompute.needs_mocks());
+        assert!(FnBodyClassification::Effectful.needs_mocks());
+    }
+
+    #[test]
+    fn fn_body_classification_is_deterministic() {
+        assert!(FnBodyClassification::PureRender.is_deterministic());
+        assert!(FnBodyClassification::PureCompute.is_deterministic());
+        assert!(!FnBodyClassification::Effectful.is_deterministic());
     }
 }

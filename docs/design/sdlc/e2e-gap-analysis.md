@@ -1,9 +1,13 @@
 # SDLC Pipeline E2E Gap Analysis
 
-Status: Complete — All gaps A-J resolved, all bridges eliminated
+Status: Historical profile-era gap analysis; not current execution status
 Date: 2026-02-21
 Parent: [mega-modeling-design.md](mega-modeling-design.md) (MD0-D)
 Scope: Delta between the mega modeling design and current implementation for end-to-end pipeline execution, with specific focus on gaps blocking a local dry-run deployment.
+
+Status note (2026-03-05): this document captures an earlier closure plan built
+around profile-based binding. Current SDLC proof and tasking have moved on; use
+`TODO/sdlc.md`, `tasks.md`, and `scenario-readiness.md` for the active state.
 
 ## 0. DSL-Native Implementation Status (CG169)
 

@@ -1,8 +1,12 @@
 # SDLC Production Gap Analysis
 
-Status: Active
+Status: Historical baseline before SDLC compile/dry-run proof landed
 Date: 2026-03-03
 Parent: [implementation-roadmap.md](implementation-roadmap.md)
+
+Status note (2026-03-05): this analysis was written before `builds_sdlc_*` compile
+tests, worker dry-run proof, and the env-gated local live harness were added. Use
+it as blocker history, not as the current status document.
 
 ## 1. Executive Summary
 

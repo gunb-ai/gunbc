@@ -814,6 +814,33 @@ impl std::fmt::Display for PortName {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TypeId(pub String);
 
+/// Presence mode for a port (WS4-1).
+///
+/// Extends the binary `type_optional` flag with a third state for
+/// guard-controlled ports that may or may not produce values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PresenceMode {
+    /// Port must always have a value. Default for scalar ports.
+    Required,
+    /// Port may have no value (nullable `T?` in DSL).
+    Optional,
+    /// Port value depends on a guard condition (branch/match arms).
+    /// A `Guardable` output cannot feed a `Required` input without
+    /// an explicit narrowing operator (`default` or `require`).
+    Guardable,
+}
+
+impl Default for PresenceMode {
+    fn default() -> Self {
+        Self::Required
+    }
+}
+
+/// Serde skip helper: true when presence is the default (Required).
+pub fn presence_is_default(p: &PresenceMode) -> bool {
+    *p == PresenceMode::Required
+}
+
 /// Policy for placeholder seed generation in generated tests.
 ///
 /// This classification lives with the IR type model so downstream generators

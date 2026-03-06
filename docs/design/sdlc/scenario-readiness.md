@@ -9,6 +9,12 @@ Scope: Set realistic expectations for "can we use SDLC soon?" and define go/no-g
 This document defines practical usage scenarios for the SDLC pipeline and the proof required for each one.  
 It is not a design document. It is an activation checklist.
 
+`tasks.md` Phase H is the single active planning surface for SDLC on this branch.
+Use this document as a scenario/readiness input when refining that lane.
+
+If another SDLC doc still assumes profile-based architecture as the long-term
+plan, treat that as historical unless it is explicitly reconciled in `tasks.md`.
+
 ## 2. Current Baseline (Verified)
 
 As of 2026-03-05:
@@ -27,7 +33,8 @@ As of 2026-03-05:
 What is still not continuously proven in CI:
 
 - Mutable end-to-end local runs (`s11`) under real secrets.
-- Cloud profile mutation path (claim/outcome/artifact/signal in hosted infra).
+- Concrete binding/link replacement for the temporary local compatibility profile.
+- Hosted mutation path (claim/outcome/artifact/signal in cloud infra).
 - Multi-worker cloud contention behavior.
 
 ## 2.1 Credentialing Postmortem (No-Fallback Direction)
@@ -44,136 +51,111 @@ Conclusion:
 
 - Do not treat the temporary local profile as the target architecture.
 - Treat strict modeled credentialing as an explicit migration track: structural auth requirements plus concrete binding/link artifacts, with no workflow-local fallback logic.
+- Do not plan around a user-facing `--profile` CLI coming back unless `tasks.md` changes; the current temporary path is compiler-internal and test-driven.
 
-## 3. Scenario Ladder
+## 3. Operating Modes
 
-### Scenario A: Demo Safe (Now)
+These are the four modes that matter for planning and adoption. Do not collapse
+them into one “SDLC works” bucket; each has different proof and different blockers.
 
-Goal: Prove SDLC is structurally valid and runnable in hermetic mode.
+| Mode | Runtime surface | Real effects | Binding path | Minimum proof | Current status |
+|------|-----------------|--------------|--------------|---------------|----------------|
+| Local dev testing | developer machine | none | no-profile compile path + auto-mocks | `make ci` + SDLC compile tests + worker dry-run | ready and should stay the default engineering path |
+| Local real testing | developer machine | real GitHub/LLM mutations with explicit opt-in | temporary `profiles.sdlc.local` compatibility path | `s10` + `s11` | partially proven, still operator-driven |
+| Remote dev testing | hosted worker in non-prod infra | real cloud mutations in dev/staging only | hosted concrete binding/link artifacts | S-16 through S-18 canary proof | not yet proven |
+| Remote real runs | hosted fleet on real queue/repo | full live mutations | hosted concrete binding/link artifacts + fleet safety | S-19 + operational runbook | not ready |
 
-Profile:
+### 3.1 Local Dev Testing
 
-- none on the current branch; the worker compile/dry-run proof uses the no-profile path
+Goal: keep compiler and workflow development fast, hermetic, and safe by default.
 
-Required proof:
+Actually needed:
 
-- `make ci` green.
-- SDLC compile tests green.
-- Worker dry-run dispatch completes with auto-mocked boundaries.
+- no-profile compile path must keep working
+- worker dry-run must complete with mocked boundaries
+- SDLC compile tests stay in normal CI
+- no real secrets or mutable external systems required
 
-Use case:
+Use this for:
 
-- Demos, refactors, non-mutation development.
+- compiler changes
+- DSL refactors
+- prompt/schema iteration
+- most day-to-day development
 
-### Scenario B: Local Pilot (Soonest useful mode)
+### 3.2 Local Real Testing
 
-Goal: Process one real GitHub issue through design flow with local profile.
+Goal: prove the pipeline can mutate real systems from a developer machine before
+investing in hosted rollout.
 
-Profile:
+Actually needed:
 
-- `profiles.sdlc.local`
+- temporary `profiles.sdlc.local` compatibility path until concrete bindings replace it
+- real GitHub token path
+- real LLM API key path
+- explicit mutation gate (`SDLC_ALLOW_MUTATION=1`)
+- local file-backed claims/outcomes/signals/artifacts
+- repeatable `s10` and `s11` runs against a controlled repo
 
-Required secrets/env (current state, transitional):
+Recommended scope:
 
-- `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` (matching `SDLC_LLM_PROVIDER`)
-- `SDLC_LLM_PROVIDER`
-- `SDLC_LLM_MODEL`
-- `SDLC_ALLOW_MUTATION=1`
-- working `gcloud` access to `gunbai-secrets/github-token`
+- one dev/integration repo only
+- one operator at a time
+- ephemeral issue creation and cleanup
 
-Required proof:
+### 3.3 Remote Dev Testing
 
-- `s10` and `s11` pass in one controlled run.
-- Ephemeral issue receives expected design artifact/comment.
-- Ephemeral issue labels advance to design flow labels.
-- Ephemeral issue is closed during test cleanup.
-- Outcome artifacts are written under `target/sdlc/outcomes`.
+Goal: prove hosted execution in a bounded non-production environment.
 
-Use case:
+Actually needed:
 
-- Real pilot with one repository and explicit operator oversight.
+- hosted concrete binding/link artifacts for GitHub, GCS, Pub/Sub, and credentials
+- non-production cloud project
+- non-production repo or clearly segregated issue namespace
+- single-worker canary first
+- deploy, health, claim/outcome, and signal proof
+- drain/rollback procedure before widening traffic
 
-### Scenario C: Local Flow Pilot (Multi-stage)
+This mode should not target the real repo/queue first. Its job is to validate
+hosted plumbing, not to prove full operational readiness.
 
-Goal: Validate the full local stage chain on a small issue set.
+### 3.4 Remote Real Runs
 
-Profile:
+Goal: run the hosted worker fleet against the real queue with acceptable safety.
 
-- `profiles.sdlc.local`
+Actually needed:
 
-Required proof:
+- everything from remote dev testing
+- S-19 multi-worker CAS/conflict proof
+- clear ownership for rollout, drain, and incident response
+- observability for claims, retries, stuck leases, and terminal failures
+- bounded rollout plan (one worker, then small fleet, then normal capacity)
 
-- Repeated dispatch runs move issues across expected labels (`idea -> ... -> done`).
-- No duplicate terminal transitions for the same `(issue, stage, run_key)`.
-- Stage outcomes are recorded for each transition.
+Until those are proven, “remote real” should be treated as not ready even if a
+single hosted worker can run.
 
-Use case:
+## 4. Recommended Near-term Order
 
-- Team trial before any cloud rollout.
+If "use any time soon" means this month, the practical order is:
 
-### Scenario D: Cloud Canary
+1. Keep local dev testing green at all times.
+2. Make local real testing repeatable in one controlled repo.
+3. Bring up remote dev testing as a single-worker hosted canary in non-prod.
+4. Only after that, plan remote real runs.
 
-Goal: Run one cloud worker with cloud profile and verify cloud-backed state.
-
-Profile:
-
-- `profiles.sdlc.cloud_run`
-
-Required infra:
-
-- GCP project with expected Secret Manager, GCS, and Pub/Sub resources.
-- Credential flow for profile-bound `GcpWifCredentialProvider`.
-
-Required proof:
-
-- Worker compiles and runs with cloud profile.
-- Claim/outcome/artifact operations persist in cloud stores.
-- Signal emit/consume path works for canary traffic.
-- No stuck claim lease beyond TTL during canary window.
-
-Use case:
-
-- First hosted environment validation.
-
-### Scenario E: Cloud Team Beta
-
-Goal: Operate multiple workers safely on live queue load.
-
-Profile:
-
-- `profiles.sdlc.cloud_run`
-
-Required proof:
-
-- Parallel workers do not double-process the same `(issue, stage)`.
-- Conflict handling and retries are observable and bounded.
-- Throughput and error rate stay within agreed SLO during trial window.
-
-Use case:
-
-- Pre-production confidence gate.
-
-## 4. Recommended Near-term Target
-
-If "use any time soon" means this month, the realistic target is:
-
-1. Make Scenario B repeatable in one repository.
-2. Then run Scenario C for a small issue batch.
-3. Only then decide whether to invest in Scenario D immediately.
-
-This keeps momentum while avoiding premature cloud hardening.
+This keeps momentum while avoiding premature hosted rollout.
 
 Current tactical note:
 
-- The branch uses a temporary `profiles.sdlc.local` compatibility path to make Scenario B runnable now.
+- The branch uses a temporary `profiles.sdlc.local` compatibility path to make local real testing runnable now.
 - Delete that path once compiler-side concrete binding/link cleanup lands.
 
 ## 5. Go / No-Go Template
 
-For each scenario, decide with three questions:
+For each mode, decide with three questions:
 
 1. Reliability: Did all required proof checks pass twice in a row?
 2. Safety: Is rollback/manual intervention clear for failure paths?
 3. Cost: Is operator effort acceptable for current stage of adoption?
 
-If any answer is "no", remain on the previous scenario and fix gaps there.
+If any answer is "no", remain on the previous mode and fix gaps there.

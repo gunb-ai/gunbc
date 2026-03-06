@@ -14,7 +14,7 @@ use crate::dag::{Dag, Port};
 use crate::entrypoint::detect_entrypoints;
 use crate::node::{Node, NodeBody};
 use crate::type_registry::TypeRegistry;
-use crate::types::{NodeId, PortName, SemanticCarrierKind, StaticFingerprint, TypeId};
+use crate::types::{NodeId, PortName, PresenceMode, SemanticCarrierKind, StaticFingerprint, TypeId};
 use std::collections::HashSet;
 use std::fmt;
 
@@ -738,6 +738,63 @@ pub fn verify_dag<T>(dag: &Dag<T>) -> Vec<VerifyError> {
             .map(VerifyError::UnwiredInput),
     );
 
+    errors
+}
+
+/// Error from presence-mode wiring validation.
+#[derive(Debug, Clone)]
+pub struct PresenceWiringError {
+    pub from_node: NodeId,
+    pub from_port: PortName,
+    pub to_node: NodeId,
+    pub to_port: PortName,
+    pub source_presence: PresenceMode,
+    pub target_presence: PresenceMode,
+}
+
+impl fmt::Display for PresenceWiringError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "edge {}.{} ({:?}) → {}.{} ({:?}): {:?} source cannot feed {:?} target",
+            self.from_node.0,
+            self.from_port.0,
+            self.source_presence,
+            self.to_node.0,
+            self.to_port.0,
+            self.target_presence,
+            self.source_presence,
+            self.target_presence,
+        )
+    }
+}
+
+/// Validate that no Guardable output feeds a Required input.
+///
+/// A Guardable port may not produce a value (when the guard condition fails),
+/// so wiring it to a Required input could leave that input unsatisfied.
+pub fn validate_presence_wiring<T>(dag: &Dag<T>) -> Vec<PresenceWiringError> {
+    let mut errors = Vec::new();
+    for edge in &dag.edges {
+        let source_port = dag
+            .get_node(&edge.from_node)
+            .and_then(|n| n.outputs.iter().find(|p| p.name == edge.from_port));
+        let target_port = dag
+            .get_node(&edge.to_node)
+            .and_then(|n| n.inputs.iter().find(|p| p.name == edge.to_port));
+        if let (Some(src), Some(tgt)) = (source_port, target_port) {
+            if src.presence == PresenceMode::Guardable && tgt.presence == PresenceMode::Required {
+                errors.push(PresenceWiringError {
+                    from_node: edge.from_node.clone(),
+                    from_port: edge.from_port.clone(),
+                    to_node: edge.to_node.clone(),
+                    to_port: edge.to_port.clone(),
+                    source_presence: src.presence,
+                    target_presence: tgt.presence,
+                });
+            }
+        }
+    }
     errors
 }
 
@@ -1693,5 +1750,69 @@ mod tests {
         let port_names: Vec<&str> = errors.iter().map(|e| e.port_name.as_str()).collect();
         assert!(port_names.contains(&"a"));
         assert!(port_names.contains(&"b"));
+    }
+
+    #[test]
+    fn presence_guardable_to_required_rejected() {
+        let mut dag: Dag<()> = Dag::default();
+        dag.add_node(Node::opaque(
+            "src",
+            vec![],
+            vec![Port::guardable("out", "Bool")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "tgt",
+            vec![Port::new("in", "Bool")],
+            vec![],
+            (),
+        ));
+        dag.add_edge(Edge::new("src", "out", "tgt", "in"));
+        let errors = validate_presence_wiring(&dag);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].from_port.0, "out");
+        assert_eq!(errors[0].to_port.0, "in");
+    }
+
+    #[test]
+    fn presence_guardable_to_optional_accepted() {
+        let mut dag: Dag<()> = Dag::default();
+        dag.add_node(Node::opaque(
+            "src",
+            vec![],
+            vec![Port::guardable("out", "Bool")],
+            (),
+        ));
+        let mut opt_port = Port::new("in", "Bool?");
+        opt_port.presence = crate::types::PresenceMode::Optional;
+        dag.add_node(Node::opaque(
+            "tgt",
+            vec![opt_port],
+            vec![],
+            (),
+        ));
+        dag.add_edge(Edge::new("src", "out", "tgt", "in"));
+        let errors = validate_presence_wiring(&dag);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn presence_required_to_required_accepted() {
+        let mut dag: Dag<()> = Dag::default();
+        dag.add_node(Node::opaque(
+            "src",
+            vec![],
+            vec![Port::new("out", "Bool")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "tgt",
+            vec![Port::new("in", "Bool")],
+            vec![],
+            (),
+        ));
+        dag.add_edge(Edge::new("src", "out", "tgt", "in"));
+        let errors = validate_presence_wiring(&dag);
+        assert!(errors.is_empty());
     }
 }

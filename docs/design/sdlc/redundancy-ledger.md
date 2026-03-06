@@ -1,6 +1,10 @@
 # SDLC Redundancy Ledger
 
-Tracks known duplication and overlap in the SDLC DSL subsystem.
+Historical snapshot of known duplication and overlap in the SDLC DSL subsystem.
+
+Status note (2026-03-05): profile-related entries in this file reflect an older
+profile-era design. The current branch only retains a temporary
+`dsl/profiles/sdlc.dag` compatibility path while concrete binding/link cleanup lands.
 
 ## Active Redundancies
 
@@ -18,10 +22,10 @@ Tracks known duplication and overlap in the SDLC DSL subsystem.
 - **Files**: `pipelines/sdlc.dag` (479 lines), `workflows/sdlc.dag` (59 lines)
 - **Why**: Pipeline is a reference design document showing full stage logic. Workflow is the operational entry point calling `dispatch_sdlc()` from `funcs/sdlc_worker.dag`. Pipeline is demoted to reference-only (CL-7).
 
-### Profile reference vs individual files
+### Historical profile duplication note
 
-- **Files**: `profiles/sdlc.dag` (all three profiles), `profiles/{unit_test,local,cloud_run}.dag` (one each)
-- **Why**: `profiles/sdlc.dag` collects all profiles for documentation. Individual files are structured for per-profile compilation via `--profile` flag.
+- **Files**: historical `profiles/{unit_test,local,cloud_run}.dag` files plus the aggregate `profiles/sdlc.dag`; the current branch only retains temporary `dsl/profiles/sdlc.dag`
+- **Why**: this was part of the older profile-based binding design. Treat it as historical context, not an active duplication target.
 
 ## No Redundancy
 
@@ -34,5 +38,5 @@ Tracks known duplication and overlap in the SDLC DSL subsystem.
 ## Counts
 
 - Active redundancies: **1** (stub provider defs)
-- Intentional duplicates: **2** (pipeline/workflow layer, profile reference/individual)
+- Intentional duplicates / historical notes: **2** (pipeline/workflow layer, profile-era profile references)
 - Dead code: **0** (sdlc_dispatch_runtime.dag deleted in CL-DELETE)
