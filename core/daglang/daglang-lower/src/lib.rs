@@ -2067,7 +2067,53 @@ pub struct LoweringConfig<'a> {
     pub entry_module: Option<&'a str>,
 }
 
+/// Bundled output from lowering (CP-44).
+///
+/// Combines the lowered DAG with metadata extracted during or immediately after
+/// lowering. Eliminates the need for callers to re-walk the DAG or the
+/// `TypedProject` for commonly needed fields.
+#[derive(Debug)]
+pub struct LowerOutput {
+    /// The lowered DAG.
+    pub dag: Dag<LoweredOp>,
+    /// Output file paths extracted from `content_upsert` literal paths
+    /// and `@outputs` annotations.
+    pub output_paths: Vec<String>,
+    /// Entrypoints inferred from DAG structure: `func` nodes with untapped inputs.
+    pub inferred_entrypoints: Vec<InferredEntrypoint>,
+    /// Data declaration values evaluated at compile time.
+    pub data_values: HashMap<String, serde_json::Value>,
+}
+
+/// Lower a typed project with the given configuration, returning bundled output.
+///
+/// This is the primary lowering entry point (CP-44). Returns the DAG plus
+/// extracted metadata in a single `LowerOutput` struct.
+pub fn lower_to_output(
+    project: &TypedProject,
+    config: &LoweringConfig<'_>,
+) -> Result<LowerOutput, LowerError> {
+    let dag = lower_typed_project_impl(
+        project,
+        config.callable_modules,
+        config.emit_collection_nodes,
+        config.active_profile,
+        config.entry_module,
+    )?;
+    let output_paths = extract_output_paths(&dag);
+    let inferred_entrypoints = infer_entrypoints(&dag);
+    let data_values = build_data_values(project);
+    Ok(LowerOutput {
+        dag,
+        output_paths,
+        inferred_entrypoints,
+        data_values,
+    })
+}
+
 /// Lower a typed project with the given configuration.
+///
+/// Returns the bare DAG. Use [`lower_to_output`] to get bundled metadata.
 pub fn lower_with_config(
     project: &TypedProject,
     config: &LoweringConfig<'_>,

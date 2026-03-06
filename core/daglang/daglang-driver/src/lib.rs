@@ -10,7 +10,7 @@ use daglang_emit::{
 };
 pub use daglang_lower::is_user_param_port;
 pub use daglang_lower::InferredEntrypoint;
-use daglang_lower::{lower_with_config, LowerError, LoweredOp, LoweringConfig};
+use daglang_lower::{lower_to_output, LowerError, LoweredOp, LoweringConfig};
 use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
 use daglang_syntax::ast::{Expr, Item, Literal, ModulePath, PipelineDef, StageDef, Stmt, TypeBody};
 use daglang_syntax::ast_utils::type_expr_to_string;
@@ -737,7 +737,8 @@ pub fn compile_from_module_graph_with_options(
     )
     .map_err(CompileError::Typecheck)?;
     let extern_assets = collect_extern_assets(&typed);
-    let lowered = lower_with_config(
+    // CP-44: lower_to_output bundles DAG + metadata in one call.
+    let lower_output = lower_to_output(
         &typed,
         &LoweringConfig {
             callable_modules: callable_scope.as_ref(),
@@ -747,13 +748,12 @@ pub fn compile_from_module_graph_with_options(
         },
     )
     .map_err(CompileError::Lower)?;
-    let verify_errors = verify_lowered_dag(&lowered, options.skip_verification);
+    let verify_errors = verify_lowered_dag(&lower_output.dag, options.skip_verification);
     if !verify_errors.is_empty() {
         return Err(CompileError::Verification(verify_errors));
     }
-    let output_paths = daglang_lower::extract_output_paths(&lowered);
 
-    let derived = derive_artifacts(&lowered).map_err(CompileError::Derive)?;
+    let derived = derive_artifacts(&lower_output.dag).map_err(CompileError::Derive)?;
 
     let target_module_name = if let Some(tf) = context.target_file.as_ref() {
         let canonical = {
@@ -773,7 +773,7 @@ pub fn compile_from_module_graph_with_options(
     let target = options.target;
     let layer = options.layer;
     let mut emitted = emit_with_options(
-        &lowered,
+        &lower_output.dag,
         &derived,
         options,
         target_module_name.as_deref(),
@@ -782,30 +782,28 @@ pub fn compile_from_module_graph_with_options(
     let emit_manifest_path = append_emit_manifest(&mut emitted, target, layer)?;
 
     let pipeline_params = collect_pipeline_params(&typed);
-    let inferred_entrypoints = daglang_lower::infer_entrypoints(&lowered);
     let dsl_type_registry = extract_dsl_type_registry(&typed);
-    let data_values = daglang_lower::build_data_values(&typed);
     let available_profiles = collect_available_profiles(&typed);
 
     let source_paths: Vec<PathBuf> = module_graph.modules.iter().map(|m| m.path.clone()).collect();
     let receipt = compute_receipt(
-        &lowered,
+        &lower_output.dag,
         &emitted,
         &emit_manifest_path,
         &source_paths,
     )?;
 
     Ok(CompileOutput {
-        lowered_dag: lowered,
+        lowered_dag: lower_output.dag,
         derived,
         emitted,
         emit_manifest_path,
-        output_paths,
+        output_paths: lower_output.output_paths,
         pipeline_params,
-        inferred_entrypoints,
+        inferred_entrypoints: lower_output.inferred_entrypoints,
         dsl_type_registry,
         receipt,
-        data_values,
+        data_values: lower_output.data_values,
         available_profiles,
     })
 }
