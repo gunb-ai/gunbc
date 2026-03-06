@@ -3698,3 +3698,149 @@ fn compile_directory_ambiguous_callable_target_fails_in_typecheck_stage() {
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
+
+// ---------------------------------------------------------------------------
+// Diagnostic golden tests — lock the error output format for three
+// representative failure classes: typecheck, lower, and verification.
+// ---------------------------------------------------------------------------
+
+/// Golden test: typecheck-stage error (TC015) for an unresolved import.
+///
+/// Locks the output format:
+///   typecheck errors:
+///     unresolved import `nonexistent.path` in module `sample.main`
+#[test]
+fn golden_diagnostic_typecheck_unresolved_import() {
+    let fixture = unique_temp_file("golden_typecheck_unresolved_import");
+    std::fs::write(
+        &fixture,
+        r#"module sample.main
+import nonexistent.path
+fn run() -> Unit { }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let context = PipelineContext {
+        roots: vec![fixture
+            .parent()
+            .expect("fixture should have parent")
+            .to_path_buf()],
+        target_file: Some(fixture.clone()),
+    };
+
+    let error = compile_from_context(&context).expect_err("compile should fail");
+    let rendered = error.to_string();
+
+    // Stage prefix
+    assert!(
+        rendered.starts_with("typecheck errors:\n"),
+        "typecheck error must start with stage prefix: {rendered}"
+    );
+    // Error message body
+    assert!(
+        rendered.contains("unresolved import `nonexistent.path` in module `sample.main`"),
+        "typecheck error must contain unresolved import message: {rendered}"
+    );
+    // Must NOT contain other stage prefixes (error routed to correct stage)
+    assert!(!rendered.contains("lower error:"), "wrong stage: {rendered}");
+    assert!(
+        !rendered.contains("verification errors:"),
+        "wrong stage: {rendered}"
+    );
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+/// Golden test: lower-stage error (LOW018) for a module with no callable
+/// or pipeline declarations (data-only).
+///
+/// Locks the output format:
+///   lower error: no callable or pipeline declarations to lower
+#[test]
+fn golden_diagnostic_lower_no_lowerable_items() {
+    let fixture = unique_temp_file("golden_lower_no_items");
+    std::fs::write(
+        &fixture,
+        "module sample.main\ntype Foo { x: String }\n",
+    )
+    .expect("failed to write fixture");
+
+    let context = PipelineContext {
+        roots: vec![fixture
+            .parent()
+            .expect("fixture should have parent")
+            .to_path_buf()],
+        target_file: Some(fixture.clone()),
+    };
+
+    let error = compile_from_context(&context).expect_err("compile should fail");
+    let rendered = error.to_string();
+
+    // Stage prefix
+    assert!(
+        rendered.starts_with("lower error: "),
+        "lower error must start with stage prefix: {rendered}"
+    );
+    // Error message body with exact format
+    assert_eq!(
+        rendered,
+        "lower error: no callable or pipeline declarations to lower",
+        "lower error output format mismatch"
+    );
+    // Must NOT contain other stage prefixes
+    assert!(
+        !rendered.contains("typecheck errors:"),
+        "wrong stage: {rendered}"
+    );
+    assert!(
+        !rendered.contains("verification errors:"),
+        "wrong stage: {rendered}"
+    );
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+/// Golden test: verification-stage error for unwired required inputs.
+///
+/// Constructs a `CompileError::Verification` directly to lock the output
+/// format, since triggering verification errors from DSL fixtures requires
+/// complex multi-file patterns.
+///
+/// Locks the output format:
+///   verification errors:
+///     unwired required input: node 'prepare_read_content' port 'expected_content'
+#[test]
+fn golden_diagnostic_verification_unwired_input() {
+    use gunbc_ir::{UnwiredInputError, VerifyError};
+
+    let error = CompileError::Verification(vec![VerifyError::UnwiredInput(UnwiredInputError {
+        node_id: "node_abc123".to_string(),
+        node_name: "prepare_read_content".to_string(),
+        port_name: "expected_content".to_string(),
+    })]);
+
+    let rendered = error.to_string();
+
+    // Stage prefix
+    assert!(
+        rendered.starts_with("verification errors:\n"),
+        "verification error must start with stage prefix: {rendered}"
+    );
+    // Exact line format: two-space indent, "unwired required input: node '...' port '...'"
+    assert!(
+        rendered.contains(
+            "  unwired required input: node 'prepare_read_content' port 'expected_content'"
+        ),
+        "verification error line format mismatch: {rendered}"
+    );
+    // Must NOT contain other stage prefixes
+    assert!(
+        !rendered.contains("typecheck errors:"),
+        "wrong stage: {rendered}"
+    );
+    assert!(
+        !rendered.contains("lower error:"),
+        "wrong stage: {rendered}"
+    );
+}

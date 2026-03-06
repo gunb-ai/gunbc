@@ -485,3 +485,68 @@ fn extract_binary_name(line: &str) -> Option<String> {
     }
     None
 }
+
+/// Extract all `--bin <name>` references from a Makefile string.
+fn extract_all_binary_references(makefile: &str) -> BTreeSet<String> {
+    let mut bins = BTreeSet::new();
+    for line in makefile.lines() {
+        let trimmed = line.trim();
+        // Skip comments and echo lines
+        if trimmed.starts_with('#') || trimmed.starts_with("@echo") {
+            continue;
+        }
+        if let Some(name) = extract_binary_name(trimmed) {
+            bins.insert(name);
+        }
+    }
+    bins
+}
+
+/// Extract `[[bin]]` names from gunbc-app/Cargo.toml.
+#[allow(clippy::disallowed_methods)]
+fn cargo_bin_names() -> BTreeSet<String> {
+    let manifest_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
+    let content =
+        std::fs::read_to_string(&manifest_path).expect("failed to read gunbc-app/Cargo.toml");
+    let doc: toml_edit::DocumentMut = content
+        .parse()
+        .expect("failed to parse gunbc-app/Cargo.toml");
+
+    let mut names = BTreeSet::new();
+    if let Some(bins) = doc.get("bin").and_then(|v| v.as_array_of_tables()) {
+        for bin in bins {
+            if let Some(name) = bin.get("name").and_then(|v| v.as_str()) {
+                names.insert(name.to_string());
+            }
+        }
+    }
+    names
+}
+
+/// Tier 0 contract: every `--bin <name>` in the generated Makefile must
+/// correspond to a `[[bin]]` entry in `gunbc-app/Cargo.toml`.
+///
+/// Catches phantom targets (stale binary references after renames/deletions).
+#[test]
+fn test_makefile_binary_references_match_cargo_bins() {
+    let registry =
+        ToolRegistry::default_registry().expect("registry discovery should succeed");
+    let makefile = render_makefile(&registry).expect("render makefile");
+
+    let referenced_bins = extract_all_binary_references(&makefile);
+    let declared_bins = cargo_bin_names();
+
+    let phantoms: Vec<&String> = referenced_bins
+        .iter()
+        .filter(|bin| !declared_bins.contains(*bin))
+        .collect();
+
+    assert!(
+        phantoms.is_empty(),
+        "Makefile references binaries that do not exist in gunbc-app/Cargo.toml [[bin]] entries:\n  \
+         phantoms: {:?}\n  declared: {:?}\n  referenced: {:?}",
+        phantoms,
+        declared_bins,
+        referenced_bins,
+    );
+}
