@@ -10,21 +10,11 @@
 //! - No job summaries (falls back to formatted output)
 //! - Secrets masking is handled by CI variables, not inline commands
 //!
-//! # YAML Rendering
-//!
-//! This module also implements `CiRenderer` for generating GitLab CI YAML
-//! from DAGs. Uses stages for parallelism and `needs` for dependencies.
-
-use crate::language::NamingCase;
 use crate::transport::ci::command::{AnnotationLevel, WorkflowCommand};
 use crate::transport::ci::provider::CiProvider;
-use crate::transport::ci::render::{dag_to_shared_steps, CiRenderer, RenderConfig, SharedStep};
 use crate::transport::ci::runner::{
     gitlab_saas_linux_large, gitlab_saas_linux_medium, gitlab_saas_linux_small, Runner,
 };
-use crate::Dag;
-use std::collections::HashSet;
-use std::fmt::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// GitLab CI provider.
@@ -198,164 +188,9 @@ impl CiProvider for GitLabCiProvider {
     }
 }
 
-// ============================================================================
-// YAML Rendering
-// ============================================================================
-
-impl CiRenderer for GitLabCiProvider {
-    fn provider_id(&self) -> &'static str {
-        "gitlab-ci"
-    }
-
-    fn render<T>(&self, dag: &Dag<T>, config: &RenderConfig) -> String {
-        let steps = dag_to_shared_steps(dag, config);
-        render_gitlab_ci(&steps, config)
-    }
-
-    fn output_path(&self, _workflow_name: &str) -> String {
-        // GitLab CI always uses .gitlab-ci.yml
-        ".gitlab-ci.yml".to_string()
-    }
-}
-
-/// Render a GitLab CI configuration from shared steps.
-fn render_gitlab_ci(steps: &[SharedStep], config: &RenderConfig) -> String {
-    use crate::transport::ci::yaml_block;
-
-    let mut yaml = String::new();
-
-    yaml.push_str(&config.header("#"));
-    write!(yaml, "\n\nimage: {}\n\n", config.runner.id).unwrap();
-
-    // Variables — derived from cargo env + manual overrides
-    yaml_block(&mut yaml, "variables:", &config.all_env(), |(k, v)| {
-        format!("  {}: \"{}\"", k, v)
-    });
-
-    // Stages — computed from DAG structure
-    yaml_block(&mut yaml, "stages:", &compute_stages(steps), |s| {
-        format!("  - {}", s)
-    });
-
-    for step in steps {
-        yaml.push_str(&render_gitlab_job(step, config));
-    }
-
-    yaml
-}
-
-/// Compute stages from shared steps.
-///
-/// GitLab CI uses stages for parallel execution. Jobs in the same stage
-/// run in parallel, jobs in later stages wait for earlier stages.
-///
-/// Strategy: Build a stage for each "level" of the DAG based on dependencies.
-fn compute_stages(steps: &[SharedStep]) -> Vec<String> {
-    let mut stages = Vec::new();
-    let mut seen = HashSet::new();
-    let mut seen_checkout = false;
-
-    for step in steps {
-        match step {
-            SharedStep::Checkout(_) => {
-                if !seen_checkout {
-                    let name = "prepare".to_string();
-                    seen.insert(name.clone());
-                    stages.push(name);
-                    seen_checkout = true;
-                }
-            }
-            SharedStep::DagStep {
-                node_id,
-                depends_on: _,
-                ..
-            } => {
-                if seen.insert(node_id.0.clone()) {
-                    stages.push(node_id.0.clone());
-                }
-            }
-            SharedStep::DagRun { tool } => {
-                let stage = format!("{}-run", NamingCase::SnakeCase.apply(&tool.binary));
-                if seen.insert(stage.clone()) {
-                    stages.push(stage);
-                }
-            }
-            SharedStep::Run { name, .. } => {
-                if seen.insert(name.clone()) {
-                    stages.push(name.clone());
-                }
-            }
-        }
-    }
-
-    stages
-}
-
-/// Render a single GitLab CI job.
-fn render_gitlab_job(step: &SharedStep, _config: &RenderConfig) -> String {
-    match step {
-        SharedStep::Checkout(_checkout) => {
-            // GitLab CI automatically checks out code, but we can add a prepare job
-            "prepare:\n  stage: prepare\n  script:\n    - git --version\n    - ls -la\n  rules:\n    - if: $CI_PIPELINE_SOURCE == \"push\" || $CI_PIPELINE_SOURCE == \"merge_request_event\"\n\n"
-                .to_string()
-        }
-
-        SharedStep::Run { name, command } => {
-            format!(
-                "{}:\n  stage: {}\n  script:\n    - {}\n\n",
-                name.replace(' ', "_").to_lowercase(),
-                name,
-                command
-            )
-        }
-
-        SharedStep::DagStep {
-            tool,
-            node_id,
-            depends_on,
-        } => {
-            let mut yaml = format!(
-                "{}:\n  stage: {}\n  script:\n    - {} step {}\n",
-                node_id.0,
-                node_id.0,
-                tool.command(),
-                node_id.0
-            );
-
-            // Add dependencies using `needs`
-            if !depends_on.is_empty() {
-                yaml.push_str("  needs:\n");
-                let seen: HashSet<_> = depends_on.iter().map(|d| &d.0).collect();
-                for dep in seen {
-                    writeln!(yaml, "    - {}", dep).unwrap();
-                }
-            }
-
-            // Artifacts for passing data
-            yaml.push_str("  artifacts:\n");
-            yaml.push_str("    reports:\n");
-            writeln!(yaml, "      dotenv: {}.env", node_id.0).unwrap();
-
-            yaml.push('\n');
-            yaml
-        }
-
-        SharedStep::DagRun { tool } => {
-            let stage_name = format!("{}-run", NamingCase::SnakeCase.apply(&tool.binary));
-            format!(
-                "{}:\n  stage: {}\n  script:\n    - {}\n\n",
-                stage_name,
-                stage_name,
-                tool.command()
-            )
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cargo::CargoInvocation;
     use crate::transport::ci::command::FileLocation;
 
     fn test_provider() -> GitLabCiProvider {
@@ -438,70 +273,5 @@ mod tests {
         let provider = test_provider();
         let runner = provider.default_runner();
         assert_eq!(runner.id(), "saas-linux-small-amd64");
-    }
-
-    #[test]
-    fn test_gitlab_render_ci() {
-        use crate::build::{edge, port};
-        use crate::{Node, NodeBody, NodeKind};
-
-        #[derive(Debug, Clone)]
-        struct DummyOp;
-
-        let mut dag: Dag<DummyOp> = Dag::new();
-        dag.add_node(Node {
-            id: "build".into(),
-            inputs: vec![],
-            outputs: vec![port("success", "Bool")],
-            body: NodeBody::Opaque(DummyOp),
-            examples: Vec::new(),
-            log_detail: None,
-            kind: NodeKind::Pure,
-            operation_key: None,
-            transport_class: None,
-            static_fingerprint: None,
-            origin: crate::node::NodeOrigin::default(),
-        });
-        dag.add_node(Node {
-            id: "test".into(),
-            inputs: vec![port("build_success", "Bool")],
-            outputs: vec![port("success", "Bool")],
-            body: NodeBody::Opaque(DummyOp),
-            examples: Vec::new(),
-            log_detail: None,
-            kind: NodeKind::Pure,
-            operation_key: None,
-            transport_class: None,
-            static_fingerprint: None,
-            origin: crate::node::NodeOrigin::default(),
-        });
-        dag.add_edge(edge("build", "success", "test", "build_success"));
-
-        let provider = test_provider();
-        let tool = CargoInvocation::composed("ci", "dag");
-        let cargo_env = crate::cargo::CargoEnv {
-            term_color: crate::cargo::TermColor::Always,
-            warnings: crate::cargo::Warnings::Default,
-        };
-        let config = RenderConfig::new("ci", tool)
-            .with_runner(crate::transport::github_actions::ubuntu_latest())
-            .with_cargo_env(cargo_env);
-
-        let yaml = provider.render(&dag, &config);
-
-        let ci_name = crate::cargo::name("ci");
-        // Check structure
-        assert!(yaml.contains("image: ubuntu-latest"));
-        assert!(yaml.contains("stages:"));
-        assert!(yaml.contains(&format!("{ci_name} step build")));
-        assert!(yaml.contains(&format!("{ci_name} step test")));
-        assert!(yaml.contains("needs:"));
-        assert!(yaml.contains("CARGO_TERM_COLOR: \"always\""));
-    }
-
-    #[test]
-    fn test_gitlab_output_path() {
-        let provider = test_provider();
-        assert_eq!(provider.output_path("ci"), ".gitlab-ci.yml");
     }
 }

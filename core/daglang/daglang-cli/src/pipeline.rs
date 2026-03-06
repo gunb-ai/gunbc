@@ -197,6 +197,7 @@ pub struct ParsedModule {
     pub module_path: ModulePath,
     pub imports: Vec<ModulePath>,
     pub ast: SourceFile,
+    pub source: String,
 }
 
 pub fn build_pipeline_dag() -> Dag<CompilerOp> {
@@ -534,6 +535,7 @@ fn parse_files(files: Vec<FileSource>, roots: &[PathBuf]) -> (Vec<ParsedModule>,
                     module_path,
                     imports,
                     ast,
+                    source: file.source,
                 });
             }
             Err(file_diagnostics) => diagnostics.extend(file_diagnostics),
@@ -659,6 +661,7 @@ fn build_module_graph(
             ast: module.ast,
             module_path: module.module_path,
             dependencies,
+            source: module.source,
         });
     }
 
@@ -1115,18 +1118,21 @@ mod tests {
                 ast: ast_a,
                 module_path: ModulePath::new(vec!["a".into()]),
                 dependencies: vec![2],
+                source: "module a\nfn ok() -> Unit {}".to_string(),
             },
             ResolvedModule {
                 path: PathBuf::from("b.dag"),
                 ast: ast_b,
                 module_path: ModulePath::new(vec!["b".into()]),
                 dependencies: vec![],
+                source: "module b\nfn ok() -> Unit {}".to_string(),
             },
             ResolvedModule {
                 path: PathBuf::from("c.dag"),
                 ast: ast_c,
                 module_path: ModulePath::new(vec!["c".into()]),
                 dependencies: vec![],
+                source: "module c\nfn ok() -> Unit {}".to_string(),
             },
         ];
 
@@ -1151,18 +1157,21 @@ mod tests {
                 imports: vec![ModulePath::new(vec!["c".into()])],
                 ast: parser::parse("module a\nimport c\nfn ok() -> Unit {}")
                     .expect("parse should succeed"),
+                source: "module a\nimport c\nfn ok() -> Unit {}".to_string(),
             },
             ParsedModule {
                 path: PathBuf::from("b.dag"),
                 module_path: ModulePath::new(vec!["b".into()]),
                 imports: vec![],
                 ast: parser::parse("module b\nfn ok() -> Unit {}").expect("parse should succeed"),
+                source: "module b\nfn ok() -> Unit {}".to_string(),
             },
             ParsedModule {
                 path: PathBuf::from("c.dag"),
                 module_path: ModulePath::new(vec!["c".into()]),
                 imports: vec![],
                 ast: parser::parse("module c\nfn ok() -> Unit {}").expect("parse should succeed"),
+                source: "module c\nfn ok() -> Unit {}".to_string(),
             },
         ];
         let mut diagnostics = Vec::new();

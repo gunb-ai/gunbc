@@ -114,7 +114,6 @@ pub use github::{
 };
 pub use github_actions::{
     merge_permissions, Integration, PermissionLevel, PermissionScope, Permissions, RunnerImage,
-    WorkflowConfig,
 };
 pub use http::{HttpMethod, HttpRequest, HttpResponse};
 pub use llm::{

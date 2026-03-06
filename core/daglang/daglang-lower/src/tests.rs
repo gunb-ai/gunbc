@@ -43,6 +43,7 @@ fn module_graph_from_sources(sources: &[(&str, &str)]) -> ModuleGraph {
                 ast,
                 module_path,
                 dependencies: Vec::new(),
+                source: source.to_string(),
             }
         })
         .collect::<Vec<_>>();
@@ -3329,6 +3330,7 @@ fn lower_typed_project_for_module_with_dependency_closure_and_entry(
             ast,
             module_path,
             dependencies: Vec::new(),
+            source: source.to_string(),
         };
         graph.modules.push(module);
     }

@@ -1612,6 +1612,11 @@ fn top_level_item_name(item: &Item) -> Option<&str> {
         Item::ResourceDef(def) => Some(def.name.as_str()),
         Item::InterfaceDef(def) => Some(def.name.as_str()),
         Item::PipelineDef(def) => Some(def.name.as_str()),
+        Item::DataDef(def) => Some(def.name.as_str()),
+        Item::TestDef(def) => Some(def.name.as_str()),
+        Item::ProfileDef(def) => Some(def.name.as_str()),
+        Item::TypeDef(def) => Some(def.name.as_str()),
+        Item::ExternAssetDecl(def) => Some(def.name.as_str()),
         _ => None,
     }
 }
@@ -2434,7 +2439,14 @@ fn lower_typed_project_impl(
                         .map(|span| {
                             user_code_origin(&source_file, &module_name, &callable.name, span)
                         })
-                        .unwrap_or(NodeOrigin::Unknown);
+                        .unwrap_or_else(|| {
+                            debug_assert!(
+                                false,
+                                "missing span for fn `{}` in {}",
+                                callable.name, module_name
+                            );
+                            NodeOrigin::Unknown
+                        });
                     let (node, endpoint) = lower_callable(
                         callable,
                         &module_name,
@@ -2464,7 +2476,14 @@ fn lower_typed_project_impl(
                         .map(|span| {
                             user_code_origin(&source_file, &module_name, &callable.name, span)
                         })
-                        .unwrap_or(NodeOrigin::Unknown);
+                        .unwrap_or_else(|| {
+                            debug_assert!(
+                                false,
+                                "missing span for func `{}` in {}",
+                                callable.name, module_name
+                            );
+                            NodeOrigin::Unknown
+                        });
                     let (node, endpoint) = lower_callable(
                         callable,
                         &module_name,
@@ -2494,7 +2513,14 @@ fn lower_typed_project_impl(
                         .map(|span| {
                             user_code_origin(&source_file, &module_name, &callable.name, span)
                         })
-                        .unwrap_or(NodeOrigin::Unknown);
+                        .unwrap_or_else(|| {
+                            debug_assert!(
+                                false,
+                                "missing span for pattern `{}` in {}",
+                                callable.name, module_name
+                            );
+                            NodeOrigin::Unknown
+                        });
                     let (node, endpoint) = lower_callable(
                         callable,
                         &module_name,
@@ -2522,7 +2548,14 @@ fn lower_typed_project_impl(
                         .map(|span| {
                             user_code_origin(&source_file, &module_name, &callable.name, span)
                         })
-                        .unwrap_or(NodeOrigin::Unknown);
+                        .unwrap_or_else(|| {
+                            debug_assert!(
+                                false,
+                                "missing span for extern func `{}` in {}",
+                                callable.name, module_name
+                            );
+                            NodeOrigin::Unknown
+                        });
                     let (node, endpoint) = lower_extern_callable(callable, &module_name, origin);
                     register_endpoint(
                         &mut endpoints_by_full,
@@ -2546,7 +2579,14 @@ fn lower_typed_project_impl(
                         .get(name)
                         .copied()
                         .map(|span| user_code_origin(&source_file, &module_name, name, span))
-                        .unwrap_or(NodeOrigin::Unknown);
+                        .unwrap_or_else(|| {
+                            debug_assert!(
+                                false,
+                                "missing span for pipeline `{}` in {}",
+                                name, module_name
+                            );
+                            NodeOrigin::Unknown
+                        });
                     builder.add_node(
                         Node::opaque(
                             node_id,

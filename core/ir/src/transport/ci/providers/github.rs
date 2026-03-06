@@ -9,18 +9,10 @@
 //! Environment files (`$GITHUB_OUTPUT`, `$GITHUB_STEP_SUMMARY`) are not
 //! directly handled here - those require file I/O at the execution layer.
 //!
-//! # YAML Rendering
-//!
-//! This module also implements `CiRenderer` for generating GitHub Actions YAML
-//! from DAGs. Each DAG node becomes a workflow step with proper dependencies.
-
 use crate::transport::ci::command::{AnnotationLevel, WorkflowCommand};
 use crate::transport::ci::provider::CiProvider;
-use crate::transport::ci::render::{dag_to_shared_steps, CiRenderer, RenderConfig, SharedStep};
 use crate::transport::ci::runner::Runner;
 use crate::transport::github_actions::{ubuntu_22_04, ubuntu_24_04, ubuntu_latest, RunnerImage};
-use crate::Dag;
-use std::fmt::Write;
 
 /// GitHub Actions CI provider.
 ///
@@ -151,134 +143,9 @@ impl Runner for GitHubRunnerAdapter {
     }
 }
 
-// ============================================================================
-// YAML Rendering
-// ============================================================================
-
-impl CiRenderer for GitHubActionsProvider {
-    fn provider_id(&self) -> &'static str {
-        "github-actions"
-    }
-
-    fn render<T>(&self, dag: &Dag<T>, config: &RenderConfig) -> String {
-        let steps = dag_to_shared_steps(dag, config);
-        render_github_workflow(&steps, config)
-    }
-
-    fn output_path(&self, workflow_name: &str) -> String {
-        format!(".github/workflows/{}.yml", workflow_name)
-    }
-}
-
-/// Render a GitHub Actions workflow from shared steps.
-fn render_github_workflow(steps: &[SharedStep], config: &RenderConfig) -> String {
-    use crate::transport::ci::yaml_block;
-
-    let mut yaml = String::new();
-
-    yaml.push_str(&config.header("#"));
-    write!(yaml, "\n\nname: {}\n\n", config.workflow_name).unwrap();
-
-    // Triggers — derived from git config
-    let branches = config.git.ci_branches();
-    yaml.push_str("on:\n  push:\n");
-    yaml_block(&mut yaml, "    branches:", &branches, |b| {
-        format!("      - {}", b)
-    });
-    yaml.push_str("  pull_request:\n");
-    yaml_block(&mut yaml, "    branches:", &branches, |b| {
-        format!("      - {}", b)
-    });
-
-    // Environment — derived from cargo env + manual overrides
-    yaml_block(&mut yaml, "env:", &config.all_env(), |(k, v)| {
-        format!("  {}: {}", k, v)
-    });
-
-    // Job
-    write!(
-        yaml,
-        "jobs:\n  {}:\n    runs-on: {}\n    timeout-minutes: {}\n    steps:\n",
-        config.workflow_name, config.runner.id, config.timeout_minutes,
-    )
-    .unwrap();
-
-    for step in steps {
-        yaml.push_str(&render_github_step(step, config));
-    }
-
-    yaml
-}
-
-/// Render a single GitHub Actions step.
-fn render_github_step(step: &SharedStep, _config: &RenderConfig) -> String {
-    match step {
-        SharedStep::Checkout(checkout) => {
-            let mut yaml = String::from("      - name: Checkout\n");
-            yaml.push_str("        uses: actions/checkout@v4\n");
-            if checkout.fetch_depth.is_some() || checkout.submodules.is_some() {
-                yaml.push_str("        with:\n");
-                if let Some(depth) = checkout.fetch_depth {
-                    writeln!(yaml, "          fetch-depth: {}", depth).unwrap();
-                }
-                if let Some(ref submodules) = checkout.submodules {
-                    writeln!(yaml, "          submodules: {}", submodules).unwrap();
-                }
-            }
-            yaml
-        }
-
-        SharedStep::Run { name, command } => {
-            format!("      - name: {}\n        run: {}\n", name, command)
-        }
-
-        SharedStep::DagStep {
-            tool,
-            node_id,
-            depends_on,
-        } => {
-            let mut yaml = format!(
-                "      - name: {}\n        id: {}\n        run: {} step {}\n",
-                node_id.0,
-                node_id.0,
-                tool.command(),
-                node_id.0
-            );
-
-            // Add environment variables for dependencies
-            if !depends_on.is_empty() {
-                yaml.push_str("        env:\n");
-                for dep in depends_on {
-                    // Pass outputs from previous steps
-                    writeln!(
-                        yaml,
-                        "          STEP_{}_SUCCESS: ${{{{ steps.{}.outputs.STEP_{}_SUCCESS }}}}",
-                        dep.0.to_uppercase(),
-                        dep.0,
-                        dep.0.to_uppercase()
-                    )
-                    .unwrap();
-                }
-            }
-
-            yaml
-        }
-
-        SharedStep::DagRun { tool } => {
-            format!(
-                "      - name: Run {}\n        run: {}\n",
-                tool.binary,
-                tool.command()
-            )
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cargo::CargoInvocation;
-    use crate::node::NodeOrigin;
     use crate::transport::ci::command::FileLocation;
 
     #[test]
@@ -336,67 +203,5 @@ mod tests {
         let runner = provider.default_runner();
         assert_eq!(runner.id(), "ubuntu-latest");
         assert!(runner.has_tool("cargo"));
-    }
-
-    #[test]
-    fn test_github_render_workflow() {
-        use crate::build::{edge, port};
-        use crate::{Node, NodeBody, NodeKind};
-
-        #[derive(Debug, Clone)]
-        struct DummyOp;
-
-        let mut dag: Dag<DummyOp> = Dag::new();
-        dag.add_node(Node {
-            id: "build".into(),
-            inputs: vec![],
-            outputs: vec![port("success", "Bool")],
-            body: NodeBody::Opaque(DummyOp),
-            examples: Vec::new(),
-            log_detail: None,
-            kind: NodeKind::Pure,
-            operation_key: None,
-            transport_class: None,
-            static_fingerprint: None,
-            origin: NodeOrigin::default(),
-        });
-        dag.add_node(Node {
-            id: "test".into(),
-            inputs: vec![port("build_success", "Bool")],
-            outputs: vec![port("success", "Bool")],
-            body: NodeBody::Opaque(DummyOp),
-            examples: Vec::new(),
-            log_detail: None,
-            kind: NodeKind::Pure,
-            operation_key: None,
-            transport_class: None,
-            static_fingerprint: None,
-            origin: NodeOrigin::default(),
-        });
-        dag.add_edge(edge("build", "success", "test", "build_success"));
-
-        let provider = GitHubActionsProvider;
-        let tool = CargoInvocation::composed("ci", "dag");
-        let config = RenderConfig::new("ci", tool)
-            .with_runner(ubuntu_latest())
-            .with_cargo_env(crate::cargo::CargoEnv::ci());
-
-        let yaml = provider.render(&dag, &config);
-
-        let ci_name = crate::cargo::name("ci");
-        // Check structure
-        assert!(yaml.contains("name: ci"));
-        assert!(yaml.contains("runs-on: ubuntu-latest"));
-        assert!(yaml.contains("uses: actions/checkout@v4"));
-        assert!(yaml.contains(&format!("{ci_name} step build")));
-        assert!(yaml.contains(&format!("{ci_name} step test")));
-        assert!(yaml.contains("CARGO_TERM_COLOR: always"));
-        assert!(yaml.contains("RUSTFLAGS: -D warnings"));
-    }
-
-    #[test]
-    fn test_github_output_path() {
-        let provider = GitHubActionsProvider;
-        assert_eq!(provider.output_path("ci"), ".github/workflows/ci.yml");
     }
 }

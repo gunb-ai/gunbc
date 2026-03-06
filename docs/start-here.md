@@ -381,6 +381,7 @@ Before making a decision in any of these areas, read the relevant doc.
 | Doc | Key decision |
 |-----|-------------|
 | [`docs/design/unified-emission.md`](design/unified-emission.md) | Unify 13 rendering systems under layered IR |
+| [`docs/design/ci-rendering-dsl-consolidation.md`](design/ci-rendering-dsl-consolidation.md) | Delete Rust-side CI YAML renderers; make CI generation DSL-owned end-to-end |
 | [`docs/design/unified-registration.md`](design/unified-registration.md) | inventory-based auto-discovery |
 | [`docs/design/consolidation-plan.md`](design/consolidation-plan.md) | 6-stream consolidation |
 

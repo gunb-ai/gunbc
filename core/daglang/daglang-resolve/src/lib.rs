@@ -26,7 +26,7 @@ use daglang_syntax::ast::{ModulePath, SourceFile};
 use daglang_syntax::diagnostic::Diagnostic;
 use daglang_syntax::parser;
 
-type ParsedModuleRecord = (PathBuf, ModulePath, Vec<ModulePath>, SourceFile);
+type ParsedModuleRecord = (PathBuf, ModulePath, Vec<ModulePath>, SourceFile, String);
 
 // ============================================================================
 // Virtual filesystem abstraction (CP-57)
@@ -141,6 +141,8 @@ pub struct ResolvedModule {
     pub module_path: ModulePath,
     /// Indices of modules this module depends on (via `import`).
     pub dependencies: Vec<usize>,
+    /// Original source text, retained for byte-offset → line:col resolution.
+    pub source: String,
 }
 
 /// The complete module graph for a project.
@@ -221,7 +223,7 @@ impl ModuleGraph {
                         .iter()
                         .map(|imp| imp.node.path.clone())
                         .collect();
-                    parsed.push((path.clone(), mod_path, imports, ast));
+                    parsed.push((path.clone(), mod_path, imports, ast, source));
                 }
                 Err(diagnostics) => {
                     parse_errors.push((path.clone(), diagnostics));
@@ -234,14 +236,14 @@ impl ModuleGraph {
         }
 
         let mut mod_index: HashMap<ModulePath, usize> = HashMap::new();
-        for (i, (_, mp, _, _)) in parsed.iter().enumerate() {
+        for (i, (_, mp, _, _, _)) in parsed.iter().enumerate() {
             if mod_index.insert(mp.clone(), i).is_some() {
                 return Err(ResolveError::DuplicateModule(mp.clone()));
             }
         }
 
         let mut modules: Vec<ResolvedModule> = Vec::with_capacity(parsed.len());
-        for (path, mod_path, imports, ast) in parsed {
+        for (path, mod_path, imports, ast, source) in parsed {
             let mut deps: Vec<usize> = Vec::new();
             for imp in &imports {
                 match mod_index.get(imp) {
@@ -259,6 +261,7 @@ impl ModuleGraph {
                 ast,
                 module_path: mod_path,
                 dependencies: deps,
+                source,
             });
         }
 

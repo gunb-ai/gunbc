@@ -17,7 +17,8 @@ use daglang_syntax::ast::{Expr, Item, Literal, ModulePath, PipelineDef, StageDef
 use daglang_syntax::parser;
 pub use daglang_typecheck::PipelineParam;
 use daglang_typecheck::{
-    typecheck_module_graph_with_options, TypeError, TypecheckOptions, TypedProject,
+    typecheck_module_graph_located, typecheck_module_graph_with_options, SpannedTypeError,
+    TypeError, TypecheckOptions, TypedProject,
 };
 use gunbc_ir::{Dag, ProgramSymbolId, ReachableDag, TypeRegistry, VerifiedDag};
 use serde::{Deserialize, Serialize};
@@ -212,6 +213,12 @@ impl From<Vec<TypeError>> for CompileError {
     }
 }
 
+impl From<Vec<SpannedTypeError>> for CompileError {
+    fn from(errors: Vec<SpannedTypeError>) -> Self {
+        CompileError::Diagnostics(typecheck_diagnostics_located(errors))
+    }
+}
+
 impl From<LowerError> for CompileError {
     fn from(error: LowerError) -> Self {
         CompileError::Diagnostics(lower_diagnostics(error))
@@ -254,6 +261,12 @@ fn typecheck_diagnostics(errors: Vec<TypeError>) -> Diagnostics {
             .into_iter()
             .map(|error| error.to_diagnostic())
             .collect(),
+    }
+}
+
+fn typecheck_diagnostics_located(errors: Vec<SpannedTypeError>) -> Diagnostics {
+    Diagnostics {
+        errors: errors.into_iter().map(|se| se.to_diagnostic()).collect(),
     }
 }
 
@@ -372,16 +385,22 @@ pub fn compile_data_from_sources(
             .iter()
             .map(|imp| imp.node.path.clone())
             .collect();
-        parsed.push((path.to_path_buf(), module_path, imports, ast));
+        parsed.push((
+            path.to_path_buf(),
+            module_path,
+            imports,
+            ast,
+            source.to_string(),
+        ));
     }
 
     let mut index_by_module = HashMap::new();
-    for (idx, (_, module_path, _, _)) in parsed.iter().enumerate() {
+    for (idx, (_, module_path, _, _, _)) in parsed.iter().enumerate() {
         index_by_module.insert(module_path.clone(), idx);
     }
 
     let mut resolved = Vec::new();
-    for (path, module_path, imports, ast) in parsed {
+    for (path, module_path, imports, ast, source) in parsed {
         let mut dependencies = Vec::new();
         for import in &imports {
             if let Some(&dep) = index_by_module.get(import) {
@@ -394,6 +413,7 @@ pub fn compile_data_from_sources(
             ast,
             module_path,
             dependencies,
+            source,
         });
     }
 
@@ -713,7 +733,7 @@ pub fn compile_from_module_graph_with_options(
         &context.roots,
         context.target_file.as_deref(),
     )?;
-    let typed = typecheck_module_graph_with_options(
+    let typed = typecheck_module_graph_located(
         &module_graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
@@ -1793,6 +1813,7 @@ fn parse_target_module_file(
             ast,
             module_path,
             dependencies: Vec::new(),
+            source,
         },
         imports,
     ))

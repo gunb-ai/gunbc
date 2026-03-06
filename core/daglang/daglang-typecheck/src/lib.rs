@@ -373,6 +373,36 @@ pub enum TypeError {
     },
 }
 
+/// A type error enriched with source location information.
+///
+/// Wraps `TypeError` with the file path and module name where the error occurred.
+/// The driver uses this to populate `Diagnostic.file` and resolve `line:col` from
+/// `ResolvedModule.source`.
+#[derive(Debug)]
+pub struct SpannedTypeError {
+    pub error: TypeError,
+    pub file: std::path::PathBuf,
+    pub module: String,
+}
+
+impl SpannedTypeError {
+    /// Convert to a `Diagnostic` with file location.
+    pub fn to_diagnostic(&self) -> daglang_contract::Diagnostic {
+        self.error.to_diagnostic().with_file(self.file.clone())
+    }
+
+    /// Convert to a `Diagnostic` with file and resolved line:col.
+    pub fn to_diagnostic_with_source(&self, source: &str) -> daglang_contract::Diagnostic {
+        let mut diag = self.error.to_diagnostic().with_file(self.file.clone());
+        // If the error contains a span, resolve it to line:col
+        if let Some(span) = diag.span {
+            let (line, col) = daglang_contract::byte_to_line_col(source, span.start);
+            diag = diag.with_line_col(line, col);
+        }
+        diag
+    }
+}
+
 impl TypeError {
     /// Stable, grep-able error code for this variant (CP-59).
     pub fn code(&self) -> &'static str {
@@ -857,6 +887,25 @@ pub fn typecheck_module_graph_with_options<'a>(
     })
 }
 
+/// Typecheck with source-located errors.
+///
+/// Returns `SpannedTypeError` on failure, which carries the file path and module
+/// name for each error. Use `SpannedTypeError::to_diagnostic_with_source()` to
+/// resolve byte offsets into line:col using `ResolvedModule.source`.
+pub fn typecheck_module_graph_located<'a>(
+    graph: &'a ModuleGraph,
+    options: TypecheckOptions,
+) -> Result<TypedProject<'a>, Vec<SpannedTypeError>> {
+    let metadata = typecheck_graph_modules_spanned(graph, &options)?;
+    Ok(TypedProject {
+        graph: TypedProjectGraph::Borrowed(graph),
+        typed_modules: metadata.typed_modules,
+        pipeline_params: metadata.pipeline_params,
+        dsl_type_registry: metadata.dsl_type_registry,
+        available_profiles: metadata.available_profiles,
+    })
+}
+
 struct TypedProjectMetadata {
     typed_modules: Vec<TypedModule>,
     pipeline_params: Vec<PipelineParam>,
@@ -868,6 +917,14 @@ fn typecheck_graph_modules(
     graph: &ModuleGraph,
     options: &TypecheckOptions,
 ) -> Result<TypedProjectMetadata, Vec<TypeError>> {
+    typecheck_graph_modules_spanned(graph, options)
+        .map_err(|spanned_errors| spanned_errors.into_iter().map(|se| se.error).collect())
+}
+
+fn typecheck_graph_modules_spanned(
+    graph: &ModuleGraph,
+    options: &TypecheckOptions,
+) -> Result<TypedProjectMetadata, Vec<SpannedTypeError>> {
     let known_types = collect_known_types(&graph.modules);
     let generic_arity_registry = collect_generic_arities(&graph.modules);
     let record_type_registry = collect_record_types(&graph.modules);
@@ -884,7 +941,7 @@ fn typecheck_graph_modules(
         .iter()
         .map(|module| module.module_path.as_dotted())
         .collect::<HashSet<_>>();
-    let mut errors = Vec::new();
+    let mut errors: Vec<SpannedTypeError> = Vec::new();
     let mut typed_modules = Vec::with_capacity(graph.modules.len());
     let context = TypecheckContext {
         known_types: &known_types,
@@ -902,19 +959,28 @@ fn typecheck_graph_modules(
 
     for (graph_index, module) in graph.modules.iter().enumerate() {
         let module_name = module.module_path.as_dotted();
+        let module_file = module.path.clone();
         if !options.allow_unresolved_imports {
             for import in &module.ast.imports {
                 let target = import.node.path.as_dotted();
                 if !available_modules.contains(&target) {
-                    errors.push(TypeError::UnresolvedImport {
+                    errors.push(SpannedTypeError {
+                        error: TypeError::UnresolvedImport {
+                            module: module_name.clone(),
+                            target,
+                        },
+                        file: module_file.clone(),
                         module: module_name.clone(),
-                        target,
                     });
                 }
             }
         }
         let (signatures, sig_errors) = collect_signatures(module, &context, &module_name);
-        errors.extend(sig_errors);
+        errors.extend(sig_errors.into_iter().map(|error| SpannedTypeError {
+            error,
+            file: module_file.clone(),
+            module: module_name.clone(),
+        }));
         typed_modules.push(TypedModule {
             graph_index,
             signatures,
@@ -925,25 +991,34 @@ fn typecheck_graph_modules(
     if let Some(ref registry) = options.extern_registry {
         for module in &graph.modules {
             let module_name = module.module_path.as_dotted();
+            let module_file = module.path.clone();
             for item in &module.ast.items {
                 if let Item::ExternFuncDecl(def) = &item.node {
                     if let Some(sig) = registry.lookup(&module_name, &def.name) {
                         let got_inputs = def.inputs.len();
                         let got_outputs = def.outputs.len();
                         if sig.input_count != got_inputs || sig.output_count != got_outputs {
-                            errors.push(TypeError::ExternArityMismatch {
+                            errors.push(SpannedTypeError {
+                                error: TypeError::ExternArityMismatch {
+                                    module: module_name.clone(),
+                                    name: def.name.clone(),
+                                    expected_inputs: sig.input_count,
+                                    got_inputs,
+                                    expected_outputs: sig.output_count,
+                                    got_outputs,
+                                },
+                                file: module_file.clone(),
                                 module: module_name.clone(),
-                                name: def.name.clone(),
-                                expected_inputs: sig.input_count,
-                                got_inputs,
-                                expected_outputs: sig.output_count,
-                                got_outputs,
                             });
                         }
                     } else {
-                        errors.push(TypeError::UnregisteredExtern {
+                        errors.push(SpannedTypeError {
+                            error: TypeError::UnregisteredExtern {
+                                module: module_name.clone(),
+                                name: def.name.clone(),
+                            },
+                            file: module_file.clone(),
                             module: module_name.clone(),
-                            name: def.name.clone(),
                         });
                     }
                 }

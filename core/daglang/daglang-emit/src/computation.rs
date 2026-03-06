@@ -743,34 +743,26 @@ impl FnBodyClassification {
 
 /// Classify a callable's fn body by walking its SubDag nodes.
 ///
-/// Inspects the inner DAG for transport/resource nodes:
-/// - If any node is Transport or ResourceAcquire → `Effectful`
-/// - If any node is Pure with non-trivial body → `PureCompute`
-/// - If all nodes are Pure with literal/identity bodies → `PureRender`
+/// Uses `node.kind` (set by the lowerer) instead of string heuristics:
+/// - If any node has a transport/resource `NodeKind` → `Effectful`
+/// - If any node has non-trivial ports → `PureCompute`
+/// - Otherwise → `PureRender`
 pub fn classify_fn_body<T: std::fmt::Debug>(dag: &gunbc_ir::Dag<T>) -> FnBodyClassification {
+    use gunbc_ir::NodeKind;
+
     let mut has_compute = false;
     for node in &dag.nodes {
-        // Check for transport/resource patterns in the node
-        for port in &node.inputs {
-            if port.name.0.starts_with("res:") {
+        match node.kind {
+            NodeKind::TransportExecute
+            | NodeKind::TransportPrepare
+            | NodeKind::TransportParse
+            | NodeKind::ResourceAcquire
+            | NodeKind::ResourceRelease
+            | NodeKind::ResourceEnvironment => {
                 return FnBodyClassification::Effectful;
             }
+            _ => {}
         }
-        for port in &node.outputs {
-            if port.name.0.starts_with("res:") {
-                return FnBodyClassification::Effectful;
-            }
-        }
-        // Check for transport node naming conventions
-        let id = &node.id.0;
-        if id.starts_with("prepare_transport_")
-            || id.starts_with("execute_transport_")
-            || id.starts_with("parse_transport_")
-            || id.contains("_transport")
-        {
-            return FnBodyClassification::Effectful;
-        }
-        // Any non-trivial node means at least PureCompute
         if !node.inputs.is_empty() || !node.outputs.is_empty() {
             has_compute = true;
         }
@@ -1485,44 +1477,50 @@ mod tests {
     }
 
     #[test]
-    fn classify_fn_body_with_resource_port_is_effectful() {
+    fn classify_fn_body_with_resource_node_is_effectful() {
         let mut dag: gunbc_ir::Dag<LoweredOp> = gunbc_ir::Dag::new();
-        dag.add_node(make_node(
-            "effectful",
-            vec![Port::scalar("res:file:path", "String")],
-            vec![Port::scalar("output", "String")],
-            LoweredOp::Callable {
-                module: "test".into(),
-                kind: CallableKind::Func,
-                name: "read_file".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
-                fn_body: None,
-            },
-        ));
+        dag.add_node(
+            make_node(
+                "acquire_fs",
+                vec![Port::scalar("res:file:path", "String")],
+                vec![Port::scalar("output", "String")],
+                LoweredOp::Callable {
+                    module: "test".into(),
+                    kind: CallableKind::Func,
+                    name: "read_file".into(),
+                    obligation: ObligationCategory::None,
+                    service_metadata: None,
+                    is_interactive: false,
+                    resource_target: None,
+                    fn_body: None,
+                },
+            )
+            .with_kind(gunbc_ir::NodeKind::ResourceAcquire),
+        );
         assert_eq!(classify_fn_body(&dag), FnBodyClassification::Effectful);
     }
 
     #[test]
     fn classify_fn_body_with_transport_node_is_effectful() {
         let mut dag: gunbc_ir::Dag<LoweredOp> = gunbc_ir::Dag::new();
-        dag.add_node(make_node(
-            "prepare_transport_github",
-            vec![Port::scalar("url", "String")],
-            vec![Port::scalar("request", "TransportRequest")],
-            LoweredOp::Callable {
-                module: "test".into(),
-                kind: CallableKind::Func,
-                name: "prepare".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
-                fn_body: None,
-            },
-        ));
+        dag.add_node(
+            make_node(
+                "prepare_transport_github",
+                vec![Port::scalar("url", "String")],
+                vec![Port::scalar("request", "TransportRequest")],
+                LoweredOp::Callable {
+                    module: "test".into(),
+                    kind: CallableKind::Func,
+                    name: "prepare".into(),
+                    obligation: ObligationCategory::None,
+                    service_metadata: None,
+                    is_interactive: false,
+                    resource_target: None,
+                    fn_body: None,
+                },
+            )
+            .with_kind(gunbc_ir::NodeKind::TransportPrepare),
+        );
         assert_eq!(classify_fn_body(&dag), FnBodyClassification::Effectful);
     }
 

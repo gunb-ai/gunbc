@@ -79,6 +79,10 @@ pub struct Diagnostic {
     pub span: Option<Span>,
     /// Which `.dag` file.
     pub file: Option<PathBuf>,
+    /// 1-based line number (derived from span + source text).
+    pub line: Option<usize>,
+    /// 1-based column number (derived from span + source text).
+    pub column: Option<usize>,
     /// Structured context for programmatic handling.
     pub context: DiagnosticContext,
     /// Concrete suggestion for resolving the contradiction.
@@ -97,6 +101,8 @@ impl Diagnostic {
             message: message.into(),
             span: Some(primary.span),
             file: None, // FileId-based resolution deferred to Phase 2 (FileTable)
+            line: None,
+            column: None,
             context: DiagnosticContext::Note(String::new()),
             help: None,
             related: Vec::new(),
@@ -113,10 +119,19 @@ impl Diagnostic {
             message: message.into(),
             span: None,
             file: None,
+            line: None,
+            column: None,
             context: DiagnosticContext::Note(String::new()),
             help: None,
             related: Vec::new(),
         }
+    }
+
+    /// Set resolved line and column (1-based).
+    pub fn with_line_col(mut self, line: usize, col: usize) -> Self {
+        self.line = Some(line);
+        self.column = Some(col);
+        self
     }
 
     pub fn with_span(mut self, span: Span) -> Self {
@@ -147,11 +162,13 @@ impl Diagnostic {
 
 impl std::fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // [CODE] file:line: message
+        // [CODE] file:line:col: message
         write!(f, "[{}]", self.code)?;
         if let Some(file) = &self.file {
             write!(f, " {}", file.display())?;
-            if let Some(span) = &self.span {
+            if let (Some(line), Some(col)) = (self.line, self.column) {
+                write!(f, ":{line}:{col}")?;
+            } else if let Some(span) = &self.span {
                 write!(f, ":{}", span.start)?;
             }
         }
@@ -242,6 +259,29 @@ impl Span {
     pub fn is_empty(&self) -> bool {
         self.start == self.end && self.start == 0
     }
+}
+
+/// Convert a byte offset into a 1-based (line, column) pair.
+///
+/// Offsets beyond EOF are clamped to EOF. This is a pure function with no
+/// dependencies, shared across all pipeline stages that need to resolve
+/// byte spans to human-readable locations.
+pub fn byte_to_line_col(source: &str, byte_offset: usize) -> (usize, usize) {
+    let clamped = byte_offset.min(source.len());
+    let mut line = 1usize;
+    let mut col = 1usize;
+    for (idx, ch) in source.char_indices() {
+        if idx >= clamped {
+            break;
+        }
+        if ch == '\n' {
+            line += 1;
+            col = 1;
+        } else {
+            col += 1;
+        }
+    }
+    (line, col)
 }
 
 // ── Interned identity types ───────────────────────────────────────────

@@ -91,16 +91,16 @@ fn build_embedded_stdlib_graph() -> ModuleGraph {
     let mut parsed = Vec::new();
     for (path, source) in modules {
         let (module_path, imports, ast) = parse_embedded_module(path.as_path(), source);
-        parsed.push((path, module_path, imports, ast));
+        parsed.push((path, module_path, imports, ast, source.to_string()));
     }
 
     let mut index_by_module = HashMap::new();
-    for (idx, (_, module_path, _, _)) in parsed.iter().enumerate() {
+    for (idx, (_, module_path, _, _, _)) in parsed.iter().enumerate() {
         index_by_module.insert(module_path.clone(), idx);
     }
 
     let mut resolved = Vec::new();
-    for (path, module_path, imports, ast) in parsed {
+    for (path, module_path, imports, ast, source) in parsed {
         let mut dependencies = Vec::new();
         for import in imports {
             let dep = index_by_module.get(&import).copied().unwrap_or_else(|| {
@@ -116,6 +116,7 @@ fn build_embedded_stdlib_graph() -> ModuleGraph {
             ast,
             module_path,
             dependencies,
+            source,
         });
     }
 

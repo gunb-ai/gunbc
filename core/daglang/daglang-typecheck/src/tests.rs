@@ -17,6 +17,7 @@ fn module_graph_from_sources(sources: &[(&str, &str)]) -> ModuleGraph {
                 ast,
                 module_path,
                 dependencies: Vec::new(),
+                source: source.to_string(),
             }
         })
         .collect();
