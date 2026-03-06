@@ -631,10 +631,16 @@ wider parameter lists.
 ### Shared Types
 
 > Current-state note (2026-03-06): this section describes the **target end
-> state**, not a claim that every detail is already implemented today. The
-> branch is still transitional on mandatory located diagnostics, canonical
-> `TypedProject` ownership, full `NodeOrigin` stamping, ExternId-keyed runtime
-> bindings, and a standalone `SourceBundle` ingest stage.
+> state**, not a claim that every detail is already implemented today.
+>
+> **Landed**: `TypedProject` borrows `&ModuleGraph` (CP-43), `LowerOutput`
+> owns computed fields (CP-44), execution consolidated behind `execute_dag`
+> + `ExecuteConfig` (CP-45).
+>
+> **Still transitional**: mandatory located diagnostics, full `NodeOrigin`
+> stamping (defaults to `Unknown` for backward compat), ExternId-keyed
+> runtime bindings (currently `ProgramSymbolId`-keyed), and a standalone
+> `SourceBundle` ingest stage.
 
 ```rust
 /// The one result type. PASS = Ok, FAIL = Err. No third state.

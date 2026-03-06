@@ -344,7 +344,7 @@ docs/
 TODO/
 ├── tasks.md                  Index — points to three lane docs
 ├── type-system.md            Lane 1: Compositional type coverage (WS-1 through WS-7)
-├── gunbc-dag-simplification.md  Lane 2: Reduce gunbc-app to minimum Rust
+├── gunbc-dag-simplification.md  Lane 2: Reduce gunbc-app (formerly gunbc-dag) to minimum Rust
 ├── sdlc.md                   Lane 3: SDLC pipeline end-to-end (the objective)
 └── TODONE/                   Completed work archive
 ```

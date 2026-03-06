@@ -185,9 +185,9 @@ Acceptance:
 
 ### Rename
 
-`gunbc-app` → `gunbc-app` (or `gunbc-bin`). It's the application entry point, not a DAG definition crate.
+`gunbc-dag` → `gunbc-app` (**done**). It's the application entry point, not a DAG definition crate.
 
-- **Acceptance**: `Cargo.toml` `[package] name = "gunbc-app"`. Directory renamed. All `Cargo.toml` dependency references updated. `grep -r 'gunbc-app' Cargo.toml */Cargo.toml` returns 0.
+- **Acceptance**: `Cargo.toml` `[package] name = "gunbc-app"`. Directory renamed. All `Cargo.toml` dependency references updated. `grep -r 'gunbc-dag' Cargo.toml */Cargo.toml` returns 0.
 
 ### Output directory: single source of truth
 

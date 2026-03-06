@@ -889,7 +889,6 @@ fn build_exec_runtime_source(
         "ExecError".into(),
         "ExecuteConfig".into(),
         "Executable".into(),
-        "ExecutionMode".into(),
         "execute_dag".into(),
     ];
     if needs_output_map {

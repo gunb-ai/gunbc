@@ -201,7 +201,7 @@ pub fn auto_testgen_for_module(module: &CompilableModule, output_dir: &Path) -> 
     let module_test_name = format!("{}_generated_tests", module.module_name.replace('.', "_"));
 
     let dag_builder_call = format!(
-        "gunbc_resolve::builder::build_dsl_graph(\"{}\", crate::extern_ops::gunbc_runtime_bindings(), gunbc_resolve::BuildOpts::default()).map(|result| result.dag).expect(\"graph should build\")",
+        "gunbc_resolve::builder::build_dsl_graph_dag(\"{}\", crate::extern_ops::gunbc_runtime_bindings(), gunbc_resolve::BuildOpts::default()).expect(\"graph should build\")",
         module.dsl_path,
     );
     let mock_spec_path = format!("gunbc_test::auto_mock_spec(&dag, \"{}\")", safe_name,);
@@ -461,7 +461,7 @@ pub fn compile_dag_for_test(dsl_module: &str) -> Result<Dag<DynOp>, BuilderError
 /// the DAG at test runtime.
 pub fn dag_builder_call_for_module(dsl_module: &str) -> String {
     format!(
-        "gunbc_resolve::builder::build_dsl_graph(\"{dsl_module}\", crate::extern_ops::gunbc_runtime_bindings(), gunbc_resolve::BuildOpts::default()).map(|result| result.dag).expect(\"graph should build\")"
+        "gunbc_resolve::builder::build_dsl_graph_dag(\"{dsl_module}\", crate::extern_ops::gunbc_runtime_bindings(), gunbc_resolve::BuildOpts::default()).expect(\"graph should build\")"
     )
 }
 

@@ -643,17 +643,27 @@ fn build_module_graph(
             if let Some(dep_idx) = module_index.get(import).copied() {
                 dependencies.push(dep_idx);
             } else {
-                diagnostics.push(
-                    Diagnostic::new(
-                        DiagnosticKind::Resolve,
-                        format!(
-                            "unresolved import: {} -> {}",
-                            module.module_path.as_dotted(),
-                            import.as_dotted()
-                        ),
-                    )
-                    .with_file(&module.path),
-                );
+                let mut diag = Diagnostic::new(
+                    DiagnosticKind::Resolve,
+                    format!(
+                        "unresolved import: {} -> {}",
+                        module.module_path.as_dotted(),
+                        import.as_dotted()
+                    ),
+                )
+                .with_file(&module.path);
+                // Locate the import in the AST to add line:col
+                if let Some(ast_import) = module
+                    .ast
+                    .imports
+                    .iter()
+                    .find(|i| &i.node.path == import)
+                {
+                    let (line, col) =
+                        parser::byte_to_line_col(&module.source, ast_import.span.start);
+                    diag = diag.with_span(ast_import.span).with_line_col(line, col);
+                }
+                diagnostics.push(diag);
             }
         }
         modules.push(ResolvedModule {
