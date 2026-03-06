@@ -273,7 +273,7 @@ pub struct CheckOutput {
     pub parsed_files: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CompileOptions {
     pub emit_collection_nodes: bool,
     pub profile: Option<String>,
@@ -288,29 +288,14 @@ pub struct CompileOptions {
     /// Go/C/MIPS backends embed these as string literals; Rust Layer 1
     /// writes them as additional files in the generated crate.
     pub embedded_data: std::collections::HashMap<String, daglang_emit::EmbeddedData>,
-    /// Skip post-lowering structural verification (default: true during transition).
+    /// Skip post-lowering structural verification (default: false).
     ///
     /// When false, `verify_dag()` runs after lowering and rejects DAGs with
     /// unwired required inputs, SubDag mismatches, resource gaps, or
-    /// fingerprint conflicts. Currently defaults to true because the lowerer
-    /// produces benign unwired inputs (param_source nodes, fn body cross-wiring
-    /// gaps). Set to false on specific compilation paths once lowerer gaps close.
+    /// fingerprint conflicts.
     pub skip_verification: bool,
 }
 
-impl Default for CompileOptions {
-    fn default() -> Self {
-        Self {
-            emit_collection_nodes: false,
-            profile: None,
-            target: CodegenTarget::default(),
-            layer: CodegenLayer::default(),
-            output_dir: None,
-            embedded_data: std::collections::HashMap::new(),
-            skip_verification: true,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CodegenTarget {

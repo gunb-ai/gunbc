@@ -449,6 +449,11 @@ fn check_type_match(
     registry: &TypeRegistry,
     errors: &mut Vec<SubDagError>,
 ) {
+    // Skip function-typed ports — `fn(T)->R` syntax isn't handled by the
+    // type expression parser yet (WS3-2 prerequisite).
+    if parent_type.0.starts_with("fn(") || inner_type.0.starts_with("fn(") {
+        return;
+    }
     if let Err(error) = registry.validate_type_expr(parent_type) {
         errors.push(SubDagError::InvalidTypeExpression {
             node: node.clone(),
