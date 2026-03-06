@@ -995,9 +995,10 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
         file.imports.push(Import {
             path: vec!["gunbc_exec".to_string()],
             items: vec![
-                "execute_with_mode".to_string(),
+                "execute_dag".to_string(),
                 "lower".to_string(),
                 "BoundaryMocks".to_string(),
+                "ExecuteConfig".to_string(),
                 "ExecutionMode".to_string(),
             ],
         });
@@ -1061,8 +1062,9 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 path: vec!["gunbc_exec".to_string()],
                 items: vec![
                     "lower".to_string(),
+                    "ExecuteConfig".to_string(),
                     "ExecutionMode".to_string(),
-                    "execute_with_mode".to_string(),
+                    "execute_dag".to_string(),
                 ],
             });
             file.imports.push(Import {
@@ -1584,10 +1586,13 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     Self::record_ident(first, used);
                 }
             }
-            Expr::Struct { name, fields } => {
+            Expr::Struct { name, fields, rest } => {
                 Self::record_ident(name, used);
                 for (_, expr) in fields {
                     Self::collect_idents_from_expr(expr, used);
+                }
+                if let Some(base) = rest {
+                    Self::collect_idents_from_expr(base, used);
                 }
             }
             Expr::Closure { body, .. } => Self::collect_idents_from_expr(body, used),

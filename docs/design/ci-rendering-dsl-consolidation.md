@@ -1,9 +1,13 @@
 # CI Rendering DSL Consolidation
 
-> **Status update (2026-03-06)**: Phase 1 is complete on this branch. The
+> **Status update (2026-03-06)**: Phases 1-3 are complete on this branch. The
 > Rust-side CI YAML renderers (`core/ir/src/transport/ci/render.rs`, provider
-> YAML helpers, and `WorkflowConfig`) are deleted. The remaining work in this
-> doc is Phase 2 and Phase 3 inside the live `.dag` generation path.
+> YAML helpers, and `WorkflowConfig`) are deleted; `tools/cigen.dag` now
+> assembles typed provider values, provider YAML layout lives in
+> `dsl/extdeps/{github_actions_render,gitlab_ci_render}.dag`, and `CiDiscovery`
+> crosses the Rust/DSL boundary as typed `ScriptBlock` data rather than raw
+> shell strings. The remaining work in this doc is follow-on application of the
+> same pattern to adjacent render lanes and stronger shell quoting semantics.
 
 ## Goal
 
@@ -203,6 +207,8 @@ Acceptance:
 
 ### Phase 2: Make `tools.cigen.dag` structurally compositional
 
+Status: complete on this branch.
+
 This phase replaces string-heavy YAML assembly inside `tools/cigen.dag` with
 typed provider-value assembly.
 
@@ -227,6 +233,8 @@ Acceptance:
 - provider YAML rendering lives in leaf serializer modules only
 
 ### Phase 3: Replace raw `CiDiscovery` strings with typed step data
+
+Status: complete on this branch.
 
 Move from:
 
@@ -260,7 +268,7 @@ Deleting that dead path is cleanup, not a compiler research problem.
 
 ### Medium-scope work, but not a hard blocker
 
-Phase 2 is also not blocked by missing language features.
+The landed Phase 2/3 work was not blocked by missing language features.
 
 The repo already has:
 
@@ -269,11 +277,11 @@ The repo already has:
 - `content_upsert`
 - enough string/list composition to build typed intermediate values
 
-What remains is straightforward modeling work:
+What remains is adjacent cleanup rather than core CI modeling work:
 
-- stop assembling YAML too early
-- add typed provider-value constructors/helpers
-- narrow the extern discovery boundary
+- apply the same typed assembly + leaf serializer pattern to adjacent render lanes
+- strengthen `ScriptLine::Command { argv }` shell quoting centrally
+- keep new CI policy/render drift from reappearing
 
 ### Resolved design decisions
 

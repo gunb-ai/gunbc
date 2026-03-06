@@ -364,6 +364,36 @@ impl Executable for RenderPragmaLintPolicyContentOp {
 #[derive(Debug, Clone)]
 struct DiscoverCiConfigOp;
 
+fn script_command(argv: Vec<String>) -> Value {
+    let mut map = BTreeMap::new();
+    map.insert("_variant".to_string(), Value::Str("Command".to_string()));
+    map.insert(
+        "argv".to_string(),
+        Value::List(argv.into_iter().map(Value::Str).collect()),
+    );
+    Value::Map(map)
+}
+
+fn script_raw(shell: &str) -> Value {
+    let mut map = BTreeMap::new();
+    map.insert("_variant".to_string(), Value::Str("Raw".to_string()));
+    map.insert("shell".to_string(), Value::Str(shell.to_string()));
+    Value::Map(map)
+}
+
+fn script_comment(text: &str) -> Value {
+    let mut map = BTreeMap::new();
+    map.insert("_variant".to_string(), Value::Str("Comment".to_string()));
+    map.insert("text".to_string(), Value::Str(text.to_string()));
+    Value::Map(map)
+}
+
+fn script_block(lines: Vec<Value>) -> Value {
+    let mut map = BTreeMap::new();
+    map.insert("lines".to_string(), Value::List(lines));
+    Value::Map(map)
+}
+
 impl Executable for DiscoverCiConfigOp {
     fn execute(
         &self,
@@ -374,28 +404,49 @@ impl Executable for DiscoverCiConfigOp {
             .map(|s| Value::Str(s.to_string()))
             .collect();
 
-        let tool = gunbc_ir::CargoInvocation::composed("ci", "dag");
-        let tool_command = tool.command();
-
-        let bootstrap_script = concat!(
-            "rm -rf target/codegen\n",
-            "# Cargo validates all [[bin]] paths even with --bin filter.\n",
-            "# Create minimal stubs so the manifest parses, then check only bootstrap binaries.\n",
-            "for dir in $(grep 'path = \"../target/codegen/' gunbc-app/Cargo.toml | ",
-            "sed 's|.*\"../\\(.*\\)/main.rs\"|\\1|'); do\n",
-            "  mkdir -p \"$dir\" && echo 'fn main() {}' > \"$dir/main.rs\"\n",
-            "done\n",
-            "cargo check -p gunbc-app --bin gunbc-codegen --bin gunbc-ci\n",
-            "# Replace bootstrap stubs with real generated entrypoints before running generated bins.\n",
-            "cargo run -p gunbc-app --bin gunbc-codegen -- codegen",
-        );
+        let ci_tool = gunbc_ir::CargoInvocation::composed("ci", "dag");
+        let codegen_tool = gunbc_ir::CargoInvocation::composed("codegen", "dag");
 
         let mut result = BTreeMap::new();
         result.insert("secrets".to_string(), Value::List(secrets));
-        result.insert("tool_command".to_string(), Value::Str(tool_command));
         result.insert(
-            "bootstrap_script".to_string(),
-            Value::Str(bootstrap_script.to_string()),
+            "run".to_string(),
+            script_block(vec![script_command(ci_tool.command_parts())]),
+        );
+        result.insert(
+            "bootstrap".to_string(),
+            script_block(vec![
+                script_command(vec![
+                    "rm".to_string(),
+                    "-rf".to_string(),
+                    "target/codegen".to_string(),
+                ]),
+                script_comment(
+                    "Cargo validates all [[bin]] paths even with --bin filter.",
+                ),
+                script_comment(
+                    "Create minimal stubs so the manifest parses, then check only bootstrap binaries.",
+                ),
+                script_raw(
+                    "for dir in $(grep 'path = \"../target/codegen/' gunbc-app/Cargo.toml | sed 's|.*\"../\\(.*\\)/main.rs\"|\\1|'); do",
+                ),
+                script_raw("  mkdir -p \"$dir\" && echo 'fn main() {}' > \"$dir/main.rs\""),
+                script_raw("done"),
+                script_command(vec![
+                    "cargo".to_string(),
+                    "check".to_string(),
+                    "-p".to_string(),
+                    "gunbc-app".to_string(),
+                    "--bin".to_string(),
+                    "gunbc-codegen".to_string(),
+                    "--bin".to_string(),
+                    "gunbc-ci".to_string(),
+                ]),
+                script_comment(
+                    "Replace bootstrap stubs with real generated entrypoints before running generated bins.",
+                ),
+                script_command(codegen_tool.run_with_args(&["--", "codegen"])),
+            ]),
         );
 
         Ok(result.into_iter().collect())
@@ -692,6 +743,57 @@ mod tests {
         assert!(
             modules.iter().any(|module| module == "tools/testgen.dag"),
             "tools/testgen.dag should be part of the discovered testgen set",
+        );
+    }
+
+    #[test]
+    fn discover_ci_config_returns_typed_script_blocks() {
+        let out = DiscoverCiConfigOp
+            .execute(HashMap::new())
+            .expect("discover_ci_config should succeed");
+
+        let run = out
+            .get("run")
+            .and_then(Value::as_map)
+            .expect("run should be a ScriptBlock map");
+        let run_lines = run
+            .get("lines")
+            .and_then(Value::as_list)
+            .expect("run.lines should be a list");
+        let run_line = run_lines[0]
+            .as_map()
+            .expect("run line should be a ScriptLine payload map");
+        assert_eq!(
+            run_line.get("_variant").and_then(Value::as_str),
+            Some("Command"),
+            "run should use Command argv data, not an opaque shell string"
+        );
+
+        let bootstrap = out
+            .get("bootstrap")
+            .and_then(Value::as_map)
+            .expect("bootstrap should be a ScriptBlock map");
+        let bootstrap_lines = bootstrap
+            .get("lines")
+            .and_then(Value::as_list)
+            .expect("bootstrap.lines should be a list");
+        assert!(
+            bootstrap_lines.iter().any(|line| {
+                line.as_map()
+                    .and_then(|map| map.get("_variant"))
+                    .and_then(Value::as_str)
+                    == Some("Comment")
+            }),
+            "bootstrap should preserve explanatory comments as ScriptLine::Comment"
+        );
+        assert!(
+            bootstrap_lines.iter().any(|line| {
+                line.as_map()
+                    .and_then(|map| map.get("_variant"))
+                    .and_then(Value::as_str)
+                    == Some("Raw")
+            }),
+            "bootstrap should keep irreducible shell control flow as ScriptLine::Raw"
         );
     }
 

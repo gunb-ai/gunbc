@@ -11,10 +11,10 @@
 module config.ci
 
 import extdeps.github_actions {
-  EnvVar, Permission, RunnerImage, Trigger, Checkout, Cache,
+  EnvVar, Permission, RunnerImage, Trigger, Checkout, Cache, Workflow,
   ubuntu_latest
 }
-import extdeps.gitlab_ci { CacheConfig, default_image }
+import extdeps.gitlab_ci { CacheConfig, Pipeline, Variable, default_image }
 
 // ── Trigger ─────────────────────────────────────────────────────────
 
@@ -75,6 +75,10 @@ data ci_checkout: Checkout = {
   submodules: null
 }
 
+fn gitlab_variables_from_env(env: List<EnvVar>) -> List<Variable> {
+  env |> map(e => { key: e.key, value: e.value })
+}
+
 // ── Workflow identity ───────────────────────────────────────────────
 
 data ci_workflow_name: String = "ci"
@@ -82,3 +86,20 @@ data ci_generator: String = "gunbc-codegen"
 data ci_regen_command: String = "cargo run -p gunbc-app --bin gunbc-codegen -- cigen"
 data ci_stages: List<String> = ["ci"]
 data ci_gitlab_image: String = default_image
+
+data ci_github_base_workflow: Workflow = {
+  name: ci_workflow_name,
+  trigger: ci_trigger,
+  permissions: ci_permissions,
+  env: ci_env,
+  cache: ci_github_cache,
+  jobs: []
+}
+
+data ci_gitlab_base_pipeline: Pipeline = {
+  image: ci_gitlab_image,
+  stages: ci_stages,
+  variables: gitlab_variables_from_env(env: ci_env),
+  cache: ci_gitlab_cache,
+  jobs: []
+}

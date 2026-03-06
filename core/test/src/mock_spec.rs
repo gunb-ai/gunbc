@@ -318,7 +318,7 @@ impl MockSpec {
         mocks
     }
 
-    /// Convert this MockSpec into BoundaryMocks suitable for `execute_with_mode`.
+    /// Convert this MockSpec into BoundaryMocks suitable for `execute_dag`.
     ///
     /// Maps boundary_mocks + transport_mocks to output mocks and input_mocks to
     /// input mocks (for DAG entry points) in the resulting BoundaryMocks.

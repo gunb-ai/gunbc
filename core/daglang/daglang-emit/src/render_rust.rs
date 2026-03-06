@@ -347,7 +347,7 @@ fn render_expr(expr: &Expr) -> String {
         Expr::Ref(expr) => format!("&{}", render_expr(expr)),
         Expr::RefMut(expr) => format!("&mut {}", render_expr(expr)),
         Expr::Path(segments) => segments.join("::"),
-        Expr::Struct { name, fields } => {
+        Expr::Struct { name, fields, rest } => {
             let field_strs: Vec<String> = fields
                 .iter()
                 .map(|(k, v)| {
@@ -359,7 +359,11 @@ fn render_expr(expr: &Expr) -> String {
                     }
                 })
                 .collect();
-            format!("{} {{ {} }}", name, field_strs.join(", "))
+            if let Some(base) = rest {
+                format!("{} {{ {}, ..{} }}", name, field_strs.join(", "), render_expr(base))
+            } else {
+                format!("{} {{ {} }}", name, field_strs.join(", "))
+            }
         }
         Expr::Closure { args, body } => {
             let body_str = render_expr(body);
@@ -660,6 +664,7 @@ mod tests {
                 body: vec![Stmt::TailExpr(Expr::Struct {
                     name: "Config".to_string(),
                     fields: vec![("name".to_string(), Expr::str_lit("default"))],
+                    rest: None,
                 })],
                 doc: vec![],
                 attributes: vec![],

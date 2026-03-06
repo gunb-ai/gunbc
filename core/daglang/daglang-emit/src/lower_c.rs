@@ -488,7 +488,7 @@ fn lower_expr(expr: &Expr, config: &CConfig) -> CExpr {
             )
         }
         Expr::Path(segments) => CExpr::Var(segments.join("_")),
-        Expr::Struct { name, fields } => {
+        Expr::Struct { name, fields, .. } => {
             // C struct literal (C99): `(struct Name){ .field = val, ... }`
             // For now, represent as a call to an init function.
             let init_args: Vec<CExpr> = fields.iter().map(|(_, v)| lower_expr(v, config)).collect();

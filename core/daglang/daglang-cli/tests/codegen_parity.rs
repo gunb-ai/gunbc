@@ -3,7 +3,7 @@
 
 use daglang_driver::DriverContext;
 use gunbc_app::extern_ops::gunbc_runtime_bindings;
-use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
+use gunbc_exec::{execute_dag, BoundaryMocks, ExecuteConfig, ExecutionMode};
 use gunbc_ir::ToolchainCommands;
 use gunbc_ir::Value;
 use gunbc_ir::WorkspaceLayout;
@@ -239,10 +239,13 @@ fn run_module_interpreter_execution_nodes(
             dry_run_boundary_mocks.set_value(&node.id.0, &output_port.name.0, Value::Skipped);
         }
     }
-    let execution = execute_with_mode_and_inputs(
+    let execution = execute_dag(
         &resolved,
-        ExecutionMode::DryRun(dry_run_boundary_mocks),
-        Some(&input_mocks),
+        ExecuteConfig {
+            mode: ExecutionMode::DryRun(dry_run_boundary_mocks),
+            input_mocks: Some(&input_mocks),
+            ..Default::default()
+        },
     )
     .map_err(|error| format!("execute failed for {relative_module}: {error}"))?;
     let nodes = execution

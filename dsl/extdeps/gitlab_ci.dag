@@ -13,6 +13,8 @@
 
 module extdeps.gitlab_ci
 
+import extdeps.ci_script { ScriptBlock }
+
 // ── Variable ───────────────────────────────────────────────────────
 
 type Variable {
@@ -40,7 +42,7 @@ type CacheConfig {
 type Job {
   id: String
   stage: String
-  script: List<String>
+  script: ScriptBlock
   needs: List<Need>
   variables: List<Variable>
 }

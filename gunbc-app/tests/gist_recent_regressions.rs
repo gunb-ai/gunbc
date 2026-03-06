@@ -1,7 +1,7 @@
 #![allow(clippy::disallowed_methods)]
 
 use gunbc_app::extern_ops::gunbc_runtime_bindings;
-use gunbc_exec::{execute_with_mode_and_inputs, lower, BoundaryMocks, ExecutionMode};
+use gunbc_exec::{execute_dag, lower, BoundaryMocks, ExecuteConfig, ExecutionMode};
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
 use gunbc_test::auto_mock_spec;
@@ -209,10 +209,13 @@ fn gist_recent_end_to_end_emits_gist_url() {
         mocks
     };
 
-    let log = execute_with_mode_and_inputs(
+    let log = execute_dag(
         &dag,
-        ExecutionMode::DryRun(dry_run_mocks),
-        Some(&input_mocks),
+        ExecuteConfig {
+            mode: ExecutionMode::DryRun(dry_run_mocks),
+            input_mocks: Some(&input_mocks),
+            ..Default::default()
+        },
     )
     .expect("gist-recent DryRun execution should succeed");
 

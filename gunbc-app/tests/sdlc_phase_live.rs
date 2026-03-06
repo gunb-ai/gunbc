@@ -1,7 +1,7 @@
 #![allow(clippy::disallowed_methods)] // Live integration harness shells out intentionally.
 
 use gunbc_app::extern_ops::gunbc_runtime_bindings;
-use gunbc_exec::{execute_with_mode_and_inputs, lower, BoundaryMocks, ExecutionMode};
+use gunbc_exec::{execute_dag, lower, BoundaryMocks, ExecuteConfig, ExecutionMode};
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
 use gunbc_test::{guard_test, FermiCost, TestClass};
@@ -274,7 +274,7 @@ fn run_dispatch_local(
         }
     }
 
-    let _log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks))
+    let _log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::Real, input_mocks: Some(&input_mocks), ..Default::default() })
         .expect("local SDLC dispatch should succeed");
 }
 

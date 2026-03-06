@@ -807,7 +807,7 @@ pub trait TestRenderer {
 | `core/codegen/src/testgen/render_python.rs` | Python stub (validates trait surface) |
 | `core/codegen/src/testgen/codegen.rs` | IR construction (never constructs strings) |
 | `gunbc-app/src/makegen/shared.rs` | Makefile rendering (via DSL `evaluate_fn_body()`) |
-| `dsl/config/ci.dag` + `dsl/tools/cigen.dag` | CI YAML generation (DSL-owned; provider serialization still string-heavy) |
+| `dsl/config/ci.dag` + `dsl/tools/cigen.dag` | CI YAML generation (DSL-owned; typed provider values + leaf serializers in `.dag`) |
 
 **Current implementations:**
 

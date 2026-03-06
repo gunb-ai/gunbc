@@ -162,9 +162,9 @@ coverage.
 
 **Problem**: The repo still has many rendering systems with inconsistent modeling
 surfaces. The Rust-side CI YAML renderer family was deleted on March 6, 2026,
-but the remaining `.dag` CI path is still string-heavy rather than built from a
-typed render IR. Testgen remains the clearest example of proper IR + renderer
-separation.
+and the live `.dag` CI path now uses typed provider values plus leaf serializer
+modules, but the broader render surface still lacks a shared IR/renderer split.
+Testgen remains the clearest example of the full IR + renderer separation.
 
 **Current state** (from codebase audit):
 

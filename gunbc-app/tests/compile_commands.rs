@@ -1,6 +1,6 @@
 use gunbc_app::extern_ops::gunbc_runtime_bindings;
 use gunbc_app::sdlc_workflow_spec;
-use gunbc_exec::{execute_with_mode_and_inputs, lower, BoundaryMocks, DynOp, ExecutionMode};
+use gunbc_exec::{execute_dag, lower, BoundaryMocks, DynOp, ExecuteConfig, ExecutionMode};
 use gunbc_ir::{detect_entrypoints, Dag, Value};
 use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
 use gunbc_test::auto_mock_spec;
@@ -210,10 +210,13 @@ fn dispatch_sdlc_dry_run_completes_without_legacy_bindings() {
         }
     }
 
-    let log = execute_with_mode_and_inputs(
+    let log = execute_dag(
         &dag,
-        ExecutionMode::DryRun(dry_run_mocks),
-        Some(&input_mocks),
+        ExecuteConfig {
+            mode: ExecutionMode::DryRun(dry_run_mocks),
+            input_mocks: Some(&input_mocks),
+            ..Default::default()
+        },
     )
     .expect("sdlc worker dry-run should succeed");
 

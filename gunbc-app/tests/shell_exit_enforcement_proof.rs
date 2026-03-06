@@ -22,7 +22,7 @@
 use std::sync::{Arc, Mutex};
 
 use gunbc_app::extern_ops::gunbc_runtime_bindings;
-use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
+use gunbc_exec::{execute_dag, BoundaryMocks, ExecuteConfig, ExecutionMode};
 use gunbc_ir::transport::{
     HttpMethod, RestResponse, ShellResponse, TransportRequest, TransportResponse,
 };
@@ -277,7 +277,7 @@ fn gcloud_exit_code_1_fails_with_error() {
     });
     let _guard = TransportBackendGuard::install(backend);
 
-    let result = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks));
+    let result = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::Real, input_mocks: Some(&input_mocks), ..Default::default() });
 
     // Execution must fail — the gcloud credential retrieval returned exit 1
     assert!(
@@ -333,7 +333,7 @@ fn rest_401_response_surfaces_as_error() {
     });
     let _guard = TransportBackendGuard::install(backend);
 
-    let result = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks));
+    let result = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::Real, input_mocks: Some(&input_mocks), ..Default::default() });
 
     // Execution should fail because the 401 response body lacks html_url
     assert!(

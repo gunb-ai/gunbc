@@ -28,6 +28,14 @@ Source of truth: [`TODO/rolling-postmortem.md`](TODO/rolling-postmortem.md)
 1. **RR-1 (P0)**: Replace heuristic test-time confidence with measured runtime budget checks for `test-xs/s/m/l/xl` (maps to RC-P0-004).
 2. **RR-2 (P1)**: Split monolithic exhaustive tests into bounded shards or explicit integration-only flows; default loops should stay interactive (maps to RC-P1-005/006).
 
+### Cross-Cutting Rendering Cleanup
+
+Source of truth: [`docs/design/ci-rendering-dsl-consolidation.md`](docs/design/ci-rendering-dsl-consolidation.md), [`TODO/rolling-postmortem.md`](TODO/rolling-postmortem.md)
+
+1. **RCI-1 (P1) — DONE (2026-03-06)**: Introduced shared CI script modeling for repo CI generation. `dsl/extdeps/ci_script.dag` now defines provider-neutral `ScriptLine` / `ScriptBlock`, `CiDiscovery` carries typed `run` / `bootstrap` script data instead of raw `tool_command` / `bootstrap_script` strings, and the Rust extern bridge emits structured variant payloads. Maps to RP-011 / RC-P1-009.
+2. **RCI-2 (P1) — DONE (2026-03-06)**: Moved CI provider YAML rendering to leaf serializer modules and made static CI policy typed. `dsl/extdeps/github_actions_render.dag` and `dsl/extdeps/gitlab_ci_render.dag` now own provider YAML layout, `config.ci` exports typed base workflow/pipeline values, and `tools/cigen.dag` no longer owns provider YAML templates. Maps to RP-010 / RC-P1-007.
+3. **RCI-3 (P1) — DONE (2026-03-06)**: Rewrote `tools/cigen.dag` as typed assembly plus final serializer calls and added ratchet tests. `tools/cigen.dag` now composes typed provider values, calls provider serializers, and writes via `content_upsert`; `gunbc-app/tests/ci_yaml_contracts.rs` and `gunbc-app/src/extern_ops.rs` guard against regression to inline provider YAML or raw-string discovery.
+
 ### Cross-Cutting Auth Architecture
 
 Source of truth: [`TODO/rolling-postmortem.md`](TODO/rolling-postmortem.md)

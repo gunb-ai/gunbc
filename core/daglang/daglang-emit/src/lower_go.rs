@@ -361,12 +361,13 @@ fn lower_expr(expr: &Expr, config: &GoConfig) -> Expr {
             args: args.clone(),
             body: Box::new(lower_expr(body, config)),
         },
-        Expr::Struct { name, fields } => Expr::Struct {
+        Expr::Struct { name, fields, rest } => Expr::Struct {
             name: to_pascal_case(name),
             fields: fields
                 .iter()
                 .map(|(k, v)| (to_pascal_case(k), lower_expr(v, config)))
                 .collect(),
+            rest: rest.as_ref().map(|r| Box::new(lower_expr(r, config))),
         },
         // MacroCall doesn't exist in Go — convert to function call.
         Expr::MacroCall { name, args } => Expr::Call {

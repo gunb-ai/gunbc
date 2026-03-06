@@ -26,8 +26,7 @@ use crate::progress::{
 use crate::render::{Animation, RenderMode};
 use crate::terminal::TerminalProfile;
 use crate::{
-    execute_with_progress_and_mode_and_inputs, lower, topo_sort, ExecError, Executable,
-    ExecutionMode, NodeState,
+    execute_dag, lower, topo_sort, ExecError, ExecuteConfig, Executable, ExecutionMode, NodeState,
 };
 use gunbc_ir::layout::compute_layout;
 use gunbc_ir::symbols::{SemanticColor, SymbolId, Tier, STANDARD};
@@ -309,7 +308,15 @@ fn run_plain<T: Executable + Clone + Send>(
             primary: &mut status_observer,
             secondary: &mut ci_observer,
         };
-        let log = execute_with_progress_and_mode_and_inputs(dag, mode, &mut composed, input_mocks)?;
+        let log = execute_dag(
+            dag,
+            ExecuteConfig {
+                mode,
+                observer: Some(&mut composed),
+                input_mocks,
+                ..Default::default()
+            },
+        )?;
 
         // Mask secrets before printing any outputs.
         // GitHub Actions masks are retroactive within a step, so masking
@@ -318,7 +325,15 @@ fn run_plain<T: Executable + Clone + Send>(
 
         log
     } else {
-        execute_with_progress_and_mode_and_inputs(dag, mode, &mut status_observer, input_mocks)?
+        execute_dag(
+            dag,
+            ExecuteConfig {
+                mode,
+                observer: Some(&mut status_observer),
+                input_mocks,
+                ..Default::default()
+            },
+        )?
     };
 
     print_boundary_outputs(&log, &boundaries);
@@ -422,11 +437,14 @@ fn run_with_progress<T: Executable + Clone + Send + 'static>(
     // Executor on background thread, orchestrator loop on main thread.
     let exec_handle = thread::spawn(move || {
         let mut observer = ChannelObserver::new(event_tx);
-        execute_with_progress_and_mode_and_inputs(
+        execute_dag(
             &dag_owned,
-            mode,
-            &mut observer,
-            mocks_owned.as_ref(),
+            ExecuteConfig {
+                mode,
+                observer: Some(&mut observer),
+                input_mocks: mocks_owned.as_ref(),
+                ..Default::default()
+            },
         )
     });
 

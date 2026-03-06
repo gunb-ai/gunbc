@@ -11,7 +11,7 @@
 #![allow(clippy::disallowed_methods)]
 
 use gunbc_app::extern_ops::gunbc_runtime_bindings;
-use gunbc_exec::{execute_with_mode_and_inputs, lower, ExecutionMode};
+use gunbc_exec::{execute_dag, lower, ExecuteConfig, ExecutionMode};
 use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
 use gunbc_test::auto_mock_spec;
 
@@ -107,10 +107,13 @@ fn gist_snapshot_dry_run_completes() {
         mocks
     };
 
-    let log = execute_with_mode_and_inputs(
+    let log = execute_dag(
         &dag,
-        ExecutionMode::DryRun(dry_run_mocks),
-        Some(&input_mocks),
+        ExecuteConfig {
+            mode: ExecutionMode::DryRun(dry_run_mocks),
+            input_mocks: Some(&input_mocks),
+            ..Default::default()
+        },
     )
     .expect("gist DryRun execution should succeed");
 

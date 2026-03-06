@@ -294,12 +294,13 @@ fn lower_expr(expr: &Expr, in_fallible_fn: bool, config: &RustConfig) -> Expr {
             args: args.clone(),
             body: Box::new(lower_expr(body, in_fallible_fn, config)),
         },
-        Expr::Struct { name, fields } => Expr::Struct {
+        Expr::Struct { name, fields, rest } => Expr::Struct {
             name: name.clone(),
             fields: fields
                 .iter()
                 .map(|(k, v)| (k.clone(), lower_expr(v, in_fallible_fn, config)))
                 .collect(),
+            rest: rest.as_ref().map(|r| Box::new(lower_expr(r, in_fallible_fn, config))),
         },
         // Leaf expressions pass through.
         other => other.clone(),

@@ -348,12 +348,16 @@ fn render_expr(expr: &Expr) -> String {
         Expr::Ref(expr) => format!("&{}", render_expr(expr)),
         Expr::RefMut(expr) => format!("&{}", render_expr(expr)), // Go has no &mut.
         Expr::Path(segments) => segments.join("."),              // Go uses dots, not ::.
-        Expr::Struct { name, fields } => {
+        Expr::Struct { name, fields, rest } => {
             let field_strs: Vec<String> = fields
                 .iter()
                 .map(|(k, v)| format!("{}: {}", k, render_expr(v)))
                 .collect();
-            format!("{}{{ {} }}", name, field_strs.join(", "))
+            if let Some(base) = rest {
+                format!("{}{{ {}, ..{} }}", name, field_strs.join(", "), render_expr(base))
+            } else {
+                format!("{}{{ {} }}", name, field_strs.join(", "))
+            }
         }
         Expr::Closure { args, body } => {
             let body_str = render_expr(body);

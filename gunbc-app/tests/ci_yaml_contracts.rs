@@ -45,3 +45,40 @@ fn gitlab_cache_excludes_target_tree() {
         path.display()
     );
 }
+
+#[test]
+fn cigen_is_typed_assembly_not_inline_yaml_builder() {
+    let path = workspace_root().join("dsl/tools/cigen.dag");
+    let source = fs::read_to_string(&path).expect("read tools/cigen.dag");
+
+    assert!(
+        source.contains("render_github_workflow_yaml"),
+        "tools/cigen.dag should call the GitHub leaf serializer in {}",
+        path.display()
+    );
+    assert!(
+        source.contains("render_gitlab_pipeline_yaml"),
+        "tools/cigen.dag should call the GitLab leaf serializer in {}",
+        path.display()
+    );
+    assert!(
+        !source.contains("fn render_github_workflow("),
+        "tools/cigen.dag should not own GitHub YAML layout in {}",
+        path.display()
+    );
+    assert!(
+        !source.contains("fn render_gitlab_pipeline("),
+        "tools/cigen.dag should not own GitLab YAML layout in {}",
+        path.display()
+    );
+    assert!(
+        !source.contains("tool_command: String"),
+        "CiDiscovery should not regress to raw tool_command strings in {}",
+        path.display()
+    );
+    assert!(
+        !source.contains("bootstrap_script: String"),
+        "CiDiscovery should not regress to raw bootstrap_script blobs in {}",
+        path.display()
+    );
+}

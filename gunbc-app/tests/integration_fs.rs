@@ -1,5 +1,5 @@
 use gunbc_app::extern_ops::gunbc_runtime_bindings;
-use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
+use gunbc_exec::{execute_dag, BoundaryMocks, ExecuteConfig, ExecutionMode};
 use gunbc_ir::resource::ResourceIo;
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_lib_transport::test_backend::VirtualTransportBackend;
@@ -140,7 +140,7 @@ fn run_bootstrap_case(kind: BackendKind) {
             backend.create_dir_all("crates/example");
             let _guard = TransportBackendGuard::install(backend.clone());
 
-            execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks))
+            execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::Real, input_mocks: Some(&input_mocks), ..Default::default() })
                 .expect("execute bootstrap");
 
             let makefile = backend
@@ -175,7 +175,7 @@ fn run_bootstrap_case(kind: BackendKind) {
             .expect("create crates/example");
 
             let _cwd = CurrentDirGuard::new(workspace.path());
-            execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks))
+            execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::Real, input_mocks: Some(&input_mocks), ..Default::default() })
                 .expect("execute bootstrap");
 
             let makefile_path = workspace.path().join("Makefile");
