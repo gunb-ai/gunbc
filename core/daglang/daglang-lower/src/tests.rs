@@ -2884,10 +2884,29 @@ fn parity_report_lists_added_and_removed_items_in_sorted_order() {
 
 #[allow(clippy::disallowed_methods)]
 fn load_makegen_lowered() -> Dag<LoweredOp> {
-    let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
-    let source = fs::read_to_string(file).expect("should read makegen source");
-    let typed = typed_project_from_sources(&[("dsl/tools/makegen.dag", &source)]);
-    lower_typed_project(&typed).expect("lowering should succeed")
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
+    let load = |rel: &str| -> (String, String) {
+        let path = dsl_root.join(rel);
+        let source = fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("should read {rel}: {e}"));
+        (rel.to_string(), source)
+    };
+    let files: Vec<(String, String)> = vec![
+        load("tools/makegen.dag"),
+        load("std/patterns.dag"),
+        load("std/resources.dag"),
+        load("extdeps/make.dag"),
+        load("config/build_targets.dag"),
+    ];
+    let sources: Vec<(&str, &str)> = files.iter().map(|(p, s)| (p.as_str(), s.as_str())).collect();
+    let typed = typed_project_from_sources(&sources);
+    let mut scope = HashSet::new();
+    scope.insert("tools.makegen".to_string());
+    let config = LoweringConfig {
+        callable_modules: Some(&scope),
+        ..Default::default()
+    };
+    lower_with_config(&typed, &config).expect("lowering should succeed")
 }
 
 fn reference_makegen_shape() -> Dag<()> {

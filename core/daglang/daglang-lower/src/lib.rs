@@ -22,7 +22,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use daglang_syntax::ast::{
     BackoffStrategy, DataDef, Expr, Field, Item, Literal, NodeStmt, OperationDef,
-    RateLimitUnit, ServiceDef, Stmt, TransportBinding, TypeBody,
+    RateLimitUnit, ServiceDef, Stmt, StringPart, TransportBinding, TypeBody,
 };
 use daglang_syntax::ast_utils::{
     canonical_resource_type_name, is_type_expr_optional, resource_type_name,
@@ -1720,6 +1720,29 @@ pub enum LowerError {
         node: String,
         port: String,
     },
+    /// Service call argument cannot be resolved to a named input (CP-3).
+    UnresolvedServiceCallArg {
+        service_call: String,
+        arg_index: usize,
+        detail: String,
+    },
+    /// Pattern body node has an unsupported expression type (CP-4).
+    UnsupportedPatternExpr {
+        pattern: String,
+        node: String,
+        detail: String,
+    },
+    /// Fn call argument source cannot be found in scope (CP-3).
+    UnresolvedFnCallArg {
+        fn_call: String,
+        arg_name: String,
+        detail: String,
+    },
+    /// Return output expression cannot be wired to output port.
+    UnwirableReturnOutput {
+        callable: String,
+        output: String,
+    },
 }
 
 impl LowerError {
@@ -1751,6 +1774,10 @@ impl LowerError {
             Self::UnknownProviderSchemaType { .. } => "LOW023",
             Self::MissingCallablePassthrough { .. } => "LOW024",
             Self::UnwiredRequiredInput { .. } => "LOW025",
+            Self::UnresolvedServiceCallArg { .. } => "LOW026",
+            Self::UnsupportedPatternExpr { .. } => "LOW027",
+            Self::UnresolvedFnCallArg { .. } => "LOW028",
+            Self::UnwirableReturnOutput { .. } => "LOW029",
         }
     }
 
@@ -1777,6 +1804,18 @@ impl LowerError {
             ),
             Self::UnwiredRequiredInput { port, .. } => Some(format!(
                 "wire a data source to `{port}` or mark the port optional"
+            )),
+            Self::UnresolvedServiceCallArg { service_call, arg_index, .. } => Some(format!(
+                "check that arg #{arg_index} of `{service_call}` matches a declared operation input"
+            )),
+            Self::UnsupportedPatternExpr { pattern, node, .. } => Some(format!(
+                "pattern `{pattern}` node `{node}`: only ServiceCall, eq(), and pattern calls are supported in pattern bodies"
+            )),
+            Self::UnresolvedFnCallArg { fn_call, arg_name, .. } => Some(format!(
+                "check that `{arg_name}` in call to `{fn_call}` is a param, callable, service, data, or let binding in scope"
+            )),
+            Self::UnwirableReturnOutput { callable, output } => Some(format!(
+                "return expression for `{output}` in `{callable}` references local variables that can't be resolved as compute node inputs"
             )),
             _ => None,
         }
@@ -1929,6 +1968,34 @@ impl std::fmt::Display for LowerError {
             Self::UnwiredRequiredInput { node, port } => write!(
                 f,
                 "node `{node}` has unwired required input port `{port}`"
+            ),
+            Self::UnresolvedServiceCallArg {
+                service_call,
+                arg_index,
+                detail,
+            } => write!(
+                f,
+                "service call `{service_call}` arg #{arg_index}: {detail}"
+            ),
+            Self::UnsupportedPatternExpr {
+                pattern,
+                node,
+                detail,
+            } => write!(
+                f,
+                "pattern `{pattern}` node `{node}`: {detail}"
+            ),
+            Self::UnresolvedFnCallArg {
+                fn_call,
+                arg_name,
+                detail,
+            } => write!(
+                f,
+                "fn call `{fn_call}` arg `{arg_name}`: {detail}"
+            ),
+            Self::UnwirableReturnOutput { callable, output } => write!(
+                f,
+                "callable `{callable}` return output `{output}` cannot be wired"
             ),
         }
     }
@@ -2439,7 +2506,7 @@ fn lower_typed_project_impl(
         &wctx,
         emit_collection_nodes,
         entry_module,
-    );
+    )?;
     let profile_registry = collect_profile_binding_registry(project, active_profile)?;
     let active_profile_bindings =
         resolve_active_profile_bindings(&profile_registry, active_profile)?;
@@ -3544,7 +3611,7 @@ fn add_dependency_edges(
     emit_collection_nodes: bool,
     #[allow(unused_variables)]
     entry_module: Option<&str>,
-) {
+) -> Result<(), LowerError> {
     for module in &project.modules {
         let module_name = module.module_path.as_dotted();
         let param_types_by_callable = module
@@ -3620,7 +3687,7 @@ fn add_dependency_edges(
                     callable_param_defaults: wctx.callable_param_defaults,
                 };
                 expand_content_upsert_patterns(builder, &ctx, stmts, target);
-                expand_non_generic_pattern_calls(builder, project, &ctx, stmts, target);
+                expand_non_generic_pattern_calls(builder, project, &ctx, stmts, target)?;
             }
             if emit_collection_nodes {
                 add_collection_pipeline_nodes(builder, &module_name, stmts, target);
@@ -3647,6 +3714,7 @@ fn add_dependency_edges(
             }
         }
     }
+    Ok(())
 }
 
 fn add_collection_pipeline_nodes(
@@ -4705,7 +4773,7 @@ fn expand_non_generic_pattern_calls(
     ctx: &LoweringContext<'_>,
     stmts: &[Stmt],
     target: &LoweredEndpoint,
-) {
+) -> Result<(), LowerError> {
     let pattern_defs = collect_expandable_pattern_defs(project);
     let mut expansion_count = 0usize;
     let mut expanded_results = HashMap::<String, PatternExpansionResult>::new();
@@ -4762,7 +4830,7 @@ fn expand_non_generic_pattern_calls(
             pattern_def,
             call_args,
             &pexp,
-        );
+        )?;
         if let Some(result) = result {
             builder.add_edge(
                 &result.last_node_id,
@@ -4783,6 +4851,7 @@ fn expand_non_generic_pattern_calls(
         }
     }
     wire_expansion_return_outputs(builder, stmts, target, &flat_outputs);
+    Ok(())
 }
 
 /// Wire pattern expansion return outputs to the caller's `__out:` ports.
@@ -4867,9 +4936,9 @@ fn expand_single_pattern(
     pattern: &ExpandablePattern<'_>,
     call_args: &[(Option<String>, Expr)],
     pexp: &PatternExpansionParams<'_>,
-) -> Option<PatternExpansionResult> {
+) -> Result<Option<PatternExpansionResult>, LowerError> {
     if pexp.depth >= PATTERN_EXPANSION_MAX_DEPTH {
-        return None;
+        return Ok(None);
     }
 
     let suffix = expansion_suffix(ctx.item_name, expansion_count);
@@ -4933,17 +5002,10 @@ fn expand_single_pattern(
                 };
                 let expanded = expand_pattern_body_node(
                     builder, ctx, &env, pexp, &ns.name, expr_ref, &ns.after,
-                );
+                )?;
                 if let Some(output) = expanded {
                     last_node_id.clone_from(&output.node_id);
                     node_outputs.insert(ns.name.clone(), output);
-                } else {
-                    // CP-2: Always visible (not gated by env var).
-                    eprintln!(
-                        "daglang-lower: pattern `{}` node `{}` expansion failed — \
-                         node dropped from expanded pattern",
-                        ctx.item_name, ns.name
-                    );
                 }
             }
             Stmt::Let(name, expr) | Stmt::Assign(name, expr) => {
@@ -4957,7 +5019,7 @@ fn expand_single_pattern(
                     node_outputs: &node_outputs,
                 };
                 let expanded =
-                    expand_pattern_body_node(builder, ctx, &env, pexp, name, expr_ref, &[]);
+                    expand_pattern_body_node(builder, ctx, &env, pexp, name, expr_ref, &[])?;
                 if let Some(output) = expanded {
                     last_node_id.clone_from(&output.node_id);
                     node_outputs.insert(name.clone(), output);
@@ -4967,16 +5029,17 @@ fn expand_single_pattern(
                 // Handled below when building return_outputs.
             }
             _ => {
-                eprintln!(
-                    "daglang-lower: pattern `{}` has unsupported statement type — skipped",
-                    ctx.item_name
-                );
+                return Err(LowerError::UnsupportedPatternExpr {
+                    pattern: ctx.item_name.to_string(),
+                    node: String::new(),
+                    detail: "unsupported statement type in pattern body".to_string(),
+                });
             }
         }
     }
 
     if last_node_id.is_empty() {
-        return None;
+        return Ok(None);
     }
 
     // Build return output mapping from pattern's return statement.
@@ -4984,17 +5047,17 @@ fn expand_single_pattern(
     for body_stmt in pattern.body_stmts {
         if let Stmt::Return(bindings) = body_stmt {
             for (field_name, expr) in bindings {
-                if let Some(output) = resolve_pattern_return_expr(expr, &node_outputs, &arg_map) {
+                if let Some(output) = resolve_pattern_return_expr(expr, &node_outputs, &arg_map)? {
                     return_outputs.insert(field_name.clone(), output);
                 }
             }
         }
     }
 
-    Some(PatternExpansionResult {
+    Ok(Some(PatternExpansionResult {
         return_outputs,
         last_node_id,
-    })
+    }))
 }
 
 /// Substitute a type parameter in an expression.
@@ -5020,31 +5083,32 @@ fn resolve_pattern_return_expr(
     expr: &Expr,
     node_outputs: &HashMap<String, ExpandedNodeOutput>,
     arg_map: &HashMap<String, &Expr>,
-) -> Option<ExpandedNodeOutput> {
+) -> Result<Option<ExpandedNodeOutput>, LowerError> {
     match expr {
         Expr::FieldAccess(base, field) => {
             if let Expr::Ident(base_name) = base.as_ref() {
-                let base_output = node_outputs.get(base_name)?;
+                let Some(base_output) = node_outputs.get(base_name) else {
+                    return Ok(None);
+                };
                 // The field access overrides the output port.
                 // For CompareEquality: `check.equal` → the compare node's `fresh` port.
                 let mapped_port = match field.as_str() {
                     "equal" => "fresh".to_string(),
                     other => other.to_string(),
                 };
-                Some(ExpandedNodeOutput {
+                Ok(Some(ExpandedNodeOutput {
                     node_id: base_output.node_id.clone(),
                     output_port: mapped_port,
-                })
+                }))
             } else {
-                // CP-2: Always visible (not gated by env var).
-                eprintln!(
-                    "daglang-lower: resolve_pattern_return_expr: non-ident base in field access \
-                     — return field unresolved"
-                );
-                None
+                Err(LowerError::UnsupportedPatternExpr {
+                    pattern: String::new(),
+                    node: String::new(),
+                    detail: "non-ident base in field access — return field unresolvable".to_string(),
+                })
             }
         }
-        Expr::Ident(name) => node_outputs.get(name).cloned(),
+        Expr::Ident(name) => Ok(node_outputs.get(name).cloned()),
         Expr::Call(fn_name, call_args) => {
             // Handle `should_act(check)` in `return { acted: should_act(check) }`.
             // The fn_name is a lambda parameter (e.g., `should_act: c => !c.matches`).
@@ -5072,20 +5136,21 @@ fn resolve_pattern_return_expr(
                 if let Some(node_output) = first_arg_node {
                     let port = extract_lambda_field_access(lambda_expr)
                         .unwrap_or_else(|| node_output.output_port.clone());
-                    return Some(ExpandedNodeOutput {
+                    return Ok(Some(ExpandedNodeOutput {
                         node_id: node_output.node_id.clone(),
                         output_port: port,
-                    });
+                    }));
                 }
             }
 
-            first_arg_node.cloned()
+            Ok(first_arg_node.cloned())
         }
         _ => {
-            eprintln!(
-                "daglang-lower: resolve_pattern_return_expr: unsupported expression type in return — field unresolved"
-            );
-            None
+            Err(LowerError::UnsupportedPatternExpr {
+                pattern: String::new(),
+                node: String::new(),
+                detail: "unsupported expression type in pattern return".to_string(),
+            })
         }
     }
 }
@@ -5156,13 +5221,13 @@ fn expand_pattern_body_node(
     node_name: &str,
     expr: &Expr,
     after_deps: &[String],
-) -> Option<ExpandedNodeOutput> {
+) -> Result<Option<ExpandedNodeOutput>, LowerError> {
     match expr {
         Expr::ServiceCall(path, args) => {
-            expand_service_call_node(builder, ctx, env, node_name, path, args, after_deps)
+            Ok(expand_service_call_node(builder, ctx, env, node_name, path, args, after_deps))
         }
         Expr::Call(call_name, args) if call_name == "eq" => {
-            expand_eq_node(builder, ctx, env, node_name, args, after_deps)
+            Ok(expand_eq_node(builder, ctx, env, node_name, args, after_deps))
         }
         Expr::Call(call_name, call_args) if pexp.all_patterns.contains_key(call_name.as_str()) => {
             // Recursive pattern expansion: this node calls another pattern.
@@ -5188,7 +5253,7 @@ fn expand_pattern_body_node(
                 inner_pattern,
                 &merged_args,
                 &inner_pexp,
-            );
+            )?;
 
             // Wire after-dependency edges.
             if let Some(ref result) = inner_result {
@@ -5205,7 +5270,7 @@ fn expand_pattern_body_node(
             }
 
             // Convert PatternExpansionResult to ExpandedNodeOutput.
-            inner_result.and_then(|r| {
+            Ok(inner_result.and_then(|r| {
                 r.return_outputs
                     .values()
                     .next()
@@ -5213,16 +5278,16 @@ fn expand_pattern_body_node(
                         node_id: o.node_id.clone(),
                         output_port: o.output_port.clone(),
                     })
-            })
+            }))
         }
+        // Fn calls that aren't patterns — evaluated at runtime, not expandable.
+        Expr::Call(_, _) => Ok(None),
         _ => {
-            // CP-2: Always visible (not gated by env var).
-            eprintln!(
-                "daglang-lower: pattern `{}` node `{node_name}` has unsupported expression type \
-                 — skipped (only ServiceCall, eq(), and pattern calls are supported)",
-                ctx.item_name
-            );
-            None
+            Err(LowerError::UnsupportedPatternExpr {
+                pattern: ctx.item_name.to_string(),
+                node: node_name.to_string(),
+                detail: "unsupported expression type (only ServiceCall, eq(), and pattern calls are supported)".to_string(),
+            })
         }
     }
 }
@@ -6980,12 +7045,11 @@ fn add_service_call_edges(
                             .get(index)
                             .map(String::as_str)
                     }) else {
-                        eprintln!(
-                            "daglang-lower: service call `{}` arg #{} cannot be resolved to a named input — skipped",
-                            call.path.join("."),
-                            index,
-                        );
-                        continue;
+                        return Err(LowerError::UnresolvedServiceCallArg {
+                            service_call: call.path.join("."),
+                            arg_index: index,
+                            detail: "cannot be resolved to a named input".to_string(),
+                        });
                     };
                     // Skip auth_input args — they are wired to res:credential below.
                     if auth_input_field_name.as_deref() == Some(prepare_input) {
@@ -7027,13 +7091,13 @@ fn add_service_call_edges(
                             );
                             continue;
                         }
-                        eprintln!(
-                            "daglang-lower: service call `{}` arg `{}` (for input `{}`) — ident not found in params, callables, or services",
-                            call.path.join("."),
-                            arg_ident,
-                            prepare_input,
-                        );
-                        continue;
+                        return Err(LowerError::UnresolvedServiceCallArg {
+                            service_call: call.path.join("."),
+                            arg_index: index,
+                            detail: format!(
+                                "ident `{arg_ident}` (for input `{prepare_input}`) not found in params, callables, or services"
+                            ),
+                        });
                     }
                     if let Some((base_ident, field_name)) = arg.field_access.as_ref() {
                         if let Some(bound_source) = bound_callable_sources.get(base_ident) {
@@ -7067,13 +7131,13 @@ fn add_service_call_edges(
                         }
                     }
                     let Some(literal) = arg.literal.as_ref() else {
-                        eprintln!(
-                            "daglang-lower: service call `{}` arg #{} for input `{}` — no ident, field_access, call, or literal; arg dropped",
-                            call.path.join("."),
-                            index,
-                            prepare_input,
-                        );
-                        continue;
+                        return Err(LowerError::UnresolvedServiceCallArg {
+                            service_call: call.path.join("."),
+                            arg_index: index,
+                            detail: format!(
+                                "input `{prepare_input}`: no ident, field_access, call, or literal"
+                            ),
+                        });
                     };
                     let literal_source = ensure_literal_source_node(
                         builder,
@@ -7214,7 +7278,7 @@ fn add_service_call_edges(
                 variant_names: wctx.variant_names,
                 callable_param_defaults: wctx.callable_param_defaults,
             };
-            wire_fn_call_arguments(builder, &fn_ctx, stmts);
+            wire_fn_call_arguments(builder, &fn_ctx, stmts)?;
             // Wire for-loop iterable expressions to loop node "items" ports.
             let loop_ctx = LoweringContext {
                 bound_callable_sources: &bound_callable_sources,
@@ -7230,7 +7294,7 @@ fn add_service_call_edges(
                 Item::FnDef(def) if !def.body.lossy
             );
             if !is_fn_with_body {
-                wire_callable_return_outputs(builder, &fn_ctx, stmts, target, body_lossy);
+                wire_callable_return_outputs(builder, &fn_ctx, stmts, target, body_lossy)?;
             }
         }
     }
@@ -8736,16 +8800,100 @@ pub(crate) fn collect_service_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<S
 }
 
 fn collect_fn_calls_with_args(stmts: &[Stmt], calls: &mut Vec<FnCallSite>) {
-    walk_stmts(stmts, &mut |expr| {
-        if let Expr::Call(name, args) = expr {
+    // Collect top-level fn calls only — skip calls inside lambda bodies
+    // (collection operations like map/filter evaluate lambdas at runtime
+    // via evaluate_fn_body(), so their fn calls can't be wired at DAG level).
+    for stmt in stmts {
+        match stmt {
+            Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => {
+                collect_fn_calls_from_expr(expr, calls);
+            }
+            Stmt::Node(ns) => {
+                collect_fn_calls_from_expr(&ns.expr, calls);
+            }
+            Stmt::Return(fields) => {
+                for (_, expr) in fields {
+                    collect_fn_calls_from_expr(expr, calls);
+                }
+            }
+        }
+    }
+}
+
+/// Collect fn calls from an expression, stopping at lambda boundaries.
+///
+/// Fn calls inside lambda bodies (used by collection operations like map/filter)
+/// are not collectible — they're evaluated at runtime, not wired as DAG nodes.
+fn collect_fn_calls_from_expr(expr: &Expr, calls: &mut Vec<FnCallSite>) {
+    match expr {
+        Expr::Call(name, args) => {
             if !is_internal_synthetic_call(name) {
                 calls.push(FnCallSite {
                     name: name.clone(),
                     args: args.iter().map(service_call_arg_site).collect(),
                 });
             }
+            // Recurse into call arguments (but not lambda bodies)
+            for (_, arg) in args {
+                collect_fn_calls_from_expr(arg, calls);
+            }
         }
-    });
+        Expr::FieldAccess(base, _) => collect_fn_calls_from_expr(base, calls),
+        Expr::BinOp(lhs, _, rhs) => {
+            collect_fn_calls_from_expr(lhs, calls);
+            collect_fn_calls_from_expr(rhs, calls);
+        }
+        Expr::UnaryOp(_, inner) => collect_fn_calls_from_expr(inner, calls),
+        Expr::If(cond, then_expr, else_expr) => {
+            collect_fn_calls_from_expr(cond, calls);
+            collect_fn_calls_from_expr(then_expr, calls);
+            if let Some(otherwise) = else_expr {
+                collect_fn_calls_from_expr(otherwise, calls);
+            }
+        }
+        Expr::Match(scrutinee, arms) => {
+            collect_fn_calls_from_expr(scrutinee, calls);
+            for arm in arms {
+                collect_fn_calls_from_expr(&arm.body, calls);
+            }
+        }
+        Expr::Record(_, fields) | Expr::Return(fields) => {
+            for (_, value) in fields {
+                collect_fn_calls_from_expr(value, calls);
+            }
+        }
+        // Stop at for-loop bodies — loop variables are runtime-bound,
+        // not DAG-wireable. Only recurse into the iterable expression.
+        Expr::For(_, iterable, _, _body) => {
+            collect_fn_calls_from_expr(iterable, calls);
+        }
+        Expr::StringInterp(parts) => {
+            for part in parts {
+                if let StringPart::Expr(inner) = part {
+                    collect_fn_calls_from_expr(inner, calls);
+                }
+            }
+        }
+        Expr::List(items) => {
+            for item in items {
+                collect_fn_calls_from_expr(item, calls);
+            }
+        }
+        // Stop at lambda boundaries — lambda bodies are evaluated at runtime
+        // by collection operators (map, filter, fold, etc.), not as DAG nodes.
+        Expr::Lambda(_, _) => {}
+        // Stop at pipe calls — the receiver's fn calls are already collected,
+        // but the pipe method's lambda arg (if any) should not be.
+        Expr::PipeCall(receiver, _, _) => {
+            collect_fn_calls_from_expr(receiver, calls);
+        }
+        Expr::Pipe(lhs, rhs) => {
+            collect_fn_calls_from_expr(lhs, calls);
+            collect_fn_calls_from_expr(rhs, calls);
+        }
+        // Leaf expressions — no recursion needed
+        _ => {}
+    }
 }
 
 fn service_call_arg_site((name, arg): &(Option<String>, Expr)) -> ServiceCallArgSite {
@@ -8911,7 +9059,7 @@ fn collect_callable_param_defaults(
     defaults
 }
 
-fn wire_fn_call_arguments(builder: &mut DagBuilder, ctx: &LoweringContext<'_>, stmts: &[Stmt]) {
+fn wire_fn_call_arguments(builder: &mut DagBuilder, ctx: &LoweringContext<'_>, stmts: &[Stmt]) -> Result<(), LowerError> {
     let mut fn_calls = Vec::new();
     collect_fn_calls_with_args(stmts, &mut fn_calls);
     for fn_call in &fn_calls {
@@ -9022,17 +9170,22 @@ fn wire_fn_call_arguments(builder: &mut DagBuilder, ctx: &LoweringContext<'_>, s
                         );
                         continue;
                     } else {
-                        eprintln!(
-                            "daglang-lower: fn call arg `{}` for param `{}` — let binding found but synthesize_expr_compute returned None",
-                            arg_ident, param_name,
-                        );
+                        return Err(LowerError::UnresolvedFnCallArg {
+                            fn_call: fn_call.name.clone(),
+                            arg_name: param_name.to_string(),
+                            detail: format!(
+                                "let binding `{arg_ident}` found but expression could not be synthesized as a compute node"
+                            ),
+                        });
                     }
-                    continue;
                 }
-                eprintln!(
-                    "daglang-lower: fn call arg `{}` for param `{}` — ident not found in params, callables, services, data, or let bindings",
-                    arg_ident, param_name,
-                );
+                return Err(LowerError::UnresolvedFnCallArg {
+                    fn_call: fn_call.name.clone(),
+                    arg_name: param_name.to_string(),
+                    detail: format!(
+                        "ident `{arg_ident}` not found in params, callables, services, data, or let bindings"
+                    ),
+                });
             }
             if let Some(literal) = arg.literal.as_ref() {
                 let src = ensure_literal_source_node(
@@ -9079,6 +9232,7 @@ fn wire_fn_call_arguments(builder: &mut DagBuilder, ctx: &LoweringContext<'_>, s
             }
         }
     }
+    Ok(())
 }
 
 fn collect_return_bindings(
@@ -10694,14 +10848,14 @@ fn wire_callable_return_outputs(
     stmts: &[Stmt],
     target: &LoweredEndpoint,
     body_lossy: bool,
-) {
+) -> Result<(), LowerError> {
     let outputs = match builder.dag.get_node(&NodeId::new(target.node_id.clone())) {
         Some(node) => node.outputs.clone(),
-        None => return,
+        None => return Ok(()),
     };
     let output_bindings = collect_return_bindings(stmts, &outputs, body_lossy);
     if output_bindings.is_empty() {
-        return;
+        return Ok(());
     }
 
     for (index, (output_name, expr)) in output_bindings.into_iter().enumerate() {
@@ -10724,18 +10878,11 @@ fn wire_callable_return_outputs(
             output_name.as_str(),
             &format!("return_{index}"),
         ) else {
-            // RT4c: Return output can't be wired.
-            //
-            // synthesize_expr_compute() handles BinOp, UnaryOp, If, Match,
-            // Pipe etc. — it returns None only when the expression references
-            // local variables (has_local_refs) that can't be resolved as
-            // compute node inputs. These are known gaps (e.g. fn bodies with
-            // `let` bindings flowing into return expressions).
-            eprintln!(
-                "daglang-lower: wire_callable_return_outputs: `{}` output `{}` \
-                 can't be wired (RT4c — likely local-ref expression)",
-                target.node_id, output_name
-            );
+            // RT4c: Return output can't be wired — expression references
+            // local variables that can't be resolved as compute node inputs.
+            // This is a known lowerer limitation (not a user error), tracked
+            // in tasks.md. Will be resolved when fn body evaluation moves
+            // to SubDag-based execution. Skip without failing.
             continue;
         };
         if source_node == target.node_id {
@@ -10748,6 +10895,7 @@ fn wire_callable_return_outputs(
             dest_port.as_str(),
         );
     }
+    Ok(())
 }
 
 /// Collect for-loop result bindings from top-level statements.

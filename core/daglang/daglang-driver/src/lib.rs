@@ -478,7 +478,18 @@ pub fn compile_data_from_module(
     let data_values = daglang_lower::build_data_values(&typed);
 
     let mut fns = HashMap::new();
-    match daglang_lower::lower_typed_project(&typed) {
+    // Derive the module dotted path from the file path for entry_module scoping.
+    // This prevents lowering unrelated callables from transitively imported modules
+    // (e.g., credential_chain in std/patterns.dag when only makegen.dag is needed).
+    let entry_module = module_path
+        .strip_suffix(".dag")
+        .unwrap_or(module_path)
+        .replace('/', ".");
+    let lower_config = daglang_lower::LoweringConfig {
+        entry_module: Some(&entry_module),
+        ..Default::default()
+    };
+    match daglang_lower::lower_with_config(&typed, &lower_config) {
         Ok(lowered) => {
             extract_fn_bodies_from_dag(&lowered, &mut fns);
         }
