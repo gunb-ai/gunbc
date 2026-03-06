@@ -91,16 +91,16 @@ fn build_embedded_stdlib_graph() -> ModuleGraph {
     let mut parsed = Vec::new();
     for (path, source) in modules {
         let (module_path, imports, ast) = parse_embedded_module(path.as_path(), source);
-        parsed.push((path, module_path, imports, ast));
+        parsed.push((path, module_path, imports, ast, source.to_string()));
     }
 
     let mut index_by_module = HashMap::new();
-    for (idx, (_, module_path, _, _)) in parsed.iter().enumerate() {
+    for (idx, (_, module_path, _, _, _)) in parsed.iter().enumerate() {
         index_by_module.insert(module_path.clone(), idx);
     }
 
     let mut resolved = Vec::new();
-    for (path, module_path, imports, ast) in parsed {
+    for (path, module_path, imports, ast, source) in parsed {
         let mut dependencies = Vec::new();
         for import in imports {
             let dep = index_by_module.get(&import).copied().unwrap_or_else(|| {
@@ -116,6 +116,7 @@ fn build_embedded_stdlib_graph() -> ModuleGraph {
             ast,
             module_path,
             dependencies,
+            source,
         });
     }
 
@@ -124,21 +125,37 @@ fn build_embedded_stdlib_graph() -> ModuleGraph {
 
 fn compile_stdlib_fns() -> HashMap<String, LoweredFnBody> {
     let graph = build_embedded_stdlib_graph();
-    let typed = daglang_typecheck::typecheck_module_graph(graph)
+    let typed = daglang_typecheck::typecheck_module_graph(&graph)
         .unwrap_or_else(|errs| panic!("embedded stdlib typecheck failed: {errs:?}"));
     let lowered = daglang_lower::lower_typed_project(&typed)
         .unwrap_or_else(|e| panic!("embedded stdlib lowering failed: {e}"));
 
     let mut fns = HashMap::new();
     for node in &lowered.nodes {
-        if let NodeBody::Opaque(LoweredOp::Callable {
-            kind: CallableKind::Fn,
-            name,
-            fn_body: Some(body),
-            ..
-        }) = &node.body
-        {
-            fns.insert(name.clone(), *body.clone());
+        match &node.body {
+            // Legacy path: Callable with fn_body
+            NodeBody::Opaque(LoweredOp::Callable {
+                kind: CallableKind::Fn,
+                name,
+                fn_body: Some(body),
+                ..
+            }) => {
+                fns.insert(name.clone(), *body.clone());
+            }
+            // Bridge 1: SubDag containing ExprCompute
+            NodeBody::SubDag(inner, _) => {
+                for inner_node in &inner.nodes {
+                    if let NodeBody::Opaque(LoweredOp::Primitive {
+                        kind: daglang_lower::PrimitiveOpKind::ExprCompute { fn_body, .. },
+                        name,
+                        ..
+                    }) = &inner_node.body
+                    {
+                        fns.insert(name.clone(), *fn_body.clone());
+                    }
+                }
+            }
+            _ => {}
         }
     }
     fns

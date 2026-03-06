@@ -263,7 +263,7 @@ Intercepted nodes require explicit mocks for all outputs. There are no silent de
 
 ## Transport System
 
-Transport requests/responses are defined in `core/ir/src/transport/mod.rs`. Runtime DAG I/O is performed only by `TransportOps::Execute` in `lib/transport`. Direct I/O outside the DAG is limited to `lib/transport` plus a small set of explicitly audited exceptions: build-time generators (`core/codegen`), bootstrap/config loaders (`gunbc-dag/src/bootstrap`), and the manifest/freshness layer (`core/infra`). Tests are exempt by pragma policy. The full exception list is maintained in `TODO/TODONE/clippy-pragma-audit.md`.
+Transport requests/responses are defined in `core/ir/src/transport/mod.rs`. Runtime DAG I/O is performed only by `TransportOps::Execute` in `lib/transport`. Direct I/O outside the DAG is limited to `lib/transport` plus a small set of explicitly audited exceptions: build-time generators (`core/codegen`), bootstrap/config loaders (`gunbc-app/src/bootstrap`), and the manifest/freshness layer (`core/infra`). Tests are exempt by pragma policy. The full exception list is maintained in `TODO/TODONE/clippy-pragma-audit.md`.
 
 Key invariants:
 - Pure ops **prepare** `TransportRequest` values.
@@ -313,7 +313,7 @@ Quick reference of all patterns. Full details in [Appendix A](#appendix-a-patter
 | Multi-Phase: Upsert | Check → Create → Resolve (idempotent) | `core/ir/src/patterns/upsert.rs` |
 | Multi-Phase: Transaction | Begin → Body → Commit/Rollback | `core/ir/src/patterns/transaction.rs` |
 | Multi-Phase: Atomic | Precondition → Op → Postcondition | `core/ir/src/patterns/atomic.rs` |
-| Multi-Phase: Content Upsert | Render → Read → Compare → Write (skippable) | `gunbc-dag/src/makegen/graph.rs` |
+| Multi-Phase: Content Upsert | Render → Read → Compare → Write (skippable) | `gunbc-app/src/makegen/graph.rs` |
 | Control Flow: Branch | Conditional execution with merge | `core/ir/src/patterns/branch.rs` |
 | Control Flow: Loop | Iteration over collections | `core/ir/src/patterns/loop_pattern.rs` |
 | Control Flow: Repeat | Retry, While, Poll | `core/ir/src/patterns/repeat.rs` |
@@ -337,7 +337,9 @@ Quick reference of all patterns. Full details in [Appendix A](#appendix-a-patter
 | Path | Purpose |
 | --- | --- |
 | `dsl/` | **Primary authoring surface** — all `.dag` source files |
-| `dsl/services/` | Service definitions (REST, Shell): gcp, github, cargo, git, llm |
+| `dsl/services/` | Service provider implementations (e.g., review) |
+| `dsl/extdeps/` | External system definitions: github, cargo, git, clippy, llm, shell, etc. |
+| `dsl/infra/` | Infrastructure provider definitions: gcp, aws, azure |
 | `dsl/tools/` | Tool workflows: clippy, gist, codegen, makegen, etc. |
 | `dsl/pipelines/` | Pipeline compositions: ci |
 | `core/daglang/` | DSL compiler: discover → parse → resolve → typecheck → lower → derive → emit |
@@ -347,7 +349,7 @@ Quick reference of all patterns. Full details in [Appendix A](#appendix-a-patter
 | `core/test/` | MockSpec and test utilities |
 | `lib/transport/` | Canonical runtime I/O boundary; direct I/O elsewhere is banned (tests exempt by pragma policy) |
 | `lib/tools/` | General-purpose tool wrappers (clippy, deps, gist) |
-| `gunbc-dag/` | Repo-specific runtime resolver and CLI entrypoints |
+| `gunbc-app/` | Repo-specific runtime resolver and CLI entrypoints |
 | `docs/design/` | Design documentation |
 
 ## Glossary
@@ -370,21 +372,28 @@ Most new work is done by writing or modifying `.dag` files. The compiler handles
 **Add a new REST/Shell service:**
 1. Identify the layer stack: what protocol (HTTP/REST/gRPC), what auth scheme (Bearer, Header, Basic), what provider (GitHub, GCP, Stripe), what operations?
 2. Create `dsl/services/<provider>/<name>.dag` with `service` block and `operation` definitions.
-3. Express each layer's invariants via annotations: `@endpoint` (provider base URL), `@auth` (auth scheme), `@rest`/`@shell` (transport method + path), `@permissions` (required scopes), `@idempotent`/`@readonly` (behavioral properties), `@mock_response` (test data).
-4. Each annotation composes additively — the compiler generates transport code, mock specs, and test obligations reflecting all layers. The workflow author names only the top-level operation.
+3. Express each layer's invariants via structural blocks: `config { endpoint: ..., auth: ... }` (provider config), `transport rest { method: ..., path: ... }` or `transport shell { argv: [...] }` (transport class), `readonly`/`idempotent` (behavioral keywords), `response { STATUS => TYPE }` (provider contract).
+4. Each block composes additively — the compiler generates transport code, mock specs, and test obligations reflecting all layers. The workflow author names only the top-level operation.
 
 Example (adding a new REST service):
 ```
-module services.stripe.payments
+module extdeps.stripe.payments
 
 service stripe.Payments {
-  @endpoint("https://api.stripe.com")
-  @auth(BearerToken)
+  config {
+    endpoint: "https://api.stripe.com"
+    auth: BearerToken
+    auth_input: api_key
+  }
 
   operation CreateCharge {
-    input { amount: Int, currency: String }
-    output { id: String @json("id"), status: String @json("status") }
-    @rest(POST, "/v1/charges")
+    input { api_key: Secret, amount: Int, currency: String }
+    output { id: String from "id", status: String from "status" }
+    transport rest { method: POST, path: "/v1/charges" }
+    response {
+      200 => Json
+      400 => ErrorShape
+    }
   }
 }
 ```
@@ -546,8 +555,8 @@ Six nodes in the chain:
 | File | Role |
 |------|------|
 | `lib/blob/src/lib.rs` | `BlobOps::CompareContent` semantics (fresh/skip/skip_reason) |
-| `gunbc-dag/src/makegen/graph.rs` | Single-chain reference implementation |
-| `gunbc-dag/src/testgen_dag/graph.rs` | Dynamic N chains (shared helper) |
+| `gunbc-app/src/makegen/graph.rs` | Single-chain reference implementation |
+| `gunbc-app/src/testgen_dag/graph.rs` | Dynamic N chains (shared helper) |
 
 **Design decisions:**
 - Comparison is pure; all I/O stays in the transport read/write nodes.
@@ -561,10 +570,10 @@ Six nodes in the chain:
 **Helper API:** Use `add_content_upsert_chain` in `core/ir/src/patterns/content_upsert.rs` to stamp out the 6-node pattern with standard wiring.
 
 **Examples:**
-- `gunbc-dag/src/testgen_dag/graph.rs` — Dynamic N chains
-- `gunbc-dag/src/pragma/graph.rs` — 3 static parallel chains
-- `gunbc-dag/src/bootstrap/graph.rs` — 2 parallel chains after scan
-- `gunbc-dag/src/makegen/graph.rs` — single chain
+- `gunbc-app/src/testgen_dag/graph.rs` — Dynamic N chains
+- `gunbc-app/src/pragma/graph.rs` — 3 static parallel chains
+- `gunbc-app/src/bootstrap/graph.rs` — 2 parallel chains after scan
+- `gunbc-app/src/makegen/graph.rs` — single chain
 
 ### Relationship between the patterns
 
@@ -724,7 +733,7 @@ pub fn iter_targets() -> impl Iterator<Item = &'static TestgenTarget> {
 |------|------|
 | `core/testgen-registry-macros/src/lib.rs` | `#[testgen_target]` proc macro |
 | `core/testgen-registry/src/lib.rs` | `TestgenTarget` struct, `iter_targets()`, shared codegen helper |
-| `gunbc-dag/src/bin/testgen.rs` | Binary that collects and runs all targets |
+| `gunbc-app/src/bin/testgen.rs` | Binary that collects and runs all targets |
 
 Usage:
 ```rust
@@ -797,16 +806,16 @@ pub trait TestRenderer {
 | `core/codegen/src/testgen/render_rust.rs` | Rust backend (630 lines) |
 | `core/codegen/src/testgen/render_python.rs` | Python stub (validates trait surface) |
 | `core/codegen/src/testgen/codegen.rs` | IR construction (never constructs strings) |
-| `gunbc-dag/src/makegen/render.rs` | Makefile rendering |
-| `core/ir/src/transport/ci/render.rs` | CI YAML rendering |
+| `gunbc-app/src/makegen/shared.rs` | Makefile + Justfile rendering (via DSL `evaluate_fn_body()` over shared build-target data) |
+| `dsl/config/ci.dag` + `dsl/tools/cigen.dag` | CI YAML generation (DSL-owned; typed provider values + leaf serializers in `.dag`) |
 
 **Current implementations:**
 
 | System | Has IR? | Has Renderer Trait? |
 |--------|---------|---------------------|
 | Testgen | Yes (TestFile) | Yes (TestRenderer) |
-| Makegen | No | No |
-| CI YAML | Yes (SharedStep) | Yes (CiRenderer) |
+| Makegen / Justgen | Partial (`extdeps.build_targets` + DSL leaf serializers) | No |
+| CI YAML | Partial (`config.ci` + provider schema, but no shared render IR yet) | No live repo-YAML renderer trait |
 | CLI gen | No | No |
 | Terminal | No | No |
 
@@ -1060,7 +1069,7 @@ pub struct ManifestEntry {
 | `core/infra/src/freshness.rs` | `check_freshness_mtime()` |
 | `core/infra/src/manifest.rs` | ManifestEntry with file count |
 | `core/infra/src/codegen_hash.rs` | `compute_codegen_input_hash()` returns (hash, count) |
-| `gunbc-dag/src/ci/ops.rs` | Wires freshness check into CI pipeline |
+| `gunbc-app/src/ci/ops.rs` | Wires freshness check into CI pipeline |
 
 **Design decisions:**
 - File count as fast-fail — if the number of input files changed, mtime check immediately returns `MaybeStale`. Catches added/deleted files.
@@ -1095,22 +1104,22 @@ resource Clippy {
   capability check {
     input {}
     output { exists: Bool }
-    @shell(["cargo", "clippy", "--version"])
-    @hermetic @readonly
+    transport shell { argv: ["cargo", "clippy", "--version"] }
+    hermetic readonly
   }
 
   capability install {
     input {}
     output { installed: Bool }
-    @shell(["rustup", "component", "add", "clippy"])
-    @hermetic
+    transport shell { argv: ["rustup", "component", "add", "clippy"] }
+    hermetic
   }
 
   capability resolve {
     input {}
     output { handle: String }
-    @shell(["cargo", "clippy", "--version"])
-    @hermetic @readonly
+    transport shell { argv: ["cargo", "clippy", "--version"] }
+    hermetic readonly
   }
 }
 
@@ -1151,25 +1160,33 @@ Fractal composition: each tool is a self-contained SubDag node that the CI pipel
 
 Medium-complexity tool with multiple modes, transport boundaries, and resource access.
 
-### Step 1: Define the service (`dsl/services/github/gist.dag`)
+### Step 1: Define the service (`dsl/extdeps/github/gist_service.dag`)
 
 ```
 service github.Gist {
-  @endpoint("https://api.github.com")
-  @auth(BearerToken)
+  config {
+    endpoint: "https://api.github.com"
+    auth: BearerToken
+    auth_input: auth_token
+  }
 
   operation Create {
     input {
+      auth_token: Secret
       description: String
       files: Map<String, String>
       public: Bool = false
     }
     output {
-      url: Url @json("html_url")
-      id: GistId
+      url: String from "html_url"
+      id: String from "id"
     }
-    @rest(POST, "/gists")
-    @permissions(["gist"])
+    transport rest { method: POST, path: "/gists" }
+    response {
+      201 => Json
+      401 => Json
+      422 => Json
+    }
   }
 }
 ```

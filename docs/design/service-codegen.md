@@ -444,7 +444,7 @@ the generic interpreters cover all 19 operations:
 | `git.Core.Show` | `["git", "show", "{ref}:{path}"]` | TrimStdout |
 | `shell.Find.ListDirs` | `["find", "{path}", "-maxdepth", "{max_depth}", ...]` | SplitLines |
 | `shell.Codegen.Check` | `["test", "-f", "target/codegen/.stamp"]` | ExitCodeBool |
-| `shell.Codegen.Run` | `["cargo", "run", "-p", "gunbc-dag", ...]` | SuccessStdoutStderr |
+| `shell.Codegen.Run` | `["cargo", "run", "-p", "gunbc-app", ...]` | SuccessStdoutStderr |
 
 Plus cargo operations (`cargo.Build.Build`, `cargo.Build.Test`, `cargo.Build.Clippy`,
 etc.) which all use `SuccessStdoutStderr` parsing with conditional `--all-targets` flag.
@@ -689,7 +689,7 @@ Implement `RestPrepareOp`, `RestParseOp`, `ShellPrepareOp`, `ShellParseOp` as
 generic `Executable` impls that take a spec struct.
 
 **What changes:**
-- New file `gunbc-dag/src/resolve_service.rs` with the 4 generic structs
+- New file `gunbc-app/src/resolve_service.rs` with the 4 generic structs
 - Each struct's `execute()` interprets the spec (URL interpolation, body building,
   response field extraction, etc.)
 - Comprehensive unit tests: one test per existing hand-written adapter, verifying

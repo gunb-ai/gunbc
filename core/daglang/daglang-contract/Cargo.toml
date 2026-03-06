@@ -3,7 +3,7 @@ name = "daglang-contract"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Shared contract types for daglang manifests and obligations"
+description = "Shared contract types for daglang pipeline: Verdict, Diagnostics, manifests, obligations"
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }

@@ -65,7 +65,7 @@ Phase 3: Add `Value::Poison` and fail-fast.
 - `core/exec/src/execute.rs` — DryRunStrictness, poison injection
 - `core/ir/src/value.rs` — Value::Poison variant
 - `core/codegen/src/testgen/` — strict mode in generated tests
-- `gunbc-dag/src/bin/` — CLI flag
+- `gunbc-app/src/bin/` — CLI flag
 
 ## References
 

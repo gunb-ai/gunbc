@@ -131,8 +131,15 @@ pub fn execute_resolved_dag(
     mode: ExecutionMode,
     input_mocks: Option<&BoundaryMocks>,
 ) -> Result<ExecutionLog, CompileError> {
-    gunbc_exec::execute_with_mode_and_inputs(dag, mode, input_mocks)
-        .map_err(|error| CompileError::from(format!("execution error: {error}")))
+    gunbc_exec::execute_dag(
+        dag,
+        gunbc_exec::ExecuteConfig {
+            mode,
+            input_mocks,
+            ..Default::default()
+        },
+    )
+    .map_err(|error| CompileError::from(format!("execution error: {error}")))
 }
 
 pub fn compile_resolve_execute_from_context(
@@ -143,7 +150,7 @@ pub fn compile_resolve_execute_from_context(
     let output = compile_from_context(context)?;
     let resolved = gunbc_resolve::resolve_lowered_dag_with(
         &output.lowered_dag,
-        &gunbc_dag::extern_ops::GunbcExternResolver,
+        gunbc_app::extern_ops::gunbc_runtime_bindings(),
     )
     .map_err(|error| CompileError::from(format!("resolve error: {error}")))?;
     execute_resolved_dag(&resolved, mode, input_mocks)

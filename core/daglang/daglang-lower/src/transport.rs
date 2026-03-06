@@ -1,11 +1,10 @@
-//! Transport derivation: builds transport triplets as pure data.
+//! Transport manifest: pure-data types for transport triplet derivation.
 //!
 //! This module defines `TransportManifest` — the pure-data result of transport
 //! derivation. The manifest contains all nodes, edges, and registry entries
 //! needed to represent transport triplets in the DAG.
 //!
-//! Invariant: every service call site maps to exactly one transport triplet
-//! (prepare → execute → parse).
+//! The derivation functions that populate these types live in `lib.rs`.
 
 use gunbc_ir::Node;
 

@@ -11,7 +11,7 @@ type ResourceOutputPath {
 }
 
 data repo_source_input_globs: List<String> = [
-  "gunbc-dag/src/**/*.rs",
+  "gunbc-app/src/**/*.rs",
   "core/**/*.rs",
   "lib/**/*.rs",
   "dsl/**/*.dag"
@@ -20,11 +20,11 @@ data repo_source_input_globs: List<String> = [
 data repo_config_input_files: List<String> = [
   "Cargo.lock",
   "Cargo.toml",
-  "gunbc-dag/Cargo.toml"
+  "gunbc-app/Cargo.toml"
 ]
 
 data testgen_input_globs: List<String> = [
-  "gunbc-dag/src/**/*.rs",
+  "gunbc-app/src/**/*.rs",
   "core/ir/src/**/*.rs",
   "lib/**/*.rs",
   "dsl/**/*.dag"

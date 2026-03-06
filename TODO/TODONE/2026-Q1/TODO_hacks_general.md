@@ -14,7 +14,7 @@ Additional hack cleanups moved out of `TODO_hacks`.
 Files:
 - `core/ir/src/lib.rs`
 - `core/codegen/src/main.rs`
-- `gunbc-dag/src/codegen/*`
+- `gunbc-app/src/codegen/*`
 
 ## Codegen source tracking directories were static
 
@@ -22,7 +22,7 @@ Files:
 the renderer; codegen no longer depends on a static list of sources.
 
 Files:
-- `gunbc-dag/src/codegen/render.rs`
+- `gunbc-app/src/codegen/render.rs`
 
 ## diff_files port cardinality/value mismatch
 
@@ -59,7 +59,7 @@ Files:
 - `core/codegen/src/cli_gen.rs`
 - `core/codegen/src/registry.rs`
 - `core/testgen-registry-macros/src/lib.rs`
-- `gunbc-dag/src/bin/testgen.rs`
+- `gunbc-app/src/bin/testgen.rs`
 
 ## Lint config doesn't match crate boundaries (2026-02-05)
 
@@ -96,9 +96,9 @@ Files:
 
 - `core/ir/src/resource/` — ContentHash, ResourceManifest, ExecMode
 - `core/codegen/src/main.rs` — writes manifest after codegen
-- `gunbc-dag/src/bin/testgen.rs` — writes manifest after testgen
-- `gunbc-dag/src/ci/ops.rs` — manifest-based freshness check
-- `gunbc-dag/src/bin/ci.rs` — `--mode=verify|ensure` flag
+- `gunbc-app/src/bin/testgen.rs` — writes manifest after testgen
+- `gunbc-app/src/ci/ops.rs` — manifest-based freshness check
+- `gunbc-app/src/bin/ci.rs` — `--mode=verify|ensure` flag
 
 ## `can_coerce_to` duplicates `satisfies` on Cardinality (2026-02-06)
 
@@ -127,8 +127,8 @@ Files:
 - `lib/gist-ops/src/lib.rs`
 
 Files:
-- `gunbc-dag/src/makegen/registry.rs`
-- `gunbc-dag/src/makegen/render.rs`
+- `gunbc-app/src/makegen/registry.rs`
+- `gunbc-app/src/makegen/render.rs`
 
 ## Meta-target fix_prerequisites are untyped strings (2026-02-06)
 
@@ -138,5 +138,5 @@ each resolving to a target name string at render time via `target_name()`.
 Renaming a fix alias now causes a compile error.
 
 Files:
-- `gunbc-dag/src/makegen/registry.rs`
-- `gunbc-dag/src/makegen/render.rs`
+- `gunbc-app/src/makegen/registry.rs`
+- `gunbc-app/src/makegen/render.rs`

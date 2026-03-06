@@ -6,6 +6,7 @@ license.workspace = true
 description = "Core IR types for gunbc: Node, Dag, Edge, Port, and boundary detection"
 
 [dependencies]
+daglang-contract = { path = "../daglang/daglang-contract" }
 gunbc-infra = { path = "../infra" }
 gunbc-delegate-macros = { path = "../delegate-macros" }
 serde = { workspace = true }

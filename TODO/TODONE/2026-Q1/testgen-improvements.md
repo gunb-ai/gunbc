@@ -85,7 +85,7 @@ Both should be **required**, not optional.
 - [x] `#[testgen_target(...)]` on each MockSpec registers a `TestgenTarget`
 - [x] Testgen binary iterates the registry (`iter_dag_specs()` / `iter_targets()` alias) and generates from `target.generate`
 - [x] Removed manual target lists (`all_testgen_targets`, `library_testgen_targets`) and `target!()` macro
-- [x] Added a test (`gunbc-dag/tests/mock_spec_registration.rs`) that enforces
+- [x] Added a test (`gunbc-app/tests/mock_spec_registration.rs`) that enforces
       every `pub fn ...mock_spec -> MockSpec` has `#[testgen_target]` (or `skip`)
 
 ### Phase 2: I/O Examples on Nodes
@@ -207,7 +207,7 @@ Roll `gunbc-testgen` into `gunbc-codegen` so there's one code generation crate
 that owns the registry, the test generator, and the output pipeline.
 
 **Current state**: `gunbc-testgen` and `gunbc-codegen` are independent crates
-that share no code. Both depend on `gunbc-ir`. The testgen binary in `gunbc-dag`
+that share no code. Both depend on `gunbc-ir`. The testgen binary in `gunbc-app`
 is the only thing that pulls them together. This means:
 - Two separate code generators doing the same kind of work
 - The registry (`ToolDef`) lives in codegen but can't reference test generation
@@ -221,7 +221,7 @@ gunbc-codegen ──→ gunbc-ir      gunbc-testgen ──→ gunbc-ir
      │            gunbc-clippy        │            gunbc-test
      │                                │
      └──── both consumed by ──────────┘
-              gunbc-dag (testgen binary)
+              gunbc-app (testgen binary)
 ```
 
 **Merged state**: codegen gains testgen's 4 files + `gunbc-test` dep. The
@@ -246,7 +246,7 @@ gunbc-codegen ──→ gunbc-ir
 - [x] Moved `core/testgen/src/{analyze,obligation,codegen}.rs` → `core/codegen/src/testgen/`
 - [x] Added `gunbc-test` dependency to codegen's Cargo.toml
 - [x] Exported `testgen` module from codegen (`gunbc_codegen::testgen::*`)
-- [x] Updated `gunbc-dag/Cargo.toml` to drop `gunbc-testgen` dep
+- [x] Updated `gunbc-app/Cargo.toml` to drop `gunbc-testgen` dep
 - [x] Deleted `core/testgen/` crate, removed from workspace
 - [x] All 40 tests pass in merged crate
 
@@ -255,7 +255,7 @@ gunbc-codegen ──→ gunbc-ir
   `execute_and_display` / `execute_with_mode_and_inputs` — no FileWriter
 - [x] Each target gets a 6-node upsert chain: generate → prepare_read → execute_read →
   compare → prepare_write → execute_write (dynamic N chains via `add_upsert_chain`)
-- [x] Binary stays in `gunbc-dag/src/bin/testgen.rs` (needs DAG builder references)
+- [x] Binary stays in `gunbc-app/src/bin/testgen.rs` (needs DAG builder references)
 - [x] `testgen_dag/` module: ops.rs, graph.rs, graph_mock.rs, mod.rs
 - [ ] Future: could become `gunbc-codegen testgen` subcommand if circular dep is resolved
 
@@ -273,7 +273,7 @@ generates tests directly from those entries.
 
 **Design note — linking requirement:**
 
-Inventory only includes crates linked into the binary. `gunbc-dag/src/bin/testgen.rs`
+Inventory only includes crates linked into the binary. `gunbc-app/src/bin/testgen.rs`
 force-links all crates that register testgen targets.
 
 ## Open Questions
@@ -350,11 +350,11 @@ Goal: make `graph_mock.rs` files **data-only** (MockSpec + NodeExamples
 **graph_mock.rs test counts (after cleanup):**
 
 All `graph_mock.rs` test blocks removed; files are now data-only:
-- `gunbc-dag/src/bootstrap/graph_mock.rs`
-- `gunbc-dag/src/ci/graph_mock.rs`
-- `gunbc-dag/src/makegen/graph_mock.rs`
-- `gunbc-dag/src/pragma/graph_mock.rs`
-- `gunbc-dag/src/testgen_dag/graph_mock.rs`
+- `gunbc-app/src/bootstrap/graph_mock.rs`
+- `gunbc-app/src/ci/graph_mock.rs`
+- `gunbc-app/src/makegen/graph_mock.rs`
+- `gunbc-app/src/pragma/graph_mock.rs`
+- `gunbc-app/src/testgen_dag/graph_mock.rs`
 - `lib/llm-ops/src/graph_mock.rs`
 - `lib/tools/deps/src/graph_mock.rs`
 - `lib/tools/gist/src/graph_mock.rs`
@@ -542,10 +542,10 @@ pattern. Fixed by adding the variant and using `Stmt::tail()` in helper generati
 ## References
 
 - Testgen module: `core/codegen/src/testgen/`
-- Testgen binary: `gunbc-dag/src/bin/testgen.rs`
+- Testgen binary: `gunbc-app/src/bin/testgen.rs`
 - Testgen registry: `core/testgen-registry/`
 - Testgen macro: `core/testgen-registry-macros/`
 - MockSpec: `core/test/src/mock_spec.rs`
 - Obligation model: `core/codegen/src/testgen/obligation.rs`
 - Tool registry: `core/codegen/src/registry.rs`
-- MetaTarget extra_deps: `gunbc-dag/src/makegen/registry.rs`
+- MetaTarget extra_deps: `gunbc-app/src/makegen/registry.rs`

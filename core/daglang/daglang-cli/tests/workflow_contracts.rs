@@ -188,10 +188,10 @@ fn classify_command_status(output: &Output) -> &'static str {
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     let combined = format!("{stderr}\n{stdout}");
-    if combined.contains("typecheck errors") {
+    if combined.contains("compile diagnostics") && combined.contains("[TC") {
         return "typecheck_error";
     }
-    if combined.contains("lower error") {
+    if combined.contains("compile diagnostics") && combined.contains("[LOW") {
         return "lower_error";
     }
     "error"

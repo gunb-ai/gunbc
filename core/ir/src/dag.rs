@@ -7,7 +7,7 @@ use crate::node::Node;
 use crate::resource::{normalize_resource_id, AccessMode};
 use crate::type_op::TypeOp;
 use crate::type_registry::TypeRegistry;
-use crate::types::{Cardinality, NodeId, PortName, TypeId};
+use crate::types::{Cardinality, NodeId, PortName, PresenceMode, TypeId};
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
 
@@ -153,7 +153,7 @@ impl<T> Dag<T> {
 
         // Recursively render subdags
         for node in &self.nodes {
-            if let crate::node::NodeBody::SubDag(ref subdag) = node.body {
+            if let crate::node::NodeBody::SubDag(ref subdag, _) = node.body {
                 let subdag_name = format!("{}::{}", name, node.id.0);
                 out.push_str(&subdag.to_mermaid_impl(&subdag_name, depth + 1));
 
@@ -213,7 +213,7 @@ impl<T> Dag<T> {
         }
 
         for node in sorted_nodes {
-            if let crate::node::NodeBody::SubDag(ref subdag) = node.body {
+            if let crate::node::NodeBody::SubDag(ref subdag, _) = node.body {
                 let subdag_name = format!("{name}::{}", node.id.0);
                 out.push_str(&subdag.to_ascii_impl(&subdag_name, depth + 1));
             }
@@ -502,6 +502,12 @@ pub struct Port {
     /// check `type_id.ends_with('?')`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub type_optional: bool,
+    /// Presence mode — Required, Optional, or Guardable (WS4-1).
+    ///
+    /// Derived from `type_optional` at construction time. Guardable is set
+    /// explicitly by branch/match pattern builders.
+    #[serde(default, skip_serializing_if = "crate::types::presence_is_default")]
+    pub presence: PresenceMode,
     /// Optional execution log detail override for this input port.
     ///
     /// When set, this takes precedence over node/subdag/root defaults for
@@ -523,6 +529,11 @@ impl Port {
             name.0
         );
         let type_optional = type_id.0.ends_with('?');
+        let presence = if type_optional {
+            PresenceMode::Optional
+        } else {
+            PresenceMode::Required
+        };
         Self {
             name,
             type_id,
@@ -530,6 +541,7 @@ impl Port {
             guard: None,
             resource_access: None,
             type_optional,
+            presence,
             log_detail: None,
         }
     }
@@ -549,6 +561,11 @@ impl Port {
             name.0
         );
         let type_optional = type_id.0.ends_with('?');
+        let presence = if type_optional {
+            PresenceMode::Optional
+        } else {
+            PresenceMode::Required
+        };
         Self {
             name,
             type_id,
@@ -556,8 +573,16 @@ impl Port {
             guard: None,
             resource_access: None,
             type_optional,
+            presence,
             log_detail: None,
         }
+    }
+
+    /// Create a port with Guardable presence (for branch/match outputs).
+    pub fn guardable(name: impl Into<PortName>, type_id: impl Into<TypeId>) -> Self {
+        let mut port = Self::new(name, type_id);
+        port.presence = PresenceMode::Guardable;
+        port
     }
 
     /// Whether this port's type is nullable (`T?` in DSL).
@@ -594,6 +619,11 @@ impl Port {
             full_name
         );
         let type_optional = type_id.0.ends_with('?');
+        let presence = if type_optional {
+            PresenceMode::Optional
+        } else {
+            PresenceMode::Required
+        };
         Self {
             name: full_name.into(),
             type_id,
@@ -601,6 +631,7 @@ impl Port {
             guard: None,
             resource_access: Some(mode),
             type_optional,
+            presence,
             log_detail: None,
         }
     }
@@ -653,6 +684,11 @@ impl Port {
     ) -> Self {
         let type_id = type_id.into();
         let type_optional = type_id.0.ends_with('?');
+        let presence = if type_optional {
+            PresenceMode::Optional
+        } else {
+            PresenceMode::Required
+        };
         Self {
             name: name.into(),
             type_id,
@@ -660,6 +696,7 @@ impl Port {
             guard: Some(Guard::Eq(expected)),
             resource_access: None,
             type_optional,
+            presence,
             log_detail: None,
         }
     }
@@ -676,6 +713,11 @@ impl Port {
     ) -> Self {
         let type_id = type_id.into();
         let type_optional = type_id.0.ends_with('?');
+        let presence = if type_optional {
+            PresenceMode::Optional
+        } else {
+            PresenceMode::Required
+        };
         Self {
             name: name.into(),
             type_id,
@@ -683,6 +725,7 @@ impl Port {
             guard: Some(guard),
             resource_access: None,
             type_optional,
+            presence,
             log_detail: None,
         }
     }
@@ -816,6 +859,11 @@ pub mod build {
     pub fn guarded(name: &str, type_id: &str, expected: Value) -> Port {
         let type_id: TypeId = type_id.into();
         let type_optional = type_id.0.ends_with('?');
+        let presence = if type_optional {
+            PresenceMode::Optional
+        } else {
+            PresenceMode::Required
+        };
         Port {
             name: name.into(),
             type_id,
@@ -823,6 +871,7 @@ pub mod build {
             guard: Some(Guard::Eq(expected)),
             resource_access: None,
             type_optional,
+            presence,
             log_detail: None,
         }
     }

@@ -6,7 +6,7 @@
 
 module config.build_targets
 
-import extdeps.make
+import extdeps.build_targets
 
 // ============================================================================
 // Resource Target Mappings — how resources are provided as Make targets
@@ -39,7 +39,7 @@ data core_workflows: List<CoreWorkflow> = [
     name: "ensure-codegen",
     description: "Ensure CLI entrypoints exist (bootstrap-safe)",
     deps: [],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-codegen -- codegen"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-codegen -- codegen"],
     comment: None
   },
   {
@@ -54,7 +54,7 @@ data core_workflows: List<CoreWorkflow> = [
     description: "Lint upsert: fix if needed, then verify",
     deps: ["ensure-codegen", "preflight-fix"],
     body: [
-      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-pragma",
+      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-pragma",
       "@cargo clippy --all-targets -- -D warnings || (cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings && cargo clippy --all-targets -- -D warnings)"
     ],
     comment: None
@@ -63,7 +63,7 @@ data core_workflows: List<CoreWorkflow> = [
     name: "codegen",
     description: "Generate CLI entrypoints (DAG upsert)",
     deps: ["lint-upsert"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-codegen-dag"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-codegen-dag"],
     comment: None
   },
   {
@@ -84,49 +84,49 @@ data core_workflows: List<CoreWorkflow> = [
     name: "testgen",
     description: "Regenerate tests from DAG structures and MockSpecs",
     deps: ["lint-upsert"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-testgen"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-testgen"],
     comment: None
   },
   {
     name: "testgen-check",
     description: "Check if generated tests are stale",
     deps: ["lint-upsert"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-testgen"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-testgen"],
     comment: None
   },
   {
     name: "deps-config",
     description: "Ensure deps.toml matches canonical generated configuration",
     deps: ["build-release-bins"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-deps -q --release"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-deps -q --release"],
     comment: None
   },
   {
     name: "deps-config-check",
     description: "Check if deps.toml is stale",
     deps: ["build-release-bins"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-deps -q --release -- --dry-run"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-deps -q --release -- --dry-run"],
     comment: None
   },
   {
     name: "makegen-check",
     description: "Check if generated Makefile is stale",
     deps: ["lint-upsert"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-makegen"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-makegen"],
     comment: None
   },
   {
     name: "bootstrap-check",
     description: "Check if generated bootstrap artifacts are stale",
     deps: ["lint-upsert"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-bootstrap"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-bootstrap"],
     comment: None
   },
   {
     name: "pragma-check",
     description: "Check if pragma artifacts are stale",
     deps: ["lint-upsert"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-pragma"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-pragma"],
     comment: None
   },
   {
@@ -148,10 +148,10 @@ data core_workflows: List<CoreWorkflow> = [
     deps: ["lint-upsert"],
     body: [
       "@$(MAKE) deps-config",
-      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-makegen",
-      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-bootstrap",
-      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-testgen",
-      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-pragma"
+      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-makegen",
+      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-bootstrap",
+      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-testgen",
+      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-pragma"
     ],
     comment: None
   },
@@ -173,7 +173,7 @@ data core_workflows: List<CoreWorkflow> = [
     name: "ci",
     description: "Run CI via build DAG (typed units, deterministic keying)",
     deps: ["ensure-codegen"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-ci -q --release"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-ci -q --release"],
     comment: None
   },
   {
@@ -402,7 +402,7 @@ data meta_targets: List<MetaTargetDef> = [
     description: "Generate CI workflow YAML (GitHub Actions & GitLab CI)",
     has_check: false,
     has_fix: false,
-    command: "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-codegen -- cigen",
+    command: "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-codegen -- cigen",
     check_command: None,
     fix_command: None,
     command_prefix: None,

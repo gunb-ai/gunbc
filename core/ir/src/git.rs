@@ -7,7 +7,7 @@
 //!
 //! - This module defines the model (what git offers).
 //! - Repo-specific choices (e.g., "our default branch is main") live in
-//!   `gunbc-dag` alongside other repo config.
+//!   `gunbc-app` alongside other repo config.
 
 /// Git repository conventions.
 ///

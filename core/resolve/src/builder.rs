@@ -1,7 +1,7 @@
 //! Shared helpers for DSL-backed graph builders.
 //!
 //! Generic infrastructure: compile `.dag` modules and resolve lowered ops into
-//! `Dag<DynOp>` using a pluggable `ExternResolver`.
+//! `Dag<DynOp>` using explicit runtime bindings.
 
 use daglang_derive::CallableProperties;
 use daglang_driver::{
@@ -12,7 +12,7 @@ use gunbc_exec::DynOp;
 use gunbc_ir::{BuilderError, Dag, WorkspaceLayout};
 use std::collections::{BTreeMap, HashSet};
 
-use crate::{resolve_lowered_dag_with, ExternResolver};
+use crate::{resolve_lowered_dag_with, RuntimeBindings};
 
 /// Options for `build_dsl_graph`.
 #[derive(Debug, Default)]
@@ -40,7 +40,7 @@ pub struct DslGraphResult {
 /// to control profile selection and entrypoint slicing.
 pub fn build_dsl_graph(
     relative_module: &str,
-    resolver: &dyn ExternResolver,
+    bindings: &RuntimeBindings,
     opts: BuildOpts<'_>,
 ) -> Result<DslGraphResult, BuilderError> {
     let result = compile_lowered(relative_module, opts.profile)?;
@@ -71,7 +71,7 @@ pub fn build_dsl_graph(
         result.dag
     };
 
-    let dag = resolve_lowered_dag_with(&lowered, resolver).map_err(|error| {
+    let dag = resolve_lowered_dag_with(&lowered, bindings).map_err(|error| {
         let ctx = match (opts.profile, opts.entry_func) {
             (Some(p), Some(e)) => format!(" (profile={p}, entry={e})"),
             (Some(p), None) => format!(" (profile={p})"),
@@ -88,6 +88,18 @@ pub fn build_dsl_graph(
         dsl_type_registry: result.dsl_type_registry,
         callable_properties: result.callable_properties,
     })
+}
+
+/// Convenience wrapper: compile + resolve a DSL module and return just the DAG.
+///
+/// Used by generated CLI binaries to avoid a redundant closure around
+/// `build_dsl_graph(...).map(|r| r.dag)`.
+pub fn build_dsl_graph_dag(
+    relative_module: &str,
+    bindings: &RuntimeBindings,
+    opts: BuildOpts<'_>,
+) -> Result<Dag<DynOp>, BuilderError> {
+    build_dsl_graph(relative_module, bindings, opts).map(|r| r.dag)
 }
 
 // ============================================================================
@@ -143,7 +155,7 @@ fn compile_lowered(
     };
 
     Ok(CompileLoweredResult {
-        dag: output.lowered_dag,
+        dag: output.lowered_dag.into_inner(),
         dsl_type_registry: output.dsl_type_registry,
         inferred_entrypoints: output.inferred_entrypoints,
         callable_properties: output.derived.callable_properties,

@@ -93,6 +93,7 @@ pub mod validate;
 pub mod value;
 pub mod value_bridge;
 pub mod value_expr;
+pub mod verified;
 pub mod workspace_layout;
 
 // Re-exports for convenience
@@ -135,7 +136,9 @@ pub use layout::{
 };
 pub use log_detail::LogDetailLevel;
 pub use makefile_render::MakefileStructuredRenderer;
-pub use node::{Node, NodeBody, NodeIoExample, NodeKind, ServiceTransportClass};
+pub use node::{
+    Node, NodeBody, NodeIoExample, NodeKind, NodeOrigin, ServiceTransportClass, SubDagKind,
+};
 pub use patterns::{
     canonical_authenticate_chain,
     content_upsert::{add_content_upsert_chain, ContentUpsertChain},
@@ -218,6 +221,7 @@ pub use value_bridge::{
     classify_value, from_bridge_json, from_bridge_json_typed, to_bridge_json, ValueCategory,
 };
 pub use value_expr::ValueExpr;
+pub use verified::VerifiedDag;
 pub use workspace_layout::{WorkspaceLayout, WorkspaceLayoutError};
 
 // Re-exports from language module for common use

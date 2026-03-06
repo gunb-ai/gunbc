@@ -158,12 +158,25 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
             Expr::Ref(expr) => format!("&{}", self.render_expr(expr)),
             Expr::RefMut(expr) => format!("&mut {}", self.render_expr(expr)),
             Expr::Path(segments) => segments.join("::"),
-            Expr::Struct { name, fields } => {
+            Expr::Struct { name, fields, rest } => {
                 let field_strs: Vec<String> = fields
                     .iter()
                     .map(|(k, v)| format!("{}: {}", k, self.render_expr(v)))
                     .collect();
-                format!("{} {{ {} }}", name, field_strs.join(", "))
+                if let Some(base) = rest {
+                    if field_strs.is_empty() {
+                        format!("{} {{ ..{} }}", name, self.render_expr(base))
+                    } else {
+                        format!(
+                            "{} {{ {}, ..{} }}",
+                            name,
+                            field_strs.join(", "),
+                            self.render_expr(base)
+                        )
+                    }
+                } else {
+                    format!("{} {{ {} }}", name, field_strs.join(", "))
+                }
             }
             Expr::Closure { args, body } => {
                 let body_str = self.render_expr(body);
@@ -894,11 +907,11 @@ mod tests {
         let r = r();
         let imp = Import {
             path: vec!["gunbc_exec".into()],
-            items: vec!["execute_with_mode".into(), "BoundaryMocks".into()],
+            items: vec!["execute_dag".into(), "BoundaryMocks".into()],
         };
         assert_eq!(
             r.render_import(&imp),
-            "use gunbc_exec::{execute_with_mode, BoundaryMocks};"
+            "use gunbc_exec::{execute_dag, BoundaryMocks};"
         );
     }
 

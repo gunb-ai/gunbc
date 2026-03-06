@@ -431,7 +431,7 @@ pub fn wrapper_kind(type_dag: &Dag<TypeOp>) -> Option<WrapperKind> {
 
 fn inner_type_dag(type_dag: &Dag<TypeOp>) -> Option<&Dag<TypeOp>> {
     type_dag.nodes.iter().find_map(|node| {
-        if let NodeBody::SubDag(subdag) = &node.body {
+        if let NodeBody::SubDag(subdag, _) = &node.body {
             Some(subdag)
         } else {
             None

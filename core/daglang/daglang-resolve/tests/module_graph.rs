@@ -156,6 +156,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("config.resources".into(), 0),
         ("config.test_policy".into(), 1),
         ("config.tool_registry".into(), 0),
+        ("config.toolchain".into(), 0),
         ("config.workflow_catalog".into(), 0),
         ("config.workflow_commands".into(), 0),
         ("config.workspace".into(), 0),
@@ -165,7 +166,9 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("examples.rich_types".into(), 2),
         ("extdeps.api.gcp_ops".into(), 1),
         ("extdeps.api.github_ops".into(), 1),
+        ("extdeps.build_targets".into(), 0),
         ("extdeps.cargo".into(), 1),
+        ("extdeps.ci_script".into(), 0),
         ("extdeps.clippy".into(), 0),
         ("extdeps.cloud.aws.core".into(), 1),
         ("extdeps.cloud.aws.iam".into(), 2),
@@ -193,21 +196,24 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("extdeps.coordination.sqlite".into(), 1),
         ("extdeps.devenv.devcontainers".into(), 0),
         ("extdeps.git".into(), 2),
-        ("extdeps.github.auth".into(), 2),
+        ("extdeps.github.auth".into(), 3),
         ("extdeps.github.core".into(), 1),
         ("extdeps.github.gists".into(), 4),
         ("extdeps.github.issues".into(), 4),
         ("extdeps.github.pull_requests".into(), 4),
-        ("extdeps.github_actions".into(), 0),
+        ("extdeps.github_actions".into(), 1),
+        ("extdeps.github_actions_render".into(), 3),
         ("extdeps.gitignore".into(), 0),
-        ("extdeps.gitlab_ci".into(), 0),
+        ("extdeps.gitlab_ci".into(), 1),
+        ("extdeps.gitlab_ci_render".into(), 3),
         ("extdeps.gunbc".into(), 0),
+        ("extdeps.justfile_render".into(), 1),
         ("extdeps.llm.anthropic".into(), 3),
         ("extdeps.llm.auth".into(), 2),
         ("extdeps.llm.core".into(), 0),
         ("extdeps.llm.openai".into(), 3),
         ("extdeps.llm.pricing".into(), 1),
-        ("extdeps.make".into(), 0),
+        ("extdeps.make_render".into(), 1),
         ("extdeps.sdlc.providers.codex_agent_provider".into(), 2),
         ("extdeps.sdlc.providers.file_claim_store".into(), 3),
         ("extdeps.sdlc.providers.file_outcome_ledger".into(), 3),
@@ -261,6 +267,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("pipelines.cloud_e2e".into(), 9),
         ("pipelines.reconciler".into(), 6),
         ("pipelines.scale_test".into(), 6),
+        ("profiles.sdlc".into(), 12),
         ("services.review.dimension".into(), 1),
         ("shared.codegen".into(), 0),
         ("shared.compilation".into(), 0),
@@ -294,18 +301,19 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("tools.bootstrap".into(), 3),
         ("tools.build".into(), 3),
         ("tools.ci".into(), 3),
-        ("tools.cigen".into(), 4),
+        ("tools.cigen".into(), 9),
         ("tools.clippy".into(), 5),
         ("tools.codegen".into(), 2),
         ("tools.deps".into(), 4),
         ("tools.deps_config".into(), 1),
-        ("tools.design".into(), 2),
+        ("tools.design".into(), 3),
         ("tools.docgen".into(), 4),
         ("tools.gist".into(), 6),
         ("tools.infra".into(), 0),
-        ("tools.justgen".into(), 3),
-        ("tools.makegen".into(), 3),
-        ("tools.pragma".into(), 2),
+        ("tools.justgen".into(), 5),
+        ("tools.makegen".into(), 5),
+        ("tools.pragma".into(), 3),
+        ("tools.readme".into(), 2),
         ("tools.review".into(), 0),
         ("tools.testgen".into(), 2),
         ("tools.workflow".into(), 1),
@@ -541,21 +549,22 @@ fn invalid_root_path_error_display_includes_path_and_reason() {
 }
 
 #[test]
-fn unresolved_imports_are_tolerated_for_phase_zero_discovery() {
+fn unresolved_imports_fail_closed_during_discovery() {
     let root = unique_temp_dir("unresolved");
     write_file(
         &root.join("a/main.dag"),
         "module a.main\nimport missing.dep\nfn run() -> Unit {}",
     );
 
-    let graph = ModuleGraph::discover(std::slice::from_ref(&root))
-        .expect("expected graph discovery success");
-    assert_eq!(graph.modules.len(), 1);
-    assert_eq!(graph.modules[0].module_path.as_dotted(), "a.main");
+    let err = ModuleGraph::discover(std::slice::from_ref(&root))
+        .expect_err("expected unresolved import discovery failure");
     assert!(
-        graph.modules[0].dependencies.is_empty(),
-        "unresolved imports should be ignored in phase-0 graph construction"
+        matches!(err, ResolveError::UnresolvedImport { .. }),
+        "expected unresolved import error, got {err:?}"
     );
+    let rendered = err.to_string();
+    assert!(rendered.contains("missing.dep"));
+    assert!(rendered.contains("a.main"));
 
     fs::remove_dir_all(root).expect("failed to clean temp directory");
 }

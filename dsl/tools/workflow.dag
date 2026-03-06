@@ -3,9 +3,9 @@
 // DSL interface for deterministic workflow planning and execution.
 // The actual planning/execution logic (plan_workflow, explain_plan,
 // execute_workflow_plan, workflow_unit_commands) stays in the Rust
-// substrate (core/workflow/ and gunbc-dag/src/workflow/).
+// substrate (core/workflow/ and gunbc-app/src/workflow/).
 //
-// Replaces: gunbc-dag/src/bin/workflow.rs (346 LOC)
+// Replaces: gunbc-app/src/bin/workflow.rs (346 LOC)
 
 module tools.workflow
 

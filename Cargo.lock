@@ -153,7 +153,7 @@ dependencies = [
  "daglang-resolve",
  "daglang-syntax",
  "daglang-typecheck",
- "gunbc-dag",
+ "gunbc-app",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-resolve",
@@ -184,6 +184,7 @@ dependencies = [
 name = "daglang-driver"
 version = "0.1.0"
 dependencies = [
+ "daglang-contract",
  "daglang-derive",
  "daglang-emit",
  "daglang-lower",
@@ -214,10 +215,11 @@ dependencies = [
 name = "daglang-lower"
 version = "0.1.0"
 dependencies = [
+ "daglang-contract",
  "daglang-resolve",
  "daglang-syntax",
  "daglang-typecheck",
- "gunbc-dag",
+ "gunbc-app",
  "gunbc-deps",
  "gunbc-exec",
  "gunbc-ir",
@@ -242,6 +244,7 @@ version = "0.1.0"
 name = "daglang-typecheck"
 version = "0.1.0"
 dependencies = [
+ "daglang-contract",
  "daglang-resolve",
  "daglang-syntax",
  "gunbc-ir",
@@ -338,6 +341,43 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
+name = "gunbc-app"
+version = "0.1.0"
+dependencies = [
+ "cargo_metadata",
+ "daglang-derive",
+ "daglang-driver",
+ "daglang-emit",
+ "daglang-lower",
+ "daglang-syntax",
+ "glob",
+ "gunbc-cli",
+ "gunbc-clippy",
+ "gunbc-codegen",
+ "gunbc-delegate-macros",
+ "gunbc-deps",
+ "gunbc-design-ops",
+ "gunbc-exec",
+ "gunbc-infra",
+ "gunbc-ir",
+ "gunbc-lib-blob",
+ "gunbc-lib-llm-ops",
+ "gunbc-lib-review",
+ "gunbc-lib-transport",
+ "gunbc-primitives",
+ "gunbc-resolve",
+ "gunbc-test",
+ "gunbc-testgen-registry",
+ "gunbc-testgen-registry-macros",
+ "gunbc-workflow",
+ "ron",
+ "serde",
+ "serde_json",
+ "serde_yml",
+ "toml_edit",
+]
+
+[[package]]
 name = "gunbc-cli"
 version = "0.1.0"
 dependencies = [
@@ -373,43 +413,6 @@ dependencies = [
  "gunbc-test",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "gunbc-dag"
-version = "0.1.0"
-dependencies = [
- "cargo_metadata",
- "daglang-derive",
- "daglang-driver",
- "daglang-emit",
- "daglang-lower",
- "daglang-syntax",
- "glob",
- "gunbc-cli",
- "gunbc-clippy",
- "gunbc-codegen",
- "gunbc-delegate-macros",
- "gunbc-deps",
- "gunbc-design-ops",
- "gunbc-exec",
- "gunbc-infra",
- "gunbc-ir",
- "gunbc-lib-blob",
- "gunbc-lib-llm-ops",
- "gunbc-lib-review",
- "gunbc-lib-transport",
- "gunbc-primitives",
- "gunbc-resolve",
- "gunbc-test",
- "gunbc-testgen-registry",
- "gunbc-testgen-registry-macros",
- "gunbc-workflow",
- "ron",
- "serde",
- "serde_json",
- "serde_yml",
- "toml_edit",
 ]
 
 [[package]]
@@ -474,6 +477,7 @@ dependencies = [
 name = "gunbc-ir"
 version = "0.1.0"
 dependencies = [
+ "daglang-contract",
  "glob",
  "gunbc-delegate-macros",
  "gunbc-infra",

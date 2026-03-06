@@ -219,7 +219,7 @@ Generated binaries call generation-only freshness. `make check` and CI run the f
 
 ### 5. Direct binary invocation
 
-Replace `cargo run -p gunbc-dag --bin gunbc-testgen` with `target/debug/gunbc-testgen`. Saves ~100-400ms per step. Trust `make install` for binary freshness.
+Replace `cargo run -p gunbc-app --bin gunbc-testgen` with `target/debug/gunbc-testgen`. Saves ~100-400ms per step. Trust `make install` for binary freshness.
 
 ## Measurements
 

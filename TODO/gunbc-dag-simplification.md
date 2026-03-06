@@ -135,7 +135,7 @@ Each bridge exists because the compiler doesn't do enough. For each: current sta
 **Bridge 6: `registry_tools_to_value()`** — manual Rust struct → `Value::Map` conversion for tool registry.
 **Bridge 7: `DiscoverToolsOp`** — runtime tool registry discovery.
 
-- **Locations**: `core/codegen/src/makegen/shared.rs:84-178` (~95 LOC) + `gunbc-dag/src/extern_ops.rs:151-178` (~28 LOC)
+- **Locations**: `core/codegen/src/makegen/shared.rs:84-178` (~95 LOC) + `gunbc-app/src/extern_ops.rs:151-178` (~28 LOC)
 - **Current**: Tool registry lives as Rust structs built from `inventory`. Runtime converts to `Value::Map` for DSL consumption.
 - **Final state**: Tool registry is a compile-time artifact. Compiler scans `dsl/tools/*.dag`, extracts entrypoints, emits `dsl/generated/tool_registry.dag`. Makegen/bootstrap import this artifact directly. No runtime discovery. No struct→Value conversion.
 - **Acceptance**: `registry_tools_to_value()` **deleted** from `shared.rs`. `DiscoverToolsOp` **deleted** from `extern_ops.rs`. `dsl/generated/tool_registry.dag` exists and is consumed by `tools/makegen.dag` imports. `grep -r 'registry_tools_to_value\|DiscoverToolsOp' .` returns 0.
@@ -146,7 +146,7 @@ Each bridge exists because the compiler doesn't do enough. For each: current sta
 
 ## Application Layer Cleanup
 
-Once compiler fixes land, the application layer (currently gunbc-dag) becomes simple:
+Once compiler fixes land, the application layer (currently gunbc-app) becomes simple:
 
 ### Thin shims are compiler debt
 
@@ -185,7 +185,7 @@ Acceptance:
 
 ### Rename
 
-`gunbc-dag` → `gunbc-app` (or `gunbc-bin`). It's the application entry point, not a DAG definition crate.
+`gunbc-dag` → `gunbc-app` (**done**). It's the application entry point, not a DAG definition crate.
 
 - **Acceptance**: `Cargo.toml` `[package] name = "gunbc-app"`. Directory renamed. All `Cargo.toml` dependency references updated. `grep -r 'gunbc-dag' Cargo.toml */Cargo.toml` returns 0.
 
@@ -194,7 +194,7 @@ Acceptance:
 Currently output paths are specified in three places:
 1. `core/ir/src/workspace_layout.rs` — hardcoded `"target/codegen/bin"` constants
 2. `codegen_cli.rs` — calls `WorkspaceLayout` with string fallback
-3. `gunbc-dag/Cargo.toml` — `[[bin]]` entries: `path = "../target/codegen/bin/*/main.rs"`
+3. `gunbc-app/Cargo.toml` — `[[bin]]` entries: `path = "../target/codegen/bin/*/main.rs"`
 
 Plus `dsl/config/codegen_paths.dag` which declares intent but isn't consumed.
 
@@ -203,11 +203,11 @@ Plus `dsl/config/codegen_paths.dag` which declares intent but isn't consumed.
 
 ### Testgen engine
 
-Testgen is split between `core/codegen/src/testgen/` (14,400 LOC library) and `gunbc-dag/src/testgen_dag/` (1,500 LOC orchestration) due to a real circular dependency with testgen-registry.
+Testgen is split between `core/codegen/src/testgen/` (14,400 LOC library) and `gunbc-app/src/testgen_dag/` (1,500 LOC orchestration) due to a real circular dependency with testgen-registry.
 
 **Question**: Is the meta-circular testgen (testgen is itself a DAG that generates tests) the right design? Or should `daglang compile --emit=tests` be a compiler mode? The latter would eliminate the testgen DAG, the circular dependency, and the 1,500 LOC orchestration layer entirely.
 
-- **Acceptance (if compiler mode)**: `gunbc-dag/src/testgen_dag/` **deleted** (~1,500 LOC). `daglang compile --emit=tests` produces test files. Testgen-registry circular dependency eliminated.
+- **Acceptance (if compiler mode)**: `gunbc-app/src/testgen_dag/` **deleted** (~1,500 LOC). `daglang compile --emit=tests` produces test files. Testgen-registry circular dependency eliminated.
 
 ### What remains after cleanup
 

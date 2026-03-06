@@ -32,6 +32,7 @@ use daglang_lower::{
 };
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
+use gunbc_ir::patterns::PatternOp;
 use gunbc_ir::resource::{AccessMode, RESOURCE_FILE, RESOURCE_FILE_PREFIX};
 use gunbc_ir::transport::{FileRequest, TransportRequest};
 use gunbc_ir::types::PortName;
@@ -45,7 +46,7 @@ use crate::service_ops::{
     GenericRestParseOp, GenericRestPrepareOp, GenericShellParseOp, GenericShellPrepareOp,
     InterfaceStubExecuteOp, InterfaceStubParseOp, InterfaceStubPrepareOp,
 };
-use crate::ExternResolver;
+use crate::RuntimeBindings;
 
 // ============================================================================
 // Error type
@@ -345,26 +346,6 @@ impl Executable for SubDagDispatchOp {
             }
         }
         Ok(outputs)
-    }
-}
-
-/// Thin delegate to compiler's collection evaluator.
-#[derive(Debug, Clone)]
-struct CollectionDelegate {
-    kind: CollectionOpKind,
-}
-
-impl Executable for CollectionDelegate {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let items = match inputs.get("items") {
-            Some(Value::List(values)) => values.clone(),
-            Some(Value::Skipped) => return OutputMap::new().value("items", Value::Skipped).ok(),
-            None => Vec::new(),
-            Some(value) => vec![value.clone()],
-        };
-        let output = daglang_lower::eval::evaluate_collection(&self.kind, items, &inputs)
-            .map_err(|e| ExecError::new(e.message))?;
-        OutputMap::new().value("items", output).ok()
     }
 }
 
@@ -1098,7 +1079,7 @@ impl Executable for PrepareFileWriteCompatOp {
 /// in `DynOp`. Edges and ports are preserved unchanged.
 pub fn resolve_lowered_dag_with(
     dag: &Dag<LoweredOp>,
-    resolver: &dyn ExternResolver,
+    bindings: &RuntimeBindings,
 ) -> Result<Dag<DynOp>, ResolveError> {
     // Collect all fn bodies from callable nodes for cross-fn evaluation.
     // Helper fns call sibling fns via evaluate_fn_body; this map provides
@@ -1125,13 +1106,14 @@ pub fn resolve_lowered_dag_with(
             id: node.id.clone(),
             inputs: node.inputs.clone(),
             outputs: node.outputs.clone(),
-            body: resolve_node_body(node, resolver, &sibling_fns)?,
+            body: resolve_node_body(node, bindings, &sibling_fns)?,
             examples: node.examples.clone(),
             log_detail: node.log_detail,
             kind: node.kind,
             operation_key: node.operation_key.clone(),
             transport_class: node.transport_class,
             static_fingerprint: None,
+            origin: node.origin.clone(),
         };
         normalize_release_resource_inputs(&mut resolved_node);
         if let Some(mode) = needs_transport_resource(node, &resolved_node) {
@@ -1193,7 +1175,7 @@ fn normalize_release_resource_inputs(node: &mut Node<DynOp>) {
 
 #[cfg(test)]
 fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
-    let null = crate::NullExternResolver;
+    let null = crate::RuntimeBindings::new();
     let empty_siblings = HashMap::new();
     let node_id = node.id.0.clone();
     match &node.body {
@@ -1205,7 +1187,7 @@ fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
             &null,
             &empty_siblings,
         ),
-        NodeBody::SubDag(inner) => Ok(DynOp::new(SubDagDispatchOp {
+        NodeBody::SubDag(inner, _kind) => Ok(DynOp::new(SubDagDispatchOp {
             dag: resolve_lowered_dag_with(inner, &null)?,
         })),
     }
@@ -1213,7 +1195,7 @@ fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
 
 fn resolve_node_body(
     node: &Node<LoweredOp>,
-    resolver: &dyn ExternResolver,
+    bindings: &RuntimeBindings,
     sibling_fns: &HashMap<String, daglang_lower::LoweredFnBody>,
 ) -> Result<NodeBody<DynOp>, ResolveError> {
     match &node.body {
@@ -1222,10 +1204,13 @@ fn resolve_node_body(
             op,
             &node.inputs,
             &node.outputs,
-            resolver,
+            bindings,
             sibling_fns,
         )?)),
-        NodeBody::SubDag(inner) => Ok(NodeBody::SubDag(resolve_lowered_dag_with(inner, resolver)?)),
+        NodeBody::SubDag(inner, kind) => Ok(NodeBody::SubDag(
+            resolve_lowered_dag_with(inner, bindings)?,
+            kind.clone(),
+        )),
     }
 }
 
@@ -1234,7 +1219,7 @@ fn resolve_op(
     op: &LoweredOp,
     inputs: &[Port],
     outputs: &[Port],
-    resolver: &dyn ExternResolver,
+    bindings: &RuntimeBindings,
     sibling_fns: &HashMap<String, daglang_lower::LoweredFnBody>,
 ) -> Result<DynOp, ResolveError> {
     match op {
@@ -1260,7 +1245,7 @@ fn resolve_op(
             outputs,
             service_metadata.as_deref(),
             fn_body.as_deref(),
-            resolver,
+            bindings,
             sibling_fns,
         ),
         LoweredOp::Pattern(pattern_op) => Ok(DynOp::new(pattern_op.clone())),
@@ -1270,7 +1255,7 @@ fn resolve_op(
                 "unsupported pattern `{name}` — not yet implemented in daglang lowering"
             ),
         }),
-        LoweredOp::ExternCall { symbol } => resolve_extern_call(node_id, symbol, resolver),
+        LoweredOp::ExternCall { symbol } => resolve_extern_call(node_id, symbol, bindings),
     }
 }
 
@@ -1501,7 +1486,7 @@ fn resolve_domain(
     outputs: &[Port],
     service_metadata: Option<&ServiceCallMetadata>,
     fn_body: Option<&daglang_lower::LoweredFnBody>,
-    resolver: &dyn ExternResolver,
+    bindings: &RuntimeBindings,
     sibling_fns: &HashMap<String, daglang_lower::LoweredFnBody>,
 ) -> Result<DynOp, ResolveError> {
     // 1. Modules with custom resolvers — return Some for known callables,
@@ -1510,7 +1495,7 @@ fn resolve_domain(
         return resolve_std_resources(name);
     }
     // 2. App-specific callables resolved via extern resolver.
-    if let Some(op) = resolver.resolve(module, name) {
+    if let Some(op) = bindings.resolve(module, name) {
         return Ok(op);
     }
     // 3. Service/workspace modules use generic transport dispatch — but only
@@ -1602,7 +1587,7 @@ fn resolve_std_resources(name: &str) -> Result<DynOp, ResolveError> {
 fn resolve_extern_call(
     node_id: &str,
     symbol: &str,
-    resolver: &dyn ExternResolver,
+    bindings: &RuntimeBindings,
 ) -> Result<DynOp, ResolveError> {
     use gunbc_ir::ProgramSymbolId;
 
@@ -1616,7 +1601,7 @@ fn resolve_extern_call(
         reason: format!("extern symbol `{symbol}` is missing callable name segment"),
     })?;
 
-    if let Some(op) = resolver.resolve(module, name) {
+    if let Some(op) = bindings.resolve(module, name) {
         return Ok(op);
     }
     if module == "std.resources" {
@@ -1791,7 +1776,7 @@ fn resolve_service_transport(
 // ============================================================================
 
 fn resolve_collection(kind: &CollectionOpKind) -> Result<DynOp, ResolveError> {
-    Ok(DynOp::new(CollectionDelegate { kind: *kind }))
+    Ok(DynOp::new(PatternOp::CollectionAggregate { kind: *kind }))
 }
 
 // ============================================================================
@@ -1985,7 +1970,7 @@ mod tests {
                 stage_names: vec!["fetch".to_string(), "design".to_string()],
             },
         ));
-        let null = crate::NullExternResolver;
+        let null = crate::RuntimeBindings::new();
         let resolved = resolve_lowered_dag_with(&dag, &null).expect("should succeed");
         assert!(
             resolved.nodes.is_empty(),
@@ -2595,7 +2580,7 @@ mod tests {
         });
 
         let resolved =
-            resolve_lowered_dag_with(&dag, &crate::NullExternResolver).expect("resolve dag");
+            resolve_lowered_dag_with(&dag, &crate::RuntimeBindings::new()).expect("resolve dag");
         assert_eq!(resolved.nodes.len(), 2);
         assert_eq!(resolved.edges.len(), 1);
         assert_eq!(resolved.edges[0].from_node.0, "render");
@@ -2689,7 +2674,7 @@ mod tests {
             },
         ));
 
-        let resolved = resolve_lowered_dag_with(&dag, &crate::NullExternResolver)
+        let resolved = resolve_lowered_dag_with(&dag, &crate::RuntimeBindings::new())
             .expect("release node should resolve");
         let release_node = resolved
             .get_node(&"release_resource_std_resources_Filesystem".into())
@@ -2727,13 +2712,13 @@ mod tests {
         let mut dag = Dag::new();
         dag.add_node(Node::subdag("wrapper", inner));
 
-        let resolved = resolve_lowered_dag_with(&dag, &crate::NullExternResolver)
+        let resolved = resolve_lowered_dag_with(&dag, &crate::RuntimeBindings::new())
             .expect("resolve dag with SubDag");
         let wrapper = resolved
             .get_node(&"wrapper".into())
             .expect("wrapper node should exist");
         assert!(
-            matches!(wrapper.body, NodeBody::SubDag(_)),
+            matches!(wrapper.body, NodeBody::SubDag(..)),
             "production resolver should preserve SubDag structure, not flatten it"
         );
     }
@@ -2761,20 +2746,6 @@ mod tests {
         );
     }
 
-    struct TestExternResolver;
-
-    impl crate::ExternResolver for TestExternResolver {
-        fn resolve(&self, module: &str, _name: &str) -> Option<DynOp> {
-            if module == "std.markdown" {
-                Some(DynOp::new(DeclaredOutputCallableOp {
-                    output_ports: Vec::new(),
-                }))
-            } else {
-                None
-            }
-        }
-    }
-
     #[test]
     fn resolve_extern_call_succeeds_with_custom_resolver() {
         let node = Node::opaque(
@@ -2785,7 +2756,13 @@ mod tests {
                 symbol: "std.markdown::render_tree".to_string(),
             },
         );
-        let resolver = TestExternResolver;
+        let mut bindings = crate::RuntimeBindings::new();
+        bindings.register_symbol(
+            gunbc_ir::ProgramSymbolId::from_parts("std.markdown", "render_tree"),
+            DynOp::new(DeclaredOutputCallableOp {
+                output_ports: Vec::new(),
+            }),
+        );
         let node_id = node.id.0.clone();
         let result = match &node.body {
             NodeBody::Opaque(op) => resolve_op(
@@ -2793,7 +2770,7 @@ mod tests {
                 op,
                 &node.inputs,
                 &node.outputs,
-                &resolver,
+                &bindings,
                 &HashMap::new(),
             ),
             _ => unreachable!(),
@@ -3310,8 +3287,8 @@ mod tests {
     }
 
     #[test]
-    fn collection_delegate_skipped_input_propagates() {
-        let op = CollectionDelegate {
+    fn collection_aggregate_skipped_input_propagates() {
+        let op = PatternOp::CollectionAggregate {
             kind: CollectionOpKind::Map,
         };
         let mut inputs = HashMap::new();

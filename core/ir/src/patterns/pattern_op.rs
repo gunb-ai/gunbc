@@ -5,6 +5,7 @@
 //! these patterns should ensure their operation type can be constructed from
 //! `PatternOp` (e.g., via `From<PatternOp>` in a composed enum).
 
+use super::collection::CollectionKind;
 use super::repeat::{FailureClassifier, RepeatPolicy};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -42,6 +43,8 @@ pub enum PatternOp {
     },
     /// Poll result collector.
     PollCollector { output_port: String },
+    /// Collection aggregate operation (map, filter, fold, join, etc.).
+    CollectionAggregate { kind: CollectionKind },
 }
 
 impl PatternOp {
@@ -57,6 +60,7 @@ impl PatternOp {
             PatternOp::WhileController { .. } => "WhileController",
             PatternOp::PollTimer { .. } => "PollTimer",
             PatternOp::PollCollector { .. } => "PollCollector",
+            PatternOp::CollectionAggregate { kind } => kind.node_label(),
         }
     }
 }

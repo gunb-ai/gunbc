@@ -22,7 +22,7 @@ was planned but never actually used. Removed all of it.
 
 - [x] Deleted entire `lib/tools/buck2/` crate
 - [x] Removed from workspace Cargo.toml
-- [x] Removed from gunbc-dag dependencies
+- [x] Removed from gunbc-app dependencies
 - [x] Removed Buck2Op from WorkspaceOp enum
 - [x] Removed subdags/buck2.rs
 - [x] Removed Makefile targets (buck2, buck2-dry)

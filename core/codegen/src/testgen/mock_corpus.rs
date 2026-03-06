@@ -6,7 +6,7 @@
 //! I/O from the execution log.
 
 use crate::testgen::analyze::{analyze_dag, DagAnalysis};
-use gunbc_exec::{execute_with_mode, Executable, ExecutionLog, ExecutionMode, LogEntry};
+use gunbc_exec::{execute_dag, Executable, ExecuteConfig, ExecutionLog, ExecutionMode, LogEntry};
 use gunbc_ir::{Dag, Value};
 use gunbc_test::{
     CorpusExample, EdgeExample, Expectation, MockCorpus, MockSpec, NodeIdentity, Provenance,
@@ -108,7 +108,13 @@ pub fn build_corpus_report<T: Executable + Clone + Send>(
         let boundary_mocks = mock_spec.to_boundary_mocks();
         let mode = ExecutionMode::DryRun(boundary_mocks);
 
-        let log = match execute_with_mode(*dag, mode) {
+        let log = match execute_dag(
+            *dag,
+            ExecuteConfig {
+                mode,
+                ..Default::default()
+            },
+        ) {
             Ok(log) => log,
             Err(err) => {
                 failures.push(WorkflowFailure {

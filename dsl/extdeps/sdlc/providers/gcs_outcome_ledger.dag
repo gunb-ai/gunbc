@@ -101,6 +101,7 @@ service gcs.OutcomeLedger : OutcomeLedger {
     }
     output { outcomes: List<StageOutcome> }
     readonly
+    idempotent
     transport rest { method: GET, path: "/storage/v1/b/\{bucket\}/o?prefix=outcomes/\{issue_id\}/" }
     response {
       200 => Json

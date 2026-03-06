@@ -1,8 +1,12 @@
 # SDLC Production Gap Analysis
 
-Status: Active
+Status: Historical baseline before SDLC compile/dry-run proof landed
 Date: 2026-03-03
 Parent: [implementation-roadmap.md](implementation-roadmap.md)
+
+Status note (2026-03-05): this analysis was written before `builds_sdlc_*` compile
+tests, worker dry-run proof, and the env-gated local live harness were added. Use
+it as blocker history, not as the current status document.
 
 ## 1. Executive Summary
 
@@ -18,7 +22,7 @@ the only one with zero automated proof of correctness.
 
 For comparison, every working tool (`makegen`, `pragma`, `gist`, `ci`, `clippy`,
 `bootstrap`, `deps`, `codegen`, `infra`, `review`) has direct `build_dsl_graph(...)`
-coverage in `gunbc-dag/tests/`. SDLC has none.
+coverage in `gunbc-app/tests/`. SDLC has none.
 
 ## 2. What Exists Today
 
@@ -114,7 +118,7 @@ lowerer limitations (cross-callable data flow, transport node deduplication) —
 any of these could exist silently. Gap 0 items are known examples.
 
 **Fix**: Add `builds_sdlc_worker_dsl_graph()` and `builds_sdlc_stages_dsl_graph()`
-as direct `gunbc_resolve::builder::build_dsl_graph(...)` tests in `gunbc-dag/tests/`.
+as direct `gunbc_resolve::builder::build_dsl_graph(...)` tests in `gunbc-app/tests/`.
 This is the first thing to do — it tells us what actually breaks.
 
 ### Gap 2: Not in Workflow Catalog (BLOCKING)

@@ -7,7 +7,7 @@ Task: `M3`
 
 ### Parity test
 
-File: `gunbc-dag/src/dsl_builder.rs`
+File: `gunbc-app/src/dsl_builder.rs`
 
 - Added test:
   - `codegen_dsl_matches_hand_built_dry_run_behavior`
@@ -23,7 +23,7 @@ File: `gunbc-dag/src/dsl_builder.rs`
 
 ### Resolver mappings
 
-File: `gunbc-dag/src/resolve.rs`
+File: `gunbc-app/src/resolve.rs`
 
 - Added executable adapters for:
   - `service_transport::prepare::shell.Codegen::Check`
@@ -38,10 +38,10 @@ File: `gunbc-dag/src/resolve.rs`
 ### API compatibility wrappers
 
 Files:
-- `gunbc-dag/src/codegen/graph.rs`
-- `gunbc-dag/src/codegen/mod.rs`
-- `gunbc-dag/src/ci/graph.rs`
-- `gunbc-dag/src/ci/mod.rs`
+- `gunbc-app/src/codegen/graph.rs`
+- `gunbc-app/src/codegen/mod.rs`
+- `gunbc-app/src/ci/graph.rs`
+- `gunbc-app/src/ci/mod.rs`
 
 - Restored compatibility exports/wrappers for:
   - `build_codegen_graph_with_mode(...)`
@@ -49,5 +49,5 @@ Files:
 
 ## Validation
 
-- `cargo test -p gunbc-dag --lib resolve_services_shell_codegen_transport_ops -- --nocapture`
-- `cargo test -p gunbc-dag --lib codegen_dsl_matches_hand_built_dry_run_behavior -- --nocapture`
+- `cargo test -p gunbc-app --lib resolve_services_shell_codegen_transport_ops -- --nocapture`
+- `cargo test -p gunbc-app --lib codegen_dsl_matches_hand_built_dry_run_behavior -- --nocapture`

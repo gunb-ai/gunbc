@@ -332,11 +332,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             }
             // Write compile receipt JSON when --receipt is passed.
             if parsed.receipt {
-                let Some(receipt) = &output.receipt else {
-                    eprintln!("failed to compute compile receipt");
-                    std::process::exit(1);
-                };
-                let receipt_json = match serde_json::to_string_pretty(receipt) {
+                let receipt_json = match serde_json::to_string_pretty(&output.receipt) {
                     Ok(json) => json,
                     Err(error) => {
                         eprintln!("failed to serialize compile receipt: {error}");
@@ -474,7 +470,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
 /// Build the embedded data map for extern assets.
 fn build_embedded_data(
 ) -> Result<std::collections::HashMap<String, daglang_emit::EmbeddedData>, String> {
-    gunbc_dag::build_embedded_data()
+    gunbc_app::build_embedded_data()
 }
 
 /// For Layer 1 exec-runtime compilation, embed pre-computed handler data

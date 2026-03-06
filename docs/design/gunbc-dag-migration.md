@@ -1,8 +1,12 @@
 # gunbc-dag Migration: Rust → Pure DSL
 
-**Goal**: Reduce gunbc-dag from a 23,107-line Rust crate with domain logic, compiler infrastructure, and repo-specific conventions to a thin execution harness. Domain knowledge lives in `.dag` files. Generic infrastructure lives in `core/` crates.
+> **Historical note**: `gunbc-dag` has been renamed to `gunbc-app` (2026-03-05).
+> References to `gunbc-dag` below are from the original plan. The directory is
+> now `gunbc-app/` and the crate is `gunbc-app`.
 
-**Principle**: gunbc-dag should contain ONLY:
+**Goal**: Reduce gunbc-dag (now `gunbc-app`) from a 23,107-line Rust crate with domain logic, compiler infrastructure, and repo-specific conventions to a thin execution harness. Domain knowledge lives in `.dag` files. Generic infrastructure lives in `core/` crates.
+
+**Principle**: gunbc-app should contain ONLY:
 1. Bootstrap exceptions (ci.rs, codegen_cli.rs) — can't be generated
 2. Resolver bridge (compile DSL → resolve to executable ops) — structural necessity
 3. Generated test files (280,603 lines, machine-produced)

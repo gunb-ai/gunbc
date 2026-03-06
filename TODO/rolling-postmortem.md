@@ -22,6 +22,11 @@
 | RP-006 | Long-running exhaustive auto-testgen validation made `make test-all` appear hung. | `gunbc_dag::testgen_dag::dag_test_discovery::comprehensive_auto_testgen_pipeline_validation` (~1398s debug runtime). | Developer feedback loop degraded; real failures masked by wall-clock cost. | Open (currently mitigated via `#[ignore]`) |
 | RP-007 | Test size tiers were previously unclear for fast triage loops; explicit XS/S/M/L/XL targets now exist. | `dsl/config/build_targets.dag` and generated `Makefile` include `test-xs/s/m/l/xl` plus aliases. | Without this, developers overrun local loops and skip tests ad hoc. | Resolved |
 | RP-008 | Test-runtime sizing still relies on coarse heuristics, not measured per-test budgets. | `core/test/src/fermi.rs` hardcoded cost timeouts + `gunbc-dag/src/testgen_dag/dag_test_discovery.rs` `profile_fermi_cost` heuristic mapping. | Misclassified tests can be unexpectedly slow or skipped, reducing confidence in target labels. | Open |
+| RP-009 | CI YAML generation bypassed `config.ci` and hardcoded cache/env/trigger policy in `tools/cigen.dag`, including `target/` in cache paths. | `dsl/tools/cigen.dag` previously inlined GitHub/GitLab cache sections; `dsl/config/ci.dag` and `core/ir/src/transport/ci/render.rs` already modeled a smaller cache. | Policy drift produced oversized CI caches and runner disk exhaustion (`No space left on device`). | Resolved on branch; keep regression test |
+| RP-010 | CI provider schema had been modeled anemically in DSL: `tools/cigen.dag` rendered YAML via string concatenation instead of building typed `Workflow`/`Pipeline` values from `extdeps.github_actions` / `extdeps.gitlab_ci`. | `dsl/extdeps/github_actions.dag`, `dsl/extdeps/gitlab_ci.dag`, `dsl/extdeps/github_actions_render.dag`, `dsl/extdeps/gitlab_ci_render.dag`, and `dsl/tools/cigen.dag`. | Static policy could drift into render helpers, and provider-specific invariants stayed weakly enforced. | Resolved on branch; keep ratchet tests and carry the same pattern into adjacent render lanes |
+| RP-011 | CI discovery had crossed the DAG boundary as raw shell text (`tool_command`, `bootstrap_script`) rather than typed steps/commands. | `dsl/extdeps/ci_script.dag`; `dsl/tools/cigen.dag` `type CiDiscovery`; `gunbc-app/src/extern_ops.rs` `discover_ci_config`. | Step structure, command semantics, and freshness scope were stringly and harder to validate minimally. | Resolved on branch; keep typed-script regression tests and strengthen shell quoting separately if needed |
+| RP-012 | CI rendering had duplicate policy surfaces in Rust and DSL. | `core/ir/src/transport/ci/render.rs` `CacheConfig::rust()` vs `dsl/config/ci.dag` + `dsl/tools/cigen.dag`. | Parallel render paths invited drift; the Rust renderer could silently diverge from generated CI policy. | Resolved on branch; CI YAML generation is now DSL-owned end-to-end |
+| RP-013 | `content_upsert` special-case lowering kept per-call wiring but mislabeled `written` as compare `fresh`, creating contradictory status output and hiding the real freshness/write behavior. | `core/daglang/daglang-lower/src/lib.rs` special-case `expand_content_upsert_patterns()` / `wire_expansion_return_outputs()`. | Investigations get misled, callsite return values lie, and special-case lowering drifts away from the DSL pattern’s actual semantics. | Resolved on branch; keep regression test and continue collapsing special-case pattern logic |
 
 ## Incident Ledger
 
@@ -63,6 +68,10 @@ Lane status snapshot:
 4. RC-P1-004: Add stale-path/fixture drift checks for key compile-command tests.
 5. RC-P1-005: Decompose monolithic exhaustive tests into bounded shards (or explicit integration workflows) so default test targets remain predictable and interactive.
 6. RC-P1-006: Require explicit justification + annotation for any test expected to exceed normal local feedback budgets.
+7. RC-P1-007: Continue the typed-assembly plus leaf-serializer sweep beyond the now-completed `makegen` / `justgen` cleanup. Remaining targets: CLI gen, markdown, CI reports, prompts, and similar text emitters.
+8. RC-P1-008: Keep CI YAML generation single-sourced in the DSL/config path and reject new Rust-side CI render surfaces.
+9. RC-P1-009: Strengthen shared shell quoting/escaping for `ScriptLine::Command { argv }` now that CI discovery is structurally modeled.
+10. RC-P1-010: Continue deleting `content_upsert` lowering special-cases in favor of one semantically aligned pattern-expansion path so callsite bookkeeping cannot drift from pattern meaning.
 
 ### P2 (workflow hygiene)
 

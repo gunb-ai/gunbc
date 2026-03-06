@@ -5,17 +5,27 @@
 
 module extdeps.github.auth
 
-import extdeps.cloud.gcp.core { shell.GCloud }
-import std.types { NonEmptyStr }
+import std.patterns { credential_chain }
+import std.resources { Filesystem, Network }
+import std.types { CloudRuntime, NonEmptyStr }
 
 func github_token(
+  runtime: CloudRuntime = LocalDev,
   project_id: NonEmptyStr = "gunbai-secrets",
   secret_name: NonEmptyStr = "github-token"
-) -> { token: Secret } {
-  secret = shell.GCloud.SecretManagerAccessVersion(
+) -> { token: Secret }
+  uses fs: Filesystem(mode: Read)
+  uses net: Network
+{
+  cred = credential_chain(
+    runtime: runtime,
+    audience: "sigstore",
+    service_account: None,
+    secret_name: secret_name,
     project_id: project_id,
-    secret_name: secret_name
+    source_id: "github-token",
+    required_scopes: ["repo", "gist"]
   )
 
-  return { token: secret.secret_value }
+  return { token: cred.token.token }
 }

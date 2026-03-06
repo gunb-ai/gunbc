@@ -83,7 +83,7 @@ the `CliTool` upsert pattern that other code uses instead of `Command::new`.
 integration layer. Wrapping `Command::new("gh")` with the proper error
 handling and version parsing.
 
-### `gunbc-dag/src/bin/testgen.rs` (1)
+### `gunbc-app/src/bin/testgen.rs` (1)
 
 | Function | Disallowed method | Reason |
 |----------|-------------------|--------|

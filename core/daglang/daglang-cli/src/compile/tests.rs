@@ -4,9 +4,9 @@ use daglang_derive::derive_artifacts;
 use daglang_lower::{
     CallableKind, LoweredOp, ObligationCategory, ServiceCallMetadata, ServiceTransportClass,
 };
-use gunbc_dag::extern_ops::GunbcExternResolver;
+use gunbc_app::extern_ops::gunbc_runtime_bindings;
 use gunbc_exec::{lower, ExecutionMode};
-use gunbc_ir::{Dag, Edge, Node, Port};
+use gunbc_ir::{Dag, Edge, Node, NodeKind, Port};
 use gunbc_resolve::resolve_lowered_dag_with;
 use gunbc_test::{unique_temp_dir, unique_temp_file};
 use serde_json::Value;
@@ -15,7 +15,7 @@ use std::path::PathBuf;
 fn resolve_lowered_dag(
     dag: &Dag<LoweredOp>,
 ) -> Result<Dag<gunbc_exec::DynOp>, gunbc_resolve::ResolveError> {
-    resolve_lowered_dag_with(dag, &GunbcExternResolver)
+    resolve_lowered_dag_with(dag, gunbc_runtime_bindings())
 }
 
 fn workspace_dsl_root() -> PathBuf {
@@ -50,7 +50,7 @@ fn temp_dag_context(name: &str, content: &str) -> (PipelineContext, PathBuf) {
 }
 
 fn assert_typecheck_stage_error(error: &CompileError) {
-    assert!(error.contains("typecheck errors"));
+    assert!(error.contains("compile diagnostics"));
     assert!(!error.contains("lower error"));
 }
 
@@ -601,72 +601,81 @@ fn render_triplets_json_includes_makegen_transport_nodes() {
 #[test]
 fn render_triplets_json_includes_service_semantic_metadata_when_present() {
     let mut dag = Dag::new();
-    dag.add_node(Node::opaque(
-        "prepare_transport_service",
-        vec![Port::scalar("path", "String")],
-        vec![Port::scalar("request", "TransportRequest")],
-        LoweredOp::Callable {
-            module: "sample.services".to_string(),
-            kind: CallableKind::Pattern,
-            name: "service_transport::prepare::FsStorage::read".to_string(),
-            obligation: ObligationCategory::ServiceTransportPrepare,
-            service_metadata: Some(Box::new(ServiceCallMetadata {
-                service: "FsStorage".to_string(),
-                operation: "read".to_string(),
-                transport: ServiceTransportClass::ShellLocal,
-                idempotent: true,
-                readonly: true,
-                spec: None,
-            })),
-            is_interactive: false,
-            resource_target: None,
-            fn_body: None,
-        },
-    ));
-    dag.add_node(Node::opaque(
-        "execute_transport_service",
-        vec![Port::scalar("request", "TransportRequest")],
-        vec![Port::scalar("response", "TransportResponse")],
-        LoweredOp::Callable {
-            module: "sample.services".to_string(),
-            kind: CallableKind::Pattern,
-            name: "service_transport::execute::FsStorage::read".to_string(),
-            obligation: ObligationCategory::ServiceTransportExecute,
-            service_metadata: Some(Box::new(ServiceCallMetadata {
-                service: "FsStorage".to_string(),
-                operation: "read".to_string(),
-                transport: ServiceTransportClass::ShellLocal,
-                idempotent: true,
-                readonly: true,
-                spec: None,
-            })),
-            is_interactive: false,
-            resource_target: None,
-            fn_body: None,
-        },
-    ));
-    dag.add_node(Node::opaque(
-        "parse_transport_service",
-        vec![Port::scalar("response", "TransportResponse")],
-        vec![Port::scalar("body", "String")],
-        LoweredOp::Callable {
-            module: "sample.services".to_string(),
-            kind: CallableKind::Pattern,
-            name: "service_transport::parse::FsStorage::read".to_string(),
-            obligation: ObligationCategory::ServiceTransportParse,
-            service_metadata: Some(Box::new(ServiceCallMetadata {
-                service: "FsStorage".to_string(),
-                operation: "read".to_string(),
-                transport: ServiceTransportClass::ShellLocal,
-                idempotent: true,
-                readonly: true,
-                spec: None,
-            })),
-            is_interactive: false,
-            resource_target: None,
-            fn_body: None,
-        },
-    ));
+    dag.add_node(
+        Node::opaque(
+            "prepare_transport_service",
+            vec![Port::scalar("path", "String")],
+            vec![Port::scalar("request", "TransportRequest")],
+            LoweredOp::Callable {
+                module: "sample.services".to_string(),
+                kind: CallableKind::Pattern,
+                name: "service_transport::prepare::FsStorage::read".to_string(),
+                obligation: ObligationCategory::ServiceTransportPrepare,
+                service_metadata: Some(Box::new(ServiceCallMetadata {
+                    service: "FsStorage".to_string(),
+                    operation: "read".to_string(),
+                    transport: ServiceTransportClass::ShellLocal,
+                    idempotent: true,
+                    readonly: true,
+                    spec: None,
+                })),
+                is_interactive: false,
+                resource_target: None,
+                fn_body: None,
+            },
+        )
+        .with_kind(NodeKind::TransportPrepare),
+    );
+    dag.add_node(
+        Node::opaque(
+            "execute_transport_service",
+            vec![Port::scalar("request", "TransportRequest")],
+            vec![Port::scalar("response", "TransportResponse")],
+            LoweredOp::Callable {
+                module: "sample.services".to_string(),
+                kind: CallableKind::Pattern,
+                name: "service_transport::execute::FsStorage::read".to_string(),
+                obligation: ObligationCategory::ServiceTransportExecute,
+                service_metadata: Some(Box::new(ServiceCallMetadata {
+                    service: "FsStorage".to_string(),
+                    operation: "read".to_string(),
+                    transport: ServiceTransportClass::ShellLocal,
+                    idempotent: true,
+                    readonly: true,
+                    spec: None,
+                })),
+                is_interactive: false,
+                resource_target: None,
+                fn_body: None,
+            },
+        )
+        .with_kind(NodeKind::TransportExecute),
+    );
+    dag.add_node(
+        Node::opaque(
+            "parse_transport_service",
+            vec![Port::scalar("response", "TransportResponse")],
+            vec![Port::scalar("body", "String")],
+            LoweredOp::Callable {
+                module: "sample.services".to_string(),
+                kind: CallableKind::Pattern,
+                name: "service_transport::parse::FsStorage::read".to_string(),
+                obligation: ObligationCategory::ServiceTransportParse,
+                service_metadata: Some(Box::new(ServiceCallMetadata {
+                    service: "FsStorage".to_string(),
+                    operation: "read".to_string(),
+                    transport: ServiceTransportClass::ShellLocal,
+                    idempotent: true,
+                    readonly: true,
+                    spec: None,
+                })),
+                is_interactive: false,
+                resource_target: None,
+                fn_body: None,
+            },
+        )
+        .with_kind(NodeKind::TransportParse),
+    );
     dag.add_edge(Edge::new(
         "prepare_transport_service",
         "request",
@@ -852,66 +861,78 @@ fn run(values: List<String>) -> String {
 #[test]
 fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges() {
     let mut dag = Dag::new();
-    dag.add_node(Node::opaque(
-        "prepare_a",
-        vec![],
-        vec![Port::scalar("request", "TransportRequest")],
-        LoweredOp::Callable {
-            module: "sample.triplets".to_string(),
-            kind: CallableKind::Pattern,
-            name: "prepare".to_string(),
-            obligation: ObligationCategory::None,
-            service_metadata: None,
-            is_interactive: false,
-            resource_target: None,
-            fn_body: None,
-        },
-    ));
-    dag.add_node(Node::opaque(
-        "execute_a",
-        vec![Port::scalar("request", "TransportRequest")],
-        vec![Port::scalar("response", "TransportResponse")],
-        LoweredOp::Callable {
-            module: "sample.triplets".to_string(),
-            kind: CallableKind::Pattern,
-            name: "execute".to_string(),
-            obligation: ObligationCategory::None,
-            service_metadata: None,
-            is_interactive: false,
-            resource_target: None,
-            fn_body: None,
-        },
-    ));
-    dag.add_node(Node::opaque(
-        "parse_z",
-        vec![Port::scalar("response", "TransportResponse")],
-        vec![Port::scalar("body", "String")],
-        LoweredOp::Callable {
-            module: "sample.triplets".to_string(),
-            kind: CallableKind::Pattern,
-            name: "parse_z".to_string(),
-            obligation: ObligationCategory::None,
-            service_metadata: None,
-            is_interactive: false,
-            resource_target: None,
-            fn_body: None,
-        },
-    ));
-    dag.add_node(Node::opaque(
-        "parse_a",
-        vec![Port::scalar("response", "TransportResponse")],
-        vec![Port::scalar("body", "String")],
-        LoweredOp::Callable {
-            module: "sample.triplets".to_string(),
-            kind: CallableKind::Pattern,
-            name: "parse_a".to_string(),
-            obligation: ObligationCategory::None,
-            service_metadata: None,
-            is_interactive: false,
-            resource_target: None,
-            fn_body: None,
-        },
-    ));
+    dag.add_node(
+        Node::opaque(
+            "prepare_a",
+            vec![],
+            vec![Port::scalar("request", "TransportRequest")],
+            LoweredOp::Callable {
+                module: "sample.triplets".to_string(),
+                kind: CallableKind::Pattern,
+                name: "prepare".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+                fn_body: None,
+            },
+        )
+        .with_kind(NodeKind::TransportPrepare),
+    );
+    dag.add_node(
+        Node::opaque(
+            "execute_a",
+            vec![Port::scalar("request", "TransportRequest")],
+            vec![Port::scalar("response", "TransportResponse")],
+            LoweredOp::Callable {
+                module: "sample.triplets".to_string(),
+                kind: CallableKind::Pattern,
+                name: "execute".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+                fn_body: None,
+            },
+        )
+        .with_kind(NodeKind::TransportExecute),
+    );
+    dag.add_node(
+        Node::opaque(
+            "parse_z",
+            vec![Port::scalar("response", "TransportResponse")],
+            vec![Port::scalar("body", "String")],
+            LoweredOp::Callable {
+                module: "sample.triplets".to_string(),
+                kind: CallableKind::Pattern,
+                name: "parse_z".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+                fn_body: None,
+            },
+        )
+        .with_kind(NodeKind::TransportParse),
+    );
+    dag.add_node(
+        Node::opaque(
+            "parse_a",
+            vec![Port::scalar("response", "TransportResponse")],
+            vec![Port::scalar("body", "String")],
+            LoweredOp::Callable {
+                module: "sample.triplets".to_string(),
+                kind: CallableKind::Pattern,
+                name: "parse_a".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+                fn_body: None,
+            },
+        )
+        .with_kind(NodeKind::TransportParse),
+    );
     dag.add_node(Node::opaque(
         "non_transport_sink",
         vec![Port::scalar("value", "String")],
@@ -1401,7 +1422,8 @@ fn run() -> Unit {}
     );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
-    assert_typecheck_stage_error(&error);
+    assert!(error.contains("resolve error"));
+    assert!(!error.contains("lower error"));
     assert!(error.contains("unresolved import"));
     assert!(error.contains("missing.dep"));
 

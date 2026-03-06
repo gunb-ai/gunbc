@@ -577,7 +577,7 @@ mod tests {
         let node = RetryBuilder::new("test").with_body(body).build();
 
         match &node.body {
-            NodeBody::SubDag(dag) => {
+            NodeBody::SubDag(dag, _) => {
                 assert_eq!(dag.nodes.len(), 3);
                 let names: Vec<_> = dag.nodes.iter().map(|n| n.id.0.as_str()).collect();
                 assert!(names.contains(&"controller"));
@@ -632,7 +632,7 @@ mod tests {
             .build();
 
         match &node.body {
-            NodeBody::SubDag(dag) => {
+            NodeBody::SubDag(dag, _) => {
                 assert_eq!(dag.nodes.len(), 4);
                 let names: Vec<_> = dag.nodes.iter().map(|n| n.id.0.as_str()).collect();
                 assert!(names.contains(&"init"));
@@ -682,7 +682,7 @@ mod tests {
         let node = PollBuilder::new("test").with_body(body).build();
 
         match &node.body {
-            NodeBody::SubDag(dag) => {
+            NodeBody::SubDag(dag, _) => {
                 assert_eq!(dag.nodes.len(), 3);
                 let names: Vec<_> = dag.nodes.iter().map(|n| n.id.0.as_str()).collect();
                 assert!(names.contains(&"timer"));

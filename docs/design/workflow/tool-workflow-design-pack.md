@@ -556,7 +556,7 @@ base gist ──────────────┼─── diff: git_diff 
 
 ## 5. Bootstrap Workflow (WF19-D)
 
-### 5.1 Process-Level DAG (from `gunbc-dag/src/bootstrap/graph.rs`)
+### 5.1 Process-Level DAG (from `gunbc-app/src/bootstrap/graph.rs`)
 
 ```mermaid
 flowchart LR
@@ -598,7 +598,7 @@ when keying is correct.
 
 ## 6. Makegen Workflow (WF19-D)
 
-### 6.1 Process-Level DAG (from `gunbc-dag/src/makegen/graph.rs`)
+### 6.1 Process-Level DAG (from `gunbc-app/src/makegen/graph.rs`)
 
 ```mermaid
 flowchart LR
@@ -626,7 +626,7 @@ FS Write          upsert(Makefile)        generated content hash         content
 
 ## 7. Pragma Workflow (WF19-D)
 
-### 7.1 Process-Level DAG (from `gunbc-dag/src/pragma/graph.rs`)
+### 7.1 Process-Level DAG (from `gunbc-app/src/pragma/graph.rs`)
 
 ```mermaid
 flowchart LR

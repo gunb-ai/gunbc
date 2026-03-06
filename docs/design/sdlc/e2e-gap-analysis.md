@@ -1,9 +1,13 @@
 # SDLC Pipeline E2E Gap Analysis
 
-Status: Complete — All gaps A-J resolved, all bridges eliminated
+Status: Historical profile-era gap analysis; not current execution status
 Date: 2026-02-21
 Parent: [mega-modeling-design.md](mega-modeling-design.md) (MD0-D)
 Scope: Delta between the mega modeling design and current implementation for end-to-end pipeline execution, with specific focus on gaps blocking a local dry-run deployment.
+
+Status note (2026-03-05): this document captures an earlier closure plan built
+around profile-based binding. Current SDLC proof and tasking have moved on; use
+`TODO/sdlc.md`, `tasks.md`, and `scenario-readiness.md` for the active state.
 
 ## 0. DSL-Native Implementation Status (CG169)
 
@@ -360,7 +364,7 @@ Historical locations:
 
 ### Gap G: Worker Does Not Invoke Compiled DAG
 
-**Current state**: `gunbc-dag/src/bin/sdlc.rs` manages ledgers but the `run_worker` function calls `execute_stage_idea_to_design()` which is a minimal stub (`sdlc.rs:2494-2506`). The stub posts a static "Generated design prompt" comment via `StubIssueTransport` (which is itself a no-op) and transitions the label from Idea to Design. No other stage handler exists — all intake records, regardless of their current stage, go through this single handler.
+**Current state**: `gunbc-app/src/bin/sdlc.rs` manages ledgers but the `run_worker` function calls `execute_stage_idea_to_design()` which is a minimal stub (`sdlc.rs:2494-2506`). The stub posts a static "Generated design prompt" comment via `StubIssueTransport` (which is itself a no-op) and transitions the label from Idea to Design. No other stage handler exists — all intake records, regardless of their current stage, go through this single handler.
 
 **Specific problems**:
 1. Only idea→design transition is handled. Records at design, design-review, accepted, implementing, code-review, or testing stages are "executed" but nothing meaningful happens.
@@ -497,7 +501,7 @@ The dry-run does NOT require:
 
 The SDLC system currently has two parallel execution paths that implement overlapping logic differently:
 
-**Path 1: Rust Worker (`gunbc-dag/src/bin/sdlc.rs`)**
+**Path 1: Rust Worker (`gunbc-app/src/bin/sdlc.rs`)**
 - Manages ledgers (intake, claim, artifact, run_state, agent).
 - Implements claim acquisition, heartbeat, release, reconciliation, drain, replay-skip.
 - Implements stage execution via `execute_stage_idea_to_design()` (one stage only).
@@ -612,7 +616,7 @@ These changes enable a local dry-run where the worker progresses issues through 
 
 Replace the direct `execute_stage_idea_to_design()` call in `run_worker` with the `execute_stage()` dispatcher from Sprint 11. The dispatcher routes by `record.stage` to the appropriate handler.
 
-Location: `gunbc-dag/src/bin/sdlc.rs:1061-1062`
+Location: `gunbc-app/src/bin/sdlc.rs:1061-1062`
 ```rust
 // Current:
 let transport = StubIssueTransport;

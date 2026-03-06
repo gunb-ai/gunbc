@@ -1,12 +1,21 @@
 # Lane 3: SDLC Pipeline
 
+> **Reference note (2026-03-05)**: Active SDLC planning now lives in `tasks.md`
+> Phase H. This file is a branch-status/reference snapshot, not the source of
+> truth for prioritization.
+
 **Goal**: Run the SDLC pipeline end-to-end — from issue discovery through design, implementation, code review, testing, and close. This is the objective of all the compiler and infrastructure work.
 
 **Design docs**:
 - `docs/design/sdlc/domain-modeling-comprehensive.md` — entity/relationship/state machine model
-- `docs/design/sdlc/e2e-gap-analysis.md` — gap resolution (all resolved via DSL)
-- `docs/design/sdlc/production-gap-analysis.md` — activation blockers
-- `docs/design/sdlc/scenario-readiness.md` — practical go/no-go scenarios (demo -> local pilot -> cloud canary)
+- `docs/design/sdlc/execution-intent-binding-plan.md` — `SM-1` / `SM-2` design for reusable execution intent and binding/link modeling
+- `docs/design/sdlc/e2e-gap-analysis.md` — historical profile-era gap analysis
+- `docs/design/sdlc/production-gap-analysis.md` — historical blocker baseline before current compile/dry-run proof
+- `docs/design/sdlc/scenario-readiness.md` — practical go/no-go modes for local and hosted rollout
+
+> **Planning relationship (2026-03-05)**: `tasks.md` Phase H is now the single
+> active planning surface. This file remains useful as a status snapshot and
+> reference input when updating that lane.
 
 > **Lesson**: Prove compilation before building infrastructure. The SDLC pipeline was built 3 times
 > (Rust binary → DSL pipeline → deleted → rebuilt as 20 .dag files) with elaborate cloud infra
@@ -22,7 +31,7 @@
 ```
 Interfaces:   7/7  COMPLETE — fully specified with behavioral contracts
 Providers:    9/18 COMPLETE, 6/18 PARTIAL, 3/18 STUB
-Profiles:     TEMPORARY local compatibility profile restored for real-mode proof
+Bindings:     no-profile dry-run path proven; temporary local compatibility profile restored for real-mode proof
 Pipeline:     11 stages with real logic (design, review, code review, testing)
 Worker:       COMPLETE — discovery, claim, dispatch, record
 Handlers:     8 per-stage functions with LLM + CI integration
@@ -34,7 +43,24 @@ Branch reality on 2026-03-05:
 
 - `profiles.sdlc.local` exists only as a temporary unblocker for local real-mode SDLC proof and is currently pinned to `gunb-ai/integration_testing`.
 - The long-term direction is still to remove profile concepts and replace them with domain-modeled concrete binding/link artifacts.
+- Generated and user-facing CLIs no longer expose `--profile`; the temporary compatibility path is currently exercised through Rust tests via `BuildOpts.profile`.
 - CI does not continuously prove local real mode; that proof remains env-gated and operator-controlled.
+
+### Tonight's doc lane
+
+1. Make the temporary-vs-target binding split explicit everywhere.
+2. Treat current proof surfaces as the baseline: compile tests, worker dry-run, and the env-gated local live harness.
+3. Demote older profile-era SDLC docs to historical/reference status instead of letting them silently drive current planning.
+4. Flesh out the four operating modes we actually care about: local dev testing, local real testing, remote dev testing, and remote real runs.
+
+### Execution mode map
+
+| Mode | What it is | Current proof | Remaining must-have work |
+|------|------------|---------------|--------------------------|
+| Local dev testing | Developer-machine compile + dry-run with mocked boundaries and no external mutation | `make ci`; SDLC compile tests; `dispatch_sdlc_dry_run_completes_without_legacy_bindings` | Keep this path green while compiler cleanup lands; do not let real-mode work break no-profile dry-run |
+| Local real testing | Developer-machine run against real GitHub/LLM with local file-backed state and explicit mutation opt-in | env-gated `s10_local_profile_binds_real_local_providers`; env-gated `s11_local_profile_design_stage_e2e` | Finish S-9 provider-op proof, make S-11 repeatable, then drive S-12 through S-15 locally before relying on hosted rollout |
+| Remote dev testing | Hosted canary in non-prod infra against dev repo/queue with real cloud stores and bounded blast radius | structural wiring and env-gated hosted harnesses for S-16 through S-18 | Concrete hosted binding/link artifacts, single-worker canary proof, deploy/health/signal validation in non-prod project |
+| Remote real runs | Hosted fleet processing the real queue/repo with production mutations | none yet | S-19 multi-worker contention proof, hosted rollback/drain procedure, observability, and clear operator ownership |
 
 ### What works (on paper)
 
@@ -86,7 +112,7 @@ Phase 0 **complete**: the active SDLC .dag files compile through the Rust compil
 
 ## Phase 2: Local Real Run
 
-**Goal**: `gunbc sdlc --profile local` processes a real GitHub issue through design stage.
+**Goal**: The current local compatibility binding path processes a real GitHub issue through design stage.
 
 > **Prerequisite**: S-7 passes (dry-run completes all stages).
 
@@ -113,13 +139,13 @@ Phase 0 **complete**: the active SDLC .dag files compile through the Rust compil
 
 ---
 
-## Phase 4: Production (cloud_run profile)
+## Phase 4: Production (hosted concrete bindings)
 
 > **Prerequisite**: S-15 passes (full pipeline works locally).
 
 | # | ID | What | Acceptance Criteria | Size | Status |
 |---|-----|------|---------------------|------|--------|
-| 16 | S-16 | **GCS provider verification.** Claims, outcomes, artifacts stored in GCS with generation-based CAS. | Integration test (gated by GCP credentials) exercises claim/release/outcome operations against real GCS. Generation-based CAS prevents double-writes. | L | In Progress (cloud_run structural wiring + env-gated CAS/live harness added) |
+| 16 | S-16 | **GCS provider verification.** Claims, outcomes, artifacts stored in GCS with generation-based CAS. | Integration test (gated by GCP credentials) exercises claim/release/outcome operations against real GCS. Generation-based CAS prevents double-writes. | L | In Progress (hosted-provider structural wiring + env-gated CAS/live harness added) |
 | 17 | S-17 | **Cloud Run deployment.** Deploy worker to Cloud Run via `deploy.dag` infrastructure. | `gcloud run services describe gunbc-sdlc-worker` returns running service. Health check endpoint returns 200. | L | In Progress (env-gated deploy/health live harness added) |
 | 18 | S-18 | **Signal delivery.** Pub/Sub signals trigger worker execution. | Publishing a test signal to the topic triggers a worker execution. Worker log shows signal received and processed. | M | In Progress (env-gated Pub/Sub + log verification harness added) |
 | 19 | S-19 | **Multi-worker fleet.** Multiple workers process different issues concurrently without claim conflicts. | 3+ workers processing 5+ issues. No double-processing (CAS prevents). All issues reach expected stage. | L | In Progress (env-gated parallel CAS contention harness added) |
@@ -128,8 +154,8 @@ Phase 0 **complete**: the active SDLC .dag files compile through the Rust compil
 
 ## Provider Implementation Matrix
 
-| Interface | unit_test | local | cloud_run | Notes |
-|-----------|-----------|-------|-----------|-------|
+| Interface | Dry-run / unit-test intent | Local compatibility path | Hosted target | Notes |
+|-----------|------------------------|---------------------------|---------------|-------|
 | IssueProvider | stub (in-memory) | GitHub REST | GitHub REST | 7 operations |
 | ClaimStore | stub (in-memory) | file (JSON + OS lock) | GCS (generation CAS) | Multi-worker via CAS |
 | OutcomeLedger | stub (in-memory) | file (JSON) | GCS (JSON objects) | Idempotent upsert |
@@ -143,6 +169,7 @@ Phase 0 **complete**: the active SDLC .dag files compile through the Rust compil
 - **Parameterized headers**: GCS CAS needs `x-goog-if-generation-match` injected from input fields. Compiler only supports static headers. Rust worker must construct at runtime.
 - **Cross-callable data flow**: Service call arguments referencing callable parameters have limited wiring. Workaround: inline service calls into one func.
 - **Same-module extern func wiring**: Calls to `extern func` from same module break codegen. Workaround: cross-module pattern.
+- **Concrete binding cleanup still pending**: the temporary `profiles.sdlc.local` compatibility path is still required for local real-mode proof. AUTH-4 and DM-3A track the compiler cleanup needed to remove it.
 
 ## Transport Completeness (supporting work)
 
@@ -163,7 +190,7 @@ Phase 0 **complete**: the active SDLC .dag files compile through the Rust compil
 ## Success Criteria
 
 1. **Phase 0**: All SDLC .dag files compile. Rust integration test proves it. **This gates everything.**
-2. **Phase 1**: `gunbc sdlc --profile unit_test --dry-run` completes all stages.
-3. **Phase 2**: One real GitHub issue processed through design stage locally.
+2. **Phase 1**: `dispatch_sdlc` dry-run completes on the no-profile compile path with auto-mocked boundaries.
+3. **Phase 2**: One real GitHub issue is processed through design stage via the temporary local compatibility binding path.
 4. **Phase 3**: Full pipeline: Idea → Done without manual intervention.
 5. **Phase 4**: Multi-worker fleet on Cloud Run processing issues concurrently.

@@ -29,6 +29,7 @@
 pub mod atomic;
 pub mod authenticate;
 pub mod branch;
+pub mod collection;
 pub mod content_upsert;
 pub mod emit;
 pub mod loop_pattern;
@@ -45,6 +46,7 @@ pub use authenticate::{
     AuthenticatePhase, AuthenticatePhaseBinding,
 };
 pub use branch::BranchBuilder;
+pub use collection::CollectionKind;
 pub use emit::EmitBuilder;
 pub use loop_pattern::LoopBuilder;
 pub use pattern_op::PatternOp;

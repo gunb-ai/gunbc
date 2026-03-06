@@ -64,17 +64,25 @@ fn write_minimal_directory_compile_fixture(root: &Path) {
 }
 
 fn assert_typecheck_stage_failure(stderr: &str) {
-    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("compile diagnostics"));
     assert!(
-        !stderr.contains("lower error"),
+        stderr.contains("[TC"),
+        "expected failure to include typecheck diagnostics: {stderr}"
+    );
+    assert!(
+        !stderr.contains("[LOW"),
         "expected failure to remain in typecheck stage: {stderr}"
     );
 }
 
 fn assert_lower_stage_failure(stderr: &str) {
-    assert!(stderr.contains("lower error"));
+    assert!(stderr.contains("compile diagnostics"));
     assert!(
-        !stderr.contains("typecheck errors"),
+        stderr.contains("[LOW"),
+        "expected failure to include lowering diagnostics: {stderr}"
+    );
+    assert!(
+        !stderr.contains("[TC"),
         "expected failure to remain in lowering stage: {stderr}"
     );
 }
@@ -7166,8 +7174,12 @@ fn obligations_command_json_full_dsl_root_fails_on_ambiguous_resource_bindings()
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("lower error"),
+        stderr.contains("compile diagnostics"),
         "full dsl obligations should fail in lower stage: {stderr}"
+    );
+    assert!(
+        stderr.contains("[LOW"),
+        "full dsl obligations should include lowering diagnostics: {stderr}"
     );
     assert!(
         stderr.contains("without a concrete binding") || stderr.contains("ambiguous"),
@@ -8459,11 +8471,14 @@ fn compile_command_directory_mode_fails_on_unresolved_imports() {
         "directory compile should fail on unresolved imports"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert_typecheck_stage_failure(&stderr);
-    assert!(stderr.contains("unresolved import"));
+    // CP-1: unresolved imports now fail at resolve stage (earlier than typecheck)
     assert!(
-        !stderr.contains("lower error"),
-        "unresolved imports should fail in typecheck stage: {stderr}"
+        stderr.contains("unresolved import"),
+        "expected unresolved import error: {stderr}"
+    );
+    assert!(
+        stderr.contains("missing.dep"),
+        "expected missing.dep in error: {stderr}"
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");

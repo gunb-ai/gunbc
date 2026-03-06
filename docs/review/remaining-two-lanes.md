@@ -6,7 +6,7 @@
 ## Lane Split Rationale
 
 **Lane A (Compiler + Binaries)** owns all Rust changes: compiler pipeline completion,
-CLI generator, binary elimination, registry cleanup. Changes `core/`, `gunbc-dag/src/`,
+CLI generator, binary elimination, registry cleanup. Changes `core/`, `gunbc-app/src/`,
 `lib/`.
 
 **Lane B (DSL Authoring)** owns all `.dag` file creation: external dependency models,
@@ -19,7 +19,7 @@ No file overlap. No merge conflicts.
 
 ## Lane A: Compiler Pipeline + Binary Elimination
 
-**Rust-only.** Files: `core/`, `gunbc-dag/src/`, `lib/`.
+**Rust-only.** Files: `core/`, `gunbc-app/src/`, `lib/`.
 **Goal:** Complete the compiler refactoring, unblock and execute binary elimination,
 finish registry cleanup. Net ~4,000 LOC deletion.
 
@@ -184,7 +184,7 @@ Add to Lane A as red-team debt tokens. Each must include an RT id and deletion c
 | RT-N3 | **Fidelity Enum backward-compat path.** `enum_variant()` in `core/codegen/src/fidelity.rs` handles both `Value::Enum` and `Value::Str`. The `Value::Str` path is backward-compat for pre-C3 graphs. | Delete `Value::Str` arm once all compiled graphs use `Value::Enum` exclusively. Add a test that verifies no stdlib evaluation returns `Value::Str` for variant values. | S | A3 |
 | RT-N4 | **Config block unknown keys swallowed.** Parser `_ => { self.advance(); }` in service config blocks silently consumes unknown configuration keys. | Emit a parse diagnostic for unknown config keys (warn or error). Known keys: `endpoint`, `auth`, `auth_input`. | S | A3 |
 | RT-N5 | **Nested field-chain wiring workaround.** `dsl/cloud/gcp/credential.dag` has `extract_secret()` helper and alias output to avoid `cred.token.token` field-chain wiring. | Implement field-chain wiring (`x.y.z`) generically in the lowerer's expression-to-source resolution. Delete `extract_secret` and alias outputs. | M | A1 (part of C10-full) |
-| RT-N6 | **`#[path]` crate boundary in core/resolve.** `core/resolve/src/service_ops.rs` uses `#[path = "...gunbc-dag/src/resolve_service.rs"]`. Compiles the file twice, bloats incremental builds. | `git mv` the file. Extract `use super::*` dependencies into shared types. `gunbc-dag` imports from `gunbc_resolve::service_ops`. | L | A3 |
+| RT-N6 | **`#[path]` crate boundary in core/resolve.** `core/resolve/src/service_ops.rs` uses `#[path = "...gunbc-app/src/resolve_service.rs"]`. Compiles the file twice, bloats incremental builds. | `git mv` the file. Extract `use super::*` dependencies into shared types. `gunbc-app` imports from `gunbc_resolve::service_ops`. | L | A3 |
 | RT-N7 | **ExprCompute is runtime interpreter.** `ExprComputeOp` builds a `LoweredFnBody` and calls `evaluate_fn_body` at runtime — "interpreter inside runtime." | Either fully desugar expressions into DAG nodes (preferred), or make compute nodes first-class compiled node type. Delete `ExprComputeOp` when all return expressions are desugared. | L | A1 (subsumes C10-full) |
 
 ### Red-Team Review #4 — New Tasks
@@ -200,7 +200,7 @@ Add to Lane A as red-team debt tokens. Each must include an RT id and deletion c
 | RT-N14 | **Stub functions in `pipelines/sdlc.dag`.** `generate_implementation_plan`/`get_pr_diff` are placeholders. | Implement or delete/feature-flag so stubs can't be called accidentally. | M | B (DSL) |
 
 **Guardrail proposal** (for preventing reinfection):
-- Ban-list for `core/` and `gunbc-dag/src/`: `panic!` on user input, `unwrap_or(<default>)` on parse/type/lower paths, `eprintln!` as diagnostic, `ends_with("?")` optionality checks — require `// RT-xx temporary` comment with tracked task id.
+- Ban-list for `core/` and `gunbc-app/src/`: `panic!` on user input, `unwrap_or(<default>)` on parse/type/lower paths, `eprintln!` as diagnostic, `ends_with("?")` optionality checks — require `// RT-xx temporary` comment with tracked task id.
 - Workaround comments must include: RT id, corresponding row in gap-analysis-tasks.md, deletion criteria.
 
 ## What's Done (from this session)

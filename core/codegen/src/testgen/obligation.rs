@@ -50,14 +50,22 @@ pub struct ProofObligation {
     /// Whether this obligation was discharged statically.
     /// Only `Unknown` and `RuntimeOnly` obligations produce tests.
     pub status: DischargeStatus,
+    /// Why this obligation exists: compiler gap or inherently runtime (CP-55).
+    /// Used for ratchet tracking — `CompilerGap` count should only decrease.
+    pub provenance: ObligationProvenance,
 }
 
 impl ProofObligation {
-    /// Create a new undischarged obligation.
+    /// Create a new undischarged obligation with compiler gap provenance.
     pub fn new(kind: Obligation, reason: impl Into<String>, source: ObligationSource) -> Self {
+        let reason = reason.into();
         Self {
+            provenance: ObligationProvenance::CompilerGap {
+                stage: "unknown",
+                reason: reason.clone(),
+            },
             kind,
-            reason: reason.into(),
+            reason,
             source,
             status: DischargeStatus::Unknown,
         }
@@ -65,9 +73,13 @@ impl ProofObligation {
 
     /// Create a runtime-only obligation (cannot be statically discharged).
     pub fn runtime(kind: Obligation, reason: impl Into<String>, source: ObligationSource) -> Self {
+        let reason = reason.into();
         Self {
+            provenance: ObligationProvenance::InherentlyRuntime {
+                reason: reason.clone(),
+            },
             kind,
-            reason: reason.into(),
+            reason,
             source,
             status: DischargeStatus::RuntimeOnly,
         }
@@ -90,6 +102,20 @@ impl ProofObligation {
             reason: reason.into(),
         };
         self
+    }
+
+    /// Set the compiler gap stage and reason (CP-55 provenance tracking).
+    pub fn with_gap(mut self, stage: &'static str, reason: impl Into<String>) -> Self {
+        self.provenance = ObligationProvenance::CompilerGap {
+            stage,
+            reason: reason.into(),
+        };
+        self
+    }
+
+    /// Whether this obligation is a compiler gap (vs inherently runtime).
+    pub fn is_compiler_gap(&self) -> bool {
+        matches!(self.provenance, ObligationProvenance::CompilerGap { .. })
     }
 
     /// Whether this obligation needs a runtime test.
@@ -340,6 +366,30 @@ pub enum ObligationSource {
     ResourceModel,
 }
 
+/// Why a proof obligation exists (CP-55): compiler gap vs inherently runtime.
+///
+/// `CompilerGap` means "the compiler should have proved this but couldn't."
+/// `InherentlyRuntime` means "this can only be tested at runtime by design."
+/// Count of `CompilerGap` obligations is a ratchet — it should only decrease
+/// as the compiler pipeline improves.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ObligationProvenance {
+    /// The compiler should have proved this but couldn't.
+    /// The stage and reason explain what's missing.
+    CompilerGap {
+        /// Which compiler stage should have proved this (e.g., "typecheck", "lower", "verify").
+        stage: &'static str,
+        /// What information is missing for the compiler to prove this.
+        reason: String,
+    },
+    /// This obligation can only be verified at runtime by design.
+    /// No compiler improvement will eliminate it.
+    InherentlyRuntime {
+        /// Why this must be tested at runtime (e.g., "live API response shapes").
+        reason: String,
+    },
+}
+
 /// Whether a proof obligation has been discharged.
 #[derive(Debug, Clone)]
 pub enum DischargeStatus {
@@ -385,6 +435,17 @@ impl ObligationSet {
     /// Whether any obligations are provably invalid.
     pub fn has_invalids(&self) -> bool {
         self.all.iter().any(|o| o.is_invalid())
+    }
+
+    /// Count of testable obligations that are compiler gaps (CP-55 ratchet).
+    ///
+    /// This number should only decrease as the compiler pipeline improves.
+    /// `InherentlyRuntime` obligations are excluded — they will always exist.
+    pub fn compiler_gap_count(&self) -> usize {
+        self.testable()
+            .into_iter()
+            .filter(|o| o.is_compiler_gap())
+            .count()
     }
 
     /// Get obligations by bucket.
@@ -478,6 +539,7 @@ impl ObligationSet {
                 .count(),
             invalid: invalids.len(),
             testable: testable.len(),
+            compiler_gaps: self.compiler_gap_count(),
             bucket_a: self.bucket_a().len(),
             bucket_b: self.bucket_b().len(),
             bucket_c: self.bucket_c().len(),
@@ -493,6 +555,9 @@ pub struct ObligationStats {
     pub discharged: usize,
     pub invalid: usize,
     pub testable: usize,
+    /// How many testable obligations are compiler gaps (CP-55 ratchet).
+    /// This count should only decrease over time.
+    pub compiler_gaps: usize,
     pub bucket_a: usize,
     pub bucket_b: usize,
     pub bucket_c: usize,
@@ -504,11 +569,12 @@ impl std::fmt::Display for ObligationStats {
         if self.invalid > 0 {
             write!(
                 f,
-                "{} obligations ({} discharged, {} INVALID, {} testable: A={}, B={}, C={}, D={})",
+                "{} obligations ({} discharged, {} INVALID, {} testable [{} compiler gaps]: A={}, B={}, C={}, D={})",
                 self.total,
                 self.discharged,
                 self.invalid,
                 self.testable,
+                self.compiler_gaps,
                 self.bucket_a,
                 self.bucket_b,
                 self.bucket_c,
@@ -517,10 +583,11 @@ impl std::fmt::Display for ObligationStats {
         } else {
             write!(
                 f,
-                "{} obligations ({} discharged, {} testable: A={}, B={}, C={}, D={})",
+                "{} obligations ({} discharged, {} testable [{} compiler gaps]: A={}, B={}, C={}, D={})",
                 self.total,
                 self.discharged,
                 self.testable,
+                self.compiler_gaps,
                 self.bucket_a,
                 self.bucket_b,
                 self.bucket_c,

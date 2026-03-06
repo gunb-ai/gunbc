@@ -1,13 +1,15 @@
 use super::*;
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::parser;
-use daglang_typecheck::typecheck_module_graph;
-use gunbc_dag::extern_ops::GunbcExternResolver;
+use daglang_typecheck::{
+    typecheck_module_graph, typecheck_owned_module_graph,
+    typecheck_owned_module_graph_with_options, TypecheckOptions, TypedProject,
+};
+use gunbc_app::extern_ops::gunbc_runtime_bindings;
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::{Edge, Port};
 use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::fs;
 use std::path::{Path, PathBuf};
 
 fn build_entrypoint_graph(
@@ -16,7 +18,7 @@ fn build_entrypoint_graph(
 ) -> gunbc_ir::Dag<gunbc_exec::DynOp> {
     build_dsl_graph(
         relative_module,
-        &GunbcExternResolver,
+        gunbc_runtime_bindings(),
         BuildOpts {
             entry_func: Some(entry_func),
             profile: None,
@@ -26,7 +28,7 @@ fn build_entrypoint_graph(
     .unwrap_or_else(|e| panic!("`{relative_module}` entry `{entry_func}` should build: {e}"))
 }
 
-fn typed_project_from_sources(sources: &[(&str, &str)]) -> TypedProject {
+fn module_graph_from_sources(sources: &[(&str, &str)]) -> ModuleGraph {
     let modules = sources
         .iter()
         .map(|(path, source)| {
@@ -41,10 +43,38 @@ fn typed_project_from_sources(sources: &[(&str, &str)]) -> TypedProject {
                 ast,
                 module_path,
                 dependencies: Vec::new(),
+                source: source.to_string(),
             }
         })
-        .collect();
-    typecheck_module_graph(ModuleGraph { modules }).expect("typecheck should succeed")
+        .collect::<Vec<_>>();
+    let module_lookup = modules
+        .iter()
+        .enumerate()
+        .map(|(index, module)| (module.module_path.as_dotted(), index))
+        .collect::<HashMap<_, _>>();
+    let mut modules = modules;
+    for module in &mut modules {
+        module.dependencies = module
+            .ast
+            .imports
+            .iter()
+            .filter_map(|import| module_lookup.get(&import.node.path.as_dotted()).copied())
+            .collect::<Vec<_>>();
+    }
+    ModuleGraph { modules }
+}
+
+fn typed_project_from_sources(sources: &[(&str, &str)]) -> TypedProject<'static> {
+    typecheck_owned_module_graph(module_graph_from_sources(sources))
+        .expect("typecheck should succeed")
+}
+
+fn typed_project_from_sources_with_options(
+    sources: &[(&str, &str)],
+    options: TypecheckOptions,
+) -> TypedProject<'static> {
+    typecheck_owned_module_graph_with_options(module_graph_from_sources(sources), options)
+        .expect("typecheck should succeed")
 }
 
 fn callable_stmts_from_source(source: &str) -> Vec<Stmt> {
@@ -60,7 +90,7 @@ fn callable_stmts_from_source(source: &str) -> Vec<Stmt> {
 
 // Test infrastructure: filesystem access for real DSL corpus fixtures.
 #[allow(clippy::disallowed_methods)]
-fn typed_project_for_module_with_dependency_closure(module_name: &str) -> TypedProject {
+fn typed_project_for_module_with_dependency_closure(module_name: &str) -> TypedProject<'static> {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
     let graph = ModuleGraph::discover(&[dsl_root]).expect("module graph discovery should succeed");
     let target_index = graph
@@ -103,28 +133,26 @@ fn typed_project_for_module_with_dependency_closure(module_name: &str) -> TypedP
             .collect::<Vec<_>>();
         modules.push(module);
     }
-    typecheck_module_graph(ModuleGraph { modules }).expect("typecheck should succeed")
+    typecheck_owned_module_graph(ModuleGraph { modules }).expect("typecheck should succeed")
 }
 
-fn lower_target_module(typed: &TypedProject, module_name: &str) -> Dag<LoweredOp> {
+fn lower_target_module(typed: &TypedProject<'_>, module_name: &str) -> Dag<LoweredOp> {
     let mut scope = HashSet::new();
     scope.insert(module_name.to_string());
     lower_typed_project_for_modules(typed, &scope).expect("lowering should succeed")
 }
 
 fn lower_target_module_with_dependency_scope(
-    typed: &TypedProject,
+    typed: &TypedProject<'_>,
     module_name: &str,
 ) -> Dag<LoweredOp> {
     let module_lookup = typed
-        .modules
-        .iter()
+        .modules()
         .enumerate()
         .map(|(index, module)| (module.module_path.as_dotted(), index))
         .collect::<HashMap<_, _>>();
     let target_index = typed
-        .modules
-        .iter()
+        .modules()
         .position(|module| module.module_path.as_dotted() == module_name)
         .expect("target module should exist in typed project");
     let mut scope = HashSet::new();
@@ -134,11 +162,11 @@ fn lower_target_module_with_dependency_scope(
         if !visited.insert(module_index) {
             continue;
         }
-        let Some(module) = typed.modules.get(module_index) else {
+        let Some(module) = typed.module(module_index) else {
             continue;
         };
         scope.insert(module.module_path.as_dotted());
-        for import in &module.imports {
+        for import in module.imports() {
             let import_name = import.as_dotted();
             if let Some(import_index) = module_lookup.get(&import_name) {
                 queue.push_back(*import_index);
@@ -150,9 +178,11 @@ fn lower_target_module_with_dependency_scope(
 
 #[test]
 fn extern_func_decl_lowers_to_extern_call_and_wires_content_upsert() {
-    let typed = typed_project_from_sources(&[(
-        "sample/externs.dag",
-        r#"module sample.externs
+    let dag = lower_typed_project_for_module_with_dependency_closure_and_entry(
+        "sample.externs",
+        &[(
+            "dsl/sample/externs.dag",
+            r#"module sample.externs
 import std.patterns { content_upsert }
 
 extern func render() -> { return: String }
@@ -162,9 +192,8 @@ func run() -> { written: Bool } {
   result = content_upsert(content: content, path: "out.txt")
   return { written: result.written }
 }"#,
-    )]);
-
-    let dag = lower_target_module(&typed, "sample.externs");
+        )],
+    );
 
     let render_node = dag
         .nodes
@@ -193,6 +222,86 @@ func run() -> { written: Bool } {
                 e.from_node.0, e.from_port.0, e.to_node.0, e.to_port.0
             ))
             .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn content_upsert_result_written_uses_per_call_written_node() {
+    let dag = lower_typed_project_for_module_with_dependency_closure_and_entry(
+        "sample.upsert",
+        &[(
+            "dsl/sample/upsert.dag",
+            r#"module sample.upsert
+import std.patterns { content_upsert }
+
+func run(content: String) -> { written: Bool } {
+  result = content_upsert(content: content, path: "out.txt")
+  return { written: result.written }
+}"#,
+        )],
+    );
+
+    let written_node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0 == "content_upsert_written_run")
+        .expect("content_upsert should synthesize a per-call written node");
+    match &written_node.body {
+        NodeBody::Opaque(LoweredOp::Primitive {
+            kind:
+                PrimitiveOpKind::UnaryOp {
+                    op: crate::expr::LoweredUnaryOp::Not,
+                },
+            ..
+        }) => {}
+        other => panic!("expected UnaryOp(Not) written node, got {other:?}"),
+    }
+
+    let has_compare_to_written = dag.edges.iter().any(|edge| {
+        edge.from_node.0 == "compare_run_content"
+            && edge.from_port.0 == "fresh"
+            && edge.to_node.0 == "content_upsert_written_run"
+            && edge.to_port.0 == "operand"
+    });
+    assert!(
+        has_compare_to_written,
+        "compare.fresh should feed the synthetic written node; edges: {:?}",
+        dag.edges
+            .iter()
+            .map(|e| format!(
+                "{}.{}->{}.{}",
+                e.from_node.0, e.from_port.0, e.to_node.0, e.to_port.0
+            ))
+            .collect::<Vec<_>>()
+    );
+
+    let has_written_to_return = dag.edges.iter().any(|edge| {
+        edge.from_node.0 == "content_upsert_written_run"
+            && edge.from_port.0 == "result"
+            && edge.to_node.0 == "sample.upsert::run"
+            && edge.to_port.0 == "__out:written"
+    });
+    assert!(
+        has_written_to_return,
+        "synthetic written node should drive the callable return; edges: {:?}",
+        dag.edges
+            .iter()
+            .map(|e| format!(
+                "{}.{}->{}.{}",
+                e.from_node.0, e.from_port.0, e.to_node.0, e.to_port.0
+            ))
+            .collect::<Vec<_>>()
+    );
+
+    let has_stale_fresh_passthrough = dag.edges.iter().any(|edge| {
+        edge.from_node.0 == "compare_run_content"
+            && edge.from_port.0 == "fresh"
+            && edge.to_node.0 == "sample.upsert::run"
+            && edge.to_port.0 == "__out:written"
+    });
+    assert!(
+        !has_stale_fresh_passthrough,
+        "callable return must not be wired directly from compare.fresh"
     );
 }
 
@@ -486,15 +595,19 @@ _ => 0
 }
 "#,
     )]);
-    let fn_body = typed
-        .modules
+    let module = typed
+        .modules()
+        .next()
+        .expect("sample source should contain one module");
+    let item = module
+        .ast
+        .items
         .first()
-        .and_then(|module| module.ast.items.first())
-        .and_then(|item| match &item.node {
-            Item::FnDef(def) => Some(&def.body),
-            _ => None,
-        })
-        .expect("sample source should contain a fn body");
+        .expect("sample source should contain one item");
+    let fn_body = match &item.node {
+        Item::FnDef(def) => &def.body,
+        _ => panic!("sample source should contain a fn body"),
+    };
     assert!(
         !fn_body.lossy,
         "expected non-lossy parsed function body for control-flow fixture"
@@ -696,7 +809,7 @@ transport rest { method: GET, path: "/read" }
         gunbc_ir::node::NodeBody::Opaque(op) => op
             .service_call_metadata()
             .expect("service metadata should be preserved"),
-        gunbc_ir::node::NodeBody::SubDag(_) => {
+        gunbc_ir::node::NodeBody::SubDag(..) => {
             panic!("expected opaque lowered node for execute transport")
         }
     };
@@ -737,7 +850,7 @@ transport shell { argv: ["cat", "{path}"] }
                 .expect("service metadata should be present")
                 .readonly,
         ),
-        gunbc_ir::node::NodeBody::SubDag(_) => {
+        gunbc_ir::node::NodeBody::SubDag(..) => {
             panic!("expected opaque lowered node for prepare transport")
         }
     };
@@ -758,7 +871,7 @@ fn shell_output_parsing_for_node(dag: &Dag<LoweredOp>, node_id: &str) -> ShellOu
         gunbc_ir::node::NodeBody::Opaque(op) => op
             .service_call_metadata()
             .expect("service metadata should be present"),
-        gunbc_ir::node::NodeBody::SubDag(_) => {
+        gunbc_ir::node::NodeBody::SubDag(..) => {
             panic!("expected opaque lowered node for transport metadata")
         }
     };
@@ -843,7 +956,7 @@ func run() -> { out: String } {
         gunbc_ir::node::NodeBody::Opaque(op) => op
             .service_call_metadata()
             .expect("service metadata should be present"),
-        gunbc_ir::node::NodeBody::SubDag(_) => {
+        gunbc_ir::node::NodeBody::SubDag(..) => {
             panic!("expected opaque lowered node for prepare transport")
         }
     };
@@ -931,9 +1044,10 @@ func run(path: String) -> { body: String } uses fs: Filesystem {
 
 #[test]
 fn unresolved_service_call_reports_lower_error() {
-    let typed = typed_project_from_sources(&[(
-        "dsl/services/unresolved_call.dag",
-        r#"module sample.services
+    let typed = typed_project_from_sources_with_options(
+        &[(
+            "dsl/services/unresolved_call.dag",
+            r#"module sample.services
 interface Storage {
   capability read {
 input { path: String }
@@ -947,7 +1061,12 @@ func run(path: String) -> { body: String } {
   let response = MissingStorage.read(path: path)
   return { body: response.body }
 }"#,
-    )]);
+        )],
+        TypecheckOptions {
+            allow_unresolved_imports: true,
+            ..Default::default()
+        },
+    );
     let error = lower_typed_project(&typed).expect_err("lowering should fail");
     assert!(matches!(
         error,
@@ -1932,13 +2051,19 @@ func run() -> { ok: Bool } uses fs: TempFile {
 
 #[test]
 fn unresolved_uses_clause_reports_lower_error() {
-    let typed = typed_project_from_sources(&[(
-        "dsl/resources/unresolved_uses.dag",
-        r#"module sample.resources
+    let typed = typed_project_from_sources_with_options(
+        &[(
+            "dsl/resources/unresolved_uses.dag",
+            r#"module sample.resources
 func run() -> { ok: Bool } uses fs: MissingResource {
   return { ok: true }
 }"#,
-    )]);
+        )],
+        TypecheckOptions {
+            allow_unresolved_imports: true,
+            ..Default::default()
+        },
+    );
     let error = lower_typed_project(&typed).expect_err("lowering should fail");
     assert!(matches!(
         error,
@@ -2263,8 +2388,7 @@ func cross_provider_auth() -> { ok: Bool } {
 fn aws_resource_module_emits_object_storage_contract_verification_nodes() {
     let typed = typed_project_for_module_with_dependency_closure("infra.aws.resources");
     let object_storage_contracts = typed
-        .modules
-        .iter()
+        .modules()
         .find(|module| module.module_path.as_dotted() == "infra.core")
         .and_then(|module| {
             module.ast.items.iter().find_map(|item| match &item.node {
@@ -2441,13 +2565,19 @@ func run() -> { ok: Bool } provides out: Storage {
 
 #[test]
 fn unresolved_provides_clause_reports_lower_error() {
-    let typed = typed_project_from_sources(&[(
-        "dsl/resources/unresolved_provides.dag",
-        r#"module sample.resources
+    let typed = typed_project_from_sources_with_options(
+        &[(
+            "dsl/resources/unresolved_provides.dag",
+            r#"module sample.resources
 func run() -> { ok: Bool } provides out: MissingResource {
   return { ok: true }
 }"#,
-    )]);
+        )],
+        TypecheckOptions {
+            allow_unresolved_imports: true,
+            ..Default::default()
+        },
+    );
     let error = lower_typed_project(&typed).expect_err("lowering should fail");
     assert!(matches!(
         error,
@@ -2687,7 +2817,7 @@ func prompt() -> { ok: Bool } {
         .find(|node| node.id.0 == "sample.ui::prompt")
         .and_then(|node| match &node.body {
             gunbc_ir::node::NodeBody::Opaque(op) => Some(op),
-            gunbc_ir::node::NodeBody::SubDag(_) => None,
+            gunbc_ir::node::NodeBody::SubDag(..) => None,
         })
         .expect("callable node should exist");
     assert!(matches!(
@@ -2887,9 +3017,7 @@ fn parity_report_lists_added_and_removed_items_in_sorted_order() {
 
 #[allow(clippy::disallowed_methods)]
 fn load_makegen_lowered() -> Dag<LoweredOp> {
-    let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
-    let source = fs::read_to_string(file).expect("should read makegen source");
-    let typed = typed_project_from_sources(&[("dsl/tools/makegen.dag", &source)]);
+    let typed = typed_project_for_module_with_dependency_closure("tools.makegen");
     lower_typed_project(&typed).expect("lowering should succeed")
 }
 
@@ -3202,6 +3330,7 @@ fn lower_typed_project_for_module_with_dependency_closure_and_entry(
             ast,
             module_path,
             dependencies: Vec::new(),
+            source: source.to_string(),
         };
         graph.modules.push(module);
     }
@@ -3238,18 +3367,16 @@ fn lower_typed_project_for_module_with_dependency_closure_and_entry(
         }
     }
 
-    let typed = typecheck_module_graph(graph).expect("typecheck should succeed");
+    let typed = typecheck_module_graph(&graph).expect("typecheck should succeed");
 
     // Build the scope: target module + all its transitive dependencies.
     let module_lookup: HashMap<String, usize> = typed
-        .modules
-        .iter()
+        .modules()
         .enumerate()
         .map(|(index, module)| (module.module_path.as_dotted(), index))
         .collect();
     let target_index = typed
-        .modules
-        .iter()
+        .modules()
         .position(|module| module.module_path.as_dotted() == target_module)
         .unwrap_or_else(|| panic!("target module {target_module} should exist"));
     let mut scope = HashSet::new();
@@ -3259,11 +3386,11 @@ fn lower_typed_project_for_module_with_dependency_closure_and_entry(
         if !visited.insert(module_index) {
             continue;
         }
-        let Some(module) = typed.modules.get(module_index) else {
+        let Some(module) = typed.module(module_index) else {
             continue;
         };
         scope.insert(module.module_path.as_dotted());
-        for import in &module.imports {
+        for import in module.imports() {
             let import_name = import.as_dotted();
             if let Some(import_index) = module_lookup.get(&import_name) {
                 queue.push_back(*import_index);
@@ -3507,8 +3634,8 @@ fn service_transport_class_hermetic_matches_dsl_fidelity() {
 // ============================================================================
 
 /// Helper: find func body stmts by name, panicking with context on failure.
-fn find_func_stmts(project: &TypedProject, module_name: &str, func_name: &str) -> Vec<Stmt> {
-    for module in &project.modules {
+fn find_func_stmts(project: &TypedProject<'_>, module_name: &str, func_name: &str) -> Vec<Stmt> {
+    for module in project.modules() {
         if module.module_path.as_dotted() != module_name {
             continue;
         }
@@ -3528,8 +3655,12 @@ fn find_func_stmts(project: &TypedProject, module_name: &str, func_name: &str) -
 }
 
 /// Helper: find pattern body stmts by name.
-fn find_pattern_stmts(project: &TypedProject, module_name: &str, pattern_name: &str) -> Vec<Stmt> {
-    for module in &project.modules {
+fn find_pattern_stmts(
+    project: &TypedProject<'_>,
+    module_name: &str,
+    pattern_name: &str,
+) -> Vec<Stmt> {
+    for module in project.modules() {
         if module.module_path.as_dotted() != module_name {
             continue;
         }

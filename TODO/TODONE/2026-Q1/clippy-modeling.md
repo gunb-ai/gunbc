@@ -67,7 +67,7 @@ This follows the fractal DAG pattern where tool crates define both tool operatio
    - `ClippyConfigRenderer` — Implements `Renderable` for standard header
 
 10. **✅ Codegen integration** (`core/codegen/src/main.rs`):
-    - `cargo run -p gunbc-dag --bin gunbc-pragma` — Generates clippy.toml
+    - `cargo run -p gunbc-app --bin gunbc-pragma` — Generates clippy.toml
 
 ### What's Still Missing
 
@@ -298,7 +298,7 @@ Tasks:
 - [x] **Create ClippyConfig struct** — in `lib/tools/clippy/src/config.rs`
 - [x] **Implement ClippyConfig::transport_pattern()** — preset for transport pattern enforcement
 - [x] **Generate clippy.toml** — `generate_clippy_toml()` function
-- [x] **Add pragma generator** — `cargo run -p gunbc-dag --bin gunbc-pragma`
+- [x] **Add pragma generator** — `cargo run -p gunbc-app --bin gunbc-pragma`
 - [ ] **Add to CI** — verify clippy.toml matches generated version
 
 ### Note on InstallInputs.component

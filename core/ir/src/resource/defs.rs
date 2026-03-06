@@ -11,14 +11,14 @@ use std::sync::OnceLock;
 pub const CODEGEN_INPUT_GLOBS: &[&str] = &[
     "core/codegen/src/**/*.rs",
     "core/ir/src/**/*.rs",
-    "gunbc-dag/src/**/*.rs",
+    "gunbc-app/src/**/*.rs",
 ];
 
 /// Fallback individual files used when workspace layout discovery is unavailable.
 pub const CODEGEN_INPUT_FILES: &[&str] = &[
     "core/codegen/Cargo.toml",
     "core/ir/Cargo.toml",
-    "gunbc-dag/Cargo.toml",
+    "gunbc-app/Cargo.toml",
 ];
 
 static DERIVED_CODEGEN_INPUTS: OnceLock<(Vec<String>, Vec<String>)> = OnceLock::new();
@@ -43,7 +43,7 @@ fn derive_codegen_input_patterns() -> (Vec<String>, Vec<String>) {
     let mut globs = Vec::new();
     let mut files = Vec::new();
 
-    for crate_name in ["gunbc-codegen", "gunbc-ir", "gunbc-dag"] {
+    for crate_name in ["gunbc-codegen", "gunbc-ir", "gunbc-app"] {
         let Some(crate_dir) = layout.crate_dir(crate_name) else {
             continue;
         };
@@ -107,8 +107,8 @@ mod tests {
             "expected ir source glob, got {globs:?}"
         );
         assert!(
-            globs.iter().any(|g| g == "gunbc-dag/src/**/*.rs"),
-            "expected gunbc-dag source glob, got {globs:?}"
+            globs.iter().any(|g| g == "gunbc-app/src/**/*.rs"),
+            "expected gunbc-app source glob, got {globs:?}"
         );
         assert!(
             files.iter().any(|f| f == "core/codegen/Cargo.toml"),
@@ -119,8 +119,8 @@ mod tests {
             "expected ir manifest path, got {files:?}"
         );
         assert!(
-            files.iter().any(|f| f == "gunbc-dag/Cargo.toml"),
-            "expected gunbc-dag manifest path, got {files:?}"
+            files.iter().any(|f| f == "gunbc-app/Cargo.toml"),
+            "expected gunbc-app manifest path, got {files:?}"
         );
     }
 }

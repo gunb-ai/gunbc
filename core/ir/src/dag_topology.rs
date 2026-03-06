@@ -107,7 +107,7 @@ where
 {
     let canonical_kind = kind_of(node);
     let children = match &node.body {
-        NodeBody::SubDag(dag) => Some(dag_topology_with_kind(dag, kind_of)),
+        NodeBody::SubDag(dag, _) => Some(dag_topology_with_kind(dag, kind_of)),
         NodeBody::Opaque(_) => None,
     };
 

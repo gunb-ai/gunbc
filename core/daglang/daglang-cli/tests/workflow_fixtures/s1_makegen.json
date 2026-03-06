@@ -1,13 +1,15 @@
 {
   "module": "tools.makegen",
   "path": "tools/makegen.dag",
-  "items": 34,
+  "items": 4,
   "dependencies": [
     "std.patterns",
-    "extdeps.make",
+    "std.resources",
+    "extdeps.build_targets",
+    "extdeps.make_render",
     "config.build_targets"
   ],
-  "_count_rationale": "FnBodyCallableOp: fn items with fn_body skip control-flow SubDag + ExprCompute return nodes (2026-03-04).",
+  "_count_rationale": "Render-lane cleanup split makegen into typed build-target data plus make_render leaves, so the module surface now contains only the entrypoint, one extern, and two thin wrapper fns.",
   "expand_contract": {
     "status": "success",
     "error_contains": null
@@ -18,11 +20,11 @@
     "expected_json": {
       "dry_run_completion_required": true,
       "interface_contract_verification_targets": 1,
-      "pure_node_determinism_targets": 123,
+      "pure_node_determinism_targets": 133,
       "resource_acquire_targets": 4,
       "resource_provide_targets": 1,
       "resource_release_targets": 4,
-      "service_param_source_targets": 39,
+      "service_param_source_targets": 47,
       "service_transport_execute_targets": 8,
       "service_transport_external_targets": 6,
       "service_transport_hermetic_targets": 2,
@@ -30,7 +32,7 @@
       "service_transport_parse_targets": 6,
       "service_transport_prepare_targets": 8,
       "service_transport_readonly_targets": 5,
-      "total_obligations": 131,
+      "total_obligations": 141,
       "transport_execution_targets": 8
     }
   }

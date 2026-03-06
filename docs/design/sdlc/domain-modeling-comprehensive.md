@@ -5,6 +5,11 @@ Date: 2026-02-21
 Parent: [mega-modeling-design.md](mega-modeling-design.md) (MD0-D)
 Scope: Canonical domain model for the SDLC system. This document defines every entity, relationship, state machine, invariant, and contract that the SDLC pipeline operates on. All implementation work should trace back to definitions here.
 
+Status note (2026-03-05): the entity and state-machine modeling here is still
+useful, but the deployment-profile sections and `--profile` references reflect an
+older compatibility design. For current execution status and binding-direction
+planning, use `TODO/sdlc.md` and `scenario-readiness.md`.
+
 ## 1. Document Purpose and Relationship to Other Docs
 
 This document is the **modeling counterpart** to `mega-modeling-design.md` (which defines workflow and contracts) and `e2e-gap-analysis.md` (which identifies implementation deltas). It answers: **what are the domain objects, what are their relationships, what are their state machines, and what invariants must hold?**

@@ -26,5 +26,5 @@ regex to `^\s*#!?\[allow\(`, but the script's value is questionable:
 ## Outcome
 
 - Deleted: `tools/check-disallowed-methods.sh`
-- Updated guardrail command: `gunbc-dag/src/ci/ops.rs` now runs only `cargo test -p gunbc-dag --test resource_purity_checks --quiet`
+- Updated guardrail command: `gunbc-app/src/ci/ops.rs` now runs only `cargo test -p gunbc-app --test resource_purity_checks --quiet`
 - Updated workflow acceptance assertion to match the new guardrail behavior.

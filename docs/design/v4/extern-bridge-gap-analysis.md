@@ -256,7 +256,7 @@ data workspace_crates: List<CrateSpec> = [
   { name: "gunbc-ir",            path: "core/ir",              tier: Core,       is_producer: false },
   { name: "gunbc-exec",          path: "core/exec",            tier: Core,       is_producer: false },
   { name: "gunbc-codegen",       path: "core/codegen",         tier: Core,       is_producer: true  },
-  { name: "gunbc-dag",           path: "gunbc-dag",            tier: Application, is_producer: true },
+  { name: "gunbc-app",           path: "gunbc-app",            tier: Application, is_producer: true },
   { name: "gunbc-lib-transport", path: "lib/transport",        tier: Application, is_producer: false },
   { name: "gunbc-lib-primitives",path: "lib/primitives",       tier: Application, is_producer: false },
   { name: "gunbc-lib-gcp-ops",   path: "lib/gcp-ops",         tier: Application, is_producer: false },
@@ -296,7 +296,7 @@ data allowlist_rules: List<AllowlistRule> = [
 ]
 
 data dead_code_rules: List<DeadCodeRule> = [
-  { crate_name: "gunbc-dag", relative_path: "src/makegen/registry.rs" },
+  { crate_name: "gunbc-app", relative_path: "src/makegen/registry.rs" },
   { crate_name: "gunbc-lib-gcp-ops", relative_path: "src/graph.rs" },
   // ... 3 more
 ]
@@ -478,8 +478,8 @@ declarations from makegen.dag and bootstrap.dag.
 ### Phase 8: Delete extern_impls.rs
 
 After all 10 entries are pure DSL:
-- Delete gunbc-dag/src/extern_impls.rs
-- Remove mod extern_impls from gunbc-dag/src/lib.rs
+- Delete gunbc-app/src/extern_impls.rs
+- Remove mod extern_impls from gunbc-app/src/lib.rs
 - Delete resolve_extern_call() from resolve.rs (no extern func declarations exist)
 - Remove all_extern_symbols() and lookup_extern_impl()
 - Update tool_registration.rs: remove extern symbol validation, update

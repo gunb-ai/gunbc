@@ -1,0 +1,87 @@
+//! gunbc-dag: Repo-specific DAG configuration for gunbc.
+//!
+//! This crate contains the gunbc repo's specific configuration, including:
+//! - CI pipeline definition
+//! - Makefile generation
+//! - Bootstrap tools
+//! - Workspace DAG composition
+//!
+//! # Distinction from lib/tools/
+//!
+//! The crates in `lib/tools/` are general-purpose tool wrappers that could be
+//! used by any project. This crate (`gunbc-dag`) contains configuration
+//! specific to the gunbc repository itself.
+//!
+//! For example:
+//! - `gunbc-clippy` (in lib/tools/) wraps the clippy CLI tool (general)
+//! - `gunbc-dag::ci` defines gunbc's CI pipeline (repo-specific)
+
+#![deny(dead_code)]
+pub mod ci;
+pub mod extern_ops;
+pub mod fidelity;
+pub mod makegen;
+mod makegen_support;
+#[path = "pragma/dsl_render.rs"]
+pub mod pragma_dsl_render;
+mod resource_targets;
+
+pub mod resource_defs;
+pub mod testgen_dag;
+pub mod tool_runner;
+pub mod workflow;
+
+// Compatibility re-export: resource APIs moved from resources.rs to resource_defs.rs.
+pub mod resources {
+    pub use crate::resource_defs::*;
+}
+// Re-exports for convenience
+pub use ci::ci_live_test_secrets;
+pub use gunbc_resolve::{add_fs_env_root_node, wire_fs_env_write_edges, wire_fs_env_write_mock};
+pub use makegen::{
+    gitignore::render_gitignore,
+    registry::{default_build_config, BuildConfig},
+    shared::render_makefile,
+};
+pub use makegen_support::{build_embedded_data, compute_makegen_content, MAKEGEN_ASSET_KEY};
+pub use resource_defs::{
+    deps_config_resource_def, gitignore_resource_def, makefile_resource_def, testgen_resource_def,
+};
+pub use tool_runner::{
+    freshness_steps_planned, print_tool_header, run_tool, update_freshness_manifest_if_needed,
+    FreshnessScope, RunToolOptions,
+};
+pub use workflow::{
+    all_tool_workflow_names, bootstrap_workflow_spec, check_slo, ci_unit_commands,
+    ci_workflow_spec, claim_handle_type_id, codegen_key, compilation_key, coordination_status,
+    default_process_unit_registry, default_slo_budgets, deps_workflow_spec, execute_workflow_plan,
+    explain_plan, gist_diff_workflow_spec, gist_recent_workflow_spec, gist_workflow_spec,
+    has_required_unit_contract, makegen_workflow_spec, plan_global_workflows, plan_workflow,
+    plan_workflow_with_mode, pragma_workflow_spec, project_execute_set, prove_non_redundancy,
+    render_execution_report, required_input_contract, required_output_contract, sdlc_workflow_spec,
+    test_all_unit_commands, test_all_workflow_spec, tool_workflow_spec, top_slow_units,
+    validate_conflicting_claims, validate_effectful_claim_declarations,
+    validate_projection_equivalence, validate_required_claims, validate_workflow_admission,
+    workflow_unit_commands, AggregateSpec, BlockedReason, CanonicalKeyPayload, CapabilityAction,
+    CapabilityStatus, ClaimId, CodegenMissReason, CompilationMissReason, CompilationPhase,
+    CoordinationStatus, DryRunMode, ExecuteProjection, ExecutionSummary, GlobalExecutionVertex,
+    GlobalWorkflowPlan, InvariantViolation, MaterializationDigest, MaterializationKey, MissReason,
+    NodePlan, PlanAction, PlanExplain, PlannerInputs, PlannerInputsByWorkflow, ProcessId,
+    ProcessUnitRef, ProcessUnitRegistry, ProcessUnitSpec, ProjectionDrift, ReportSpec, SloBudget,
+    SloResult, SlowUnit, UnitClaim, UnitCommand, UnitResult, WorkIdentity, WorkflowAdmissionError,
+    WorkflowId, WorkflowNodeRef, WorkflowOp, WorkflowPlan, WorkflowPlannerError,
+    WorkflowSpec as PlannerWorkflowSpec, WorkflowUnit, CODEGEN_ENSURE_UNIT, CODEGEN_PROCESS_ID,
+    COMPILATION_ENSURE_UNIT, COMPILATION_PROCESS_ID, PORT_AFTER, PORT_COMMIT, PORT_RESULT,
+    TYPE_WORKFLOW_RESULT,
+};
+
+// ============================================================================
+// DagSpec Registry Helpers
+// ============================================================================
+
+/// Return DagSpec registrations originating from this crate.
+pub fn dag_specs() -> Vec<&'static gunbc_testgen_registry::DagSpecDef> {
+    gunbc_testgen_registry::iter_dag_specs()
+        .filter(|spec| spec.origin_crate == env!("CARGO_CRATE_NAME"))
+        .collect()
+}

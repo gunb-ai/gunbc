@@ -1,10 +1,14 @@
 # SDLC Implementation Roadmap
 
-Status: Active
+Status: Historical profile-era roadmap; superseded for current planning
 Date: 2026-02-25
 Parent: [mega-modeling-design.md](mega-modeling-design.md) (MD0-D)
 Sibling: [e2e-gap-analysis.md](e2e-gap-analysis.md), [domain-modeling-comprehensive.md](domain-modeling-comprehensive.md)
 Cleanup dependency: [foundation-cleanup.md](../v4/foundation-cleanup.md)
+
+Status note (2026-03-05): this roadmap predates the current worker compile/dry-run
+proof, the env-gated local live harness, and the shift toward concrete binding/link
+artifacts replacing profiles. Keep it for historical sequencing only.
 
 ## 1. Goal
 

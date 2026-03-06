@@ -53,5 +53,5 @@ data workspace_crates: List<CrateSpec> = [
   { path: "lib/tools/deps",                 name: "gunbc-deps",                  layer: Tool },
   { path: "lib/tools/clippy",               name: "gunbc-clippy",                layer: Tool },
   // Repo-specific configuration (gunbc's own DAGs)
-  { path: "gunbc-dag",                      name: "gunbc-dag",                   layer: Repo }
+  { path: "gunbc-app",                      name: "gunbc-app",                   layer: Repo }
 ]

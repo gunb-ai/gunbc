@@ -45,6 +45,7 @@ service github.IssueProvider : IssueProvider {
       issues: List<TrackedIssue>
     }
     readonly
+    idempotent
     transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues" }
     response {
       200 => List<TrackedIssue>
@@ -67,6 +68,7 @@ service github.IssueProvider : IssueProvider {
       found: Bool from "status == 200"
     }
     readonly
+    idempotent
     transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}" }
     response {
       200 => TrackedIssue
@@ -133,6 +135,7 @@ service github.IssueProvider : IssueProvider {
       labels: List<String>
     }
     output { ok: Bool from "status == 200" }
+    idempotent
     transport rest { method: PUT, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}/labels" }
     response {
       200 => Json
@@ -173,6 +176,7 @@ service github.IssueProvider : IssueProvider {
     }
     output { events: List<IssueEvent> }
     readonly
+    idempotent
     transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}/events" }
     response {
       200 => List<IssueEvent>

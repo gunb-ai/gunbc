@@ -1,7 +1,7 @@
 {
   "module": "tools.deps",
   "path": "tools/deps.dag",
-  "items": 9,
+  "items": 12,
   "dependencies": [
     "std.patterns",
     "std.resources",
@@ -19,11 +19,11 @@
     "expected_json": {
       "dry_run_completion_required": true,
       "interface_contract_verification_targets": 1,
-      "pure_node_determinism_targets": 94,
+      "pure_node_determinism_targets": 95,
       "resource_acquire_targets": 4,
       "resource_provide_targets": 1,
       "resource_release_targets": 4,
-      "service_param_source_targets": 21,
+      "service_param_source_targets": 19,
       "service_transport_execute_targets": 8,
       "service_transport_external_targets": 6,
       "service_transport_hermetic_targets": 2,
@@ -31,7 +31,7 @@
       "service_transport_parse_targets": 6,
       "service_transport_prepare_targets": 8,
       "service_transport_readonly_targets": 5,
-      "total_obligations": 102,
+      "total_obligations": 103,
       "transport_execution_targets": 8
     }
   }

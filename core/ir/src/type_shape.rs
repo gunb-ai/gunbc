@@ -179,7 +179,7 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
 /// Find the first SubDag node in a type DAG and return a reference to its inner DAG.
 fn inner_subdag(dag: &Dag<TypeOp>) -> Option<&Dag<TypeOp>> {
     dag.nodes.iter().find_map(|node| {
-        if let NodeBody::SubDag(subdag) = &node.body {
+        if let NodeBody::SubDag(subdag, _) = &node.body {
             Some(subdag)
         } else {
             None

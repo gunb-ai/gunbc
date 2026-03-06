@@ -10,8 +10,8 @@
 //!
 //! # Note
 //!
-//! This crate is a library. The codegen binary lives in gunbc-dag
-//! (see `gunbc-dag/src/bin/codegen_cli.rs`) and performs source/DSL-driven
+//! This crate is a library. The codegen binary lives in gunbc-app
+//! (see `gunbc-app/src/bin/codegen_cli.rs`) and performs source/DSL-driven
 //! discovery there while this crate stays a leaf utility layer.
 
 #![deny(dead_code)]

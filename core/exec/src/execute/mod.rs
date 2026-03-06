@@ -69,11 +69,9 @@ pub enum ExecutionMode {
 }
 
 impl ExecutionMode {
-    /// Create a dry-run mode with the given mocks and strictness.
-    pub fn dry_run_with_strictness(mocks: BoundaryMocks, _strictness: DryRunStrictness) -> Self {
-        // Phase 1: strictness stored but behavior unchanged (always lenient).
-        // Phase 2+3 will wire strictness into mock generation and poison values.
-        ExecutionMode::DryRun(mocks)
+    /// Returns true if this is a dry-run or simulate mode (not real execution).
+    pub fn is_intercepting(&self) -> bool {
+        matches!(self, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_))
     }
 }
 
@@ -261,155 +259,60 @@ impl fmt::Display for ExecutionLog {
     }
 }
 
-/// Execute a DAG in real mode.
-pub fn execute<T: Executable + Clone + Send>(dag: &Dag<T>) -> Result<ExecutionLog, ExecError> {
-    execute_with_mode(dag, ExecutionMode::Real)
+/// Consolidated configuration for DAG execution (CP-45).
+///
+/// Replaces the 10-variant execute function family with a single entry point.
+/// All fields have sensible defaults via `Default`.
+pub struct ExecuteConfig<'a> {
+    /// Execution mode (Real, DryRun, Simulate). Default: Real.
+    pub mode: ExecutionMode,
+    /// Optional boundary input mocks for entrypoint ports.
+    pub input_mocks: Option<&'a BoundaryMocks>,
+    /// Progress observer for live status callbacks.
+    pub observer: Option<&'a mut dyn ProgressObserver>,
+    /// Execution log detail level. Default: IncludeInputs.
+    pub log_detail: LogDetailLevel,
+    /// Dry-run strictness (CP-15). In Lenient mode (default), missing
+    /// resource/env inputs get default mocks. In Strict mode, missing inputs
+    /// produce diagnostic warnings.
+    pub strictness: DryRunStrictness,
 }
 
-/// Execute a DAG with the specified execution mode.
-///
-/// In dry-run mode, boundary nodes have their outputs replaced with mock values.
-/// In simulate mode, timing and resource usage are tracked.
-pub fn execute_with_mode<T: Executable + Clone + Send>(
-    dag: &Dag<T>,
-    mode: ExecutionMode,
-) -> Result<ExecutionLog, ExecError> {
-    execute_with_mode_and_inputs(dag, mode, None)
+impl Default for ExecuteConfig<'_> {
+    fn default() -> Self {
+        Self {
+            mode: ExecutionMode::default(),
+            input_mocks: None,
+            observer: None,
+            log_detail: LogDetailLevel::IncludeInputs,
+            strictness: DryRunStrictness::default(),
+        }
+    }
 }
 
-/// Execute a DAG with the specified execution mode and optional input mocks.
+/// Execute a DAG with the given configuration.
 ///
-/// Input mocks are injected into entrypoint ports (inputs with no upstream edge).
-/// Mock keys using original SubDag IDs are automatically remapped to the
-/// lowered inner entrypoint IDs.
-pub fn execute_with_mode_and_inputs<T: Executable + Clone + Send>(
+/// This is the consolidated entry point (CP-45). All other `execute_*` functions
+/// delegate here.
+pub fn execute_dag<T: Executable + Clone + Send>(
     dag: &Dag<T>,
-    mode: ExecutionMode,
-    input_mocks: Option<&BoundaryMocks>,
-) -> Result<ExecutionLog, ExecError> {
-    execute_with_mode_and_inputs_and_detail(dag, mode, input_mocks, LogDetailLevel::IncludeInputs)
-}
-
-/// Execute a DAG with the specified execution mode, optional input mocks,
-/// and an explicit execution log detail level.
-pub fn execute_with_mode_and_inputs_and_detail<T: Executable + Clone + Send>(
-    dag: &Dag<T>,
-    mode: ExecutionMode,
-    input_mocks: Option<&BoundaryMocks>,
-    log_detail: LogDetailLevel,
-) -> Result<ExecutionLog, ExecError> {
-    // Lower sub-DAGs first
-    let lowered = lower(dag).exec_context("lowering failed")?;
-
-    // Remap input mock keys from original SubDag IDs to lowered inner IDs
-    let remapped_mocks = input_mocks.map(|mocks| remap_input_mocks(mocks, &lowered.input_remaps));
-    let effective_mocks = remapped_mocks.as_ref().or(input_mocks);
-
-    // Remap DryRun/Simulate mode input mocks too
-    let effective_mode = remap_mode_inputs(mode, &lowered.input_remaps);
-
-    // Detect boundaries
-    let boundaries = detect_boundaries(&lowered.dag);
-
-    // Execute the flat DAG
-    execute_flat(
-        &lowered.dag,
-        &boundaries,
-        &effective_mode,
-        None,
-        effective_mocks,
-        &lowered.loops,
-        log_detail,
-    )
-}
-
-/// Execute a DAG with a progress observer.
-///
-/// The progress observer receives callbacks at each execution stage
-/// (node start, complete, fail, skip, intercept). This enables live
-/// progress display, recording, or any other observation pattern.
-///
-/// # Example
-///
-/// ```text
-/// use gunbc_exec::{execute_with_progress, progress::DagProgress};
-///
-/// let mut progress = None; // Will be initialized from snapshot
-/// let log = execute_with_progress(&dag, &mut progress)?;
-/// ```
-pub fn execute_with_progress<T: Executable + Clone + Send>(
-    dag: &Dag<T>,
-    observer: &mut dyn ProgressObserver,
-) -> Result<ExecutionLog, ExecError> {
-    execute_with_progress_and_mode(dag, ExecutionMode::Real, observer)
-}
-
-/// Execute a DAG with both execution mode and progress observer.
-pub fn execute_with_progress_and_mode<T: Executable + Clone + Send>(
-    dag: &Dag<T>,
-    mode: ExecutionMode,
-    observer: &mut dyn ProgressObserver,
-) -> Result<ExecutionLog, ExecError> {
-    execute_with_progress_and_mode_and_detail(dag, mode, observer, LogDetailLevel::IncludeInputs)
-}
-
-/// Execute a DAG with execution mode, progress observer, and explicit log detail.
-pub fn execute_with_progress_and_mode_and_detail<T: Executable + Clone + Send>(
-    dag: &Dag<T>,
-    mode: ExecutionMode,
-    observer: &mut dyn ProgressObserver,
-    log_detail: LogDetailLevel,
+    config: ExecuteConfig<'_>,
 ) -> Result<ExecutionLog, ExecError> {
     let lowered = lower(dag).exec_context("lowering failed")?;
-    let boundaries = detect_boundaries(&lowered.dag);
-    execute_flat(
-        &lowered.dag,
-        &boundaries,
-        &mode,
-        Some(observer),
-        None,
-        &lowered.loops,
-        log_detail,
-    )
-}
-
-/// Execute a DAG with both execution mode and progress observer plus input mocks.
-pub fn execute_with_progress_and_mode_and_inputs<T: Executable + Clone + Send>(
-    dag: &Dag<T>,
-    mode: ExecutionMode,
-    observer: &mut dyn ProgressObserver,
-    input_mocks: Option<&BoundaryMocks>,
-) -> Result<ExecutionLog, ExecError> {
-    execute_with_progress_and_mode_and_inputs_and_detail(
-        dag,
-        mode,
-        observer,
-        input_mocks,
-        LogDetailLevel::IncludeInputs,
-    )
-}
-
-/// Execute a DAG with execution mode, progress observer, input mocks, and explicit log detail.
-pub fn execute_with_progress_and_mode_and_inputs_and_detail<T: Executable + Clone + Send>(
-    dag: &Dag<T>,
-    mode: ExecutionMode,
-    observer: &mut dyn ProgressObserver,
-    input_mocks: Option<&BoundaryMocks>,
-    log_detail: LogDetailLevel,
-) -> Result<ExecutionLog, ExecError> {
-    let lowered = lower(dag).exec_context("lowering failed")?;
-    let remapped_mocks = input_mocks.map(|mocks| remap_input_mocks(mocks, &lowered.input_remaps));
-    let effective_mocks = remapped_mocks.as_ref().or(input_mocks);
-    let effective_mode = remap_mode_inputs(mode, &lowered.input_remaps);
+    let remapped_mocks = config
+        .input_mocks
+        .map(|mocks| remap_input_mocks(mocks, &lowered.input_remaps));
+    let effective_mocks = remapped_mocks.as_ref().or(config.input_mocks);
+    let effective_mode = remap_mode_inputs(config.mode, &lowered.input_remaps);
     let boundaries = detect_boundaries(&lowered.dag);
     execute_flat(
         &lowered.dag,
         &boundaries,
         &effective_mode,
-        Some(observer),
+        config.observer,
         effective_mocks,
         &lowered.loops,
-        log_detail,
+        config.log_detail,
     )
 }
 
@@ -486,7 +389,7 @@ pub fn execute_single_node<T: Executable + Clone + Send>(
             enforce_runtime_file_guard(node, &outputs, file_guard_enabled)?;
             Ok(outputs)
         }
-        NodeBody::SubDag(_) => Err(ExecError::new(format!(
+        NodeBody::SubDag(..) => Err(ExecError::new(format!(
             "node '{}' is a SubDag — this should not happen after lowering",
             node_id
         ))),
@@ -885,7 +788,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
                             }
                         }
                     }
-                    NodeBody::SubDag(_) => {
+                    NodeBody::SubDag(..) => {
                         let err = ExecError::new(format!(
                             "node '{}' is a SubDag — DAG must be lowered before execution",
                             node_id.0
@@ -1758,7 +1661,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         });
                         in_flight += 1;
                     }
-                    NodeBody::SubDag(_) => {
+                    NodeBody::SubDag(..) => {
                         let err = ExecError::new(format!(
                             "node '{}' is a SubDag — DAG must be lowered before execution",
                             node_id.0

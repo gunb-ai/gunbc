@@ -52,10 +52,10 @@ Port contract (fixed by the helper):
 
 | File | Current State | Chains | Lines Saved (est.) |
 |------|--------------|--------|--------------------|
-| `gunbc-dag/src/testgen_dag/graph.rs` | Has local `add_upsert_chain` helper | N (dynamic) | Replace local helper with shared one (~100 lines) |
-| `gunbc-dag/src/pragma/graph.rs` | 3 chains wired manually | 3 | ~200 lines |
-| `gunbc-dag/src/bootstrap/graph.rs` | 2 chains wired manually | 2 | ~140 lines |
-| `gunbc-dag/src/makegen/graph.rs` | 1 chain wired manually | 1 | ~70 lines |
+| `gunbc-app/src/testgen_dag/graph.rs` | Has local `add_upsert_chain` helper | N (dynamic) | Replace local helper with shared one (~100 lines) |
+| `gunbc-app/src/pragma/graph.rs` | 3 chains wired manually | 3 | ~200 lines |
+| `gunbc-app/src/bootstrap/graph.rs` | 2 chains wired manually | 2 | ~140 lines |
+| `gunbc-app/src/makegen/graph.rs` | 1 chain wired manually | 1 | ~70 lines |
 
 ### Steps
 
@@ -95,9 +95,9 @@ Potential API improvement: the current helpers require callers to pass full inpu
 
 | File | Triplets | Skippable? | Notes | Status |
 |------|----------|------------|-------|--------|
-| `gunbc-dag/src/codegen/graph.rs` | 3 | Mixed | exists_check (no), codegen (no), stamp_write (no parse) | Done |
-| `gunbc-dag/src/build/graph.rs` | 3 | Mixed | build (no), test (yes), clippy (yes) | Done |
-| `gunbc-dag/src/ci/graph.rs` | 6 | Mixed | deps_exists (no), testgen/build/test/guardrail/verify (yes) | Done |
+| `gunbc-app/src/codegen/graph.rs` | 3 | Mixed | exists_check (no), codegen (no), stamp_write (no parse) | Done |
+| `gunbc-app/src/build/graph.rs` | 3 | Mixed | build (no), test (yes), clippy (yes) | Done |
+| `gunbc-app/src/ci/graph.rs` | 6 | Mixed | deps_exists (no), testgen/build/test/guardrail/verify (yes) | Done |
 | `lib/tools/gist/src/graph.rs` | 5-8 | No | Mode-dependent; loop body has inner triplet | Done |
 | `lib/tools/deps/src/graph.rs` | 2-3 | No | install + generate graphs | Done |
 | `lib/review/src/graph.rs` | 2-4 | No | Varies by review mode | Done |
@@ -124,7 +124,7 @@ Potential API improvement: the current helpers require callers to pass full inpu
 
 **Status:** Done
 **Effort:** Low
-**Location:** `gunbc-dag/src/workspace/convert.rs` (new file)
+**Location:** `gunbc-app/src/workspace/convert.rs` (new file)
 
 ### Problem
 
@@ -179,14 +179,14 @@ The per-tool `convert_foo_op` mapping functions stay (they encode the domain-spe
 
 ### Steps (completed)
 
-1. Added `gunbc-dag/src/workspace/convert.rs` with `convert_dag` and `convert_node`
+1. Added `gunbc-app/src/workspace/convert.rs` with `convert_dag` and `convert_node`
 2. Migrated subdags that need op remapping (CI, gist)
 3. Simplified subdags that only need `convert_node` (clippy, languages)
 4. Removed per-tool `convert_*` helpers (none remain)
 
 ### Open Question
 
-Decision: keep `convert_dag`/`convert_node` in `gunbc-dag/src/workspace/convert.rs` for now. If other crates need op remapping, move to `core/ir` later.
+Decision: keep `convert_dag`/`convert_node` in `gunbc-app/src/workspace/convert.rs` for now. If other crates need op remapping, move to `core/ir` later.
 
 ---
 
@@ -224,7 +224,7 @@ Add section **A.2.4 Content Upsert** (or A.12, depending on numbering preference
 
 **Status:** Done
 **Effort:** Medium
-**Location:** `gunbc-dag/src/file_ops_graph.rs`
+**Location:** `gunbc-app/src/file_ops_graph.rs`
 **Updated:** 2026-02-07
 
 ### Problem
@@ -288,21 +288,21 @@ If the content upsert helper (item 1) absorbs the need to pass `PrepareFileReadO
 
 | Graph | Current Enum | Would Become |
 |-------|-------------|-------------|
-| `gunbc-dag/src/testgen_dag/graph.rs` | `TestgenGraphOp` (5 variants) | `FileOpsGraph<TestgenOp>` |
-| `gunbc-dag/src/pragma/graph.rs` | `PragmaGraphOp` (5 variants) | `FileOpsGraph<PragmaOp>` |
-| `gunbc-dag/src/bootstrap/graph.rs` | `BootstrapGraphOp` (5 variants) | `FileOpsGraph<BootstrapOp>` |
-| `gunbc-dag/src/makegen/graph.rs` | `MakegenGraphOp` (5 variants) | `FileOpsGraph<MakegenOp>` |
+| `gunbc-app/src/testgen_dag/graph.rs` | `TestgenGraphOp` (5 variants) | `FileOpsGraph<TestgenOp>` |
+| `gunbc-app/src/pragma/graph.rs` | `PragmaGraphOp` (5 variants) | `FileOpsGraph<PragmaOp>` |
+| `gunbc-app/src/bootstrap/graph.rs` | `BootstrapGraphOp` (5 variants) | `FileOpsGraph<BootstrapOp>` |
+| `gunbc-app/src/makegen/graph.rs` | `MakegenGraphOp` (5 variants) | `FileOpsGraph<MakegenOp>` |
 
 **Not migrated** (different shape): codegen (2 variants), build (2 variants), CI (5 variants but different infra ops), gist, review, deps, llm.
 
 ### Recommendation
 
-Implemented Option A (`FileOpsGraph<D>`) as a generic wrapper enum in `gunbc-dag`,
+Implemented Option A (`FileOpsGraph<D>`) as a generic wrapper enum in `gunbc-app`,
 since the affected graphs live there and the type depends on `primitives`, `blob`,
 and `transport` crates.
 
 ### Steps (completed)
 
-1. Added `FileOpsGraph<D>` in `gunbc-dag/src/file_ops_graph.rs`
+1. Added `FileOpsGraph<D>` in `gunbc-app/src/file_ops_graph.rs`
 2. Migrated makegen, pragma, bootstrap, testgen graphs to `FileOpsGraph`
 3. Updated call sites to use the `Domain` variant

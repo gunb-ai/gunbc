@@ -293,7 +293,7 @@ impl std::fmt::Display for ClassifyError {
 pub fn classify_computation(node: &Node<LoweredOp>) -> Result<Computation, ClassifyError> {
     let op = match &node.body {
         NodeBody::Opaque(op) => op,
-        NodeBody::SubDag(_) => return Err(ClassifyError::SubDagNode(node.id.0.clone())),
+        NodeBody::SubDag(..) => return Err(ClassifyError::SubDagNode(node.id.0.clone())),
     };
 
     let inputs: Vec<TypedPort> = node.inputs.iter().map(port_to_typed).collect();
@@ -490,7 +490,7 @@ fn classify_collection(
         .unwrap_or_else(|| "Unknown".to_string());
 
     Ok(Computation::Collection {
-        family: kind.emit_family(),
+        family: daglang_lower::collection_emit_family(kind),
         element_type,
     })
 }
@@ -701,6 +701,77 @@ fn classify_by_name(
         outputs,
         body: PureBody::Literal(serde_json::Value::Null),
     })
+}
+
+// ===========================================================================
+// Fn Body Classification (CP-11)
+// ===========================================================================
+
+/// Classification of a callable's body based on its computational nature.
+///
+/// Used by the emit pipeline to decide code generation strategy:
+/// - **PureRender**: only string/template operations, no I/O — can be
+///   const-evaluated or inlined.
+/// - **PureCompute**: deterministic computation with data transforms but
+///   no transport — can be tested without mocks.
+/// - **Effectful**: contains transport or resource operations — requires
+///   mocks for testing, I/O runtime at execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FnBodyClassification {
+    /// Pure string/template rendering — no computation, no I/O.
+    PureRender,
+    /// Deterministic computation — no I/O but may include logic/data ops.
+    PureCompute,
+    /// Contains transport or resource operations — requires I/O runtime.
+    Effectful,
+}
+
+impl FnBodyClassification {
+    /// Whether this classification requires mocks for testing.
+    pub fn needs_mocks(&self) -> bool {
+        matches!(self, FnBodyClassification::Effectful)
+    }
+
+    /// Whether this classification is guaranteed deterministic.
+    pub fn is_deterministic(&self) -> bool {
+        matches!(
+            self,
+            FnBodyClassification::PureRender | FnBodyClassification::PureCompute
+        )
+    }
+}
+
+/// Classify a callable's fn body by walking its SubDag nodes.
+///
+/// Uses `node.kind` (set by the lowerer) instead of string heuristics:
+/// - If any node has a transport/resource `NodeKind` → `Effectful`
+/// - If any node has non-trivial ports → `PureCompute`
+/// - Otherwise → `PureRender`
+pub fn classify_fn_body<T: std::fmt::Debug>(dag: &gunbc_ir::Dag<T>) -> FnBodyClassification {
+    use gunbc_ir::NodeKind;
+
+    let mut has_compute = false;
+    for node in &dag.nodes {
+        match node.kind {
+            NodeKind::TransportExecute
+            | NodeKind::TransportPrepare
+            | NodeKind::TransportParse
+            | NodeKind::ResourceAcquire
+            | NodeKind::ResourceRelease
+            | NodeKind::ResourceEnvironment => {
+                return FnBodyClassification::Effectful;
+            }
+            _ => {}
+        }
+        if !node.inputs.is_empty() || !node.outputs.is_empty() {
+            has_compute = true;
+        }
+    }
+    if has_compute {
+        FnBodyClassification::PureCompute
+    } else {
+        FnBodyClassification::PureRender
+    }
 }
 
 // ===========================================================================
@@ -1376,5 +1447,94 @@ mod tests {
         let node = Node::subdag("sub", inner);
         let result = classify_computation(&node);
         assert!(matches!(result, Err(ClassifyError::SubDagNode(_))));
+    }
+
+    #[test]
+    fn classify_fn_body_empty_dag_is_pure_render() {
+        let dag: gunbc_ir::Dag<LoweredOp> = gunbc_ir::Dag::new();
+        assert_eq!(classify_fn_body(&dag), FnBodyClassification::PureRender);
+    }
+
+    #[test]
+    fn classify_fn_body_with_ports_is_pure_compute() {
+        let mut dag: gunbc_ir::Dag<LoweredOp> = gunbc_ir::Dag::new();
+        dag.add_node(make_node(
+            "compute",
+            vec![Port::scalar("input", "String")],
+            vec![Port::scalar("output", "String")],
+            LoweredOp::Callable {
+                module: "test".into(),
+                kind: CallableKind::Fn,
+                name: "transform".into(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+                fn_body: None,
+            },
+        ));
+        assert_eq!(classify_fn_body(&dag), FnBodyClassification::PureCompute);
+    }
+
+    #[test]
+    fn classify_fn_body_with_resource_node_is_effectful() {
+        let mut dag: gunbc_ir::Dag<LoweredOp> = gunbc_ir::Dag::new();
+        dag.add_node(
+            make_node(
+                "acquire_fs",
+                vec![Port::scalar("res:file:path", "String")],
+                vec![Port::scalar("output", "String")],
+                LoweredOp::Callable {
+                    module: "test".into(),
+                    kind: CallableKind::Func,
+                    name: "read_file".into(),
+                    obligation: ObligationCategory::None,
+                    service_metadata: None,
+                    is_interactive: false,
+                    resource_target: None,
+                    fn_body: None,
+                },
+            )
+            .with_kind(gunbc_ir::NodeKind::ResourceAcquire),
+        );
+        assert_eq!(classify_fn_body(&dag), FnBodyClassification::Effectful);
+    }
+
+    #[test]
+    fn classify_fn_body_with_transport_node_is_effectful() {
+        let mut dag: gunbc_ir::Dag<LoweredOp> = gunbc_ir::Dag::new();
+        dag.add_node(
+            make_node(
+                "prepare_transport_github",
+                vec![Port::scalar("url", "String")],
+                vec![Port::scalar("request", "TransportRequest")],
+                LoweredOp::Callable {
+                    module: "test".into(),
+                    kind: CallableKind::Func,
+                    name: "prepare".into(),
+                    obligation: ObligationCategory::None,
+                    service_metadata: None,
+                    is_interactive: false,
+                    resource_target: None,
+                    fn_body: None,
+                },
+            )
+            .with_kind(gunbc_ir::NodeKind::TransportPrepare),
+        );
+        assert_eq!(classify_fn_body(&dag), FnBodyClassification::Effectful);
+    }
+
+    #[test]
+    fn fn_body_classification_needs_mocks() {
+        assert!(!FnBodyClassification::PureRender.needs_mocks());
+        assert!(!FnBodyClassification::PureCompute.needs_mocks());
+        assert!(FnBodyClassification::Effectful.needs_mocks());
+    }
+
+    #[test]
+    fn fn_body_classification_is_deterministic() {
+        assert!(FnBodyClassification::PureRender.is_deterministic());
+        assert!(FnBodyClassification::PureCompute.is_deterministic());
+        assert!(!FnBodyClassification::Effectful.is_deterministic());
     }
 }

@@ -13,8 +13,8 @@ Today these lists are **manually curated**:
 | Resource | Hardcoded constants | Derivation fn | Location |
 |----------|-------------------|---------------|----------|
 | codegen (`generated_cli`) | `CODEGEN_INPUT_GLOBS`, `CODEGEN_INPUT_FILES` | `derive_codegen_input_patterns()` | `core/ir/src/resource/defs.rs` |
-| testgen (`generated_tests`) | `TESTGEN_INPUT_GLOBS` | `derive_testgen_input_globs()` | `gunbc-dag/src/resources.rs` |
-| makefile | `REPO_SOURCE_INPUT_GLOBS`, `REPO_CONFIG_INPUT_FILES` | `with_repo_inputs()` | `gunbc-dag/src/resources.rs` |
+| testgen (`generated_tests`) | `TESTGEN_INPUT_GLOBS` | `derive_testgen_input_globs()` | `gunbc-app/src/resources.rs` |
+| makefile | `REPO_SOURCE_INPUT_GLOBS`, `REPO_CONFIG_INPUT_FILES` | `with_repo_inputs()` | `gunbc-app/src/resources.rs` |
 | gitignore | (same) | (same) | (same) |
 | deps_config | (same) | (same) | (same) |
 
@@ -22,7 +22,7 @@ Each constant is a hand-maintained `&[&str]` of glob patterns. Adding a crate, r
 
 ### Concrete failure mode (2026-02-25)
 
-`codegen_resource_def()` tracked `core/codegen` and `core/ir` but not `gunbc-dag` or `dsl/**/*.dag`. Changing DSL tool definitions or the codegen binary itself produced no hash change. Codegen was silently skipped. The fix was a manual patch adding the missing patterns — the same class of bug that will recur any time the workspace evolves.
+`codegen_resource_def()` tracked `core/codegen` and `core/ir` but not `gunbc-app` or `dsl/**/*.dag`. Changing DSL tool definitions or the codegen binary itself produced no hash change. Codegen was silently skipped. The fix was a manual patch adding the missing patterns — the same class of bug that will recur any time the workspace evolves.
 
 ### Duplication
 
@@ -123,7 +123,7 @@ pub fn codegen_resource_def(layout: &WorkspaceLayout) -> ResourceDef {
     ResourceDef::new(ResourceId::build("generated_cli"))
         .with_scope(InputScope::Crate("gunbc-codegen"))
         .with_scope(InputScope::Crate("gunbc-ir"))
-        .with_scope(InputScope::Crate("gunbc-dag"))
+        .with_scope(InputScope::Crate("gunbc-app"))
         .with_scope(InputScope::Category(InputCategory::Dsl))
         .with_scope(InputScope::Toolchain)
         .resolve(layout)
@@ -169,7 +169,7 @@ Replace the manual glob lists in `core/ir/src/resource/defs.rs` with `InputScope
 
 ### Phase 3: Convert repo-level resources
 
-Replace `REPO_SOURCE_INPUT_GLOBS`, `REPO_CONFIG_INPUT_FILES`, `TESTGEN_INPUT_GLOBS` and `with_repo_inputs()` in `gunbc-dag/src/resources.rs` with scope-based declarations.
+Replace `REPO_SOURCE_INPUT_GLOBS`, `REPO_CONFIG_INPUT_FILES`, `TESTGEN_INPUT_GLOBS` and `with_repo_inputs()` in `gunbc-app/src/resources.rs` with scope-based declarations.
 
 ### Phase 4: Completeness test
 

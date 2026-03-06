@@ -20,6 +20,82 @@ Every piece of "forgiveness" in the pipeline — every silent drop, every auto-f
 every swallowed error — is a direct failure of this mission. It moves a
 contradiction back to runtime, which is exactly what the compiler exists to prevent.
 
+### The deeper motivation
+
+A compiler's job is to **store tautology** — to convert uncertainty into certainty
+as early as possible, so that everything downstream can operate with confidence.
+The preference for collapsing signals to binary logic (true or false) isn't just
+an engineering style choice — it IS the compiler. A compiler that stores
+tautology early means programs built on top of it don't have to guess, hedge, or
+check. They can trust the ground they're standing on.
+
+This mirrors how good coordination works in any high-stakes domain. The four
+invariants below are communication norms applied to code:
+
+- **Binary signals** — say yes or no. "Maybe" forces the receiver to guess,
+  which is where misunderstanding comes from.
+- **No repetition** — one source of truth. Repetition creates divergence.
+- **Resolve ambiguity early** — the longer it sits, the more assumptions
+  accumulate on top of it. Surface contradictions immediately.
+- **Explicit contracts** — state your expectations. Don't make people infer
+  what you need.
+
+These aren't universal truths. In exploratory contexts (brainstorming, early
+prototyping) you'd want softer boundaries and more tolerance for ambiguity. But
+a compiler pipeline is past that phase — it's the thing that needs to be
+maximally trustworthy so everything built on top of it can afford to be
+creative. Think of it as the scientific method applied to program construction:
+conservative, incremental, falsifiable progress. Make your claims precise enough
+that they can be proven wrong quickly, rather than vaguely enough that failure is
+slow and confusing.
+
+### The obligation boundary
+
+Today, when the compiler can't prove a property statically, it generates a
+**proof obligation** — a test that testgen emits to verify the property at
+runtime. This is the right escape hatch: you can't prove everything statically.
+But the obligation boundary should move **leftward** over time. Each improvement
+to the compiler should let it prove more, so testgen generates less.
+
+The goal is not to eliminate testgen. It's to make testgen's job **precise**.
+Today testgen is defensive — it infers providers from node ID strings, probe-
+executes downstream nodes to guess response shapes, and falls back to "kitchen
+sink" mock responses when it can't figure out what a service returns. This
+defensiveness exists because the compiler pipeline loses information that the
+DSL author declared:
+
+- `service github.Gist { ... }` — the compiler knows the provider, but this
+  metadata is lost after lowering. Testgen re-infers it from `"github.Gist.Create/execute"`.
+- `response { 200 => GistResponse, 404 => NotFound }` — the compiler parses
+  this, but the response type map doesn't flow through the IR. Testgen probe-
+  executes downstream to find which response shape "fits."
+- `readonly`, `idempotent` — the compiler validates these, but testgen re-
+  derives them via BFS graph walk (`CallableProperties`) instead of reading
+  from verified metadata.
+
+Every piece of metadata that testgen re-derives is a piece of tautology the
+compiler failed to store. The fix is to preserve service metadata, response
+contracts, and behavioral properties through the lowered IR so testgen can
+trust them directly.
+
+### Pain points that motivated this doc
+
+These are real bugs from the last few weeks — each one is a compiler pipeline
+failure that manifested as an opaque runtime error:
+
+| Bug | Root cause | What the compiler should have done |
+|-----|-----------|-----------------------------------|
+| `make gist` DNS error | Lowerer creates transport nodes for unreachable match arms (no guards) | Lower match arms into guarded SubDags; transport nodes inside dead arms never execute |
+| `make gist` `audience=true` | Lowerer doesn't inject literal nodes for default parameters | Emit `MakeLiteral("sigstore")` for omitted args with defaults (**fixed**: Bridge 2b) |
+| `gunbc-ci` false failure | Lowerer silently drops complex return expressions (`BinOp`, `Match` → None) | Return `LowerError` instead of silently dropping |
+| `make gist` 401 | No credential wiring from service config to transport execute node | Validate that every required port has a producer after lowering |
+| SDLC won't compile | Unresolved imports silently dropped by module resolver | Return `ResolveError::UnresolvedImport` instead of skipping |
+| Testgen kitchen sink mocks | Service provider metadata lost after lowering | Preserve provider + response contract through IR |
+
+Every one of these would have been caught by the four invariants: binary PASS/FAIL
+(no silent drops), minimalism (no re-derivation), resolve early (validate at
+lower time), clear contracts (metadata flows through typed interfaces).
+
 ---
 
 ## Four Invariants
@@ -56,14 +132,14 @@ already computed. If the same data appears in two stages, one is redundant.
 
 | What | Canonical owner | Restated in | Fix |
 |------|-----------------|-------------|-----|
-| `path`, `module_path`, `ast` | `ResolvedModule` | `TypedModule` (copied) | TypedModule references by index |
+| `path`, `module_path`, `ast` | `ResolvedModule` | Resolved in current branch | `TypedModule` now references modules by graph index |
 | Callable signatures | `TypedCallableSignature` | Node ports (re-derived from AST) | Derive ports from signatures |
 | Type constraints | Typecheck (rich) | Lower (erased to strings) | Carry `TypeId` on ports |
-| `output_paths` | Lowered DAG | Driver (re-extracted) | Compute once during lower |
-| `pipeline_params` | TypedProject | Driver (re-scanned) | Attach during typecheck |
-| `dsl_type_registry` | TypedProject | Driver (re-extracted) | Compute once during typecheck |
-| `available_profiles` | TypedProject | Driver (re-scanned) | Attach during typecheck |
-| `data_values` | TypedProject | Driver (re-evaluated) | Evaluate once during lower |
+| `output_paths` | Lowered DAG | Resolved in current branch | Computed once during lower |
+| `pipeline_params` | TypedProject | Resolved in current branch | Attached during typecheck |
+| `dsl_type_registry` | TypedProject | Resolved in current branch | Computed once during typecheck |
+| `available_profiles` | TypedProject | Resolved in current branch | Attached during typecheck |
+| `data_values` | Lowered output | Resolved in current branch | Lower computes it once, including data-only helper flows via empty-DAG lowering |
 | Transport triplet structure | Lowerer (`Node.kind`) | Derive (re-parsed from port strings) | Use `Node.kind` directly |
 | Loop pattern structure | Lowerer (created SubDag) | Executor (`detect_loop_pattern()`) | Stamp `LoopInfo` on SubDag |
 | `inferred_entrypoints` | Lowered DAG topology | Driver (re-inferred) | Compute once during lower |
@@ -100,24 +176,62 @@ humans, agents, or teams. Everyone knows what they need to produce, provide,
 and accept at all times. No implicit coupling, no "you need to also call X
 first" that isn't visible in the types.
 
-**Contract violations to eliminate** (audit 2026-03-05):
+**Open or partial contract gaps** (audit 2026-03-06):
 
-| Violation | Location | Problem |
-|-----------|----------|---------|
-| Typecheck takes ownership of `ModuleGraph` | `typecheck_module_graph(graph: ModuleGraph)` | Moves input, later stages can't reference it |
-| TypedModule copies ModuleGraph fields | `TypedModule { path, module_path, imports, ast }` | Duplicates input instead of referencing |
-| CompileOutput is a grab-bag | 11 fields, many re-extracted | Output conflates multiple concerns |
-| Execute has 4 progressively wider entry points | `execute` → `..._with_mode` → `..._and_inputs` → `..._and_detail` | Growing parameter lists hide the real contract |
-| ExternResolver is stringly-typed | `resolve(module: &str, name: &str) -> Option<DynOp>` | Runtime string lookup instead of validated ID |
-| LowerError is ad-hoc | `{ node_id: Option<String>, reason: String }` | No structured error, no span, Option for required context |
-| verify_dag has no output type | Validation only, doesn't produce `VerifiedDag` | No type-level proof that verification happened |
-| Driver re-extracts stage outputs | `extract_output_paths()`, `infer_entrypoints()` after lower | Re-walks structures that earlier stages already computed |
+| Gap | Current state | Remaining mismatch |
+|-----|---------------|--------------------|
+| Diagnostics | Shared `daglang-contract::Diagnostic` exists and the driver now consumes type/lower/verify diagnostics through it | `span`/`file` remain optional, and variant-level mandatory spans are still deferred to CP-63 |
+| Verification gate | `VerifiedDag<T>` exists and gates compile output | Verification is now mandatory on the compile path, but direct lowerer-only helpers can still bypass it if a caller opts out of the driver |
+| Runtime bindings | `RuntimeBindings` is now the resolve/build API and the trait bridge is deleted | ExternId-keyed total linking is still target-state work; current keys are typed `ProgramSymbolId` |
 
 ---
 
 ## Architectural Principles
 
-These principles follow from the four invariants above.
+These principles follow from the four invariants above. The first three
+(binary logic, minimalism, resolve early) constrain the semantics. The fourth
+(clear contracts) constrains the interfaces.
+
+### When You Can't Store Tautology, Fail Helpfully
+
+A compiler's PASS path stores tautology — certainty for downstream consumers.
+But the FAIL path is equally important. When the compiler finds a contradiction,
+the error message is its **last act of usefulness** before stopping. A good
+error message transfers enough information for the human to resolve the
+contradiction themselves.
+
+Every diagnostic must answer three questions:
+
+1. **What went wrong?** — the contradiction, in structured terms (expected X, got Y)
+2. **Where?** — the source location (`.dag` file, line, column) that caused it
+3. **How to fix it?** — a concrete suggestion, or at minimum, what the stage
+   needed that it didn't get
+
+This means each stage is responsible for emitting errors that carry the I/O
+necessary for earlier stages to correlate to the actual failure. A lowerer error
+that says `"missing required input for compare_content"` is useless. A lowerer
+error that says `"tools/gist.dag:42: service call gist.Create is missing
+required argument 'description' (expected: String) — add description: "..." to
+the call site"` lets the user fix it immediately.
+
+**Current diagnostic quality** (audit 2026-03-05):
+
+| Stage | Spans | Structured context | Help/suggestion | Verdict |
+|-------|-------|-------------------|-----------------|---------|
+| Parse | Yes | No (message string) | No | Has location, lacks structure |
+| Module Resolve | No | Yes (module paths) | No | Has context, no location |
+| Typecheck | **No** | Yes (35+ variants) | No | Rich context, completely blind to source |
+| Lower | **No** | Yes (25+ variants) | Partial (ad-hoc in Display) | Rich context, no location |
+| Verify (SubDag) | No | Yes (8 variants, available ports) | No | Structural detail, no source link |
+| Derive | No | No (single String variant) | No | Minimal |
+| Emit | No | Yes (3 variants) | No | Adequate |
+| Resolve (core) | No | No (node_id + reason string) | No | Worst: unstructured, no location |
+| Execute | No | Yes (layered, 7 layer types, classification) | No | Richest runtime context, no source link |
+
+The pattern is clear: **source location is generated at parse time and
+immediately lost**. Every subsequent stage operates blind to where in the `.dag`
+file the problem originated. The fix is to thread `Span` from parse through
+typecheck and lowering, and attach it to every error.
 
 ### The Tautology Rule
 
@@ -238,7 +352,10 @@ explicit default values wired by the lowerer. The executor never invents data.
 
 ### NodeOrigin — traceability from IR to source
 
-Every node in the lowered DAG carries its origin:
+Target end state: every lowered node carries source origin. Current branch has
+the `NodeOrigin` field with `Unknown` as the backward-compatible default, but
+most lowerer stamping is still deferred until spans are threaded through the
+lowerer context.
 
 ```rust
 enum NodeOrigin {
@@ -274,6 +391,17 @@ encountering a `side_effecting` node without an explicit mock is
 | Verification proof | `VerifiedDag<LoweredOp>` | Resolve + Emit (required input) |
 | Backend expansion | `RealizedDag<LoweredOp>` | Executor / emitter (provably total) |
 | Runtime bindings | `Dag<DynOp>` / `EmissionBundle` | Executor / compiled binary |
+
+### Contracts crate (enforced boundaries)
+
+Create a small `daglang-contracts` crate containing **only** the shared interface
+types (`Verdict`, `Diagnostics`, `Diagnostic`, `Span`, `FileId`, `ModuleId`,
+`ExternId`, `TypeId`, etc.) and the function signatures for each stage. Every stage
+crate depends on it. No implementation code.
+
+This turns "style preference for pure functions" into an enforced boundary. If a
+stage needs something not in its declared input, it must add it to the contract —
+making the dependency visible to everyone.
 
 ### CompileDb arena (target architecture)
 
@@ -332,22 +460,26 @@ externs aren't detected until you try to run the graph. The fix: validate extern
 calls in typecheck, carry typed IDs through lowering.
 
 ```rust
+// Current implementation (core/daglang/daglang-typecheck/src/extern_registry.rs)
 struct ExternRegistry {
-    symbols: Vec<ExternSymbol>,
+    entries: HashMap<(String, String), ExternSignature>,
 }
 
-struct ExternSymbol {
-    module: String,
-    name: String,
-    signature: TypedCallableSignature,
-    id: ExternId,
+struct ExternSignature {
+    pub module: String,
+    pub name: String,
+    pub input_count: usize,
+    pub output_count: usize,
 }
+
+// Target: ExternId-keyed total linking (not yet implemented)
+// struct ExternSymbol { module, name, signature: TypedCallableSignature, id: ExternId }
 ```
 
-Typecheck consumes `ExternRegistry` and proves every `extern_call` resolves to
-an `ExternId` with a matching signature. The lowerer carries `ExternId`, not
-`(module, name)` strings. Stage 5a resolve becomes total — it cannot fail on
-missing externs because typecheck already proved they exist.
+Typecheck consumes `ExternRegistry` and validates extern declarations exist with
+matching arities. **Current state**: keyed by typed `ProgramSymbolId` values.
+**Target**: `ExternId`-keyed total linking where the lowerer carries `ExternId`
+not strings, and Stage 5a resolve becomes provably total.
 
 ---
 
@@ -490,7 +622,480 @@ unclear which copy is authoritative.
 
 ---
 
-## Overview
+## Target Stage Interfaces
+
+Every pipeline stage is a pure function: `fn(Input) -> Verdict<Output>`. The
+signature IS the contract. No hidden state, no ambient globals, no progressively
+wider parameter lists.
+
+### Shared Types
+
+> Current-state note (2026-03-06): this section describes the **target end
+> state**, not a claim that every detail is already implemented today.
+>
+> **Landed**: `TypedProject` borrows `&ModuleGraph` (CP-43), `LowerOutput`
+> owns computed fields (CP-44), execution consolidated behind `execute_dag`
+> + `ExecuteConfig` (CP-45), `SpannedTypeError` carries AST spans and
+> resolves line:col from source text, `NodeOrigin::Unknown` fallbacks
+> panic (all 5 lowerer sites now hard-fail instead of silent default),
+> testgen failure variant synthesis (`auto_mock_failure_variants()`).
+>
+> **Still transitional**: ExternId-keyed runtime bindings (currently
+> `ProgramSymbolId`-keyed), a standalone `SourceBundle` ingest stage,
+> and `Diagnostic::located()` adoption across all error sites.
+
+```rust
+/// The one result type. PASS = Ok, FAIL = Err. No third state.
+type Verdict<T> = Result<T, Diagnostics>;
+
+struct Diagnostics {
+    errors: Vec<Diagnostic>,    // non-empty => FAIL
+}
+
+/// Every error answers: what went wrong, where, and how to fix it.
+struct Diagnostic {
+    code: &'static str,         // machine-readable (e.g. "E0401")
+    message: String,            // human-readable: the contradiction
+    span: Span,                 // source location — NOT optional for user-facing errors
+    file: PathBuf,              // which .dag file
+    context: DiagnosticContext, // structured: what was expected vs what was found
+    help: Option<String>,       // concrete suggestion for resolving the contradiction
+    related: Vec<RelatedSpan>,  // secondary locations (e.g. "first defined here")
+}
+
+/// Structured context so tooling can act on errors programmatically.
+enum DiagnosticContext {
+    /// Type mismatch: expected X, got Y
+    TypeMismatch { expected: String, got: String },
+    /// Missing required item (import, arg, port, field)
+    Missing { kind: &'static str, name: String, available: Vec<String> },
+    /// Duplicate definition
+    Duplicate { name: String, first: Span },
+    /// Unsupported feature
+    Unsupported { feature: String },
+    /// Generic (escape hatch for rare cases)
+    Note(String),
+}
+
+struct RelatedSpan {
+    span: Span,
+    file: PathBuf,
+    label: String,              // "first defined here", "imported from here", etc.
+}
+
+/// Interned identity types — no stringly-typed resolution after typecheck.
+/// Each stage introduces IDs for its domain; later stages carry IDs, not strings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct FileId(u32);        // Source ingest: stable within one compilation
+struct ModuleId(u32);      // Module resolve: index into ModuleGraph.modules
+struct DefId(u32);         // Typecheck: any named definition
+struct CallableId(u32);    // Typecheck: fn/func/pattern/extern func
+struct ServiceOpId(u32);   // Typecheck: service operation
+struct ExternId(u32);      // Typecheck: extern func (via ExternRegistry)
+struct TypeId(u32);        // Typecheck: type arena entry
+struct DataId(u32);        // Lower: evaluated data declaration
+struct PatternInstanceId(u32); // Lower: expanded pattern (triplet, chain, loop)
+
+/// Newtype: proof that verification passed. Only constructible via verify().
+/// Current implementation (core/ir/src/verified.rs): simple newtype wrapper.
+struct VerifiedDag<T>(Dag<T>);
+// Target: add proof: DagProof field recording what was checked and when.
+
+/// Target architecture (not yet implemented):
+/// Newtype for backend-expanded DAG. Provably total expansion of VerifiedDag.
+// struct RealizedDag<T> { dag: Dag<T> }
+```
+
+### Diagnostic Contracts Per Stage
+
+Every stage emits `Diagnostic` on FAIL. The table below specifies the minimum
+information each stage's diagnostics must carry. "Help" means a concrete
+suggestion for resolving the contradiction.
+
+| Stage | Must carry span | Must carry context | Must carry help | Example |
+|-------|----------------|-------------------|-----------------|---------|
+| Parse | Yes (from lexer) | `Note` (syntax description) | Yes: expected token | `"expected '}' to close block opened at line 12"` |
+| Module Resolve | Yes (import statement span) | `Missing { kind: "module", available }` | Yes: similar module names | `"import std.rendor not found — did you mean std.render?"` |
+| Typecheck | Yes (AST node span from parse) | `TypeMismatch`, `Missing`, `Duplicate` | Yes: expected type/name | `"tools/gist.dag:42: expected String, got Int for arg 'id' — change to String or cast"` |
+| Lower | Yes (AST span via TypedProject → ModuleGraph) | `Missing { kind: "port" }`, structural | Yes: what to wire | `"tools/gist.dag:42: service call gist.Create missing required arg 'description' (String)"` |
+| Verify | Yes (via NodeOrigin on lowered nodes) | `Missing { kind: "edge" }`, structural | Yes: what's unwired | `"node compare_content has unwired input 'expected_content' — add content source or default"` |
+| Derive | Yes (via node metadata) | Structural | No (internal) | Rare — structural invariant violations |
+| Emit | Yes (via node metadata) | `Unsupported` | Yes: what's not supported | `"REST exposure codegen not yet implemented for func 'serve' at line 8"` |
+| Execute | No (runtime) | Layered (`ErrorLayer` stack) | Yes: what mock/config is missing | `"DryRun: unmocked transport node 'execute_gist_create' — add mock or run in Real mode"` |
+
+Current implementation note: `SpannedTypeError` now carries AST spans and
+resolves line:col from retained source text. The 5 lowerer origin-stamping
+fallbacks panic instead of silently defaulting `NodeOrigin::Unknown`.
+`Diagnostic::new()` is still location-free (prefer `Diagnostic::located()`).
+
+The key insight is still correct: **spans should flow rightward through the
+pipeline**. Parse creates them. Module resolve attaches them to import
+statements. Typecheck reads them from AST nodes (which live in `ModuleGraph`,
+referenced by `TypedProject`). The target end state is for lower to attach them
+as `NodeOrigin::UserCode { span }` on every lowered node so verify and emit can
+consume them directly. The current branch has not fully completed that
+propagation yet.
+
+### Stage 0: Ingest (impurity isolation)
+
+```rust
+fn ingest_sources(vfs: &dyn Vfs, roots: &[PathBuf], entry: EntrySpec) -> Verdict<SourceBundle>
+```
+
+- **In**: `Vfs` (filesystem trait) + DSL roots + entry spec
+- **Out**: `SourceBundle` — immutable snapshot of all source files
+- **Contract**: This is the **only impure stage**. Everything after ingest is a pure
+  function of the `SourceBundle`. No subsequent stage reads the filesystem.
+
+```rust
+trait Vfs: Send + Sync {
+    fn read_to_string(&self, path: &Path) -> io::Result<String>;
+    fn list_files(&self, root: &Path, ext: &str) -> io::Result<Vec<PathBuf>>;
+}
+
+struct SourceBundle {
+    files: Vec<SourceUnit>,             // stable: index == FileId.0
+    by_path: HashMap<PathBuf, FileId>,
+    entry: EntrySpec,
+}
+
+struct SourceUnit {
+    id: FileId,
+    path: PathBuf,
+    text: Arc<str>,
+}
+```
+
+Isolating filesystem access to Stage 0 means the rest of the pipeline can be tested
+with synthetic inputs — no filesystem mocking needed in parser, typechecker, or
+lowerer tests. Currently module resolve interleaves parsing and filesystem reads;
+this separation makes it a pure graph construction over already-parsed ASTs.
+
+### Stage 1: Parse
+
+```rust
+fn parse(source: &str) -> Verdict<SourceFile>
+```
+
+- **In**: raw `.dag` text
+- **Out**: `SourceFile` — faithful structural record with spans on every node
+- **Contract**: `AST == Source Text`. No drops, no substitutions, no lossy recovery.
+  Every AST node carries a `Span`. Unsupported syntax is represented as
+  `Expr::ErrorNode { span }`, never silently discarded.
+
+### Stage 2: Module Resolve
+
+```rust
+fn discover_module_graph(context: &DriverContext) -> Verdict<ModuleGraph>
+```
+
+- **In**: DSL root paths + optional target file
+- **Out**: `ModuleGraph` — all modules in dependency order, with parsed ASTs
+- **Contract**: every `import` resolves to exactly one module on disk, or FAIL.
+  No `["unknown"]` fallbacks, no silently dropped imports, no OOB index skips.
+
+```rust
+struct ModuleGraph {
+    modules: Vec<ResolvedModule>,   // dependency-ordered (leaves first)
+}
+
+struct ResolvedModule {
+    file: FileId,                   // index into source file table
+    path: PathBuf,                  // filesystem path
+    module_path: ModulePath,        // semantic path (e.g. ["tools", "makegen"])
+    ast: SourceFile,                // parsed AST (owned here, referenced later)
+    dependencies: Vec<ModuleId>,    // indices into modules vec
+}
+```
+
+### Stage 3: Typecheck
+
+```rust
+fn typecheck(graph: &ModuleGraph, externs: &ExternRegistry) -> Verdict<TypedProject>
+```
+
+- **In**: `&ModuleGraph` (borrowed, not moved) + `ExternRegistry`
+- **Out**: `TypedProject` — type signatures overlaid on module graph, by reference
+- **Contract**: if PASS, every reference resolves, every type is sound, every
+  extern call matches a registered signature. No `allow_unresolved_references`.
+
+```rust
+struct TypedProject<'a> {
+    graph: &'a ModuleGraph,                              // borrowed, not copied
+    signatures: HashMap<SymbolId, TypedItemSignature>,   // proven types
+    type_registry: TypeRegistry,                         // all type definitions
+    available_profiles: Vec<String>,                     // discovered during check
+}
+
+struct ExternRegistry {
+    symbols: Vec<ExternSymbol>,
+}
+
+struct ExternSymbol {
+    module: String,
+    name: String,
+    signature: TypedCallableSignature,
+    id: ExternId,
+}
+```
+
+`TypedProject` has **no** `path`, `module_path`, `imports`, or `ast` fields.
+Those live in `graph` and are accessed via `ModuleId` indices.
+
+### Stage 4: Lower
+
+```rust
+fn lower(typed: &TypedProject, config: &LowerConfig) -> Verdict<LowerOutput>
+```
+
+- **In**: `&TypedProject` + lowering config (profile, entry module)
+- **Out**: `LowerOutput` — canonical DAG + all derived metadata computed during lowering
+- **Contract**: every required input port has a producer edge. No `lower_warn()`,
+  no silent arg drops, no `param_source` without wiring. Every port carries a type.
+  Defaults are explicit `MakeLiteral` nodes, not runtime auto-fills.
+
+```rust
+struct LowerOutput {
+    dag: Dag<LoweredOp>,                               // canonical IR
+    output_paths: Vec<String>,                          // from content_upsert + @outputs
+    data_values: HashMap<String, serde_json::Value>,    // evaluated data declarations
+    entrypoints: Vec<InferredEntrypoint>,                // structurally inferred
+}
+```
+
+These fields are computed **during** lowering (not re-extracted by the driver
+afterward). The driver never walks the DAG to re-derive information that
+lowering already computed.
+
+### Stage 5: Verify
+
+```rust
+fn verify(dag: Dag<LoweredOp>, types: &TypeRegistry) -> Verdict<VerifiedDag<LoweredOp>>
+```
+
+- **In**: `Dag<LoweredOp>` (consumed) + type registry
+- **Out**: `VerifiedDag<LoweredOp>` — the only way to construct this type
+- **Contract**: all structural invariants proven. Every required port has a
+  producer. Every edge is type-compatible. Every pattern instance is well-formed.
+  `validate_structural_primitive_wiring()` is merged into this single step.
+
+`VerifiedDag` is the gate to both runtime paths. You cannot call `resolve()`
+or `emit()` without one. `skip_verification` cannot exist.
+
+### Stage 6: Derive
+
+```rust
+fn derive(verified: &VerifiedDag<LoweredOp>) -> Verdict<DerivedArtifacts>
+```
+
+- **In**: `&VerifiedDag<LoweredOp>`
+- **Out**: `DerivedArtifacts` — manifest, obligations, transport triplets, properties
+- **Contract**: derives from the verified DAG only. Uses `Node.kind` for
+  transport classification, not port string heuristics.
+
+### Stage 7a: Resolve (interpreted path)
+
+```rust
+fn resolve(
+    verified: &VerifiedDag<LoweredOp>,
+    bindings: &RuntimeBindings,
+) -> Verdict<Dag<DynOp>>
+```
+
+- **In**: `&VerifiedDag<LoweredOp>` + runtime bindings (total mapping `ExternId → DynOp`)
+- **Out**: `Dag<DynOp>` — executable graph, same topology
+- **Contract**: pure relabeling. Same nodes, same edges, same ports. Only body
+  labels change from symbolic to executable. Implemented via `dag.map_bodies()`.
+  Cannot fail on missing externs (typecheck proved they exist, bindings are total).
+
+```rust
+struct RuntimeBindings {
+    externs: HashMap<ExternId, DynOp>,   // total: every ExternId has a binding
+    // no Option, no fallback, no "none" default
+}
+```
+
+### Stage 7b: Emit (compiled path)
+
+```rust
+fn emit(
+    verified: &VerifiedDag<LoweredOp>,
+    derived: &DerivedArtifacts,
+    config: &EmitConfig,
+) -> Verdict<EmissionBundle>
+```
+
+- **In**: `&VerifiedDag<LoweredOp>` + derived artifacts + emit config (target, layer)
+- **Out**: `EmissionBundle` — source files for target language
+- **Contract**: emits from verified DAG and derived artifacts only. Unsupported
+  features return `EmitError::UnsupportedFeature`, never `todo!()`.
+
+### Stage 8: Execute
+
+```rust
+fn execute(dag: &Dag<DynOp>, config: &ExecConfig) -> Verdict<ExecResult>
+```
+
+- **In**: `&Dag<DynOp>` + execution config (mode, mocks, detail level)
+- **Out**: `ExecResult` — outputs + execution log
+- **Contract**: blind traversal. The executor only knows what the graph tells it.
+  No auto-fills, no invented values, no `Value::Skipped`. A node either executes
+  (producing outputs) or is transitively bypassed (downstream never scheduled).
+
+```rust
+struct ExecConfig {
+    mode: ExecutionMode,             // Real | DryRun(mocks, strictness)
+    detail: LogDetailLevel,          // how much to log
+}
+
+// Current implementation returns Result<ExecutionLog, ExecError>.
+// Target: ExecResult bundling outputs + log (not yet implemented).
+// struct ExecResult {
+//     outputs: HashMap<String, Value>,
+//     log: ExecutionLog,
+// }
+```
+
+One entry point. No `execute_with_mode`, `execute_with_mode_and_inputs`,
+`execute_with_mode_and_inputs_and_detail` progression. The config struct carries
+all options.
+
+### The Full Pipeline (composed)
+
+```rust
+fn compile(vfs: &dyn Vfs, opts: &CompileOptions) -> Verdict<CompileOutput> {
+    let sources  = ingest_sources(vfs, &opts.roots, &opts.entry)?;  // only impure stage
+    let parsed   = parse_all(&sources)?;
+    let graph    = resolve_modules(&parsed)?;
+    let externs  = build_extern_registry(&opts.externs);
+    let typed    = typecheck(&graph, &externs)?;
+    let lowered  = lower(&typed, &opts.lower)?;
+    let verified = verify(lowered.dag, &typed.type_registry)?;
+    let derived  = derive(&verified)?;
+    let emitted  = emit(&verified, &derived, &opts.emit)?;
+
+    Ok(CompileOutput { graph, typed, verified, lowered, derived, emitted })
+}
+```
+
+And the interpreted runtime path:
+
+```rust
+let bindings = build_runtime_bindings(&externs, &resolver);  // total
+let resolved = resolve(&verified, &bindings)?;
+let result   = execute(&resolved, &exec_config)?;
+```
+
+Every `?` is a PASS/FAIL boundary. Every stage takes typed inputs and produces
+typed outputs. No hidden coupling. The signatures are the documentation.
+
+### Contract Traceability
+
+| What flows between stages | Type | Owner | Consumed by |
+|---------------------------|------|-------|-------------|
+| Source text → AST | `SourceFile` | Parse | Module Resolve (stored in `ResolvedModule`) |
+| Module graph | `ModuleGraph` | Module Resolve | Typecheck (by ref), Lower (via TypedProject) |
+| Type signatures | `TypedProject<'a>` | Typecheck | Lower |
+| Extern symbol table | `ExternRegistry` | Builder (pre-typecheck) | Typecheck (validation), Resolve (binding) |
+| Canonical IR | `LowerOutput` | Lower | Verify (dag), Derive (after verify), Emit |
+| Verification proof | `VerifiedDag<LoweredOp>` | Verify | Resolve, Emit, Derive |
+| Derived metadata | `DerivedArtifacts` | Derive | Emit |
+| Executable graph | `Dag<DynOp>` | Resolve | Execute |
+| Runtime bindings | `RuntimeBindings` | Builder (pre-resolve) | Resolve |
+| Execution result | `ExecResult` | Execute | Caller |
+
+---
+
+## Strict Pipeline Diagram
+
+This is the target end state: isolate filesystem impurity once, produce one
+canonical verified artifact, realize to backend (mechanical, total), link/emit
+as consumers of verified truth (no guessing, no rewiring).
+
+```text
+                ┌────────────────────────────────────────────────┐
+                │                IMPURE BOUNDARY                 │
+                │  (filesystem / environment access is explicit) │
+                └────────────────────────────────────────────────┘
+
+   VFS / FS snapshot
+         |
+         v
+┌───────────────────┐   SourceBundle (FileId, path, text, hash, line_index)
+│ Stage 0: Ingest   │───────────────────────────────────────────────────────┐
+│ (read files once) │                                                       │
+└───────────────────┘                                                       │
+                                                                            │
+                ┌────────────────────────────────────────────────┐          │
+                │               PURE COMPILER CORE               │          │
+                │     fn(Input) -> Verdict<Output> everywhere    │          │
+                └────────────────────────────────────────────────┘          │
+
+         v
+┌───────────────────┐   ParsedBundle (AST per file; spans everywhere)
+│ Stage 1: ParseAll │───────────────────────────────────────────────────────┐
+└───────────────────┘                                                       │
+         v                                                                    │
+┌────────────────────────┐  ModuleGraph (ModuleId graph + topo order)
+│ Stage 2: ResolveModules│───────────────────────────────────────────────────┐
+└────────────────────────┘                                                   │
+         v                                                                    │
+┌───────────────────┐   TypedProgram (IDs resolved; TypeRegistry; signatures)
+│ Stage 3: Typecheck│───────────────────────────────────────────────────────┐
+└───────────────────┘                                                       │
+         v                                                                    │
+┌───────────────────┐   LoweredProgram (Dag<LoweredOp> + meta + consts)
+│ Stage 4: Lower    │───────────────────────────────────────────────────────┐
+└───────────────────┘                                                       │
+         v                                                                    │
+┌───────────────────┐   VerifiedProgram (VerifiedDag<LoweredOp> + proof)
+│ Stage 4.5: Verify │───────────────────────────────────────────────────────┐
+└───────────────────┘                                                       │
+         |                                                                    │
+         | (canonical gate: only VerifiedProgram crosses this boundary)       │
+         |                                                                    │
+         +--------------------+------------------------------+----------------+
+                              |                              |
+                              v                              v
+                    ┌───────────────────┐          ┌────────────────────────┐
+                    │ Stage 5: Derive   │          │ Stage 5: Realize       │
+                    │ (manifest, tests, │          │ (total mechanical       │
+                    │ obligations, etc) │          │ expansion)              │
+                    └───────────────────┘          └────────────────────────┘
+                              |                              |
+                              v                              v
+                   DerivedArtifacts                   RealizedDag<LoweredOp>
+                              |                              |
+                              |                    +---------+----------+
+                              |                    |                    |
+                              v                    v                    v
+                    ┌───────────────────┐   ┌──────────────────┐  ┌─────────────────┐
+                    │ Stage 6b: Emit    │   │ Stage 6a: Link    │  │ Stage 6a: Link  │
+                    │ (compiled path)   │   │ (interpreted path)│  │ (compiled runtime│
+                    └───────────────────┘   └──────────────────┘  │  if embedded)    │
+                              |                    |              └─────────────────┘
+                              v                    v
+                      EmissionBundle          Dag<DynOp>
+                              |                    |
+                              v                    v
+                        toolchain            ┌───────────────┐
+                              |              │ Stage 7: Exec  │
+                              v              │ (blind traversal│
+                        native binary        │ no autofills)   │
+                                             └───────────────┘
+                                                   |
+                                                   v
+                                              ExecResult
+```
+
+**Coherence choice**: canonical lowering keeps high-level intent where it
+matters; backend realization handles mechanical expansion. This eliminates
+the "service triplets created too early" conflict and makes testgen/derive
+*trust* metadata instead of re-inferring it.
+
+---
+
+## Overview (legacy — see strict pipeline above for target)
 
 ```
                           .dag source files
@@ -628,8 +1233,8 @@ ModuleGraph  ──>  TypedProject (validated signatures)
 |---|---|
 | **Crate** | `core/daglang/daglang-typecheck` |
 | **Entry** | `typecheck_module_graph_with_options(graph, options) -> Result<TypedProject, Vec<TypeError>>` |
-| **Input** | `ModuleGraph` (all modules with raw ASTs) |
-| **Output** | `TypedProject { modules: Vec<TypedModule> }` |
+| **Input** | `&ModuleGraph` (all modules with raw ASTs) |
+| **Output** | `TypedProject { graph, typed_modules, pipeline_params, dsl_type_registry, available_profiles }` |
 
 Validates type references, field access, refinement constraints, interface
 conformance, generics, function signatures, service operations, and pipeline
@@ -640,11 +1245,9 @@ signatures but does not transform the tree.
 
 ```
 TypedProject
-  +-- modules: Vec<TypedModule>
-        +-- path: PathBuf
-        +-- module_path: ModulePath
-        +-- imports: Vec<ModulePath>
-        +-- ast: SourceFile              (same AST, now validated)
+  +-- graph: &ModuleGraph | ModuleGraph
+  +-- typed_modules: Vec<TypedModule>
+        +-- graph_index: usize
         +-- signatures: Vec<TypedItemSignature>
               +-- Fn(TypedCallableSignature)
               +-- Func(TypedCallableSignature)
@@ -652,14 +1255,16 @@ TypedProject
               +-- Interface { name, capabilities }
               +-- Pipeline { name, stages, stage_names }
               +-- ...
+  +-- pipeline_params: Vec<PipelineParam>
+  +-- dsl_type_registry: TypeRegistry
+  +-- available_profiles: Vec<String>
 ```
 
 ### Known gaps
 
 | Issue | Severity | Detail |
 |-------|----------|--------|
-| Debug `eprintln!` in production | Medium | ~5 `eprintln!("[DEBUG callable_body] ...")` statements fire on type mismatches, polluting stderr. |
-| Unresolved references allowed by flag | High | When `allow_unresolved_references=true`, missing call targets are silently skipped. Downstream lowering fails with cryptic messages. |
+| Relaxed utility mode exists | Medium | Some helper paths still typecheck with `allow_unresolved_imports = true` for partial tooling flows; the strict compile path is fail-closed, but the typecheck contract is not uniform yet. |
 | Generic type constraints not fully validated | Medium | Generic instantiation arity is checked, but constraint satisfaction and higher-order function types are not. |
 | Pipe method argument types unchecked | Medium | Pipe method call arguments are not validated against method signatures. |
 
@@ -668,15 +1273,15 @@ TypedProject
 ## Stage 4: Lower
 
 ```
-TypedProject  ──>  Dag<LoweredOp> (graph IR)
+TypedProject  ──>  LowerOutput { dag, output_paths, inferred_entrypoints, data_values }
 ```
 
 | | |
 |---|---|
 | **Crate** | `core/daglang/daglang-lower` |
-| **Entry** | `lower_with_config(typed, config) -> Result<Dag<LoweredOp>, LowerError>` |
+| **Entry** | `lower_to_output_with_config(typed, config) -> Result<LowerOutput, LowerError>` |
 | **Input** | `TypedProject` |
-| **Output** | `Dag<LoweredOp>` — nodes, edges, ports |
+| **Output** | `LowerOutput` — DAG plus canonical lower-stage products |
 
 This is the big transform. Typed AST items become a **graph of nodes connected
 by typed edges**. The major expansions:
@@ -690,22 +1295,30 @@ by typed edges**. The major expansions:
 - **Loops** become `LoopUnpack` / body SubDag / `LoopPack`
 - **Data declarations** are evaluated to `serde_json::Value` at lower time
 
+`lower_with_config()` still exists as a compatibility wrapper for callers that
+only need the DAG, but the main compile path now consumes the bundled
+`LowerOutput`.
+
 ### Data shape
 
 ```
-Dag<LoweredOp>
-  +-- nodes: Vec<Node<LoweredOp>>
-  |     +-- id: NodeId
-  |     +-- body: NodeBody<LoweredOp>
-  |     |     +-- Opaque(LoweredOp)          -- leaf node
-  |     |     +-- SubDag(Dag<LoweredOp>)     -- nested graph (loops, branches)
-  |     +-- inputs: Vec<Port>
-  |     +-- outputs: Vec<Port>
-  |
-  +-- edges: Vec<Edge>
-        +-- from_node / from_port
-        +-- to_node / to_port
-        +-- kind: EdgeKind { Data, Control, Resource }
+LowerOutput
+  +-- dag: Dag<LoweredOp>
+  |     +-- nodes: Vec<Node<LoweredOp>>
+  |     |     +-- id: NodeId
+  |     |     +-- body: NodeBody<LoweredOp>
+  |     |     |     +-- Opaque(LoweredOp)          -- leaf node
+  |     |     |     +-- SubDag(Dag<LoweredOp>)     -- nested graph (loops, branches)
+  |     |     +-- inputs: Vec<Port>
+  |     |     +-- outputs: Vec<Port>
+  |     |
+  |     +-- edges: Vec<Edge>
+  |           +-- from_node / from_port
+  |           +-- to_node / to_port
+  |           +-- kind: EdgeKind { Data, Control, Resource }
+  +-- output_paths: Vec<String>
+  +-- inferred_entrypoints: Vec<InferredEntrypoint>
+  +-- data_values: HashMap<String, Json>
 
 LoweredOp variants:
   +-- Callable { module, kind, name, fn_body?, service_metadata? }
@@ -720,11 +1333,9 @@ LoweredOp variants:
 
 | Issue | Severity | Detail |
 |-------|----------|--------|
-| Silent node drops in pattern expansion | High | When a pattern body node expansion fails, the node is silently omitted via `lower_warn()`. Downstream port references fail with obscure errors. |
-| Unsupported expression types silently skipped | High | Unknown expression types in pattern bodies are dropped with a warning (only visible with `DAGLANG_LOWER_WARNINGS=1`). |
-| Service call arguments silently dropped | High | Unresolved service call arguments are silently skipped — no error unless executor fails later. |
-| `param_source` nodes lack incoming edges | Medium | Created for service call args referencing callable params, but have no data wiring from caller scope. |
-| Default arg JSON conversion failures silent | Medium | `expr_to_json_literal()` returning `None` silently skips default injection. |
+| Service calls still expand early | High | Lowering still realizes service operations as transport triplets today; the `VerifiedDag -> Realize -> RealizedDag` split is documented target architecture, not current runtime truth. |
+| NodeOrigin stamping is partial | Medium | `NodeOrigin` exists on every node, but most lowerer sites still leave the default `Unknown` origin until span-threading work lands. |
+| Lowering still erases some semantic structure | Medium | `LoweredExpr` and transport triplets still collapse higher-level intent that the target design wants to preserve until backend realization. |
 | Type information erased | Medium | Lowering converts typed AST to untyped `LoweredExpr`. Runtime type mismatches are possible and hard to trace. |
 | Transport node deduplication conflicts | Medium | One prepare/execute/parse triplet per service operation per module. Multiple callables calling the same service within one module conflict. |
 
@@ -771,7 +1382,7 @@ trait ExternResolver: Send + Sync {
 }
 ```
 
-`gunbc-dag` provides `GunbcExternResolver` with ~10 extern implementations
+`gunbc-app` provides `GunbcExternResolver` with ~10 extern implementations
 (render_tree, build_snapshot_content, discover_tools, render_bootstrap_*, etc.).
 
 ### Known gaps
@@ -949,7 +1560,7 @@ CompileOutput {
 
 ---
 
-## Binary Integration (`gunbc-dag`)
+## Binary Integration (`gunbc-app`)
 
 The final step for the interpreted path — wiring the compiled DAG into a
 runnable binary:
@@ -958,7 +1569,7 @@ runnable binary:
 // One-shot: parse, typecheck, lower, resolve
 let dag: Dag<DynOp> = gunbc_resolve::builder::build_dsl_graph(
     "tools/makegen.dag",
-    &gunbc_dag::extern_ops::GunbcExternResolver,
+    &gunbc_app::extern_ops::GunbcExternResolver,
     gunbc_resolve::BuildOpts::default(),
 )?
 .dag;
@@ -972,7 +1583,7 @@ run_tool(dag, ExecutionMode::Real, options);
 | File | Purpose |
 |------|---------|
 | `core/resolve/src/builder.rs` | `build_dsl_graph()` — full pipeline in one call |
-| `gunbc-dag/src/extern_ops.rs` | `GunbcExternResolver` plus ~10 app-specific extern symbol implementations |
+| `gunbc-app/src/extern_ops.rs` | `GunbcExternResolver` plus ~13 app-specific extern symbol implementations |
 | `tool_runner.rs` | `run_tool()` — freshness + execute + display |
 | `core/codegen/src/tool_discovery.rs` | Structural tool discovery from DSL |
 
@@ -1111,5 +1722,165 @@ core/ir/                Shared IR types          (Node, Edge, Port, Value, Dag<T
 core/codegen/           CLI/binary generation    (entrypoints, tool discovery)
 core/infra/             Leaf utilities           (hashing, freshness, manifest)
 
-gunbc-dag/              Binary integration       (extern resolver, tool runner)
+gunbc-app/              Binary integration       (extern resolver, tool runner)
 ```
+
+---
+
+## Stage Acceptance Criteria
+
+Each stage has PASS guarantees, FAIL conditions, and required tests. These are
+the contracts that make stages independently shippable.
+
+### Stage 0: IngestSources
+
+**PASS guarantees**: reads each `.dag` file exactly once into `SourceBundle`,
+assigns stable `FileId`, stores `(path, text, hash)`, builds line index.
+**FAIL**: file not readable, entry not found, duplicate path.
+**Tests**: `ingest_reads_all_files_under_roots`, `ingest_fails_on_missing_entry`,
+`ingest_hash_stable_for_identical_text`, `line_index_maps_offsets_to_line_col`.
+**Wiring**: no stage after ingest touches filesystem.
+`grep -R "std::fs::" core/daglang/daglang-*` should only find it in ingest/driver/VFS.
+
+### Stage 1: ParseAll
+
+**PASS guarantees**: AST is faithful (no silent drops), every node carries Span,
+strict path never enters lossy recovery.
+**FAIL**: syntax errors; unsupported construct → FAIL with NYI diagnostic.
+**Tests**: `parse_interface_type_defs_preserved`, `parse_multi_stmt_block_represented_or_fails`,
+`parse_reports_span_for_common_errors`, `parse_strict_never_sets_lossy`.
+**Wiring**: `grep -R "lossy" core/daglang/daglang-syntax` shows strict path never uses it.
+
+### Stage 2: ResolveModules
+
+**PASS guarantees**: every import resolves to exactly one module, no silent drop,
+no `["unknown"]` fallback, topo order stored (no repeated topo sorts downstream).
+**FAIL**: unresolved import (with span), duplicate module path, import cycle.
+**Tests**: `module_resolve_fails_on_unresolved_import_with_span`,
+`module_resolve_detects_cycle_and_reports_cycle_path`,
+`module_resolve_rejects_unknown_module_path`, `module_resolve_topo_order_is_valid`.
+**Wiring**: typecheck takes `&ModuleGraph`, never re-walks filesystem.
+
+### Stage 3: Typecheck
+
+**PASS guarantees**: all names resolve, all types match, auth scheme validated,
+extern calls validated → `ExternId`, no debug prints.
+**FAIL**: unresolved symbol, type mismatch, invalid auth, extern mismatch.
+**Tests**: `typecheck_fails_on_unresolved_reference_with_span`,
+`typecheck_validates_pipe_method_arg_types`, `typecheck_validates_auth_scheme`,
+`typecheck_extern_calls_resolve_to_extern_id`, `typecheck_has_no_debug_eprintln`.
+**Wiring**: `grep -R "allow_unresolved_references" ...` returns no hits in strict pipeline.
+
+### Stage 4: Lower
+
+**PASS guarantees**: explicit edges for every required value, default params as
+literal nodes, no `param_source` without edges, no `lower_warn()`, computes
+`output_paths`/`entrypoints`/`data_values` once.
+**FAIL**: pattern expansion failure, unsupported expr, missing service call arg.
+**Tests**: `lower_fails_on_pattern_expansion_failure`, `lower_fails_on_missing_service_call_arg`,
+`lower_injects_default_param_literals`, `lower_sets_node_origin_for_all_nodes`.
+**Wiring**: `grep -R "lower_warn" core/daglang/daglang-lower` → 0 hits.
+
+### Stage 4.5: Verify
+
+**PASS guarantees**: returns `VerifiedDag<T>` (type-level proof), proves all
+structural invariants, stores topo order for reuse.
+**FAIL**: missing wiring, dangling reference, type mismatch on edge.
+**Tests**: `verify_fails_on_missing_required_input_edge`, `verify_fails_on_dangling_edge`,
+`verify_produces_topo_order_reused_downstream`.
+**Wiring**: emit/link accept **only** Verified input. `skip_verification` removed.
+
+### Stage 5: DeriveArtifacts
+
+**PASS guarantees**: pure function of VerifiedProgram, uses `Node.kind` not
+port string heuristics, obligations include provenance (ratchet metric).
+**Tests**: `derive_uses_node_kind_not_port_strings`, `derive_emits_obligations_with_provenance`.
+
+### Stage 5: RealizeForBackend
+
+**PASS guarantees**: total (cannot fail if input is Verified), expands ServiceCall
+into backend-specific forms, tags with PatternInstance for diagnostics.
+**Tests**: `realize_service_call_expands_to_triplet_with_pattern_instance`,
+`realize_preserves_dataflow_and_origin`, `realize_is_deterministic`.
+
+### Stage 6a: Link
+
+**PASS guarantees**: topology-preserving via `map_bodies()`, binds IDs → DynOp
+via `RuntimeBindings` (total, no Option).
+**Tests**: `link_is_topology_preserving_by_construction`, `link_never_looks_up_by_string`.
+**Wiring target**: CP-47 ends with ExternId-keyed `RuntimeBindings` and no
+string lookup. Current branch still ships a bridge form: `RuntimeBindings`
+exists, but it is keyed by `ProgramSymbolId` and still implements
+`ExternResolver` for incremental migration.
+
+### Stage 6b: Emit
+
+**PASS guarantees**: no `todo!()`, uses VerifiedProgram + DerivedArtifacts,
+unsupported features → `EmitError::UnsupportedFeature` with span.
+**Tests**: `emit_returns_unsupported_feature_error_instead_of_todo`,
+`emit_orchestration_topo_order_matches_verified_topo` (after CP-10).
+
+### Stage 7: Execute
+
+**PASS guarantees**: blind traversal, no implicit defaults, no `Value::Skipped`,
+`DryRun(Strict)` blocks unmocked side effects.
+**Tests**: `exec_dryrun_strict_blocks_unmocked_side_effect_node`,
+`exec_has_single_entrypoint`, `exec_does_not_autofill_optional_list_inputs`.
+
+---
+
+## Phase Gates (ratchet — never regress)
+
+### Gate A (after Foundation + Silent Failure Elimination)
+
+* `cargo test --workspace` + `cargo clippy --all-targets -- -D warnings`
+* Strict pipeline: binary PASS/FAIL, no silent drops
+* `grep -R "lower_warn" core/daglang | wc -l` → 0 (strict path)
+* `grep -R "lossy:" core/daglang | wc -l` → 0 (strict path)
+* `grep -R "allow_unresolved_references" core/daglang | wc -l` → 0 (strict path)
+
+### Gate B (after Strict Verification)
+
+* Verification is mandatory in driver
+* VerifiedDag gates emit/link
+* `grep -R "skip_verification" core/daglang | wc -l` → 0 (or constant false)
+* `grep -R "validate_structural_primitive_wiring" core/daglang` → only inside verify
+
+### Gate D (after Interface Cleanup)
+
+* Stage APIs are pure at boundaries (no fs reads except ingest)
+* Execute has single entrypoint
+* `grep -R "std::env::var\\(\"DAGLANG_" core/daglang | wc -l` → 0
+* `grep -R "execute_with_mode" core/exec | wc -l` → 0
+
+### Gate Parity (after D.3)
+
+* Parity harness runs on at least one representative `.dag`
+* Outputs match: interpreted vs compiled
+
+---
+
+## Wiring Demands (no half-migrations)
+
+### CP-58: `daglang-contracts` crate
+
+* All stage crates depend on it
+* `grep -R "type Verdict" core/daglang | wc -l` → 1 (in contracts)
+* `grep -R "struct Diagnostic" core/daglang | wc -l` → 1 (in contracts)
+
+### CP-23: VerifiedDag gate
+
+* `emit(...)` requires `&VerifiedDag<_>` or `&VerifiedProgram`
+* `link(...)` requires verified input
+* Old callers that skip verify won't compile
+
+### CP-40 + CP-47: ExternRegistry + RuntimeBindings
+
+* Typecheck validates externs → `ExternId`
+* Link binds `ExternId → DynOp` using total mappings
+* `grep -R "trait ExternResolver" -n` → 0 (except legacy compat)
+
+### CP-34 + CP-56: Remove stringly re-derivation
+
+* `grep -R "detect_loop_pattern" -n` → 0 (after CP-35)
+* No provider inference from node IDs in testgen

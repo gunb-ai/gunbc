@@ -2,7 +2,7 @@
 
 **Status**: Done (2026-02-06)
 **Date**: 2026-02-05
-**Outcome**: Manifest-based freshness for codegen inputs/outputs is implemented (resource manifest updates in `core/codegen/src/main.rs`, freshness checks in `gunbc-dag/src/codegen/ops.rs`).
+**Outcome**: Manifest-based freshness for codegen inputs/outputs is implemented (resource manifest updates in `core/codegen/src/main.rs`, freshness checks in `gunbc-app/src/codegen/ops.rs`).
 
 ## Problem Statement
 
@@ -63,7 +63,7 @@ CI check: compute current input hash, compare to manifest hash.
 Use git tree hash of the directories containing codegen inputs:
 
 ```rust
-let key = git_tree_hash(&["core/codegen/", "gunbc-dag/src/*/registry.rs"]);
+let key = git_tree_hash(&["core/codegen/", "gunbc-app/src/*/registry.rs"]);
 ```
 
 **Pros**: Simple, leverages git's content addressing
@@ -95,8 +95,8 @@ This follows the resource acquisition pattern - the manifest IS the upsert key, 
 
 ## Files Involved
 
-- `gunbc-dag/src/ci/ops.rs` - current broken check (`execute_prepare_codegen_exists_check`)
-- `gunbc-dag/src/ci/graph.rs` - CI graph structure
+- `gunbc-app/src/ci/ops.rs` - current broken check (`execute_prepare_codegen_exists_check`)
+- `gunbc-app/src/ci/graph.rs` - CI graph structure
 - `core/codegen/src/main.rs` - codegen entry point (would write manifest)
 - New: manifest schema, hash computation logic
 

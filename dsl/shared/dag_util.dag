@@ -46,15 +46,7 @@ fn format_report(summary: Summary, stages: List<StageResult>) -> String {
       }
     })
     |> join("\n")
-  let report_doc = doc(
-    sections: [
-      titled_section(
-        title: "Report",
-        lines: [text_line(text: summary_line), blank_line(), text_line(text: detail_lines)]
-      )
-    ]
-  )
-  render_document(document: report_doc)
+  "# Report\n{summary_line}\n\n{detail_lines}\n"
 }
 
 // --- StageResult construction -----------------------------------------
@@ -165,4 +157,3 @@ fn render_document(document: Document) -> String {
     with_header
   }
 }
-

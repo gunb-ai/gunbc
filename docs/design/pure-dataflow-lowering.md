@@ -407,7 +407,7 @@ This recurses into the expression, creating nodes bottom-up:
 
 **Verification per category:**
 - ExprCompute count decreases by expected amount
-- `cargo test -p gunbc-dag --test gist_recent_regressions` passes
+- `cargo test -p gunbc-app --test gist_recent_regressions` passes
 - Workflow obligation fixture counts update (new structural nodes appear)
 - `cargo run -p daglang-cli -- expand dsl/tools/makegen.dag` shows
   structural nodes instead of ExprCompute blobs

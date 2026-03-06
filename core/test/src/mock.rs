@@ -153,7 +153,7 @@ impl<'a, T> ScriptedDagBuilder<'a, T> {
                     node_id: node.id.0.clone(),
                     behavior,
                 }),
-                NodeBody::SubDag(_) => {
+                NodeBody::SubDag(..) => {
                     // For now, don't support sub-DAGs in mock builder
                     return Err(format!(
                         "node '{}' is a SubDag — mock builder doesn't support sub-DAGs yet",
@@ -173,6 +173,7 @@ impl<'a, T> ScriptedDagBuilder<'a, T> {
                 operation_key: node.operation_key.clone(),
                 transport_class: node.transport_class,
                 static_fingerprint: None,
+                origin: node.origin.clone(),
             });
         }
 
@@ -190,7 +191,7 @@ impl<'a, T> ScriptedDagBuilder<'a, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_exec::execute;
+    use gunbc_exec::{execute_dag, ExecuteConfig};
     use gunbc_ir::build::*;
 
     #[test]
@@ -241,7 +242,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let log = execute(&mock_dag).unwrap();
+        let log = execute_dag(&mock_dag, ExecuteConfig::default()).unwrap();
         assert_eq!(log.entries.len(), 2);
     }
 }
