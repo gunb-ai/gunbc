@@ -412,9 +412,20 @@ pub struct TestObligations {
 // ── Tests ─────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(deprecated)]
 mod tests {
     use super::*;
+
+    fn test_diagnostic(code: &'static str, message: &str) -> Diagnostic {
+        Diagnostic::located(
+            code,
+            message,
+            LocatedSpan {
+                file: FileId(0),
+                span: Span::new(0, 1),
+                label: "test".to_string(),
+            },
+        )
+    }
 
     #[test]
     fn verdict_ok_is_pass() {
@@ -428,7 +439,7 @@ mod tests {
 
     #[test]
     fn verdict_err_is_fail() {
-        let diags = Diagnostics::single(Diagnostic::new("TEST001", "test error"));
+        let diags = Diagnostics::single(test_diagnostic("TEST001", "test error"));
         assert_eq!(diags.errors.len(), 1);
         assert_eq!(diags.errors[0].code, "TEST001");
         let v: Verdict<i32> = Err(diags);
@@ -444,13 +455,13 @@ mod tests {
     #[test]
     fn diagnostics_into_result_nonempty_is_err() {
         let mut d = Diagnostics::new();
-        d.push(Diagnostic::new("E001", "bad"));
+        d.push(test_diagnostic("E001", "bad"));
         assert!(d.into_result().is_err());
     }
 
     #[test]
     fn diagnostic_display_with_file_and_span() {
-        let d = Diagnostic::new("TC014", "type mismatch: expected String, got Int")
+        let d = test_diagnostic("TC014", "type mismatch: expected String, got Int")
             .with_file(PathBuf::from("tools/gist.dag"))
             .with_span(Span::new(42, 55))
             .with_help("change argument type to String");
@@ -463,8 +474,8 @@ mod tests {
 
     #[test]
     fn diagnostics_merge_combines_errors() {
-        let mut a = Diagnostics::single(Diagnostic::new("E001", "first"));
-        let b = Diagnostics::single(Diagnostic::new("E002", "second"));
+        let mut a = Diagnostics::single(test_diagnostic("E001", "first"));
+        let b = Diagnostics::single(test_diagnostic("E002", "second"));
         a.merge(b);
         assert_eq!(a.errors.len(), 2);
     }

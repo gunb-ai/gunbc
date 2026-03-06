@@ -31,6 +31,9 @@ pub const PREFIX: &str = "gunbc";
 /// assert_eq!(name("gist"), "gunbc-gist");
 /// ```
 pub fn name(component: &str) -> String {
+    if matches!(component, "dag" | "app") {
+        return format!("{PREFIX}-app");
+    }
     format!("{PREFIX}-{component}")
 }
 
@@ -97,6 +100,9 @@ impl CargoInvocation {
     ///
     /// The binary is `{PREFIX}-{binary_component}`, the package is
     /// `{PREFIX}-{package_component}`.
+    ///
+    /// Historical note: `"dag"` remains accepted here as a package component
+    /// alias and resolves to `gunbc-app` after the crate rename.
     ///
     /// # Examples
     ///

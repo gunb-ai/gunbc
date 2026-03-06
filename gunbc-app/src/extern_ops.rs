@@ -82,8 +82,7 @@ pub fn cloned_gunbc_runtime_bindings() -> gunbc_resolve::RuntimeBindings {
     gunbc_runtime_bindings().clone()
 }
 
-#[allow(non_upper_case_globals)]
-pub static GunbcExternResolver: LazyLock<gunbc_resolve::RuntimeBindings> =
+pub static GUNBC_EXTERN_RESOLVER: LazyLock<gunbc_resolve::RuntimeBindings> =
     LazyLock::new(cloned_gunbc_runtime_bindings);
 
 /// Resolve an extern symbol to a concrete runtime operation.

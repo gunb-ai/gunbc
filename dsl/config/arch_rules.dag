@@ -193,10 +193,12 @@ data dead_code_allowances: List<DeadCodeAllowance> = [
     fallback_path: "core/daglang/daglang-syntax/src/parser.rs" },
   { package_name: "daglang-emit", relative_path: "src/lower_mips.rs",
     fallback_path: "core/daglang/daglang-emit/src/lower_mips.rs" },
-  { package_name: "gunbc-dag", relative_path: "src/makegen/registry.rs",
-    fallback_path: "gunbc-dag/src/makegen/registry.rs" },
-  { package_name: "gunbc-dag", relative_path: "src/workspace/subdags/languages.rs",
-    fallback_path: "gunbc-dag/src/workspace/subdags/languages.rs" },
+  { package_name: "gunbc-app", relative_path: "src/makegen/registry.rs",
+    fallback_path: "gunbc-app/src/makegen/registry.rs" },
+  { package_name: "gunbc-app", relative_path: "src/workspace/subdags/languages.rs",
+    fallback_path: "gunbc-app/src/workspace/subdags/languages.rs" },
+  { package_name: "gunbc-app", relative_path: "src/resource_targets.rs",
+    fallback_path: "gunbc-app/src/resource_targets.rs" },
   { package_name: "daglang-lower", relative_path: "src/lib.rs",
     fallback_path: "core/daglang/daglang-lower/src/lib.rs" }
 ]
