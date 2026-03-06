@@ -532,6 +532,11 @@ Nodes:
     outputs:
       * fresh: Bool (1)
       * skip: Bool (1)
+  - content_upsert_written_makegen [primitive::UnaryOp { op: Not } tools.makegen.content_upsert::content_upsert_written_makegen]
+    inputs:
+      * operand: Any (1)
+    outputs:
+      * result: Bool (1)
   - prepare_write_makegen [primitive::IoPrepareFileWrite tools.makegen.content_upsert::prepare_write_makegen]
     inputs:
       * content: String (1)
@@ -856,6 +861,7 @@ Edges:
   - prepare_read_makegen.request -> execute_read_makegen.request
   - prepare_read_makegen.skip -> execute_read_makegen.skip
   - execute_read_makegen.response -> compare_makegen_content.response
+  - compare_makegen_content.fresh -> content_upsert_written_makegen.operand
   - prepare_write_makegen.request -> execute_makegen_transport.request
   - compare_makegen_content.skip -> execute_makegen_transport.skip
   - execute_makegen_transport.response -> tools.makegen::makegen.__deps
@@ -863,7 +869,7 @@ Edges:
   - tools.makegen::render_makefile_content.return -> prepare_write_makegen.content
   - param_source_tools_makegen_makegen_path.path -> prepare_read_makegen.path
   - param_source_tools_makegen_makegen_path.path -> prepare_write_makegen.path
-  - compare_makegen_content.fresh -> tools.makegen::makegen.__out:written
+  - content_upsert_written_makegen.result -> tools.makegen::makegen.__out:written
   - std.filesystem::partition_entries.readable -> std.patterns::classify_files.__deps
   - std.patterns::classify_files::cf_for_0.result -> std.patterns::classify_files.__deps
   - std.patterns::github_oidc.token -> std.patterns::acquire_subject_token.__deps
@@ -1000,4 +1006,3 @@ Edges:
   - tools.makegen::render_makefile_content.return -> param_source_std_patterns_content_upsert_content.content
   - param_source_std_patterns_acquire_subject_token_audience.audience -> param_source_std_patterns_github_oidc_audience.audience
   - param_source_std_patterns_acquire_subject_token_audience.audience -> param_source_std_patterns_metadata_oidc_audience.audience
-

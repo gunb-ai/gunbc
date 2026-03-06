@@ -225,6 +225,86 @@ func run() -> { written: Bool } {
 }
 
 #[test]
+fn content_upsert_result_written_uses_per_call_written_node() {
+    let dag = lower_typed_project_for_module_with_dependency_closure_and_entry(
+        "sample.upsert",
+        &[(
+            "dsl/sample/upsert.dag",
+            r#"module sample.upsert
+import std.patterns { content_upsert }
+
+func run(content: String) -> { written: Bool } {
+  result = content_upsert(content: content, path: "out.txt")
+  return { written: result.written }
+}"#,
+        )],
+    );
+
+    let written_node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0 == "content_upsert_written_run")
+        .expect("content_upsert should synthesize a per-call written node");
+    match &written_node.body {
+        NodeBody::Opaque(LoweredOp::Primitive {
+            kind:
+                PrimitiveOpKind::UnaryOp {
+                    op: crate::expr::LoweredUnaryOp::Not,
+                },
+            ..
+        }) => {}
+        other => panic!("expected UnaryOp(Not) written node, got {other:?}"),
+    }
+
+    let has_compare_to_written = dag.edges.iter().any(|edge| {
+        edge.from_node.0 == "compare_run_content"
+            && edge.from_port.0 == "fresh"
+            && edge.to_node.0 == "content_upsert_written_run"
+            && edge.to_port.0 == "operand"
+    });
+    assert!(
+        has_compare_to_written,
+        "compare.fresh should feed the synthetic written node; edges: {:?}",
+        dag.edges
+            .iter()
+            .map(|e| format!(
+                "{}.{}->{}.{}",
+                e.from_node.0, e.from_port.0, e.to_node.0, e.to_port.0
+            ))
+            .collect::<Vec<_>>()
+    );
+
+    let has_written_to_return = dag.edges.iter().any(|edge| {
+        edge.from_node.0 == "content_upsert_written_run"
+            && edge.from_port.0 == "result"
+            && edge.to_node.0 == "sample.upsert::run"
+            && edge.to_port.0 == "__out:written"
+    });
+    assert!(
+        has_written_to_return,
+        "synthetic written node should drive the callable return; edges: {:?}",
+        dag.edges
+            .iter()
+            .map(|e| format!(
+                "{}.{}->{}.{}",
+                e.from_node.0, e.from_port.0, e.to_node.0, e.to_port.0
+            ))
+            .collect::<Vec<_>>()
+    );
+
+    let has_stale_fresh_passthrough = dag.edges.iter().any(|edge| {
+        edge.from_node.0 == "compare_run_content"
+            && edge.from_port.0 == "fresh"
+            && edge.to_node.0 == "sample.upsert::run"
+            && edge.to_port.0 == "__out:written"
+    });
+    assert!(
+        !has_stale_fresh_passthrough,
+        "callable return must not be wired directly from compare.fresh"
+    );
+}
+
+#[test]
 fn collect_collection_ops_detects_pipe_map_filter_join_chain() {
     let stmts = callable_stmts_from_source(
         r#"

@@ -4549,7 +4549,10 @@ fn expand_content_upsert_patterns(
     let mut bound_callables = HashMap::<String, String>::new();
     let mut expansion_count = 0usize;
     // Track expansion results: binding_name → ExpandedNodeOutput for "written".
-    // content_upsert's semantic output "written" maps to the compare node's "fresh" port.
+    // content_upsert's semantic output "written" means "action ran", not
+    // "file was already fresh". Synthesize a per-call output node so
+    // `result.written` stays tied to the invocation instead of the shared
+    // unsuffixed pattern declaration node.
     let mut expansion_outputs = HashMap::<String, ExpandedNodeOutput>::new();
 
     for stmt in stmts {
@@ -4586,12 +4589,12 @@ fn expand_content_upsert_patterns(
                 if name == "content_upsert" {
                     expansion_count += 1;
                     let suffix = expansion_suffix(ctx.item_name, expansion_count);
-                    let compare_id = format!("compare_{suffix}_content");
+                    let written_id = format!("content_upsert_written_{suffix}");
                     expansion_outputs.insert(
                         binding.clone(),
                         ExpandedNodeOutput {
-                            node_id: compare_id,
-                            output_port: "fresh".to_string(),
+                            node_id: written_id,
+                            output_port: "result".to_string(),
                         },
                     );
                     expand_single_content_upsert(
@@ -4628,6 +4631,7 @@ fn expand_single_content_upsert(
     let prepare_read_id = format!("prepare_read_{suffix}");
     let execute_read_id = format!("execute_read_{suffix}");
     let compare_id = format!("compare_{suffix}_content");
+    let written_id = format!("content_upsert_written_{suffix}");
     let prepare_write_id = format!("prepare_write_{suffix}");
     let execute_transport_id = format!("execute_{suffix}_transport");
     let prepare_read_inputs = vec![Port::scalar("path", "String")];
@@ -4682,6 +4686,21 @@ fn expand_single_content_upsert(
     );
     builder.add_node(
         Node::opaque(
+            written_id.clone(),
+            vec![Port::with_cardinality("operand", "Any", Cardinality::ONE)],
+            vec![Port::scalar("result", "Bool")],
+            LoweredOp::Primitive {
+                module: ctx.module_name.to_string(),
+                name: format!("content_upsert::{written_id}"),
+                kind: PrimitiveOpKind::UnaryOp {
+                    op: expr::LoweredUnaryOp::Not,
+                },
+            },
+        )
+        .with_origin(pattern_origin.clone()),
+    );
+    builder.add_node(
+        Node::opaque(
             prepare_write_id.clone(),
             vec![
                 Port::scalar("content", "String"),
@@ -4717,6 +4736,7 @@ fn expand_single_content_upsert(
     builder.add_edge(&prepare_read_id, "request", &execute_read_id, "request");
     builder.add_edge(&prepare_read_id, "skip", &execute_read_id, "skip");
     builder.add_edge(&execute_read_id, "response", &compare_id, "response");
+    builder.add_edge(&compare_id, "fresh", &written_id, "operand");
     builder.add_edge(
         &prepare_write_id,
         "request",
@@ -5103,8 +5123,8 @@ fn expand_non_generic_pattern_calls(
 /// callable passthrough protocol (which requires `__out:` edges).
 ///
 /// `expansion_outputs` maps lookup keys to expanded node outputs:
-/// - For `content_upsert`: key = `binding_name`, output = compare node's `fresh` port.
-///   Return `binding.written` → maps `written` to `fresh` output.
+/// - For `content_upsert`: key = `binding_name`, output = synthetic per-call
+///   `written` node (`!fresh`) so `binding.written` preserves callsite identity.
 /// - For non-generic patterns: key = `binding.field`, output = expansion return output.
 ///   Return `binding.field` → direct lookup.
 fn wire_expansion_return_outputs(
@@ -5127,19 +5147,12 @@ fn wire_expansion_return_outputs(
                 if let Expr::FieldAccess(base, sub_field) = expr {
                     if let Expr::Ident(binding) = base.as_ref() {
                         // Try content_upsert style: key = binding_name.
-                        // content_upsert returns { written: Bool }, so any field
-                        // access on the binding maps to the compare node's output.
+                        // content_upsert returns { written: Bool }, so bind the
+                        // field access to the synthesized per-call output node.
                         if let Some(output) = expansion_outputs.get(binding.as_str()) {
-                            // Map DSL field name to IR output port.
-                            let mapped_port = match sub_field.as_str() {
-                                "written" => "fresh",
-                                "matches" => "fresh",
-                                "acted" => "fresh",
-                                other => other,
-                            };
                             builder.add_edge(
                                 &output.node_id,
-                                mapped_port,
+                                &output.output_port,
                                 &target.node_id,
                                 &passthrough_port,
                             );

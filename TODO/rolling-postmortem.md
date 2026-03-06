@@ -26,6 +26,7 @@
 | RP-010 | CI provider schema is still modeled anemically in DSL: `tools/cigen.dag` renders YAML via string concatenation instead of building typed `Workflow`/`Pipeline` values from `extdeps.github_actions` / `extdeps.gitlab_ci`. | `dsl/extdeps/github_actions.dag`, `dsl/extdeps/gitlab_ci.dag`, and `dsl/tools/cigen.dag`. | Static policy can still drift into render helpers, and provider-specific invariants stay weakly enforced. | Open |
 | RP-011 | CI discovery still crosses the DAG boundary as raw shell text (`tool_command`, `bootstrap_script`) rather than typed steps/commands. | `dsl/tools/cigen.dag` `type CiDiscovery`; `gunbc-app/src/extern_ops.rs` `discover_ci_config`. | Step structure, command semantics, and freshness scope remain stringly and harder to validate minimally. | Open |
 | RP-012 | CI rendering still has duplicate policy surfaces in Rust and DSL. | `core/ir/src/transport/ci/render.rs` `CacheConfig::rust()` vs `dsl/config/ci.dag` + `dsl/tools/cigen.dag`. | Parallel render paths invite future drift; the Rust renderer can silently diverge from generated CI policy. | Open (next PR: migrate/delete Rust-side CI rendering path) |
+| RP-013 | `content_upsert` special-case lowering kept per-call wiring but mislabeled `written` as compare `fresh`, creating contradictory status output and hiding the real freshness/write behavior. | `core/daglang/daglang-lower/src/lib.rs` special-case `expand_content_upsert_patterns()` / `wire_expansion_return_outputs()`. | Investigations get misled, callsite return values lie, and special-case lowering drifts away from the DSL pattern’s actual semantics. | Resolved on branch; keep regression test and continue collapsing special-case pattern logic |
 
 ## Incident Ledger
 
@@ -70,6 +71,7 @@ Lane status snapshot:
 7. RC-P1-007: Finish CI modeling cleanup by deleting string-built provider YAML in `tools/cigen.dag` and rendering from typed CI values end-to-end.
 8. RC-P1-008: Migrate or delete `core/ir/src/transport/ci/render.rs` so CI policy has exactly one source of truth in the DSL/config path.
 9. RC-P1-009: Replace raw `CiDiscovery.tool_command` / `bootstrap_script` strings with typed CI step inputs so cache/freshness/step scope can be validated structurally.
+10. RC-P1-010: Continue deleting `content_upsert` lowering special-cases in favor of one semantically aligned pattern-expansion path so callsite bookkeeping cannot drift from pattern meaning.
 
 ### P2 (workflow hygiene)
 
