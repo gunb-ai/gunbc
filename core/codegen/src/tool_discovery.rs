@@ -21,7 +21,7 @@ use gunbc_cli::ParamType;
 use gunbc_ir::{cargo, Cardinality, WorkspaceLayout};
 
 /// A DSL func parameter, extracted from the AST.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct DslParam {
     name: String,
     type_id: ParamType,
@@ -194,12 +194,19 @@ fn discover_from_dag_file_cached(
         target_file: Some(path.to_path_buf()),
     };
 
+    let source = std::fs::read_to_string(path).map_err(|e| format!("read: {e}"))?;
+    let ast = daglang_syntax::parser::parse(&source).map_err(|e| format!("parse: {e:?}"))?;
+    let func_params = extract_func_params_from_ast(&ast)?;
+    if func_params.is_empty() {
+        return Ok(None);
+    }
+    let success_ports = extract_success_ports_from_ast(&ast);
+
     // Compute source digest (cheap: module graph discovery + file hashing)
     let source_digest =
         compute_source_digest_for_context(&context).map_err(|e| format!("source digest: {e}"))?;
 
-    // Cache hit: skip full compilation, reconstruct from cached metadata.
-    // Uses cached func params to avoid re-parsing the AST.
+    // Cache hit: skip full compilation and reconstruct from cached metadata.
     if let Some(cached) = cache.entries.get(&module_name) {
         if cached.source_digest == source_digest {
             let cached_entrypoints: Vec<InferredEntrypoint> = cached
@@ -207,26 +214,18 @@ fn discover_from_dag_file_cached(
                 .iter()
                 .map(InferredEntrypoint::from)
                 .collect();
-            if let Some(func_params) = cached_func_params_to_dsl_params(&cached.func_params) {
-                return Ok(build_tool_defs_from_cached_params(
-                    &rel_path,
-                    &module_name,
-                    &cached_entrypoints,
-                    &cached.output_paths,
-                    &func_params,
-                ));
-            }
+            return Ok(build_tool_defs_from_cached_params(
+                &rel_path,
+                &module_name,
+                &cached_entrypoints,
+                &cached.output_paths,
+                &func_params,
+                &success_ports,
+            ));
         }
     }
 
     // Cache miss: full compilation (build-time bootstrap exception)
-    let source = std::fs::read_to_string(path).map_err(|e| format!("read: {e}"))?;
-    let ast = daglang_syntax::parser::parse(&source).map_err(|e| format!("parse: {e:?}"))?;
-    let func_params = extract_func_params_from_ast(&ast)?;
-    if func_params.is_empty() {
-        return Ok(None);
-    }
-
     let compile_output = compile_from_context(&context).map_err(|e| format!("compile: {e}"))?;
     let output_paths = merge_output_paths(
         &compile_output.output_paths,
@@ -254,6 +253,7 @@ fn discover_from_dag_file_cached(
             .collect::<Vec<_>>(),
         &output_paths,
         &func_params,
+        &success_ports,
     );
 
     // Update cache with func params
@@ -307,26 +307,35 @@ fn extract_func_params_from_ast(
     Ok(func_params)
 }
 
-/// Convert cached func params back to DslParam.
-fn cached_func_params_to_dsl_params(
-    cached: &BTreeMap<String, Vec<CachedFuncParam>>,
-) -> Option<BTreeMap<String, Vec<DslParam>>> {
-    let mut out = BTreeMap::new();
-    for (name, params) in cached {
-        let mut dsl_params = Vec::new();
-        for p in params {
-            let type_id = ParamType::try_from(p.type_name.as_str()).ok()?;
-            let cardinality = decode_cached_cardinality(&p.cardinality)?;
-            dsl_params.push(DslParam {
-                name: p.name.clone(),
-                type_id,
-                cardinality,
-                default: p.default.clone(),
-            });
+fn extract_success_ports_from_ast(
+    ast: &daglang_syntax::ast::SourceFile,
+) -> BTreeMap<String, Option<String>> {
+    let mut success_ports = BTreeMap::new();
+    for item in &ast.items {
+        if let Item::FuncDef(func) = &item.node {
+            success_ports.insert(func.name.clone(), infer_success_port(&func.outputs));
         }
-        out.insert(name.clone(), dsl_params);
     }
-    Some(out)
+    success_ports
+}
+
+fn infer_success_port(fields: &[daglang_syntax::ast::Field]) -> Option<String> {
+    ["success", "overall_success"]
+        .into_iter()
+        .find(|candidate| {
+            fields
+                .iter()
+                .any(|field| field.name == *candidate && is_bool_type(&field.ty))
+        })
+        .map(str::to_string)
+}
+
+fn is_bool_type(ty: &TypeExpr) -> bool {
+    match ty {
+        TypeExpr::Named(name) => name == "Bool",
+        TypeExpr::Refined(inner, _) => is_bool_type(inner),
+        _ => false,
+    }
 }
 
 /// Convert DslParam map to cached format for serialization.
@@ -384,27 +393,6 @@ fn encode_cached_cardinality(cardinality: Cardinality) -> String {
     format!("{}:{max}", cardinality.min)
 }
 
-fn decode_cached_cardinality(encoded: &str) -> Option<Cardinality> {
-    match encoded {
-        // Backward compatibility with older cache encodings.
-        "ZERO" => Some(Cardinality::ZERO),
-        "ONE" => Some(Cardinality::ONE),
-        "ZERO_OR_ONE" => Some(Cardinality::ZERO_OR_ONE),
-        "ZERO_OR_MORE" => Some(Cardinality::ZERO_OR_MORE),
-        "ONE_OR_MORE" => Some(Cardinality::ONE_OR_MORE),
-        _ => {
-            let mut parts = encoded.splitn(2, ':');
-            let min = parts.next().and_then(|s| s.parse::<u32>().ok())?;
-            let max = match parts.next() {
-                Some("*") => None,
-                Some(s) => s.parse::<u32>().ok(),
-                None => return None,
-            };
-            Some(Cardinality::new(min, max))
-        }
-    }
-}
-
 fn dsl_graph_builder_adapter() -> String {
     // Returns a callable expression that takes (relative_module, bindings, opts).
     // The `{` ... `}` block avoids the clippy::redundant_closure_call lint
@@ -429,6 +417,7 @@ fn build_tool_defs_from_cached_params(
     module_entrypoints: &[InferredEntrypoint],
     output_paths: &[String],
     func_params: &BTreeMap<String, Vec<DslParam>>,
+    success_ports: &BTreeMap<String, Option<String>>,
 ) -> Option<Vec<ToolDef>> {
     if module_entrypoints.is_empty() {
         return None;
@@ -461,7 +450,7 @@ fn build_tool_defs_from_cached_params(
                 graph_builder_call: dsl_graph_builder_adapter(),
                 graph_builder_args,
                 returns_result: true,
-                success_port: None,
+                success_port: success_ports.get(&ep.func_name).cloned().flatten(),
                 mock_spec_call: Some(mock_spec),
                 entrypoints,
             });
@@ -518,6 +507,10 @@ fn build_tool_defs_from_cached_params(
         .mock_spec_call(mock_spec)
         .import(extern_resolver_import())
         .invocation(cargo::CargoInvocation::composed(&tool_name, "app"));
+
+        if let Some(success_port) = success_ports.get(&ep.func_name).cloned().flatten() {
+            tool = tool.check_success(success_port);
+        }
 
         for output_path in output_paths {
             tool = tool.output(output_path.clone());
@@ -755,6 +748,23 @@ mod tests {
                 tool.meta.tool_name,
             );
         }
+    }
+
+    #[test]
+    fn tools_infer_success_ports_from_output_fields() {
+        let tools = discover_tool_defs_from_dsl().expect("tool discovery should succeed");
+
+        let ci = tools.iter().find(|t| t.meta.tool_name == "ci").unwrap();
+        assert_eq!(ci.meta.success_port.as_deref(), Some("success"));
+
+        let build = tools
+            .iter()
+            .find(|t| t.meta.tool_name == "build-all")
+            .unwrap();
+        assert_eq!(build.meta.success_port.as_deref(), Some("overall_success"));
+
+        let pragma = tools.iter().find(|t| t.meta.tool_name == "pragma").unwrap();
+        assert_eq!(pragma.meta.success_port.as_deref(), Some("success"));
     }
 
     #[test]

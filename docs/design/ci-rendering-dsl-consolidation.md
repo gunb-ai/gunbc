@@ -1,5 +1,10 @@
 # CI Rendering DSL Consolidation
 
+> **Status update (2026-03-06)**: Phase 1 is complete on this branch. The
+> Rust-side CI YAML renderers (`core/ir/src/transport/ci/render.rs`, provider
+> YAML helpers, and `WorkflowConfig`) are deleted. The remaining work in this
+> doc is Phase 2 and Phase 3 inside the live `.dag` generation path.
+
 ## Goal
 
 Make CI artifact generation follow the repo's intended shape:
@@ -62,7 +67,7 @@ already decided that CI generation lives in the DSL tool path.
 - `gunbc-app/src/extern_ops.rs::DiscoverCiConfigOp`
   Runtime bridge that supplies discovery-only data to `tools.cigen`.
 
-### Transitional / redundant
+### Historical / deleted on branch
 
 - `core/ir/src/transport/ci/render.rs`
   `CiRenderer`, `RenderConfig`, `CheckoutConfig`, `CacheConfig`,
@@ -162,9 +167,9 @@ compositional end state.
 
 ## Migration Plan
 
-### Phase 1: Delete dead Rust CI YAML renderers now
+### Phase 1: Delete dead Rust CI YAML renderers
 
-This phase is intended to be done immediately.
+This phase is complete on this branch.
 
 Delete:
 
@@ -280,10 +285,10 @@ These need decisions, but they are not blockers to starting:
 
 ## Recommended Immediate Cut
 
-Do now:
+Done now:
 
 1. Delete `render.rs` and the Rust CI YAML rendering path.
-2. Delete `WorkflowConfig` if it has no live callers.
+2. Delete `WorkflowConfig`.
 3. Add a contract test that CI YAML is generated only through `tools/cigen.dag`
    and that no Rust CI renderer symbols remain in live code.
 

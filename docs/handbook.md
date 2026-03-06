@@ -807,7 +807,7 @@ pub trait TestRenderer {
 | `core/codegen/src/testgen/render_python.rs` | Python stub (validates trait surface) |
 | `core/codegen/src/testgen/codegen.rs` | IR construction (never constructs strings) |
 | `gunbc-app/src/makegen/shared.rs` | Makefile rendering (via DSL `evaluate_fn_body()`) |
-| `core/ir/src/transport/ci/render.rs` | CI YAML rendering |
+| `dsl/config/ci.dag` + `dsl/tools/cigen.dag` | CI YAML generation (DSL-owned; provider serialization still string-heavy) |
 
 **Current implementations:**
 
@@ -815,7 +815,7 @@ pub trait TestRenderer {
 |--------|---------|---------------------|
 | Testgen | Yes (TestFile) | Yes (TestRenderer) |
 | Makegen | No | No |
-| CI YAML | Yes (SharedStep) | Yes (CiRenderer) |
+| CI YAML | Partial (`config.ci` + provider schema, but no shared render IR yet) | No live repo-YAML renderer trait |
 | CLI gen | No | No |
 | Terminal | No | No |
 

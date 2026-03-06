@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_methods)]
+
 use std::fs;
 use std::path::PathBuf;
 
@@ -18,6 +20,11 @@ fn github_actions_cache_excludes_target_tree() {
     assert!(
         !yaml.contains("\n            target/\n"),
         "GitHub Actions cache must not restore target/; found forbidden entry in {}",
+        path.display()
+    );
+    assert!(
+        yaml.contains("cargo run -p gunbc-app --bin gunbc-codegen -- codegen"),
+        "GitHub Actions workflow must regenerate real generated binaries before running gunbc-ci in {}",
         path.display()
     );
 }

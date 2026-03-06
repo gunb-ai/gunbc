@@ -55,6 +55,8 @@ jobs:
             mkdir -p "$dir" && echo 'fn main() {}' > "$dir/main.rs"
           done
           cargo check -p gunbc-app --bin gunbc-codegen --bin gunbc-ci
+          # Replace bootstrap stubs with real generated entrypoints before running generated bins.
+          cargo run -p gunbc-app --bin gunbc-codegen -- codegen
 
       - name: Run CI Pipeline
         run: cargo run -p gunbc-app --bin gunbc-ci

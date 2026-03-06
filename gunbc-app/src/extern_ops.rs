@@ -385,7 +385,9 @@ impl Executable for DiscoverCiConfigOp {
             "sed 's|.*\"../\\(.*\\)/main.rs\"|\\1|'); do\n",
             "  mkdir -p \"$dir\" && echo 'fn main() {}' > \"$dir/main.rs\"\n",
             "done\n",
-            "cargo check -p gunbc-app --bin gunbc-codegen --bin gunbc-ci",
+            "cargo check -p gunbc-app --bin gunbc-codegen --bin gunbc-ci\n",
+            "# Replace bootstrap stubs with real generated entrypoints before running generated bins.\n",
+            "cargo run -p gunbc-app --bin gunbc-codegen -- codegen",
         );
 
         let mut result = BTreeMap::new();

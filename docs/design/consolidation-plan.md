@@ -160,16 +160,18 @@ coverage.
 
 ### Stream 2: Emission Unification
 
-**Problem**: 13 rendering systems, 5 different traits, 8 with no trait at all.
-Only testgen (TestFile + TestRenderer) and CI YAML (SharedStep + CiRenderer)
-have proper IR + trait separation.
+**Problem**: The repo still has many rendering systems with inconsistent modeling
+surfaces. The Rust-side CI YAML renderer family was deleted on March 6, 2026,
+but the remaining `.dag` CI path is still string-heavy rather than built from a
+typed render IR. Testgen remains the clearest example of proper IR + renderer
+separation.
 
 **Current state** (from codebase audit):
 
 | System | Has IR? | Has Trait? | Location |
 |--------|---------|-----------|----------|
 | Testgen | TestFile | TestRenderer | `core/codegen/src/testgen/` |
-| CI YAML | SharedStep | CiRenderer | `core/ir/src/transport/ci/` |
+| CI YAML | Partial (`config.ci` + provider schema) | No repo-YAML trait | `dsl/config/ci.dag`, `dsl/tools/cigen.dag` |
 | Makegen | No | Renderable (header only) | `gunbc-app/src/makegen/` |
 | CLI gen | No | No | `core/codegen/src/cli_gen.rs` |
 | DAG gen | No | No | `core/codegen/src/dag_gen.rs` |
@@ -180,7 +182,6 @@ have proper IR + trait separation.
 | Markdown | No | No | `lib/markdown/src/lib.rs` |
 | LLM prompts | No | No | `lib/review/src/lib.rs` |
 | CI commands | No | CiProvider | `core/ir/src/transport/ci/providers/` |
-| WorkflowConfig | No | Renderable | `core/ir/src/transport/github_actions.rs` |
 
 **Plan**: Implement `unified-emission.md` phases 1-5. The design is complete;
 this plan provides execution sequencing.

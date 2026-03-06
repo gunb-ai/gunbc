@@ -2373,7 +2373,7 @@ gunbc's `docs/design/unified-emission.md` catalogued 13 separate rendering syste
 | 6 | **CLI entrypoints** | `CliSpec` (args from DAG entrypoint ports) | `CodegenBackend::emit_cli` | Clap/argparse/cobra wiring |
 | 7 | **Progress renderer** | `ProgressManifest` (topology, boundaries, groups) | `ProgressRenderer` trait | Frame building, JSONL emission |
 | 8 | **Makefile** | `MakefileIR` (targets, deps, rules) | `MakefileRenderer` | Makefile + .gitignore |
-| 9 | **CI YAML** | `SharedStep[]` (checkout, run, dag-step) | `CiRenderer` trait (per-provider) | GitHub Actions YAML, GitLab CI YAML |
+| 9 | **CI YAML** | `config.ci` + typed provider values (`Workflow`, `Job`, `Step`, `Cache`, `Variable`) assembled in `.dag` | DSL `cigen` leaf serialization | GitHub Actions YAML, GitLab CI YAML |
 | 10 | **Terminal layout** | `DagLayout` (wave columns, edge routes) | `TerminalRenderer` (standard/compact) | ANSI terminal output |
 | 11 | **JSONL events** | Event envelope (§6.6 protocol) | `JsonlRenderer` | Structured event stream |
 | 12 | **Content hash manifest** | `ManifestEntry` (input hash, file count) | — (serialized directly) | `.manifest.json` for freshness |

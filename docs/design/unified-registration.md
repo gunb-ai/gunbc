@@ -135,7 +135,7 @@ miss real changes.
 ```
 all_tools() → tools with .invocation() → Makefile targets (auto)
 all_tools() → tools → CLI generation (auto)
-RenderConfig → CI YAML (hardcoded for ci tool only)
+config.ci + tools.cigen.dag → CI YAML (DSL-owned for ci tool only)
 ```
 
 **What's good**: Downstream derivation is automatic. Once a tool is in `all_tools()`,
