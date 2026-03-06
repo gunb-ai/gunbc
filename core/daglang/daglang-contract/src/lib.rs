@@ -90,7 +90,30 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
-    /// Create a diagnostic with the minimum required fields.
+    /// Create a located diagnostic — the preferred constructor.
+    ///
+    /// Source location is mandatory. Use this for all user-facing diagnostics.
+    pub fn located(
+        code: &'static str,
+        message: impl Into<String>,
+        primary: LocatedSpan,
+    ) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            span: Some(primary.span),
+            file: None, // FileId-based resolution deferred to Phase 2 (FileTable)
+            context: DiagnosticContext::Note(String::new()),
+            help: None,
+            related: Vec::new(),
+        }
+    }
+
+    /// Create a diagnostic without source location.
+    ///
+    /// Deprecated: prefer `Diagnostic::located()` which enforces source location.
+    /// This exists only for migration — call sites should be updated to provide spans.
+    #[deprecated(note = "use Diagnostic::located() with a LocatedSpan instead")]
     pub fn new(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             code,
@@ -166,12 +189,41 @@ pub enum DiagnosticContext {
     Note(String),
 }
 
+/// Role of a secondary span in a diagnostic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpanRole {
+    /// "first defined here"
+    Definition,
+    /// "conflicts with this"
+    Conflict,
+    /// "referenced here"
+    Related,
+}
+
+/// A span with mandatory file and label — the primary location of a diagnostic.
+#[derive(Debug, Clone)]
+pub struct LocatedSpan {
+    pub file: FileId,
+    pub span: Span,
+    pub label: String,
+}
+
+/// A secondary span with role annotation.
+#[derive(Debug, Clone)]
+pub struct LabeledSpan {
+    pub file: FileId,
+    pub span: Span,
+    pub label: String,
+    pub role: SpanRole,
+}
+
 /// A secondary source location referenced by a diagnostic.
 #[derive(Debug, Clone)]
 pub struct RelatedSpan {
     pub span: Span,
     pub file: Option<PathBuf>,
     pub label: String,
+    pub role: SpanRole,
 }
 
 // ── Span: source location (byte offset range) ────────────────────────
@@ -352,6 +404,7 @@ pub struct TestObligations {
 // ── Tests ─────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
 
@@ -406,6 +459,30 @@ mod tests {
         let b = Diagnostics::single(Diagnostic::new("E002", "second"));
         a.merge(b);
         assert_eq!(a.errors.len(), 2);
+    }
+
+    #[test]
+    fn diagnostic_located_requires_span() {
+        let primary = LocatedSpan {
+            file: FileId(0),
+            span: Span::new(10, 20),
+            label: "here".to_string(),
+        };
+        let d = Diagnostic::located("TC001", "type mismatch", primary);
+        assert_eq!(d.code, "TC001");
+        assert!(d.span.is_some());
+        assert_eq!(d.span.unwrap().start, 10);
+    }
+
+    #[test]
+    fn labeled_span_has_role() {
+        let ls = LabeledSpan {
+            file: FileId(0),
+            span: Span::new(5, 15),
+            label: "first defined here".to_string(),
+            role: SpanRole::Definition,
+        };
+        assert_eq!(ls.role, SpanRole::Definition);
     }
 
     #[test]
