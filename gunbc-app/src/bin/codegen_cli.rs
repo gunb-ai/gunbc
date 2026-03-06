@@ -16,7 +16,7 @@
 //!
 //! # Architecture Note
 //!
-//! This binary lives in gunbc-app (not gunbc-codegen) and discovers tools
+//! This binary lives in gunbc-dag (not gunbc-codegen) and discovers tools
 //! via structural entrypoint inference. The codegen library remains in core/codegen
 //! as a leaf crate.
 
@@ -360,12 +360,15 @@ fn cmd_cigen(dry_run: bool) {
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
     println!();
 
-    let dag = match gunbc_app::dsl_builder::build_dsl_graph_for_entrypoint(
+    let dag = match gunbc_resolve::builder::build_dsl_graph(
         "tools/cigen.dag",
-        Some("cigen"),
-        None,
+        &gunbc_dag::extern_ops::GunbcExternResolver,
+        gunbc_resolve::BuildOpts {
+            entry_func: Some("cigen"),
+            profile: None,
+        },
     ) {
-        Ok(dag) => dag,
+        Ok(result) => result.dag,
         Err(e) => {
             print_attention(
                 AttentionLevel::Error,
@@ -458,7 +461,7 @@ fn ensure_bin_entry(doc: &mut DocumentMut, bin_name: &str, bin_path: &str) -> Re
 /// Discovers tools from DSL structural entrypoint inference — the DSL file IS the
 /// registration. No inventory, no regex source parsing, no allowlists.
 fn discover_codegen_tools(_workspace_root: &Path) -> Result<Vec<ToolDef>, String> {
-    let tools = gunbc_app::dsl_registry::try_discover_tool_defs_from_dsl()
+    let tools = gunbc_codegen::tool_discovery::try_discover_tool_defs_from_dsl()
         .map_err(|e| format!("DSL discovery failed: {e}"))?;
     if tools.is_empty() {
         return Err("no DSL tool entrypoints discovered".to_string());

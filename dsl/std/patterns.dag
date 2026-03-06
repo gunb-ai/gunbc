@@ -232,7 +232,7 @@ pattern content_upsert(content: String, path: String) -> { written: Bool }
 // with runtime branching. Defined as a pattern (not func) because
 // it's always embedded inside a parent func's SubDag.
 //
-// Replaces: lib/gcp-ops/src/graph.rs (1,700+ lines)
+// Replaces the former handwritten Rust GCP credential graph.
 
 pattern credential_chain(
   runtime: CloudRuntime,
@@ -389,7 +389,7 @@ func metadata_oidc(audience: String) -> { token: String }
 
 // --- Local auth (D-3b: InteractiveAuth flow) ---------------------------
 // ADC check -> OAuth2 refresh -> conditional re-auth via gcloud -> merge.
-// This replaces ~725 lines of Rust in lib/gcp-ops/src/graph.rs.
+// This replaces the old handwritten Rust local-auth graph path.
 
 func local_auth() -> { token: String }
   uses fs: Filesystem(mode: Read)

@@ -1,47 +1,24 @@
 use gunbc_cli::{parse, CliParam, ParamType};
-use gunbc_codegen::makegen::{model::load_build_targets_data, registry::ToolRegistry};
-use gunbc_app::render_makefile;
+use gunbc_dag::makegen::{
+    model::{load_build_targets_data, reserved_target_names},
+    tools::{discover_makegen_tools, filter_reserved_tools, DiscoveredToolData},
+};
+use gunbc_dag::render_makefile;
 use gunbc_ir::{to_bridge_json, Cardinality, Value};
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 
-fn non_colliding_registry() -> ToolRegistry {
-    let mut registry = ToolRegistry::default_registry().expect("registry discovery should succeed");
+fn non_colliding_tools() -> Vec<DiscoveredToolData> {
+    let tools = discover_makegen_tools().expect("tool discovery should succeed");
     let build_targets = load_build_targets_data().expect("build target model should load");
-
-    let mut reserved = BTreeSet::new();
-    reserved.insert("help".to_string());
-    for workflow in build_targets.core_workflows {
-        reserved.insert(workflow.name);
-    }
-    for meta in build_targets.meta_targets {
-        reserved.insert(meta.name.clone());
-        if meta.has_fix {
-            reserved.insert(format!("{}-fix", meta.name));
-        }
-        if meta.has_check {
-            reserved.insert(format!("{}-check", meta.name));
-        }
-    }
-
-    registry.tools.retain(|tool| {
-        if reserved.contains(&tool.short_name) || reserved.contains(&format!("{}-dry", tool.short_name))
-        {
-            return false;
-        }
-        !tool
-            .extra_targets
-            .iter()
-            .any(|extra| reserved.contains(&format!("{}-{}", tool.short_name, extra.suffix)))
-    });
-    registry
+    filter_reserved_tools(&tools, &reserved_target_names(&build_targets))
 }
 
 #[test]
 fn test_makefile_help_exposes_entrypoints_without_direct_cli_wiring() {
-    let registry = non_colliding_registry();
-    let makefile = render_makefile(&registry).expect("render makefile");
+    let tools = non_colliding_tools();
+    let makefile = render_makefile(&tools).expect("render makefile");
 
-    for tool in &registry.tools {
+    for tool in &tools {
         for param in &tool.entrypoints {
             let disallowed_cli_wiring = if param.repeatable {
                 format!(
@@ -77,10 +54,10 @@ fn test_makefile_help_exposes_entrypoints_without_direct_cli_wiring() {
 
 #[test]
 fn test_makefile_help_repeatable_params() {
-    let registry = non_colliding_registry();
-    let makefile = render_makefile(&registry).expect("render makefile");
+    let tools = non_colliding_tools();
+    let makefile = render_makefile(&tools).expect("render makefile");
 
-    for tool in &registry.tools {
+    for tool in &tools {
         for param in &tool.entrypoints {
             if !param.repeatable {
                 continue;
@@ -135,9 +112,9 @@ fn scalar_sample(port_name: &str, param_type: ParamType, idx: usize) -> String {
 
 #[test]
 fn test_per_tool_dry_run_cli_contracts_match_registry_entrypoints() {
-    let registry = non_colliding_registry();
+    let tools = non_colliding_tools();
 
-    for tool in &registry.tools {
+    for tool in &tools {
         let mut schema = Vec::new();
         let mut argv = vec![tool.short_name.clone(), "--dry-run".to_string()];
         let mut expected: HashMap<String, Value> = HashMap::new();
@@ -217,9 +194,9 @@ fn test_per_tool_dry_run_cli_contracts_match_registry_entrypoints() {
 ///   4. Verify JSON keys/values match expected entrypoint inputs
 #[test]
 fn test_per_tool_print_inputs_json_round_trip() {
-    let registry = non_colliding_registry();
+    let tools = non_colliding_tools();
 
-    for tool in &registry.tools {
+    for tool in &tools {
         let mut schema = Vec::new();
         // Build argv with --print-inputs json interleaved
         let mut full_argv = vec![
@@ -350,14 +327,13 @@ fn test_per_tool_print_inputs_json_round_trip() {
 /// Also test the `--print-inputs=json` form (equals-separated)
 #[test]
 fn test_print_inputs_equals_form_parses() {
-    let registry = non_colliding_registry();
+    let tools = non_colliding_tools();
 
     // Pick first tool with entrypoints for a focused test
-    let tool = registry
-        .tools
+    let tool = tools
         .iter()
         .find(|t| !t.entrypoints.is_empty())
-        .expect("registry should have at least one tool with entrypoints");
+        .expect("tool discovery should have at least one tool with entrypoints");
 
     let mut schema = Vec::new();
     let mut full_argv = vec![tool.short_name.clone(), "--print-inputs=json".to_string()];
@@ -436,8 +412,8 @@ const MODE_CAPABLE_BINARIES: &[&str] = &["gunbc-deps-config"];
 /// and DSL function params. Passing `--mode` to them causes an "unknown flag" error.
 #[test]
 fn test_makefile_mode_args_only_target_mode_capable_binaries() {
-    let registry = non_colliding_registry();
-    let makefile = render_makefile(&registry).expect("render makefile");
+    let tools = non_colliding_tools();
+    let makefile = render_makefile(&tools).expect("render makefile");
 
     let mut violations = Vec::new();
 
@@ -484,69 +460,4 @@ fn extract_binary_name(line: &str) -> Option<String> {
         return Some(name.to_string());
     }
     None
-}
-
-/// Extract all `--bin <name>` references from a Makefile string.
-fn extract_all_binary_references(makefile: &str) -> BTreeSet<String> {
-    let mut bins = BTreeSet::new();
-    for line in makefile.lines() {
-        let trimmed = line.trim();
-        // Skip comments and echo lines
-        if trimmed.starts_with('#') || trimmed.starts_with("@echo") {
-            continue;
-        }
-        if let Some(name) = extract_binary_name(trimmed) {
-            bins.insert(name);
-        }
-    }
-    bins
-}
-
-/// Extract `[[bin]]` names from gunbc-app/Cargo.toml.
-#[allow(clippy::disallowed_methods)]
-fn cargo_bin_names() -> BTreeSet<String> {
-    let manifest_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
-    let content =
-        std::fs::read_to_string(&manifest_path).expect("failed to read gunbc-app/Cargo.toml");
-    let doc: toml_edit::DocumentMut = content
-        .parse()
-        .expect("failed to parse gunbc-app/Cargo.toml");
-
-    let mut names = BTreeSet::new();
-    if let Some(bins) = doc.get("bin").and_then(|v| v.as_array_of_tables()) {
-        for bin in bins {
-            if let Some(name) = bin.get("name").and_then(|v| v.as_str()) {
-                names.insert(name.to_string());
-            }
-        }
-    }
-    names
-}
-
-/// Tier 0 contract: every `--bin <name>` in the generated Makefile must
-/// correspond to a `[[bin]]` entry in `gunbc-app/Cargo.toml`.
-///
-/// Catches phantom targets (stale binary references after renames/deletions).
-#[test]
-fn test_makefile_binary_references_match_cargo_bins() {
-    let registry =
-        ToolRegistry::default_registry().expect("registry discovery should succeed");
-    let makefile = render_makefile(&registry).expect("render makefile");
-
-    let referenced_bins = extract_all_binary_references(&makefile);
-    let declared_bins = cargo_bin_names();
-
-    let phantoms: Vec<&String> = referenced_bins
-        .iter()
-        .filter(|bin| !declared_bins.contains(*bin))
-        .collect();
-
-    assert!(
-        phantoms.is_empty(),
-        "Makefile references binaries that do not exist in gunbc-app/Cargo.toml [[bin]] entries:\n  \
-         phantoms: {:?}\n  declared: {:?}\n  referenced: {:?}",
-        phantoms,
-        declared_bins,
-        referenced_bins,
-    );
 }

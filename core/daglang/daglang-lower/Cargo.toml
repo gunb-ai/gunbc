@@ -17,3 +17,5 @@ serde_json = { workspace = true }
 daglang-resolve = { path = "../daglang-resolve" }
 gunbc-app = { path = "../../../gunbc-app" }
 gunbc-deps = { path = "../../../lib/tools/deps" }
+gunbc-exec = { path = "../../exec" }
+gunbc-resolve = { path = "../../resolve" }

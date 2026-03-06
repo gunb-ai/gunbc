@@ -1,168 +1,229 @@
 Nodes:
   - tools.makegen::render_target [callable::Fn tools.makegen.render_target]
     inputs:
+      * name: String (1)
+      * deps: List<String> (1)
       * body: List<String> (1)
       * comment: String? (1)
-      * deps: List<String> (1)
-      * name: String (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::render_section_header [callable::Fn tools.makegen.render_section_header]
     inputs:
       * title: String (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::render_phony_line [callable::Fn tools.makegen.render_phony_line]
     inputs:
       * names: List<String> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::resolve_resource_target [callable::Fn tools.makegen.resolve_resource_target]
     inputs:
+      * resource: String (1)
       * mode: String (1)
       * res_targets: List<ResourceTargetEntry> (1)
-      * resource: String (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::resolve_meta_deps [callable::Fn tools.makegen.resolve_meta_deps]
     inputs:
       * needs: List<ResourceNeed> (1)
       * res_targets: List<ResourceTargetEntry> (1)
+      * __out:return: List<String> (1)
+      * __deps: Any (0..*)
     outputs:
       * return: List<String> (1)
   - tools.makegen::resolve_meta_fix_deps [callable::Fn tools.makegen.resolve_meta_fix_deps]
     inputs:
       * needs: List<ResourceNeed> (1)
       * res_targets: List<ResourceTargetEntry> (1)
+      * __out:return: List<String> (1)
+      * __deps: Any (0..*)
     outputs:
       * return: List<String> (1)
   - tools.makegen::apply_prefix [callable::Fn tools.makegen.apply_prefix]
     inputs:
-      * cmd: String (1)
       * prefix: String? (1)
+      * cmd: String (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::render_core_targets [callable::Fn tools.makegen.render_core_targets]
     inputs:
       * workflows: List<CoreWorkflow> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::render_meta_base [callable::Fn tools.makegen.render_meta_base]
     inputs:
       * meta: MetaTargetDef (1)
       * res_targets: List<ResourceTargetEntry> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::render_meta_fix_variant [callable::Fn tools.makegen.render_meta_fix_variant]
     inputs:
       * meta: MetaTargetDef (1)
       * res_targets: List<ResourceTargetEntry> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::render_meta_check_variant [callable::Fn tools.makegen.render_meta_check_variant]
     inputs:
       * meta: MetaTargetDef (1)
       * res_targets: List<ResourceTargetEntry> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::render_meta_target [callable::Fn tools.makegen.render_meta_target]
     inputs:
       * meta: MetaTargetDef (1)
       * res_targets: List<ResourceTargetEntry> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::render_meta_targets [callable::Fn tools.makegen.render_meta_targets]
     inputs:
       * metas: List<MetaTargetDef> (1)
       * res_targets: List<ResourceTargetEntry> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::render_help_param [callable::Fn tools.makegen.render_help_param]
     inputs:
       * p: EntrypointParam (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::render_help_params [callable::Fn tools.makegen.render_help_params]
     inputs:
       * params: List<EntrypointParam> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::render_tool_target [callable::Fn tools.makegen.render_tool_target]
     inputs:
       * tool: DiscoveredTool (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::render_tool_targets [callable::Fn tools.makegen.render_tool_targets]
     inputs:
       * tools: List<DiscoveredTool> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::render_help_core_lines [callable::Fn tools.makegen.render_help_core_lines]
     inputs:
       * workflows: List<CoreWorkflow> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::fix_description [callable::Fn tools.makegen.fix_description]
     inputs:
       * prereqs: List<String> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::render_help_meta_line [callable::Fn tools.makegen.render_help_meta_line]
     inputs:
       * m: MetaTargetDef (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::render_help_meta_lines [callable::Fn tools.makegen.render_help_meta_lines]
     inputs:
       * metas: List<MetaTargetDef> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::render_help_tool_line [callable::Fn tools.makegen.render_help_tool_line]
     inputs:
       * t: DiscoveredTool (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::render_help_tool_lines [callable::Fn tools.makegen.render_help_tool_lines]
     inputs:
       * tools: List<DiscoveredTool> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::render_help_target [callable::Fn tools.makegen.render_help_target]
     inputs:
+      * workflows: List<CoreWorkflow> (1)
       * metas: List<MetaTargetDef> (1)
       * tools: List<DiscoveredTool> (1)
-      * workflows: List<CoreWorkflow> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::collect_core_phony_str [callable::Fn tools.makegen.collect_core_phony_str]
     inputs:
       * workflows: List<CoreWorkflow> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::collect_meta_phony_str [callable::Fn tools.makegen.collect_meta_phony_str]
     inputs:
       * metas: List<MetaTargetDef> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::tool_phony_names [callable::Fn tools.makegen.tool_phony_names]
     inputs:
       * t: DiscoveredTool (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::collect_tool_phony_str [callable::Fn tools.makegen.collect_tool_phony_str]
     inputs:
       * tools: List<DiscoveredTool> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::render_naming_convention [callable::Fn tools.makegen.render_naming_convention]
+    inputs:
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::render_makefile_body [callable::Fn tools.makegen.render_makefile_body]
     inputs:
-      * metas: List<MetaTargetDef> (1)
-      * res_targets: List<ResourceTargetEntry> (1)
-      * tools: List<DiscoveredTool> (1)
       * workflows: List<CoreWorkflow> (1)
+      * metas: List<MetaTargetDef> (1)
+      * tools: List<DiscoveredTool> (1)
+      * res_targets: List<ResourceTargetEntry> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::discover_tools [extern_call::tools.makegen::discover_tools]
@@ -171,14 +232,19 @@ Nodes:
     outputs:
       * return: List<DiscoveredTool> (1)
   - tools.makegen::render_header [callable::Fn tools.makegen.render_header]
+    inputs:
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::render_makefile_content [callable::Fn tools.makegen.render_makefile_content]
     inputs:
-      * metas: List<MetaTargetDef> (1)
-      * res_targets: List<ResourceTargetEntry> (1)
-      * tools: List<DiscoveredTool> (1)
       * workflows: List<CoreWorkflow> (1)
+      * metas: List<MetaTargetDef> (1)
+      * tools: List<DiscoveredTool> (1)
+      * res_targets: List<ResourceTargetEntry> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - tools.makegen::makegen [callable::Func tools.makegen.makegen]
@@ -316,15 +382,19 @@ Nodes:
   - std.patterns::check_iam_binding [callable::Fn std.patterns.check_iam_binding]
     inputs:
       * bindings: Json (1)
-      * role: String (1)
       * service_account: String (1)
+      * role: String (1)
+      * __out:has_role: Bool (1)
+      * __deps: Any (0..*)
     outputs:
       * has_role: Bool (1)
   - std.patterns::add_iam_binding [callable::Fn std.patterns.add_iam_binding]
     inputs:
       * bindings: Json (1)
-      * role: String (1)
       * service_account: String (1)
+      * role: String (1)
+      * __out:updated_bindings: Json (1)
+      * __deps: Any (0..*)
     outputs:
       * updated_bindings: Json (1)
   - std.patterns::iam_preflight_check [callable::Func std.patterns.iam_preflight_check]
@@ -347,12 +417,17 @@ Nodes:
   - std.filesystem::partition_entries [callable::Fn std.filesystem.partition_entries]
     inputs:
       * entries: List<FileEntry> (1)
+      * __out:readable: List<FileEntry> (1)
+      * __out:skipped: List<FileEntry> (1)
+      * __deps: Any (0..*)
     outputs:
       * readable: List<FileEntry> (1)
       * skipped: List<FileEntry> (1)
   - std.filesystem::skip_reason [callable::Fn std.filesystem.skip_reason]
     inputs:
       * entry: FileEntry (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
     outputs:
       * return: String (1)
   - prepare_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion [callable::Pattern extdeps.cloud.gcp.secret_manager.service_transport::prepare::gcp.SecretManager::AccessVersion]
@@ -365,7 +440,6 @@ Nodes:
   - execute_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion [callable::Pattern extdeps.cloud.gcp.secret_manager.service_transport::execute::gcp.SecretManager::AccessVersion]
     inputs:
       * request: TransportRequest (1)
-      * res:file: FilesystemHandle (1)
       * res:credential: Credential (0..1)
     outputs:
       * response: TransportResponse (1)
@@ -384,7 +458,6 @@ Nodes:
   - execute_transport_extdeps_cloud_gcp_sts_gcp_STS_Exchange [callable::Pattern extdeps.cloud.gcp.sts.service_transport::execute::gcp.STS::Exchange]
     inputs:
       * request: TransportRequest (1)
-      * res:file: FilesystemHandle (1)
     outputs:
       * response: TransportResponse (1)
   - parse_transport_extdeps_cloud_gcp_sts_gcp_STS_Exchange [callable::Pattern extdeps.cloud.gcp.sts.service_transport::parse::gcp.STS::Exchange]
@@ -403,7 +476,6 @@ Nodes:
   - execute_transport_extdeps_cloud_gcp_sts_github_OIDC_GetToken [callable::Pattern extdeps.cloud.gcp.sts.service_transport::execute::github.OIDC::GetToken]
     inputs:
       * request: TransportRequest (1)
-      * res:file: FilesystemHandle (1)
     outputs:
       * response: TransportResponse (1)
   - parse_transport_extdeps_cloud_gcp_sts_github_OIDC_GetToken [callable::Pattern extdeps.cloud.gcp.sts.service_transport::parse::github.OIDC::GetToken]
@@ -419,7 +491,6 @@ Nodes:
   - execute_transport_extdeps_cloud_gcp_sts_gcp_Metadata_GetIdentityToken [callable::Pattern extdeps.cloud.gcp.sts.service_transport::execute::gcp.Metadata::GetIdentityToken]
     inputs:
       * request: TransportRequest (1)
-      * res:file: FilesystemHandle (1)
     outputs:
       * response: TransportResponse (1)
   - parse_transport_extdeps_cloud_gcp_sts_gcp_Metadata_GetIdentityToken [callable::Pattern extdeps.cloud.gcp.sts.service_transport::parse::gcp.Metadata::GetIdentityToken]
@@ -435,7 +506,6 @@ Nodes:
   - execute_transport_extdeps_shell_shell_Env_Get [callable::Pattern extdeps.shell.service_transport::execute::shell.Env::Get]
     inputs:
       * request: TransportRequest (1)
-      * res:file: FilesystemHandle (1)
     outputs:
       * response: TransportResponse (1)
   - parse_transport_extdeps_shell_shell_Env_Get [callable::Pattern extdeps.shell.service_transport::parse::shell.Env::Get]
@@ -454,7 +524,6 @@ Nodes:
     inputs:
       * request: TransportRequest (1)
       * skip: Bool (1)
-      * res:file: FilesystemHandle (1)
     outputs:
       * response: TransportResponse (1)
   - compare_makegen_content [primitive::CompareEquality tools.makegen.content_upsert::compare_makegen_content]
@@ -598,10 +667,10 @@ Nodes:
       * res_targets: List<ResourceTargetEntry> (1)
     outputs:
       * res_targets: List<ResourceTargetEntry> (1)
-  - literal_source_tools_makegen_makegen_workflows_data_0 [primitive::CallLiteralSource { literal: Json(Array [Object {"body": Array [String("@cargo fix --workspace --all-targets --allow-dirty --allow-staged")], "comment": Null, "deps": Array [], "description": String("Preflight: auto-fix rustc warnings before running generators"), "name": String("preflight-fix")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-codegen -- codegen")], "comment": Null, "deps": Array [], "description": String("Ensure CLI entrypoints exist (bootstrap-safe)"), "name": String("ensure-codegen")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo build --workspace --release --bins")], "comment": Null, "deps": Array [String("ensure-codegen")], "description": String("Build workspace binaries once for direct tool execution"), "name": String("build-release-bins")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-pragma"), String("@cargo clippy --all-targets -- -D warnings || (cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings && cargo clippy --all-targets -- -D warnings)")], "comment": Null, "deps": Array [String("ensure-codegen"), String("preflight-fix")], "description": String("Lint upsert: fix if needed, then verify"), "name": String("lint-upsert")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-codegen-dag")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Generate CLI entrypoints (DAG upsert)"), "name": String("codegen")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo build --all-targets")], "comment": String("Full build transaction: codegen \\u{2192} testgen \\u{2192} cargo build"), "deps": Array [String("codegen"), String("testgen")], "description": String("Full build transaction"), "name": String("build")}, Object {"body": Array [String("@cargo clean")], "comment": Null, "deps": Array [], "description": String("Clean build artifacts"), "name": String("clean")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-testgen")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Regenerate tests from DAG structures and MockSpecs"), "name": String("testgen")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-testgen")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Check if generated tests are stale"), "name": String("testgen-check")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-deps -q --release")], "comment": Null, "deps": Array [String("build-release-bins")], "description": String("Ensure deps.toml matches canonical generated configuration"), "name": String("deps-config")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-deps -q --release -- --dry-run")], "comment": Null, "deps": Array [String("build-release-bins")], "description": String("Check if deps.toml is stale"), "name": String("deps-config-check")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-makegen")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Check if generated Makefile is stale"), "name": String("makegen-check")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-bootstrap")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Check if generated bootstrap artifacts are stale"), "name": String("bootstrap-check")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-pragma")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Check if pragma artifacts are stale"), "name": String("pragma-check")}, Object {"body": Array [String("@$(MAKE) deps-config-check"), String("@$(MAKE) makegen-check"), String("@$(MAKE) bootstrap-check"), String("@$(MAKE) testgen-check"), String("@$(MAKE) pragma-check")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Verify generated artifacts match their generators"), "name": String("verify")}, Object {"body": Array [String("@$(MAKE) deps-config"), String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-makegen"), String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-bootstrap"), String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-testgen"), String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-pragma")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Ensure generated artifacts are up to date"), "name": String("verify-fix")}, Object {"body": Array [String("@cargo fmt")], "comment": Null, "deps": Array [], "description": String("fmt-fix: apply formatting (alias for fmt)"), "name": String("fmt-fix")}, Object {"body": Array [String("@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings")], "comment": Null, "deps": Array [String("pragma")], "description": String("lint-fix: auto-fix lint issues where possible"), "name": String("lint-fix")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-ci -q --release")], "comment": Null, "deps": Array [String("ensure-codegen")], "description": String("Run CI via build DAG (typed units, deterministic keying)"), "name": String("ci")}, Object {"body": Array [String("@cargo test --workspace")], "comment": Null, "deps": Array [String("ensure-codegen")], "description": String("Run all tests via cargo test workspace"), "name": String("test-all")}]) } tools.makegen.call_literal_source::jsonhex:5b7b22626f6479223a5b2240636172676f20666978202d2d776f726b7370616365202d2d616c6c2d74617267657473202d2d616c6c6f772d6469727479202d2d616c6c6f772d737461676564225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b5d2c226465736372697074696f6e223a22507265666c696768743a206175746f2d666978207275737463207761726e696e6773206265666f72652072756e6e696e672067656e657261746f7273222c226e616d65223a22707265666c696768742d666978227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d636f646567656e202d2d20636f646567656e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b5d2c226465736372697074696f6e223a22456e7375726520434c4920656e747279706f696e74732065786973742028626f6f7473747261702d7361666529222c226e616d65223a22656e737572652d636f646567656e227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f206275696c64202d2d776f726b7370616365202d2d72656c65617365202d2d62696e73225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b22656e737572652d636f646567656e225d2c226465736372697074696f6e223a224275696c6420776f726b73706163652062696e6172696573206f6e636520666f722064697265637420746f6f6c20657865637574696f6e222c226e616d65223a226275696c642d72656c656173652d62696e73227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d707261676d61222c2240636172676f20636c69707079202d2d616c6c2d74617267657473202d2d202d44207761726e696e6773207c7c2028636172676f20636c69707079202d2d666978202d2d776f726b7370616365202d2d616c6c6f772d6469727479202d2d616c6c6f772d737461676564202d2d202d44207761726e696e677320262620636172676f20636c69707079202d2d616c6c2d74617267657473202d2d202d44207761726e696e677329225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b22656e737572652d636f646567656e222c22707265666c696768742d666978225d2c226465736372697074696f6e223a224c696e74207570736572743a20666978206966206e65656465642c207468656e20766572696679222c226e616d65223a226c696e742d757073657274227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d636f646567656e2d646167225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a2247656e657261746520434c4920656e747279706f696e747320284441472075707365727429222c226e616d65223a22636f646567656e227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f206275696c64202d2d616c6c2d74617267657473225d2c22636f6d6d656e74223a2246756c6c206275696c64207472616e73616374696f6e3a20636f646567656e205c5c757b323139327d207465737467656e205c5c757b323139327d20636172676f206275696c64222c2264657073223a5b22636f646567656e222c227465737467656e225d2c226465736372697074696f6e223a2246756c6c206275696c64207472616e73616374696f6e222c226e616d65223a226275696c64227d2c7b22626f6479223a5b2240636172676f20636c65616e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b5d2c226465736372697074696f6e223a22436c65616e206275696c6420617274696661637473222c226e616d65223a22636c65616e227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d7465737467656e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22526567656e65726174652074657374732066726f6d20444147207374727563747572657320616e64204d6f636b5370656373222c226e616d65223a227465737467656e227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d7465737467656e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22436865636b2069662067656e65726174656420746573747320617265207374616c65222c226e616d65223a227465737467656e2d636865636b227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d64657073202d71202d2d72656c65617365225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226275696c642d72656c656173652d62696e73225d2c226465736372697074696f6e223a22456e7375726520646570732e746f6d6c206d6174636865732063616e6f6e6963616c2067656e65726174656420636f6e66696775726174696f6e222c226e616d65223a22646570732d636f6e666967227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d64657073202d71202d2d72656c65617365202d2d202d2d6472792d72756e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226275696c642d72656c656173652d62696e73225d2c226465736372697074696f6e223a22436865636b20696620646570732e746f6d6c206973207374616c65222c226e616d65223a22646570732d636f6e6669672d636865636b227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d6d616b6567656e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22436865636b2069662067656e657261746564204d616b6566696c65206973207374616c65222c226e616d65223a226d616b6567656e2d636865636b227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d626f6f747374726170225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22436865636b2069662067656e65726174656420626f6f7473747261702061727469666163747320617265207374616c65222c226e616d65223a22626f6f7473747261702d636865636b227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d707261676d61225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22436865636b20696620707261676d612061727469666163747320617265207374616c65222c226e616d65223a22707261676d612d636865636b227d2c7b22626f6479223a5b224024284d414b452920646570732d636f6e6669672d636865636b222c224024284d414b4529206d616b6567656e2d636865636b222c224024284d414b452920626f6f7473747261702d636865636b222c224024284d414b4529207465737467656e2d636865636b222c224024284d414b452920707261676d612d636865636b225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a225665726966792067656e65726174656420617274696661637473206d617463682074686569722067656e657261746f7273222c226e616d65223a22766572696679227d2c7b22626f6479223a5b224024284d414b452920646570732d636f6e666967222c224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d6d616b6567656e222c224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d626f6f747374726170222c224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d7465737467656e222c224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d707261676d61225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22456e737572652067656e657261746564206172746966616374732061726520757020746f2064617465222c226e616d65223a227665726966792d666978227d2c7b22626f6479223a5b2240636172676f20666d74225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b5d2c226465736372697074696f6e223a22666d742d6669783a206170706c7920666f726d617474696e672028616c69617320666f7220666d7429222c226e616d65223a22666d742d666978227d2c7b22626f6479223a5b2240636172676f20636c69707079202d2d666978202d2d776f726b7370616365202d2d616c6c6f772d6469727479202d2d616c6c6f772d737461676564202d2d202d44207761726e696e6773225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b22707261676d61225d2c226465736372697074696f6e223a226c696e742d6669783a206175746f2d666978206c696e742069737375657320776865726520706f737369626c65222c226e616d65223a226c696e742d666978227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d6369202d71202d2d72656c65617365225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b22656e737572652d636f646567656e225d2c226465736372697074696f6e223a2252756e20434920766961206275696c64204441472028747970656420756e6974732c2064657465726d696e6973746963206b6579696e6729222c226e616d65223a226369227d2c7b22626f6479223a5b2240636172676f2074657374202d2d776f726b7370616365225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b22656e737572652d636f646567656e225d2c226465736372697074696f6e223a2252756e20616c6c2074657374732076696120636172676f207465737420776f726b7370616365222c226e616d65223a22746573742d616c6c227d5d]
+  - literal_source_tools_makegen_makegen_workflows_data_0 [primitive::CallLiteralSource { literal: Json(Array [Object {"body": Array [String("@cargo fix --workspace --all-targets --allow-dirty --allow-staged")], "comment": Null, "deps": Array [], "description": String("Preflight: auto-fix rustc warnings before running generators"), "name": String("preflight-fix")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-codegen -- codegen")], "comment": Null, "deps": Array [], "description": String("Ensure CLI entrypoints exist (bootstrap-safe)"), "name": String("ensure-codegen")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo build --workspace --release --bins")], "comment": Null, "deps": Array [String("ensure-codegen")], "description": String("Build workspace binaries once for direct tool execution"), "name": String("build-release-bins")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-pragma"), String("@cargo clippy --all-targets -- -D warnings || (cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings && cargo clippy --all-targets -- -D warnings)")], "comment": Null, "deps": Array [String("ensure-codegen"), String("preflight-fix")], "description": String("Lint upsert: fix if needed, then verify"), "name": String("lint-upsert")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-codegen-dag")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Generate CLI entrypoints (DAG upsert)"), "name": String("codegen")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo build --all-targets")], "comment": String("Full build transaction: codegen \\u{2192} testgen \\u{2192} cargo build"), "deps": Array [String("codegen"), String("testgen")], "description": String("Full build transaction"), "name": String("build")}, Object {"body": Array [String("@cargo clean")], "comment": Null, "deps": Array [], "description": String("Clean build artifacts"), "name": String("clean")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-testgen")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Regenerate tests from DAG structures and MockSpecs"), "name": String("testgen")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-testgen")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Check if generated tests are stale"), "name": String("testgen-check")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-deps -q --release")], "comment": Null, "deps": Array [String("build-release-bins")], "description": String("Ensure deps.toml matches canonical generated configuration"), "name": String("deps-config")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-deps -q --release -- --dry-run")], "comment": Null, "deps": Array [String("build-release-bins")], "description": String("Check if deps.toml is stale"), "name": String("deps-config-check")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-makegen")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Check if generated Makefile is stale"), "name": String("makegen-check")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-bootstrap")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Check if generated bootstrap artifacts are stale"), "name": String("bootstrap-check")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-pragma")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Check if pragma artifacts are stale"), "name": String("pragma-check")}, Object {"body": Array [String("@$(MAKE) deps-config-check"), String("@$(MAKE) makegen-check"), String("@$(MAKE) bootstrap-check"), String("@$(MAKE) testgen-check"), String("@$(MAKE) pragma-check")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Verify generated artifacts match their generators"), "name": String("verify")}, Object {"body": Array [String("@$(MAKE) deps-config"), String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-makegen"), String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-bootstrap"), String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-testgen"), String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-pragma")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Ensure generated artifacts are up to date"), "name": String("verify-fix")}, Object {"body": Array [String("@cargo fmt")], "comment": Null, "deps": Array [], "description": String("fmt-fix: apply formatting (alias for fmt)"), "name": String("fmt-fix")}, Object {"body": Array [String("@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings")], "comment": Null, "deps": Array [String("pragma")], "description": String("lint-fix: auto-fix lint issues where possible"), "name": String("lint-fix")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-ci -q --release")], "comment": Null, "deps": Array [String("ensure-codegen")], "description": String("Run CI via build DAG (typed units, deterministic keying)"), "name": String("ci")}, Object {"body": Array [String("@$(MAKE) test-xl")], "comment": Null, "deps": Array [String("ensure-codegen")], "description": String("Alias for test-xl (full Fermi budget)"), "name": String("test-all")}]) } tools.makegen.call_literal_source::jsonhex:5b7b22626f6479223a5b2240636172676f20666978202d2d776f726b7370616365202d2d616c6c2d74617267657473202d2d616c6c6f772d6469727479202d2d616c6c6f772d737461676564225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b5d2c226465736372697074696f6e223a22507265666c696768743a206175746f2d666978207275737463207761726e696e6773206265666f72652072756e6e696e672067656e657261746f7273222c226e616d65223a22707265666c696768742d666978227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d636f646567656e202d2d20636f646567656e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b5d2c226465736372697074696f6e223a22456e7375726520434c4920656e747279706f696e74732065786973742028626f6f7473747261702d7361666529222c226e616d65223a22656e737572652d636f646567656e227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f206275696c64202d2d776f726b7370616365202d2d72656c65617365202d2d62696e73225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b22656e737572652d636f646567656e225d2c226465736372697074696f6e223a224275696c6420776f726b73706163652062696e6172696573206f6e636520666f722064697265637420746f6f6c20657865637574696f6e222c226e616d65223a226275696c642d72656c656173652d62696e73227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d707261676d61222c2240636172676f20636c69707079202d2d616c6c2d74617267657473202d2d202d44207761726e696e6773207c7c2028636172676f20636c69707079202d2d666978202d2d776f726b7370616365202d2d616c6c6f772d6469727479202d2d616c6c6f772d737461676564202d2d202d44207761726e696e677320262620636172676f20636c69707079202d2d616c6c2d74617267657473202d2d202d44207761726e696e677329225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b22656e737572652d636f646567656e222c22707265666c696768742d666978225d2c226465736372697074696f6e223a224c696e74207570736572743a20666978206966206e65656465642c207468656e20766572696679222c226e616d65223a226c696e742d757073657274227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d636f646567656e2d646167225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a2247656e657261746520434c4920656e747279706f696e747320284441472075707365727429222c226e616d65223a22636f646567656e227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f206275696c64202d2d616c6c2d74617267657473225d2c22636f6d6d656e74223a2246756c6c206275696c64207472616e73616374696f6e3a20636f646567656e205c5c757b323139327d207465737467656e205c5c757b323139327d20636172676f206275696c64222c2264657073223a5b22636f646567656e222c227465737467656e225d2c226465736372697074696f6e223a2246756c6c206275696c64207472616e73616374696f6e222c226e616d65223a226275696c64227d2c7b22626f6479223a5b2240636172676f20636c65616e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b5d2c226465736372697074696f6e223a22436c65616e206275696c6420617274696661637473222c226e616d65223a22636c65616e227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d7465737467656e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22526567656e65726174652074657374732066726f6d20444147207374727563747572657320616e64204d6f636b5370656373222c226e616d65223a227465737467656e227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d7465737467656e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22436865636b2069662067656e65726174656420746573747320617265207374616c65222c226e616d65223a227465737467656e2d636865636b227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d64657073202d71202d2d72656c65617365225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226275696c642d72656c656173652d62696e73225d2c226465736372697074696f6e223a22456e7375726520646570732e746f6d6c206d6174636865732063616e6f6e6963616c2067656e65726174656420636f6e66696775726174696f6e222c226e616d65223a22646570732d636f6e666967227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d64657073202d71202d2d72656c65617365202d2d202d2d6472792d72756e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226275696c642d72656c656173652d62696e73225d2c226465736372697074696f6e223a22436865636b20696620646570732e746f6d6c206973207374616c65222c226e616d65223a22646570732d636f6e6669672d636865636b227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d6d616b6567656e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22436865636b2069662067656e657261746564204d616b6566696c65206973207374616c65222c226e616d65223a226d616b6567656e2d636865636b227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d626f6f747374726170225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22436865636b2069662067656e65726174656420626f6f7473747261702061727469666163747320617265207374616c65222c226e616d65223a22626f6f7473747261702d636865636b227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d707261676d61225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22436865636b20696620707261676d612061727469666163747320617265207374616c65222c226e616d65223a22707261676d612d636865636b227d2c7b22626f6479223a5b224024284d414b452920646570732d636f6e6669672d636865636b222c224024284d414b4529206d616b6567656e2d636865636b222c224024284d414b452920626f6f7473747261702d636865636b222c224024284d414b4529207465737467656e2d636865636b222c224024284d414b452920707261676d612d636865636b225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a225665726966792067656e65726174656420617274696661637473206d617463682074686569722067656e657261746f7273222c226e616d65223a22766572696679227d2c7b22626f6479223a5b224024284d414b452920646570732d636f6e666967222c224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d6d616b6567656e222c224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d626f6f747374726170222c224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d7465737467656e222c224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d707261676d61225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22456e737572652067656e657261746564206172746966616374732061726520757020746f2064617465222c226e616d65223a227665726966792d666978227d2c7b22626f6479223a5b2240636172676f20666d74225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b5d2c226465736372697074696f6e223a22666d742d6669783a206170706c7920666f726d617474696e672028616c69617320666f7220666d7429222c226e616d65223a22666d742d666978227d2c7b22626f6479223a5b2240636172676f20636c69707079202d2d666978202d2d776f726b7370616365202d2d616c6c6f772d6469727479202d2d616c6c6f772d737461676564202d2d202d44207761726e696e6773225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b22707261676d61225d2c226465736372697074696f6e223a226c696e742d6669783a206175746f2d666978206c696e742069737375657320776865726520706f737369626c65222c226e616d65223a226c696e742d666978227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d6369202d71202d2d72656c65617365225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b22656e737572652d636f646567656e225d2c226465736372697074696f6e223a2252756e20434920766961206275696c64204441472028747970656420756e6974732c2064657465726d696e6973746963206b6579696e6729222c226e616d65223a226369227d2c7b22626f6479223a5b224024284d414b452920746573742d786c225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b22656e737572652d636f646567656e225d2c226465736372697074696f6e223a22416c69617320666f7220746573742d786c202866756c6c204665726d692062756467657429222c226e616d65223a22746573742d616c6c227d5d]
     outputs:
       * workflows: Any (1)
-  - literal_source_tools_makegen_makegen_metas_data_1 [primitive::CallLiteralSource { literal: Json(Array [Object {"check_command": Null, "command": String("@RUSTFLAGS=\"-D warnings\" cargo test"), "command_prefix": Null, "description": String("Run tests (<=S)"), "fix_command": Null, "fix_prerequisites": Array [String("fmt-fix"), String("lint-fix")], "has_check": Bool(false), "has_fix": Bool(true), "name": String("test"), "resource_needs": Array [Object {"mode": String("ensure"), "resource": String("compiled_code")}, Object {"mode": String("ensure"), "resource": String("verified_artifacts")}]}, Object {"check_command": Null, "command": String("@RUSTFLAGS=\"-D warnings\" cargo test integration"), "command_prefix": String("GUNBC_TEST_MAX_COST=XL"), "description": String("Run integration-focused tests"), "fix_command": Null, "fix_prerequisites": Array [], "has_check": Bool(false), "has_fix": Bool(false), "name": String("test-integration"), "resource_needs": Array [Object {"mode": String("ensure"), "resource": String("compiled_code")}, Object {"mode": String("ensure"), "resource": String("verified_artifacts")}]}, Object {"check_command": Null, "command": String("@RUSTFLAGS=\"-D warnings\" cargo test live_flow"), "command_prefix": String("GUNBC_TEST_MAX_COST=XL"), "description": String("Run external/live-flow tests"), "fix_command": Null, "fix_prerequisites": Array [], "has_check": Bool(false), "has_fix": Bool(false), "name": String("test-external"), "resource_needs": Array [Object {"mode": String("ensure"), "resource": String("compiled_code")}, Object {"mode": String("ensure"), "resource": String("verified_artifacts")}]}, Object {"check_command": Null, "command": String("@RUSTFLAGS=\"-D warnings\" cargo check --all-targets"), "command_prefix": Null, "description": String("Type check all targets"), "fix_command": Null, "fix_prerequisites": Array [String("fmt-fix")], "has_check": Bool(false), "has_fix": Bool(true), "name": String("check"), "resource_needs": Array [Object {"mode": String("ensure"), "resource": String("generated_cli")}, Object {"mode": String("verify"), "resource": String("pragma_config")}]}, Object {"check_command": Null, "command": String("@cargo clippy --all-targets -- -D warnings"), "command_prefix": Null, "description": String("Run clippy linter"), "fix_command": String("@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings"), "fix_prerequisites": Array [], "has_check": Bool(false), "has_fix": Bool(true), "name": String("clippy"), "resource_needs": Array [Object {"mode": String("ensure"), "resource": String("generated_cli")}, Object {"mode": String("verify"), "resource": String("pragma_config")}]}, Object {"check_command": String("@cargo fmt --check"), "command": String("@cargo fmt"), "command_prefix": Null, "description": String("Format all code"), "fix_command": Null, "fix_prerequisites": Array [], "has_check": Bool(true), "has_fix": Bool(false), "name": String("fmt"), "resource_needs": Array []}, Object {"check_command": Null, "command": String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-codegen -- cigen"), "command_prefix": Null, "description": String("Generate CI workflow YAML (GitHub Actions & GitLab CI)"), "fix_command": Null, "fix_prerequisites": Array [], "has_check": Bool(false), "has_fix": Bool(false), "name": String("ci-yaml"), "resource_needs": Array []}]) } tools.makegen.call_literal_source::jsonhex:5b7b22636865636b5f636f6d6d616e64223a6e756c6c2c22636f6d6d616e64223a224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2074657374222c22636f6d6d616e645f707265666978223a6e756c6c2c226465736372697074696f6e223a2252756e20746573747320283c3d5329222c226669785f636f6d6d616e64223a6e756c6c2c226669785f70726572657175697369746573223a5b22666d742d666978222c226c696e742d666978225d2c226861735f636865636b223a66616c73652c226861735f666978223a747275652c226e616d65223a2274657374222c227265736f757263655f6e65656473223a5b7b226d6f6465223a22656e73757265222c227265736f75726365223a22636f6d70696c65645f636f6465227d2c7b226d6f6465223a22656e73757265222c227265736f75726365223a2276657269666965645f617274696661637473227d5d7d2c7b22636865636b5f636f6d6d616e64223a6e756c6c2c22636f6d6d616e64223a224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f207465737420696e746567726174696f6e222c22636f6d6d616e645f707265666978223a2247554e42435f544553545f4d41585f434f53543d584c222c226465736372697074696f6e223a2252756e20696e746567726174696f6e2d666f6375736564207465737473222c226669785f636f6d6d616e64223a6e756c6c2c226669785f70726572657175697369746573223a5b5d2c226861735f636865636b223a66616c73652c226861735f666978223a66616c73652c226e616d65223a22746573742d696e746567726174696f6e222c227265736f757263655f6e65656473223a5b7b226d6f6465223a22656e73757265222c227265736f75726365223a22636f6d70696c65645f636f6465227d2c7b226d6f6465223a22656e73757265222c227265736f75726365223a2276657269666965645f617274696661637473227d5d7d2c7b22636865636b5f636f6d6d616e64223a6e756c6c2c22636f6d6d616e64223a224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2074657374206c6976655f666c6f77222c22636f6d6d616e645f707265666978223a2247554e42435f544553545f4d41585f434f53543d584c222c226465736372697074696f6e223a2252756e2065787465726e616c2f6c6976652d666c6f77207465737473222c226669785f636f6d6d616e64223a6e756c6c2c226669785f70726572657175697369746573223a5b5d2c226861735f636865636b223a66616c73652c226861735f666978223a66616c73652c226e616d65223a22746573742d65787465726e616c222c227265736f757263655f6e65656473223a5b7b226d6f6465223a22656e73757265222c227265736f75726365223a22636f6d70696c65645f636f6465227d2c7b226d6f6465223a22656e73757265222c227265736f75726365223a2276657269666965645f617274696661637473227d5d7d2c7b22636865636b5f636f6d6d616e64223a6e756c6c2c22636f6d6d616e64223a224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f20636865636b202d2d616c6c2d74617267657473222c22636f6d6d616e645f707265666978223a6e756c6c2c226465736372697074696f6e223a225479706520636865636b20616c6c2074617267657473222c226669785f636f6d6d616e64223a6e756c6c2c226669785f70726572657175697369746573223a5b22666d742d666978225d2c226861735f636865636b223a66616c73652c226861735f666978223a747275652c226e616d65223a22636865636b222c227265736f757263655f6e65656473223a5b7b226d6f6465223a22656e73757265222c227265736f75726365223a2267656e6572617465645f636c69227d2c7b226d6f6465223a22766572696679222c227265736f75726365223a22707261676d615f636f6e666967227d5d7d2c7b22636865636b5f636f6d6d616e64223a6e756c6c2c22636f6d6d616e64223a2240636172676f20636c69707079202d2d616c6c2d74617267657473202d2d202d44207761726e696e6773222c22636f6d6d616e645f707265666978223a6e756c6c2c226465736372697074696f6e223a2252756e20636c69707079206c696e746572222c226669785f636f6d6d616e64223a2240636172676f20636c69707079202d2d666978202d2d776f726b7370616365202d2d616c6c6f772d6469727479202d2d616c6c6f772d737461676564202d2d202d44207761726e696e6773222c226669785f70726572657175697369746573223a5b5d2c226861735f636865636b223a66616c73652c226861735f666978223a747275652c226e616d65223a22636c69707079222c227265736f757263655f6e65656473223a5b7b226d6f6465223a22656e73757265222c227265736f75726365223a2267656e6572617465645f636c69227d2c7b226d6f6465223a22766572696679222c227265736f75726365223a22707261676d615f636f6e666967227d5d7d2c7b22636865636b5f636f6d6d616e64223a2240636172676f20666d74202d2d636865636b222c22636f6d6d616e64223a2240636172676f20666d74222c22636f6d6d616e645f707265666978223a6e756c6c2c226465736372697074696f6e223a22466f726d617420616c6c20636f6465222c226669785f636f6d6d616e64223a6e756c6c2c226669785f70726572657175697369746573223a5b5d2c226861735f636865636b223a747275652c226861735f666978223a66616c73652c226e616d65223a22666d74222c227265736f757263655f6e65656473223a5b5d7d2c7b22636865636b5f636f6d6d616e64223a6e756c6c2c22636f6d6d616e64223a224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d636f646567656e202d2d20636967656e222c22636f6d6d616e645f707265666978223a6e756c6c2c226465736372697074696f6e223a2247656e657261746520434920776f726b666c6f772059414d4c202847697448756220416374696f6e732026204769744c616220434929222c226669785f636f6d6d616e64223a6e756c6c2c226669785f70726572657175697369746573223a5b5d2c226861735f636865636b223a66616c73652c226861735f666978223a66616c73652c226e616d65223a2263692d79616d6c222c227265736f757263655f6e65656473223a5b5d7d5d]
+  - literal_source_tools_makegen_makegen_metas_data_1 [primitive::CallLiteralSource { literal: Json(Array [Object {"check_command": Null, "command": String("@$(MAKE) test-s"), "command_prefix": Null, "description": String("Alias for test-s (<=S)"), "fix_command": Null, "fix_prerequisites": Array [String("fmt-fix"), String("lint-fix")], "has_check": Bool(false), "has_fix": Bool(true), "name": String("test"), "resource_needs": Array []}, Object {"check_command": Null, "command": String("@RUSTFLAGS=\"-D warnings\" cargo test"), "command_prefix": String("GUNBC_TEST_MAX_COST=XS"), "description": String("Run tests (<=XS)"), "fix_command": Null, "fix_prerequisites": Array [], "has_check": Bool(false), "has_fix": Bool(false), "name": String("test-xs"), "resource_needs": Array [Object {"mode": String("ensure"), "resource": String("compiled_code")}, Object {"mode": String("ensure"), "resource": String("verified_artifacts")}]}, Object {"check_command": Null, "command": String("@RUSTFLAGS=\"-D warnings\" cargo test"), "command_prefix": String("GUNBC_TEST_MAX_COST=S"), "description": String("Run tests (<=S)"), "fix_command": Null, "fix_prerequisites": Array [], "has_check": Bool(false), "has_fix": Bool(false), "name": String("test-s"), "resource_needs": Array [Object {"mode": String("ensure"), "resource": String("compiled_code")}, Object {"mode": String("ensure"), "resource": String("verified_artifacts")}]}, Object {"check_command": Null, "command": String("@RUSTFLAGS=\"-D warnings\" cargo test"), "command_prefix": String("GUNBC_TEST_MAX_COST=M"), "description": String("Run tests (<=M)"), "fix_command": Null, "fix_prerequisites": Array [], "has_check": Bool(false), "has_fix": Bool(false), "name": String("test-m"), "resource_needs": Array [Object {"mode": String("ensure"), "resource": String("compiled_code")}, Object {"mode": String("ensure"), "resource": String("verified_artifacts")}]}, Object {"check_command": Null, "command": String("@RUSTFLAGS=\"-D warnings\" cargo test"), "command_prefix": String("GUNBC_TEST_MAX_COST=L"), "description": String("Run tests (<=L)"), "fix_command": Null, "fix_prerequisites": Array [], "has_check": Bool(false), "has_fix": Bool(false), "name": String("test-l"), "resource_needs": Array [Object {"mode": String("ensure"), "resource": String("compiled_code")}, Object {"mode": String("ensure"), "resource": String("verified_artifacts")}]}, Object {"check_command": Null, "command": String("@RUSTFLAGS=\"-D warnings\" cargo test"), "command_prefix": String("GUNBC_TEST_MAX_COST=XL"), "description": String("Run tests (<=XL)"), "fix_command": Null, "fix_prerequisites": Array [], "has_check": Bool(false), "has_fix": Bool(false), "name": String("test-xl"), "resource_needs": Array [Object {"mode": String("ensure"), "resource": String("compiled_code")}, Object {"mode": String("ensure"), "resource": String("verified_artifacts")}]}, Object {"check_command": Null, "command": String("@$(MAKE) test-s"), "command_prefix": Null, "description": String("Alias for test-s"), "fix_command": Null, "fix_prerequisites": Array [], "has_check": Bool(false), "has_fix": Bool(false), "name": String("test-small"), "resource_needs": Array []}, Object {"check_command": Null, "command": String("@$(MAKE) test-m"), "command_prefix": Null, "description": String("Alias for test-m"), "fix_command": Null, "fix_prerequisites": Array [], "has_check": Bool(false), "has_fix": Bool(false), "name": String("test-medium"), "resource_needs": Array []}, Object {"check_command": Null, "command": String("@$(MAKE) test-l"), "command_prefix": Null, "description": String("Alias for test-l"), "fix_command": Null, "fix_prerequisites": Array [], "has_check": Bool(false), "has_fix": Bool(false), "name": String("test-large"), "resource_needs": Array []}, Object {"check_command": Null, "command": String("@$(MAKE) test-xl"), "command_prefix": Null, "description": String("Alias for test-xl"), "fix_command": Null, "fix_prerequisites": Array [], "has_check": Bool(false), "has_fix": Bool(false), "name": String("test-extra-large"), "resource_needs": Array []}, Object {"check_command": Null, "command": String("@RUSTFLAGS=\"-D warnings\" cargo test integration"), "command_prefix": String("GUNBC_TEST_MAX_COST=XL"), "description": String("Run integration-focused tests"), "fix_command": Null, "fix_prerequisites": Array [], "has_check": Bool(false), "has_fix": Bool(false), "name": String("test-integration"), "resource_needs": Array [Object {"mode": String("ensure"), "resource": String("compiled_code")}, Object {"mode": String("ensure"), "resource": String("verified_artifacts")}]}, Object {"check_command": Null, "command": String("@RUSTFLAGS=\"-D warnings\" cargo test live_flow"), "command_prefix": String("GUNBC_TEST_MAX_COST=XL"), "description": String("Run external/live-flow tests"), "fix_command": Null, "fix_prerequisites": Array [], "has_check": Bool(false), "has_fix": Bool(false), "name": String("test-external"), "resource_needs": Array [Object {"mode": String("ensure"), "resource": String("compiled_code")}, Object {"mode": String("ensure"), "resource": String("verified_artifacts")}]}, Object {"check_command": Null, "command": String("@RUSTFLAGS=\"-D warnings\" cargo check --all-targets"), "command_prefix": Null, "description": String("Type check all targets"), "fix_command": Null, "fix_prerequisites": Array [String("fmt-fix")], "has_check": Bool(false), "has_fix": Bool(true), "name": String("check"), "resource_needs": Array [Object {"mode": String("ensure"), "resource": String("generated_cli")}, Object {"mode": String("verify"), "resource": String("pragma_config")}]}, Object {"check_command": Null, "command": String("@cargo clippy --all-targets -- -D warnings"), "command_prefix": Null, "description": String("Run clippy linter"), "fix_command": String("@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings"), "fix_prerequisites": Array [], "has_check": Bool(false), "has_fix": Bool(true), "name": String("clippy"), "resource_needs": Array [Object {"mode": String("ensure"), "resource": String("generated_cli")}, Object {"mode": String("verify"), "resource": String("pragma_config")}]}, Object {"check_command": String("@cargo fmt --check"), "command": String("@cargo fmt"), "command_prefix": Null, "description": String("Format all code"), "fix_command": Null, "fix_prerequisites": Array [], "has_check": Bool(true), "has_fix": Bool(false), "name": String("fmt"), "resource_needs": Array []}, Object {"check_command": Null, "command": String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-codegen -- cigen"), "command_prefix": Null, "description": String("Generate CI workflow YAML (GitHub Actions & GitLab CI)"), "fix_command": Null, "fix_prerequisites": Array [], "has_check": Bool(false), "has_fix": Bool(false), "name": String("ci-yaml"), "resource_needs": Array []}]) } tools.makegen.call_literal_source::jsonhex:5b7b22636865636b5f636f6d6d616e64223a6e756c6c2c22636f6d6d616e64223a224024284d414b452920746573742d73222c22636f6d6d616e645f707265666978223a6e756c6c2c226465736372697074696f6e223a22416c69617320666f7220746573742d7320283c3d5329222c226669785f636f6d6d616e64223a6e756c6c2c226669785f70726572657175697369746573223a5b22666d742d666978222c226c696e742d666978225d2c226861735f636865636b223a66616c73652c226861735f666978223a747275652c226e616d65223a2274657374222c227265736f757263655f6e65656473223a5b5d7d2c7b22636865636b5f636f6d6d616e64223a6e756c6c2c22636f6d6d616e64223a224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2074657374222c22636f6d6d616e645f707265666978223a2247554e42435f544553545f4d41585f434f53543d5853222c226465736372697074696f6e223a2252756e20746573747320283c3d585329222c226669785f636f6d6d616e64223a6e756c6c2c226669785f70726572657175697369746573223a5b5d2c226861735f636865636b223a66616c73652c226861735f666978223a66616c73652c226e616d65223a22746573742d7873222c227265736f757263655f6e65656473223a5b7b226d6f6465223a22656e73757265222c227265736f75726365223a22636f6d70696c65645f636f6465227d2c7b226d6f6465223a22656e73757265222c227265736f75726365223a2276657269666965645f617274696661637473227d5d7d2c7b22636865636b5f636f6d6d616e64223a6e756c6c2c22636f6d6d616e64223a224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2074657374222c22636f6d6d616e645f707265666978223a2247554e42435f544553545f4d41585f434f53543d53222c226465736372697074696f6e223a2252756e20746573747320283c3d5329222c226669785f636f6d6d616e64223a6e756c6c2c226669785f70726572657175697369746573223a5b5d2c226861735f636865636b223a66616c73652c226861735f666978223a66616c73652c226e616d65223a22746573742d73222c227265736f757263655f6e65656473223a5b7b226d6f6465223a22656e73757265222c227265736f75726365223a22636f6d70696c65645f636f6465227d2c7b226d6f6465223a22656e73757265222c227265736f75726365223a2276657269666965645f617274696661637473227d5d7d2c7b22636865636b5f636f6d6d616e64223a6e756c6c2c22636f6d6d616e64223a224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2074657374222c22636f6d6d616e645f707265666978223a2247554e42435f544553545f4d41585f434f53543d4d222c226465736372697074696f6e223a2252756e20746573747320283c3d4d29222c226669785f636f6d6d616e64223a6e756c6c2c226669785f70726572657175697369746573223a5b5d2c226861735f636865636b223a66616c73652c226861735f666978223a66616c73652c226e616d65223a22746573742d6d222c227265736f757263655f6e65656473223a5b7b226d6f6465223a22656e73757265222c227265736f75726365223a22636f6d70696c65645f636f6465227d2c7b226d6f6465223a22656e73757265222c227265736f75726365223a2276657269666965645f617274696661637473227d5d7d2c7b22636865636b5f636f6d6d616e64223a6e756c6c2c22636f6d6d616e64223a224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2074657374222c22636f6d6d616e645f707265666978223a2247554e42435f544553545f4d41585f434f53543d4c222c226465736372697074696f6e223a2252756e20746573747320283c3d4c29222c226669785f636f6d6d616e64223a6e756c6c2c226669785f70726572657175697369746573223a5b5d2c226861735f636865636b223a66616c73652c226861735f666978223a66616c73652c226e616d65223a22746573742d6c222c227265736f757263655f6e65656473223a5b7b226d6f6465223a22656e73757265222c227265736f75726365223a22636f6d70696c65645f636f6465227d2c7b226d6f6465223a22656e73757265222c227265736f75726365223a2276657269666965645f617274696661637473227d5d7d2c7b22636865636b5f636f6d6d616e64223a6e756c6c2c22636f6d6d616e64223a224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2074657374222c22636f6d6d616e645f707265666978223a2247554e42435f544553545f4d41585f434f53543d584c222c226465736372697074696f6e223a2252756e20746573747320283c3d584c29222c226669785f636f6d6d616e64223a6e756c6c2c226669785f70726572657175697369746573223a5b5d2c226861735f636865636b223a66616c73652c226861735f666978223a66616c73652c226e616d65223a22746573742d786c222c227265736f757263655f6e65656473223a5b7b226d6f6465223a22656e73757265222c227265736f75726365223a22636f6d70696c65645f636f6465227d2c7b226d6f6465223a22656e73757265222c227265736f75726365223a2276657269666965645f617274696661637473227d5d7d2c7b22636865636b5f636f6d6d616e64223a6e756c6c2c22636f6d6d616e64223a224024284d414b452920746573742d73222c22636f6d6d616e645f707265666978223a6e756c6c2c226465736372697074696f6e223a22416c69617320666f7220746573742d73222c226669785f636f6d6d616e64223a6e756c6c2c226669785f70726572657175697369746573223a5b5d2c226861735f636865636b223a66616c73652c226861735f666978223a66616c73652c226e616d65223a22746573742d736d616c6c222c227265736f757263655f6e65656473223a5b5d7d2c7b22636865636b5f636f6d6d616e64223a6e756c6c2c22636f6d6d616e64223a224024284d414b452920746573742d6d222c22636f6d6d616e645f707265666978223a6e756c6c2c226465736372697074696f6e223a22416c69617320666f7220746573742d6d222c226669785f636f6d6d616e64223a6e756c6c2c226669785f70726572657175697369746573223a5b5d2c226861735f636865636b223a66616c73652c226861735f666978223a66616c73652c226e616d65223a22746573742d6d656469756d222c227265736f757263655f6e65656473223a5b5d7d2c7b22636865636b5f636f6d6d616e64223a6e756c6c2c22636f6d6d616e64223a224024284d414b452920746573742d6c222c22636f6d6d616e645f707265666978223a6e756c6c2c226465736372697074696f6e223a22416c69617320666f7220746573742d6c222c226669785f636f6d6d616e64223a6e756c6c2c226669785f70726572657175697369746573223a5b5d2c226861735f636865636b223a66616c73652c226861735f666978223a66616c73652c226e616d65223a22746573742d6c61726765222c227265736f757263655f6e65656473223a5b5d7d2c7b22636865636b5f636f6d6d616e64223a6e756c6c2c22636f6d6d616e64223a224024284d414b452920746573742d786c222c22636f6d6d616e645f707265666978223a6e756c6c2c226465736372697074696f6e223a22416c69617320666f7220746573742d786c222c226669785f636f6d6d616e64223a6e756c6c2c226669785f70726572657175697369746573223a5b5d2c226861735f636865636b223a66616c73652c226861735f666978223a66616c73652c226e616d65223a22746573742d65787472612d6c61726765222c227265736f757263655f6e65656473223a5b5d7d2c7b22636865636b5f636f6d6d616e64223a6e756c6c2c22636f6d6d616e64223a224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f207465737420696e746567726174696f6e222c22636f6d6d616e645f707265666978223a2247554e42435f544553545f4d41585f434f53543d584c222c226465736372697074696f6e223a2252756e20696e746567726174696f6e2d666f6375736564207465737473222c226669785f636f6d6d616e64223a6e756c6c2c226669785f70726572657175697369746573223a5b5d2c226861735f636865636b223a66616c73652c226861735f666978223a66616c73652c226e616d65223a22746573742d696e746567726174696f6e222c227265736f757263655f6e65656473223a5b7b226d6f6465223a22656e73757265222c227265736f75726365223a22636f6d70696c65645f636f6465227d2c7b226d6f6465223a22656e73757265222c227265736f75726365223a2276657269666965645f617274696661637473227d5d7d2c7b22636865636b5f636f6d6d616e64223a6e756c6c2c22636f6d6d616e64223a224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2074657374206c6976655f666c6f77222c22636f6d6d616e645f707265666978223a2247554e42435f544553545f4d41585f434f53543d584c222c226465736372697074696f6e223a2252756e2065787465726e616c2f6c6976652d666c6f77207465737473222c226669785f636f6d6d616e64223a6e756c6c2c226669785f70726572657175697369746573223a5b5d2c226861735f636865636b223a66616c73652c226861735f666978223a66616c73652c226e616d65223a22746573742d65787465726e616c222c227265736f757263655f6e65656473223a5b7b226d6f6465223a22656e73757265222c227265736f75726365223a22636f6d70696c65645f636f6465227d2c7b226d6f6465223a22656e73757265222c227265736f75726365223a2276657269666965645f617274696661637473227d5d7d2c7b22636865636b5f636f6d6d616e64223a6e756c6c2c22636f6d6d616e64223a224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f20636865636b202d2d616c6c2d74617267657473222c22636f6d6d616e645f707265666978223a6e756c6c2c226465736372697074696f6e223a225479706520636865636b20616c6c2074617267657473222c226669785f636f6d6d616e64223a6e756c6c2c226669785f70726572657175697369746573223a5b22666d742d666978225d2c226861735f636865636b223a66616c73652c226861735f666978223a747275652c226e616d65223a22636865636b222c227265736f757263655f6e65656473223a5b7b226d6f6465223a22656e73757265222c227265736f75726365223a2267656e6572617465645f636c69227d2c7b226d6f6465223a22766572696679222c227265736f75726365223a22707261676d615f636f6e666967227d5d7d2c7b22636865636b5f636f6d6d616e64223a6e756c6c2c22636f6d6d616e64223a2240636172676f20636c69707079202d2d616c6c2d74617267657473202d2d202d44207761726e696e6773222c22636f6d6d616e645f707265666978223a6e756c6c2c226465736372697074696f6e223a2252756e20636c69707079206c696e746572222c226669785f636f6d6d616e64223a2240636172676f20636c69707079202d2d666978202d2d776f726b7370616365202d2d616c6c6f772d6469727479202d2d616c6c6f772d737461676564202d2d202d44207761726e696e6773222c226669785f70726572657175697369746573223a5b5d2c226861735f636865636b223a66616c73652c226861735f666978223a747275652c226e616d65223a22636c69707079222c227265736f757263655f6e65656473223a5b7b226d6f6465223a22656e73757265222c227265736f75726365223a2267656e6572617465645f636c69227d2c7b226d6f6465223a22766572696679222c227265736f75726365223a22707261676d615f636f6e666967227d5d7d2c7b22636865636b5f636f6d6d616e64223a2240636172676f20666d74202d2d636865636b222c22636f6d6d616e64223a2240636172676f20666d74222c22636f6d6d616e645f707265666978223a6e756c6c2c226465736372697074696f6e223a22466f726d617420616c6c20636f6465222c226669785f636f6d6d616e64223a6e756c6c2c226669785f70726572657175697369746573223a5b5d2c226861735f636865636b223a747275652c226861735f666978223a66616c73652c226e616d65223a22666d74222c227265736f757263655f6e65656473223a5b5d7d2c7b22636865636b5f636f6d6d616e64223a6e756c6c2c22636f6d6d616e64223a224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d646167202d2d62696e2067756e62632d636f646567656e202d2d20636967656e222c22636f6d6d616e645f707265666978223a6e756c6c2c226465736372697074696f6e223a2247656e657261746520434920776f726b666c6f772059414d4c202847697448756220416374696f6e732026204769744c616220434929222c226669785f636f6d6d616e64223a6e756c6c2c226669785f70726572657175697369746573223a5b5d2c226861735f636865636b223a66616c73652c226861735f666978223a66616c73652c226e616d65223a2263692d79616d6c222c227265736f757263655f6e65656473223a5b5d7d5d]
     outputs:
       * metas: Any (1)
   - literal_source_tools_makegen_makegen_res_targets_data_3 [primitive::CallLiteralSource { literal: Json(Array [Object {"ensure_target": String("ensure-codegen"), "resource": String("generated_cli"), "verify_target": String("ensure-codegen")}, Object {"ensure_target": String("testgen"), "resource": String("generated_tests"), "verify_target": String("testgen-check")}, Object {"ensure_target": String("pragma"), "resource": String("pragma_config"), "verify_target": String("pragma-check")}, Object {"ensure_target": String("build"), "resource": String("compiled_code"), "verify_target": String("build")}, Object {"ensure_target": String("verify-fix"), "resource": String("verified_artifacts"), "verify_target": String("verify")}, Object {"ensure_target": String("deps-config"), "resource": String("deps_config"), "verify_target": String("deps-config-check")}, Object {"ensure_target": String("makegen"), "resource": String("makefile"), "verify_target": String("makegen-check")}, Object {"ensure_target": String("bootstrap"), "resource": String("gitignore"), "verify_target": String("bootstrap-check")}]) } tools.makegen.call_literal_source::jsonhex:5b7b22656e737572655f746172676574223a22656e737572652d636f646567656e222c227265736f75726365223a2267656e6572617465645f636c69222c227665726966795f746172676574223a22656e737572652d636f646567656e227d2c7b22656e737572655f746172676574223a227465737467656e222c227265736f75726365223a2267656e6572617465645f7465737473222c227665726966795f746172676574223a227465737467656e2d636865636b227d2c7b22656e737572655f746172676574223a22707261676d61222c227265736f75726365223a22707261676d615f636f6e666967222c227665726966795f746172676574223a22707261676d612d636865636b227d2c7b22656e737572655f746172676574223a226275696c64222c227265736f75726365223a22636f6d70696c65645f636f6465222c227665726966795f746172676574223a226275696c64227d2c7b22656e737572655f746172676574223a227665726966792d666978222c227265736f75726365223a2276657269666965645f617274696661637473222c227665726966795f746172676574223a22766572696679227d2c7b22656e737572655f746172676574223a22646570732d636f6e666967222c227265736f75726365223a22646570735f636f6e666967222c227665726966795f746172676574223a22646570732d636f6e6669672d636865636b227d2c7b22656e737572655f746172676574223a226d616b6567656e222c227265736f75726365223a226d616b6566696c65222c227665726966795f746172676574223a226d616b6567656e2d636865636b227d2c7b22656e737572655f746172676574223a22626f6f747374726170222c227265736f75726365223a2267697469676e6f7265222c227665726966795f746172676574223a22626f6f7473747261702d636865636b227d5d]
@@ -678,7 +747,6 @@ Nodes:
   - execute_transport_extdeps_shell_shell_Env_Get_c1 [callable::Pattern extdeps.shell.service_transport::execute::shell.Env::Get]
     inputs:
       * request: TransportRequest (1)
-      * res:file: FilesystemHandle (1)
     outputs:
       * response: TransportResponse (1)
   - parse_transport_extdeps_shell_shell_Env_Get_c1 [callable::Pattern extdeps.shell.service_transport::parse::shell.Env::Get]
@@ -736,9 +804,6 @@ Nodes:
       * trigger: Any (1)
     outputs:
       * auth: AuthContext (1)
-  - fs_env [primitive::FsEnv std.resources.fs_env]
-    outputs:
-      * FilesystemHandle: FilesystemHandle (1)
 Edges:
   - prepare_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion.request -> execute_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion.request
   - execute_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion.response -> parse_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion.response
@@ -892,8 +957,6 @@ Edges:
   - acquire_resource_std_resources_Network.resource_handle -> release_resource_std_resources_Network.resource_handle
   - acquire_resource_std_resources_Clock.resource_handle -> release_resource_std_resources_Clock.resource_handle
   - acquire_resource_std_resources_AuthContext.resource_handle -> release_resource_std_resources_AuthContext.resource_handle
-  - acquire_resource_std_resources_Filesystem.resource_handle -> tools.makegen::makegen.__deps
-  - tools.makegen::makegen.written -> release_resource_std_resources_Filesystem.resource_handle
   - acquire_resource_std_resources_Filesystem.resource_handle -> std.patterns::file_content_matches.__deps
   - std.patterns::file_content_matches.matches -> release_resource_std_resources_Filesystem.resource_handle
   - acquire_resource_std_resources_Filesystem.resource_handle -> std.patterns::classify_files.__deps
@@ -937,13 +1000,4 @@ Edges:
   - tools.makegen::render_makefile_content.return -> param_source_std_patterns_content_upsert_content.content
   - param_source_std_patterns_acquire_subject_token_audience.audience -> param_source_std_patterns_github_oidc_audience.audience
   - param_source_std_patterns_acquire_subject_token_audience.audience -> param_source_std_patterns_metadata_oidc_audience.audience
-  - fs_env.FilesystemHandle -> execute_transport_extdeps_cloud_gcp_secret_manager_gcp_SecretManager_AccessVersion.res:file
-  - fs_env.FilesystemHandle -> execute_transport_extdeps_cloud_gcp_sts_gcp_STS_Exchange.res:file
-  - fs_env.FilesystemHandle -> execute_transport_extdeps_cloud_gcp_sts_github_OIDC_GetToken.res:file
-  - fs_env.FilesystemHandle -> execute_transport_extdeps_cloud_gcp_sts_gcp_Metadata_GetIdentityToken.res:file
-  - fs_env.FilesystemHandle -> execute_transport_extdeps_shell_shell_Env_Get.res:file
-  - fs_env.FilesystemHandle -> prepare_read_makegen.res:file:Makefile
-  - fs_env.FilesystemHandle -> execute_read_makegen.res:file
-  - fs_env.FilesystemHandle -> execute_makegen_transport.res:file
-  - fs_env.FilesystemHandle -> execute_transport_extdeps_shell_shell_Env_Get_c1.res:file
 

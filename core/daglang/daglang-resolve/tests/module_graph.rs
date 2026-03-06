@@ -142,7 +142,6 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
     let expected: BTreeMap<String, usize> = BTreeMap::from([
         ("cloud.aws.credential".into(), 3),
         ("cloud.azure.credential".into(), 3),
-        ("cloud.gcp.credential".into(), 6),
         ("config.arch_rules".into(), 1),
         ("config.build_commands".into(), 0),
         ("config.build_policy".into(), 0),
@@ -194,6 +193,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("extdeps.coordination.sqlite".into(), 1),
         ("extdeps.devenv.devcontainers".into(), 0),
         ("extdeps.git".into(), 2),
+        ("extdeps.github.auth".into(), 2),
         ("extdeps.github.core".into(), 1),
         ("extdeps.github.gists".into(), 4),
         ("extdeps.github.issues".into(), 4),
@@ -203,10 +203,25 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("extdeps.gitlab_ci".into(), 0),
         ("extdeps.gunbc".into(), 0),
         ("extdeps.llm.anthropic".into(), 3),
+        ("extdeps.llm.auth".into(), 2),
         ("extdeps.llm.core".into(), 0),
         ("extdeps.llm.openai".into(), 3),
         ("extdeps.llm.pricing".into(), 1),
         ("extdeps.make".into(), 0),
+        ("extdeps.sdlc.providers.codex_agent_provider".into(), 2),
+        ("extdeps.sdlc.providers.file_claim_store".into(), 3),
+        ("extdeps.sdlc.providers.file_outcome_ledger".into(), 3),
+        ("extdeps.sdlc.providers.file_signal_store".into(), 2),
+        ("extdeps.sdlc.providers.gcp_credential_provider".into(), 9),
+        ("extdeps.sdlc.providers.gcs_artifact_store".into(), 3),
+        ("extdeps.sdlc.providers.gcs_claim_store".into(), 3),
+        ("extdeps.sdlc.providers.gcs_outcome_ledger".into(), 3),
+        ("extdeps.sdlc.providers.github_issue_provider".into(), 3),
+        ("extdeps.sdlc.providers.inline_artifact_store".into(), 2),
+        ("extdeps.sdlc.providers.local_credential_provider".into(), 4),
+        ("extdeps.sdlc.providers.pubsub_signal_store".into(), 3),
+        ("extdeps.sdlc.providers.stub_credential_provider".into(), 2),
+        ("extdeps.sdlc.providers.stub_providers".into(), 7),
         ("extdeps.secrets.core".into(), 2),
         ("extdeps.secrets.env_file".into(), 1),
         ("extdeps.secrets.gcp_secret_manager".into(), 3),
@@ -220,10 +235,8 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("funcs.approval_gate".into(), 5),
         ("funcs.retry_budget".into(), 2),
         ("funcs.review_pipeline".into(), 4),
-        ("funcs.sdlc_dispatch_runtime".into(), 6),
         ("funcs.sdlc_stages".into(), 10),
-        ("funcs.sdlc_validation_runtime".into(), 0),
-        ("funcs.sdlc_worker".into(), 8),
+        ("funcs.sdlc_worker".into(), 10),
         ("funcs.test_control_flow".into(), 1),
         ("infra.aws.config".into(), 1),
         ("infra.aws.resources".into(), 4),
@@ -248,35 +261,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("pipelines.cloud_e2e".into(), 9),
         ("pipelines.reconciler".into(), 6),
         ("pipelines.scale_test".into(), 6),
-        ("pipelines.sdlc".into(), 13),
-        ("pipelines.sdlc_ci".into(), 10),
-        ("profiles.cloud_run".into(), 8),
-        ("profiles.gist".into(), 3),
-        ("profiles.local".into(), 8),
-        ("profiles.sdlc".into(), 20),
-        ("profiles.unit_test".into(), 7),
         ("services.review.dimension".into(), 1),
-        ("services.sdlc.providers.codex_agent_provider".into(), 2),
-        ("services.sdlc.providers.file_claim_store".into(), 3),
-        ("services.sdlc.providers.file_outcome_ledger".into(), 3),
-        ("services.sdlc.providers.file_signal_store".into(), 2),
-        ("services.sdlc.providers.gcp_credential_provider".into(), 9),
-        ("services.sdlc.providers.gcs_artifact_store".into(), 3),
-        ("services.sdlc.providers.gcs_claim_store".into(), 3),
-        ("services.sdlc.providers.gcs_outcome_ledger".into(), 3),
-        ("services.sdlc.providers.github_issue_provider".into(), 3),
-        ("services.sdlc.providers.health_check".into(), 1),
-        ("services.sdlc.providers.inline_artifact_store".into(), 2),
-        ("services.sdlc.providers.llm_agent_provider".into(), 5),
-        (
-            "services.sdlc.providers.local_credential_provider".into(),
-            4,
-        ),
-        ("services.sdlc.providers.pubsub_signal_store".into(), 3),
-        ("services.sdlc.providers.rolling_deploy".into(), 2),
-        ("services.sdlc.providers.structured_logging".into(), 1),
-        ("services.sdlc.providers.stub_credential_provider".into(), 2),
-        ("services.sdlc.providers.stub_providers".into(), 7),
         ("shared.codegen".into(), 0),
         ("shared.compilation".into(), 0),
         ("shared.dag_util".into(), 1),
@@ -309,20 +294,20 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("tools.bootstrap".into(), 3),
         ("tools.build".into(), 3),
         ("tools.ci".into(), 3),
-        ("tools.cigen".into(), 5),
+        ("tools.cigen".into(), 4),
         ("tools.clippy".into(), 5),
         ("tools.codegen".into(), 2),
         ("tools.deps".into(), 4),
         ("tools.deps_config".into(), 1),
-        ("tools.design".into(), 3),
+        ("tools.design".into(), 2),
         ("tools.docgen".into(), 4),
-        ("tools.gist".into(), 7),
+        ("tools.gist".into(), 6),
         ("tools.infra".into(), 0),
-        ("tools.justgen".into(), 4),
-        ("tools.makegen".into(), 4),
-        ("tools.pragma".into(), 3),
+        ("tools.justgen".into(), 3),
+        ("tools.makegen".into(), 3),
+        ("tools.pragma".into(), 2),
         ("tools.review".into(), 0),
-        ("tools.testgen".into(), 3),
+        ("tools.testgen".into(), 2),
         ("tools.workflow".into(), 1),
         ("workflows.bootstrap".into(), 2),
         ("workflows.build_all".into(), 3),
@@ -556,18 +541,21 @@ fn invalid_root_path_error_display_includes_path_and_reason() {
 }
 
 #[test]
-fn unresolved_imports_are_rejected_during_discovery() {
+fn unresolved_imports_are_tolerated_for_phase_zero_discovery() {
     let root = unique_temp_dir("unresolved");
     write_file(
         &root.join("a/main.dag"),
         "module a.main\nimport missing.dep\nfn run() -> Unit {}",
     );
 
-    let result = ModuleGraph::discover(std::slice::from_ref(&root));
-    assert!(result.is_err(), "unresolved imports should be reported as errors");
-    let err = result.unwrap_err();
-    let rendered = err.to_string();
-    assert!(rendered.contains("unresolved import"), "error should mention unresolved import: {rendered}");
+    let graph = ModuleGraph::discover(std::slice::from_ref(&root))
+        .expect("expected graph discovery success");
+    assert_eq!(graph.modules.len(), 1);
+    assert_eq!(graph.modules[0].module_path.as_dotted(), "a.main");
+    assert!(
+        graph.modules[0].dependencies.is_empty(),
+        "unresolved imports should be ignored in phase-0 graph construction"
+    );
 
     fs::remove_dir_all(root).expect("failed to clean temp directory");
 }

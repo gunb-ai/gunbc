@@ -241,7 +241,7 @@ mod tests {
     #[test]
     fn resolve_single_file_root_prefers_dsl_ancestor() {
         let cwd = PathBuf::from("/workspace");
-        let file = PathBuf::from("/workspace/dsl/cloud/gcp/credential.dag");
+        let file = PathBuf::from("/workspace/dsl/extdeps/cloud/gcp/core.dag");
         assert_eq!(
             resolve_single_file_root(&cwd, &file),
             PathBuf::from("/workspace/dsl")

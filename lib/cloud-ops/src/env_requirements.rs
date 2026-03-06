@@ -81,7 +81,7 @@ pub fn gcp_local_env() -> CloudEnvRequirements {
         required: GCP_LOCAL_REQUIRED,
         required_any_of: GCP_REQUIRED_ANY_OF,
         optional: CLOUD_ENV_COMMON_OPTIONAL,
-        notes: Some("Local dev path (gcloud auth + Secret Manager)."),
+        notes: Some("Local dev path (local cloud auth + Secret Manager)."),
     }
 }
 

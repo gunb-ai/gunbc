@@ -1,5 +1,7 @@
 # Postmortem: `make gist` 401 — Systemic Modeling and Testgen Gaps
 
+Canonical rolling tracker: `TODO/rolling-postmortem.md`
+
 > **Date**: 2026-02-27
 > **Severity**: High — silent credential loss across all service operations
 > **Scope**: Not gist-specific; every DSL-defined service with `config { auth }` was affected

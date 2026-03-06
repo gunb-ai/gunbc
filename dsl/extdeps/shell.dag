@@ -8,7 +8,7 @@
 //   tools/bootstrap.dag     — find directories
 //   tools/clippy.dag        — which command
 //   pipelines/cloud_e2e.dag — env vars
-//   pipelines/sdlc_ci.dag   — env vars
+//   pipelines/scale_test.dag — env vars
 
 module extdeps.shell
 

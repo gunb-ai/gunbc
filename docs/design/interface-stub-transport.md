@@ -125,7 +125,7 @@ No string munging, no cap_key rebuild/split. Same lookup path for real and stub 
 
 ### IS-6: Handle `InterfaceStub` in DynOp resolver (M)
 
-**File**: `gunbc-app/src/resolve.rs`
+**File**: `core/resolve/src/resolve.rs`
 
 In `resolve_service_transport()` (line 846), add a branch for `ServiceOperationSpec::InterfaceStub`:
 
@@ -139,7 +139,7 @@ The existing `(spec, is_prepare, is_parse)` triple match (line 864) gains three 
 
 ### IS-7: Verify auto-mock compatibility (S)
 
-**Files**: `gunbc-app/src/mock_defaults.rs`, `core/exec/src/execute.rs`
+**Files**: `gunbc-dag/src/mock_defaults.rs`, `core/exec/src/execute.rs`
 
 Two checks:
 1. Stub execute nodes carry `ObligationCategory::ServiceTransportExecute` — existing auto-mock keys on this obligation should work. Likely no changes needed.
@@ -168,7 +168,7 @@ IS-6 (parallel with IS-2..IS-5)
 
 ### PT-1: Profile-aware compilation for testgen (M)
 
-**Files**: `gunbc-app/src/dsl_builder.rs`, `core/daglang/daglang-lower/src/lib.rs`
+**Files**: `core/resolve/src/builder.rs`, `core/daglang/daglang-lower/src/lib.rs`
 
 Reuse the compiler's existing profile parsing and binding logic — do NOT re-parse `dsl/profiles/*.dag` separately (drift risk). Instead:
 
@@ -180,7 +180,7 @@ Profile metadata extraction (env/secret requirements, bound interface names) com
 
 ### PT-2: Augment `CompilableModule` with interface imports (S)
 
-**File**: `gunbc-app/src/testgen_dag/dag_test_discovery.rs`
+**File**: `gunbc-dag/src/testgen_dag/dag_test_discovery.rs`
 
 Add `interface_imports: HashSet<String>`. Populate during `collect_dag_files()` by checking `import interfaces.*` in the AST.
 
@@ -212,7 +212,7 @@ New `build_per_profile_live_flow_sections()`. For each `LiveProfileTestConfig`:
 
 ### PT-6: Wire into auto-testgen pipeline (M)
 
-**Files**: `gunbc-app/src/testgen_dag/{graph.rs, ops.rs, dag_test_discovery.rs}`
+**Files**: `gunbc-dag/src/testgen_dag/{graph.rs, ops.rs, dag_test_discovery.rs}`
 
 - `build_testgen_graph_auto()`: query compiler profile registry once, then `profiles_for_module()` per module (using PT-2 interface imports + PT-4 scoping)
 - `TestgenOp::AutoGenerate`: add `base_profile: Option<String>` and `live_profile_tests`

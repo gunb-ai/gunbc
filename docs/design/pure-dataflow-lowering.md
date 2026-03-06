@@ -42,7 +42,7 @@ This creates three architectural problems:
 
 ### 1.2 The Hand-Written DynOp Problem (C25)
 
-`gunbc-app/src/resolve.rs` contains ~40 hand-written `Executable` adapter structs for
+`core/resolve/src/resolve.rs` contains ~40 hand-written `Executable` adapter structs for
 service operations. Each REST prepare adapter extracts inputs, interpolates URLs, builds
 JSON bodies, and returns `TransportRequest::Rest`. Each parse adapter checks status,
 extracts JSON fields, and returns outputs.
@@ -62,7 +62,7 @@ C25 depends on C24 because the generic protocol interpreters need structural inp
 | `__`-convention identifiers in fn bodies | Hundreds (every `param.field` inside ExprCompute) |
 | `remap_expr_idents` call sites | 1 (lowerer) |
 | `evaluate_fn_body` call site | 1 (ExprComputeOp::execute) |
-| Hand-written DynOp service adapters | ~40 structs in resolve.rs |
+| Hand-written DynOp service adapters | ~40 structs in `core/resolve/src/resolve.rs` |
 | GetField nodes (C24 step 1, done) | 3 (simple `param.field` return expressions) |
 
 ### 1.4 Goal
@@ -347,7 +347,7 @@ After C24 completion:
 | `daglang-lower/src/lib.rs` | `remap_expr_idents()`, `synthesize_expr_compute()`, `collect_expr_leaf_refs()`, `ExprLeafRef` struct |
 | `daglang-lower/src/lib.rs` | `PrimitiveOpKind::ExprCompute` variant |
 | `daglang-lower/src/eval.rs` | `evaluate_fn_body()` and all supporting functions (~400 lines) |
-| `gunbc-app/src/resolve.rs` | `ExprComputeOp` struct, `collect_fn_body_idents()`, `collect_lowered_expr_idents()`, Map flattening code |
+| `core/resolve/src/resolve.rs` | `ExprComputeOp` struct, `collect_fn_body_idents()`, `collect_lowered_expr_idents()`, Map flattening code |
 | `daglang-lower/src/expr.rs` | `LoweredFnBody`, `LoweredStmt`, `LoweredExpr` (entire file — ~300 lines) |
 
 Estimated net deletion: **~800 lines** of interpreter code replaced by
@@ -407,7 +407,7 @@ This recurses into the expression, creating nodes bottom-up:
 
 **Verification per category:**
 - ExprCompute count decreases by expected amount
-- `cargo test -p gunbc-app --test gist_recent_regressions` passes
+- `cargo test -p gunbc-dag --test gist_recent_regressions` passes
 - Workflow obligation fixture counts update (new structural nodes appear)
 - `cargo run -p daglang-cli -- expand dsl/tools/makegen.dag` shows
   structural nodes instead of ExprCompute blobs

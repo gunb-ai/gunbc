@@ -27,22 +27,18 @@ const ALLOWED_DIRS: &[&str] = &[
     "lib/tools/",
     // Cloud ops rendering
     "lib/cloud-ops/",
-    // GCP ops
-    "lib/gcp-ops/",
     // Primitive data formatting
     "lib/primitives/",
     // Makegen (Rust-side rendering, migrating to DSL)
-    "gunbc-app/src/makegen/",
+    "gunbc-dag/src/makegen/",
     // Extern ops (recursive/inventory-backed extern function handlers)
-    "gunbc-app/src/extern_ops.rs",
+    "gunbc-dag/src/extern_ops.rs",
     // Binary entrypoints
-    "gunbc-app/src/bin/",
-    // Test generation DAG (mock_interpreter + profile_discovery relocated to core/codegen in B5)
-    "gunbc-app/src/testgen_dag/",
+    "gunbc-dag/src/bin/",
+    // Test generation DAG support and narrow extern bridges
+    "gunbc-dag/src/testgen_dag/",
     // Workflow orchestration
-    "gunbc-app/src/workflow/",
-    // DSL registry
-    "gunbc-app/src/dsl_registry.rs",
+    "gunbc-dag/src/workflow/",
 ];
 
 /// Current baseline: total `push_str` occurrences in non-boundary Rust files.

@@ -1,13 +1,30 @@
 use super::*;
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::parser;
-use daglang_typecheck::typecheck_module_graph_with_options;
-use gunbc_app::{build_bootstrap_graph, build_codegen_graph, build_deps_graph, build_pragma_graph};
+use daglang_typecheck::typecheck_module_graph;
+use gunbc_dag::extern_ops::GunbcExternResolver;
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::{Edge, Port};
+use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
+
+fn build_entrypoint_graph(
+    relative_module: &str,
+    entry_func: &str,
+) -> gunbc_ir::Dag<gunbc_exec::DynOp> {
+    build_dsl_graph(
+        relative_module,
+        &GunbcExternResolver,
+        BuildOpts {
+            entry_func: Some(entry_func),
+            profile: None,
+        },
+    )
+    .map(|result| result.dag)
+    .unwrap_or_else(|e| panic!("`{relative_module}` entry `{entry_func}` should build: {e}"))
+}
 
 fn typed_project_from_sources(sources: &[(&str, &str)]) -> TypedProject {
     let modules = sources
@@ -27,14 +44,7 @@ fn typed_project_from_sources(sources: &[(&str, &str)]) -> TypedProject {
             }
         })
         .collect();
-    let graph = ModuleGraph { modules };
-    typecheck_module_graph_with_options(
-        &graph,
-        daglang_typecheck::TypecheckOptions {
-            allow_unresolved_imports: true,
-        },
-    )
-    .expect("typecheck should succeed")
+    typecheck_module_graph(ModuleGraph { modules }).expect("typecheck should succeed")
 }
 
 fn callable_stmts_from_source(source: &str) -> Vec<Stmt> {
@@ -93,14 +103,7 @@ fn typed_project_for_module_with_dependency_closure(module_name: &str) -> TypedP
             .collect::<Vec<_>>();
         modules.push(module);
     }
-    let graph = ModuleGraph { modules };
-    typecheck_module_graph_with_options(
-        &graph,
-        daglang_typecheck::TypecheckOptions {
-            allow_unresolved_imports: true,
-        },
-    )
-    .expect("typecheck should succeed")
+    typecheck_module_graph(ModuleGraph { modules }).expect("typecheck should succeed")
 }
 
 fn lower_target_module(typed: &TypedProject, module_name: &str) -> Dag<LoweredOp> {
@@ -142,8 +145,7 @@ fn lower_target_module_with_dependency_scope(
             }
         }
     }
-    lower_typed_project_for_modules_with_entry(typed, &scope, None, Some(module_name))
-        .expect("lowering should succeed")
+    lower_typed_project_for_modules(typed, &scope).expect("lowering should succeed")
 }
 
 #[test]
@@ -540,7 +542,7 @@ fn expr_to_template_string_preserves_identifier_interpolation() {
 fn deps_parity_report_is_deterministic() {
     let typed = typed_project_for_module_with_dependency_closure("tools.deps");
     let dag = lower_target_module_with_dependency_scope(&typed, "tools.deps");
-    let reference = build_deps_graph().expect("deps builder graph should be available");
+    let reference = build_entrypoint_graph("tools/deps.dag", "deps");
 
     let report_a = compare_ir(&dag, &reference);
     let report_b = compare_ir(&dag, &reference);
@@ -553,7 +555,7 @@ fn deps_parity_report_is_deterministic() {
 fn bootstrap_parity_report_is_deterministic() {
     let typed = typed_project_for_module_with_dependency_closure("tools.bootstrap");
     let dag = lower_target_module_with_dependency_scope(&typed, "tools.bootstrap");
-    let reference = build_bootstrap_graph().expect("bootstrap builder graph should be available");
+    let reference = build_entrypoint_graph("tools/bootstrap.dag", "bootstrap");
 
     let report_a = compare_ir(&dag, &reference);
     let report_b = compare_ir(&dag, &reference);
@@ -566,7 +568,7 @@ fn bootstrap_parity_report_is_deterministic() {
 fn codegen_parity_report_is_deterministic() {
     let typed = typed_project_for_module_with_dependency_closure("tools.codegen");
     let dag = lower_target_module_with_dependency_scope(&typed, "tools.codegen");
-    let reference = build_codegen_graph().expect("codegen builder graph should be available");
+    let reference = build_entrypoint_graph("tools/codegen.dag", "codegen");
 
     let report_a = compare_ir(&dag, &reference);
     let report_b = compare_ir(&dag, &reference);
@@ -579,7 +581,7 @@ fn codegen_parity_report_is_deterministic() {
 fn pragma_parity_report_is_deterministic() {
     let typed = typed_project_for_module_with_dependency_closure("tools.pragma");
     let dag = lower_target_module_with_dependency_scope(&typed, "tools.pragma");
-    let reference = build_pragma_graph().expect("pragma builder graph should be available");
+    let reference = build_entrypoint_graph("tools/pragma.dag", "pragma");
 
     let report_a = compare_ir(&dag, &reference);
     let report_b = compare_ir(&dag, &reference);
@@ -694,7 +696,7 @@ transport rest { method: GET, path: "/read" }
         gunbc_ir::node::NodeBody::Opaque(op) => op
             .service_call_metadata()
             .expect("service metadata should be preserved"),
-        gunbc_ir::node::NodeBody::SubDag(..) => {
+        gunbc_ir::node::NodeBody::SubDag(_) => {
             panic!("expected opaque lowered node for execute transport")
         }
     };
@@ -735,7 +737,7 @@ transport shell { argv: ["cat", "{path}"] }
                 .expect("service metadata should be present")
                 .readonly,
         ),
-        gunbc_ir::node::NodeBody::SubDag(..) => {
+        gunbc_ir::node::NodeBody::SubDag(_) => {
             panic!("expected opaque lowered node for prepare transport")
         }
     };
@@ -756,7 +758,7 @@ fn shell_output_parsing_for_node(dag: &Dag<LoweredOp>, node_id: &str) -> ShellOu
         gunbc_ir::node::NodeBody::Opaque(op) => op
             .service_call_metadata()
             .expect("service metadata should be present"),
-        gunbc_ir::node::NodeBody::SubDag(..) => {
+        gunbc_ir::node::NodeBody::SubDag(_) => {
             panic!("expected opaque lowered node for transport metadata")
         }
     };
@@ -841,7 +843,7 @@ func run() -> { out: String } {
         gunbc_ir::node::NodeBody::Opaque(op) => op
             .service_call_metadata()
             .expect("service metadata should be present"),
-        gunbc_ir::node::NodeBody::SubDag(..) => {
+        gunbc_ir::node::NodeBody::SubDag(_) => {
             panic!("expected opaque lowered node for prepare transport")
         }
     };
@@ -2206,8 +2208,8 @@ func store_artifact_azure(key: String, content: String) -> { ok: Bool } uses sto
 fn cross_provider_auth_calls_resolve_all_credential_chains() {
     let typed = typed_project_from_sources(&[
         (
-            "dsl/cloud/gcp/credential.dag",
-            r#"module cloud.gcp.credential
+            "dsl/extdeps/sdlc/providers/gcp_credential_provider.dag",
+            r#"module extdeps.sdlc.providers.gcp_credential_provider
 func acquire_gcp_secret() -> { token: String } {
   return { token: "gcp" }
 }"#,
@@ -2229,7 +2231,7 @@ func acquire_azure_secret() -> { token: String } {
         (
             "dsl/examples/auth.dag",
             r#"module examples.auth
-import cloud.gcp.credential { acquire_gcp_secret }
+import extdeps.sdlc.providers.gcp_credential_provider { acquire_gcp_secret }
 import cloud.aws.credential { acquire_aws_secret }
 import cloud.azure.credential { acquire_azure_secret }
 
@@ -2244,7 +2246,7 @@ func cross_provider_auth() -> { ok: Bool } {
     let dag = lower_typed_project(&typed).expect("lowering should succeed");
     let caller = "examples.auth::cross_provider_auth";
     for callee in [
-        "cloud.gcp.credential::acquire_gcp_secret",
+        "extdeps.sdlc.providers.gcp_credential_provider::acquire_gcp_secret",
         "cloud.aws.credential::acquire_aws_secret",
         "cloud.azure.credential::acquire_azure_secret",
     ] {
@@ -2685,7 +2687,7 @@ func prompt() -> { ok: Bool } {
         .find(|node| node.id.0 == "sample.ui::prompt")
         .and_then(|node| match &node.body {
             gunbc_ir::node::NodeBody::Opaque(op) => Some(op),
-            gunbc_ir::node::NodeBody::SubDag(..) => None,
+            gunbc_ir::node::NodeBody::SubDag(_) => None,
         })
         .expect("callable node should exist");
     assert!(matches!(
@@ -2885,29 +2887,10 @@ fn parity_report_lists_added_and_removed_items_in_sorted_order() {
 
 #[allow(clippy::disallowed_methods)]
 fn load_makegen_lowered() -> Dag<LoweredOp> {
-    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
-    let load = |rel: &str| -> (String, String) {
-        let path = dsl_root.join(rel);
-        let source = fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("should read {rel}: {e}"));
-        (rel.to_string(), source)
-    };
-    let files: Vec<(String, String)> = vec![
-        load("tools/makegen.dag"),
-        load("std/patterns.dag"),
-        load("std/resources.dag"),
-        load("extdeps/make.dag"),
-        load("config/build_targets.dag"),
-    ];
-    let sources: Vec<(&str, &str)> = files.iter().map(|(p, s)| (p.as_str(), s.as_str())).collect();
-    let typed = typed_project_from_sources(&sources);
-    let mut scope = HashSet::new();
-    scope.insert("tools.makegen".to_string());
-    let config = LoweringConfig {
-        callable_modules: Some(&scope),
-        ..Default::default()
-    };
-    lower_with_config(&typed, &config).expect("lowering should succeed")
+    let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
+    let source = fs::read_to_string(file).expect("should read makegen source");
+    let typed = typed_project_from_sources(&[("dsl/tools/makegen.dag", &source)]);
+    lower_typed_project(&typed).expect("lowering should succeed")
 }
 
 fn reference_makegen_shape() -> Dag<()> {
@@ -3255,13 +3238,7 @@ fn lower_typed_project_for_module_with_dependency_closure_and_entry(
         }
     }
 
-    let typed = typecheck_module_graph_with_options(
-        &graph,
-        daglang_typecheck::TypecheckOptions {
-            allow_unresolved_imports: true,
-        },
-    )
-    .expect("typecheck should succeed");
+    let typed = typecheck_module_graph(graph).expect("typecheck should succeed");
 
     // Build the scope: target module + all its transitive dependencies.
     let module_lookup: HashMap<String, usize> = typed
@@ -3713,33 +3690,19 @@ fn detect_if_branches_collects_service_call_paths() {
         ))),
     ))];
 
-    let scoped = scope::ScopedBody::from_stmts(&stmts);
-    let branches = scoped.collect_if_branches();
-    assert_eq!(branches.len(), 1);
-    let scope::ScopedItem::IfBranch {
-        then_body,
-        else_body,
-    } = branches[0]
-    else {
-        panic!("expected IfBranch");
-    };
-    let then_paths: Vec<Vec<String>> = then_body
-        .all_service_calls()
-        .iter()
-        .map(|c| c.path.clone())
-        .collect();
-    assert_eq!(then_paths.len(), 1);
-    assert_eq!(then_paths[0], vec!["gcp", "Storage", "ReadObject"]);
-    assert!(else_body.is_some());
-    let else_paths: Vec<Vec<String>> = else_body
-        .as_ref()
-        .unwrap()
-        .all_service_calls()
-        .iter()
-        .map(|c| c.path.clone())
-        .collect();
-    assert_eq!(else_paths.len(), 1);
-    assert_eq!(else_paths[0], vec!["gcp", "Storage", "WriteObject"]);
+    let sites = detect_if_branches_in_stmts(&stmts);
+    assert_eq!(sites.len(), 1);
+    assert!(sites[0].has_else);
+    assert_eq!(sites[0].then_service_call_paths.len(), 1);
+    assert_eq!(
+        sites[0].then_service_call_paths[0],
+        vec!["gcp", "Storage", "ReadObject"]
+    );
+    assert_eq!(sites[0].else_service_call_paths.len(), 1);
+    assert_eq!(
+        sites[0].else_service_call_paths[0],
+        vec!["gcp", "Storage", "WriteObject"]
+    );
 }
 
 #[test]
@@ -3768,25 +3731,18 @@ fn detect_match_branches_collects_service_call_paths() {
         ],
     ))];
 
-    let scoped = scope::ScopedBody::from_stmts(&stmts);
-    let matches = scoped.collect_match_branches();
-    assert_eq!(matches.len(), 1);
-    let scope::ScopedItem::MatchBranch { arms } = matches[0] else {
-        panic!("expected MatchBranch");
-    };
-    assert_eq!(arms.len(), 2);
-    let all_paths: Vec<Vec<String>> = arms
-        .iter()
-        .flat_map(|arm| {
-            arm.body
-                .all_service_calls()
-                .into_iter()
-                .map(|c| c.path.clone())
-        })
-        .collect();
-    assert_eq!(all_paths.len(), 2);
-    assert_eq!(all_paths[0], vec!["github", "Gist", "Create"]);
-    assert_eq!(all_paths[1], vec!["github", "Gist", "Update"]);
+    let sites = detect_match_branches_in_stmts(&stmts);
+    assert_eq!(sites.len(), 1);
+    assert_eq!(sites[0].arm_count, 2);
+    assert_eq!(sites[0].all_service_call_paths.len(), 2);
+    assert_eq!(
+        sites[0].all_service_call_paths[0],
+        vec!["github", "Gist", "Create"]
+    );
+    assert_eq!(
+        sites[0].all_service_call_paths[1],
+        vec!["github", "Gist", "Update"]
+    );
 }
 
 #[test]
@@ -3799,7 +3755,10 @@ fn make_branch_body_dag_no_transports_has_single_op() {
     assert!(dag.nodes[0].inputs.iter().any(|p| p.name.0 == "condition"));
     // No-transport case uses fn_body: Some(return { result: input }) — avoids __out:result requirement
     if let gunbc_ir::NodeBody::Opaque(LoweredOp::Callable { fn_body, .. }) = &dag.nodes[0].body {
-        assert!(fn_body.is_some(), "no-transport branch body should have trivial fn_body passthrough");
+        assert!(
+            fn_body.is_some(),
+            "no-transport branch body should have trivial fn_body passthrough"
+        );
     } else {
         panic!("expected Callable op");
     }
@@ -3845,7 +3804,10 @@ fn make_branch_body_dag_with_transports_has_triplets() {
 
     // With-transport case uses fn_body to pass through the transport parse output
     if let gunbc_ir::NodeBody::Opaque(LoweredOp::Callable { fn_body, .. }) = &op_node.body {
-        assert!(fn_body.is_some(), "with-transport branch body should have fn_body");
+        assert!(
+            fn_body.is_some(),
+            "with-transport branch body should have fn_body"
+        );
     } else {
         panic!("expected Callable op");
     }
@@ -3969,10 +3931,7 @@ func run(values: List<String>) -> { out: String } {
     )]);
     let dag = lower_target_module_with_collections(&typed, "sample.pipe");
 
-    let map_node = dag
-        .nodes
-        .iter()
-        .find(|node| node.id.0.contains("MapNode"));
+    let map_node = dag.nodes.iter().find(|node| node.id.0.contains("MapNode"));
 
     assert!(
         map_node.is_some(),
@@ -3994,10 +3953,7 @@ func run(values: List<Int>) -> { out: List<Int> } {
     )]);
     let dag = lower_target_module(&typed, "sample.for_expr");
 
-    let for_node = dag
-        .nodes
-        .iter()
-        .find(|node| node.id.0.contains("cf_for_"));
+    let for_node = dag.nodes.iter().find(|node| node.id.0.contains("cf_for_"));
 
     assert!(
         for_node.is_some(),
@@ -4022,10 +3978,7 @@ func run(values: List<String>) -> { out: String } {
         .nodes
         .iter()
         .find(|node| node.id.0.contains("FilterNode"));
-    let join_node = dag
-        .nodes
-        .iter()
-        .find(|node| node.id.0.contains("JoinNode"));
+    let join_node = dag.nodes.iter().find(|node| node.id.0.contains("JoinNode"));
 
     assert!(
         filter_node.is_some(),
@@ -4073,87 +4026,4 @@ func run(s: String) -> { ok_val: String } {
         "DAG should contain the run callable; nodes: {:?}",
         dag.nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
     );
-}
-
-#[test]
-fn validate_required_inputs_catches_unwired_port() {
-    use gunbc_ir::{Dag, Node};
-
-    // Build a minimal DAG with one node that has a required input port
-    // and no incoming edge.
-    let mut dag: Dag<LoweredOp> = Dag::new();
-    dag.add_node(Node::opaque(
-        "test_node",
-        vec![
-            Port::scalar("expected_content", "String"),
-            Port::scalar("actual_content", "String"),
-        ],
-        vec![Port::scalar("matches", "Bool")],
-        LoweredOp::Primitive {
-            module: "test".to_string(),
-            name: "compare".to_string(),
-            kind: PrimitiveOpKind::CompareEquality,
-        },
-    ));
-
-    let errors = validate_required_inputs(&dag);
-    assert_eq!(errors.len(), 2, "both unwired required ports should be caught");
-    assert!(errors.iter().any(|e| matches!(e,
-        LowerError::UnwiredRequiredInput { node, port }
-        if node == "test_node" && port == "expected_content"
-    )));
-    assert!(errors.iter().any(|e| matches!(e,
-        LowerError::UnwiredRequiredInput { node, port }
-        if node == "test_node" && port == "actual_content"
-    )));
-}
-
-#[test]
-fn validate_required_inputs_skips_optional_and_internal_ports() {
-    use gunbc_ir::{Cardinality, Dag, Node};
-
-    let mut dag: Dag<LoweredOp> = Dag::new();
-    dag.add_node(Node::opaque(
-        "test_node",
-        vec![
-            Port::with_cardinality("optional_port", "String", Cardinality::ZERO_OR_ONE),
-            Port::scalar("__deps", "Unit"),
-            Port::scalar("tool:clippy", "ToolHandle"),
-            Port::scalar("res:file", "FileHandle"),
-        ],
-        vec![Port::scalar("result", "Bool")],
-        LoweredOp::Primitive {
-            module: "test".to_string(),
-            name: "compare".to_string(),
-            kind: PrimitiveOpKind::CompareEquality,
-        },
-    ));
-
-    let errors = validate_required_inputs(&dag);
-    assert!(errors.is_empty(), "optional and internal ports should be skipped: {:?}", errors);
-}
-
-#[test]
-fn validate_required_inputs_skips_callable_entrypoints() {
-    use gunbc_ir::{Dag, Node};
-
-    let mut dag: Dag<LoweredOp> = Dag::new();
-    dag.add_node(Node::opaque(
-        "tools.clippy::clippy_lint",
-        vec![Port::scalar("workspace", "String")],
-        vec![Port::scalar("clean", "Bool")],
-        LoweredOp::Callable {
-            module: "tools.clippy".to_string(),
-            kind: CallableKind::Func,
-            name: "clippy_lint".to_string(),
-            obligation: ObligationCategory::None,
-            service_metadata: None,
-            is_interactive: false,
-            resource_target: None,
-            fn_body: None,
-        },
-    ));
-
-    let errors = validate_required_inputs(&dag);
-    assert!(errors.is_empty(), "callable entrypoints should be skipped: {:?}", errors);
 }

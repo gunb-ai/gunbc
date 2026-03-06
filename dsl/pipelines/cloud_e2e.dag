@@ -8,7 +8,7 @@
 //
 // Usage:
 //   cargo test -- cloud_e2e   (only runs when env-gated)
-//   gunbc run --profile cloud_run dsl/pipelines/cloud_e2e.dag
+//   gunbc run dsl/pipelines/cloud_e2e.dag
 
 module pipelines.cloud_e2e
 

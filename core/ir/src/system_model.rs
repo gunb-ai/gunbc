@@ -1187,17 +1187,16 @@ fn behavior_contract_shape(
 
 /// Built-in system models discovered via inventory registration.
 ///
-/// Each owning crate (gcp-ops, aws-ops, transport) registers its models via
-/// `submit_system_model!`. This function collects them all. Consumers must
-/// depend on the registering crates for the linker to include inventory symbols.
+/// The remaining Rust-owned inventory surface is transport/runtime
+/// infrastructure. Domain/provider modeling is moving to `.dag` extdeps.
+/// This function collects all linked inventory registrations.
 pub fn default_system_models() -> Vec<SystemModel> {
     iter_registered_system_models().collect()
 }
 
-// Model data distributed to owning crates:
-// - lib/gcp-ops/src/system_models.rs (gcp.secret_manager, gcp.iam, gcp.gcs)
-// - lib/aws-ops/src/system_models.rs (aws.secrets_manager, aws.iam, aws.s3)
-// - lib/transport/src/system_models.rs (transport.file, transport.shell, transport.tcp, transport.http, transport.rest)
+// Remaining model data in Rust inventory:
+// - lib/transport/src/system_models.rs
+//   (transport.file, transport.shell, transport.tcp, transport.http, transport.rest)
 
 #[cfg(test)]
 mod tests {
@@ -1949,9 +1948,7 @@ mod tests {
         assert_eq!(parsed.depends_on, vec!["other.model".to_string()]);
     }
 
-    // Model-specific behavior tests (GCP, AWS, transport) moved to owning crates:
-    // - lib/gcp-ops/src/system_models.rs
-    // - lib/aws-ops/src/system_models.rs
-    // - lib/transport/src/system_models.rs
-    // Cross-cutting tests (contract specs, store mapping) moved to gunbc-app.
+    // Model-specific behavior tests for the remaining Rust inventory surface
+    // live in the owning transport crate.
+    // Cross-cutting tests (contract specs, store mapping) moved to gunbc-dag.
 }

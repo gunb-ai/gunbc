@@ -1,32 +1,34 @@
-// tools/testgen.dag -- Test generation for all DAG specs.
+// tools/testgen.dag -- Test generation for all compilable DSL modules.
 //
-// Discovers all DagSpecDef targets (via inventory), generates test
-// content for each, and content_upserts the results in parallel.
-// This is a dynamic parallel pattern: N targets, each getting an
-// independent content_upsert chain.
+// Rust now provides only narrow extern bridges:
+// - discover which DSL modules are compilable
+// - render one generated test file for one module
 //
-// Replaces: gunbc-app/src/testgen_dag/graph.rs (1 + N*6 nodes)
+// The orchestration, fan-out, and file writes live here in DSL.
 
 module tools.testgen
 
 import std.patterns { content_upsert }
 import std.resources { Filesystem }
-import std.types { CodegenTarget }
 
-extern func generate_test_content(target: CodegenTarget) -> { content: String }
+data output_paths: List<String> = ["**/generated_tests*.rs"]
 
-fn generate_tests(target: CodegenTarget) -> String {
-  generate_test_content(target: target).content
-}
+extern func discover_testgen_modules() -> List<String>
+extern func render_testgen_module(dsl_path: String) -> { content: String, path: String }
 
-func testgen(targets: List<CodegenTarget>) -> { success: Bool, all_fresh: Bool }
+func testgen() -> { success: Bool, target_count: Int, all_fresh: Bool }
   uses fs: Filesystem(mode: ReadWrite)
 {
-  results = for target in targets {
-    content = generate_tests(target: target)
-    content_upsert(content: content, path: target.path)
+  modules = discover_testgen_modules()
+
+  results = for dsl_path in modules {
+    rendered = render_testgen_module(dsl_path: dsl_path)
+    content_upsert(content: rendered.content, path: rendered.path)
   }
 
-  return { success: true, all_fresh: results |> all(r => r.written == false) }
+  return {
+    success: true,
+    target_count: modules |> count(),
+    all_fresh: results |> all(result => result.written == false)
+  }
 }
-

@@ -53,12 +53,9 @@ fn workflow_variants() -> Result<&'static [WorkflowVariantDef], String> {
 fn load_workflow_variants_from_dsl() -> Result<Vec<WorkflowVariantDef>, String> {
     let output = compile_data_from_module(dsl_root(), "config/workflow_catalog.dag")
         .map_err(|e| format!("config/workflow_catalog.dag compilation failed: {e}"))?;
-    let value = output
-        .data_values
-        .get("workflow_variants")
-        .ok_or_else(|| {
-            "config/workflow_catalog.dag must declare `workflow_variants` data".to_string()
-        })?;
+    let value = output.data_values.get("workflow_variants").ok_or_else(|| {
+        "config/workflow_catalog.dag must declare `workflow_variants` data".to_string()
+    })?;
     serde_json::from_value(value.clone())
         .map_err(|e| format!("workflow_variants deserialization failed: {e}"))
 }
@@ -421,7 +418,11 @@ mod tests {
     fn pipeline_extraction_includes_mode_literals() {
         let output =
             compile_data_from_module(dsl_root(), "workflows/gist.dag").expect("compile gist.dag");
-        let stages = output.pipelines.values().next().expect("at least one pipeline");
+        let stages = output
+            .pipelines
+            .values()
+            .next()
+            .expect("at least one pipeline");
         let gated: Vec<_> = stages.iter().filter(|s| !s.modes.is_empty()).collect();
         assert!(!gated.is_empty(), "gist.dag should have mode-gated stages");
         // Verify specific mode extraction

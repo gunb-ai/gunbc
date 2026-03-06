@@ -17,8 +17,8 @@ verification. The SDLC pipeline is the most ambitious DSL artifact in the repo b
 the only one with zero automated proof of correctness.
 
 For comparison, every working tool (`makegen`, `pragma`, `gist`, `ci`, `clippy`,
-`bootstrap`, `deps`, `codegen`, `infra`, `review`) has a `builds_*_dsl_graph()` test
-in `dsl_builder.rs`. SDLC has none.
+`bootstrap`, `deps`, `codegen`, `infra`, `review`) has direct `build_dsl_graph(...)`
+coverage in `gunbc-dag/tests/`. SDLC has none.
 
 ## 2. What Exists Today
 
@@ -45,9 +45,8 @@ in `dsl_builder.rs`. SDLC has none.
 | `workflow/catalog.rs` — sdlc.dag embedded as `WF_SDLC` | Present — included in embedded sources |
 | `workflow_catalog.dag` — SDLC variant entry | **MISSING** — sdlc not registered |
 | `InterfaceStub` transport class in lowerer | Working — generates stub ops for all capabilities |
-| `strip_pipeline_nodes()` in dsl_builder | Working — strips `LoweredOp::Pipeline` before resolution |
-| `build_dsl_graph_with_profile()` | Working — threads profile through compilation |
-| `compile_lowered_with_profile()` | Working — `CompileOptions.profile` consumed |
+| `gunbc_resolve::builder::build_dsl_graph(...)` | Working — compile + resolve path supports `BuildOpts { entry_func, profile }` |
+| `CompileOptions.profile` | Working — lowering consumes the selected profile |
 
 ### 2.3 Working Compilation Paths
 
@@ -56,13 +55,21 @@ for other tools:
 
 ```
 # Path A: func entrypoint (sdlc_worker, sdlc_stages)
-build_dsl_graph_for_entrypoint("funcs/sdlc_worker.dag", Some("dispatch_sdlc"))
+build_dsl_graph(
+    "funcs/sdlc_worker.dag",
+    &GunbcExternResolver,
+    BuildOpts { entry_func: Some("dispatch_sdlc"), profile: None },
+)
 
 # Path B: full module (pipelines/sdlc.dag)
-build_dsl_graph("pipelines/sdlc.dag")
+build_dsl_graph("pipelines/sdlc.dag", &GunbcExternResolver, BuildOpts::default())
 
 # Path C: with profile (unit_test profile binding)
-build_dsl_graph_with_profile("funcs/sdlc_worker.dag", "unit_test")
+build_dsl_graph(
+    "funcs/sdlc_worker.dag",
+    &GunbcExternResolver,
+    BuildOpts { entry_func: Some("dispatch_sdlc"), profile: Some("unit_test") },
+)
 ```
 
 **These paths have never been called for SDLC files.**
@@ -98,7 +105,7 @@ in both `issue_provider.dag` and `claim_store.dag` (and likely `agent_provider.d
 
 Tasks: P1-1, P1-2, P1-3, P1-4.
 
-No test calls `build_dsl_graph*()` on any SDLC `.dag` file. We don't know if
+No test calls `build_dsl_graph(...)` on any SDLC `.dag` file. We don't know if
 the SDLC modules compile through the lowerer, let alone resolve to `DynOp` or
 execute in dry-run.
 
@@ -107,7 +114,8 @@ lowerer limitations (cross-callable data flow, transport node deduplication) —
 any of these could exist silently. Gap 0 items are known examples.
 
 **Fix**: Add `builds_sdlc_worker_dsl_graph()` and `builds_sdlc_stages_dsl_graph()`
-to `dsl_builder.rs`. This is the first thing to do — it tells us what actually breaks.
+as direct `gunbc_resolve::builder::build_dsl_graph(...)` tests in `gunbc-dag/tests/`.
+This is the first thing to do — it tells us what actually breaks.
 
 ### Gap 2: Not in Workflow Catalog (BLOCKING)
 

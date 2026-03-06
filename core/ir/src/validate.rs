@@ -548,11 +548,7 @@ pub fn validate_fingerprint_uniqueness<T>(dag: &Dag<T>) -> Vec<FingerprintConfli
     let fingerprinted: Vec<(&NodeId, &StaticFingerprint)> = dag
         .nodes
         .iter()
-        .filter_map(|node| {
-            node.static_fingerprint
-                .as_ref()
-                .map(|fp| (&node.id, fp))
-        })
+        .filter_map(|node| node.static_fingerprint.as_ref().map(|fp| (&node.id, fp)))
         .collect();
 
     let mut conflicts = Vec::new();
@@ -1359,18 +1355,27 @@ mod tests {
             OperationKey::new("github", "GetIssue"),
             vec![("id".to_string(), InputProvenance::Dynamic)],
         );
-        assert!(!fp1.conflicts_with(&fp2), "Dynamic provenance should not conflict");
+        assert!(
+            !fp1.conflicts_with(&fp2),
+            "Dynamic provenance should not conflict"
+        );
     }
 
     #[test]
     fn test_fingerprint_conflict_same_literal_keys() {
         let fp1 = StaticFingerprint::with_keys(
             OperationKey::new("fs", "Read"),
-            vec![("path".to_string(), InputProvenance::Literal("Makefile".to_string()))],
+            vec![(
+                "path".to_string(),
+                InputProvenance::Literal("Makefile".to_string()),
+            )],
         );
         let fp2 = StaticFingerprint::with_keys(
             OperationKey::new("fs", "Read"),
-            vec![("path".to_string(), InputProvenance::Literal("Makefile".to_string()))],
+            vec![(
+                "path".to_string(),
+                InputProvenance::Literal("Makefile".to_string()),
+            )],
         );
         assert!(fp1.conflicts_with(&fp2));
     }
@@ -1379,11 +1384,17 @@ mod tests {
     fn test_fingerprint_no_conflict_different_literal_keys() {
         let fp1 = StaticFingerprint::with_keys(
             OperationKey::new("fs", "Read"),
-            vec![("path".to_string(), InputProvenance::Literal("Makefile".to_string()))],
+            vec![(
+                "path".to_string(),
+                InputProvenance::Literal("Makefile".to_string()),
+            )],
         );
         let fp2 = StaticFingerprint::with_keys(
             OperationKey::new("fs", "Read"),
-            vec![("path".to_string(), InputProvenance::Literal("README.md".to_string()))],
+            vec![(
+                "path".to_string(),
+                InputProvenance::Literal("README.md".to_string()),
+            )],
         );
         assert!(!fp1.conflicts_with(&fp2));
     }
@@ -1421,11 +1432,12 @@ mod tests {
             vec![port("in", "String")],
             vec![port("out", "String")],
             (),
-        ).with_kind(NodeKind::TransportExecute)
-         .with_operation_key(OperationKey::new("cargo", "Build"));
-        n1.static_fingerprint = Some(StaticFingerprint::singleton(
-            OperationKey::new("cargo", "Build"),
-        ));
+        )
+        .with_kind(NodeKind::TransportExecute)
+        .with_operation_key(OperationKey::new("cargo", "Build"));
+        n1.static_fingerprint = Some(StaticFingerprint::singleton(OperationKey::new(
+            "cargo", "Build",
+        )));
         dag.add_node(n1);
 
         let mut n2 = Node::opaque(
@@ -1433,11 +1445,12 @@ mod tests {
             vec![port("in", "String")],
             vec![port("out", "String")],
             (),
-        ).with_kind(NodeKind::TransportExecute)
-         .with_operation_key(OperationKey::new("cargo", "Build"));
-        n2.static_fingerprint = Some(StaticFingerprint::singleton(
-            OperationKey::new("cargo", "Build"),
-        ));
+        )
+        .with_kind(NodeKind::TransportExecute)
+        .with_operation_key(OperationKey::new("cargo", "Build"));
+        n2.static_fingerprint = Some(StaticFingerprint::singleton(OperationKey::new(
+            "cargo", "Build",
+        )));
         dag.add_node(n2);
 
         let conflicts = validate_fingerprint_uniqueness(&dag);
@@ -1454,11 +1467,12 @@ mod tests {
             vec![port("in", "String")],
             vec![port("out", "String")],
             (),
-        ).with_kind(NodeKind::TransportExecute)
-         .with_operation_key(OperationKey::new("cargo", "Build"));
-        n1.static_fingerprint = Some(StaticFingerprint::singleton(
-            OperationKey::new("cargo", "Build"),
-        ));
+        )
+        .with_kind(NodeKind::TransportExecute)
+        .with_operation_key(OperationKey::new("cargo", "Build"));
+        n1.static_fingerprint = Some(StaticFingerprint::singleton(OperationKey::new(
+            "cargo", "Build",
+        )));
         dag.add_node(n1);
 
         let mut n2 = Node::opaque(
@@ -1466,15 +1480,19 @@ mod tests {
             vec![port("in", "String")],
             vec![port("out", "String")],
             (),
-        ).with_kind(NodeKind::TransportExecute)
-         .with_operation_key(OperationKey::new("cargo", "Test"));
-        n2.static_fingerprint = Some(StaticFingerprint::singleton(
-            OperationKey::new("cargo", "Test"),
-        ));
+        )
+        .with_kind(NodeKind::TransportExecute)
+        .with_operation_key(OperationKey::new("cargo", "Test"));
+        n2.static_fingerprint = Some(StaticFingerprint::singleton(OperationKey::new(
+            "cargo", "Test",
+        )));
         dag.add_node(n2);
 
         let conflicts = validate_fingerprint_uniqueness(&dag);
-        assert!(conflicts.is_empty(), "different operations should not conflict");
+        assert!(
+            conflicts.is_empty(),
+            "different operations should not conflict"
+        );
     }
 
     // ===================================================================
@@ -1499,7 +1517,12 @@ mod tests {
         // Wire "extra" so worker is not an island, but leave "data" unwired
         dag.add_edge(Edge::new("source", "out", "worker", "extra"));
         let errors = validate_required_inputs(&dag);
-        assert_eq!(errors.len(), 1, "expected 1 unwired input, got: {:?}", errors);
+        assert_eq!(
+            errors.len(),
+            1,
+            "expected 1 unwired input, got: {:?}",
+            errors
+        );
         assert_eq!(errors[0].node_id, "worker");
         assert_eq!(errors[0].port_name, "data");
     }
@@ -1521,7 +1544,11 @@ mod tests {
         ));
         dag.add_edge(Edge::new("source", "out", "sink", "data"));
         let errors = validate_required_inputs(&dag);
-        assert!(errors.is_empty(), "wired input should pass, got: {:?}", errors);
+        assert!(
+            errors.is_empty(),
+            "wired input should pass, got: {:?}",
+            errors
+        );
     }
 
     #[test]
@@ -1535,7 +1562,11 @@ mod tests {
         ));
         // res:file is unwired, but validate_required_inputs skips res:* ports
         let errors = validate_required_inputs(&dag);
-        assert!(errors.is_empty(), "resource ports should be skipped, got: {:?}", errors);
+        assert!(
+            errors.is_empty(),
+            "resource ports should be skipped, got: {:?}",
+            errors
+        );
     }
 
     #[test]
@@ -1551,7 +1582,11 @@ mod tests {
         node.inputs[0].cardinality = Cardinality::ZERO_OR_ONE;
         dag.add_node(node);
         let errors = validate_required_inputs(&dag);
-        assert!(errors.is_empty(), "optional ports should be skipped, got: {:?}", errors);
+        assert!(
+            errors.is_empty(),
+            "optional ports should be skipped, got: {:?}",
+            errors
+        );
     }
 
     #[test]
@@ -1585,7 +1620,11 @@ mod tests {
     fn test_empty_dag_passes_verify() {
         let dag: Dag<()> = Dag::new();
         let errors = verify_dag(&dag);
-        assert!(errors.is_empty(), "empty DAG should pass, got: {:?}", errors);
+        assert!(
+            errors.is_empty(),
+            "empty DAG should pass, got: {:?}",
+            errors
+        );
     }
 
     #[test]
@@ -1617,8 +1656,12 @@ mod tests {
         // Connect resource_user so it is not an island
         dag.add_edge(Edge::new("lonely", "out", "resource_user", "result"));
         let errors = verify_dag(&dag);
-        let has_unwired_input = errors.iter().any(|e| matches!(e, VerifyError::UnwiredInput(_)));
-        let has_unwired_resource = errors.iter().any(|e| matches!(e, VerifyError::UnwiredResource(_)));
+        let has_unwired_input = errors
+            .iter()
+            .any(|e| matches!(e, VerifyError::UnwiredInput(_)));
+        let has_unwired_resource = errors
+            .iter()
+            .any(|e| matches!(e, VerifyError::UnwiredResource(_)));
         assert!(has_unwired_input, "should detect unwired input");
         assert!(has_unwired_resource, "should detect unwired resource");
     }
@@ -1641,7 +1684,12 @@ mod tests {
         // Wire "c" so multi is not an island, but leave "a" and "b" unwired
         dag.add_edge(Edge::new("source", "out", "multi", "c"));
         let errors = validate_required_inputs(&dag);
-        assert_eq!(errors.len(), 2, "expected 2 unwired inputs, got: {:?}", errors);
+        assert_eq!(
+            errors.len(),
+            2,
+            "expected 2 unwired inputs, got: {:?}",
+            errors
+        );
         let port_names: Vec<&str> = errors.iter().map(|e| e.port_name.as_str()).collect();
         assert!(port_names.contains(&"a"));
         assert!(port_names.contains(&"b"));

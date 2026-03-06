@@ -1106,9 +1106,7 @@ fn eval_pipe_method(
         | PipeMethod::ReplaceSection
         | PipeMethod::ToBytes
         | PipeMethod::ToJson
-        | PipeMethod::Hash => {
-            eval_sibling_fn(method.as_str(), receiver, args, env, sibling_fns)
-        }
+        | PipeMethod::Hash => eval_sibling_fn(method.as_str(), receiver, args, env, sibling_fns),
     }
 }
 
@@ -1478,7 +1476,13 @@ mod tests {
             Some("item".to_string()),
             LoweredExpr::Literal(LoweredLiteral::String("x".to_string())),
         )];
-        let result = eval_pipe_method(PipeMethod::Contains, Value::Skipped, &needle_args, &env, &sibling_fns);
+        let result = eval_pipe_method(
+            PipeMethod::Contains,
+            Value::Skipped,
+            &needle_args,
+            &env,
+            &sibling_fns,
+        );
         assert!(result.is_err(), "contains should reject Skipped receiver");
 
         // join
@@ -1486,7 +1490,13 @@ mod tests {
             None,
             LoweredExpr::Literal(LoweredLiteral::String(",".to_string())),
         )];
-        let result = eval_pipe_method(PipeMethod::Join, Value::Skipped, &sep_args, &env, &sibling_fns);
+        let result = eval_pipe_method(
+            PipeMethod::Join,
+            Value::Skipped,
+            &sep_args,
+            &env,
+            &sibling_fns,
+        );
         assert!(result.is_err(), "join should reject Skipped receiver");
 
         // fold
@@ -1503,7 +1513,13 @@ mod tests {
                 },
             ),
         ];
-        let result = eval_pipe_method(PipeMethod::Fold, Value::Skipped, &fold_args, &env, &sibling_fns);
+        let result = eval_pipe_method(
+            PipeMethod::Fold,
+            Value::Skipped,
+            &fold_args,
+            &env,
+            &sibling_fns,
+        );
         assert!(result.is_err(), "fold should reject Skipped receiver");
 
         // append
@@ -1511,7 +1527,13 @@ mod tests {
             Some("items".to_string()),
             LoweredExpr::Literal(LoweredLiteral::String("x".to_string())),
         )];
-        let result = eval_pipe_method(PipeMethod::Append, Value::Skipped, &append_args, &env, &sibling_fns);
+        let result = eval_pipe_method(
+            PipeMethod::Append,
+            Value::Skipped,
+            &append_args,
+            &env,
+            &sibling_fns,
+        );
         assert!(result.is_err(), "append should reject Skipped receiver");
     }
 }

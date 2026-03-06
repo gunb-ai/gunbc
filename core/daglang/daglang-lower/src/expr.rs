@@ -232,7 +232,11 @@ pub fn lower_stmt_with_mode(
     lower_stmt(stmt, variant_names, mode)
 }
 
-fn lower_stmt(stmt: &ast::Stmt, variant_names: &HashSet<String>, mode: ExprLowerMode) -> LoweredStmt {
+fn lower_stmt(
+    stmt: &ast::Stmt,
+    variant_names: &HashSet<String>,
+    mode: ExprLowerMode,
+) -> LoweredStmt {
     match stmt {
         ast::Stmt::Let(name, expr) => {
             LoweredStmt::Let(name.clone(), lower_expr(expr, variant_names, mode))
@@ -261,7 +265,11 @@ fn lower_stmt(stmt: &ast::Stmt, variant_names: &HashSet<String>, mode: ExprLower
     }
 }
 
-fn lower_expr(expr: &ast::Expr, variant_names: &HashSet<String>, mode: ExprLowerMode) -> LoweredExpr {
+fn lower_expr(
+    expr: &ast::Expr,
+    variant_names: &HashSet<String>,
+    mode: ExprLowerMode,
+) -> LoweredExpr {
     match expr {
         ast::Expr::Literal(lit) => LoweredExpr::Literal(lower_literal(lit)),
         // Bare unit variant (e.g., `Closed`)
@@ -386,9 +394,12 @@ fn lower_expr(expr: &ast::Expr, variant_names: &HashSet<String>, mode: ExprLower
             params: params.clone(),
             body: Box::new(lower_expr(body, variant_names, mode)),
         },
-        ast::Expr::List(items) => {
-            LoweredExpr::List(items.iter().map(|i| lower_expr(i, variant_names, mode)).collect())
-        }
+        ast::Expr::List(items) => LoweredExpr::List(
+            items
+                .iter()
+                .map(|i| lower_expr(i, variant_names, mode))
+                .collect(),
+        ),
         ast::Expr::Map(entries) => {
             // Map literals → Record with string keys
             LoweredExpr::Record {
@@ -474,17 +485,30 @@ fn lower_unaryop(op: &ast::UnaryOp) -> LoweredUnaryOp {
     }
 }
 
-fn lower_string_part(part: &ast::StringPart, variant_names: &HashSet<String>, mode: ExprLowerMode) -> LoweredStringPart {
+fn lower_string_part(
+    part: &ast::StringPart,
+    variant_names: &HashSet<String>,
+    mode: ExprLowerMode,
+) -> LoweredStringPart {
     match part {
         ast::StringPart::Literal(s) => LoweredStringPart::Literal(s.clone()),
-        ast::StringPart::Expr(expr) => LoweredStringPart::Expr(lower_expr(expr, variant_names, mode)),
+        ast::StringPart::Expr(expr) => {
+            LoweredStringPart::Expr(lower_expr(expr, variant_names, mode))
+        }
     }
 }
 
-pub(crate) fn lower_match_arm(arm: &ast::MatchArm, variant_names: &HashSet<String>, mode: ExprLowerMode) -> LoweredMatchArm {
+pub(crate) fn lower_match_arm(
+    arm: &ast::MatchArm,
+    variant_names: &HashSet<String>,
+    mode: ExprLowerMode,
+) -> LoweredMatchArm {
     LoweredMatchArm {
         pattern: lower_pattern(&arm.pattern, variant_names),
-        guard: arm.guard.as_ref().map(|g| lower_expr(g, variant_names, mode)),
+        guard: arm
+            .guard
+            .as_ref()
+            .map(|g| lower_expr(g, variant_names, mode)),
         body: lower_expr(&arm.body, variant_names, mode),
     }
 }

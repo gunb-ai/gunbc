@@ -4,11 +4,19 @@ use daglang_derive::derive_artifacts;
 use daglang_lower::{
     CallableKind, LoweredOp, ObligationCategory, ServiceCallMetadata, ServiceTransportClass,
 };
+use gunbc_dag::extern_ops::GunbcExternResolver;
 use gunbc_exec::{lower, ExecutionMode};
-use gunbc_ir::{node::NodeKind, Dag, Edge, Node, Port};
+use gunbc_ir::{Dag, Edge, Node, Port};
+use gunbc_resolve::resolve_lowered_dag_with;
 use gunbc_test::{unique_temp_dir, unique_temp_file};
 use serde_json::Value;
 use std::path::PathBuf;
+
+fn resolve_lowered_dag(
+    dag: &Dag<LoweredOp>,
+) -> Result<Dag<gunbc_exec::DynOp>, gunbc_resolve::ResolveError> {
+    resolve_lowered_dag_with(dag, &GunbcExternResolver)
+}
 
 fn workspace_dsl_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl")
@@ -465,8 +473,8 @@ func run() -> { report: String } {
     );
 
     let output = compile_from_context(&context).expect("compile should succeed");
-    // Bridge 1: fn items are lowered as SubDag nodes with inner FnBodyCompute.
-    // Control flow is handled by fn body evaluation — no pattern SubDag nodes needed.
+    // fn items with non-lossy fn_body are evaluated via FnBodyCallableOp,
+    // which handles control flow directly — no SubDag pattern nodes needed.
     assert!(
         !output
             .lowered_dag
@@ -498,17 +506,22 @@ func run() -> { report: String } {
     // return value from the fn's computation instead of requiring passthrough
     // wiring from ExprCompute nodes.
     let result = execute_resolved_dag(&resolved, ExecutionMode::Real, None);
-    assert!(result.is_ok(), "execution should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "execution should succeed: {:?}",
+        result.err()
+    );
 
     // Verify the fn body evaluation produced the correct report string.
-    // Bridge 1: fn items are lowered as SubDag nodes. After exec lowering
-    // (flattening), the inner node is prefixed: "sample.main::summarize/body".
     let log = result.unwrap();
     let summarize_entry = log
         .entries
         .iter()
-        .find(|e| e.node_id.starts_with("sample.main::summarize"));
-    assert!(summarize_entry.is_some(), "summarize node should have executed");
+        .find(|e| e.node_id == "sample.main::summarize");
+    assert!(
+        summarize_entry.is_some(),
+        "summarize node should have executed"
+    );
     let summarize_outputs = &summarize_entry.unwrap().outputs;
     let return_value = summarize_outputs.get("return");
     assert!(
@@ -588,81 +601,72 @@ fn render_triplets_json_includes_makegen_transport_nodes() {
 #[test]
 fn render_triplets_json_includes_service_semantic_metadata_when_present() {
     let mut dag = Dag::new();
-    dag.add_node(
-        Node::opaque(
-            "prepare_transport_service",
-            vec![Port::scalar("path", "String")],
-            vec![Port::scalar("request", "TransportRequest")],
-            LoweredOp::Callable {
-                module: "sample.services".to_string(),
-                kind: CallableKind::Pattern,
-                name: "service_transport::prepare::FsStorage::read".to_string(),
-                obligation: ObligationCategory::ServiceTransportPrepare,
-                service_metadata: Some(Box::new(ServiceCallMetadata {
-                    service: "FsStorage".to_string(),
-                    operation: "read".to_string(),
-                    transport: ServiceTransportClass::ShellLocal,
-                    idempotent: true,
-                    readonly: true,
-                    spec: None,
-                })),
-                is_interactive: false,
-                resource_target: None,
-                fn_body: None,
-            },
-        )
-        .with_kind(NodeKind::TransportPrepare),
-    );
-    dag.add_node(
-        Node::opaque(
-            "execute_transport_service",
-            vec![Port::scalar("request", "TransportRequest")],
-            vec![Port::scalar("response", "TransportResponse")],
-            LoweredOp::Callable {
-                module: "sample.services".to_string(),
-                kind: CallableKind::Pattern,
-                name: "service_transport::execute::FsStorage::read".to_string(),
-                obligation: ObligationCategory::ServiceTransportExecute,
-                service_metadata: Some(Box::new(ServiceCallMetadata {
-                    service: "FsStorage".to_string(),
-                    operation: "read".to_string(),
-                    transport: ServiceTransportClass::ShellLocal,
-                    idempotent: true,
-                    readonly: true,
-                    spec: None,
-                })),
-                is_interactive: false,
-                resource_target: None,
-                fn_body: None,
-            },
-        )
-        .with_kind(NodeKind::TransportExecute),
-    );
-    dag.add_node(
-        Node::opaque(
-            "parse_transport_service",
-            vec![Port::scalar("response", "TransportResponse")],
-            vec![Port::scalar("body", "String")],
-            LoweredOp::Callable {
-                module: "sample.services".to_string(),
-                kind: CallableKind::Pattern,
-                name: "service_transport::parse::FsStorage::read".to_string(),
-                obligation: ObligationCategory::ServiceTransportParse,
-                service_metadata: Some(Box::new(ServiceCallMetadata {
-                    service: "FsStorage".to_string(),
-                    operation: "read".to_string(),
-                    transport: ServiceTransportClass::ShellLocal,
-                    idempotent: true,
-                    readonly: true,
-                    spec: None,
-                })),
-                is_interactive: false,
-                resource_target: None,
-                fn_body: None,
-            },
-        )
-        .with_kind(NodeKind::TransportParse),
-    );
+    dag.add_node(Node::opaque(
+        "prepare_transport_service",
+        vec![Port::scalar("path", "String")],
+        vec![Port::scalar("request", "TransportRequest")],
+        LoweredOp::Callable {
+            module: "sample.services".to_string(),
+            kind: CallableKind::Pattern,
+            name: "service_transport::prepare::FsStorage::read".to_string(),
+            obligation: ObligationCategory::ServiceTransportPrepare,
+            service_metadata: Some(Box::new(ServiceCallMetadata {
+                service: "FsStorage".to_string(),
+                operation: "read".to_string(),
+                transport: ServiceTransportClass::ShellLocal,
+                idempotent: true,
+                readonly: true,
+                spec: None,
+            })),
+            is_interactive: false,
+            resource_target: None,
+            fn_body: None,
+        },
+    ));
+    dag.add_node(Node::opaque(
+        "execute_transport_service",
+        vec![Port::scalar("request", "TransportRequest")],
+        vec![Port::scalar("response", "TransportResponse")],
+        LoweredOp::Callable {
+            module: "sample.services".to_string(),
+            kind: CallableKind::Pattern,
+            name: "service_transport::execute::FsStorage::read".to_string(),
+            obligation: ObligationCategory::ServiceTransportExecute,
+            service_metadata: Some(Box::new(ServiceCallMetadata {
+                service: "FsStorage".to_string(),
+                operation: "read".to_string(),
+                transport: ServiceTransportClass::ShellLocal,
+                idempotent: true,
+                readonly: true,
+                spec: None,
+            })),
+            is_interactive: false,
+            resource_target: None,
+            fn_body: None,
+        },
+    ));
+    dag.add_node(Node::opaque(
+        "parse_transport_service",
+        vec![Port::scalar("response", "TransportResponse")],
+        vec![Port::scalar("body", "String")],
+        LoweredOp::Callable {
+            module: "sample.services".to_string(),
+            kind: CallableKind::Pattern,
+            name: "service_transport::parse::FsStorage::read".to_string(),
+            obligation: ObligationCategory::ServiceTransportParse,
+            service_metadata: Some(Box::new(ServiceCallMetadata {
+                service: "FsStorage".to_string(),
+                operation: "read".to_string(),
+                transport: ServiceTransportClass::ShellLocal,
+                idempotent: true,
+                readonly: true,
+                spec: None,
+            })),
+            is_interactive: false,
+            resource_target: None,
+            fn_body: None,
+        },
+    ));
     dag.add_edge(Edge::new(
         "prepare_transport_service",
         "request",
@@ -782,21 +786,21 @@ fn render_manifest_reuses_obligations_text_block() {
 
 #[test]
 fn render_manifest_groups_stage_groups_into_collapsible_sections() {
-    let context = workspace_single_file_context("pipelines/sdlc_ci.dag");
+    let context = workspace_single_file_context("pipelines/cloud_e2e.dag");
     let output = compile_from_context(&context).expect("compile should succeed");
 
     let manifest = render_manifest(&output.derived);
     assert!(
-        manifest.contains("  stage_groups:\n    > [collapsed] pipelines.sdlc_ci.sdlc_ci"),
-        "manifest text should render sdlc_ci stage groups as collapsible section"
+        manifest.contains("  stage_groups:\n    > [collapsed] pipelines.cloud_e2e.cloud_e2e"),
+        "manifest text should render cloud_e2e stage groups as collapsible section"
     );
     assert!(
-        manifest.contains("      - build:"),
-        "manifest text should render build stage inside section"
+        manifest.contains("      - gate:"),
+        "manifest text should render gate stage inside section"
     );
     assert!(
-        manifest.contains("      - hermetic:"),
-        "manifest text should render hermetic stage inside section"
+        manifest.contains("      - acquire_credential:"),
+        "manifest text should render acquire_credential stage inside section"
     );
 }
 
@@ -848,78 +852,66 @@ fn run(values: List<String>) -> String {
 #[test]
 fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges() {
     let mut dag = Dag::new();
-    dag.add_node(
-        Node::opaque(
-            "prepare_a",
-            vec![],
-            vec![Port::scalar("request", "TransportRequest")],
-            LoweredOp::Callable {
-                module: "sample.triplets".to_string(),
-                kind: CallableKind::Pattern,
-                name: "prepare".to_string(),
-                obligation: ObligationCategory::ServiceTransportPrepare,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
-                fn_body: None,
-            },
-        )
-        .with_kind(NodeKind::TransportPrepare),
-    );
-    dag.add_node(
-        Node::opaque(
-            "execute_a",
-            vec![Port::scalar("request", "TransportRequest")],
-            vec![Port::scalar("response", "TransportResponse")],
-            LoweredOp::Callable {
-                module: "sample.triplets".to_string(),
-                kind: CallableKind::Pattern,
-                name: "execute".to_string(),
-                obligation: ObligationCategory::ServiceTransportExecute,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
-                fn_body: None,
-            },
-        )
-        .with_kind(NodeKind::TransportExecute),
-    );
-    dag.add_node(
-        Node::opaque(
-            "parse_z",
-            vec![Port::scalar("response", "TransportResponse")],
-            vec![Port::scalar("body", "String")],
-            LoweredOp::Callable {
-                module: "sample.triplets".to_string(),
-                kind: CallableKind::Pattern,
-                name: "parse_z".to_string(),
-                obligation: ObligationCategory::ServiceTransportParse,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
-                fn_body: None,
-            },
-        )
-        .with_kind(NodeKind::TransportParse),
-    );
-    dag.add_node(
-        Node::opaque(
-            "parse_a",
-            vec![Port::scalar("response", "TransportResponse")],
-            vec![Port::scalar("body", "String")],
-            LoweredOp::Callable {
-                module: "sample.triplets".to_string(),
-                kind: CallableKind::Pattern,
-                name: "parse_a".to_string(),
-                obligation: ObligationCategory::ServiceTransportParse,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
-                fn_body: None,
-            },
-        )
-        .with_kind(NodeKind::TransportParse),
-    );
+    dag.add_node(Node::opaque(
+        "prepare_a",
+        vec![],
+        vec![Port::scalar("request", "TransportRequest")],
+        LoweredOp::Callable {
+            module: "sample.triplets".to_string(),
+            kind: CallableKind::Pattern,
+            name: "prepare".to_string(),
+            obligation: ObligationCategory::None,
+            service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
+            fn_body: None,
+        },
+    ));
+    dag.add_node(Node::opaque(
+        "execute_a",
+        vec![Port::scalar("request", "TransportRequest")],
+        vec![Port::scalar("response", "TransportResponse")],
+        LoweredOp::Callable {
+            module: "sample.triplets".to_string(),
+            kind: CallableKind::Pattern,
+            name: "execute".to_string(),
+            obligation: ObligationCategory::None,
+            service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
+            fn_body: None,
+        },
+    ));
+    dag.add_node(Node::opaque(
+        "parse_z",
+        vec![Port::scalar("response", "TransportResponse")],
+        vec![Port::scalar("body", "String")],
+        LoweredOp::Callable {
+            module: "sample.triplets".to_string(),
+            kind: CallableKind::Pattern,
+            name: "parse_z".to_string(),
+            obligation: ObligationCategory::None,
+            service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
+            fn_body: None,
+        },
+    ));
+    dag.add_node(Node::opaque(
+        "parse_a",
+        vec![Port::scalar("response", "TransportResponse")],
+        vec![Port::scalar("body", "String")],
+        LoweredOp::Callable {
+            module: "sample.triplets".to_string(),
+            kind: CallableKind::Pattern,
+            name: "parse_a".to_string(),
+            obligation: ObligationCategory::None,
+            service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
+            fn_body: None,
+        },
+    ));
     dag.add_node(Node::opaque(
         "non_transport_sink",
         vec![Port::scalar("value", "String")],
@@ -1409,7 +1401,7 @@ fn run() -> Unit {}
     );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
-    // CP-1: unresolved imports now fail at resolve stage (earlier than typecheck)
+    assert_typecheck_stage_error(&error);
     assert!(error.contains("unresolved import"));
     assert!(error.contains("missing.dep"));
 
@@ -3697,150 +3689,4 @@ fn compile_directory_ambiguous_callable_target_fails_in_typecheck_stage() {
     assert!(error.contains("ambiguous call target `render`"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
-}
-
-// ---------------------------------------------------------------------------
-// Diagnostic golden tests — lock the error output format for three
-// representative failure classes: typecheck, lower, and verification.
-// ---------------------------------------------------------------------------
-
-/// Golden test: typecheck-stage error (TC015) for an unresolved import.
-///
-/// Locks the output format:
-///   typecheck errors:
-///     unresolved import `nonexistent.path` in module `sample.main`
-#[test]
-fn golden_diagnostic_typecheck_unresolved_import() {
-    let fixture = unique_temp_file("golden_typecheck_unresolved_import");
-    std::fs::write(
-        &fixture,
-        r#"module sample.main
-import nonexistent.path
-fn run() -> Unit { }
-"#,
-    )
-    .expect("failed to write fixture");
-
-    let context = PipelineContext {
-        roots: vec![fixture
-            .parent()
-            .expect("fixture should have parent")
-            .to_path_buf()],
-        target_file: Some(fixture.clone()),
-    };
-
-    let error = compile_from_context(&context).expect_err("compile should fail");
-    let rendered = error.to_string();
-
-    // Stage prefix
-    assert!(
-        rendered.starts_with("typecheck errors:\n"),
-        "typecheck error must start with stage prefix: {rendered}"
-    );
-    // Error message body
-    assert!(
-        rendered.contains("unresolved import `nonexistent.path` in module `sample.main`"),
-        "typecheck error must contain unresolved import message: {rendered}"
-    );
-    // Must NOT contain other stage prefixes (error routed to correct stage)
-    assert!(!rendered.contains("lower error:"), "wrong stage: {rendered}");
-    assert!(
-        !rendered.contains("verification errors:"),
-        "wrong stage: {rendered}"
-    );
-
-    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
-}
-
-/// Golden test: lower-stage error (LOW018) for a module with no callable
-/// or pipeline declarations (data-only).
-///
-/// Locks the output format:
-///   lower error: no callable or pipeline declarations to lower
-#[test]
-fn golden_diagnostic_lower_no_lowerable_items() {
-    let fixture = unique_temp_file("golden_lower_no_items");
-    std::fs::write(
-        &fixture,
-        "module sample.main\ntype Foo { x: String }\n",
-    )
-    .expect("failed to write fixture");
-
-    let context = PipelineContext {
-        roots: vec![fixture
-            .parent()
-            .expect("fixture should have parent")
-            .to_path_buf()],
-        target_file: Some(fixture.clone()),
-    };
-
-    let error = compile_from_context(&context).expect_err("compile should fail");
-    let rendered = error.to_string();
-
-    // Stage prefix
-    assert!(
-        rendered.starts_with("lower error: "),
-        "lower error must start with stage prefix: {rendered}"
-    );
-    // Error message body with exact format
-    assert_eq!(
-        rendered,
-        "lower error: no callable or pipeline declarations to lower",
-        "lower error output format mismatch"
-    );
-    // Must NOT contain other stage prefixes
-    assert!(
-        !rendered.contains("typecheck errors:"),
-        "wrong stage: {rendered}"
-    );
-    assert!(
-        !rendered.contains("verification errors:"),
-        "wrong stage: {rendered}"
-    );
-
-    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
-}
-
-/// Golden test: verification-stage error for unwired required inputs.
-///
-/// Constructs a `CompileError::Verification` directly to lock the output
-/// format, since triggering verification errors from DSL fixtures requires
-/// complex multi-file patterns.
-///
-/// Locks the output format:
-///   verification errors:
-///     unwired required input: node 'prepare_read_content' port 'expected_content'
-#[test]
-fn golden_diagnostic_verification_unwired_input() {
-    use gunbc_ir::{UnwiredInputError, VerifyError};
-
-    let error = CompileError::Verification(vec![VerifyError::UnwiredInput(UnwiredInputError {
-        node_id: "node_abc123".to_string(),
-        node_name: "prepare_read_content".to_string(),
-        port_name: "expected_content".to_string(),
-    })]);
-
-    let rendered = error.to_string();
-
-    // Stage prefix
-    assert!(
-        rendered.starts_with("verification errors:\n"),
-        "verification error must start with stage prefix: {rendered}"
-    );
-    // Exact line format: two-space indent, "unwired required input: node '...' port '...'"
-    assert!(
-        rendered.contains(
-            "  unwired required input: node 'prepare_read_content' port 'expected_content'"
-        ),
-        "verification error line format mismatch: {rendered}"
-    );
-    // Must NOT contain other stage prefixes
-    assert!(
-        !rendered.contains("typecheck errors:"),
-        "wrong stage: {rendered}"
-    );
-    assert!(
-        !rendered.contains("lower error:"),
-        "wrong stage: {rendered}"
-    );
 }

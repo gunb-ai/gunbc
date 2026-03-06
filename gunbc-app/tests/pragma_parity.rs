@@ -12,7 +12,7 @@ use daglang_driver::{compile_from_context, DriverContext};
 /// match `allowlist_patterns` from `config/clippy_policy.dag`.
 #[test]
 fn allowlist_dsl_matches_policy_data() {
-    use gunbc_app::pragma::dsl_render::render_allowlist_via_dsl;
+    use gunbc_dag::pragma_dsl_render::render_allowlist_via_dsl;
 
     let data_values = compile_clippy_policy_data();
     let dsl_output = render_allowlist_via_dsl();
@@ -44,7 +44,7 @@ fn allowlist_dsl_matches_policy_data() {
 /// canonical `dead_code_allowances` / `pragma_allow_lints` data.
 #[test]
 fn lint_policy_dsl_matches_policy_data() {
-    use gunbc_app::pragma::dsl_render::render_lint_policy_via_dsl;
+    use gunbc_dag::pragma_dsl_render::render_lint_policy_via_dsl;
 
     let data_values = compile_clippy_policy_data();
     let dsl_output = render_lint_policy_via_dsl();

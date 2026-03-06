@@ -4,7 +4,7 @@
 // token responses. Used for Workload Identity Federation.
 //
 // Consumers:
-//   cloud/gcp/credential.dag   — WIF credential chain step
+//   extdeps/sdlc/providers/gcp_credential_provider.dag — WIF credential chain step
 //   std/patterns.dag           — credential_chain pattern
 
 module extdeps.cloud.gcp.sts

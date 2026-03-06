@@ -156,6 +156,7 @@ dependencies = [
  "gunbc-app",
  "gunbc-exec",
  "gunbc-ir",
+ "gunbc-resolve",
  "gunbc-test",
  "serde",
  "serde_json",
@@ -219,7 +220,9 @@ dependencies = [
  "daglang-typecheck",
  "gunbc-app",
  "gunbc-deps",
+ "gunbc-exec",
  "gunbc-ir",
+ "gunbc-resolve",
  "serde",
  "serde_json",
 ]
@@ -356,10 +359,7 @@ dependencies = [
  "gunbc-exec",
  "gunbc-infra",
  "gunbc-ir",
- "gunbc-lib-aws-ops",
  "gunbc-lib-blob",
- "gunbc-lib-cloud-ops",
- "gunbc-lib-gcp-ops",
  "gunbc-lib-llm-ops",
  "gunbc-lib-review",
  "gunbc-lib-transport",
@@ -487,13 +487,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gunbc-lib-aws-ops"
-version = "0.1.0"
-dependencies = [
- "gunbc-ir",
-]
-
-[[package]]
 name = "gunbc-lib-blob"
 version = "0.1.0"
 dependencies = [
@@ -510,28 +503,12 @@ dependencies = [
 name = "gunbc-lib-cloud-ops"
 version = "0.1.0"
 dependencies = [
- "gunbc-delegate-macros",
- "gunbc-exec",
- "gunbc-ir",
- "gunbc-lib-gcp-ops",
- "gunbc-lib-transport",
- "gunbc-testgen-registry",
- "gunbc-testgen-registry-macros",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "gunbc-lib-gcp-ops"
-version = "0.1.0"
-dependencies = [
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-testgen-registry",
  "gunbc-testgen-registry-macros",
  "serde",
  "serde_json",
- "urlencoding",
 ]
 
 [[package]]
@@ -1275,12 +1252,6 @@ dependencies = [
  "idna",
  "percent-encoding",
 ]
-
-[[package]]
-name = "urlencoding"
-version = "2.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
 
 [[package]]
 name = "version_check"

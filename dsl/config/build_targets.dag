@@ -178,9 +178,9 @@ data core_workflows: List<CoreWorkflow> = [
   },
   {
     name: "test-all",
-    description: "Run all tests via cargo test workspace",
+    description: "Alias for test-xl (full Fermi budget)",
     deps: ["ensure-codegen"],
-    body: ["@cargo test --workspace"],
+    body: ["@$(MAKE) test-xl"],
     comment: None
   }
 ]
@@ -192,18 +192,138 @@ data core_workflows: List<CoreWorkflow> = [
 data meta_targets: List<MetaTargetDef> = [
   {
     name: "test",
-    description: "Run tests (<=S)",
+    description: "Alias for test-s (<=S)",
     has_check: false,
     has_fix: true,
-    command: "@RUSTFLAGS=\"-D warnings\" cargo test",
+    command: "@$(MAKE) test-s",
     check_command: None,
     fix_command: None,
     command_prefix: None,
+    resource_needs: [],
+    fix_prerequisites: ["fmt-fix", "lint-fix"]
+  },
+  {
+    name: "test-xs",
+    description: "Run tests (<=XS)",
+    has_check: false,
+    has_fix: false,
+    command: "@RUSTFLAGS=\"-D warnings\" cargo test",
+    check_command: None,
+    fix_command: None,
+    command_prefix: "GUNBC_TEST_MAX_COST=XS",
     resource_needs: [
       { resource: "compiled_code", mode: "ensure" },
       { resource: "verified_artifacts", mode: "ensure" }
     ],
-    fix_prerequisites: ["fmt-fix", "lint-fix"]
+    fix_prerequisites: []
+  },
+  {
+    name: "test-s",
+    description: "Run tests (<=S)",
+    has_check: false,
+    has_fix: false,
+    command: "@RUSTFLAGS=\"-D warnings\" cargo test",
+    check_command: None,
+    fix_command: None,
+    command_prefix: "GUNBC_TEST_MAX_COST=S",
+    resource_needs: [
+      { resource: "compiled_code", mode: "ensure" },
+      { resource: "verified_artifacts", mode: "ensure" }
+    ],
+    fix_prerequisites: []
+  },
+  {
+    name: "test-m",
+    description: "Run tests (<=M)",
+    has_check: false,
+    has_fix: false,
+    command: "@RUSTFLAGS=\"-D warnings\" cargo test",
+    check_command: None,
+    fix_command: None,
+    command_prefix: "GUNBC_TEST_MAX_COST=M",
+    resource_needs: [
+      { resource: "compiled_code", mode: "ensure" },
+      { resource: "verified_artifacts", mode: "ensure" }
+    ],
+    fix_prerequisites: []
+  },
+  {
+    name: "test-l",
+    description: "Run tests (<=L)",
+    has_check: false,
+    has_fix: false,
+    command: "@RUSTFLAGS=\"-D warnings\" cargo test",
+    check_command: None,
+    fix_command: None,
+    command_prefix: "GUNBC_TEST_MAX_COST=L",
+    resource_needs: [
+      { resource: "compiled_code", mode: "ensure" },
+      { resource: "verified_artifacts", mode: "ensure" }
+    ],
+    fix_prerequisites: []
+  },
+  {
+    name: "test-xl",
+    description: "Run tests (<=XL)",
+    has_check: false,
+    has_fix: false,
+    command: "@RUSTFLAGS=\"-D warnings\" cargo test",
+    check_command: None,
+    fix_command: None,
+    command_prefix: "GUNBC_TEST_MAX_COST=XL",
+    resource_needs: [
+      { resource: "compiled_code", mode: "ensure" },
+      { resource: "verified_artifacts", mode: "ensure" }
+    ],
+    fix_prerequisites: []
+  },
+  {
+    name: "test-small",
+    description: "Alias for test-s",
+    has_check: false,
+    has_fix: false,
+    command: "@$(MAKE) test-s",
+    check_command: None,
+    fix_command: None,
+    command_prefix: None,
+    resource_needs: [],
+    fix_prerequisites: []
+  },
+  {
+    name: "test-medium",
+    description: "Alias for test-m",
+    has_check: false,
+    has_fix: false,
+    command: "@$(MAKE) test-m",
+    check_command: None,
+    fix_command: None,
+    command_prefix: None,
+    resource_needs: [],
+    fix_prerequisites: []
+  },
+  {
+    name: "test-large",
+    description: "Alias for test-l",
+    has_check: false,
+    has_fix: false,
+    command: "@$(MAKE) test-l",
+    check_command: None,
+    fix_command: None,
+    command_prefix: None,
+    resource_needs: [],
+    fix_prerequisites: []
+  },
+  {
+    name: "test-extra-large",
+    description: "Alias for test-xl",
+    has_check: false,
+    has_fix: false,
+    command: "@$(MAKE) test-xl",
+    check_command: None,
+    fix_command: None,
+    command_prefix: None,
+    resource_needs: [],
+    fix_prerequisites: []
   },
   {
     name: "test-integration",

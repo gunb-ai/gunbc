@@ -67,8 +67,8 @@ pub enum ServiceTransportClass {
     FileBoundary,
     /// In-process / direct function call (no I/O).
     LocalDirect,
-    /// Stub transport for interface capabilities compiled without a profile.
-    /// DryRun-compatible; errors in Real mode with "requires --profile".
+    /// Stub transport for interface capabilities compiled without a concrete binding.
+    /// DryRun-compatible; errors in Real mode when no concrete binding exists.
     InterfaceStub,
 }
 

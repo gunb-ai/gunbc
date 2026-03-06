@@ -57,7 +57,6 @@ mod tests {
             "core/ir/src/transport/credential.rs".to_string(),
             "core/ir/src/resource/".to_string(),
             "lib/cloud-ops/".to_string(),
-            "lib/gcp-ops/".to_string(),
         ])
     }
 
@@ -298,7 +297,6 @@ mod tests {
             "core/exec/src/execute/mod.rs",
             "core/exec/src/display.rs",
             "core/resolve/src/service_ops/service_ops_impl.rs",
-            "lib/gcp-ops/src/ops.rs",
             "lib/tools/clippy/src/config.rs",
             "lib/transport/src/ops.rs",
         ];

@@ -604,10 +604,7 @@ impl StaticFingerprint {
     }
 
     /// Create a fingerprint with explicit key provenance.
-    pub fn with_keys(
-        operation: OperationKey,
-        keys: Vec<(String, InputProvenance)>,
-    ) -> Self {
+    pub fn with_keys(operation: OperationKey, keys: Vec<(String, InputProvenance)>) -> Self {
         Self { operation, keys }
     }
 
@@ -628,11 +625,7 @@ impl StaticFingerprint {
             if matches!(provenance, InputProvenance::Dynamic) {
                 return false;
             }
-            let Some(other_provenance) = other
-                .keys
-                .iter()
-                .find(|(k, _)| k == key)
-                .map(|(_, p)| p)
+            let Some(other_provenance) = other.keys.iter().find(|(k, _)| k == key).map(|(_, p)| p)
             else {
                 return false;
             };

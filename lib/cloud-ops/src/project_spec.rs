@@ -216,7 +216,7 @@ pub enum RotationHandler {
     Manual,
     /// Interactive GitHub OAuth browser flow.
     GitHubPat,
-    /// `gcloud` SA key creation.
+    /// Service-account key creation.
     ServiceAccountKey,
     /// No rotation needed (static/permanent value).
     None,

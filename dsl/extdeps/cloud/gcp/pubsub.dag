@@ -4,7 +4,7 @@
 // delivery guarantees, dead letter policies.
 //
 // Consumers:
-//   services/sdlc/providers/pubsub_signal_store.dag — signal queue
+//   extdeps/sdlc/providers/pubsub_signal_store.dag — signal queue
 //   infra/gcp/resources.dag                         — queue resource
 
 module extdeps.cloud.gcp.pubsub

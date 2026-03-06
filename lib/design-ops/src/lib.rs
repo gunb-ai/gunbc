@@ -117,13 +117,13 @@ mod tests {
             idea: "Persist deterministic run keys".to_string(),
             context: Some("Current flow duplicates issue comments".to_string()),
             acceptance_tests: vec![
-                "cargo test -q -p gunbc-app --test sdlc_cli".to_string(),
-                "cargo run -q -p gunbc-app --bin gunbc-sdlc -- intake --dry-run".to_string(),
+                "cargo test -q -p gunbc-dag --test sdlc_cli".to_string(),
+                "cargo run -q -p gunbc-dag --bin gunbc-workflow -- --help".to_string(),
             ],
         });
         assert!(prompt.contains("Title: Improve intake idempotency"));
         assert!(prompt.contains("Context:\nCurrent flow duplicates issue comments"));
-        assert!(prompt.contains("Acceptance tests:\n- cargo test -q -p gunbc-app --test sdlc_cli"));
+        assert!(prompt.contains("Acceptance tests:\n- cargo test -q -p gunbc-dag --test sdlc_cli"));
     }
 
     #[test]

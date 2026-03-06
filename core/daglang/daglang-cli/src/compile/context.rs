@@ -8,7 +8,7 @@ use gunbc_exec::{BoundaryMocks, DynOp, ExecutionLog, ExecutionMode};
 use gunbc_ir::Dag;
 use serde::Deserialize;
 
-use super::{resolve_lowered_dag, CheckOutput, CompileError, CompileOptions, CompileOutput};
+use super::{CheckOutput, CompileError, CompileOptions, CompileOutput};
 
 /// Builds compile pipeline context from CLI input.
 ///
@@ -141,8 +141,11 @@ pub fn compile_resolve_execute_from_context(
     input_mocks: Option<&BoundaryMocks>,
 ) -> Result<ExecutionLog, CompileError> {
     let output = compile_from_context(context)?;
-    let resolved = resolve_lowered_dag(&output.lowered_dag)
-        .map_err(|error| CompileError::from(format!("resolve error: {error}")))?;
+    let resolved = gunbc_resolve::resolve_lowered_dag_with(
+        &output.lowered_dag,
+        &gunbc_dag::extern_ops::GunbcExternResolver,
+    )
+    .map_err(|error| CompileError::from(format!("resolve error: {error}")))?;
     execute_resolved_dag(&resolved, mode, input_mocks)
 }
 

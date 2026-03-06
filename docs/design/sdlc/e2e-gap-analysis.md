@@ -346,9 +346,9 @@ CAS stays in the implementation (Layer 3), not the interface (Layer 2). The `Cla
 
 ### Gap F: SubDag / Pipeline Node Execution
 
-**Current state**: `SubDag` nodes (from `for`/`if` lowering) and `Pipeline` nodes resolve to `UnsupportedOp` in `gunbc-app/src/resolve.rs:559`. The DSL compiles control flow but the runtime cannot execute it.
+**Historical state (fixed on 2026-02-22)**: `SubDag` nodes (from `for`/`if` lowering) and `Pipeline` nodes originally resolved to `UnsupportedOp` in the resolver path that now lives in `core/resolve/src/resolve.rs`. At that point the DSL compiled control flow but the runtime could not execute it.
 
-Specific locations:
+Historical locations:
 - `resolve.rs:559`: `NodeBody::SubDag(_) => Ok(DynOp::new(UnsupportedOp::new("subdag_pattern")))`
 - `resolve.rs:567`: `LoweredOp::Pipeline { .. } => Ok(DynOp::new(UnsupportedOp::new(...)))`
 - `resolve.rs:579`: `LoopUnpack | LoopPack | BranchMerge => Ok(DynOp::new(UnsupportedOp::new("pattern_internal")))`
@@ -360,7 +360,7 @@ Specific locations:
 
 ### Gap G: Worker Does Not Invoke Compiled DAG
 
-**Current state**: `gunbc-app/src/bin/sdlc.rs` manages ledgers but the `run_worker` function calls `execute_stage_idea_to_design()` which is a minimal stub (`sdlc.rs:2494-2506`). The stub posts a static "Generated design prompt" comment via `StubIssueTransport` (which is itself a no-op) and transitions the label from Idea to Design. No other stage handler exists — all intake records, regardless of their current stage, go through this single handler.
+**Current state**: `gunbc-dag/src/bin/sdlc.rs` manages ledgers but the `run_worker` function calls `execute_stage_idea_to_design()` which is a minimal stub (`sdlc.rs:2494-2506`). The stub posts a static "Generated design prompt" comment via `StubIssueTransport` (which is itself a no-op) and transitions the label from Idea to Design. No other stage handler exists — all intake records, regardless of their current stage, go through this single handler.
 
 **Specific problems**:
 1. Only idea→design transition is handled. Records at design, design-review, accepted, implementing, code-review, or testing stages are "executed" but nothing meaningful happens.
@@ -497,7 +497,7 @@ The dry-run does NOT require:
 
 The SDLC system currently has two parallel execution paths that implement overlapping logic differently:
 
-**Path 1: Rust Worker (`gunbc-app/src/bin/sdlc.rs`)**
+**Path 1: Rust Worker (`gunbc-dag/src/bin/sdlc.rs`)**
 - Manages ledgers (intake, claim, artifact, run_state, agent).
 - Implements claim acquisition, heartbeat, release, reconciliation, drain, replay-skip.
 - Implements stage execution via `execute_stage_idea_to_design()` (one stage only).
@@ -612,7 +612,7 @@ These changes enable a local dry-run where the worker progresses issues through 
 
 Replace the direct `execute_stage_idea_to_design()` call in `run_worker` with the `execute_stage()` dispatcher from Sprint 11. The dispatcher routes by `record.stage` to the appropriate handler.
 
-Location: `gunbc-app/src/bin/sdlc.rs:1061-1062`
+Location: `gunbc-dag/src/bin/sdlc.rs:1061-1062`
 ```rust
 // Current:
 let transport = StubIssueTransport;

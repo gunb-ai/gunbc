@@ -7,7 +7,8 @@
 #![allow(clippy::disallowed_methods)]
 
 use gunbc_codegen::testgen::mock_corpus::{build_corpus, WorkflowInfo};
-use gunbc_app::dsl_builder::build_dsl_graph_for_entrypoint;
+use gunbc_dag::extern_ops::GunbcExternResolver;
+use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
 use gunbc_test::auto_mock_spec;
 use gunbc_test::MockSpec;
 
@@ -20,7 +21,16 @@ fn compile_tool(
     entry_func: &str,
     workflow_name: &str,
 ) -> Option<(gunbc_ir::Dag<gunbc_exec::DynOp>, MockSpec, WorkflowInfo)> {
-    let dag = build_dsl_graph_for_entrypoint(dag_file, Some(entry_func), None).ok()?;
+    let dag = build_dsl_graph(
+        dag_file,
+        &GunbcExternResolver,
+        BuildOpts {
+            entry_func: Some(entry_func),
+            profile: None,
+        },
+    )
+    .map(|result| result.dag)
+    .ok()?;
     let spec = auto_mock_spec(&dag, workflow_name);
     let info = WorkflowInfo {
         name: workflow_name.to_string(),
@@ -35,14 +45,13 @@ fn compile_tool(
 
 #[test]
 fn single_tool_produces_nonempty_corpus() {
-    let (dag, spec, info) =
-        match compile_tool("tools/pragma.dag", "pragma_lint", "pragma") {
-            Some(t) => t,
-            None => {
-                eprintln!("skipping: pragma tool failed to compile");
-                return;
-            }
-        };
+    let (dag, spec, info) = match compile_tool("tools/pragma.dag", "pragma_lint", "pragma") {
+        Some(t) => t,
+        None => {
+            eprintln!("skipping: pragma tool failed to compile");
+            return;
+        }
+    };
 
     let (corpus_map, _edges) =
         build_corpus(&[(info, &dag, &spec)], |_| true).expect("strict corpus build should pass");
@@ -114,14 +123,13 @@ fn multi_workflow_accumulates_shared_nodes() {
 
 #[test]
 fn corpus_node_identities_are_well_formed() {
-    let (dag, spec, info) =
-        match compile_tool("tools/pragma.dag", "pragma_lint", "pragma") {
-            Some(t) => t,
-            None => {
-                eprintln!("skipping: pragma tool failed to compile");
-                return;
-            }
-        };
+    let (dag, spec, info) = match compile_tool("tools/pragma.dag", "pragma_lint", "pragma") {
+        Some(t) => t,
+        None => {
+            eprintln!("skipping: pragma tool failed to compile");
+            return;
+        }
+    };
 
     let (corpus_map, _) =
         build_corpus(&[(info, &dag, &spec)], |_| true).expect("strict corpus build should pass");
@@ -151,14 +159,13 @@ fn corpus_node_identities_are_well_formed() {
 
 #[test]
 fn edge_examples_have_valid_port_mappings() {
-    let (dag, spec, info) =
-        match compile_tool("tools/pragma.dag", "pragma_lint", "pragma") {
-            Some(t) => t,
-            None => {
-                eprintln!("skipping: pragma tool failed to compile");
-                return;
-            }
-        };
+    let (dag, spec, info) = match compile_tool("tools/pragma.dag", "pragma_lint", "pragma") {
+        Some(t) => t,
+        None => {
+            eprintln!("skipping: pragma tool failed to compile");
+            return;
+        }
+    };
 
     let (_, edges) =
         build_corpus(&[(info, &dag, &spec)], |_| true).expect("strict corpus build should pass");

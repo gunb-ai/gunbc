@@ -368,7 +368,7 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerClassification> {
             ..
         } => return Some(HandlerClassification::MetadataOnly),
         // C24 migration note:
-        // GetField/ExprCompute are still interpreter-backed in resolve.rs. We
+        // GetField/ExprCompute are still interpreter-backed in the resolve layer. We
         // keep layer-1 compile unblocked by emitting passthrough stubs until
         // dedicated handlers land.
         LoweredOp::Primitive {
@@ -385,7 +385,10 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerClassification> {
         } => return Some(HandlerClassification::Handler(HandlerKind::Passthrough)),
         // C24: All remaining structural primitive ops use passthrough stubs.
         LoweredOp::Primitive { kind, .. } => {
-            debug_assert!(kind.is_structural(), "unhandled non-structural primitive: {kind:?}");
+            debug_assert!(
+                kind.is_structural(),
+                "unhandled non-structural primitive: {kind:?}"
+            );
             return Some(HandlerClassification::Handler(HandlerKind::Passthrough));
         }
     }

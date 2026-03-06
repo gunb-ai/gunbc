@@ -1,7 +1,8 @@
-//! Provider-neutral cloud credential operations.
+//! Provider-neutral cloud credential policy and environment helpers.
 //!
-//! This crate provides credential policy, infrastructure bootstrapping,
-//! secret provisioning, and environment configuration for cloud providers.
+//! The handwritten infrastructure DAG builders that used to live here have been
+//! retired in favor of `.dag` modeling. This crate now keeps only the
+//! supporting policy/config/runtime helpers that are still consumed from Rust.
 
 pub mod config_loader;
 pub mod config_resource;
@@ -9,9 +10,6 @@ pub mod credential_policy;
 pub mod env_requirements;
 mod env_status;
 pub mod health_status;
-pub mod infra_bootstrap;
-pub mod infra_graph;
-pub mod infra_plan_apply;
 pub mod infra_spec;
 pub mod login_flow;
 pub mod project_registry;
@@ -36,9 +34,6 @@ pub use env_requirements::{
 };
 pub use env_status::CloudEnvStatus;
 pub use health_status::{evaluate_health, HealthCheckItem, HealthCheckReport};
-pub use infra_bootstrap::{build_wif_bootstrap_dag, InfraBootstrapGraphOp, InfraBootstrapOps};
-pub use infra_graph::render_infra_spec_dot;
-pub use infra_plan_apply::{build_infra_plan_dag, InfraApplyFilter, InfraPlanApplyOps};
 pub use infra_spec::{EnvironmentConfig, InfraSpec, CI_SPEC, DEV_SPEC, PROD_SPEC, TEST_SPEC};
 pub use login_flow::{inspect_login_flow, LoginDiagnostics};
 pub use project_registry::{
