@@ -28,6 +28,75 @@ use daglang_syntax::parser;
 
 type ParsedModuleRecord = (PathBuf, ModulePath, Vec<ModulePath>, SourceFile);
 
+// ============================================================================
+// Virtual filesystem abstraction (CP-57)
+// ============================================================================
+
+/// Filesystem abstraction for module discovery and source reading.
+///
+/// All filesystem access in the resolve stage goes through this trait,
+/// making the parser/typechecker/lowerer pipeline testable with synthetic
+/// inputs and enabling deterministic caching.
+pub trait Vfs {
+    /// Read a file's contents as a UTF-8 string.
+    fn read_to_string(&self, path: &Path) -> std::io::Result<String>;
+
+    /// List entries in a directory (files and subdirectories).
+    fn read_dir(&self, path: &Path) -> std::io::Result<Vec<DirEntry>>;
+
+    /// Canonicalize a path (resolve symlinks, normalize).
+    fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf>;
+
+    /// Check whether a path exists.
+    fn exists(&self, path: &Path) -> bool;
+
+    /// Check whether a path is a directory.
+    fn is_dir(&self, path: &Path) -> bool;
+}
+
+/// A directory entry returned by `Vfs::read_dir`.
+#[derive(Debug, Clone)]
+pub struct DirEntry {
+    pub path: PathBuf,
+    pub is_dir: bool,
+}
+
+/// Real filesystem implementation of `Vfs`.
+#[derive(Debug, Clone, Copy)]
+pub struct RealVfs;
+
+#[allow(clippy::disallowed_methods)]
+impl Vfs for RealVfs {
+    fn read_to_string(&self, path: &Path) -> std::io::Result<String> {
+        std::fs::read_to_string(path)
+    }
+
+    fn read_dir(&self, path: &Path) -> std::io::Result<Vec<DirEntry>> {
+        let mut entries = Vec::new();
+        for entry in std::fs::read_dir(path)? {
+            let entry = entry?;
+            let p = entry.path();
+            entries.push(DirEntry {
+                is_dir: p.is_dir(),
+                path: p,
+            });
+        }
+        Ok(entries)
+    }
+
+    fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
+        std::fs::canonicalize(path)
+    }
+
+    fn exists(&self, path: &Path) -> bool {
+        path.exists()
+    }
+
+    fn is_dir(&self, path: &Path) -> bool {
+        path.is_dir()
+    }
+}
+
 /// Strict check for `.dag` file extension (lowercase only).
 pub fn has_dag_extension(path: &Path) -> bool {
     path.extension()
@@ -45,9 +114,14 @@ pub fn has_dag_like_extension(path: &Path) -> bool {
 
 /// Discover `.dag` files recursively under a root directory.
 pub fn discover_dag_files(root: &Path) -> Result<Vec<PathBuf>, ResolveError> {
+    discover_dag_files_with_vfs(root, &RealVfs)
+}
+
+/// Discover `.dag` files recursively under a root directory using a custom Vfs.
+pub fn discover_dag_files_with_vfs(root: &Path, vfs: &dyn Vfs) -> Result<Vec<PathBuf>, ResolveError> {
     let mut files = Vec::new();
     let mut visited_dirs = HashSet::new();
-    collect_dag_files(root, &mut files, &mut visited_dirs)?;
+    collect_dag_files_vfs(root, &mut files, &mut visited_dirs, vfs)?;
     files.sort();
     files.dedup();
     Ok(files)
@@ -75,60 +149,57 @@ pub struct ModuleGraph {
 
 impl ModuleGraph {
     /// Discover `.dag` files from the given root directories and build
-    /// the module graph.
-    // Compiler pipeline: reads .dag files for module resolution
-    #[allow(clippy::disallowed_methods)]
+    /// the module graph. Uses the real filesystem.
     pub fn discover(roots: &[PathBuf]) -> Result<Self, ResolveError> {
-        Self::discover_with_cycle_mode(roots, false)
+        Self::discover_with_vfs(roots, &RealVfs, false)
     }
 
     /// Discover `.dag` files and fail when an import cycle exists.
-    ///
-    /// This mode is used by compile/check flows that require explicit
-    /// success/failure behavior rather than best-effort graph ordering.
-    #[allow(clippy::disallowed_methods)]
+    /// Uses the real filesystem.
     pub fn discover_strict(roots: &[PathBuf]) -> Result<Self, ResolveError> {
-        Self::discover_with_cycle_mode(roots, true)
+        Self::discover_with_vfs(roots, &RealVfs, true)
     }
 
-    #[allow(clippy::disallowed_methods)]
-    fn discover_with_cycle_mode(
+    /// Discover `.dag` files using a custom `Vfs` implementation.
+    /// Enables testing with synthetic/in-memory filesystems.
+    pub fn discover_with_vfs(
         roots: &[PathBuf],
+        vfs: &dyn Vfs,
         fail_on_cycles: bool,
     ) -> Result<Self, ResolveError> {
         let mut dag_files = Vec::new();
         let mut visited_dirs = HashSet::new();
         for root in roots {
-            if !root.exists() {
+            if !vfs.exists(root) {
                 return Err(ResolveError::InvalidRootPath {
                     path: root.clone(),
                     reason: "does not exist".to_string(),
                 });
             }
-            if !root.is_dir() {
+            if !vfs.is_dir(root) {
                 return Err(ResolveError::InvalidRootPath {
                     path: root.clone(),
                     reason: "is not a directory".to_string(),
                 });
             }
-            collect_dag_files(root, &mut dag_files, &mut visited_dirs)?;
+            collect_dag_files_vfs(root, &mut dag_files, &mut visited_dirs, vfs)?;
         }
         let mut canonical_dag_files = Vec::with_capacity(dag_files.len());
         for path in dag_files {
             let canonical =
-                std::fs::canonicalize(&path).map_err(|e| ResolveError::IoError(path.clone(), e))?;
+                vfs.canonicalize(&path).map_err(|e| ResolveError::IoError(path.clone(), e))?;
             canonical_dag_files.push(canonical);
         }
         dag_files = canonical_dag_files;
         dag_files.sort();
         dag_files.dedup();
-        let canonical_roots = canonicalize_roots(roots);
+        let canonical_roots = canonicalize_roots_vfs(roots, vfs);
 
         let mut parsed: Vec<ParsedModuleRecord> = Vec::new();
         let mut parse_errors: Vec<(PathBuf, Vec<Diagnostic>)> = Vec::new();
 
         for path in &dag_files {
-            let source = std::fs::read_to_string(path)
+            let source = vfs.read_to_string(path)
                 .map_err(|e| ResolveError::IoError(path.clone(), e))?;
             match parser::parse_with_file_diagnostics(path, &source) {
                 Ok(ast) => {
@@ -137,7 +208,7 @@ impl ModuleGraph {
                         .as_ref()
                         .map(|mp| mp.node.clone())
                         .map_or_else(
-                            || path_to_module_path(path, roots, &canonical_roots),
+                            || path_to_module_path_vfs(path, roots, &canonical_roots, vfs),
                             Ok,
                         )?;
                     let imports: Vec<ModulePath> = ast
@@ -213,32 +284,29 @@ impl ModuleGraph {
 ///
 /// Tests and fixtures are defined inline within regular `.dag` files,
 /// so no filename-based filtering is needed.
-// Compiler pipeline: recursively discovers .dag files
-#[allow(clippy::disallowed_methods, clippy::disallowed_types)]
-fn collect_dag_files(
+fn collect_dag_files_vfs(
     dir: &Path,
     out: &mut Vec<PathBuf>,
     visited_dirs: &mut HashSet<PathBuf>,
+    vfs: &dyn Vfs,
 ) -> Result<(), ResolveError> {
-    if !dir.is_dir() {
+    if !vfs.is_dir(dir) {
         return Ok(());
     }
     let canonical_dir =
-        std::fs::canonicalize(dir).map_err(|e| ResolveError::IoError(dir.to_path_buf(), e))?;
+        vfs.canonicalize(dir).map_err(|e| ResolveError::IoError(dir.to_path_buf(), e))?;
     if !visited_dirs.insert(canonical_dir) {
         return Ok(());
     }
     let entries =
-        std::fs::read_dir(dir).map_err(|e| ResolveError::IoError(dir.to_path_buf(), e))?;
+        vfs.read_dir(dir).map_err(|e| ResolveError::IoError(dir.to_path_buf(), e))?;
     for entry in entries {
-        let entry = entry.map_err(|e| ResolveError::IoError(dir.to_path_buf(), e))?;
-        let p = entry.path();
-        if p.is_dir() {
-            collect_dag_files(&p, out, visited_dirs)?;
-        } else if has_dag_extension(&p) {
-            out.push(p);
-        } else if has_dag_like_extension(&p) {
-            return Err(ResolveError::InvalidExtensionCase(p));
+        if entry.is_dir {
+            collect_dag_files_vfs(&entry.path, out, visited_dirs, vfs)?;
+        } else if has_dag_extension(&entry.path) {
+            out.push(entry.path);
+        } else if has_dag_like_extension(&entry.path) {
+            return Err(ResolveError::InvalidExtensionCase(entry.path));
         }
     }
     Ok(())
@@ -283,12 +351,16 @@ pub fn choose_preferred_relative(current: Option<PathBuf>, candidate: &Path) -> 
 }
 
 /// Deduplicate root paths via filesystem canonicalization.
-#[allow(clippy::disallowed_methods)]
 pub fn canonicalize_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
+    canonicalize_roots_vfs(roots, &RealVfs)
+}
+
+/// Deduplicate root paths via Vfs canonicalization.
+fn canonicalize_roots_vfs(roots: &[PathBuf], vfs: &dyn Vfs) -> Vec<PathBuf> {
     let mut seen = HashSet::new();
     let mut canonical_roots = Vec::new();
     for root in roots {
-        if let Ok(canonical_root) = std::fs::canonicalize(root) {
+        if let Ok(canonical_root) = vfs.canonicalize(root) {
             if seen.insert(canonical_root.clone()) {
                 canonical_roots.push(canonical_root);
             }
@@ -299,13 +371,22 @@ pub fn canonicalize_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
 
 /// Resolve a filesystem path to a module path using canonical path comparison.
 /// Returns an error if the path cannot be resolved relative to any known root.
-#[allow(clippy::disallowed_methods)]
 pub fn path_to_module_path(
     path: &Path,
     roots: &[PathBuf],
     canonical_roots: &[PathBuf],
 ) -> Result<ModulePath, ResolveError> {
-    let canonical_path = std::fs::canonicalize(path).ok();
+    path_to_module_path_vfs(path, roots, canonical_roots, &RealVfs)
+}
+
+/// Resolve a filesystem path to a module path using a Vfs for canonicalization.
+fn path_to_module_path_vfs(
+    path: &Path,
+    roots: &[PathBuf],
+    canonical_roots: &[PathBuf],
+    vfs: &dyn Vfs,
+) -> Result<ModulePath, ResolveError> {
+    let canonical_path = vfs.canonicalize(path).ok();
     let mut best_relative: Option<PathBuf> = None;
     for root in roots {
         if let Ok(rel) = path.strip_prefix(root) {
