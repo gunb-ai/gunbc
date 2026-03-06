@@ -27,7 +27,7 @@ pub fn gunbc_runtime_bindings() -> &'static gunbc_resolve::RuntimeBindings {
         );
         bindings.register(
             "tools.justgen",
-            "discover_tools",
+            "just_discover_tools",
             DynOp::new(DiscoverToolsOp),
         );
         bindings.register(

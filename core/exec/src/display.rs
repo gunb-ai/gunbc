@@ -33,7 +33,7 @@ use gunbc_ir::symbols::{SemanticColor, SymbolId, Tier, STANDARD};
 use gunbc_ir::{
     detect_boundaries, Dag, NodeId, Value, HUMAN_TEXT_MAX_LINES, HUMAN_TEXT_MAX_LINE_WIDTH,
 };
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::{self, IsTerminal, Write};
 use std::process;
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -218,6 +218,9 @@ pub fn execute_and_display<T: Executable + Clone + Send + 'static>(
     match execute_and_display_with_result_config(dag, mode, config, success_port, input_mocks) {
         Ok(result) => {
             if result.should_fail {
+                if let Some(report) = failure_report(&result.log) {
+                    print_failure_report(&report);
+                }
                 print_attention(
                     AttentionLevel::Error,
                     "Execution failed",
@@ -1003,6 +1006,176 @@ fn print_boundary_outputs(log: &crate::ExecutionLog, boundaries: &gunbc_ir::Boun
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct StageOutcome {
+    name: String,
+    success: bool,
+    stderr: String,
+    skipped: bool,
+}
+
+fn failure_report(log: &crate::ExecutionLog) -> Option<String> {
+    if let Some(report) = explicit_failure_report(log) {
+        return Some(report.to_string());
+    }
+
+    stage_outcomes_from_log(log).map(|stages| render_stage_report(&stages))
+}
+
+fn explicit_failure_report(log: &crate::ExecutionLog) -> Option<&str> {
+    log.entries.iter().rev().find_map(|entry| {
+        if let Some(report) = entry.outputs.get("report").and_then(|value| match value {
+            Value::Str(report) => Some(report.as_str()),
+            _ => None,
+        }) {
+            return Some(report);
+        }
+
+        if entry.node_id.contains("format_report") {
+            return entry.outputs.get("return").and_then(|value| match value {
+                Value::Str(report) => Some(report.as_str()),
+                _ => None,
+            });
+        }
+
+        None
+    })
+}
+
+fn stage_outcomes_from_log(log: &crate::ExecutionLog) -> Option<Vec<StageOutcome>> {
+    for entry in log.entries.iter().rev() {
+        for key in ["stages", "result", "return"] {
+            if let Some(stages) = entry.outputs.get(key).and_then(parse_stage_list) {
+                return Some(stages);
+            }
+        }
+    }
+
+    let mut by_name = BTreeMap::new();
+    for entry in &log.entries {
+        for key in ["return", "result"] {
+            if let Some(stage) = entry.outputs.get(key).and_then(parse_stage_outcome) {
+                by_name.insert(stage.name.clone(), stage);
+                break;
+            }
+        }
+    }
+
+    if by_name.len() > 1 {
+        return Some(by_name.into_values().collect());
+    }
+
+    transport_stage_outcomes_from_log(log).or_else(|| {
+        if by_name.is_empty() {
+            None
+        } else {
+            Some(by_name.into_values().collect())
+        }
+    })
+}
+
+fn parse_stage_list(value: &Value) -> Option<Vec<StageOutcome>> {
+    value
+        .as_list()?
+        .iter()
+        .map(parse_stage_outcome)
+        .collect::<Option<Vec<_>>>()
+}
+
+fn parse_stage_outcome(value: &Value) -> Option<StageOutcome> {
+    let map = value.as_map()?;
+    Some(StageOutcome {
+        name: map.get("name")?.as_str()?.to_string(),
+        success: map.get("success")?.as_bool()?,
+        stderr: map
+            .get("stderr")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        skipped: map.get("skipped").and_then(Value::as_bool).unwrap_or(false),
+    })
+}
+
+fn render_stage_report(stages: &[StageOutcome]) -> String {
+    let total = stages.len();
+    let passed = stages.iter().filter(|stage| stage.success).count();
+    let failed = stages
+        .iter()
+        .filter(|stage| !stage.success && !stage.skipped)
+        .count();
+    let detail_lines = stages
+        .iter()
+        .map(|stage| {
+            if stage.success {
+                format!("[PASS] {}", stage.name)
+            } else if stage.skipped {
+                format!("[SKIP] {}", stage.name)
+            } else if stage.stderr.is_empty() {
+                format!("[FAIL] {}", stage.name)
+            } else {
+                format!("[FAIL] {} :: {}", stage.name, stage.stderr)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!("# Report\nTotal: {total}, Passed: {passed}, Failed: {failed}\n\n{detail_lines}\n")
+}
+
+fn print_failure_report(report: &str) {
+    let mut stderr = io::stderr().lock();
+    let _ = writeln!(stderr);
+    let _ = write!(stderr, "{report}");
+    if !report.ends_with('\n') {
+        let _ = writeln!(stderr);
+    }
+}
+
+fn transport_stage_outcomes_from_log(log: &crate::ExecutionLog) -> Option<Vec<StageOutcome>> {
+    let mut by_name = BTreeMap::new();
+    for entry in &log.entries {
+        let Some(name) = transport_stage_name(&entry.node_id) else {
+            continue;
+        };
+        let Some(success) = entry.outputs.get("success").and_then(Value::as_bool) else {
+            continue;
+        };
+        let stderr = entry
+            .outputs
+            .get("stderr")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        by_name.insert(
+            name.clone(),
+            StageOutcome {
+                name,
+                success,
+                stderr,
+                skipped: false,
+            },
+        );
+    }
+
+    if by_name.len() > 1 {
+        Some(by_name.into_values().collect())
+    } else {
+        None
+    }
+}
+
+fn transport_stage_name(node_id: &str) -> Option<String> {
+    if !node_id.starts_with("parse_transport_") {
+        return None;
+    }
+
+    let stage = node_id.rsplit('_').next()?;
+    if stage.is_empty() {
+        None
+    } else {
+        Some(stage.to_ascii_lowercase())
+    }
+}
+
 /// Returns true when any log entry emits a `success_port` value that is not
 /// explicitly `Bool(true)`.  `Skipped`, `Bool(false)`, or any other variant
 /// all count as failure — the success port must affirmatively be `true`.
@@ -1507,6 +1680,149 @@ mod tests {
     fn success_port_failed_returns_false_when_no_success_port() {
         let log = log_with_output("overall_success", Value::Bool(false));
         assert!(!success_port_failed(&log, None));
+    }
+
+    #[test]
+    fn failure_report_returns_last_string_report() {
+        let log = crate::ExecutionLog {
+            entries: vec![
+                crate::LogEntry {
+                    node_id: "first".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([(
+                        "report".to_string(),
+                        Value::Str("first".to_string()),
+                    )]),
+                    was_intercepted: false,
+                    coercions_applied: vec![],
+                },
+                crate::LogEntry {
+                    node_id: "second".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([(
+                        "report".to_string(),
+                        Value::Str("second".to_string()),
+                    )]),
+                    was_intercepted: false,
+                    coercions_applied: vec![],
+                },
+            ],
+        };
+        assert_eq!(failure_report(&log), Some("second".to_string()));
+    }
+
+    #[test]
+    fn failure_report_ignores_non_string_report_values() {
+        let log = crate::ExecutionLog {
+            entries: vec![crate::LogEntry {
+                node_id: "node".to_string(),
+                inputs: None,
+                outputs: HashMap::from([("report".to_string(), Value::Bool(false))]),
+                was_intercepted: false,
+                coercions_applied: vec![],
+            }],
+        };
+        assert_eq!(explicit_failure_report(&log), None);
+    }
+
+    #[test]
+    fn failure_report_falls_back_to_format_report_return() {
+        let log = crate::ExecutionLog {
+            entries: vec![crate::LogEntry {
+                node_id: "shared.dag_util::format_report".to_string(),
+                inputs: None,
+                outputs: HashMap::from([(
+                    "return".to_string(),
+                    Value::Str("fallback".to_string()),
+                )]),
+                was_intercepted: false,
+                coercions_applied: vec![],
+            }],
+        };
+        assert_eq!(failure_report(&log), Some("fallback".to_string()));
+    }
+
+    #[test]
+    fn failure_report_synthesizes_from_stage_list() {
+        let stage = |name: &str, success: bool, skipped: bool, stderr: &str| {
+            Value::Map(BTreeMap::from([
+                ("name".to_string(), Value::Str(name.to_string())),
+                ("success".to_string(), Value::Bool(success)),
+                ("skipped".to_string(), Value::Bool(skipped)),
+                ("stderr".to_string(), Value::Str(stderr.to_string())),
+            ]))
+        };
+        let log = crate::ExecutionLog {
+            entries: vec![crate::LogEntry {
+                node_id: "expr_compute_tools_ci_ci_stages_arg_0".to_string(),
+                inputs: None,
+                outputs: HashMap::from([(
+                    "result".to_string(),
+                    Value::List(vec![
+                        stage("build", true, false, ""),
+                        stage("test", false, false, "tests failed"),
+                        stage("clippy", true, false, ""),
+                    ]),
+                )]),
+                was_intercepted: false,
+                coercions_applied: vec![],
+            }],
+        };
+        assert_eq!(
+            failure_report(&log),
+            Some(
+                "# Report\nTotal: 3, Passed: 2, Failed: 1\n\n[PASS] build\n[FAIL] test :: tests failed\n[PASS] clippy\n"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn failure_report_falls_back_to_parse_transport_entries() {
+        let log = crate::ExecutionLog {
+            entries: vec![
+                crate::LogEntry {
+                    node_id: "parse_transport_extdeps_cargo_cargo_Build_Build".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([
+                        ("success".to_string(), Value::Bool(true)),
+                        ("stderr".to_string(), Value::Str(String::new())),
+                    ]),
+                    was_intercepted: false,
+                    coercions_applied: vec![],
+                },
+                crate::LogEntry {
+                    node_id: "parse_transport_extdeps_cargo_cargo_Build_Test".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([
+                        ("success".to_string(), Value::Bool(false)),
+                        (
+                            "stderr".to_string(),
+                            Value::Str("test suite failed".to_string()),
+                        ),
+                    ]),
+                    was_intercepted: false,
+                    coercions_applied: vec![],
+                },
+                crate::LogEntry {
+                    node_id: "parse_transport_extdeps_cargo_cargo_Build_Clippy".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([
+                        ("success".to_string(), Value::Bool(true)),
+                        ("stderr".to_string(), Value::Str(String::new())),
+                    ]),
+                    was_intercepted: false,
+                    coercions_applied: vec![],
+                },
+            ],
+        };
+        assert_eq!(
+            failure_report(&log),
+            Some(
+                "# Report\nTotal: 3, Passed: 2, Failed: 1\n\n[PASS] build\n[PASS] clippy\n[FAIL] test :: test suite failed\n"
+                    .to_string()
+            )
+        );
     }
 
     #[test]
