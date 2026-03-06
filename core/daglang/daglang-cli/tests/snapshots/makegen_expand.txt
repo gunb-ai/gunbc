@@ -1,221 +1,4 @@
 Nodes:
-  - tools.makegen::render_target [callable::Fn tools.makegen.render_target]
-    inputs:
-      * name: String (1)
-      * deps: List<String> (1)
-      * body: List<String> (1)
-      * comment: String? (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::render_section_header [callable::Fn tools.makegen.render_section_header]
-    inputs:
-      * title: String (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::render_phony_line [callable::Fn tools.makegen.render_phony_line]
-    inputs:
-      * names: List<String> (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::resolve_resource_target [callable::Fn tools.makegen.resolve_resource_target]
-    inputs:
-      * resource: String (1)
-      * mode: String (1)
-      * res_targets: List<ResourceTargetEntry> (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::resolve_meta_deps [callable::Fn tools.makegen.resolve_meta_deps]
-    inputs:
-      * needs: List<ResourceNeed> (1)
-      * res_targets: List<ResourceTargetEntry> (1)
-      * __out:return: List<String> (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: List<String> (1)
-  - tools.makegen::resolve_meta_fix_deps [callable::Fn tools.makegen.resolve_meta_fix_deps]
-    inputs:
-      * needs: List<ResourceNeed> (1)
-      * res_targets: List<ResourceTargetEntry> (1)
-      * __out:return: List<String> (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: List<String> (1)
-  - tools.makegen::apply_prefix [callable::Fn tools.makegen.apply_prefix]
-    inputs:
-      * prefix: String? (1)
-      * cmd: String (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::render_core_targets [callable::Fn tools.makegen.render_core_targets]
-    inputs:
-      * workflows: List<CoreWorkflow> (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::render_meta_base [callable::Fn tools.makegen.render_meta_base]
-    inputs:
-      * meta: MetaTargetDef (1)
-      * res_targets: List<ResourceTargetEntry> (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::render_meta_fix_variant [callable::Fn tools.makegen.render_meta_fix_variant]
-    inputs:
-      * meta: MetaTargetDef (1)
-      * res_targets: List<ResourceTargetEntry> (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::render_meta_check_variant [callable::Fn tools.makegen.render_meta_check_variant]
-    inputs:
-      * meta: MetaTargetDef (1)
-      * res_targets: List<ResourceTargetEntry> (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::render_meta_target [callable::Fn tools.makegen.render_meta_target]
-    inputs:
-      * meta: MetaTargetDef (1)
-      * res_targets: List<ResourceTargetEntry> (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::render_meta_targets [callable::Fn tools.makegen.render_meta_targets]
-    inputs:
-      * metas: List<MetaTargetDef> (1)
-      * res_targets: List<ResourceTargetEntry> (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::render_help_param [callable::Fn tools.makegen.render_help_param]
-    inputs:
-      * p: EntrypointParam (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::render_help_params [callable::Fn tools.makegen.render_help_params]
-    inputs:
-      * params: List<EntrypointParam> (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::render_tool_target [callable::Fn tools.makegen.render_tool_target]
-    inputs:
-      * tool: DiscoveredTool (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::render_tool_targets [callable::Fn tools.makegen.render_tool_targets]
-    inputs:
-      * tools: List<DiscoveredTool> (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::render_help_core_lines [callable::Fn tools.makegen.render_help_core_lines]
-    inputs:
-      * workflows: List<CoreWorkflow> (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::fix_description [callable::Fn tools.makegen.fix_description]
-    inputs:
-      * prereqs: List<String> (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::render_help_meta_line [callable::Fn tools.makegen.render_help_meta_line]
-    inputs:
-      * m: MetaTargetDef (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::render_help_meta_lines [callable::Fn tools.makegen.render_help_meta_lines]
-    inputs:
-      * metas: List<MetaTargetDef> (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::render_help_tool_line [callable::Fn tools.makegen.render_help_tool_line]
-    inputs:
-      * t: DiscoveredTool (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::render_help_tool_lines [callable::Fn tools.makegen.render_help_tool_lines]
-    inputs:
-      * tools: List<DiscoveredTool> (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::render_help_target [callable::Fn tools.makegen.render_help_target]
-    inputs:
-      * workflows: List<CoreWorkflow> (1)
-      * metas: List<MetaTargetDef> (1)
-      * tools: List<DiscoveredTool> (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::collect_core_phony_str [callable::Fn tools.makegen.collect_core_phony_str]
-    inputs:
-      * workflows: List<CoreWorkflow> (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::collect_meta_phony_str [callable::Fn tools.makegen.collect_meta_phony_str]
-    inputs:
-      * metas: List<MetaTargetDef> (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::tool_phony_names [callable::Fn tools.makegen.tool_phony_names]
-    inputs:
-      * t: DiscoveredTool (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::collect_tool_phony_str [callable::Fn tools.makegen.collect_tool_phony_str]
-    inputs:
-      * tools: List<DiscoveredTool> (1)
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
-  - tools.makegen::render_naming_convention [callable::Fn tools.makegen.render_naming_convention]
-    inputs:
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
   - tools.makegen::render_makefile_body [callable::Fn tools.makegen.render_makefile_body]
     inputs:
       * workflows: List<CoreWorkflow> (1)
@@ -231,12 +14,6 @@ Nodes:
       * __deps: Any (0..*)
     outputs:
       * return: List<DiscoveredTool> (1)
-  - tools.makegen::render_header [callable::Fn tools.makegen.render_header]
-    inputs:
-      * __out:return: String (1)
-      * __deps: Any (0..*)
-    outputs:
-      * return: String (1)
   - tools.makegen::render_makefile_content [callable::Fn tools.makegen.render_makefile_content]
     inputs:
       * workflows: List<CoreWorkflow> (1)
@@ -407,6 +184,246 @@ Nodes:
       * __deps: Any (0..*)
     outputs:
       * ok: Bool (1)
+  - extdeps.make_render::make_render_target [callable::Fn extdeps.make_render.make_render_target]
+    inputs:
+      * name: String (1)
+      * deps: List<String> (1)
+      * body: List<String> (1)
+      * comment: String? (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_render_section_header [callable::Fn extdeps.make_render.make_render_section_header]
+    inputs:
+      * title: String (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_resolve_resource_target [callable::Fn extdeps.make_render.make_resolve_resource_target]
+    inputs:
+      * resource: String (1)
+      * mode: String (1)
+      * res_targets: List<ResourceTargetEntry> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_resolve_meta_deps [callable::Fn extdeps.make_render.make_resolve_meta_deps]
+    inputs:
+      * needs: List<ResourceNeed> (1)
+      * res_targets: List<ResourceTargetEntry> (1)
+      * __out:return: List<String> (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: List<String> (1)
+  - extdeps.make_render::make_resolve_meta_fix_deps [callable::Fn extdeps.make_render.make_resolve_meta_fix_deps]
+    inputs:
+      * needs: List<ResourceNeed> (1)
+      * res_targets: List<ResourceTargetEntry> (1)
+      * __out:return: List<String> (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: List<String> (1)
+  - extdeps.make_render::make_apply_prefix [callable::Fn extdeps.make_render.make_apply_prefix]
+    inputs:
+      * prefix: String? (1)
+      * cmd: String (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_render_core_targets [callable::Fn extdeps.make_render.make_render_core_targets]
+    inputs:
+      * workflows: List<CoreWorkflow> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_render_meta_base [callable::Fn extdeps.make_render.make_render_meta_base]
+    inputs:
+      * meta: MetaTargetDef (1)
+      * res_targets: List<ResourceTargetEntry> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_render_meta_fix_variant [callable::Fn extdeps.make_render.make_render_meta_fix_variant]
+    inputs:
+      * meta: MetaTargetDef (1)
+      * res_targets: List<ResourceTargetEntry> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_render_meta_check_variant [callable::Fn extdeps.make_render.make_render_meta_check_variant]
+    inputs:
+      * meta: MetaTargetDef (1)
+      * res_targets: List<ResourceTargetEntry> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_render_meta_target [callable::Fn extdeps.make_render.make_render_meta_target]
+    inputs:
+      * meta: MetaTargetDef (1)
+      * res_targets: List<ResourceTargetEntry> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_render_meta_targets [callable::Fn extdeps.make_render.make_render_meta_targets]
+    inputs:
+      * metas: List<MetaTargetDef> (1)
+      * res_targets: List<ResourceTargetEntry> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_render_help_param [callable::Fn extdeps.make_render.make_render_help_param]
+    inputs:
+      * p: EntrypointParam (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_render_help_params [callable::Fn extdeps.make_render.make_render_help_params]
+    inputs:
+      * params: List<EntrypointParam> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_render_tool_target [callable::Fn extdeps.make_render.make_render_tool_target]
+    inputs:
+      * tool: DiscoveredTool (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_render_tool_targets [callable::Fn extdeps.make_render.make_render_tool_targets]
+    inputs:
+      * tools: List<DiscoveredTool> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_render_help_core_lines [callable::Fn extdeps.make_render.make_render_help_core_lines]
+    inputs:
+      * workflows: List<CoreWorkflow> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_fix_description [callable::Fn extdeps.make_render.make_fix_description]
+    inputs:
+      * prereqs: List<String> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_render_help_meta_line [callable::Fn extdeps.make_render.make_render_help_meta_line]
+    inputs:
+      * m: MetaTargetDef (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_render_help_meta_lines [callable::Fn extdeps.make_render.make_render_help_meta_lines]
+    inputs:
+      * metas: List<MetaTargetDef> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_render_help_tool_line [callable::Fn extdeps.make_render.make_render_help_tool_line]
+    inputs:
+      * t: DiscoveredTool (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_render_help_tool_lines [callable::Fn extdeps.make_render.make_render_help_tool_lines]
+    inputs:
+      * tools: List<DiscoveredTool> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_render_help_target [callable::Fn extdeps.make_render.make_render_help_target]
+    inputs:
+      * workflows: List<CoreWorkflow> (1)
+      * metas: List<MetaTargetDef> (1)
+      * tools: List<DiscoveredTool> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_collect_core_phony_str [callable::Fn extdeps.make_render.make_collect_core_phony_str]
+    inputs:
+      * workflows: List<CoreWorkflow> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_collect_meta_phony_str [callable::Fn extdeps.make_render.make_collect_meta_phony_str]
+    inputs:
+      * metas: List<MetaTargetDef> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_tool_phony_names [callable::Fn extdeps.make_render.make_tool_phony_names]
+    inputs:
+      * t: DiscoveredTool (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_collect_tool_phony_str [callable::Fn extdeps.make_render.make_collect_tool_phony_str]
+    inputs:
+      * tools: List<DiscoveredTool> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_render_naming_convention [callable::Fn extdeps.make_render.make_render_naming_convention]
+    inputs:
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_render_body [callable::Fn extdeps.make_render.make_render_body]
+    inputs:
+      * workflows: List<CoreWorkflow> (1)
+      * metas: List<MetaTargetDef> (1)
+      * tools: List<DiscoveredTool> (1)
+      * res_targets: List<ResourceTargetEntry> (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_render_generator_header [callable::Fn extdeps.make_render.make_render_generator_header]
+    inputs:
+      * generator: String (1)
+      * regen_command: String (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - extdeps.make_render::make_render_makefile [callable::Fn extdeps.make_render.make_render_makefile]
+    inputs:
+      * workflows: List<CoreWorkflow> (1)
+      * metas: List<MetaTargetDef> (1)
+      * tools: List<DiscoveredTool> (1)
+      * res_targets: List<ResourceTargetEntry> (1)
+      * generator: String (1)
+      * regen_command: String (1)
+      * __out:return: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
   - std.filesystem::is_text_readable [callable::Fn std.filesystem.is_text_readable]
     inputs:
       * entry: FileEntry (1)
@@ -573,63 +590,6 @@ Nodes:
     outputs:
       * branch_taken: String (1)
       * result: Any (1)
-  - param_source_tools_makegen_resolve_meta_deps_res_targets [primitive::CallParamSource { callable: "resolve_meta_deps", param: "res_targets" } tools.makegen.call_param_source::resolve_meta_deps::res_targets]
-    inputs:
-      * res_targets: List<ResourceTargetEntry> (1)
-    outputs:
-      * res_targets: List<ResourceTargetEntry> (1)
-  - literal_source_tools_makegen_resolve_meta_fix_deps_mode_fn_1 [primitive::CallLiteralSource { literal: String("ensure") } tools.makegen.call_literal_source::strhex:656e73757265]
-    outputs:
-      * mode: Any (1)
-  - param_source_tools_makegen_render_meta_base_res_targets [primitive::CallParamSource { callable: "render_meta_base", param: "res_targets" } tools.makegen.call_param_source::render_meta_base::res_targets]
-    inputs:
-      * res_targets: List<ResourceTargetEntry> (1)
-    outputs:
-      * res_targets: List<ResourceTargetEntry> (1)
-  - literal_source_tools_makegen_render_meta_base_comment_fn_3 [primitive::CallLiteralSource { literal: String("{meta.name}: {meta.description}") } tools.makegen.call_literal_source::strhex:7b6d6574612e6e616d657d3a207b6d6574612e6465736372697074696f6e7d]
-    outputs:
-      * comment: Any (1)
-  - param_source_tools_makegen_render_meta_fix_variant_res_targets [primitive::CallParamSource { callable: "render_meta_fix_variant", param: "res_targets" } tools.makegen.call_param_source::render_meta_fix_variant::res_targets]
-    inputs:
-      * res_targets: List<ResourceTargetEntry> (1)
-    outputs:
-      * res_targets: List<ResourceTargetEntry> (1)
-  - literal_source_tools_makegen_render_meta_fix_variant_name_fn_0 [primitive::CallLiteralSource { literal: String("{meta.name}-fix") } tools.makegen.call_literal_source::strhex:7b6d6574612e6e616d657d2d666978]
-    outputs:
-      * name: Any (1)
-  - param_source_tools_makegen_render_meta_target_meta [primitive::CallParamSource { callable: "render_meta_target", param: "meta" } tools.makegen.call_param_source::render_meta_target::meta]
-    inputs:
-      * meta: MetaTargetDef (1)
-    outputs:
-      * meta: MetaTargetDef (1)
-  - param_source_tools_makegen_render_meta_target_res_targets [primitive::CallParamSource { callable: "render_meta_target", param: "res_targets" } tools.makegen.call_param_source::render_meta_target::res_targets]
-    inputs:
-      * res_targets: List<ResourceTargetEntry> (1)
-    outputs:
-      * res_targets: List<ResourceTargetEntry> (1)
-  - literal_source_tools_makegen_render_meta_targets_title_fn_0 [primitive::CallLiteralSource { literal: String("Meta Targets - Development workflow commands") } tools.makegen.call_literal_source::strhex:4d6574612054617267657473202d20446576656c6f706d656e7420776f726b666c6f7720636f6d6d616e6473]
-    outputs:
-      * title: Any (1)
-  - param_source_tools_makegen_render_meta_targets_res_targets [primitive::CallParamSource { callable: "render_meta_targets", param: "res_targets" } tools.makegen.call_param_source::render_meta_targets::res_targets]
-    inputs:
-      * res_targets: List<ResourceTargetEntry> (1)
-    outputs:
-      * res_targets: List<ResourceTargetEntry> (1)
-  - param_source_tools_makegen_render_help_target_workflows [primitive::CallParamSource { callable: "render_help_target", param: "workflows" } tools.makegen.call_param_source::render_help_target::workflows]
-    inputs:
-      * workflows: List<CoreWorkflow> (1)
-    outputs:
-      * workflows: List<CoreWorkflow> (1)
-  - param_source_tools_makegen_render_help_target_metas [primitive::CallParamSource { callable: "render_help_target", param: "metas" } tools.makegen.call_param_source::render_help_target::metas]
-    inputs:
-      * metas: List<MetaTargetDef> (1)
-    outputs:
-      * metas: List<MetaTargetDef> (1)
-  - param_source_tools_makegen_render_help_target_tools [primitive::CallParamSource { callable: "render_help_target", param: "tools" } tools.makegen.call_param_source::render_help_target::tools]
-    inputs:
-      * tools: List<DiscoveredTool> (1)
-    outputs:
-      * tools: List<DiscoveredTool> (1)
   - param_source_tools_makegen_render_makefile_body_workflows [primitive::CallParamSource { callable: "render_makefile_body", param: "workflows" } tools.makegen.call_param_source::render_makefile_body::workflows]
     inputs:
       * workflows: List<CoreWorkflow> (1)
@@ -670,6 +630,12 @@ Nodes:
       * res_targets: List<ResourceTargetEntry> (1)
     outputs:
       * res_targets: List<ResourceTargetEntry> (1)
+  - literal_source_tools_makegen_render_makefile_content_generator_fn_4 [primitive::CallLiteralSource { literal: String("gunbc-makegen") } tools.makegen.call_literal_source::strhex:67756e62632d6d616b6567656e]
+    outputs:
+      * generator: Any (1)
+  - literal_source_tools_makegen_render_makefile_content_regen_command_fn_5 [primitive::CallLiteralSource { literal: String("cargo run -p gunbc-app --bin gunbc-makegen") } tools.makegen.call_literal_source::strhex:636172676f2072756e202d702067756e62632d617070202d2d62696e2067756e62632d6d616b6567656e]
+    outputs:
+      * regen_command: Any (1)
   - literal_source_tools_makegen_makegen_workflows_data_0 [primitive::CallLiteralSource { literal: Json(Array [Object {"body": Array [String("@cargo fix --workspace --all-targets --allow-dirty --allow-staged")], "comment": Null, "deps": Array [], "description": String("Preflight: auto-fix rustc warnings before running generators"), "name": String("preflight-fix")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-codegen -- codegen")], "comment": Null, "deps": Array [], "description": String("Ensure CLI entrypoints exist (bootstrap-safe)"), "name": String("ensure-codegen")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo build --workspace --release --bins")], "comment": Null, "deps": Array [String("ensure-codegen")], "description": String("Build workspace binaries once for direct tool execution"), "name": String("build-release-bins")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-pragma"), String("@cargo clippy --all-targets -- -D warnings || (cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings && cargo clippy --all-targets -- -D warnings)")], "comment": Null, "deps": Array [String("ensure-codegen"), String("preflight-fix")], "description": String("Lint upsert: fix if needed, then verify"), "name": String("lint-upsert")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-codegen-dag")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Generate CLI entrypoints (DAG upsert)"), "name": String("codegen")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo build --all-targets")], "comment": String("Full build transaction: codegen \\u{2192} testgen \\u{2192} cargo build"), "deps": Array [String("codegen"), String("testgen")], "description": String("Full build transaction"), "name": String("build")}, Object {"body": Array [String("@cargo clean")], "comment": Null, "deps": Array [], "description": String("Clean build artifacts"), "name": String("clean")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-testgen")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Regenerate tests from DAG structures and MockSpecs"), "name": String("testgen")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-testgen")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Check if generated tests are stale"), "name": String("testgen-check")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-deps -q --release")], "comment": Null, "deps": Array [String("build-release-bins")], "description": String("Ensure deps.toml matches canonical generated configuration"), "name": String("deps-config")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-deps -q --release -- --dry-run")], "comment": Null, "deps": Array [String("build-release-bins")], "description": String("Check if deps.toml is stale"), "name": String("deps-config-check")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-makegen")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Check if generated Makefile is stale"), "name": String("makegen-check")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-bootstrap")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Check if generated bootstrap artifacts are stale"), "name": String("bootstrap-check")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-pragma")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Check if pragma artifacts are stale"), "name": String("pragma-check")}, Object {"body": Array [String("@$(MAKE) deps-config-check"), String("@$(MAKE) makegen-check"), String("@$(MAKE) bootstrap-check"), String("@$(MAKE) testgen-check"), String("@$(MAKE) pragma-check")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Verify generated artifacts match their generators"), "name": String("verify")}, Object {"body": Array [String("@$(MAKE) deps-config"), String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-makegen"), String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-bootstrap"), String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-testgen"), String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-pragma")], "comment": Null, "deps": Array [String("lint-upsert")], "description": String("Ensure generated artifacts are up to date"), "name": String("verify-fix")}, Object {"body": Array [String("@cargo fmt")], "comment": Null, "deps": Array [], "description": String("fmt-fix: apply formatting (alias for fmt)"), "name": String("fmt-fix")}, Object {"body": Array [String("@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings")], "comment": Null, "deps": Array [String("pragma")], "description": String("lint-fix: auto-fix lint issues where possible"), "name": String("lint-fix")}, Object {"body": Array [String("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-ci -q --release")], "comment": Null, "deps": Array [String("ensure-codegen")], "description": String("Run CI via build DAG (typed units, deterministic keying)"), "name": String("ci")}, Object {"body": Array [String("@$(MAKE) test-xl")], "comment": Null, "deps": Array [String("ensure-codegen")], "description": String("Alias for test-xl (full Fermi budget)"), "name": String("test-all")}]) } tools.makegen.call_literal_source::jsonhex:5b7b22626f6479223a5b2240636172676f20666978202d2d776f726b7370616365202d2d616c6c2d74617267657473202d2d616c6c6f772d6469727479202d2d616c6c6f772d737461676564225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b5d2c226465736372697074696f6e223a22507265666c696768743a206175746f2d666978207275737463207761726e696e6773206265666f72652072756e6e696e672067656e657261746f7273222c226e616d65223a22707265666c696768742d666978227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d617070202d2d62696e2067756e62632d636f646567656e202d2d20636f646567656e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b5d2c226465736372697074696f6e223a22456e7375726520434c4920656e747279706f696e74732065786973742028626f6f7473747261702d7361666529222c226e616d65223a22656e737572652d636f646567656e227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f206275696c64202d2d776f726b7370616365202d2d72656c65617365202d2d62696e73225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b22656e737572652d636f646567656e225d2c226465736372697074696f6e223a224275696c6420776f726b73706163652062696e6172696573206f6e636520666f722064697265637420746f6f6c20657865637574696f6e222c226e616d65223a226275696c642d72656c656173652d62696e73227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d617070202d2d62696e2067756e62632d707261676d61222c2240636172676f20636c69707079202d2d616c6c2d74617267657473202d2d202d44207761726e696e6773207c7c2028636172676f20636c69707079202d2d666978202d2d776f726b7370616365202d2d616c6c6f772d6469727479202d2d616c6c6f772d737461676564202d2d202d44207761726e696e677320262620636172676f20636c69707079202d2d616c6c2d74617267657473202d2d202d44207761726e696e677329225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b22656e737572652d636f646567656e222c22707265666c696768742d666978225d2c226465736372697074696f6e223a224c696e74207570736572743a20666978206966206e65656465642c207468656e20766572696679222c226e616d65223a226c696e742d757073657274227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d617070202d2d62696e2067756e62632d636f646567656e2d646167225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a2247656e657261746520434c4920656e747279706f696e747320284441472075707365727429222c226e616d65223a22636f646567656e227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f206275696c64202d2d616c6c2d74617267657473225d2c22636f6d6d656e74223a2246756c6c206275696c64207472616e73616374696f6e3a20636f646567656e205c5c757b323139327d207465737467656e205c5c757b323139327d20636172676f206275696c64222c2264657073223a5b22636f646567656e222c227465737467656e225d2c226465736372697074696f6e223a2246756c6c206275696c64207472616e73616374696f6e222c226e616d65223a226275696c64227d2c7b22626f6479223a5b2240636172676f20636c65616e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b5d2c226465736372697074696f6e223a22436c65616e206275696c6420617274696661637473222c226e616d65223a22636c65616e227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d617070202d2d62696e2067756e62632d7465737467656e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22526567656e65726174652074657374732066726f6d20444147207374727563747572657320616e64204d6f636b5370656373222c226e616d65223a227465737467656e227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d617070202d2d62696e2067756e62632d7465737467656e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22436865636b2069662067656e65726174656420746573747320617265207374616c65222c226e616d65223a227465737467656e2d636865636b227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d617070202d2d62696e2067756e62632d64657073202d71202d2d72656c65617365225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226275696c642d72656c656173652d62696e73225d2c226465736372697074696f6e223a22456e7375726520646570732e746f6d6c206d6174636865732063616e6f6e6963616c2067656e65726174656420636f6e66696775726174696f6e222c226e616d65223a22646570732d636f6e666967227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d617070202d2d62696e2067756e62632d64657073202d71202d2d72656c65617365202d2d202d2d6472792d72756e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226275696c642d72656c656173652d62696e73225d2c226465736372697074696f6e223a22436865636b20696620646570732e746f6d6c206973207374616c65222c226e616d65223a22646570732d636f6e6669672d636865636b227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d617070202d2d62696e2067756e62632d6d616b6567656e225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22436865636b2069662067656e657261746564204d616b6566696c65206973207374616c65222c226e616d65223a226d616b6567656e2d636865636b227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d617070202d2d62696e2067756e62632d626f6f747374726170225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22436865636b2069662067656e65726174656420626f6f7473747261702061727469666163747320617265207374616c65222c226e616d65223a22626f6f7473747261702d636865636b227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d617070202d2d62696e2067756e62632d707261676d61225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22436865636b20696620707261676d612061727469666163747320617265207374616c65222c226e616d65223a22707261676d612d636865636b227d2c7b22626f6479223a5b224024284d414b452920646570732d636f6e6669672d636865636b222c224024284d414b4529206d616b6567656e2d636865636b222c224024284d414b452920626f6f7473747261702d636865636b222c224024284d414b4529207465737467656e2d636865636b222c224024284d414b452920707261676d612d636865636b225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a225665726966792067656e65726174656420617274696661637473206d617463682074686569722067656e657261746f7273222c226e616d65223a22766572696679227d2c7b22626f6479223a5b224024284d414b452920646570732d636f6e666967222c224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d617070202d2d62696e2067756e62632d6d616b6567656e222c224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d617070202d2d62696e2067756e62632d626f6f747374726170222c224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d617070202d2d62696e2067756e62632d7465737467656e222c224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d617070202d2d62696e2067756e62632d707261676d61225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b226c696e742d757073657274225d2c226465736372697074696f6e223a22456e737572652067656e657261746564206172746966616374732061726520757020746f2064617465222c226e616d65223a227665726966792d666978227d2c7b22626f6479223a5b2240636172676f20666d74225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b5d2c226465736372697074696f6e223a22666d742d6669783a206170706c7920666f726d617474696e672028616c69617320666f7220666d7429222c226e616d65223a22666d742d666978227d2c7b22626f6479223a5b2240636172676f20636c69707079202d2d666978202d2d776f726b7370616365202d2d616c6c6f772d6469727479202d2d616c6c6f772d737461676564202d2d202d44207761726e696e6773225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b22707261676d61225d2c226465736372697074696f6e223a226c696e742d6669783a206175746f2d666978206c696e742069737375657320776865726520706f737369626c65222c226e616d65223a226c696e742d666978227d2c7b22626f6479223a5b224052555354464c4147533d5c222d44207761726e696e67735c2220636172676f2072756e202d702067756e62632d617070202d2d62696e2067756e62632d6369202d71202d2d72656c65617365225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b22656e737572652d636f646567656e225d2c226465736372697074696f6e223a2252756e20434920766961206275696c64204441472028747970656420756e6974732c2064657465726d696e6973746963206b6579696e6729222c226e616d65223a226369227d2c7b22626f6479223a5b224024284d414b452920746573742d786c225d2c22636f6d6d656e74223a6e756c6c2c2264657073223a5b22656e737572652d636f646567656e225d2c226465736372697074696f6e223a22416c69617320666f7220746573742d786c202866756c6c204665726d692062756467657429222c226e616d65223a22746573742d616c6c227d5d]
     outputs:
       * workflows: Any (1)
@@ -770,6 +736,93 @@ Nodes:
       * audience: String (1)
     outputs:
       * audience: String (1)
+  - param_source_extdeps_make_render_make_resolve_meta_deps_res_targets [primitive::CallParamSource { callable: "make_resolve_meta_deps", param: "res_targets" } extdeps.make_render.call_param_source::make_resolve_meta_deps::res_targets]
+    inputs:
+      * res_targets: List<ResourceTargetEntry> (1)
+    outputs:
+      * res_targets: List<ResourceTargetEntry> (1)
+  - literal_source_extdeps_make_render_make_resolve_meta_fix_deps_mode_fn_1 [primitive::CallLiteralSource { literal: String("ensure") } extdeps.make_render.call_literal_source::strhex:656e73757265]
+    outputs:
+      * mode: Any (1)
+  - param_source_extdeps_make_render_make_render_meta_base_res_targets [primitive::CallParamSource { callable: "make_render_meta_base", param: "res_targets" } extdeps.make_render.call_param_source::make_render_meta_base::res_targets]
+    inputs:
+      * res_targets: List<ResourceTargetEntry> (1)
+    outputs:
+      * res_targets: List<ResourceTargetEntry> (1)
+  - literal_source_extdeps_make_render_make_render_meta_base_comment_fn_3 [primitive::CallLiteralSource { literal: String("{meta.name}: {meta.description}") } extdeps.make_render.call_literal_source::strhex:7b6d6574612e6e616d657d3a207b6d6574612e6465736372697074696f6e7d]
+    outputs:
+      * comment: Any (1)
+  - param_source_extdeps_make_render_make_render_meta_fix_variant_res_targets [primitive::CallParamSource { callable: "make_render_meta_fix_variant", param: "res_targets" } extdeps.make_render.call_param_source::make_render_meta_fix_variant::res_targets]
+    inputs:
+      * res_targets: List<ResourceTargetEntry> (1)
+    outputs:
+      * res_targets: List<ResourceTargetEntry> (1)
+  - literal_source_extdeps_make_render_make_render_meta_fix_variant_name_fn_0 [primitive::CallLiteralSource { literal: String("{meta.name}-fix") } extdeps.make_render.call_literal_source::strhex:7b6d6574612e6e616d657d2d666978]
+    outputs:
+      * name: Any (1)
+  - param_source_extdeps_make_render_make_render_meta_target_meta [primitive::CallParamSource { callable: "make_render_meta_target", param: "meta" } extdeps.make_render.call_param_source::make_render_meta_target::meta]
+    inputs:
+      * meta: MetaTargetDef (1)
+    outputs:
+      * meta: MetaTargetDef (1)
+  - param_source_extdeps_make_render_make_render_meta_target_res_targets [primitive::CallParamSource { callable: "make_render_meta_target", param: "res_targets" } extdeps.make_render.call_param_source::make_render_meta_target::res_targets]
+    inputs:
+      * res_targets: List<ResourceTargetEntry> (1)
+    outputs:
+      * res_targets: List<ResourceTargetEntry> (1)
+  - literal_source_extdeps_make_render_make_render_meta_targets_title_fn_0 [primitive::CallLiteralSource { literal: String("Meta Targets - Development workflow commands") } extdeps.make_render.call_literal_source::strhex:4d6574612054617267657473202d20446576656c6f706d656e7420776f726b666c6f7720636f6d6d616e6473]
+    outputs:
+      * title: Any (1)
+  - param_source_extdeps_make_render_make_render_meta_targets_res_targets [primitive::CallParamSource { callable: "make_render_meta_targets", param: "res_targets" } extdeps.make_render.call_param_source::make_render_meta_targets::res_targets]
+    inputs:
+      * res_targets: List<ResourceTargetEntry> (1)
+    outputs:
+      * res_targets: List<ResourceTargetEntry> (1)
+  - param_source_extdeps_make_render_make_render_help_target_workflows [primitive::CallParamSource { callable: "make_render_help_target", param: "workflows" } extdeps.make_render.call_param_source::make_render_help_target::workflows]
+    inputs:
+      * workflows: List<CoreWorkflow> (1)
+    outputs:
+      * workflows: List<CoreWorkflow> (1)
+  - param_source_extdeps_make_render_make_render_help_target_metas [primitive::CallParamSource { callable: "make_render_help_target", param: "metas" } extdeps.make_render.call_param_source::make_render_help_target::metas]
+    inputs:
+      * metas: List<MetaTargetDef> (1)
+    outputs:
+      * metas: List<MetaTargetDef> (1)
+  - param_source_extdeps_make_render_make_render_help_target_tools [primitive::CallParamSource { callable: "make_render_help_target", param: "tools" } extdeps.make_render.call_param_source::make_render_help_target::tools]
+    inputs:
+      * tools: List<DiscoveredTool> (1)
+    outputs:
+      * tools: List<DiscoveredTool> (1)
+  - param_source_extdeps_make_render_make_render_body_workflows [primitive::CallParamSource { callable: "make_render_body", param: "workflows" } extdeps.make_render.call_param_source::make_render_body::workflows]
+    inputs:
+      * workflows: List<CoreWorkflow> (1)
+    outputs:
+      * workflows: List<CoreWorkflow> (1)
+  - param_source_extdeps_make_render_make_render_body_metas [primitive::CallParamSource { callable: "make_render_body", param: "metas" } extdeps.make_render.call_param_source::make_render_body::metas]
+    inputs:
+      * metas: List<MetaTargetDef> (1)
+    outputs:
+      * metas: List<MetaTargetDef> (1)
+  - param_source_extdeps_make_render_make_render_body_tools [primitive::CallParamSource { callable: "make_render_body", param: "tools" } extdeps.make_render.call_param_source::make_render_body::tools]
+    inputs:
+      * tools: List<DiscoveredTool> (1)
+    outputs:
+      * tools: List<DiscoveredTool> (1)
+  - param_source_extdeps_make_render_make_render_body_res_targets [primitive::CallParamSource { callable: "make_render_body", param: "res_targets" } extdeps.make_render.call_param_source::make_render_body::res_targets]
+    inputs:
+      * res_targets: List<ResourceTargetEntry> (1)
+    outputs:
+      * res_targets: List<ResourceTargetEntry> (1)
+  - param_source_extdeps_make_render_make_render_makefile_generator [primitive::CallParamSource { callable: "make_render_makefile", param: "generator" } extdeps.make_render.call_param_source::make_render_makefile::generator]
+    inputs:
+      * generator: String (1)
+    outputs:
+      * generator: String (1)
+  - param_source_extdeps_make_render_make_render_makefile_regen_command [primitive::CallParamSource { callable: "make_render_makefile", param: "regen_command" } extdeps.make_render.call_param_source::make_render_makefile::regen_command]
+    inputs:
+      * regen_command: String (1)
+    outputs:
+      * regen_command: String (1)
   - acquire_resource_std_resources_Filesystem [callable::Pattern std.resources.resource_lifecycle::acquire::Filesystem]
     outputs:
       * resource_handle: ResourceHandle (1)
@@ -818,43 +871,8 @@ Edges:
   - execute_transport_extdeps_cloud_gcp_sts_gcp_Metadata_GetIdentityToken.response -> parse_transport_extdeps_cloud_gcp_sts_gcp_Metadata_GetIdentityToken.response
   - prepare_transport_extdeps_shell_shell_Env_Get.request -> execute_transport_extdeps_shell_shell_Env_Get.request
   - execute_transport_extdeps_shell_shell_Env_Get.response -> parse_transport_extdeps_shell_shell_Env_Get.response
-  - tools.makegen::resolve_resource_target.return -> tools.makegen::resolve_meta_deps.__deps
-  - tools.makegen::resolve_resource_target.return -> tools.makegen::resolve_meta_fix_deps.__deps
-  - tools.makegen::render_target.return -> tools.makegen::render_core_targets.__deps
-  - tools.makegen::apply_prefix.return -> tools.makegen::render_meta_base.__deps
-  - tools.makegen::render_target.return -> tools.makegen::render_meta_base.__deps
-  - tools.makegen::resolve_meta_deps.return -> tools.makegen::render_meta_base.__deps
-  - tools.makegen::apply_prefix.return -> tools.makegen::render_meta_fix_variant.__deps
-  - tools.makegen::render_target.return -> tools.makegen::render_meta_fix_variant.__deps
-  - tools.makegen::resolve_meta_fix_deps.return -> tools.makegen::render_meta_fix_variant.__deps
-  - tools.makegen::render_target.return -> tools.makegen::render_meta_check_variant.__deps
-  - tools.makegen::resolve_meta_deps.return -> tools.makegen::render_meta_check_variant.__deps
-  - tools.makegen::render_meta_base.return -> tools.makegen::render_meta_target.__deps
-  - tools.makegen::render_meta_check_variant.return -> tools.makegen::render_meta_target.__deps
-  - tools.makegen::render_meta_fix_variant.return -> tools.makegen::render_meta_target.__deps
-  - tools.makegen::render_meta_target.return -> tools.makegen::render_meta_targets.__deps
-  - tools.makegen::render_section_header.return -> tools.makegen::render_meta_targets.__deps
-  - tools.makegen::render_help_param.return -> tools.makegen::render_help_params.__deps
-  - tools.makegen::render_target.return -> tools.makegen::render_tool_target.__deps
-  - tools.makegen::render_tool_target.return -> tools.makegen::render_tool_targets.__deps
-  - tools.makegen::fix_description.return -> tools.makegen::render_help_meta_line.__deps
-  - tools.makegen::render_help_meta_line.return -> tools.makegen::render_help_meta_lines.__deps
-  - tools.makegen::render_help_params.return -> tools.makegen::render_help_tool_line.__deps
-  - tools.makegen::render_help_tool_line.return -> tools.makegen::render_help_tool_lines.__deps
-  - tools.makegen::render_help_core_lines.return -> tools.makegen::render_help_target.__deps
-  - tools.makegen::render_help_meta_lines.return -> tools.makegen::render_help_target.__deps
-  - tools.makegen::render_help_tool_lines.return -> tools.makegen::render_help_target.__deps
-  - tools.makegen::tool_phony_names.return -> tools.makegen::collect_tool_phony_str.__deps
-  - tools.makegen::collect_core_phony_str.return -> tools.makegen::render_makefile_body.__deps
-  - tools.makegen::collect_meta_phony_str.return -> tools.makegen::render_makefile_body.__deps
-  - tools.makegen::collect_tool_phony_str.return -> tools.makegen::render_makefile_body.__deps
-  - tools.makegen::render_core_targets.return -> tools.makegen::render_makefile_body.__deps
-  - tools.makegen::render_help_target.return -> tools.makegen::render_makefile_body.__deps
-  - tools.makegen::render_meta_targets.return -> tools.makegen::render_makefile_body.__deps
-  - tools.makegen::render_naming_convention.return -> tools.makegen::render_makefile_body.__deps
-  - tools.makegen::render_tool_targets.return -> tools.makegen::render_makefile_body.__deps
-  - tools.makegen::render_header.return -> tools.makegen::render_makefile_content.__deps
-  - tools.makegen::render_makefile_body.return -> tools.makegen::render_makefile_content.__deps
+  - extdeps.make_render::make_render_body.return -> tools.makegen::render_makefile_body.__deps
+  - extdeps.make_render::make_render_makefile.return -> tools.makegen::render_makefile_content.__deps
   - std.patterns::content_upsert.written -> tools.makegen::makegen.__deps
   - tools.makegen::discover_tools.return -> tools.makegen::makegen.__deps
   - tools.makegen::render_makefile_content.return -> tools.makegen::makegen.__deps
@@ -881,39 +899,54 @@ Edges:
   - std.patterns::file_content_matches.matches -> std.patterns::content_upsert.__deps
   - std.patterns::acquire_subject_token.token -> std.patterns::credential_chain.__deps
   - std.patterns::optional_impersonation.token -> std.patterns::credential_chain.__deps
+  - extdeps.make_render::make_resolve_resource_target.return -> extdeps.make_render::make_resolve_meta_deps.__deps
+  - extdeps.make_render::make_resolve_resource_target.return -> extdeps.make_render::make_resolve_meta_fix_deps.__deps
+  - extdeps.make_render::make_render_target.return -> extdeps.make_render::make_render_core_targets.__deps
+  - extdeps.make_render::make_apply_prefix.return -> extdeps.make_render::make_render_meta_base.__deps
+  - extdeps.make_render::make_render_target.return -> extdeps.make_render::make_render_meta_base.__deps
+  - extdeps.make_render::make_resolve_meta_deps.return -> extdeps.make_render::make_render_meta_base.__deps
+  - extdeps.make_render::make_apply_prefix.return -> extdeps.make_render::make_render_meta_fix_variant.__deps
+  - extdeps.make_render::make_render_target.return -> extdeps.make_render::make_render_meta_fix_variant.__deps
+  - extdeps.make_render::make_resolve_meta_fix_deps.return -> extdeps.make_render::make_render_meta_fix_variant.__deps
+  - extdeps.make_render::make_render_target.return -> extdeps.make_render::make_render_meta_check_variant.__deps
+  - extdeps.make_render::make_resolve_meta_deps.return -> extdeps.make_render::make_render_meta_check_variant.__deps
+  - extdeps.make_render::make_render_meta_base.return -> extdeps.make_render::make_render_meta_target.__deps
+  - extdeps.make_render::make_render_meta_check_variant.return -> extdeps.make_render::make_render_meta_target.__deps
+  - extdeps.make_render::make_render_meta_fix_variant.return -> extdeps.make_render::make_render_meta_target.__deps
+  - extdeps.make_render::make_render_meta_target.return -> extdeps.make_render::make_render_meta_targets.__deps
+  - extdeps.make_render::make_render_section_header.return -> extdeps.make_render::make_render_meta_targets.__deps
+  - extdeps.make_render::make_render_help_param.return -> extdeps.make_render::make_render_help_params.__deps
+  - extdeps.make_render::make_render_target.return -> extdeps.make_render::make_render_tool_target.__deps
+  - extdeps.make_render::make_render_tool_target.return -> extdeps.make_render::make_render_tool_targets.__deps
+  - extdeps.make_render::make_fix_description.return -> extdeps.make_render::make_render_help_meta_line.__deps
+  - extdeps.make_render::make_render_help_meta_line.return -> extdeps.make_render::make_render_help_meta_lines.__deps
+  - extdeps.make_render::make_render_help_params.return -> extdeps.make_render::make_render_help_tool_line.__deps
+  - extdeps.make_render::make_render_help_tool_line.return -> extdeps.make_render::make_render_help_tool_lines.__deps
+  - extdeps.make_render::make_render_help_core_lines.return -> extdeps.make_render::make_render_help_target.__deps
+  - extdeps.make_render::make_render_help_meta_lines.return -> extdeps.make_render::make_render_help_target.__deps
+  - extdeps.make_render::make_render_help_tool_lines.return -> extdeps.make_render::make_render_help_target.__deps
+  - extdeps.make_render::make_tool_phony_names.return -> extdeps.make_render::make_collect_tool_phony_str.__deps
+  - extdeps.make_render::make_collect_core_phony_str.return -> extdeps.make_render::make_render_body.__deps
+  - extdeps.make_render::make_collect_meta_phony_str.return -> extdeps.make_render::make_render_body.__deps
+  - extdeps.make_render::make_collect_tool_phony_str.return -> extdeps.make_render::make_render_body.__deps
+  - extdeps.make_render::make_render_core_targets.return -> extdeps.make_render::make_render_body.__deps
+  - extdeps.make_render::make_render_help_target.return -> extdeps.make_render::make_render_body.__deps
+  - extdeps.make_render::make_render_meta_targets.return -> extdeps.make_render::make_render_body.__deps
+  - extdeps.make_render::make_render_naming_convention.return -> extdeps.make_render::make_render_body.__deps
+  - extdeps.make_render::make_render_tool_targets.return -> extdeps.make_render::make_render_body.__deps
+  - extdeps.make_render::make_render_body.return -> extdeps.make_render::make_render_makefile.__deps
+  - extdeps.make_render::make_render_generator_header.return -> extdeps.make_render::make_render_makefile.__deps
   - std.filesystem::is_text_readable.return -> std.filesystem::partition_entries.__deps
-  - param_source_tools_makegen_resolve_meta_deps_res_targets.res_targets -> tools.makegen::resolve_resource_target.res_targets
-  - literal_source_tools_makegen_resolve_meta_fix_deps_mode_fn_1.mode -> tools.makegen::resolve_resource_target.mode
-  - param_source_tools_makegen_render_meta_base_res_targets.res_targets -> tools.makegen::resolve_meta_deps.res_targets
-  - tools.makegen::resolve_meta_deps.return -> tools.makegen::render_target.deps
-  - literal_source_tools_makegen_render_meta_base_comment_fn_3.comment -> tools.makegen::render_target.comment
-  - param_source_tools_makegen_render_meta_fix_variant_res_targets.res_targets -> tools.makegen::resolve_meta_fix_deps.res_targets
-  - literal_source_tools_makegen_render_meta_fix_variant_name_fn_0.name -> tools.makegen::render_target.name
-  - param_source_tools_makegen_render_meta_target_meta.meta -> tools.makegen::render_meta_base.meta
-  - param_source_tools_makegen_render_meta_target_res_targets.res_targets -> tools.makegen::render_meta_base.res_targets
-  - param_source_tools_makegen_render_meta_target_meta.meta -> tools.makegen::render_meta_fix_variant.meta
-  - param_source_tools_makegen_render_meta_target_res_targets.res_targets -> tools.makegen::render_meta_fix_variant.res_targets
-  - param_source_tools_makegen_render_meta_target_meta.meta -> tools.makegen::render_meta_check_variant.meta
-  - param_source_tools_makegen_render_meta_target_res_targets.res_targets -> tools.makegen::render_meta_check_variant.res_targets
-  - literal_source_tools_makegen_render_meta_targets_title_fn_0.title -> tools.makegen::render_section_header.title
-  - param_source_tools_makegen_render_meta_targets_res_targets.res_targets -> tools.makegen::render_meta_target.res_targets
-  - param_source_tools_makegen_render_help_target_workflows.workflows -> tools.makegen::render_help_core_lines.workflows
-  - param_source_tools_makegen_render_help_target_metas.metas -> tools.makegen::render_help_meta_lines.metas
-  - param_source_tools_makegen_render_help_target_tools.tools -> tools.makegen::render_help_tool_lines.tools
-  - param_source_tools_makegen_render_makefile_body_workflows.workflows -> tools.makegen::collect_core_phony_str.workflows
-  - param_source_tools_makegen_render_makefile_body_metas.metas -> tools.makegen::collect_meta_phony_str.metas
-  - param_source_tools_makegen_render_makefile_body_tools.tools -> tools.makegen::collect_tool_phony_str.tools
-  - param_source_tools_makegen_render_makefile_body_workflows.workflows -> tools.makegen::render_core_targets.workflows
-  - param_source_tools_makegen_render_makefile_body_workflows.workflows -> tools.makegen::render_help_target.workflows
-  - param_source_tools_makegen_render_makefile_body_metas.metas -> tools.makegen::render_help_target.metas
-  - param_source_tools_makegen_render_makefile_body_tools.tools -> tools.makegen::render_help_target.tools
-  - param_source_tools_makegen_render_makefile_body_metas.metas -> tools.makegen::render_meta_targets.metas
-  - param_source_tools_makegen_render_makefile_body_res_targets.res_targets -> tools.makegen::render_meta_targets.res_targets
-  - param_source_tools_makegen_render_makefile_body_tools.tools -> tools.makegen::render_tool_targets.tools
-  - param_source_tools_makegen_render_makefile_content_workflows.workflows -> tools.makegen::render_makefile_body.workflows
-  - param_source_tools_makegen_render_makefile_content_metas.metas -> tools.makegen::render_makefile_body.metas
-  - param_source_tools_makegen_render_makefile_content_tools.tools -> tools.makegen::render_makefile_body.tools
-  - param_source_tools_makegen_render_makefile_content_res_targets.res_targets -> tools.makegen::render_makefile_body.res_targets
+  - param_source_tools_makegen_render_makefile_body_workflows.workflows -> extdeps.make_render::make_render_body.workflows
+  - param_source_tools_makegen_render_makefile_body_metas.metas -> extdeps.make_render::make_render_body.metas
+  - param_source_tools_makegen_render_makefile_body_tools.tools -> extdeps.make_render::make_render_body.tools
+  - param_source_tools_makegen_render_makefile_body_res_targets.res_targets -> extdeps.make_render::make_render_body.res_targets
+  - param_source_tools_makegen_render_makefile_content_workflows.workflows -> extdeps.make_render::make_render_makefile.workflows
+  - param_source_tools_makegen_render_makefile_content_metas.metas -> extdeps.make_render::make_render_makefile.metas
+  - param_source_tools_makegen_render_makefile_content_tools.tools -> extdeps.make_render::make_render_makefile.tools
+  - param_source_tools_makegen_render_makefile_content_res_targets.res_targets -> extdeps.make_render::make_render_makefile.res_targets
+  - literal_source_tools_makegen_render_makefile_content_generator_fn_4.generator -> extdeps.make_render::make_render_makefile.generator
+  - literal_source_tools_makegen_render_makefile_content_regen_command_fn_5.regen_command -> extdeps.make_render::make_render_makefile.regen_command
   - literal_source_tools_makegen_makegen_workflows_data_0.workflows -> tools.makegen::render_makefile_content.workflows
   - literal_source_tools_makegen_makegen_metas_data_1.metas -> tools.makegen::render_makefile_content.metas
   - tools.makegen::discover_tools.return -> tools.makegen::render_makefile_content.tools
@@ -957,6 +990,36 @@ Edges:
   - parse_transport_extdeps_cloud_gcp_sts_gcp_Metadata_GetIdentityToken.subject_token -> std.patterns::metadata_oidc.__deps
   - param_source_std_patterns_metadata_oidc_audience.audience -> prepare_transport_extdeps_cloud_gcp_sts_gcp_Metadata_GetIdentityToken.audience
   - parse_transport_extdeps_cloud_gcp_sts_gcp_Metadata_GetIdentityToken.subject_token -> std.patterns::metadata_oidc.__out:token
+  - param_source_extdeps_make_render_make_resolve_meta_deps_res_targets.res_targets -> extdeps.make_render::make_resolve_resource_target.res_targets
+  - literal_source_extdeps_make_render_make_resolve_meta_fix_deps_mode_fn_1.mode -> extdeps.make_render::make_resolve_resource_target.mode
+  - param_source_extdeps_make_render_make_render_meta_base_res_targets.res_targets -> extdeps.make_render::make_resolve_meta_deps.res_targets
+  - extdeps.make_render::make_resolve_meta_deps.return -> extdeps.make_render::make_render_target.deps
+  - literal_source_extdeps_make_render_make_render_meta_base_comment_fn_3.comment -> extdeps.make_render::make_render_target.comment
+  - param_source_extdeps_make_render_make_render_meta_fix_variant_res_targets.res_targets -> extdeps.make_render::make_resolve_meta_fix_deps.res_targets
+  - literal_source_extdeps_make_render_make_render_meta_fix_variant_name_fn_0.name -> extdeps.make_render::make_render_target.name
+  - param_source_extdeps_make_render_make_render_meta_target_meta.meta -> extdeps.make_render::make_render_meta_base.meta
+  - param_source_extdeps_make_render_make_render_meta_target_res_targets.res_targets -> extdeps.make_render::make_render_meta_base.res_targets
+  - param_source_extdeps_make_render_make_render_meta_target_meta.meta -> extdeps.make_render::make_render_meta_fix_variant.meta
+  - param_source_extdeps_make_render_make_render_meta_target_res_targets.res_targets -> extdeps.make_render::make_render_meta_fix_variant.res_targets
+  - param_source_extdeps_make_render_make_render_meta_target_meta.meta -> extdeps.make_render::make_render_meta_check_variant.meta
+  - param_source_extdeps_make_render_make_render_meta_target_res_targets.res_targets -> extdeps.make_render::make_render_meta_check_variant.res_targets
+  - literal_source_extdeps_make_render_make_render_meta_targets_title_fn_0.title -> extdeps.make_render::make_render_section_header.title
+  - param_source_extdeps_make_render_make_render_meta_targets_res_targets.res_targets -> extdeps.make_render::make_render_meta_target.res_targets
+  - param_source_extdeps_make_render_make_render_help_target_workflows.workflows -> extdeps.make_render::make_render_help_core_lines.workflows
+  - param_source_extdeps_make_render_make_render_help_target_metas.metas -> extdeps.make_render::make_render_help_meta_lines.metas
+  - param_source_extdeps_make_render_make_render_help_target_tools.tools -> extdeps.make_render::make_render_help_tool_lines.tools
+  - param_source_extdeps_make_render_make_render_body_workflows.workflows -> extdeps.make_render::make_collect_core_phony_str.workflows
+  - param_source_extdeps_make_render_make_render_body_metas.metas -> extdeps.make_render::make_collect_meta_phony_str.metas
+  - param_source_extdeps_make_render_make_render_body_tools.tools -> extdeps.make_render::make_collect_tool_phony_str.tools
+  - param_source_extdeps_make_render_make_render_body_workflows.workflows -> extdeps.make_render::make_render_core_targets.workflows
+  - param_source_extdeps_make_render_make_render_body_workflows.workflows -> extdeps.make_render::make_render_help_target.workflows
+  - param_source_extdeps_make_render_make_render_body_metas.metas -> extdeps.make_render::make_render_help_target.metas
+  - param_source_extdeps_make_render_make_render_body_tools.tools -> extdeps.make_render::make_render_help_target.tools
+  - param_source_extdeps_make_render_make_render_body_metas.metas -> extdeps.make_render::make_render_meta_targets.metas
+  - param_source_extdeps_make_render_make_render_body_res_targets.res_targets -> extdeps.make_render::make_render_meta_targets.res_targets
+  - param_source_extdeps_make_render_make_render_body_tools.tools -> extdeps.make_render::make_render_tool_targets.tools
+  - param_source_extdeps_make_render_make_render_makefile_generator.generator -> extdeps.make_render::make_render_generator_header.generator
+  - param_source_extdeps_make_render_make_render_makefile_regen_command.regen_command -> extdeps.make_render::make_render_generator_header.regen_command
   - acquire_resource_std_resources_Filesystem.resource_handle -> release_resource_std_resources_Filesystem.resource_handle
   - acquire_resource_std_resources_Network.resource_handle -> release_resource_std_resources_Network.resource_handle
   - acquire_resource_std_resources_Clock.resource_handle -> release_resource_std_resources_Clock.resource_handle
@@ -985,18 +1048,6 @@ Edges:
   - std.patterns::iam_preflight_check.ok -> release_resource_std_resources_Network.resource_handle
   - std.patterns::credential_chain.token -> provide_resource_std_patterns_credential_chain_auth.trigger
   - provide_resource_std_patterns_credential_chain_auth.auth -> release_resource_std_resources_AuthContext.resource_handle
-  - param_source_tools_makegen_render_meta_base_res_targets.res_targets -> param_source_tools_makegen_resolve_meta_deps_res_targets.res_targets
-  - param_source_tools_makegen_render_meta_target_res_targets.res_targets -> param_source_tools_makegen_render_meta_base_res_targets.res_targets
-  - param_source_tools_makegen_render_meta_target_res_targets.res_targets -> param_source_tools_makegen_render_meta_fix_variant_res_targets.res_targets
-  - param_source_tools_makegen_render_meta_targets_res_targets.res_targets -> param_source_tools_makegen_render_meta_target_res_targets.res_targets
-  - param_source_tools_makegen_render_makefile_body_res_targets.res_targets -> param_source_tools_makegen_render_meta_targets_res_targets.res_targets
-  - param_source_tools_makegen_render_makefile_body_workflows.workflows -> param_source_tools_makegen_render_help_target_workflows.workflows
-  - param_source_tools_makegen_render_makefile_body_metas.metas -> param_source_tools_makegen_render_help_target_metas.metas
-  - param_source_tools_makegen_render_makefile_body_tools.tools -> param_source_tools_makegen_render_help_target_tools.tools
-  - param_source_tools_makegen_render_makefile_content_workflows.workflows -> param_source_tools_makegen_render_makefile_body_workflows.workflows
-  - param_source_tools_makegen_render_makefile_content_metas.metas -> param_source_tools_makegen_render_makefile_body_metas.metas
-  - param_source_tools_makegen_render_makefile_content_tools.tools -> param_source_tools_makegen_render_makefile_body_tools.tools
-  - param_source_tools_makegen_render_makefile_content_res_targets.res_targets -> param_source_tools_makegen_render_makefile_body_res_targets.res_targets
   - literal_source_tools_makegen_makegen_workflows_data_0.workflows -> param_source_tools_makegen_render_makefile_content_workflows.workflows
   - literal_source_tools_makegen_makegen_metas_data_1.metas -> param_source_tools_makegen_render_makefile_content_metas.metas
   - tools.makegen::discover_tools.return -> param_source_tools_makegen_render_makefile_content_tools.tools
@@ -1006,3 +1057,18 @@ Edges:
   - tools.makegen::render_makefile_content.return -> param_source_std_patterns_content_upsert_content.content
   - param_source_std_patterns_acquire_subject_token_audience.audience -> param_source_std_patterns_github_oidc_audience.audience
   - param_source_std_patterns_acquire_subject_token_audience.audience -> param_source_std_patterns_metadata_oidc_audience.audience
+  - param_source_extdeps_make_render_make_render_meta_base_res_targets.res_targets -> param_source_extdeps_make_render_make_resolve_meta_deps_res_targets.res_targets
+  - param_source_extdeps_make_render_make_render_meta_target_res_targets.res_targets -> param_source_extdeps_make_render_make_render_meta_base_res_targets.res_targets
+  - param_source_extdeps_make_render_make_render_meta_target_res_targets.res_targets -> param_source_extdeps_make_render_make_render_meta_fix_variant_res_targets.res_targets
+  - param_source_extdeps_make_render_make_render_meta_targets_res_targets.res_targets -> param_source_extdeps_make_render_make_render_meta_target_res_targets.res_targets
+  - param_source_extdeps_make_render_make_render_body_res_targets.res_targets -> param_source_extdeps_make_render_make_render_meta_targets_res_targets.res_targets
+  - param_source_extdeps_make_render_make_render_body_workflows.workflows -> param_source_extdeps_make_render_make_render_help_target_workflows.workflows
+  - param_source_extdeps_make_render_make_render_body_metas.metas -> param_source_extdeps_make_render_make_render_help_target_metas.metas
+  - param_source_extdeps_make_render_make_render_body_tools.tools -> param_source_extdeps_make_render_make_render_help_target_tools.tools
+  - param_source_tools_makegen_render_makefile_body_workflows.workflows -> param_source_extdeps_make_render_make_render_body_workflows.workflows
+  - param_source_tools_makegen_render_makefile_body_metas.metas -> param_source_extdeps_make_render_make_render_body_metas.metas
+  - param_source_tools_makegen_render_makefile_body_tools.tools -> param_source_extdeps_make_render_make_render_body_tools.tools
+  - param_source_tools_makegen_render_makefile_body_res_targets.res_targets -> param_source_extdeps_make_render_make_render_body_res_targets.res_targets
+  - literal_source_tools_makegen_render_makefile_content_generator_fn_4.generator -> param_source_extdeps_make_render_make_render_makefile_generator.generator
+  - literal_source_tools_makegen_render_makefile_content_regen_command_fn_5.regen_command -> param_source_extdeps_make_render_make_render_makefile_regen_command.regen_command
+

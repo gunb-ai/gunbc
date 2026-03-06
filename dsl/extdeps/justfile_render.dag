@@ -1,0 +1,159 @@
+// extdeps/justfile_render.dag -- Justfile leaf serializer.
+//
+// Final output-only rendering for Justfile syntax. Upstream modules provide the
+// shared build-target schema; this module owns the concrete Justfile layout.
+
+module extdeps.justfile_render
+
+import extdeps.build_targets {
+  CoreWorkflow, MetaTargetDef, ResourceTargetEntry,
+  ResourceNeed, DiscoveredTool, EntrypointParam
+}
+
+fn just_resolve_resource_target(resource: String, mode: String, res_targets: List<ResourceTargetEntry>) -> String {
+  let matches = res_targets |> filter(rt => rt.resource == resource)
+  let entry = matches |> first()
+  match entry {
+    None => ""
+    _ => if mode == "ensure" { entry.ensure_target } else { entry.verify_target }
+  }
+}
+
+fn just_resolve_meta_deps(needs: List<ResourceNeed>, res_targets: List<ResourceTargetEntry>) -> List<String> {
+  needs |> map(need => just_resolve_resource_target(resource: need.resource, mode: need.mode, res_targets: res_targets))
+        |> filter(dep => dep != "")
+}
+
+fn just_resolve_meta_fix_deps(needs: List<ResourceNeed>, res_targets: List<ResourceTargetEntry>) -> List<String> {
+  needs |> map(need => just_resolve_resource_target(resource: need.resource, mode: "ensure", res_targets: res_targets))
+        |> filter(dep => dep != "")
+}
+
+fn just_apply_prefix(prefix: String?, cmd: String) -> String {
+  match prefix {
+    None => cmd
+    _ => "@{prefix} {cmd}"
+  }
+}
+
+fn just_normalize_for_just(cmd: String) -> String {
+  cmd
+}
+
+fn just_render_recipe(name: String, deps: List<String>, body: List<String>, comment: String?) -> String {
+  let dep_str = deps |> join(" ")
+  let header = if dep_str != "" { "{name}: {dep_str}" } else { "{name}:" }
+  let recipe = body |> map(line => "    {line}") |> join("\n")
+  let comment_line = match comment {
+    None => ""
+    _ => "# {comment}\n"
+  }
+  "{comment_line}{header}\n{recipe}\n"
+}
+
+fn just_render_core_targets(workflows: List<CoreWorkflow>) -> String {
+  workflows |> map(w => just_render_recipe(
+    name: w.name,
+    deps: w.deps,
+    body: w.body |> map(line => just_normalize_for_just(cmd: line)),
+    comment: w.comment ?? w.description
+  )) |> join("\n")
+}
+
+fn just_render_meta_base(meta: MetaTargetDef, res_targets: List<ResourceTargetEntry>) -> String {
+  let deps = just_resolve_meta_deps(needs: meta.resource_needs, res_targets: res_targets)
+  let cmd = just_apply_prefix(prefix: meta.command_prefix, cmd: meta.command)
+  just_render_recipe(name: meta.name, deps: deps, body: [cmd], comment: "{meta.name}: {meta.description}")
+}
+
+fn just_render_meta_fix(meta: MetaTargetDef, res_targets: List<ResourceTargetEntry>) -> String {
+  let fix_deps = meta.fix_prerequisites
+  let resource_deps = just_resolve_meta_fix_deps(needs: meta.resource_needs, res_targets: res_targets)
+  let all_deps = fix_deps |> append(items: resource_deps)
+  let cmd = match meta.fix_command {
+    None => just_apply_prefix(prefix: meta.command_prefix, cmd: meta.command)
+    _ => just_apply_prefix(prefix: meta.command_prefix, cmd: meta.fix_command)
+  }
+  just_render_recipe(name: "{meta.name}-fix", deps: all_deps, body: [cmd], comment: "{meta.name}-fix: auto-fix then verify")
+}
+
+fn just_render_meta_check(meta: MetaTargetDef, res_targets: List<ResourceTargetEntry>) -> String {
+  let deps = just_resolve_meta_deps(needs: meta.resource_needs, res_targets: res_targets)
+  let cmd = match meta.check_command { None => "", _ => meta.check_command }
+  if cmd == "" { "" } else {
+    just_render_recipe(name: "{meta.name}-check", deps: deps, body: [cmd], comment: None)
+  }
+}
+
+fn just_render_meta_target(meta: MetaTargetDef, res_targets: List<ResourceTargetEntry>) -> String {
+  let base = just_render_meta_base(meta: meta, res_targets: res_targets)
+  let fix = if meta.has_fix { just_render_meta_fix(meta: meta, res_targets: res_targets) } else { "" }
+  let check = if meta.has_check { just_render_meta_check(meta: meta, res_targets: res_targets) } else { "" }
+  "{base}{fix}{check}"
+}
+
+fn just_render_meta_targets(metas: List<MetaTargetDef>, res_targets: List<ResourceTargetEntry>) -> String {
+  metas |> map(m => just_render_meta_target(meta: m, res_targets: res_targets)) |> join("\n")
+}
+
+fn just_render_help_param(p: EntrypointParam) -> String {
+  let repeat_suffix = if p.repeatable { " ..." } else { "" }
+  match p.default {
+    None => "[{p.make_var}=...{repeat_suffix}]"
+    _ => "[{p.make_var}={p.default}{repeat_suffix}]"
+  }
+}
+
+fn just_render_help_params(params: List<EntrypointParam>) -> String {
+  params |> map(p => just_render_help_param(p: p)) |> join(" ")
+}
+
+fn just_render_tool_target(tool: DiscoveredTool) -> String {
+  let port_list = tool.entrypoints |> map(p => "{p.port_name} ({p.type_hint})") |> join(", ")
+  let main = just_render_recipe(
+    name: tool.short_name,
+    deps: tool.deps,
+    body: [tool.command],
+    comment: "{tool.binary_name} entrypoints: {port_list}"
+  )
+  let dry = just_render_recipe(
+    name: "{tool.short_name}-dry",
+    deps: tool.deps,
+    body: [tool.dry_run_command],
+    comment: None
+  )
+  let extras = tool.extra_targets |> map(extra => just_render_recipe(
+    name: "{tool.short_name}-{extra.suffix}",
+    deps: [tool.short_name],
+    body: extra.post_commands,
+    comment: "{tool.short_name}-{extra.suffix}: {extra.description}"
+  )) |> join("")
+  "{main}\n{dry}\n{extras}"
+}
+
+fn just_render_tool_targets(tools: List<DiscoveredTool>) -> String {
+  tools |> map(t => just_render_tool_target(tool: t)) |> join("\n")
+}
+
+fn just_render_help() -> String {
+  "# Help target\nhelp:\n    @echo \"gunbc tools - generated Justfile\"\n    @echo \"Use 'just <target>' for workflow execution.\"\n"
+}
+
+fn justfile_render_generator_header(generator: String, regen_command: String) -> String {
+  "# Generated by {generator}\n# DO NOT EDIT - regenerate with: {regen_command}\n"
+}
+
+fn justfile_render_body(workflows: List<CoreWorkflow>, metas: List<MetaTargetDef>, tools: List<DiscoveredTool>, res_targets: List<ResourceTargetEntry>) -> String {
+  let header = "set shell := [\"bash\", \"-cu\"]"
+  let help = just_render_help()
+  let core = just_render_core_targets(workflows: workflows)
+  let meta = just_render_meta_targets(metas: metas, res_targets: res_targets)
+  let tool = just_render_tool_targets(tools: tools)
+  "{header}\n\n{help}\n{core}\n{meta}\n{tool}"
+}
+
+fn justfile_render_justfile(workflows: List<CoreWorkflow>, metas: List<MetaTargetDef>, tools: List<DiscoveredTool>, res_targets: List<ResourceTargetEntry>, generator: String, regen_command: String) -> String {
+  let header = justfile_render_generator_header(generator: generator, regen_command: regen_command)
+  let body = justfile_render_body(workflows: workflows, metas: metas, tools: tools, res_targets: res_targets)
+  "{header}{body}"
+}

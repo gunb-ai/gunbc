@@ -68,7 +68,7 @@ Lane status snapshot:
 4. RC-P1-004: Add stale-path/fixture drift checks for key compile-command tests.
 5. RC-P1-005: Decompose monolithic exhaustive tests into bounded shards (or explicit integration workflows) so default test targets remain predictable and interactive.
 6. RC-P1-006: Require explicit justification + annotation for any test expected to exceed normal local feedback budgets.
-7. RC-P1-007: Apply the same typed-assembly plus leaf-serializer pattern from CI to adjacent render lanes (`makegen`, `justgen`, CLI gen, markdown, CI reports).
+7. RC-P1-007: Continue the typed-assembly plus leaf-serializer sweep beyond the now-completed `makegen` / `justgen` cleanup. Remaining targets: CLI gen, markdown, CI reports, prompts, and similar text emitters.
 8. RC-P1-008: Keep CI YAML generation single-sourced in the DSL/config path and reject new Rust-side CI render surfaces.
 9. RC-P1-009: Strengthen shared shell quoting/escaping for `ScriptLine::Command { argv }` now that CI discovery is structurally modeled.
 10. RC-P1-010: Continue deleting `content_upsert` lowering special-cases in favor of one semantically aligned pattern-expansion path so callsite bookkeeping cannot drift from pattern meaning.

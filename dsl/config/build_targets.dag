@@ -6,7 +6,7 @@
 
 module config.build_targets
 
-import extdeps.make
+import extdeps.build_targets
 
 // ============================================================================
 // Resource Target Mappings — how resources are provided as Make targets

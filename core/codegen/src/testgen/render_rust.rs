@@ -164,7 +164,12 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
                     .map(|(k, v)| format!("{}: {}", k, self.render_expr(v)))
                     .collect();
                 if let Some(base) = rest {
-                    format!("{} {{ {}, ..{} }}", name, field_strs.join(", "), self.render_expr(base))
+                    format!(
+                        "{} {{ {}, ..{} }}",
+                        name,
+                        field_strs.join(", "),
+                        self.render_expr(base)
+                    )
                 } else {
                     format!("{} {{ {} }}", name, field_strs.join(", "))
                 }
@@ -898,11 +903,11 @@ mod tests {
         let r = r();
         let imp = Import {
             path: vec!["gunbc_exec".into()],
-            items: vec!["execute_with_mode".into(), "BoundaryMocks".into()],
+            items: vec!["execute_dag".into(), "BoundaryMocks".into()],
         };
         assert_eq!(
             r.render_import(&imp),
-            "use gunbc_exec::{execute_with_mode, BoundaryMocks};"
+            "use gunbc_exec::{execute_dag, BoundaryMocks};"
         );
     }
 

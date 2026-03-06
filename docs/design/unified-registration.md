@@ -134,6 +134,7 @@ miss real changes.
 
 ```
 all_tools() → tools with .invocation() → Makefile targets (auto)
+all_tools() → tools with .invocation() → Justfile targets (auto)
 all_tools() → tools → CLI generation (auto)
 config.ci + tools.cigen.dag + leaf CI serializer modules → CI YAML (DSL-owned for ci tool only)
 ```

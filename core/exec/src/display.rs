@@ -26,7 +26,7 @@ use crate::progress::{
 use crate::render::{Animation, RenderMode};
 use crate::terminal::TerminalProfile;
 use crate::{
-    execute_dag, lower, topo_sort, ExecError, ExecuteConfig, Executable, ExecutionMode, NodeState,
+    execute_dag, lower, topo_sort, ExecError, Executable, ExecuteConfig, ExecutionMode, NodeState,
 };
 use gunbc_ir::layout::compute_layout;
 use gunbc_ir::symbols::{SemanticColor, SymbolId, Tier, STANDARD};

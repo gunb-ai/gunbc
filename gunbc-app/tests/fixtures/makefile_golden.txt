@@ -10,7 +10,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help preflight-fix ensure-codegen build-release-bins lint-upsert codegen build clean testgen testgen-check deps-config deps-config-check makegen-check bootstrap-check pragma-check verify verify-fix fmt-fix lint-fix ci test-all test test-integration test-external check clippy fmt ci-yaml fmt-check test-fix check-fix clippy-fix bootstrap bootstrap-dry build-all build-all-dry cigen cigen-dry clippy-lint clippy-lint-dry codegen-ensure codegen-ensure-dry deps deps-dry deps-generate deps-generate-dry docgen docgen-dry generate-design generate-design-dry gist gist-dry gist-diff gist-diff-dry gist-recent gist-recent-dry infra infra-dry makegen makegen-dry pragma pragma-dry review-design review-design-dry
+.PHONY: help preflight-fix ensure-codegen build-release-bins lint-upsert codegen build clean testgen testgen-check deps-config deps-config-check makegen-check bootstrap-check pragma-check verify verify-fix fmt-fix lint-fix ci test-all test test-xs test-s test-m test-l test-xl test-small test-medium test-large test-extra-large test-integration test-external check clippy fmt ci-yaml fmt-check test-fix check-fix clippy-fix bootstrap bootstrap-dry build-all build-all-dry cigen cigen-dry clippy-lint clippy-lint-dry deps deps-dry design design-dry docgen docgen-dry gist gist-dry infra infra-dry justgen justgen-dry makegen makegen-dry pragma pragma-dry readme readme-dry workflow workflow-dry
 
 # Preflight: auto-fix rustc warnings before running generators
 preflight-fix:
@@ -51,11 +51,11 @@ testgen-check: lint-upsert
 
 # Ensure deps.toml matches canonical generated configuration
 deps-config: build-release-bins
-	@target/release/gunbc-deps-config --mode=ensure
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-deps -q --release
 
 # Check if deps.toml is stale
 deps-config-check: build-release-bins
-	@target/release/gunbc-deps-config --mode=verify
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-deps -q --release -- --dry-run
 
 # Check if generated Makefile is stale
 makegen-check: lint-upsert
@@ -97,9 +97,9 @@ lint-fix: pragma
 ci: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-ci -q --release
 
-# Run all tests via cargo test workspace
+# Alias for test-xl (full Fermi budget)
 test-all: ensure-codegen
-	@cargo test --workspace
+	@$(MAKE) test-xl
 
 help:
 	@echo "gunbc tools - generated Makefile"
@@ -127,12 +127,21 @@ help:
 	@echo "  verify-fix  - Ensure generated artifacts are up to date"
 	@echo "  fmt-fix  - fmt-fix: apply formatting (alias for fmt)"
 	@echo "  lint-fix  - lint-fix: auto-fix lint issues where possible"
-	@echo "  ci  - Run CI via workflow planner (typed units, deterministic keying)"
-	@echo "  test-all  - Run all tests via workflow planner (warm-path optimized)"
+	@echo "  ci  - Run CI via build DAG (typed units, deterministic keying)"
+	@echo "  test-all  - Alias for test-xl (full Fermi budget)"
 	@echo ""
 	@echo "Development:"
-	@echo "  test  - Run tests (<=S)"
-	@echo "  test-fix  - Run tests (<=S) (fmt-fix + lint-fix first)"
+	@echo "  test  - Alias for test-s (<=S)"
+	@echo "  test-fix  - Alias for test-s (<=S) (fmt-fix + lint-fix first)"
+	@echo "  test-xs  - Run tests (<=XS)"
+	@echo "  test-s  - Run tests (<=S)"
+	@echo "  test-m  - Run tests (<=M)"
+	@echo "  test-l  - Run tests (<=L)"
+	@echo "  test-xl  - Run tests (<=XL)"
+	@echo "  test-small  - Alias for test-s"
+	@echo "  test-medium  - Alias for test-m"
+	@echo "  test-large  - Alias for test-l"
+	@echo "  test-extra-large  - Alias for test-xl"
 	@echo "  test-integration  - Run integration-focused tests"
 	@echo "  test-external  - Run external/live-flow tests"
 	@echo "  check  - Type check all targets"
@@ -148,18 +157,16 @@ help:
 	@echo "  build-all   - Build all"
 	@echo "  cigen   - Cigen"
 	@echo "  clippy-lint [PATHS=...]  - Clippy lint"
-	@echo "  codegen-ensure   - Codegen ensure"
-	@echo "  deps [MANIFEST_PATH=deps.toml] [PLATFORM=...]  - Deps"
-	@echo "  deps-generate [REGISTRY=...]  - Deps generate"
+	@echo "  deps   - Deps"
+	@echo "  design   - Design"
 	@echo "  docgen   - Docgen"
-	@echo "  generate-design [IDEA=...] [CONTEXT=...] [PROVIDER=anthropic] [MODEL=claude-sonnet-4-20250514]  - Generate design"
 	@echo "  gist   - Gist"
-	@echo "  gist-diff [BASE_REF=HEAD~1]  - Gist diff"
-	@echo "  gist-recent [SINCE=3.days.ago]  - Gist recent"
 	@echo "  infra [ENVIRONMENT=...] [RUNTIME=...] [SPEC_TARGETS=... ...] [TARGET=... ...] [SKIP=... ...]  - Infra"
+	@echo "  justgen [PATH=Justfile]  - Justgen"
 	@echo "  makegen [PATH=Makefile]  - Makegen"
 	@echo "  pragma [DIRECTIVES=... ...]  - Pragma"
-	@echo "  review-design [DESIGN=...] [PROVIDER=anthropic] [MODEL=claude-sonnet-4-20250514]  - Review design"
+	@echo "  readme   - Readme"
+	@echo "  workflow   - Workflow"
 	@echo ""
 	@echo "Add -dry suffix for dry-run (e.g., make deps-dry)"
 
@@ -167,12 +174,48 @@ help:
 # Meta Targets - Development workflow commands
 # ============================================================================
 
-# test: Run tests (<=S)
-test: build verify-fix
-	@RUSTFLAGS="-D warnings" cargo test
+# test: Alias for test-s (<=S)
+test:
+	@$(MAKE) test-s
 # test-fix: auto-fix then verify
-test-fix: fmt-fix lint-fix build verify-fix
-	@RUSTFLAGS="-D warnings" cargo test
+test-fix: fmt-fix lint-fix
+	@$(MAKE) test-s
+
+# test-xs: Run tests (<=XS)
+test-xs: build verify-fix
+	@GUNBC_TEST_MAX_COST=XS @RUSTFLAGS="-D warnings" cargo test
+
+# test-s: Run tests (<=S)
+test-s: build verify-fix
+	@GUNBC_TEST_MAX_COST=S @RUSTFLAGS="-D warnings" cargo test
+
+# test-m: Run tests (<=M)
+test-m: build verify-fix
+	@GUNBC_TEST_MAX_COST=M @RUSTFLAGS="-D warnings" cargo test
+
+# test-l: Run tests (<=L)
+test-l: build verify-fix
+	@GUNBC_TEST_MAX_COST=L @RUSTFLAGS="-D warnings" cargo test
+
+# test-xl: Run tests (<=XL)
+test-xl: build verify-fix
+	@GUNBC_TEST_MAX_COST=XL @RUSTFLAGS="-D warnings" cargo test
+
+# test-small: Alias for test-s
+test-small:
+	@$(MAKE) test-s
+
+# test-medium: Alias for test-m
+test-medium:
+	@$(MAKE) test-m
+
+# test-large: Alias for test-l
+test-large:
+	@$(MAKE) test-l
+
+# test-extra-large: Alias for test-xl
+test-extra-large:
+	@$(MAKE) test-xl
 
 # test-integration: Run integration-focused tests
 test-integration: build verify-fix
@@ -238,15 +281,7 @@ clippy-lint-dry: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-clippy-lint -q --release -- --dry-run strict
 
 
-# gunbc-codegen-ensure entrypoints: 
-codegen-ensure: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-codegen-ensure -q --release
-
-codegen-ensure-dry: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-codegen-ensure -q --release -- --dry-run strict
-
-
-# gunbc-deps entrypoints: manifest_path (String), platform (String)
+# gunbc-deps entrypoints: 
 deps: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-deps -q --release
 
@@ -254,12 +289,12 @@ deps-dry: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-deps -q --release -- --dry-run strict
 
 
-# gunbc-deps-generate entrypoints: registry (String)
-deps-generate: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-deps-generate -q --release
+# gunbc-design entrypoints: 
+design: ensure-codegen
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-design -q --release
 
-deps-generate-dry: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-deps-generate -q --release -- --dry-run strict
+design-dry: ensure-codegen
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-design -q --release -- --dry-run strict
 
 
 # gunbc-docgen entrypoints: 
@@ -270,14 +305,6 @@ docgen-dry: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-docgen -q --release -- --dry-run strict
 
 
-# gunbc-generate-design entrypoints: idea (String), context (String), provider (String), model (String)
-generate-design: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-generate-design -q --release
-
-generate-design-dry: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-generate-design -q --release -- --dry-run strict
-
-
 # gunbc-gist entrypoints: 
 gist: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-gist -q --release
@@ -286,28 +313,20 @@ gist-dry: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-gist -q --release -- --dry-run strict
 
 
-# gunbc-gist-diff entrypoints: base_ref (String)
-gist-diff: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-gist-diff -q --release
-
-gist-diff-dry: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-gist-diff -q --release -- --dry-run strict
-
-
-# gunbc-gist-recent entrypoints: since (String)
-gist-recent: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-gist-recent -q --release
-
-gist-recent-dry: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-gist-recent -q --release -- --dry-run strict
-
-
 # gunbc-infra entrypoints: environment (String), runtime (String), spec_targets (String), target (String), skip (String)
 infra: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-infra -q --release
 
 infra-dry: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-infra -q --release -- --dry-run strict
+
+
+# gunbc-justgen entrypoints: path (String)
+justgen: ensure-codegen
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-justgen -q --release
+
+justgen-dry: ensure-codegen
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-justgen -q --release -- --dry-run strict
 
 
 # gunbc-makegen entrypoints: path (String)
@@ -319,16 +338,25 @@ makegen-dry: ensure-codegen
 
 
 # gunbc-pragma entrypoints: directives (String)
-pragma:
+pragma: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-pragma -q --release
 
-pragma-dry:
+pragma-dry: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-pragma -q --release -- --dry-run strict
 
 
-# gunbc-review-design entrypoints: design (String), provider (String), model (String)
-review-design: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-review-design -q --release
+# gunbc-readme entrypoints: 
+readme: ensure-codegen
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-readme -q --release
 
-review-design-dry: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-review-design -q --release -- --dry-run strict
+readme-dry: ensure-codegen
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-readme -q --release -- --dry-run strict
+
+
+# gunbc-workflow entrypoints: 
+workflow: ensure-codegen
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-workflow -q --release
+
+workflow-dry: ensure-codegen
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-app --bin gunbc-workflow -q --release -- --dry-run strict
+

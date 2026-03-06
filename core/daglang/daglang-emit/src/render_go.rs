@@ -354,7 +354,12 @@ fn render_expr(expr: &Expr) -> String {
                 .map(|(k, v)| format!("{}: {}", k, render_expr(v)))
                 .collect();
             if let Some(base) = rest {
-                format!("{}{{ {}, ..{} }}", name, field_strs.join(", "), render_expr(base))
+                format!(
+                    "{}{{ {}, ..{} }}",
+                    name,
+                    field_strs.join(", "),
+                    render_expr(base)
+                )
             } else {
                 format!("{}{{ {} }}", name, field_strs.join(", "))
             }

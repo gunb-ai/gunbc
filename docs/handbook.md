@@ -806,7 +806,7 @@ pub trait TestRenderer {
 | `core/codegen/src/testgen/render_rust.rs` | Rust backend (630 lines) |
 | `core/codegen/src/testgen/render_python.rs` | Python stub (validates trait surface) |
 | `core/codegen/src/testgen/codegen.rs` | IR construction (never constructs strings) |
-| `gunbc-app/src/makegen/shared.rs` | Makefile rendering (via DSL `evaluate_fn_body()`) |
+| `gunbc-app/src/makegen/shared.rs` | Makefile + Justfile rendering (via DSL `evaluate_fn_body()` over shared build-target data) |
 | `dsl/config/ci.dag` + `dsl/tools/cigen.dag` | CI YAML generation (DSL-owned; typed provider values + leaf serializers in `.dag`) |
 
 **Current implementations:**
@@ -814,7 +814,7 @@ pub trait TestRenderer {
 | System | Has IR? | Has Renderer Trait? |
 |--------|---------|---------------------|
 | Testgen | Yes (TestFile) | Yes (TestRenderer) |
-| Makegen | No | No |
+| Makegen / Justgen | Partial (`extdeps.build_targets` + DSL leaf serializers) | No |
 | CI YAML | Partial (`config.ci` + provider schema, but no shared render IR yet) | No live repo-YAML renderer trait |
 | CLI gen | No | No |
 | Terminal | No | No |

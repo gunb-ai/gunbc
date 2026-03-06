@@ -142,7 +142,7 @@ fn test_execute_runs_ready_nodes_in_parallel() {
     dag.add_edge(edge("A", "a", "C", "a"));
     dag.add_edge(edge("B", "b", "C", "b"));
 
-    let log = execute(&dag).unwrap();
+    let log = execute_dag(&dag, ExecuteConfig::default()).unwrap();
     assert_eq!(log.entries.len(), 3);
     assert!(
         peak.load(Ordering::SeqCst) >= 2,
@@ -245,7 +245,7 @@ fn test_execute_resource_conflicts_serialize_parallel_writes() {
     dag.add_edge(edge("fs_env", "fs", "writer_a", "res:file:shared.txt"));
     dag.add_edge(edge("fs_env", "fs", "writer_b", "res:file:shared.txt"));
 
-    let _ = execute(&dag).expect("execution should succeed");
+    let _ = execute_dag(&dag, ExecuteConfig::default()).expect("execution should succeed");
     assert_eq!(
         peak.load(Ordering::SeqCst),
         1,
@@ -347,7 +347,7 @@ fn test_execute_resource_reads_can_run_in_parallel() {
     dag.add_edge(edge("fs_env", "fs", "reader_a", "res:file:shared.txt"));
     dag.add_edge(edge("fs_env", "fs", "reader_b", "res:file:shared.txt"));
 
-    let _ = execute(&dag).expect("execution should succeed");
+    let _ = execute_dag(&dag, ExecuteConfig::default()).expect("execution should succeed");
     assert!(
         peak.load(Ordering::SeqCst) >= 2,
         "read/read nodes should be allowed to run in parallel"
@@ -449,7 +449,7 @@ fn test_execute_resource_coarse_file_conflicts_with_specific_file() {
         "res:file:shared.txt",
     ));
 
-    let _ = execute(&dag).expect("execution should succeed");
+    let _ = execute_dag(&dag, ExecuteConfig::default()).expect("execution should succeed");
     assert_eq!(
         peak.load(Ordering::SeqCst),
         1,
@@ -551,7 +551,7 @@ fn test_execute_resource_distinct_file_writes_can_run_in_parallel() {
     dag.add_edge(edge("fs_env", "fs", "writer_a", "res:file:a.txt"));
     dag.add_edge(edge("fs_env", "fs", "writer_b", "res:file:b.txt"));
 
-    let _ = execute(&dag).expect("execution should succeed");
+    let _ = execute_dag(&dag, ExecuteConfig::default()).expect("execution should succeed");
     assert!(
         peak.load(Ordering::SeqCst) >= 2,
         "distinct specific file writes should run in parallel"
@@ -568,7 +568,7 @@ fn test_execute_simple_pipeline() {
         TestOp::produce("out", Value::Str("hello".to_string())),
     ));
 
-    let log = execute(&dag).unwrap();
+    let log = execute_dag(&dag, ExecuteConfig::default()).unwrap();
 
     assert_eq!(log.entries.len(), 1);
     assert_eq!(log.entries[0].node_id, "A");
@@ -601,7 +601,14 @@ fn test_dry_run_intercepts_transport_executor() {
         Value::Str("mock-response".to_string()),
     );
 
-    let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
+    let log = execute_dag(
+        &dag,
+        ExecuteConfig {
+            mode: ExecutionMode::DryRun(mocks),
+            ..Default::default()
+        },
+    )
+    .unwrap();
 
     assert_eq!(log.entries.len(), 1);
     assert!(log.entries[0].was_intercepted);
@@ -621,7 +628,7 @@ fn test_real_mode_executes_boundary() {
         TestOp::produce("url", Value::Str("real-url".to_string())),
     ));
 
-    let log = execute(&dag).unwrap();
+    let log = execute_dag(&dag, ExecuteConfig::default()).unwrap();
 
     assert_eq!(log.entries.len(), 1);
     assert!(!log.entries[0].was_intercepted);
@@ -662,7 +669,14 @@ fn test_pure_node_not_intercepted() {
 
     let mut mocks = BoundaryMocks::new();
     mocks.set_value("execute", "response", Value::Str("mocked".to_string()));
-    let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
+    let log = execute_dag(
+        &dag,
+        ExecuteConfig {
+            mode: ExecutionMode::DryRun(mocks),
+            ..Default::default()
+        },
+    )
+    .unwrap();
 
     // prepare is NOT a transport executor — should execute normally
     let prepare_entry = log.get("prepare").unwrap();
@@ -769,7 +783,7 @@ fn test_fan_in_to_list_port_collects_values() {
     dag.add_edge(Edge::with_index("A", "out", "C", "items", 0));
     dag.add_edge(Edge::with_index("B", "out", "C", "items", 1));
 
-    let log = execute(&dag).unwrap();
+    let log = execute_dag(&dag, ExecuteConfig::default()).unwrap();
 
     let c_entry = log.get("C").unwrap();
     match c_entry.outputs.get("items") {
@@ -815,7 +829,7 @@ fn test_coercion_trace_exposes_coerced_input_value() {
     ));
     dag.add_edge(Edge::new("A", "out", "B", "items"));
 
-    let log = execute(&dag).unwrap();
+    let log = execute_dag(&dag, ExecuteConfig::default()).unwrap();
     let b_entry = log.get("B").unwrap();
     assert_eq!(b_entry.coercions_applied.len(), 1);
 
@@ -855,7 +869,7 @@ fn test_list_output_to_list_input_passes_through() {
     ));
     dag.add_edge(edge("A", "items", "B", "items"));
 
-    let log = execute(&dag).unwrap();
+    let log = execute_dag(&dag, ExecuteConfig::default()).unwrap();
 
     let b_entry = log.get("B").unwrap();
     match b_entry.outputs.get("items") {
@@ -891,7 +905,7 @@ fn test_scalar_port_takes_single_value() {
     ));
     dag.add_edge(edge("A", "out", "B", "data"));
 
-    let log = execute(&dag).unwrap();
+    let log = execute_dag(&dag, ExecuteConfig::default()).unwrap();
 
     // B echoes its input — should receive the scalar value from A
     let b_entry = log.get("B").unwrap();
@@ -926,7 +940,8 @@ fn test_scalar_port_fan_in_errors() {
     dag.add_edge(edge("A", "out", "C", "data"));
     dag.add_edge(edge("B", "out", "C", "data"));
 
-    let err = execute(&dag).expect_err("expected scalar fan-in to error");
+    let err =
+        execute_dag(&dag, ExecuteConfig::default()).expect_err("expected scalar fan-in to error");
     assert!(err
         .to_string()
         .contains("scalar input 'C.data' has multiple upstream edges"));
@@ -943,7 +958,7 @@ fn test_list_port_zero_edges_defaults_to_empty_list() {
         TestOp::echo(),
     ));
 
-    let log = execute(&dag).unwrap();
+    let log = execute_dag(&dag, ExecuteConfig::default()).unwrap();
 
     let a_entry = log.get("A").unwrap();
     match a_entry.outputs.get("items") {
@@ -971,7 +986,7 @@ fn test_optional_to_list_skips_unit() {
     ));
     dag.add_edge(edge("A", "item", "B", "items"));
 
-    let log = execute(&dag).unwrap();
+    let log = execute_dag(&dag, ExecuteConfig::default()).unwrap();
 
     let b_entry = log.get("B").unwrap();
     match b_entry.outputs.get("items") {
@@ -998,7 +1013,7 @@ fn test_optional_to_list_skips_skipped() {
     ));
     dag.add_edge(edge("A", "item", "B", "items"));
 
-    let log = execute(&dag).unwrap();
+    let log = execute_dag(&dag, ExecuteConfig::default()).unwrap();
 
     let b_entry = log.get("B").unwrap();
     match b_entry.outputs.get("items") {
@@ -1327,7 +1342,15 @@ fn test_loop_body_executes_per_element() {
         ]),
     );
 
-    let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&mocks)).unwrap();
+    let log = execute_dag(
+        &dag,
+        ExecuteConfig {
+            mode: ExecutionMode::Real,
+            input_mocks: Some(&mocks),
+            ..Default::default()
+        },
+    )
+    .unwrap();
 
     // Find the pack node's output
     let pack_entry = log
@@ -1409,7 +1432,15 @@ fn test_loop_empty_list_produces_empty_output() {
     let mut mocks = BoundaryMocks::new();
     mocks.set_input("empty_loop", "items", Value::List(vec![]));
 
-    let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&mocks)).unwrap();
+    let log = execute_dag(
+        &dag,
+        ExecuteConfig {
+            mode: ExecutionMode::Real,
+            input_mocks: Some(&mocks),
+            ..Default::default()
+        },
+    )
+    .unwrap();
 
     let pack_entry = log
         .entries
@@ -1497,8 +1528,15 @@ fn test_loop_resource_input_flows_to_body_iterations() {
     );
     mocks.set_input("token_loop", "res:token", Value::Str("t".to_string()));
 
-    let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&mocks))
-        .expect("loop execution should succeed with resource input");
+    let log = execute_dag(
+        &dag,
+        ExecuteConfig {
+            mode: ExecutionMode::Real,
+            input_mocks: Some(&mocks),
+            ..Default::default()
+        },
+    )
+    .expect("loop execution should succeed with resource input");
 
     let pack_entry = log
         .entries
@@ -1521,7 +1559,7 @@ fn test_loop_resource_input_flows_to_body_iterations() {
 }
 
 // =========================================================================
-// execute_with_mode_and_inputs unit tests
+// execute_dag with input_mocks unit tests
 // =========================================================================
 
 #[test]
@@ -1538,7 +1576,15 @@ fn test_input_mocks_inject_into_entrypoint() {
     let mut mocks = BoundaryMocks::new();
     mocks.set_input("echo", "data", Value::Str("injected".into()));
 
-    let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&mocks)).unwrap();
+    let log = execute_dag(
+        &dag,
+        ExecuteConfig {
+            mode: ExecutionMode::Real,
+            input_mocks: Some(&mocks),
+            ..Default::default()
+        },
+    )
+    .unwrap();
 
     let entry = log.get("echo").unwrap();
     assert_eq!(
@@ -1584,9 +1630,15 @@ fn test_input_mocks_with_dry_run_mode() {
     let mut input_mocks = BoundaryMocks::new();
     input_mocks.set_input("prepare", "arg", Value::Str("injected-arg".into()));
 
-    let log =
-        execute_with_mode_and_inputs(&dag, ExecutionMode::DryRun(dry_mocks), Some(&input_mocks))
-            .unwrap();
+    let log = execute_dag(
+        &dag,
+        ExecuteConfig {
+            mode: ExecutionMode::DryRun(dry_mocks),
+            input_mocks: Some(&input_mocks),
+            ..Default::default()
+        },
+    )
+    .unwrap();
 
     // prepare should run normally with the injected input
     let prepare = log.get("prepare").unwrap();
@@ -1625,7 +1677,15 @@ fn test_input_mocks_per_port_on_non_root_node() {
     let mut input_mocks = BoundaryMocks::new();
     input_mocks.set_input("B", "y", Value::Str("from-mock".into()));
 
-    let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks)).unwrap();
+    let log = execute_dag(
+        &dag,
+        ExecuteConfig {
+            mode: ExecutionMode::Real,
+            input_mocks: Some(&input_mocks),
+            ..Default::default()
+        },
+    )
+    .unwrap();
 
     let b = log.get("B").unwrap();
     assert_eq!(
@@ -1642,7 +1702,7 @@ fn test_input_mocks_per_port_on_non_root_node() {
 
 #[test]
 fn test_input_mocks_none_works() {
-    // Passing None for input_mocks should work the same as execute_with_mode
+    // Passing None for input_mocks should work the same as default config
     let mut dag: Dag<TestOp> = Dag::new();
     dag.add_node(Node::opaque(
         "A",
@@ -1651,7 +1711,15 @@ fn test_input_mocks_none_works() {
         TestOp::produce("out", Value::Str("hello".into())),
     ));
 
-    let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, None).unwrap();
+    let log = execute_dag(
+        &dag,
+        ExecuteConfig {
+            mode: ExecutionMode::Real,
+            input_mocks: None,
+            ..Default::default()
+        },
+    )
+    .unwrap();
     assert_eq!(log.entries.len(), 1);
     assert_eq!(
         log.entries[0].outputs.get("out"),
@@ -1673,7 +1741,15 @@ fn test_input_mocks_do_not_intercept_in_real_mode() {
     let mut input_mocks = BoundaryMocks::new();
     input_mocks.set_value("compute", "out", Value::Str("mocked".into()));
 
-    let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks)).unwrap();
+    let log = execute_dag(
+        &dag,
+        ExecuteConfig {
+            mode: ExecutionMode::Real,
+            input_mocks: Some(&input_mocks),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     let entry = log.get("compute").expect("compute entry should exist");
     assert!(!entry.was_intercepted);
     assert_eq!(entry.outputs.get("out"), Some(&Value::Str("real".into())));
@@ -1695,7 +1771,15 @@ fn test_log_detail_node_override_captures_inputs() {
     let mut mocks = BoundaryMocks::new();
     mocks.set_input("echo", "data", Value::Str("captured".into()));
 
-    let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&mocks)).unwrap();
+    let log = execute_dag(
+        &dag,
+        ExecuteConfig {
+            mode: ExecutionMode::Real,
+            input_mocks: Some(&mocks),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     let entry = log.get("echo").expect("echo entry must exist");
 
     let inputs = entry.inputs.as_ref().expect("inputs should be captured");
@@ -1720,7 +1804,15 @@ fn test_log_detail_input_port_override_include_only() {
     mocks.set_input("echo", "x", Value::Str("xv".into()));
     mocks.set_input("echo", "y", Value::Str("yv".into()));
 
-    let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&mocks)).unwrap();
+    let log = execute_dag(
+        &dag,
+        ExecuteConfig {
+            mode: ExecutionMode::Real,
+            input_mocks: Some(&mocks),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     let entry = log.get("echo").expect("echo entry must exist");
     let inputs = entry.inputs.as_ref().expect("x should be captured");
     assert_eq!(inputs.len(), 1);
@@ -1746,7 +1838,15 @@ fn test_log_detail_input_port_override_can_suppress_node_default() {
     mocks.set_input("echo", "public", Value::Str("p".into()));
     mocks.set_input("echo", "secret", Value::Str("s".into()));
 
-    let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&mocks)).unwrap();
+    let log = execute_dag(
+        &dag,
+        ExecuteConfig {
+            mode: ExecutionMode::Real,
+            input_mocks: Some(&mocks),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     let entry = log.get("echo").expect("echo entry must exist");
     let inputs = entry
         .inputs
@@ -1772,7 +1872,15 @@ fn test_log_detail_subdag_override_inherits_to_inner_nodes() {
     let mut mocks = BoundaryMocks::new();
     mocks.set_input("wrapper", "data", Value::Str("v".into()));
 
-    let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&mocks)).unwrap();
+    let log = execute_dag(
+        &dag,
+        ExecuteConfig {
+            mode: ExecutionMode::Real,
+            input_mocks: Some(&mocks),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     let entry = log
         .get("wrapper/inner")
         .expect("lowered inner node entry must exist");
@@ -1786,7 +1894,7 @@ fn test_log_detail_subdag_override_inherits_to_inner_nodes() {
 #[test]
 fn test_remap_input_mocks_preserves_non_subdag() {
     // remap_input_mocks should keep original entries alongside remapped ones.
-    // We test this indirectly via execute_with_mode_and_inputs on a flat DAG.
+    // We test this indirectly via execute_dag with input_mocks on a flat DAG.
     let mut dag: Dag<TestOp> = Dag::new();
     dag.add_node(Node::opaque(
         "a",
@@ -1805,7 +1913,15 @@ fn test_remap_input_mocks_preserves_non_subdag() {
     input.set_input("a", "x", Value::Str("alpha".into()));
     input.set_input("b", "y", Value::Str("beta".into()));
 
-    let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input)).unwrap();
+    let log = execute_dag(
+        &dag,
+        ExecuteConfig {
+            mode: ExecutionMode::Real,
+            input_mocks: Some(&input),
+            ..Default::default()
+        },
+    )
+    .unwrap();
 
     assert_eq!(
         log.get("a").unwrap().outputs.get("x"),
@@ -1943,11 +2059,14 @@ fn test_coercion_tracking_wrap_scalar() {
     ));
     dag.add_edge(edge("producer", "value", "consumer", "items"));
 
-    let log = execute_with_mode_and_inputs_and_detail(
+    let log = execute_dag(
         &dag,
-        ExecutionMode::Real,
-        None,
-        LogDetailLevel::IncludeInputs,
+        ExecuteConfig {
+            mode: ExecutionMode::Real,
+            input_mocks: None,
+            log_detail: LogDetailLevel::IncludeInputs,
+            ..Default::default()
+        },
     )
     .unwrap();
 
@@ -1986,11 +2105,14 @@ fn test_coercion_tracking_no_coercion_for_matching_cardinality() {
     ));
     dag.add_edge(edge("A", "out", "B", "input"));
 
-    let log = execute_with_mode_and_inputs_and_detail(
+    let log = execute_dag(
         &dag,
-        ExecutionMode::Real,
-        None,
-        LogDetailLevel::IncludeInputs,
+        ExecuteConfig {
+            mode: ExecutionMode::Real,
+            input_mocks: None,
+            log_detail: LogDetailLevel::IncludeInputs,
+            ..Default::default()
+        },
     )
     .unwrap();
 
@@ -2019,11 +2141,14 @@ fn test_coercion_tracking_optional_to_list() {
     ));
     dag.add_edge(edge("A", "item", "B", "items"));
 
-    let log = execute_with_mode_and_inputs_and_detail(
+    let log = execute_dag(
         &dag,
-        ExecutionMode::Real,
-        None,
-        LogDetailLevel::IncludeInputs,
+        ExecuteConfig {
+            mode: ExecutionMode::Real,
+            input_mocks: None,
+            log_detail: LogDetailLevel::IncludeInputs,
+            ..Default::default()
+        },
     )
     .unwrap();
 
@@ -2145,7 +2270,13 @@ fn dry_run_rejects_kindless_effectful_node() {
         Produce::produce("resp", Value::Str("ok".into())),
     ));
     let mocks = BoundaryMocks::new();
-    let result = execute_with_mode(&dag, ExecutionMode::DryRun(mocks));
+    let result = execute_dag(
+        &dag,
+        ExecuteConfig {
+            mode: ExecutionMode::DryRun(mocks),
+            ..Default::default()
+        },
+    );
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("kind: Pure"));
 }

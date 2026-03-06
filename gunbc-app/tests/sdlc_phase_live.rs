@@ -274,8 +274,15 @@ fn run_dispatch_local(
         }
     }
 
-    let _log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::Real, input_mocks: Some(&input_mocks), ..Default::default() })
-        .expect("local SDLC dispatch should succeed");
+    let _log = execute_dag(
+        &dag,
+        ExecuteConfig {
+            mode: ExecutionMode::Real,
+            input_mocks: Some(&input_mocks),
+            ..Default::default()
+        },
+    )
+    .expect("local SDLC dispatch should succeed");
 }
 
 #[test]

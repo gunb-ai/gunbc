@@ -7,13 +7,10 @@ use gunbc_ir::resource::ResourceIo;
 use gunbc_lib_transport::TransportIo;
 use std::path::Path;
 
-const FORBIDDEN_CALLS: &[&str] = &[
-    "execute_with_mode_and_inputs(",
-    "execute_with_mode(",
-    "execute_with_progress(",
-    "execute_with_progress_and_mode(",
-    "execute_single_node(",
-];
+// Old wrapper functions (execute, execute_with_mode, execute_with_mode_and_inputs, etc.)
+// have been deleted. Any use would be a compile error, so no runtime check is needed.
+// Only execute_single_node remains as a restricted call.
+const FORBIDDEN_CALLS: &[&str] = &["execute_single_node("];
 
 const ALLOWED_FILES: &[&str] = &[
     "core/exec/src/execute/mod.rs",

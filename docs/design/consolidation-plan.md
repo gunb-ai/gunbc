@@ -172,7 +172,7 @@ Testgen remains the clearest example of the full IR + renderer separation.
 |--------|---------|-----------|----------|
 | Testgen | TestFile | TestRenderer | `core/codegen/src/testgen/` |
 | CI YAML | Partial (`config.ci` + provider schema) | No repo-YAML trait | `dsl/config/ci.dag`, `dsl/tools/cigen.dag` |
-| Makegen | No | Renderable (header only) | `gunbc-app/src/makegen/` |
+| Makegen / Justgen | Partial (`extdeps.build_targets` + `.dag` leaf serializers) | No | `dsl/tools/{makegen,justgen}.dag`, `dsl/extdeps/{make_render,justfile_render}.dag`, `gunbc-app/src/makegen/` |
 | CLI gen | No | No | `core/codegen/src/cli_gen.rs` |
 | DAG gen | No | No | `core/codegen/src/dag_gen.rs` |
 | Terminal | No | No | `core/exec/src/render.rs` |

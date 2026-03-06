@@ -140,8 +140,15 @@ fn run_bootstrap_case(kind: BackendKind) {
             backend.create_dir_all("crates/example");
             let _guard = TransportBackendGuard::install(backend.clone());
 
-            execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::Real, input_mocks: Some(&input_mocks), ..Default::default() })
-                .expect("execute bootstrap");
+            execute_dag(
+                &dag,
+                ExecuteConfig {
+                    mode: ExecutionMode::Real,
+                    input_mocks: Some(&input_mocks),
+                    ..Default::default()
+                },
+            )
+            .expect("execute bootstrap");
 
             let makefile = backend
                 .read_file("Makefile")
@@ -175,8 +182,15 @@ fn run_bootstrap_case(kind: BackendKind) {
             .expect("create crates/example");
 
             let _cwd = CurrentDirGuard::new(workspace.path());
-            execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::Real, input_mocks: Some(&input_mocks), ..Default::default() })
-                .expect("execute bootstrap");
+            execute_dag(
+                &dag,
+                ExecuteConfig {
+                    mode: ExecutionMode::Real,
+                    input_mocks: Some(&input_mocks),
+                    ..Default::default()
+                },
+            )
+            .expect("execute bootstrap");
 
             let makefile_path = workspace.path().join("Makefile");
             let gitignore_path = workspace.path().join(".gitignore");

@@ -279,9 +279,22 @@ The repo already has:
 
 What remains is adjacent cleanup rather than core CI modeling work:
 
-- apply the same typed assembly + leaf serializer pattern to adjacent render lanes
+- apply the same typed assembly + leaf serializer pattern to the remaining adjacent render lanes
 - strengthen `ScriptLine::Command { argv }` shell quoting centrally
 - keep new CI policy/render drift from reappearing
+
+Status update (2026-03-06):
+
+- the first adjacent lane is complete: `dsl/extdeps/build_targets.dag` now holds
+  the shared repo build-target schema, `dsl/extdeps/make_render.dag` and
+  `dsl/extdeps/justfile_render.dag` own concrete Makefile/Justfile syntax, and
+  `dsl/tools/{makegen,justgen}.dag` are thin assembly wrappers over discovery,
+  serializer calls, and `content_upsert`
+- the richer `extdeps.make` / `extdeps.justfile` surface-model experiment was
+  intentionally deleted rather than left as an unused stub, because the live
+  path does not yet consume a typed Makefile/Justfile document model
+- the remaining adjacent work is now CLI gen, markdown, CI reports, prompts,
+  and similar string-built emitters
 
 ### Resolved design decisions
 

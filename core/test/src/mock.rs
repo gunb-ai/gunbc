@@ -191,7 +191,7 @@ impl<'a, T> ScriptedDagBuilder<'a, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_exec::execute;
+    use gunbc_exec::{execute_dag, ExecuteConfig};
     use gunbc_ir::build::*;
 
     #[test]
@@ -242,7 +242,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let log = execute(&mock_dag).unwrap();
+        let log = execute_dag(&mock_dag, ExecuteConfig::default()).unwrap();
         assert_eq!(log.entries.len(), 2);
     }
 }

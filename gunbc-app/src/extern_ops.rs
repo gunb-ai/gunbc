@@ -26,6 +26,11 @@ pub fn gunbc_runtime_bindings() -> &'static gunbc_resolve::RuntimeBindings {
             DynOp::new(DiscoverToolsOp),
         );
         bindings.register(
+            "tools.justgen",
+            "discover_tools",
+            DynOp::new(DiscoverToolsOp),
+        );
+        bindings.register(
             "tools.bootstrap",
             "render_bootstrap_makefile",
             DynOp::new(GenerateBootstrapMakefileOp),
