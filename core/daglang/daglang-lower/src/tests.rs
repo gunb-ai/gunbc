@@ -142,7 +142,8 @@ fn lower_target_module_with_dependency_scope(
             }
         }
     }
-    lower_typed_project_for_modules(typed, &scope).expect("lowering should succeed")
+    lower_typed_project_for_modules_with_entry(typed, &scope, None, Some(module_name))
+        .expect("lowering should succeed")
 }
 
 #[test]
