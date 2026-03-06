@@ -213,11 +213,9 @@ impl From<Vec<TypeError>> for CompileError {
     }
 }
 
-impl From<Vec<SpannedTypeError>> for CompileError {
-    fn from(errors: Vec<SpannedTypeError>) -> Self {
-        CompileError::Diagnostics(typecheck_diagnostics_located(errors))
-    }
-}
+// Note: SpannedTypeError → CompileError conversion now requires the module graph
+// for source-text resolution. Use typecheck_diagnostics_located() directly at
+// call sites instead of From.
 
 impl From<LowerError> for CompileError {
     fn from(error: LowerError) -> Self {
@@ -264,9 +262,26 @@ fn typecheck_diagnostics(errors: Vec<TypeError>) -> Diagnostics {
     }
 }
 
-fn typecheck_diagnostics_located(errors: Vec<SpannedTypeError>) -> Diagnostics {
+fn typecheck_diagnostics_located(
+    errors: Vec<SpannedTypeError>,
+    graph: &daglang_resolve::ModuleGraph,
+) -> Diagnostics {
     Diagnostics {
-        errors: errors.into_iter().map(|se| se.to_diagnostic()).collect(),
+        errors: errors
+            .into_iter()
+            .map(|se| {
+                // Look up source text for this module to resolve line:col
+                let source = graph
+                    .modules
+                    .iter()
+                    .find(|m| m.path == se.file)
+                    .map(|m| m.source.as_str());
+                match source {
+                    Some(src) => se.to_diagnostic_with_source(src),
+                    None => se.to_diagnostic(),
+                }
+            })
+            .collect(),
     }
 }
 
@@ -740,7 +755,7 @@ pub fn compile_from_module_graph_with_options(
             ..Default::default()
         },
     )
-    .map_err(CompileError::from)?;
+    .map_err(|errors| CompileError::Diagnostics(typecheck_diagnostics_located(errors, &module_graph)))?;
     let extern_assets = collect_extern_assets(&typed);
     let lower_output = lower_to_output_with_config(
         &typed,

@@ -2440,12 +2440,10 @@ fn lower_typed_project_impl(
                             user_code_origin(&source_file, &module_name, &callable.name, span)
                         })
                         .unwrap_or_else(|| {
-                            debug_assert!(
-                                false,
+                            panic!(
                                 "missing span for fn `{}` in {}",
                                 callable.name, module_name
                             );
-                            NodeOrigin::Unknown
                         });
                     let (node, endpoint) = lower_callable(
                         callable,
@@ -2477,12 +2475,10 @@ fn lower_typed_project_impl(
                             user_code_origin(&source_file, &module_name, &callable.name, span)
                         })
                         .unwrap_or_else(|| {
-                            debug_assert!(
-                                false,
+                            panic!(
                                 "missing span for func `{}` in {}",
                                 callable.name, module_name
                             );
-                            NodeOrigin::Unknown
                         });
                     let (node, endpoint) = lower_callable(
                         callable,
@@ -2514,12 +2510,10 @@ fn lower_typed_project_impl(
                             user_code_origin(&source_file, &module_name, &callable.name, span)
                         })
                         .unwrap_or_else(|| {
-                            debug_assert!(
-                                false,
+                            panic!(
                                 "missing span for pattern `{}` in {}",
                                 callable.name, module_name
                             );
-                            NodeOrigin::Unknown
                         });
                     let (node, endpoint) = lower_callable(
                         callable,
@@ -2549,12 +2543,10 @@ fn lower_typed_project_impl(
                             user_code_origin(&source_file, &module_name, &callable.name, span)
                         })
                         .unwrap_or_else(|| {
-                            debug_assert!(
-                                false,
+                            panic!(
                                 "missing span for extern func `{}` in {}",
                                 callable.name, module_name
                             );
-                            NodeOrigin::Unknown
                         });
                     let (node, endpoint) = lower_extern_callable(callable, &module_name, origin);
                     register_endpoint(
@@ -2580,12 +2572,10 @@ fn lower_typed_project_impl(
                         .copied()
                         .map(|span| user_code_origin(&source_file, &module_name, name, span))
                         .unwrap_or_else(|| {
-                            debug_assert!(
-                                false,
+                            panic!(
                                 "missing span for pipeline `{}` in {}",
                                 name, module_name
                             );
-                            NodeOrigin::Unknown
                         });
                     builder.add_node(
                         Node::opaque(

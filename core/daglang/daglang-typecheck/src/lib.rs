@@ -383,19 +383,27 @@ pub struct SpannedTypeError {
     pub error: TypeError,
     pub file: std::path::PathBuf,
     pub module: String,
+    /// Byte offset span of the AST item that caused this error.
+    pub span: Option<daglang_syntax::span::Span>,
 }
 
 impl SpannedTypeError {
     /// Convert to a `Diagnostic` with file location.
     pub fn to_diagnostic(&self) -> daglang_contract::Diagnostic {
-        self.error.to_diagnostic().with_file(self.file.clone())
+        let mut diag = self.error.to_diagnostic().with_file(self.file.clone());
+        if let Some(span) = self.span {
+            diag = diag.with_span(daglang_contract::Span {
+                start: span.start,
+                end: span.end,
+            });
+        }
+        diag
     }
 
     /// Convert to a `Diagnostic` with file and resolved line:col.
     pub fn to_diagnostic_with_source(&self, source: &str) -> daglang_contract::Diagnostic {
-        let mut diag = self.error.to_diagnostic().with_file(self.file.clone());
-        // If the error contains a span, resolve it to line:col
-        if let Some(span) = diag.span {
+        let mut diag = self.to_diagnostic();
+        if let Some(span) = self.span {
             let (line, col) = daglang_contract::byte_to_line_col(source, span.start);
             diag = diag.with_line_col(line, col);
         }
@@ -971,6 +979,7 @@ fn typecheck_graph_modules_spanned(
                         },
                         file: module_file.clone(),
                         module: module_name.clone(),
+                        span: Some(import.span),
                     });
                 }
             }
@@ -980,6 +989,7 @@ fn typecheck_graph_modules_spanned(
             error,
             file: module_file.clone(),
             module: module_name.clone(),
+            span: None, // collect_signatures doesn't track item spans yet
         }));
         typed_modules.push(TypedModule {
             graph_index,
@@ -1009,6 +1019,7 @@ fn typecheck_graph_modules_spanned(
                                 },
                                 file: module_file.clone(),
                                 module: module_name.clone(),
+                                span: Some(item.span),
                             });
                         }
                     } else {
@@ -1019,6 +1030,7 @@ fn typecheck_graph_modules_spanned(
                             },
                             file: module_file.clone(),
                             module: module_name.clone(),
+                            span: Some(item.span),
                         });
                     }
                 }

@@ -721,10 +721,10 @@ suggestion for resolving the contradiction.
 | Emit | Yes (via node metadata) | `Unsupported` | Yes: what's not supported | `"REST exposure codegen not yet implemented for func 'serve' at line 8"` |
 | Execute | No (runtime) | Layered (`ErrorLayer` stack) | Yes: what mock/config is missing | `"DryRun: unmocked transport node 'execute_gist_create' — add mock or run in Real mode"` |
 
-Current implementation note: treat this as the intended contract, not the fully
-landed one. `Diagnostic::new()` is still location-free, `TypeError` and
-`LowerError` still convert through `SpannedTypeError` / `SpannedLowerError`,
-and most lowered nodes still default `NodeOrigin::Unknown`.
+Current implementation note: `SpannedTypeError` now carries AST spans and
+resolves line:col from retained source text. The 5 lowerer origin-stamping
+fallbacks panic instead of silently defaulting `NodeOrigin::Unknown`.
+`Diagnostic::new()` is still location-free (prefer `Diagnostic::located()`).
 
 The key insight is still correct: **spans should flow rightward through the
 pipeline**. Parse creates them. Module resolve attaches them to import
