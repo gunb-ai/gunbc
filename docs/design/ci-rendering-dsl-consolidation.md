@@ -149,21 +149,26 @@ Those belong in `config.ci` or in discovery-only extern data.
 
 ### Rule 4: Runtime discovery crosses the boundary as structure
 
-`CiDiscovery` should eventually stop returning shell-text fragments like:
+`CiDiscovery` must stop returning shell-text fragments like:
 
 - `tool_command: String`
 - `bootstrap_script: String?`
 
-and instead return typed step inputs, for example:
+The chosen replacement is a shared CI script model:
 
-- `run_command: List<String>`
-- `bootstrap_lines: List<String>`
-- `secret_env: List<String>`
+- `ScriptLine = Command { argv: List<String> } | Raw { shell: String } | Comment { text: String }`
+- `ScriptBlock { lines: List<ScriptLine> }`
+- `CiDiscovery { secrets: List<String>, bootstrap: ScriptBlock?, run: ScriptBlock }`
 
-or a provider-neutral `CiStepSpec` value set.
+Rules:
 
-That is not required to delete `render.rs`, but it is required for the full
-compositional end state.
+- `Command` is the preferred form for invocations we can represent as argv.
+- `Raw` is allowed only for shell structures not yet modeled structurally
+  (for example, a `for ...; do` loop).
+- `Comment` preserves explanatory lines without collapsing them into opaque
+  shell text.
+
+That model is required for the full compositional end state.
 
 ## Migration Plan
 
@@ -204,6 +209,9 @@ typed provider-value assembly.
 Do:
 
 - add typed DAG constructors/helpers for GitHub/GitLab provider values
+- add leaf serializer modules over provider schemas:
+  - `extdeps/github_actions_render.dag`
+  - `extdeps/gitlab_ci_render.dag`
 - build `Workflow` / `Pipeline` values in `tools.cigen.dag`
 - move provider-specific layout decisions into typed constructors or typed data
 - keep the final YAML serialization as the last leaf
@@ -215,8 +223,8 @@ Do not:
 Acceptance:
 
 - `tools.cigen.dag` builds typed provider values before serialization
-- `render_github_workflow()` and `render_gitlab_pipeline()` no longer own policy
-- YAML rendering helpers are leaf serialization helpers only
+- `tools.cigen.dag` no longer owns provider YAML layout
+- provider YAML rendering lives in leaf serializer modules only
 
 ### Phase 3: Replace raw `CiDiscovery` strings with typed step data
 
@@ -227,8 +235,8 @@ Move from:
 
 to typed data such as:
 
-- `ci_run: CiCommand`
-- `bootstrap: List<CiCommandLine>`
+- `run: ScriptBlock`
+- `bootstrap: ScriptBlock?`
 - `secrets: List<String>`
 
 or an equivalent typed step/input model.
@@ -267,21 +275,159 @@ What remains is straightforward modeling work:
 - add typed provider-value constructors/helpers
 - narrow the extern discovery boundary
 
-### Real open design decisions
+### Resolved design decisions
 
-These need decisions, but they are not blockers to starting:
+1. Typed replacement for `CiDiscovery.tool_command`
+   Chosen: shared `ScriptBlock` / `ScriptLine` model, not raw shell text and
+   not argv-only. The bootstrap step contains real shell control flow, so the
+   bridge must be able to represent both structured argv commands and rare raw
+   shell lines.
 
-1. What is the typed replacement for `CiDiscovery.tool_command`?
-   Recommendation: model commands as structured argv/lines, not raw shell text.
+2. Where provider YAML rendering lives
+   Chosen: provider YAML serialization becomes a leaf module over the provider
+   schema, not inline logic inside `tools.cigen.dag`.
 
-2. Should YAML itself get a richer structured IR?
-   Recommendation: not required for this lane. First move CI policy and step
-   composition into typed provider values; only then decide whether the final
-   YAML leaf needs a richer IR.
+   Recommended module split:
+   - `extdeps/github_actions.dag` = provider schema + pure constructors
+   - `extdeps/github_actions_render.dag` = YAML leaf serializer
+   - `extdeps/gitlab_ci.dag` = provider schema + pure constructors
+   - `extdeps/gitlab_ci_render.dag` = YAML leaf serializer
 
-3. Should provider command formatting (`CiProvider`) also move into `.dag`?
-   Recommendation: no, not in this cut. Runtime CI command formatting is a
-   different surface from CI YAML artifact generation.
+3. Whether YAML itself needs a richer universal IR first
+   Chosen: no. This lane stops at typed provider values plus provider leaf
+   serializers. A universal YAML DOM can be evaluated later if still useful.
+
+4. Whether `CiProvider` runtime command formatting moves in this cut
+   Chosen: no. Runtime CI command formatting is a different surface from CI
+   artifact generation and is not a blocker for this lane.
+
+5. How shell quoting is handled
+   Chosen: `Command { argv }` is rendered through a shared shell-quoting helper
+   at serialization time. `Raw { shell }` is emitted verbatim and must stay
+   rare, documented, and test-covered.
+
+## Execution Plan
+
+### Step 1: Introduce shared CI script types
+
+Add a new shared module for provider-neutral CI script structure, for example
+`extdeps/ci_script.dag`, with:
+
+- `ScriptLine = Command { argv: List<String> } | Raw { shell: String } | Comment { text: String }`
+- `ScriptBlock { lines: List<ScriptLine> }`
+- `render_script_line_shell()`
+- `render_script_block_lines()`
+
+Acceptance:
+
+- the model can represent both the current cargo invocation and the bootstrap
+  shell loop without collapsing them into one multiline string
+- shell quoting for `Command.argv` is centralized in one helper
+
+### Step 2: Promote provider serialization to leaf modules
+
+Add pure serializer modules that consume typed provider values and emit YAML:
+
+- `extdeps/github_actions_render.dag`
+- `extdeps/gitlab_ci_render.dag`
+
+These modules may depend on:
+
+- `extdeps.yaml`
+- provider schema types
+- shared CI script rendering helpers
+
+Acceptance:
+
+- provider YAML layout is owned by provider leaf modules, not by `tools.cigen.dag`
+- serializer inputs are typed `Workflow` / `Pipeline` values
+
+### Step 3: Move static CI policy into typed provider templates
+
+Evolve `config.ci.dag` from a bag of loose scalars toward typed base values:
+
+- `ci_github_base_workflow: Workflow`
+- `ci_gitlab_base_pipeline: Pipeline`
+
+Keep separately exported leaf constants only where they are not part of provider
+schema shape (for example generator metadata or output paths).
+
+Acceptance:
+
+- static GitHub/GitLab policy is represented as typed provider values
+- `tools.cigen.dag` imports a small number of typed bases instead of many
+  independent policy scalars
+
+### Step 4: Replace the raw discovery bridge with typed script data
+
+Change the extern boundary in `gunbc-app/src/extern_ops.rs` and `tools/cigen.dag`
+to emit:
+
+- `secrets: List<String>`
+- `bootstrap: ScriptBlock?`
+- `run: ScriptBlock`
+
+Guidance:
+
+- use `Command { argv }` for the cargo invocations derived from
+  `CargoInvocation::command_parts()` / `run_with_args()`
+- use `Raw { shell }` only for the bootstrap loop and similarly irreducible
+  shell syntax
+- preserve explanatory comments as `Comment { text }`
+
+Acceptance:
+
+- no raw multiline script blob crosses the Rust/DSL boundary
+- cargo command structure is preserved as argv where possible
+
+### Step 5: Rewrite `tools.cigen.dag` as typed assembly only
+
+After Steps 1-4, `tools.cigen.dag` should:
+
+- import typed provider schemas and typed base config values
+- import typed discovery output
+- build GitHub `Step` / `Job` / `Workflow` values
+- build GitLab `Job` / `Pipeline` values
+- call provider leaf serializers
+- write outputs via `content_upsert`
+
+It should no longer:
+
+- contain provider-specific YAML indentation/layout logic
+- own raw `render_github_workflow()` / `render_gitlab_pipeline()` string builders
+- manipulate bootstrap/run shell content as opaque multiline strings
+
+Acceptance:
+
+- `tools.cigen.dag` reads like assembly/composition, not a YAML template engine
+
+### Step 6: Add ratchet tests for the new architecture
+
+Keep the existing CI cache-path contract tests and add:
+
+- a unit/compile test proving `discover_ci_config` now yields typed script data
+- a pure render test for GitHub workflow serialization from typed `Workflow`
+- a pure render test for GitLab pipeline serialization from typed `Pipeline`
+- a grep-based acceptance check that `tools/cigen.dag` no longer contains the
+  provider-specific YAML render helper family
+
+Acceptance:
+
+- reintroducing raw-string CI discovery or inline provider YAML layout fails
+  tests quickly
+
+### Step 7: Apply the same pattern to adjacent render lanes
+
+After the CI lane is closed, use it as the reference pattern for:
+
+- `dsl/tools/makegen.dag`
+- `dsl/tools/justgen.dag`
+- `core/codegen/src/cli_gen.rs`
+- `gunbc-app/src/ci/ops.rs`
+- `lib/markdown/src/lib.rs`
+- `lib/design-ops/src/lib.rs`
+
+That is follow-on work, not a blocker for closing the CI lane itself.
 
 ## Recommended Immediate Cut
 
@@ -294,8 +440,11 @@ Done now:
 
 Do next:
 
-1. Refactor `tools/cigen.dag` to build typed provider values.
-2. Replace `CiDiscovery` raw strings with typed step data.
+1. Introduce shared CI script types and provider leaf serializers.
+2. Promote static CI policy to typed base provider values in `config.ci`.
+3. Replace `CiDiscovery` raw strings with typed script data.
+4. Rewrite `tools.cigen.dag` as typed assembly only.
+5. Add ratchet tests so the cleanup cannot regress silently.
 
 ## Why The Repo Does Not Already Look Like This
 
@@ -315,3 +464,4 @@ This lane is complete when:
 2. No live Rust code renders CI YAML.
 3. `tools.cigen.dag` builds typed provider values before final serialization.
 4. CI discovery crosses the Rust/DSL boundary as structure, not raw shell text.
+5. Provider YAML layout lives in leaf serializer modules, not in `tools.cigen.dag`.

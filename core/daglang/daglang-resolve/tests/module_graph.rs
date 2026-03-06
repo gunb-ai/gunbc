@@ -295,7 +295,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("tools.bootstrap".into(), 3),
         ("tools.build".into(), 3),
         ("tools.ci".into(), 3),
-        ("tools.cigen".into(), 5),
+        ("tools.cigen".into(), 6),
         ("tools.clippy".into(), 5),
         ("tools.codegen".into(), 2),
         ("tools.deps".into(), 4),
