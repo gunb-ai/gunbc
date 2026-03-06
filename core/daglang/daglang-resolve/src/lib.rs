@@ -600,3 +600,137 @@ impl std::fmt::Display for ResolveError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// In-memory Vfs for testing module discovery without the filesystem.
+    struct InMemoryVfs {
+        files: HashMap<PathBuf, String>,
+        dirs: HashSet<PathBuf>,
+    }
+
+    impl InMemoryVfs {
+        fn new() -> Self {
+            Self {
+                files: HashMap::new(),
+                dirs: HashSet::new(),
+            }
+        }
+
+        fn add_file(&mut self, path: impl Into<PathBuf>, content: &str) {
+            let path = path.into();
+            // Ensure all parent directories exist
+            let mut dir = path.parent();
+            while let Some(d) = dir {
+                self.dirs.insert(d.to_path_buf());
+                dir = d.parent();
+            }
+            self.files.insert(path, content.to_string());
+        }
+    }
+
+    impl Vfs for InMemoryVfs {
+        fn read_to_string(&self, path: &Path) -> std::io::Result<String> {
+            self.files
+                .get(path)
+                .cloned()
+                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "not found"))
+        }
+
+        fn read_dir(&self, path: &Path) -> std::io::Result<Vec<DirEntry>> {
+            let mut entries = Vec::new();
+            for file_path in self.files.keys() {
+                if file_path.parent() == Some(path) {
+                    entries.push(DirEntry {
+                        path: file_path.clone(),
+                        is_dir: false,
+                    });
+                }
+            }
+            for dir_path in &self.dirs {
+                if dir_path.parent() == Some(path) && dir_path != path {
+                    entries.push(DirEntry {
+                        path: dir_path.clone(),
+                        is_dir: true,
+                    });
+                }
+            }
+            entries.sort_by(|a, b| a.path.cmp(&b.path));
+            Ok(entries)
+        }
+
+        fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
+            // In-memory: just return the path as-is (no symlinks to resolve)
+            Ok(path.to_path_buf())
+        }
+
+        fn exists(&self, path: &Path) -> bool {
+            self.files.contains_key(path) || self.dirs.contains(path)
+        }
+
+        fn is_dir(&self, path: &Path) -> bool {
+            self.dirs.contains(path)
+        }
+    }
+
+    #[test]
+    fn in_memory_vfs_discovers_dag_files() {
+        let mut vfs = InMemoryVfs::new();
+        let root = PathBuf::from("/project/dsl");
+        vfs.add_file("/project/dsl/foo.dag", "module foo\nfn main() -> { out: String } { return { out: \"hello\" } }");
+        vfs.add_file("/project/dsl/bar.dag", "module bar\nimport foo\nfn run() -> { out: String } { return { out: \"world\" } }");
+
+        let graph = ModuleGraph::discover_with_vfs(&[root], &vfs, true)
+            .expect("should discover in-memory modules");
+        assert_eq!(graph.modules.len(), 2);
+
+        let mod_names: Vec<String> = graph
+            .modules
+            .iter()
+            .map(|m| m.module_path.as_dotted())
+            .collect();
+        // foo has no deps, so it comes first in topo order
+        assert_eq!(mod_names[0], "foo");
+        assert_eq!(mod_names[1], "bar");
+    }
+
+    #[test]
+    fn in_memory_vfs_discovers_nested_dirs() {
+        let mut vfs = InMemoryVfs::new();
+        let root = PathBuf::from("/project/dsl");
+        vfs.add_file(
+            "/project/dsl/tools/makegen.dag",
+            "module tools.makegen\nfn render() -> { out: String } { return { out: \"make\" } }",
+        );
+
+        let graph = ModuleGraph::discover_with_vfs(&[root], &vfs, true)
+            .expect("should discover nested modules");
+        assert_eq!(graph.modules.len(), 1);
+        assert_eq!(graph.modules[0].module_path.as_dotted(), "tools.makegen");
+    }
+
+    #[test]
+    fn in_memory_vfs_rejects_missing_root() {
+        let vfs = InMemoryVfs::new();
+        let root = PathBuf::from("/nonexistent");
+        let err = ModuleGraph::discover_with_vfs(&[root], &vfs, true)
+            .expect_err("should fail on missing root");
+        assert!(matches!(err, ResolveError::InvalidRootPath { .. }));
+    }
+
+    #[test]
+    fn in_memory_vfs_detects_unresolved_import() {
+        let mut vfs = InMemoryVfs::new();
+        let root = PathBuf::from("/project/dsl");
+        vfs.add_file(
+            "/project/dsl/broken.dag",
+            "module broken\nimport nonexistent\nfn f() -> { out: String } { return { out: \"x\" } }",
+        );
+
+        let err = ModuleGraph::discover_with_vfs(&[root], &vfs, true)
+            .expect_err("should fail on unresolved import");
+        assert!(matches!(err, ResolveError::UnresolvedImport { .. }));
+    }
+}

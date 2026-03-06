@@ -223,7 +223,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 | CP-18 | Defer transport expansion to backend (`RealizedDag`) | L | CP-40 | CP | Open |
 | CP-26 | `ParseResult { ast, diagnostics }` (subsumes CP-16, CP-21) | M | — | CP | **Done** — `ParseResult { ast: SourceFile, diagnostics: Vec<ParseError> }` struct added. `parse_to_result()` always returns partial AST. `into_result()` bridges to old API. `parse_source_file_partial()` internal method. Existing `parse()` unchanged for backward compat. |
 | CP-27 | Model skipping as control flow (delete `Value::Skipped`) | L | CP-20, Bridge 1+2 | CP | Open |
-| CP-57 | `Vfs` trait / Source Ingest stage (isolate filesystem impurity). **Moved early** — enables deterministic tests, caching, read-once discipline. | M | — | CP | Open |
+| CP-57 | `Vfs` trait / Source Ingest stage (isolate filesystem impurity). **Moved early** — enables deterministic tests, caching, read-once discipline. | M | — | CP | **Done** — `Vfs` trait + `RealVfs` impl + `DirEntry` in daglang-resolve. `ModuleGraph::discover_with_vfs()` entrypoint. All `std::fs` calls routed through `Vfs`. `InMemoryVfs` + 4 unit tests prove synthetic discovery. `discover()`/`discover_strict()` unchanged for backward compat. |
 
 ### D.3: Interpreted/Compiled Parity (after D.2)
 
