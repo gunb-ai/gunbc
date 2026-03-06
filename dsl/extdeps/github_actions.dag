@@ -87,6 +87,8 @@ data windows_latest: RunnerImage = { id: "windows-latest" }
 // Well-known reusable actions with pinned versions.
 
 data checkout_action: String = "actions/checkout@v4"
+// Moved to config/toolchain.dag — import from there.
+// Kept here as fallback for external consumers that don't import config.
 data rust_toolchain_action: String = "dtolnay/rust-toolchain@stable"
 data cache_action: String = "actions/cache@v4"
 
@@ -160,6 +162,14 @@ fn rust_setup_step() -> Step {
     name: "Setup Rust",
     action: rust_toolchain_action,
     with_params: []
+  )
+}
+
+fn rust_setup_step_pinned(action: String, version: String) -> Step {
+  uses_step(
+    name: "Setup Rust",
+    action: action,
+    with_params: [{ key: "toolchain", value: Scalar { value: version } }]
   )
 }
 

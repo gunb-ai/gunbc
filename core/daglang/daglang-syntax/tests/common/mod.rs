@@ -38,6 +38,7 @@ pub fn expected_dsl_files_sorted() -> Vec<&'static str> {
         "config/resources.dag",
         "config/test_policy.dag",
         "config/tool_registry.dag",
+        "config/toolchain.dag",
         "config/workflow_catalog.dag",
         "config/workflow_commands.dag",
         "config/workspace.dag",

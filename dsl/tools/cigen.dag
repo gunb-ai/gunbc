@@ -21,8 +21,9 @@ import std.patterns { content_upsert }
 import std.resources { Filesystem }
 import extdeps.github_actions {
   EnvVar, Step, Workflow, cache_step, checkout_step, output_dir, run_step,
-  rust_setup_step, secret_ref
+  rust_setup_step, rust_setup_step_pinned, secret_ref
 }
+import config.toolchain { rust_version, rust_toolchain_action }
 import extdeps.github_actions_render { render_github_workflow_yaml }
 import extdeps.gitlab_ci { Pipeline, Variable, output_path }
 import extdeps.gitlab_ci_render { render_gitlab_pipeline_yaml }
@@ -73,7 +74,7 @@ func cigen() -> { written: Bool }
     |> append(items: github_secret_env)
   github_steps = [
     checkout_step(checkout: ci_checkout),
-    rust_setup_step()
+    rust_setup_step_pinned(action: rust_toolchain_action, version: rust_version)
   ]
     |> append(items: github_cache_steps)
     |> append(items: github_bootstrap_steps)
