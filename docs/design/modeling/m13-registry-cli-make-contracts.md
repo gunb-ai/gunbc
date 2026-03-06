@@ -72,12 +72,12 @@ Every CLI flag that appears in Makefile must have a `make_var`.
 
 ## Files
 
-- `gunbc-dag/tests/tool_registration.rs` — new contract tests
+- `gunbc-app/tests/tool_registration.rs` — new contract tests
 - `core/codegen/src/registry.rs` — derive_tool_defs()
-- `gunbc-dag/src/makegen/registry.rs` — ToolInfo::from_tool_def()
+- `gunbc-app/src/makegen/registry.rs` — ToolInfo::from_tool_def()
 
 ## References
 
 - `core/tool-registry/src/lib.rs` — ToolRegistration struct
 - `core/codegen/src/cli_gen.rs` — CliEntrypoint
-- `gunbc-dag/src/makegen/registry.rs:642-678` — from_tool_def conversion
+- `gunbc-app/src/makegen/registry.rs:642-678` — from_tool_def conversion

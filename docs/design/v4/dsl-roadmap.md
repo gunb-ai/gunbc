@@ -1385,7 +1385,7 @@ Replace registration islands with filesystem discovery + module graph.
 
 **Metric**: manual tool registrations → **0**, stringly ID references → **0**
 
-**Current cutover (2026-02-18):** `gunbc-dag` workspace composition now discovers modules directly from DSL files (`dsl/tools/*.dag` and `dsl/pipelines/*.dag`). Registry metadata and unconditional CI wiring are no longer used for workspace DAG composition; unmapped discovered modules fail fast. The workspace now composes `build`, `makegen`, `clippy`, `deps`, `bootstrap`, `codegen`, `docgen`, `gist`, `pragma`, `testgen`, `dag_viz`, and `ci` from discovered DSL modules. `makegen` manual workspace targets now also follow DSL discovery (`build`/`pragma` from tools, `ci` from pipelines) instead of manual list drift. `gunbc-codegen` CLI generation now discovers `#[tool_target]` metadata from workspace source files and enforces DSL-module coverage checks, removing inventory-link/force-link discovery from that code path.
+**Current cutover (2026-02-18):** `gunbc-app` workspace composition now discovers modules directly from DSL files (`dsl/tools/*.dag` and `dsl/pipelines/*.dag`). Registry metadata and unconditional CI wiring are no longer used for workspace DAG composition; unmapped discovered modules fail fast. The workspace now composes `build`, `makegen`, `clippy`, `deps`, `bootstrap`, `codegen`, `docgen`, `gist`, `pragma`, `testgen`, `dag_viz`, and `ci` from discovered DSL modules. `makegen` manual workspace targets now also follow DSL discovery (`build`/`pragma` from tools, `ci` from pipelines) instead of manual list drift. `gunbc-codegen` CLI generation now discovers `#[tool_target]` metadata from workspace source files and enforces DSL-module coverage checks, removing inventory-link/force-link discovery from that code path.
 
 #### C2: Emission Unification (collapse rendering systems)
 
@@ -1496,7 +1496,7 @@ Do this sweep **during** the engine unification (Workstream C0) — because the 
 | `FilesystemHandle::new()` | `uses fs: Filesystem(mode: ...)` resource declaration |
 
 **Non-negotiable gates** (already enforced, keep during migration):
-- [x] Repo-wide purity checks — *`gunbc-dag/tests/resource_purity_checks.rs` remains green*
+- [x] Repo-wide purity checks — *`gunbc-app/tests/resource_purity_checks.rs` remains green*
 - [x] Resource declaration audits — *resource purity + dependency boundary suites are passing*
 - [x] Clippy guardrails preventing direct I/O outside transport/boundary crates — *`daglang-exec-bridge` clippy gate enforced with `-D warnings`*
 
@@ -1751,7 +1751,7 @@ For each workflow: what DSL constructs are required, what modeling gaps are like
 | **DSL constructs** | `type`, `pattern content_upsert`, `uses fs: Filesystem(mode: Write)`, `func` |
 | **Modeling gaps** | File resource mode (Write vs ReadWrite), skip-if-unchanged semantics at IR level |
 | **Parity gates** | Normalized parity core matches (8 nodes, 10 edges); raw compiled graph includes wrapper/dependency edges (currently 9 nodes, 12 edges); ProgressManifest with 4 waves; DryRun completes |
-| **Deletes in unify** | `gunbc-dag/src/makegen/graph.rs` (137 lines), makegen registration in `all_tools()` |
+| **Deletes in unify** | `gunbc-app/src/makegen/graph.rs` (137 lines), makegen registration in `all_tools()` |
 
 ### S2: Credential Chain (GCP)
 

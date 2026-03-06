@@ -8,7 +8,7 @@
 
 ## Problem
 
-Browser opening is currently implemented inline in `gunbc-dag/src/dag_viz/graph.rs` (`execute_open_browser`, around lines 451-486). It handles WSL/macOS/Linux but:
+Browser opening is currently implemented inline in `gunbc-app/src/dag_viz/graph.rs` (`execute_open_browser`, around lines 451-486). It handles WSL/macOS/Linux but:
 
 1. **Not shared** -- only usable by dag-viz, not by other tools
 2. **Platform enum is incomplete** -- `lib/tools/deps/src/platform.rs` has `Platform::Linux` but does not distinguish WSL from native Linux
@@ -18,7 +18,7 @@ Browser opening is currently implemented inline in `gunbc-dag/src/dag_viz/graph.
 ## Current Implementation
 
 ```rust
-// gunbc-dag/src/dag_viz/graph.rs
+// gunbc-app/src/dag_viz/graph.rs
 fn execute_open_browser(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let is_wsl = std::env::var("WSL_DISTRO_NAME").is_ok();
     if is_wsl {
@@ -52,7 +52,7 @@ fn execute_open_browser(inputs: HashMap<String, Value>) -> Result<HashMap<String
 - gunb.ai platform modeling
 - the-gunbai environment detection
 - Current `Platform` enum: `lib/tools/deps/src/platform.rs`
-- Current inline implementation: `gunbc-dag/src/dag_viz/graph.rs:451`
+- Current inline implementation: `gunbc-app/src/dag_viz/graph.rs:451`
 
 ## Progress (2026-02-18)
 
@@ -64,5 +64,5 @@ fn execute_open_browser(inputs: HashMap<String, Value>) -> Result<HashMap<String
   - `(Windows, Native) -> cmd /C start`
   - default Linux/Unix path -> `xdg-open`
   - `(CI|Container|Emulator) -> None` (no-browser/no-op path)
-- Migrated `dag_viz` prepare step to call shared resolver (`gunbc-dag/src/dag_viz/graph.rs`).
+- Migrated `dag_viz` prepare step to call shared resolver (`gunbc-app/src/dag_viz/graph.rs`).
 - Added resolver tests in `lib/primitives` (`browser::tests::*`).

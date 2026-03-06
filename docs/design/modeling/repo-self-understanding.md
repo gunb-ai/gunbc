@@ -77,7 +77,7 @@ pub enum CrateTier {
     Core,
 
     /// Depends on Foundation + Core; consumes generated artifacts.
-    /// Examples: gunbc-dag (consumes codegen output, testgen output)
+    /// Examples: gunbc-app (consumes codegen output, testgen output)
     Application,
 }
 
@@ -155,7 +155,7 @@ pub fn workspace_crates() -> Vec<CrateSpec> {
 
         // Application tier — consumes generated artifacts
         CrateSpec {
-            name: "gunbc-dag",
+            name: "gunbc-app",
             tier: CrateTier::Application,
             description: "Repo-specific DAGs, CLI entrypoints, tool workflows",
             depends_on: &["gunbc-ir", "gunbc-exec", "gunbc-codegen", "gunbc-infra",

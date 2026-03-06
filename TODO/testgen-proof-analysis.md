@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-We ran three proof tests (`gunbc-dag/tests/shell_exit_enforcement_proof.rs`):
+We ran three proof tests (`gunbc-app/tests/shell_exit_enforcement_proof.rs`):
 
 | Test | Result | What it proves |
 |------|--------|----------------|
@@ -55,7 +55,7 @@ Before this fix, `GenericShellParseOp::TrimStdout` would:
 2. Checks if output type is optional (`T?`) → `Secret` is not optional
 3. Returns `Err(shell_exit_error(...))` with "shell.GCloud.SecretManagerAccessVersion: shell command exited with code 1 (stderr: ERROR: ...)"
 
-**Code**: `gunbc-dag/src/resolve_service.rs:545-562`
+**Code**: `gunbc-app/src/resolve_service.rs:545-562`
 
 ---
 
@@ -173,7 +173,7 @@ The `@mock_response` annotation exists in the DSL AST (`MockResponseDef` in `dag
 
 ## Test Output Reference
 
-Full test file: `gunbc-dag/tests/shell_exit_enforcement_proof.rs`
+Full test file: `gunbc-app/tests/shell_exit_enforcement_proof.rs`
 
 ```
 running 3 tests
@@ -239,13 +239,13 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 
 | File | Role |
 |------|------|
-| `gunbc-dag/tests/shell_exit_enforcement_proof.rs` | Proof tests (new) |
-| `gunbc-dag/src/resolve_service.rs:483-498` | `shell_exit_error()` helper (RT-I4) |
-| `gunbc-dag/src/resolve_service.rs:523-528` | SplitLines exit code check (RT-I4) |
-| `gunbc-dag/src/resolve_service.rs:545-562` | TrimStdout exit code check (RT-I4) |
-| `gunbc-dag/src/mock_defaults.rs:145-147` | `default_shell_response()` — always exit 0 |
-| `gunbc-dag/src/mock_defaults.rs:164-184` | `default_rest_response()` — always status 200 |
-| `gunbc-dag/src/mock_defaults.rs:280-505` | `auto_mock_spec()` — iterative slot filling |
+| `gunbc-app/tests/shell_exit_enforcement_proof.rs` | Proof tests (new) |
+| `gunbc-app/src/resolve_service.rs:483-498` | `shell_exit_error()` helper (RT-I4) |
+| `gunbc-app/src/resolve_service.rs:523-528` | SplitLines exit code check (RT-I4) |
+| `gunbc-app/src/resolve_service.rs:545-562` | TrimStdout exit code check (RT-I4) |
+| `gunbc-app/src/mock_defaults.rs:145-147` | `default_shell_response()` — always exit 0 |
+| `gunbc-app/src/mock_defaults.rs:164-184` | `default_rest_response()` — always status 200 |
+| `gunbc-app/src/mock_defaults.rs:280-505` | `auto_mock_spec()` — iterative slot filling |
 | `core/test/src/mock_spec.rs:416-423` | `TransportMock` struct |
 | `core/test/src/mockable.rs:59` | `error_cases()` trait method (unused) |
 | `core/codegen/src/testgen/obligation.rs:228-255` | Bucket C obligations |

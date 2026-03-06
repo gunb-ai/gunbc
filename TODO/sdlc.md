@@ -26,7 +26,7 @@ Pipeline:     11 stages with real logic (design, review, code review, testing)
 Worker:       COMPLETE — discovery, claim, dispatch, record
 Handlers:     8 per-stage functions with LLM + CI integration
 DSL Tests:    10+ DSL-level tests
-Rust Tests:   11 compile + 1 dry-run in `gunbc-dag/tests/compile_commands.rs`
+Rust Tests:   11 compile + 1 dry-run in `gunbc-app/tests/compile_commands.rs`
 ```
 
 ### What works (on paper)
@@ -42,7 +42,7 @@ Rust Tests:   11 compile + 1 dry-run in `gunbc-dag/tests/compile_commands.rs`
 
 ### Compilation status
 
-Phase 0 **complete**: all SDLC .dag files compile through the Rust compiler. 11 compilation tests + 1 dry-run execution test pass in `gunbc-dag/tests/compile_commands.rs`. Profile binding (unit_test, local, cloud_run) verified. Phase 1 (local dry run) complete. Phase 2 in progress.
+Phase 0 **complete**: all SDLC .dag files compile through the Rust compiler. 11 compilation tests + 1 dry-run execution test pass in `gunbc-app/tests/compile_commands.rs`. Profile binding (unit_test, local, cloud_run) verified. Phase 1 (local dry run) complete. Phase 2 in progress.
 
 ---
 
@@ -58,7 +58,7 @@ Phase 0 **complete**: all SDLC .dag files compile through the Rust compiler. 11 
 | 1 | S-1 | **Fix import bugs.** Wrong import in `sdlc_worker.dag:34` (`determine_stage` from wrong module). Wrong service names in `pipelines/sdlc.dag` (`Cargo` → `Build`, dotted `git.Core` selector). | `daglang check dsl/pipelines/sdlc_worker.dag` and `daglang check dsl/pipelines/sdlc.dag` exit 0 with zero import errors. | S | Done |
 | 2 | S-2 | **Fix missing type imports in `stub_providers.dag`.** Uses `TrackedIssue`, `IssueEvent`, `Signal`, `SignalType` without imports. | `daglang check dsl/profiles/stub_providers.dag` exits 0. All referenced types have explicit imports. | S | Done |
 | 3 | S-3 | **Extract duplicate type definitions.** `CapabilityBehaviorContract` and `CapabilityFailureContract` duplicated across interface files. Extract to shared module. | `grep -c 'type CapabilityBehaviorContract' dsl/interfaces/` returns 1. `grep -c 'type CapabilityFailureContract' dsl/interfaces/` returns 1. Shared module exists (e.g., `dsl/interfaces/shared.dag`). | S | Done |
-| 4 | S-4 | **Add Rust compilation test.** `builds_sdlc_worker_dsl_graph()` and `builds_sdlc_stages_dsl_graph()` in `compile_commands.rs`. | Two new `#[test]` functions in `gunbc-dag/tests/compile_commands.rs`. Both call `build_dsl_graph()` for SDLC modules and assert `Ok`. `cargo test -p gunbc-dag -- builds_sdlc` passes. **This is the gate for Phase 1.** | M | Done |
+| 4 | S-4 | **Add Rust compilation test.** `builds_sdlc_worker_dsl_graph()` and `builds_sdlc_stages_dsl_graph()` in `compile_commands.rs`. | Two new `#[test]` functions in `gunbc-app/tests/compile_commands.rs`. Both call `build_dsl_graph()` for SDLC modules and assert `Ok`. `cargo test -p gunbc-app -- builds_sdlc` passes. **This is the gate for Phase 1.** | M | Done |
 
 ---
 
@@ -85,8 +85,8 @@ Phase 0 **complete**: all SDLC .dag files compile through the Rust compiler. 11 
 
 | # | ID | What | Acceptance Criteria | Size | Status |
 |---|-----|------|---------------------|------|--------|
-| 9 | S-9 | **Verify GitHub provider.** `IssueProvider` operations work against real GitHub API (discover, get, create, comment, set_labels). | Integration test (gated by `GITHUB_TOKEN` env var) exercises all 7 IssueProvider operations. Each returns expected data shape. | M | Done (env-gated live test in `gunbc-dag/tests/sdlc_phase_live.rs`) |
-| 10 | S-10 | **Verify credential wiring.** `GITHUB_TOKEN` flows through `local` profile credential provider to service operations. | `build_dsl_graph_with_profile("pipelines.sdlc_worker", "local")` succeeds. Running with `GITHUB_TOKEN` set produces authenticated API calls (not 401). | M | Done (env-gated compile+auth test in `gunbc-dag/tests/sdlc_phase_live.rs`) |
+| 9 | S-9 | **Verify GitHub provider.** `IssueProvider` operations work against real GitHub API (discover, get, create, comment, set_labels). | Integration test (gated by `GITHUB_TOKEN` env var) exercises all 7 IssueProvider operations. Each returns expected data shape. | M | Done (env-gated live test in `gunbc-app/tests/sdlc_phase_live.rs`) |
+| 10 | S-10 | **Verify credential wiring.** `GITHUB_TOKEN` flows through `local` profile credential provider to service operations. | `build_dsl_graph_with_profile("pipelines.sdlc_worker", "local")` succeeds. Running with `GITHUB_TOKEN` set produces authenticated API calls (not 401). | M | Done (env-gated compile+auth test in `gunbc-app/tests/sdlc_phase_live.rs`) |
 | 11 | S-11 | **End-to-end local run.** Process one issue from Idea → Design: discover issues, claim, call LLM, post comment, advance labels. | Target issue has: (1) design comment from LLM, (2) `sdlc:design-review` label. Command exits 0. Outcome ledger has entry for the stage run. | L | In Progress (env-gated live e2e harness added; requires secrets + mutable test issue) |
 
 ---

@@ -715,7 +715,7 @@ test bootstrap_dryrun : cloud_base {
         let config = TestEmitConfig {
             dag_builder: "crate::build_bootstrap_graph().unwrap()".to_string(),
             auto_mock_fn: "gunbc_test::auto_mock_spec".to_string(),
-            output_dir: "gunbc-dag/src/bootstrap".to_string(),
+            output_dir: "gunbc-app/src/bootstrap".to_string(),
             tool_name: Some("bootstrap".to_string()),
             signature_fn: Some("crate::bootstrap_signature()".to_string()),
         };

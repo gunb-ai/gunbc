@@ -30,7 +30,7 @@ type MarkdownDoc {
 // ── Extern func declarations ──────────────────────────────────────────
 //
 // render_tree needs recursive tree algorithm (not expressible in DSL).
-// Implementation: gunbc-dag/src/extern_ops.rs
+// Implementation: gunbc-app/src/extern_ops.rs
 
 extern func render_tree(paths: List<String>) -> { return: String }
 

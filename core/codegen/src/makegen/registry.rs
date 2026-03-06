@@ -374,7 +374,7 @@ impl ToolRegistry {
     ///
     /// NOTE: This returns an un-enriched registry (no live_secrets).
     /// Callers that need live_secrets should use the enriched wrapper
-    /// in `gunbc_dag::tool_graphs::default_registry_enriched()`.
+    /// in `gunbc_app::tool_graphs::default_registry_enriched()`.
     pub fn default_registry() -> Result<Self, String> {
         let mut registry = Self::new();
 

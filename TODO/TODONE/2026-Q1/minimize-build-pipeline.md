@@ -8,8 +8,8 @@
 the actual 15-crate tool build:
 
 1. `cargo fix --workspace` (preflight-fix) — ALL 26 crates
-2. `cargo run -p gunbc-dag --release` (ensure-codegen) — ALL 26 crates (release)
-3. `cargo run -p gunbc-dag` (pragma) — ALL 26 crates (dev — separate from #2!)
+2. `cargo run -p gunbc-app --release` (ensure-codegen) — ALL 26 crates (release)
+3. `cargo run -p gunbc-app` (pragma) — ALL 26 crates (dev — separate from #2!)
 4. `cargo clippy --all-targets` (lint-upsert) — ALL 26 crates
 5. `cargo run -p gunbc-gist` (gist-recent) — 15 crates ← the actual work
 
@@ -21,7 +21,7 @@ each generated binary already handles pragma/clippy/freshness at startup.
 
 ### Part A — Guardrails
 
-1. **`gunbc-dag/tests/dependency_boundaries.rs`** — cargo_metadata-based dep
+1. **`gunbc-app/tests/dependency_boundaries.rs`** — cargo_metadata-based dep
    graph assertions: tool crates don't depend on unrelated tools, leaf crates
    have no workspace deps, no upward layer violations.
 
@@ -53,7 +53,7 @@ each generated binary already handles pragma/clippy/freshness at startup.
 
 ## Files modified
 
-- `gunbc-dag/tests/dependency_boundaries.rs` — new guardrail tests
-- `gunbc-dag/src/makegen/render.rs` — tool target deps, ensure-codegen deps, tests
-- `gunbc-dag/src/makegen/registry.rs` — generated_cli resource mapping
+- `gunbc-app/tests/dependency_boundaries.rs` — new guardrail tests
+- `gunbc-app/src/makegen/render.rs` — tool target deps, ensure-codegen deps, tests
+- `gunbc-app/src/makegen/registry.rs` — generated_cli resource mapping
 - `Makefile` — regenerated

@@ -52,7 +52,7 @@ Every external system is modeled as a **composition of layered concerns** (TCP â
 | `core/test/` | MockSpec and test utilities |
 | `lib/transport/` | Canonical I/O boundary; a few bootstrap/generator crates do direct I/O by exception (see `TODO/TODONE/clippy-pragma-audit.md`) |
 | `lib/tools/` | General-purpose tool wrappers (clippy, deps, gist) |
-| `gunbc-dag/` | Repo-specific DAGs and CLI entrypoints (ci, makegen, codegen, testgen, bootstrap) |
+| `gunbc-app/` | Repo-specific DAGs and CLI entrypoints (ci, makegen, codegen, testgen, bootstrap) |
 | `docs/design/` | Design documentation |
 
 ## Refactor-Pressure Checklist (PR Gate)

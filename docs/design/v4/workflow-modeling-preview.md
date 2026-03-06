@@ -39,7 +39,7 @@ func makegen(registry: ToolRegistry) -> { written: Bool } {
 }
 ```
 
-### Builder shape (from `gunbc-dag/src/makegen/graph.rs`, ~137 lines)
+### Builder shape (from `gunbc-app/src/makegen/graph.rs`, ~137 lines)
 
 ```
 load_registry ──→ render_makefile ──→ prepare_read_makegen ──→ execute_read_makegen
@@ -281,7 +281,7 @@ pipeline ci {
 }
 ```
 
-The hand-wired builder is ~920 lines in `gunbc-dag/src/ci/graph.rs`.
+The hand-wired builder is ~920 lines in `gunbc-app/src/ci/graph.rs`.
 
 ### Builder shape (23 canonical nodes)
 

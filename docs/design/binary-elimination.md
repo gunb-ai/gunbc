@@ -1,6 +1,6 @@
 # Binary Elimination: Handwritten → Generated
 
-**Goal**: Eliminate all handwritten binary entrypoints in `gunbc-dag/src/bin/` except the two bootstrap exceptions (`ci.rs`, `codegen_cli.rs`). The CLI generator (`cli_gen.rs`) should produce every binary from DSL metadata.
+**Goal**: Eliminate all handwritten binary entrypoints in `gunbc-app/src/bin/` except the two bootstrap exceptions (`ci.rs`, `codegen_cli.rs`). The CLI generator (`cli_gen.rs`) should produce every binary from DSL metadata.
 
 **Guiding principle**: The DSL `.dag` file is the specification. The binary is derived code. If a binary needs hand-written Rust, that's a compiler feature gap.
 

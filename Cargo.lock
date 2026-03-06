@@ -153,7 +153,7 @@ dependencies = [
  "daglang-resolve",
  "daglang-syntax",
  "daglang-typecheck",
- "gunbc-dag",
+ "gunbc-app",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-test",
@@ -217,7 +217,7 @@ dependencies = [
  "daglang-resolve",
  "daglang-syntax",
  "daglang-typecheck",
- "gunbc-dag",
+ "gunbc-app",
  "gunbc-deps",
  "gunbc-ir",
  "serde",
@@ -337,45 +337,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
-name = "gunbc-cli"
-version = "0.1.0"
-dependencies = [
- "gunbc-ir",
-]
-
-[[package]]
-name = "gunbc-clippy"
-version = "0.1.0"
-dependencies = [
- "gunbc-ir",
-]
-
-[[package]]
-name = "gunbc-codegen"
-version = "0.1.0"
-dependencies = [
- "daglang-derive",
- "daglang-driver",
- "daglang-emit",
- "daglang-lower",
- "daglang-resolve",
- "daglang-syntax",
- "daglang-typecheck",
- "gunbc-cli",
- "gunbc-exec",
- "gunbc-infra",
- "gunbc-ir",
- "gunbc-lib-blob",
- "gunbc-lib-transport",
- "gunbc-primitives",
- "gunbc-resolve",
- "gunbc-test",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "gunbc-dag"
+name = "gunbc-app"
 version = "0.1.0"
 dependencies = [
  "cargo_metadata",
@@ -412,6 +374,44 @@ dependencies = [
  "serde_json",
  "serde_yml",
  "toml_edit",
+]
+
+[[package]]
+name = "gunbc-cli"
+version = "0.1.0"
+dependencies = [
+ "gunbc-ir",
+]
+
+[[package]]
+name = "gunbc-clippy"
+version = "0.1.0"
+dependencies = [
+ "gunbc-ir",
+]
+
+[[package]]
+name = "gunbc-codegen"
+version = "0.1.0"
+dependencies = [
+ "daglang-derive",
+ "daglang-driver",
+ "daglang-emit",
+ "daglang-lower",
+ "daglang-resolve",
+ "daglang-syntax",
+ "daglang-typecheck",
+ "gunbc-cli",
+ "gunbc-exec",
+ "gunbc-infra",
+ "gunbc-ir",
+ "gunbc-lib-blob",
+ "gunbc-lib-transport",
+ "gunbc-primitives",
+ "gunbc-resolve",
+ "gunbc-test",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

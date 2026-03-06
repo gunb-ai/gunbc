@@ -108,7 +108,7 @@ impl DiscoveryCache {
 /// [`ToolDef`] with:
 /// - CLI entrypoints derived from func params (convention-based)
 /// - Outputs from DSL compilation (`CompileOutput.output_paths`)
-/// - Invocation as `cargo run -p gunbc-dag --bin gunbc-{name}`
+/// - Invocation as `cargo run -p gunbc-app --bin gunbc-{name}`
 /// - MockSpec as `auto_mock_spec(&dag, "{name}")`
 ///
 /// Uses content-hash-based incremental caching (C26): unchanged modules
@@ -436,7 +436,7 @@ fn build_tool_defs_from_cached_params(
         let mock_spec = format!("gunbc_test::auto_mock_spec(&dag, \"{}\")", module_tool_name,);
 
         let mut tool = ToolDef::new(
-            String::from("gunbc-dag"),
+            String::from("gunbc-app"),
             module_tool_name.clone(),
             description,
             String::from("build_dsl_graph_for_entrypoint"),
@@ -444,7 +444,7 @@ fn build_tool_defs_from_cached_params(
         )
         .returns_result()
         .mock_spec_call(mock_spec)
-        .import("use gunbc_dag::dsl_builder::build_dsl_graph_for_entrypoint;")
+        .import("use gunbc_app::dsl_builder::build_dsl_graph_for_entrypoint;")
         .invocation(cargo::CargoInvocation::composed(&module_tool_name, "dag"));
 
         if !available_profiles.is_empty() {
@@ -473,7 +473,7 @@ fn build_tool_defs_from_cached_params(
             .unwrap_or_default();
 
         let mut tool = ToolDef::new(
-            String::from("gunbc-dag"),
+            String::from("gunbc-app"),
             tool_name.clone(),
             description,
             String::from("build_dsl_graph_for_entrypoint"),
@@ -481,7 +481,7 @@ fn build_tool_defs_from_cached_params(
         )
         .returns_result()
         .mock_spec_call(mock_spec)
-        .import("use gunbc_dag::dsl_builder::build_dsl_graph_for_entrypoint;")
+        .import("use gunbc_app::dsl_builder::build_dsl_graph_for_entrypoint;")
         .invocation(cargo::CargoInvocation::composed(&tool_name, "dag"));
 
         if !available_profiles.is_empty() {
@@ -636,7 +636,7 @@ fn capitalize(s: &str) -> String {
 /// Testgen: custom builder, no DSL module.
 fn testgen_tool_def() -> ToolDef {
     ToolDef::new(
-        "gunbc-dag",
+        "gunbc-app",
         "testgen",
         "Generate tests from DAG mock specifications",
         "build_testgen_graph_auto",
@@ -644,7 +644,7 @@ fn testgen_tool_def() -> ToolDef {
     )
     .returns_result()
     .mock_spec_call(r#"gunbc_test::auto_mock_spec(&dag, "testgen")"#)
-    .import("use gunbc_dag::tool_graphs::build_testgen_graph_auto;")
+    .import("use gunbc_app::tool_graphs::build_testgen_graph_auto;")
     .output("**/generated_tests*.rs")
 }
 
@@ -817,8 +817,8 @@ mod tests {
             .expect("workspace root");
         let mut files = Vec::new();
         collect_rust_files(&workspace_root.join("core"), &mut files);
-        collect_rust_files(&workspace_root.join("gunbc-dag/src"), &mut files);
-        collect_rust_files(&workspace_root.join("gunbc-dag/tests"), &mut files);
+        collect_rust_files(&workspace_root.join("gunbc-app/src"), &mut files);
+        collect_rust_files(&workspace_root.join("gunbc-app/tests"), &mut files);
 
         let mut offenders = Vec::new();
         let needle = ["derive_tool_defs", "("].concat();

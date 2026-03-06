@@ -36,7 +36,7 @@ The diff gist should produce a markdown gist containing only the unified diffs o
 
 | Gap | Notes |
 |-----|-------|
-| Repo-level config in gunbc-dag | `GitConfig` exists but isn't wired into gunbc-dag as repo config yet |
+| Repo-level config in gunbc-app | `GitConfig` exists but isn't wired into gunbc-app as repo config yet |
 | Diff transport chain | No `git diff` operations exist anywhere |
 | Diff markdown rendering | `MarkdownOp` only has `RenderCodeSnapshot`, no diff variant |
 | Diff gist graph | No graph builder for the diff pipeline |
@@ -219,7 +219,7 @@ The `base_ref` (default branch to diff against) should resolve through this chai
 For the initial implementation, the build-time parameter is sufficient. The caller (binary entrypoint) reads `GitConfig` and passes it in:
 
 ```rust
-// In the binary entrypoint (gunbc-dag/src/bin/gist.rs or similar)
+// In the binary entrypoint (gunbc-app/src/bin/gist.rs or similar)
 let git_config = GitConfig::default(); // or load from repo config
 let dag = build_diff_gist_graph(
     &git_config.default_branch,
@@ -232,7 +232,7 @@ let dag = build_diff_gist_graph(
 
 The comment in `core/ir/src/git.rs` says:
 
-> Repo-specific choices (e.g., "our default branch is main") live in `gunbc-dag` alongside other repo config.
+> Repo-specific choices (e.g., "our default branch is main") live in `gunbc-app` alongside other repo config.
 
 This design doesn't block on a full `RepoConfig` struct. The binary entrypoint can hardcode `GitConfig::default()` for now and later read from a config file when `RepoConfig` is introduced. The graph itself is parameterized — it doesn't care where `base_ref` came from.
 

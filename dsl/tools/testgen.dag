@@ -5,7 +5,7 @@
 // This is a dynamic parallel pattern: N targets, each getting an
 // independent content_upsert chain.
 //
-// Replaces: gunbc-dag/src/testgen_dag/graph.rs (1 + N*6 nodes)
+// Replaces: gunbc-app/src/testgen_dag/graph.rs (1 + N*6 nodes)
 
 module tools.testgen
 

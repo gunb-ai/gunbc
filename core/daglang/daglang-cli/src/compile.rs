@@ -12,7 +12,7 @@ pub use context::{
 pub use daglang_driver::{
     CheckOutput, CodegenLayer, CodegenTarget, CompileError, CompileOptions, CompileOutput,
 };
-pub use gunbc_dag::resolve::{resolve_lowered_dag, ResolveError};
+pub use gunbc_app::resolve::{resolve_lowered_dag, ResolveError};
 pub use gunbc_exec::DynOp;
 pub use mocks::{
     makegen_check_mode_transport_mocks, makegen_dry_run_transport_mocks, makegen_entrypoint_mocks,

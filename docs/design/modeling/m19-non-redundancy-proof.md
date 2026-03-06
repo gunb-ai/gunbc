@@ -62,8 +62,8 @@ fn planner_invariants_hold_for_all_workflows() {
 
 ## Files
 
-- `gunbc-dag/src/workflow/` — invariant checkers
-- `gunbc-dag/tests/` — property tests
+- `gunbc-app/src/workflow/` — invariant checkers
+- `gunbc-app/tests/` — property tests
 
 ## References
 

@@ -1909,7 +1909,7 @@ mod tests {
     }
 
     // NOTE: resolve_tools_infra_entrypoint_emits_plan_summary test moved to
-    // gunbc-dag (requires GunbcExternResolver for tools.infra::infra dispatch).
+    // gunbc-app (requires GunbcExternResolver for tools.infra::infra dispatch).
 
     #[test]
     fn resolve_pipeline_node_is_skipped() {
@@ -2025,7 +2025,7 @@ mod tests {
                     ArgvSegment::Literal("cargo".to_string()),
                     ArgvSegment::Literal("run".to_string()),
                     ArgvSegment::Literal("-p".to_string()),
-                    ArgvSegment::Literal("gunbc-dag".to_string()),
+                    ArgvSegment::Literal("gunbc-app".to_string()),
                     ArgvSegment::Literal("--bin".to_string()),
                     ArgvSegment::Literal("gunbc-codegen".to_string()),
                     ArgvSegment::Literal("--".to_string()),
@@ -2496,7 +2496,7 @@ mod tests {
     }
 
     // NOTE: resolve_infra_callable_maps_to_infra_dispatch_op test moved to
-    // gunbc-dag (requires GunbcExternResolver for tools.infra::infra dispatch).
+    // gunbc-app (requires GunbcExternResolver for tools.infra::infra dispatch).
 
     #[test]
     fn resolve_unknown_service_transport_prepare_fails() {

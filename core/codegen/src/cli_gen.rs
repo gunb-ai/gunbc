@@ -1917,7 +1917,7 @@ mod tests {
         use crate::registry::SubcommandDef;
 
         let tool = ToolMeta {
-            crate_name: "gunbc-dag".into(),
+            crate_name: "gunbc-app".into(),
             tool_name: "gist".into(),
             description: "Gist operations".into(),
             graph_builder_call: "".into(),

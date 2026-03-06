@@ -77,13 +77,13 @@ Completed in two sub-phases:
 - `lib/tools/gist/src/lib.rs` (3 modes: snapshot, diff, recent)
 - `lib/tools/deps/src/lib.rs`
 - `lib/review/src/lib.rs`
-- `gunbc-dag/src/makegen/mod.rs` (makegen tool)
-- `gunbc-dag/src/bootstrap/mod.rs` (bootstrap tool)
+- `gunbc-app/src/makegen/mod.rs` (makegen tool)
+- `gunbc-app/src/bootstrap/mod.rs` (bootstrap tool)
 
 **Not annotated** (intentionally excluded):
-- `gunbc-dag/src/ci/` — CI has a handwritten main.rs and is not in `all_tools()`
+- `gunbc-app/src/ci/` — CI has a handwritten main.rs and is not in `all_tools()`
 
-**Validation test**: `gunbc-dag/tests/tool_registration.rs` checks bidirectional
+**Validation test**: `gunbc-app/tests/tool_registration.rs` checks bidirectional
 consistency between `all_tools()` and `iter_tool_targets()`.
 
 **Not yet done** (deferred to R3+):
@@ -94,7 +94,7 @@ consistency between `all_tools()` and `iter_tool_targets()`.
 **Files**:
 - `core/codegen/src/registry.rs` — `all_tools()` still hardcoded (R3 will unify)
 - `core/codegen/src/cli_gen.rs` — `GraphBuilderId` deleted (R2a)
-- All tool crates above + `gunbc-dag/tests/tool_registration.rs`
+- All tool crates above + `gunbc-app/tests/tool_registration.rs`
 
 **Acceptance**: annotations match `all_tools()` metadata (enforced by test).
 `GraphBuilderId` grep returns 0 matches.
@@ -118,7 +118,7 @@ calls in registration code. Single definition site for each boundary.
 #### Phase R4: Resource input discovery (evaluate)
 
 Replace hardcoded glob patterns in `core/ir/src/resource/defs.rs` and
-`gunbc-dag/src/resources.rs` with crate-dependency-derived patterns.
+`gunbc-app/src/resources.rs` with crate-dependency-derived patterns.
 
 **Option A**: `#[resource_def]` macro resolving crate names to directories via
 `cargo metadata`.
@@ -132,14 +132,14 @@ approach (derive from Cargo.toml deps) may suffice.
 
 **Files**:
 - `core/ir/src/resource/defs.rs`
-- `gunbc-dag/src/resources.rs`
+- `gunbc-app/src/resources.rs`
 
 **Acceptance**: resource input patterns auto-update when crate directory changes.
 No hardcoded glob strings.
 
 #### Phase R5: Validation tests — DONE
 
-Validation test `gunbc-dag/tests/tool_registration.rs`:
+Validation test `gunbc-app/tests/tool_registration.rs`:
 - [x] Every `all_tools()` entry has a matching `#[tool_target]` (and vice versa)
 - [x] Metadata fields (crate_name, graph_builder_call, returns_result) match
 - [x] Every `#[tool_target]` builder has `#[testgen_target]` coverage in the same crate
@@ -151,7 +151,7 @@ pragma, testgen, build). The bidirectional `all_tools() ↔ iter_tool_targets()`
 check already catches the real drift case (tool added to registry without
 annotation).
 
-**Files**: `gunbc-dag/tests/tool_registration.rs`
+**Files**: `gunbc-app/tests/tool_registration.rs`
 
 **Acceptance**: test catches unregistered tool crates and missing testgen
 coverage.
@@ -170,13 +170,13 @@ have proper IR + trait separation.
 |--------|---------|-----------|----------|
 | Testgen | TestFile | TestRenderer | `core/codegen/src/testgen/` |
 | CI YAML | SharedStep | CiRenderer | `core/ir/src/transport/ci/` |
-| Makegen | No | Renderable (header only) | `gunbc-dag/src/makegen/` |
+| Makegen | No | Renderable (header only) | `gunbc-app/src/makegen/` |
 | CLI gen | No | No | `core/codegen/src/cli_gen.rs` |
 | DAG gen | No | No | `core/codegen/src/dag_gen.rs` |
 | Terminal | No | No | `core/exec/src/render.rs` |
 | Clippy config | No | Renderable | `lib/tools/clippy/src/config.rs` |
-| Pragma text | No | No | `gunbc-dag/src/policy/pragma.rs` |
-| CI report | No | No | `gunbc-dag/src/ci/ops.rs` |
+| Pragma text | No | No | `gunbc-app/src/policy/pragma.rs` |
+| CI report | No | No | `gunbc-app/src/ci/ops.rs` |
 | Markdown | No | No | `lib/markdown/src/lib.rs` |
 | LLM prompts | No | No | `lib/review/src/lib.rs` |
 | CI commands | No | CiProvider | `core/ir/src/transport/ci/providers/` |
@@ -234,7 +234,7 @@ typed `TargetRef` replaces raw string deps.
 **Acceptance**:
 ```
 grep -r "GraphBuilderId" --include='*.rs' → 0 matches
-grep -r '"testgen-check"\|"fmt-fix"\|"pragma-check"' gunbc-dag/src/makegen/ → 0 matches (in dep lists)
+grep -r '"testgen-check"\|"fmt-fix"\|"pragma-check"' gunbc-app/src/makegen/ → 0 matches (in dep lists)
 ```
 
 ---
@@ -301,17 +301,17 @@ but two verification gaps remain.
 `make verify` exists and runs all generators in `--mode=verify` mode:
 ```makefile
 verify: ensure-codegen
-    cargo run -p gunbc-dag --bin gunbc-makegen --release -- --mode=verify
-    cargo run -p gunbc-dag --bin gunbc-bootstrap --release -- --mode=verify
-    cargo run -p gunbc-dag --bin gunbc-testgen --release -- --mode=verify
-    cargo run -p gunbc-dag --bin gunbc-pragma --release -- --mode=verify
+    cargo run -p gunbc-app --bin gunbc-makegen --release -- --mode=verify
+    cargo run -p gunbc-app --bin gunbc-bootstrap --release -- --mode=verify
+    cargo run -p gunbc-app --bin gunbc-testgen --release -- --mode=verify
+    cargo run -p gunbc-app --bin gunbc-pragma --release -- --mode=verify
 ```
 
 **Verify**: this target is actually invoked in CI. If not, add it to the CI
 workflow. This is the "generated artifacts are provably fresh" guarantee the
 handbook promises.
 
-**Files**: CI workflow YAML (generated), possibly `gunbc-dag/src/ci/`
+**Files**: CI workflow YAML (generated), possibly `gunbc-app/src/ci/`
 
 **Acceptance**: CI fails when a generated file differs from its generator
 output.

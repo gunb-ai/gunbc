@@ -8,7 +8,7 @@
 //   2. disallowed-methods-allowlist.txt -- Method allowlist
 //   3. pragma-lint-policy.txt         -- Lint policy rules
 //
-// Replaces: gunbc-dag/src/pragma/graph.rs (~19 nodes)
+// Replaces: gunbc-app/src/pragma/graph.rs (~19 nodes)
 
 module tools.pragma
 

@@ -1,8 +1,8 @@
-# gunbc-dag Migration: Rust → Pure DSL
+# gunbc-app Migration: Rust → Pure DSL
 
-**Goal**: Reduce gunbc-dag from a 23,107-line Rust crate with domain logic, compiler infrastructure, and repo-specific conventions to a thin execution harness. Domain knowledge lives in `.dag` files. Generic infrastructure lives in `core/` crates.
+**Goal**: Reduce gunbc-app from a 23,107-line Rust crate with domain logic, compiler infrastructure, and repo-specific conventions to a thin execution harness. Domain knowledge lives in `.dag` files. Generic infrastructure lives in `core/` crates.
 
-**Principle**: gunbc-dag should contain ONLY:
+**Principle**: gunbc-app should contain ONLY:
 1. Bootstrap exceptions (ci.rs, codegen_cli.rs) — can't be generated
 2. Resolver bridge (compile DSL → resolve to executable ops) — structural necessity
 3. Generated test files (280,603 lines, machine-produced)
@@ -13,7 +13,7 @@ Everything else is either generic infrastructure misplaced in a repo-specific cr
 
 ### Category A: Generic Infrastructure → Move to core/ (~10,800 lines)
 
-Code that is not repo-specific. It implements generic algorithms that any project using the DSL compiler would need. Currently trapped in gunbc-dag, preventing reuse.
+Code that is not repo-specific. It implements generic algorithms that any project using the DSL compiler would need. Currently trapped in gunbc-app, preventing reuse.
 
 | Module | Lines | What it does | Target crate |
 |--------|-------|--------------|--------------|
@@ -113,25 +113,25 @@ See `docs/design/binary-elimination.md` (RT58-RT66). 4,009 lines across 7 binari
 Pure crate reorganization. No DSL changes required. Unblocks other projects from reusing gunbc's generic components.
 
 **A1: Create `core/workflow` crate** (M)
-Extract the 7 framework modules (planner, executor, admission, coordination, schema, key, process_registry, slo, projection, proof, errors) into a new `core/workflow` crate. gunbc-dag depends on it, keeps only catalog + unit_commands + spec_builders.
+Extract the 7 framework modules (planner, executor, admission, coordination, schema, key, process_registry, slo, projection, proof, errors) into a new `core/workflow` crate. gunbc-app depends on it, keeps only catalog + unit_commands + spec_builders.
 
 **A2: Move `resolve_service.rs` to `core/`** (S)
 100% generic. Zero repo-specific logic. Move to `core/ir/src/transport/service_ops.rs` or a new `core/resolve` crate.
 
 **A3: Split `resolve.rs`** (M)
-Extract generic resolution framework (adapter ops, primitive mapping, resource lifecycle, ~1,600 lines) to `core/resolve`. Leave `resolve_domain()` dispatch (~700 lines) in gunbc-dag.
+Extract generic resolution framework (adapter ops, primitive mapping, resource lifecycle, ~1,600 lines) to `core/resolve`. Leave `resolve_domain()` dispatch (~700 lines) in gunbc-app.
 
 **A4: Move testgen engine to `core/codegen`** (M)
-Move `dag_test_discovery.rs`, `graph.rs`, `mock_interpreter.rs`, `ops.rs`, `profile_discovery.rs` to `core/codegen/src/testgen/`. gunbc-dag calls the engine, doesn't own it.
+Move `dag_test_discovery.rs`, `graph.rs`, `mock_interpreter.rs`, `ops.rs`, `profile_discovery.rs` to `core/codegen/src/testgen/`. gunbc-app calls the engine, doesn't own it.
 
 **A5: Split `mock_defaults.rs`** (S)
-Generic probing/builder framework → `core/test/src/auto_mock.rs`. GCP-specific field mappings stay in gunbc-dag (or move to DSL data).
+Generic probing/builder framework → `core/test/src/auto_mock.rs`. GCP-specific field mappings stay in gunbc-app (or move to DSL data).
 
 **A6: Move `fidelity.rs` pattern to `core/codegen`** (S)
-The compile-evaluate pattern is generic. Move to `core/codegen/src/dsl_evaluator.rs`. gunbc-dag calls it with repo-specific DSL file paths.
+The compile-evaluate pattern is generic. Move to `core/codegen/src/dsl_evaluator.rs`. gunbc-app calls it with repo-specific DSL file paths.
 
 **A7: Move `dsl_builder.rs` pattern to `core/codegen`** (S)
-Extract compile-then-resolve to `core/codegen/src/graph_builder.rs`. gunbc-dag keeps a thin adapter for workspace layout.
+Extract compile-then-resolve to `core/codegen/src/graph_builder.rs`. gunbc-app keeps a thin adapter for workspace layout.
 
 ### Stream B: Replace Rust Domain Data with DSL (needs DSL evaluation)
 
@@ -178,7 +178,7 @@ Already tracked. 6 remaining extern symbols, each blocked on specific DSL featur
 
 ## Impact
 
-| Stream | Lines Moved/Deleted | gunbc-dag After |
+| Stream | Lines Moved/Deleted | gunbc-app After |
 |--------|--------------------|----|
 | A (→ core/) | ~10,800 moved | 12,300 |
 | B (→ DSL) | ~6,100 deleted (replaced by .dag) | 6,200 |
@@ -186,7 +186,7 @@ Already tracked. 6 remaining extern symbols, each blocked on specific DSL featur
 | D (extern → DSL) | ~500 deleted (4 of 6 externs) | 5,555 |
 | E (binaries, RT58-66) | ~2,600 deleted | 2,955 |
 
-**Final gunbc-dag**: ~2,955 lines of Rust = lib.rs + domain dispatch resolve + DSL eval bridges + runtime glue + 2 bootstrap binaries. Down from 23,107. An 87% reduction.
+**Final gunbc-app**: ~2,955 lines of Rust = lib.rs + domain dispatch resolve + DSL eval bridges + runtime glue + 2 bootstrap binaries. Down from 23,107. An 87% reduction.
 
 ## Dependency Order
 

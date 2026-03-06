@@ -96,7 +96,7 @@ data packages: List<WorkspacePackage> = [
     io_boundary: false },
 
   // Main DAG crate
-  { name: "gunbc-dag",
+  { name: "gunbc-app",
     role: CodegenBootstrap,
     description: "Workspace DAG: tool graphs, extern impls, policy, registry",
     io_boundary: false },

@@ -71,19 +71,19 @@ Each `.dag` file replaces a specific Rust graph builder:
 
 | DSL file | Rust file | Rust LOC |
 |---|---|---|
-| `tools/makegen.dag` | `gunbc-dag/src/makegen/graph.rs` | 220 |
+| `tools/makegen.dag` | `gunbc-app/src/makegen/graph.rs` | 220 |
 | `tools/gist.dag` | `lib/tools/gist/src/graph.rs` | 1,449 |
-| `tools/dag_viz.dag` | `gunbc-dag/src/dag_viz/graph.rs` | 1,347 |
+| `tools/dag_viz.dag` | `gunbc-app/src/dag_viz/graph.rs` | 1,347 |
 | `tools/clippy.dag` | `lib/tools/clippy/src/graph.rs` | 186 |
 | `tools/deps.dag` | `lib/tools/deps/src/graph.rs` | ~200 |
-| `tools/bootstrap.dag` | `gunbc-dag/src/bootstrap/graph.rs` | ~300 |
-| `tools/codegen.dag` | `gunbc-dag/src/codegen/graph.rs` | ~200 |
-| `tools/testgen.dag` | `gunbc-dag/src/testgen_dag/graph.rs` | ~200 |
-| `tools/pragma.dag` | `gunbc-dag/src/pragma/graph.rs` | ~300 |
-| `tools/build.dag` | `gunbc-dag/src/build/graph.rs` | ~250 |
-| `tools/docgen.dag` | `gunbc-dag/src/docgen/graph.rs` | ~500 |
+| `tools/bootstrap.dag` | `gunbc-app/src/bootstrap/graph.rs` | ~300 |
+| `tools/codegen.dag` | `gunbc-app/src/codegen/graph.rs` | ~200 |
+| `tools/testgen.dag` | `gunbc-app/src/testgen_dag/graph.rs` | ~200 |
+| `tools/pragma.dag` | `gunbc-app/src/pragma/graph.rs` | ~300 |
+| `tools/build.dag` | `gunbc-app/src/build/graph.rs` | ~250 |
+| `tools/docgen.dag` | `gunbc-app/src/docgen/graph.rs` | ~500 |
 | `cloud/gcp/credential.dag` | `lib/gcp-ops/src/graph.rs` | 1,700+ |
-| `pipelines/ci.dag` | `gunbc-dag/src/ci/graph.rs` | ~600 |
+| `pipelines/ci.dag` | `gunbc-app/src/ci/graph.rs` | ~600 |
 
 **Total: ~7,500 lines of Rust graph builders replaced by ~700 lines of DSL.**
 

@@ -1,7 +1,7 @@
 //! Crate-level policy modeling for clippy enforcement.
 //!
 //! This models crate "roles" and exceptions in a way that can be reused by
-//! repo-specific policy layers (e.g., gunbc-dag).
+//! repo-specific policy layers (e.g., gunbc-app).
 
 use crate::config::CrateAllowance;
 

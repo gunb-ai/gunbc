@@ -51,7 +51,7 @@ mod tests {
             "core/daglang/daglang-resolve/".to_string(),
             "core/daglang/daglang-syntax/".to_string(),
             "core/daglang/daglang-typecheck/".to_string(),
-            "gunbc-dag/src/".to_string(),
+            "gunbc-app/src/".to_string(),
             "core/resolve/".to_string(),
             "core/ir/src/workspace_layout.rs".to_string(),
             "core/ir/src/transport/credential.rs".to_string(),
@@ -187,7 +187,7 @@ mod tests {
     fn lint_allow_pragmas_and_migrations() {
         let root = repo_root();
         let mut files = Vec::new();
-        for dir in ["core", "lib", "gunbc-dag"] {
+        for dir in ["core", "lib", "gunbc-app"] {
             collect_rs_files(&root.join(dir), &mut files);
         }
 
@@ -305,7 +305,7 @@ mod tests {
 
         let workspace_root = repo_root();
         let mut files = Vec::new();
-        for dir in ["core", "lib", "gunbc-dag"] {
+        for dir in ["core", "lib", "gunbc-app"] {
             collect_rs_files(&workspace_root.join(dir), &mut files);
         }
 

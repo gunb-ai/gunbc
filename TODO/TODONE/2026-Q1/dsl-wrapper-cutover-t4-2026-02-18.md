@@ -7,13 +7,13 @@ Task: `T4`
 
 Replaced hand-written DagBuilder implementations with thin DSL-backed wrappers for:
 
-- `gunbc-dag/src/pragma/graph.rs`
-- `gunbc-dag/src/codegen/graph.rs`
-- `gunbc-dag/src/makegen/graph.rs`
-- `gunbc-dag/src/bootstrap/graph.rs`
-- `gunbc-dag/src/build/graph.rs`
-- `gunbc-dag/src/docgen/graph.rs`
-- `gunbc-dag/src/ci/graph.rs`
+- `gunbc-app/src/pragma/graph.rs`
+- `gunbc-app/src/codegen/graph.rs`
+- `gunbc-app/src/makegen/graph.rs`
+- `gunbc-app/src/bootstrap/graph.rs`
+- `gunbc-app/src/build/graph.rs`
+- `gunbc-app/src/docgen/graph.rs`
+- `gunbc-app/src/ci/graph.rs`
 
 ### Structural updates
 
@@ -36,5 +36,5 @@ Replaced hand-written DagBuilder implementations with thin DSL-backed wrappers f
 
 ## Validation
 
-- `cargo check -p gunbc-dag`
-- `cargo test -p gunbc-dag --lib builds_ -- --nocapture`
+- `cargo check -p gunbc-app`
+- `cargo test -p gunbc-app --lib builds_ -- --nocapture`

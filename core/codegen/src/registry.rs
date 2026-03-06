@@ -1,7 +1,7 @@
 //! Tool registry for CLI generation.
 //!
 //! Tool metadata is derived from DSL structural entrypoint inference via
-//! `discover_tool_defs_from_dsl()` in `gunbc-dag/src/dsl_registry.rs`.
+//! `discover_tool_defs_from_dsl()` in `gunbc-app/src/dsl_registry.rs`.
 
 use crate::cli_gen::{CliEntrypoint, ToolMeta};
 use gunbc_ir::cargo;

@@ -160,7 +160,7 @@ WS-1 and WS-3 can start immediately. WS-7 is mostly done.
 > **Already done (NF-1:6)**: `extern func`/`extern asset` parse and lower. `ExternResolver` trait
 > exists (simpler than the designed `Backend` — this is fine). `CompileReceipt` with 3-part digest
 > works. `EMBED_REGISTRY`, `is_makegen_module()`, `UnimplementedPassthrough` all deleted.
-> Remaining work: migrate the 10 extern impls in `gunbc-dag/src/extern_ops.rs` to DSL.
+> Remaining work: migrate the 10 extern impls in `gunbc-app/src/extern_ops.rs` to DSL.
 
 **Success criteria**: `extern_ops.rs` deleted or contains only operations that provably require Rust (recursive types, inventory access). Zero passthrough fallbacks. Deterministic receipts (already done).
 

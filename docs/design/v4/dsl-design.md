@@ -143,7 +143,7 @@ Expanded:
 
 **The discovery problem**:
 ```rust
-// gunbc-dag/src/workspace/subdags/mod.rs — HARDCODED
+// gunbc-app/src/workspace/subdags/mod.rs — HARDCODED
 pub fn build_workspace_dag() -> Result<Dag<WorkspaceOp>, BuilderError> {
     dag.add_node(makegen::build_makegen_subdag());
     dag.add_node(clippy::build_clippy_lint_all_subdag());
@@ -2522,7 +2522,7 @@ The simplest complete graph in gunbc. The canonical "hello world" for the DSL.
 
 ## A.1 Today: Rust (gunbc)
 
-### Graph builder (`gunbc-dag/src/makegen/graph.rs` — 137 lines)
+### Graph builder (`gunbc-app/src/makegen/graph.rs` — 137 lines)
 
 ```rust
 pub fn build_makegen_graph() -> Dag<MakegenGraphOp> {
@@ -3076,7 +3076,7 @@ Shows pipeline construct with stages, parallel groups, and aggregation.
 
 ## D.1 Today: Rust (gunbc)
 
-`gunbc-dag/src/ci/graph.rs` — 920 lines.
+`gunbc-app/src/ci/graph.rs` — 920 lines.
 
 ## D.2 DSL
 

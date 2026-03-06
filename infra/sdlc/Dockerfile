@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 COPY . .
 
-RUN cargo build --release -p gunbc-dag --bin gunbc-sdlc \
+RUN cargo build --release -p gunbc-app --bin gunbc-sdlc \
     && cargo build --release -p daglang-cli --bin daglang
 
 FROM debian:bookworm-slim

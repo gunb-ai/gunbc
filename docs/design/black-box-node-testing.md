@@ -946,7 +946,7 @@ Consider `fn apply_prefix(prefix: String?, cmd: String) -> String`:
 **Workflow-observed input sets** (from makegen):
 ```
 { prefix: Unit,                          cmd: "@cargo fmt" }
-{ prefix: "RUSTFLAGS=\"-D warnings\"",   cmd: "cargo run -p gunbc-dag ..." }
+{ prefix: "RUSTFLAGS=\"-D warnings\"",   cmd: "cargo run -p gunbc-app ..." }
 { prefix: "GUNBC_TEST_MAX_COST=XL",      cmd: "@RUSTFLAGS=\"-D warnings\" cargo test ..." }
 ```
 

@@ -84,11 +84,11 @@ fn adding_tool_requires_only_one_registration() {
 ## Files
 
 - `core/tool-registry/src/lib.rs` — provides/consumes fields
-- `gunbc-dag/src/binaries.rs` — derive from inventory
-- `gunbc-dag/tests/tool_registration.rs` — drift tests
+- `gunbc-app/src/binaries.rs` — derive from inventory
+- `gunbc-app/tests/tool_registration.rs` — drift tests
 
 ## References
 
 - `core/tool-registry/src/lib.rs:21-96` — ToolRegistration
-- `gunbc-dag/src/binaries.rs` — WorkspaceBinary enum
+- `gunbc-app/src/binaries.rs` — WorkspaceBinary enum
 - `docs/design/modeling/repo-self-understanding.md` — M20 generator edges

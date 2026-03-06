@@ -2,7 +2,7 @@
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
 use daglang_driver::DriverContext;
-use gunbc_dag::resolve_lowered_dag;
+use gunbc_app::resolve_lowered_dag;
 use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
 use gunbc_ir::ToolchainCommands;
 use gunbc_ir::Value;

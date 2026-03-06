@@ -63,4 +63,4 @@ data ci_checkout: Checkout = {
 
 data ci_workflow_name: String = "ci"
 data ci_generator: String = "gunbc-codegen"
-data ci_regen_command: String = "cargo run -p gunbc-dag --bin gunbc-codegen -- cigen"
+data ci_regen_command: String = "cargo run -p gunbc-app --bin gunbc-codegen -- cigen"

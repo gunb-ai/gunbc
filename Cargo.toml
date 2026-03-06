@@ -40,7 +40,7 @@ members = [
     "lib/tools/clippy",
     
     # Repo-specific configuration (gunbc's own DAGs)
-    "gunbc-dag",
+    "gunbc-app",
 ]
 
 [workspace.package]

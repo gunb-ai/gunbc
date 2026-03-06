@@ -429,8 +429,8 @@ Keep existing UX shape:
 
 But map to planner entrypoints:
 
-1. `cargo run -p gunbc-dag --bin gunbc-workflow -- ci`
-2. `cargo run -p gunbc-dag --bin gunbc-workflow -- test-all`
+1. `cargo run -p gunbc-app --bin gunbc-workflow -- ci`
+2. `cargo run -p gunbc-app --bin gunbc-workflow -- test-all`
 
 Make becomes transport only, not scheduler.
 
@@ -623,7 +623,7 @@ files + codegen binary logic. If neither has changed, outputs are identical.
 | DSL source files | `dsl/**/*.dag` content hashes |
 | Codegen binary semantics | `gunbc-codegen` binary hash or semantic version |
 
-**Current deficiency**: `ensure-codegen` runs `cargo run -p gunbc-dag --bin gunbc-codegen`
+**Current deficiency**: `ensure-codegen` runs `cargo run -p gunbc-app --bin gunbc-codegen`
 as a Make prerequisite for every tool target. This spawns a full Cargo compilation check
 + binary execution even when nothing has changed. Every `make gist`, `make bootstrap`,
 `make deps`, etc. pays this cost.
@@ -827,13 +827,13 @@ The planner model must cover all workflow families from the DAG audit
 
 | # | Workflow Family | Make Targets | DAG Source | Nodes | Mode Variants |
 |---|---|---|---|---|---|
-| 1 | Codegen | `codegen`, `ensure-codegen` | `gunbc-dag/src/codegen/graph.rs` | 8 | — |
-| 2 | Bootstrap | `bootstrap`, `bootstrap-dry` | `gunbc-dag/src/bootstrap/graph.rs` | 15 | — |
-| 3 | Build | `build-all`, `build-all-dry` | `gunbc-dag/src/build/graph.rs` | 10 | — |
-| 4 | Makegen | `makegen`, `makegen-dry` | `gunbc-dag/src/makegen/graph.rs` | 7 | — |
-| 5 | CI | `ci`, `ci-dry` | `gunbc-dag/src/ci/graph.rs` | many | — |
-| 6 | Pragma | `pragma`, `pragma-dry` | `gunbc-dag/src/pragma/graph.rs` | 18 | — |
-| 7 | Testgen | `testgen`, `testgen-check` | `gunbc-dag/src/testgen_dag/graph.rs` | Nx6 | — |
+| 1 | Codegen | `codegen`, `ensure-codegen` | `gunbc-app/src/codegen/graph.rs` | 8 | — |
+| 2 | Bootstrap | `bootstrap`, `bootstrap-dry` | `gunbc-app/src/bootstrap/graph.rs` | 15 | — |
+| 3 | Build | `build-all`, `build-all-dry` | `gunbc-app/src/build/graph.rs` | 10 | — |
+| 4 | Makegen | `makegen`, `makegen-dry` | `gunbc-app/src/makegen/graph.rs` | 7 | — |
+| 5 | CI | `ci`, `ci-dry` | `gunbc-app/src/ci/graph.rs` | many | — |
+| 6 | Pragma | `pragma`, `pragma-dry` | `gunbc-app/src/pragma/graph.rs` | 18 | — |
+| 7 | Testgen | `testgen`, `testgen-check` | `gunbc-app/src/testgen_dag/graph.rs` | Nx6 | — |
 | 8 | **Gist** | `gist`, `gist-diff`, `gist-recent` (+dry) | `lib/tools/gist/src/graph.rs` | 17 | snapshot, diff, recent |
 | 9 | Deps | `deps`, `deps-dry` | `lib/tools/deps/src/graph.rs` | 8 | install, generate |
 | 10 | Clippy | `clippy`, `clippy-fix` | `lib/tools/clippy/src/graph.rs` | 3 | — |
@@ -918,12 +918,12 @@ Codegen produces **generated Rust source files** consumed at compile-time:
 |----------|----------|-----------|-------------|
 | CLI entrypoints | `target/codegen/bin/{tool}/main.rs` | `cargo build` (tool binaries) | Generated `fn main()` for each tool binary |
 | Test harnesses | `{crate}/src/{module}/generated_tests*.rs` | `cargo test` (test binaries, `#[cfg(test)]` only) | Generated integration test modules via `include!()` |
-| Codegen lib | `target/codegen/lib/` | `cargo build` (gunbc-dag) | Shared codegen support files |
+| Codegen lib | `target/codegen/lib/` | `cargo build` (gunbc-app) | Shared codegen support files |
 | Codegen stamp | `target/codegen/.codegen-stamp` | Bootstrap freshness check | Marker for successful codegen completion |
 | Makefiles | `Makefile` | Make (build orchestration) | Generated from registry + DSL |
 
 Note: test harnesses are scattered across source crate directories (e.g.,
-`gunbc-dag/src/bootstrap/generated_tests.rs`, `lib/gcp-ops/src/generated_tests*.rs`)
+`gunbc-app/src/bootstrap/generated_tests.rs`, `lib/gcp-ops/src/generated_tests*.rs`)
 rather than centralized under `target/codegen/`. They are included via
 `#[cfg(test)] mod generated_tests { include!("generated_tests.rs"); }` blocks, so
 they are **compilation inputs for test binaries only**, not tool binaries. This means

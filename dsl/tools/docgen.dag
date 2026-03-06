@@ -3,7 +3,7 @@
 // Reads source files (templates, graph mocks, generated tests, configs),
 // renders a single documentation file, and content_upserts the result.
 //
-// Replaces: gunbc-dag/src/docgen/graph.rs
+// Replaces: gunbc-app/src/docgen/graph.rs
 
 module tools.docgen
 

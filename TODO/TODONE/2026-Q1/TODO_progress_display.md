@@ -753,7 +753,7 @@ fn test_render_bootstrap_completed_emoji() {
 }
 ```
 
-    cargo test -p gunbc-dag -- render::snapshot
+    cargo test -p gunbc-app -- render::snapshot
 
 #### Phase 6: Wire into CLI binaries
 

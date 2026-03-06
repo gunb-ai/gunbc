@@ -5,7 +5,7 @@
 //! another package:
 //!
 //! - Standalone: `cargo run -p gunbc-gist`
-//! - In-package: `cargo run -p gunbc-dag --bin gunbc-ci`
+//! - In-package: `cargo run -p gunbc-app --bin gunbc-ci`
 //!
 //! This is the single source of truth for cargo invocation rendering,
 //! used by both Makefile generation and CI YAML generation.
@@ -46,7 +46,7 @@ pub fn name(component: &str) -> String {
 pub struct CargoInvocation {
     /// The binary name (e.g., "gunbc-ci").
     pub binary: String,
-    /// The package name, if different from the binary (e.g., "gunbc-dag").
+    /// The package name, if different from the binary (e.g., "gunbc-app").
     /// Set when the binary is a `[[bin]]` entry in another crate's Cargo.toml.
     pub package: Option<String>,
 }
@@ -104,8 +104,8 @@ impl CargoInvocation {
     /// use gunbc_ir::CargoInvocation;
     /// let inv = CargoInvocation::composed("ci", "dag");
     /// assert_eq!(inv.binary, "gunbc-ci");
-    /// assert_eq!(inv.package, Some("gunbc-dag".to_string()));
-    /// assert_eq!(inv.command(), "cargo run -p gunbc-dag --bin gunbc-ci");
+    /// assert_eq!(inv.package, Some("gunbc-app".to_string()));
+    /// assert_eq!(inv.command(), "cargo run -p gunbc-app --bin gunbc-ci");
     /// ```
     pub fn composed(binary_component: &str, package_component: &str) -> Self {
         Self::in_package(name(binary_component), name(package_component))
@@ -616,7 +616,7 @@ mod tests {
     fn test_name_composition() {
         assert_eq!(name("ci"), "gunbc-ci");
         assert_eq!(name("gist"), "gunbc-gist");
-        assert_eq!(name("dag"), "gunbc-dag");
+        assert_eq!(name("dag"), "gunbc-app");
     }
 
     #[test]
@@ -632,9 +632,9 @@ mod tests {
     fn test_composed() {
         let inv = CargoInvocation::composed("ci", "dag");
         assert_eq!(inv.binary, "gunbc-ci");
-        assert_eq!(inv.package, Some("gunbc-dag".to_string()));
-        assert_eq!(inv.args(), "-p gunbc-dag --bin gunbc-ci");
-        assert_eq!(inv.command(), "cargo run -p gunbc-dag --bin gunbc-ci");
+        assert_eq!(inv.package, Some("gunbc-app".to_string()));
+        assert_eq!(inv.args(), "-p gunbc-app --bin gunbc-ci");
+        assert_eq!(inv.command(), "cargo run -p gunbc-app --bin gunbc-ci");
     }
 
     #[test]
@@ -646,9 +646,9 @@ mod tests {
 
     #[test]
     fn test_binary_in_package() {
-        let inv = CargoInvocation::in_package("gunbc-ci", "gunbc-dag");
-        assert_eq!(inv.args(), "-p gunbc-dag --bin gunbc-ci");
-        assert_eq!(inv.command(), "cargo run -p gunbc-dag --bin gunbc-ci");
+        let inv = CargoInvocation::in_package("gunbc-ci", "gunbc-app");
+        assert_eq!(inv.args(), "-p gunbc-app --bin gunbc-ci");
+        assert_eq!(inv.command(), "cargo run -p gunbc-app --bin gunbc-ci");
     }
 
     #[test]
@@ -665,7 +665,7 @@ mod tests {
         let inv = CargoInvocation::composed("ci", "dag");
         assert_eq!(
             inv.command_parts(),
-            vec!["cargo", "run", "-p", "gunbc-dag", "--bin", "gunbc-ci"]
+            vec!["cargo", "run", "-p", "gunbc-app", "--bin", "gunbc-ci"]
         );
     }
 
@@ -816,7 +816,7 @@ mod tests {
                 "cargo",
                 "run",
                 "-p",
-                "gunbc-dag",
+                "gunbc-app",
                 "--bin",
                 "gunbc-ci",
                 "-q",
@@ -825,7 +825,7 @@ mod tests {
         );
         assert_eq!(
             cmd.to_shell_with_env(),
-            "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-ci -q --release"
+            "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-ci -q --release"
         );
     }
 

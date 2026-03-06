@@ -148,7 +148,7 @@ fn render_github_steps(discovery: CiDiscovery) -> String {
 }
 
 fn render_github_workflow(discovery: CiDiscovery) -> String {
-  let header = yaml_header(generator: "gunbc-codegen", regen_command: "cargo run -p gunbc-dag --bin gunbc-codegen -- cigen")
+  let header = yaml_header(generator: "gunbc-codegen", regen_command: "cargo run -p gunbc-app --bin gunbc-codegen -- cigen")
   let trigger = render_gha_trigger(
     push_branches: ["main"],
     pr_branches: ["main"]
@@ -191,7 +191,7 @@ fn render_gitlab_job(tool_command: String) -> String {
 }
 
 fn render_gitlab_pipeline(discovery: CiDiscovery) -> String {
-  let header = yaml_header(generator: "gunbc-codegen", regen_command: "cargo run -p gunbc-dag --bin gunbc-codegen -- cigen")
+  let header = yaml_header(generator: "gunbc-codegen", regen_command: "cargo run -p gunbc-app --bin gunbc-codegen -- cigen")
   let vars = render_gitlab_variables(
     env: [
       { key: "CARGO_TERM_COLOR", value: "always" },

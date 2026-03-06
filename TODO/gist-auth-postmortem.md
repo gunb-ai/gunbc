@@ -40,9 +40,9 @@
 
 ### Gap 3: Shell parse swallows non-zero exit codes
 
-**What**: `GenericShellParseOp::TrimStdout` (`gunbc-dag/src/resolve_service.rs:521-528`) always succeeds by trimming stdout. When `gcloud` returns exit 1 (expired session), stdout is empty, and the parse "succeeds" with an empty string that becomes an empty Secret.
+**What**: `GenericShellParseOp::TrimStdout` (`gunbc-app/src/resolve_service.rs:521-528`) always succeeds by trimming stdout. When `gcloud` returns exit 1 (expired session), stdout is empty, and the parse "succeeds" with an empty string that becomes an empty Secret.
 
-**Where**: `gunbc-dag/src/resolve_service.rs:521`
+**Where**: `gunbc-app/src/resolve_service.rs:521`
 
 **Partial fix on separate branch**: Only fail on non-zero exit when output field is `Secret`. This is too narrow — see analysis below.
 
@@ -54,9 +54,9 @@
 
 ### Gap 5: Mock backend always returns 200/201
 
-**What**: `GistRecentBackend` in `gunbc-dag/tests/gist_recent_regressions.rs:18-83` always returns success. The test verifies the happy path but never tests what happens when GitHub returns 401, or when gcloud returns exit 1.
+**What**: `GistRecentBackend` in `gunbc-app/tests/gist_recent_regressions.rs:18-83` always returns success. The test verifies the happy path but never tests what happens when GitHub returns 401, or when gcloud returns exit 1.
 
-**Where**: `gunbc-dag/tests/gist_recent_regressions.rs`
+**Where**: `gunbc-app/tests/gist_recent_regressions.rs`
 
 ---
 
@@ -228,7 +228,7 @@ From `docs/design/testgen.md` — Bucket C (Scenario Coverage):
 
 #### 1. Error status fuzzing for REST operations
 
-`default_rest_response()` in `gunbc-dag/src/mock_defaults.rs:164` always returns status 200 with a stock JSON body. There is no testgen obligation that injects 401, 403, 404, 500, or 503 responses.
+`default_rest_response()` in `gunbc-app/src/mock_defaults.rs:164` always returns status 200 with a stock JSON body. There is no testgen obligation that injects 401, 403, 404, 500, or 503 responses.
 
 **Testgen design says (Bucket C)**: "Single transport failure — N per transport executor." But the "failure" is `Value::Skipped`, not a realistic error response. A 401 is not a skip — it's a response that the parse node must handle.
 
@@ -246,7 +246,7 @@ This is directly derivable from the `@rest` annotation. Every `@rest(POST, "/pat
 
 #### 2. Shell exit code testing
 
-`default_shell_response()` in `gunbc-dag/src/mock_defaults.rs:145` returns `ShellResponse::ok(String::new())` — always exit 0 with empty stdout.
+`default_shell_response()` in `gunbc-app/src/mock_defaults.rs:145` returns `ShellResponse::ok(String::new())` — always exit 0 with empty stdout.
 
 **What's needed**: For every shell operation, testgen should generate:
 - Exit 0 with valid output (success) — partially covered
@@ -362,8 +362,8 @@ TCP → TLS → HTTP → REST → Provider → Operation
 |------|---------|------|
 | `core/codegen/src/testgen/obligation.rs` | Obligation IR — needs error-status obligations | — |
 | `core/codegen/src/testgen/codegen.rs` | SeedMatrix — needs error response seeds | — |
-| `gunbc-dag/src/mock_defaults.rs:145-180` | Default mock responses — always success | `default_shell_response()`, `default_rest_response()` |
-| `gunbc-dag/src/testgen_dag/dag_test_discovery.rs` | Auto-discovery — could derive error fixtures | — |
+| `gunbc-app/src/mock_defaults.rs:145-180` | Default mock responses — always success | `default_shell_response()`, `default_rest_response()` |
+| `gunbc-app/src/testgen_dag/dag_test_discovery.rs` | Auto-discovery — could derive error fixtures | — |
 | `core/test/src/mockable.rs` | `error_cases()` trait — exists but unused for services | — |
 
 ### Credential wiring
@@ -371,7 +371,7 @@ TCP → TLS → HTTP → REST → Provider → Operation
 | File | Purpose | Line |
 |------|---------|------|
 | `core/daglang/daglang-lower/src/lib.rs` | `auth_input` wiring to `res:credential` | ~5731, ~6002 |
-| `gunbc-dag/src/resolve_service.rs` | `GenericRestPrepareOp` — sets `requires_auth` | ~60-94 |
+| `gunbc-app/src/resolve_service.rs` | `GenericRestPrepareOp` — sets `requires_auth` | ~60-94 |
 | `lib/transport/src/ops.rs` | Credential application (3 paths) | 65-94 |
 | `lib/transport/src/executor.rs` | Standalone `execute_rest()` credential path | 55 |
 
@@ -390,9 +390,9 @@ TCP → TLS → HTTP → REST → Provider → Operation
 
 | File | Purpose | Line |
 |------|---------|------|
-| `gunbc-dag/src/resolve_service.rs:521-528` | `TrimStdout` — no exit code check | |
-| `gunbc-dag/src/resolve_service.rs:488` | `SuccessStdoutStderr` — uses `shell.success()` | |
-| `gunbc-dag/src/resolve_service.rs:501` | `ExitCodeBool` — uses `shell.success()` | |
+| `gunbc-app/src/resolve_service.rs:521-528` | `TrimStdout` — no exit code check | |
+| `gunbc-app/src/resolve_service.rs:488` | `SuccessStdoutStderr` — uses `shell.success()` | |
+| `gunbc-app/src/resolve_service.rs:501` | `ExitCodeBool` — uses `shell.success()` | |
 
 Only `SuccessStdoutStderr` and `ExitCodeBool` check exit codes. `TrimStdout` and `SplitLines` do not. This means any shell operation using these parse modes silently succeeds on error.
 

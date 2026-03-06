@@ -6,7 +6,7 @@
 // The aggregate fn uses shared/dag_util helpers instead of inline
 // aggregation logic.
 //
-// Replaces: gunbc-dag/src/build/graph.rs (~13 nodes)
+// Replaces: gunbc-app/src/build/graph.rs (~13 nodes)
 
 module tools.build
 

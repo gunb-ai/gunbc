@@ -132,7 +132,7 @@ These hand-rolled Rust patterns have DSL equivalents now. Migrate them.
 ##### B1.1 — Pragma graph DSL migration [M]
 **Deps**: None
 
-`gunbc-dag/src/pragma/graph.rs` has 3 identical content upsert chains (clippy.toml,
+`gunbc-app/src/pragma/graph.rs` has 3 identical content upsert chains (clippy.toml,
 allowlist, lint policy). Express as DSL `pattern` invocations with service calls.
 
 - [x] B1.1a — Write `pragma.dag` using `pattern content_upsert` for 3 chains
@@ -152,7 +152,7 @@ via service call lowering.
 ##### B1.3 — Codegen graph DSL migration [M]
 **Deps**: None
 
-`gunbc-dag/src/codegen/graph.rs` — staged pipeline: exists check → conditional codegen
+`gunbc-app/src/codegen/graph.rs` — staged pipeline: exists check → conditional codegen
 → stamp. DSL `if` in `func` bodies.
 
 - [x] B1.3a — Write `codegen.dag` expressing conditional pipeline
@@ -425,7 +425,7 @@ is disconnected from `Dag<TypeOp>`, `TypeRegistry`, and `TypeContract`. This mea
       `lib/gcp-ops`, AWS in `lib/aws-ops`, transport in `lib/transport` (not centralized
       in one 700-line function in core/ir)
 - [x] C6.5g — `default_system_models()` now delegates to `iter_registered_system_models()`;
-      model-specific tests moved to owning crates, cross-crate tests to gunbc-dag
+      model-specific tests moved to owning crates, cross-crate tests to gunbc-app
 - [ ] C6.5h — Cross-provider coercion test: `GcpSecretPayload` and `AwsSecretValue` type
       DAGs both coerce to `String` via DAG walk (not hardcoded lattice)
 
@@ -505,7 +505,7 @@ Reduce O(tools x concerns) boilerplate to O(concerns).
 - [x] C3.1a — Create `#[derive(DelegateExecutable)]` proc macro
 - [x] C3.1b — Create `#[derive(DelegateMockable)]` proc macro
 - [x] C3.1c — Migrate 2-3 graph op enums to validate macro
-- [x] C3.1d — Roll out to all remaining graph op enums *(rolled out across gunbc-dag + shared graph-op crates where variants are pure wrappers; custom-execution enums remain intentionally manual)* 
+- [x] C3.1d — Roll out to all remaining graph op enums *(rolled out across gunbc-app + shared graph-op crates where variants are pure wrappers; custom-execution enums remain intentionally manual)* 
 
 ##### C3.1b — FsEnv auto-wiring extraction [M]
 **Deps**: None
@@ -611,7 +611,7 @@ exactly the kind of stringly-typed modeling we're eliminating everywhere else.
 | `parent().parent()` repo root discovery | 3 | `lib/transport/src/pragma_lint.rs` |
 | Pragma allowlist path prefixes | 5 | `"core/daglang/"`, `"core/exec/src/freshness.rs"` |
 | Hardcoded output dir constants | 4 | `CODEGEN_OUT_DIR = "target/codegen"` |
-| Hardcoded source root lists | 2 | `["core", "gunbc-dag", "lib"]` |
+| Hardcoded source root lists | 2 | `["core", "gunbc-app", "lib"]` |
 
 **Already clean** (for reference): `path_utils.rs` (pure, takes `cwd`), `main.rs` (boundary
 calls `current_dir()` once), `resolve_workspace_packages()` (uses `cargo metadata`).

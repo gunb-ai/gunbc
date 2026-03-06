@@ -1953,5 +1953,5 @@ mod tests {
     // - lib/gcp-ops/src/system_models.rs
     // - lib/aws-ops/src/system_models.rs
     // - lib/transport/src/system_models.rs
-    // Cross-cutting tests (contract specs, store mapping) moved to gunbc-dag.
+    // Cross-cutting tests (contract specs, store mapping) moved to gunbc-app.
 }

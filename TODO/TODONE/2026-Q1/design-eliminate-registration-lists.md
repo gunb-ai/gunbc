@@ -436,7 +436,7 @@ Adding a new passthrough callable requires **zero Rust changes**.
 Custom resolvers register themselves co-located with their `Executable` impls:
 
 ```rust
-// In gunbc-dag/src/pragma/ops.rs:
+// In gunbc-app/src/pragma/ops.rs:
 inventory::submit!(DomainResolver {
     module: "tools.pragma",
     resolve: resolve_pragma,

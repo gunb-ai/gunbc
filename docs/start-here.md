@@ -29,7 +29,7 @@ dsl/std/         types + data       core/daglang/     compiler (55k LOC)
 dsl/extdeps/     external facts     core/ir/          IR types (51k LOC)
 dsl/config/      repo policy        core/exec/        DAG executor (13k LOC)
 dsl/tools/       workflows          lib/transport/    I/O boundary (6k LOC)
-                                    gunbc-dag/        tool glue + extern impls
+                                    gunbc-app/        tool glue + extern impls
 ```
 
 **Data flows one way**: `.dag` declarations → compiler → lowered DAG → executor → artifacts.
@@ -38,7 +38,7 @@ Rust never decides what lints to deny or how workflows are ordered. The model de
 **Key numbers** (Feb 2026):
 - 13 tools discovered from DSL structural inference
 - 8 extern bridge functions remaining (509 lines, documented elimination plan)
-- 2,984 passing tests in gunbc-dag alone
+- 2,984 passing tests in gunbc-app alone
 - Zero clippy warnings workspace-wide
 
 ---
@@ -119,7 +119,7 @@ cargo clippy --all-targets -- -D warnings        # zero warnings
 ```
 
 If you changed DSL tools or outputs, the drift tests in
-`gunbc-dag/tests/tool_registration.rs` will catch misalignment between DSL
+`gunbc-app/tests/tool_registration.rs` will catch misalignment between DSL
 declarations and Rust mirrors.
 
 ---
@@ -333,7 +333,7 @@ lib/
 ├── gcp-ops/                  GCP-specific operations
 └── primitives/               Stable hashing
 
-gunbc-dag/                    Workspace DAG assembly
+gunbc-app/                    Workspace DAG assembly
 ├── src/extern_impls.rs       8 bridge functions (shrinking)
 ├── src/resolve.rs            Generic LoweredOp → DynOp (any .dag file)
 ├── src/dsl_registry.rs       Structural tool discovery
@@ -355,7 +355,7 @@ docs/
 TODO/
 ├── tasks.md                  Index — points to three lane docs
 ├── type-system.md            Lane 1: Compositional type coverage (WS-1 through WS-7)
-├── gunbc-dag-simplification.md  Lane 2: Reduce gunbc-dag to minimum Rust
+├── gunbc-app-simplification.md  Lane 2: Reduce gunbc-app to minimum Rust
 ├── sdlc.md                   Lane 3: SDLC pipeline end-to-end (the objective)
 └── TODONE/                   Completed work archive
 ```
@@ -436,8 +436,8 @@ cargo test --workspace
 cargo clippy --all-targets -- -D warnings
 
 # Run a specific tool
-cargo run -p gunbc-dag --bin pragma
-cargo run -p gunbc-dag --bin makegen
+cargo run -p gunbc-app --bin pragma
+cargo run -p gunbc-app --bin makegen
 
 # Compile a DSL file
 cargo run -p daglang-cli -- compile dsl/tools/pragma.dag

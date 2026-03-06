@@ -21,26 +21,26 @@ data workflow_commands: List<WorkflowCommandSet> = [
   {
     workflow: "ci",
     commands: [
-      { node_id: "ci.lint_upsert", label: "pragma ensure", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-pragma"] },
-      { node_id: "ci.codegen", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-codegen-dag"] },
-      { node_id: "ci.bootstrap", label: "bootstrap ensure", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-bootstrap"] },
-      { node_id: "ci.pragma", label: "pragma", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-pragma"] },
-      { node_id: "ci.testgen", label: "testgen", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-testgen"] },
+      { node_id: "ci.lint_upsert", label: "pragma ensure", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-pragma"] },
+      { node_id: "ci.codegen", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-codegen-dag"] },
+      { node_id: "ci.bootstrap", label: "bootstrap ensure", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-bootstrap"] },
+      { node_id: "ci.pragma", label: "pragma", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-pragma"] },
+      { node_id: "ci.testgen", label: "testgen", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-testgen"] },
       { node_id: "ci.build_compile", label: "build", program: "cargo", args: ["build", "--workspace"] },
       { node_id: "ci.test_run", label: "test", program: "cargo", args: ["test", "--workspace"] },
       { node_id: "ci.clippy_run", label: "clippy", program: "cargo", args: ["clippy", "--all-targets", "--", "-D", "warnings"] },
       { node_id: "ci.guardrails", label: "guardrails", program: "cargo", args: ["test", "--workspace", "--lib", "--", "guardrail"] },
-      { node_id: "ci.verify", label: "verify", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-codegen-dag"] }
+      { node_id: "ci.verify", label: "verify", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-codegen-dag"] }
     ]
   },
   {
     workflow: "test-all",
     commands: [
-      { node_id: "test_all.lint_upsert", label: "pragma ensure", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-pragma"] },
-      { node_id: "test_all.codegen", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-codegen-dag"] },
-      { node_id: "test_all.testgen", label: "testgen", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-testgen"] },
+      { node_id: "test_all.lint_upsert", label: "pragma ensure", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-pragma"] },
+      { node_id: "test_all.codegen", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-codegen-dag"] },
+      { node_id: "test_all.testgen", label: "testgen", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-testgen"] },
       { node_id: "test_all.build_compile", label: "build", program: "cargo", args: ["build", "--workspace"] },
-      { node_id: "test_all.verify_fix", label: "verify-fix", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-codegen-dag"] },
+      { node_id: "test_all.verify_fix", label: "verify-fix", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-codegen-dag"] },
       { node_id: "test_all.cargo_test_xl", label: "test-xl", program: "cargo", args: ["test", "--workspace", "--", "--include-ignored"] }
     ]
   },
@@ -48,7 +48,7 @@ data workflow_commands: List<WorkflowCommandSet> = [
     workflow: "sdlc",
     commands: [
       { node_id: "sdlc.compilation_ensure", label: "compilation ensure", program: "cargo", args: ["build", "--workspace", "--bins"] },
-      { node_id: "sdlc.codegen_ensure", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-codegen-dag"] },
+      { node_id: "sdlc.codegen_ensure", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-codegen-dag"] },
       { node_id: "sdlc.intake", label: "sdlc intake check", program: "cargo", args: ["run", "-p", "daglang-cli", "--", "check", "dsl/workflows/sdlc.dag"] },
       { node_id: "sdlc.worker", label: "sdlc worker check", program: "cargo", args: ["run", "-p", "daglang-cli", "--", "check", "dsl/funcs/sdlc_worker.dag"] }
     ]
@@ -57,67 +57,67 @@ data workflow_commands: List<WorkflowCommandSet> = [
     workflow: "gist",
     commands: [
       { node_id: "gist.compilation_ensure", label: "compilation ensure", program: "cargo", args: ["build", "--workspace", "--bins"] },
-      { node_id: "gist.codegen_ensure", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-codegen-dag"] },
-      { node_id: "gist.gist_create", label: "gist snapshot upload", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-gist"] }
+      { node_id: "gist.codegen_ensure", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-codegen-dag"] },
+      { node_id: "gist.gist_create", label: "gist snapshot upload", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-gist"] }
     ]
   },
   {
     workflow: "gist-diff",
     commands: [
       { node_id: "gist.compilation_ensure", label: "compilation ensure", program: "cargo", args: ["build", "--workspace", "--bins"] },
-      { node_id: "gist.codegen_ensure", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-codegen-dag"] },
-      { node_id: "gist.gist_create", label: "gist diff upload", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-gist", "--", "gist-diff"] }
+      { node_id: "gist.codegen_ensure", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-codegen-dag"] },
+      { node_id: "gist.gist_create", label: "gist diff upload", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-gist", "--", "gist-diff"] }
     ]
   },
   {
     workflow: "gist-recent",
     commands: [
       { node_id: "gist.compilation_ensure", label: "compilation ensure", program: "cargo", args: ["build", "--workspace", "--bins"] },
-      { node_id: "gist.codegen_ensure", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-codegen-dag"] },
-      { node_id: "gist.gist_create", label: "gist recent upload", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-gist", "--", "gist-recent"] }
+      { node_id: "gist.codegen_ensure", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-codegen-dag"] },
+      { node_id: "gist.gist_create", label: "gist recent upload", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-gist", "--", "gist-recent"] }
     ]
   },
   {
     workflow: "bootstrap",
     commands: [
       { node_id: "bootstrap.compilation_ensure", label: "compilation ensure", program: "cargo", args: ["build", "--workspace", "--bins"] },
-      { node_id: "bootstrap.codegen_ensure", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-codegen-dag"] },
-      { node_id: "bootstrap.upsert_makefile", label: "bootstrap ensure", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-bootstrap"] },
-      { node_id: "bootstrap.upsert_gitignore", label: "bootstrap ensure", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-bootstrap"] }
+      { node_id: "bootstrap.codegen_ensure", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-codegen-dag"] },
+      { node_id: "bootstrap.upsert_makefile", label: "bootstrap ensure", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-bootstrap"] },
+      { node_id: "bootstrap.upsert_gitignore", label: "bootstrap ensure", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-bootstrap"] }
     ]
   },
   {
     workflow: "makegen",
     commands: [
       { node_id: "makegen.compilation_ensure", label: "compilation ensure", program: "cargo", args: ["build", "--workspace", "--bins"] },
-      { node_id: "makegen.codegen_ensure", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-codegen-dag"] },
-      { node_id: "makegen.upsert_makefile", label: "makegen ensure", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-makegen"] }
+      { node_id: "makegen.codegen_ensure", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-codegen-dag"] },
+      { node_id: "makegen.upsert_makefile", label: "makegen ensure", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-makegen"] }
     ]
   },
   {
     workflow: "pragma",
     commands: [
       { node_id: "pragma.compilation_ensure", label: "compilation ensure", program: "cargo", args: ["build", "--workspace", "--bins"] },
-      { node_id: "pragma.codegen_ensure", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-codegen-dag"] },
-      { node_id: "pragma.upsert_clippy", label: "pragma ensure", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-pragma"] },
-      { node_id: "pragma.upsert_allowlist", label: "pragma ensure", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-pragma"] },
-      { node_id: "pragma.upsert_policy", label: "pragma ensure", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-pragma"] }
+      { node_id: "pragma.codegen_ensure", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-codegen-dag"] },
+      { node_id: "pragma.upsert_clippy", label: "pragma ensure", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-pragma"] },
+      { node_id: "pragma.upsert_allowlist", label: "pragma ensure", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-pragma"] },
+      { node_id: "pragma.upsert_policy", label: "pragma ensure", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-pragma"] }
     ]
   },
   {
     workflow: "deps",
     commands: [
       { node_id: "deps.compilation_ensure", label: "compilation ensure", program: "cargo", args: ["build", "--workspace", "--bins"] },
-      { node_id: "deps.codegen_ensure", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-codegen-dag"] },
-      { node_id: "deps.execute_installs", label: "deps", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-deps", "--", "deps"] },
-      { node_id: "deps.write_deps_toml", label: "deps", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-deps", "--", "deps-generate"] }
+      { node_id: "deps.codegen_ensure", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-codegen-dag"] },
+      { node_id: "deps.execute_installs", label: "deps", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-deps", "--", "deps"] },
+      { node_id: "deps.write_deps_toml", label: "deps", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-deps", "--", "deps-generate"] }
     ]
   },
   {
     workflow: "build-all",
     commands: [
       { node_id: "build_all.compilation_ensure", label: "compilation ensure", program: "cargo", args: ["build", "--workspace", "--bins"] },
-      { node_id: "build_all.codegen_ensure", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-dag", "--bin", "gunbc-codegen-dag"] },
+      { node_id: "build_all.codegen_ensure", label: "codegen ensure", program: "cargo", args: ["run", "-p", "gunbc-app", "--bin", "gunbc-codegen-dag"] },
       { node_id: "build_all.build", label: "build-all", program: "cargo", args: ["build", "--workspace"] }
     ]
   }

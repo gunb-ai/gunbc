@@ -91,7 +91,7 @@ Moved to `TODO/TODONE/2026-Q1/tasks-completed.md`:
 - Lane 4 codebase polish (2026-02-22): `CU-2` (parser dead_code narrowing)
 - Lane 2 interface wiring (2026-02-22): `S12-18` (SignalStore), `S12-19` (ArtifactStore)
 - Test snapshot fixes (2026-02-22): Updated corpus module counts (88→93) and dependency snapshot for 5 new provider .dag files
-- Inventory force-link fix (2026-02-22): Added `use gunbc_deps as _` to `gunbc-dag/src/lib.rs` for `inventory` registration visibility in lib tests
+- Inventory force-link fix (2026-02-22): Added `use gunbc_deps as _` to `gunbc-app/src/lib.rs` for `inventory` registration visibility in lib tests
 
 ### SDLC Design Checklist (Must Hold) -- All Satisfied
 
@@ -165,7 +165,7 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | **TS-1** | **GCP credential port types**: 62 ports in `lib/gcp-ops/src/graph.rs`. Credential ports -> `Secret`. Identity ports -> `GcpServiceAccountEmail`. Project ports -> `GcpProjectId`. Audience ports -> `NonEmptyString`. 2 duplicate graph functions share these ports. | -- | L | Done (2026-02-22) -- all 62 ports converted: `expires_at`→NonEmptyString, `version`→GcpSecretVersion, `client_id`→NonEmptyString |
 | **TS-1b** | **Cloud-ops port types**: 49 ports across 4 files in `lib/cloud-ops/src/` (`graph.rs` 28, `github_credential_graph.rs` 6, `infra_plan_apply.rs` 5, `infra_bootstrap.rs` 10). | TS-1 | M | Done (2026-02-22) -- all ports already typed; no remaining String ports |
 | **TS-1c** | **Review + LLM port types**: `lib/review/src/graph.rs` (102 ports), `lib/llm-ops/src/graph.rs` (13 ports). `provider`, `model`, `content` -> `NonEmptyString`. `secret_name` -> `SecretName`. | -- | L | Done (2026-02-22) -- all ports converted including auxiliary: `question`, `answer`, `system_prompt`, `artifact`, `stats`, `dimension`, `depth`, `prior_findings`, `summary` → NonEmptyString |
-| **TS-1d** | **Remaining graph port types**: `lib/aws-ops/src/graph.rs` (3), `lib/azure-ops/src/graph.rs` (3), `lib/tools/gist/src/graph.rs` (6), `lib/tools/deps/src/graph.rs` (1), `gunbc-dag/src/testgen_dag/graph.rs` (1). | -- | S | Done (2026-02-22) -- all ports converted: gist `result`/`markdown`/`contents`→NonEmptyString; deps `manifest_content`/`install_script`/`script`/`stdout`/`stderr`→NonEmptyString, `platform`→Platform |
+| **TS-1d** | **Remaining graph port types**: `lib/aws-ops/src/graph.rs` (3), `lib/azure-ops/src/graph.rs` (3), `lib/tools/gist/src/graph.rs` (6), `lib/tools/deps/src/graph.rs` (1), `gunbc-app/src/testgen_dag/graph.rs` (1). | -- | S | Done (2026-02-22) -- all ports converted: gist `result`/`markdown`/`contents`→NonEmptyString; deps `manifest_content`/`install_script`/`script`/`stdout`/`stderr`→NonEmptyString, `platform`→Platform |
 
 **Parallelism**: TS-1, TS-1c, TS-1d are independent. TS-1b depends on TS-1.
 
@@ -189,7 +189,7 @@ Archived: `M7-D`, `M7`, `M15-D`, `M15` are already complete in `TODO/TODONE/2026
 | `lib/azure-ops/src/graph.rs` | 3 port type updates (TS-1d) |
 | `lib/tools/gist/src/graph.rs` | 6 port type updates (TS-1d) |
 | `lib/tools/deps/src/graph.rs` | 1 port type update (TS-1d) |
-| `gunbc-dag/src/testgen_dag/graph.rs` | 1 port type update (TS-1d) |
+| `gunbc-app/src/testgen_dag/graph.rs` | 1 port type update (TS-1d) |
 | `core/daglang/daglang-emit/src/test_gen.rs` | Fix mock generation (TS-2, archived 2026-02-22) |
 | `core/daglang/daglang-typecheck/src/lib.rs` | Annotation handling (TS-5, archived 2026-02-22) |
 
@@ -199,7 +199,7 @@ Archived: `M7-D`, `M7`, `M15-D`, `M15` are already complete in `TODO/TODONE/2026
 
 **Goal**: Make the SDLC pipeline execute entirely through the compiled DSL path. Eliminate the hand-written Rust worker dispatch. After this lane, `gunbc-sdlc worker` loads and executes the compiled `sdlc.dag` pipeline via profile binding -- zero hand-written stage logic.
 
-**Mutual exclusivity**: Lane 2 touches `core/daglang/` (syntax, lower, cli), `gunbc-dag/`, and `dsl/`. Lane 1 does NOT touch any of these (except `daglang-typecheck` for annotations, which is a non-overlapping section). Zero shared files with Lane 1.
+**Mutual exclusivity**: Lane 2 touches `core/daglang/` (syntax, lower, cli), `gunbc-app/`, and `dsl/`. Lane 1 does NOT touch any of these (except `daglang-typecheck` for annotations, which is a non-overlapping section). Zero shared files with Lane 1.
 
 ### Step 0: Baseline
 
@@ -282,10 +282,10 @@ L2-0 --> L2-1, L2-2, TS-6 --> S12-6 --> S12-7 --> S12-8 --> S12-17
 | `core/daglang/daglang-syntax/src/` | Profile syntax (S12-6) |
 | `core/daglang/daglang-lower/src/lib.rs` | Profile resolution (S12-7) |
 | `core/daglang/daglang-cli/src/` | `--profile` flag (S12-8), makegen test fixes (L2-1) |
-| `gunbc-dag/src/resolve.rs` | SubDag/Pipeline execution (S12-10, S12-11) |
-| `gunbc-dag/src/bin/sdlc.rs` | Worker DAG invocation (S12-12) |
+| `gunbc-app/src/resolve.rs` | SubDag/Pipeline execution (S12-10, S12-11) |
+| `gunbc-app/src/bin/sdlc.rs` | Worker DAG invocation (S12-12) |
 | `lib/tools/deps/src/generated_tests.rs` | Regenerate (L2-2) |
-| `gunbc-dag/src/` (workspace) | Subdag mapping (TS-6) |
+| `gunbc-app/src/` (workspace) | Subdag mapping (TS-6) |
 
 ### Verification
 
@@ -336,7 +336,7 @@ Completed and archived in `TODO/TODONE/2026-Q1/tasks-completed.md` (2026-02-20):
 |----|------|----------|------|------|--------|
 | **CU-2** | **Narrow `#[allow(dead_code)]` on Parser impl**: Block-level attr at `daglang-syntax/src/parser.rs:130` masks dead code. Replace with per-method attributes. Identify and remove actual dead methods. | `core/daglang/daglang-syntax/src/parser.rs` | After Lane 2 S12-6 | S | Done (2026-02-22) -- removed blanket `#[allow(dead_code)]`; no dead methods found |
 | **CU-7** | **Typed API migration**: Migrate remaining legacy untyped `Port` API to `TypedPort<T>` wrappers. | `lib/*/src/graph.rs` | After Lane 1 TS-1* | L | |
-| **CU-8** | **Resource trait string port elimination**: Migrate remaining string `res:*` ports to typed resource system. | `core/exec/`, `gunbc-dag/` | -- | L | |
+| **CU-8** | **Resource trait string port elimination**: Migrate remaining string `res:*` ports to typed resource system. | `core/exec/`, `gunbc-app/` | -- | L | |
 | **CU-9** | **Canonical port naming invariants**: Migrate to one canonical port name per semantic role across lowering, runtime, and snapshots. | Various | -- | S | |
 
 ---
@@ -392,10 +392,10 @@ compile .dag → auto_mock_spec() → obligation analysis → emit tests
 
 | File | Changes |
 |------|---------|
-| `gunbc-dag/src/testgen_dag/dag_test_discovery.rs` | `CompilableModule`, `AutoTestgenResult`, `discover_compilable_modules()`, `auto_testgen_for_module()`, comprehensive validation test (TG-1, TG-2, TG-4) |
-| `gunbc-dag/src/testgen_dag/ops.rs` | `TestgenOp::AutoGenerate` variant with full pipeline in `execute()` (TG-3) |
-| `gunbc-dag/src/testgen_dag/graph.rs` | `build_testgen_graph_auto()` — discovers + builds upsert chains (TG-3) |
-| `gunbc-dag/src/testgen_dag/mod.rs` | Updated tool_target builder + exports (TG-3) |
+| `gunbc-app/src/testgen_dag/dag_test_discovery.rs` | `CompilableModule`, `AutoTestgenResult`, `discover_compilable_modules()`, `auto_testgen_for_module()`, comprehensive validation test (TG-1, TG-2, TG-4) |
+| `gunbc-app/src/testgen_dag/ops.rs` | `TestgenOp::AutoGenerate` variant with full pipeline in `execute()` (TG-3) |
+| `gunbc-app/src/testgen_dag/graph.rs` | `build_testgen_graph_auto()` — discovers + builds upsert chains (TG-3) |
+| `gunbc-app/src/testgen_dag/mod.rs` | Updated tool_target builder + exports (TG-3) |
 | `docs/design/testgen.md` | Auto-generation as primary model, registry as legacy (TG-5) |
 
 ### Lane 6 verification (all passing)
@@ -530,14 +530,14 @@ FC-4 (parallel)
 | File | Changes |
 |------|---------|
 | `core/daglang/daglang-lower/src/lib.rs` | `InterfaceStub` enum variants, `ServiceOperationSpec::InterfaceStub`, stub transport triplets, relaxed validation, simplified resolution (IS-1..IS-5) |
-| `gunbc-dag/src/resolve.rs` | `InterfaceStub` arms in triple match, stub prepare/execute/parse ops (IS-6) |
-| `gunbc-dag/src/mock_defaults.rs` | Auto-mock + structural transport verification (IS-7) |
-| `gunbc-dag/src/dsl_builder.rs` | `CompileOptions` profile + placeholder env support (PT-1) |
-| `gunbc-dag/src/testgen_dag/dag_test_discovery.rs` | Interface imports on `CompilableModule`, profile scoping (PT-2, PT-4) |
+| `gunbc-app/src/resolve.rs` | `InterfaceStub` arms in triple match, stub prepare/execute/parse ops (IS-6) |
+| `gunbc-app/src/mock_defaults.rs` | Auto-mock + structural transport verification (IS-7) |
+| `gunbc-app/src/dsl_builder.rs` | `CompileOptions` profile + placeholder env support (PT-1) |
+| `gunbc-app/src/testgen_dag/dag_test_discovery.rs` | Interface imports on `CompilableModule`, profile scoping (PT-2, PT-4) |
 | `core/codegen/src/registry.rs` | `LiveProfileTestConfig` (PT-3) |
 | `core/codegen/src/testgen/codegen.rs` | Per-profile test generation (PT-5) |
-| `gunbc-dag/src/testgen_dag/{graph.rs, ops.rs}` | Pipeline wiring (PT-6) |
-| `core/codegen/src/*`, `core/daglang/daglang-*/src/*`, `gunbc-dag/src/*` | Fail-closed cleanup, fallback removal, and diagnostics hardening (FC-1..FC-9) |
+| `gunbc-app/src/testgen_dag/{graph.rs, ops.rs}` | Pipeline wiring (PT-6) |
+| `core/codegen/src/*`, `core/daglang/daglang-*/src/*`, `gunbc-app/src/*` | Fail-closed cleanup, fallback removal, and diagnostics hardening (FC-1..FC-9) |
 
 ---
 

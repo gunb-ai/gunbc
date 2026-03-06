@@ -15,7 +15,7 @@ One lane. All items from all sources, ordered by dependency.
 | [`docs/design/compilation-pipeline.md`](docs/design/compilation-pipeline.md) | Pipeline map, four invariants, target interfaces, gap analysis |
 | [`TODO/compiler-pipeline.md`](TODO/compiler-pipeline.md) | CP-1 through CP-58: detailed acceptance criteria per item |
 | [`TODO/type-system.md`](TODO/type-system.md) | WS1-WS7: type system workstreams |
-| [`TODO/gunbc-dag-simplification.md`](TODO/gunbc-dag-simplification.md) | Bridges 1-11: compiler debt & app layer |
+| [`TODO/gunbc-app-simplification.md`](TODO/gunbc-app-simplification.md) | Bridges 1-11: compiler debt & app layer |
 | [`TODO/sdlc.md`](TODO/sdlc.md) | S-9 through S-19: SDLC pipeline phases |
 | [`TODO/gist-auth-postmortem.md`](TODO/gist-auth-postmortem.md) | RT-A/RT-I: auth/testgen hardening from gist 401 analysis |
 | [`TODO/testgen-proof-analysis.md`](TODO/testgen-proof-analysis.md) | Testgen gap proofs: auto_mock_spec produces 0 error scenarios |
@@ -184,7 +184,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 
 **Goal**: Delete accidental bridges. Lowerer does the work, resolver is thin.
 **Independent**: Can overlap with Phases A/B. **Bridge 1+2 is highest priority across all lanes.**
-**Source**: [`TODO/gunbc-dag-simplification.md`](TODO/gunbc-dag-simplification.md)
+**Source**: [`TODO/gunbc-app-simplification.md`](TODO/gunbc-app-simplification.md)
 
 | ID | What | Size | Deps | Status |
 |----|------|------|------|--------|
@@ -332,7 +332,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 
 | ID | What | Size | Status |
 |----|------|------|--------|
-| AL-1 | Rename `gunbc-dag` → `gunbc-app` | S | Open |
+| AL-1 | Rename `gunbc-dag` → `gunbc-app` | S | **Done** |
 | AL-2 | Output directory single source of truth (from DSL config) | M | Open |
 | AL-3 | Testgen engine: DAG or compiler mode? | M | Open |
 

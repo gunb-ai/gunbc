@@ -55,11 +55,11 @@ workflow targets.
 
 ## Files
 
-- `gunbc-dag/src/workflow/` — Projection trait, GlobalDag
-- `gunbc-dag/src/makegen/` — MakefileProjection
-- `gunbc-dag/tests/` — drift tests
+- `gunbc-app/src/workflow/` — Projection trait, GlobalDag
+- `gunbc-app/src/makegen/` — MakefileProjection
+- `gunbc-app/tests/` — drift tests
 
 ## References
 
 - `docs/design/modeling/m17-global-flattening.md` — prerequisite
-- `gunbc-dag/src/makegen/registry.rs` — existing makegen derivation
+- `gunbc-app/src/makegen/registry.rs` — existing makegen derivation

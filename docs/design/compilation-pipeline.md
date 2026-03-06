@@ -1353,7 +1353,7 @@ trait ExternResolver: Send + Sync {
 }
 ```
 
-`gunbc-dag` provides `GunbcExternResolver` with ~10 extern implementations
+`gunbc-app` provides `GunbcExternResolver` with ~10 extern implementations
 (render_tree, build_snapshot_content, discover_tools, render_bootstrap_*, etc.).
 
 ### Known gaps
@@ -1531,7 +1531,7 @@ CompileOutput {
 
 ---
 
-## Binary Integration (`gunbc-dag`)
+## Binary Integration (`gunbc-app`)
 
 The final step for the interpreted path — wiring the compiled DAG into a
 runnable binary:
@@ -1689,7 +1689,7 @@ core/ir/                Shared IR types          (Node, Edge, Port, Value, Dag<T
 core/codegen/           CLI/binary generation    (entrypoints, tool discovery)
 core/infra/             Leaf utilities           (hashing, freshness, manifest)
 
-gunbc-dag/              Binary integration       (extern resolver, tool runner)
+gunbc-app/              Binary integration       (extern resolver, tool runner)
 ```
 
 ---

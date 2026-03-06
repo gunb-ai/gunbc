@@ -471,7 +471,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
 /// Build the embedded data map for extern assets.
 fn build_embedded_data(
 ) -> Result<std::collections::HashMap<String, daglang_emit::EmbeddedData>, String> {
-    gunbc_dag::build_embedded_data()
+    gunbc_app::build_embedded_data()
 }
 
 /// For Layer 1 exec-runtime compilation, embed pre-computed handler data

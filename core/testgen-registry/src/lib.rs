@@ -211,7 +211,7 @@ pub fn generate_target_with_types<T: Executable + Clone + 'static>(
     }
 
     // CLI contract test generation: tool_name lookup is now DSL-driven via
-    // discover_tool_defs_from_dsl() in gunbc-dag/src/dsl_registry.rs.
+    // discover_tool_defs_from_dsl() in gunbc-app/src/dsl_registry.rs.
     // All current testgen targets set tool_name: None, so this path is unused.
 
     generator.generate_test_module(&config.module_name, &config.dag_builder_call)
@@ -230,7 +230,7 @@ mod resource_tests {
     fn resource_purity_checks() {
         let defs: Vec<_> = iter_resource_tests().collect();
         // inventory registrations only appear when downstream crates are linked
-        // into the same binary (e.g. gunbc-dag). When this crate is tested in
+        // into the same binary (e.g. gunbc-app). When this crate is tested in
         // isolation via `cargo test -p gunbc-testgen-registry`, no registrations
         // exist — skip gracefully rather than panic.
         if defs.is_empty() {
