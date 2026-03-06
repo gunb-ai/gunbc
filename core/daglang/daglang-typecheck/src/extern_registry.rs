@@ -27,7 +27,8 @@ impl ExternRegistry {
 
     /// Register an extern signature.
     pub fn register(&mut self, sig: ExternSignature) {
-        self.entries.insert((sig.module.clone(), sig.name.clone()), sig);
+        self.entries
+            .insert((sig.module.clone(), sig.name.clone()), sig);
     }
 
     /// Look up an extern by (module, name).
@@ -37,7 +38,8 @@ impl ExternRegistry {
 
     /// Check if an extern is registered.
     pub fn contains(&self, module: &str, name: &str) -> bool {
-        self.entries.contains_key(&(module.to_string(), name.to_string()))
+        self.entries
+            .contains_key(&(module.to_string(), name.to_string()))
     }
 
     /// Build from a list of (module, name, input_count, output_count) tuples.

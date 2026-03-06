@@ -92,8 +92,8 @@ pub mod types;
 pub mod validate;
 pub mod value;
 pub mod value_bridge;
-pub mod verified;
 pub mod value_expr;
+pub mod verified;
 pub mod workspace_layout;
 
 // Re-exports for convenience
@@ -214,7 +214,6 @@ pub use validate::{
     FingerprintConflict, PortDirection, SubDagError, UnwiredInputError, UnwiredResource,
     VerifyError,
 };
-pub use verified::VerifiedDag;
 pub use value::{
     SecretHint, SecretString, Value, ValueKind, HUMAN_TEXT_MAX_LINES, HUMAN_TEXT_MAX_LINE_WIDTH,
 };
@@ -222,6 +221,7 @@ pub use value_bridge::{
     classify_value, from_bridge_json, from_bridge_json_typed, to_bridge_json, ValueCategory,
 };
 pub use value_expr::ValueExpr;
+pub use verified::VerifiedDag;
 pub use workspace_layout::{WorkspaceLayout, WorkspaceLayoutError};
 
 // Re-exports from language module for common use

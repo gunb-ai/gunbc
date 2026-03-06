@@ -106,7 +106,7 @@ impl DiscoveryCache {
 /// - CLI entrypoints derived from func params (convention-based)
 /// - Outputs from DSL compilation (`CompileOutput.output_paths`) plus
 ///   optional `data output_paths: List<String>` declarations for dynamic cases
-/// - Invocation as `cargo run -p gunbc-dag --bin gunbc-{name}`
+/// - Invocation as `cargo run -p gunbc-app --bin gunbc-{name}`
 /// - MockSpec as `auto_mock_spec(&dag, "{name}")`
 ///
 /// Uses content-hash-based incremental caching (C26): unchanged modules
@@ -406,8 +406,11 @@ fn decode_cached_cardinality(encoded: &str) -> Option<Cardinality> {
 }
 
 fn dsl_graph_builder_adapter() -> String {
+    // Returns a callable expression that takes (relative_module, resolver, opts).
+    // The `{` ... `}` block avoids the clippy::redundant_closure_call lint
+    // that triggers when a closure is immediately invoked.
     String::from(
-        "(|relative_module, resolver, opts| gunbc_resolve::builder::build_dsl_graph(relative_module, resolver, opts).map(|result| result.dag))",
+        "gunbc_resolve::builder::build_dsl_graph_dag",
     )
 }
 
@@ -470,7 +473,7 @@ fn build_tool_defs_from_cached_params(
         let mock_spec = format!("gunbc_test::auto_mock_spec(&dag, \"{}\")", module_tool_name,);
 
         let mut tool = ToolDef::new(
-            String::from("gunbc-dag"),
+            String::from("gunbc-app"),
             module_tool_name.clone(),
             description,
             dsl_graph_builder_adapter(),
@@ -479,7 +482,7 @@ fn build_tool_defs_from_cached_params(
         .returns_result()
         .mock_spec_call(mock_spec)
         .import(extern_resolver_import())
-        .invocation(cargo::CargoInvocation::composed(&module_tool_name, "dag"));
+        .invocation(cargo::CargoInvocation::composed(&module_tool_name, "app"));
 
         for output_path in output_paths {
             tool = tool.output(output_path.clone());
@@ -507,7 +510,7 @@ fn build_tool_defs_from_cached_params(
             .unwrap_or_default();
 
         let mut tool = ToolDef::new(
-            String::from("gunbc-dag"),
+            String::from("gunbc-app"),
             tool_name.clone(),
             description,
             dsl_graph_builder_adapter(),
@@ -516,7 +519,7 @@ fn build_tool_defs_from_cached_params(
         .returns_result()
         .mock_spec_call(mock_spec)
         .import(extern_resolver_import())
-        .invocation(cargo::CargoInvocation::composed(&tool_name, "dag"));
+        .invocation(cargo::CargoInvocation::composed(&tool_name, "app"));
 
         for output_path in output_paths {
             tool = tool.output(output_path.clone());
@@ -869,8 +872,8 @@ mod tests {
             .expect("workspace root");
         let mut files = Vec::new();
         collect_rust_files(&workspace_root.join("core"), &mut files);
-        collect_rust_files(&workspace_root.join("gunbc-dag/src"), &mut files);
-        collect_rust_files(&workspace_root.join("gunbc-dag/tests"), &mut files);
+        collect_rust_files(&workspace_root.join("gunbc-app/src"), &mut files);
+        collect_rust_files(&workspace_root.join("gunbc-app/tests"), &mut files);
 
         let mut offenders = Vec::new();
         let needle = ["derive_tool_defs", "("].concat();

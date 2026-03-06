@@ -14,7 +14,9 @@ use crate::dag::{Dag, Port};
 use crate::entrypoint::detect_entrypoints;
 use crate::node::{Node, NodeBody};
 use crate::type_registry::TypeRegistry;
-use crate::types::{NodeId, PortName, PresenceMode, SemanticCarrierKind, StaticFingerprint, TypeId};
+use crate::types::{
+    NodeId, PortName, PresenceMode, SemanticCarrierKind, StaticFingerprint, TypeId,
+};
 use std::collections::HashSet;
 use std::fmt;
 
@@ -681,6 +683,14 @@ pub fn validate_required_inputs<T>(dag: &Dag<T>) -> Vec<UnwiredInputError> {
         // callable definitions (entrypoints, patterns) whose inputs
         // are supplied externally (CLI, pattern expansion), not by DAG edges.
         if !nodes_with_incoming_user_data.contains(node.id.0.as_str()) {
+            continue;
+        }
+        // Skip module-qualified callable nodes (e.g., "module::fn_name").
+        // These are fn body definitions from imported modules whose inputs
+        // are fn parameters — supplied by call-site wiring at evaluation
+        // time, not necessarily by DAG edges. Partial wiring is normal
+        // (a call site may wire only some args if others come from context).
+        if node.id.0.contains("::") {
             continue;
         }
         for port in &node.inputs {
@@ -1785,12 +1795,7 @@ mod tests {
         ));
         let mut opt_port = Port::new("in", "Bool?");
         opt_port.presence = crate::types::PresenceMode::Optional;
-        dag.add_node(Node::opaque(
-            "tgt",
-            vec![opt_port],
-            vec![],
-            (),
-        ));
+        dag.add_node(Node::opaque("tgt", vec![opt_port], vec![], ()));
         dag.add_edge(Edge::new("src", "out", "tgt", "in"));
         let errors = validate_presence_wiring(&dag);
         assert!(errors.is_empty());

@@ -99,6 +99,23 @@ Phase J (External Dependency Modeling) — pure DSL authoring, independent
 - The lowerer is the bottleneck. Most "compiler bugs" are lowerer bugs.
 - Push magic to the left. The executor should be maximally dumb.
 
+### Non-SDLC Completion Plan (2026-03-06)
+
+Commitment: every remaining non-SDLC item in this file is in scope. Phase H
+(SDLC) stays explicitly out of scope until the non-SDLC backlog is green.
+
+Execution order:
+
+1. **Finish transitional compiler-core items first**: close all phase-1 / bridge / partial compiler-contract work before taking on new feature surface. Scope: CP-17 phase 2, CP-27 phase 2, CP-43, CP-44, CP-46, CP-47, CP-51, CP-61 partial, Bridge 6+7, DM-3A.
+2. **Complete remaining compiler architecture gaps**: land the still-open compiler items that change the real stage boundaries and runtime truth. Scope: CP-18, CP-9, CP-10, RG-1, RG-2.
+3. **Finish obligation, auth, and testgen hardening**: once the stage contracts are real, close the remaining proof/auth/testgen gaps. Scope: CP-53, RT-1, RT-2, RT-6, RT-7, RT-8, AUTH-1, AUTH-3, AUTH-4.
+4. **Finish app-layer and artifact collapse**: remove the remaining repo-local makegen/discovery/layout residue after the compiler can own it structurally. Scope: DM-5, DM-5A, DM-6, DM-7, DM-7A.
+5. **Finish reliability ratchets last**: after the pipeline and app surfaces are stable, tighten the runtime-budget and test-sharding ratchets. Scope: RR-1, RR-2.
+
+Rule: do not start new SDLC modeling/planning work while any non-SDLC item in
+Open / Partial / Blocked / Deferred status remains outside an explicitly
+documented prerequisite chain.
+
 ---
 
 ## Phase A: Foundation & Cleanup
@@ -170,11 +187,11 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 
 | ID | What | Size | Deps | Source | Status |
 |----|------|------|------|--------|--------|
-| CP-46 | Structured `LowerError` enum with spans (subsumes CP-14) | M | CP-48 | CP | **Phase 1 complete** — `SpannedLowerError` wrapper struct, `code()` method (LOW001–LOW024), `help()` method (6 common variants). Phase 2 (threading spans through 64 construction sites) deferred to CP-63. |
-| CP-49 | Thread spans through `TypeError` (35+ variants → all carry Span) | M | CP-48 | CP | **Phase 1 complete** — `SpannedTypeError` wrapper struct, daglang-contract dependency. Phase 2 (threading through 80+ sites) deferred to CP-63. |
+| CP-46 | Structured `LowerError` enum with spans (subsumes CP-14) | M | CP-48 | CP | **Phase 1 complete** — `SpannedLowerError` wrapper struct, `code()` method (LOW001–LOW024), `help()` method (6 common variants). Lowerer errors still flow through a wrapper instead of a single `Diagnostic` path; Phase 2 (threading spans through 64 construction sites) is deferred to CP-63. |
+| CP-49 | Thread spans through `TypeError` (35+ variants → all carry Span) | M | CP-48 | CP | **Phase 1 complete** — `SpannedTypeError` wrapper struct, daglang-contract dependency. Type errors still rely on the wrapper rather than variant-level mandatory spans; Phase 2 (threading through 80+ sites) is deferred to CP-63. |
 | CP-50 | Help text on common errors (10+ most-hit paths) | M | CP-48 | CP | **Done** — `help()` methods on TypeError (11 variants), LowerError (6 variants), ResolveError (4 variants). SpannedTypeError and SpannedLowerError Display impls show help text. 21 actionable fix suggestions total. |
-| CP-51 | `NodeOrigin` on every lowered node (subsumes CP-25) | M | — | CP | **Done** — `NodeOrigin` enum (UserCode, PatternExpansion, Stdlib, Unknown) added to `Node<T>`. Default `Unknown` for backward compat. `origin` field preserved through `map_ops()`, lower, resolve, and mock. Lowerer stamping deferred to Phase B (spans not yet threaded through lowerer context). |
-| CP-29 | Validate required inputs after lower (catches `make gist` class) | S | CP-46 | CP | **Done** — `validate_required_inputs()` public function walks DAG nodes, checks required (min≥1) input ports for incoming edges. Skips param_source, CallParamSource/CallLiteralSource, internal/tool/resource ports, and ObligationCategory::None callables (entrypoints). Not called in main lower path (too many pre-existing gaps); available as opt-in validation. 3 unit tests. |
+| CP-51 | `NodeOrigin` on every lowered node (subsumes CP-25) | M | — | CP | **Phase 1 complete** — `NodeOrigin` enum (UserCode, PatternExpansion, Stdlib, Unknown) added to `Node<T>`. Default `Unknown` for backward compat. `origin` field is preserved through `map_ops()`, lower, resolve, and mock, but most lowerer stamping is still deferred until spans are threaded through lowerer context. |
+| CP-29 | Validate required inputs after lower (catches `make gist` class) | S | CP-46 | CP | **Done** — `validate_required_inputs()` public function walks DAG nodes and is included in `verify_dag()`, so it runs on the default compile path (`skip_verification = false`). Direct lowerer-only helpers still bypass verification unless the caller opts in. 3 unit tests. |
 
 ### B.2: Verification enabling (after A.2)
 
@@ -241,10 +258,10 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 | ID | What | Size | Deps | Source | Status |
 |----|------|------|------|--------|--------|
 | CP-40 | `ExternRegistry` — validate externs in typecheck, carry `ExternId` | M | CP-23 | CP | **Done** — `ExternRegistry` struct in `daglang-typecheck/src/extern_registry.rs`. `TypecheckOptions.extern_registry: Option<ExternRegistry>`. `TypeError::UnregisteredExtern` (TC041), `TypeError::ExternArityMismatch` (TC042) with `code()` and `help()`. Validation loop in `typecheck_module_graph_with_options`. `gunbc_runtime_bindings()` builder in app layer. |
-| CP-43 | Typecheck borrows `&ModuleGraph` (subsumes CP-32 field duplication) | M | CP-36 | CP | **Done** — `typecheck_module_graph[_with_options]` takes `&ModuleGraph`. Clone derived on all 24 AST types + `SourceFile` + `Item` + `ResolvedModule` + `ModuleGraph`. Callers retain graph after typechecking. Eliminated redundant `discover_module_graph_for_context` in `compile_from_module_graph_with_options`. `source_paths` clone deferred to point of use. |
-| CP-44 | `LowerOutput` bundles computed fields (subsumes CP-33 re-extraction) | M | CP-43 | CP | **Done** — `LowerOutput` struct in daglang-lower bundles `dag`, `output_paths`, `inferred_entrypoints`, `data_values`. `lower_to_output()` computes all in one call. Driver uses bundled output, eliminating 3 re-extraction calls (`extract_output_paths`, `infer_entrypoints`, `build_data_values`). Backward-compatible: `lower_with_config` still returns bare `Dag<LoweredOp>`. |
+| CP-43 | Typecheck borrows `&ModuleGraph` (subsumes CP-32 field duplication) | M | CP-36 | CP | **Phase 1 complete** — `typecheck_module_graph[_with_options]` takes `&ModuleGraph`, so callers retain the discovered graph. `TypedModule` still clones `path`, `module_path`, `imports`, and `ast`, so canonical module ownership/minimalism is not finished and CP-32 is only partially subsumed. |
+| CP-44 | `LowerOutput` bundles computed fields (subsumes CP-33 re-extraction) | M | CP-43 | CP | **Phase 1 complete** — `LowerOutput` now exists in daglang-lower and the main compile path consumes bundled `output_paths`, `inferred_entrypoints`, and `data_values` instead of re-extracting them. Legacy helper paths still call some lowerer extraction helpers, so full single-owner cleanup is not finished yet. |
 | CP-45 | Consolidate Execute entry points → one `fn execute(dag, config)` | S | — | CP | **Done** — `ExecuteConfig` struct + `execute_dag()` unified entry point. All 10 existing `execute_*` variants delegate to it. Backward compatible. |
-| CP-47 | `RuntimeBindings` replaces `ExternResolver` trait | M | CP-40 | CP | **Done** — `RuntimeBindings` struct in `core/resolve/src/lib.rs` with `ExternResolver` bridge impl. `gunbc_runtime_bindings()` registers all 12 extern symbols. `GunbcExternResolver` retained for backward compat. |
+| CP-47 | `RuntimeBindings` replaces `ExternResolver` trait | M | CP-40 | CP | **Bridge landed** — `RuntimeBindings` centralizes registration in `core/resolve/src/lib.rs`, and `gunbc_runtime_bindings()` registers all 12 extern symbols. The map is still keyed by `(module, name)` strings and still implements the old `ExternResolver` trait as a migration bridge; ExternId-keyed total binding remains open. |
 
 ### D.2: Architecture (after D.1)
 
@@ -688,11 +705,11 @@ Interpret the remaining `S-*` tasks as proofs of the modeling above, not as isol
 
 | Later item | Subsumes | Reason |
 |------------|----------|--------|
-| CP-43 (typecheck borrows ModuleGraph) | CP-32 | Borrowing eliminates the copy |
+| CP-43 (typecheck borrows ModuleGraph) | CP-32 | Borrowing removes the forced move, but full subsumption only happens once `TypedModule` stops cloning module facts |
 | CP-44 (LowerOutput) | CP-33 | Bundles computed fields at source |
 | CP-46 (structured LowerError) | CP-14 | Structured enum with spans covers span requirement |
-| CP-47 (RuntimeBindings) | Part of CP-40 | CP-40 creates ExternId; CP-47 consumes it |
-| CP-51 (NodeOrigin) | Part of CP-25 | NodeOrigin covers span-tracing aspect |
+| CP-47 (RuntimeBindings) | Part of CP-40 | CP-40 creates `ExternId`; full subsumption only lands once RuntimeBindings binds by ID instead of string lookup |
+| CP-51 (NodeOrigin) | Part of CP-25 | `NodeOrigin` is the foundation; full span-tracing still depends on lowerer stamping |
 | CP-26 (ParseResult) | CP-16, CP-21 | Single parser entry with diagnostics eliminates lossy mode |
 | RT-1 (@mock_response) | CP-65 partial | CP-65 deletes dead `MockResponseDef`; RT-1 re-implements it properly |
 | RT-2 (Bucket C errors) | RT-3 partial | RT-3 is REST-only; RT-2 is all transports |

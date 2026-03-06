@@ -90,6 +90,18 @@ pub fn build_dsl_graph(
     })
 }
 
+/// Convenience wrapper: compile + resolve a DSL module and return just the DAG.
+///
+/// Used by generated CLI binaries to avoid a redundant closure around
+/// `build_dsl_graph(...).map(|r| r.dag)`.
+pub fn build_dsl_graph_dag(
+    relative_module: &str,
+    resolver: &dyn ExternResolver,
+    opts: BuildOpts<'_>,
+) -> Result<Dag<DynOp>, BuilderError> {
+    build_dsl_graph(relative_module, resolver, opts).map(|r| r.dag)
+}
+
 // ============================================================================
 // Internal helpers
 // ============================================================================

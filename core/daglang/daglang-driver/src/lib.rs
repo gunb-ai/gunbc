@@ -10,15 +10,14 @@ use daglang_emit::{
 };
 pub use daglang_lower::is_user_param_port;
 pub use daglang_lower::InferredEntrypoint;
-use daglang_lower::{lower_with_config, LowerError, LoweredOp, LoweringConfig};
+use daglang_lower::{lower_to_output_with_config, LowerError, LoweredOp, LoweringConfig};
 use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
-use daglang_syntax::ast::{Expr, Item, Literal, ModulePath, PipelineDef, StageDef, Stmt, TypeBody};
-use daglang_syntax::ast_utils::type_expr_to_string;
+use daglang_syntax::ast::{Expr, Item, Literal, ModulePath, PipelineDef, StageDef, Stmt};
 use daglang_syntax::parser;
 use daglang_typecheck::{
-    typecheck_module_graph_with_options, TypeError, TypecheckOptions, TypedProject,
+    typecheck_module_graph_with_options, PipelineParam, TypeError, TypecheckOptions, TypedProject,
 };
-use gunbc_ir::{Dag, ProgramSymbolId, ReachableDag, TypeRegistry, VerifiedDag};
+use gunbc_ir::{Dag, ProgramSymbolId, ReachableDag, VerifiedDag};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -290,7 +289,6 @@ pub struct CompileOptions {
     pub skip_verification: bool,
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CodegenTarget {
     #[default]
@@ -405,20 +403,20 @@ pub fn compile_data_from_sources(
         },
     )
     .map_err(CompileError::Typecheck)?;
-    let data_values = daglang_lower::build_data_values(&typed);
-
     // Lowering is best-effort: data-only modules have no callable/pipeline
     // declarations, so the lowerer correctly returns NoLowerableItems.
     let mut fns = HashMap::new();
-    match daglang_lower::lower_typed_project(&typed) {
-        Ok(lowered) => {
-            extract_fn_bodies_from_dag(&lowered, &mut fns);
+    let data_values = match daglang_lower::lower_to_output(&typed) {
+        Ok(lower_output) => {
+            extract_fn_bodies_from_dag(&lower_output.dag, &mut fns);
+            lower_output.data_values
         }
         Err(daglang_lower::LowerError::NoLowerableItems) => {
-            // Data-only module — no fns to extract, data_values is enough.
+            // Data-only module — no lowered dag, but constants are still available.
+            daglang_lower::build_data_values(&typed)
         }
         Err(e) => return Err(CompileError::Lower(e)),
-    }
+    };
 
     let pipelines = extract_pipelines_from_typed(&typed);
 
@@ -456,8 +454,6 @@ pub fn compile_data_from_module(
         },
     )
     .map_err(CompileError::Typecheck)?;
-    let data_values = daglang_lower::build_data_values(&typed);
-
     let mut fns = HashMap::new();
     // Derive the module dotted path from the file path for entry_module scoping.
     // This prevents lowering unrelated callables from transitively imported modules
@@ -470,13 +466,16 @@ pub fn compile_data_from_module(
         entry_module: Some(&entry_module),
         ..Default::default()
     };
-    match daglang_lower::lower_with_config(&typed, &lower_config) {
-        Ok(lowered) => {
-            extract_fn_bodies_from_dag(&lowered, &mut fns);
+    let data_values = match daglang_lower::lower_to_output_with_config(&typed, &lower_config) {
+        Ok(lower_output) => {
+            extract_fn_bodies_from_dag(&lower_output.dag, &mut fns);
+            lower_output.data_values
         }
-        Err(daglang_lower::LowerError::NoLowerableItems) => {}
+        Err(daglang_lower::LowerError::NoLowerableItems) => {
+            daglang_lower::build_data_values(&typed)
+        }
         Err(e) => return Err(CompileError::Lower(e)),
-    }
+    };
 
     let pipelines = extract_pipelines_from_typed(&typed);
 
@@ -524,9 +523,9 @@ fn extract_fn_bodies_from_dag(
 }
 
 /// Walk all modules in a typed project and extract pipeline definitions.
-fn extract_pipelines_from_typed(typed: &TypedProject) -> HashMap<String, Vec<PipelineStageInfo>> {
+fn extract_pipelines_from_typed(typed: &TypedProject<'_>) -> HashMap<String, Vec<PipelineStageInfo>> {
     let mut pipelines = HashMap::new();
-    for module in &typed.modules {
+    for module in typed.modules() {
         for item in &module.ast.items {
             if let Item::PipelineDef(def) = &item.node {
                 let stages = def
@@ -726,7 +725,7 @@ pub fn compile_from_module_graph_with_options(
     )
     .map_err(CompileError::Typecheck)?;
     let extern_assets = collect_extern_assets(&typed);
-    let lowered = lower_with_config(
+    let lower_output = lower_to_output_with_config(
         &typed,
         &LoweringConfig {
             callable_modules: callable_scope.as_ref(),
@@ -736,20 +735,77 @@ pub fn compile_from_module_graph_with_options(
         },
     )
     .map_err(CompileError::Lower)?;
-    let structural_primitive_wiring_errors = validate_structural_primitive_input_wiring(&lowered);
+    let structural_primitive_wiring_errors =
+        validate_structural_primitive_input_wiring(&lower_output.dag);
     if !structural_primitive_wiring_errors.is_empty() {
         return Err(CompileError::Verification(
             structural_primitive_wiring_errors,
         ));
     }
     if !options.skip_verification {
-        let verify_errors = gunbc_ir::verify_dag(&lowered);
-        if !verify_errors.is_empty() {
-            return Err(CompileError::Verification(verify_errors));
-        }
+        let daglang_lower::LowerOutput {
+            dag: lowered_dag,
+            output_paths,
+            inferred_entrypoints,
+            data_values,
+        } = lower_output;
+        let verified_dag =
+            VerifiedDag::verify(lowered_dag).map_err(CompileError::Verification)?;
+
+        let derived = derive_artifacts(&verified_dag).map_err(CompileError::Derive)?;
+
+        let target_module_name = if let Some(tf) = context.target_file.as_ref() {
+            let canonical = {
+                #[allow(clippy::disallowed_methods)]
+                std::fs::canonicalize(tf).ok()
+            };
+            module_graph
+                .modules
+                .iter()
+                .find(|m| m.path == *tf || canonical.as_ref().is_some_and(|c| m.path == *c))
+                .map(|m| m.module_path.as_dotted())
+        } else {
+            None
+        };
+
+        let target = options.target;
+        let layer = options.layer;
+        let mut emitted = emit_with_options(
+            &verified_dag,
+            &derived,
+            options,
+            target_module_name.as_deref(),
+            &extern_assets,
+        )?;
+        let emit_manifest_path = append_emit_manifest(&mut emitted, target, layer)?;
+
+        let receipt = Some(compute_receipt(
+            &verified_dag,
+            &emitted,
+            &emit_manifest_path,
+            &source_paths,
+        )?);
+
+        return Ok(CompileOutput {
+            lowered_dag: verified_dag,
+            derived,
+            emitted,
+            emit_manifest_path,
+            output_paths,
+            pipeline_params: typed.pipeline_params().to_vec(),
+            inferred_entrypoints,
+            dsl_type_registry: typed.dsl_type_registry().clone(),
+            receipt,
+            data_values,
+        });
     }
-    let output_paths = daglang_lower::extract_output_paths(&lowered);
-    let verified_dag = VerifiedDag::from_verified(lowered);
+    let daglang_lower::LowerOutput {
+        dag: lowered_dag,
+        output_paths,
+        inferred_entrypoints,
+        data_values,
+    } = lower_output;
+    let verified_dag = VerifiedDag::from_verified(lowered_dag);
 
     let derived = derive_artifacts(&verified_dag).map_err(CompileError::Derive)?;
 
@@ -778,10 +834,6 @@ pub fn compile_from_module_graph_with_options(
     )?;
     let emit_manifest_path = append_emit_manifest(&mut emitted, target, layer)?;
 
-    let pipeline_params = collect_pipeline_params(&typed);
-    let inferred_entrypoints = daglang_lower::infer_entrypoints(&verified_dag);
-    let dsl_type_registry = extract_dsl_type_registry(&typed);
-    let data_values = daglang_lower::build_data_values(&typed);
     let receipt = Some(compute_receipt(
         &verified_dag,
         &emitted,
@@ -795,18 +847,18 @@ pub fn compile_from_module_graph_with_options(
         emitted,
         emit_manifest_path,
         output_paths,
-        pipeline_params,
+        pipeline_params: typed.pipeline_params().to_vec(),
         inferred_entrypoints,
-        dsl_type_registry,
+        dsl_type_registry: typed.dsl_type_registry().clone(),
         receipt,
         data_values,
     })
 }
 
 /// Collect extern asset declarations from the typed project.
-fn collect_extern_assets(typed: &TypedProject) -> BTreeSet<ProgramSymbolId> {
+fn collect_extern_assets(typed: &TypedProject<'_>) -> BTreeSet<ProgramSymbolId> {
     let mut assets = BTreeSet::new();
-    for module in &typed.modules {
+    for module in typed.modules() {
         let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             if let Item::ExternAssetDecl(def) = &item.node {
@@ -818,81 +870,6 @@ fn collect_extern_assets(typed: &TypedProject) -> BTreeSet<ProgramSymbolId> {
 }
 
 /// Collect `param` declarations from all modules in the typed project.
-fn collect_pipeline_params(typed: &TypedProject) -> Vec<PipelineParam> {
-    let mut params = Vec::new();
-    for module in &typed.modules {
-        for item in &module.ast.items {
-            if let Item::ParamDecl(decl) = &item.node {
-                let type_id = type_expr_to_string(&decl.ty);
-                let default_value = decl.default.as_ref().and_then(expr_to_default_string);
-                params.push(PipelineParam {
-                    name: decl.name.clone(),
-                    type_id,
-                    default_value,
-                });
-            }
-        }
-    }
-    params
-}
-
-/// Extract a `TypeRegistry` from DSL-defined sum and product types.
-///
-/// Walks all modules in the `TypedProject` and registers:
-/// - `TypeBody::Sum(variants)` → `type_lib::coproduct(name, variants)`
-/// - `TypeBody::Record(fields)` → `type_lib::product(name, fields)`
-///
-/// This makes DSL-defined types (e.g., `EntryKind`, `AuthScheme`) visible
-/// to testgen for variant coverage obligations.
-fn extract_dsl_type_registry(typed: &TypedProject) -> TypeRegistry {
-    let mut registry = TypeRegistry::new();
-    for module in &typed.modules {
-        for item in &module.ast.items {
-            if let Item::TypeDef(def) = &item.node {
-                match &def.body {
-                    TypeBody::Sum(variants) => {
-                        let variant_pairs: Vec<(&str, &str)> = variants
-                            .iter()
-                            .map(|v| (v.name.as_str(), "String"))
-                            .collect();
-                        registry.register(
-                            def.name.as_str(),
-                            gunbc_ir::type_lib::coproduct(def.name.as_str(), variant_pairs),
-                        );
-                    }
-                    TypeBody::Record(fields) => {
-                        let field_type_strings: Vec<(String, String)> = fields
-                            .iter()
-                            .map(|f| (f.name.clone(), type_expr_to_string(&f.ty)))
-                            .collect();
-                        let field_pairs: Vec<(&str, &str)> = field_type_strings
-                            .iter()
-                            .map(|(n, t)| (n.as_str(), t.as_str()))
-                            .collect();
-                        registry.register(
-                            def.name.as_str(),
-                            gunbc_ir::type_lib::product(def.name.as_str(), field_pairs),
-                        );
-                    }
-                    TypeBody::Alias(_) => {}
-                }
-            }
-        }
-    }
-    registry
-}
-
-/// Convert a literal default expression to its string representation.
-fn expr_to_default_string(expr: &Expr) -> Option<String> {
-    match expr {
-        Expr::Literal(Literal::String(s)) => Some(s.clone()),
-        Expr::Literal(Literal::Int(n)) => Some(n.to_string()),
-        Expr::Literal(Literal::Bool(b)) => Some(b.to_string()),
-        Expr::Literal(Literal::Float(f)) => Some(f.to_string()),
-        _ => None,
-    }
-}
-
 pub fn check_from_context(context: &DriverContext) -> Result<CheckOutput, CompileError> {
     let module_graph = discover_module_graph_for_context(context)?;
     check_from_module_graph(module_graph)
@@ -926,7 +903,7 @@ pub fn load_pipeline_params(context: &DriverContext) -> Result<Vec<PipelineParam
         },
     )
     .map_err(CompileError::Typecheck)?;
-    Ok(collect_pipeline_params(&typed))
+    Ok(typed.pipeline_params().to_vec())
 }
 
 /// Generate Rust type definitions from DSL TypeDefs in the given modules.
@@ -983,10 +960,10 @@ pub fn lint_report_coverage_from_context(
     Ok(lint_report_coverage(&typed))
 }
 
-fn lint_report_coverage(typed: &TypedProject) -> Vec<ReportCoverageIssue> {
+fn lint_report_coverage(typed: &TypedProject<'_>) -> Vec<ReportCoverageIssue> {
     let mut issues = Vec::new();
 
-    for module in &typed.modules {
+    for module in typed.modules() {
         let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Item::PipelineDef(def) = &item.node else {

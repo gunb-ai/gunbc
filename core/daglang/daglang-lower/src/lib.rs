@@ -31,7 +31,6 @@ use daglang_syntax::ast_utils::{
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
 use gunbc_ir::patterns::branch::IfBuilder;
 use gunbc_ir::patterns::{BranchBuilder, LoopBuilder, PatternOp};
-use gunbc_ir::resource::{AccessMode, RESOURCE_FILE};
 use gunbc_ir::transport::middleware::{
     RateLimitAlgorithm, RateLimitConfig, ResponseClassification, ResponseProvider, RetryBackoff,
     RetryConfig, TransportMiddlewareConfig,
@@ -479,6 +478,20 @@ pub fn stamp_node_kinds(dag: &mut Dag<LoweredOp>) {
     stamp_static_fingerprints(dag);
 }
 
+/// Returns true if the node ID has a call-site clone suffix (e.g., `_c1`, `_c2`).
+///
+/// The lowerer creates these suffixed copies via `clone_transport_triplet` when
+/// multiple callables reference the same service operation.
+fn is_call_site_clone(node_id: &str) -> bool {
+    // Match trailing `_cN` where N is one or more digits.
+    if let Some(pos) = node_id.rfind("_c") {
+        let suffix = &node_id[pos + 2..];
+        !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit())
+    } else {
+        false
+    }
+}
+
 /// Stamp static fingerprints on transport execute nodes (C22).
 ///
 /// For each node with an `operation_key`, analyzes the incoming edges to
@@ -521,6 +534,11 @@ pub fn stamp_static_fingerprints(dag: &mut Dag<LoweredOp>) {
 
     for node in dag.nodes.iter() {
         if node.operation_key.is_none() || node.kind != NodeKind::TransportExecute {
+            continue;
+        }
+        // Skip call-site clones (suffixed _c1, _c2, …) — these are intentional
+        // duplicates for different callable scopes, not redundant work.
+        if is_call_site_clone(&node.id.0) {
             continue;
         }
         let op_key = node.operation_key.as_ref().unwrap().clone();
@@ -986,7 +1004,7 @@ fn collect_profile_binding_registry(
     let mut interface_registry = NameAliasRegistry::default();
     let mut service_registry = NameAliasRegistry::default();
 
-    for module in &project.modules {
+    for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             match &item.node {
@@ -1010,7 +1028,7 @@ fn collect_profile_binding_registry(
     }
 
     let mut registry = ProfileBindingRegistry::default();
-    for module in &project.modules {
+    for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Item::ProfileDef(def) = &item.node else {
@@ -1230,7 +1248,7 @@ fn collect_profile_bound_interface_names(registry: &ProfileBindingRegistry) -> H
 
 fn collect_interface_type_names(project: &TypedProject) -> HashSet<String> {
     let mut names = HashSet::new();
-    for module in &project.modules {
+    for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Item::InterfaceDef(def) = &item.node else {
@@ -1270,7 +1288,7 @@ fn interfaces_needing_stubs(
         return HashSet::new();
     }
     let mut stub_interfaces = HashSet::new();
-    for module in &project.modules {
+    for module in project.modules() {
         for item in &module.ast.items {
             let uses = match &item.node {
                 Item::FuncDef(def) => def.uses.as_slice(),
@@ -1321,7 +1339,7 @@ fn derive_interface_stub_transport_triplets(
         return manifest;
     }
 
-    for module in &project.modules {
+    for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Item::InterfaceDef(interface) = &item.node else {
@@ -1616,10 +1634,6 @@ impl DagBuilder {
         }
     }
 
-    fn has_node(&self, id: &str) -> bool {
-        self.seen_nodes.contains(id)
-    }
-
     fn has_edge_to_port(&self, to_node: &str, to_port: &str) -> bool {
         self.seen_edges
             .iter()
@@ -1674,6 +1688,10 @@ impl DagBuilder {
         }
         if let Some(mut n) = execute_clone {
             n.id = new_execute_id.clone().into();
+            // Clear the static fingerprint on call-site clones: these are
+            // intentional duplicates for different callable scopes, not
+            // redundant work that C22 should flag.
+            n.static_fingerprint = None;
             self.add_node(n);
         }
         if let Some(mut n) = parse_clone {
@@ -2127,7 +2145,7 @@ impl LowerError {
 ///   lowered into executable graph nodes yet.
 fn collect_variant_names(project: &TypedProject) -> HashSet<String> {
     let mut names = HashSet::new();
-    for module in &project.modules {
+    for module in project.modules() {
         for item in &module.ast.items {
             if let Item::TypeDef(def) = &item.node {
                 if let daglang_syntax::ast::TypeBody::Sum(variants) = &def.body {
@@ -2158,11 +2176,28 @@ pub struct LoweringConfig<'a> {
     pub entry_module: Option<&'a str>,
 }
 
+/// Bundled lower-stage outputs for callers that need more than the DAG itself.
+#[derive(Debug, Clone)]
+pub struct LowerOutput {
+    pub dag: Dag<LoweredOp>,
+    pub output_paths: Vec<String>,
+    pub inferred_entrypoints: Vec<InferredEntrypoint>,
+    pub data_values: HashMap<String, serde_json::Value>,
+}
+
 /// Lower a typed project with the given configuration.
 pub fn lower_with_config(
     project: &TypedProject,
     config: &LoweringConfig<'_>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
+    lower_to_output_with_config(project, config).map(|output| output.dag)
+}
+
+/// Lower a typed project and return the DAG plus canonical derived outputs.
+pub fn lower_to_output_with_config(
+    project: &TypedProject,
+    config: &LoweringConfig<'_>,
+) -> Result<LowerOutput, LowerError> {
     lower_typed_project_impl(
         project,
         config.callable_modules,
@@ -2170,6 +2205,10 @@ pub fn lower_with_config(
         config.active_profile,
         config.entry_module,
     )
+}
+
+pub fn lower_to_output(project: &TypedProject) -> Result<LowerOutput, LowerError> {
+    lower_to_output_with_config(project, &LoweringConfig::default())
 }
 
 pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, LowerError> {
@@ -2313,13 +2352,13 @@ fn lower_typed_project_impl(
     emit_collection_nodes: bool,
     active_profile: Option<&str>,
     entry_module: Option<&str>,
-) -> Result<Dag<LoweredOp>, LowerError> {
+) -> Result<LowerOutput, LowerError> {
     let mut builder = DagBuilder::new();
     let mut endpoints_by_full = HashMap::<(String, String), LoweredEndpoint>::new();
     let mut endpoints_by_name = HashMap::<String, Option<LoweredEndpoint>>::new();
     let variant_names = collect_variant_names(project);
 
-    for module in &project.modules {
+    for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         let include_callables = callable_modules
             .map(|scope| scope.contains(&module_name))
@@ -2344,7 +2383,7 @@ fn lower_typed_project_impl(
                 _ => None,
             })
             .collect();
-        for signature in &module.signatures {
+        for signature in module.signatures {
             match signature {
                 TypedItemSignature::Fn(callable) => {
                     if !include_callables {
@@ -2451,7 +2490,6 @@ fn lower_typed_project_impl(
         }
     }
 
-    add_makegen_scaffolding(&mut builder, &endpoints_by_full);
     let transport_manifest = if callable_modules.is_some() && active_profile.is_none() {
         let required_service_calls = collect_required_service_call_keys(project, callable_modules);
         derive_service_transport_triplets(project, Some(&required_service_calls))?
@@ -2543,7 +2581,14 @@ fn lower_typed_project_impl(
     let mut dag = builder.into_dag();
     stamp_node_kinds(&mut dag);
     validate_callable_output_wiring(&dag)?;
-    Ok(dag)
+    let output_paths = extract_output_paths(&dag);
+    let inferred_entrypoints = infer_entrypoints(&dag);
+    Ok(LowerOutput {
+        dag,
+        output_paths,
+        inferred_entrypoints,
+        data_values,
+    })
 }
 
 pub use parity::{
@@ -3526,7 +3571,7 @@ fn add_dependency_edges(
     emit_collection_nodes: bool,
     entry_module: Option<&str>,
 ) {
-    for module in &project.modules {
+    for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         let param_types_by_callable = module
             .signatures
@@ -4453,16 +4498,7 @@ fn expand_single_content_upsert(
     let compare_id = format!("compare_{suffix}_content");
     let prepare_write_id = format!("prepare_write_{suffix}");
     let execute_transport_id = format!("execute_{suffix}_transport");
-    let is_makegen_expansion = suffix == "makegen";
-
-    let mut prepare_read_inputs = vec![Port::scalar("path", "String")];
-    if is_makegen_expansion {
-        prepare_read_inputs.push(Port::resource(
-            "file:Makefile",
-            "FilesystemHandle",
-            AccessMode::Read,
-        ));
-    }
+    let prepare_read_inputs = vec![Port::scalar("path", "String")];
     builder.add_node(Node::opaque(
         prepare_read_id.clone(),
         prepare_read_inputs,
@@ -4515,17 +4551,10 @@ fn expand_single_content_upsert(
             kind: PrimitiveOpKind::IoPrepareFileWrite,
         },
     ));
-    let mut execute_transport_inputs = vec![
+    let execute_transport_inputs = vec![
         Port::scalar("request", "TransportRequest"),
         Port::scalar("skip", "Bool"),
     ];
-    if is_makegen_expansion {
-        execute_transport_inputs.push(Port::resource(
-            "file",
-            "FilesystemHandle",
-            AccessMode::Write,
-        ));
-    }
     builder.add_node(Node::opaque(
         execute_transport_id.clone(),
         execute_transport_inputs,
@@ -4783,11 +4812,11 @@ struct ExpandablePattern<'a> {
 }
 
 /// Collect ALL pattern definitions from the project (generic and non-generic).
-fn collect_expandable_pattern_defs(
-    project: &TypedProject,
-) -> HashMap<String, ExpandablePattern<'_>> {
+fn collect_expandable_pattern_defs<'a>(
+    project: &'a TypedProject<'_>,
+) -> HashMap<String, ExpandablePattern<'a>> {
     let mut patterns = HashMap::new();
-    for module in &project.modules {
+    for module in &project.graph().modules {
         for item in &module.ast.items {
             if let Item::PatternDef(def) = &item.node {
                 patterns.insert(
@@ -5677,78 +5706,10 @@ fn sanitize_identifier(value: &str) -> String {
     out
 }
 
-fn add_makegen_scaffolding(
-    builder: &mut DagBuilder,
-    endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
-) {
-    let Some(render) =
-        endpoints_by_full.get(&("tools.makegen".to_string(), "render_makefile".to_string()))
-    else {
-        return;
-    };
-    let makegen = endpoints_by_full.get(&("tools.makegen".to_string(), "makegen".to_string()));
-
-    if !builder.has_node("load_registry") {
-        builder.add_node(Node::opaque(
-            "load_registry",
-            vec![],
-            vec![Port::scalar("registry", "ToolRegistry")],
-            LoweredOp::Callable {
-                module: "tools.makegen".to_string(),
-                kind: CallableKind::Pattern,
-                name: "load_registry".to_string(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
-                fn_body: None,
-            },
-        ));
-    }
-    builder.add_edge(
-        "load_registry",
-        "registry",
-        render.node_id.as_str(),
-        "registry",
-    );
-    if let Some(makegen_endpoint) = makegen {
-        builder.add_edge(
-            "load_registry",
-            "registry",
-            makegen_endpoint.node_id.as_str(),
-            "registry",
-        );
-    }
-
-    if builder.has_node("prepare_read_makegen") {
-        if !builder.has_node("fs_env") {
-            builder.add_node(Node::opaque(
-                "fs_env",
-                vec![],
-                vec![Port::scalar("FilesystemHandle", "FilesystemHandle")],
-                LoweredOp::Primitive {
-                    module: "tools.makegen".to_string(),
-                    name: "fs_env".to_string(),
-                    kind: PrimitiveOpKind::FsEnv,
-                },
-            ));
-        }
-        builder.add_edge(
-            "fs_env",
-            "FilesystemHandle",
-            "prepare_read_makegen",
-            "res:file:Makefile",
-        );
-        if builder.has_node("execute_makegen_transport") {
-            builder.add_edge(
-                "fs_env",
-                "FilesystemHandle",
-                "execute_makegen_transport",
-                RESOURCE_FILE,
-            );
-        }
-    }
-}
+// NOTE: add_makegen_scaffolding was removed — it looked for a renamed function
+// ("render_makefile" → "render_makefile_content") and never ran. Resource ports
+// on content_upsert nodes are now handled generically by the resolver
+// (needs_transport_resource in core/resolve).
 
 fn derive_service_call_metadata(
     service: &ServiceDef,
@@ -5796,9 +5757,9 @@ fn derive_service_call_metadata(
 type DataRegistry<'a> = HashMap<String, &'a DataDef>;
 
 /// Build a data registry from all modules in the project.
-fn build_data_registry(project: &TypedProject) -> DataRegistry<'_> {
+fn build_data_registry<'a>(project: &'a TypedProject<'_>) -> DataRegistry<'a> {
     let mut registry = DataRegistry::new();
-    for module in &project.modules {
+    for module in &project.graph().modules {
         let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             if let Item::DataDef(def) = &item.node {
@@ -6622,7 +6583,7 @@ fn collect_required_service_call_keys(
     callable_modules: Option<&HashSet<String>>,
 ) -> HashSet<String> {
     let mut required = HashSet::new();
-    for module in &project.modules {
+    for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         if callable_modules
             .map(|scope| !scope.contains(&module_name))
@@ -6661,24 +6622,38 @@ fn collect_required_service_call_keys(
 }
 
 fn service_prepare_ports(operation: &OperationDef, metadata: &ServiceCallMetadata) -> Vec<Port> {
-    let declared_inputs = match metadata.spec.as_ref() {
+    // Carry (name, type, has_default) so we can set optional cardinality for defaulted inputs.
+    let declared_inputs: Vec<(String, String, bool)> = match metadata.spec.as_ref() {
         Some(spec) if !spec.input_fields().is_empty() => spec
             .input_fields()
             .iter()
-            .map(|field| (field.name.clone(), field.type_id.clone()))
-            .collect::<Vec<_>>(),
+            .map(|field| {
+                (
+                    field.name.clone(),
+                    field.type_id.clone(),
+                    field.default.is_some(),
+                )
+            })
+            .collect(),
         _ => operation
             .inputs
             .iter()
             .map(|field| {
                 let ty = type_expr_to_string(&field.ty);
-                (field.name.clone(), ty)
+                (field.name.clone(), ty, field.default.is_some())
             })
-            .collect::<Vec<_>>(),
+            .collect(),
     };
     declared_inputs
         .into_iter()
-        .map(|(name, ty)| Port::with_cardinality(name.as_str(), ty.as_str(), Cardinality::ONE))
+        .map(|(name, ty, has_default)| {
+            let cardinality = if has_default {
+                Cardinality::ZERO_OR_ONE
+            } else {
+                Cardinality::ONE
+            };
+            Port::with_cardinality(name.as_str(), ty.as_str(), cardinality)
+        })
         .collect()
 }
 
@@ -6689,24 +6664,37 @@ fn capability_prepare_ports(
     // When a spec with explicit input fields is available (e.g., File operations),
     // use the spec's field declarations. Otherwise fall back to the capability's
     // declared inputs from the interface definition.
-    let declared_inputs = match metadata.spec.as_ref() {
+    let declared_inputs: Vec<(String, String, bool)> = match metadata.spec.as_ref() {
         Some(spec) if !spec.input_fields().is_empty() => spec
             .input_fields()
             .iter()
-            .map(|field| (field.name.clone(), field.type_id.clone()))
-            .collect::<Vec<_>>(),
+            .map(|field| {
+                (
+                    field.name.clone(),
+                    field.type_id.clone(),
+                    field.default.is_some(),
+                )
+            })
+            .collect(),
         _ => capability
             .inputs
             .iter()
             .map(|field| {
                 let ty = type_expr_to_string(&field.ty);
-                (field.name.clone(), ty)
+                (field.name.clone(), ty, field.default.is_some())
             })
-            .collect::<Vec<_>>(),
+            .collect(),
     };
     declared_inputs
         .into_iter()
-        .map(|(name, ty)| Port::with_cardinality(name.as_str(), ty.as_str(), Cardinality::ONE))
+        .map(|(name, ty, has_default)| {
+            let cardinality = if has_default {
+                Cardinality::ZERO_OR_ONE
+            } else {
+                Cardinality::ONE
+            };
+            Port::with_cardinality(name.as_str(), ty.as_str(), cardinality)
+        })
         .collect()
 }
 
@@ -6795,7 +6783,7 @@ fn derive_provider_schemas_from_project(
 ) -> Result<Vec<(String, Vec<String>)>, LowerError> {
     // Collect all type definitions keyed by name.
     let mut type_defs: HashMap<String, &Vec<Field>> = HashMap::new();
-    for module in &project.modules {
+    for module in &project.graph().modules {
         for item in &module.ast.items {
             if let Item::TypeDef(td) = &item.node {
                 if let TypeBody::Record(fields) = &td.body {
@@ -6807,7 +6795,7 @@ fn derive_provider_schemas_from_project(
 
     // Find the provider_config_schemas data declaration.
     let mut schemas = Vec::new();
-    for module in &project.modules {
+    for module in project.modules() {
         for item in &module.ast.items {
             if let Item::DataDef(def) = &item.node {
                 if def.name == "provider_config_schemas" {
@@ -6866,7 +6854,7 @@ fn derive_service_transport_triplets(
 ) -> Result<transport::TransportManifest, LowerError> {
     let data_registry = build_data_registry(project);
     let mut manifest = transport::TransportManifest::new();
-    for module in &project.modules {
+    for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Item::ServiceDef(service) = &item.node else {
@@ -7118,7 +7106,7 @@ fn collect_project_fn_bodies(
 ) -> Result<std::collections::BTreeMap<String, LoweredFnBody>, LowerError> {
     let mode = expr::ExprLowerMode::Remap;
     let mut fn_bodies = std::collections::BTreeMap::new();
-    for module in &project.modules {
+    for module in project.modules() {
         for item in &module.ast.items {
             let Item::FnDef(def) = &item.node else {
                 continue;
@@ -7257,7 +7245,7 @@ fn add_service_call_edges(
     // a cloned triplet (_c1, _c2, …) instead of wiring duplicate scalar
     // edges to the original.
     let mut endpoint_use_count: HashMap<String, usize> = HashMap::new();
-    for module in &project.modules {
+    for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Some(callable) = item.node.as_callable() else {
@@ -7633,7 +7621,7 @@ fn add_service_call_edges(
             }
         }
     }
-    for module in &project.modules {
+    for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Item::PipelineDef(def) = &item.node else {
@@ -7967,7 +7955,7 @@ fn wire_profile_binding_config_inputs(
 /// to identify credential provider calls in function bodies.
 fn collect_auth_provider_names(project: &TypedProject) -> HashSet<String> {
     let mut providers = HashSet::new();
-    for module in &project.modules {
+    for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Some((item_name, provides)) = item_callable_provides(&item.node) else {
@@ -8001,7 +7989,7 @@ fn wire_auth_credential_edges(
     service_registry: &ServiceEndpointRegistry,
     auth_provider_names: &HashSet<String>,
 ) {
-    for module in &project.modules {
+    for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let stmts = match &item.node {
@@ -8120,7 +8108,7 @@ fn add_used_resource_edges(
     resource_registry: &ResourceLifecycleRegistry,
     known_uses_types: &HashSet<String>,
 ) -> Result<(), LowerError> {
-    for module in &project.modules {
+    for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Some((item_name, uses)) = item_callable_uses(&item.node) else {
@@ -8193,7 +8181,7 @@ fn add_provided_resource_nodes(
     known_uses_types: &HashSet<String>,
     wired_release_targets: &mut HashSet<(String, String)>,
 ) -> Result<(), LowerError> {
-    for module in &project.modules {
+    for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Some((item_name, provides)) = item_callable_provides(&item.node) else {
@@ -8324,7 +8312,7 @@ fn resolve_interface_resource_endpoint(
         .unwrap_or(target_canonical.as_str());
     let mut candidates = Vec::<(Option<ProviderHint>, ResourceLifecycleEndpoint)>::new();
 
-    for module in &project.modules {
+    for module in project.modules() {
         let candidate_module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Item::ResourceDef(resource) = &item.node else {
@@ -8384,7 +8372,7 @@ enum ResourceEndpointResolution {
 fn collect_known_uses_types(project: &TypedProject) -> HashSet<String> {
     let mut known = HashSet::new();
     insert_default_known_resource_types(&mut known);
-    for module in &project.modules {
+    for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             match &item.node {
@@ -8426,7 +8414,7 @@ fn add_resource_lifecycle_nodes(
     callable_modules: Option<&HashSet<String>>,
 ) -> ResourceLifecycleRegistry {
     let mut registry = ResourceLifecycleRegistry::default();
-    for module in &project.modules {
+    for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         if callable_modules
             .map(|scope| !scope.contains(&module_name))
@@ -8504,7 +8492,7 @@ fn add_interface_contract_verification_nodes(
     project: &TypedProject,
     resource_registry: &ResourceLifecycleRegistry,
 ) {
-    for module in &project.modules {
+    for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Item::ResourceDef(resource) = &item.node else {
@@ -8572,7 +8560,7 @@ fn resolve_interface_contract_count(project: &TypedProject, interface_name: &str
     let target = canonical_resource_type_name(interface_name);
     let target_short = target.rsplit('.').next().unwrap_or(target.as_str());
     let mut counts = Vec::new();
-    for module in &project.modules {
+    for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Item::InterfaceDef(interface) = &item.node else {
@@ -8856,10 +8844,15 @@ pub fn collection_emit_family(
 ) -> daglang_syntax::ast::EmitCollectionFamily {
     use daglang_syntax::ast::EmitCollectionFamily;
     match kind {
-        CollectionOpKind::Map | CollectionOpKind::FlatMap | CollectionOpKind::Join
-        | CollectionOpKind::Split | CollectionOpKind::Zip => EmitCollectionFamily::Map,
+        CollectionOpKind::Map
+        | CollectionOpKind::FlatMap
+        | CollectionOpKind::Join
+        | CollectionOpKind::Split
+        | CollectionOpKind::Zip => EmitCollectionFamily::Map,
         CollectionOpKind::Filter | CollectionOpKind::Contains => EmitCollectionFamily::Filter,
-        CollectionOpKind::Fold | CollectionOpKind::Any | CollectionOpKind::All
+        CollectionOpKind::Fold
+        | CollectionOpKind::Any
+        | CollectionOpKind::All
         | CollectionOpKind::Len => EmitCollectionFamily::Fold,
         CollectionOpKind::Sort | CollectionOpKind::Dedup => EmitCollectionFamily::Sort,
     }
@@ -9105,7 +9098,7 @@ pub fn build_data_values(project: &TypedProject) -> HashMap<String, serde_json::
     let variant_names = collect_variant_names(project);
     let mut values = HashMap::new();
     let mut unqualified_counts: HashMap<String, usize> = HashMap::new();
-    for module in &project.modules {
+    for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             if let Item::DataDef(def) = &item.node {
@@ -9136,7 +9129,7 @@ fn collect_callable_param_defaults(
     project: &TypedProject,
 ) -> HashMap<String, Vec<(String, daglang_syntax::ast::Expr)>> {
     let mut defaults = HashMap::new();
-    for module in &project.modules {
+    for module in project.modules() {
         for item in &module.ast.items {
             let Some(callable) = item.node.as_callable() else {
                 continue;

@@ -37,12 +37,12 @@ pub mod resources {
 }
 // Re-exports for convenience
 pub use ci::ci_live_test_secrets;
+pub use gunbc_resolve::{add_fs_env_root_node, wire_fs_env_write_edges, wire_fs_env_write_mock};
 pub use makegen::{
     gitignore::render_gitignore,
     registry::{default_build_config, BuildConfig},
     shared::render_makefile,
 };
-pub use gunbc_resolve::{add_fs_env_root_node, wire_fs_env_write_edges, wire_fs_env_write_mock};
 pub use makegen_support::{build_embedded_data, compute_makegen_content, MAKEGEN_ASSET_KEY};
 pub use resource_defs::{
     deps_config_resource_def, gitignore_resource_def, makefile_resource_def, testgen_resource_def,

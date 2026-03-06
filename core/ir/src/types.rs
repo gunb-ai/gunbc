@@ -818,9 +818,10 @@ pub struct TypeId(pub String);
 ///
 /// Extends the binary `type_optional` flag with a third state for
 /// guard-controlled ports that may or may not produce values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub enum PresenceMode {
     /// Port must always have a value. Default for scalar ports.
+    #[default]
     Required,
     /// Port may have no value (nullable `T?` in DSL).
     Optional,
@@ -828,12 +829,6 @@ pub enum PresenceMode {
     /// A `Guardable` output cannot feed a `Required` input without
     /// an explicit narrowing operator (`default` or `require`).
     Guardable,
-}
-
-impl Default for PresenceMode {
-    fn default() -> Self {
-        Self::Required
-    }
 }
 
 /// Serde skip helper: true when presence is the default (Required).
@@ -1922,19 +1917,31 @@ mod type_id_tests {
 
     #[test]
     fn category_containers() {
-        assert_eq!(TypeId::list(&TypeId::string()).category(), TypeCategory::Container);
+        assert_eq!(
+            TypeId::list(&TypeId::string()).category(),
+            TypeCategory::Container
+        );
         assert_eq!(
             TypeId::map(&TypeId::string(), &TypeId::int()).category(),
             TypeCategory::Container
         );
-        assert_eq!(TypeId::option(&TypeId::bool()).category(), TypeCategory::Container);
-        assert_eq!(TypeId::new("Optional<String>").category(), TypeCategory::Container);
+        assert_eq!(
+            TypeId::option(&TypeId::bool()).category(),
+            TypeCategory::Container
+        );
+        assert_eq!(
+            TypeId::new("Optional<String>").category(),
+            TypeCategory::Container
+        );
     }
 
     #[test]
     fn category_domain() {
         assert_eq!(TypeId::transport_request().category(), TypeCategory::Domain);
-        assert_eq!(TypeId::transport_response().category(), TypeCategory::Domain);
+        assert_eq!(
+            TypeId::transport_response().category(),
+            TypeCategory::Domain
+        );
         assert_eq!(TypeId::domain("MyType").category(), TypeCategory::Domain);
     }
 
@@ -1948,10 +1955,7 @@ mod type_id_tests {
         // Typed constructors produce the same TypeId as string-based construction
         assert_eq!(TypeId::bool(), TypeId::new("Bool"));
         assert_eq!(TypeId::string(), TypeId::new("String"));
-        assert_eq!(
-            TypeId::list(&TypeId::string()),
-            TypeId::new("List<String>")
-        );
+        assert_eq!(TypeId::list(&TypeId::string()), TypeId::new("List<String>"));
     }
 }
 

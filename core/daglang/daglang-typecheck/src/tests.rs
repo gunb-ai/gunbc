@@ -1,6 +1,6 @@
 use super::*;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 fn module_graph_from_sources(sources: &[(&str, &str)]) -> ModuleGraph {
     let modules = sources
@@ -39,13 +39,14 @@ fn typecheck_accepts_makegen_module() {
     )
     .expect("makegen should typecheck");
 
-    assert_eq!(typed.modules.len(), 1);
-    assert_eq!(typed.modules[0].module_path.as_dotted(), "tools.makegen");
-    assert!(typed.modules[0]
+    assert_eq!(typed.module_count(), 1);
+    let module = typed.module(0).expect("typed module should exist");
+    assert_eq!(module.module_path.as_dotted(), "tools.makegen");
+    assert!(module
         .signatures
         .iter()
         .any(|signature| matches!(signature, TypedItemSignature::Fn(_))));
-    assert!(typed.modules[0]
+    assert!(module
         .signatures
         .iter()
         .any(|signature| matches!(signature, TypedItemSignature::Func(_))));
@@ -265,7 +266,7 @@ fn run() -> String {
         },
     )
     .expect("defaulted callable params should be optional at call sites");
-    assert_eq!(typed.modules.len(), 1);
+    assert_eq!(typed.module_count(), 1);
 }
 
 #[test]
@@ -289,7 +290,7 @@ fn run() -> Bool {
         },
     )
     .expect("pattern calls should allow extra named wiring arguments");
-    assert_eq!(typed.modules.len(), 1);
+    assert_eq!(typed.module_count(), 1);
 }
 
 #[test]
@@ -416,7 +417,7 @@ fn relaxed_mode_allows_unresolved_call_target() {
         },
     )
     .expect("relaxed mode should allow unresolved callable target");
-    assert_eq!(typed.modules.len(), 1);
+    assert_eq!(typed.module_count(), 1);
 }
 
 #[test]
@@ -444,7 +445,7 @@ fn summarize(stages: List<Stage>) -> Int {
         },
     )
     .expect("collection intrinsics should be recognized in strict mode");
-    assert_eq!(typed.modules.len(), 1);
+    assert_eq!(typed.module_count(), 1);
 }
 
 #[test]
@@ -483,7 +484,7 @@ required_scopes: ["gist"]
         },
     )
     .expect("std helper intrinsics should be recognized in strict mode");
-    assert_eq!(typed.modules.len(), 1);
+    assert_eq!(typed.module_count(), 1);
 }
 
 #[test]
@@ -506,7 +507,7 @@ fn relay<T>(value: T) -> T {
         },
     )
     .expect("generic fn type parameters should be treated as known types");
-    assert_eq!(typed.modules.len(), 1);
+    assert_eq!(typed.module_count(), 1);
 }
 
 #[test]
@@ -530,7 +531,7 @@ fn relay<T>(value: T) -> T {
         },
     )
     .expect("generic pattern type parameters should be treated as known types");
-    assert_eq!(typed.modules.len(), 1);
+    assert_eq!(typed.module_count(), 1);
 }
 
 #[test]
@@ -554,7 +555,7 @@ fn result() -> StageResult {
         },
     )
     .expect("record literals should satisfy named-record return contracts");
-    assert_eq!(typed.modules.len(), 1);
+    assert_eq!(typed.module_count(), 1);
 }
 
 #[test]
@@ -580,7 +581,7 @@ fn gcp_dev_storage() -> GcsBucket.Config {
         },
     )
     .expect("resource config named types should be recognized in strict mode");
-    assert_eq!(typed.modules.len(), 1);
+    assert_eq!(typed.module_count(), 1);
 }
 
 #[test]
@@ -600,7 +601,7 @@ fn identity(value: Secret) -> Secret {
         },
     )
     .expect("Secret should be recognized as builtin type");
-    assert_eq!(typed.modules.len(), 1);
+    assert_eq!(typed.module_count(), 1);
 }
 
 #[test]
@@ -620,7 +621,7 @@ fn apply(value: Int, callback: fn(Int) -> Int) -> Int {
         },
     )
     .expect("function-typed parameters should be callable in strict mode");
-    assert_eq!(typed.modules.len(), 1);
+    assert_eq!(typed.module_count(), 1);
 }
 
 #[test]
@@ -673,7 +674,7 @@ fn make_gcp() -> CloudConfig {
         },
     )
     .expect("sum variant constructors should resolve as callable targets");
-    assert_eq!(typed.modules.len(), 1);
+    assert_eq!(typed.module_count(), 1);
 }
 
 #[test]
@@ -726,7 +727,7 @@ fn env() -> Environment {
         },
     )
     .expect("zero-arity variants should be inferred from identifier expressions");
-    assert_eq!(typed.modules.len(), 1);
+    assert_eq!(typed.module_count(), 1);
 }
 
 #[test]
@@ -754,7 +755,7 @@ AwsConfig { ... } => Aws
         },
     )
     .expect("lossy fn bodies should not emit missing-tail unit mismatch diagnostics");
-    assert_eq!(typed.modules.len(), 1);
+    assert_eq!(typed.module_count(), 1);
 }
 
 #[test]
@@ -876,7 +877,7 @@ func run() -> { ok: Bool } {
         },
     )
     .expect("service inputs with defaults should be optional at call sites");
-    assert_eq!(typed.modules.len(), 1);
+    assert_eq!(typed.module_count(), 1);
 }
 
 #[test]
@@ -903,7 +904,7 @@ func run(path: String) -> { body: String } uses fs: Filesystem {
         },
     )
     .expect("resource-bound capability calls should typecheck in strict mode");
-    assert_eq!(typed.modules.len(), 1);
+    assert_eq!(typed.module_count(), 1);
 }
 
 #[test]
@@ -1120,7 +1121,7 @@ func run(path: String) -> { body: String } {
         },
     )
     .expect("relaxed mode should allow unresolved service call for lower-stage validation");
-    assert_eq!(typed.modules.len(), 1);
+    assert_eq!(typed.module_count(), 1);
 }
 
 #[test]
@@ -1142,8 +1143,8 @@ func run(path: String) -> { body: String } {
   return { body: response.body }
 }"#,
     )]);
-    let errors =
-        typecheck_module_graph(&graph).expect_err("unknown named service call argument should fail");
+    let errors = typecheck_module_graph(&graph)
+        .expect_err("unknown named service call argument should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::UnknownServiceCallArgument {
@@ -1434,7 +1435,7 @@ func run() -> { ok: Bool } uses fs: Filesystem(mode: ReadWrite) {
         },
     )
     .expect("configured resource type should resolve in strict mode");
-    assert_eq!(typed.modules.len(), 1);
+    assert_eq!(typed.module_count(), 1);
 }
 
 #[test]
@@ -1522,7 +1523,7 @@ fn relaxed_mode_allows_unknown_used_resource_type() {
         },
     )
     .expect("relaxed mode should allow unknown uses");
-    assert_eq!(typed.modules.len(), 1);
+    assert_eq!(typed.module_count(), 1);
 }
 
 #[test]
@@ -1601,7 +1602,7 @@ func run() -> { ok: Bool } provides out: ArtifactStore(kind: temporary) {
         },
     )
     .expect("configured provided resource type should resolve in strict mode");
-    assert_eq!(typed.modules.len(), 1);
+    assert_eq!(typed.module_count(), 1);
 }
 
 #[test]
@@ -1622,7 +1623,7 @@ func run() -> { ok: Bool } provides out: ArtifactStore {
         },
     )
     .expect("provided resource type should resolve in strict mode");
-    assert_eq!(typed.modules.len(), 1);
+    assert_eq!(typed.module_count(), 1);
 }
 
 #[test]
@@ -1855,7 +1856,7 @@ fn run() -> Unit { let x = 42 }"#,
     )]);
     let typed =
         typecheck_module_graph(&graph).expect("unit return type should allow no tail expression");
-    assert_eq!(typed.modules.len(), 1);
+    assert_eq!(typed.module_count(), 1);
 }
 
 #[test]
@@ -1932,8 +1933,8 @@ fn user_defined_generic_arity_mismatch_is_reported() {
 type Box<T> = T
 fn run(value: Box<String, Int>) -> String { value }"#,
     )]);
-    let errors =
-        typecheck_module_graph(&graph).expect_err("user-defined generic arity mismatch should fail");
+    let errors = typecheck_module_graph(&graph)
+        .expect_err("user-defined generic arity mismatch should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::ArityMismatch {
@@ -2122,7 +2123,10 @@ fn exhaustiveness_wildcard_suppresses_check() {
     );
     let matched = HashSet::from(["Red".to_string()]);
     let result = check_match_exhaustiveness("Color", &matched, true, &variants);
-    assert!(result.is_none(), "wildcard should suppress exhaustiveness check");
+    assert!(
+        result.is_none(),
+        "wildcard should suppress exhaustiveness check"
+    );
 }
 
 #[test]
@@ -2130,7 +2134,10 @@ fn exhaustiveness_unknown_type_returns_none() {
     let variants = HashMap::new();
     let matched = HashSet::from(["Foo".to_string()]);
     let result = check_match_exhaustiveness("UnknownType", &matched, false, &variants);
-    assert!(result.is_none(), "unknown scrutinee type should return None");
+    assert!(
+        result.is_none(),
+        "unknown scrutinee type should return None"
+    );
 }
 
 #[test]
@@ -2143,7 +2150,10 @@ fn non_exhaustive_match_error_format() {
     let msg = format!("{err}");
     assert!(msg.contains("Color"), "error should mention type name");
     assert!(msg.contains("Blue"), "error should mention missing variant");
-    assert!(msg.contains("Green"), "error should mention missing variant");
+    assert!(
+        msg.contains("Green"),
+        "error should mention missing variant"
+    );
 }
 
 #[test]

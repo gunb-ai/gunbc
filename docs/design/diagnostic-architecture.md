@@ -1,6 +1,6 @@
 # Diagnostic Architecture Design
 
-Status: **Proposed** | Owner: CP-48/CP-63 | Depends on: CP-8 (done)
+Status: **Target design; Phase 1 foundation landed** | Owner: CP-48/CP-63 | Depends on: CP-8 (done)
 
 ## Problem
 

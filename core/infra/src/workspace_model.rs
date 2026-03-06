@@ -96,6 +96,11 @@ pub fn baseline_commit_policies() -> Vec<CommitPolicy> {
             reason: CommitReason::BootstrapSeed,
             producer: Some("docgen"),
         },
+        CommitPolicy {
+            pattern: "README.md",
+            reason: CommitReason::BootstrapSeed,
+            producer: Some("readme"),
+        },
     ]
 }
 

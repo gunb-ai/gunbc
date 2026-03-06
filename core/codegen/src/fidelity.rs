@@ -145,9 +145,7 @@ fn compile_stdlib_fns() -> HashMap<String, LoweredFnBody> {
             NodeBody::SubDag(inner, _) => {
                 for inner_node in &inner.nodes {
                     if let NodeBody::Opaque(LoweredOp::Primitive {
-                        kind: daglang_lower::PrimitiveOpKind::ExprCompute {
-                            fn_body, ..
-                        },
+                        kind: daglang_lower::PrimitiveOpKind::ExprCompute { fn_body, .. },
                         name,
                         ..
                     }) = &inner_node.body

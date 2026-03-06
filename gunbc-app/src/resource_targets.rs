@@ -34,3 +34,11 @@ fn register_infra_resource_target() {}
     returns_result
 )]
 fn register_docgen_resource_target() {}
+
+#[allow(dead_code)]
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "readme",
+    builder = "(|relative_module, resolver, opts| gunbc_resolve::builder::build_dsl_graph(relative_module, resolver, opts).map(|result| result.dag))(\"tools/readme.dag\", &crate::extern_ops::GunbcExternResolver, gunbc_resolve::BuildOpts { entry_func: Some(\"readme\"), profile: None })",
+    returns_result
+)]
+fn register_readme_resource_target() {}

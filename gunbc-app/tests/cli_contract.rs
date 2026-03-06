@@ -1,9 +1,9 @@
-use gunbc_cli::{parse, CliParam, ParamType};
 use gunbc_app::makegen::{
     model::{load_build_targets_data, reserved_target_names},
     tools::{discover_makegen_tools, filter_reserved_tools, DiscoveredToolData},
 };
 use gunbc_app::render_makefile;
+use gunbc_cli::{parse, CliParam, ParamType};
 use gunbc_ir::{to_bridge_json, Cardinality, Value};
 use std::collections::{BTreeMap, HashMap};
 

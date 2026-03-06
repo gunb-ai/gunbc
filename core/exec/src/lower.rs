@@ -413,9 +413,10 @@ fn apply_log_detail_context<T: Clone>(
         let effective_node_log_detail = node.log_detail.or(inherited_log_detail);
         let body = match &node.body {
             NodeBody::Opaque(op) => NodeBody::Opaque(op.clone()),
-            NodeBody::SubDag(inner, kind) => {
-                NodeBody::SubDag(apply_log_detail_context(inner, effective_node_log_detail), kind.clone())
-            }
+            NodeBody::SubDag(inner, kind) => NodeBody::SubDag(
+                apply_log_detail_context(inner, effective_node_log_detail),
+                kind.clone(),
+            ),
         };
         contextual.add_node(Node {
             id: node.id.clone(),

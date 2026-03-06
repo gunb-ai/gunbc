@@ -164,7 +164,10 @@ fn create_ephemeral_issue(token: &str) -> String {
         &format!("/repos/{SDLC_OWNER}/{SDLC_REPO}/issues"),
         Some(&body),
     );
-    assert_eq!(status, 201, "ephemeral issue creation should return HTTP 201");
+    assert_eq!(
+        status, 201,
+        "ephemeral issue creation should return HTTP 201"
+    );
     json["number"]
         .as_i64()
         .unwrap_or_else(|| panic!("created issue should contain numeric `number`: {json}"))
@@ -179,7 +182,10 @@ fn close_issue(token: &str, issue_number: &str) {
         &format!("/repos/{SDLC_OWNER}/{SDLC_REPO}/issues/{issue_number}"),
         Some(&body),
     );
-    assert_eq!(status, 200, "ephemeral issue cleanup should close the issue");
+    assert_eq!(
+        status, 200,
+        "ephemeral issue cleanup should close the issue"
+    );
 }
 
 struct EphemeralIssue {
@@ -215,7 +221,14 @@ fn collect_files(root: &Path, files: &mut Vec<PathBuf>) {
     }
 }
 
-fn run_dispatch_local(owner: &str, repo: &str, auth_token: &str, api_key: &str, llm_provider: &str, llm_model: &str) {
+fn run_dispatch_local(
+    owner: &str,
+    repo: &str,
+    auth_token: &str,
+    api_key: &str,
+    llm_provider: &str,
+    llm_model: &str,
+) {
     let dag = build_local_worker_graph();
     let lowered = lower(&dag).expect("lower local worker graph for entrypoint detection");
     let entrypoints = detect_entrypoints(&lowered.dag);
@@ -369,7 +382,10 @@ fn s11_local_profile_design_stage_e2e() {
         &format!("/repos/{SDLC_OWNER}/{SDLC_REPO}/issues/{issue_number}/labels"),
         Some(&labels_body),
     );
-    assert_eq!(labels_status, 200, "issue relabel to sdlc:idea should succeed");
+    assert_eq!(
+        labels_status, 200,
+        "issue relabel to sdlc:idea should succeed"
+    );
 
     run_dispatch_local(
         SDLC_OWNER,
@@ -386,7 +402,10 @@ fn s11_local_profile_design_stage_e2e() {
         &format!("/repos/{SDLC_OWNER}/{SDLC_REPO}/issues/{issue_number}"),
         None,
     );
-    assert_eq!(issue_status, 200, "issue fetch should succeed after dispatch");
+    assert_eq!(
+        issue_status, 200,
+        "issue fetch should succeed after dispatch"
+    );
     let labels = issue_json["labels"].as_array().cloned().unwrap_or_default();
     let has_design_label = labels
         .iter()
@@ -399,9 +418,7 @@ fn s11_local_profile_design_stage_e2e() {
     let (comments_status, comments_json) = github_request(
         &token,
         "GET",
-        &format!(
-            "/repos/{SDLC_OWNER}/{SDLC_REPO}/issues/{issue_number}/comments?per_page=100"
-        ),
+        &format!("/repos/{SDLC_OWNER}/{SDLC_REPO}/issues/{issue_number}/comments?per_page=100"),
         None,
     );
     assert_eq!(comments_status, 200, "comments fetch should succeed");

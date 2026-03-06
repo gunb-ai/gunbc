@@ -176,18 +176,15 @@ humans, agents, or teams. Everyone knows what they need to produce, provide,
 and accept at all times. No implicit coupling, no "you need to also call X
 first" that isn't visible in the types.
 
-**Contract violations to eliminate** (audit 2026-03-05):
+**Open or partial contract gaps** (audit 2026-03-06):
 
-| Violation | Location | Problem |
-|-----------|----------|---------|
-| Typecheck takes ownership of `ModuleGraph` | `typecheck_module_graph(graph: ModuleGraph)` | Moves input, later stages can't reference it |
-| TypedModule copies ModuleGraph fields | `TypedModule { path, module_path, imports, ast }` | Duplicates input instead of referencing |
-| CompileOutput is a grab-bag | 11 fields, many re-extracted | Output conflates multiple concerns |
-| Execute has 4 progressively wider entry points | `execute` → `..._with_mode` → `..._and_inputs` → `..._and_detail` | Growing parameter lists hide the real contract |
-| ExternResolver is stringly-typed | `resolve(module: &str, name: &str) -> Option<DynOp>` | Runtime string lookup instead of validated ID |
-| LowerError is ad-hoc | `{ node_id: Option<String>, reason: String }` | No structured error, no span, Option for required context |
-| verify_dag has no output type | Validation only, doesn't produce `VerifiedDag` | No type-level proof that verification happened |
-| Driver re-extracts stage outputs | `extract_output_paths()`, `infer_entrypoints()` after lower | Re-walks structures that earlier stages already computed |
+| Gap | Current state | Remaining mismatch |
+|-----|---------------|--------------------|
+| TypedProject ownership | `typecheck_module_graph()` now borrows `&ModuleGraph` | `TypedModule` still clones `path`, `module_path`, `imports`, and `ast` instead of referencing canonical module storage |
+| Lower-stage outputs | Main compile path now consumes `LowerOutput` | Helper and embedded compile flows still rely on some legacy extraction helpers, so lower-stage ownership is not fully canonical yet |
+| Diagnostics | Shared `daglang-contract::Diagnostic` exists | `span`/`file` remain optional, and `TypeError`/`LowerError` still flow through `Spanned*` wrappers instead of a single diagnostic path |
+| Verification gate | `VerifiedDag<T>` exists and gates compile output | `VerifiedDag::from_verified()` remains an escape hatch, so proof is not yet forced at every construction site |
+| Runtime bindings | `RuntimeBindings` centralizes extern registration | Bindings are still keyed by `(module, name)` strings and bridge `ExternResolver`; ExternId-keyed total linking is still target-state work |
 
 ---
 
@@ -357,7 +354,10 @@ explicit default values wired by the lowerer. The executor never invents data.
 
 ### NodeOrigin — traceability from IR to source
 
-Every node in the lowered DAG carries its origin:
+Target end state: every lowered node carries source origin. Current branch has
+the `NodeOrigin` field with `Unknown` as the backward-compatible default, but
+most lowerer stamping is still deferred until spans are threaded through the
+lowerer context.
 
 ```rust
 enum NodeOrigin {
@@ -462,22 +462,26 @@ externs aren't detected until you try to run the graph. The fix: validate extern
 calls in typecheck, carry typed IDs through lowering.
 
 ```rust
+// Current implementation (core/daglang/daglang-typecheck/src/extern_registry.rs)
 struct ExternRegistry {
-    symbols: Vec<ExternSymbol>,
+    entries: HashMap<(String, String), ExternSignature>,
 }
 
-struct ExternSymbol {
-    module: String,
-    name: String,
-    signature: TypedCallableSignature,
-    id: ExternId,
+struct ExternSignature {
+    pub module: String,
+    pub name: String,
+    pub input_count: usize,
+    pub output_count: usize,
 }
+
+// Target: ExternId-keyed total linking (not yet implemented)
+// struct ExternSymbol { module, name, signature: TypedCallableSignature, id: ExternId }
 ```
 
-Typecheck consumes `ExternRegistry` and proves every `extern_call` resolves to
-an `ExternId` with a matching signature. The lowerer carries `ExternId`, not
-`(module, name)` strings. Stage 5a resolve becomes total — it cannot fail on
-missing externs because typecheck already proved they exist.
+Typecheck consumes `ExternRegistry` and validates extern declarations exist with
+matching arities. **Current state**: keyed by `(module, name)` string tuples.
+**Target**: `ExternId`-keyed total linking where the lowerer carries `ExternId`
+not strings, and Stage 5a resolve becomes provably total.
 
 ---
 
@@ -628,6 +632,12 @@ wider parameter lists.
 
 ### Shared Types
 
+> Current-state note (2026-03-06): this section describes the **target end
+> state**, not a claim that every detail is already implemented today. The
+> branch is still transitional on mandatory located diagnostics, canonical
+> `TypedProject` ownership, full `NodeOrigin` stamping, ExternId-keyed runtime
+> bindings, and a standalone `SourceBundle` ingest stage.
+
 ```rust
 /// The one result type. PASS = Ok, FAIL = Err. No third state.
 type Verdict<T> = Result<T, Diagnostics>;
@@ -681,15 +691,13 @@ struct DataId(u32);        // Lower: evaluated data declaration
 struct PatternInstanceId(u32); // Lower: expanded pattern (triplet, chain, loop)
 
 /// Newtype: proof that verification passed. Only constructible via verify().
-struct VerifiedDag<T> {
-    dag: Dag<T>,
-    proof: DagProof,            // what was checked, when
-}
+/// Current implementation (core/ir/src/verified.rs): simple newtype wrapper.
+struct VerifiedDag<T>(Dag<T>);
+// Target: add proof: DagProof field recording what was checked and when.
 
-/// Newtype: backend-expanded DAG. Provably total expansion of VerifiedDag.
-struct RealizedDag<T> {
-    dag: Dag<T>,
-}
+/// Target architecture (not yet implemented):
+/// Newtype for backend-expanded DAG. Provably total expansion of VerifiedDag.
+// struct RealizedDag<T> { dag: Dag<T> }
 ```
 
 ### Diagnostic Contracts Per Stage
@@ -709,11 +717,18 @@ suggestion for resolving the contradiction.
 | Emit | Yes (via node metadata) | `Unsupported` | Yes: what's not supported | `"REST exposure codegen not yet implemented for func 'serve' at line 8"` |
 | Execute | No (runtime) | Layered (`ErrorLayer` stack) | Yes: what mock/config is missing | `"DryRun: unmocked transport node 'execute_gist_create' — add mock or run in Real mode"` |
 
-The key insight: **spans flow rightward through the pipeline**. Parse creates
-them. Module resolve attaches them to import statements. Typecheck reads them
-from AST nodes (which live in `ModuleGraph`, referenced by `TypedProject`).
-Lower attaches them as `NodeOrigin::UserCode { span }` on every lowered node.
-Verify and emit read `NodeOrigin` from the DAG. At no point is the span lost.
+Current implementation note: treat this as the intended contract, not the fully
+landed one. `Diagnostic::new()` is still location-free, `TypeError` and
+`LowerError` still convert through `SpannedTypeError` / `SpannedLowerError`,
+and most lowered nodes still default `NodeOrigin::Unknown`.
+
+The key insight is still correct: **spans should flow rightward through the
+pipeline**. Parse creates them. Module resolve attaches them to import
+statements. Typecheck reads them from AST nodes (which live in `ModuleGraph`,
+referenced by `TypedProject`). The target end state is for lower to attach them
+as `NodeOrigin::UserCode { span }` on every lowered node so verify and emit can
+consume them directly. The current branch has not fully completed that
+propagation yet.
 
 ### Stage 0: Ingest (impurity isolation)
 
@@ -927,10 +942,12 @@ struct ExecConfig {
     detail: LogDetailLevel,          // how much to log
 }
 
-struct ExecResult {
-    outputs: HashMap<String, Value>, // final outputs (boundary nodes)
-    log: ExecutionLog,               // per-node outcomes
-}
+// Current implementation returns Result<ExecutionLog, ExecError>.
+// Target: ExecResult bundling outputs + log (not yet implemented).
+// struct ExecResult {
+//     outputs: HashMap<String, Value>,
+//     log: ExecutionLog,
+// }
 ```
 
 One entry point. No `execute_with_mode`, `execute_with_mode_and_inputs`,
@@ -1210,7 +1227,7 @@ ModuleGraph  ──>  TypedProject (validated signatures)
 |---|---|
 | **Crate** | `core/daglang/daglang-typecheck` |
 | **Entry** | `typecheck_module_graph_with_options(graph, options) -> Result<TypedProject, Vec<TypeError>>` |
-| **Input** | `ModuleGraph` (all modules with raw ASTs) |
+| **Input** | `&ModuleGraph` (all modules with raw ASTs) |
 | **Output** | `TypedProject { modules: Vec<TypedModule> }` |
 
 Validates type references, field access, refinement constraints, interface
@@ -1240,8 +1257,8 @@ TypedProject
 
 | Issue | Severity | Detail |
 |-------|----------|--------|
-| Debug `eprintln!` in production | Medium | ~5 `eprintln!("[DEBUG callable_body] ...")` statements fire on type mismatches, polluting stderr. |
-| Unresolved references allowed by flag | High | When `allow_unresolved_references=true`, missing call targets are silently skipped. Downstream lowering fails with cryptic messages. |
+| TypedModule duplicates module facts | High | `TypedModule` still clones `path`, `module_path`, `imports`, and `ast` from `ResolvedModule` instead of referencing canonical module storage. |
+| Relaxed utility mode exists | Medium | Some helper paths still typecheck with `allow_unresolved_imports = true` for partial tooling flows; the strict compile path is fail-closed, but the typecheck contract is not uniform yet. |
 | Generic type constraints not fully validated | Medium | Generic instantiation arity is checked, but constraint satisfaction and higher-order function types are not. |
 | Pipe method argument types unchecked | Medium | Pipe method call arguments are not validated against method signatures. |
 
@@ -1250,15 +1267,15 @@ TypedProject
 ## Stage 4: Lower
 
 ```
-TypedProject  ──>  Dag<LoweredOp> (graph IR)
+TypedProject  ──>  LowerOutput { dag, output_paths, inferred_entrypoints, data_values }
 ```
 
 | | |
 |---|---|
 | **Crate** | `core/daglang/daglang-lower` |
-| **Entry** | `lower_with_config(typed, config) -> Result<Dag<LoweredOp>, LowerError>` |
+| **Entry** | `lower_to_output_with_config(typed, config) -> Result<LowerOutput, LowerError>` |
 | **Input** | `TypedProject` |
-| **Output** | `Dag<LoweredOp>` — nodes, edges, ports |
+| **Output** | `LowerOutput` — DAG plus canonical lower-stage products |
 
 This is the big transform. Typed AST items become a **graph of nodes connected
 by typed edges**. The major expansions:
@@ -1272,22 +1289,30 @@ by typed edges**. The major expansions:
 - **Loops** become `LoopUnpack` / body SubDag / `LoopPack`
 - **Data declarations** are evaluated to `serde_json::Value` at lower time
 
+`lower_with_config()` still exists as a compatibility wrapper for callers that
+only need the DAG, but the main compile path now consumes the bundled
+`LowerOutput`.
+
 ### Data shape
 
 ```
-Dag<LoweredOp>
-  +-- nodes: Vec<Node<LoweredOp>>
-  |     +-- id: NodeId
-  |     +-- body: NodeBody<LoweredOp>
-  |     |     +-- Opaque(LoweredOp)          -- leaf node
-  |     |     +-- SubDag(Dag<LoweredOp>)     -- nested graph (loops, branches)
-  |     +-- inputs: Vec<Port>
-  |     +-- outputs: Vec<Port>
-  |
-  +-- edges: Vec<Edge>
-        +-- from_node / from_port
-        +-- to_node / to_port
-        +-- kind: EdgeKind { Data, Control, Resource }
+LowerOutput
+  +-- dag: Dag<LoweredOp>
+  |     +-- nodes: Vec<Node<LoweredOp>>
+  |     |     +-- id: NodeId
+  |     |     +-- body: NodeBody<LoweredOp>
+  |     |     |     +-- Opaque(LoweredOp)          -- leaf node
+  |     |     |     +-- SubDag(Dag<LoweredOp>)     -- nested graph (loops, branches)
+  |     |     +-- inputs: Vec<Port>
+  |     |     +-- outputs: Vec<Port>
+  |     |
+  |     +-- edges: Vec<Edge>
+  |           +-- from_node / from_port
+  |           +-- to_node / to_port
+  |           +-- kind: EdgeKind { Data, Control, Resource }
+  +-- output_paths: Vec<String>
+  +-- inferred_entrypoints: Vec<InferredEntrypoint>
+  +-- data_values: HashMap<String, Json>
 
 LoweredOp variants:
   +-- Callable { module, kind, name, fn_body?, service_metadata? }
@@ -1302,11 +1327,9 @@ LoweredOp variants:
 
 | Issue | Severity | Detail |
 |-------|----------|--------|
-| Silent node drops in pattern expansion | High | When a pattern body node expansion fails, the node is silently omitted via `lower_warn()`. Downstream port references fail with obscure errors. |
-| Unsupported expression types silently skipped | High | Unknown expression types in pattern bodies are dropped with a warning (only visible with `DAGLANG_LOWER_WARNINGS=1`). |
-| Service call arguments silently dropped | High | Unresolved service call arguments are silently skipped — no error unless executor fails later. |
-| `param_source` nodes lack incoming edges | Medium | Created for service call args referencing callable params, but have no data wiring from caller scope. |
-| Default arg JSON conversion failures silent | Medium | `expr_to_json_literal()` returning `None` silently skips default injection. |
+| Service calls still expand early | High | Lowering still realizes service operations as transport triplets today; the `VerifiedDag -> Realize -> RealizedDag` split is documented target architecture, not current runtime truth. |
+| NodeOrigin stamping is partial | Medium | `NodeOrigin` exists on every node, but most lowerer sites still leave the default `Unknown` origin until span-threading work lands. |
+| Lowering still erases some semantic structure | Medium | `LoweredExpr` and transport triplets still collapse higher-level intent that the target design wants to preserve until backend realization. |
 | Type information erased | Medium | Lowering converts typed AST to untyped `LoweredExpr`. Runtime type mismatches are possible and hard to trace. |
 | Transport node deduplication conflicts | Medium | One prepare/execute/parse triplet per service operation per module. Multiple callables calling the same service within one module conflict. |
 
@@ -1540,7 +1563,7 @@ runnable binary:
 // One-shot: parse, typecheck, lower, resolve
 let dag: Dag<DynOp> = gunbc_resolve::builder::build_dsl_graph(
     "tools/makegen.dag",
-    &gunbc_dag::extern_ops::GunbcExternResolver,
+    &gunbc_app::extern_ops::GunbcExternResolver,
     gunbc_resolve::BuildOpts::default(),
 )?
 .dag;
@@ -1554,7 +1577,7 @@ run_tool(dag, ExecutionMode::Real, options);
 | File | Purpose |
 |------|---------|
 | `core/resolve/src/builder.rs` | `build_dsl_graph()` — full pipeline in one call |
-| `gunbc-dag/src/extern_ops.rs` | `GunbcExternResolver` plus ~10 app-specific extern symbol implementations |
+| `gunbc-app/src/extern_ops.rs` | `GunbcExternResolver` plus ~13 app-specific extern symbol implementations |
 | `tool_runner.rs` | `run_tool()` — freshness + execute + display |
 | `core/codegen/src/tool_discovery.rs` | Structural tool discovery from DSL |
 
@@ -1779,7 +1802,10 @@ into backend-specific forms, tags with PatternInstance for diagnostics.
 **PASS guarantees**: topology-preserving via `map_bodies()`, binds IDs → DynOp
 via `RuntimeBindings` (total, no Option).
 **Tests**: `link_is_topology_preserving_by_construction`, `link_never_looks_up_by_string`.
-**Wiring**: CP-47 replaces `ExternResolver` everywhere.
+**Wiring target**: CP-47 ends with ExternId-keyed `RuntimeBindings` and no
+string lookup. Current branch still ships a bridge form: `RuntimeBindings`
+exists, but it is keyed by `(module, name)` and implements `ExternResolver` for
+incremental migration.
 
 ### Stage 6b: Emit
 

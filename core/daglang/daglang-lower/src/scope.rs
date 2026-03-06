@@ -212,18 +212,28 @@ impl ScopedBody {
                     then_body,
                     else_body,
                 } => {
-                    result
-                        .extend(then_body.all_service_calls().into_iter().map(|c| c.path.clone()));
+                    result.extend(
+                        then_body
+                            .all_service_calls()
+                            .into_iter()
+                            .map(|c| c.path.clone()),
+                    );
                     if let Some(else_body) = else_body {
                         result.extend(
-                            else_body.all_service_calls().into_iter().map(|c| c.path.clone()),
+                            else_body
+                                .all_service_calls()
+                                .into_iter()
+                                .map(|c| c.path.clone()),
                         );
                     }
                 }
                 ScopedItem::MatchBranch { arms } => {
                     for arm in arms {
                         result.extend(
-                            arm.body.all_service_calls().into_iter().map(|c| c.path.clone()),
+                            arm.body
+                                .all_service_calls()
+                                .into_iter()
+                                .map(|c| c.path.clone()),
                         );
                     }
                 }

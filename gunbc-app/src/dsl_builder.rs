@@ -155,4 +155,11 @@ mod tests {
             .expect("ci DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
+
+    #[test]
+    fn builds_readme_dsl_graph() {
+        let dag = build_dsl_graph_for_entrypoint("tools/readme.dag", Some("readme"), None)
+            .expect("readme DSL graph should resolve");
+        assert!(!dag.nodes.is_empty());
+    }
 }

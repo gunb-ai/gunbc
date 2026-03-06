@@ -1207,7 +1207,10 @@ fn resolve_node_body(
             resolver,
             sibling_fns,
         )?)),
-        NodeBody::SubDag(inner, kind) => Ok(NodeBody::SubDag(resolve_lowered_dag_with(inner, resolver)?, kind.clone())),
+        NodeBody::SubDag(inner, kind) => Ok(NodeBody::SubDag(
+            resolve_lowered_dag_with(inner, resolver)?,
+            kind.clone(),
+        )),
     }
 }
 

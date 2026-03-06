@@ -21,24 +21,28 @@
 //! - Subtyping via the bounded lattice (§4.1.4 of dsl-design.md)
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
 
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{
     Expr, Field, Item, Literal, ModulePath, Param, PipelineDef, ProvidesClause, Refinement,
-    SourceFile, Stmt, TypeBody, TypeExpr, UsesClause,
+    Stmt, TypeBody, TypeExpr, UsesClause,
 };
 use daglang_syntax::ast_utils::{
     resource_type_name, service_call_lookup_keys, type_expr_to_string, walk_stmts,
 };
+use gunbc_ir::TypeRegistry;
 
 pub mod extern_registry;
 pub use extern_registry::ExternRegistry;
 
-/// A typechecked project snapshot.
+/// A typechecked project snapshot over a resolved module graph.
 #[derive(Debug)]
-pub struct TypedProject {
-    pub modules: Vec<TypedModule>,
+pub struct TypedProject<'a> {
+    graph: TypedProjectGraph<'a>,
+    typed_modules: Vec<TypedModule>,
+    pipeline_params: Vec<PipelineParam>,
+    dsl_type_registry: TypeRegistry,
+    available_profiles: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -50,11 +54,90 @@ pub struct TypecheckOptions {
 /// A typechecked module.
 #[derive(Debug)]
 pub struct TypedModule {
-    pub path: PathBuf,
-    pub module_path: ModulePath,
-    pub imports: Vec<ModulePath>,
-    pub ast: SourceFile,
+    pub graph_index: usize,
     pub signatures: Vec<TypedItemSignature>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PipelineParam {
+    pub name: String,
+    pub type_id: String,
+    pub default_value: Option<String>,
+}
+
+#[derive(Debug)]
+enum TypedProjectGraph<'a> {
+    Borrowed(&'a ModuleGraph),
+    Owned(ModuleGraph),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct TypedModuleRef<'project, 'graph> {
+    resolved: &'project ResolvedModule,
+    pub graph_index: usize,
+    pub signatures: &'project [TypedItemSignature],
+    _graph: std::marker::PhantomData<&'graph ModuleGraph>,
+}
+
+impl<'a> TypedProject<'a> {
+    pub fn graph(&self) -> &ModuleGraph {
+        match &self.graph {
+            TypedProjectGraph::Borrowed(graph) => graph,
+            TypedProjectGraph::Owned(graph) => graph,
+        }
+    }
+
+    pub fn module_count(&self) -> usize {
+        self.typed_modules.len()
+    }
+
+    pub fn pipeline_params(&self) -> &[PipelineParam] {
+        &self.pipeline_params
+    }
+
+    pub fn dsl_type_registry(&self) -> &TypeRegistry {
+        &self.dsl_type_registry
+    }
+
+    pub fn available_profiles(&self) -> &[String] {
+        &self.available_profiles
+    }
+
+    pub fn modules(&self) -> impl ExactSizeIterator<Item = TypedModuleRef<'_, 'a>> + '_ {
+        self.typed_modules.iter().map(move |typed| TypedModuleRef {
+            resolved: &self.graph().modules[typed.graph_index],
+            graph_index: typed.graph_index,
+            signatures: &typed.signatures,
+            _graph: std::marker::PhantomData,
+        })
+    }
+
+    pub fn module(&self, index: usize) -> Option<TypedModuleRef<'_, 'a>> {
+        self.typed_modules.get(index).map(|typed| TypedModuleRef {
+            resolved: &self.graph().modules[typed.graph_index],
+            graph_index: typed.graph_index,
+            signatures: &typed.signatures,
+            _graph: std::marker::PhantomData,
+        })
+    }
+}
+
+impl<'project, 'graph> TypedModuleRef<'project, 'graph> {
+    pub fn imports(&self) -> impl Iterator<Item = &'project ModulePath> + 'project {
+        self.resolved
+            .ast
+            .imports
+            .iter()
+            .map(|import| &import.node.path)
+    }
+}
+
+impl<'project, 'graph> std::ops::Deref for TypedModuleRef<'project, 'graph> {
+    type Target = ResolvedModule;
+
+    fn deref(&self) -> &Self::Target {
+        self.resolved
+    }
 }
 
 /// A normalized signature captured from a top-level item.
@@ -772,18 +855,52 @@ impl TypeError {
 }
 
 /// Typecheck a discovered module graph and produce typed module signatures.
-pub fn typecheck_module_graph(graph: &ModuleGraph) -> Result<TypedProject, Vec<TypeError>> {
+pub fn typecheck_module_graph<'a>(graph: &'a ModuleGraph) -> Result<TypedProject<'a>, Vec<TypeError>> {
     typecheck_module_graph_with_options(graph, TypecheckOptions::default())
+}
+
+/// Typecheck an owned module graph and retain it inside the typed overlay.
+pub fn typecheck_owned_module_graph(
+    graph: ModuleGraph,
+) -> Result<TypedProject<'static>, Vec<TypeError>> {
+    let metadata = typecheck_graph_modules(&graph, &TypecheckOptions::default())?;
+    Ok(TypedProject {
+        graph: TypedProjectGraph::Owned(graph),
+        typed_modules: metadata.typed_modules,
+        pipeline_params: metadata.pipeline_params,
+        dsl_type_registry: metadata.dsl_type_registry,
+        available_profiles: metadata.available_profiles,
+    })
 }
 
 /// Typecheck a discovered module graph with explicit options.
 ///
 /// Borrows the graph (CP-43) — callers retain access after typechecking.
-/// `TypedModule` clones the AST, path, and module_path from each resolved module.
-pub fn typecheck_module_graph_with_options(
-    graph: &ModuleGraph,
+pub fn typecheck_module_graph_with_options<'a>(
+    graph: &'a ModuleGraph,
     options: TypecheckOptions,
-) -> Result<TypedProject, Vec<TypeError>> {
+) -> Result<TypedProject<'a>, Vec<TypeError>> {
+    let metadata = typecheck_graph_modules(graph, &options)?;
+    Ok(TypedProject {
+        graph: TypedProjectGraph::Borrowed(graph),
+        typed_modules: metadata.typed_modules,
+        pipeline_params: metadata.pipeline_params,
+        dsl_type_registry: metadata.dsl_type_registry,
+        available_profiles: metadata.available_profiles,
+    })
+}
+
+struct TypedProjectMetadata {
+    typed_modules: Vec<TypedModule>,
+    pipeline_params: Vec<PipelineParam>,
+    dsl_type_registry: TypeRegistry,
+    available_profiles: Vec<String>,
+}
+
+fn typecheck_graph_modules(
+    graph: &ModuleGraph,
+    options: &TypecheckOptions,
+) -> Result<TypedProjectMetadata, Vec<TypeError>> {
     let known_types = collect_known_types(&graph.modules);
     let generic_arity_registry = collect_generic_arities(&graph.modules);
     let record_type_registry = collect_record_types(&graph.modules);
@@ -816,17 +933,11 @@ pub fn typecheck_module_graph_with_options(
         allow_unresolved_references: options.allow_unresolved_imports,
     };
 
-    for module in &graph.modules {
-        let imports: Vec<ModulePath> = module
-            .ast
-            .imports
-            .iter()
-            .map(|import| import.node.path.clone())
-            .collect();
+    for (graph_index, module) in graph.modules.iter().enumerate() {
         let module_name = module.module_path.as_dotted();
         if !options.allow_unresolved_imports {
-            for import in &imports {
-                let target = import.as_dotted();
+            for import in &module.ast.imports {
+                let target = import.node.path.as_dotted();
                 if !available_modules.contains(&target) {
                     errors.push(TypeError::UnresolvedImport {
                         module: module_name.clone(),
@@ -838,10 +949,7 @@ pub fn typecheck_module_graph_with_options(
         let (signatures, sig_errors) = collect_signatures(module, &context, &module_name);
         errors.extend(sig_errors);
         typed_modules.push(TypedModule {
-            path: module.path.clone(),
-            module_path: module.module_path.clone(),
-            imports,
-            ast: module.ast.clone(),
+            graph_index,
             signatures,
         });
     }
@@ -876,12 +984,90 @@ pub fn typecheck_module_graph_with_options(
         }
     }
 
-    if errors.is_empty() {
-        Ok(TypedProject {
-            modules: typed_modules,
+    errors
+        .is_empty()
+        .then_some(TypedProjectMetadata {
+            typed_modules,
+            pipeline_params: collect_pipeline_params(&graph.modules),
+            dsl_type_registry: collect_dsl_type_registry(&graph.modules),
+            available_profiles: collect_available_profiles(&graph.modules),
         })
-    } else {
-        Err(errors)
+        .ok_or(errors)
+}
+
+fn collect_pipeline_params(modules: &[ResolvedModule]) -> Vec<PipelineParam> {
+    let mut params = Vec::new();
+    for module in modules {
+        for item in &module.ast.items {
+            if let Item::ParamDecl(decl) = &item.node {
+                params.push(PipelineParam {
+                    name: decl.name.clone(),
+                    type_id: type_expr_to_string(&decl.ty),
+                    default_value: decl.default.as_ref().and_then(expr_to_default_string),
+                });
+            }
+        }
+    }
+    params
+}
+
+fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> TypeRegistry {
+    let mut registry = TypeRegistry::new();
+    for module in modules {
+        for item in &module.ast.items {
+            if let Item::TypeDef(def) = &item.node {
+                match &def.body {
+                    TypeBody::Sum(variants) => {
+                        let variant_pairs: Vec<(&str, &str)> = variants
+                            .iter()
+                            .map(|variant| (variant.name.as_str(), "String"))
+                            .collect();
+                        registry.register(
+                            def.name.as_str(),
+                            gunbc_ir::type_lib::coproduct(def.name.as_str(), variant_pairs),
+                        );
+                    }
+                    TypeBody::Record(fields) => {
+                        let field_type_strings: Vec<(String, String)> = fields
+                            .iter()
+                            .map(|field| (field.name.clone(), type_expr_to_string(&field.ty)))
+                            .collect();
+                        let field_pairs: Vec<(&str, &str)> = field_type_strings
+                            .iter()
+                            .map(|(name, ty)| (name.as_str(), ty.as_str()))
+                            .collect();
+                        registry.register(
+                            def.name.as_str(),
+                            gunbc_ir::type_lib::product(def.name.as_str(), field_pairs),
+                        );
+                    }
+                    TypeBody::Alias(_) => {}
+                }
+            }
+        }
+    }
+    registry
+}
+
+fn collect_available_profiles(modules: &[ResolvedModule]) -> Vec<String> {
+    let mut profiles = std::collections::BTreeSet::new();
+    for module in modules {
+        for item in &module.ast.items {
+            if let Item::ProfileDef(def) = &item.node {
+                profiles.insert(def.name.clone());
+            }
+        }
+    }
+    profiles.into_iter().collect()
+}
+
+fn expr_to_default_string(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Literal(Literal::String(value)) => Some(value.clone()),
+        Expr::Literal(Literal::Int(value)) => Some(value.to_string()),
+        Expr::Literal(Literal::Bool(value)) => Some(value.to_string()),
+        Expr::Literal(Literal::Float(value)) => Some(value.to_string()),
+        _ => None,
     }
 }
 

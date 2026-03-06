@@ -1673,7 +1673,7 @@ mod tests {
         let entrypoints = vec![];
 
         let code = generate_cli(&tool, &entrypoints);
-        assert!(code.contains("gunbc_resolve::builder::build_dsl_graph"));
+        assert!(code.contains("gunbc_resolve::builder::build_dsl_graph_dag"));
         assert!(code.contains("Ok(d) => d"));
         assert!(code.contains("process::exit(1)"));
     }
@@ -1895,5 +1895,4 @@ mod tests {
             "create subcommand should have owner param in schema"
         );
     }
-
 }

@@ -190,7 +190,7 @@ pub enum Value {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ControlFlow {
     /// Node executed normally and produced a value.
-    Continue(Value),
+    Continue(Box<Value>),
     /// Node was skipped (guard failed, branch not taken, etc.).
     Skipped { reason: Option<String> },
 }
@@ -199,7 +199,7 @@ impl ControlFlow {
     /// Unwrap the value, panicking if skipped.
     pub fn unwrap(self) -> Value {
         match self {
-            ControlFlow::Continue(v) => v,
+            ControlFlow::Continue(v) => *v,
             ControlFlow::Skipped { reason } => panic!(
                 "called unwrap() on Skipped: {}",
                 reason.as_deref().unwrap_or("no reason")
@@ -210,7 +210,7 @@ impl ControlFlow {
     /// Get the value if Continue, None if Skipped.
     pub fn into_value(self) -> Option<Value> {
         match self {
-            ControlFlow::Continue(v) => Some(v),
+            ControlFlow::Continue(v) => Some(*v),
             ControlFlow::Skipped { .. } => None,
         }
     }
@@ -229,14 +229,14 @@ impl ControlFlow {
     pub fn from_value(v: Value) -> Self {
         match v {
             Value::Skipped => ControlFlow::Skipped { reason: None },
-            other => ControlFlow::Continue(other),
+            other => ControlFlow::Continue(Box::new(other)),
         }
     }
 
     /// Convert back to legacy `Value` (maps `Skipped` to `Value::Skipped`).
     pub fn into_legacy_value(self) -> Value {
         match self {
-            ControlFlow::Continue(v) => v,
+            ControlFlow::Continue(v) => *v,
             ControlFlow::Skipped { .. } => Value::Skipped,
         }
     }

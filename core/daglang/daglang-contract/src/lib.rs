@@ -21,9 +21,7 @@ impl Diagnostics {
     }
 
     pub fn single(diag: Diagnostic) -> Self {
-        Self {
-            errors: vec![diag],
-        }
+        Self { errors: vec![diag] }
     }
 
     pub fn push(&mut self, diag: Diagnostic) {
@@ -93,11 +91,7 @@ impl Diagnostic {
     /// Create a located diagnostic — the preferred constructor.
     ///
     /// Source location is mandatory. Use this for all user-facing diagnostics.
-    pub fn located(
-        code: &'static str,
-        message: impl Into<String>,
-        primary: LocatedSpan,
-    ) -> Self {
+    pub fn located(code: &'static str, message: impl Into<String>, primary: LocatedSpan) -> Self {
         Self {
             code,
             message: message.into(),
@@ -267,15 +261,30 @@ macro_rules! interned_id {
     };
 }
 
-interned_id!(FileId, "Stable file identity within one compilation (Stage 0: Ingest).");
-interned_id!(ModuleId, "Index into ModuleGraph.modules (Stage 2: Module Resolve).");
+interned_id!(
+    FileId,
+    "Stable file identity within one compilation (Stage 0: Ingest)."
+);
+interned_id!(
+    ModuleId,
+    "Index into ModuleGraph.modules (Stage 2: Module Resolve)."
+);
 interned_id!(DefId, "Any named definition (Stage 3: Typecheck).");
-interned_id!(CallableId, "fn/func/pattern/extern func (Stage 3: Typecheck).");
+interned_id!(
+    CallableId,
+    "fn/func/pattern/extern func (Stage 3: Typecheck)."
+);
 interned_id!(ServiceOpId, "Service operation (Stage 3: Typecheck).");
-interned_id!(ExternId, "Extern func via ExternRegistry (Stage 3: Typecheck).");
+interned_id!(
+    ExternId,
+    "Extern func via ExternRegistry (Stage 3: Typecheck)."
+);
 interned_id!(TypeId, "Type arena entry (Stage 3: Typecheck).");
 interned_id!(DataId, "Evaluated data declaration (Stage 4: Lower).");
-interned_id!(PatternInstanceId, "Expanded pattern — triplet, chain, loop (Stage 4: Lower).");
+interned_id!(
+    PatternInstanceId,
+    "Expanded pattern — triplet, chain, loop (Stage 4: Lower)."
+);
 
 // ── Manifest + obligation contract types ──────────────────────────────
 

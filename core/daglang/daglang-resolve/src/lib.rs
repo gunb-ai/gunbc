@@ -118,7 +118,10 @@ pub fn discover_dag_files(root: &Path) -> Result<Vec<PathBuf>, ResolveError> {
 }
 
 /// Discover `.dag` files recursively under a root directory using a custom Vfs.
-pub fn discover_dag_files_with_vfs(root: &Path, vfs: &dyn Vfs) -> Result<Vec<PathBuf>, ResolveError> {
+pub fn discover_dag_files_with_vfs(
+    root: &Path,
+    vfs: &dyn Vfs,
+) -> Result<Vec<PathBuf>, ResolveError> {
     let mut files = Vec::new();
     let mut visited_dirs = HashSet::new();
     collect_dag_files_vfs(root, &mut files, &mut visited_dirs, vfs)?;
@@ -186,8 +189,9 @@ impl ModuleGraph {
         }
         let mut canonical_dag_files = Vec::with_capacity(dag_files.len());
         for path in dag_files {
-            let canonical =
-                vfs.canonicalize(&path).map_err(|e| ResolveError::IoError(path.clone(), e))?;
+            let canonical = vfs
+                .canonicalize(&path)
+                .map_err(|e| ResolveError::IoError(path.clone(), e))?;
             canonical_dag_files.push(canonical);
         }
         dag_files = canonical_dag_files;
@@ -199,7 +203,8 @@ impl ModuleGraph {
         let mut parse_errors: Vec<(PathBuf, Vec<Diagnostic>)> = Vec::new();
 
         for path in &dag_files {
-            let source = vfs.read_to_string(path)
+            let source = vfs
+                .read_to_string(path)
                 .map_err(|e| ResolveError::IoError(path.clone(), e))?;
             match parser::parse_with_file_diagnostics(path, &source) {
                 Ok(ast) => {
@@ -293,13 +298,15 @@ fn collect_dag_files_vfs(
     if !vfs.is_dir(dir) {
         return Ok(());
     }
-    let canonical_dir =
-        vfs.canonicalize(dir).map_err(|e| ResolveError::IoError(dir.to_path_buf(), e))?;
+    let canonical_dir = vfs
+        .canonicalize(dir)
+        .map_err(|e| ResolveError::IoError(dir.to_path_buf(), e))?;
     if !visited_dirs.insert(canonical_dir) {
         return Ok(());
     }
-    let entries =
-        vfs.read_dir(dir).map_err(|e| ResolveError::IoError(dir.to_path_buf(), e))?;
+    let entries = vfs
+        .read_dir(dir)
+        .map_err(|e| ResolveError::IoError(dir.to_path_buf(), e))?;
     for entry in entries {
         if entry.is_dir {
             collect_dag_files_vfs(&entry.path, out, visited_dirs, vfs)?;
@@ -537,7 +544,8 @@ impl ResolveError {
     pub fn help(&self) -> Option<String> {
         match self {
             Self::IoError(path, _) => Some(format!(
-                "check that `{}` exists and is readable", path.display()
+                "check that `{}` exists and is readable",
+                path.display()
             )),
             Self::UnresolvedImport { target, .. } => Some(format!(
                 "create `{}.dag` or check the import path — did you mean a different module?",
@@ -548,7 +556,8 @@ impl ResolveError {
                 Some(format!("break the cycle: {}", names.join(" → ")))
             }
             Self::InvalidExtensionCase(path) => Some(format!(
-                "rename `{}` to use lowercase `.dag` extension", path.display()
+                "rename `{}` to use lowercase `.dag` extension",
+                path.display()
             )),
             _ => None,
         }
@@ -679,8 +688,14 @@ mod tests {
     fn in_memory_vfs_discovers_dag_files() {
         let mut vfs = InMemoryVfs::new();
         let root = PathBuf::from("/project/dsl");
-        vfs.add_file("/project/dsl/foo.dag", "module foo\nfn main() -> { out: String } { return { out: \"hello\" } }");
-        vfs.add_file("/project/dsl/bar.dag", "module bar\nimport foo\nfn run() -> { out: String } { return { out: \"world\" } }");
+        vfs.add_file(
+            "/project/dsl/foo.dag",
+            "module foo\nfn main() -> { out: String } { return { out: \"hello\" } }",
+        );
+        vfs.add_file(
+            "/project/dsl/bar.dag",
+            "module bar\nimport foo\nfn run() -> { out: String } { return { out: \"world\" } }",
+        );
 
         let graph = ModuleGraph::discover_with_vfs(&[root], &vfs, true)
             .expect("should discover in-memory modules");

@@ -337,7 +337,9 @@ Quick reference of all patterns. Full details in [Appendix A](#appendix-a-patter
 | Path | Purpose |
 | --- | --- |
 | `dsl/` | **Primary authoring surface** — all `.dag` source files |
-| `dsl/services/` | Service definitions (REST, Shell): gcp, github, cargo, git, llm |
+| `dsl/services/` | Service provider implementations (e.g., review) |
+| `dsl/extdeps/` | External system definitions: github, cargo, git, clippy, llm, shell, etc. |
+| `dsl/infra/` | Infrastructure provider definitions: gcp, aws, azure |
 | `dsl/tools/` | Tool workflows: clippy, gist, codegen, makegen, etc. |
 | `dsl/pipelines/` | Pipeline compositions: ci |
 | `core/daglang/` | DSL compiler: discover → parse → resolve → typecheck → lower → derive → emit |
@@ -370,21 +372,28 @@ Most new work is done by writing or modifying `.dag` files. The compiler handles
 **Add a new REST/Shell service:**
 1. Identify the layer stack: what protocol (HTTP/REST/gRPC), what auth scheme (Bearer, Header, Basic), what provider (GitHub, GCP, Stripe), what operations?
 2. Create `dsl/services/<provider>/<name>.dag` with `service` block and `operation` definitions.
-3. Express each layer's invariants via annotations: `@endpoint` (provider base URL), `@auth` (auth scheme), `@rest`/`@shell` (transport method + path), `@permissions` (required scopes), `@idempotent`/`@readonly` (behavioral properties), `@mock_response` (test data).
-4. Each annotation composes additively — the compiler generates transport code, mock specs, and test obligations reflecting all layers. The workflow author names only the top-level operation.
+3. Express each layer's invariants via structural blocks: `config { endpoint: ..., auth: ... }` (provider config), `transport rest { method: ..., path: ... }` or `transport shell { argv: [...] }` (transport class), `readonly`/`idempotent` (behavioral keywords), `response { STATUS => TYPE }` (provider contract).
+4. Each block composes additively — the compiler generates transport code, mock specs, and test obligations reflecting all layers. The workflow author names only the top-level operation.
 
 Example (adding a new REST service):
 ```
-module services.stripe.payments
+module extdeps.stripe.payments
 
 service stripe.Payments {
-  @endpoint("https://api.stripe.com")
-  @auth(BearerToken)
+  config {
+    endpoint: "https://api.stripe.com"
+    auth: BearerToken
+    auth_input: api_key
+  }
 
   operation CreateCharge {
-    input { amount: Int, currency: String }
-    output { id: String @json("id"), status: String @json("status") }
-    @rest(POST, "/v1/charges")
+    input { api_key: Secret, amount: Int, currency: String }
+    output { id: String from "id", status: String from "status" }
+    transport rest { method: POST, path: "/v1/charges" }
+    response {
+      200 => Json
+      400 => ErrorShape
+    }
   }
 }
 ```
@@ -797,7 +806,7 @@ pub trait TestRenderer {
 | `core/codegen/src/testgen/render_rust.rs` | Rust backend (630 lines) |
 | `core/codegen/src/testgen/render_python.rs` | Python stub (validates trait surface) |
 | `core/codegen/src/testgen/codegen.rs` | IR construction (never constructs strings) |
-| `gunbc-app/src/makegen/render.rs` | Makefile rendering |
+| `gunbc-app/src/makegen/shared.rs` | Makefile rendering (via DSL `evaluate_fn_body()`) |
 | `core/ir/src/transport/ci/render.rs` | CI YAML rendering |
 
 **Current implementations:**
@@ -1095,22 +1104,22 @@ resource Clippy {
   capability check {
     input {}
     output { exists: Bool }
-    @shell(["cargo", "clippy", "--version"])
-    @hermetic @readonly
+    transport shell { argv: ["cargo", "clippy", "--version"] }
+    hermetic readonly
   }
 
   capability install {
     input {}
     output { installed: Bool }
-    @shell(["rustup", "component", "add", "clippy"])
-    @hermetic
+    transport shell { argv: ["rustup", "component", "add", "clippy"] }
+    hermetic
   }
 
   capability resolve {
     input {}
     output { handle: String }
-    @shell(["cargo", "clippy", "--version"])
-    @hermetic @readonly
+    transport shell { argv: ["cargo", "clippy", "--version"] }
+    hermetic readonly
   }
 }
 
@@ -1151,25 +1160,33 @@ Fractal composition: each tool is a self-contained SubDag node that the CI pipel
 
 Medium-complexity tool with multiple modes, transport boundaries, and resource access.
 
-### Step 1: Define the service (`dsl/services/github/gist.dag`)
+### Step 1: Define the service (`dsl/extdeps/github/gist_service.dag`)
 
 ```
 service github.Gist {
-  @endpoint("https://api.github.com")
-  @auth(BearerToken)
+  config {
+    endpoint: "https://api.github.com"
+    auth: BearerToken
+    auth_input: auth_token
+  }
 
   operation Create {
     input {
+      auth_token: Secret
       description: String
       files: Map<String, String>
       public: Bool = false
     }
     output {
-      url: Url @json("html_url")
-      id: GistId
+      url: String from "html_url"
+      id: String from "id"
     }
-    @rest(POST, "/gists")
-    @permissions(["gist"])
+    transport rest { method: POST, path: "/gists" }
+    response {
+      201 => Json
+      401 => Json
+      422 => Json
+    }
   }
 }
 ```

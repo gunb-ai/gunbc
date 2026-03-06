@@ -5,8 +5,8 @@
 
 use std::collections::HashMap;
 
-use daglang_emit::EmbeddedData;
 use crate::makegen::shared::render_makefile_from_dsl_discovery;
+use daglang_emit::EmbeddedData;
 
 /// Embedded asset key for precomputed makegen content.
 pub const MAKEGEN_ASSET_KEY: &str = "tools.makegen::makefile";

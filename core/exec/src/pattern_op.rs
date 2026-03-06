@@ -156,9 +156,7 @@ impl Executable for PatternOp {
                     .int("elapsed_ms", elapsed_ms)
                     .ok()
             }
-            PatternOp::CollectionAggregate { kind } => {
-                execute_collection_aggregate(kind, inputs)
-            }
+            PatternOp::CollectionAggregate { kind } => execute_collection_aggregate(kind, inputs),
         }
     }
 }
@@ -208,12 +206,16 @@ fn execute_collection_aggregate(
             Value::Str(joined)
         }
         CollectionKind::Fold | CollectionKind::Len => Value::Int(items.len() as i64),
-        CollectionKind::Any => {
-            Value::Bool(items.iter().any(|v| !matches!(v, Value::Bool(false) | Value::Unit)))
-        }
-        CollectionKind::All => {
-            Value::Bool(items.iter().all(|v| !matches!(v, Value::Bool(false) | Value::Unit)))
-        }
+        CollectionKind::Any => Value::Bool(
+            items
+                .iter()
+                .any(|v| !matches!(v, Value::Bool(false) | Value::Unit)),
+        ),
+        CollectionKind::All => Value::Bool(
+            items
+                .iter()
+                .all(|v| !matches!(v, Value::Bool(false) | Value::Unit)),
+        ),
         CollectionKind::Contains => {
             let needle = inputs
                 .get("needle")

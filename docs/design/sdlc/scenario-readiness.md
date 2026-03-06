@@ -20,13 +20,13 @@ plan, treat that as historical unless it is explicitly reconciled in `tasks.md`.
 As of 2026-03-05:
 
 - `make ci` passes in this branch (`tools.ci::ci.success: true`).
-- SDLC compile and dry-run coverage exists in `gunbc-dag/tests/compile_commands.rs`, including:
+- SDLC compile and dry-run coverage exists in `gunbc-app/tests/compile_commands.rs`, including:
   - `builds_sdlc_worker_dsl_graph`
   - `builds_sdlc_stages_dsl_graph`
   - `builds_sdlc_workflow_dsl_graph`
   - `sdlc_worker_uses_provider_auth_modules_and_not_legacy_bindings`
   - `dispatch_sdlc_dry_run_completes_without_legacy_bindings`
-- Env-gated local live tests exist in `gunbc-dag/tests/sdlc_phase_live.rs`:
+- Env-gated local live tests exist in `gunbc-app/tests/sdlc_phase_live.rs`:
   - `s10_local_profile_binds_real_local_providers`
   - `s11_local_profile_design_stage_e2e`
 

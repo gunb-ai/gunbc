@@ -29,16 +29,15 @@ dsl/std/         types + data       core/daglang/     compiler (55k LOC)
 dsl/extdeps/     external facts     core/ir/          IR types (51k LOC)
 dsl/config/      repo policy        core/exec/        DAG executor (13k LOC)
 dsl/tools/       workflows          lib/transport/    I/O boundary (6k LOC)
-                                    gunbc-dag/        tool glue + extern impls
+                                    gunbc-app/        tool glue + extern impls
 ```
 
 **Data flows one way**: `.dag` declarations → compiler → lowered DAG → executor → artifacts.
 Rust never decides what lints to deny or how workflows are ordered. The model decides.
 
-**Key numbers** (Feb 2026):
-- 13 tools discovered from DSL structural inference
-- 8 extern bridge functions remaining (509 lines, documented elimination plan)
-- 2,984 passing tests in gunbc-dag alone
+**Key numbers** (Mar 2026):
+- 19 tool workflows in `dsl/tools/`
+- 13 extern bridge functions remaining (documented elimination plan)
 - Zero clippy warnings workspace-wide
 
 ---
@@ -119,7 +118,7 @@ cargo clippy --all-targets -- -D warnings        # zero warnings
 ```
 
 If you changed DSL tools or outputs, the drift tests in
-`gunbc-dag/tests/tool_registration.rs` will catch misalignment between DSL
+`gunbc-app/tests/workspace_drift.rs` will catch misalignment between DSL
 declarations and Rust mirrors.
 
 ---
@@ -220,14 +219,6 @@ Deleting non-semantic metadata from a compiled graph must not change observable
 behavior. If a node carries metadata (pipeline structure, output path annotations,
 profiling tags), the system behaves identically with or without it. This is the
 litmus test for whether something is truly "metadata" vs "hidden behavior" -- if
-removing it changes results, it's not metadata, it's a bug.
-
-### I13. Metadata erasure is semantics-preserving
-
-Deleting non-semantic metadata from a compiled graph must not change observable
-behavior. If a node carries metadata (pipeline structure, output path annotations,
-profiling tags), the system behaves identically with or without it. This is the
-litmus test for whether something is truly "metadata" vs "hidden behavior" — if
 removing it changes results, it's not metadata, it's a bug.
 
 ---
@@ -332,7 +323,7 @@ lib/
 ├── cloud-ops/                Cloud provider abstractions
 └── primitives/               Stable hashing
 
-gunbc-dag/                    Repo-specific app bindings and CLI bootstrap
+gunbc-app/                    Repo-specific app bindings and CLI bootstrap
 ├── src/extern_ops.rs         App-specific extern resolver + implementations
 ├── src/bin/codegen_cli.rs    Bootstrap codegen entrypoint
 ├── src/makegen_support.rs    Remaining makegen-specific helpers
@@ -353,7 +344,7 @@ docs/
 TODO/
 ├── tasks.md                  Index — points to three lane docs
 ├── type-system.md            Lane 1: Compositional type coverage (WS-1 through WS-7)
-├── gunbc-dag-simplification.md  Lane 2: Reduce gunbc-dag to minimum Rust
+├── gunbc-dag-simplification.md  Lane 2: Reduce gunbc-app to minimum Rust
 ├── sdlc.md                   Lane 3: SDLC pipeline end-to-end (the objective)
 └── TODONE/                   Completed work archive
 ```
@@ -434,8 +425,8 @@ cargo test --workspace
 cargo clippy --all-targets -- -D warnings
 
 # Run a specific tool
-cargo run -p gunbc-dag --bin pragma
-cargo run -p gunbc-dag --bin makegen
+cargo run -p gunbc-app --bin pragma
+cargo run -p gunbc-app --bin makegen
 
 # Compile a DSL file
 cargo run -p daglang-cli -- compile dsl/tools/pragma.dag

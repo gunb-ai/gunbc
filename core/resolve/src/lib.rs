@@ -54,8 +54,7 @@ impl RuntimeBindings {
 
     /// Look up a binding by (module, name).
     pub fn get(&self, module: &str, name: &str) -> Option<&DynOp> {
-        self.bindings
-            .get(&(module.to_string(), name.to_string()))
+        self.bindings.get(&(module.to_string(), name.to_string()))
     }
 
     /// Check if any bindings are registered.

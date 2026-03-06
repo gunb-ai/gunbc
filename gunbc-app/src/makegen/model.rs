@@ -83,10 +83,19 @@ pub struct TargetSource {
 /// Typed model-level errors for make target invariants.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MakegenModelError {
-    BuildTargetsCompile { details: String },
-    ToolDiscovery { details: String },
-    MissingData { key: &'static str },
-    DeserializeData { key: &'static str, details: String },
+    BuildTargetsCompile {
+        details: String,
+    },
+    ToolDiscovery {
+        details: String,
+    },
+    MissingData {
+        key: &'static str,
+    },
+    DeserializeData {
+        key: &'static str,
+        details: String,
+    },
     DuplicateTargetName {
         name: String,
         first: TargetSource,

@@ -1,7 +1,7 @@
 use super::*;
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::parser;
-use daglang_typecheck::typecheck_module_graph;
+use daglang_typecheck::{typecheck_module_graph, typecheck_owned_module_graph, TypedProject};
 use gunbc_app::extern_ops::GunbcExternResolver;
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::{Edge, Port};
@@ -26,7 +26,7 @@ fn build_entrypoint_graph(
     .unwrap_or_else(|e| panic!("`{relative_module}` entry `{entry_func}` should build: {e}"))
 }
 
-fn typed_project_from_sources(sources: &[(&str, &str)]) -> TypedProject {
+fn typed_project_from_sources(sources: &[(&str, &str)]) -> TypedProject<'static> {
     let modules = sources
         .iter()
         .map(|(path, source)| {
@@ -44,7 +44,7 @@ fn typed_project_from_sources(sources: &[(&str, &str)]) -> TypedProject {
             }
         })
         .collect();
-    typecheck_module_graph(&ModuleGraph { modules }).expect("typecheck should succeed")
+    typecheck_owned_module_graph(ModuleGraph { modules }).expect("typecheck should succeed")
 }
 
 fn callable_stmts_from_source(source: &str) -> Vec<Stmt> {
@@ -60,7 +60,7 @@ fn callable_stmts_from_source(source: &str) -> Vec<Stmt> {
 
 // Test infrastructure: filesystem access for real DSL corpus fixtures.
 #[allow(clippy::disallowed_methods)]
-fn typed_project_for_module_with_dependency_closure(module_name: &str) -> TypedProject {
+fn typed_project_for_module_with_dependency_closure(module_name: &str) -> TypedProject<'static> {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
     let graph = ModuleGraph::discover(&[dsl_root]).expect("module graph discovery should succeed");
     let target_index = graph
@@ -103,28 +103,26 @@ fn typed_project_for_module_with_dependency_closure(module_name: &str) -> TypedP
             .collect::<Vec<_>>();
         modules.push(module);
     }
-    typecheck_module_graph(&ModuleGraph { modules }).expect("typecheck should succeed")
+    typecheck_owned_module_graph(ModuleGraph { modules }).expect("typecheck should succeed")
 }
 
-fn lower_target_module(typed: &TypedProject, module_name: &str) -> Dag<LoweredOp> {
+fn lower_target_module(typed: &TypedProject<'_>, module_name: &str) -> Dag<LoweredOp> {
     let mut scope = HashSet::new();
     scope.insert(module_name.to_string());
     lower_typed_project_for_modules(typed, &scope).expect("lowering should succeed")
 }
 
 fn lower_target_module_with_dependency_scope(
-    typed: &TypedProject,
+    typed: &TypedProject<'_>,
     module_name: &str,
 ) -> Dag<LoweredOp> {
     let module_lookup = typed
-        .modules
-        .iter()
+        .modules()
         .enumerate()
         .map(|(index, module)| (module.module_path.as_dotted(), index))
         .collect::<HashMap<_, _>>();
     let target_index = typed
-        .modules
-        .iter()
+        .modules()
         .position(|module| module.module_path.as_dotted() == module_name)
         .expect("target module should exist in typed project");
     let mut scope = HashSet::new();
@@ -134,11 +132,11 @@ fn lower_target_module_with_dependency_scope(
         if !visited.insert(module_index) {
             continue;
         }
-        let Some(module) = typed.modules.get(module_index) else {
+        let Some(module) = typed.module(module_index) else {
             continue;
         };
         scope.insert(module.module_path.as_dotted());
-        for import in &module.imports {
+        for import in module.imports() {
             let import_name = import.as_dotted();
             if let Some(import_index) = module_lookup.get(&import_name) {
                 queue.push_back(*import_index);
@@ -486,15 +484,19 @@ _ => 0
 }
 "#,
     )]);
-    let fn_body = typed
-        .modules
+    let module = typed
+        .modules()
+        .next()
+        .expect("sample source should contain one module");
+    let item = module
+        .ast
+        .items
         .first()
-        .and_then(|module| module.ast.items.first())
-        .and_then(|item| match &item.node {
-            Item::FnDef(def) => Some(&def.body),
-            _ => None,
-        })
-        .expect("sample source should contain a fn body");
+        .expect("sample source should contain one item");
+    let fn_body = match &item.node {
+        Item::FnDef(def) => &def.body,
+        _ => panic!("sample source should contain a fn body"),
+    };
     assert!(
         !fn_body.lossy,
         "expected non-lossy parsed function body for control-flow fixture"
@@ -2263,8 +2265,7 @@ func cross_provider_auth() -> { ok: Bool } {
 fn aws_resource_module_emits_object_storage_contract_verification_nodes() {
     let typed = typed_project_for_module_with_dependency_closure("infra.aws.resources");
     let object_storage_contracts = typed
-        .modules
-        .iter()
+        .modules()
         .find(|module| module.module_path.as_dotted() == "infra.core")
         .and_then(|module| {
             module.ast.items.iter().find_map(|item| match &item.node {
@@ -3242,14 +3243,12 @@ fn lower_typed_project_for_module_with_dependency_closure_and_entry(
 
     // Build the scope: target module + all its transitive dependencies.
     let module_lookup: HashMap<String, usize> = typed
-        .modules
-        .iter()
+        .modules()
         .enumerate()
         .map(|(index, module)| (module.module_path.as_dotted(), index))
         .collect();
     let target_index = typed
-        .modules
-        .iter()
+        .modules()
         .position(|module| module.module_path.as_dotted() == target_module)
         .unwrap_or_else(|| panic!("target module {target_module} should exist"));
     let mut scope = HashSet::new();
@@ -3259,11 +3258,11 @@ fn lower_typed_project_for_module_with_dependency_closure_and_entry(
         if !visited.insert(module_index) {
             continue;
         }
-        let Some(module) = typed.modules.get(module_index) else {
+        let Some(module) = typed.module(module_index) else {
             continue;
         };
         scope.insert(module.module_path.as_dotted());
-        for import in &module.imports {
+        for import in module.imports() {
             let import_name = import.as_dotted();
             if let Some(import_index) = module_lookup.get(&import_name) {
                 queue.push_back(*import_index);
@@ -3507,8 +3506,8 @@ fn service_transport_class_hermetic_matches_dsl_fidelity() {
 // ============================================================================
 
 /// Helper: find func body stmts by name, panicking with context on failure.
-fn find_func_stmts(project: &TypedProject, module_name: &str, func_name: &str) -> Vec<Stmt> {
-    for module in &project.modules {
+fn find_func_stmts(project: &TypedProject<'_>, module_name: &str, func_name: &str) -> Vec<Stmt> {
+    for module in project.modules() {
         if module.module_path.as_dotted() != module_name {
             continue;
         }
@@ -3528,8 +3527,12 @@ fn find_func_stmts(project: &TypedProject, module_name: &str, func_name: &str) -
 }
 
 /// Helper: find pattern body stmts by name.
-fn find_pattern_stmts(project: &TypedProject, module_name: &str, pattern_name: &str) -> Vec<Stmt> {
-    for module in &project.modules {
+fn find_pattern_stmts(
+    project: &TypedProject<'_>,
+    module_name: &str,
+    pattern_name: &str,
+) -> Vec<Stmt> {
+    for module in project.modules() {
         if module.module_path.as_dotted() != module_name {
             continue;
         }

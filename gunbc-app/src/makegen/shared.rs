@@ -62,9 +62,8 @@ pub fn render_makefile(tools: &[DiscoveredToolData]) -> Result<String, MakegenMo
 
 /// Discover tools from DSL metadata and render the Makefile.
 pub fn render_makefile_from_dsl_discovery() -> Result<String, MakegenModelError> {
-    let tools = discover_makegen_tools().map_err(|details| MakegenModelError::ToolDiscovery {
-        details,
-    })?;
+    let tools =
+        discover_makegen_tools().map_err(|details| MakegenModelError::ToolDiscovery { details })?;
     render_makefile(&tools)
 }
 

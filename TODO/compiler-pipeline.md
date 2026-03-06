@@ -1,5 +1,10 @@
 # Lane 4: Compiler Pipeline Improvements
 
+> Status lives in [`../tasks.md`](../tasks.md). This document is the detailed
+> acceptance/target-contract reference for compiler-pipeline work; some items
+> below intentionally describe the end state even when the current branch is
+> still at a bridge or phase-1 step.
+
 > Reference: [`docs/design/compilation-pipeline.md`](../docs/design/compilation-pipeline.md) — full pipeline map, data shapes, gap analysis, architectural principles.
 >
 > **Thesis**: The entire purpose of gunbc is moving contradiction discovery from
@@ -542,6 +547,9 @@ All main-path stage APIs (`parse`, `discover_module_graph`, `typecheck_strict`, 
 **Impact**: Eliminates forced copy. `ModuleGraph` stays alive in the caller (driver). `TypedProject<'a>` is a lifetime-scoped overlay, not a standalone blob.
 **Verify**: `cargo test --workspace` + `TypedModule` struct has no `path`, `module_path`, `imports`, or `ast` fields.
 **Note**: Subsumes CP-32. Implement together.
+**Current branch note (2026-03-06)**: The borrow landed, but `TypedModule`
+still clones module facts. Treat CP-43/CP-32 as only partially complete until
+the typed overlay stops duplicating `ResolvedModule` data.
 
 ### CP-44: LowerOutput replaces driver re-extraction (M)
 
@@ -551,6 +559,10 @@ All main-path stage APIs (`parse`, `discover_module_graph`, `typecheck_strict`, 
 **Impact**: Eliminates 6 post-hoc extraction functions from the driver. Each piece of data is computed once, during its canonical stage.
 **Verify**: `cargo test --workspace` + `grep -r 'extract_output_paths\|infer_entrypoints\|build_data_values' core/daglang/daglang-driver/` returns 0 hits.
 **Note**: Subsumes CP-33. Implement together.
+**Current branch note (2026-03-06)**: `LowerOutput` now exists and the main
+compile path consumes bundled `output_paths`, `inferred_entrypoints`, and
+`data_values`. Helper/embedded paths still use some legacy extraction helpers,
+so the single-owner cleanup is not fully finished yet.
 
 ### CP-45: Consolidate Execute entry points into one (S)
 
@@ -585,6 +597,10 @@ Every variant carries a `Span` for source attribution. No `Option<String>` node 
 **Fix**: Replace `dyn ExternResolver` with `RuntimeBindings { externs: HashMap<ExternId, DynOp> }`. The binding is total — every `ExternId` has a value. Resolution via `map_bodies()` indexes by `ExternId`, not string lookup.
 **Impact**: Resolution becomes total (cannot fail on missing externs). Eliminates the `ExternResolver` trait, `NullExternResolver`, `GunbcExternResolver`. The resolve stage signature becomes `fn resolve(verified: &VerifiedDag<LoweredOp>, bindings: &RuntimeBindings) -> Verdict<Dag<DynOp>>`.
 **Verify**: `cargo test --workspace` + `grep -r 'dyn ExternResolver' core/` returns 0 hits.
+**Current branch note (2026-03-06)**: The repo has a bridge version of
+`RuntimeBindings` today, but it is still keyed by `(module, name)` strings and
+implements `ExternResolver` for migration compatibility. ExternId-keyed total
+binding remains open.
 
 ---
 
@@ -721,10 +737,10 @@ Some later items subsume earlier ones. When implementing, do them together:
 
 | Later item | Subsumes | Reason |
 |------------|----------|--------|
-| CP-43 (typecheck borrows ModuleGraph) | CP-32 (eliminate TypedModule duplication) | Borrowing eliminates the copy — no duplication to fix |
+| CP-43 (typecheck borrows ModuleGraph) | CP-32 (eliminate TypedModule duplication) | Borrowing removes the forced move; full subsumption only lands once `TypedModule` stops cloning module facts |
 | CP-44 (LowerOutput) | CP-33 (compute CompileOutput fields once) | LowerOutput bundles the computed fields at source |
 | CP-46 (structured LowerError) | CP-14 (source spans on lowerer errors) | Structured enum with spans covers the span requirement |
-| CP-47 (RuntimeBindings) | Part of CP-40 (ExternRegistry) | CP-40 creates ExternId; CP-47 consumes it |
+| CP-47 (RuntimeBindings) | Part of CP-40 (ExternRegistry) | CP-40 creates `ExternId`; full subsumption only lands once `RuntimeBindings` binds by ID instead of string lookup |
 | CP-51 (NodeOrigin) | Part of CP-25 (pattern instance backrefs) | NodeOrigin covers the span-tracing aspect of pattern instances |
 
 ### Dependencies

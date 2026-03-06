@@ -100,7 +100,8 @@ pub fn filter_reserved_tools(
 
 pub fn tools_to_value(tools: &[DiscoveredToolData], warnings: Warnings) -> Value {
     Value::List(
-        tools.iter()
+        tools
+            .iter()
             .map(|tool| {
                 let mut map = BTreeMap::new();
                 map.insert(
@@ -115,7 +116,10 @@ pub fn tools_to_value(tools: &[DiscoveredToolData], warnings: Warnings) -> Value
                     "binary_name".to_string(),
                     Value::Str(tool.binary_name().to_string()),
                 );
-                map.insert("command".to_string(), Value::Str(tool.command(warnings, false)));
+                map.insert(
+                    "command".to_string(),
+                    Value::Str(tool.command(warnings, false)),
+                );
                 map.insert(
                     "dry_run_command".to_string(),
                     Value::Str(tool.command(warnings, true)),
@@ -192,7 +196,8 @@ fn extra_target_to_value(extra: &ExtraTargetData) -> Value {
     map.insert(
         "post_commands".to_string(),
         Value::List(
-            extra.post_commands
+            extra
+                .post_commands
                 .iter()
                 .cloned()
                 .map(Value::Str)

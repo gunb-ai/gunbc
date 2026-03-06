@@ -76,6 +76,11 @@ pub fn gunbc_runtime_bindings() -> gunbc_resolve::RuntimeBindings {
         DynOp::new(RenderTestgenModuleOp),
     );
     b.register("tools.infra", "infra", DynOp::new(InfraDispatchOp));
+    b.register(
+        "tools.readme",
+        "discover_readme_tools",
+        DynOp::new(DiscoverReadmeToolsOp),
+    );
     b
 }
 
@@ -108,6 +113,7 @@ pub fn resolve_extern_symbol(module: &str, name: &str) -> Option<DynOp> {
         ("tools.testgen", "discover_testgen_modules") => Some(DynOp::new(DiscoverTestgenModulesOp)),
         ("tools.testgen", "render_testgen_module") => Some(DynOp::new(RenderTestgenModuleOp)),
         ("tools.infra", "infra") => Some(DynOp::new(InfraDispatchOp)),
+        ("tools.readme", "discover_readme_tools") => Some(DynOp::new(DiscoverReadmeToolsOp)),
         _ => None,
     }
 }
@@ -253,6 +259,40 @@ impl Executable for DiscoverToolsOp {
 
         let tools = tools_to_value(&filtered, Warnings::Deny);
         OutputMap::new().value("return", tools).ok()
+    }
+}
+
+// ============================================================================
+// tools.readme extern impls
+// ============================================================================
+
+#[derive(Debug, Clone)]
+struct DiscoverReadmeToolsOp;
+
+impl Executable for DiscoverReadmeToolsOp {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        use gunbc_codegen::tool_discovery::discover_tool_defs_from_dsl;
+
+        let defs = discover_tool_defs_from_dsl()
+            .map_err(|e| ExecError::new(format!("failed to discover tools: {e}")))?;
+
+        let tools: Vec<Value> = defs
+            .iter()
+            .map(|def| {
+                let mut map = BTreeMap::new();
+                map.insert("name".to_string(), Value::Str(def.meta.tool_name.to_string()));
+                map.insert(
+                    "description".to_string(),
+                    Value::Str(def.meta.description.to_string()),
+                );
+                Value::Map(map)
+            })
+            .collect();
+
+        OutputMap::new().value("return", Value::List(tools)).ok()
     }
 }
 
@@ -697,6 +737,96 @@ mod tests {
         assert!(
             content.contains("#[test]"),
             "rendered testgen content should contain test functions",
+        );
+    }
+
+    #[test]
+    fn discover_readme_tools_returns_name_and_description() {
+        let out = DiscoverReadmeToolsOp
+            .execute(HashMap::new())
+            .expect("discover_readme_tools should succeed");
+        let tools = out.get("return").expect("return key");
+        let Value::List(items) = tools else {
+            panic!("discover_readme_tools should return a list");
+        };
+        assert!(!items.is_empty(), "tool list should not be empty");
+        // Each tool should have name and description fields.
+        let first = items[0].as_map().expect("tool should be a map");
+        assert!(first.contains_key("name"), "tool should have 'name' field");
+        assert!(
+            first.contains_key("description"),
+            "tool should have 'description' field"
+        );
+    }
+
+    #[test]
+    fn discover_readme_tools_includes_readme_itself() {
+        let out = DiscoverReadmeToolsOp
+            .execute(HashMap::new())
+            .expect("discover_readme_tools should succeed");
+        let tools = out
+            .get("return")
+            .and_then(|v| match v {
+                Value::List(items) => Some(items.clone()),
+                _ => None,
+            })
+            .expect("should return a list");
+        let names: Vec<String> = tools
+            .iter()
+            .filter_map(|t| {
+                t.as_map()
+                    .and_then(|m| m.get("name"))
+                    .and_then(Value::as_str)
+                    .map(|s| s.to_string())
+            })
+            .collect();
+        assert!(
+            names.iter().any(|n| n == "readme"),
+            "readme tool should be auto-discovered, found: {names:?}"
+        );
+    }
+
+    #[test]
+    fn render_readme_fn_produces_markdown() {
+        use daglang_driver::compile_data_from_module;
+
+        let layout = gunbc_ir::WorkspaceLayout::from_env_manifest_dir()
+            .or_else(|_| gunbc_ir::WorkspaceLayout::from_cargo_metadata())
+            .expect("workspace layout");
+        let dsl_root = layout.workspace_root.join("dsl");
+        let output = compile_data_from_module(&dsl_root, "tools/readme.dag")
+            .expect("readme.dag should compile");
+
+        let body = output
+            .fns
+            .get("render_readme")
+            .expect("render_readme fn body should exist");
+
+        // Build mock tool list input.
+        let mock_tools = Value::List(vec![{
+            let mut m = BTreeMap::new();
+            m.insert("name".to_string(), Value::Str("test-tool".to_string()));
+            m.insert("description".to_string(), Value::Str("A test tool".to_string()));
+            Value::Map(m)
+        }]);
+
+        let mut inputs = HashMap::new();
+        inputs.insert("tools".to_string(), mock_tools);
+
+        let result = daglang_lower::eval::evaluate_fn_body(body, &inputs, &output.fns)
+            .expect("render_readme should evaluate");
+        let content = result
+            .get("return")
+            .and_then(Value::as_str)
+            .expect("render_readme should return a string");
+
+        assert!(content.starts_with("# gunbc"), "should start with title");
+        assert!(content.contains("## Install"), "should have install section");
+        assert!(content.contains("## Tools"), "should have tools section");
+        assert!(content.contains("test-tool"), "should include mock tool");
+        assert!(
+            content.contains("Generated by `gunbc-readme`"),
+            "should have footer"
         );
     }
 }

@@ -634,17 +634,17 @@ fn derive_module_metadata(nodes: &[Node<LoweredOp>]) -> Vec<ModuleMetadata> {
             // Bridge 1: SubDag fn items — count the inner ExprCompute node's module.
             gunbc_ir::NodeBody::SubDag(inner, _) => {
                 for inner_node in &inner.nodes {
-                    if let gunbc_ir::NodeBody::Opaque(LoweredOp::Primitive {
-                        module, ..
-                    }) = &inner_node.body
+                    if let gunbc_ir::NodeBody::Opaque(LoweredOp::Primitive { module, .. }) =
+                        &inner_node.body
                     {
-                        let entry = by_module
-                            .entry(module.clone())
-                            .or_insert_with(|| ModuleMetadata {
-                                module: module.clone(),
-                                callable_count: 0,
-                                pipeline_count: 0,
-                            });
+                        let entry =
+                            by_module
+                                .entry(module.clone())
+                                .or_insert_with(|| ModuleMetadata {
+                                    module: module.clone(),
+                                    callable_count: 0,
+                                    pipeline_count: 0,
+                                });
                         entry.callable_count += 1;
                     }
                 }
