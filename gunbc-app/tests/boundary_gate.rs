@@ -43,7 +43,7 @@ const ALLOWED_DIRS: &[&str] = &[
 
 /// Current baseline: total `push_str` occurrences in non-boundary Rust files.
 /// Update this number downward when anemic rendering is migrated to DSL.
-const NON_BOUNDARY_PUSH_STR_BASELINE: usize = 102; // C24: StringInterpolateOp uses push_str for template assembly
+const NON_BOUNDARY_PUSH_STR_BASELINE: usize = 79; // C24: StringInterpolateOp uses push_str for template assembly
 
 #[test]
 #[allow(clippy::disallowed_methods)]
