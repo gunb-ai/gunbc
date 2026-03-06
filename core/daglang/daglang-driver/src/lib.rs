@@ -457,9 +457,8 @@ pub fn compile_data_from_module(
         allow_empty_dag: true,
         ..Default::default()
     };
-    let lower_output =
-        daglang_lower::lower_to_output_with_config(&typed, &lower_config)
-            .map_err(CompileError::Lower)?;
+    let lower_output = daglang_lower::lower_to_output_with_config(&typed, &lower_config)
+        .map_err(CompileError::Lower)?;
     extract_fn_bodies_from_dag(&lower_output.dag, &mut fns);
     let data_values = lower_output.data_values;
 

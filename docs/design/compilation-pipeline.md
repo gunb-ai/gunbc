@@ -182,7 +182,7 @@ first" that isn't visible in the types.
 |-----|---------------|--------------------|
 | Diagnostics | Shared `daglang-contract::Diagnostic` exists | `span`/`file` remain optional, and `TypeError`/`LowerError` still flow through `Spanned*` wrappers instead of a single diagnostic path |
 | Verification gate | `VerifiedDag<T>` exists and gates compile output | `VerifiedDag::from_verified()` remains an escape hatch, so proof is not yet forced at every construction site |
-| Runtime bindings | `RuntimeBindings` centralizes extern registration | Bindings are still keyed by `(module, name)` strings and bridge `ExternResolver`; ExternId-keyed total linking is still target-state work |
+| Runtime bindings | `RuntimeBindings` centralizes extern registration and cached app binding lookup | Bindings are still bridged through `ExternResolver`; ExternId-keyed total linking is still target-state work |
 
 ---
 
@@ -477,7 +477,7 @@ struct ExternSignature {
 ```
 
 Typecheck consumes `ExternRegistry` and validates extern declarations exist with
-matching arities. **Current state**: keyed by `(module, name)` string tuples.
+matching arities. **Current state**: keyed by typed `ProgramSymbolId` values.
 **Target**: `ExternId`-keyed total linking where the lowerer carries `ExternId`
 not strings, and Stage 5a resolve becomes provably total.
 
@@ -1802,8 +1802,8 @@ via `RuntimeBindings` (total, no Option).
 **Tests**: `link_is_topology_preserving_by_construction`, `link_never_looks_up_by_string`.
 **Wiring target**: CP-47 ends with ExternId-keyed `RuntimeBindings` and no
 string lookup. Current branch still ships a bridge form: `RuntimeBindings`
-exists, but it is keyed by `(module, name)` and implements `ExternResolver` for
-incremental migration.
+exists, but it is keyed by `ProgramSymbolId` and still implements
+`ExternResolver` for incremental migration.
 
 ### Stage 6b: Emit
 
