@@ -487,6 +487,9 @@ fn build_tool_defs_from_cached_params(
         for subcmd in subcommands {
             tool = tool.subcommand(subcmd);
         }
+        if !output_paths.is_empty() {
+            tool = tool.enable_mode();
+        }
 
         return Some(vec![tool]);
     }
@@ -517,6 +520,9 @@ fn build_tool_defs_from_cached_params(
 
         for output_path in output_paths {
             tool = tool.output(output_path.clone());
+        }
+        if !output_paths.is_empty() {
+            tool = tool.enable_mode();
         }
         for cli_ep in entrypoints {
             tool = tool.entrypoint(cli_ep);
@@ -828,6 +834,31 @@ mod tests {
                 .any(|path| path == "**/generated_tests*.rs"),
             "testgen should declare its generated output glob in DSL",
         );
+    }
+
+    #[test]
+    fn pragma_tool_has_enable_mode() {
+        let tools = discover_tool_defs_from_dsl().expect("tool discovery should succeed");
+        let pragma = tools.iter().find(|t| t.meta.tool_name == "pragma").unwrap();
+        assert!(
+            pragma.meta.enable_mode,
+            "pragma has content_upsert outputs and should have enable_mode=true",
+        );
+    }
+
+    #[test]
+    fn clippy_tool_no_enable_mode() {
+        let tools = discover_tool_defs_from_dsl().expect("tool discovery should succeed");
+        let clippy = tools.iter().find(|t| t.meta.tool_name == "clippy-lint");
+        // clippy-lint may or may not have outputs; if it exists without outputs, enable_mode should be false
+        if let Some(tool) = clippy {
+            if tool.outputs.is_empty() {
+                assert!(
+                    !tool.meta.enable_mode,
+                    "clippy-lint has no outputs and should have enable_mode=false",
+                );
+            }
+        }
     }
 
     #[test]

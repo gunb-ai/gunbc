@@ -1958,6 +1958,166 @@ impl std::fmt::Display for LowerError {
     }
 }
 
+impl LowerError {
+    /// Return a stable diagnostic code for this error variant.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::UnknownPattern(..) => "LOW001",
+            Self::MissingTransport { .. } => "LOW002",
+            Self::InvalidAcquireBlock { .. } => "LOW003",
+            Self::UnresolvedInterface { .. } => "LOW004",
+            Self::UnresolvedServiceCall { .. } => "LOW005",
+            Self::UnresolvedUsedResource { .. } => "LOW006",
+            Self::AmbiguousUsedResource { .. } => "LOW007",
+            Self::UnresolvedProvidedResource { .. } => "LOW008",
+            Self::AmbiguousProvidedResource { .. } => "LOW009",
+            Self::UnknownProfile { .. } => "LOW010",
+            Self::AmbiguousProfile { .. } => "LOW011",
+            Self::InvalidProfileBinding { .. } => "LOW012",
+            Self::ProfileRequiredForBoundServiceCall { .. } => "LOW013",
+            Self::MissingProfileBinding { .. } => "LOW014",
+            Self::InvalidFileOp { .. } => "LOW015",
+            Self::InvalidTransportSpec { .. } => "LOW016",
+            Self::MissingProfileConfigEnv { .. } => "LOW017",
+            Self::NoLowerableItems => "LOW018",
+            Self::PureFnContainsEffectfulNode { .. } => "LOW019",
+            Self::InvalidAuthInput { .. } => "LOW020",
+            Self::InvalidProviderConfigField { .. } => "LOW021",
+            Self::UnknownProviderPrefix { .. } => "LOW022",
+            Self::UnknownProviderSchemaType { .. } => "LOW023",
+            Self::MissingCallablePassthrough { .. } => "LOW024",
+        }
+    }
+
+    /// Return an actionable help message for this error, if available.
+    pub fn help(&self) -> Option<String> {
+        match self {
+            Self::MissingTransport { service, operation } => Some(format!(
+                "add a `transport rest {{ method: ..., path: ... }}` or \
+                 `transport shell {{ argv: [...] }}` block to `{service}.{operation}`"
+            )),
+            Self::UnresolvedServiceCall { service_call, .. } => Some(format!(
+                "check that the service and operation in `{service_call}` are imported \
+                 and spelled correctly"
+            )),
+            Self::UnresolvedInterface { interface } => Some(format!(
+                "ensure `{interface}` is defined with `interface` keyword, or check \
+                 your imports"
+            )),
+            Self::InvalidTransportSpec { .. } => Some(
+                "verify the transport block has all required fields: `method` and \
+                 `path` for REST, `argv` for shell"
+                    .into(),
+            ),
+            Self::NoLowerableItems => Some(
+                "ensure the file contains at least one `fn`, `func`, `pattern`, or \
+                 `pipeline` declaration"
+                    .into(),
+            ),
+            Self::InvalidAuthInput { field_name, .. } => Some(format!(
+                "check that `{field_name}` exists in the operation's inputs and is \
+                 of type `Secret`"
+            )),
+            _ => None,
+        }
+    }
+}
+
+/// Wraps a `LowerError` with optional file path and byte span for
+/// diagnostic rendering. Use `LowerError::at()` to create.
+#[derive(Debug)]
+pub struct SpannedLowerError {
+    /// The underlying error.
+    pub error: LowerError,
+    /// Source file path (relative to DSL root).
+    pub file: Option<String>,
+    /// Byte span in the source file.
+    pub span: Option<daglang_contract::Span>,
+    /// Module path (e.g., "tools.clippy").
+    pub module: Option<String>,
+    /// Item name (e.g., "clippy_lint").
+    pub item: Option<String>,
+}
+
+impl SpannedLowerError {
+    /// Create a spanned error from a bare `LowerError`.
+    pub fn new(error: LowerError) -> Self {
+        Self {
+            error,
+            file: None,
+            span: None,
+            module: None,
+            item: None,
+        }
+    }
+
+    /// Attach source location.
+    pub fn with_location(
+        mut self,
+        file: impl Into<String>,
+        module: impl Into<String>,
+        item: impl Into<String>,
+    ) -> Self {
+        self.file = Some(file.into());
+        self.module = Some(module.into());
+        self.item = Some(item.into());
+        self
+    }
+
+    /// Attach byte span.
+    pub fn with_span(mut self, span: daglang_contract::Span) -> Self {
+        self.span = Some(span);
+        self
+    }
+
+    /// Delegate to inner error code.
+    pub fn code(&self) -> &'static str {
+        self.error.code()
+    }
+}
+
+impl std::fmt::Display for SpannedLowerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(file) = &self.file {
+            if let Some(span) = &self.span {
+                write!(f, "{}:{}..{}: ", file, span.start, span.end)?;
+            } else {
+                write!(f, "{}: ", file)?;
+            }
+        }
+        write!(f, "[{}] {}", self.error.code(), self.error)?;
+        if let Some(help) = self.error.help() {
+            write!(f, "\n  help: {help}")?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for SpannedLowerError {}
+
+impl From<LowerError> for SpannedLowerError {
+    fn from(error: LowerError) -> Self {
+        Self::new(error)
+    }
+}
+
+impl LowerError {
+    /// Wrap this error with source location to produce a `SpannedLowerError`.
+    pub fn at(
+        self,
+        file: impl Into<String>,
+        module: impl Into<String>,
+        item: impl Into<String>,
+    ) -> SpannedLowerError {
+        SpannedLowerError::new(self).with_location(file, module, item)
+    }
+
+    /// Wrap into a `SpannedLowerError` with no location.
+    pub fn into_spanned(self) -> SpannedLowerError {
+        SpannedLowerError::new(self)
+    }
+}
+
 /// Lower a typed project into a structural GraphIR DAG.
 ///
 /// Phase-1 lowering focuses on callable and pipeline signatures:
