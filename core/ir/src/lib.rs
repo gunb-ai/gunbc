@@ -92,6 +92,7 @@ pub mod types;
 pub mod validate;
 pub mod value;
 pub mod value_bridge;
+pub mod verified;
 pub mod value_expr;
 pub mod workspace_layout;
 
@@ -220,6 +221,7 @@ pub use validate::{
     FingerprintConflict, PortDirection, SubDagError, UnwiredInputError, UnwiredResource,
     VerifyError,
 };
+pub use verified::VerifiedDag;
 pub use value::{
     SecretHint, SecretString, Value, ValueKind, HUMAN_TEXT_MAX_LINES, HUMAN_TEXT_MAX_LINE_WIDTH,
 };

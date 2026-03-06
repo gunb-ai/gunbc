@@ -143,7 +143,7 @@ fn compile_lowered(
     };
 
     Ok(CompileLoweredResult {
-        dag: output.lowered_dag,
+        dag: output.lowered_dag.into_inner(),
         dsl_type_registry: output.dsl_type_registry,
         inferred_entrypoints: output.inferred_entrypoints,
         callable_properties: output.derived.callable_properties,

@@ -18,7 +18,7 @@ use daglang_syntax::parser;
 use daglang_typecheck::{
     typecheck_module_graph_with_options, TypeError, TypecheckOptions, TypedProject,
 };
-use gunbc_ir::{Dag, ProgramSymbolId, ReachableDag, TypeRegistry};
+use gunbc_ir::{Dag, ProgramSymbolId, ReachableDag, TypeRegistry, VerifiedDag};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -30,7 +30,7 @@ pub struct DriverContext {
 
 #[derive(Debug)]
 pub struct CompileOutput {
-    pub lowered_dag: Dag<LoweredOp>,
+    pub lowered_dag: VerifiedDag<LoweredOp>,
     pub derived: DerivedArtifacts,
     pub emitted: EmissionBundle,
     /// Relative path of the deterministic emission manifest.
@@ -748,8 +748,9 @@ pub fn compile_from_module_graph_with_options(
     if !verify_errors.is_empty() {
         return Err(CompileError::Verification(verify_errors));
     }
+    let verified_dag = VerifiedDag::from_verified(lower_output.dag);
 
-    let derived = derive_artifacts(&lower_output.dag).map_err(CompileError::Derive)?;
+    let derived = derive_artifacts(&verified_dag).map_err(CompileError::Derive)?;
 
     let target_module_name = if let Some(tf) = context.target_file.as_ref() {
         let canonical = {
@@ -769,7 +770,7 @@ pub fn compile_from_module_graph_with_options(
     let target = options.target;
     let layer = options.layer;
     let mut emitted = emit_with_options(
-        &lower_output.dag,
+        &verified_dag,
         &derived,
         options,
         target_module_name.as_deref(),
@@ -783,14 +784,14 @@ pub fn compile_from_module_graph_with_options(
 
     let source_paths: Vec<PathBuf> = module_graph.modules.iter().map(|m| m.path.clone()).collect();
     let receipt = compute_receipt(
-        &lower_output.dag,
+        &verified_dag,
         &emitted,
         &emit_manifest_path,
         &source_paths,
     )?;
 
     Ok(CompileOutput {
-        lowered_dag: lower_output.dag,
+        lowered_dag: verified_dag,
         derived,
         emitted,
         emit_manifest_path,

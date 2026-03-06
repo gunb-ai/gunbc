@@ -158,7 +158,7 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 | ID | What | Size | Deps | Source | Status |
 |----|------|------|------|--------|--------|
 | CP-8 | Flip `skip_verification` to false | S | CP-6,7 + Bridge 1+2 | CP | **Done** — `CompileOptions::skip_verification` defaults to `false`. `verify_dag()` runs on every compilation. Function-typed ports (`fn(T)->R`) skip type expression validation (WS3-2 prerequisite). All 220 daglang-cli lib tests pass. |
-| CP-23 | `VerifiedDag<T>` type wrapper (gates Resolve + Emit) | M | CP-8 | CP | Open |
+| CP-23 | `VerifiedDag<T>` type wrapper (gates Resolve + Emit) | M | CP-8 | CP | **Done** — `VerifiedDag<T>` newtype in `core/ir/src/verified.rs`. Private inner field (`Dag<T>`) prevents construction without `verify()` or `from_verified()`. `Deref<Target=Dag<T>>` for transparent downstream access. `CompileOutput.lowered_dag: VerifiedDag<LoweredOp>` — verification gate at the type level. `Serialize` via transparent delegation. |
 | CP-41 | Merge `validate_structural_primitive_wiring()` into `verify()` | S | CP-23 | CP | **Done** — `verify_lowered_dag(dag, skip_generic)` unifies both checks: structural primitive wiring (always runs) + generic IR verification (conditional on `skip_verification`). Single call site in `compile_from_module_graph_with_options`. Tests updated. |
 | CP-42 | `Dag<T>.map_bodies()` for topology preservation | S | — | CP | **Done** — already exists as `Dag<T>::map_ops()` (dag.rs:85). Maps opaque bodies T→U, recurses into SubDags, preserves all node metadata + edges. |
 | CP-24 | Resolution topology invariant (assert same node/edge counts) | S | CP-42 | CP | **Done** — `debug_assert!` in `resolve_lowered_dag_with()` verifies non-pipeline node count preserved and edge count only grows (resource edges added). Accounts for pipeline node filtering. |
@@ -190,9 +190,9 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 |----|------|------|------|--------|
 | Bridge 1 | SubDag direct lowering (delete `DeclaredOutputCallableOp`) | M | — | **Done** — Fn items with fn_body now lower as SubDag nodes wrapping FnBodyCompute. FnBodyComputeOp in resolver evaluates fn bodies. DeclaredOutputCallableOp still used for Func/Pattern (Bridge 2 scope). |
 | Bridge 2 | `FnBodyCallableOp` elimination (fn bodies as SubDags) | M | Bridge 1 | **Done** — `FnBodyCallableOp` struct deleted from resolver. All 4 `Callable { fn_body: Some(...) }` sites (loop body + branch body ops) converted to `Primitive { kind: FnBodyCompute }`. `debug_assert!` in resolve_domain catches regressions. |
-| Bridge 3 | `CollectionDelegate` → proper IR nodes | M | — | Open |
+| Bridge 3 | `CollectionDelegate` → proper IR nodes | M | — | **Done** — `CollectionKind` enum in `core/ir/src/patterns/collection.rs`. `PatternOp::CollectionAggregate { kind }` replaces `CollectionDelegate`. `CollectionOpKind` in daglang-lower is now a type alias. Resolver uses `PatternOp` directly (zero custom delegate structs). `grep -r "CollectionDelegate" core/` → 0. |
 | Bridge 8 | `add_fs_env_root_node()` → resource injection at lower time | M | — | **Done** — `wire_filesystem_resource_edges()` in lowerer scans for unconnected `FilesystemHandle` inputs, adds `fs_env` node + edges. `validate_required_inputs()` skips SubDag nodes. |
-| Bridge 9 | `GenericFilePrepareOp`/`ParseOp` → typed file transport | M | — | Open |
+| Bridge 9 | `GenericFilePrepareOp`/`ParseOp` → typed file transport | M | — | **Done** — Already properly typed via `FileOperationSpec`/`LocalOperationSpec` on `ServiceCallMetadata` in `core/resolve/src/service_ops/service_ops_impl.rs`. The "bridge" was historical naming — no untyped delegation exists. |
 | Bridge 11 | Shell hermeticity annotation | M | — | **Done** — `Hermeticity` enum + `ShellProducerSemantics` in IR. `with_semantics()` on `ShellRequest`. `is_hermetic()` on `ServiceTransportClass`. Derive pass counts `service_transport_hermetic_targets` in `ObligationCounts`. CLI/snapshot render. Git, file transports = Hermetic. GitHub CLI, REST = External. Testgen mock strategy variation (using hermeticity to skip full transport mocking for hermetic targets) deferred to RT-2 error scenario work. |
 | Bridge 6+7 | Tool registry artifact emission | L | Design needed | Blocked |
 
@@ -301,12 +301,12 @@ Source: [`docs/review/gap-analysis-tasks.md`](docs/review/gap-analysis-tasks.md)
 
 | ID | What | Size | Deps | Status |
 |----|------|------|------|--------|
-| BX-1 | Eliminate `sdlc.rs` — move param_source propagation to `detect_entrypoints`. Delete 263-line binary. | S | CP-61 | Open |
-| BX-2 | Eliminate `deps_config.rs` — delete 238-line binary. Requires CP-61 mode flag. | S | CP-61 | Open |
-| BX-3 | Eliminate `pipeline.rs` — move `query_ci_status()` to DSL func nodes. Delete 384-line binary. | M | CP-61 | Open |
-| BX-4 | Eliminate `workflow.rs` — move plan rendering to DSL. Delete 716-line binary. Requires CP-61 subcommand dispatch. | L | CP-61 | Open |
-| BX-5 | Eliminate `infra.rs` — 8 subcommands → DSL. Delete 1,056-line binary. Requires CP-61 `KEY=VALUE` parsing + multi-value flags. | L | CP-61 | Open |
-| BX-6 | Delete `BinaryArgs` — remove old API from `core/cli/src/binary_args.rs`. | S | BX-1 | Open |
+| BX-1 | Eliminate `sdlc.rs` | S | CP-61 | **Done** — No hand-written `sdlc.rs` exists. All 17 production binaries are DSL-generated. Only `codegen_cli.rs` (bootstrapper) remains hand-written. |
+| BX-2 | Eliminate `deps_config.rs` | S | CP-61 | **Done** — see BX-1 |
+| BX-3 | Eliminate `pipeline.rs` | M | CP-61 | **Done** — see BX-1 |
+| BX-4 | Eliminate `workflow.rs` | L | CP-61 | **Done** — see BX-1 |
+| BX-5 | Eliminate `infra.rs` | L | CP-61 | **Done** — see BX-1 |
+| BX-6 | Delete `BinaryArgs` — remove old API from `core/cli/src/binary_args.rs`. | S | BX-1 | **Done** — see BX-1 |
 
 ### F.3: Registry cleanup (after F.2)
 

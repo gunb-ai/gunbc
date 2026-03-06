@@ -486,7 +486,7 @@ fn classify_collection(
         .unwrap_or_else(|| "Unknown".to_string());
 
     Ok(Computation::Collection {
-        family: kind.emit_family(),
+        family: daglang_lower::collection_emit_family(kind),
         element_type,
     })
 }

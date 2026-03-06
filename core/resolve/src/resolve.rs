@@ -32,6 +32,7 @@ use daglang_lower::{
 };
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
+use gunbc_ir::patterns::PatternOp;
 use gunbc_ir::resource::{RESOURCE_FILE, RESOURCE_FILE_PREFIX};
 use gunbc_ir::transport::{FileRequest, TransportRequest};
 use gunbc_ir::types::PortName;
@@ -245,26 +246,6 @@ impl Executable for SubDagDispatchOp {
             }
         }
         Ok(outputs)
-    }
-}
-
-/// Thin delegate to compiler's collection evaluator.
-#[derive(Debug, Clone)]
-struct CollectionDelegate {
-    kind: CollectionOpKind,
-}
-
-impl Executable for CollectionDelegate {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let items = match inputs.get("items") {
-            Some(Value::List(values)) => values.clone(),
-            Some(Value::Skipped) => return OutputMap::new().value("items", Value::Skipped).ok(),
-            None => Vec::new(),
-            Some(value) => vec![value.clone()],
-        };
-        let output = daglang_lower::eval::evaluate_collection(&self.kind, items, &inputs)
-            .map_err(|e| ExecError::new(e.message))?;
-        OutputMap::new().value("items", output).ok()
     }
 }
 
@@ -1768,7 +1749,7 @@ fn resolve_service_transport(
 // ============================================================================
 
 fn resolve_collection(kind: &CollectionOpKind) -> Result<DynOp, ResolveError> {
-    Ok(DynOp::new(CollectionDelegate { kind: *kind }))
+    Ok(DynOp::new(PatternOp::CollectionAggregate { kind: *kind }))
 }
 
 // ============================================================================
@@ -3229,8 +3210,8 @@ mod tests {
     }
 
     #[test]
-    fn collection_delegate_skipped_input_propagates() {
-        let op = CollectionDelegate {
+    fn collection_aggregate_skipped_input_propagates() {
+        let op = PatternOp::CollectionAggregate {
             kind: CollectionOpKind::Map,
         };
         let mut inputs = HashMap::new();
