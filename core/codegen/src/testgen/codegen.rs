@@ -249,7 +249,7 @@ pub struct TestGenerator<'a, T> {
     mock_spec: Option<MockSpec>,
     /// Function path to call for MockSpec (e.g., "crate::ci::graph_mock::ci_mock_spec()")
     mock_spec_fn: Option<String>,
-    /// Function path to call for declared signature (e.g., "crate::makegen_signature()")
+    /// Rust expression to compute the declared signature (e.g., "gunbc_ir::infer_signature(&dag)")
     signature_fn: Option<String>,
     /// CLI entrypoints for contract test generation: (tool_name, entrypoints).
     cli_entrypoints: Option<(String, Vec<crate::cli_gen::CliEntrypoint>)>,
@@ -4189,7 +4189,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                         self.config.target_name, profile_test.profile_name
                     ),
                     notes: vec![format!(
-                        "Compiles with --profile {}, executes in Real mode.",
+                        "Compiles with concrete binding `{}`, executes in Real mode.",
                         profile_test.profile_name
                     )],
                     tests: vec![TestFn {

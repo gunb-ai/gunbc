@@ -4,11 +4,19 @@ use daglang_derive::derive_artifacts;
 use daglang_lower::{
     CallableKind, LoweredOp, ObligationCategory, ServiceCallMetadata, ServiceTransportClass,
 };
+use gunbc_dag::extern_ops::GunbcExternResolver;
 use gunbc_exec::{lower, ExecutionMode};
 use gunbc_ir::{Dag, Edge, Node, Port};
+use gunbc_resolve::resolve_lowered_dag_with;
 use gunbc_test::{unique_temp_dir, unique_temp_file};
 use serde_json::Value;
 use std::path::PathBuf;
+
+fn resolve_lowered_dag(
+    dag: &Dag<LoweredOp>,
+) -> Result<Dag<gunbc_exec::DynOp>, gunbc_resolve::ResolveError> {
+    resolve_lowered_dag_with(dag, &GunbcExternResolver)
+}
 
 fn workspace_dsl_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl")

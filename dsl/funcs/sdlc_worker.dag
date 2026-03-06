@@ -23,16 +23,17 @@
 //   Step 5: Integration test for multi-stage progression
 //
 // Uses domain interfaces (Layer 2), not concrete services.
-// Profile binding (profiles/sdlc.dag) selects concrete implementations.
+// Concrete realization should come from domain modeling, not repo profiles.
 
 module funcs.sdlc_worker
 
+import extdeps.github.auth { github_token }
+import extdeps.llm.auth { llm_api_key }
 import interfaces.issue_provider { IssueProvider }
 import interfaces.claim_store { ClaimStore }
 import interfaces.outcome_ledger { OutcomeLedger }
 import interfaces.agent_provider { AgentProvider }
 import funcs.sdlc_stages { execute_stage }
-import shared.credentials { resolve_github_token, resolve_llm_api_key }
 import shared.dag_util { stage_result, aggregate_results, format_report }
 import std.state_machines { determine_stage }
 import std.types {
@@ -85,12 +86,12 @@ func dispatch_sdlc(
 {
   resolved_auth_token = match auth_token {
     Some(token) => token
-    None => resolve_github_token().token
+    None => github_token().token
   }
 
   resolved_api_key = match api_key {
     Some(token) => token
-    None => resolve_llm_api_key(provider: llm_provider).token
+    None => llm_api_key(provider: llm_provider).token
   }
 
   // Step 4a: Discover all open issues with SDLC labels

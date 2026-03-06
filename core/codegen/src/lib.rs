@@ -21,8 +21,6 @@ pub mod entrypoint;
 pub mod fidelity;
 pub mod file_writer;
 pub mod lambda_gen;
-#[allow(clippy::vec_init_then_push)]
-pub mod makegen;
 pub mod registry;
 pub mod rest_gen;
 pub mod template;

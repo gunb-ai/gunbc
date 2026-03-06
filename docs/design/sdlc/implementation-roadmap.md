@@ -75,7 +75,7 @@ These tasks bring the pipeline from "compiles" to "runs e2e on local profile."
 
 | ID | Task | Size | Deps | Design ref |
 |----|------|------|------|------------|
-| SDLC-1 | Register SDLC pipeline in workflow catalog. Add `sdlc` to `dsl_registry.rs`. Wire `WorkspaceBinary::Sdlc` dispatch. | M | — | mega-modeling §5.3 |
+| SDLC-1 | Register SDLC pipeline in workflow catalog and make it discoverable from DSL metadata. No Rust registry entry should be required. | M | — | mega-modeling §5.3 |
 | SDLC-2 | Fill dispatch runtime: real stage transition logic in `sdlc_dispatch_runtime.dag`. Determine next stage from labels, validate via state machine from `std.state_machines`. | M | SDLC-1 | domain-modeling §3, mega-modeling §A.4 |
 | SDLC-3 | Fill validation runtime: `review_gate` (approval label + reviewer comment check), `ci_gate` (passing CI status). | M | SDLC-2 | mega-modeling §6.4 (approval yield) |
 | SDLC-4 | Complete testing→done handler: cargo test + clippy invocation, conditional merge on all-pass, label transitions. | M | SDLC-1 | mega-modeling §A.5, §A.9 |

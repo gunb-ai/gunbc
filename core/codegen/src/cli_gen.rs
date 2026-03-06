@@ -35,7 +35,7 @@ pub struct ToolMeta {
     pub tool_name: Cow<'static, str>,
     /// Short description
     pub description: Cow<'static, str>,
-    /// The graph builder function name (e.g., "build_gist_graph").
+    /// The graph builder callable name (typically a direct `build_dsl_graph(...)` adapter).
     pub graph_builder_call: Cow<'static, str>,
     /// Arguments to pass to graph builder (e.g., "extensions.clone(), public")
     pub graph_builder_args: Cow<'static, str>,
@@ -57,12 +57,6 @@ pub struct ToolMeta {
     /// and `--mode=ensure` (dev: write if changed, default). In verify mode,
     /// the CLI forces dry-run execution so content_upsert nodes check but don't write.
     pub enable_mode: bool,
-    /// Available profile names for `--profile` enum flag (C20/RT59).
-    ///
-    /// When non-empty, the generated CLI accepts `--profile <name>` to select
-    /// which interface bindings are active. Profile selection determines runtime
-    /// behavior for services bound via `profile { bind Interface { impl: ... } }`.
-    pub available_profiles: Vec<String>,
 }
 
 /// An entrypoint that becomes a CLI flag.
@@ -423,22 +417,10 @@ fn build_cli_imports(tool: &ToolMeta, custom_import: Option<&str>, step_mode: bo
 
 /// Generate the graph builder call expression.
 ///
-/// When `has_profiles` is true, appends `selected_profile.as_deref()` to the
-/// graph builder arguments so the profile selection flows through to the DAG.
-fn generate_graph_builder_call(tool: &ToolMeta, has_profiles: bool) -> String {
+/// `graph_builder_args` is treated as the complete argument list.
+fn generate_graph_builder_call(tool: &ToolMeta, _has_profiles: bool) -> String {
     let f = &tool.graph_builder_call;
-    let base_args = &tool.graph_builder_args;
-
-    // Build final args list, optionally including profile
-    let args = if has_profiles {
-        if base_args.is_empty() {
-            "selected_profile.as_deref()".to_string()
-        } else {
-            format!("{}, selected_profile.as_deref()", base_args)
-        }
-    } else {
-        base_args.to_string()
-    };
+    let args = tool.graph_builder_args.to_string();
 
     if tool.returns_result {
         let call = if args.is_empty() {
@@ -464,21 +446,13 @@ fn generate_graph_builder_call(tool: &ToolMeta, has_profiles: bool) -> String {
 /// by name) still compiles.
 ///
 /// When `enable_mode` is true, adds a `--mode` string parameter to the schema.
-/// When `available_profiles` is non-empty, adds a `--profile` string parameter.
-fn generate_arg_parsing_with_mode(
-    entrypoints: &[CliEntrypoint],
-    enable_mode: bool,
-    available_profiles: &[String],
-) -> String {
+fn generate_arg_parsing_with_mode(entrypoints: &[CliEntrypoint], enable_mode: bool) -> String {
     let mut code = String::new();
 
     // Build schema
     code.push_str("let schema = vec![\n");
     if enable_mode {
         code.push_str("    gunbc_cli::CliParam::new(\"mode\", gunbc_cli::ParamType::Str),\n");
-    }
-    if !available_profiles.is_empty() {
-        code.push_str("    gunbc_cli::CliParam::new(\"profile\", gunbc_cli::ParamType::Str),\n");
     }
     for ep in entrypoints {
         let type_expr = match ep.type_id {
@@ -764,45 +738,6 @@ fn generate_mode_block(tool: &ToolMeta) -> String {
     code
 }
 
-/// Generate the `--profile` handling block (C20/RT59).
-///
-/// When `available_profiles` is non-empty, generates code that:
-/// 1. Extracts the `--profile` value from parsed CLI args
-/// 2. Validates it against the available profile names
-/// 3. Exits with an error if the profile is invalid
-///
-/// The profile value is used when building the graph with `build_dsl_graph_with_profile`.
-fn generate_profile_block(tool: &ToolMeta) -> String {
-    if tool.available_profiles.is_empty() {
-        return String::new();
-    }
-
-    let profiles_list = tool
-        .available_profiles
-        .iter()
-        .map(|p| format!("\"{}\"", p))
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    let mut code = String::new();
-    code.push_str("// --profile flag: select interface bindings (C20/RT59)\n");
-    code.push_str(&format!(
-        "let valid_profiles: &[&str] = &[{}];\n",
-        profiles_list
-    ));
-    code.push_str("let selected_profile: Option<String> = match cli_inputs.get(\"profile\") {\n");
-    code.push_str("    Some(Value::Str(p)) => {\n");
-    code.push_str("        if !valid_profiles.contains(&p.as_str()) {\n");
-    code.push_str("            eprintln!(\"error: invalid profile '{}'. Valid profiles: {:?}\", p, valid_profiles);\n");
-    code.push_str("            process::exit(1);\n");
-    code.push_str("        }\n");
-    code.push_str("        Some(p.clone())\n");
-    code.push_str("    }\n");
-    code.push_str("    _ => None, // default: no profile selected (stub interfaces)\n");
-    code.push_str("};\n\n");
-    code
-}
-
 /// Generate the dry-run mode block.
 fn generate_dry_run_block(tool: &ToolMeta) -> String {
     let mock_setup = generate_mock_setup(&tool.mock_spec_call);
@@ -852,24 +787,19 @@ fn build_cli_source_file(
 
 /// Build the `main()` function for standard mode.
 fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
-    let has_profiles = !tool.available_profiles.is_empty();
-    let arg_parsing =
-        generate_arg_parsing_with_mode(entrypoints, tool.enable_mode, &tool.available_profiles);
-    let graph_builder_call = generate_graph_builder_call(tool, has_profiles);
+    let arg_parsing = generate_arg_parsing_with_mode(entrypoints, tool.enable_mode);
+    let graph_builder_call = generate_graph_builder_call(tool, false);
     let input_mocks = generate_input_mocks(entrypoints);
     let dry_run_block = generate_dry_run_block(tool);
     let body_lines_expr = generate_preamble_body_lines(entrypoints);
     let success_port_arg = generate_success_port_arg(tool);
     let mode_block = generate_mode_block(tool);
-    let profile_block = generate_profile_block(tool);
-
     let body_code = format!(
         "let args: Vec<String> = env::args().collect();\n\
          \n\
          // Parse arguments\n\
          {arg_parsing}\n\
          {mode_block}\
-         {profile_block}\
          // Build the graph and compose with freshness checks\n\
          let dag = {graph_builder_call};\n\
          let steps = check_and_plan_freshness();\n\
@@ -895,7 +825,6 @@ fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
          execute_and_display(&dag, exec_mode, animated, {success_port_arg}, Some(&input_mocks));",
         arg_parsing = arg_parsing,
         mode_block = mode_block,
-        profile_block = profile_block,
         graph_builder_call = graph_builder_call,
         input_mocks = input_mocks,
         dry_run_block = dry_run_block,
@@ -926,16 +855,6 @@ fn build_help_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
         ""
     };
 
-    let profile_help = if tool.available_profiles.is_empty() {
-        String::new()
-    } else {
-        let profiles = tool.available_profiles.join(", ");
-        format!(
-            "println!(\"        --profile NAME   Select profile ({})\");\n         ",
-            profiles
-        )
-    };
-
     let body_code = format!(
         "println!(\"{tool_name} - {description}\");\n\
          println!();\n\
@@ -946,7 +865,6 @@ fn build_help_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
          {help_options}\
          println!(\"    -n, --dry-run        Don't perform actual I/O\");\n\
          {mode_help}\
-         {profile_help}\
          println!(\"    --print-inputs json  Print parsed inputs as JSON and exit\");\n\
          println!(\"    -h, --help           Print this help\");\n\
          println!();\n\
@@ -955,7 +873,6 @@ fn build_help_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
         description = tool.description,
         help_options = help_options,
         mode_help = mode_help,
-        profile_help = profile_help,
     );
 
     FnDef {
@@ -1064,26 +981,11 @@ fn build_subcmd_main_fn(tool: &ToolMeta, subcommands: &[crate::registry::Subcomm
 
 /// Build a `run_<func>()` function for a single subcommand.
 fn build_subcmd_run_fn(tool: &ToolMeta, subcmd: &crate::registry::SubcommandDef) -> FnDef {
-    let has_profiles = !tool.available_profiles.is_empty();
-    let arg_parsing = generate_arg_parsing_with_mode(
-        &subcmd.entrypoints,
-        tool.enable_mode,
-        &tool.available_profiles,
-    );
+    let arg_parsing = generate_arg_parsing_with_mode(&subcmd.entrypoints, tool.enable_mode);
     let input_mocks = generate_input_mocks(&subcmd.entrypoints);
     let body_lines_expr = generate_preamble_body_lines(&subcmd.entrypoints);
 
-    // Build args, optionally including profile
-    let base_args = &subcmd.graph_builder_args;
-    let args = if has_profiles {
-        if base_args.is_empty() {
-            "selected_profile.as_deref()".to_string()
-        } else {
-            format!("{}, selected_profile.as_deref()", base_args)
-        }
-    } else {
-        base_args.to_string()
-    };
+    let args = subcmd.graph_builder_args.to_string();
 
     let graph_builder_call = if subcmd.returns_result {
         let call = if args.is_empty() {
@@ -1124,8 +1026,6 @@ fn build_subcmd_run_fn(tool: &ToolMeta, subcmd: &crate::registry::SubcommandDef)
         String::new()
     };
 
-    let profile_block = generate_profile_block(tool);
-
     let body_code = format!(
         "// Reconstruct args with program name for parser compatibility\n\
          let mut args: Vec<String> = Vec::new();\n\
@@ -1135,7 +1035,6 @@ fn build_subcmd_run_fn(tool: &ToolMeta, subcmd: &crate::registry::SubcommandDef)
          \n\
          {arg_parsing}\n\
          {mode_block}\
-         {profile_block}\
          // Build the graph and compose with freshness checks\n\
          let dag = {graph_builder_call};\n\
          let steps = check_and_plan_freshness();\n\
@@ -1161,7 +1060,6 @@ fn build_subcmd_run_fn(tool: &ToolMeta, subcmd: &crate::registry::SubcommandDef)
         subcmd_name = subcmd.name,
         arg_parsing = arg_parsing,
         mode_block = mode_block,
-        profile_block = profile_block,
         graph_builder_call = graph_builder_call,
         input_mocks = input_mocks,
         dry_run_block = dry_run_block,
@@ -1308,8 +1206,7 @@ match parsed.subcommand {\n\
 
 /// Build the `run_full_dag()` function for step mode.
 fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
-    // Step mode doesn't need profile support - it's for CI step execution
-    let arg_parsing = generate_arg_parsing_with_mode(entrypoints, false, &[]);
+    let arg_parsing = generate_arg_parsing_with_mode(entrypoints, false);
     let graph_builder_call = generate_graph_builder_call(tool, false);
     let input_mocks = generate_input_mocks(entrypoints);
     let dry_run_block = generate_dry_run_block(tool);
@@ -1661,6 +1558,9 @@ fn build_step_help_fn(tool: &ToolMeta) -> FnDef {
 mod tests {
     use super::*;
 
+    const DSL_GRAPH_BUILDER_ADAPTER: &str =
+        "(|relative_module, resolver, opts| gunbc_resolve::builder::build_dsl_graph(relative_module, resolver, opts).map(|result| result.dag))";
+
     #[test]
     fn test_cli_entrypoint_flag_name() {
         let ep = CliEntrypoint::new("repo_path", ParamType::Str);
@@ -1680,7 +1580,6 @@ mod tests {
             enable_step_mode: false,
             mock_spec_call: Some("some_crate::graph_mock::mock_spec()".into()),
             enable_mode: false,
-            available_profiles: vec![],
         };
 
         let entrypoints = vec![CliEntrypoint::new("repo_path", ParamType::Str)
@@ -1712,7 +1611,6 @@ mod tests {
             enable_step_mode: false,
             mock_spec_call: Some("mock_spec()".into()),
             enable_mode: false,
-            available_profiles: vec![],
         };
         let entrypoints = vec![];
 
@@ -1733,14 +1631,13 @@ mod tests {
             crate_name: "gunbc-build-all".into(),
             tool_name: "build-all".into(),
             description: "Build pipeline".into(),
-            graph_builder_call: "build_build_graph".into(),
-            graph_builder_args: "".into(),
+            graph_builder_call: DSL_GRAPH_BUILDER_ADAPTER.into(),
+            graph_builder_args: "\"tools/build.dag\", &GunbcExternResolver, gunbc_resolve::BuildOpts { entry_func: Some(\"build_all\"), profile: None }".into(),
             returns_result: true,
             success_port: Some("overall_success".into()),
             enable_step_mode: true,
             mock_spec_call: Some("build_mock_spec()".into()),
             enable_mode: false,
-            available_profiles: vec![],
         };
         let entrypoints = vec![];
 
@@ -1765,19 +1662,18 @@ mod tests {
             crate_name: "gunbc-build-all".into(),
             tool_name: "build-all".into(),
             description: "Test".into(),
-            graph_builder_call: "build_build_graph".into(),
-            graph_builder_args: "".into(),
+            graph_builder_call: DSL_GRAPH_BUILDER_ADAPTER.into(),
+            graph_builder_args: "\"tools/build.dag\", &GunbcExternResolver, gunbc_resolve::BuildOpts { entry_func: Some(\"build_all\"), profile: None }".into(),
             returns_result: true,
             success_port: None,
             enable_step_mode: false,
             mock_spec_call: Some("mock()".into()),
             enable_mode: false,
-            available_profiles: vec![],
         };
         let entrypoints = vec![];
 
         let code = generate_cli(&tool, &entrypoints);
-        assert!(code.contains("match build_build_graph()"));
+        assert!(code.contains("gunbc_resolve::builder::build_dsl_graph"));
         assert!(code.contains("Ok(d) => d"));
         assert!(code.contains("process::exit(1)"));
     }
@@ -1795,7 +1691,6 @@ mod tests {
             enable_step_mode: false,
             mock_spec_call: Some("mock()".into()),
             enable_mode: false,
-            available_profiles: vec![],
         };
         let entrypoints = vec![];
 
@@ -1823,14 +1718,13 @@ mod tests {
             crate_name: "gunbc-build-all".into(),
             tool_name: "build-all".into(),
             description: "Build".into(),
-            graph_builder_call: "build_build_graph".into(),
-            graph_builder_args: "".into(),
+            graph_builder_call: DSL_GRAPH_BUILDER_ADAPTER.into(),
+            graph_builder_args: "\"tools/build.dag\", &GunbcExternResolver, gunbc_resolve::BuildOpts { entry_func: Some(\"build_all\"), profile: None }".into(),
             returns_result: true,
             success_port: Some("overall_success".into()),
             enable_step_mode: true,
             mock_spec_call: Some("mock()".into()),
             enable_mode: false,
-            available_profiles: vec![],
         };
         let entrypoints = vec![];
 
@@ -1849,14 +1743,13 @@ mod tests {
             crate_name: "gunbc-deps".into(),
             tool_name: "deps".into(),
             description: "Generate deps.toml".into(),
-            graph_builder_call: "build_deps_graph".into(),
-            graph_builder_args: "".into(),
+            graph_builder_call: DSL_GRAPH_BUILDER_ADAPTER.into(),
+            graph_builder_args: "\"tools/deps.dag\", &GunbcExternResolver, gunbc_resolve::BuildOpts { entry_func: Some(\"deps\"), profile: None }".into(),
             returns_result: false,
             success_port: None,
             enable_step_mode: false,
             mock_spec_call: Some("mock()".into()),
             enable_mode: true,
-            available_profiles: vec![],
         };
         let entrypoints = vec![];
 
@@ -1896,7 +1789,6 @@ mod tests {
             enable_step_mode: false,
             mock_spec_call: Some("mock()".into()),
             enable_mode: false,
-            available_profiles: vec![],
         };
         let entrypoints = vec![];
 
@@ -1927,7 +1819,6 @@ mod tests {
             enable_step_mode: false,
             mock_spec_call: None,
             enable_mode: false,
-            available_profiles: vec![],
         };
 
         let subcommands = vec![
@@ -2005,76 +1896,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_generate_cli_with_profile_flag() {
-        let tool = ToolMeta {
-            crate_name: "gunbc-workflow".into(),
-            tool_name: "sdlc".into(),
-            description: "SDLC pipeline".into(),
-            graph_builder_call: "build_sdlc_graph".into(),
-            graph_builder_args: "".into(),
-            returns_result: false,
-            success_port: None,
-            enable_step_mode: false,
-            mock_spec_call: Some("mock()".into()),
-            enable_mode: false,
-            available_profiles: vec!["local".to_string(), "unit_test".to_string()],
-        };
-        let entrypoints = vec![];
-
-        let code = generate_cli(&tool, &entrypoints);
-
-        // Should have profile schema param
-        assert!(
-            code.contains("\"profile\""),
-            "schema should have profile param"
-        );
-
-        // Should have profile validation
-        assert!(
-            code.contains("valid_profiles"),
-            "should have profile validation"
-        );
-        assert!(code.contains("\"local\""), "should list local profile");
-        assert!(
-            code.contains("\"unit_test\""),
-            "should list unit_test profile"
-        );
-
-        // Help should mention profile
-        assert!(
-            code.contains("--profile NAME"),
-            "help should mention --profile flag"
-        );
-    }
-
-    #[test]
-    fn test_generate_cli_without_profile_flag() {
-        let tool = ToolMeta {
-            crate_name: "gunbc-gist".into(),
-            tool_name: "gist".into(),
-            description: "Create gist".into(),
-            graph_builder_call: "build_gist_graph".into(),
-            graph_builder_args: "".into(),
-            returns_result: false,
-            success_port: None,
-            enable_step_mode: false,
-            mock_spec_call: Some("mock()".into()),
-            enable_mode: false,
-            available_profiles: vec![],
-        };
-        let entrypoints = vec![];
-
-        let code = generate_cli(&tool, &entrypoints);
-
-        // Should NOT have profile handling
-        assert!(
-            !code.contains("valid_profiles"),
-            "should not have profile validation when no profiles"
-        );
-        assert!(
-            !code.contains("--profile NAME"),
-            "help should not mention --profile when no profiles"
-        );
-    }
 }

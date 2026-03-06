@@ -17,6 +17,7 @@ daglang-driver = { path = "../daglang-driver" }
 gunbc-dag = { path = "../../../gunbc-dag" }
 gunbc-ir = { path = "../../ir" }
 gunbc-exec = { path = "../../exec" }
+gunbc-resolve = { path = "../../resolve" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 toml = { workspace = true }

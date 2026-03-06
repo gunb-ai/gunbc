@@ -211,7 +211,7 @@ pub fn generate_target_with_types<T: Executable + Clone + 'static>(
     }
 
     // CLI contract test generation: tool_name lookup is now DSL-driven via
-    // discover_tool_defs_from_dsl() in gunbc-dag/src/dsl_registry.rs.
+    // discover_tool_defs_from_dsl() in core/codegen/src/tool_discovery.rs.
     // All current testgen targets set tool_name: None, so this path is unused.
 
     generator.generate_test_module(&config.module_name, &config.dag_builder_call)

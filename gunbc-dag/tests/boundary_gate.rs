@@ -35,12 +35,10 @@ const ALLOWED_DIRS: &[&str] = &[
     "gunbc-dag/src/extern_ops.rs",
     // Binary entrypoints
     "gunbc-dag/src/bin/",
-    // Test generation DAG (mock_interpreter + profile_discovery relocated to core/codegen in B5)
+    // Test generation DAG support and narrow extern bridges
     "gunbc-dag/src/testgen_dag/",
     // Workflow orchestration
     "gunbc-dag/src/workflow/",
-    // DSL registry
-    "gunbc-dag/src/dsl_registry.rs",
 ];
 
 /// Current baseline: total `push_str` occurrences in non-boundary Rust files.

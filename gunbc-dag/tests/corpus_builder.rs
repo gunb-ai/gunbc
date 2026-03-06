@@ -7,7 +7,8 @@
 #![allow(clippy::disallowed_methods)]
 
 use gunbc_codegen::testgen::mock_corpus::{build_corpus, WorkflowInfo};
-use gunbc_dag::dsl_builder::build_dsl_graph_for_entrypoint;
+use gunbc_dag::extern_ops::GunbcExternResolver;
+use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
 use gunbc_test::auto_mock_spec;
 use gunbc_test::MockSpec;
 
@@ -20,7 +21,16 @@ fn compile_tool(
     entry_func: &str,
     workflow_name: &str,
 ) -> Option<(gunbc_ir::Dag<gunbc_exec::DynOp>, MockSpec, WorkflowInfo)> {
-    let dag = build_dsl_graph_for_entrypoint(dag_file, Some(entry_func), None).ok()?;
+    let dag = build_dsl_graph(
+        dag_file,
+        &GunbcExternResolver,
+        BuildOpts {
+            entry_func: Some(entry_func),
+            profile: None,
+        },
+    )
+    .map(|result| result.dag)
+    .ok()?;
     let spec = auto_mock_spec(&dag, workflow_name);
     let info = WorkflowInfo {
         name: workflow_name.to_string(),

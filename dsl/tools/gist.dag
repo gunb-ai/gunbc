@@ -9,8 +9,8 @@
 module tools.gist
 
 import extdeps.git
+import extdeps.github.auth { github_token }
 import extdeps.github.gists
-import shared.credentials { resolve_github_token }
 import std.resources { Filesystem, Network }
 import std.patterns { read_text_files }
 import std.types { CommitSha, Url }
@@ -46,7 +46,7 @@ func gist(public: Bool = false) -> { url: Url }
     file_contents: result.files |> map(f => f.content),
     skipped: result.skipped
   )
-  token = resolve_github_token(allow_secret_manager_fallback: true)
+  token = github_token()
   gist_result = github.Gist.Create(
     description: branch_info.branch,
     content: content,
@@ -63,7 +63,7 @@ func gist_diff(base_ref: CommitSha = "HEAD~1", public: Bool = false) -> { url: U
   current = git.Core.CurrentBranch()
   changes = git.Core.Diff(base: base_ref)
   markdown = render_diff_markdown(diff: changes.diff, branch: current.branch, base_ref: base_ref)
-  token = resolve_github_token(allow_secret_manager_fallback: true)
+  token = github_token()
   result = github.Gist.Create(
     description: current.branch,
     content: markdown,
@@ -85,7 +85,7 @@ func gist_recent(since: String = "3.days.ago", public: Bool = false) -> { url: U
     branch: current.branch,
     base_ref: base.base_ref
   )
-  token = resolve_github_token(allow_secret_manager_fallback: true)
+  token = github_token()
   result = github.Gist.Create(
     description: current.branch,
     content: markdown,

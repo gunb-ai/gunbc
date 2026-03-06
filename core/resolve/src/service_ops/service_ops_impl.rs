@@ -1373,7 +1373,7 @@ impl Executable for InterfaceStubPrepareOp {
     }
 }
 
-/// Interface stub execute: errors in Real mode ("requires --profile"),
+/// Interface stub execute: errors in Real mode when no concrete binding exists,
 /// auto-mocked in DryRun (boundary mocks supply typed outputs).
 #[derive(Debug, Clone)]
 pub struct InterfaceStubExecuteOp {
@@ -1387,7 +1387,7 @@ impl Executable for InterfaceStubExecuteOp {
         _inputs: HashMap<String, Value>,
     ) -> Result<HashMap<String, Value>, ExecError> {
         Err(ExecError::new(format!(
-            "interface stub `{}.{}` requires --profile: no active profile bindings \
+            "interface stub `{}.{}` has no concrete binding in Real mode \
              (this call would be auto-mocked in DryRun mode)",
             self.interface, self.capability
         )))
@@ -2166,8 +2166,8 @@ mod tests {
             "error should name the interface.capability: {msg}"
         );
         assert!(
-            msg.contains("--profile"),
-            "error should mention --profile: {msg}"
+            msg.contains("no concrete binding"),
+            "error should mention the missing concrete binding: {msg}"
         );
     }
 

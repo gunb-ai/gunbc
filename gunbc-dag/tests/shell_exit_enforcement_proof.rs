@@ -21,14 +21,21 @@
 
 use std::sync::{Arc, Mutex};
 
-use gunbc_dag::dsl_builder::build_dsl_graph_with_profile;
+use gunbc_dag::extern_ops::GunbcExternResolver;
 use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
 use gunbc_ir::transport::{
     HttpMethod, RestResponse, ShellResponse, TransportRequest, TransportResponse,
 };
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_lib_transport::{executor::TransportError, TransportBackend, TransportBackendGuard};
+use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
 use std::collections::{HashSet, VecDeque};
+
+fn build_graph(relative_module: &str) -> gunbc_ir::Dag<gunbc_exec::DynOp> {
+    build_dsl_graph(relative_module, &GunbcExternResolver, BuildOpts::default())
+        .map(|result| result.dag)
+        .unwrap_or_else(|e| panic!("`{relative_module}` should build: {e}"))
+}
 
 fn connected_subdag<T: Clone>(dag: &gunbc_ir::Dag<T>, seed_prefix: &str) -> gunbc_ir::Dag<T> {
     let seed = dag
@@ -115,11 +122,6 @@ impl TransportBackend for GcloudExpiredBackend {
                     "oldest-commit\n",
                 )))
             }
-            // Credential chain probes CI environment via printenv; return empty
-            // to simulate non-CI, forcing fallback to gcloud.
-            TransportRequest::Shell(shell) if shell.command == "printenv" => {
-                Ok(TransportResponse::Shell(ShellResponse::ok("")))
-            }
             // KEY: gcloud returns exit 1 (session expired / not logged in)
             TransportRequest::Shell(shell) if shell.command == "gcloud" => {
                 Ok(TransportResponse::Shell(ShellResponse::failed(
@@ -128,8 +130,8 @@ impl TransportBackend for GcloudExpiredBackend {
                 )))
             }
             // Any non-gist REST call here would be a regression in the current
-            // gist credential helper, which should resolve via shell-only
-            // env/gcloud paths before the GitHub API request.
+            // provider-auth path, which should finish token materialization
+            // before the GitHub API request.
             TransportRequest::Rest(rest) if !rest.url.ends_with("/gists") => {
                 Err(TransportError::new(format!(
                     "credential REST call should not succeed when gcloud fails: {}",
@@ -198,11 +200,6 @@ impl TransportBackend for Rest401Backend {
                     "oldest-commit\n",
                 )))
             }
-            // Shared gist credential helper probes the local env first; return
-            // empty to force the GCP Secret Manager fallback path.
-            TransportRequest::Shell(shell) if shell.command == "printenv" => {
-                Ok(TransportResponse::Shell(ShellResponse::ok("")))
-            }
             TransportRequest::Shell(shell) if shell.command == "gcloud" => Ok(
                 TransportResponse::Shell(ShellResponse::ok("ghp_mock_token\n")),
             ),
@@ -230,8 +227,7 @@ impl TransportBackend for Rest401Backend {
 }
 
 fn build_gist_recent_with_inputs() -> (gunbc_ir::Dag<gunbc_exec::DynOp>, BoundaryMocks) {
-    let dag = build_dsl_graph_with_profile("tools/gist.dag", "profiles.gist.local")
-        .expect("gist-recent graph should build");
+    let dag = build_graph("tools/gist.dag");
     let dag = connected_subdag(&dag, "tools.gist::gist_recent");
 
     let mut input_mocks = BoundaryMocks::new();
@@ -265,9 +261,9 @@ fn build_gist_recent_with_inputs() -> (gunbc_ir::Dag<gunbc_exec::DynOp>, Boundar
 /// then flow to the GitHub API as the auth token, causing a 401 error that
 /// was misdiagnosed as a token permission issue.
 ///
-/// After RT-I4, the shared gist credential helper fails closed when the
-/// `gcloud` fallback exits non-zero. Execution now stops before sending an
-/// unauthenticated gist request.
+/// After RT-I4, the provider-auth Secret Manager path fails closed when the
+/// `gcloud` shell transport exits non-zero. Execution now stops before sending
+/// an unauthenticated gist request.
 #[test]
 fn gcloud_exit_code_1_fails_with_error() {
     let (dag, input_mocks) = build_gist_recent_with_inputs();
@@ -295,7 +291,6 @@ fn gcloud_exit_code_1_fails_with_error() {
             || error.contains("credential")
             || error.contains("Skipped")
             || error.contains("passthrough")
-            || error.contains("requires --profile")
             || error.contains("missing required"),
         "error should mention exit code or credential failure, got: {error}"
     );
@@ -352,8 +347,7 @@ fn rest_401_response_surfaces_as_error() {
 /// exit code 1 (expired gcloud session) or HTTP 401 (bad credentials).
 #[test]
 fn auto_mock_spec_always_produces_success_responses() {
-    let dag = build_dsl_graph_with_profile("tools/gist.dag", "profiles.gist.local")
-        .expect("gist-recent graph should build");
+    let dag = build_graph("tools/gist.dag");
     let dag = connected_subdag(&dag, "tools.gist::gist_recent");
 
     let spec = gunbc_test::auto_mock_spec(&dag, "gist_recent");

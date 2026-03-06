@@ -112,7 +112,7 @@ pub trait Executable: fmt::Debug {
 /// Type-erased executable operation.
 ///
 /// Wraps any `Executable` impl for use in `Dag<DynOp>`, eliminating the need
-/// for per-module union enums (e.g., `PragmaGraphOp`, `WorkspaceOp`).
+/// for legacy per-module union enums in app crates.
 ///
 /// Clone is cheap (Arc refcount bump). Satisfies `Executable + Clone + Send + 'static`.
 #[derive(Clone)]

@@ -2,11 +2,12 @@
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
 use daglang_driver::DriverContext;
-use gunbc_dag::resolve_lowered_dag;
+use gunbc_dag::extern_ops::GunbcExternResolver;
 use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
 use gunbc_ir::ToolchainCommands;
 use gunbc_ir::Value;
 use gunbc_ir::WorkspaceLayout;
+use gunbc_resolve::resolve_lowered_dag_with;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -26,6 +27,12 @@ fn workspace_root() -> PathBuf {
 
 fn daglang_bin() -> &'static str {
     env!("CARGO_BIN_EXE_daglang")
+}
+
+fn resolve_lowered_dag(
+    dag: &gunbc_ir::Dag<daglang_lower::LoweredOp>,
+) -> Result<gunbc_ir::Dag<gunbc_exec::DynOp>, gunbc_resolve::ResolveError> {
+    resolve_lowered_dag_with(dag, &GunbcExternResolver)
 }
 
 fn unique_workspace_target_dir(name: &str) -> PathBuf {

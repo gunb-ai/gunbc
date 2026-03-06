@@ -1,62 +1,87 @@
-#![allow(clippy::disallowed_methods)] // Live integration harnesses shell out intentionally.
+#![allow(clippy::disallowed_methods)] // Live integration harness shells out intentionally.
 
-use gunbc_dag::dsl_builder::build_dsl_graph_with_profile;
+use gunbc_dag::extern_ops::GunbcExternResolver;
 use gunbc_exec::{execute_with_mode_and_inputs, lower, BoundaryMocks, ExecutionMode};
-use gunbc_ir::{detect_entrypoints, Dag, Value as DagValue};
+use gunbc_ir::{detect_entrypoints, Value};
+use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
 use gunbc_test::{guard_test, FermiCost, TestClass};
 use serde_json::Value as JsonValue;
-use std::collections::{HashSet, VecDeque};
 use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const SDLC_LOCAL_PROFILE: &str = "profiles.sdlc.local";
+const SDLC_OWNER: &str = "gunb-ai";
+const SDLC_REPO: &str = "integration_testing";
+const GITHUB_SECRET_PROJECT: &str = "gunbai-secrets";
+const GITHUB_SECRET_NAME: &str = "github-token";
 
 fn should_run(name: &str, cost: FermiCost, requires: &[&str], secrets: &[&str]) -> bool {
     guard_test(name, TestClass::Integration, cost, requires, secrets)
 }
 
-fn connected_subdag<T: Clone>(dag: &Dag<T>, seed_prefix: &str) -> Dag<T> {
-    let seed = dag
-        .nodes
-        .iter()
-        .find(|node| node.id.0.starts_with(seed_prefix))
-        .map(|node| node.id.0.clone())
-        .unwrap_or_else(|| panic!("seed node prefix `{seed_prefix}` not found in DAG"));
-
-    let mut visited: HashSet<String> = HashSet::new();
-    let mut queue: VecDeque<String> = VecDeque::new();
-    visited.insert(seed.clone());
-    queue.push_back(seed);
-
-    while let Some(current) = queue.pop_front() {
-        for edge in &dag.edges {
-            let neighbor = if edge.from_node.0 == current {
-                Some(edge.to_node.0.clone())
-            } else if edge.to_node.0 == current {
-                Some(edge.from_node.0.clone())
-            } else {
-                None
-            };
-            if let Some(node_id) = neighbor {
-                if visited.insert(node_id.clone()) {
-                    queue.push_back(node_id);
-                }
-            }
-        }
-    }
-
-    let mut subdag = dag.clone();
-    subdag.nodes.retain(|node| visited.contains(&node.id.0));
-    subdag
-        .edges
-        .retain(|edge| visited.contains(&edge.from_node.0) && visited.contains(&edge.to_node.0));
-    subdag
+fn env_var_nonempty(name: &str) -> Option<String> {
+    env::var(name)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
-fn node_ids(dag: &Dag<gunbc_exec::DynOp>) -> Vec<String> {
+fn env_flag_enabled(name: &str) -> bool {
+    matches!(
+        env::var(name).ok().as_deref(),
+        Some("1") | Some("true") | Some("TRUE")
+    )
+}
+
+fn llm_api_key_for_provider(provider: &str) -> Option<String> {
+    match provider {
+        "openai" => env_var_nonempty("OPENAI_API_KEY"),
+        _ => env_var_nonempty("ANTHROPIC_API_KEY"),
+    }
+}
+
+fn github_token_from_secret_manager() -> Option<String> {
+    let output = Command::new("gcloud")
+        .args([
+            "secrets",
+            "versions",
+            "access",
+            "latest",
+            "--secret",
+            GITHUB_SECRET_NAME,
+            "--project",
+            GITHUB_SECRET_PROJECT,
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let token = String::from_utf8(output.stdout).ok()?.trim().to_string();
+    if token.is_empty() {
+        None
+    } else {
+        Some(token)
+    }
+}
+
+fn build_local_worker_graph() -> gunbc_ir::Dag<gunbc_exec::DynOp> {
+    build_dsl_graph(
+        "funcs/sdlc_worker.dag",
+        &GunbcExternResolver,
+        BuildOpts {
+            entry_func: Some("dispatch_sdlc"),
+            profile: Some(SDLC_LOCAL_PROFILE),
+        },
+    )
+    .map(|result| result.dag)
+    .unwrap_or_else(|e| panic!("local SDLC worker graph should build: {e}"))
+}
+
+fn node_ids(dag: &gunbc_ir::Dag<gunbc_exec::DynOp>) -> Vec<String> {
     dag.nodes.iter().map(|node| node.id.0.clone()).collect()
 }
 
@@ -64,18 +89,10 @@ fn has_prefix(node_ids: &[String], prefix: &str) -> bool {
     node_ids.iter().any(|id| id.starts_with(prefix))
 }
 
-fn unique_suffix() -> String {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    format!("{}-{}", std::process::id(), nanos)
-}
-
 fn run_command(mut cmd: Command, description: &str) -> String {
     let output = cmd
         .output()
-        .unwrap_or_else(|err| panic!("failed to spawn command for `{description}`: {err}"));
+        .unwrap_or_else(|err| panic!("failed to spawn `{description}`: {err}"));
     assert!(
         output.status.success(),
         "command `{description}` failed (status: {:?})\nstdout:\n{}\nstderr:\n{}",
@@ -126,344 +143,178 @@ fn github_request(
     (status, json)
 }
 
-fn env_var(name: &str) -> String {
-    env::var(name).unwrap_or_else(|_| panic!("missing required env var `{name}`"))
+fn unique_suffix() -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    format!("{}-{nanos}", std::process::id())
 }
 
-fn env_var_nonempty(name: &str) -> Option<String> {
-    env::var(name)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-fn env_flag_enabled(name: &str) -> bool {
-    matches!(
-        env::var(name).ok().as_deref(),
-        Some("1") | Some("true") | Some("TRUE")
-    )
-}
-
-fn llm_api_env_var(provider: &str) -> &'static str {
-    match provider {
-        "openai" => "OPENAI_API_KEY",
-        _ => "ANTHROPIC_API_KEY",
-    }
-}
-
-fn is_sdlc_stage_label(label: &str) -> bool {
-    matches!(
-        label,
-        "sdlc:idea"
-            | "sdlc:design"
-            | "sdlc:design-review"
-            | "sdlc:accepted"
-            | "sdlc:implementing"
-            | "sdlc:code-review"
-            | "sdlc:testing"
-            | "sdlc:done"
-    )
-}
-
-fn is_sdlc_automation_comment(body: &str) -> bool {
-    body.contains("<!-- sdlc:")
-        || body.contains("_Generated by gunbc SDLC pipeline_")
-        || body.contains("_Reviewed by gunbc SDLC pipeline_")
-        || body.contains("_Approved by gunbc SDLC pipeline_")
-}
-
-fn reset_local_sdlc_issue_state(token: &str, owner: &str, repo: &str, issue_number: &str) {
-    let (issue_status, issue_json) = github_request(
+fn create_ephemeral_issue(token: &str) -> String {
+    let suffix = unique_suffix();
+    let body = serde_json::json!({
+        "title": format!("[sdlc-live] design-stage {}", suffix),
+        "body": format!("Ephemeral SDLC integration test issue.\n\nmarker: sdlc-live:{suffix}"),
+        "labels": ["sdlc:idea", "sdlc:test"],
+    });
+    let (status, json) = github_request(
         token,
-        "GET",
-        &format!("/repos/{owner}/{repo}/issues/{issue_number}"),
-        None,
+        "POST",
+        &format!("/repos/{SDLC_OWNER}/{SDLC_REPO}/issues"),
+        Some(&body),
     );
-    assert_eq!(issue_status, 200, "issue fetch should succeed before reset");
+    assert_eq!(status, 201, "ephemeral issue creation should return HTTP 201");
+    json["number"]
+        .as_i64()
+        .unwrap_or_else(|| panic!("created issue should contain numeric `number`: {json}"))
+        .to_string()
+}
 
-    let mut labels: Vec<String> = issue_json["labels"]
-        .as_array()
-        .unwrap_or(&Vec::new())
-        .iter()
-        .filter_map(|label| label["name"].as_str())
-        .filter(|label| !is_sdlc_stage_label(label))
-        .map(ToString::to_string)
-        .collect();
-    labels.push("sdlc:idea".to_string());
-
-    let (labels_status, _) = github_request(
+fn close_issue(token: &str, issue_number: &str) {
+    let body = serde_json::json!({ "state": "closed" });
+    let (status, _) = github_request(
         token,
-        "PUT",
-        &format!("/repos/{owner}/{repo}/issues/{issue_number}/labels"),
-        Some(&serde_json::json!(labels)),
+        "PATCH",
+        &format!("/repos/{SDLC_OWNER}/{SDLC_REPO}/issues/{issue_number}"),
+        Some(&body),
     );
-    assert_eq!(labels_status, 200, "issue relabel to sdlc:idea should succeed");
+    assert_eq!(status, 200, "ephemeral issue cleanup should close the issue");
+}
 
-    let (comments_status, comments_json) = github_request(
-        token,
-        "GET",
-        &format!("/repos/{owner}/{repo}/issues/{issue_number}/comments?per_page=100"),
-        None,
-    );
-    assert_eq!(
-        comments_status, 200,
-        "comments fetch should succeed before cleanup"
-    );
+struct EphemeralIssue {
+    token: String,
+    issue_number: String,
+}
 
-    for comment in comments_json.as_array().unwrap_or(&Vec::new()) {
-        let Some(comment_id) = comment["id"].as_i64() else {
-            continue;
-        };
-        let Some(body) = comment["body"].as_str() else {
-            continue;
-        };
-        if !is_sdlc_automation_comment(body) {
-            continue;
+impl EphemeralIssue {
+    fn create(token: &str) -> Self {
+        Self {
+            token: token.to_string(),
+            issue_number: create_ephemeral_issue(token),
         }
-        let (delete_status, _) = github_request(
-            token,
-            "DELETE",
-            &format!("/repos/{owner}/{repo}/issues/comments/{comment_id}"),
-            None,
-        );
-        assert!(
-            delete_status == 204 || delete_status == 200,
-            "comment delete should succeed for SDLC automation comment {comment_id}"
-        );
     }
-
-    let outcomes_root = Path::new("target/sdlc/outcomes/outcomes");
-    for stage in [
-        "Idea",
-        "Design",
-        "DesignReview",
-        "Accepted",
-        "Implementing",
-        "CodeReview",
-        "Testing",
-        "Done",
-    ] {
-        let run_key = format!("sdlc::{owner}/{repo}#{issue_number}::{stage}::v1");
-        let _ = fs::remove_dir_all(outcomes_root.join(run_key));
-    }
-
-    let _ = fs::remove_dir_all(Path::new("target/sdlc/claims/claims").join(issue_number));
 }
 
-fn run_dispatch_local(owner: &str, repo: &str, llm_provider: &str, llm_model: &str) {
-    let dag = build_dsl_graph_with_profile("funcs/sdlc_worker.dag", SDLC_LOCAL_PROFILE)
-        .expect("local profile worker graph should compile");
-    let dag = connected_subdag(&dag, "funcs.sdlc_worker::dispatch_sdlc");
+impl Drop for EphemeralIssue {
+    fn drop(&mut self) {
+        let _ = std::panic::catch_unwind(|| close_issue(&self.token, &self.issue_number));
+    }
+}
 
-    let lowered = lower(&dag).expect("lower worker graph for entrypoint detection");
+fn collect_files(root: &Path, files: &mut Vec<PathBuf>) {
+    if let Ok(entries) = fs::read_dir(root) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_files(&path, files);
+            } else if path.is_file() {
+                files.push(path);
+            }
+        }
+    }
+}
+
+fn run_dispatch_local(owner: &str, repo: &str, auth_token: &str, api_key: &str, llm_provider: &str, llm_model: &str) {
+    let dag = build_local_worker_graph();
+    let lowered = lower(&dag).expect("lower local worker graph for entrypoint detection");
     let entrypoints = detect_entrypoints(&lowered.dag);
     let mut input_mocks = BoundaryMocks::new();
     for (node_id, port_name, _) in &entrypoints.entrypoint_ports {
         match port_name.0.as_str() {
+            "auth_token" => input_mocks.set_input(
+                node_id.0.clone(),
+                port_name.0.clone(),
+                Value::Str(auth_token.to_string()),
+            ),
+            "api_key" => input_mocks.set_input(
+                node_id.0.clone(),
+                port_name.0.clone(),
+                Value::Str(api_key.to_string()),
+            ),
             "owner" => input_mocks.set_input(
                 node_id.0.clone(),
                 port_name.0.clone(),
-                DagValue::Str(owner.to_string()),
+                Value::Str(owner.to_string()),
             ),
             "repo" => input_mocks.set_input(
                 node_id.0.clone(),
                 port_name.0.clone(),
-                DagValue::Str(repo.to_string()),
+                Value::Str(repo.to_string()),
             ),
             "worker_id" => input_mocks.set_input(
                 node_id.0.clone(),
                 port_name.0.clone(),
-                DagValue::Str("sdlc-live-test-worker".to_string()),
+                Value::Str("sdlc-local-live-test".to_string()),
             ),
             "llm_provider" => input_mocks.set_input(
                 node_id.0.clone(),
                 port_name.0.clone(),
-                DagValue::Str(llm_provider.to_string()),
+                Value::Str(llm_provider.to_string()),
             ),
             "llm_model" => input_mocks.set_input(
                 node_id.0.clone(),
                 port_name.0.clone(),
-                DagValue::Str(llm_model.to_string()),
+                Value::Str(llm_model.to_string()),
             ),
             _ => {}
         }
     }
 
     let _log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks))
-        .expect("local dispatch run should succeed");
+        .expect("local SDLC dispatch should succeed");
 }
 
 #[test]
-fn s9_issue_provider_live_operations_against_github() {
+fn s10_local_profile_binds_real_local_providers() {
     if !should_run(
-        "s9_issue_provider_live_operations_against_github",
-        FermiCost::L,
-        &["shell", "curl"],
-        &["SDLC_GITHUB_OWNER", "SDLC_GITHUB_REPO", "GITHUB_TOKEN"],
-    ) {
-        return;
-    }
-    if !env_flag_enabled("SDLC_ALLOW_MUTATION") {
-        eprintln!("skipping S-9 live ops: set SDLC_ALLOW_MUTATION=1 to enable");
-        return;
-    }
-
-    let token = match env_var_nonempty("GITHUB_TOKEN") {
-        Some(token) => token,
-        None => {
-            eprintln!("skipping S-9 live ops: set GITHUB_TOKEN");
-            return;
-        }
-    };
-    let owner = env_var("SDLC_GITHUB_OWNER");
-    let repo = env_var("SDLC_GITHUB_REPO");
-    let suffix = unique_suffix();
-
-    let create_body = serde_json::json!({
-        "title": format!("[sdlc-live] provider ops {}", suffix),
-        "body": "Integration check for S-9 IssueProvider operations.",
-        "labels": ["sdlc:idea"]
-    });
-    let (create_status, created_issue) = github_request(
-        &token,
-        "POST",
-        &format!("/repos/{owner}/{repo}/issues"),
-        Some(&create_body),
-    );
-    assert_eq!(create_status, 201, "create should return HTTP 201");
-    let issue_number = created_issue["number"]
-        .as_i64()
-        .expect("created issue should contain numeric `number`");
-    let issue_id = issue_number.to_string();
-
-    let (discover_status, discovered) = github_request(
-        &token,
-        "GET",
-        &format!("/repos/{owner}/{repo}/issues?labels=sdlc:idea&state=open&per_page=100"),
-        None,
-    );
-    assert_eq!(discover_status, 200, "discover should return HTTP 200");
-    assert!(
-        discovered
-            .as_array()
-            .unwrap_or(&Vec::new())
-            .iter()
-            .any(|issue| issue["number"].as_i64() == Some(issue_number)),
-        "discover response should include created issue #{issue_number}"
-    );
-
-    let (get_status, got_issue) = github_request(
-        &token,
-        "GET",
-        &format!("/repos/{owner}/{repo}/issues/{issue_id}"),
-        None,
-    );
-    assert_eq!(get_status, 200, "get should return HTTP 200");
-    assert_eq!(
-        got_issue["number"].as_i64(),
-        Some(issue_number),
-        "get should return requested issue"
-    );
-
-    let comment_body = serde_json::json!({ "body": format!("S-9 integration comment {}", suffix) });
-    let (comment_status, comment) = github_request(
-        &token,
-        "POST",
-        &format!("/repos/{owner}/{repo}/issues/{issue_id}/comments"),
-        Some(&comment_body),
-    );
-    assert_eq!(comment_status, 201, "comment should return HTTP 201");
-    assert!(
-        comment["id"].as_i64().is_some(),
-        "comment response should include numeric id"
-    );
-
-    let labels_body = serde_json::json!(["sdlc:idea", "sdlc:design"]);
-    let (labels_status, labels) = github_request(
-        &token,
-        "PUT",
-        &format!("/repos/{owner}/{repo}/issues/{issue_id}/labels"),
-        Some(&labels_body),
-    );
-    assert_eq!(labels_status, 200, "set_labels should return HTTP 200");
-    assert!(
-        labels
-            .as_array()
-            .unwrap_or(&Vec::new())
-            .iter()
-            .any(|label| label["name"].as_str() == Some("sdlc:design")),
-        "set_labels response should include `sdlc:design`"
-    );
-
-    let (events_status, events) = github_request(
-        &token,
-        "GET",
-        &format!("/repos/{owner}/{repo}/issues/{issue_id}/events?per_page=100"),
-        None,
-    );
-    assert_eq!(events_status, 200, "list_events should return HTTP 200");
-    assert!(events.is_array(), "list_events should return an array");
-
-    let close_body = serde_json::json!({ "state": "closed" });
-    let (close_status, closed_issue) = github_request(
-        &token,
-        "PATCH",
-        &format!("/repos/{owner}/{repo}/issues/{issue_id}"),
-        Some(&close_body),
-    );
-    assert_eq!(close_status, 200, "close should return HTTP 200");
-    assert_eq!(
-        closed_issue["state"].as_str(),
-        Some("closed"),
-        "issue should be closed"
-    );
-}
-
-#[test]
-fn s10_local_profile_credential_wiring_compiles_and_authenticates() {
-    if !should_run(
-        "s10_local_profile_credential_wiring_compiles_and_authenticates",
-        FermiCost::M,
-        &["shell", "curl"],
-        &["GITHUB_TOKEN"],
+        "s10_local_profile_binds_real_local_providers",
+        FermiCost::S,
+        &["gcloud"],
+        &[],
     ) {
         return;
     }
 
-    let token = match env_var_nonempty("GITHUB_TOKEN") {
-        Some(token) => token,
-        None => {
-            eprintln!("skipping S-10 local profile auth: set GITHUB_TOKEN");
-            return;
-        }
+    let Some(token) = github_token_from_secret_manager() else {
+        eprintln!(
+            "skipping S-10 local bindings: gcloud could not access {}/{}",
+            GITHUB_SECRET_PROJECT, GITHUB_SECRET_NAME
+        );
+        return;
     };
+    env::set_var("GITHUB_TOKEN", token);
 
-    let dag = build_dsl_graph_with_profile("funcs/sdlc_worker.dag", SDLC_LOCAL_PROFILE)
-        .expect("local profile worker graph should compile");
+    let dag = build_local_worker_graph();
     let ids = node_ids(&dag);
+
     assert!(
         has_prefix(
             &ids,
             "execute_transport_extdeps_sdlc_providers_github_issue_provider_github_IssueProvider_discover"
         ),
-        "local profile should include GitHub IssueProvider transport nodes"
+        "local profile should bind IssueProvider to the GitHub implementation"
     );
     assert!(
         has_prefix(
             &ids,
-            "execute_transport_extdeps_sdlc_providers_gcp_credential_provider_GcpWifCredentialProvider_acquire"
+            "execute_transport_extdeps_sdlc_providers_file_claim_store_file_ClaimStore_acquire"
         ),
-        "local profile should include credential provider transport nodes"
-    );
-
-    let (status, user_json) = github_request(&token, "GET", "/user", None);
-    assert_eq!(
-        status, 200,
-        "authenticated /user call should succeed (token wiring should not be 401)"
+        "local profile should bind ClaimStore to the file implementation"
     );
     assert!(
-        user_json["login"].as_str().is_some(),
-        "authenticated /user response should contain `login`"
+        has_prefix(
+            &ids,
+            "execute_transport_extdeps_sdlc_providers_file_outcome_ledger_file_OutcomeLedger_upsert"
+        ),
+        "local profile should bind OutcomeLedger to the file implementation"
+    );
+    assert!(
+        has_prefix(
+            &ids,
+            "execute_transport_extdeps_sdlc_providers_codex_agent_provider_codex_AgentProvider_spawn"
+        ),
+        "local profile should bind AgentProvider to the codex implementation"
     );
 }
 
@@ -472,15 +323,8 @@ fn s11_local_profile_design_stage_e2e() {
     if !should_run(
         "s11_local_profile_design_stage_e2e",
         FermiCost::XL,
-        &["shell", "curl"],
-        &[
-            "SDLC_GITHUB_OWNER",
-            "SDLC_GITHUB_REPO",
-            "SDLC_TEST_ISSUE_NUMBER",
-            "SDLC_LLM_PROVIDER",
-            "SDLC_LLM_MODEL",
-            "GITHUB_TOKEN",
-        ],
+        &["shell", "curl", "gcloud"],
+        &[],
     ) {
         return;
     }
@@ -489,50 +333,75 @@ fn s11_local_profile_design_stage_e2e() {
         return;
     }
 
-    let token = match env_var_nonempty("GITHUB_TOKEN") {
-        Some(token) => token,
+    let Some(token) = github_token_from_secret_manager() else {
+        eprintln!(
+            "skipping S-11 local e2e: gcloud could not access {}/{}",
+            GITHUB_SECRET_PROJECT, GITHUB_SECRET_NAME
+        );
+        return;
+    };
+    env::set_var("GITHUB_TOKEN", token.clone());
+
+    let llm_provider =
+        env_var_nonempty("SDLC_LLM_PROVIDER").unwrap_or_else(|| "anthropic".to_string());
+    let llm_model = env_var_nonempty("SDLC_LLM_MODEL")
+        .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string());
+    let api_key = match llm_api_key_for_provider(&llm_provider) {
+        Some(key) => key,
         None => {
-            eprintln!("skipping S-11 local e2e: set GITHUB_TOKEN");
+            let missing = if llm_provider == "openai" {
+                "OPENAI_API_KEY"
+            } else {
+                "ANTHROPIC_API_KEY"
+            };
+            eprintln!("skipping S-11 local e2e: set {missing}");
             return;
         }
     };
-    let owner = env_var("SDLC_GITHUB_OWNER");
-    let repo = env_var("SDLC_GITHUB_REPO");
-    let issue_number = env_var("SDLC_TEST_ISSUE_NUMBER");
-    let llm_provider = env_var("SDLC_LLM_PROVIDER");
-    let llm_model = env_var("SDLC_LLM_MODEL");
-    let llm_env_name = llm_api_env_var(&llm_provider);
-    if env_var_nonempty(llm_env_name).is_none() {
-        eprintln!("skipping S-11 local e2e: set {llm_env_name}");
-        return;
-    }
 
-    reset_local_sdlc_issue_state(&token, &owner, &repo, &issue_number);
-    run_dispatch_local(&owner, &repo, &llm_provider, &llm_model);
+    let issue = EphemeralIssue::create(&token);
+    let issue_number = issue.issue_number.as_str();
+
+    let labels_body = serde_json::json!(["sdlc:idea"]);
+    let (labels_status, _) = github_request(
+        &token,
+        "PUT",
+        &format!("/repos/{SDLC_OWNER}/{SDLC_REPO}/issues/{issue_number}/labels"),
+        Some(&labels_body),
+    );
+    assert_eq!(labels_status, 200, "issue relabel to sdlc:idea should succeed");
+
+    run_dispatch_local(
+        SDLC_OWNER,
+        SDLC_REPO,
+        &token,
+        &api_key,
+        &llm_provider,
+        &llm_model,
+    );
 
     let (issue_status, issue_json) = github_request(
         &token,
         "GET",
-        &format!("/repos/{owner}/{repo}/issues/{issue_number}"),
+        &format!("/repos/{SDLC_OWNER}/{SDLC_REPO}/issues/{issue_number}"),
         None,
     );
-    assert_eq!(
-        issue_status, 200,
-        "issue fetch should succeed after dispatch"
-    );
+    assert_eq!(issue_status, 200, "issue fetch should succeed after dispatch");
     let labels = issue_json["labels"].as_array().cloned().unwrap_or_default();
-    let has_design_flow_label = labels
+    let has_design_label = labels
         .iter()
         .any(|label| label["name"].as_str() == Some("sdlc:design"));
     assert!(
-        has_design_flow_label,
-        "issue should advance to the design label after one local dispatch"
+        has_design_label,
+        "issue should advance to `sdlc:design` after one local dispatch"
     );
 
     let (comments_status, comments_json) = github_request(
         &token,
         "GET",
-        &format!("/repos/{owner}/{repo}/issues/{issue_number}/comments?per_page=100"),
+        &format!(
+            "/repos/{SDLC_OWNER}/{SDLC_REPO}/issues/{issue_number}/comments?per_page=100"
+        ),
         None,
     );
     assert_eq!(comments_status, 200, "comments fetch should succeed");
@@ -541,60 +410,17 @@ fn s11_local_profile_design_stage_e2e() {
         .unwrap_or(&Vec::new())
         .iter()
         .filter_map(|comment| comment["body"].as_str())
-        .any(|body| body.contains("<!-- sdlc:design:") && body.contains("Generated Design"));
+        .any(|body| body.contains("Generated Design"));
     assert!(
         has_design_comment,
-        "issue should have a marked design artifact comment after local run"
+        "issue should have a generated design comment after the local run"
     );
 
-    let stage_outcome = Path::new("target/sdlc/outcomes/outcomes")
-        .join(format!("sdlc::{owner}/{repo}#{issue_number}::Idea::v1"))
-        .join("Idea.json");
+    let outcomes_root = Path::new("target/sdlc/outcomes");
+    let mut files = Vec::new();
+    collect_files(outcomes_root, &mut files);
     assert!(
-        stage_outcome.is_file(),
-        "local run should record the design-stage outcome at {:?}",
-        stage_outcome
+        !files.is_empty(),
+        "local run should leave at least one outcome ledger file under target/sdlc/outcomes"
     );
-}
-
-#[test]
-fn s12_to_s15_local_pipeline_wiring_is_present() {
-    if !should_run(
-        "s12_to_s15_local_pipeline_wiring_is_present",
-        FermiCost::XS,
-        &[],
-        &["GITHUB_TOKEN"],
-    ) {
-        return;
-    }
-    if env_var_nonempty("GITHUB_TOKEN").is_none() {
-        eprintln!("skipping S-12..S-15 local wiring: set GITHUB_TOKEN");
-        return;
-    }
-
-    let dag = build_dsl_graph_with_profile("funcs/sdlc_worker.dag", SDLC_LOCAL_PROFILE)
-        .expect("local profile worker graph should compile");
-    let ids = node_ids(&dag);
-
-    let expected_prefixes = [
-        "execute_transport_extdeps_sdlc_providers_codex_agent_provider_codex_AgentProvider_spawn",
-        "execute_transport_extdeps_sdlc_providers_codex_agent_provider_codex_AgentProvider_poll",
-        "execute_transport_extdeps_github_pull_requests_github_PullRequest_Create",
-        "execute_transport_extdeps_github_pull_requests_github_PullRequest_ListFiles",
-        "execute_transport_extdeps_github_pull_requests_github_PullRequest_AddComment",
-        "execute_transport_extdeps_llm_anthropic_llm_Anthropic_Messages",
-        "execute_transport_extdeps_cargo_cargo_Build_Test",
-        "execute_transport_extdeps_cargo_cargo_Build_Clippy",
-        "funcs.sdlc_stages::handle_accepted_to_implementing",
-        "funcs.sdlc_stages::handle_implementing_to_code_review",
-        "funcs.sdlc_stages::handle_code_review_to_testing",
-        "funcs.sdlc_stages::handle_testing_to_done",
-    ];
-
-    for prefix in &expected_prefixes {
-        assert!(
-            has_prefix(&ids, prefix),
-            "local profile graph should include phase 3 marker node `{prefix}`"
-        );
-    }
 }

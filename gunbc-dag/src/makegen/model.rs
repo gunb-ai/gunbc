@@ -10,7 +10,7 @@ use daglang_driver::compile_data_from_module;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
-use super::registry::ToolRegistry;
+use super::tools::DiscoveredToolData;
 
 /// Core workflow declaration loaded from `config/build_targets.dag`.
 #[derive(Debug, Clone, Deserialize)]
@@ -83,16 +83,10 @@ pub struct TargetSource {
 /// Typed model-level errors for make target invariants.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MakegenModelError {
-    BuildTargetsCompile {
-        details: String,
-    },
-    MissingData {
-        key: &'static str,
-    },
-    DeserializeData {
-        key: &'static str,
-        details: String,
-    },
+    BuildTargetsCompile { details: String },
+    ToolDiscovery { details: String },
+    MissingData { key: &'static str },
+    DeserializeData { key: &'static str, details: String },
     DuplicateTargetName {
         name: String,
         first: TargetSource,
@@ -105,6 +99,9 @@ impl std::fmt::Display for MakegenModelError {
         match self {
             MakegenModelError::BuildTargetsCompile { details } => {
                 write!(f, "failed to compile build target model: {details}")
+            }
+            MakegenModelError::ToolDiscovery { details } => {
+                write!(f, "failed to discover makegen tools: {details}")
             }
             MakegenModelError::MissingData { key } => {
                 write!(f, "build target model missing data declaration `{key}`")
@@ -160,7 +157,7 @@ pub fn load_build_targets_data() -> Result<BuildTargetsData, MakegenModelError> 
 
 /// Build a uniqueness-enforced index of all make target names.
 pub fn index_unique_target_names(
-    registry: &ToolRegistry,
+    tools: &[DiscoveredToolData],
     build_targets: &BuildTargetsData,
 ) -> Result<BTreeMap<String, TargetSource>, MakegenModelError> {
     let mut index = BTreeMap::new();
@@ -216,7 +213,7 @@ pub fn index_unique_target_names(
         }
     }
 
-    for tool in &registry.tools {
+    for tool in tools {
         insert_target(
             &mut index,
             tool.short_name.clone(),
@@ -270,17 +267,17 @@ pub fn reserved_target_names(
 }
 
 /// Validate the target namespace using the current DSL build target model.
-pub fn validate_target_namespace(registry: &ToolRegistry) -> Result<(), MakegenModelError> {
+pub fn validate_target_namespace(tools: &[DiscoveredToolData]) -> Result<(), MakegenModelError> {
     let build_targets = load_build_targets_data()?;
-    validate_target_namespace_with_data(registry, &build_targets)
+    validate_target_namespace_with_data(tools, &build_targets)
 }
 
 /// Validate the target namespace with preloaded build target data.
 pub fn validate_target_namespace_with_data(
-    registry: &ToolRegistry,
+    tools: &[DiscoveredToolData],
     build_targets: &BuildTargetsData,
 ) -> Result<(), MakegenModelError> {
-    let _ = index_unique_target_names(registry, build_targets)?;
+    let _ = index_unique_target_names(tools, build_targets)?;
     Ok(())
 }
 
@@ -317,23 +314,22 @@ fn insert_target(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::makegen::registry::{ToolInfo, ToolRegistry};
+    use crate::makegen::tools::DiscoveredToolData;
     use gunbc_ir::cargo::CargoInvocation;
+
+    fn tool(short_name: &str) -> DiscoveredToolData {
+        DiscoveredToolData {
+            invocation: CargoInvocation::composed(short_name, "dag"),
+            short_name: short_name.to_string(),
+            description: short_name.to_string(),
+            entrypoints: Vec::new(),
+            extra_targets: Vec::new(),
+        }
+    }
 
     #[test]
     fn detects_duplicate_names_across_core_and_tool_targets() {
-        let mut registry = ToolRegistry::new();
-        registry.register(ToolInfo {
-            invocation: CargoInvocation::composed("codegen", "dag"),
-            short_name: "codegen".to_string(),
-            description: "Codegen".to_string(),
-            entrypoints: Vec::new(),
-            extra_targets: Vec::new(),
-            has_declarative_dag: false,
-            needs_generated_cli: true,
-            live_secrets: Vec::new(),
-            available_profiles: Vec::new(),
-        });
+        let tools = vec![tool("codegen")];
         let build_targets = BuildTargetsData {
             core_workflows: vec![CoreWorkflowData {
                 name: "codegen".to_string(),
@@ -346,7 +342,7 @@ mod tests {
             resource_targets: Vec::new(),
         };
 
-        let err = index_unique_target_names(&registry, &build_targets).expect_err("must collide");
+        let err = index_unique_target_names(&tools, &build_targets).expect_err("must collide");
         match err {
             MakegenModelError::DuplicateTargetName {
                 name,
@@ -363,18 +359,7 @@ mod tests {
 
     #[test]
     fn accepts_disjoint_target_names() {
-        let mut registry = ToolRegistry::new();
-        registry.register(ToolInfo {
-            invocation: CargoInvocation::composed("gist", "dag"),
-            short_name: "gist".to_string(),
-            description: "Gist".to_string(),
-            entrypoints: Vec::new(),
-            extra_targets: Vec::new(),
-            has_declarative_dag: false,
-            needs_generated_cli: true,
-            live_secrets: Vec::new(),
-            available_profiles: Vec::new(),
-        });
+        let tools = vec![tool("gist")];
         let build_targets = BuildTargetsData {
             core_workflows: vec![CoreWorkflowData {
                 name: "codegen".to_string(),
@@ -398,7 +383,7 @@ mod tests {
             resource_targets: Vec::new(),
         };
 
-        let names = index_unique_target_names(&registry, &build_targets).expect("must be unique");
+        let names = index_unique_target_names(&tools, &build_targets).expect("must be unique");
         assert!(names.contains_key("help"));
         assert!(names.contains_key("codegen"));
         assert!(names.contains_key("fmt"));

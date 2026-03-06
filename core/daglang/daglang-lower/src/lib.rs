@@ -1306,12 +1306,12 @@ fn is_known_uses_type(set: &HashSet<String>, name: &str) -> bool {
         || set.contains(canonical.rsplit('.').next().unwrap_or(canonical.as_str()))
 }
 
-/// Register stub transport triplets for interfaces that lack profile bindings (IS-4).
+/// Register stub transport triplets for interfaces that lack concrete bindings (IS-4).
 ///
-/// When compiling without a profile, interface capabilities still need transport
+/// When compiling without a concrete binding, interface capabilities still need transport
 /// triplets in the registry so `resolve_service_call_source` can find them. These
 /// stubs use `ServiceTransportClass::InterfaceStub` and are DryRun-compatible;
-/// real-mode execution will surface a "requires --profile" error at the resolver.
+/// real-mode execution will surface a "missing concrete binding" error at the resolver.
 fn derive_interface_stub_transport_triplets(
     project: &TypedProject,
     stub_interfaces: &HashSet<String>,
@@ -1381,7 +1381,7 @@ fn derive_interface_stub_transport_triplets(
 
                 // Execute node: TransportRequest → typed capability outputs.
                 // In DryRun, boundary mocks supply typed fields directly.
-                // In Real mode, the execute op errors with "requires --profile".
+                // In Real mode, the execute op errors because no concrete binding exists.
                 let typed_outputs = if capability.outputs.is_empty() {
                     vec![Port::scalar("result", "Unit")]
                 } else {
@@ -1889,7 +1889,7 @@ impl std::fmt::Display for LowerError {
                 interface_type,
             } => write!(
                 f,
-                "bound service call `{binding}` in `{caller}` targets interface `{interface_type}`; compile with --profile <name>"
+                "bound service call `{binding}` in `{caller}` targets interface `{interface_type}` without a concrete binding"
             ),
             Self::MissingProfileBinding {
                 profile,

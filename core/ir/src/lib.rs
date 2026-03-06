@@ -95,12 +95,6 @@ pub mod value_bridge;
 pub mod value_expr;
 pub mod workspace_layout;
 
-// Codegen output locations used by the bootstrapper and codegen DAG.
-pub const CODEGEN_OUT_DIR: &str = "target/codegen";
-pub const CODEGEN_BIN_DIR: &str = "target/codegen/bin";
-pub const CODEGEN_LIB_DIR: &str = "target/codegen/lib";
-pub const CODEGEN_STAMP_PATH: &str = "target/codegen/.codegen-stamp";
-
 // Re-exports for convenience
 pub use algebra::{BoundedLattice, JoinSemilattice, Lattice, MeetSemilattice, PartialOrder};
 pub use boundary::{detect_boundaries, BoundaryInfo};

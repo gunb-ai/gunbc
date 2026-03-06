@@ -368,7 +368,7 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerClassification> {
             ..
         } => return Some(HandlerClassification::MetadataOnly),
         // C24 migration note:
-        // GetField/ExprCompute are still interpreter-backed in resolve.rs. We
+        // GetField/ExprCompute are still interpreter-backed in the resolve layer. We
         // keep layer-1 compile unblocked by emitting passthrough stubs until
         // dedicated handlers land.
         LoweredOp::Primitive {

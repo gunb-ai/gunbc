@@ -1,18 +1,8 @@
-// profiles/sdlc.dag -- SDLC deployment profiles.
+// profiles/sdlc.dag -- temporary SDLC local binding compatibility path.
 //
-// Binds domain interfaces to concrete implementations at compile time.
-// The pipeline imports interfaces (Layer 2); profiles select which
-// Layer 3 implementation fulfills each interface.
-//
-// Three profiles:
-//   unit_test  -- All stub/in-memory, hermetic, deterministic
-//   local      -- File-based ledgers, real GitHub API, single-process
-//   cloud_run  -- GCS-based ledgers, real GitHub API, stateless fleet
-//
-// Source: domain-modeling-comprehensive.md Section 5
-// Gap C: deployment profile binding      [RESOLVED - direct syntax]
-// Gap D: credential wiring via profile   [RESOLVED - secret/env bindings]
-// Gap E: multi-worker CAS               [RESOLVED - GCS generation-based CAS]
+// This exists only to unblock local real-mode proof while the compiler-side
+// binding cleanup lands on a separate branch. It is not the target model.
+// Delete this module once concrete binding/link artifacts replace profiles.
 
 module profiles.sdlc
 
@@ -22,71 +12,17 @@ import interfaces.outcome_ledger { OutcomeLedger }
 import interfaces.agent_provider { AgentProvider }
 import interfaces.signal_store { SignalStore }
 import interfaces.artifact_store { ArtifactStore }
-import interfaces.credential_provider { CredentialProvider }
-import extdeps.sdlc.providers.stub_providers
-import extdeps.sdlc.providers.stub_credential_provider
 import extdeps.sdlc.providers.github_issue_provider
 import extdeps.sdlc.providers.file_claim_store
 import extdeps.sdlc.providers.file_outcome_ledger
 import extdeps.sdlc.providers.codex_agent_provider
 import extdeps.sdlc.providers.file_signal_store
 import extdeps.sdlc.providers.inline_artifact_store
-import extdeps.sdlc.providers.gcp_credential_provider
-import extdeps.sdlc.providers.gcs_claim_store
-import extdeps.sdlc.providers.gcs_outcome_ledger
-import extdeps.sdlc.providers.pubsub_signal_store
-import extdeps.sdlc.providers.gcs_artifact_store
-
-// =========================================================================
-// Profile binding declarations
-// =========================================================================
-//
-// Each profile documents which concrete provider fulfills an interface.
-// Runtime: gunbc run --profile <name> reads these bindings and wires
-// the selected implementations.
-//
-// ── unit_test ───────────────────────────────────────────────────────
-// All stubs, hermetic, deterministic. No credentials needed.
-//   IssueProvider   -> stubs.stub.IssueProvider
-//   ClaimStore      -> stubs.stub.ClaimStore
-//   OutcomeLedger   -> stubs.stub.OutcomeLedger
-//   AgentProvider   -> stubs.stub.AgentProvider
-//   SignalStore     -> stubs.stub.SignalStore
-//   ArtifactStore   -> stubs.stub.ArtifactStore
-//
-// ── local ───────────────────────────────────────────────────────────
-// File-based ledgers, real GitHub API, single-process.
-//   IssueProvider   -> github_issues.github.IssueProvider
-//   ClaimStore      -> file_claims.file.ClaimStore
-//   OutcomeLedger   -> file_outcomes.file.OutcomeLedger
-//   AgentProvider   -> codex_agent.codex.AgentProvider
-//   SignalStore     -> file_signal_store.file.SignalStore
-//   ArtifactStore   -> inline_artifact_store.file.ArtifactStore
-//
-// ── cloud_run ───────────────────────────────────────────────────────
-// GCS-based ledgers with generation-based CAS, real GitHub API,
-// stateless multi-worker fleet.
-//   IssueProvider   -> github_issues.github.IssueProvider
-//   ClaimStore      -> gcs_claims.gcs.ClaimStore
-//   OutcomeLedger   -> gcs_outcomes.gcs.OutcomeLedger
-//   AgentProvider   -> codex_agent.codex.AgentProvider
-//   SignalStore     -> pubsub_signal_store.pubsub.SignalStore
-//   ArtifactStore   -> gcs_artifact_store.gcs.ArtifactStore
-
-profile unit_test {
-  bind IssueProvider -> extdeps.sdlc.providers.stub_providers.stub.IssueProvider
-  bind ClaimStore -> extdeps.sdlc.providers.stub_providers.stub.ClaimStore
-  bind OutcomeLedger -> extdeps.sdlc.providers.stub_providers.stub.OutcomeLedger
-  bind AgentProvider -> extdeps.sdlc.providers.stub_providers.stub.AgentProvider
-  bind SignalStore -> extdeps.sdlc.providers.stub_providers.stub.SignalStore
-  bind ArtifactStore -> extdeps.sdlc.providers.stub_providers.stub.ArtifactStore
-  bind CredentialProvider -> extdeps.sdlc.providers.stub_credential_provider.StubCredentialProvider
-}
 
 profile local {
   bind IssueProvider -> extdeps.sdlc.providers.github_issue_provider.github.IssueProvider {
-    owner: "gunb-ai",
-    repo: "gunbc",
+    owner: "gunb-ai"
+    repo: "integration_testing"
     credential: env("GITHUB_TOKEN")
   }
   bind ClaimStore -> extdeps.sdlc.providers.file_claim_store.file.ClaimStore
@@ -94,32 +30,4 @@ profile local {
   bind AgentProvider -> extdeps.sdlc.providers.codex_agent_provider.codex.AgentProvider
   bind SignalStore -> extdeps.sdlc.providers.file_signal_store.file.SignalStore
   bind ArtifactStore -> extdeps.sdlc.providers.inline_artifact_store.file.ArtifactStore
-  bind CredentialProvider -> extdeps.sdlc.providers.gcp_credential_provider.GcpWifCredentialProvider {
-    runtime: LocalDev,
-    project_id: "gunbai-auto"
-  }
-}
-
-profile cloud_run {
-  bind IssueProvider -> extdeps.sdlc.providers.github_issue_provider.github.IssueProvider {
-    owner: "gunb-ai",
-    repo: "gunbc",
-    credential: secret("github-token")
-  }
-  bind ClaimStore -> extdeps.sdlc.providers.gcs_claim_store.gcs.ClaimStore
-  bind OutcomeLedger -> extdeps.sdlc.providers.gcs_outcome_ledger.gcs.OutcomeLedger
-  bind AgentProvider -> extdeps.sdlc.providers.codex_agent_provider.codex.AgentProvider
-  bind SignalStore -> extdeps.sdlc.providers.pubsub_signal_store.pubsub.SignalStore {
-    topic: "sdlc-signals",
-    subscription: "sdlc-worker",
-    project_id: "gunbai-auto"
-  }
-  bind ArtifactStore -> extdeps.sdlc.providers.gcs_artifact_store.gcs.ArtifactStore {
-    bucket: "gunbai-auto-sdlc-artifacts",
-    project_id: "gunbai-auto"
-  }
-  bind CredentialProvider -> extdeps.sdlc.providers.gcp_credential_provider.GcpWifCredentialProvider {
-    runtime: GitHubActions,
-    project_id: "gunbai-auto"
-  }
 }

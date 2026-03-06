@@ -1,9 +1,10 @@
-use gunbc_dag::build_bootstrap_graph;
+use gunbc_dag::extern_ops::GunbcExternResolver;
 use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
 use gunbc_ir::resource::ResourceIo;
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_lib_transport::test_backend::VirtualTransportBackend;
 use gunbc_lib_transport::{TransportBackendGuard, TransportIo};
+use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
 use gunbc_test::{guard_test, FermiCost, TestClass};
 use std::env;
 use std::path::{Path, PathBuf};
@@ -108,7 +109,16 @@ fn input_mocks_for_entrypoints<T: Clone>(
 // Restore when content_upsert wiring is fixed.
 
 fn run_bootstrap_case(kind: BackendKind) {
-    let dag = build_bootstrap_graph().expect("graph should build");
+    let dag = build_dsl_graph(
+        "tools/bootstrap.dag",
+        &GunbcExternResolver,
+        BuildOpts {
+            entry_func: Some("bootstrap"),
+            profile: None,
+        },
+    )
+    .map(|result| result.dag)
+    .expect("graph should build");
 
     let input_mocks = input_mocks_for_entrypoints(&dag, |node_id, port_name| match port_name {
         "check_mode" => Some(Value::Bool(false)),

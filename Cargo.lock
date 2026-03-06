@@ -156,6 +156,7 @@ dependencies = [
  "gunbc-dag",
  "gunbc-exec",
  "gunbc-ir",
+ "gunbc-resolve",
  "gunbc-test",
  "serde",
  "serde_json",
@@ -218,7 +219,9 @@ dependencies = [
  "daglang-typecheck",
  "gunbc-dag",
  "gunbc-deps",
+ "gunbc-exec",
  "gunbc-ir",
+ "gunbc-resolve",
  "serde",
  "serde_json",
 ]

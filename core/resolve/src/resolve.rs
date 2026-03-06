@@ -2,7 +2,7 @@
 //!
 //! Maps each lowered operation from a compiled `.dag` file to its concrete
 //! `Executable` implementation, wrapped in `DynOp`. This eliminates the need
-//! for per-module union enums (`PragmaGraphOp`, `WorkspaceOp`, etc.).
+//! for legacy per-module union enums in app crates.
 //!
 //! # Architecture
 //!

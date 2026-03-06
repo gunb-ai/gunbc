@@ -1,14 +1,34 @@
 #![allow(clippy::disallowed_methods)]
 
-use gunbc_dag::dsl_builder::build_dsl_graph_for_entrypoint;
+use gunbc_dag::extern_ops::GunbcExternResolver;
 use gunbc_exec::{execute_with_mode_and_inputs, lower, BoundaryMocks, ExecutionMode};
 use gunbc_ir::{detect_entrypoints, Value};
+use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
 use gunbc_test::auto_mock_spec;
 
+fn build_graph_for_entrypoint(
+    relative_module: &str,
+    entry_func: &str,
+) -> gunbc_ir::Dag<gunbc_exec::DynOp> {
+    build_dsl_graph(
+        relative_module,
+        &GunbcExternResolver,
+        BuildOpts {
+            entry_func: Some(entry_func),
+            profile: None,
+        },
+    )
+    .map(|result| result.dag)
+    .unwrap_or_else(|e| panic!("`{relative_module}` entry `{entry_func}` should build: {e}"))
+}
+
+fn build_gist_recent_graph() -> gunbc_ir::Dag<gunbc_exec::DynOp> {
+    build_graph_for_entrypoint("tools/gist.dag", "gist_recent")
+}
+
 #[test]
-fn shared_gist_upload_graph_builds_with_shared_credential_helper() {
-    let dag = build_dsl_graph_for_entrypoint("shared/gist_modes.dag", Some("share_content"), None)
-        .expect("shared share_content graph should build");
+fn shared_gist_upload_graph_builds_with_provider_auth_module() {
+    let dag = build_graph_for_entrypoint("shared/gist_modes.dag", "share_content");
     let lowered = lower(&dag).expect("lowered shared share_content");
 
     assert!(
@@ -16,8 +36,8 @@ fn shared_gist_upload_graph_builds_with_shared_credential_helper() {
             .dag
             .nodes
             .iter()
-            .any(|n| n.id.0.contains("resolve_github_token")),
-        "shared gist_upload should compile against resolve_github_token. \
+            .any(|n| n.id.0.contains("github_token")),
+        "shared gist_upload should compile against extdeps.github.auth::github_token. \
          All nodes: {:?}",
         lowered
             .dag
@@ -30,8 +50,7 @@ fn shared_gist_upload_graph_builds_with_shared_credential_helper() {
 
 #[test]
 fn gist_recent_graph_no_ls_files() {
-    let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist_recent"), None)
-        .expect("gist-recent graph should build");
+    let dag = build_gist_recent_graph();
     let ls_files_nodes: Vec<&str> = dag
         .nodes
         .iter()
@@ -46,12 +65,11 @@ fn gist_recent_graph_no_ls_files() {
 
 #[test]
 fn gist_recent_graph_wires_diff_base_input() {
-    let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist_recent"), None)
-        .expect("gist-recent graph should build");
+    let dag = build_gist_recent_graph();
     let lowered = lower(&dag).expect("lowered gist-recent");
 
-    // gist_recent still relies on the shared credential helper, but the diff
-    // transport still needs a concrete base input edge.
+    // The auth materialization changed, but the diff transport still needs a
+    // concrete base input edge.
     let has_base_edge = lowered
         .dag
         .edges
@@ -77,23 +95,22 @@ fn gist_recent_graph_wires_diff_base_input() {
 /// Structural: gist_recent must include concrete token-resolution wiring.
 #[test]
 fn gist_recent_graph_has_token_resolution_path() {
-    let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist_recent"), None)
-        .expect("gist-recent graph should build");
+    let dag = build_gist_recent_graph();
     let lowered = lower(&dag).expect("lowered gist-recent");
 
-    let has_env_get = lowered
+    let has_secret_manager_access = lowered
         .dag
         .nodes
         .iter()
-        .any(|n| n.id.0.contains("shell_Env_Get"));
-    let has_resolver_fn = lowered
+        .any(|n| n.id.0.contains("SecretManagerAccessVersion"));
+    let has_provider_auth_fn = lowered
         .dag
         .nodes
         .iter()
-        .any(|n| n.id.0.contains("resolve_github_token"));
+        .any(|n| n.id.0.contains("github_token"));
     assert!(
-        has_env_get && has_resolver_fn,
-        "gist-recent must include env token lookup and resolver function. \
+        has_secret_manager_access && has_provider_auth_fn,
+        "gist-recent must include provider auth materialization and Secret Manager access. \
          All nodes: {:?}",
         lowered
             .dag
@@ -105,19 +122,18 @@ fn gist_recent_graph_has_token_resolution_path() {
 }
 
 #[test]
-fn gist_recent_graph_uses_shared_credential_helper() {
-    let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist_recent"), None)
-        .expect("gist-recent graph should build");
+fn gist_recent_graph_uses_provider_auth_module() {
+    let dag = build_gist_recent_graph();
     let lowered = lower(&dag).expect("lowered gist-recent");
 
-    let has_shared_helper = lowered
+    let has_provider_auth_helper = lowered
         .dag
         .nodes
         .iter()
-        .any(|n| n.id.0.contains("resolve_github_token"));
+        .any(|n| n.id.0.contains("github_token"));
     assert!(
-        has_shared_helper,
-        "gist-recent should route gist creation through shared.credentials::resolve_github_token. \
+        has_provider_auth_helper,
+        "gist-recent should route gist creation through extdeps.github.auth::github_token. \
          All nodes: {:?}",
         lowered
             .dag
@@ -130,14 +146,13 @@ fn gist_recent_graph_uses_shared_credential_helper() {
 
 /// End-to-end DryRun: gist_recent completes with auto-mocked transport nodes.
 ///
-/// Validates that the full pipeline (git, shared credential helper, gist create)
+/// Validates that the full pipeline (git, provider auth materialization, gist create)
 /// is structurally connected and executes without errors. Uses DryRun mode because
-/// the credential helper still contains effectful env/secret-manager branches.
+/// the auth path still contains effectful Secret Manager access.
 #[test]
 #[ignore] // Pre-existing: GetField on credential token fails in DryRun (gist pipeline)
 fn gist_recent_end_to_end_emits_gist_url() {
-    let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist_recent"), None)
-        .expect("gist-recent graph should build");
+    let dag = build_gist_recent_graph();
 
     let spec = auto_mock_spec(&dag, "gist_recent");
     let dry_run_mocks = spec.to_dry_run_mocks();
@@ -195,7 +210,9 @@ fn gist_recent_end_to_end_emits_gist_url() {
         "execution should include Gist_Create transport. Got: {node_ids:?}"
     );
     assert!(
-        node_ids.iter().any(|id| id.contains("shell_Env_Get")),
-        "execution should include shell.Env.Get transport. Got: {node_ids:?}"
+        node_ids
+            .iter()
+            .any(|id| id.contains("SecretManagerAccessVersion")),
+        "execution should include SecretManagerAccessVersion transport. Got: {node_ids:?}"
     );
 }

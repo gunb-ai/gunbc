@@ -226,7 +226,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             let parsed = parse_compile_command_args(
                 "compile",
                 args,
-                "compile <file.dag|dir> [--emit-collection-nodes] [--trace-stages] [--profile <name>] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>] [--receipt]",
+                "compile <file.dag|dir> [--emit-collection-nodes] [--trace-stages] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>] [--receipt]",
                 false,
             )
             .unwrap_or_else(|usage| exit_usage(&usage));
@@ -240,7 +240,6 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             });
             let options = CompileOptions {
                 emit_collection_nodes: parsed.emit_collection_nodes,
-                profile: parsed.profile.clone(),
                 target: parsed.target.unwrap_or_default(),
                 layer: parsed.layer.unwrap_or_default(),
                 output_dir: normalized_out_dir.clone(),

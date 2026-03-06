@@ -1,4 +1,4 @@
-//! Testgen DAG module: mock interpretation and profile scanning.
+//! Testgen DAG module: mock interpretation helpers.
 //!
 //! Relocated from `gunbc-dag/src/testgen_dag/` to decouple generic testgen
 //! infrastructure from the repo-specific crate.
@@ -9,6 +9,3 @@
 //! if included here).
 
 pub mod mock_interpreter;
-pub mod profile_discovery;
-
-pub use profile_discovery::{discover_profiles, profiles_for_module, DiscoveredProfile};

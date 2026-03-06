@@ -14,24 +14,33 @@
 //! Tier, hermetic, and fermi metadata are inferred from DAG topology by
 //! `generate_target()`, not declared statically in annotations.
 
-use crate::dsl_builder::{
-    build_dsl_graph, build_dsl_graph_with_types, build_dsl_graph_with_types_and_profile,
-};
 use daglang_emit::test_mock_emit::{TestFile, TERMINAL_NODE_SENTINEL};
 use daglang_syntax::ast::{ExpectStmt, Expr, FixtureDef, Literal, TestDef};
 use gunbc_codegen::registry::TestgenTargetDef;
 use gunbc_exec::DynOp;
 use gunbc_ir::{BuilderError, Dag};
+use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
 use gunbc_test::auto_mock_spec;
 use gunbc_test::{
     BoundaryMock, ExpectedOutput, FermiCost, LiveExpectedOutput, MockSpec, OutputMatcher,
     TestClass, TransportMock,
 };
 use std::borrow::Cow;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use super::mock_interpreter::{interpret_expr, is_transport_response};
+
+fn build_gunbc_dsl_graph(
+    relative_module: &str,
+    opts: BuildOpts<'_>,
+) -> Result<gunbc_resolve::DslGraphResult, BuilderError> {
+    build_dsl_graph(
+        relative_module,
+        &crate::extern_ops::GunbcExternResolver,
+        opts,
+    )
+}
 
 // ── Auto-discovery: any compilable .dag file ──────────────────────────
 
@@ -50,10 +59,6 @@ pub struct CompilableModule {
     pub callable_count: usize,
     /// Whether the module has inline `test` blocks.
     pub has_test_blocks: bool,
-    /// Interface type names imported via `import interfaces.*`.
-    pub interface_imports: HashSet<String>,
-    /// Whether the module imports from `interfaces.*` (requires `--profile` to compile).
-    pub requires_profile: bool,
 }
 
 /// Result of attempting auto-testgen on a module.
@@ -146,29 +151,6 @@ fn analyze_compilable_module(base: &Path, path: &Path) -> Option<CompilableModul
         .iter()
         .any(|item| matches!(item.node, daglang_syntax::ast::Item::TestDef(_)));
 
-    // Collect interface type names from `import interfaces.*` statements.
-    let interface_imports: HashSet<String> = ast
-        .imports
-        .iter()
-        .filter(|import| {
-            import
-                .node
-                .path
-                .segments
-                .first()
-                .is_some_and(|s| s == "interfaces")
-        })
-        .flat_map(|import| {
-            import
-                .node
-                .bindings
-                .as_deref()
-                .unwrap_or_default()
-                .iter()
-                .cloned()
-        })
-        .collect();
-
     let rel_path = path
         .strip_prefix(base)
         .unwrap_or(path)
@@ -183,8 +165,6 @@ fn analyze_compilable_module(base: &Path, path: &Path) -> Option<CompilableModul
         dsl_path: rel_path,
         callable_count,
         has_test_blocks,
-        requires_profile: !interface_imports.is_empty(),
-        interface_imports,
     })
 }
 
@@ -193,50 +173,13 @@ fn analyze_compilable_module(base: &Path, path: &Path) -> Option<CompilableModul
 /// Pipeline: compile → auto_mock_spec → generate_target. Zero manual input.
 /// Returns `Skipped` if compilation fails (graceful degradation).
 ///
-/// RT24: When `module.requires_profile`, picks the first hermetic profile
-/// from `profiles` (or the first profile if none are hermetic) and compiles
-/// with it. Also populates `live_profile_tests` for per-profile live tests.
-pub fn auto_testgen_for_module(
-    module: &CompilableModule,
-    output_dir: &Path,
-    profiles: &[super::profile_discovery::DiscoveredProfile],
-) -> AutoTestgenResult {
-    // RT24: Determine matching profiles and pick one for structural compilation.
-    let matching_profiles = if module.requires_profile {
-        super::profile_discovery::profiles_for_module(profiles, &module.interface_imports)
-    } else {
-        vec![]
-    };
-
-    // Pick the first hermetic profile, or first profile if no hermetic.
-    let compile_profile = if module.requires_profile {
-        matching_profiles
-            .iter()
-            .find(|p| p.test_class == TestClass::Hermetic)
-            .or_else(|| matching_profiles.first())
-            .map(|p| p.name.as_str())
-    } else {
-        None
-    };
-
-    // 1. Compile to Dag<DynOp> + DSL type registry
-    let result = if let Some(profile) = compile_profile {
-        match build_dsl_graph_with_types_and_profile(&module.dsl_path, profile) {
-            Ok(result) => result,
-            Err(e) => {
-                return AutoTestgenResult::Skipped {
-                    reason: format!("compile error (profile={profile}): {e}"),
-                };
-            }
-        }
-    } else {
-        match build_dsl_graph_with_types(&module.dsl_path) {
-            Ok(result) => result,
-            Err(e) => {
-                return AutoTestgenResult::Skipped {
-                    reason: format!("compile error: {e}"),
-                };
-            }
+pub fn auto_testgen_for_module(module: &CompilableModule, output_dir: &Path) -> AutoTestgenResult {
+    let result = match build_gunbc_dsl_graph(&module.dsl_path, BuildOpts::default()) {
+        Ok(result) => result,
+        Err(e) => {
+            return AutoTestgenResult::Skipped {
+                reason: format!("compile error: {e}"),
+            };
         }
     };
 
@@ -257,36 +200,11 @@ pub fn auto_testgen_for_module(
     let output_path = output_path_for_module(output_dir, module);
     let module_test_name = format!("{}_generated_tests", module.module_name.replace('.', "_"));
 
-    // RT24: dag_builder_call uses profile when required.
-    let dag_builder_call = if let Some(profile) = compile_profile {
-        format!(
-            "crate::dsl_builder::build_dsl_graph_with_profile(\"{}\", \"{}\").expect(\"graph should build\")",
-            module.dsl_path, profile,
-        )
-    } else {
-        format!(
-            "crate::dsl_builder::build_dsl_graph(\"{}\").expect(\"graph should build\")",
-            module.dsl_path,
-        )
-    };
+    let dag_builder_call = format!(
+        "gunbc_resolve::builder::build_dsl_graph(\"{}\", &crate::extern_ops::GunbcExternResolver, gunbc_resolve::BuildOpts::default()).map(|result| result.dag).expect(\"graph should build\")",
+        module.dsl_path,
+    );
     let mock_spec_path = format!("gunbc_test::auto_mock_spec(&dag, \"{}\")", safe_name,);
-
-    // RT24: Populate per-profile live test configs for profile-requiring modules.
-    let live_profile_tests: Vec<gunbc_codegen::registry::LiveProfileTestConfig> =
-        matching_profiles
-            .iter()
-            .map(|profile| gunbc_codegen::registry::LiveProfileTestConfig {
-                profile_name: profile.name.clone(),
-                test_class: profile.test_class,
-                fermi_cost: profile_fermi_cost(profile),
-                required_env: profile.required_env.clone(),
-                required_any_of: Vec::new(),
-                dag_builder_call: format!(
-                    "crate::dsl_builder::build_dsl_graph_with_profile(\"{}\", \"{}\").expect(\"profile graph should build\")",
-                    module.dsl_path, profile.name,
-                ),
-            })
-            .collect();
 
     let target_def = TestgenTargetDef {
         name: Cow::Owned(safe_name.clone()),
@@ -310,7 +228,7 @@ pub fn auto_testgen_for_module(
         live_required: None,
         live_required_any_of: None,
         tool_name: None,
-        live_profile_tests,
+        live_profile_tests: Vec::new(),
     };
 
     // 4. Generate test code via the shared codegen path with DSL type awareness
@@ -332,9 +250,8 @@ pub fn auto_testgen_for_module(
 pub fn render_auto_testgen_for_module(
     module: &CompilableModule,
     output_dir: &Path,
-    profiles: &[super::profile_discovery::DiscoveredProfile],
 ) -> RenderedTestgenModule {
-    match auto_testgen_for_module(module, output_dir, profiles) {
+    match auto_testgen_for_module(module, output_dir) {
         AutoTestgenResult::Generated {
             target_def,
             test_code,
@@ -359,20 +276,6 @@ pub fn output_path_for_module(output_dir: &Path, module: &CompilableModule) -> S
         output_dir.display(),
         module.module_name.replace('.', "_"),
     )
-}
-
-/// Derive fermi cost from a profile's test class and environment requirements.
-fn profile_fermi_cost(profile: &super::profile_discovery::DiscoveredProfile) -> FermiCost {
-    match profile.test_class {
-        TestClass::Unit | TestClass::Hermetic => FermiCost::XS,
-        TestClass::Integration => {
-            if profile.required_env.is_empty() {
-                FermiCost::S
-            } else {
-                FermiCost::M
-            }
-        }
-    }
 }
 
 // ── Test-block discovery (legacy path) ────────────────────────────────
@@ -548,9 +451,8 @@ pub fn build_testgen_target_def(
 
 /// Compile a DAG from a `.dag` module path for testgen.
 ///
-/// Uses the existing `build_dsl_graph` from `dsl_builder.rs`.
 pub fn compile_dag_for_test(dsl_module: &str) -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph(dsl_module)
+    build_gunbc_dsl_graph(dsl_module, BuildOpts::default()).map(|result| result.dag)
 }
 
 /// Derive the dag_builder_call Rust expression for a `.dag` module.
@@ -558,7 +460,9 @@ pub fn compile_dag_for_test(dsl_module: &str) -> Result<Dag<DynOp>, BuilderError
 /// This is the expression emitted in generated test code so tests can rebuild
 /// the DAG at test runtime.
 pub fn dag_builder_call_for_module(dsl_module: &str) -> String {
-    format!("crate::dsl_builder::build_dsl_graph(\"{dsl_module}\").expect(\"graph should build\")")
+    format!(
+        "gunbc_resolve::builder::build_dsl_graph(\"{dsl_module}\", &crate::extern_ops::GunbcExternResolver, gunbc_resolve::BuildOpts::default()).map(|result| result.dag).expect(\"graph should build\")"
+    )
 }
 
 // ── Internal helpers ────────────────────────────────────────────────
@@ -780,11 +684,9 @@ mod tests {
             module_name: "tools.makegen".to_string(),
             callable_count: 1,
             has_test_blocks: true,
-            interface_imports: HashSet::new(),
-            requires_profile: false,
         };
         let output_dir = std::path::Path::new("gunbc-dag/src");
-        let result = auto_testgen_for_module(&module, output_dir, &[]);
+        let result = auto_testgen_for_module(&module, output_dir);
         match result {
             AutoTestgenResult::Generated { test_code, .. } => {
                 assert!(
@@ -809,11 +711,9 @@ mod tests {
             module_name: "nonexistent.fake".to_string(),
             callable_count: 1,
             has_test_blocks: false,
-            interface_imports: HashSet::new(),
-            requires_profile: false,
         };
         let output_dir = std::path::Path::new("gunbc-dag/src");
-        let result = auto_testgen_for_module(&module, output_dir, &[]);
+        let result = auto_testgen_for_module(&module, output_dir);
         assert!(
             matches!(result, AutoTestgenResult::Skipped { .. }),
             "nonexistent module should be skipped"

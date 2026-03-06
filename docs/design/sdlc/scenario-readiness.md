@@ -18,14 +18,11 @@ As of 2026-03-05:
   - `builds_sdlc_worker_dsl_graph`
   - `builds_sdlc_stages_dsl_graph`
   - `builds_sdlc_workflow_dsl_graph`
-  - `builds_sdlc_worker_unit_test_profile_dsl_graph`
-  - `builds_sdlc_worker_local_profile_dsl_graph`
-  - `dispatch_sdlc_unit_test_profile_dry_run_completes`
+  - `sdlc_worker_uses_provider_auth_modules_and_not_legacy_bindings`
+  - `dispatch_sdlc_dry_run_completes_without_legacy_bindings`
 - Env-gated local live tests exist in `gunbc-dag/tests/sdlc_phase_live.rs`:
-  - `s9_issue_provider_live_operations_against_github`
-  - `s10_local_profile_credential_wiring_compiles_and_authenticates`
+  - `s10_local_profile_binds_real_local_providers`
   - `s11_local_profile_design_stage_e2e`
-  - `s12_to_s15_local_pipeline_wiring_is_present`
 
 What is still not continuously proven in CI:
 
@@ -37,15 +34,16 @@ What is still not continuously proven in CI:
 
 As of 2026-03-05, credentialing is not yet fully modeled end-to-end for SDLC:
 
-- `tools/gist.dag` and `funcs/sdlc_worker.dag` share centralized DSL credential helpers in `dsl/shared/credentials.dag`, but that path is still a concrete helper path, not the final modeled provider path.
-- `profiles.sdlc.local` still binds GitHub provider auth through `env("GITHUB_TOKEN")`; Codex auth remains environment-inherited rather than flowing through `CredentialProvider`.
-- Profile `secret("...")` bindings lower to literal `secret:<name>` values on `res:credential`; transport execution does not resolve those refs through `CredentialProvider`.
-- `codex.AgentProvider` auth is effectively environment-inherited; profile `credential` binding is not the active auth path for its shell operations.
+- Active workflow callers now use provider-local auth modules in `dsl/extdeps/github/auth.dag` and `dsl/extdeps/llm/auth.dag`, not the deleted shared helper path.
+- `profiles.sdlc.local` has been reintroduced only as a temporary compatibility path so the current branch can bind local SDLC providers for real-mode proof.
+- That temporary profile is currently pinned to `gunb-ai/integration_testing`.
+- The live harness fetches the GitHub token through the normal Secret Manager path, then injects it into the temporary profile’s `env("GITHUB_TOKEN")` binding. Codex auth remains environment-inherited rather than flowing through `CredentialProvider`.
+- Profile `secret("...")` bindings still lower to literal `secret:<name>` references on `res:credential`; transport execution does not yet resolve those refs through `CredentialProvider`.
 
 Conclusion:
 
-- Do not copy gist fallback behavior into SDLC.
-- Treat strict modeled credentialing as an explicit migration track: profile-bound acquisition and runtime secret-ref resolution, with no per-test/per-user ad-hoc secret selection.
+- Do not treat the temporary local profile as the target architecture.
+- Treat strict modeled credentialing as an explicit migration track: structural auth requirements plus concrete binding/link artifacts, with no workflow-local fallback logic.
 
 ## 3. Scenario Ladder
 
@@ -55,13 +53,13 @@ Goal: Prove SDLC is structurally valid and runnable in hermetic mode.
 
 Profile:
 
-- `profiles.sdlc.unit_test`
+- none on the current branch; the worker compile/dry-run proof uses the no-profile path
 
 Required proof:
 
 - `make ci` green.
 - SDLC compile tests green.
-- Unit-test dry-run dispatch completes.
+- Worker dry-run dispatch completes with auto-mocked boundaries.
 
 Use case:
 
@@ -77,20 +75,18 @@ Profile:
 
 Required secrets/env (current state, transitional):
 
-- `GITHUB_TOKEN`
 - `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` (matching `SDLC_LLM_PROVIDER`)
-- `SDLC_GITHUB_OWNER`
-- `SDLC_GITHUB_REPO`
-- `SDLC_TEST_ISSUE_NUMBER`
 - `SDLC_LLM_PROVIDER`
 - `SDLC_LLM_MODEL`
 - `SDLC_ALLOW_MUTATION=1`
+- working `gcloud` access to `gunbai-secrets/github-token`
 
 Required proof:
 
-- `s9`, `s10`, and `s11` pass in one controlled run.
-- Issue receives expected design artifact/comment.
-- Issue labels advance to design flow labels.
+- `s10` and `s11` pass in one controlled run.
+- Ephemeral issue receives expected design artifact/comment.
+- Ephemeral issue labels advance to design flow labels.
+- Ephemeral issue is closed during test cleanup.
 - Outcome artifacts are written under `target/sdlc/outcomes`.
 
 Use case:
@@ -166,6 +162,11 @@ If "use any time soon" means this month, the realistic target is:
 3. Only then decide whether to invest in Scenario D immediately.
 
 This keeps momentum while avoiding premature cloud hardening.
+
+Current tactical note:
+
+- The branch uses a temporary `profiles.sdlc.local` compatibility path to make Scenario B runnable now.
+- Delete that path once compiler-side concrete binding/link cleanup lands.
 
 ## 5. Go / No-Go Template
 

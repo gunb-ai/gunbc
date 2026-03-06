@@ -212,7 +212,7 @@ pattern (types + data, zero functions). Interface files enriched with
 | **B4 (Docgen → DSL)** | **Done** | `dsl/tools/docgen.dag` has `data read_targets` |
 | **B5 (Delete pragma.rs)** | **Done** | No `policy/pragma.rs` found. DSL rendering path used. |
 | **B6 (Delete extern_impls.rs)** | **Done** | File deleted. New `extern_ops.rs` handles DSL extern func declarations. |
-| **B7 (Delete tool wrappers)** | **Done** | 7 wrapper modules replaced by `dsl_builder::build_dsl_graph_for_entrypoint()` |
+| **B7 (Delete tool wrappers)** | **Done** | 7 wrapper modules deleted; callers now use direct `gunbc_resolve::builder::build_dsl_graph(...)` calls with `GunbcExternResolver` |
 | **B8 (Delete embedded_assets.rs)** | **Done** | File deleted |
 | **B9 (Delete compensating tests)** | **Done** | `tool_registration.rs`, `makefile_parity.rs`, `extern_ratchet.rs` all deleted |
 | B10 (Clean shared.rs + justfile.rs) | Partial | Files load DSL data via `load_build_targets_data()` but still depend on `ToolInfo` and `BuildConfig` from Rust registry types |

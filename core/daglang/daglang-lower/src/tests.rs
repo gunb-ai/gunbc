@@ -2,12 +2,29 @@ use super::*;
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::parser;
 use daglang_typecheck::typecheck_module_graph;
-use gunbc_dag::{build_bootstrap_graph, build_codegen_graph, build_deps_graph, build_pragma_graph};
+use gunbc_dag::extern_ops::GunbcExternResolver;
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::{Edge, Port};
+use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
+
+fn build_entrypoint_graph(
+    relative_module: &str,
+    entry_func: &str,
+) -> gunbc_ir::Dag<gunbc_exec::DynOp> {
+    build_dsl_graph(
+        relative_module,
+        &GunbcExternResolver,
+        BuildOpts {
+            entry_func: Some(entry_func),
+            profile: None,
+        },
+    )
+    .map(|result| result.dag)
+    .unwrap_or_else(|e| panic!("`{relative_module}` entry `{entry_func}` should build: {e}"))
+}
 
 fn typed_project_from_sources(sources: &[(&str, &str)]) -> TypedProject {
     let modules = sources
@@ -525,7 +542,7 @@ fn expr_to_template_string_preserves_identifier_interpolation() {
 fn deps_parity_report_is_deterministic() {
     let typed = typed_project_for_module_with_dependency_closure("tools.deps");
     let dag = lower_target_module_with_dependency_scope(&typed, "tools.deps");
-    let reference = build_deps_graph().expect("deps builder graph should be available");
+    let reference = build_entrypoint_graph("tools/deps.dag", "deps");
 
     let report_a = compare_ir(&dag, &reference);
     let report_b = compare_ir(&dag, &reference);
@@ -538,7 +555,7 @@ fn deps_parity_report_is_deterministic() {
 fn bootstrap_parity_report_is_deterministic() {
     let typed = typed_project_for_module_with_dependency_closure("tools.bootstrap");
     let dag = lower_target_module_with_dependency_scope(&typed, "tools.bootstrap");
-    let reference = build_bootstrap_graph().expect("bootstrap builder graph should be available");
+    let reference = build_entrypoint_graph("tools/bootstrap.dag", "bootstrap");
 
     let report_a = compare_ir(&dag, &reference);
     let report_b = compare_ir(&dag, &reference);
@@ -551,7 +568,7 @@ fn bootstrap_parity_report_is_deterministic() {
 fn codegen_parity_report_is_deterministic() {
     let typed = typed_project_for_module_with_dependency_closure("tools.codegen");
     let dag = lower_target_module_with_dependency_scope(&typed, "tools.codegen");
-    let reference = build_codegen_graph().expect("codegen builder graph should be available");
+    let reference = build_entrypoint_graph("tools/codegen.dag", "codegen");
 
     let report_a = compare_ir(&dag, &reference);
     let report_b = compare_ir(&dag, &reference);
@@ -564,7 +581,7 @@ fn codegen_parity_report_is_deterministic() {
 fn pragma_parity_report_is_deterministic() {
     let typed = typed_project_for_module_with_dependency_closure("tools.pragma");
     let dag = lower_target_module_with_dependency_scope(&typed, "tools.pragma");
-    let reference = build_pragma_graph().expect("pragma builder graph should be available");
+    let reference = build_entrypoint_graph("tools/pragma.dag", "pragma");
 
     let report_a = compare_ir(&dag, &reference);
     let report_b = compare_ir(&dag, &reference);

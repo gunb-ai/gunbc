@@ -213,7 +213,6 @@ fn discover_from_dag_file_cached(
                     &module_name,
                     &cached_entrypoints,
                     &cached.output_paths,
-                    &cached.available_profiles,
                     &func_params,
                 ));
             }
@@ -223,6 +222,11 @@ fn discover_from_dag_file_cached(
     // Cache miss: full compilation (build-time bootstrap exception)
     let source = std::fs::read_to_string(path).map_err(|e| format!("read: {e}"))?;
     let ast = daglang_syntax::parser::parse(&source).map_err(|e| format!("parse: {e:?}"))?;
+    let func_params = extract_func_params_from_ast(&ast)?;
+    if func_params.is_empty() {
+        return Ok(None);
+    }
+
     let compile_output = compile_from_context(&context).map_err(|e| format!("compile: {e}"))?;
     let output_paths = merge_output_paths(
         &compile_output.output_paths,
@@ -239,9 +243,6 @@ fn discover_from_dag_file_cached(
         return Ok(None);
     }
 
-    // Extract func params from AST for both result and cache
-    let func_params = extract_func_params_from_ast(&ast)?;
-
     // Build ToolDefs from compilation output
     let result = build_tool_defs_from_cached_params(
         &rel_path,
@@ -252,7 +253,6 @@ fn discover_from_dag_file_cached(
             .cloned()
             .collect::<Vec<_>>(),
         &output_paths,
-        &compile_output.available_profiles,
         &func_params,
     );
 
@@ -265,7 +265,6 @@ fn discover_from_dag_file_cached(
             .map(|ep| CachedEntrypoint::from(*ep))
             .collect(),
         output_paths,
-        available_profiles: compile_output.available_profiles,
         func_params: cached_params,
     };
     cache.entries.insert(module_name, entry);
@@ -406,13 +405,28 @@ fn decode_cached_cardinality(encoded: &str) -> Option<Cardinality> {
     }
 }
 
+fn dsl_graph_builder_adapter() -> String {
+    String::from(
+        "(|relative_module, resolver, opts| gunbc_resolve::builder::build_dsl_graph(relative_module, resolver, opts).map(|result| result.dag))",
+    )
+}
+
+fn dsl_graph_builder_args(rel_path: &str, entry_func: &str) -> String {
+    format!(
+        "\"{rel_path}\", &GunbcExternResolver, gunbc_resolve::BuildOpts {{ entry_func: Some(\"{entry_func}\"), profile: None }}"
+    )
+}
+
+fn extern_resolver_import() -> &'static str {
+    "use gunbc_dag::extern_ops::GunbcExternResolver;"
+}
+
 /// Build ToolDefs from pre-extracted func params (shared by cache-hit and cache-miss paths).
 fn build_tool_defs_from_cached_params(
     rel_path: &str,
     module_name: &str,
     module_entrypoints: &[InferredEntrypoint],
     output_paths: &[String],
-    available_profiles: &[String],
     func_params: &BTreeMap<String, Vec<DslParam>>,
 ) -> Option<Vec<ToolDef>> {
     if module_entrypoints.is_empty() {
@@ -432,7 +446,7 @@ fn build_tool_defs_from_cached_params(
         let mut subcommands = Vec::new();
         for ep in module_entrypoints {
             let subcmd_name = ep.func_name.replace('_', "-");
-            let graph_builder_args = format!("\"{}\", Some(\"{}\")", rel_path, ep.func_name);
+            let graph_builder_args = dsl_graph_builder_args(rel_path, &ep.func_name);
             let mock_spec = format!("gunbc_test::auto_mock_spec(&dag, \"{}\")", subcmd_name,);
             let entrypoints = func_params
                 .get(&ep.func_name)
@@ -443,7 +457,7 @@ fn build_tool_defs_from_cached_params(
                 name: subcmd_name.clone(),
                 func_name: ep.func_name.clone(),
                 description: humanize_tool_name(&subcmd_name),
-                graph_builder_call: "build_dsl_graph_for_entrypoint".to_string(),
+                graph_builder_call: dsl_graph_builder_adapter(),
                 graph_builder_args,
                 returns_result: true,
                 success_port: None,
@@ -452,27 +466,21 @@ fn build_tool_defs_from_cached_params(
             });
         }
 
-        let first_args = format!(
-            "\"{}\", Some(\"{}\")",
-            rel_path, module_entrypoints[0].func_name
-        );
+        let first_args = dsl_graph_builder_args(rel_path, &module_entrypoints[0].func_name);
         let mock_spec = format!("gunbc_test::auto_mock_spec(&dag, \"{}\")", module_tool_name,);
 
         let mut tool = ToolDef::new(
             String::from("gunbc-dag"),
             module_tool_name.clone(),
             description,
-            String::from("build_dsl_graph_for_entrypoint"),
+            dsl_graph_builder_adapter(),
             first_args,
         )
         .returns_result()
         .mock_spec_call(mock_spec)
-        .import("use gunbc_dag::dsl_builder::build_dsl_graph_for_entrypoint;")
+        .import(extern_resolver_import())
         .invocation(cargo::CargoInvocation::composed(&module_tool_name, "dag"));
 
-        if !available_profiles.is_empty() {
-            tool = tool.available_profiles(available_profiles.to_vec());
-        }
         for output_path in output_paths {
             tool = tool.output(output_path.clone());
         }
@@ -487,7 +495,7 @@ fn build_tool_defs_from_cached_params(
     let mut tools = Vec::new();
     for ep in module_entrypoints {
         let tool_name = ep.func_name.replace('_', "-");
-        let graph_builder_args = format!("\"{}\", Some(\"{}\")", rel_path, ep.func_name);
+        let graph_builder_args = dsl_graph_builder_args(rel_path, &ep.func_name);
         let description = humanize_tool_name(&tool_name);
         let mock_spec = format!("gunbc_test::auto_mock_spec(&dag, \"{}\")", tool_name,);
         let entrypoints = func_params
@@ -499,17 +507,14 @@ fn build_tool_defs_from_cached_params(
             String::from("gunbc-dag"),
             tool_name.clone(),
             description,
-            String::from("build_dsl_graph_for_entrypoint"),
+            dsl_graph_builder_adapter(),
             graph_builder_args,
         )
         .returns_result()
         .mock_spec_call(mock_spec)
-        .import("use gunbc_dag::dsl_builder::build_dsl_graph_for_entrypoint;")
+        .import(extern_resolver_import())
         .invocation(cargo::CargoInvocation::composed(&tool_name, "dag"));
 
-        if !available_profiles.is_empty() {
-            tool = tool.available_profiles(available_profiles.to_vec());
-        }
         for output_path in output_paths {
             tool = tool.output(output_path.clone());
         }
@@ -802,8 +807,8 @@ mod tests {
         for tool in &tools {
             assert_eq!(
                 tool.meta.graph_builder_call.as_ref(),
-                "build_dsl_graph_for_entrypoint",
-                "{} should use build_dsl_graph_for_entrypoint",
+                dsl_graph_builder_adapter(),
+                "{} should use the direct gunbc_resolve builder adapter",
                 tool.meta.tool_name,
             );
         }
