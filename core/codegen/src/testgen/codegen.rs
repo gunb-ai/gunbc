@@ -249,7 +249,7 @@ pub struct TestGenerator<'a, T> {
     mock_spec: Option<MockSpec>,
     /// Function path to call for MockSpec (e.g., "crate::ci::graph_mock::ci_mock_spec()")
     mock_spec_fn: Option<String>,
-    /// Function path to call for declared signature (e.g., "crate::makegen_signature()")
+    /// Rust expression to compute the declared signature (e.g., "gunbc_ir::infer_signature(&dag)")
     signature_fn: Option<String>,
     /// CLI entrypoints for contract test generation: (tool_name, entrypoints).
     cli_entrypoints: Option<(String, Vec<crate::cli_gen::CliEntrypoint>)>,
@@ -647,7 +647,9 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 },
                 format!(
                     "Interface '{}' capability '{}' behavioral contract: {}",
-                    contract.interface_name, contract.capability_name, contract.test_name()
+                    contract.interface_name,
+                    contract.capability_name,
+                    contract.test_name()
                 ),
                 ObligationSource::Contract,
             ));
@@ -665,7 +667,11 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     "Operation '{}' must handle status {} ({})",
                     contract.operation,
                     contract.status_code,
-                    if contract.is_error { "error" } else { "success" }
+                    if contract.is_error {
+                        "error"
+                    } else {
+                        "success"
+                    }
                 ),
                 ObligationSource::Contract,
             ));
@@ -2664,10 +2670,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             .all
             .iter()
             .filter(|o| {
-                matches!(
-                    o.kind,
-                    Obligation::InterfaceContractCompliance { .. }
-                ) && o.needs_test()
+                matches!(o.kind, Obligation::InterfaceContractCompliance { .. }) && o.needs_test()
             })
             .collect();
         if iface_obligations.is_empty() {
@@ -2687,9 +2690,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             // Emit as a documented test function with raw body.
             let mut doc = vec![format!(
                 "Interface contract: {}.{} ({}).",
-                contract.interface_name,
-                contract.capability_name,
-                contract.kind,
+                contract.interface_name, contract.capability_name, contract.kind,
             )];
             if !contract.setup.is_empty() {
                 doc.push(format!(
@@ -2709,12 +2710,9 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     "CT-8: Interface contract test for {}.{}",
                     contract.interface_name, contract.capability_name
                 )),
+                Stmt::Comment("Provider construction requires profile-specific binding.".into()),
                 Stmt::Comment(
-                    "Provider construction requires profile-specific binding.".into(),
-                ),
-                Stmt::Comment(
-                    "Remove #[ignore] when provider bindings are wired for this interface."
-                        .into(),
+                    "Remove #[ignore] when provider bindings are wired for this interface.".into(),
                 ),
                 Stmt::Item(Item::Raw(
                     "let provider = todo!(\"bind provider for this interface\");".to_string(),
@@ -2730,9 +2728,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             });
         }
 
-        notes.push(
-            "Interface contract tests document provider obligations.".to_string(),
-        );
+        notes.push("Interface contract tests document provider obligations.".to_string());
 
         (tests, notes)
     }
@@ -2750,10 +2746,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             .all
             .iter()
             .filter(|o| {
-                matches!(
-                    o.kind,
-                    Obligation::ResponseContractCompliance { .. }
-                ) && o.needs_test()
+                matches!(o.kind, Obligation::ResponseContractCompliance { .. }) && o.needs_test()
             })
             .collect();
         if resp_obligations.is_empty() {
@@ -2768,17 +2761,18 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
 
         for contract in &self.response_contracts {
             let test_name = format!("test_{}", contract.test_name());
-            let kind = if contract.is_error { "error" } else { "success" };
+            let kind = if contract.is_error {
+                "error"
+            } else {
+                "success"
+            };
 
             let doc = vec![
                 format!(
                     "Response contract: {} status {} ({}).",
                     contract.operation, contract.status_code, kind
                 ),
-                format!(
-                    "Expected response type: {}.",
-                    contract.response_type
-                ),
+                format!("Expected response type: {}.", contract.response_type),
                 format!(
                     "Proves: operation handles HTTP {} correctly.",
                     contract.status_code
@@ -2792,7 +2786,11 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 Stmt::Comment(format!(
                     "CT-8: Response contract — {} {} for status {}",
                     contract.operation,
-                    if contract.is_error { "should produce error" } else { "should succeed" },
+                    if contract.is_error {
+                        "should produce error"
+                    } else {
+                        "should succeed"
+                    },
                     contract.status_code,
                 )),
                 Stmt::Comment(format!(
@@ -2813,9 +2811,8 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             });
         }
 
-        notes.push(
-            "Response contract tests verify status code handling per operation.".to_string(),
-        );
+        notes
+            .push("Response contract tests verify status code handling per operation.".to_string());
 
         (tests, notes)
     }
@@ -4192,7 +4189,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                         self.config.target_name, profile_test.profile_name
                     ),
                     notes: vec![format!(
-                        "Compiles with --profile {}, executes in Real mode.",
+                        "Compiles with concrete binding `{}`, executes in Real mode.",
                         profile_test.profile_name
                     )],
                     tests: vec![TestFn {

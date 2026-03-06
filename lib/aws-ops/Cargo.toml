@@ -1,7 +1,0 @@
-[package]
-name = "gunbc-lib-aws-ops"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-gunbc-ir = { path = "../../core/ir" }

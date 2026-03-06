@@ -82,7 +82,7 @@ Each `.dag` file replaces a specific Rust graph builder:
 | `tools/pragma.dag` | `gunbc-dag/src/pragma/graph.rs` | ~300 |
 | `tools/build.dag` | `gunbc-dag/src/build/graph.rs` | ~250 |
 | `tools/docgen.dag` | `gunbc-dag/src/docgen/graph.rs` | ~500 |
-| `cloud/gcp/credential.dag` | `lib/gcp-ops/src/graph.rs` | 1,700+ |
+| `cloud/gcp/credential.dag` | former handwritten Rust GCP credential graph | 1,700+ |
 | `pipelines/ci.dag` | `gunbc-dag/src/ci/graph.rs` | ~600 |
 
 **Total: ~7,500 lines of Rust graph builders replaced by ~700 lines of DSL.**

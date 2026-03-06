@@ -23,7 +23,7 @@ const WORKFLOW_FIXTURES: &[WorkflowFixture] = &[
     },
     WorkflowFixture {
         scenario: "S2",
-        module: "cloud.gcp.credential",
+        module: "extdeps.sdlc.providers.gcp_credential_provider",
         fixture_file: "s2_credential_chain_gcp.json",
     },
     WorkflowFixture {

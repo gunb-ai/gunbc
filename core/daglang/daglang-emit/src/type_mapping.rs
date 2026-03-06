@@ -115,7 +115,15 @@ pub fn map_abstract_type(mapping: &DslTypeMapping, abstract_type: &str) -> Strin
 pub static RUST_TYPE_MAPPING: DslTypeMapping = DslTypeMapping {
     primitives: &[
         PrimitiveMapping {
-            dsl_names: &["String", "Path", "NonEmptyStr", "Url", "GistId", "ProjectId", "ServiceAccountEmail"],
+            dsl_names: &[
+                "String",
+                "Path",
+                "NonEmptyStr",
+                "Url",
+                "GistId",
+                "ProjectId",
+                "ServiceAccountEmail",
+            ],
             target: "String",
         },
         PrimitiveMapping {
@@ -173,7 +181,15 @@ pub static RUST_TYPE_MAPPING: DslTypeMapping = DslTypeMapping {
 pub static GO_TYPE_MAPPING: DslTypeMapping = DslTypeMapping {
     primitives: &[
         PrimitiveMapping {
-            dsl_names: &["String", "Path", "NonEmptyStr", "Url", "GistId", "ProjectId", "ServiceAccountEmail"],
+            dsl_names: &[
+                "String",
+                "Path",
+                "NonEmptyStr",
+                "Url",
+                "GistId",
+                "ProjectId",
+                "ServiceAccountEmail",
+            ],
             target: "string",
         },
         PrimitiveMapping {

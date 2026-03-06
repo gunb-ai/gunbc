@@ -346,9 +346,9 @@ CAS stays in the implementation (Layer 3), not the interface (Layer 2). The `Cla
 
 ### Gap F: SubDag / Pipeline Node Execution
 
-**Current state**: `SubDag` nodes (from `for`/`if` lowering) and `Pipeline` nodes resolve to `UnsupportedOp` in `gunbc-dag/src/resolve.rs:559`. The DSL compiles control flow but the runtime cannot execute it.
+**Historical state (fixed on 2026-02-22)**: `SubDag` nodes (from `for`/`if` lowering) and `Pipeline` nodes originally resolved to `UnsupportedOp` in the resolver path that now lives in `core/resolve/src/resolve.rs`. At that point the DSL compiled control flow but the runtime could not execute it.
 
-Specific locations:
+Historical locations:
 - `resolve.rs:559`: `NodeBody::SubDag(_) => Ok(DynOp::new(UnsupportedOp::new("subdag_pattern")))`
 - `resolve.rs:567`: `LoweredOp::Pipeline { .. } => Ok(DynOp::new(UnsupportedOp::new(...)))`
 - `resolve.rs:579`: `LoopUnpack | LoopPack | BranchMerge => Ok(DynOp::new(UnsupportedOp::new("pattern_internal")))`

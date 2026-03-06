@@ -71,12 +71,9 @@ fn load_workflow_commands_from_dsl() -> Result<WorkflowCommandMap, String> {
     let dsl_root = layout.workspace_root.join("dsl");
     let output = compile_data_from_module(&dsl_root, "config/workflow_commands.dag")
         .map_err(|e| format!("config/workflow_commands.dag compilation failed: {e}"))?;
-    let value = output
-        .data_values
-        .get("workflow_commands")
-        .ok_or_else(|| {
-            "config/workflow_commands.dag must declare `workflow_commands` data".to_string()
-        })?;
+    let value = output.data_values.get("workflow_commands").ok_or_else(|| {
+        "config/workflow_commands.dag must declare `workflow_commands` data".to_string()
+    })?;
     let sets: Vec<WorkflowCommandSet> = serde_json::from_value(value.clone())
         .map_err(|e| format!("workflow_commands deserialization failed: {e}"))?;
 

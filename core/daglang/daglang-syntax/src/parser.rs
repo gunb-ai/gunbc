@@ -1974,9 +1974,7 @@ impl Parser {
                     break;
                 } else {
                     let tok_desc = format!("{:?}", self.peek().kind);
-                    return Err(self.err(format!(
-                        "unexpected token in operation body: {tok_desc}"
-                    )));
+                    return Err(self.err(format!("unexpected token in operation body: {tok_desc}")));
                 }
             }
             self.expect(&TokenKind::RBrace)?;

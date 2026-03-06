@@ -1,17 +1,22 @@
 //! End-to-end fidelity smoke tests against real DSL modules.
 //!
 //! The classification engine itself lives in `gunbc_codegen::fidelity`.
-//! These tests exercise it against the real DSL corpus via `dsl_builder`.
+//! These tests exercise it against the real DSL corpus via `gunbc_resolve`.
 
 #[cfg(test)]
 mod tests {
     use gunbc_codegen::fidelity::{classify_callable, classify_module, FidelityClassification};
+    use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
     use gunbc_test::FermiCost;
     use gunbc_test::TestClass;
 
     fn classify_dsl_module(module_path: &str) -> FidelityClassification {
-        let result = crate::dsl_builder::build_dsl_graph_with_types(module_path)
-            .unwrap_or_else(|e| panic!("DSL module `{module_path}` should compile: {e}"));
+        let result = build_dsl_graph(
+            module_path,
+            &crate::extern_ops::GunbcExternResolver,
+            BuildOpts::default(),
+        )
+        .unwrap_or_else(|e| panic!("DSL module `{module_path}` should compile: {e}"));
         classify_module(&result.callable_properties)
     }
 
@@ -20,8 +25,12 @@ mod tests {
         // makegen itself has no transport operations (pure DSL rendering + content_upsert).
         // Module-level classification includes transitive auth callables from std.patterns,
         // but the makegen callable specifically should be Unit/XS.
-        let result = crate::dsl_builder::build_dsl_graph_with_types("tools/makegen.dag")
-            .expect("makegen should compile");
+        let result = build_dsl_graph(
+            "tools/makegen.dag",
+            &crate::extern_ops::GunbcExternResolver,
+            BuildOpts::default(),
+        )
+        .expect("makegen should compile");
         let makegen_props = result
             .callable_properties
             .get("tools.makegen::makegen")

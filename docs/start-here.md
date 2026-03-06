@@ -78,7 +78,7 @@ same structural problem. Common patterns:
 | Declare build targets | `config/build_targets.dag` → `CoreWorkflow` data |
 | Model an external tool | `extdeps/clippy.dag` → tautological facts |
 | Enforce a repo invariant | `config/arch_rules.dag` → tiered invariants |
-| Auto-discover from DSL | `dsl_registry.rs` → structural entrypoint inference |
+| Auto-discover from DSL | `core/codegen/src/tool_discovery.rs` → structural entrypoint inference |
 | Auto-register a component | `#[testgen_target]` → inventory-based discovery |
 
 Propagating an existing pattern is always faster than inventing a new one.
@@ -330,16 +330,14 @@ core/                         Compiler + runtime infrastructure
 lib/
 ├── transport/                I/O boundary (the ONLY place with std::fs)
 ├── cloud-ops/                Cloud provider abstractions
-├── gcp-ops/                  GCP-specific operations
 └── primitives/               Stable hashing
 
-gunbc-dag/                    Workspace DAG assembly
-├── src/extern_impls.rs       8 bridge functions (shrinking)
-├── src/resolve.rs            Generic LoweredOp → DynOp (any .dag file)
-├── src/dsl_registry.rs       Structural tool discovery
-├── src/makegen/              Makefile generation from registry
-├── src/policy/               Pragma policy rendering
-└── tests/tool_registration.rs  Drift detection test suite
+gunbc-dag/                    Repo-specific app bindings and CLI bootstrap
+├── src/extern_ops.rs         App-specific extern resolver + implementations
+├── src/bin/codegen_cli.rs    Bootstrap codegen entrypoint
+├── src/makegen_support.rs    Remaining makegen-specific helpers
+├── src/resource_targets.rs   Resource-backed target metadata
+└── tests/                    Repo integration + boundary tests
 
 docs/
 ├── start-here.md             THIS FILE — read first

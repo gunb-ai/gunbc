@@ -211,7 +211,7 @@ impl VirtualFilesystem {
 /// through to the built-in handlers (find, printenv, sh) or error.
 #[derive(Debug, Clone)]
 pub struct ShellCassette {
-    /// Executable name (e.g., "cargo", "git", "gcloud").
+    /// Executable name (e.g., "cargo", "git", "secretctl").
     pub command: String,
     /// Expected argument list. Matching modes:
     /// - Non-empty: exact match on `request.args`

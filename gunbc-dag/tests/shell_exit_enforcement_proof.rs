@@ -21,13 +21,59 @@
 
 use std::sync::{Arc, Mutex};
 
-use gunbc_dag::dsl_builder::build_dsl_graph_for_entrypoint;
+use gunbc_dag::extern_ops::GunbcExternResolver;
 use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
 use gunbc_ir::transport::{
     HttpMethod, RestResponse, ShellResponse, TransportRequest, TransportResponse,
 };
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_lib_transport::{executor::TransportError, TransportBackend, TransportBackendGuard};
+use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
+use std::collections::{HashSet, VecDeque};
+
+fn build_graph(relative_module: &str) -> gunbc_ir::Dag<gunbc_exec::DynOp> {
+    build_dsl_graph(relative_module, &GunbcExternResolver, BuildOpts::default())
+        .map(|result| result.dag)
+        .unwrap_or_else(|e| panic!("`{relative_module}` should build: {e}"))
+}
+
+fn connected_subdag<T: Clone>(dag: &gunbc_ir::Dag<T>, seed_prefix: &str) -> gunbc_ir::Dag<T> {
+    let seed = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0.starts_with(seed_prefix))
+        .map(|node| node.id.0.clone())
+        .unwrap_or_else(|| panic!("seed node prefix `{seed_prefix}` not found in DAG"));
+
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut queue: VecDeque<String> = VecDeque::new();
+    visited.insert(seed.clone());
+    queue.push_back(seed);
+
+    while let Some(current) = queue.pop_front() {
+        for edge in &dag.edges {
+            let neighbor = if edge.from_node.0 == current {
+                Some(edge.to_node.0.clone())
+            } else if edge.to_node.0 == current {
+                Some(edge.from_node.0.clone())
+            } else {
+                None
+            };
+            if let Some(node_id) = neighbor {
+                if visited.insert(node_id.clone()) {
+                    queue.push_back(node_id);
+                }
+            }
+        }
+    }
+
+    let mut subdag = dag.clone();
+    subdag.nodes.retain(|node| visited.contains(&node.id.0));
+    subdag
+        .edges
+        .retain(|edge| visited.contains(&edge.from_node.0) && visited.contains(&edge.to_node.0));
+    subdag
+}
 
 // ── Backend: gcloud returns exit 1 (expired session) ────────────────────
 
@@ -76,11 +122,6 @@ impl TransportBackend for GcloudExpiredBackend {
                     "oldest-commit\n",
                 )))
             }
-            // Credential chain probes CI environment via printenv; return empty
-            // to simulate non-CI, forcing fallback to gcloud.
-            TransportRequest::Shell(shell) if shell.command == "printenv" => {
-                Ok(TransportResponse::Shell(ShellResponse::ok("")))
-            }
             // KEY: gcloud returns exit 1 (session expired / not logged in)
             TransportRequest::Shell(shell) if shell.command == "gcloud" => {
                 Ok(TransportResponse::Shell(ShellResponse::failed(
@@ -88,9 +129,9 @@ impl TransportBackend for GcloudExpiredBackend {
                     "ERROR: (gcloud.secrets.versions.access) There was a problem refreshing your current auth tokens",
                 )))
             }
-            // Credential chain STS/OAuth REST calls — fail to simulate
-            // credential resolution failure (these fire because default param
-            // injection provides `audience` to the credential chain).
+            // Any non-gist REST call here would be a regression in the current
+            // provider-auth path, which should finish token materialization
+            // before the GitHub API request.
             TransportRequest::Rest(rest) if !rest.url.ends_with("/gists") => {
                 Err(TransportError::new(format!(
                     "credential REST call should not succeed when gcloud fails: {}",
@@ -159,11 +200,6 @@ impl TransportBackend for Rest401Backend {
                     "oldest-commit\n",
                 )))
             }
-            // Credential chain probes CI environment via printenv; return empty
-            // to simulate non-CI, forcing fallback to gcloud.
-            TransportRequest::Shell(shell) if shell.command == "printenv" => {
-                Ok(TransportResponse::Shell(ShellResponse::ok("")))
-            }
             TransportRequest::Shell(shell) if shell.command == "gcloud" => Ok(
                 TransportResponse::Shell(ShellResponse::ok("ghp_mock_token\n")),
             ),
@@ -191,8 +227,8 @@ impl TransportBackend for Rest401Backend {
 }
 
 fn build_gist_recent_with_inputs() -> (gunbc_ir::Dag<gunbc_exec::DynOp>, BoundaryMocks) {
-    let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist_recent"), None)
-        .expect("gist-recent graph should build");
+    let dag = build_graph("tools/gist.dag");
+    let dag = connected_subdag(&dag, "tools.gist::gist_recent");
 
     let mut input_mocks = BoundaryMocks::new();
     let entrypoints = detect_entrypoints(&dag);
@@ -206,6 +242,11 @@ fn build_gist_recent_with_inputs() -> (gunbc_ir::Dag<gunbc_exec::DynOp>, Boundar
             "public" => {
                 input_mocks.set_input(node_id.0.clone(), port_name.0.clone(), Value::Bool(false))
             }
+            "path" | "output_path" => input_mocks.set_input(
+                node_id.0.clone(),
+                port_name.0.clone(),
+                Value::Str("target/test-gist-output.md".into()),
+            ),
             _ => {}
         }
     }
@@ -220,10 +261,9 @@ fn build_gist_recent_with_inputs() -> (gunbc_ir::Dag<gunbc_exec::DynOp>, Boundar
 /// then flow to the GitHub API as the auth token, causing a 401 error that
 /// was misdiagnosed as a token permission issue.
 ///
-/// After RT-I4, the credential chain fails — either via shell exit code
-/// checking (exit 1 from gcloud) or via credential Skipped propagation
-/// (when the WIF conditional path skips). Either way, execution fails
-/// rather than silently sending an unauthenticated request.
+/// After RT-I4, the provider-auth Secret Manager path fails closed when the
+/// `gcloud` shell transport exits non-zero. Execution now stops before sending
+/// an unauthenticated gist request.
 #[test]
 fn gcloud_exit_code_1_fails_with_error() {
     let (dag, input_mocks) = build_gist_recent_with_inputs();
@@ -250,13 +290,13 @@ fn gcloud_exit_code_1_fails_with_error() {
         error.contains("exit")
             || error.contains("credential")
             || error.contains("Skipped")
-            || error.contains("passthrough"),
+            || error.contains("passthrough")
+            || error.contains("missing required"),
         "error should mention exit code or credential failure, got: {error}"
     );
 
     // Verify that the gist REST endpoint was never called — the failure should
-    // stop the flow before reaching the GitHub API. Credential chain REST calls
-    // (OIDC, STS, metadata) may fire and fail; only count gist API calls.
+    // stop the flow before reaching the GitHub API.
     let captured = requests.lock().expect("capture lock");
     let gist_rest_calls: Vec<_> = captured
         .iter()
@@ -307,8 +347,8 @@ fn rest_401_response_surfaces_as_error() {
 /// exit code 1 (expired gcloud session) or HTTP 401 (bad credentials).
 #[test]
 fn auto_mock_spec_always_produces_success_responses() {
-    let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist_recent"), None)
-        .expect("gist-recent graph should build");
+    let dag = build_graph("tools/gist.dag");
+    let dag = connected_subdag(&dag, "tools.gist::gist_recent");
 
     let spec = gunbc_test::auto_mock_spec(&dag, "gist_recent");
 

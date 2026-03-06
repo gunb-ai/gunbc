@@ -28,7 +28,7 @@ fn makegen_file() -> PathBuf {
 }
 
 fn ci_pipeline_file() -> PathBuf {
-    workspace_root().join("dsl/pipelines/ci.dag")
+    workspace_root().join("dsl/pipelines/cloud_e2e.dag")
 }
 
 fn deps_file() -> PathBuf {
@@ -561,8 +561,8 @@ fn assert_compile_absolute_valid_root_variants() {
     );
     let abs_stderr = String::from_utf8_lossy(&canonical.stderr);
     assert!(
-        abs_stderr.contains("compile with --profile") || abs_stderr.contains("ambiguous"),
-        "canonical absolute-root compile should report missing profile binding or ambiguous resource: {abs_stderr}"
+        abs_stderr.contains("without a concrete binding") || abs_stderr.contains("ambiguous"),
+        "canonical absolute-root compile should report missing concrete binding or ambiguous resource: {abs_stderr}"
     );
 
     for (label, variant_path) in all_absolute_variants(&root, "dsl") {
@@ -586,8 +586,8 @@ fn assert_compile_relative_parent_valid_root_variants() {
     );
     let stderr_text = String::from_utf8_lossy(&canonical.stderr);
     assert!(
-        stderr_text.contains("compile with --profile") || stderr_text.contains("ambiguous"),
-        "canonical compile should report missing profile binding or ambiguous resource: {stderr_text}"
+        stderr_text.contains("without a concrete binding") || stderr_text.contains("ambiguous"),
+        "canonical compile should report missing concrete binding or ambiguous resource: {stderr_text}"
     );
 
     for (label, variant) in rel_parent_variants("dsl") {
@@ -611,8 +611,8 @@ fn assert_compile_relative_curdir_valid_root_variants() {
     );
     let stderr_text = String::from_utf8_lossy(&canonical.stderr);
     assert!(
-        stderr_text.contains("compile with --profile") || stderr_text.contains("ambiguous"),
-        "canonical compile should report missing profile binding or ambiguous resource: {stderr_text}"
+        stderr_text.contains("without a concrete binding") || stderr_text.contains("ambiguous"),
+        "canonical compile should report missing concrete binding or ambiguous resource: {stderr_text}"
     );
 
     for (label, variant) in rel_curdir_variants("dsl") {
@@ -6840,18 +6840,18 @@ fn progress_command_ci_json_includes_stage_groups() {
             group
                 .get("stage_id")
                 .and_then(Value::as_str)
-                .is_some_and(|stage| stage.ends_with(":cloud_env"))
+                .is_some_and(|stage| stage.ends_with(":gate"))
         }),
-        "ci progress should include cloud_env stage group"
+        "progress should include gate stage group"
     );
     assert!(
         stage_groups.iter().any(|group| {
             group
                 .get("stage_id")
                 .and_then(Value::as_str)
-                .is_some_and(|stage| stage.ends_with(":bootstrap_stage"))
+                .is_some_and(|stage| stage.ends_with(":report"))
         }),
-        "ci progress should include explicit bootstrap_stage group"
+        "progress should include report stage group"
     );
 }
 
@@ -6873,9 +6873,9 @@ fn progress_command_ci_text_renders_collapsible_stage_group_sections() {
     assert_no_stage_failures(&stderr);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("> [collapsed] pipelines.ci.ci"));
-    assert!(stdout.contains("- cloud_env:"));
-    assert!(stdout.contains("- bootstrap_stage:"));
+    assert!(stdout.contains("> [collapsed] pipelines.cloud_e2e.cloud_e2e"));
+    assert!(stdout.contains("- gate:"));
+    assert!(stdout.contains("- report:"));
 }
 
 #[test]
@@ -7170,8 +7170,8 @@ fn obligations_command_json_full_dsl_root_fails_on_ambiguous_resource_bindings()
         "full dsl obligations should fail in lower stage: {stderr}"
     );
     assert!(
-        stderr.contains("compile with --profile") || stderr.contains("ambiguous"),
-        "full dsl obligations should report missing profile binding or ambiguous resource: {stderr}"
+        stderr.contains("without a concrete binding") || stderr.contains("ambiguous"),
+        "full dsl obligations should report missing concrete binding or ambiguous resource: {stderr}"
     );
 }
 

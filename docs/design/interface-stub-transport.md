@@ -125,7 +125,7 @@ No string munging, no cap_key rebuild/split. Same lookup path for real and stub 
 
 ### IS-6: Handle `InterfaceStub` in DynOp resolver (M)
 
-**File**: `gunbc-dag/src/resolve.rs`
+**File**: `core/resolve/src/resolve.rs`
 
 In `resolve_service_transport()` (line 846), add a branch for `ServiceOperationSpec::InterfaceStub`:
 
@@ -168,7 +168,7 @@ IS-6 (parallel with IS-2..IS-5)
 
 ### PT-1: Profile-aware compilation for testgen (M)
 
-**Files**: `gunbc-dag/src/dsl_builder.rs`, `core/daglang/daglang-lower/src/lib.rs`
+**Files**: `core/resolve/src/builder.rs`, `core/daglang/daglang-lower/src/lib.rs`
 
 Reuse the compiler's existing profile parsing and binding logic — do NOT re-parse `dsl/profiles/*.dag` separately (drift risk). Instead:
 

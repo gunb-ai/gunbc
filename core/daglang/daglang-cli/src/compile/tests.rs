@@ -4,11 +4,19 @@ use daglang_derive::derive_artifacts;
 use daglang_lower::{
     CallableKind, LoweredOp, ObligationCategory, ServiceCallMetadata, ServiceTransportClass,
 };
+use gunbc_dag::extern_ops::GunbcExternResolver;
 use gunbc_exec::{lower, ExecutionMode};
 use gunbc_ir::{Dag, Edge, Node, Port};
+use gunbc_resolve::resolve_lowered_dag_with;
 use gunbc_test::{unique_temp_dir, unique_temp_file};
 use serde_json::Value;
 use std::path::PathBuf;
+
+fn resolve_lowered_dag(
+    dag: &Dag<LoweredOp>,
+) -> Result<Dag<gunbc_exec::DynOp>, gunbc_resolve::ResolveError> {
+    resolve_lowered_dag_with(dag, &GunbcExternResolver)
+}
 
 fn workspace_dsl_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl")
@@ -498,7 +506,11 @@ func run() -> { report: String } {
     // return value from the fn's computation instead of requiring passthrough
     // wiring from ExprCompute nodes.
     let result = execute_resolved_dag(&resolved, ExecutionMode::Real, None);
-    assert!(result.is_ok(), "execution should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "execution should succeed: {:?}",
+        result.err()
+    );
 
     // Verify the fn body evaluation produced the correct report string.
     let log = result.unwrap();
@@ -506,7 +518,10 @@ func run() -> { report: String } {
         .entries
         .iter()
         .find(|e| e.node_id == "sample.main::summarize");
-    assert!(summarize_entry.is_some(), "summarize node should have executed");
+    assert!(
+        summarize_entry.is_some(),
+        "summarize node should have executed"
+    );
     let summarize_outputs = &summarize_entry.unwrap().outputs;
     let return_value = summarize_outputs.get("return");
     assert!(
@@ -771,21 +786,21 @@ fn render_manifest_reuses_obligations_text_block() {
 
 #[test]
 fn render_manifest_groups_stage_groups_into_collapsible_sections() {
-    let context = workspace_single_file_context("pipelines/sdlc_ci.dag");
+    let context = workspace_single_file_context("pipelines/cloud_e2e.dag");
     let output = compile_from_context(&context).expect("compile should succeed");
 
     let manifest = render_manifest(&output.derived);
     assert!(
-        manifest.contains("  stage_groups:\n    > [collapsed] pipelines.sdlc_ci.sdlc_ci"),
-        "manifest text should render sdlc_ci stage groups as collapsible section"
+        manifest.contains("  stage_groups:\n    > [collapsed] pipelines.cloud_e2e.cloud_e2e"),
+        "manifest text should render cloud_e2e stage groups as collapsible section"
     );
     assert!(
-        manifest.contains("      - build:"),
-        "manifest text should render build stage inside section"
+        manifest.contains("      - gate:"),
+        "manifest text should render gate stage inside section"
     );
     assert!(
-        manifest.contains("      - hermetic:"),
-        "manifest text should render hermetic stage inside section"
+        manifest.contains("      - acquire_credential:"),
+        "manifest text should render acquire_credential stage inside section"
     );
 }
 

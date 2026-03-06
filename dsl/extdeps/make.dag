@@ -127,7 +127,6 @@ type DiscoveredTool {
   deps: List<String>          // make target dependencies
   entrypoints: List<EntrypointParam>
   extra_targets: List<ExtraTarget>
-  live_secrets: List<String>
 }
 
 // An extra composite target for a tool (e.g., "viz-serve").

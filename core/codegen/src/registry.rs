@@ -1,7 +1,7 @@
 //! Tool registry for CLI generation.
 //!
 //! Tool metadata is derived from DSL structural entrypoint inference via
-//! `discover_tool_defs_from_dsl()` in `gunbc-dag/src/dsl_registry.rs`.
+//! `discover_tool_defs_from_dsl()` in `core/codegen/src/tool_discovery.rs`.
 
 use crate::cli_gen::{CliEntrypoint, ToolMeta};
 use gunbc_ir::cargo;
@@ -72,7 +72,7 @@ pub struct TestgenTargetDef {
     pub mock_spec_path: Cow<'static, str>,
     /// DAG builder call expression (e.g., "crate::build_graph().unwrap()")
     pub dag_builder_call: Cow<'static, str>,
-    /// Signature function path (e.g., "crate::makegen_signature()")
+    /// Signature expression (e.g., "gunbc_ir::infer_signature(&dag)")
     pub signature_path: Option<Cow<'static, str>>,
     /// Enable boundary tests
     pub boundary_tests: bool,
@@ -224,7 +224,6 @@ impl ToolDef {
                 enable_step_mode: false,
                 mock_spec_call: None,
                 enable_mode: false,
-                available_profiles: vec![],
             },
             entrypoints: vec![],
             custom_import: None,
@@ -291,15 +290,6 @@ impl ToolDef {
     /// Enable `--mode` flag (verify/ensure) for content_upsert tools (RT61).
     pub fn enable_mode(mut self) -> Self {
         self.meta.enable_mode = true;
-        self
-    }
-
-    /// Set available profiles for `--profile` enum flag (C20/RT59).
-    ///
-    /// When non-empty, the generated CLI accepts `--profile <name>` to select
-    /// which interface bindings are active at runtime.
-    pub fn available_profiles(mut self, profiles: Vec<String>) -> Self {
-        self.meta.available_profiles = profiles;
         self
     }
 

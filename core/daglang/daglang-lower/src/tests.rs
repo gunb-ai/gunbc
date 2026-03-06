@@ -2,12 +2,29 @@ use super::*;
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::parser;
 use daglang_typecheck::typecheck_module_graph;
-use gunbc_dag::{build_bootstrap_graph, build_codegen_graph, build_deps_graph, build_pragma_graph};
+use gunbc_dag::extern_ops::GunbcExternResolver;
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::{Edge, Port};
+use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
+
+fn build_entrypoint_graph(
+    relative_module: &str,
+    entry_func: &str,
+) -> gunbc_ir::Dag<gunbc_exec::DynOp> {
+    build_dsl_graph(
+        relative_module,
+        &GunbcExternResolver,
+        BuildOpts {
+            entry_func: Some(entry_func),
+            profile: None,
+        },
+    )
+    .map(|result| result.dag)
+    .unwrap_or_else(|e| panic!("`{relative_module}` entry `{entry_func}` should build: {e}"))
+}
 
 fn typed_project_from_sources(sources: &[(&str, &str)]) -> TypedProject {
     let modules = sources
@@ -525,7 +542,7 @@ fn expr_to_template_string_preserves_identifier_interpolation() {
 fn deps_parity_report_is_deterministic() {
     let typed = typed_project_for_module_with_dependency_closure("tools.deps");
     let dag = lower_target_module_with_dependency_scope(&typed, "tools.deps");
-    let reference = build_deps_graph().expect("deps builder graph should be available");
+    let reference = build_entrypoint_graph("tools/deps.dag", "deps");
 
     let report_a = compare_ir(&dag, &reference);
     let report_b = compare_ir(&dag, &reference);
@@ -538,7 +555,7 @@ fn deps_parity_report_is_deterministic() {
 fn bootstrap_parity_report_is_deterministic() {
     let typed = typed_project_for_module_with_dependency_closure("tools.bootstrap");
     let dag = lower_target_module_with_dependency_scope(&typed, "tools.bootstrap");
-    let reference = build_bootstrap_graph().expect("bootstrap builder graph should be available");
+    let reference = build_entrypoint_graph("tools/bootstrap.dag", "bootstrap");
 
     let report_a = compare_ir(&dag, &reference);
     let report_b = compare_ir(&dag, &reference);
@@ -551,7 +568,7 @@ fn bootstrap_parity_report_is_deterministic() {
 fn codegen_parity_report_is_deterministic() {
     let typed = typed_project_for_module_with_dependency_closure("tools.codegen");
     let dag = lower_target_module_with_dependency_scope(&typed, "tools.codegen");
-    let reference = build_codegen_graph().expect("codegen builder graph should be available");
+    let reference = build_entrypoint_graph("tools/codegen.dag", "codegen");
 
     let report_a = compare_ir(&dag, &reference);
     let report_b = compare_ir(&dag, &reference);
@@ -564,7 +581,7 @@ fn codegen_parity_report_is_deterministic() {
 fn pragma_parity_report_is_deterministic() {
     let typed = typed_project_for_module_with_dependency_closure("tools.pragma");
     let dag = lower_target_module_with_dependency_scope(&typed, "tools.pragma");
-    let reference = build_pragma_graph().expect("pragma builder graph should be available");
+    let reference = build_entrypoint_graph("tools/pragma.dag", "pragma");
 
     let report_a = compare_ir(&dag, &reference);
     let report_b = compare_ir(&dag, &reference);
@@ -2191,8 +2208,8 @@ func store_artifact_azure(key: String, content: String) -> { ok: Bool } uses sto
 fn cross_provider_auth_calls_resolve_all_credential_chains() {
     let typed = typed_project_from_sources(&[
         (
-            "dsl/cloud/gcp/credential.dag",
-            r#"module cloud.gcp.credential
+            "dsl/extdeps/sdlc/providers/gcp_credential_provider.dag",
+            r#"module extdeps.sdlc.providers.gcp_credential_provider
 func acquire_gcp_secret() -> { token: String } {
   return { token: "gcp" }
 }"#,
@@ -2214,7 +2231,7 @@ func acquire_azure_secret() -> { token: String } {
         (
             "dsl/examples/auth.dag",
             r#"module examples.auth
-import cloud.gcp.credential { acquire_gcp_secret }
+import extdeps.sdlc.providers.gcp_credential_provider { acquire_gcp_secret }
 import cloud.aws.credential { acquire_aws_secret }
 import cloud.azure.credential { acquire_azure_secret }
 
@@ -2229,7 +2246,7 @@ func cross_provider_auth() -> { ok: Bool } {
     let dag = lower_typed_project(&typed).expect("lowering should succeed");
     let caller = "examples.auth::cross_provider_auth";
     for callee in [
-        "cloud.gcp.credential::acquire_gcp_secret",
+        "extdeps.sdlc.providers.gcp_credential_provider::acquire_gcp_secret",
         "cloud.aws.credential::acquire_aws_secret",
         "cloud.azure.credential::acquire_azure_secret",
     ] {
@@ -3738,7 +3755,10 @@ fn make_branch_body_dag_no_transports_has_single_op() {
     assert!(dag.nodes[0].inputs.iter().any(|p| p.name.0 == "condition"));
     // No-transport case uses fn_body: Some(return { result: input }) — avoids __out:result requirement
     if let gunbc_ir::NodeBody::Opaque(LoweredOp::Callable { fn_body, .. }) = &dag.nodes[0].body {
-        assert!(fn_body.is_some(), "no-transport branch body should have trivial fn_body passthrough");
+        assert!(
+            fn_body.is_some(),
+            "no-transport branch body should have trivial fn_body passthrough"
+        );
     } else {
         panic!("expected Callable op");
     }
@@ -3784,7 +3804,10 @@ fn make_branch_body_dag_with_transports_has_triplets() {
 
     // With-transport case uses fn_body to pass through the transport parse output
     if let gunbc_ir::NodeBody::Opaque(LoweredOp::Callable { fn_body, .. }) = &op_node.body {
-        assert!(fn_body.is_some(), "with-transport branch body should have fn_body");
+        assert!(
+            fn_body.is_some(),
+            "with-transport branch body should have fn_body"
+        );
     } else {
         panic!("expected Callable op");
     }
@@ -3908,10 +3931,7 @@ func run(values: List<String>) -> { out: String } {
     )]);
     let dag = lower_target_module_with_collections(&typed, "sample.pipe");
 
-    let map_node = dag
-        .nodes
-        .iter()
-        .find(|node| node.id.0.contains("MapNode"));
+    let map_node = dag.nodes.iter().find(|node| node.id.0.contains("MapNode"));
 
     assert!(
         map_node.is_some(),
@@ -3933,10 +3953,7 @@ func run(values: List<Int>) -> { out: List<Int> } {
     )]);
     let dag = lower_target_module(&typed, "sample.for_expr");
 
-    let for_node = dag
-        .nodes
-        .iter()
-        .find(|node| node.id.0.contains("cf_for_"));
+    let for_node = dag.nodes.iter().find(|node| node.id.0.contains("cf_for_"));
 
     assert!(
         for_node.is_some(),
@@ -3961,10 +3978,7 @@ func run(values: List<String>) -> { out: String } {
         .nodes
         .iter()
         .find(|node| node.id.0.contains("FilterNode"));
-    let join_node = dag
-        .nodes
-        .iter()
-        .find(|node| node.id.0.contains("JoinNode"));
+    let join_node = dag.nodes.iter().find(|node| node.id.0.contains("JoinNode"));
 
     assert!(
         filter_node.is_some(),

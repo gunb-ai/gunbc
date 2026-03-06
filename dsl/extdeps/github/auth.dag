@@ -1,0 +1,21 @@
+// extdeps/github/auth.dag -- GitHub auth materialization for active workflows.
+//
+// Transitional until structural auth injection is fully lowered. The workflow
+// surface consumes a provider-auth module rather than a shared credential helper.
+
+module extdeps.github.auth
+
+import extdeps.cloud.gcp.core { shell.GCloud }
+import std.types { NonEmptyStr }
+
+func github_token(
+  project_id: NonEmptyStr = "gunbai-secrets",
+  secret_name: NonEmptyStr = "github-token"
+) -> { token: Secret } {
+  secret = shell.GCloud.SecretManagerAccessVersion(
+    project_id: project_id,
+    secret_name: secret_name
+  )
+
+  return { token: secret.secret_value }
+}

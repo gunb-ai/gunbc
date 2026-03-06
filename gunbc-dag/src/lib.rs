@@ -18,20 +18,16 @@
 
 #![deny(dead_code)]
 pub mod ci;
-#[allow(clippy::vec_init_then_push)] // Docgen uses vec-init-then-push patterns
-pub mod docgen;
-pub mod dry_run;
-pub mod dsl_builder;
-pub mod dsl_registry;
 pub mod extern_ops;
 pub mod fidelity;
-pub mod fs_env;
+pub mod makegen;
+mod makegen_support;
+#[path = "pragma/dsl_render.rs"]
+pub mod pragma_dsl_render;
+mod resource_targets;
 
-pub mod pragma;
-pub mod resolve;
 pub mod resource_defs;
 pub mod testgen_dag;
-pub mod tool_graphs;
 pub mod tool_runner;
 pub mod workflow;
 
@@ -41,33 +37,15 @@ pub mod resources {
 }
 // Re-exports for convenience
 pub use ci::ci_live_test_secrets;
-pub use docgen::{build_docgen_graph, DocgenGraphOp};
-pub use dry_run::wire_fs_env_write_mock;
-pub use fs_env::{add_fs_env_root_node, wire_fs_env_write_edges};
-pub use gunbc_ir::CODEGEN_STAMP_PATH;
-pub use gunbc_lib_cloud_ops::env_requirements::{
-    aws_github_actions_env_stub, azure_github_actions_env_stub, cloud_env_matrix,
-    gcp_github_actions_env, gcp_local_env, gcp_metadata_env, CloudEnvRequirements,
-    CLOUD_ENV_COMMON_OPTIONAL,
-};
-pub use gunbc_codegen::makegen::{
+pub use makegen::{
     gitignore::render_gitignore,
-    justfile::render_justfile,
-    registry::{default_build_config, BuildConfig, WorkflowKind, WorkflowSpec},
+    registry::{default_build_config, BuildConfig},
     shared::render_makefile,
 };
-pub use pragma::{build_pragma_graph, pragma_signature, PragmaGraphOp};
-pub use resolve::{resolve_lowered_dag, ResolveError};
+pub use gunbc_resolve::{add_fs_env_root_node, wire_fs_env_write_edges, wire_fs_env_write_mock};
+pub use makegen_support::{build_embedded_data, compute_makegen_content, MAKEGEN_ASSET_KEY};
 pub use resource_defs::{
     deps_config_resource_def, gitignore_resource_def, makefile_resource_def, testgen_resource_def,
-};
-pub use testgen_dag::{build_testgen_graph, build_testgen_graph_for_test, TestgenGraphOp, TestgenOp};
-pub use tool_graphs::{
-    bootstrap_signature, build_bootstrap_graph, build_build_graph, build_codegen_graph,
-    build_deps_graph, build_embedded_data, build_infra_graph, build_makegen_graph, build_signature,
-    codegen_signature, compute_makegen_content, default_registry_enriched, makegen_signature,
-    BootstrapGraphOp, BuildGraphOp, CodegenGraphOp, DepsGraphOp, InfraGraphOp, MakegenGraphOp,
-    MAKEGEN_ASSET_KEY,
 };
 pub use tool_runner::{
     freshness_steps_planned, print_tool_header, run_tool, update_freshness_manifest_if_needed,
@@ -80,8 +58,7 @@ pub use workflow::{
     explain_plan, gist_diff_workflow_spec, gist_recent_workflow_spec, gist_workflow_spec,
     has_required_unit_contract, makegen_workflow_spec, plan_global_workflows, plan_workflow,
     plan_workflow_with_mode, pragma_workflow_spec, project_execute_set, prove_non_redundancy,
-    render_execution_report, required_input_contract, required_output_contract,
-    sdlc_workflow_spec,
+    render_execution_report, required_input_contract, required_output_contract, sdlc_workflow_spec,
     test_all_unit_commands, test_all_workflow_spec, tool_workflow_spec, top_slow_units,
     validate_conflicting_claims, validate_effectful_claim_declarations,
     validate_projection_equivalence, validate_required_claims, validate_workflow_admission,
@@ -107,62 +84,4 @@ pub fn dag_specs() -> Vec<&'static gunbc_testgen_registry::DagSpecDef> {
     gunbc_testgen_registry::iter_dag_specs()
         .filter(|spec| spec.origin_crate == env!("CARGO_CRATE_NAME"))
         .collect()
-}
-
-// ============================================================================
-// Cross-crate system model integration tests
-// ============================================================================
-// These tests require inventory symbols from gcp-ops, aws-ops, and transport
-// to be linked. gunbc-dag depends on all three, so they run here.
-// gcp-ops is transitively linked through cloud-ops; aws-ops needs an explicit
-// `use ... as _` to force the linker to include its inventory registrations.
-
-#[cfg(test)]
-mod system_model_integration {
-    use gunbc_lib_aws_ops as _;
-
-    use gunbc_ir::system_model::{
-        default_system_models, derive_contract_test_specs, generate_contract_test_harnesses,
-        validate_store_behavior_mapping, Property, UpsertPhase,
-    };
-
-    #[test]
-    fn contract_specs_follow_upsert_phase_rules() {
-        let models = default_system_models();
-        let specs = derive_contract_test_specs(&models);
-        assert!(!specs.is_empty());
-        assert!(specs.iter().any(|spec| spec.phase == UpsertPhase::Check
-            && spec.required_all.contains(&Property::Deterministic)));
-        assert!(specs.iter().any(|spec| {
-            spec.phase == UpsertPhase::Create
-                && spec.required_all.contains(&Property::WritesWorld)
-                && spec
-                    .required_any
-                    .iter()
-                    .any(|p| matches!(p, Property::Idempotent | Property::IdempotentWithKey))
-        }));
-    }
-
-    #[test]
-    fn contract_harnesses_render_type_safe_signatures() {
-        let specs = derive_contract_test_specs(&default_system_models());
-        let harnesses = generate_contract_test_harnesses(&specs);
-        assert_eq!(harnesses.len(), specs.len());
-        assert!(
-            harnesses.iter().all(|h| h.starts_with("fn contract_")),
-            "all harnesses should be generated contract fn signatures"
-        );
-        assert!(
-            harnesses
-                .iter()
-                .any(|h| h.contains("gunbc_ir::transport::FileResponse")),
-            "at least one harness should include concrete transport response type mappings"
-        );
-    }
-
-    #[test]
-    fn store_behavior_mapping_is_valid_for_gcs_and_s3() {
-        validate_store_behavior_mapping(&default_system_models())
-            .expect("store abstraction mapping should validate for both cloud providers");
-    }
 }

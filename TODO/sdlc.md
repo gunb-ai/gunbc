@@ -6,6 +6,7 @@
 - `docs/design/sdlc/domain-modeling-comprehensive.md` — entity/relationship/state machine model
 - `docs/design/sdlc/e2e-gap-analysis.md` — gap resolution (all resolved via DSL)
 - `docs/design/sdlc/production-gap-analysis.md` — activation blockers
+- `docs/design/sdlc/scenario-readiness.md` — practical go/no-go scenarios (demo -> local pilot -> cloud canary)
 
 > **Lesson**: Prove compilation before building infrastructure. The SDLC pipeline was built 3 times
 > (Rust binary → DSL pipeline → deleted → rebuilt as 20 .dag files) with elaborate cloud infra
@@ -21,13 +22,19 @@
 ```
 Interfaces:   7/7  COMPLETE — fully specified with behavioral contracts
 Providers:    9/18 COMPLETE, 6/18 PARTIAL, 3/18 STUB
-Profiles:     3/3  COMPLETE — unit_test, local, cloud_run
+Profiles:     TEMPORARY local compatibility profile restored for real-mode proof
 Pipeline:     11 stages with real logic (design, review, code review, testing)
 Worker:       COMPLETE — discovery, claim, dispatch, record
 Handlers:     8 per-stage functions with LLM + CI integration
 DSL Tests:    10+ DSL-level tests
-Rust Tests:   11 compile + 1 dry-run in `gunbc-dag/tests/compile_commands.rs`
+Rust Tests:   compile + dry-run proof in `gunbc-dag/tests/compile_commands.rs`; env-gated local live proof in `gunbc-dag/tests/sdlc_phase_live.rs`
 ```
+
+Branch reality on 2026-03-05:
+
+- `profiles.sdlc.local` exists only as a temporary unblocker for local real-mode SDLC proof and is currently pinned to `gunb-ai/integration_testing`.
+- The long-term direction is still to remove profile concepts and replace them with domain-modeled concrete binding/link artifacts.
+- CI does not continuously prove local real mode; that proof remains env-gated and operator-controlled.
 
 ### What works (on paper)
 
@@ -42,7 +49,7 @@ Rust Tests:   11 compile + 1 dry-run in `gunbc-dag/tests/compile_commands.rs`
 
 ### Compilation status
 
-Phase 0 **complete**: all SDLC .dag files compile through the Rust compiler. 11 compilation tests + 1 dry-run execution test pass in `gunbc-dag/tests/compile_commands.rs`. Profile binding (unit_test, local, cloud_run) verified. Phase 1 (local dry run) complete. Phase 2 in progress.
+Phase 0 **complete**: the active SDLC .dag files compile through the Rust compiler, and worker dry-run proof passes in `gunbc-dag/tests/compile_commands.rs`. Local real-mode proof is unblocked again through the temporary `profiles.sdlc.local` compatibility path and env-gated tests in `gunbc-dag/tests/sdlc_phase_live.rs`. This is operationally useful, but not the final architecture.
 
 ---
 
@@ -64,15 +71,15 @@ Phase 0 **complete**: all SDLC .dag files compile through the Rust compiler. 11 
 
 ## Phase 1: Local Dry Run
 
-**Goal**: `gunbc sdlc --profile unit_test` works end-to-end with stub providers.
+**Goal**: SDLC worker dry-run completes end-to-end with auto-mocked boundaries.
 
 > **Prerequisite**: S-4 is green. Do not start until compilation is proven.
 
 | # | ID | What | Acceptance Criteria | Size | Status |
 |---|-----|------|---------------------|------|--------|
 | 5 | S-5 | **Add SDLC to workflow catalog.** Register in `config/workflow_catalog.dag` so `gunbc sdlc` command works. | `gunbc sdlc --help` shows SDLC options. Entry exists in `dsl/config/workflow_catalog.dag`. | S | Done |
-| 6 | S-6 | **Wire profile binding.** Verify `unit_test` profile threads stub providers correctly through resolver. | `build_dsl_graph_with_profile("pipelines.sdlc_worker", "unit_test")` succeeds in a Rust test. All 7 interface bindings resolve to stub impls. | M | Done |
-| 7 | S-7 | **Dry-run execution.** `gunbc sdlc --profile unit_test --dry-run` completes all 11 stages with mock data. | Command exits 0. Output contains stage names for all 11 stages. No runtime panics or unresolved port errors. | L | Done |
+| 6 | S-6 | **Keep the no-profile compile path valid.** Verify the worker graph still compiles and no longer depends on deleted legacy bindings. | `build_dsl_graph("funcs/sdlc_worker.dag", ...)` succeeds in a Rust test, and active graph nodes route through provider auth modules rather than deleted profile-only bindings. | M | Done |
+| 7 | S-7 | **Dry-run execution.** `dispatch_sdlc_dry_run_completes_without_legacy_bindings` completes the worker path with auto-mocked boundaries. | Rust integration test exits 0. No runtime panics or unresolved port errors. | L | Done |
 | 8 | S-8 | **Fix dispatch runtime.** `sdlc_dispatch_runtime.dag` returns static records — wire to real stage handlers in `sdlc_stages.dag`. | `sdlc_dispatch_runtime.dag` imports and calls functions from `sdlc_stages.dag`. No static placeholder returns. `daglang check` passes on the file. | M | Done |
 
 ---
@@ -85,9 +92,9 @@ Phase 0 **complete**: all SDLC .dag files compile through the Rust compiler. 11 
 
 | # | ID | What | Acceptance Criteria | Size | Status |
 |---|-----|------|---------------------|------|--------|
-| 9 | S-9 | **Verify GitHub provider.** `IssueProvider` operations work against real GitHub API (discover, get, create, comment, set_labels). | Integration test (gated by `GITHUB_TOKEN` env var) exercises all 7 IssueProvider operations. Each returns expected data shape. | M | Done (env-gated live test in `gunbc-dag/tests/sdlc_phase_live.rs`) |
-| 10 | S-10 | **Verify credential wiring.** `GITHUB_TOKEN` flows through `local` profile credential provider to service operations. | `build_dsl_graph_with_profile("pipelines.sdlc_worker", "local")` succeeds. Running with `GITHUB_TOKEN` set produces authenticated API calls (not 401). | M | Done (env-gated compile+auth test in `gunbc-dag/tests/sdlc_phase_live.rs`) |
-| 11 | S-11 | **End-to-end local run.** Process one issue from Idea → Design: discover issues, claim, call LLM, post comment, advance labels. | Target issue has: (1) design comment from LLM, (2) `sdlc:design-review` label. Command exits 0. Outcome ledger has entry for the stage run. | L | In Progress (env-gated live e2e harness added; requires secrets + mutable test issue) |
+| 9 | S-9 | **Verify GitHub provider.** `IssueProvider` operations work against real GitHub API (discover, get, comment, set_labels) under the temporary local binding path. | Env-gated live proof exercises the active local SDLC path against GitHub and validates the resulting issue state. | M | In Progress (covered indirectly by `s11_local_profile_design_stage_e2e`; standalone provider-op sweep still absent on this branch) |
+| 10 | S-10 | **Verify local binding wiring.** `profiles.sdlc.local` binds local providers and GitHub auth cleanly enough to compile and execute the worker path. | `build_dsl_graph(..., profile=profiles.sdlc.local)` succeeds in a Rust test, and the graph contains GitHub/file/codex provider nodes. The live harness fetches the GitHub token through the normal Secret Manager path before compiling. | M | Done (env-gated compile/binding test in `gunbc-dag/tests/sdlc_phase_live.rs`) |
+| 11 | S-11 | **End-to-end local run.** Process one ephemeral issue from Idea → Design: create issue, claim, call LLM, post comment, advance labels, then close during cleanup. | Ephemeral issue has: (1) design comment from LLM, (2) `sdlc:design` label after one dispatch, (3) closed-state cleanup after the test run. Command exits 0. Outcome ledger has entry for the stage run. | L | In Progress (env-gated live e2e harness added; deletion is not part of the current GitHub Issues API path) |
 
 ---
 

@@ -165,10 +165,7 @@ pub fn from_bridge_json_typed(json: &serde_json::Value, type_id: &str) -> Value 
     }
 
     // Strip generic wrappers (e.g., "List<Foo>" → check inner type separately).
-    let base_type = inner_type
-        .split('<')
-        .next()
-        .unwrap_or(inner_type);
+    let base_type = inner_type.split('<').next().unwrap_or(inner_type);
 
     if base_type == "Bytes" {
         return match json {
@@ -185,10 +182,7 @@ pub fn from_bridge_json_typed(json: &serde_json::Value, type_id: &str) -> Value 
             }
             // Legacy { "__bytes": N } format — reconstruct empty vec with length info.
             serde_json::Value::Object(obj) if obj.contains_key("__bytes") => {
-                let len = obj
-                    .get("__bytes")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0) as usize;
+                let len = obj.get("__bytes").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
                 Value::Bytes(vec![0; len])
             }
             _ => from_bridge_json(json),

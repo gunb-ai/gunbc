@@ -1,11 +1,16 @@
-use gunbc_dag::dsl_builder::{build_dsl_graph, build_dsl_graph_with_profile};
+use gunbc_dag::extern_ops::GunbcExternResolver;
 use gunbc_dag::sdlc_workflow_spec;
-use gunbc_exec::{
-    execute_with_mode_and_inputs, lower, BoundaryMocks, ExecutionMode,
-};
+use gunbc_exec::{execute_with_mode_and_inputs, lower, BoundaryMocks, DynOp, ExecutionMode};
 use gunbc_ir::{detect_entrypoints, Dag, Value};
+use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
 use gunbc_test::auto_mock_spec;
 use std::collections::{HashSet, VecDeque};
+
+fn build_graph(relative_module: &str) -> Dag<DynOp> {
+    build_dsl_graph(relative_module, &GunbcExternResolver, BuildOpts::default())
+        .map(|result| result.dag)
+        .unwrap_or_else(|e| panic!("`{relative_module}` should resolve: {e}"))
+}
 
 fn has_node_with_prefix<'a, I>(mut node_ids: I, prefix: &str) -> bool
 where
@@ -46,125 +51,58 @@ fn connected_subdag<T: Clone>(dag: &Dag<T>, seed_prefix: &str) -> Dag<T> {
 
     let mut subdag = dag.clone();
     subdag.nodes.retain(|node| visited.contains(&node.id.0));
-    subdag.edges.retain(|edge| {
-        visited.contains(&edge.from_node.0) && visited.contains(&edge.to_node.0)
-    });
+    subdag
+        .edges
+        .retain(|edge| visited.contains(&edge.from_node.0) && visited.contains(&edge.to_node.0));
     subdag
 }
 
 #[test]
 fn builds_sdlc_worker_dsl_graph() {
-    let dag = build_dsl_graph("funcs/sdlc_worker.dag")
-        .expect("sdlc worker DSL graph should resolve");
+    let dag = build_graph("funcs/sdlc_worker.dag");
     assert!(!dag.nodes.is_empty());
 }
 
 #[test]
 fn builds_sdlc_stages_dsl_graph() {
-    let dag = build_dsl_graph("funcs/sdlc_stages.dag")
-        .expect("sdlc stages DSL graph should resolve");
+    let dag = build_graph("funcs/sdlc_stages.dag");
     assert!(!dag.nodes.is_empty());
 }
 
 #[test]
 fn builds_sdlc_workflow_dsl_graph() {
-    let dag = build_dsl_graph("workflows/sdlc.dag")
-        .expect("sdlc workflow DSL graph should resolve");
+    let dag = build_graph("workflows/sdlc.dag");
     assert!(!dag.nodes.is_empty());
 }
 
 #[test]
-fn builds_sdlc_worker_unit_test_profile_dsl_graph() {
-    let dag = build_dsl_graph_with_profile("funcs/sdlc_worker.dag", "profiles.sdlc.unit_test")
-        .expect("sdlc worker unit_test profile graph should resolve");
-    assert!(!dag.nodes.is_empty());
-}
-
-#[test]
-fn builds_sdlc_worker_local_profile_dsl_graph() {
-    if std::env::var("GITHUB_TOKEN").is_err() || std::env::var("CODEX_API_KEY").is_err() {
-        eprintln!(
-            "skipping local profile compile test (requires GITHUB_TOKEN and CODEX_API_KEY)"
-        );
-        return;
-    }
-    let dag = build_dsl_graph_with_profile("funcs/sdlc_worker.dag", "profiles.sdlc.local")
-        .expect("sdlc worker local profile graph should resolve");
-    assert!(!dag.nodes.is_empty());
-}
-
-#[test]
-fn builds_sdlc_worker_cloud_run_profile_dsl_graph() {
-    let dag = build_dsl_graph_with_profile("funcs/sdlc_worker.dag", "profiles.sdlc.cloud_run")
-        .expect("sdlc worker cloud_run profile graph should resolve");
-    assert!(!dag.nodes.is_empty());
-}
-
-#[test]
-fn sdlc_pipeline_unit_test_profile_resolves_stub_provider_nodes() {
-    let dag = build_dsl_graph_with_profile("pipelines/sdlc.dag", "profiles.sdlc.unit_test")
-        .expect("sdlc pipeline unit_test profile graph should resolve");
-    assert!(!dag.nodes.is_empty());
-}
-
-#[test]
-fn sdlc_worker_unit_test_profile_binds_all_interfaces_to_stub_implementations() {
-    let dag = build_dsl_graph_with_profile("funcs/sdlc_worker.dag", "profiles.sdlc.unit_test")
-        .expect("sdlc worker unit_test profile graph should resolve");
+fn sdlc_worker_uses_provider_auth_modules_and_not_legacy_bindings() {
+    let dag = build_graph("funcs/sdlc_worker.dag");
     let node_ids: Vec<String> = dag.nodes.iter().map(|node| node.id.0.clone()).collect();
 
-    let expected_stub_execute_prefixes = [
-        (
-            "IssueProvider",
-            "execute_transport_profiles_unit_test_StubIssueProvider_",
-        ),
-        (
-            "ClaimStore",
-            "execute_transport_profiles_unit_test_InMemoryClaimStore_",
-        ),
-        (
-            "OutcomeLedger",
-            "execute_transport_profiles_unit_test_InMemoryOutcomeLedger_",
-        ),
-        (
-            "AgentProvider",
-            "execute_transport_profiles_unit_test_StubAgentProvider_",
-        ),
-        (
-            "SignalStore",
-            "execute_transport_profiles_unit_test_InMemorySignalStore_",
-        ),
-        (
-            "ArtifactStore",
-            "execute_transport_profiles_unit_test_InMemoryArtifactStore_",
-        ),
-        (
-            "CredentialProvider",
-            "execute_transport_services_sdlc_providers_stub_credential_provider_StubCredentialProvider_",
-        ),
+    assert!(
+        node_ids.iter().any(|id| id.contains("github_token")),
+        "worker graph should route GitHub auth through extdeps.github.auth::github_token"
+    );
+    assert!(
+        node_ids.iter().any(|id| id.contains("llm_api_key")),
+        "worker graph should route LLM auth through extdeps.llm.auth::llm_api_key"
+    );
+
+    let deleted_legacy_binding_prefixes = [
+        "execute_transport_extdeps_sdlc_providers_stub_providers_stub_IssueProvider_",
+        "execute_transport_extdeps_sdlc_providers_stub_providers_stub_ClaimStore_",
+        "execute_transport_extdeps_sdlc_providers_stub_providers_stub_OutcomeLedger_",
+        "execute_transport_extdeps_sdlc_providers_stub_providers_stub_AgentProvider_",
+        "execute_transport_extdeps_sdlc_providers_gcp_credential_provider_GcpWifCredentialProvider_",
+        "resolve_github_token",
+        "resolve_llm_api_key",
     ];
 
-    for (interface_name, expected_prefix) in &expected_stub_execute_prefixes {
+    for deleted_prefix in &deleted_legacy_binding_prefixes {
         assert!(
-            has_node_with_prefix(node_ids.iter(), expected_prefix),
-            "unit_test profile should resolve {interface_name} to stub implementation nodes with prefix `{expected_prefix}`"
-        );
-    }
-
-    let unresolved_interface_execute_prefixes = [
-        "execute_transport_interfaces_issue_provider_IssueProvider_",
-        "execute_transport_interfaces_claim_store_ClaimStore_",
-        "execute_transport_interfaces_outcome_ledger_OutcomeLedger_",
-        "execute_transport_interfaces_agent_provider_AgentProvider_",
-        "execute_transport_interfaces_signal_store_SignalStore_",
-        "execute_transport_interfaces_artifact_store_ArtifactStore_",
-        "execute_transport_interfaces_credential_provider_CredentialProvider_",
-    ];
-
-    for unresolved_prefix in &unresolved_interface_execute_prefixes {
-        assert!(
-            !has_node_with_prefix(node_ids.iter(), unresolved_prefix),
-            "unit_test profile graph should not contain unresolved interface transport nodes with prefix `{unresolved_prefix}`"
+            !has_node_with_prefix(node_ids.iter(), deleted_prefix),
+            "worker graph should not contain deleted legacy provider wiring with prefix `{deleted_prefix}`"
         );
     }
 }
@@ -183,17 +121,14 @@ fn builds_sdlc_workflow_spec() {
 }
 
 #[test]
-fn dispatch_sdlc_unit_test_profile_dry_run_completes() {
-    let dag = build_dsl_graph_with_profile("funcs/sdlc_worker.dag", "profiles.sdlc.unit_test")
-        .expect("build sdlc worker graph with unit_test profile");
+fn dispatch_sdlc_dry_run_completes_without_legacy_bindings() {
+    let dag = build_graph("funcs/sdlc_worker.dag");
     let dag = connected_subdag(&dag, "funcs.sdlc_worker::dispatch_sdlc");
     let mock_spec = auto_mock_spec(&dag, "sdlc-worker");
     let mut dry_run_mocks = mock_spec.to_dry_run_mocks();
     let boundary = mock_spec.to_boundary_mocks();
 
-    // Guardrail for passthrough-invariant execution in DryRun mode:
-    // keep prompt helpers explicitly mocked even when generated mock specs
-    // omit them.
+    // Keep prompt helpers explicitly mocked when generated mock specs omit them.
     for node in &dag.nodes {
         if node.id.0.ends_with("code_review_system_prompt") {
             dry_run_mocks.set_value(
@@ -272,53 +207,4 @@ fn dispatch_sdlc_unit_test_profile_dry_run_completes() {
             .any(|entry| entry.node_id == "funcs.sdlc_worker::dispatch_sdlc"),
         "dry-run should execute funcs.sdlc_worker::dispatch_sdlc"
     );
-}
-
-#[test]
-fn sdlc_pipeline_unit_test_profile_contains_all_stage_markers() {
-    let dag = build_dsl_graph_with_profile("pipelines/sdlc.dag", "profiles.sdlc.unit_test")
-        .expect("build sdlc pipeline graph with unit_test profile");
-    let node_ids: Vec<String> = dag.nodes.iter().map(|node| node.id.0.clone()).collect();
-
-    let expected_stage_markers = [
-        (
-            "fetch",
-            "execute_transport_profiles_unit_test_StubIssueProvider_get",
-        ),
-        (
-            "claim_design",
-            "execute_transport_profiles_unit_test_InMemoryClaimStore_acquire",
-        ),
-        ("design", "tools.design::generate_design"),
-        ("design_review", "tools.design::review_design"),
-        (
-            "record_design_outcome",
-            "execute_transport_profiles_unit_test_InMemoryOutcomeLedger_upsert",
-        ),
-        (
-            "accept_design",
-            "execute_transport_profiles_unit_test_StubIssueProvider_set_labels",
-        ),
-        (
-            "implementation",
-            "execute_transport_profiles_unit_test_StubAgentProvider_spawn",
-        ),
-        (
-            "code_review",
-            "execute_transport_extdeps_github_pull_requests_github_PullRequest_ListFiles",
-        ),
-        ("acceptance", "execute_transport_extdeps_cargo_cargo_Build_Test"),
-        (
-            "close",
-            "execute_transport_profiles_unit_test_StubIssueProvider_close",
-        ),
-        ("report", "shared.dag_util::format_report"),
-    ];
-
-    for (stage_name, marker_prefix) in &expected_stage_markers {
-        assert!(
-            has_node_with_prefix(node_ids.iter(), marker_prefix),
-            "unit_test profile pipeline should include stage marker for `{stage_name}` with node prefix `{marker_prefix}`"
-        );
-    }
 }

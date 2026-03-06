@@ -956,7 +956,12 @@ runnable binary:
 
 ```rust
 // One-shot: parse, typecheck, lower, resolve
-let dag: Dag<DynOp> = build_dsl_graph("tools/makegen.dag")?;
+let dag: Dag<DynOp> = gunbc_resolve::builder::build_dsl_graph(
+    "tools/makegen.dag",
+    &gunbc_dag::extern_ops::GunbcExternResolver,
+    gunbc_resolve::BuildOpts::default(),
+)?
+.dag;
 
 // Execute with mode selection + freshness + display
 run_tool(dag, ExecutionMode::Real, options);
@@ -966,11 +971,10 @@ run_tool(dag, ExecutionMode::Real, options);
 
 | File | Purpose |
 |------|---------|
-| `dsl_builder.rs` | `build_dsl_graph()` — full pipeline in one call |
-| `resolve.rs` | `GunbcExternResolver` — app-specific extern resolution |
-| `extern_ops.rs` | ~10 extern symbol implementations |
+| `core/resolve/src/builder.rs` | `build_dsl_graph()` — full pipeline in one call |
+| `gunbc-dag/src/extern_ops.rs` | `GunbcExternResolver` plus ~10 app-specific extern symbol implementations |
 | `tool_runner.rs` | `run_tool()` — freshness + execute + display |
-| `tool_graphs.rs` | Per-tool graph builders (makegen, codegen, pragma, etc.) |
+| `core/codegen/src/tool_discovery.rs` | Structural tool discovery from DSL |
 
 ---
 
