@@ -1,15 +1,31 @@
-use gunbc_app::extern_ops::GunbcExternResolver;
+use gunbc_app::extern_ops::gunbc_runtime_bindings;
 use gunbc_app::sdlc_workflow_spec;
 use gunbc_exec::{execute_with_mode_and_inputs, lower, BoundaryMocks, DynOp, ExecutionMode};
 use gunbc_ir::{detect_entrypoints, Dag, Value};
 use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
 use gunbc_test::auto_mock_spec;
 use std::collections::{HashSet, VecDeque};
+use std::sync::OnceLock;
+
+fn ensure_test_profile_env() {
+    static INIT: OnceLock<()> = OnceLock::new();
+    INIT.get_or_init(|| unsafe {
+        std::env::set_var("GITHUB_TOKEN", "test-github-token");
+    });
+}
 
 fn build_graph(relative_module: &str) -> Dag<DynOp> {
-    build_dsl_graph(relative_module, &GunbcExternResolver, BuildOpts::default())
-        .map(|result| result.dag)
-        .unwrap_or_else(|e| panic!("`{relative_module}` should resolve: {e}"))
+    ensure_test_profile_env();
+    build_dsl_graph(
+        relative_module,
+        gunbc_runtime_bindings(),
+        BuildOpts {
+            profile: Some("local"),
+            ..BuildOpts::default()
+        },
+    )
+    .map(|result| result.dag)
+    .unwrap_or_else(|e| panic!("`{relative_module}` should resolve: {e}"))
 }
 
 fn has_node_with_prefix<'a, I>(mut node_ids: I, prefix: &str) -> bool

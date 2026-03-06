@@ -13,7 +13,7 @@ mod tests {
     fn classify_dsl_module(module_path: &str) -> FidelityClassification {
         let result = build_dsl_graph(
             module_path,
-            &crate::extern_ops::GunbcExternResolver,
+            crate::extern_ops::gunbc_runtime_bindings(),
             BuildOpts::default(),
         )
         .unwrap_or_else(|e| panic!("DSL module `{module_path}` should compile: {e}"));
@@ -27,7 +27,7 @@ mod tests {
         // but the makegen callable specifically should be Unit/XS.
         let result = build_dsl_graph(
             "tools/makegen.dag",
-            &crate::extern_ops::GunbcExternResolver,
+            crate::extern_ops::gunbc_runtime_bindings(),
             BuildOpts::default(),
         )
         .expect("makegen should compile");

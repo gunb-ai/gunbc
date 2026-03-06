@@ -1,6 +1,6 @@
 #![allow(clippy::disallowed_methods)]
 
-use gunbc_app::extern_ops::GunbcExternResolver;
+use gunbc_app::extern_ops::gunbc_runtime_bindings;
 use gunbc_exec::{execute_with_mode_and_inputs, lower, BoundaryMocks, ExecutionMode};
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
@@ -12,7 +12,7 @@ fn build_graph_for_entrypoint(
 ) -> gunbc_ir::Dag<gunbc_exec::DynOp> {
     build_dsl_graph(
         relative_module,
-        &GunbcExternResolver,
+        gunbc_runtime_bindings(),
         BuildOpts {
             entry_func: Some(entry_func),
             profile: None,
@@ -98,19 +98,45 @@ fn gist_recent_graph_has_token_resolution_path() {
     let dag = build_gist_recent_graph();
     let lowered = lower(&dag).expect("lowered gist-recent");
 
-    let has_secret_manager_access = lowered
-        .dag
-        .nodes
-        .iter()
-        .any(|n| n.id.0.contains("SecretManagerAccessVersion"));
     let has_provider_auth_fn = lowered
         .dag
         .nodes
         .iter()
         .any(|n| n.id.0.contains("github_token"));
+    let has_local_auth = lowered
+        .dag
+        .nodes
+        .iter()
+        .any(|n| n.id.0.contains("local_auth"));
+    let has_sts_exchange = lowered
+        .dag
+        .nodes
+        .iter()
+        .any(|n| n.id.0.contains("gcp_STS_Exchange"));
+    let has_rest_secret_access = lowered
+        .dag
+        .nodes
+        .iter()
+        .any(|n| n.id.0.contains("gcp_SecretManager_AccessVersion"));
+    let has_shell_secret_manager = lowered
+        .dag
+        .nodes
+        .iter()
+        .any(|n| n.id.0.contains("SecretManagerAccessVersion"));
     assert!(
-        has_secret_manager_access && has_provider_auth_fn,
-        "gist-recent must include provider auth materialization and Secret Manager access. \
+        has_provider_auth_fn && has_local_auth && has_sts_exchange && has_rest_secret_access,
+        "gist-recent must route GitHub auth through github_token -> credential_chain -> local_auth + REST Secret Manager. \
+         All nodes: {:?}",
+        lowered
+            .dag
+            .nodes
+            .iter()
+            .map(|n| &n.id.0)
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        !has_shell_secret_manager,
+        "gist-recent should no longer depend on the shell SecretManagerAccessVersion path. \
          All nodes: {:?}",
         lowered
             .dag
@@ -148,7 +174,7 @@ fn gist_recent_graph_uses_provider_auth_module() {
 ///
 /// Validates that the full pipeline (git, provider auth materialization, gist create)
 /// is structurally connected and executes without errors. Uses DryRun mode because
-/// the auth path still contains effectful Secret Manager access.
+/// the auth path still contains effectful REST auth hops.
 #[test]
 #[ignore] // Pre-existing: GetField on credential token fails in DryRun (gist pipeline)
 fn gist_recent_end_to_end_emits_gist_url() {
@@ -210,9 +236,13 @@ fn gist_recent_end_to_end_emits_gist_url() {
         "execution should include Gist_Create transport. Got: {node_ids:?}"
     );
     assert!(
+        node_ids.iter().any(|id| id.contains("gcp_STS_Exchange")),
+        "execution should include STS.Exchange transport. Got: {node_ids:?}"
+    );
+    assert!(
         node_ids
             .iter()
-            .any(|id| id.contains("SecretManagerAccessVersion")),
-        "execution should include SecretManagerAccessVersion transport. Got: {node_ids:?}"
+            .any(|id| id.contains("gcp_SecretManager_AccessVersion")),
+        "execution should include REST SecretManager.AccessVersion transport. Got: {node_ids:?}"
     );
 }

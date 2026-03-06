@@ -22,6 +22,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use daglang_contract::{Diagnostic, DiagnosticContext};
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{
     Expr, Field, Item, Literal, ModulePath, Param, PipelineDef, ProvidesClause, Refinement, Stmt,
@@ -485,6 +486,61 @@ impl TypeError {
             _ => None,
         }
     }
+
+    /// Convert to the shared compiler diagnostic shape.
+    pub fn to_diagnostic(&self) -> Diagnostic {
+        let mut diagnostic =
+            Diagnostic::new(self.code(), self.to_string()).with_context(self.diagnostic_context());
+        if let Some(help) = self.help() {
+            diagnostic = diagnostic.with_help(help);
+        }
+        diagnostic
+    }
+
+    fn diagnostic_context(&self) -> DiagnosticContext {
+        match self {
+            Self::TypeMismatch { expected, got } => DiagnosticContext::TypeMismatch {
+                expected: expected.clone(),
+                got: got.clone(),
+            },
+            Self::UndefinedType(name)
+            | Self::UnresolvedImport { target: name, .. }
+            | Self::UnresolvedInterface {
+                interface: name, ..
+            }
+            | Self::UnresolvedCallTarget { callee: name, .. }
+            | Self::UnresolvedServiceCall {
+                service_call: name, ..
+            }
+            | Self::UnknownCallArgument { argument: name, .. }
+            | Self::UnknownServiceCallArgument { argument: name, .. }
+            | Self::UnknownUsedResourceType { binding: name, .. }
+            | Self::UnknownProvidedResourceType { binding: name, .. } => {
+                DiagnosticContext::Missing {
+                    kind: "declaration",
+                    name: name.clone(),
+                    available: Vec::new(),
+                }
+            }
+            Self::DuplicateDefinition { name, .. }
+            | Self::DuplicatePipelineStage { stage: name, .. }
+            | Self::DuplicatePipelineStageDependency {
+                dependency: name, ..
+            }
+            | Self::DuplicateParameter { param: name, .. }
+            | Self::DuplicateOutputField { field: name, .. }
+            | Self::DuplicateCallArgument { argument: name, .. }
+            | Self::DuplicateServiceCallArgument { argument: name, .. }
+            | Self::DuplicateUsesBinding { binding: name, .. }
+            | Self::DuplicateProvidesBinding { binding: name, .. } => {
+                DiagnosticContext::Duplicate {
+                    name: name.clone(),
+                    first: None,
+                }
+            }
+            _ => DiagnosticContext::Note(String::new()),
+        }
+    }
 }
 
 impl std::fmt::Display for TypeError {
@@ -754,103 +810,6 @@ impl std::fmt::Display for TypeError {
     }
 }
 
-/// A `TypeError` annotated with source location (CP-49).
-///
-/// Wraps a `TypeError` with optional file path and byte span for
-/// diagnostic rendering. Use `TypeError::at()` to create.
-#[derive(Debug)]
-pub struct SpannedTypeError {
-    /// The underlying error.
-    pub error: TypeError,
-    /// Source file path (relative to DSL root).
-    pub file: Option<String>,
-    /// Byte span in the source file.
-    pub span: Option<daglang_contract::Span>,
-    /// Module path (e.g., "tools.clippy").
-    pub module: Option<String>,
-    /// Item name (e.g., "clippy_lint").
-    pub item: Option<String>,
-}
-
-impl SpannedTypeError {
-    /// Create a spanned error from a bare `TypeError`.
-    pub fn new(error: TypeError) -> Self {
-        Self {
-            error,
-            file: None,
-            span: None,
-            module: None,
-            item: None,
-        }
-    }
-
-    /// Attach source location.
-    pub fn with_location(
-        mut self,
-        file: impl Into<String>,
-        module: impl Into<String>,
-        item: impl Into<String>,
-    ) -> Self {
-        self.file = Some(file.into());
-        self.module = Some(module.into());
-        self.item = Some(item.into());
-        self
-    }
-
-    /// Attach byte span.
-    pub fn with_span(mut self, span: daglang_contract::Span) -> Self {
-        self.span = Some(span);
-        self
-    }
-
-    /// Delegate to inner error code.
-    pub fn code(&self) -> &'static str {
-        self.error.code()
-    }
-}
-
-impl std::fmt::Display for SpannedTypeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(file) = &self.file {
-            if let Some(span) = &self.span {
-                write!(f, "{}:{}..{}: ", file, span.start, span.end)?;
-            } else {
-                write!(f, "{}: ", file)?;
-            }
-        }
-        write!(f, "[{}] {}", self.error.code(), self.error)?;
-        if let Some(help) = self.error.help() {
-            write!(f, "\n  help: {help}")?;
-        }
-        Ok(())
-    }
-}
-
-impl std::error::Error for SpannedTypeError {}
-
-impl From<TypeError> for SpannedTypeError {
-    fn from(error: TypeError) -> Self {
-        Self::new(error)
-    }
-}
-
-impl TypeError {
-    /// Wrap this error with source location to produce a `SpannedTypeError`.
-    pub fn at(
-        self,
-        file: impl Into<String>,
-        module: impl Into<String>,
-        item: impl Into<String>,
-    ) -> SpannedTypeError {
-        SpannedTypeError::new(self).with_location(file, module, item)
-    }
-
-    /// Wrap into a `SpannedTypeError` with no location.
-    pub fn into_spanned(self) -> SpannedTypeError {
-        SpannedTypeError::new(self)
-    }
-}
-
 /// Typecheck a discovered module graph and produce typed module signatures.
 pub fn typecheck_module_graph<'a>(
     graph: &'a ModuleGraph,
@@ -862,7 +821,16 @@ pub fn typecheck_module_graph<'a>(
 pub fn typecheck_owned_module_graph(
     graph: ModuleGraph,
 ) -> Result<TypedProject<'static>, Vec<TypeError>> {
-    let metadata = typecheck_graph_modules(&graph, &TypecheckOptions::default())?;
+    typecheck_owned_module_graph_with_options(graph, TypecheckOptions::default())
+}
+
+/// Typecheck an owned module graph with explicit options and retain it inside
+/// the typed overlay.
+pub fn typecheck_owned_module_graph_with_options(
+    graph: ModuleGraph,
+    options: TypecheckOptions,
+) -> Result<TypedProject<'static>, Vec<TypeError>> {
+    let metadata = typecheck_graph_modules(&graph, &options)?;
     Ok(TypedProject {
         graph: TypedProjectGraph::Owned(graph),
         typed_modules: metadata.typed_modules,
@@ -2295,7 +2263,19 @@ fn collect_resource_types(modules: &[ResolvedModule]) -> ResourceTypeRegistry {
                 .or_insert_with(|| Some(full));
         }
     }
+    insert_default_resource_types(&mut registry);
     registry
+}
+
+fn insert_default_resource_types(registry: &mut ResourceTypeRegistry) {
+    for name in ["Filesystem", "Network", "Clock", "AuthContext"] {
+        let full = format!("std.resources.{name}");
+        registry.full.insert(full.clone());
+        registry
+            .short
+            .entry(name.to_string())
+            .or_insert_with(|| Some(full));
+    }
 }
 
 fn collect_resource_capabilities(modules: &[ResolvedModule]) -> ResourceCapabilityRegistry {

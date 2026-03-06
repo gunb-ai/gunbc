@@ -17,6 +17,7 @@ use crate::type_registry::TypeRegistry;
 use crate::types::{
     NodeId, PortName, PresenceMode, SemanticCarrierKind, StaticFingerprint, TypeId,
 };
+use daglang_contract::{Diagnostic, DiagnosticContext};
 use std::collections::HashSet;
 use std::fmt;
 
@@ -594,6 +595,64 @@ impl fmt::Display for VerifyError {
             VerifyError::UnwiredResource(e) => write!(f, "{e}"),
             VerifyError::Fingerprint(e) => write!(f, "{e}"),
             VerifyError::UnwiredInput(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl VerifyError {
+    pub fn code(&self) -> &'static str {
+        match self {
+            VerifyError::SubDag(..) => "VER001",
+            VerifyError::UnwiredResource(..) => "VER002",
+            VerifyError::Fingerprint(..) => "VER003",
+            VerifyError::UnwiredInput(..) => "VER004",
+        }
+    }
+
+    pub fn help(&self) -> Option<String> {
+        match self {
+            VerifyError::UnwiredInput(error) => Some(format!(
+                "wire a producer into `{}`.`{}` or make the port optional/defaulted",
+                error.node_name, error.port_name
+            )),
+            VerifyError::UnwiredResource(error) => Some(format!(
+                "add a resource producer for `{}`.`{}` or declare the required `uses` binding",
+                error.node, error.port
+            )),
+            VerifyError::Fingerprint(error) => Some(format!(
+                "deduplicate operation fingerprint `{}` or make the conflicting nodes structurally distinct",
+                error.fingerprint
+            )),
+            VerifyError::SubDag(..) => Some(
+                "align the parent node interface with the inner SubDag boundary ports".to_string(),
+            ),
+        }
+    }
+
+    pub fn to_diagnostic(&self) -> Diagnostic {
+        let mut diagnostic =
+            Diagnostic::new(self.code(), self.to_string()).with_context(self.diagnostic_context());
+        if let Some(help) = self.help() {
+            diagnostic = diagnostic.with_help(help);
+        }
+        diagnostic
+    }
+
+    fn diagnostic_context(&self) -> DiagnosticContext {
+        match self {
+            VerifyError::UnwiredInput(error) => DiagnosticContext::Missing {
+                kind: "input",
+                name: format!("{}::{}", error.node_name, error.port_name),
+                available: Vec::new(),
+            },
+            VerifyError::UnwiredResource(error) => DiagnosticContext::Missing {
+                kind: "resource",
+                name: format!("{}::{}", error.node, error.port),
+                available: Vec::new(),
+            },
+            VerifyError::SubDag(..) | VerifyError::Fingerprint(..) => {
+                DiagnosticContext::Note(String::new())
+            }
         }
     }
 }

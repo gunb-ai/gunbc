@@ -6,7 +6,7 @@
 
 #![allow(clippy::disallowed_methods)]
 
-use gunbc_app::extern_ops::GunbcExternResolver;
+use gunbc_app::extern_ops::gunbc_runtime_bindings;
 use gunbc_codegen::testgen::mock_corpus::{build_corpus, WorkflowInfo};
 use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
 use gunbc_test::auto_mock_spec;
@@ -23,7 +23,7 @@ fn compile_tool(
 ) -> Option<(gunbc_ir::Dag<gunbc_exec::DynOp>, MockSpec, WorkflowInfo)> {
     let dag = build_dsl_graph(
         dag_file,
-        &GunbcExternResolver,
+        gunbc_runtime_bindings(),
         BuildOpts {
             entry_func: Some(entry_func),
             profile: None,

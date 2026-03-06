@@ -21,7 +21,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use gunbc_app::extern_ops::GunbcExternResolver;
+use gunbc_app::extern_ops::gunbc_runtime_bindings;
 use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
 use gunbc_ir::transport::{
     HttpMethod, RestResponse, ShellResponse, TransportRequest, TransportResponse,
@@ -32,9 +32,13 @@ use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
 use std::collections::{HashSet, VecDeque};
 
 fn build_graph(relative_module: &str) -> gunbc_ir::Dag<gunbc_exec::DynOp> {
-    build_dsl_graph(relative_module, &GunbcExternResolver, BuildOpts::default())
-        .map(|result| result.dag)
-        .unwrap_or_else(|e| panic!("`{relative_module}` should build: {e}"))
+    build_dsl_graph(
+        relative_module,
+        gunbc_runtime_bindings(),
+        BuildOpts::default(),
+    )
+    .map(|result| result.dag)
+    .unwrap_or_else(|e| panic!("`{relative_module}` should build: {e}"))
 }
 
 fn connected_subdag<T: Clone>(dag: &gunbc_ir::Dag<T>, seed_prefix: &str) -> gunbc_ir::Dag<T> {

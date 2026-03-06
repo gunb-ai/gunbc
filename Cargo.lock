@@ -184,6 +184,7 @@ dependencies = [
 name = "daglang-driver"
 version = "0.1.0"
 dependencies = [
+ "daglang-contract",
  "daglang-derive",
  "daglang-emit",
  "daglang-lower",
@@ -476,6 +477,7 @@ dependencies = [
 name = "gunbc-ir"
 version = "0.1.0"
 dependencies = [
+ "daglang-contract",
  "glob",
  "gunbc-delegate-macros",
  "gunbc-infra",

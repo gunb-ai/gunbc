@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
+use daglang_contract::Diagnostics;
 use daglang_derive::{derive_artifacts, DeriveError, DerivedArtifacts};
 use daglang_emit::rust_exec_runtime::emit_exec_runtime_with_output_dir;
 use daglang_emit::{
@@ -149,19 +150,14 @@ pub struct CompileReceipt {
 
 /// Structured compiler error preserving phase-specific context.
 ///
-/// Each variant wraps the original error type from the corresponding compiler
-/// phase, so callers can pattern-match on the phase without losing information.
-/// The [`Message`](CompileError::Message) variant covers ad-hoc errors that
-/// don't originate from a specific compiler phase (validation, I/O, etc.).
+/// Stage-local type/lower/verify failures are normalized into the shared
+/// diagnostic contract before they leave the driver.
 #[derive(Debug)]
 pub enum CompileError {
     Resolve(ResolveError),
-    Typecheck(Vec<TypeError>),
-    Lower(LowerError),
+    Diagnostics(Diagnostics),
     Emit(EmitError),
     Derive(DeriveError),
-    /// Post-lowering structural verification failures.
-    Verification(Vec<gunbc_ir::VerifyError>),
     /// Ad-hoc error message (validation, I/O, configuration).
     Message(String),
 }
@@ -190,23 +186,15 @@ impl std::fmt::Display for CompileError {
                 Ok(())
             }
             CompileError::Resolve(error) => write!(f, "resolve error: {error}"),
-            CompileError::Typecheck(errors) => {
-                f.write_str("typecheck errors:\n")?;
-                for error in errors {
+            CompileError::Diagnostics(errors) => {
+                f.write_str("compile diagnostics:\n")?;
+                for error in &errors.errors {
                     writeln!(f, "  {error}")?;
                 }
                 Ok(())
             }
-            CompileError::Lower(error) => write!(f, "lower error: {error}"),
             CompileError::Emit(error) => write!(f, "emit error: {error}"),
             CompileError::Derive(error) => write!(f, "derive error: {error}"),
-            CompileError::Verification(errors) => {
-                f.write_str("verification errors:\n")?;
-                for error in errors {
-                    writeln!(f, "  {error}")?;
-                }
-                Ok(())
-            }
             CompileError::Message(message) => f.write_str(message),
         }
     }
@@ -220,13 +208,19 @@ impl From<ResolveError> for CompileError {
 
 impl From<Vec<TypeError>> for CompileError {
     fn from(errors: Vec<TypeError>) -> Self {
-        CompileError::Typecheck(errors)
+        CompileError::Diagnostics(typecheck_diagnostics(errors))
     }
 }
 
 impl From<LowerError> for CompileError {
     fn from(error: LowerError) -> Self {
-        CompileError::Lower(error)
+        CompileError::Diagnostics(lower_diagnostics(error))
+    }
+}
+
+impl From<Vec<gunbc_ir::VerifyError>> for CompileError {
+    fn from(errors: Vec<gunbc_ir::VerifyError>) -> Self {
+        CompileError::Diagnostics(verification_diagnostics(errors))
     }
 }
 
@@ -254,6 +248,28 @@ impl From<&str> for CompileError {
     }
 }
 
+fn typecheck_diagnostics(errors: Vec<TypeError>) -> Diagnostics {
+    Diagnostics {
+        errors: errors
+            .into_iter()
+            .map(|error| error.to_diagnostic())
+            .collect(),
+    }
+}
+
+fn lower_diagnostics(error: LowerError) -> Diagnostics {
+    Diagnostics::single(error.to_diagnostic())
+}
+
+fn verification_diagnostics(errors: Vec<gunbc_ir::VerifyError>) -> Diagnostics {
+    Diagnostics {
+        errors: errors
+            .into_iter()
+            .map(|error| error.to_diagnostic())
+            .collect(),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CheckOutput {
     pub parsed_files: usize,
@@ -274,12 +290,6 @@ pub struct CompileOptions {
     /// Go/C/MIPS backends embed these as string literals; Rust Layer 1
     /// writes them as additional files in the generated crate.
     pub embedded_data: std::collections::HashMap<String, daglang_emit::EmbeddedData>,
-    /// Skip post-lowering structural verification (default: false).
-    ///
-    /// When false, `verify_dag()` runs after lowering and rejects DAGs with
-    /// unwired required inputs, SubDag mismatches, resource gaps, or
-    /// fingerprint conflicts.
-    pub skip_verification: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -395,7 +405,7 @@ pub fn compile_data_from_sources(
             ..Default::default()
         },
     )
-    .map_err(CompileError::Typecheck)?;
+    .map_err(CompileError::from)?;
     let mut fns = HashMap::new();
     let lower_output = daglang_lower::lower_to_output_with_config(
         &typed,
@@ -404,7 +414,7 @@ pub fn compile_data_from_sources(
             ..Default::default()
         },
     )
-    .map_err(CompileError::Lower)?;
+    .map_err(CompileError::from)?;
     extract_fn_bodies_from_dag(&lower_output.dag, &mut fns);
     let data_values = lower_output.data_values;
 
@@ -443,7 +453,7 @@ pub fn compile_data_from_module(
             ..Default::default()
         },
     )
-    .map_err(CompileError::Typecheck)?;
+    .map_err(CompileError::from)?;
     let mut fns = HashMap::new();
     // Derive the module dotted path from the file path for entry_module scoping.
     // This prevents lowering unrelated callables from transitively imported modules
@@ -458,7 +468,7 @@ pub fn compile_data_from_module(
         ..Default::default()
     };
     let lower_output = daglang_lower::lower_to_output_with_config(&typed, &lower_config)
-        .map_err(CompileError::Lower)?;
+        .map_err(CompileError::from)?;
     extract_fn_bodies_from_dag(&lower_output.dag, &mut fns);
     let data_values = lower_output.data_values;
 
@@ -621,7 +631,7 @@ fn primitive_requires_strict_input_wiring(kind: &daglang_lower::PrimitiveOpKind)
 /// 1. Generic IR verification (SubDag interfaces, resource wiring, fingerprints, required inputs)
 /// 2. Structural primitive input wiring (LoweredOp-specific: GetField + structural ops)
 ///
-/// The structural check always runs. The generic IR check runs when `skip_verification` is false.
+/// The structural check always runs and feeds the shared verification failure path.
 fn validate_structural_primitive_input_wiring(dag: &Dag<LoweredOp>) -> Vec<gunbc_ir::VerifyError> {
     let mut errors = Vec::new();
     validate_structural_primitive_input_wiring_recursive(dag, &mut errors);
@@ -710,7 +720,7 @@ pub fn compile_from_module_graph_with_options(
             ..Default::default()
         },
     )
-    .map_err(CompileError::Typecheck)?;
+    .map_err(CompileError::from)?;
     let extern_assets = collect_extern_assets(&typed);
     let lower_output = lower_to_output_with_config(
         &typed,
@@ -722,69 +732,11 @@ pub fn compile_from_module_graph_with_options(
             ..Default::default()
         },
     )
-    .map_err(CompileError::Lower)?;
+    .map_err(CompileError::from)?;
     let structural_primitive_wiring_errors =
         validate_structural_primitive_input_wiring(&lower_output.dag);
     if !structural_primitive_wiring_errors.is_empty() {
-        return Err(CompileError::Verification(
-            structural_primitive_wiring_errors,
-        ));
-    }
-    if !options.skip_verification {
-        let daglang_lower::LowerOutput {
-            dag: lowered_dag,
-            output_paths,
-            inferred_entrypoints,
-            data_values,
-        } = lower_output;
-        let verified_dag = VerifiedDag::verify(lowered_dag).map_err(CompileError::Verification)?;
-
-        let derived = derive_artifacts(&verified_dag).map_err(CompileError::Derive)?;
-
-        let target_module_name = if let Some(tf) = context.target_file.as_ref() {
-            let canonical = {
-                #[allow(clippy::disallowed_methods)]
-                std::fs::canonicalize(tf).ok()
-            };
-            module_graph
-                .modules
-                .iter()
-                .find(|m| m.path == *tf || canonical.as_ref().is_some_and(|c| m.path == *c))
-                .map(|m| m.module_path.as_dotted())
-        } else {
-            None
-        };
-
-        let target = options.target;
-        let layer = options.layer;
-        let mut emitted = emit_with_options(
-            &verified_dag,
-            &derived,
-            options,
-            target_module_name.as_deref(),
-            &extern_assets,
-        )?;
-        let emit_manifest_path = append_emit_manifest(&mut emitted, target, layer)?;
-
-        let receipt = Some(compute_receipt(
-            &verified_dag,
-            &emitted,
-            &emit_manifest_path,
-            &source_paths,
-        )?);
-
-        return Ok(CompileOutput {
-            lowered_dag: verified_dag,
-            derived,
-            emitted,
-            emit_manifest_path,
-            output_paths,
-            pipeline_params: typed.pipeline_params().to_vec(),
-            inferred_entrypoints,
-            dsl_type_registry: typed.dsl_type_registry().clone(),
-            receipt,
-            data_values,
-        });
+        return Err(CompileError::from(structural_primitive_wiring_errors));
     }
     let daglang_lower::LowerOutput {
         dag: lowered_dag,
@@ -792,7 +744,7 @@ pub fn compile_from_module_graph_with_options(
         inferred_entrypoints,
         data_values,
     } = lower_output;
-    let verified_dag = VerifiedDag::from_verified(lowered_dag);
+    let verified_dag = VerifiedDag::verify(lowered_dag).map_err(CompileError::from)?;
 
     let derived = derive_artifacts(&verified_dag).map_err(CompileError::Derive)?;
 
@@ -871,7 +823,7 @@ pub fn check_from_module_graph(module_graph: ModuleGraph) -> Result<CheckOutput,
             ..Default::default()
         },
     ) {
-        return Err(CompileError::Typecheck(errors));
+        return Err(CompileError::from(errors));
     }
     Ok(CheckOutput { parsed_files })
 }
@@ -889,7 +841,7 @@ pub fn load_pipeline_params(context: &DriverContext) -> Result<Vec<PipelineParam
             ..Default::default()
         },
     )
-    .map_err(CompileError::Typecheck)?;
+    .map_err(CompileError::from)?;
     Ok(typed.pipeline_params().to_vec())
 }
 
@@ -910,7 +862,7 @@ pub fn generate_types_from_context(
             ..Default::default()
         },
     )
-    .map_err(CompileError::Typecheck)?;
+    .map_err(CompileError::from)?;
     Ok(daglang_emit::type_codegen::generate_types_for_modules(
         &typed,
         module_filter,
@@ -943,7 +895,7 @@ pub fn lint_report_coverage_from_context(
             ..Default::default()
         },
     )
-    .map_err(CompileError::Typecheck)?;
+    .map_err(CompileError::from)?;
     Ok(lint_report_coverage(&typed))
 }
 

@@ -1,4 +1,4 @@
-use gunbc_app::extern_ops::GunbcExternResolver;
+use gunbc_app::extern_ops::gunbc_runtime_bindings;
 use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
 use gunbc_ir::resource::ResourceIo;
 use gunbc_ir::{detect_entrypoints, Value};
@@ -111,7 +111,7 @@ fn input_mocks_for_entrypoints<T: Clone>(
 fn run_bootstrap_case(kind: BackendKind) {
     let dag = build_dsl_graph(
         "tools/bootstrap.dag",
-        &GunbcExternResolver,
+        gunbc_runtime_bindings(),
         BuildOpts {
             entry_func: Some("bootstrap"),
             profile: None,

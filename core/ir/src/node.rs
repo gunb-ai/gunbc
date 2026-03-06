@@ -131,6 +131,10 @@ pub enum NodeOrigin {
         module: String,
         /// Item containing the pattern invocation.
         item: String,
+        /// Byte offset range in the source file.
+        span_start: usize,
+        /// End of byte offset range.
+        span_end: usize,
         /// Kind of pattern that generated this node.
         pattern_kind: String,
     },
@@ -333,6 +337,12 @@ impl<T> Node<T> {
             expected_outputs,
             description: None,
         });
+        self
+    }
+
+    /// Attach source provenance to the node.
+    pub fn with_origin(mut self, origin: NodeOrigin) -> Self {
+        self.origin = origin;
         self
     }
 

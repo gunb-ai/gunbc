@@ -4,6 +4,7 @@
   "items": 34,
   "dependencies": [
     "std.patterns",
+    "std.resources",
     "extdeps.make",
     "config.build_targets"
   ],

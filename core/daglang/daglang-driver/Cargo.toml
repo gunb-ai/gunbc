@@ -6,6 +6,7 @@ license.workspace = true
 description = "Pure-ish compiler driver for daglang"
 
 [dependencies]
+daglang-contract = { path = "../daglang-contract" }
 daglang-syntax = { path = "../daglang-syntax" }
 daglang-resolve = { path = "../daglang-resolve" }
 daglang-typecheck = { path = "../daglang-typecheck" }

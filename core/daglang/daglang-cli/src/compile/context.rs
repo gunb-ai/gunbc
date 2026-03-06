@@ -143,7 +143,7 @@ pub fn compile_resolve_execute_from_context(
     let output = compile_from_context(context)?;
     let resolved = gunbc_resolve::resolve_lowered_dag_with(
         &output.lowered_dag,
-        &gunbc_app::extern_ops::GunbcExternResolver,
+        gunbc_app::extern_ops::gunbc_runtime_bindings(),
     )
     .map_err(|error| CompileError::from(format!("resolve error: {error}")))?;
     execute_resolved_dag(&resolved, mode, input_mocks)

@@ -2,7 +2,7 @@
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
 use daglang_driver::DriverContext;
-use gunbc_app::extern_ops::GunbcExternResolver;
+use gunbc_app::extern_ops::gunbc_runtime_bindings;
 use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
 use gunbc_ir::ToolchainCommands;
 use gunbc_ir::Value;
@@ -32,7 +32,7 @@ fn daglang_bin() -> &'static str {
 fn resolve_lowered_dag(
     dag: &gunbc_ir::Dag<daglang_lower::LoweredOp>,
 ) -> Result<gunbc_ir::Dag<gunbc_exec::DynOp>, gunbc_resolve::ResolveError> {
-    resolve_lowered_dag_with(dag, &GunbcExternResolver)
+    resolve_lowered_dag_with(dag, gunbc_runtime_bindings())
 }
 
 fn unique_workspace_target_dir(name: &str) -> PathBuf {

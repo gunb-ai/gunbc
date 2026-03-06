@@ -10,7 +10,7 @@
 
 #![allow(clippy::disallowed_methods)]
 
-use gunbc_app::extern_ops::GunbcExternResolver;
+use gunbc_app::extern_ops::gunbc_runtime_bindings;
 use gunbc_exec::{execute_with_mode_and_inputs, lower, ExecutionMode};
 use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
 use gunbc_test::auto_mock_spec;
@@ -18,7 +18,7 @@ use gunbc_test::auto_mock_spec;
 fn build_gist_graph() -> gunbc_ir::Dag<gunbc_exec::DynOp> {
     build_dsl_graph(
         "tools/gist.dag",
-        &GunbcExternResolver,
+        gunbc_runtime_bindings(),
         BuildOpts {
             entry_func: Some("gist"),
             profile: None,

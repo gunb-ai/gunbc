@@ -1627,6 +1627,26 @@ func run() -> { ok: Bool } provides out: ArtifactStore {
 }
 
 #[test]
+fn strict_mode_accepts_std_auth_context_resource_without_import() {
+    let graph = module_graph_from_sources(&[(
+        "sample/main.dag",
+        r#"module sample.main
+func run() -> { ok: Bool } provides auth: AuthContext {
+  return { ok: true }
+}"#,
+    )]);
+    let typed = typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+            ..Default::default()
+        },
+    )
+    .expect("std AuthContext should resolve in strict mode");
+    assert_eq!(typed.module_count(), 1);
+}
+
+#[test]
 fn strict_mode_reports_ambiguous_provided_resource_type() {
     let graph = module_graph_from_sources(&[
         (

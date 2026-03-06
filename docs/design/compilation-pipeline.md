@@ -180,9 +180,9 @@ first" that isn't visible in the types.
 
 | Gap | Current state | Remaining mismatch |
 |-----|---------------|--------------------|
-| Diagnostics | Shared `daglang-contract::Diagnostic` exists | `span`/`file` remain optional, and `TypeError`/`LowerError` still flow through `Spanned*` wrappers instead of a single diagnostic path |
-| Verification gate | `VerifiedDag<T>` exists and gates compile output | `VerifiedDag::from_verified()` remains an escape hatch, so proof is not yet forced at every construction site |
-| Runtime bindings | `RuntimeBindings` centralizes extern registration and cached app binding lookup | Bindings are still bridged through `ExternResolver`; ExternId-keyed total linking is still target-state work |
+| Diagnostics | Shared `daglang-contract::Diagnostic` exists and the driver now consumes type/lower/verify diagnostics through it | `span`/`file` remain optional, and variant-level mandatory spans are still deferred to CP-63 |
+| Verification gate | `VerifiedDag<T>` exists and gates compile output | Verification is now mandatory on the compile path, but direct lowerer-only helpers can still bypass it if a caller opts out of the driver |
+| Runtime bindings | `RuntimeBindings` is now the resolve/build API and the trait bridge is deleted | ExternId-keyed total linking is still target-state work; current keys are typed `ProgramSymbolId` |
 
 ---
 

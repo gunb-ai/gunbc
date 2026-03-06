@@ -1081,7 +1081,7 @@ fn run() -> String { return 42 }
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("typecheck errors"),
+        stderr.contains("compile diagnostics"),
         "check type mismatch failure should report typecheck stage: {stderr}"
     );
     assert!(

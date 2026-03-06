@@ -7,13 +7,11 @@ use gunbc_ir::{BuilderError, Dag};
 pub use gunbc_resolve::builder::DslGraphResult;
 pub use gunbc_resolve::BuildOpts;
 
-use crate::resolve::GunbcExternResolver;
-
 /// Compile a DSL module and resolve lowered ops into `Dag<DynOp>`.
 pub fn build_dsl_graph(relative_module: &str) -> Result<Dag<DynOp>, BuilderError> {
     Ok(gunbc_resolve::builder::build_dsl_graph(
         relative_module,
-        &GunbcExternResolver,
+        crate::extern_ops::gunbc_runtime_bindings(),
         BuildOpts::default(),
     )?
     .dag)
@@ -25,7 +23,7 @@ pub(crate) fn build_dsl_graph_with_types(
 ) -> Result<DslGraphResult, BuilderError> {
     gunbc_resolve::builder::build_dsl_graph(
         relative_module,
-        &GunbcExternResolver,
+        crate::extern_ops::gunbc_runtime_bindings(),
         BuildOpts::default(),
     )
 }
@@ -37,7 +35,7 @@ pub(crate) fn build_dsl_graph_with_types_and_profile(
 ) -> Result<DslGraphResult, BuilderError> {
     gunbc_resolve::builder::build_dsl_graph(
         relative_module,
-        &GunbcExternResolver,
+        crate::extern_ops::gunbc_runtime_bindings(),
         BuildOpts {
             profile: Some(profile),
             ..BuildOpts::default()
@@ -52,7 +50,7 @@ pub fn build_dsl_graph_with_profile(
 ) -> Result<Dag<DynOp>, BuilderError> {
     Ok(gunbc_resolve::builder::build_dsl_graph(
         relative_module,
-        &GunbcExternResolver,
+        crate::extern_ops::gunbc_runtime_bindings(),
         BuildOpts {
             profile: Some(profile),
             ..BuildOpts::default()
@@ -71,7 +69,7 @@ pub fn build_dsl_graph_for_entrypoint(
 ) -> Result<Dag<DynOp>, BuilderError> {
     Ok(gunbc_resolve::builder::build_dsl_graph(
         relative_module,
-        &GunbcExternResolver,
+        crate::extern_ops::gunbc_runtime_bindings(),
         BuildOpts {
             entry_func,
             profile,

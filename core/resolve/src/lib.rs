@@ -12,30 +12,10 @@ pub use resolve::{resolve_lowered_dag_with, ResolveError};
 use gunbc_exec::DynOp;
 use gunbc_ir::ProgramSymbolId;
 
-/// Trait for resolving extern symbols to concrete `DynOp` implementations.
-///
-/// The resolver is called for:
-/// 1. Domain-specific callables in `resolve_domain()` (module + name)
-/// 2. `ExternCall` resolution in `resolve_extern_call()` (module + name)
-///
-/// Return `None` to fall through to the default passthrough handling.
-pub trait ExternResolver: Send + Sync {
-    fn resolve(&self, module: &str, name: &str) -> Option<DynOp>;
-}
-
-/// Resolver that never resolves any extern symbols.
-pub struct NullExternResolver;
-
-impl ExternResolver for NullExternResolver {
-    fn resolve(&self, _module: &str, _name: &str) -> Option<DynOp> {
-        None
-    }
-}
-
 /// Concrete extern binding table.
 ///
-/// Replaces the trait-based `ExternResolver` with a data-driven lookup table.
-/// Implements `ExternResolver` as a bridge during incremental migration.
+/// This is the single runtime binding surface for extern symbols and
+/// app-specific callables.
 #[derive(Debug, Clone)]
 pub struct RuntimeBindings {
     bindings: std::collections::HashMap<ProgramSymbolId, DynOp>,
@@ -66,10 +46,20 @@ impl RuntimeBindings {
         self.bindings.get(symbol)
     }
 
+    /// Resolve a binding by canonical symbol.
+    pub fn resolve_symbol(&self, symbol: &ProgramSymbolId) -> Option<DynOp> {
+        self.get_symbol(symbol).cloned()
+    }
+
     /// Look up a binding by (module, name).
     pub fn get(&self, module: &str, name: &str) -> Option<&DynOp> {
         let symbol = ProgramSymbolId::from_parts(module, name);
         self.get_symbol(&symbol)
+    }
+
+    /// Resolve a binding by (module, name).
+    pub fn resolve(&self, module: &str, name: &str) -> Option<DynOp> {
+        self.get(module, name).cloned()
     }
 
     /// Check if any bindings are registered.
@@ -81,12 +71,5 @@ impl RuntimeBindings {
 impl Default for RuntimeBindings {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-// Bridge: RuntimeBindings satisfies the ExternResolver trait for incremental migration.
-impl ExternResolver for RuntimeBindings {
-    fn resolve(&self, module: &str, name: &str) -> Option<DynOp> {
-        self.get(module, name).cloned()
     }
 }

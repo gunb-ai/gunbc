@@ -196,21 +196,34 @@ Manager. Declared as a reusable function:
 
 module extdeps.github.auth
 
+import std.patterns { credential_chain }
+import std.resources { Filesystem, Network }
+import std.types { CloudRuntime, NonEmptyStr }
+
 func github_token(
+  runtime: CloudRuntime = LocalDev,
   project_id: NonEmptyStr = "gunbai-secrets",
   secret_name: NonEmptyStr = "github-token"
-) -> { token: Secret } {
-  secret = shell.GCloud.SecretManagerAccessVersion(
+) -> { token: Secret }
+  uses fs: Filesystem(mode: Read)
+  uses net: Network
+{
+  cred = credential_chain(
+    runtime: runtime,
+    audience: "sigstore",
+    service_account: None,
+    secret_name: secret_name,
     project_id: project_id,
-    secret_name: secret_name
+    source_id: "github-token",
+    required_scopes: ["repo", "gist"]
   )
-  return { token: secret.secret_value }
+  return { token: cred.token.token }
 }
 ```
 
 The workflow that needs a token just calls `github_token()`. The compiler
-wires the credential chain into the graph — the token flows as data through
-typed ports, never as a global or environment variable.
+wires the full credential chain into the graph — local auth, STS exchange,
+and Secret Manager access all flow as typed DAG edges, never as globals.
 
 ---
 

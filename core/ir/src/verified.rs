@@ -33,18 +33,6 @@ impl<T> VerifiedDag<T> {
         }
     }
 
-    /// Wrap a DAG that has been verified externally.
-    ///
-    /// Use when verification is done with additional checks beyond `verify_dag()`,
-    /// such as structural primitive wiring validation.
-    ///
-    /// # Safety (logical)
-    ///
-    /// The caller asserts that the DAG has passed verification.
-    pub fn from_verified(dag: Dag<T>) -> Self {
-        Self(dag)
-    }
-
     /// Borrow the inner DAG.
     pub fn as_dag(&self) -> &Dag<T> {
         &self.0

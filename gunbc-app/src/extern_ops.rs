@@ -1,25 +1,16 @@
 //! Explicit extern operation implementations for DSL `extern func` declarations.
 
 use std::collections::{BTreeMap, HashMap};
-use std::sync::OnceLock;
+use std::sync::{LazyLock, OnceLock};
 
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::Value;
-use gunbc_resolve::ExternResolver;
 
-/// App-specific extern resolver for gunbc DAG compilation.
+/// App-specific runtime bindings for gunbc DAG compilation.
 ///
 /// This is the actual app binding point between generic `gunbc_resolve`
 /// infrastructure and repo-local extern implementations.
-pub struct GunbcExternResolver;
-
-impl ExternResolver for GunbcExternResolver {
-    fn resolve(&self, module: &str, name: &str) -> Option<DynOp> {
-        runtime_bindings().resolve(module, name)
-    }
-}
-
-fn runtime_bindings() -> &'static gunbc_resolve::RuntimeBindings {
+pub fn gunbc_runtime_bindings() -> &'static gunbc_resolve::RuntimeBindings {
     static RUNTIME_BINDINGS: OnceLock<gunbc_resolve::RuntimeBindings> = OnceLock::new();
     RUNTIME_BINDINGS.get_or_init(|| {
         let mut bindings = gunbc_resolve::RuntimeBindings::new();
@@ -86,11 +77,14 @@ fn runtime_bindings() -> &'static gunbc_resolve::RuntimeBindings {
 
 /// Build the app-specific runtime bindings table.
 ///
-/// This is the data-driven replacement for `GunbcExternResolver`.
 /// All extern symbols are registered with their concrete DynOp implementations.
-pub fn gunbc_runtime_bindings() -> gunbc_resolve::RuntimeBindings {
-    runtime_bindings().clone()
+pub fn cloned_gunbc_runtime_bindings() -> gunbc_resolve::RuntimeBindings {
+    gunbc_runtime_bindings().clone()
 }
+
+#[allow(non_upper_case_globals)]
+pub static GunbcExternResolver: LazyLock<gunbc_resolve::RuntimeBindings> =
+    LazyLock::new(cloned_gunbc_runtime_bindings);
 
 /// Resolve an extern symbol to a concrete runtime operation.
 ///
@@ -98,7 +92,7 @@ pub fn gunbc_runtime_bindings() -> gunbc_resolve::RuntimeBindings {
 /// dispatch table for `extern func` declarations and domain-specific
 /// callable implementations (e.g., `tools.infra::infra`).
 pub fn resolve_extern_symbol(module: &str, name: &str) -> Option<DynOp> {
-    runtime_bindings().resolve(module, name)
+    gunbc_runtime_bindings().resolve(module, name)
 }
 
 // ============================================================================

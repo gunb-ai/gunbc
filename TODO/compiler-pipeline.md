@@ -598,11 +598,11 @@ Every variant carries a `Span` for source attribution. No `Option<String>` node 
 **Fix**: Replace `dyn ExternResolver` with `RuntimeBindings { externs: HashMap<ExternId, DynOp> }`. The binding is total — every `ExternId` has a value. Resolution via `map_bodies()` indexes by `ExternId`, not string lookup.
 **Impact**: Resolution becomes total (cannot fail on missing externs). Eliminates the `ExternResolver` trait, `NullExternResolver`, `GunbcExternResolver`. The resolve stage signature becomes `fn resolve(verified: &VerifiedDag<LoweredOp>, bindings: &RuntimeBindings) -> Verdict<Dag<DynOp>>`.
 **Verify**: `cargo test --workspace` + `grep -r 'dyn ExternResolver' core/` returns 0 hits.
-**Current branch note (2026-03-06)**: The repo has a bridge version of
-`RuntimeBindings` today, keyed by typed `ProgramSymbolId` values, and a single
-cached binding table now backs both `GunbcExternResolver` and
-`resolve_extern_symbol()`. It still implements `ExternResolver` for migration
-compatibility, and ExternId-keyed total binding remains open.
+**Current branch note (2026-03-06)**: The repo now resolves/builds directly
+against `RuntimeBindings`, keyed by typed `ProgramSymbolId` values, and the old
+`ExternResolver` trait / `NullExternResolver` bridge is deleted. A compatibility
+`GunbcExternResolver` symbol remains only as a static alias for already-generated
+bins. ExternId-keyed total binding remains open.
 
 ---
 

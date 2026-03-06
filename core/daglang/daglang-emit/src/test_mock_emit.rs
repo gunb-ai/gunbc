@@ -713,7 +713,7 @@ test bootstrap_dryrun : cloud_base {
         assert_eq!(test_file.tests[0].expects.len(), 1);
 
         let config = TestEmitConfig {
-            dag_builder: "gunbc_resolve::builder::build_dsl_graph(\"tools/bootstrap.dag\", &crate::extern_ops::GunbcExternResolver, gunbc_resolve::BuildOpts { entry_func: Some(\"bootstrap\"), profile: None }).map(|result| result.dag).expect(\"graph should build\")".to_string(),
+            dag_builder: "gunbc_resolve::builder::build_dsl_graph(\"tools/bootstrap.dag\", crate::extern_ops::gunbc_runtime_bindings(), gunbc_resolve::BuildOpts { entry_func: Some(\"bootstrap\"), profile: None }).map(|result| result.dag).expect(\"graph should build\")".to_string(),
             auto_mock_fn: "gunbc_test::auto_mock_spec".to_string(),
             output_dir: "gunbc-app/src/bootstrap".to_string(),
             tool_name: Some("bootstrap".to_string()),

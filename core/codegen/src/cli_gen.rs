@@ -1632,7 +1632,7 @@ mod tests {
             tool_name: "build-all".into(),
             description: "Build pipeline".into(),
             graph_builder_call: DSL_GRAPH_BUILDER_ADAPTER.into(),
-            graph_builder_args: "\"tools/build.dag\", &GunbcExternResolver, gunbc_resolve::BuildOpts { entry_func: Some(\"build_all\"), profile: None }".into(),
+            graph_builder_args: "\"tools/build.dag\", gunbc_runtime_bindings(), gunbc_resolve::BuildOpts { entry_func: Some(\"build_all\"), profile: None }".into(),
             returns_result: true,
             success_port: Some("overall_success".into()),
             enable_step_mode: true,
@@ -1663,7 +1663,7 @@ mod tests {
             tool_name: "build-all".into(),
             description: "Test".into(),
             graph_builder_call: DSL_GRAPH_BUILDER_ADAPTER.into(),
-            graph_builder_args: "\"tools/build.dag\", &GunbcExternResolver, gunbc_resolve::BuildOpts { entry_func: Some(\"build_all\"), profile: None }".into(),
+            graph_builder_args: "\"tools/build.dag\", gunbc_runtime_bindings(), gunbc_resolve::BuildOpts { entry_func: Some(\"build_all\"), profile: None }".into(),
             returns_result: true,
             success_port: None,
             enable_step_mode: false,
@@ -1673,7 +1673,8 @@ mod tests {
         let entrypoints = vec![];
 
         let code = generate_cli(&tool, &entrypoints);
-        assert!(code.contains("gunbc_resolve::builder::build_dsl_graph_dag"));
+        assert!(code.contains("gunbc_resolve::builder::build_dsl_graph"));
+        assert!(code.contains(".map(|result| result.dag)"));
         assert!(code.contains("Ok(d) => d"));
         assert!(code.contains("process::exit(1)"));
     }
@@ -1719,7 +1720,7 @@ mod tests {
             tool_name: "build-all".into(),
             description: "Build".into(),
             graph_builder_call: DSL_GRAPH_BUILDER_ADAPTER.into(),
-            graph_builder_args: "\"tools/build.dag\", &GunbcExternResolver, gunbc_resolve::BuildOpts { entry_func: Some(\"build_all\"), profile: None }".into(),
+            graph_builder_args: "\"tools/build.dag\", gunbc_runtime_bindings(), gunbc_resolve::BuildOpts { entry_func: Some(\"build_all\"), profile: None }".into(),
             returns_result: true,
             success_port: Some("overall_success".into()),
             enable_step_mode: true,
@@ -1744,7 +1745,7 @@ mod tests {
             tool_name: "deps".into(),
             description: "Generate deps.toml".into(),
             graph_builder_call: DSL_GRAPH_BUILDER_ADAPTER.into(),
-            graph_builder_args: "\"tools/deps.dag\", &GunbcExternResolver, gunbc_resolve::BuildOpts { entry_func: Some(\"deps\"), profile: None }".into(),
+            graph_builder_args: "\"tools/deps.dag\", gunbc_runtime_bindings(), gunbc_resolve::BuildOpts { entry_func: Some(\"deps\"), profile: None }".into(),
             returns_result: false,
             success_port: None,
             enable_step_mode: false,

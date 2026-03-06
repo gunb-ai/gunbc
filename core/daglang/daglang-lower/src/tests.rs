@@ -1,13 +1,15 @@
 use super::*;
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::parser;
-use daglang_typecheck::{typecheck_module_graph, typecheck_owned_module_graph, TypedProject};
-use gunbc_app::extern_ops::GunbcExternResolver;
+use daglang_typecheck::{
+    typecheck_module_graph, typecheck_owned_module_graph,
+    typecheck_owned_module_graph_with_options, TypecheckOptions, TypedProject,
+};
+use gunbc_app::extern_ops::gunbc_runtime_bindings;
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::{Edge, Port};
 use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::fs;
 use std::path::{Path, PathBuf};
 
 fn build_entrypoint_graph(
@@ -16,7 +18,7 @@ fn build_entrypoint_graph(
 ) -> gunbc_ir::Dag<gunbc_exec::DynOp> {
     build_dsl_graph(
         relative_module,
-        &GunbcExternResolver,
+        gunbc_runtime_bindings(),
         BuildOpts {
             entry_func: Some(entry_func),
             profile: None,
@@ -26,7 +28,7 @@ fn build_entrypoint_graph(
     .unwrap_or_else(|e| panic!("`{relative_module}` entry `{entry_func}` should build: {e}"))
 }
 
-fn typed_project_from_sources(sources: &[(&str, &str)]) -> TypedProject<'static> {
+fn module_graph_from_sources(sources: &[(&str, &str)]) -> ModuleGraph {
     let modules = sources
         .iter()
         .map(|(path, source)| {
@@ -43,8 +45,35 @@ fn typed_project_from_sources(sources: &[(&str, &str)]) -> TypedProject<'static>
                 dependencies: Vec::new(),
             }
         })
-        .collect();
-    typecheck_owned_module_graph(ModuleGraph { modules }).expect("typecheck should succeed")
+        .collect::<Vec<_>>();
+    let module_lookup = modules
+        .iter()
+        .enumerate()
+        .map(|(index, module)| (module.module_path.as_dotted(), index))
+        .collect::<HashMap<_, _>>();
+    let mut modules = modules;
+    for module in &mut modules {
+        module.dependencies = module
+            .ast
+            .imports
+            .iter()
+            .filter_map(|import| module_lookup.get(&import.node.path.as_dotted()).copied())
+            .collect::<Vec<_>>();
+    }
+    ModuleGraph { modules }
+}
+
+fn typed_project_from_sources(sources: &[(&str, &str)]) -> TypedProject<'static> {
+    typecheck_owned_module_graph(module_graph_from_sources(sources))
+        .expect("typecheck should succeed")
+}
+
+fn typed_project_from_sources_with_options(
+    sources: &[(&str, &str)],
+    options: TypecheckOptions,
+) -> TypedProject<'static> {
+    typecheck_owned_module_graph_with_options(module_graph_from_sources(sources), options)
+        .expect("typecheck should succeed")
 }
 
 fn callable_stmts_from_source(source: &str) -> Vec<Stmt> {
@@ -148,9 +177,11 @@ fn lower_target_module_with_dependency_scope(
 
 #[test]
 fn extern_func_decl_lowers_to_extern_call_and_wires_content_upsert() {
-    let typed = typed_project_from_sources(&[(
-        "sample/externs.dag",
-        r#"module sample.externs
+    let dag = lower_typed_project_for_module_with_dependency_closure_and_entry(
+        "sample.externs",
+        &[(
+            "dsl/sample/externs.dag",
+            r#"module sample.externs
 import std.patterns { content_upsert }
 
 extern func render() -> { return: String }
@@ -160,9 +191,8 @@ func run() -> { written: Bool } {
   result = content_upsert(content: content, path: "out.txt")
   return { written: result.written }
 }"#,
-    )]);
-
-    let dag = lower_target_module(&typed, "sample.externs");
+        )],
+    );
 
     let render_node = dag
         .nodes
@@ -933,9 +963,10 @@ func run(path: String) -> { body: String } uses fs: Filesystem {
 
 #[test]
 fn unresolved_service_call_reports_lower_error() {
-    let typed = typed_project_from_sources(&[(
-        "dsl/services/unresolved_call.dag",
-        r#"module sample.services
+    let typed = typed_project_from_sources_with_options(
+        &[(
+            "dsl/services/unresolved_call.dag",
+            r#"module sample.services
 interface Storage {
   capability read {
 input { path: String }
@@ -949,7 +980,12 @@ func run(path: String) -> { body: String } {
   let response = MissingStorage.read(path: path)
   return { body: response.body }
 }"#,
-    )]);
+        )],
+        TypecheckOptions {
+            allow_unresolved_imports: true,
+            ..Default::default()
+        },
+    );
     let error = lower_typed_project(&typed).expect_err("lowering should fail");
     assert!(matches!(
         error,
@@ -1934,13 +1970,19 @@ func run() -> { ok: Bool } uses fs: TempFile {
 
 #[test]
 fn unresolved_uses_clause_reports_lower_error() {
-    let typed = typed_project_from_sources(&[(
-        "dsl/resources/unresolved_uses.dag",
-        r#"module sample.resources
+    let typed = typed_project_from_sources_with_options(
+        &[(
+            "dsl/resources/unresolved_uses.dag",
+            r#"module sample.resources
 func run() -> { ok: Bool } uses fs: MissingResource {
   return { ok: true }
 }"#,
-    )]);
+        )],
+        TypecheckOptions {
+            allow_unresolved_imports: true,
+            ..Default::default()
+        },
+    );
     let error = lower_typed_project(&typed).expect_err("lowering should fail");
     assert!(matches!(
         error,
@@ -2442,13 +2484,19 @@ func run() -> { ok: Bool } provides out: Storage {
 
 #[test]
 fn unresolved_provides_clause_reports_lower_error() {
-    let typed = typed_project_from_sources(&[(
-        "dsl/resources/unresolved_provides.dag",
-        r#"module sample.resources
+    let typed = typed_project_from_sources_with_options(
+        &[(
+            "dsl/resources/unresolved_provides.dag",
+            r#"module sample.resources
 func run() -> { ok: Bool } provides out: MissingResource {
   return { ok: true }
 }"#,
-    )]);
+        )],
+        TypecheckOptions {
+            allow_unresolved_imports: true,
+            ..Default::default()
+        },
+    );
     let error = lower_typed_project(&typed).expect_err("lowering should fail");
     assert!(matches!(
         error,
@@ -2888,9 +2936,7 @@ fn parity_report_lists_added_and_removed_items_in_sorted_order() {
 
 #[allow(clippy::disallowed_methods)]
 fn load_makegen_lowered() -> Dag<LoweredOp> {
-    let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
-    let source = fs::read_to_string(file).expect("should read makegen source");
-    let typed = typed_project_from_sources(&[("dsl/tools/makegen.dag", &source)]);
+    let typed = typed_project_for_module_with_dependency_closure("tools.makegen");
     lower_typed_project(&typed).expect("lowering should succeed")
 }
 

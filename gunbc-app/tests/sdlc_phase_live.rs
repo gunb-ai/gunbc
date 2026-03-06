@@ -1,6 +1,6 @@
 #![allow(clippy::disallowed_methods)] // Live integration harness shells out intentionally.
 
-use gunbc_app::extern_ops::GunbcExternResolver;
+use gunbc_app::extern_ops::gunbc_runtime_bindings;
 use gunbc_exec::{execute_with_mode_and_inputs, lower, BoundaryMocks, ExecutionMode};
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_resolve::{builder::build_dsl_graph, BuildOpts};
@@ -71,7 +71,7 @@ fn github_token_from_secret_manager() -> Option<String> {
 fn build_local_worker_graph() -> gunbc_ir::Dag<gunbc_exec::DynOp> {
     build_dsl_graph(
         "funcs/sdlc_worker.dag",
-        &GunbcExternResolver,
+        gunbc_runtime_bindings(),
         BuildOpts {
             entry_func: Some("dispatch_sdlc"),
             profile: Some(SDLC_LOCAL_PROFILE),

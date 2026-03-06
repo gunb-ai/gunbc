@@ -30,15 +30,15 @@ const ALLOWED_DIRS: &[&str] = &[
     // Primitive data formatting
     "lib/primitives/",
     // Makegen (Rust-side rendering, migrating to DSL)
-    "gunbc-dag/src/makegen/",
+    "gunbc-app/src/makegen/",
     // Extern ops (recursive/inventory-backed extern function handlers)
-    "gunbc-dag/src/extern_ops.rs",
+    "gunbc-app/src/extern_ops.rs",
     // Binary entrypoints
-    "gunbc-dag/src/bin/",
+    "gunbc-app/src/bin/",
     // Test generation DAG support and narrow extern bridges
-    "gunbc-dag/src/testgen_dag/",
+    "gunbc-app/src/testgen_dag/",
     // Workflow orchestration
-    "gunbc-dag/src/workflow/",
+    "gunbc-app/src/workflow/",
 ];
 
 /// Current baseline: total `push_str` occurrences in non-boundary Rust files.

@@ -406,7 +406,7 @@ fn decode_cached_cardinality(encoded: &str) -> Option<Cardinality> {
 }
 
 fn dsl_graph_builder_adapter() -> String {
-    // Returns a callable expression that takes (relative_module, resolver, opts).
+    // Returns a callable expression that takes (relative_module, bindings, opts).
     // The `{` ... `}` block avoids the clippy::redundant_closure_call lint
     // that triggers when a closure is immediately invoked.
     String::from("gunbc_resolve::builder::build_dsl_graph_dag")
@@ -414,12 +414,12 @@ fn dsl_graph_builder_adapter() -> String {
 
 fn dsl_graph_builder_args(rel_path: &str, entry_func: &str) -> String {
     format!(
-        "\"{rel_path}\", &GunbcExternResolver, gunbc_resolve::BuildOpts {{ entry_func: Some(\"{entry_func}\"), profile: None }}"
+        "\"{rel_path}\", gunbc_runtime_bindings(), gunbc_resolve::BuildOpts {{ entry_func: Some(\"{entry_func}\"), profile: None }}"
     )
 }
 
 fn extern_resolver_import() -> &'static str {
-    "use gunbc_app::extern_ops::GunbcExternResolver;"
+    "use gunbc_app::extern_ops::gunbc_runtime_bindings;"
 }
 
 /// Build ToolDefs from pre-extracted func params (shared by cache-hit and cache-miss paths).
