@@ -18,6 +18,67 @@ impl ExternResolver for GunbcExternResolver {
     }
 }
 
+/// Build the app-specific runtime bindings table.
+///
+/// This is the data-driven replacement for `GunbcExternResolver`.
+/// All extern symbols are registered with their concrete DynOp implementations.
+pub fn gunbc_runtime_bindings() -> gunbc_resolve::RuntimeBindings {
+    let mut b = gunbc_resolve::RuntimeBindings::new();
+    b.register("std.markdown", "render_tree", DynOp::new(RenderTreeOp));
+    b.register(
+        "tools.gist",
+        "build_snapshot_content",
+        DynOp::new(BuildSnapshotContentOp),
+    );
+    b.register(
+        "tools.makegen",
+        "discover_tools",
+        DynOp::new(DiscoverToolsOp),
+    );
+    b.register(
+        "tools.bootstrap",
+        "render_bootstrap_makefile",
+        DynOp::new(GenerateBootstrapMakefileOp),
+    );
+    b.register(
+        "tools.bootstrap",
+        "render_bootstrap_gitignore",
+        DynOp::new(GenerateBootstrapGitignoreOp),
+    );
+    b.register(
+        "tools.pragma",
+        "render_clippy_toml_content",
+        DynOp::new(RenderPragmaClippyTomlContentOp),
+    );
+    b.register(
+        "tools.pragma",
+        "render_disallowed_methods_allowlist_content",
+        DynOp::new(RenderPragmaDisallowedMethodsAllowlistContentOp),
+    );
+    b.register(
+        "tools.pragma",
+        "render_pragma_lint_policy_content",
+        DynOp::new(RenderPragmaLintPolicyContentOp),
+    );
+    b.register(
+        "tools.cigen",
+        "discover_ci_config",
+        DynOp::new(DiscoverCiConfigOp),
+    );
+    b.register(
+        "tools.testgen",
+        "discover_testgen_modules",
+        DynOp::new(DiscoverTestgenModulesOp),
+    );
+    b.register(
+        "tools.testgen",
+        "render_testgen_module",
+        DynOp::new(RenderTestgenModuleOp),
+    );
+    b.register("tools.infra", "infra", DynOp::new(InfraDispatchOp));
+    b
+}
+
 /// Resolve an extern symbol to a concrete runtime operation.
 ///
 /// All app-specific DSL symbols are registered here. This is the single

@@ -854,10 +854,90 @@ pub enum SemanticCarrierKind {
     UnknownSemantic,
 }
 
+/// Structural category of a type identifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TypeCategory {
+    /// Primitive scalar: Bool, String, Int, Float, Unit, Bytes, Secret, Json.
+    Primitive,
+    /// Generic container: List<T>, Map<K,V>, Option<T>.
+    Container,
+    /// Domain/user-defined type.
+    Domain,
+    /// Unrecognized (e.g., empty string).
+    Unknown,
+}
+
 impl TypeId {
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
     }
+
+    // ── Typed constructors (CP-17) ──────────────────────────────────
+
+    pub fn bool() -> Self {
+        Self("Bool".into())
+    }
+    pub fn string() -> Self {
+        Self("String".into())
+    }
+    pub fn int() -> Self {
+        Self("Int".into())
+    }
+    pub fn float() -> Self {
+        Self("Float".into())
+    }
+    pub fn unit() -> Self {
+        Self("Unit".into())
+    }
+    pub fn bytes() -> Self {
+        Self("Bytes".into())
+    }
+    pub fn secret() -> Self {
+        Self("Secret".into())
+    }
+    pub fn json() -> Self {
+        Self("Json".into())
+    }
+    pub fn list(inner: &TypeId) -> Self {
+        Self(format!("List<{}>", inner.0))
+    }
+    pub fn map(key: &TypeId, val: &TypeId) -> Self {
+        Self(format!("Map<{},{}>", key.0, val.0))
+    }
+    pub fn option(inner: &TypeId) -> Self {
+        Self(format!("Option<{}>", inner.0))
+    }
+    pub fn transport_request() -> Self {
+        Self("TransportRequest".into())
+    }
+    pub fn transport_response() -> Self {
+        Self("TransportResponse".into())
+    }
+    pub fn domain(name: &str) -> Self {
+        Self(name.into())
+    }
+
+    // ── Category classification ─────────────────────────────────────
+
+    /// Classify this type into a structural category.
+    pub fn category(&self) -> TypeCategory {
+        match self.0.as_str() {
+            "Bool" | "String" | "Int" | "Float" | "Unit" | "Bytes" | "Secret" | "Json" => {
+                TypeCategory::Primitive
+            }
+            s if s.starts_with("List<")
+                || s.starts_with("Map<")
+                || s.starts_with("Option<")
+                || s.starts_with("Optional<") =>
+            {
+                TypeCategory::Container
+            }
+            "" => TypeCategory::Unknown,
+            _ => TypeCategory::Domain,
+        }
+    }
+
+    // ── Existing methods ────────────────────────────────────────────
 
     /// Classify placeholder seed policy for this type.
     ///
@@ -1761,6 +1841,90 @@ mod tests {
         let back: Cardinality = serde_json::from_str(&json).unwrap();
         assert_eq!(unbounded, back);
         assert_eq!(back.max, None);
+    }
+}
+
+// =============================================================================
+// TypeId typed constructor + category tests
+// =============================================================================
+
+#[cfg(test)]
+mod type_id_tests {
+    use super::*;
+
+    #[test]
+    fn typed_constructors_produce_expected_strings() {
+        assert_eq!(TypeId::bool().0, "Bool");
+        assert_eq!(TypeId::string().0, "String");
+        assert_eq!(TypeId::int().0, "Int");
+        assert_eq!(TypeId::float().0, "Float");
+        assert_eq!(TypeId::unit().0, "Unit");
+        assert_eq!(TypeId::bytes().0, "Bytes");
+        assert_eq!(TypeId::secret().0, "Secret");
+        assert_eq!(TypeId::json().0, "Json");
+        assert_eq!(TypeId::transport_request().0, "TransportRequest");
+        assert_eq!(TypeId::transport_response().0, "TransportResponse");
+    }
+
+    #[test]
+    fn generic_constructors() {
+        assert_eq!(TypeId::list(&TypeId::string()).0, "List<String>");
+        assert_eq!(
+            TypeId::map(&TypeId::string(), &TypeId::int()).0,
+            "Map<String,Int>"
+        );
+        assert_eq!(TypeId::option(&TypeId::bool()).0, "Option<Bool>");
+    }
+
+    #[test]
+    fn domain_constructor() {
+        assert_eq!(TypeId::domain("MyCustomType").0, "MyCustomType");
+    }
+
+    #[test]
+    fn category_primitives() {
+        assert_eq!(TypeId::bool().category(), TypeCategory::Primitive);
+        assert_eq!(TypeId::string().category(), TypeCategory::Primitive);
+        assert_eq!(TypeId::int().category(), TypeCategory::Primitive);
+        assert_eq!(TypeId::float().category(), TypeCategory::Primitive);
+        assert_eq!(TypeId::unit().category(), TypeCategory::Primitive);
+        assert_eq!(TypeId::bytes().category(), TypeCategory::Primitive);
+        assert_eq!(TypeId::secret().category(), TypeCategory::Primitive);
+        assert_eq!(TypeId::json().category(), TypeCategory::Primitive);
+    }
+
+    #[test]
+    fn category_containers() {
+        assert_eq!(TypeId::list(&TypeId::string()).category(), TypeCategory::Container);
+        assert_eq!(
+            TypeId::map(&TypeId::string(), &TypeId::int()).category(),
+            TypeCategory::Container
+        );
+        assert_eq!(TypeId::option(&TypeId::bool()).category(), TypeCategory::Container);
+        assert_eq!(TypeId::new("Optional<String>").category(), TypeCategory::Container);
+    }
+
+    #[test]
+    fn category_domain() {
+        assert_eq!(TypeId::transport_request().category(), TypeCategory::Domain);
+        assert_eq!(TypeId::transport_response().category(), TypeCategory::Domain);
+        assert_eq!(TypeId::domain("MyType").category(), TypeCategory::Domain);
+    }
+
+    #[test]
+    fn category_unknown() {
+        assert_eq!(TypeId::new("").category(), TypeCategory::Unknown);
+    }
+
+    #[test]
+    fn typed_constructors_roundtrip_equality() {
+        // Typed constructors produce the same TypeId as string-based construction
+        assert_eq!(TypeId::bool(), TypeId::new("Bool"));
+        assert_eq!(TypeId::string(), TypeId::new("String"));
+        assert_eq!(
+            TypeId::list(&TypeId::string()),
+            TypeId::new("List<String>")
+        );
     }
 }
 

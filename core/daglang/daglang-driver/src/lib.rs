@@ -401,6 +401,7 @@ pub fn compile_data_from_sources(
         &module_graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
+            ..Default::default()
         },
     )
     .map_err(CompileError::Typecheck)?;
@@ -451,6 +452,7 @@ pub fn compile_data_from_module(
         &module_graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
+            ..Default::default()
         },
     )
     .map_err(CompileError::Typecheck)?;
@@ -719,6 +721,7 @@ pub fn compile_from_module_graph_with_options(
         &module_graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .map_err(CompileError::Typecheck)?;
@@ -901,6 +904,7 @@ pub fn check_from_module_graph(module_graph: ModuleGraph) -> Result<CheckOutput,
         &module_graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     ) {
         return Err(CompileError::Typecheck(errors));
@@ -918,6 +922,7 @@ pub fn load_pipeline_params(context: &DriverContext) -> Result<Vec<PipelineParam
         &module_graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
+            ..Default::default()
         },
     )
     .map_err(CompileError::Typecheck)?;
@@ -938,6 +943,7 @@ pub fn generate_types_from_context(
         &module_graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
+            ..Default::default()
         },
     )
     .map_err(CompileError::Typecheck)?;
@@ -970,6 +976,7 @@ pub fn lint_report_coverage_from_context(
         &module_graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .map_err(CompileError::Typecheck)?;

@@ -34,6 +34,7 @@ fn typecheck_accepts_makegen_module() {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
+            ..Default::default()
         },
     )
     .expect("makegen should typecheck");
@@ -173,6 +174,7 @@ service FsStorage implements Storage {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect_err("strict mode should fail for duplicate interface definitions");
@@ -196,6 +198,7 @@ fn strict_mode_reports_unresolved_imports() {
     )]);
     let options = TypecheckOptions {
         allow_unresolved_imports: false,
+        ..Default::default()
     };
     let errors = typecheck_module_graph_with_options(&graph, options)
         .expect_err("strict mode should fail on unresolved import");
@@ -258,6 +261,7 @@ fn run() -> String {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect("defaulted callable params should be optional at call sites");
@@ -281,6 +285,7 @@ fn run() -> Bool {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect("pattern calls should allow extra named wiring arguments");
@@ -307,6 +312,7 @@ fn strict_mode_reports_ambiguous_call_target() {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect_err("strict mode should fail for ambiguous callable target");
@@ -330,6 +336,7 @@ fn run() -> String { helper() }"#,
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect_err("strict mode should fail for duplicate callable definition");
@@ -358,6 +365,7 @@ fn run() -> String { helper() }"#,
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
+            ..Default::default()
         },
     )
     .expect_err("relaxed mode should still fail for duplicate callable definition");
@@ -383,6 +391,7 @@ fn strict_mode_reports_unresolved_call_target() {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect_err("strict mode should fail for unresolved callable target");
@@ -403,6 +412,7 @@ fn relaxed_mode_allows_unresolved_call_target() {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
+            ..Default::default()
         },
     )
     .expect("relaxed mode should allow unresolved callable target");
@@ -430,6 +440,7 @@ fn summarize(stages: List<Stage>) -> Int {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect("collection intrinsics should be recognized in strict mode");
@@ -468,6 +479,7 @@ required_scopes: ["gist"]
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect("std helper intrinsics should be recognized in strict mode");
@@ -490,6 +502,7 @@ fn relay<T>(value: T) -> T {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect("generic fn type parameters should be treated as known types");
@@ -513,6 +526,7 @@ fn relay<T>(value: T) -> T {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect("generic pattern type parameters should be treated as known types");
@@ -536,6 +550,7 @@ fn result() -> StageResult {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect("record literals should satisfy named-record return contracts");
@@ -561,6 +576,7 @@ fn gcp_dev_storage() -> GcsBucket.Config {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect("resource config named types should be recognized in strict mode");
@@ -580,6 +596,7 @@ fn identity(value: Secret) -> Secret {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect("Secret should be recognized as builtin type");
@@ -599,6 +616,7 @@ fn apply(value: Int, callback: fn(Int) -> Int) -> Int {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect("function-typed parameters should be callable in strict mode");
@@ -618,6 +636,7 @@ fn apply(callback: fn(Int) -> Int) -> Int {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect_err("callback calls should enforce function-type arity");
@@ -650,6 +669,7 @@ fn make_gcp() -> CloudConfig {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect("sum variant constructors should resolve as callable targets");
@@ -673,6 +693,7 @@ fn make_gcp() -> CloudConfig {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect_err("variant constructor calls should enforce field arity");
@@ -701,6 +722,7 @@ fn env() -> Environment {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect("zero-arity variants should be inferred from identifier expressions");
@@ -728,6 +750,7 @@ AwsConfig { ... } => Aws
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect("lossy fn bodies should not emit missing-tail unit mismatch diagnostics");
@@ -849,6 +872,7 @@ func run() -> { ok: Bool } {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect("service inputs with defaults should be optional at call sites");
@@ -875,6 +899,7 @@ func run(path: String) -> { body: String } uses fs: Filesystem {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect("resource-bound capability calls should typecheck in strict mode");
@@ -901,6 +926,7 @@ func run() -> { ok: Bool } uses fs: Filesystem {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect_err("resource-bound capability calls should enforce arity");
@@ -932,6 +958,7 @@ func run(path: String) -> { body: String } {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect_err("strict mode should fail for unresolved service call");
@@ -974,6 +1001,7 @@ func run(path: String) -> { body: String } {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect_err("strict mode should fail for ambiguous service call");
@@ -1012,6 +1040,7 @@ func run(path: String) -> { body: String } {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect_err("strict mode should fail for duplicate service definition");
@@ -1055,6 +1084,7 @@ func run(path: String) -> { body: String } {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
+            ..Default::default()
         },
     )
     .expect_err("relaxed mode should still fail for duplicate service definition");
@@ -1086,6 +1116,7 @@ func run(path: String) -> { body: String } {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
+            ..Default::default()
         },
     )
     .expect("relaxed mode should allow unresolved service call for lower-stage validation");
@@ -1371,6 +1402,7 @@ fn strict_mode_reports_unknown_used_resource_type() {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect_err("strict mode should fail for unknown used resource type");
@@ -1398,6 +1430,7 @@ func run() -> { ok: Bool } uses fs: Filesystem(mode: ReadWrite) {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect("configured resource type should resolve in strict mode");
@@ -1427,6 +1460,7 @@ func run() -> { ok: Bool } uses fs: SharedResource {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect_err("strict mode should fail for ambiguous used resource type");
@@ -1455,6 +1489,7 @@ func run() -> { ok: Bool } uses fs: SharedResource {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect_err("strict mode should fail for duplicate resource definitions");
@@ -1483,6 +1518,7 @@ fn relaxed_mode_allows_unknown_used_resource_type() {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
+            ..Default::default()
         },
     )
     .expect("relaxed mode should allow unknown uses");
@@ -1504,6 +1540,7 @@ func run() -> { ok: Bool } uses fs: SharedResource {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
+            ..Default::default()
         },
     )
     .expect_err("relaxed mode should still fail for duplicate resource definition");
@@ -1532,6 +1569,7 @@ fn strict_mode_reports_unknown_provided_resource_type() {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect_err("strict mode should fail for unknown provided resource type");
@@ -1559,6 +1597,7 @@ func run() -> { ok: Bool } provides out: ArtifactStore(kind: temporary) {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect("configured provided resource type should resolve in strict mode");
@@ -1579,6 +1618,7 @@ func run() -> { ok: Bool } provides out: ArtifactStore {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect("provided resource type should resolve in strict mode");
@@ -1608,6 +1648,7 @@ func run() -> { ok: Bool } provides out: SharedResource {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect_err("strict mode should fail for ambiguous provided resource type");
@@ -1636,6 +1677,7 @@ func run() -> { ok: Bool } provides out: SharedResource {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
+            ..Default::default()
         },
     )
     .expect_err("relaxed mode should still fail for duplicate resource definition");
@@ -1669,6 +1711,7 @@ func run() -> { ok: Bool } provides out: SharedResource {
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
+            ..Default::default()
         },
     )
     .expect_err("strict mode should fail for duplicate resource definitions");

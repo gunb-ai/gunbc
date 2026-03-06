@@ -32,15 +32,19 @@ use daglang_syntax::ast_utils::{
     resource_type_name, service_call_lookup_keys, type_expr_to_string, walk_stmts,
 };
 
+pub mod extern_registry;
+pub use extern_registry::ExternRegistry;
+
 /// A typechecked project snapshot.
 #[derive(Debug)]
 pub struct TypedProject {
     pub modules: Vec<TypedModule>,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct TypecheckOptions {
     pub allow_unresolved_imports: bool,
+    pub extern_registry: Option<ExternRegistry>,
 }
 
 /// A typechecked module.
@@ -275,6 +279,17 @@ pub enum TypeError {
         scrutinee_type: String,
         missing_variants: Vec<String>,
     },
+    /// An `extern func` references a symbol not in the extern registry.
+    UnregisteredExtern { module: String, name: String },
+    /// An `extern func` has wrong arity compared to the registered symbol.
+    ExternArityMismatch {
+        module: String,
+        name: String,
+        expected_inputs: usize,
+        got_inputs: usize,
+        expected_outputs: usize,
+        got_outputs: usize,
+    },
 }
 
 impl TypeError {
@@ -321,6 +336,8 @@ impl TypeError {
             Self::BranchTypeMismatch { .. } => "TC038",
             Self::MatchArmTypeMismatch { .. } => "TC039",
             Self::NonExhaustiveMatch { .. } => "TC040",
+            Self::UnregisteredExtern { .. } => "TC041",
+            Self::ExternArityMismatch { .. } => "TC042",
         }
     }
 
@@ -378,6 +395,12 @@ impl TypeError {
             Self::NonExhaustiveMatch { missing_variants, .. } => Some(format!(
                 "add arms for: {} — or add a `_ => ...` wildcard arm",
                 missing_variants.join(", ")
+            )),
+            Self::UnregisteredExtern { module, name } => Some(format!(
+                "register `{module}::{name}` in the app's extern binding table (extern_ops.rs)"
+            )),
+            Self::ExternArityMismatch { module, name, expected_inputs, got_inputs, .. } => Some(format!(
+                "`{module}::{name}` expects {expected_inputs} inputs but declaration has {got_inputs}"
             )),
             _ => None,
         }
@@ -630,6 +653,23 @@ impl std::fmt::Display for TypeError {
                 "non-exhaustive match on `{scrutinee_type}`: missing {}",
                 missing_variants.join(", ")
             ),
+            Self::UnregisteredExtern { module, name } => write!(
+                f,
+                "extern func `{name}` in module `{module}` is not registered in the extern binding table"
+            ),
+            Self::ExternArityMismatch {
+                module,
+                name,
+                expected_inputs,
+                got_inputs,
+                expected_outputs,
+                got_outputs,
+            } => write!(
+                f,
+                "extern func `{name}` in module `{module}` arity mismatch: \
+                 expected {expected_inputs} inputs/{expected_outputs} outputs, \
+                 got {got_inputs} inputs/{got_outputs} outputs"
+            ),
         }
     }
 }
@@ -804,6 +844,36 @@ pub fn typecheck_module_graph_with_options(
             ast: module.ast.clone(),
             signatures,
         });
+    }
+
+    // Validate extern func declarations against the registry (Wave 4a).
+    if let Some(ref registry) = options.extern_registry {
+        for module in &graph.modules {
+            let module_name = module.module_path.as_dotted();
+            for item in &module.ast.items {
+                if let Item::ExternFuncDecl(def) = &item.node {
+                    if let Some(sig) = registry.lookup(&module_name, &def.name) {
+                        let got_inputs = def.inputs.len();
+                        let got_outputs = def.outputs.len();
+                        if sig.input_count != got_inputs || sig.output_count != got_outputs {
+                            errors.push(TypeError::ExternArityMismatch {
+                                module: module_name.clone(),
+                                name: def.name.clone(),
+                                expected_inputs: sig.input_count,
+                                got_inputs,
+                                expected_outputs: sig.output_count,
+                                got_outputs,
+                            });
+                        }
+                    } else {
+                        errors.push(TypeError::UnregisteredExtern {
+                            module: module_name.clone(),
+                            name: def.name.clone(),
+                        });
+                    }
+                }
+            }
+        }
     }
 
     if errors.is_empty() {
