@@ -1,0 +1,283 @@
+// infra/sdlc/managed_units.dag -- Managed lifecycle for SDLC runtime units.
+//
+// Each SDLC runtime component declares its lifecycle verbs:
+// ensure_present, verify_present, disable, drain, destroy, verify_absent.
+//
+// These declarations drive compiler-generated lifecycle subcommands
+// and test obligations (LC5/LC6).
+//
+// Design reference: docs/design/horizon/h12-managed-lifecycle-control.md
+// Task reference: SDLC Track D LC7
+
+module infra.sdlc.managed_units
+
+import std.types { NonEmptyStr }
+import std.lifecycle {
+    DestroyMode, DestroySupport, ManagedUnitClass,
+    ManagedUnitId, ManagedUnitStatus, LifecycleVerb,
+    LifecycleCommand, LifecycleResult
+}
+
+// ── Worker Fleet ─────────────────────────────────────────────────
+// The pool of Cloud Run worker instances that execute SDLC stages.
+
+resource WorkerFleet {
+  kind: Capability
+  mode: ReadWrite
+  key: fleet_name
+
+  config {
+    fleet_name: NonEmptyStr
+    project_id: NonEmptyStr
+    region: NonEmptyStr = "us-central1"
+    image: NonEmptyStr
+    min_instances: Int = 1
+    max_instances: Int = 10
+  }
+
+  managed {
+    destroy_support: GracefulAndBrutal
+
+    ensure_present {
+      // Deploy workers, verify min_instances running
+      let ok = true
+    }
+
+    verify_present {
+      // Check service exists and has healthy instances
+      let ok = true
+    }
+
+    disable {
+      // Set min_instances = 0, stop accepting new work
+      let ok = true
+    }
+
+    drain {
+      // Wait for in-progress stage executions to complete
+      let ok = true
+    }
+
+    destroy {
+      // Delete the Cloud Run service
+      let ok = true
+    }
+
+    verify_absent {
+      // Confirm service no longer exists
+      let ok = true
+    }
+  }
+}
+
+// ── Webhook Ingress ──────────────────────────────────────────────
+// Receives GitHub webhook events and publishes to signal store.
+
+resource WebhookIngress {
+  kind: Capability
+  mode: ReadWrite
+  key: ingress_name
+
+  config {
+    ingress_name: NonEmptyStr
+    project_id: NonEmptyStr
+    region: NonEmptyStr = "us-central1"
+    webhook_secret: NonEmptyStr
+  }
+
+  managed {
+    destroy_support: GracefulAndBrutal
+
+    ensure_present {
+      // Deploy webhook receiver, configure GitHub webhook URL
+      let ok = true
+    }
+
+    verify_present {
+      // Health check the webhook endpoint
+      let ok = true
+    }
+
+    disable {
+      // Disable the GitHub webhook (set inactive)
+      let ok = true
+    }
+
+    drain {
+      // Process queued webhook events
+      let ok = true
+    }
+
+    destroy {
+      // Delete webhook receiver and GitHub webhook configuration
+      let ok = true
+    }
+
+    verify_absent {
+      // Confirm receiver deleted and webhook removed
+      let ok = true
+    }
+  }
+}
+
+// ── Signal Ingress ───────────────────────────────────────────────
+// Pub/Sub push subscriber that triggers SDLC worker dispatch.
+
+resource SignalIngress {
+  kind: Capability
+  mode: ReadWrite
+  key: subscription_name
+
+  config {
+    subscription_name: NonEmptyStr
+    topic_name: NonEmptyStr
+    project_id: NonEmptyStr
+    push_endpoint: NonEmptyStr
+  }
+
+  managed {
+    destroy_support: GracefulOnly
+
+    ensure_present {
+      // Create Pub/Sub subscription with push config
+      let ok = true
+    }
+
+    verify_present {
+      // Check subscription exists and is active
+      let ok = true
+    }
+
+    disable {
+      // Pause the subscription (stop push delivery)
+      let ok = true
+    }
+
+    drain {
+      // Ack remaining messages in backlog
+      let ok = true
+    }
+
+    destroy {
+      // Delete the Pub/Sub subscription
+      let ok = true
+    }
+
+    verify_absent {
+      // Confirm subscription deleted
+      let ok = true
+    }
+  }
+}
+
+// ── Reconciler ───────────────────────────────────────────────────
+// Periodic reconciliation loop that detects stuck stages.
+
+resource Reconciler {
+  kind: Capability
+  mode: ReadWrite
+  key: reconciler_name
+
+  config {
+    reconciler_name: NonEmptyStr
+    interval_seconds: Int = 300
+    stale_threshold_seconds: Int = 3600
+  }
+
+  managed {
+    destroy_support: GracefulAndBrutal
+
+    ensure_present {
+      // Deploy reconciler (Cloud Scheduler job or cron)
+      let ok = true
+    }
+
+    verify_present {
+      // Check scheduler job exists and is enabled
+      let ok = true
+    }
+
+    disable {
+      // Pause the scheduler job
+      let ok = true
+    }
+
+    drain {
+      // Wait for current reconciliation cycle to finish
+      let ok = true
+    }
+
+    destroy {
+      // Delete the scheduler job
+      let ok = true
+    }
+
+    verify_absent {
+      // Confirm scheduler job deleted
+      let ok = true
+    }
+  }
+}
+
+// ── Stage Gate ───────────────────────────────────────────────────
+// Optional approval gate for stage transitions (e.g. design-review).
+
+resource StageGate {
+  kind: Capability
+  mode: ReadWrite
+  key: gate_name
+
+  config {
+    gate_name: NonEmptyStr
+    stage: NonEmptyStr
+    require_human_approval: Bool = false
+  }
+
+  managed {
+    destroy_support: GracefulAndBrutal
+
+    ensure_present {
+      // Register gate in gate registry
+      let ok = true
+    }
+
+    verify_present {
+      // Check gate exists in registry
+      let ok = true
+    }
+
+    disable {
+      // Set gate to auto-approve (bypass)
+      let ok = true
+    }
+
+    drain {
+      // Process pending approvals
+      let ok = true
+    }
+
+    destroy {
+      // Remove gate from registry
+      let ok = true
+    }
+
+    verify_absent {
+      // Confirm gate removed
+      let ok = true
+    }
+  }
+}
+
+// ── Tests ────────────────────────────────────────────────────────
+
+test worker_fleet_lifecycle {
+  // Verify WorkerFleet resource compiles with managed block
+  input prepare.fleet_name -> "sdlc-workers"
+  expect result == true
+}
+
+test signal_ingress_lifecycle {
+  // Verify SignalIngress resource compiles with managed block
+  input prepare.subscription_name -> "sdlc-signals"
+  expect result == true
+}

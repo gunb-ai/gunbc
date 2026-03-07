@@ -1,0 +1,77 @@
+// std/inquiry.dag -- Domain-neutral inquiry intent model.
+//
+// The canonical intake object for bounded intellectual work.
+// InquiryIntent replaces domain-specific intake (IntentSheet)
+// as the shared kernel type. SDLC's IntentSheet wraps/derives
+// from InquiryIntent plus repo-specific target metadata.
+//
+// Design reference: docs/design/modeling/intellectual-pipeline-kernel.md
+// Task reference: SDLC B2, roadmap IK1
+
+module std.inquiry
+
+import std.types { NonEmptyStr, Timestamp }
+
+// --- Constraint strength (Level 4: Finite Coproducts) ---
+
+type ConstraintStrength = Hard | Soft
+
+// --- Autonomy policy (Level 4: Finite Coproducts) ---
+// How much autonomy the system has for this inquiry.
+
+type AutonomyPolicy
+  = ResearchOnly
+  | DesignOnly
+  | ApprovalBeforeExecution
+  | ExecuteWithinConstraints
+
+// --- Supporting records (Level 3: Labeled Products) ---
+
+type SuccessCriterion {
+  description: NonEmptyStr
+  measurable: Bool
+  evidence_type: String?
+}
+
+type IntentConstraint {
+  description: NonEmptyStr
+  strength: ConstraintStrength
+  rationale: String?
+}
+
+type EvidenceRequirement {
+  description: NonEmptyStr
+  minimum_quality: String?
+  source_type: String?
+}
+
+type ConclusionCriterion {
+  description: NonEmptyStr
+  threshold: String?
+}
+
+type IntentContextRef {
+  ref_type: NonEmptyStr
+  ref_id: NonEmptyStr
+  description: String?
+}
+
+// --- Inquiry intent (Level 3: Labeled Product) ---
+// The generic kernel intake object.
+// Domain-neutral: no GitHub-specific fields (owner, repo, labels).
+
+type InquiryIntent {
+  intent_id: NonEmptyStr
+  intent_version: Int
+  summary: NonEmptyStr
+  request: String
+  motivation: String?
+  desired_outcomes: List<SuccessCriterion>
+  constraints: List<IntentConstraint>
+  evidence_requirements: List<EvidenceRequirement>
+  autonomy_policy: AutonomyPolicy
+  conclusion_criteria: List<ConclusionCriterion>
+  context_refs: List<IntentContextRef>
+  created_at: Timestamp
+  metadata: Json?
+}

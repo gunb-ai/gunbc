@@ -23,8 +23,12 @@ import interfaces.agent_provider { AgentProvider }
 import interfaces.signal_store { SignalStore }
 import interfaces.artifact_store { ArtifactStore }
 import interfaces.credential_provider { CredentialProvider }
+import interfaces.feedback_store { FeedbackStore }
 import services.sdlc.providers.stub_providers
 import services.sdlc.providers.stub_credential_provider
+import services.sdlc.providers.stub_feedback_store
+import services.sdlc.providers.file_feedback_store
+import services.sdlc.providers.gcs_feedback_store
 import services.sdlc.providers.github_issue_provider
 import services.sdlc.providers.file_claim_store
 import services.sdlc.providers.file_outcome_ledger
@@ -53,6 +57,7 @@ import services.sdlc.providers.gcs_artifact_store
 //   AgentProvider   -> stubs.stub.AgentProvider
 //   SignalStore     -> stubs.stub.SignalStore
 //   ArtifactStore   -> stubs.stub.ArtifactStore
+//   FeedbackStore   -> stubs.stub.FeedbackStore
 //
 // ── local ───────────────────────────────────────────────────────────
 // File-based ledgers, real GitHub API, single-process.
@@ -62,6 +67,7 @@ import services.sdlc.providers.gcs_artifact_store
 //   AgentProvider   -> codex_agent.codex.AgentProvider
 //   SignalStore     -> file_signal_store.file.SignalStore
 //   ArtifactStore   -> inline_artifact_store.file.ArtifactStore
+//   FeedbackStore   -> file_feedback_store.file.FeedbackStore
 //
 // ── cloud_run ───────────────────────────────────────────────────────
 // GCS-based ledgers with generation-based CAS, real GitHub API,
@@ -72,6 +78,7 @@ import services.sdlc.providers.gcs_artifact_store
 //   AgentProvider   -> codex_agent.codex.AgentProvider
 //   SignalStore     -> pubsub_signal_store.pubsub.SignalStore
 //   ArtifactStore   -> gcs_artifact_store.gcs.ArtifactStore
+//   FeedbackStore   -> gcs_feedback_store.gcs.FeedbackStore
 
 profile unit_test {
   bind IssueProvider -> services.sdlc.providers.stub_providers.stub.IssueProvider
@@ -81,6 +88,7 @@ profile unit_test {
   bind SignalStore -> services.sdlc.providers.stub_providers.stub.SignalStore
   bind ArtifactStore -> services.sdlc.providers.stub_providers.stub.ArtifactStore
   bind CredentialProvider -> services.sdlc.providers.stub_credential_provider.StubCredentialProvider
+  bind FeedbackStore -> services.sdlc.providers.stub_feedback_store.stub.FeedbackStore
 }
 
 profile local {
@@ -100,6 +108,7 @@ profile local {
     runtime: LocalDev,
     project_id: "gunbai-auto"
   }
+  bind FeedbackStore -> services.sdlc.providers.file_feedback_store.file.FeedbackStore
 }
 
 profile cloud_run {
@@ -124,6 +133,10 @@ profile cloud_run {
   }
   bind CredentialProvider -> services.sdlc.providers.gcp_credential_provider.GcpWifCredentialProvider {
     runtime: GitHubActions,
+    project_id: "gunbai-auto"
+  }
+  bind FeedbackStore -> services.sdlc.providers.gcs_feedback_store.gcs.FeedbackStore {
+    bucket: "gunbai-auto-sdlc-feedback",
     project_id: "gunbai-auto"
   }
 }

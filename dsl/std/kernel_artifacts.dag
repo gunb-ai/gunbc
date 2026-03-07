@@ -1,0 +1,102 @@
+// std/kernel_artifacts.dag -- Domain-neutral artifact model for the intellectual kernel.
+//
+// Defines the canonical artifact kinds, event kinds, obligation kinds,
+// obligation statuses, and conclusion dispositions for bounded inquiry.
+//
+// Design reference: docs/design/modeling/intellectual-pipeline-kernel.md
+// Task reference: SDLC B2, roadmap IK2
+
+module std.kernel_artifacts
+
+import std.types { NonEmptyStr, Timestamp }
+
+// --- Kernel artifact kinds (Level 4: Finite Coproducts) ---
+// Domain-neutral artifact types for bounded inquiry.
+
+type KernelArtifactKind
+  = ProblemStatement
+  | Question
+  | ResearchNote
+  | Hypothesis
+  | Plan
+  | InterventionRecord
+  | Evidence
+  | Critique
+  | Response
+  | Conclusion
+
+// --- Kernel event kinds (Level 4: Finite Coproducts) ---
+
+type KernelEventKind
+  = Submitted
+  | ArtifactRecorded
+  | EvidenceObserved
+  | CritiqueReceived
+  | ApprovalGranted
+  | RevisionRequested
+  | Resolved
+
+// --- Kernel obligation kinds (Level 4: Finite Coproducts) ---
+
+type KernelObligationKind
+  = MissingEvidence
+  | CritiqueResponseNeeded
+  | ApprovalNeeded
+  | RetryNeeded
+  | ReconcileNeeded
+  | ConclusionNeeded
+
+// --- Kernel obligation status (Level 4: Finite Coproducts) ---
+
+type KernelObligationStatus
+  = ObligationSeen
+  | ObligationInProgress
+  | ObligationAddressed
+  | ObligationClosed
+
+// --- Conclusion disposition (Level 4: Finite Coproducts) ---
+
+type ConclusionDisposition
+  = Adopted
+  | Rejected
+  | Deferred
+  | NeedsMoreEvidence
+  | Blocked
+
+// --- Kernel artifact record (Level 3: Labeled Product) ---
+
+type KernelArtifact {
+  artifact_id: NonEmptyStr
+  intent_id: NonEmptyStr
+  kind: KernelArtifactKind
+  title: NonEmptyStr
+  body: String
+  evidence_refs: List<NonEmptyStr>
+  parent_artifact_id: NonEmptyStr?
+  created_at: Timestamp
+  metadata: Json?
+}
+
+// --- Kernel obligation record (Level 3: Labeled Product) ---
+
+type KernelObligation {
+  obligation_id: NonEmptyStr
+  intent_id: NonEmptyStr
+  kind: KernelObligationKind
+  status: KernelObligationStatus
+  description: NonEmptyStr
+  linked_artifact_ids: List<NonEmptyStr>
+  created_at: Timestamp
+  updated_at: Timestamp
+}
+
+// --- Kernel event record (Level 3: Labeled Product) ---
+
+type KernelEvent {
+  event_id: NonEmptyStr
+  intent_id: NonEmptyStr
+  kind: KernelEventKind
+  artifact_id: NonEmptyStr?
+  description: String
+  created_at: Timestamp
+}

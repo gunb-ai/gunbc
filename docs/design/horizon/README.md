@@ -11,5 +11,6 @@ This directory contains design docs for currently open horizon/design-gated task
 - `h9-workflow-rendering-github-actions.md`
 - `h10-compute-stack-services.md`
 - `h11-dag-typing-hardening.md`
+- `h12-managed-lifecycle-control.md`
 
 Each doc includes a follow-up implementation backlog (`H*.N`) that can be copied into `TODO/tasks.md` once this PR lands.

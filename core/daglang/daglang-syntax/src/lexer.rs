@@ -76,6 +76,7 @@ pub enum TokenKind {
     Contract,
     Tier,
     Skip,
+    Managed,
     // Delimiters
     LBrace,
     RBrace,
@@ -192,6 +193,7 @@ impl TokenKind {
             Self::Contract => "contract",
             Self::Tier => "tier",
             Self::Skip => "skip",
+            Self::Managed => "managed",
             Self::LBrace => "{",
             Self::RBrace => "}",
             Self::LParen => "(",
@@ -661,6 +663,7 @@ impl<'a> Lexer<'a> {
             "contract" => TokenKind::Contract,
             "tier" => TokenKind::Tier,
             "skip" => TokenKind::Skip,
+            "managed" => TokenKind::Managed,
             _ => TokenKind::Ident(text.to_string()),
         };
         self.tok(kind, start)

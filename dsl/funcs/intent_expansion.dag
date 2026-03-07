@@ -1,0 +1,62 @@
+// funcs/intent_expansion.dag -- Intent expansion via LLM.
+//
+// Takes an InquiryIntent and expands it into structured questions,
+// plans, and evidence needs using LLM reasoning.
+//
+// Design reference: docs/design/modeling/intellectual-pipeline-kernel.md
+// Task reference: SDLC B2, roadmap IK5
+
+module funcs.intent_expansion
+
+import std.types { NonEmptyStr }
+import std.inquiry {
+    InquiryIntent, SuccessCriterion, EvidenceRequirement
+}
+import std.kernel_artifacts {
+    KernelArtifactKind
+}
+import extdeps.llm.anthropic
+
+// --- Expansion system prompt ---
+
+fn expansion_system_prompt() -> String {
+  "You are an expert research planner. Given a high-level intent with constraints and success criteria, expand it into:\n1. Specific questions that must be answered\n2. Concrete plans with ordered steps\n3. Evidence requirements with quality thresholds\n\nReturn a JSON object with fields: questions (array of {question, rationale, priority}), plans (array of {title, steps, dependencies}), evidence_needs (array of {description, source_type, minimum_quality})."
+}
+
+fn expansion_user_prompt(intent: InquiryIntent) -> String {
+  constraints_text = intent.constraints
+    |> map(c => "- [{c.strength}] {c.description}")
+    |> join("\n")
+
+  outcomes_text = intent.desired_outcomes
+    |> map(o => "- {o.description}")
+    |> join("\n")
+
+  "Expand this intent into questions, plans, and evidence needs.\n\nSummary: {intent.summary}\n\nRequest: {intent.request}\n\nDesired outcomes:\n{outcomes_text}\n\nConstraints:\n{constraints_text}\n\nAutonomy policy: {intent.autonomy_policy}\n\nReturn your expansion as JSON."
+}
+
+// --- Expand intent via LLM ---
+
+func expand_intent(
+  intent: InquiryIntent,
+  api_key: Secret,
+  model: String
+) -> { questions: Json, plans: Json, evidence_needs: Json }
+{
+  response = llm.Anthropic.Messages(
+    api_key: api_key,
+    model: model,
+    messages: [{
+      role: "user",
+      content: expansion_user_prompt(intent: intent)
+    }],
+    system: expansion_system_prompt(),
+    max_tokens: 4096
+  )
+
+  return {
+    questions: response.content,
+    plans: response.content,
+    evidence_needs: response.content
+  }
+}

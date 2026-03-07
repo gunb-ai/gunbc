@@ -1,0 +1,45 @@
+// interfaces/feedback_store.dag -- Provider-fungible feedback persistence.
+//
+// Stores and retrieves feedback records and obligations.
+// Providers: stub (unit_test), file (local), GCS (cloud_run).
+//
+// Design reference: docs/design/sdlc/ambient-feedback-model.md
+// Task reference: SDLC B1, roadmap AS3
+
+module interfaces.feedback_store
+
+import std.types { NonEmptyStr, Timestamp }
+import std.feedback {
+    FeedbackRecord, FeedbackObligation, FeedbackStatus,
+    FeedbackCloseReason
+}
+
+interface FeedbackStore {
+  capability ingest(feedback: FeedbackRecord) -> {
+    ingested: Bool,
+    obligation_created: Bool
+  }
+
+  capability get_obligation(feedback_id: NonEmptyStr) -> {
+    found: Bool,
+    obligation: FeedbackObligation?
+  }
+
+  capability list_open_obligations() -> {
+    obligations: List<FeedbackObligation>
+  }
+
+  capability update_obligation_status(
+    feedback_id: NonEmptyStr,
+    status: FeedbackStatus,
+    close_reason: FeedbackCloseReason?,
+    linked_artifact_ids: List<NonEmptyStr>?
+  ) -> {
+    updated: Bool
+  }
+
+  capability get_feedback_history(feedback_id: NonEmptyStr) -> {
+    records: List<FeedbackRecord>
+  }
+
+}

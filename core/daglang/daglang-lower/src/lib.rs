@@ -31,7 +31,7 @@ use daglang_syntax::ast_utils::{
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
 use gunbc_ir::patterns::branch::IfBuilder;
 use gunbc_ir::patterns::{BranchBuilder, LoopBuilder, PatternOp};
-use gunbc_ir::resource::{AccessMode, RESOURCE_FILE};
+use gunbc_ir::resource::{AccessMode, DestroySupport, IrManagedLifecycle, RESOURCE_FILE};
 use gunbc_ir::transport::middleware::{
     RateLimitAlgorithm, RateLimitConfig, ResponseClassification, ResponseProvider, RetryBackoff,
     RetryConfig, TransportMiddlewareConfig,
@@ -311,6 +311,8 @@ pub enum ObligationCategory {
     ResourceProvide,
     ResourceAcquire,
     ResourceRelease,
+    /// Managed lifecycle verb (ensure_present, disable, drain, destroy, etc.).
+    ManagedLifecycleVerb,
     InterfaceContractVerification,
     /// Pure function that templates/renders output from inputs (e.g. `render_makefile`).
     PureRender,
@@ -662,6 +664,7 @@ pub fn canonical_kind_for_obligation(obligation: ObligationCategory) -> Option<&
         | ObligationCategory::ResourceProvide
         | ObligationCategory::ResourceAcquire
         | ObligationCategory::ResourceRelease
+        | ObligationCategory::ManagedLifecycleVerb
         | ObligationCategory::InterfaceContractVerification => Some("pattern-expanded"),
         ObligationCategory::PureRender
         | ObligationCategory::PureDataLoad
@@ -8334,6 +8337,61 @@ fn add_resource_lifecycle_nodes(
             };
             registry.register(format!("{module_name}.{}", resource.name), endpoint.clone());
             registry.register(resource.name.clone(), endpoint);
+
+            // --- Managed lifecycle verb nodes ---
+            if let Some(managed) = &resource.managed {
+                let destroy_support_str = match &managed.destroy_support {
+                    Expr::Ident(s) => s.clone(),
+                    _ => "Unsupported".to_string(),
+                };
+                let ds = DestroySupport::parse(&destroy_support_str)
+                    .unwrap_or(DestroySupport::Unsupported);
+                let ir_lifecycle = IrManagedLifecycle {
+                    resource_name: resource.name.clone(),
+                    destroy_support: ds,
+                    has_ensure_present: managed.ensure_present.is_some(),
+                    has_verify_present: managed.verify_present.is_some(),
+                    has_disable: managed.disable.is_some(),
+                    has_drain: managed.drain.is_some(),
+                    has_destroy: managed.destroy.is_some(),
+                    has_verify_absent: managed.verify_absent.is_some(),
+                };
+                let validation_errors = ir_lifecycle.validate();
+                for err in &validation_errors {
+                    eprintln!("[lifecycle-validation] {err}");
+                }
+                // Generate a node per declared lifecycle verb.
+                let verbs = ir_lifecycle.declared_verbs();
+                let mut prev_verb_id: Option<String> = None;
+                for verb in &verbs {
+                    let verb_node_id =
+                        format!("managed_lifecycle::{suffix}::{}", verb.as_str());
+                    builder.add_node(Node::opaque(
+                        verb_node_id.clone(),
+                        vec![],
+                        vec![Port::scalar("ok", "Bool")],
+                        LoweredOp::Callable {
+                            module: module_name.clone(),
+                            kind: CallableKind::Pattern,
+                            name: format!(
+                                "managed_lifecycle::{}::{}",
+                                resource.name,
+                                verb.as_str()
+                            ),
+                            obligation: ObligationCategory::ManagedLifecycleVerb,
+                            service_metadata: None,
+                            is_interactive: false,
+                            resource_target: Some(resource.name.clone()),
+                            fn_body: None,
+                        },
+                    ));
+                    // Chain sequential dependency within graceful path.
+                    if let Some(prev) = &prev_verb_id {
+                        builder.add_edge(prev, "ok", &verb_node_id, "__deps");
+                    }
+                    prev_verb_id = Some(verb_node_id);
+                }
+            }
         }
     }
     registry

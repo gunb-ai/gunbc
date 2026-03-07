@@ -1,0 +1,120 @@
+// exemplars/ml_investigation.dag -- ML investigation exemplar.
+//
+// Proves the intellectual pipeline kernel applies beyond SDLC.
+// Models a bounded offline ML investigation using kernel types.
+//
+// Design reference: docs/design/modeling/intellectual-pipeline-kernel.md §K4
+// Task reference: SDLC B2, roadmap IK4
+
+module exemplars.ml_investigation
+
+import std.types { NonEmptyStr }
+import std.inquiry {
+    InquiryIntent, AutonomyPolicy, SuccessCriterion,
+    IntentConstraint, EvidenceRequirement, ConclusionCriterion,
+    IntentContextRef, ConstraintStrength
+}
+import std.kernel_artifacts {
+    KernelArtifactKind, ConclusionDisposition
+}
+
+// --- ML-specific types ---
+
+type MlProblemStatement {
+  problem_id: String
+  target_variable: String
+  prediction_type: MlPredictionType
+  business_context: String
+  success_metric: String
+  baseline_performance: String?
+}
+
+type MlPredictionType
+  = Classification
+  | Regression
+  | Ranking
+  | Clustering
+  | Anomaly
+
+type DataInventory {
+  sources: List<DataSource>
+  total_rows_estimate: Int?
+  label_availability: LabelAvailability
+  known_biases: List<String>
+}
+
+type DataSource {
+  name: String
+  location: String
+  format: String
+  row_count_estimate: Int?
+  freshness: String?
+}
+
+type LabelAvailability
+  = FullyLabeled
+  | PartiallyLabeled
+  | Unlabeled
+  | NeedsAnnotation
+
+type ExperimentDesign {
+  experiment_id: String
+  hypothesis: String
+  model_family: String
+  features: List<String>
+  evaluation_method: String
+  train_test_split: String
+  metrics: List<String>
+}
+
+type MlEvidence {
+  experiment_id: String
+  metric_name: String
+  metric_value: Float
+  baseline_value: Float?
+  improvement: Float?
+  confidence_interval: String?
+  notes: String?
+}
+
+type MlConclusion {
+  disposition: ConclusionDisposition
+  recommended_model: String?
+  key_findings: List<String>
+  risks: List<String>
+  next_steps: List<String>
+}
+
+// --- ML problem summary (helper for intent mapping) ---
+
+fn ml_problem_summary(problem: MlProblemStatement) -> String {
+  "ML: " + problem.target_variable + " " + problem.business_context
+}
+
+// --- Pipeline definition (dry-run exemplar) ---
+
+pipeline ml_investigation {
+  stage problem_definition {
+    // Define the problem statement and success criteria
+  }
+
+  stage data_assessment [after problem_definition] {
+    // Inventory data sources, assess label availability
+  }
+
+  stage experiment_design [after data_assessment] {
+    // Design experiment: model family, features, evaluation
+  }
+
+  stage evidence_collection [after experiment_design] {
+    // Run experiments, collect metrics
+  }
+
+  stage critique [after evidence_collection] {
+    // Review findings for bias, leakage, operational fit
+  }
+
+  stage conclusion [after critique] {
+    // Adopt, defer, or reject with rationale
+  }
+}

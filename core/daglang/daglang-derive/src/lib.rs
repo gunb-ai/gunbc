@@ -727,6 +727,9 @@ fn derive_obligation_counts(nodes: &[Node<LoweredOp>]) -> ObligationCounts {
             ObligationCategory::ResourceRelease => {
                 counts.resource_release_targets += 1;
             }
+            ObligationCategory::ManagedLifecycleVerb => {
+                // Managed lifecycle verbs: no obligation counting needed
+            }
             ObligationCategory::InterfaceContractVerification => {
                 counts.interface_contract_verification_targets += 1;
             }

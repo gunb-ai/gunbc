@@ -42,9 +42,10 @@ use gunbc_primitives::{filename, FsEnv};
 
 use crate::ExternResolver;
 use crate::service_ops::{
-    GenericFileParseOp, GenericFilePrepareOp, GenericLocalParseOp, GenericLocalPrepareOp,
-    GenericRestParseOp, GenericRestPrepareOp, GenericShellParseOp, GenericShellPrepareOp,
-    InterfaceStubExecuteOp, InterfaceStubParseOp, InterfaceStubPrepareOp,
+    FileCasExecuteOp, GenericFileParseOp, GenericFilePrepareOp, GenericLocalParseOp,
+    GenericLocalPrepareOp, GenericRestParseOp, GenericRestPrepareOp, GenericShellParseOp,
+    GenericShellPrepareOp, InterfaceStubExecuteOp, InterfaceStubParseOp,
+    InterfaceStubPrepareOp,
 };
 
 // ============================================================================
@@ -1663,7 +1664,8 @@ fn resolve_service_transport(
     let role = TransportRole::from_name(name);
 
     // Execute nodes: for InterfaceStub specs, use the stub execute op
-    // (errors in Real mode, auto-mocked in DryRun). All others use the
+    // (errors in Real mode, auto-mocked in DryRun). For file-based claim
+    // store operations, use the CAS-aware executor. All others use the
     // standard transport executor.
     if role == Some(TransportRole::Execute) {
         if let Some(metadata) = service_metadata {
@@ -1675,6 +1677,12 @@ fn resolve_service_transport(
                 return Ok(DynOp::new(InterfaceStubExecuteOp {
                     interface: interface.clone(),
                     capability: capability.clone(),
+                }));
+            }
+            // File-based claim store: CAS-aware execute.
+            if metadata.service == "file.ClaimStore" {
+                return Ok(DynOp::new(FileCasExecuteOp {
+                    operation: metadata.operation.clone(),
                 }));
             }
         }

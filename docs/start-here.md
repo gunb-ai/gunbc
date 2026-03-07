@@ -88,12 +88,25 @@ Propagating an existing pattern is always faster than inventing a new one.
 For anything touching the compiler, IR, executor, or transport boundary:
 
 1. Create a design doc in `docs/design/v4/` or `docs/design/modeling/`
-2. State: what changes, why, what breaks if it's wrong
+2. State: what changes, why, what outcome you want, what would satisfy you, and what breaks if it's wrong
 3. Identify affected match sites (new enum variants radiate to 6-9 files)
 4. Get review before writing code
 
 For tool-layer changes (new `.dag` files, new extern impls): the Step 1 model IS
 the design note. If types compose, proceed.
+
+**Minimum design note contract**:
+
+1. **Motivation** — What pressure or contradiction is forcing this change? Why now?
+2. **Desired outcome** — What observable improvement should exist after the change?
+3. **Satisfaction criteria** — What concrete evidence would convince us the change worked?
+4. **Failure mode if wrong** — How could we delude ourselves? What would look complete but actually fail the goal?
+5. **Scope / non-goals** — What this document is intentionally not trying to solve.
+
+This is not process theater. The motivation and satisfaction criteria are the guard
+against building an elegant mechanism that does not actually satisfy the problem.
+If a design note cannot say what success looks like in observable terms, it is not
+ready to drive implementation.
 
 ### Step 4: Implement with fail-closed defaults
 

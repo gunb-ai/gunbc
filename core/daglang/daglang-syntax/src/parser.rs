@@ -2007,6 +2007,7 @@ impl Parser {
         let mut acquire = None;
         let mut release = None;
         let mut capabilities = Vec::new();
+        let mut managed = None;
 
         while !self.check(&TokenKind::RBrace) && !self.at_eof() {
             match &self.peek().kind {
@@ -2031,6 +2032,9 @@ impl Parser {
                     config = self.parse_field_list_until_rbrace()?;
                     self.expect(&TokenKind::RBrace)?;
                 }
+                TokenKind::Managed => {
+                    managed = Some(self.parse_managed_lifecycle_def()?);
+                }
                 TokenKind::Ident(_) => {
                     let k = self.expect_ident()?;
                     self.expect(&TokenKind::Colon)?;
@@ -2051,6 +2055,80 @@ impl Parser {
             acquire,
             release,
             capabilities,
+            managed,
+        })
+    }
+
+    fn parse_managed_lifecycle_def(&mut self) -> Result<ManagedLifecycleDef, ParseError> {
+        self.expect(&TokenKind::Managed)?;
+        self.expect(&TokenKind::LBrace)?;
+        let mut destroy_support = None;
+        let mut ensure_present = None;
+        let mut verify_present = None;
+        let mut disable = None;
+        let mut drain = None;
+        let mut destroy = None;
+        let mut verify_absent = None;
+
+        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+            if let TokenKind::Ident(ref name) = self.peek().kind {
+                let name = name.clone();
+                match name.as_str() {
+                    "destroy_support" => {
+                        self.advance();
+                        self.expect(&TokenKind::Colon)?;
+                        destroy_support = Some(self.parse_expr(0)?);
+                    }
+                    "ensure_present" => {
+                        self.advance();
+                        self.expect(&TokenKind::LBrace)?;
+                        ensure_present = Some(self.parse_func_body_lossy()?);
+                    }
+                    "verify_present" => {
+                        self.advance();
+                        self.expect(&TokenKind::LBrace)?;
+                        verify_present = Some(self.parse_func_body_lossy()?);
+                    }
+                    "disable" => {
+                        self.advance();
+                        self.expect(&TokenKind::LBrace)?;
+                        disable = Some(self.parse_func_body_lossy()?);
+                    }
+                    "drain" => {
+                        self.advance();
+                        self.expect(&TokenKind::LBrace)?;
+                        drain = Some(self.parse_func_body_lossy()?);
+                    }
+                    "destroy" => {
+                        self.advance();
+                        self.expect(&TokenKind::LBrace)?;
+                        destroy = Some(self.parse_func_body_lossy()?);
+                    }
+                    "verify_absent" => {
+                        self.advance();
+                        self.expect(&TokenKind::LBrace)?;
+                        verify_absent = Some(self.parse_func_body_lossy()?);
+                    }
+                    _ => {
+                        self.advance();
+                    }
+                }
+            } else {
+                self.advance();
+            }
+        }
+        self.expect(&TokenKind::RBrace)?;
+
+        let destroy_support = destroy_support.unwrap_or(Expr::Ident("Unsupported".to_string()));
+
+        Ok(ManagedLifecycleDef {
+            destroy_support,
+            ensure_present,
+            verify_present,
+            disable,
+            drain,
+            destroy,
+            verify_absent,
         })
     }
 

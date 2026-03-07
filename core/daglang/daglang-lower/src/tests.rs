@@ -4013,3 +4013,74 @@ func run(s: String) -> { ok_val: String } {
         dag.nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn managed_lifecycle_lowers_to_verb_nodes() {
+    let typed = typed_project_from_sources(&[(
+        "dsl/resources/fleet.dag",
+        r#"module sample.fleet
+resource WorkerFleet {
+  managed {
+    destroy_support: GracefulAndBrutal
+    ensure_present {
+      let ok = true
+    }
+    verify_present {
+      let ok = true
+    }
+    disable {
+      let ok = true
+    }
+    drain {
+      let ok = true
+    }
+    destroy {
+      let ok = true
+    }
+    verify_absent {
+      let ok = true
+    }
+  }
+}
+func run() -> { ok: Bool } {
+  return { ok: true }
+}"#,
+    )]);
+    let dag = lower_typed_project(&typed).expect("lowering should succeed");
+    let suffix = "sample_fleet_WorkerFleet";
+    // All 6 lifecycle verb nodes should exist.
+    for verb in &[
+        "ensure_present",
+        "verify_present",
+        "disable",
+        "drain",
+        "destroy",
+        "verify_absent",
+    ] {
+        let expected_id = format!("managed_lifecycle::{suffix}::{verb}");
+        assert!(
+            dag.nodes.iter().any(|n| n.id.0 == expected_id),
+            "missing lifecycle node: {expected_id}; nodes: {:?}",
+            dag.nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
+        );
+    }
+    // Sequential dependency chain: each verb should have an edge to the next.
+    let verbs = [
+        "ensure_present",
+        "verify_present",
+        "disable",
+        "drain",
+        "destroy",
+        "verify_absent",
+    ];
+    for pair in verbs.windows(2) {
+        let from = format!("managed_lifecycle::{suffix}::{}", pair[0]);
+        let to = format!("managed_lifecycle::{suffix}::{}", pair[1]);
+        assert!(
+            dag.edges
+                .iter()
+                .any(|e| e.from_node.0 == from && e.to_node.0 == to),
+            "missing edge: {from} -> {to}"
+        );
+    }
+}

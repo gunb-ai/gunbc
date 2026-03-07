@@ -419,7 +419,8 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerClassification> {
             | Some(ObligationCategory::InterfaceContractVerification)
             | Some(ObligationCategory::ResourceProvide)
             | Some(ObligationCategory::ResourceAcquire)
-            | Some(ObligationCategory::ResourceRelease) => handler(HandlerKind::Passthrough),
+            | Some(ObligationCategory::ResourceRelease)
+            | Some(ObligationCategory::ManagedLifecycleVerb) => handler(HandlerKind::Passthrough),
             Some(ObligationCategory::ServiceTransportPrepare)
             | Some(ObligationCategory::ServiceTransportExecute)
             | Some(ObligationCategory::ServiceTransportParse) => handler(HandlerKind::Passthrough),

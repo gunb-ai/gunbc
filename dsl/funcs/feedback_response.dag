@@ -1,0 +1,74 @@
+// funcs/feedback_response.dag -- Feedback response and closure logic.
+//
+// Links response artifacts to obligations and manages closure.
+// Closure is explicit and auditable (F5).
+//
+// Design reference: docs/design/sdlc/ambient-feedback-model.md
+// Task reference: SDLC B1, roadmap AS5
+
+module funcs.feedback_response
+
+import std.types { NonEmptyStr }
+import std.feedback {
+    FeedbackStatus, FeedbackCloseReason, FeedbackObligation
+}
+import interfaces.feedback_store { FeedbackStore }
+
+// --- Link a response artifact to a feedback obligation ---
+
+func link_response_artifact(
+  feedback_id: NonEmptyStr,
+  artifact_id: NonEmptyStr
+) -> { linked: Bool }
+  uses feedback: FeedbackStore
+{
+  result = feedback.update_obligation_status(
+    feedback_id: feedback_id,
+    status: Addressed,
+    close_reason: None,
+    linked_artifact_ids: [artifact_id]
+  )
+
+  return { linked: result.updated }
+}
+
+// --- Close an obligation with an explicit reason ---
+
+func close_obligation(
+  feedback_id: NonEmptyStr,
+  reason: FeedbackCloseReason
+) -> { closed: Bool }
+  uses feedback: FeedbackStore
+{
+  result = feedback.update_obligation_status(
+    feedback_id: feedback_id,
+    status: Closed,
+    close_reason: reason,
+    linked_artifact_ids: None
+  )
+
+  return { closed: result.updated }
+}
+
+// --- Check if source-level resolution exists ---
+// Used for ResolvedAtSource close reason.
+
+func check_source_resolution(
+  feedback_id: NonEmptyStr
+) -> { resolved: Bool }
+  uses feedback: FeedbackStore
+{
+  obligation = feedback.get_obligation(feedback_id: feedback_id)
+
+  if obligation.found {
+    // If already addressed or closed, consider resolved
+    resolved = match obligation.obligation.status {
+      Addressed => true
+      Closed    => true
+      _         => false
+    }
+    return { resolved: resolved }
+  }
+
+  return { resolved: false }
+}

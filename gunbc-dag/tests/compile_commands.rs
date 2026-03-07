@@ -322,3 +322,53 @@ fn sdlc_pipeline_unit_test_profile_contains_all_stage_markers() {
         );
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// Track B: Feedback types and interface compilation
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn compiles_feedback_store_interface() {
+    let dag = build_dsl_graph("interfaces/feedback_store.dag")
+        .expect("feedback store interface should compile");
+    assert!(!dag.nodes.is_empty());
+}
+
+#[test]
+fn compiles_feedback_ingestion() {
+    let dag = build_dsl_graph("funcs/feedback_ingestion.dag")
+        .expect("feedback ingestion should compile");
+    assert!(!dag.nodes.is_empty());
+}
+
+#[test]
+fn compiles_feedback_response() {
+    let dag = build_dsl_graph("funcs/feedback_response.dag")
+        .expect("feedback response should compile");
+    assert!(!dag.nodes.is_empty());
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Track C: Intellectual pipeline kernel compilation
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn compiles_sdlc_kernel_mapping() {
+    let dag = build_dsl_graph("funcs/sdlc_kernel_mapping.dag")
+        .expect("SDLC kernel mapping should compile");
+    assert!(!dag.nodes.is_empty());
+}
+
+#[test]
+fn compiles_ml_investigation_exemplar() {
+    let dag = build_dsl_graph("exemplars/ml_investigation.dag")
+        .expect("ML investigation exemplar should compile");
+    assert!(!dag.nodes.is_empty());
+}
+
+#[test]
+fn compiles_intent_expansion() {
+    let dag = build_dsl_graph("funcs/intent_expansion.dag")
+        .expect("intent expansion should compile");
+    assert!(!dag.nodes.is_empty());
+}

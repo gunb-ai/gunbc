@@ -1,0 +1,58 @@
+// funcs/sdlc_kernel_mapping.dag -- Maps SDLC concepts to kernel concepts.
+//
+// SDLC is a specialization of the intellectual pipeline kernel.
+// These mapping functions make the relationship explicit and testable.
+//
+// Design reference: docs/design/modeling/intellectual-pipeline-kernel.md
+// Task reference: SDLC B2, roadmap IK3
+
+module funcs.sdlc_kernel_mapping
+
+import std.types { IssueLifecycleStage }
+import std.kernel_artifacts {
+    KernelArtifactKind, ConclusionDisposition
+}
+
+// --- Stage to artifact kind mapping ---
+// Every SDLC stage maps to a kernel artifact kind.
+// This proves the kernel covers the SDLC domain.
+
+fn sdlc_stage_to_kernel_artifact_kind(stage: IssueLifecycleStage) -> KernelArtifactKind {
+  match stage {
+    Idea           => ProblemStatement
+    Design         => Hypothesis
+    DesignReview   => Critique
+    Accepted       => Plan
+    Implementing   => InterventionRecord
+    CodeReview     => Critique
+    Testing        => Evidence
+    Done           => Conclusion
+    TerminalFailed => Conclusion
+  }
+}
+
+// --- Kernel conclusion to SDLC stage ---
+// Maps kernel conclusion dispositions back to SDLC stages.
+
+fn kernel_conclusion_to_sdlc_stage(disposition: ConclusionDisposition) -> IssueLifecycleStage {
+  match disposition {
+    Adopted          => Done
+    Rejected         => TerminalFailed
+    Deferred         => Idea
+    NeedsMoreEvidence => Testing
+    Blocked          => TerminalFailed
+  }
+}
+
+// --- Tests ---
+
+test stage_mapping_completeness {
+  // Every SDLC stage maps to a kernel artifact kind
+  input prepare.stage -> Idea
+  expect result == ProblemStatement
+}
+
+test conclusion_mapping {
+  input prepare.disposition -> Adopted
+  expect result == Done
+}

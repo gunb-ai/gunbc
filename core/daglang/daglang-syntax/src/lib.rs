@@ -345,6 +345,22 @@ pub mod ast {
         pub acquire: Option<FuncBody>,
         pub release: Option<FuncBody>,
         pub capabilities: Vec<CapabilityDef>,
+        pub managed: Option<ManagedLifecycleDef>,
+    }
+
+    /// Managed existence lifecycle block within a resource.
+    /// Distinct from run-scope acquire/release — this models
+    /// ensure_present, disable, drain, destroy, verify_absent.
+    #[derive(Debug)]
+    pub struct ManagedLifecycleDef {
+        /// Destroy support declaration (e.g., GracefulOnly, GracefulAndBrutal).
+        pub destroy_support: Expr,
+        pub ensure_present: Option<FuncBody>,
+        pub verify_present: Option<FuncBody>,
+        pub disable: Option<FuncBody>,
+        pub drain: Option<FuncBody>,
+        pub destroy: Option<FuncBody>,
+        pub verify_absent: Option<FuncBody>,
     }
 
     #[derive(Debug)]

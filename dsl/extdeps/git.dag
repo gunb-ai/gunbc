@@ -258,4 +258,15 @@ service git.Core {
       128 => String "File not found or invalid ref"
     }
   }
+
+  operation Checkout {
+    input { branch: String }
+    output { success: Bool }
+    transport shell { argv: ["git", "checkout", "\{branch\}"] }
+    exit {
+      0 => Unit
+      1 => String "Branch not found or checkout conflict"
+      128 => String "Not a git repository"
+    }
+  }
 }

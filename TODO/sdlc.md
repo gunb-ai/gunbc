@@ -6,6 +6,9 @@
 - `docs/design/sdlc/domain-modeling-comprehensive.md` — entity/relationship/state machine model
 - `docs/design/sdlc/e2e-gap-analysis.md` — gap resolution (all resolved via DSL)
 - `docs/design/sdlc/production-gap-analysis.md` — activation blockers
+- `docs/design/sdlc/ambient-intellectual-roadmap.md` — canonical end-to-end roadmap from production SDLC to ambient/intellectual/lifecycle-controlled operation
+- `docs/design/sdlc/ambient-feedback-model.md` — canonical GitHub comment/review ingestion and durable feedback-obligation model for ambient SDLC
+- `docs/design/modeling/intellectual-pipeline-kernel.md` — future domain-neutral inquiry kernel stress-tested against SDLC, ML, and architecture workflows
 
 > **Lesson**: Prove compilation before building infrastructure. The SDLC pipeline was built 3 times
 > (Rust binary → DSL pipeline → deleted → rebuilt as 20 .dag files) with elaborate cloud infra
@@ -100,8 +103,8 @@ Phase 0 **complete**: all SDLC .dag files compile through the Rust compiler. 11 
 | # | ID | What | Acceptance Criteria | Size | Status |
 |---|-----|------|---------------------|------|--------|
 | 12 | S-12 | **Agent provider wiring.** `codex.AgentProvider` spawns real agent for implementation stage. | Agent creates branch with implementation. Branch exists on remote. PR created. | L | In Progress (structural wiring + env-gated live harness added) |
-| 13 | S-13 | **Code review wiring.** PR diff retrieval + LLM review produces approval/rejection. | Review comment posted on PR with structured findings. Label updated based on approval/rejection. | M | In Progress (structural wiring + env-gated live harness added) |
-| 14 | S-14 | **Testing stage wiring.** `cargo test` + `cargo clippy` execution with result parsing. | Test results parsed into structured outcome. Pass → advance to Done. Fail → record failure reason. | M | In Progress (structural wiring + env-gated live harness added) |
+| 13 | S-13 | **Code review wiring.** PR diff retrieval + LLM review produces approval/rejection. | Review comment posted on PR with structured findings. Label updated based on approval/rejection. | M | In Progress (structural wiring + env-gated live harness added; LLM content extraction fixed: `review_response.content \|> first() \|> .text`) |
+| 14 | S-14 | **Testing stage wiring.** `cargo test` + `cargo clippy` execution with result parsing. | Test results parsed into structured outcome. Pass → advance to Done. Fail → record failure reason. | M | In Progress (structural wiring + env-gated live harness added; git checkout of PR branch added before test/clippy) |
 | 15 | S-15 | **Multi-stage progression.** Issue moves through all stages without manual intervention. | Issue starts at `sdlc:idea`, ends at `sdlc:done`. Each stage has artifacts in outcome ledger. No manual label changes required. | XL | In Progress (env-gated live progression harness added; requires secrets + mutable test issue) |
 
 ---
@@ -150,6 +153,57 @@ Phase 0 **complete**: all SDLC .dag files compile through the Rust compiler. 11 
 |----|------|------|----------|
 | H10 | Compute stack orchestration: Cloud Run/GCS/LB lifecycle DAG builder | L | P2 |
 | S12-E | Multi-worker CAS: GcsClaimStore with generation-based CAS | M | P2 |
+
+## Backlog (not Day 1)
+
+These items are intentionally deferred until the core SDLC pipeline is
+operational end-to-end. They improve trust and ambient operation, but they are
+not part of the Day 1 activation gate.
+
+| ID | Item | Size | Priority |
+|----|------|------|----------|
+| B1 | Ambient feedback loop for issue/PR comments and review threads. Ingest human feedback as durable obligations with typed signals, ledger-backed tracking, worker rediscovery, and explicit resolved/responded state. A stray reviewer comment should become a first-class work item, not best-effort text. | L | P2 | **In Progress**: AS2 (types), AS3 (interface+providers+profiles), AS4 (ingestion+classification), AS5 (response) DONE. AS6 (classification rules) DONE. Remaining: AS1 (signal-aware worker), AS7 (reports), AS8 (soak test). |
+| B2 | Generalize SDLC into a reusable intellectual pipeline kernel. Treat software delivery as one specialization of a broader hypothesis -> execution -> evidence -> critique -> revision -> conclusion loop so the control plane can later support research, architecture, and other knowledge-work workflows without re-deriving the core orchestration model. Design reference: `docs/design/modeling/intellectual-pipeline-kernel.md`. | L | P2 | **In Progress**: IK1 (inquiry types), IK2 (kernel artifacts), IK3 (SDLC-kernel mapping), IK4 (ML exemplar), IK5 (intent expansion) DONE. Remaining: IK6 (runtime proof), IK7 (evidence typing), IK8 (migration doc). |
+| B3 | Operational drain / disable / destroy contract. Model how to stop intake, stop signal ingress, stop claim acquisition, drain in-flight work, disable selected pipeline sections, and optionally deprovision infrastructure with explicit verify-absent semantics rather than ad-hoc deletes. Design reference: `docs/design/horizon/h12-managed-lifecycle-control.md`. | L | P1 | **In Progress**: LC1 (parser: `managed` keyword + AST + parser), LC2 (lifecycle types), LC3 (ensure_absent pattern) DONE. Remaining: LC4 (lower/IR), LC5 (codegen), LC6 (testgen), LC7 (SDLC application), LC8 (cleanup). |
+
+### B1 Acceptance Shape
+
+1. GitHub issue comments, PR comments, and review threads map to typed feedback events with stable idempotency keys.
+2. Webhook/signal loss delays feedback handling but does not lose it; anti-entropy scans rediscover unresolved feedback.
+3. Feedback is persisted as an outstanding obligation until the pipeline posts a linked response artifact or code change outcome.
+4. The system can distinguish `seen`, `in_progress`, `addressed`, and `closed` states for each feedback item.
+5. Human-visible pipeline responses link back to the originating comment/review so closure is auditable.
+
+### B2 Acceptance Shape
+
+1. Domain-neutral core concepts are explicit: problem statement, hypothesis/design, execution, evidence, critique, revision, conclusion.
+2. SDLC stage names remain a specialization layer, not the canonical internal ontology.
+3. GitHub issue/PR surfaces are adapters over the core model, not the model itself.
+4. Retry, replay, claim, approval, feedback, and artifact contracts stay reusable across non-SDLC workflows.
+5. At least one non-SDLC exemplar is modeled before calling the abstraction complete.
+
+### B3 Acceptance Shape
+
+1. Shutdown is modeled in layers: intake disable, signal ingress disable, worker drain, stage/lane disable, and infrastructure teardown are distinct operations.
+2. Drain is durable and reversible: workers stop acquiring new claims, release worker-owned claims, and exit with machine-readable status.
+3. Graceful and brutal destroy are distinct paths: graceful means `disable -> drain -> destroy -> verify_absent`, brutal means explicit immediate `destroy -> verify_absent`.
+4. Destroy is never implicit. Destructive teardown requires explicit intent and runs only after drain/ownership preconditions pass unless brutal destroy is explicitly requested.
+5. The DSL gains a first-class verify-absent/ensure-absent shape for codegen and infrastructure cleanup instead of relying on ad-hoc deletes.
+6. The system can turn off an arbitrary section of the pipeline without corrupting ledgers, orphaning claims, or losing auditability.
+
+## Program Extension Roadmap
+
+The canonical roadmap for the next wave of work lives in:
+
+- `docs/design/sdlc/ambient-intellectual-roadmap.md`
+
+That document resolves the major design decisions now and breaks the work into
+four tracks:
+
+1. finish production SDLC,
+2. ambient trusted SDLC,
+3. intent-driven intellectual kernel,
+4. language-level managed lifecycle control.
 
 ---
 

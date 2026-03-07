@@ -302,6 +302,24 @@ pattern transaction<Begin: -> R, Body, Commit, Rollback>(
   return { value: begin }
 }
 
+// --- Ensure Absent (check -> conditional destroy -> verify) ---------------
+// The missing opposite of upsert. Checks if a resource exists,
+// destroys it if present, verifies absence.
+//
+// Generic: existence predicate is customizable via should_destroy parameter.
+//   Default: c => c.exists (destroy when resource exists).
+//
+// Design reference: docs/design/horizon/h12-managed-lifecycle-control.md
+
+pattern ensure_absent<Check, Destroy, Verify>(
+  should_destroy: fn(Check.Output) -> Bool = c => c.exists
+) -> { absent: Bool } {
+  node check: Check
+  node destroy [after check, when should_destroy(check)]: Destroy
+  node verify [after destroy, after check]: Verify
+  return { absent: verify.absent }
+}
+
 // --- Retry ------------------------------------------------------------
 
 pattern retry<Op>(max_attempts: Int = 3, backoff_ms: Milliseconds = 1000) -> {} {

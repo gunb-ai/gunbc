@@ -17,8 +17,8 @@ use gunbc_exec::{
     TransportContext,
 };
 use gunbc_ir::transport::{
-    FileOp, FileRequest, LocalRequest, RestRequest, ShellRequest, ShellResponse, TransportRequest,
-    TransportResponse,
+    FileOp, FileRequest, FileResponse, LocalRequest, RestRequest, ShellRequest, ShellResponse,
+    TransportRequest, TransportResponse,
 };
 use gunbc_ir::{from_bridge_json_typed, SecretString, Value};
 
@@ -1126,6 +1126,13 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
 // ============================================================================
 
 /// Generic file prepare: builds a `FileRequest` from a `FileOperationSpec`.
+///
+/// For operations with a `path_template` containing `{field}` placeholders,
+/// the path is expanded from input fields marked `is_path_param` (mirroring
+/// the REST prepare pattern). For WRITE/APPEND operations without an explicit
+/// `content` input, all non-path input fields are serialized as a JSON object
+/// to form the file content — this enables structured file-backed providers
+/// (e.g., `file.ClaimStore`, `file.OutcomeLedger`).
 #[derive(Debug, Clone)]
 pub struct GenericFilePrepareOp {
     pub spec: FileOperationSpec,
@@ -1139,31 +1146,67 @@ impl Executable for GenericFilePrepareOp {
                 .bool("skip", true)
                 .ok();
         }
-        let path = inputs.get("path").and_then(Value::as_str).ok_or_else(|| {
-            ExecError::new("GenericFilePrepare: missing required `path` input".to_string())
-        })?;
+
+        // 1. Resolve path: expand template placeholders from is_path_param fields,
+        //    or fall back to a bare `path` input for simple file operations.
+        let path = if self.spec.path_template.contains('{') {
+            let mut path = self.spec.path_template.clone();
+            for field in &self.spec.input_fields {
+                if field.is_path_param {
+                    let placeholder = format!("{{{}}}", field.name);
+                    let value =
+                        input_as_string(&inputs, &field.name, field.default.as_deref())?;
+                    path = path.replace(&placeholder, &value);
+                }
+            }
+            path
+        } else if let Some(s) = inputs.get("path").and_then(Value::as_str) {
+            s.to_string()
+        } else {
+            self.spec.path_template.clone()
+        };
+
+        // 2. Build content for WRITE/APPEND: use explicit `content` input if present,
+        //    otherwise serialize non-path input fields as a JSON object.
+        let content_for_write = |inputs: &HashMap<String, Value>,
+                                 spec: &FileOperationSpec|
+         -> String {
+            if let Some(Value::Str(s)) = inputs.get("content") {
+                return s.clone();
+            }
+            let mut map = serde_json::Map::new();
+            for field in &spec.input_fields {
+                if field.is_path_param {
+                    continue;
+                }
+                if let Some(value) = inputs.get(&field.name) {
+                    insert_value_as_json(&mut map, &field.name, value);
+                }
+            }
+            if map.is_empty() {
+                String::new()
+            } else {
+                serde_json::to_string_pretty(&serde_json::Value::Object(map))
+                    .unwrap_or_default()
+            }
+        };
+
         let request = match self.spec.operation {
-            FileOp::Read => FileRequest::read(path),
-            FileOp::ReadBytes => FileRequest::read_bytes(path),
+            FileOp::Read => FileRequest::read(&path),
+            FileOp::ReadBytes => FileRequest::read_bytes(&path),
             FileOp::Write => {
-                let content = inputs
-                    .get("content")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                FileRequest::write(path, content)
+                let content = content_for_write(&inputs, &self.spec);
+                FileRequest::write(&path, &content)
             }
             FileOp::Append => {
-                let content = inputs
-                    .get("content")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                FileRequest::append(path, content)
+                let content = content_for_write(&inputs, &self.spec);
+                FileRequest::append(&path, &content)
             }
-            FileOp::Delete => FileRequest::delete(path),
-            FileOp::Exists => FileRequest::exists(path),
-            FileOp::CreateDir => FileRequest::create_dir(path),
-            FileOp::Glob => FileRequest::glob(path),
-            FileOp::Metadata => FileRequest::metadata(path),
+            FileOp::Delete => FileRequest::delete(&path),
+            FileOp::Exists => FileRequest::exists(&path),
+            FileOp::CreateDir => FileRequest::create_dir(&path),
+            FileOp::Glob => FileRequest::glob(&path),
+            FileOp::Metadata => FileRequest::metadata(&path),
         };
         OutputMap::new()
             .request("request", TransportRequest::File(request))
@@ -1173,6 +1216,16 @@ impl Executable for GenericFilePrepareOp {
 }
 
 /// Generic file parse: extracts content from a `FileResponse`.
+///
+/// For READ operations whose output fields go beyond simple `content: String`,
+/// the parser attempts to deserialize the file content as JSON and extract
+/// structured output fields using `from_bridge_json_typed` — the same
+/// type-aware bridging used by REST parse. This enables file-backed providers
+/// to return structured records (e.g., `found: Bool`, `outcome: StageOutcome`).
+///
+/// For WRITE operations, non-path input fields that were serialized during
+/// prepare are echoed back through the output fields, allowing the caller to
+/// read what was written.
 #[derive(Debug, Clone)]
 pub struct GenericFileParseOp {
     pub spec: FileOperationSpec,
@@ -1182,6 +1235,28 @@ impl Executable for GenericFileParseOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match inputs.get("response") {
             Some(Value::Response(TransportResponse::File(file_resp))) => {
+                // For READ operations on files that don't exist, return not-found
+                // instead of hard-erroring — allows optional file reads.
+                if !file_resp.success && self.spec.operation == FileOp::Read {
+                    let is_not_found = file_resp
+                        .error
+                        .as_deref()
+                        .map(|e| e.contains("No such file") || e.contains("not found"))
+                        .unwrap_or(false);
+                    if is_not_found {
+                        let mut out = OutputMap::new();
+                        for field in &self.spec.output_fields {
+                            match field.name.as_str() {
+                                "found" | "exists" => out = out.bool(&field.name, false),
+                                _ => {
+                                    out = out.value(&field.name, Value::Unit);
+                                }
+                            }
+                        }
+                        return out.ok();
+                    }
+                }
+
                 if !file_resp.success {
                     let err = file_resp.error.as_deref().unwrap_or("unknown file error");
                     return Err(ExecError::new(format!(
@@ -1189,6 +1264,64 @@ impl Executable for GenericFileParseOp {
                         file_resp.path
                     )));
                 }
+
+                // Check if outputs are structured (more than just content/written/exists).
+                let has_structured_outputs = self.spec.output_fields.iter().any(|f| {
+                    !matches!(
+                        f.name.as_str(),
+                        "content" | "written" | "deleted" | "created" | "exists" | "paths"
+                    )
+                });
+
+                // For READ with structured outputs, try JSON deserialization.
+                if (self.spec.operation == FileOp::Read) && has_structured_outputs {
+                    let content = file_resp.content.as_deref().unwrap_or("{}");
+                    if let Ok(json_body) = serde_json::from_str::<serde_json::Value>(content) {
+                        let mut out = OutputMap::new();
+                        for field in &self.spec.output_fields {
+                            match field.name.as_str() {
+                                "found" | "exists" => out = out.bool(&field.name, true),
+                                _ => {
+                                    let json_val = json_body.get(&field.name);
+                                    let json = json_val
+                                        .cloned()
+                                        .unwrap_or(serde_json::Value::Null);
+                                    let value =
+                                        from_bridge_json_typed(&json, &field.type_id);
+                                    out = out.value(&field.name, value);
+                                }
+                            }
+                        }
+                        return out.ok();
+                    }
+                    // Fall through to default extraction if JSON parse fails.
+                }
+
+                // For WRITE with structured outputs, echo success + default values.
+                if matches!(self.spec.operation, FileOp::Write | FileOp::Append)
+                    && has_structured_outputs
+                {
+                    let mut out = OutputMap::new();
+                    for field in &self.spec.output_fields {
+                        match field.name.as_str() {
+                            "updated" | "written" | "created" => {
+                                out = out.bool(&field.name, true);
+                            }
+                            "previous" => {
+                                out = out.value(&field.name, Value::Unit);
+                            }
+                            _ => {
+                                out = out.value(
+                                    &field.name,
+                                    default_output_value(field),
+                                );
+                            }
+                        }
+                    }
+                    return out.ok();
+                }
+
+                // Default: simple extraction for basic file operations.
                 let mut out = OutputMap::new();
                 for field in &self.spec.output_fields {
                     match field.name.as_str() {
@@ -1229,6 +1362,280 @@ impl Executable for GenericFileParseOp {
             }
             other => Err(ExecError::new(format!(
                 "GenericFileParse: expected File response, got {other:?}"
+            ))),
+        }
+    }
+}
+
+// ============================================================================
+// File CAS (Compare-And-Swap) for claim store operations
+// ============================================================================
+
+/// CAS-aware file execute op for claim store operations.
+///
+/// Replaces the standard `TransportOps::Execute` for file-based claim store
+/// operations (`acquire`, `heartbeat`, `release`). The generic file executor
+/// can only do blind read/write — the claim store needs read-check-write
+/// atomicity with generation-based conflict detection.
+///
+/// Protocol:
+///   acquire:   read → check ownership/expiry → write with generation+1
+///   heartbeat: read → verify owner+generation → update timestamp
+///   release:   read → verify owner+generation → delete
+#[derive(Debug, Clone)]
+pub struct FileCasExecuteOp {
+    pub operation: String,
+}
+
+impl Executable for FileCasExecuteOp {
+    #[allow(clippy::disallowed_methods)] // Approved: CAS file I/O for claim store
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let request = match inputs.get("request") {
+            Some(Value::Request(TransportRequest::File(r))) => r.clone(),
+            Some(Value::Skipped) => {
+                return OutputMap::new()
+                    .value("response", Value::Skipped)
+                    .ok();
+            }
+            other => {
+                return Err(ExecError::new(format!(
+                    "FileCasExecute: expected File request, got {other:?}"
+                )));
+            }
+        };
+
+        let path = &request.path;
+
+        match self.operation.as_str() {
+            "acquire" => {
+                // Parse the content (the inputs serialized by GenericFilePrepareOp).
+                let content_json: serde_json::Value = request
+                    .content
+                    .as_deref()
+                    .and_then(|c| serde_json::from_str(c).ok())
+                    .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+
+                let owner = content_json["owner"]
+                    .as_str()
+                    .unwrap_or("unknown")
+                    .to_string();
+                let lease_ttl_ms = content_json["lease_ttl_ms"].as_i64().unwrap_or(30_000);
+
+                // Create parent directories.
+                if let Some(parent) = std::path::Path::new(path).parent() {
+                    std::fs::create_dir_all(parent).ok();
+                }
+
+                // Read existing claim (if any).
+                let existing: Option<serde_json::Value> = std::fs::read_to_string(path)
+                    .ok()
+                    .and_then(|s| serde_json::from_str(&s).ok());
+
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as i64)
+                    .unwrap_or(0);
+
+                if let Some(ref claim) = existing {
+                    let claim_owner = claim["owner"].as_str().unwrap_or("");
+                    let expires_at = claim["expires_at_epoch_ms"].as_i64().unwrap_or(0);
+                    let gen = claim["generation"].as_i64().unwrap_or(0);
+
+                    // Claim exists and is active (not expired, different owner).
+                    if claim_owner != owner && expires_at > now_ms {
+                        let result = serde_json::json!({
+                            "acquired": false,
+                            "conflict": true,
+                            "lease_generation": gen
+                        });
+                        let resp = FileResponse::read_ok(path, result.to_string());
+                        return OutputMap::new()
+                            .value(
+                                "response",
+                                Value::Response(TransportResponse::File(resp)),
+                            )
+                            .ok();
+                    }
+                }
+
+                // Available: write new claim.
+                let prev_gen = existing
+                    .as_ref()
+                    .and_then(|c| c["generation"].as_i64())
+                    .unwrap_or(0);
+                let new_gen = prev_gen + 1;
+                let new_claim = serde_json::json!({
+                    "owner": owner,
+                    "generation": new_gen,
+                    "acquired_at_epoch_ms": now_ms,
+                    "last_heartbeat_epoch_ms": now_ms,
+                    "expires_at_epoch_ms": now_ms + lease_ttl_ms,
+                    "lease_ttl_ms": lease_ttl_ms
+                });
+
+                std::fs::write(path, serde_json::to_string_pretty(&new_claim).unwrap_or_default())
+                    .map_err(|e| ExecError::new(format!("FileCas: write claim: {e}")))?;
+
+                let result = serde_json::json!({
+                    "acquired": true,
+                    "conflict": false,
+                    "lease_generation": new_gen
+                });
+                let resp = FileResponse::read_ok(path, result.to_string());
+                OutputMap::new()
+                    .value(
+                        "response",
+                        Value::Response(TransportResponse::File(resp)),
+                    )
+                    .ok()
+            }
+            "heartbeat" => {
+                let content_json: serde_json::Value = request
+                    .content
+                    .as_deref()
+                    .and_then(|c| serde_json::from_str(c).ok())
+                    .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+
+                let owner = content_json["owner"]
+                    .as_str()
+                    .unwrap_or("unknown")
+                    .to_string();
+                let generation = content_json["generation"].as_i64().unwrap_or(0);
+
+                let existing: Option<serde_json::Value> = std::fs::read_to_string(path)
+                    .ok()
+                    .and_then(|s| serde_json::from_str(&s).ok());
+
+                if let Some(mut claim) = existing {
+                    let claim_owner = claim["owner"].as_str().unwrap_or("").to_string();
+                    let claim_gen = claim["generation"].as_i64().unwrap_or(0);
+
+                    if claim_owner == owner && claim_gen == generation {
+                        let now_ms = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_millis() as i64)
+                            .unwrap_or(0);
+                        let ttl = claim["lease_ttl_ms"].as_i64().unwrap_or(30_000);
+                        claim["last_heartbeat_epoch_ms"] =
+                            serde_json::Value::Number(serde_json::Number::from(now_ms));
+                        claim["expires_at_epoch_ms"] =
+                            serde_json::Value::Number(serde_json::Number::from(now_ms + ttl));
+
+                        std::fs::write(
+                            path,
+                            serde_json::to_string_pretty(&claim).unwrap_or_default(),
+                        )
+                        .map_err(|e| ExecError::new(format!("FileCas: heartbeat write: {e}")))?;
+
+                        let result = serde_json::json!({ "accepted": true });
+                        let resp = FileResponse::read_ok(path, result.to_string());
+                        return OutputMap::new()
+                            .value(
+                                "response",
+                                Value::Response(TransportResponse::File(resp)),
+                            )
+                            .ok();
+                    }
+                }
+
+                let result = serde_json::json!({ "accepted": false });
+                let resp = FileResponse::read_ok(path, result.to_string());
+                OutputMap::new()
+                    .value(
+                        "response",
+                        Value::Response(TransportResponse::File(resp)),
+                    )
+                    .ok()
+            }
+            "release" => {
+                let content_json: serde_json::Value = request
+                    .content
+                    .as_deref()
+                    .and_then(|c| serde_json::from_str(c).ok())
+                    .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+
+                let owner = content_json["owner"]
+                    .as_str()
+                    .unwrap_or("unknown")
+                    .to_string();
+                let generation = content_json["generation"].as_i64().unwrap_or(0);
+
+                let existing: Option<serde_json::Value> = std::fs::read_to_string(path)
+                    .ok()
+                    .and_then(|s| serde_json::from_str(&s).ok());
+
+                if let Some(claim) = existing {
+                    let claim_owner = claim["owner"].as_str().unwrap_or("").to_string();
+                    let claim_gen = claim["generation"].as_i64().unwrap_or(0);
+
+                    if claim_owner == owner && claim_gen == generation {
+                        std::fs::remove_file(path).ok();
+                        let result = serde_json::json!({ "released": true });
+                        let resp = FileResponse::read_ok(path, result.to_string());
+                        return OutputMap::new()
+                            .value(
+                                "response",
+                                Value::Response(TransportResponse::File(resp)),
+                            )
+                            .ok();
+                    }
+                }
+
+                let result = serde_json::json!({ "released": false });
+                let resp = FileResponse::read_ok(path, result.to_string());
+                OutputMap::new()
+                    .value(
+                        "response",
+                        Value::Response(TransportResponse::File(resp)),
+                    )
+                    .ok()
+            }
+            "list_active" => {
+                // List all active claims by reading the directory.
+                let mut claims = Vec::new();
+                if let Ok(entries) = std::fs::read_dir(path) {
+                    for entry in entries.flatten() {
+                        let dir_path = entry.path();
+                        if !dir_path.is_dir() {
+                            continue;
+                        }
+                        let issue_id = dir_path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("")
+                            .to_string();
+                        if let Ok(stages) = std::fs::read_dir(&dir_path) {
+                            for stage_entry in stages.flatten() {
+                                let stage_path = stage_entry.path();
+                                let stage = stage_path
+                                    .file_stem()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or("")
+                                    .to_string();
+                                if let Ok(content) = std::fs::read_to_string(&stage_path) {
+                                    if let Ok(mut claim) =
+                                        serde_json::from_str::<serde_json::Value>(&content)
+                                    {
+                                        claim["issue_id"] = serde_json::Value::String(issue_id.clone());
+                                        claim["stage"] = serde_json::Value::String(stage);
+                                        claims.push(claim);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                let result = serde_json::json!({ "claims": claims });
+                let resp = FileResponse::read_ok(path, result.to_string());
+                OutputMap::new()
+                    .value(
+                        "response",
+                        Value::Response(TransportResponse::File(resp)),
+                    )
+                    .ok()
+            }
+            other => Err(ExecError::new(format!(
+                "FileCasExecute: unknown operation `{other}`"
             ))),
         }
     }
@@ -2314,5 +2721,378 @@ mod tests {
     fn rest_lock_target_supports_relative_path_templates() {
         let target = rest_lock_target("POST", "https://api.example.com/", "v1/items");
         assert_eq!(target, "POST https://api.example.com/v1/items");
+    }
+
+    // ── Structured file transport (SDLC provider support) ───────────
+
+    fn file_write_structured_spec() -> FileOperationSpec {
+        FileOperationSpec {
+            operation: FileOp::Write,
+            path_template: "{dir}/outcomes/{run_key}/{stage}.json".to_string(),
+            input_fields: vec![
+                FieldSpec {
+                    name: "dir".to_string(),
+                    type_id: "String".to_string(),
+                    default: Some("target/sdlc/outcomes".to_string()),
+                    is_secret: false,
+                    is_path_param: true,
+                },
+                FieldSpec {
+                    name: "run_key".to_string(),
+                    type_id: "String".to_string(),
+                    default: None,
+                    is_secret: false,
+                    is_path_param: true,
+                },
+                FieldSpec {
+                    name: "stage".to_string(),
+                    type_id: "String".to_string(),
+                    default: None,
+                    is_secret: false,
+                    is_path_param: true,
+                },
+                FieldSpec {
+                    name: "outcome".to_string(),
+                    type_id: "StageOutcome".to_string(),
+                    default: None,
+                    is_secret: false,
+                    is_path_param: false,
+                },
+            ],
+            output_fields: vec![
+                OutputFieldSpec {
+                    name: "updated".to_string(),
+                    type_id: "Bool".to_string(),
+                    json_path: "updated".to_string(),
+                    is_secret: false,
+                    is_raw_body: false,
+                    is_optional: false,
+                },
+                OutputFieldSpec {
+                    name: "previous".to_string(),
+                    type_id: "StageOutcome".to_string(),
+                    json_path: "previous".to_string(),
+                    is_secret: false,
+                    is_raw_body: false,
+                    is_optional: true,
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn file_prepare_expands_path_template_and_serializes_body() {
+        let op = GenericFilePrepareOp {
+            spec: file_write_structured_spec(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "dir".to_string(),
+            Value::Str("target/sdlc".to_string()),
+        );
+        inputs.insert(
+            "run_key".to_string(),
+            Value::Str("sdlc::42::design::v1".to_string()),
+        );
+        inputs.insert("stage".to_string(), Value::Str("design".to_string()));
+        inputs.insert(
+            "outcome".to_string(),
+            Value::Str("design completed".to_string()),
+        );
+
+        let outputs = op.execute(inputs).unwrap();
+        let req = outputs.get("request").unwrap();
+        match req {
+            Value::Request(TransportRequest::File(r)) => {
+                assert_eq!(
+                    r.path,
+                    "target/sdlc/outcomes/sdlc::42::design::v1/design.json"
+                );
+                assert_eq!(r.operation, FileOp::Write);
+                // Content should be JSON with the non-path fields.
+                let content = r.content.as_ref().unwrap();
+                let parsed: serde_json::Value = serde_json::from_str(content).unwrap();
+                assert_eq!(parsed["outcome"], "design completed");
+                // Path-param fields should NOT appear in body.
+                assert!(parsed.get("dir").is_none());
+                assert!(parsed.get("run_key").is_none());
+                assert!(parsed.get("stage").is_none());
+            }
+            other => panic!("expected File request, got {other:?}"),
+        }
+    }
+
+    fn file_read_structured_spec() -> FileOperationSpec {
+        FileOperationSpec {
+            operation: FileOp::Read,
+            path_template: "{dir}/outcomes/{run_key}/{stage}.json".to_string(),
+            input_fields: vec![
+                FieldSpec {
+                    name: "dir".to_string(),
+                    type_id: "String".to_string(),
+                    default: Some("target/sdlc/outcomes".to_string()),
+                    is_secret: false,
+                    is_path_param: true,
+                },
+                FieldSpec {
+                    name: "run_key".to_string(),
+                    type_id: "String".to_string(),
+                    default: None,
+                    is_secret: false,
+                    is_path_param: true,
+                },
+                FieldSpec {
+                    name: "stage".to_string(),
+                    type_id: "String".to_string(),
+                    default: None,
+                    is_secret: false,
+                    is_path_param: true,
+                },
+            ],
+            output_fields: vec![
+                OutputFieldSpec {
+                    name: "found".to_string(),
+                    type_id: "Bool".to_string(),
+                    json_path: "found".to_string(),
+                    is_secret: false,
+                    is_raw_body: false,
+                    is_optional: false,
+                },
+                OutputFieldSpec {
+                    name: "outcome".to_string(),
+                    type_id: "String".to_string(),
+                    json_path: "outcome".to_string(),
+                    is_secret: false,
+                    is_raw_body: false,
+                    is_optional: true,
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn file_parse_structured_json_read() {
+        use gunbc_ir::transport::file::FileResponse;
+        let op = GenericFileParseOp {
+            spec: file_read_structured_spec(),
+        };
+        let json_content = r#"{"outcome": "design completed", "status": "success"}"#;
+        let resp = FileResponse::read_ok("target/sdlc/outcomes/42/design.json", json_content);
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::File(resp)),
+        );
+
+        let outputs = op.execute(inputs).unwrap();
+        assert_eq!(outputs.get("found"), Some(&Value::Bool(true)));
+        assert_eq!(
+            outputs.get("outcome"),
+            Some(&Value::Str("design completed".to_string()))
+        );
+    }
+
+    #[test]
+    fn file_parse_structured_write_returns_updated() {
+        use gunbc_ir::transport::file::FileResponse;
+        let op = GenericFileParseOp {
+            spec: file_write_structured_spec(),
+        };
+        let resp = FileResponse::written("target/sdlc/outcomes/42/design.json");
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::File(resp)),
+        );
+
+        let outputs = op.execute(inputs).unwrap();
+        assert_eq!(outputs.get("updated"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn file_parse_not_found_returns_found_false() {
+        use gunbc_ir::transport::file::FileResponse;
+        let op = GenericFileParseOp {
+            spec: file_read_structured_spec(),
+        };
+        let resp = FileResponse::error(
+            "target/sdlc/outcomes/42/design.json",
+            FileOp::Read,
+            "No such file or directory",
+        );
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::File(resp)),
+        );
+
+        let outputs = op.execute(inputs).unwrap();
+        assert_eq!(outputs.get("found"), Some(&Value::Bool(false)));
+    }
+
+    // ── File CAS (claim store) ──────────────────────────────────────
+
+    #[test]
+    #[allow(clippy::disallowed_methods)] // Test-only filesystem operations
+    fn file_cas_acquire_creates_claim() {
+        let dir = std::env::temp_dir().join("gunbc_test_cas_acquire");
+        let _ = std::fs::remove_dir_all(&dir);
+        let claim_path = dir.join("claims/issue-1/design.json");
+
+        let content = serde_json::json!({
+            "owner": "worker-1",
+            "lease_ttl_ms": 30000
+        });
+        let request = FileRequest::write(
+            claim_path.to_str().unwrap(),
+            serde_json::to_string_pretty(&content).unwrap(),
+        );
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "request".to_string(),
+            Value::Request(TransportRequest::File(request)),
+        );
+
+        let op = FileCasExecuteOp {
+            operation: "acquire".to_string(),
+        };
+        let outputs = op.execute(inputs).unwrap();
+
+        // Should get a successful acquire.
+        if let Some(Value::Response(TransportResponse::File(resp))) = outputs.get("response") {
+            assert!(resp.success);
+            let result: serde_json::Value =
+                serde_json::from_str(resp.content.as_deref().unwrap()).unwrap();
+            assert_eq!(result["acquired"], true);
+            assert_eq!(result["conflict"], false);
+            assert_eq!(result["lease_generation"], 1);
+        } else {
+            panic!("expected File response");
+        }
+
+        // Verify file exists.
+        assert!(claim_path.exists());
+
+        // Cleanup.
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    #[allow(clippy::disallowed_methods)] // Test-only filesystem operations
+    fn file_cas_acquire_detects_conflict() {
+        let dir = std::env::temp_dir().join("gunbc_test_cas_conflict");
+        let _ = std::fs::remove_dir_all(&dir);
+        let claim_path = dir.join("claims/issue-2/design.json");
+        std::fs::create_dir_all(claim_path.parent().unwrap()).unwrap();
+
+        // Write an existing active claim from a different owner.
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        let existing = serde_json::json!({
+            "owner": "worker-other",
+            "generation": 5,
+            "acquired_at_epoch_ms": now_ms,
+            "last_heartbeat_epoch_ms": now_ms,
+            "expires_at_epoch_ms": now_ms + 60_000,
+            "lease_ttl_ms": 60_000
+        });
+        std::fs::write(
+            &claim_path,
+            serde_json::to_string_pretty(&existing).unwrap(),
+        )
+        .unwrap();
+
+        // Try to acquire from a different worker.
+        let content = serde_json::json!({
+            "owner": "worker-1",
+            "lease_ttl_ms": 30000
+        });
+        let request = FileRequest::write(
+            claim_path.to_str().unwrap(),
+            serde_json::to_string_pretty(&content).unwrap(),
+        );
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "request".to_string(),
+            Value::Request(TransportRequest::File(request)),
+        );
+
+        let op = FileCasExecuteOp {
+            operation: "acquire".to_string(),
+        };
+        let outputs = op.execute(inputs).unwrap();
+
+        if let Some(Value::Response(TransportResponse::File(resp))) = outputs.get("response") {
+            let result: serde_json::Value =
+                serde_json::from_str(resp.content.as_deref().unwrap()).unwrap();
+            assert_eq!(result["acquired"], false);
+            assert_eq!(result["conflict"], true);
+            assert_eq!(result["lease_generation"], 5);
+        } else {
+            panic!("expected File response");
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    #[allow(clippy::disallowed_methods)] // Test-only filesystem operations
+    fn file_cas_release_deletes_claim() {
+        let dir = std::env::temp_dir().join("gunbc_test_cas_release");
+        let _ = std::fs::remove_dir_all(&dir);
+        let claim_path = dir.join("claims/issue-3/design.json");
+        std::fs::create_dir_all(claim_path.parent().unwrap()).unwrap();
+
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        let existing = serde_json::json!({
+            "owner": "worker-1",
+            "generation": 3,
+            "acquired_at_epoch_ms": now_ms,
+            "last_heartbeat_epoch_ms": now_ms,
+            "expires_at_epoch_ms": now_ms + 30_000,
+            "lease_ttl_ms": 30_000
+        });
+        std::fs::write(
+            &claim_path,
+            serde_json::to_string_pretty(&existing).unwrap(),
+        )
+        .unwrap();
+
+        let content = serde_json::json!({
+            "owner": "worker-1",
+            "generation": 3
+        });
+        let request = FileRequest::write(
+            claim_path.to_str().unwrap(),
+            serde_json::to_string_pretty(&content).unwrap(),
+        );
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "request".to_string(),
+            Value::Request(TransportRequest::File(request)),
+        );
+
+        let op = FileCasExecuteOp {
+            operation: "release".to_string(),
+        };
+        let outputs = op.execute(inputs).unwrap();
+
+        if let Some(Value::Response(TransportResponse::File(resp))) = outputs.get("response") {
+            let result: serde_json::Value =
+                serde_json::from_str(resp.content.as_deref().unwrap()).unwrap();
+            assert_eq!(result["released"], true);
+        } else {
+            panic!("expected File response");
+        }
+
+        // File should be deleted.
+        assert!(!claim_path.exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -1,0 +1,91 @@
+// std/lifecycle.dag -- Managed lifecycle types for existence control.
+//
+// Defines the vocabulary for managed unit lifecycle: ensure_present,
+// disable, drain, destroy, verify_absent. Distinct from run-scope
+// acquire/release lifecycle.
+//
+// Design reference: docs/design/horizon/h12-managed-lifecycle-control.md
+// Task reference: SDLC B3, roadmap LC2
+
+module std.lifecycle
+
+import std.types { NonEmptyStr, Timestamp }
+
+// --- Destroy mode (Level 4: Finite Coproducts) ---
+// Graceful = disable -> drain -> destroy -> verify_absent
+// Brutal = destroy -> verify_absent (explicit, never default)
+
+type DestroyMode
+  = Graceful
+  | Brutal
+
+// --- Destroy support declaration (Level 4: Finite Coproducts) ---
+// Every managed unit must declare its destroy support.
+
+type DestroySupport
+  = GracefulOnly
+  | GracefulAndBrutal
+  | BrutalOnly
+  | Unsupported
+
+// --- Managed unit class (Level 4: Finite Coproducts) ---
+// Canonical SDLC managed-unit classes.
+
+type ManagedUnitClass
+  = IngressUnit
+  | SignalIngressUnit
+  | WorkerFleet
+  | ReconcilerUnit
+  | StageGate
+  | LaneGate
+  | StoreUnit
+  | ArtifactSet
+
+// --- Managed unit identity (Level 3: Labeled Product) ---
+
+type ManagedUnitId {
+  unit_class: ManagedUnitClass
+  unit_name: NonEmptyStr
+  scope: NonEmptyStr?
+}
+
+// --- Managed unit status (Level 4: Finite Coproducts) ---
+
+type ManagedUnitStatus
+  = Present
+  | Disabled
+  | Draining
+  | Absent
+  | Unknown
+
+// --- Lifecycle verb (Level 4: Finite Coproducts) ---
+
+type LifecycleVerb
+  = EnsurePresent
+  | VerifyPresent
+  | Disable
+  | Drain
+  | Destroy
+  | VerifyAbsent
+
+// --- Lifecycle command (Level 3: Labeled Product) ---
+
+type LifecycleCommand {
+  unit_id: ManagedUnitId
+  verb: LifecycleVerb
+  destroy_mode: DestroyMode?
+  initiated_by: NonEmptyStr
+  initiated_at: Timestamp
+}
+
+// --- Lifecycle result (Level 3: Labeled Product) ---
+
+type LifecycleResult {
+  unit_id: ManagedUnitId
+  verb: LifecycleVerb
+  success: Bool
+  prior_status: ManagedUnitStatus
+  new_status: ManagedUnitStatus
+  error: String?
+  completed_at: Timestamp
+}

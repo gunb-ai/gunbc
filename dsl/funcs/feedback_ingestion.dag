@@ -1,0 +1,244 @@
+// funcs/feedback_ingestion.dag -- Feedback ingestion and classification logic.
+//
+// Ingests GitHub comments and reviews into typed feedback records.
+// Classification determines disposition (critique/approval/informational).
+// Anti-entropy scans rediscover unresolved feedback from provider state.
+//
+// Design reference: docs/design/sdlc/ambient-feedback-model.md
+// Task reference: SDLC B1, roadmap AS4
+
+module funcs.feedback_ingestion
+
+import std.types { NonEmptyStr, Timestamp, Url }
+import std.feedback {
+    FeedbackSourceKind, FeedbackDisposition, FeedbackStatus,
+    FeedbackSourceRef, FeedbackRecord, FeedbackObligation
+}
+import interfaces.feedback_store { FeedbackStore }
+import interfaces.issue_provider { IssueProvider }
+import extdeps.github.comments { Comments }
+
+// --- Identity computation ---
+// feedback_id = hash(provider, source_kind, repo_scope, source_object_id)
+
+fn compute_feedback_id(
+  provider: String,
+  source_kind: FeedbackSourceKind,
+  repo_scope: String,
+  source_object_id: String
+) -> String {
+  "{provider}::{source_kind}::{repo_scope}::{source_object_id}" |> hash()
+}
+
+// revision_key = hash(feedback_id, normalized_body, review_state, thread_anchor, updated_at)
+
+fn compute_revision_key(
+  feedback_id: String,
+  normalized_body: String,
+  review_state: String?,
+  thread_anchor: String?,
+  updated_at: String
+) -> String {
+  "{feedback_id}::{normalized_body}::{review_state ?? \"none\"}::{thread_anchor ?? \"none\"}::{updated_at}" |> hash()
+}
+
+// --- Review state classification ---
+// Provider review state -> typed disposition.
+
+fn classify_review_state(state: String) -> FeedbackDisposition {
+  match state {
+    "APPROVED"          => Approval
+    "CHANGES_REQUESTED" => Critique
+    "COMMENTED"         => Informational
+    _                   => Unclassified
+  }
+}
+
+// --- Ingest issue comments ---
+// Scans issue comments and ingests each as a feedback record.
+
+func ingest_issue_comments(
+  auth_token: Secret,
+  owner: String,
+  repo: String,
+  issue_number: Int
+) -> { ingested_count: Int }
+  uses feedback: FeedbackStore
+{
+  comments = Comments.ListIssueComments(
+    auth_token: auth_token,
+    owner: owner,
+    repo: repo,
+    issue_number: issue_number
+  )
+
+  results = for comment in comments.comments {
+    feedback_id = compute_feedback_id(
+      provider: "github",
+      source_kind: IssueComment,
+      repo_scope: "{owner}/{repo}",
+      source_object_id: "{comment.id}"
+    )
+    revision_key = compute_revision_key(
+      feedback_id: feedback_id,
+      normalized_body: comment.body,
+      review_state: None,
+      thread_anchor: None,
+      updated_at: comment.updated_at
+    )
+
+    record = {
+      feedback_id: feedback_id,
+      revision_key: revision_key,
+      source_kind: IssueComment,
+      source_ref: {
+        provider: "github",
+        owner: owner,
+        repo: repo,
+        issue_id: "{issue_number}",
+        pull_request_id: None,
+        review_id: None,
+        comment_id: "{comment.id}",
+        thread_id: None,
+        commit_sha: None,
+        path: None,
+        line: None,
+        url: comment.html_url
+      },
+      disposition: Informational,
+      author: comment.user.login,
+      body: comment.body,
+      review_state: None,
+      observed_at: comment.updated_at,
+      updated_at: comment.updated_at,
+      raw_payload_hash: comment.body |> hash()
+    }
+
+    feedback.ingest(feedback: record)
+  }
+
+  return { ingested_count: results |> filter(r => r.ingested) |> count() }
+}
+
+// --- Ingest PR reviews ---
+// Scans PR reviews and ingests each as a feedback record.
+
+func ingest_pr_reviews(
+  auth_token: Secret,
+  owner: String,
+  repo: String,
+  pull_number: Int
+) -> { ingested_count: Int }
+  uses feedback: FeedbackStore
+{
+  reviews = Comments.ListReviews(
+    auth_token: auth_token,
+    owner: owner,
+    repo: repo,
+    pull_number: pull_number
+  )
+
+  results = for review in reviews.reviews {
+    feedback_id = compute_feedback_id(
+      provider: "github",
+      source_kind: ReviewSummary,
+      repo_scope: "{owner}/{repo}",
+      source_object_id: "{review.id}"
+    )
+    revision_key = compute_revision_key(
+      feedback_id: feedback_id,
+      normalized_body: review.body ?? "",
+      review_state: review.state,
+      thread_anchor: None,
+      updated_at: review.submitted_at
+    )
+
+    record = {
+      feedback_id: feedback_id,
+      revision_key: revision_key,
+      source_kind: ReviewSummary,
+      source_ref: {
+        provider: "github",
+        owner: owner,
+        repo: repo,
+        issue_id: None,
+        pull_request_id: "{pull_number}",
+        review_id: "{review.id}",
+        comment_id: None,
+        thread_id: None,
+        commit_sha: review.commit_id,
+        path: None,
+        line: None,
+        url: review.html_url
+      },
+      disposition: classify_review_state(state: review.state),
+      author: review.user.login,
+      body: review.body ?? "",
+      review_state: review.state,
+      observed_at: review.submitted_at,
+      updated_at: review.submitted_at,
+      raw_payload_hash: (review.body ?? "") |> hash()
+    }
+
+    feedback.ingest(feedback: record)
+  }
+
+  return { ingested_count: results |> filter(r => r.ingested) |> count() }
+}
+
+// --- Anti-entropy scan ---
+// Rediscovers unresolved feedback by scanning provider state.
+// Webhook loss causes latency, not semantic loss (F6).
+
+func anti_entropy_scan(
+  auth_token: Secret,
+  owner: String,
+  repo: String,
+  issue_number: Int,
+  pull_number: Int?
+) -> { discovered: Int, new_obligations: Int }
+  uses feedback: FeedbackStore
+{
+  // Scan issue comments
+  issue_result = ingest_issue_comments(
+    auth_token: auth_token,
+    owner: owner,
+    repo: repo,
+    issue_number: issue_number
+  )
+
+  // Scan PR reviews if a PR exists
+  pr_result = if pull_number != None {
+    ingest_pr_reviews(
+      auth_token: auth_token,
+      owner: owner,
+      repo: repo,
+      pull_number: pull_number
+    )
+  }
+
+  discovered = issue_result.ingested_count + (pr_result?.ingested_count ?? 0)
+
+  // Check for new obligations
+  open = feedback.list_open_obligations()
+  new_count = open.obligations |> count()
+
+  return { discovered: discovered, new_obligations: new_count }
+}
+
+// --- Tests ---
+
+test classify_approved_review {
+  input prepare.state -> "APPROVED"
+  expect result == Approval
+}
+
+test classify_changes_requested {
+  input prepare.state -> "CHANGES_REQUESTED"
+  expect result == Critique
+}
+
+test classify_unknown_state {
+  input prepare.state -> "UNKNOWN"
+  expect result == Unclassified
+}

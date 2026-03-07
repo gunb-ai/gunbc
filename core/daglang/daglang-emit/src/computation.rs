@@ -560,7 +560,9 @@ fn classify_callable(
             })
         }
 
-        ObligationCategory::ServiceParamSource | ObligationCategory::ResourceRelease => {
+        ObligationCategory::ServiceParamSource
+        | ObligationCategory::ResourceRelease
+        | ObligationCategory::ManagedLifecycleVerb => {
             Ok(Computation::Pure {
                 inputs,
                 outputs,

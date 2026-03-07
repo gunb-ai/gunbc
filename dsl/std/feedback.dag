@@ -1,0 +1,105 @@
+// std/feedback.dag -- Core feedback types for ambient SDLC.
+//
+// Defines the canonical feedback model: source kinds, dispositions,
+// statuses, close reasons, source references, records, and obligations.
+//
+// Design reference: docs/design/sdlc/ambient-feedback-model.md
+// Task reference: SDLC B1, roadmap AS2
+
+module std.feedback
+
+import std.types { NonEmptyStr, Url, Timestamp }
+
+// --- Feedback source kinds (Level 4: Finite Coproducts) ---
+// The canonical ingestion unit is a source object (F1).
+// Each variant maps to one GitHub API surface.
+
+type FeedbackSourceKind
+  = IssueComment
+  | PullRequestComment
+  | ReviewComment
+  | ReviewSummary
+
+// --- Feedback disposition (Level 4: Finite Coproducts) ---
+// Approval and critique are different meanings (F4).
+// Unclassified is explicit — never silently dropped.
+
+type FeedbackDisposition
+  = Critique
+  | Approval
+  | Informational
+  | Administrative
+  | Unclassified
+
+// --- Feedback status (Level 4: Finite Coproducts) ---
+// Obligation lifecycle: Seen -> InProgress -> Addressed -> Closed
+// Reopen rule: Addressed/Closed -> Seen on new revision.
+
+type FeedbackStatus
+  = FeedbackSeen
+  | FeedbackInProgress
+  | FeedbackAddressed
+  | FeedbackClosed
+
+// --- Feedback close reasons (Level 4: Finite Coproducts) ---
+// Closure is explicit and auditable (F5).
+
+type FeedbackCloseReason
+  = ResolvedAtSource
+  | SupersededByNewRevision
+  | ClosedByConclusion
+  | OperatorOverride
+
+// --- Source reference (Level 3: Labeled Product) ---
+// Provider-shaped reference to the original feedback location.
+
+type FeedbackSourceRef {
+  provider: NonEmptyStr
+  owner: NonEmptyStr
+  repo: NonEmptyStr
+  issue_id: NonEmptyStr?
+  pull_request_id: NonEmptyStr?
+  review_id: NonEmptyStr?
+  comment_id: NonEmptyStr?
+  thread_id: NonEmptyStr?
+  commit_sha: NonEmptyStr?
+  path: String?
+  line: Int?
+  url: Url?
+}
+
+// --- Feedback record (Level 3: Labeled Product) ---
+// Stable identity (feedback_id) + revision identity (revision_key).
+// feedback_id = hash(provider, source_kind, repo_scope, source_object_id)
+// revision_key = hash(feedback_id, normalized_body, review_state, thread_anchor, updated_at)
+
+type FeedbackRecord {
+  feedback_id: NonEmptyStr
+  revision_key: NonEmptyStr
+  source_kind: FeedbackSourceKind
+  source_ref: FeedbackSourceRef
+  disposition: FeedbackDisposition
+  author: NonEmptyStr?
+  body: String
+  review_state: String?
+  observed_at: Timestamp
+  updated_at: Timestamp
+  raw_payload_hash: NonEmptyStr
+}
+
+// --- Feedback obligation (Level 3: Labeled Product) ---
+// One obligation per feedback source object.
+// obligation_id equals feedback_id in v1.
+
+type FeedbackObligation {
+  obligation_id: NonEmptyStr
+  feedback_id: NonEmptyStr
+  latest_revision_key: NonEmptyStr
+  status: FeedbackStatus
+  close_reason: FeedbackCloseReason?
+  linked_run_key: NonEmptyStr?
+  linked_artifact_ids: List<NonEmptyStr>
+  reopened_count: Int
+  created_at: Timestamp
+  updated_at: Timestamp
+}

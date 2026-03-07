@@ -1,0 +1,58 @@
+// providers/file_feedback_store.dag -- File-based feedback store for local profile.
+//
+// Stores feedback records and obligations as JSON files under
+// target/sdlc/feedback/. One file per feedback_id.
+
+module services.sdlc.providers.file_feedback_store
+
+import interfaces.feedback_store { FeedbackStore }
+import std.types { NonEmptyStr }
+import std.feedback {
+    FeedbackRecord, FeedbackObligation, FeedbackStatus,
+    FeedbackCloseReason
+}
+
+service file.FeedbackStore : FeedbackStore {
+
+  config {
+    dir: String = "target/sdlc/feedback"
+  }
+
+  operation ingest {
+    input { feedback: FeedbackRecord }
+    output { ingested: Bool, obligation_created: Bool }
+    transport file { op: WRITE, path: "\{dir\}/obligations/\{feedback.feedback_id\}.json" }
+  }
+
+  operation get_obligation {
+    input { feedback_id: NonEmptyStr }
+    output { found: Bool, obligation: FeedbackObligation? }
+    readonly
+    transport file { op: READ, path: "\{dir\}/obligations/\{feedback_id\}.json" }
+  }
+
+  operation list_open_obligations {
+    input {}
+    output { obligations: List<FeedbackObligation> }
+    readonly
+    transport file { op: READ, path: "\{dir\}/obligations/" }
+  }
+
+  operation update_obligation_status {
+    input {
+      feedback_id: NonEmptyStr
+      status: FeedbackStatus
+      close_reason: FeedbackCloseReason?
+      linked_artifact_ids: List<NonEmptyStr>?
+    }
+    output { updated: Bool }
+    transport file { op: WRITE, path: "\{dir\}/obligations/\{feedback_id\}.json" }
+  }
+
+  operation get_feedback_history {
+    input { feedback_id: NonEmptyStr }
+    output { records: List<FeedbackRecord> }
+    readonly
+    transport file { op: READ, path: "\{dir\}/history/\{feedback_id\}.json" }
+  }
+}

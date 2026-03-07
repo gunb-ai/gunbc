@@ -1,0 +1,58 @@
+// extdeps/github/comments.dag -- GitHub comment and review listing operations.
+//
+// Operations for retrieving issue comments, PR comments, reviews,
+// and review comments from the GitHub REST API.
+//
+// Task reference: SDLC B1, roadmap AS3
+
+module extdeps.github.comments
+
+import std.types { NonEmptyStr }
+
+service github.Comments {
+  config {
+    endpoint: "https://api.github.com",
+    auth: BearerToken,
+    auth_input: auth_token
+  }
+
+  operation ListIssueComments {
+    input { owner: String, repo: String, issue_number: Int, auth_token: Secret }
+    output { comments: Json }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/issues/\{issue_number\}/comments"
+    }
+  }
+
+  operation ListPullRequestComments {
+    input { owner: String, repo: String, pull_number: Int, auth_token: Secret }
+    output { comments: Json }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/comments"
+    }
+  }
+
+  operation ListReviews {
+    input { owner: String, repo: String, pull_number: Int, auth_token: Secret }
+    output { reviews: Json }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/reviews"
+    }
+  }
+
+  operation ListReviewComments {
+    input { owner: String, repo: String, pull_number: Int, review_id: Int, auth_token: Secret }
+    output { comments: Json }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/reviews/\{review_id\}/comments"
+    }
+  }
+}

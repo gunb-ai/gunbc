@@ -57,6 +57,7 @@
 pub mod def;
 pub mod defs;
 pub mod handle;
+pub mod lifecycle;
 pub mod managed;
 pub mod registry;
 pub mod state;
@@ -74,6 +75,9 @@ pub use managed::{
     save_manifest, save_manifest_default, update_resource_manifest, FreshnessOptions,
     ManagedResource, ManifestFreshness, ManifestUpdateError, ResourceError, ResourceIo,
     SimpleResource,
+};
+pub use lifecycle::{
+    DestroySupport, IrManagedLifecycle, LifecycleValidationError, LifecycleVerb,
 };
 pub use registry::{ResolutionError, ResourceRegistry};
 pub use state::{ExecMode, ResourceState};
