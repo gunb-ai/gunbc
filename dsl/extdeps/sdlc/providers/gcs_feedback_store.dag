@@ -1,0 +1,77 @@
+// providers/gcs_feedback_store.dag -- GCS-based feedback store for cloud_run profile.
+//
+// Stores feedback records and obligations in GCS.
+// Uses generation-based CAS for idempotent writes.
+
+module extdeps.sdlc.providers.gcs_feedback_store
+
+import interfaces.feedback_store { FeedbackStore }
+import std.types { NonEmptyStr }
+import std.feedback {
+    FeedbackRecord, FeedbackObligation, FeedbackStatus,
+    FeedbackCloseReason
+}
+
+service gcs.FeedbackStore : FeedbackStore {
+
+  config {
+    endpoint: "https://storage.googleapis.com"
+    auth: BearerToken
+    auth_input: auth_token
+    bucket: String
+  }
+
+  operation ingest {
+    input { feedback: FeedbackRecord, auth_token: Secret }
+    output { ingested: Bool, obligation_created: Bool }
+    transport rest {
+      method: PUT,
+      path: "/storage/v1/b/\{bucket\}/o/feedback/obligations/\{feedback.feedback_id\}.json"
+    }
+  }
+
+  operation get_obligation {
+    input { feedback_id: NonEmptyStr, auth_token: Secret }
+    output { found: Bool, obligation: FeedbackObligation? }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/storage/v1/b/\{bucket\}/o/feedback%2Fobligations%2F\{feedback_id\}.json?alt=media"
+    }
+  }
+
+  operation list_open_obligations {
+    input { auth_token: Secret }
+    output { obligations: List<FeedbackObligation> }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/storage/v1/b/\{bucket\}/o?prefix=feedback%2Fobligations%2F"
+    }
+  }
+
+  operation update_obligation_status {
+    input {
+      feedback_id: NonEmptyStr
+      status: FeedbackStatus
+      close_reason: FeedbackCloseReason?
+      linked_artifact_ids: List<NonEmptyStr>?
+      auth_token: Secret
+    }
+    output { updated: Bool }
+    transport rest {
+      method: PUT,
+      path: "/storage/v1/b/\{bucket\}/o/feedback%2Fobligations%2F\{feedback_id\}.json"
+    }
+  }
+
+  operation get_feedback_history {
+    input { feedback_id: NonEmptyStr, auth_token: Secret }
+    output { records: List<FeedbackRecord> }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/storage/v1/b/\{bucket\}/o?prefix=feedback%2Fhistory%2F\{feedback_id\}%2F"
+    }
+  }
+}

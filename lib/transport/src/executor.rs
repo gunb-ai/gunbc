@@ -420,16 +420,10 @@ fn execute_shell(request: &ShellRequest) -> Result<ShellResponse, TransportError
     }
 
     let mut child = cmd.spawn().map_err(|error| {
-        let mut message = format!(
+        TransportError::new(format!(
             "failed to spawn command `{}`: {}",
             request.command, error
-        );
-        if error.kind() == std::io::ErrorKind::NotFound && request.command == "gcloud" {
-            message.push_str(
-                ". `gcloud` CLI is not installed or not on PATH. Install Google Cloud SDK and run `gcloud auth application-default login`.",
-            );
-        }
-        TransportError::new(message)
+        ))
     })?;
 
     // Write stdin if provided

@@ -23,7 +23,7 @@ const WORKFLOW_FIXTURES: &[WorkflowFixture] = &[
     },
     WorkflowFixture {
         scenario: "S2",
-        module: "cloud.gcp.credential",
+        module: "extdeps.sdlc.providers.gcp_credential_provider",
         fixture_file: "s2_credential_chain_gcp.json",
     },
     WorkflowFixture {
@@ -188,10 +188,10 @@ fn classify_command_status(output: &Output) -> &'static str {
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     let combined = format!("{stderr}\n{stdout}");
-    if combined.contains("typecheck errors") {
+    if combined.contains("compile diagnostics") && combined.contains("[TC") {
         return "typecheck_error";
     }
-    if combined.contains("lower error") {
+    if combined.contains("compile diagnostics") && combined.contains("[LOW") {
         return "lower_error";
     }
     "error"

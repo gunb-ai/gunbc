@@ -680,8 +680,8 @@ echo "Installing git..."
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::with_env_lock;
     use crate::STRICT_DRY_RUN_ENV;
-    use std::sync::{Mutex, OnceLock};
 
     #[test]
     fn test_generate_scripts_with_manifest_content() {
@@ -756,21 +756,5 @@ verify = "echo test"
             let err = execute_generate_scripts(inputs).expect_err("strict mode should fail");
             assert!(err.to_string().contains("unknown os: unknown"));
         });
-    }
-
-    fn with_env_lock<F>(f: F)
-    where
-        F: FnOnce() + std::panic::UnwindSafe,
-    {
-        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        let _guard = ENV_LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let result = std::panic::catch_unwind(f);
-        std::env::remove_var(STRICT_DRY_RUN_ENV);
-        if let Err(panic) = result {
-            std::panic::resume_unwind(panic);
-        }
     }
 }

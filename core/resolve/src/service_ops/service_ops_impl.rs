@@ -489,7 +489,10 @@ fn extract_shape_field(
     match json_val {
         Some(json) => Ok(from_bridge_json_typed(json, &field.type_id)),
         None if field.is_optional => Ok(Value::Unit),
-        None => Ok(from_bridge_json_typed(&serde_json::Value::Null, &field.type_id)),
+        None => Ok(from_bridge_json_typed(
+            &serde_json::Value::Null,
+            &field.type_id,
+        )),
     }
 }
 
@@ -1777,7 +1780,7 @@ impl Executable for InterfaceStubPrepareOp {
     }
 }
 
-/// Interface stub execute: errors in Real mode ("requires --profile"),
+/// Interface stub execute: errors in Real mode when no concrete binding exists,
 /// auto-mocked in DryRun (boundary mocks supply typed outputs).
 #[derive(Debug, Clone)]
 pub struct InterfaceStubExecuteOp {
@@ -1791,7 +1794,7 @@ impl Executable for InterfaceStubExecuteOp {
         _inputs: HashMap<String, Value>,
     ) -> Result<HashMap<String, Value>, ExecError> {
         Err(ExecError::new(format!(
-            "interface stub `{}.{}` requires --profile: no active profile bindings \
+            "interface stub `{}.{}` has no concrete binding in Real mode \
              (this call would be auto-mocked in DryRun mode)",
             self.interface, self.capability
         )))
@@ -2570,8 +2573,8 @@ mod tests {
             "error should name the interface.capability: {msg}"
         );
         assert!(
-            msg.contains("--profile"),
-            "error should mention --profile: {msg}"
+            msg.contains("no concrete binding"),
+            "error should mention the missing concrete binding: {msg}"
         );
     }
 
@@ -2626,9 +2629,9 @@ mod tests {
     fn shell_spec_secret_output() -> ShellOperationSpec {
         ShellOperationSpec {
             argv_template: vec![
-                ArgvSegment::Literal("gcloud".to_string()),
+                ArgvSegment::Literal("secretctl".to_string()),
                 ArgvSegment::Literal("auth".to_string()),
-                ArgvSegment::Literal("print-access-token".to_string()),
+                ArgvSegment::Literal("print-token".to_string()),
             ],
             input_fields: vec![],
             output_fields: vec![OutputFieldSpec {

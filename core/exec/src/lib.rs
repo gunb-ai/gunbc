@@ -2,8 +2,7 @@
 //!
 //! This crate provides:
 //! - [`Executable`]: Trait for operations that can be executed
-//! - [`execute`]: Execute a DAG in real mode
-//! - [`execute_with_mode`]: Execute with dry-run interception at transport nodes
+//! - [`execute_dag`]: Execute a DAG with the given configuration
 //! - [`lower`]: Flatten sub-DAGs into a single flat DAG
 //! - [`CiContext`]: Runtime CI context for emitting workflow commands
 //!
@@ -68,11 +67,8 @@ pub use error::{
     ShellErrorLayer, TransportContext,
 };
 pub use execute::{
-    execute, execute_single_node, execute_with_mode, execute_with_mode_and_inputs,
-    execute_with_mode_and_inputs_and_detail, execute_with_progress, execute_with_progress_and_mode,
-    execute_with_progress_and_mode_and_detail, execute_with_progress_and_mode_and_inputs,
-    execute_with_progress_and_mode_and_inputs_and_detail, DryRunStrictness, ExecutionLog,
-    ExecutionMode, LogEntry,
+    execute_dag, execute_single_node, DryRunStrictness, ExecuteConfig, ExecutionLog, ExecutionMode,
+    LogEntry,
 };
 pub use freshness::{
     compose_with_freshness, run_freshness_step, run_freshness_steps, FreshnessStep, WithFreshness,
@@ -112,7 +108,7 @@ pub trait Executable: fmt::Debug {
 /// Type-erased executable operation.
 ///
 /// Wraps any `Executable` impl for use in `Dag<DynOp>`, eliminating the need
-/// for per-module union enums (e.g., `PragmaGraphOp`, `WorkspaceOp`).
+/// for legacy per-module union enums in app crates.
 ///
 /// Clone is cheap (Arc refcount bump). Satisfies `Executable + Clone + Send + 'static`.
 #[derive(Clone)]

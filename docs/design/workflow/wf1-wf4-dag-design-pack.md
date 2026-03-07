@@ -8,7 +8,7 @@ Canonical normative model: `docs/design/workflow-minimal-execution-model.md`
 ## Implementation Status
 
 WF1/WF2/WF3/WF4/WF5 planner foundations now have an initial typed implementation in
-`gunbc-dag::workflow`:
+`gunbc-app::workflow`:
 
 1. WF1 schema types and deterministic `ci` / `test-all` spec builders:
    - `workflow/schema.rs`
@@ -28,10 +28,10 @@ WF1/WF2/WF3/WF4/WF5 planner foundations now have an initial typed implementation
    - `src/bin/workflow.rs` (`gunbc-workflow --plan ...`)
    - `workflow/planner.rs` explain projection (`explain_plan`)
 6. Contract coverage:
-   - `gunbc-dag/tests/workflow_schema_contracts.rs`
-   - `gunbc-dag/tests/workflow_admission_contracts.rs`
-   - `gunbc-dag/tests/workflow_key_ledger_contracts.rs`
-   - `gunbc-dag/tests/workflow_plan_cli_contracts.rs`
+   - `gunbc-app/tests/workflow_schema_contracts.rs`
+   - `gunbc-app/tests/workflow_admission_contracts.rs`
+   - `gunbc-app/tests/workflow_key_ledger_contracts.rs`
+   - `gunbc-app/tests/workflow_plan_cli_contracts.rs`
 
 Related modeling hardening follow-ups landed with the planner:
 
@@ -201,11 +201,11 @@ flowchart TB
 
 | Orchestration Node | Delegates To | Source Of Truth |
 |---|---|---|
-| `ci.lint_upsert` | `lint-upsert` process | `Makefile`, tool orchestration in `gunbc-dag/src/makegen/registry.rs` |
-| `ci.codegen` | codegen process | `gunbc-dag/src/bin/codegen.rs` |
-| `ci.bootstrap` | bootstrap process | `gunbc-dag/src/bin/bootstrap.rs` |
-| `ci.pragma` | pragma process | `gunbc-dag/src/bin/pragma.rs` |
-| `ci.testgen` | testgen process | `gunbc-dag/src/bin/testgen.rs` |
+| `ci.lint_upsert` | `lint-upsert` process | `Makefile`, tool orchestration in `gunbc-app/src/makegen/registry.rs` |
+| `ci.codegen` | codegen process | `gunbc-app/src/bin/codegen.rs` |
+| `ci.bootstrap` | bootstrap process | `gunbc-app/src/bin/bootstrap.rs` |
+| `ci.pragma` | pragma process | `gunbc-app/src/bin/pragma.rs` |
+| `ci.testgen` | testgen process | `gunbc-app/src/bin/testgen.rs` |
 | `ci.build_compile` | build process | `dsl/tools/build.dag` |
 | `ci.test_run` | test process | `dsl/tools/build.dag` / cargo test invocation |
 | `ci.clippy_run` | clippy process | `dsl/tools/build.dag` / clippy invocation |

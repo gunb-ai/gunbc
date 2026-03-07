@@ -288,7 +288,7 @@ mod tests {
             .build();
 
         match &node.body {
-            NodeBody::SubDag(dag) => {
+            NodeBody::SubDag(dag, _) => {
                 assert_eq!(dag.nodes.len(), 4);
 
                 // Check node names

@@ -1131,18 +1131,18 @@ General-purpose tool crates live in `lib/tools/` and are reusable across repos.
 | gunbc-deps | Tool registry planning and deps.toml generation | Owns deps.toml schema |
 | gunbc-gist | GitHub Gist tooling | Multiple bins in one crate |
 
-### Repo-Specific Tools (`gunbc-dag/`)
+### Repo-Specific Tools (`gunbc-app/`)
 
-Repo-specific DAGs and CLI entrypoints live in `gunbc-dag/`.
+Repo-specific DAGs and CLI entrypoints live in `gunbc-app/`.
 
 | Tool | Location | Notes |
 |------|----------|-------|
-| gunbc-ci | `gunbc-dag/src/ci/` + `gunbc-dag/src/bin/ci.rs` | Repo CI pipeline |
-| gunbc-makegen | `gunbc-dag/src/makegen/` + `gunbc-dag/src/bin/makegen.rs` | Makefile + gitignore generation |
-| gunbc-codegen | `gunbc-dag/src/codegen/` + `gunbc-dag/src/bin/codegen.rs` | Codegen orchestration |
-| gunbc-testgen | `gunbc-dag/src/bin/testgen.rs` | Test generation runner |
-| gunbc-bootstrap | `gunbc-dag/src/bootstrap/` + `gunbc-dag/src/bin/bootstrap.rs` | Bootstrap graph |
-| gunbc-build | `gunbc-dag/src/build/` + `gunbc-dag/src/bin/build.rs` | Build graph |
+| gunbc-ci | `gunbc-app/src/ci/` + `gunbc-app/src/bin/ci.rs` | Repo CI pipeline |
+| gunbc-makegen | `gunbc-app/src/makegen/` + `gunbc-app/src/bin/makegen.rs` | Makefile + gitignore generation |
+| gunbc-codegen | `gunbc-app/src/codegen/` + `gunbc-app/src/bin/codegen.rs` | Codegen orchestration |
+| gunbc-testgen | `gunbc-app/src/bin/testgen.rs` | Test generation runner |
+| gunbc-bootstrap | `gunbc-app/src/bootstrap/` + `gunbc-app/src/bin/bootstrap.rs` | Bootstrap graph |
+| gunbc-build | `gunbc-app/src/build/` + `gunbc-app/src/bin/build.rs` | Build graph |
 
 Most of these DAGs use `DagBuilder` and `WorkflowSignature` for structural validation.
 
@@ -1259,7 +1259,7 @@ gunbc/
 │   ├── transport/        # Transport executor (only direct I/O)
 │   ├── tools/            # clippy, deps, gist
 │   └── ...               # blob, git-ops, gist-ops, llm-ops, review, markdown
-├── gunbc-dag/            # Repo-specific DAGs and tool entrypoints
+├── gunbc-app/            # Repo-specific DAGs and tool entrypoints
 └── docs/
     └── design/           # This document
 ```

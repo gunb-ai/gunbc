@@ -6,7 +6,7 @@
 # GNU Make checks for GNUmakefile before Makefile, so this takes precedence.
 #
 # To regenerate the generated Makefile:
-#   cargo run -p gunbc-dag --bin gunbc-bootstrap
+#   cargo run -p gunbc-app --bin gunbc-bootstrap
 # Or after initial bootstrap:
 #   make bootstrap
 
@@ -22,10 +22,10 @@ install:
 	@echo "Bootstrapping gunbc..."
 	@echo ""
 	@echo "Step 1/2: Ensuring generated CLI entrypoints exist..."
-	cargo run -p gunbc-dag --bin gunbc-codegen -- codegen
+	cargo run -p gunbc-app --bin gunbc-codegen -- codegen
 	@echo ""
 	@echo "Step 2/2: Generating Makefile and .gitignore..."
-	cargo run -p gunbc-dag --bin gunbc-bootstrap
+	cargo run -p gunbc-app --bin gunbc-bootstrap
 	@echo ""
 	@echo "Bootstrap complete. Run 'make help' to see available targets."
 

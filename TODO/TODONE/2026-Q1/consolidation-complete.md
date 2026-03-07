@@ -54,11 +54,11 @@ reference material (patterns, architecture notes).
   reduced from 49 to ~33 hand-written tests.
 - [x] Migration details for §13: `IntoExecResult::exec_context()` in `core/exec/src/error.rs`.
   Migrated `lib/llm-ops/src/lib.rs` (4 sites), `lib/tools/cargo/src/ops.rs` (1),
-  `gunbc-dag/src/ci/graph.rs` (1). Remaining sites lower-urgency.
+  `gunbc-app/src/ci/graph.rs` (1). Remaining sites lower-urgency.
 - [x] Migration details for §14: `ShellResponse::ok()/failed()` migrated across 3 binaries
   (codegen, bootstrap, build), gist graph_mock (6), deps graph_mock (1), gist graph (1),
   build/ops tests (2), codegen registry templates (~10). Only `executor.rs:422` kept raw.
-- [x] Migration details for §15: `gunbc-dag/src/build/ops.rs` (7 sites) migrated to `OutputMap`.
+- [x] Migration details for §15: `gunbc-app/src/build/ops.rs` (7 sites) migrated to `OutputMap`.
 
 ---
 

@@ -141,7 +141,7 @@ A1-A5 are blocked on Worker C's C20 (profile/mode/subcommand CLI generation).
 | A5 (Eliminate infra.rs) | Not done | `infra.rs` still 1,056 lines. Blocked on C20. |
 | **A7 (Catalog → DSL data)** | **Done** | `dsl/config/workflow_catalog.dag` created, `catalog.rs` loads from DSL |
 | **A8 (Commands → DSL data)** | **Done** | `dsl/config/workflow_commands.dag` created, `unit_commands.rs` deleted |
-| **A9 (Extract core/workflow/)** | **Done** | New crate with 14 modules (~2.5k lines), gunbc-dag imports it |
+| **A9 (Extract core/workflow/)** | **Done** | New crate with 14 modules (~2.5k lines), gunbc-app imports it |
 | A10 (Delete BinaryArgs) | Not done | `BinaryArgs` still exists in `core/cli/src/binary_args.rs`. Was partially cleaned (308 → reduced but still present) |
 | **A11 (Delete compensating tests)** | **Done** | 7 `workflow_*.rs` + `infra_cli.rs` deleted (-1,577 lines) |
 
@@ -212,7 +212,7 @@ pattern (types + data, zero functions). Interface files enriched with
 | **B4 (Docgen → DSL)** | **Done** | `dsl/tools/docgen.dag` has `data read_targets` |
 | **B5 (Delete pragma.rs)** | **Done** | No `policy/pragma.rs` found. DSL rendering path used. |
 | **B6 (Delete extern_impls.rs)** | **Done** | File deleted. New `extern_ops.rs` handles DSL extern func declarations. |
-| **B7 (Delete tool wrappers)** | **Done** | 7 wrapper modules replaced by `dsl_builder::build_dsl_graph_for_entrypoint()` |
+| **B7 (Delete tool wrappers)** | **Done** | 7 wrapper modules deleted; callers now use direct `gunbc_resolve::builder::build_dsl_graph(...)` calls with `GunbcExternResolver` |
 | **B8 (Delete embedded_assets.rs)** | **Done** | File deleted |
 | **B9 (Delete compensating tests)** | **Done** | `tool_registration.rs`, `makefile_parity.rs`, `extern_ratchet.rs` all deleted |
 | B10 (Clean shared.rs + justfile.rs) | Partial | Files load DSL data via `load_build_targets_data()` but still depend on `ToolInfo` and `BuildConfig` from Rust registry types |
@@ -321,10 +321,10 @@ Per the file ownership table in tasks.md:
 
 | Files | Owner | Violations |
 |-------|-------|------------|
-| `gunbc-dag/src/bin/ci.rs` | Shared read-only | Worker A modified (new CLI parsing), Worker B also modified (import changes) — merge conflict |
-| `gunbc-dag/src/lib.rs` | Shared read-only | Worker B added `resolve_service` module — merge conflict |
-| `gunbc-dag/Cargo.toml` | Shared | Both Worker A and C added crate deps — merge conflict |
-| `gunbc-dag/tests/workflow_executor_contracts.rs` | Worker A | Worker A deleted, Worker B modified — delete/modify conflict |
+| `gunbc-app/src/bin/ci.rs` | Shared read-only | Worker A modified (new CLI parsing), Worker B also modified (import changes) — merge conflict |
+| `gunbc-app/src/lib.rs` | Shared read-only | Worker B added `resolve_service` module — merge conflict |
+| `gunbc-app/Cargo.toml` | Shared | Both Worker A and C added crate deps — merge conflict |
+| `gunbc-app/tests/workflow_executor_contracts.rs` | Worker A | Worker A deleted, Worker B modified — delete/modify conflict |
 | `tasks.md` | All | All three branches modified — auto-merged |
 
 3 of 4 conflicts were in shared/read-only territory, indicating the ownership

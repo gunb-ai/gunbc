@@ -61,7 +61,7 @@ pub const TERMINAL_NODE_SENTINEL: &str = "__terminal__";
 /// Configuration for test mock emission.
 #[derive(Debug, Clone)]
 pub struct TestEmitConfig {
-    /// The Rust expression to build the DAG (e.g., `crate::build_bootstrap_graph().unwrap()`).
+    /// The Rust expression to build the DAG.
     pub dag_builder: String,
     /// The Rust path to the auto_mock_spec function.
     pub auto_mock_fn: String,
@@ -69,7 +69,7 @@ pub struct TestEmitConfig {
     pub output_dir: String,
     /// The tool name for testgen target.
     pub tool_name: Option<String>,
-    /// Optional Rust expression for the CLI signature.
+    /// Optional Rust expression for the declared signature.
     pub signature_fn: Option<String>,
 }
 
@@ -713,11 +713,11 @@ test bootstrap_dryrun : cloud_base {
         assert_eq!(test_file.tests[0].expects.len(), 1);
 
         let config = TestEmitConfig {
-            dag_builder: "crate::build_bootstrap_graph().unwrap()".to_string(),
+            dag_builder: "gunbc_resolve::builder::build_dsl_graph(\"tools/bootstrap.dag\", crate::extern_ops::gunbc_runtime_bindings(), gunbc_resolve::BuildOpts { entry_func: Some(\"bootstrap\"), profile: None }).map(|result| result.dag).expect(\"graph should build\")".to_string(),
             auto_mock_fn: "gunbc_test::auto_mock_spec".to_string(),
-            output_dir: "gunbc-dag/src/bootstrap".to_string(),
+            output_dir: "gunbc-app/src/bootstrap".to_string(),
             tool_name: Some("bootstrap".to_string()),
-            signature_fn: Some("crate::bootstrap_signature()".to_string()),
+            signature_fn: Some("gunbc_ir::infer_signature(&dag)".to_string()),
         };
 
         let output = emit_test_mock_file(&test_file, &config);

@@ -29,7 +29,7 @@ pub fn makegen_entrypoint_mocks(output_path: &str) -> Result<BoundaryMocks, Stri
     // render_makefile_content.  Without this, the passthrough callable
     // forwards the literal DSL template string ("{header}{body}") instead
     // of the evaluated Makefile.
-    let makefile_content = gunbc_dag::compute_makegen_content()
+    let makefile_content = gunbc_app::compute_makegen_content()
         .map_err(|e| format!("failed to compute makegen content for mocks: {e}"))?;
     input_mocks.set_value(
         "tools.makegen::render_makefile_content",

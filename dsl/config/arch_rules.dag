@@ -141,11 +141,6 @@ data exemptions: List<Exemption> = [
     invariant_id: "I6",
     scope: WholePackage { name: "gunbc-lib-cloud-ops" },
     rationale: "cloud ops: file-backed config, credential policy, secret cache"
-  },
-  {
-    invariant_id: "I6",
-    scope: WholePackage { name: "gunbc-lib-gcp-ops" },
-    rationale: "GCP ops: secret extraction for GCP service requests"
   }
 ]
 
@@ -174,16 +169,14 @@ data allowlist_patterns: List<AllowlistPattern> = [
   { pattern: "core/daglang/daglang-resolve/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
   { pattern: "core/daglang/daglang-syntax/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
   { pattern: "core/daglang/daglang-typecheck/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
-  { pattern: "gunbc-dag/src/", rationale: "build-time DSL module discovery and workspace graph construction" },
+  { pattern: "gunbc-app/src/", rationale: "build-time DSL module discovery and workspace graph construction" },
   { pattern: "core/ir/src/workspace_layout.rs", rationale: "workspace layout discovery uses cargo metadata subprocess" },
   { pattern: "core/ir/src/transport/credential.rs", rationale: "transport boundary: credential applied to outbound requests" },
   { pattern: "core/ir/src/resource/", rationale: "capability-marker validation for resource handles" },
   { pattern: "lib/cloud-ops/", rationale: "cloud ops: file-backed config, credential policy, secret cache" },
-  { pattern: "lib/gcp-ops/", rationale: "GCP ops: secret extraction for GCP service requests" },
   { pattern: "core/workflow/", rationale: "workflow executor: process coordination and filesystem access" },
   { pattern: "core/resolve/src/service_ops/", rationale: "transport boundary: secret values marshalled into service requests" },
-  { pattern: "core/codegen/src/tool_discovery.rs", rationale: "build-time DSL module discovery with filesystem cache" },
-  { pattern: "core/codegen/src/testgen_dag/profile_discovery.rs", rationale: "build-time profile discovery from filesystem" }
+  { pattern: "core/codegen/src/tool_discovery.rs", rationale: "build-time DSL module discovery with filesystem cache" }
 ]
 
 // ── Dead code allowances ──────────────────────────────────────────────
@@ -200,12 +193,12 @@ data dead_code_allowances: List<DeadCodeAllowance> = [
     fallback_path: "core/daglang/daglang-syntax/src/parser.rs" },
   { package_name: "daglang-emit", relative_path: "src/lower_mips.rs",
     fallback_path: "core/daglang/daglang-emit/src/lower_mips.rs" },
-  { package_name: "gunbc-dag", relative_path: "src/makegen/registry.rs",
-    fallback_path: "gunbc-dag/src/makegen/registry.rs" },
-  { package_name: "gunbc-dag", relative_path: "src/workspace/subdags/languages.rs",
-    fallback_path: "gunbc-dag/src/workspace/subdags/languages.rs" },
-  { package_name: "gunbc-lib-gcp-ops", relative_path: "src/graph.rs",
-    fallback_path: "lib/gcp-ops/src/graph.rs" },
+  { package_name: "gunbc-app", relative_path: "src/makegen/registry.rs",
+    fallback_path: "gunbc-app/src/makegen/registry.rs" },
+  { package_name: "gunbc-app", relative_path: "src/workspace/subdags/languages.rs",
+    fallback_path: "gunbc-app/src/workspace/subdags/languages.rs" },
+  { package_name: "gunbc-app", relative_path: "src/resource_targets.rs",
+    fallback_path: "gunbc-app/src/resource_targets.rs" },
   { package_name: "daglang-lower", relative_path: "src/lib.rs",
     fallback_path: "core/daglang/daglang-lower/src/lib.rs" }
 ]

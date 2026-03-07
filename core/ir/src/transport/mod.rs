@@ -114,7 +114,6 @@ pub use github::{
 };
 pub use github_actions::{
     merge_permissions, Integration, PermissionLevel, PermissionScope, Permissions, RunnerImage,
-    WorkflowConfig,
 };
 pub use http::{HttpMethod, HttpRequest, HttpResponse};
 pub use llm::{
@@ -224,7 +223,7 @@ pub struct LocalResponse {
 pub enum Hermeticity {
     /// Local, deterministic, no external network or auth (e.g., `git ls-files`, `cargo build`).
     Hermetic,
-    /// Reaches external services (e.g., `gh gist create`, `gcloud auth`).
+    /// Reaches external services (e.g., `gh gist create`, cloud auth flows).
     External,
 }
 
@@ -261,7 +260,7 @@ pub struct ShellRequest {
     pub timeout_ms: Option<u64>,
     /// Stream stdout/stderr directly to the terminal instead of capturing.
     ///
-    /// Use this for interactive auth flows (e.g., `gcloud auth login`) that
+    /// Use this for interactive auth flows that
     /// require live prompts and browser URLs.
     #[serde(default, skip_serializing_if = "is_false")]
     pub passthrough: bool,

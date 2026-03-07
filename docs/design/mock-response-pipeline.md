@@ -173,7 +173,7 @@ the critical path.
 | 3 | Service without `@mock_response` still gets correct mock shape | `mock_defaults` unit test |
 | 3 | Kitchen sink `default_rest_response()` has no LLM/GCP fields | Code review |
 | 4 | `grep 'from ".*\\..*"' dsl/` returns 0 results | CI lint |
-| 5 | `grep IdentityCallableOp gunbc-dag/src/resolve.rs` returns ≤1 result | Code review |
+| 5 | `grep IdentityCallableOp core/resolve/src/resolve.rs` returns ≤1 result | Code review |
 | 6 | `probe_best_response` tries REST first | Unit test |
 
 ### End-to-end acceptance

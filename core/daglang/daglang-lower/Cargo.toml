@@ -6,6 +6,7 @@ license.workspace = true
 description = "Lowers typed .dag AST to gunbc GraphIR (Dag/Node/Port/Edge)"
 
 [dependencies]
+daglang-contract = { path = "../daglang-contract" }
 daglang-syntax = { path = "../daglang-syntax" }
 daglang-typecheck = { path = "../daglang-typecheck" }
 gunbc-ir = { path = "../../ir" }
@@ -14,5 +15,7 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 daglang-resolve = { path = "../daglang-resolve" }
-gunbc-dag = { path = "../../../gunbc-dag" }
+gunbc-app = { path = "../../../gunbc-app" }
 gunbc-deps = { path = "../../../lib/tools/deps" }
+gunbc-exec = { path = "../../exec" }
+gunbc-resolve = { path = "../../resolve" }

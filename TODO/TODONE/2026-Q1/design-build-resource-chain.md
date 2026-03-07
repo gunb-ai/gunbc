@@ -277,10 +277,10 @@ impl BuildResource {
 ```makefile
 # Complex dependency wiring
 test: codegen testgen-check
-	@cargo run -p gunbc-dag --bin gunbc-build --release
+	@cargo run -p gunbc-app --bin gunbc-build --release
 
 test-fix: fmt-fix lint-fix codegen testgen-check
-	@cargo run -p gunbc-dag --bin gunbc-build --release
+	@cargo run -p gunbc-app --bin gunbc-build --release
 ```
 
 ### 6.2 After (With Resource Model)
@@ -288,10 +288,10 @@ test-fix: fmt-fix lint-fix codegen testgen-check
 ```makefile
 # Simple mode flags
 test:
-	@cargo run -p gunbc-dag --bin gunbc-build --release -- --mode=verify
+	@cargo run -p gunbc-app --bin gunbc-build --release -- --mode=verify
 
 test-fix:
-	@cargo run -p gunbc-dag --bin gunbc-build --release -- --mode=ensure
+	@cargo run -p gunbc-app --bin gunbc-build --release -- --mode=ensure
 ```
 
 The build DAG internally:
@@ -436,10 +436,10 @@ ToolDef::new("testgen", "Generate tests from DAGs")
 ### Phase 3: Resource Registry and Resolver
 
 **Files to create:**
-- `gunbc-dag/src/resource_registry.rs` — ResourceRegistry, dependency resolver
+- `gunbc-app/src/resource_registry.rs` — ResourceRegistry, dependency resolver
 
 ```rust
-// gunbc-dag/src/resource_registry.rs
+// gunbc-app/src/resource_registry.rs
 
 use gunbc_ir::{BuildResource, DagResourceContract};
 use std::collections::HashMap;
@@ -467,14 +467,14 @@ impl ResourceRegistry {
 ### Phase 4: Staleness Checking
 
 **Files to modify:**
-- `gunbc-dag/src/codegen/ops.rs` — Extract staleness check as reusable function
-- `gunbc-dag/src/bin/testgen.rs` — Extract staleness check
+- `gunbc-app/src/codegen/ops.rs` — Extract staleness check as reusable function
+- `gunbc-app/src/bin/testgen.rs` — Extract staleness check
 
 **Files to create:**
-- `gunbc-dag/src/staleness.rs` — Unified staleness checking
+- `gunbc-app/src/staleness.rs` — Unified staleness checking
 
 ```rust
-// gunbc-dag/src/staleness.rs
+// gunbc-app/src/staleness.rs
 
 impl BuildResource {
     pub fn check_state(&self) -> ResourceState {
@@ -500,10 +500,10 @@ impl BuildResource {
 ### Phase 5: Resource-Aware Executor
 
 **Files to modify:**
-- `gunbc-dag/src/bin/build.rs` — Add --mode flag, use ResourceExecutor
+- `gunbc-app/src/bin/build.rs` — Add --mode flag, use ResourceExecutor
 
 ```rust
-// gunbc-dag/src/bin/build.rs
+// gunbc-app/src/bin/build.rs
 
 #[derive(Parser)]
 struct Args {
@@ -530,8 +530,8 @@ fn main() -> Result<()> {
 ### Phase 6: Makefile Simplification
 
 **Files to modify:**
-- `gunbc-dag/src/makegen/registry.rs` — Remove extra_deps, fix_deps, simplify PrepLevel
-- `gunbc-dag/src/makegen/render.rs` — Emit mode flags instead of dependency chains
+- `gunbc-app/src/makegen/registry.rs` — Remove extra_deps, fix_deps, simplify PrepLevel
+- `gunbc-app/src/makegen/render.rs` — Emit mode flags instead of dependency chains
 
 ```rust
 // Simplified MetaTarget (no more extra_deps, fix_deps)
@@ -556,14 +556,14 @@ fn render_meta_target(meta: &MetaTarget, config: &BuildConfig) -> String {
 ### Phase 7: Cleanup
 
 **Files to modify:**
-- `gunbc-dag/src/makegen/registry.rs` — Remove:
+- `gunbc-app/src/makegen/registry.rs` — Remove:
   - `PrepLevel` enum (replaced by resource needs)
   - `extra_deps` field
   - `fix_deps` field
   - `prep_dep_name()` function
   - `meta_target_deps()` function
 
-- `gunbc-dag/src/makegen/render.rs` — Remove:
+- `gunbc-app/src/makegen/render.rs` — Remove:
   - `render_fix_alias_targets()` (fmt-fix, lint-fix handled by mode)
   - Complex dependency wiring in `render_meta_fix_variant()`
 
@@ -627,13 +627,13 @@ fn render_meta_target(meta: &MetaTarget, config: &BuildConfig) -> String {
 - [ ] Update `all_tools()` with resource contracts for all tools
 
 ### Phase 3: Resource Registry
-- [ ] Create `gunbc-dag/src/resource_registry.rs`
+- [ ] Create `gunbc-app/src/resource_registry.rs`
 - [ ] Implement `ResourceRegistry::from_tools()`
 - [ ] Implement topological sort in `resolve()`
 - [ ] Add cycle detection
 
 ### Phase 4: Staleness Checking
-- [ ] Create `gunbc-dag/src/staleness.rs`
+- [ ] Create `gunbc-app/src/staleness.rs`
 - [ ] Implement `check_state()` for each `BuildResource`
 - [ ] Implement `ensure()` for each `BuildResource`
 - [ ] Extract existing staleness logic from codegen/testgen

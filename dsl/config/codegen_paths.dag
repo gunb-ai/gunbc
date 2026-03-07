@@ -7,7 +7,7 @@ data stamp_file: String = "target/codegen/.stamp"
 data generated_roots: List<String> = [
   "core/ir/src",
   "core/exec/src",
-  "gunbc-dag/src",
+  "gunbc-app/src",
   "generated"
 ]
 

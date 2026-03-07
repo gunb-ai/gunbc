@@ -753,18 +753,21 @@ pub fn typedefs_to_source_file(
 /// Extract TypeDefs from a `TypedProject` and produce a rendered Rust source
 /// string containing all generated types for the specified module paths.
 pub fn generate_types_for_modules(
-    typed: &daglang_typecheck::TypedProject,
+    typed: &daglang_typecheck::TypedProject<'_>,
     module_filter: &[&str],
 ) -> String {
     use crate::render_rust::render_rust_source;
 
-    // Pass 1: collect all TypeDefs and figure out which struct types
-    // appear as elements in `data` lists (so we can make their String
-    // fields `&'static str` for static-friendly structs).
-    let mut type_defs: Vec<&TypeDef> = Vec::new();
+    // Pass 1: collect cloned AST items from matching modules.
+    // TypedModuleRef temporaries from modules() don't live long enough
+    // for cross-pass reference storage, so we clone the needed items.
+    let mut type_defs: Vec<TypeDef> = Vec::new();
+    let mut data_defs: Vec<DataDef> = Vec::new();
+    let mut fn_defs: Vec<FnDef> = Vec::new();
     let mut static_struct_types: std::collections::HashSet<String> =
         std::collections::HashSet::new();
-    for module in &typed.modules {
+
+    for module in typed.modules() {
         let module_name = module.module_path.as_dotted();
         if !module_filter.is_empty() && !module_filter.contains(&module_name.as_str()) {
             continue;
@@ -772,7 +775,7 @@ pub fn generate_types_for_modules(
         for item in &module.ast.items {
             match &item.node {
                 daglang_syntax::ast::Item::TypeDef(td) => {
-                    type_defs.push(td);
+                    type_defs.push(td.clone());
                 }
                 daglang_syntax::ast::Item::DataDef(dd) => {
                     if let TypeExpr::Generic(name, args) = &dd.ty {
@@ -785,82 +788,63 @@ pub fn generate_types_for_modules(
                     if let TypeExpr::Named(name) = &dd.ty {
                         static_struct_types.insert(name.clone());
                     }
+                    data_defs.push(dd.clone());
+                }
+                daglang_syntax::ast::Item::FnDef(fd) => {
+                    fn_defs.push(fd.clone());
                 }
                 _ => {}
-            }
-        }
-    }
-
-    // Also collect DataDefs for impl generation.
-    let mut data_defs: Vec<&DataDef> = Vec::new();
-    for module in &typed.modules {
-        let module_name = module.module_path.as_dotted();
-        if !module_filter.is_empty() && !module_filter.contains(&module_name.as_str()) {
-            continue;
-        }
-        for item in &module.ast.items {
-            if let daglang_syntax::ast::Item::DataDef(dd) = &item.node {
-                data_defs.push(dd);
             }
         }
     }
 
     // Pass 2: generate all items, using type info for data tables.
+    let type_def_refs: Vec<&TypeDef> = type_defs.iter().collect();
     let mut all_items = Vec::new();
-    for module in &typed.modules {
-        let module_name = module.module_path.as_dotted();
-        if !module_filter.is_empty() && !module_filter.contains(&module_name.as_str()) {
-            continue;
-        }
 
-        for item in &module.ast.items {
-            match &item.node {
-                daglang_syntax::ast::Item::TypeDef(td) => {
-                    if static_struct_types.contains(&td.name) {
-                        all_items.extend(typedef_to_static_code_ir(td));
-                    } else {
-                        all_items.extend(typedef_to_code_ir(td));
-                    }
-                }
-                daglang_syntax::ast::Item::DataDef(dd) => {
-                    all_items.extend(datadef_to_code_ir_with(dd, &type_defs));
-                }
-                daglang_syntax::ast::Item::FnDef(fd) => {
-                    let mut fn_data_names: std::collections::HashSet<String> =
-                        std::collections::HashSet::new();
-                    for dd in &data_defs {
-                        fn_data_names.insert(dd.name.clone());
-                    }
-                    let mut opt_fields = std::collections::HashMap::new();
-                    let mut v2e = std::collections::HashMap::new();
-                    let mut ambig = std::collections::HashSet::new();
-                    let mut sft = std::collections::HashMap::new();
-                    let mut ev = std::collections::HashMap::new();
-                    for td in &type_defs {
-                        collect_optional_fields(td, &mut opt_fields);
-                        collect_variant_to_enum(td, &mut v2e, &mut ambig);
-                        collect_struct_field_types(td, &mut sft);
-                        collect_enum_variants(td, &mut ev);
-                    }
-                    let fn_ctx = fn_codegen::CompileContext {
-                        data_names: fn_data_names,
-                        optional_fields: opt_fields,
-                        variant_to_enum: v2e,
-                        struct_field_types: sft,
-                        enum_variants: ev,
-                    };
-                    all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
-                }
-                _ => {}
-            }
+    for td in &type_defs {
+        if static_struct_types.contains(&td.name) {
+            all_items.extend(typedef_to_static_code_ir(td));
+        } else {
+            all_items.extend(typedef_to_code_ir(td));
         }
+    }
+
+    for dd in &data_defs {
+        all_items.extend(datadef_to_code_ir_with(dd, &type_def_refs));
+    }
+
+    for fd in &fn_defs {
+        let mut fn_data_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for dd in &data_defs {
+            fn_data_names.insert(dd.name.clone());
+        }
+        let mut opt_fields = std::collections::HashMap::new();
+        let mut v2e = std::collections::HashMap::new();
+        let mut ambig = std::collections::HashSet::new();
+        let mut sft = std::collections::HashMap::new();
+        let mut ev = std::collections::HashMap::new();
+        for td in &type_defs {
+            collect_optional_fields(td, &mut opt_fields);
+            collect_variant_to_enum(td, &mut v2e, &mut ambig);
+            collect_struct_field_types(td, &mut sft);
+            collect_enum_variants(td, &mut ev);
+        }
+        let fn_ctx = fn_codegen::CompileContext {
+            data_names: fn_data_names,
+            optional_fields: opt_fields,
+            variant_to_enum: v2e,
+            struct_field_types: sft,
+            enum_variants: ev,
+        };
+        all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
     }
 
     // Pass 3: generate impl blocks from data table lookup patterns.
     // Detect DSL functions that are "lookup field in table" and generate
     // match-based impl methods instead of standalone todo!() stubs.
     for dd in &data_defs {
-        let field_types = resolve_field_types_for_data(dd, &type_defs);
+        let field_types = resolve_field_types_for_data(dd, &type_def_refs);
         if field_types.len() < 2 {
             continue;
         }
@@ -876,7 +860,7 @@ pub fn generate_types_for_modules(
                 key_field,
                 value_name,
                 &to_snake_case(value_name),
-                &type_defs,
+                &type_def_refs,
             ) {
                 all_items.push(item);
             }

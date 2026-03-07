@@ -232,7 +232,7 @@ pattern content_upsert(content: String, path: String) -> { written: Bool }
 // with runtime branching. Defined as a pattern (not func) because
 // it's always embedded inside a parent func's SubDag.
 //
-// Replaces: lib/gcp-ops/src/graph.rs (1,700+ lines)
+// Replaces the former handwritten Rust GCP credential graph.
 
 pattern credential_chain(
   runtime: CloudRuntime,
@@ -407,7 +407,7 @@ func metadata_oidc(audience: String) -> { token: String }
 
 // --- Local auth (D-3b: InteractiveAuth flow) ---------------------------
 // ADC check -> OAuth2 refresh -> conditional re-auth via gcloud -> merge.
-// This replaces ~725 lines of Rust in lib/gcp-ops/src/graph.rs.
+// This replaces the old handwritten Rust local-auth graph path.
 
 func local_auth() -> { token: String }
   uses fs: Filesystem(mode: Read)
@@ -434,14 +434,17 @@ func local_auth() -> { token: String }
 // Ensure the service account has the required IAM bindings.
 // Uses getIamPolicy -> check -> conditional setIamPolicy.
 
+// STUB: always returns false — requires JSON array iteration (FC-CF5 prerequisite)
 fn check_iam_binding(bindings: Json, service_account: String, role: String) -> { has_role: Bool } {
   return { has_role: false }
 }
 
+// STUB: identity — requires JSON array append (FC-CF5 prerequisite)
 fn add_iam_binding(bindings: Json, service_account: String, role: String) -> { updated_bindings: Json } {
   return { updated_bindings: bindings }
 }
 
+// STUB: depends on check_iam_binding + add_iam_binding stubs above
 func iam_preflight_check(
   access_token: Secret,
   project_id: ProjectId,

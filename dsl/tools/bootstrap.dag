@@ -4,7 +4,7 @@
 // using content_upsert for each. Two parallel upsert chains share the
 // same crate discovery step.
 //
-// Replaces: gunbc-dag/src/bootstrap/graph.rs (~16 nodes)
+// Replaces: gunbc-app/src/bootstrap/graph.rs (~16 nodes)
 
 module tools.bootstrap
 

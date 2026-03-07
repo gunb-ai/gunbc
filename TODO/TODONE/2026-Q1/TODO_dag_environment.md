@@ -52,7 +52,7 @@ EnvOp ──tool:clippy→ LintNode
            DryRun intercepts → ToolHandle::mock()
 ```
 
-**Key file**: `gunbc-dag/src/ci/env.rs`
+**Key file**: `gunbc-app/src/ci/env.rs`
 
 EnvOp is a root node with no inputs. It performs I/O (check/install),
 emits `ToolHandle` values on typed ports, and downstream nodes receive

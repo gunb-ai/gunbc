@@ -563,4 +563,4 @@ exempt, or how workflows are ordered. That's the model's job.
 - `docs/design/v4/extern-bridge-gap-analysis.md` — Why externs exist, elimination plan
 - `docs/design/modeling/repo-self-understanding.md` — Workspace as external system
 - `core/infra/src/workspace_model.rs` — Generator graph, tier enforcement
-- `gunbc-dag/tests/tool_registration.rs` — Drift detection test suite
+- `gunbc-app/tests/tool_registration.rs` — Drift detection test suite

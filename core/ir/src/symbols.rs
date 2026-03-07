@@ -274,7 +274,7 @@ mod tests {
         let sym = STANDARD.get(SymbolId::NodeCompleted);
         let node = build_symbol_subdag(sym);
         match &node.body {
-            crate::node::NodeBody::SubDag(inner) => {
+            crate::node::NodeBody::SubDag(inner, _) => {
                 assert!(
                     inner.nodes.len() >= 4,
                     "should have config + 3 atoms + resolve"
@@ -288,7 +288,7 @@ mod tests {
     fn build_spinner_subdag_works() {
         let node = build_spinner_subdag(&STANDARD);
         match &node.body {
-            crate::node::NodeBody::SubDag(inner) => {
+            crate::node::NodeBody::SubDag(inner, _) => {
                 assert_eq!(inner.nodes.len(), 11);
             }
             _ => panic!("expected SubDag"),

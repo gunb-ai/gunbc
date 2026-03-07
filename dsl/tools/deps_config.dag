@@ -4,7 +4,7 @@
 // The actual generation logic (generate_deps_toml_from_registry, read/write)
 // stays in the Rust substrate (lib/tools/deps/).
 //
-// Replaces: gunbc-dag/src/bin/deps_config.rs (117 LOC)
+// Replaces: gunbc-app/src/bin/deps_config.rs (117 LOC)
 
 module tools.deps_config
 

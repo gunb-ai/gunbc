@@ -706,7 +706,7 @@ fn validate_resource_completeness_impl<T>(
 ) {
     for node in &dag.nodes {
         match &node.body {
-            NodeBody::SubDag(inner) => {
+            NodeBody::SubDag(inner, _) => {
                 // SubDag wrappers get resource ports via auto-inference;
                 // recurse to validate inner nodes.
                 validate_resource_completeness_impl(inner, violations);

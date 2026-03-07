@@ -21,44 +21,124 @@
 //! - Subtyping via the bounded lattice (§4.1.4 of dsl-design.md)
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
 
+use daglang_contract::{Diagnostic, DiagnosticContext};
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{
-    Expr, Field, Item, Literal, ModulePath, Param, PipelineDef, ProvidesClause, Refinement,
-    SourceFile, Stmt, TypeBody, TypeExpr, UsesClause,
+    Expr, Field, Item, Literal, ModulePath, Param, PipelineDef, ProvidesClause, Refinement, Stmt,
+    TypeBody, TypeExpr, UsesClause,
 };
 use daglang_syntax::ast_utils::{
     resource_type_name, service_call_lookup_keys, type_expr_to_string, walk_stmts,
 };
+use gunbc_ir::TypeRegistry;
 
-/// A typechecked project snapshot.
+pub mod extern_registry;
+pub use extern_registry::ExternRegistry;
+
+/// A typechecked project snapshot over a resolved module graph.
 #[derive(Debug)]
-pub struct TypedProject {
-    pub modules: Vec<TypedModule>,
+pub struct TypedProject<'a> {
+    graph: TypedProjectGraph<'a>,
+    typed_modules: Vec<TypedModule>,
+    pipeline_params: Vec<PipelineParam>,
+    dsl_type_registry: TypeRegistry,
+    available_profiles: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Default)]
 pub struct TypecheckOptions {
     pub allow_unresolved_imports: bool,
-}
-
-impl Default for TypecheckOptions {
-    fn default() -> Self {
-        Self {
-            allow_unresolved_imports: true,
-        }
-    }
+    pub extern_registry: Option<ExternRegistry>,
 }
 
 /// A typechecked module.
 #[derive(Debug)]
 pub struct TypedModule {
-    pub path: PathBuf,
-    pub module_path: ModulePath,
-    pub imports: Vec<ModulePath>,
-    pub ast: SourceFile,
+    pub graph_index: usize,
     pub signatures: Vec<TypedItemSignature>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PipelineParam {
+    pub name: String,
+    pub type_id: String,
+    pub default_value: Option<String>,
+}
+
+#[derive(Debug)]
+enum TypedProjectGraph<'a> {
+    Borrowed(&'a ModuleGraph),
+    Owned(ModuleGraph),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct TypedModuleRef<'project, 'graph> {
+    resolved: &'project ResolvedModule,
+    pub graph_index: usize,
+    pub signatures: &'project [TypedItemSignature],
+    _graph: std::marker::PhantomData<&'graph ModuleGraph>,
+}
+
+impl<'a> TypedProject<'a> {
+    pub fn graph(&self) -> &ModuleGraph {
+        match &self.graph {
+            TypedProjectGraph::Borrowed(graph) => graph,
+            TypedProjectGraph::Owned(graph) => graph,
+        }
+    }
+
+    pub fn module_count(&self) -> usize {
+        self.typed_modules.len()
+    }
+
+    pub fn pipeline_params(&self) -> &[PipelineParam] {
+        &self.pipeline_params
+    }
+
+    pub fn dsl_type_registry(&self) -> &TypeRegistry {
+        &self.dsl_type_registry
+    }
+
+    pub fn available_profiles(&self) -> &[String] {
+        &self.available_profiles
+    }
+
+    pub fn modules(&self) -> impl ExactSizeIterator<Item = TypedModuleRef<'_, 'a>> + '_ {
+        self.typed_modules.iter().map(move |typed| TypedModuleRef {
+            resolved: &self.graph().modules[typed.graph_index],
+            graph_index: typed.graph_index,
+            signatures: &typed.signatures,
+            _graph: std::marker::PhantomData,
+        })
+    }
+
+    pub fn module(&self, index: usize) -> Option<TypedModuleRef<'_, 'a>> {
+        self.typed_modules.get(index).map(|typed| TypedModuleRef {
+            resolved: &self.graph().modules[typed.graph_index],
+            graph_index: typed.graph_index,
+            signatures: &typed.signatures,
+            _graph: std::marker::PhantomData,
+        })
+    }
+}
+
+impl<'project, 'graph> TypedModuleRef<'project, 'graph> {
+    pub fn imports(&self) -> impl Iterator<Item = &'project ModulePath> + 'project {
+        self.resolved
+            .ast
+            .imports
+            .iter()
+            .map(|import| &import.node.path)
+    }
+}
+
+impl<'project, 'graph> std::ops::Deref for TypedModuleRef<'project, 'graph> {
+    type Target = ResolvedModule;
+
+    fn deref(&self) -> &Self::Target {
+        self.resolved
+    }
 }
 
 /// A normalized signature captured from a top-level item.
@@ -263,6 +343,242 @@ pub enum TypeError {
         binding: String,
         resource_type: String,
     },
+    /// Service config declares an unrecognized auth scheme.
+    InvalidAuthScheme { service: String, scheme: String },
+    /// if/else branches produce incompatible types.
+    BranchTypeMismatch {
+        then_type: String,
+        else_type: String,
+    },
+    /// Match arms produce incompatible types.
+    MatchArmTypeMismatch {
+        first_type: String,
+        mismatched_type: String,
+    },
+    /// Match on a sum type does not cover all variants.
+    NonExhaustiveMatch {
+        scrutinee_type: String,
+        missing_variants: Vec<String>,
+    },
+    /// An `extern func` references a symbol not in the extern registry.
+    UnregisteredExtern { module: String, name: String },
+    /// An `extern func` has wrong arity compared to the registered symbol.
+    ExternArityMismatch {
+        module: String,
+        name: String,
+        expected_inputs: usize,
+        got_inputs: usize,
+        expected_outputs: usize,
+        got_outputs: usize,
+    },
+}
+
+/// A type error enriched with source location information.
+///
+/// Wraps `TypeError` with the file path and module name where the error occurred.
+/// The driver uses this to populate `Diagnostic.file` and resolve `line:col` from
+/// `ResolvedModule.source`.
+#[derive(Debug)]
+pub struct SpannedTypeError {
+    pub error: TypeError,
+    pub file: std::path::PathBuf,
+    pub module: String,
+    /// Byte offset span of the AST item that caused this error.
+    pub span: Option<daglang_syntax::span::Span>,
+}
+
+impl SpannedTypeError {
+    /// Convert to a `Diagnostic` with file location.
+    pub fn to_diagnostic(&self) -> daglang_contract::Diagnostic {
+        let mut diag = self.error.to_diagnostic().with_file(self.file.clone());
+        if let Some(span) = self.span {
+            diag = diag.with_span(daglang_contract::Span {
+                start: span.start,
+                end: span.end,
+            });
+        }
+        diag
+    }
+
+    /// Convert to a `Diagnostic` with file and resolved line:col.
+    pub fn to_diagnostic_with_source(&self, source: &str) -> daglang_contract::Diagnostic {
+        let mut diag = self.to_diagnostic();
+        if let Some(span) = self.span {
+            let (line, col) = daglang_contract::byte_to_line_col(source, span.start);
+            diag = diag.with_line_col(line, col);
+        }
+        diag
+    }
+}
+
+impl TypeError {
+    /// Stable, grep-able error code for this variant (CP-59).
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::UndefinedType(..) => "TC001",
+            Self::NoSuchField { .. } => "TC002",
+            Self::TypeMismatch { .. } => "TC003",
+            Self::MissingCapability { .. } => "TC004",
+            Self::UnsatisfiableRefinement { .. } => "TC005",
+            Self::ArityMismatch { .. } => "TC006",
+            Self::DuplicateDefinition { .. } => "TC007",
+            Self::DuplicatePipelineStage { .. } => "TC008",
+            Self::DuplicatePipelineStageDependency { .. } => "TC009",
+            Self::UnknownPipelineStageDependency { .. } => "TC010",
+            Self::PipelineStageSelfDependency { .. } => "TC011",
+            Self::PipelineStageWhenTypeMismatch { .. } => "TC012",
+            Self::DuplicateParameter { .. } => "TC013",
+            Self::DuplicateOutputField { .. } => "TC014",
+            Self::UnresolvedImport { .. } => "TC015",
+            Self::UnresolvedInterface { .. } => "TC016",
+            Self::AmbiguousInterface { .. } => "TC017",
+            Self::MissingOperation { .. } => "TC018",
+            Self::InterfaceSignatureMismatch { .. } => "TC019",
+            Self::CallArityMismatch { .. } => "TC020",
+            Self::UnknownCallArgument { .. } => "TC021",
+            Self::DuplicateCallArgument { .. } => "TC022",
+            Self::AmbiguousCallTarget { .. } => "TC023",
+            Self::UnresolvedCallTarget { .. } => "TC024",
+            Self::ServiceCallArityMismatch { .. } => "TC025",
+            Self::UnresolvedServiceCall { .. } => "TC026",
+            Self::AmbiguousServiceCall { .. } => "TC027",
+            Self::UnknownServiceCallArgument { .. } => "TC028",
+            Self::DuplicateServiceCallArgument { .. } => "TC029",
+            Self::UnknownUsedResourceType { .. } => "TC030",
+            Self::AmbiguousUsedResourceType { .. } => "TC031",
+            Self::DuplicateUsesBinding { .. } => "TC032",
+            Self::DuplicateProvidesBinding { .. } => "TC033",
+            Self::UseProvideBindingConflict { .. } => "TC034",
+            Self::UnknownProvidedResourceType { .. } => "TC035",
+            Self::AmbiguousProvidedResourceType { .. } => "TC036",
+            Self::InvalidAuthScheme { .. } => "TC037",
+            Self::BranchTypeMismatch { .. } => "TC038",
+            Self::MatchArmTypeMismatch { .. } => "TC039",
+            Self::NonExhaustiveMatch { .. } => "TC040",
+            Self::UnregisteredExtern { .. } => "TC041",
+            Self::ExternArityMismatch { .. } => "TC042",
+        }
+    }
+
+    /// Help text with fix suggestions for common errors (CP-50).
+    pub fn help(&self) -> Option<String> {
+        match self {
+            Self::UndefinedType(name) => Some(format!(
+                "check spelling of `{name}` — common types: String, Int, Bool, List<T>, Map<K,V>, Option<T>"
+            )),
+            Self::TypeMismatch { expected, got } => Some(format!(
+                "change argument type to `{expected}` or add a conversion from `{got}`"
+            )),
+            Self::ArityMismatch {
+                name,
+                expected,
+                got,
+            } => Some(format!(
+                "`{name}` expects {expected} type parameter(s), got {got}"
+            )),
+            Self::UnresolvedImport { target, .. } => Some(format!(
+                "`{target}` not found — check the module path and ensure the .dag file exists"
+            )),
+            Self::UnresolvedCallTarget { callee, .. } => Some(format!(
+                "`{callee}` is not defined — check spelling or add an import"
+            )),
+            Self::CallArityMismatch {
+                callee,
+                expected,
+                got,
+                ..
+            } => Some(format!(
+                "`{callee}` expects {expected} argument(s), got {got} — check parameter names"
+            )),
+            Self::UnknownCallArgument { argument, callee, .. } => Some(format!(
+                "remove `{argument}:` from call to `{callee}` or check parameter names"
+            )),
+            Self::DuplicateDefinition { name, .. } => Some(format!(
+                "rename one of the `{name}` definitions — each name must be unique within a module"
+            )),
+            Self::InvalidAuthScheme { scheme, .. } => Some(format!(
+                "change `{scheme}` to one of: BearerToken, Basic, ApiKey, Header(\"...\"), None"
+            )),
+            Self::UnresolvedServiceCall { service_call, .. } => Some(format!(
+                "`{service_call}` not found — check service import and operation name"
+            )),
+            Self::NoSuchField { ty, field } => Some(format!(
+                "type `{ty}` has no field `{field}` — check field names in the type definition"
+            )),
+            Self::BranchTypeMismatch { then_type, else_type } => Some(format!(
+                "if/else branches must produce the same type — `{then_type}` vs `{else_type}`"
+            )),
+            Self::MatchArmTypeMismatch { first_type, mismatched_type } => Some(format!(
+                "all match arms must produce the same type — first arm is `{first_type}`, found `{mismatched_type}`"
+            )),
+            Self::NonExhaustiveMatch { missing_variants, .. } => Some(format!(
+                "add arms for: {} — or add a `_ => ...` wildcard arm",
+                missing_variants.join(", ")
+            )),
+            Self::UnregisteredExtern { module, name } => Some(format!(
+                "register `{module}::{name}` in the app's extern binding table (extern_ops.rs)"
+            )),
+            Self::ExternArityMismatch { module, name, expected_inputs, got_inputs, .. } => Some(format!(
+                "`{module}::{name}` expects {expected_inputs} inputs but declaration has {got_inputs}"
+            )),
+            _ => None,
+        }
+    }
+
+    /// Convert to the shared compiler diagnostic shape.
+    pub fn to_diagnostic(&self) -> Diagnostic {
+        let mut diagnostic =
+            Diagnostic::new(self.code(), self.to_string()).with_context(self.diagnostic_context());
+        if let Some(help) = self.help() {
+            diagnostic = diagnostic.with_help(help);
+        }
+        diagnostic
+    }
+
+    fn diagnostic_context(&self) -> DiagnosticContext {
+        match self {
+            Self::TypeMismatch { expected, got } => DiagnosticContext::TypeMismatch {
+                expected: expected.clone(),
+                got: got.clone(),
+            },
+            Self::UndefinedType(name)
+            | Self::UnresolvedImport { target: name, .. }
+            | Self::UnresolvedInterface {
+                interface: name, ..
+            }
+            | Self::UnresolvedCallTarget { callee: name, .. }
+            | Self::UnresolvedServiceCall {
+                service_call: name, ..
+            }
+            | Self::UnknownCallArgument { argument: name, .. }
+            | Self::UnknownServiceCallArgument { argument: name, .. }
+            | Self::UnknownUsedResourceType { binding: name, .. }
+            | Self::UnknownProvidedResourceType { binding: name, .. } => {
+                DiagnosticContext::Missing {
+                    kind: "declaration",
+                    name: name.clone(),
+                    available: Vec::new(),
+                }
+            }
+            Self::DuplicateDefinition { name, .. }
+            | Self::DuplicatePipelineStage { stage: name, .. }
+            | Self::DuplicatePipelineStageDependency {
+                dependency: name, ..
+            }
+            | Self::DuplicateParameter { param: name, .. }
+            | Self::DuplicateOutputField { field: name, .. }
+            | Self::DuplicateCallArgument { argument: name, .. }
+            | Self::DuplicateServiceCallArgument { argument: name, .. }
+            | Self::DuplicateUsesBinding { binding: name, .. }
+            | Self::DuplicateProvidesBinding { binding: name, .. } => {
+                DiagnosticContext::Duplicate {
+                    name: name.clone(),
+                    first: None,
+                }
+            }
+            _ => DiagnosticContext::Note(String::new()),
+        }
+    }
 }
 
 impl std::fmt::Display for TypeError {
@@ -483,23 +799,145 @@ impl std::fmt::Display for TypeError {
             } => write!(
                 f,
                 "ambiguous provided resource type `{resource_type}` for binding `{binding}` in `{item}`"
-            ),        }
+            ),
+            Self::InvalidAuthScheme { service, scheme } => write!(
+                f,
+                "service `{service}` declares unknown auth scheme `{scheme}` \
+                 (valid: BearerToken, Basic, ApiKey, Header(\"...\"), None)"
+            ),
+            Self::BranchTypeMismatch {
+                then_type,
+                else_type,
+            } => write!(
+                f,
+                "if/else branch type mismatch: then-branch is `{then_type}`, else-branch is `{else_type}`"
+            ),
+            Self::MatchArmTypeMismatch {
+                first_type,
+                mismatched_type,
+            } => write!(
+                f,
+                "match arm type mismatch: first arm is `{first_type}`, found arm with `{mismatched_type}`"
+            ),
+            Self::NonExhaustiveMatch {
+                scrutinee_type,
+                missing_variants,
+            } => write!(
+                f,
+                "non-exhaustive match on `{scrutinee_type}`: missing {}",
+                missing_variants.join(", ")
+            ),
+            Self::UnregisteredExtern { module, name } => write!(
+                f,
+                "extern func `{name}` in module `{module}` is not registered in the extern binding table"
+            ),
+            Self::ExternArityMismatch {
+                module,
+                name,
+                expected_inputs,
+                got_inputs,
+                expected_outputs,
+                got_outputs,
+            } => write!(
+                f,
+                "extern func `{name}` in module `{module}` arity mismatch: \
+                 expected {expected_inputs} inputs/{expected_outputs} outputs, \
+                 got {got_inputs} inputs/{got_outputs} outputs"
+            ),
+        }
     }
 }
 
 /// Typecheck a discovered module graph and produce typed module signatures.
-pub fn typecheck_module_graph(graph: ModuleGraph) -> Result<TypedProject, Vec<TypeError>> {
+pub fn typecheck_module_graph<'a>(
+    graph: &'a ModuleGraph,
+) -> Result<TypedProject<'a>, Vec<TypeError>> {
     typecheck_module_graph_with_options(graph, TypecheckOptions::default())
 }
 
-/// Typecheck a discovered module graph with explicit options.
-pub fn typecheck_module_graph_with_options(
+/// Typecheck an owned module graph and retain it inside the typed overlay.
+pub fn typecheck_owned_module_graph(
+    graph: ModuleGraph,
+) -> Result<TypedProject<'static>, Vec<TypeError>> {
+    typecheck_owned_module_graph_with_options(graph, TypecheckOptions::default())
+}
+
+/// Typecheck an owned module graph with explicit options and retain it inside
+/// the typed overlay.
+pub fn typecheck_owned_module_graph_with_options(
     graph: ModuleGraph,
     options: TypecheckOptions,
-) -> Result<TypedProject, Vec<TypeError>> {
+) -> Result<TypedProject<'static>, Vec<TypeError>> {
+    let metadata = typecheck_graph_modules(&graph, &options)?;
+    Ok(TypedProject {
+        graph: TypedProjectGraph::Owned(graph),
+        typed_modules: metadata.typed_modules,
+        pipeline_params: metadata.pipeline_params,
+        dsl_type_registry: metadata.dsl_type_registry,
+        available_profiles: metadata.available_profiles,
+    })
+}
+
+/// Typecheck a discovered module graph with explicit options.
+///
+/// Borrows the graph (CP-43) — callers retain access after typechecking.
+pub fn typecheck_module_graph_with_options<'a>(
+    graph: &'a ModuleGraph,
+    options: TypecheckOptions,
+) -> Result<TypedProject<'a>, Vec<TypeError>> {
+    let metadata = typecheck_graph_modules(graph, &options)?;
+    Ok(TypedProject {
+        graph: TypedProjectGraph::Borrowed(graph),
+        typed_modules: metadata.typed_modules,
+        pipeline_params: metadata.pipeline_params,
+        dsl_type_registry: metadata.dsl_type_registry,
+        available_profiles: metadata.available_profiles,
+    })
+}
+
+/// Typecheck with source-located errors.
+///
+/// Returns `SpannedTypeError` on failure, which carries the file path and module
+/// name for each error. Use `SpannedTypeError::to_diagnostic_with_source()` to
+/// resolve byte offsets into line:col using `ResolvedModule.source`.
+pub fn typecheck_module_graph_located<'a>(
+    graph: &'a ModuleGraph,
+    options: TypecheckOptions,
+) -> Result<TypedProject<'a>, Vec<SpannedTypeError>> {
+    let metadata = typecheck_graph_modules_spanned(graph, &options)?;
+    Ok(TypedProject {
+        graph: TypedProjectGraph::Borrowed(graph),
+        typed_modules: metadata.typed_modules,
+        pipeline_params: metadata.pipeline_params,
+        dsl_type_registry: metadata.dsl_type_registry,
+        available_profiles: metadata.available_profiles,
+    })
+}
+
+struct TypedProjectMetadata {
+    typed_modules: Vec<TypedModule>,
+    pipeline_params: Vec<PipelineParam>,
+    dsl_type_registry: TypeRegistry,
+    available_profiles: Vec<String>,
+}
+
+fn typecheck_graph_modules(
+    graph: &ModuleGraph,
+    options: &TypecheckOptions,
+) -> Result<TypedProjectMetadata, Vec<TypeError>> {
+    typecheck_graph_modules_spanned(graph, options)
+        .map_err(|spanned_errors| spanned_errors.into_iter().map(|se| se.error).collect())
+}
+
+fn typecheck_graph_modules_spanned(
+    graph: &ModuleGraph,
+    options: &TypecheckOptions,
+) -> Result<TypedProjectMetadata, Vec<SpannedTypeError>> {
     let known_types = collect_known_types(&graph.modules);
     let generic_arity_registry = collect_generic_arities(&graph.modules);
     let record_type_registry = collect_record_types(&graph.modules);
+    let variant_parents = collect_variant_parents(&graph.modules);
+    let _sum_type_variants = collect_sum_type_variants(&graph.modules);
     let callable_registry = collect_unique_callables(&graph.modules);
     let pattern_callable_names = collect_pattern_callable_names(&graph.modules);
     let service_call_registry = collect_service_call_contracts(&graph.modules);
@@ -511,7 +949,7 @@ pub fn typecheck_module_graph_with_options(
         .iter()
         .map(|module| module.module_path.as_dotted())
         .collect::<HashSet<_>>();
-    let mut errors = Vec::new();
+    let mut errors: Vec<SpannedTypeError> = Vec::new();
     let mut typed_modules = Vec::with_capacity(graph.modules.len());
     let context = TypecheckContext {
         known_types: &known_types,
@@ -523,45 +961,199 @@ pub fn typecheck_module_graph_with_options(
         interface_registry: &interface_registry,
         resource_type_registry: &resource_type_registry,
         resource_capability_registry: &resource_capability_registry,
+        variant_parents: &variant_parents,
         allow_unresolved_references: options.allow_unresolved_imports,
     };
 
-    for module in graph.modules {
-        let imports: Vec<ModulePath> = module
-            .ast
-            .imports
-            .iter()
-            .map(|import| import.node.path.clone())
-            .collect();
+    for (graph_index, module) in graph.modules.iter().enumerate() {
         let module_name = module.module_path.as_dotted();
+        let module_file = module.path.clone();
         if !options.allow_unresolved_imports {
-            for import in &imports {
-                let target = import.as_dotted();
+            for import in &module.ast.imports {
+                let target = import.node.path.as_dotted();
                 if !available_modules.contains(&target) {
-                    errors.push(TypeError::UnresolvedImport {
+                    errors.push(SpannedTypeError {
+                        error: TypeError::UnresolvedImport {
+                            module: module_name.clone(),
+                            target,
+                        },
+                        file: module_file.clone(),
                         module: module_name.clone(),
-                        target,
+                        span: Some(import.span),
                     });
                 }
             }
         }
-        let (signatures, sig_errors) = collect_signatures(&module, &context, &module_name);
-        errors.extend(sig_errors);
+        let (signatures, sig_errors) = collect_signatures(module, &context, &module_name);
+        errors.extend(sig_errors.into_iter().map(|error| SpannedTypeError {
+            error,
+            file: module_file.clone(),
+            module: module_name.clone(),
+            span: None, // collect_signatures doesn't track item spans yet
+        }));
         typed_modules.push(TypedModule {
-            path: module.path,
-            module_path: module.module_path,
-            imports,
-            ast: module.ast,
+            graph_index,
             signatures,
         });
     }
 
-    if errors.is_empty() {
-        Ok(TypedProject {
-            modules: typed_modules,
+    // Validate extern func declarations against the registry (Wave 4a).
+    if let Some(ref registry) = options.extern_registry {
+        for module in &graph.modules {
+            let module_name = module.module_path.as_dotted();
+            let module_file = module.path.clone();
+            for item in &module.ast.items {
+                if let Item::ExternFuncDecl(def) = &item.node {
+                    if let Some(sig) = registry.lookup(&module_name, &def.name) {
+                        let got_inputs = def.inputs.len();
+                        let got_outputs = def.outputs.len();
+                        if sig.input_count != got_inputs || sig.output_count != got_outputs {
+                            errors.push(SpannedTypeError {
+                                error: TypeError::ExternArityMismatch {
+                                    module: module_name.clone(),
+                                    name: def.name.clone(),
+                                    expected_inputs: sig.input_count,
+                                    got_inputs,
+                                    expected_outputs: sig.output_count,
+                                    got_outputs,
+                                },
+                                file: module_file.clone(),
+                                module: module_name.clone(),
+                                span: Some(item.span),
+                            });
+                        }
+                    } else {
+                        errors.push(SpannedTypeError {
+                            error: TypeError::UnregisteredExtern {
+                                module: module_name.clone(),
+                                name: def.name.clone(),
+                            },
+                            file: module_file.clone(),
+                            module: module_name.clone(),
+                            span: Some(item.span),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    errors
+        .is_empty()
+        .then_some(TypedProjectMetadata {
+            typed_modules,
+            pipeline_params: collect_pipeline_params(&graph.modules),
+            dsl_type_registry: collect_dsl_type_registry(&graph.modules),
+            available_profiles: collect_available_profiles(&graph.modules),
         })
+        .ok_or(errors)
+}
+
+fn collect_pipeline_params(modules: &[ResolvedModule]) -> Vec<PipelineParam> {
+    let mut params = Vec::new();
+    for module in modules {
+        for item in &module.ast.items {
+            if let Item::ParamDecl(decl) = &item.node {
+                params.push(PipelineParam {
+                    name: decl.name.clone(),
+                    type_id: type_expr_to_string(&decl.ty),
+                    default_value: decl.default.as_ref().and_then(expr_to_default_string),
+                });
+            }
+        }
+    }
+    params
+}
+
+fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> TypeRegistry {
+    let mut registry = TypeRegistry::new();
+    for module in modules {
+        for item in &module.ast.items {
+            if let Item::TypeDef(def) = &item.node {
+                match &def.body {
+                    TypeBody::Sum(variants) => {
+                        let variant_pairs: Vec<(&str, &str)> = variants
+                            .iter()
+                            .map(|variant| (variant.name.as_str(), "String"))
+                            .collect();
+                        registry.register(
+                            def.name.as_str(),
+                            gunbc_ir::type_lib::coproduct(def.name.as_str(), variant_pairs),
+                        );
+                    }
+                    TypeBody::Record(fields) => {
+                        let field_type_strings: Vec<(String, String)> = fields
+                            .iter()
+                            .map(|field| (field.name.clone(), type_expr_to_string(&field.ty)))
+                            .collect();
+                        let field_pairs: Vec<(&str, &str)> = field_type_strings
+                            .iter()
+                            .map(|(name, ty)| (name.as_str(), ty.as_str()))
+                            .collect();
+                        registry.register(
+                            def.name.as_str(),
+                            gunbc_ir::type_lib::product(def.name.as_str(), field_pairs),
+                        );
+                    }
+                    TypeBody::Alias(_) => {}
+                }
+            }
+        }
+    }
+    registry
+}
+
+fn collect_available_profiles(modules: &[ResolvedModule]) -> Vec<String> {
+    let mut profiles = std::collections::BTreeSet::new();
+    for module in modules {
+        for item in &module.ast.items {
+            if let Item::ProfileDef(def) = &item.node {
+                profiles.insert(def.name.clone());
+            }
+        }
+    }
+    profiles.into_iter().collect()
+}
+
+fn expr_to_default_string(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Literal(Literal::String(value)) => Some(value.clone()),
+        Expr::Literal(Literal::Int(value)) => Some(value.to_string()),
+        Expr::Literal(Literal::Bool(value)) => Some(value.to_string()),
+        Expr::Literal(Literal::Float(value)) => Some(value.to_string()),
+        _ => None,
+    }
+}
+
+/// Check match exhaustiveness for a single match expression (WS3-6).
+///
+/// Given a scrutinee type name and the set of variant patterns in match arms,
+/// returns missing variants if the type is a known sum type and not all variants
+/// are covered. Returns `None` if the type is unknown or all variants are covered.
+///
+/// This is opt-in validation — not enforced in the main typecheck path because
+/// existing DSL code has intentional partial matches.
+pub fn check_match_exhaustiveness(
+    scrutinee_type: &str,
+    matched_variants: &HashSet<String>,
+    has_wildcard: bool,
+    sum_type_variants: &HashMap<String, HashSet<String>>,
+) -> Option<Vec<String>> {
+    if has_wildcard {
+        return None;
+    }
+    let all_variants = sum_type_variants.get(scrutinee_type)?;
+    let missing: Vec<String> = all_variants
+        .iter()
+        .filter(|v| !matched_variants.contains(*v))
+        .cloned()
+        .collect();
+    if missing.is_empty() {
+        None
     } else {
-        Err(errors)
+        let mut sorted = missing;
+        sorted.sort();
+        Some(sorted)
     }
 }
 
@@ -575,6 +1167,7 @@ struct TypecheckContext<'a> {
     interface_registry: &'a InterfaceRegistry,
     resource_type_registry: &'a ResourceTypeRegistry,
     resource_capability_registry: &'a ResourceCapabilityRegistry,
+    variant_parents: &'a HashMap<String, String>,
     allow_unresolved_references: bool,
 }
 
@@ -603,6 +1196,7 @@ fn collect_signatures(
         interface_registry: context.interface_registry,
         resource_type_registry: context.resource_type_registry,
         resource_capability_registry: context.resource_capability_registry,
+        variant_parents: context.variant_parents,
         allow_unresolved_references: context.allow_unresolved_references,
     };
     let pipeline_param_bindings = collect_pipeline_param_bindings(module);
@@ -828,6 +1422,14 @@ fn collect_signatures(
                     def,
                     context.interface_registry,
                 ));
+                if let Some(ref scheme) = def.config.auth {
+                    if !is_valid_auth_scheme(scheme) {
+                        errors.push(TypeError::InvalidAuthScheme {
+                            service: def.name.clone(),
+                            scheme: scheme.clone(),
+                        });
+                    }
+                }
                 signatures.push(TypedItemSignature::Service {
                     name: def.name.clone(),
                     operations: def.operations.len(),
@@ -991,6 +1593,7 @@ fn validate_pipeline_def(
         service_call_registry: body_context.service_call_registry,
         bound_service_registry: &empty_bound_services,
         param_callable_contracts: &empty_param_callable_contracts,
+        variant_parents: body_context.variant_parents,
     };
 
     for stage in &def.stages {
@@ -1170,6 +1773,44 @@ fn collect_record_types(modules: &[ResolvedModule]) -> RecordTypeRegistry {
         }
     }
     registry
+}
+
+/// Maps variant names to their parent sum type name (WS3-5).
+///
+/// For `type Result = Ok { value: T } | Err { error: E }`, returns
+/// `{"Ok" => "Result", "Err" => "Result"}`.
+fn collect_variant_parents(modules: &[ResolvedModule]) -> HashMap<String, String> {
+    let mut parents = HashMap::new();
+    for module in modules {
+        for item in &module.ast.items {
+            if let Item::TypeDef(def) = &item.node {
+                if let daglang_syntax::ast::TypeBody::Sum(variants) = &def.body {
+                    for variant in variants {
+                        parents.insert(variant.name.clone(), def.name.clone());
+                    }
+                }
+            }
+        }
+    }
+    parents
+}
+
+/// Maps sum type names to their set of variant names (WS3-6).
+///
+/// For `type Color = Red | Blue | Green`, returns `{"Color" => {"Red", "Blue", "Green"}}`.
+fn collect_sum_type_variants(modules: &[ResolvedModule]) -> HashMap<String, HashSet<String>> {
+    let mut variants_map = HashMap::new();
+    for module in modules {
+        for item in &module.ast.items {
+            if let Item::TypeDef(def) = &item.node {
+                if let daglang_syntax::ast::TypeBody::Sum(variants) = &def.body {
+                    let names: HashSet<String> = variants.iter().map(|v| v.name.clone()).collect();
+                    variants_map.insert(def.name.clone(), names);
+                }
+            }
+        }
+    }
+    variants_map
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1610,6 +2251,7 @@ struct BodyInferenceContext<'a> {
     interface_registry: &'a InterfaceRegistry,
     resource_type_registry: &'a ResourceTypeRegistry,
     resource_capability_registry: &'a ResourceCapabilityRegistry,
+    variant_parents: &'a HashMap<String, String>,
     allow_unresolved_references: bool,
 }
 
@@ -1638,6 +2280,7 @@ struct ExprInferenceContext<'a> {
     service_call_registry: &'a ServiceCallRegistry,
     bound_service_registry: &'a BoundServiceCallRegistry,
     param_callable_contracts: &'a HashMap<String, CallableContract>,
+    variant_parents: &'a HashMap<String, String>,
 }
 
 struct CallableBodyRef<'a> {
@@ -1707,7 +2350,19 @@ fn collect_resource_types(modules: &[ResolvedModule]) -> ResourceTypeRegistry {
                 .or_insert_with(|| Some(full));
         }
     }
+    insert_default_resource_types(&mut registry);
     registry
+}
+
+fn insert_default_resource_types(registry: &mut ResourceTypeRegistry) {
+    for name in ["Filesystem", "Network", "Clock", "AuthContext"] {
+        let full = format!("std.resources.{name}");
+        registry.full.insert(full.clone());
+        registry
+            .short
+            .entry(name.to_string())
+            .or_insert_with(|| Some(full));
+    }
 }
 
 fn collect_resource_capabilities(modules: &[ResolvedModule]) -> ResourceCapabilityRegistry {
@@ -2056,6 +2711,7 @@ fn validate_callable_body(
         service_call_registry: body_context.service_call_registry,
         bound_service_registry: &bound_service_registry,
         param_callable_contracts: &param_callable_contracts,
+        variant_parents: body_context.variant_parents,
     };
     let mut calls = Vec::new();
     collect_calls_from_stmts(body.stmts, &mut calls);
@@ -2258,9 +2914,6 @@ fn validate_callable_body(
                 None => trailing_expr_type.unwrap_or_else(|| ValueType::Named("Unit".to_string())),
             };
             let mismatches = push_type_mismatch_if_needed(ty, &inferred);
-            if !mismatches.is_empty() {
-                eprintln!("[DEBUG callable_body] caller={caller:?} return_ty={ty:?} inferred={inferred:?}");
-            }
             errors.extend(mismatches);
         }
     }
@@ -2278,7 +2931,6 @@ fn validate_return_stmt(
     match return_contract {
         ReturnContract::Single { ty } => {
             if fields.len() != 1 {
-                eprintln!("[DEBUG validate_return] caller={caller:?} expected single return type={ty:?} but got {len} fields", len=fields.len());
                 errors.push(TypeError::TypeMismatch {
                     expected: ty.clone(),
                     got: "Record".to_string(),
@@ -2293,9 +2945,6 @@ fn validate_return_stmt(
             );
             errors.extend(infer_errors);
             let mismatches = push_type_mismatch_if_needed(ty, &inferred);
-            if !mismatches.is_empty() {
-                eprintln!("[DEBUG return_single] caller={caller:?} ty={ty:?} inferred={inferred:?} fields={:?}", fields.iter().map(|(n,_)| n.as_str()).collect::<Vec<_>>());
-            }
             errors.extend(mismatches);
         }
         ReturnContract::Record { fields: expected } => {
@@ -2310,9 +2959,6 @@ fn validate_return_stmt(
                 let (inferred, infer_errors) = infer_expr_type(expr, local_bindings, infer_context);
                 errors.extend(infer_errors);
                 let mismatches = push_type_mismatch_if_needed(expected_ty, &inferred);
-                if !mismatches.is_empty() {
-                    eprintln!("[DEBUG return_record] caller={caller:?} field={field:?} expected_ty={expected_ty:?} inferred={inferred:?}");
-                }
                 errors.extend(mismatches);
             }
         }
@@ -2356,7 +3002,6 @@ fn infer_expr_type_for_expected_named_record(
             &normalize_type_id(&inferred_name),
             &normalize_type_id(expected_field_ty),
         ) {
-            eprintln!("[DEBUG field_mismatch] expected_type={expected_type:?} field={name:?} expected_field_ty={expected_field_ty:?} inferred={inferred_name:?}");
             errors.push(TypeError::TypeMismatch {
                 expected: expected_field_ty.clone(),
                 got: inferred_name,
@@ -2544,16 +3189,39 @@ fn infer_expr_type(
             }
         }
         Expr::Match(scrutinee, arms) => {
-            let (_, scr_errors) = infer_expr_type(scrutinee, local_bindings, infer_context);
+            let (_scr_ty, scr_errors) = infer_expr_type(scrutinee, local_bindings, infer_context);
             errors.extend(scr_errors);
+            let mut arm_types: Vec<String> = Vec::new();
             for arm in arms {
                 if let Some(guard) = &arm.guard {
                     let (_, guard_errors) = infer_expr_type(guard, local_bindings, infer_context);
                     errors.extend(guard_errors);
                 }
-                let (_, body_errors) = infer_expr_type(&arm.body, local_bindings, infer_context);
+                let (arm_ty, body_errors) =
+                    infer_expr_type(&arm.body, local_bindings, infer_context);
                 errors.extend(body_errors);
+                if let Some(name) = arm_ty.display_name() {
+                    arm_types.push(name);
+                }
             }
+            // WS3-5: Check compatibility across arms
+            if arm_types.len() >= 2 {
+                let first = &arm_types[0];
+                for other in &arm_types[1..] {
+                    let (compat, confident) =
+                        are_branch_types_compatible(first, other, infer_context.variant_parents);
+                    if !compat && confident {
+                        errors.push(TypeError::MatchArmTypeMismatch {
+                            first_type: first.clone(),
+                            mismatched_type: other.clone(),
+                        });
+                        break;
+                    }
+                }
+            }
+            // WS3-6: Exhaustiveness checking infrastructure is available via
+            // `check_match_exhaustiveness()`. Not enforced in the main typecheck
+            // path because existing DSL code has intentional partial matches.
             ValueType::Unknown
         }
         Expr::If(cond, then_expr, else_expr) => {
@@ -2567,13 +3235,33 @@ fn infer_expr_type(
                 ty
             });
             match else_ty {
-                Some(otherwise)
-                    if then_ty.display_name().is_some()
-                        && then_ty.display_name() == otherwise.display_name() =>
-                {
-                    then_ty
+                Some(ref otherwise) => {
+                    match (then_ty.display_name(), otherwise.display_name()) {
+                        (Some(ref t), Some(ref e)) => {
+                            let (compat, confident) =
+                                are_branch_types_compatible(t, e, infer_context.variant_parents);
+                            if compat {
+                                // Preserve pre-WS3-5 behavior: return then_ty when
+                                // names match exactly, Unknown otherwise.
+                                if then_ty.display_name() == otherwise.display_name() {
+                                    then_ty
+                                } else {
+                                    ValueType::Unknown
+                                }
+                            } else {
+                                if confident {
+                                    errors.push(TypeError::BranchTypeMismatch {
+                                        then_type: t.clone(),
+                                        else_type: e.clone(),
+                                    });
+                                }
+                                ValueType::Unknown
+                            }
+                        }
+                        _ => ValueType::Unknown,
+                    }
                 }
-                _ => ValueType::Unknown,
+                None => ValueType::Unknown,
             }
         }
         Expr::For(binding, iterable, passthrough, body) => {
@@ -2676,6 +3364,48 @@ impl ValueType {
     }
 }
 
+/// Check if two type names are compatible for branch unification (WS3-5).
+///
+/// Resolves variant names to their parent sum types (e.g., `Proceed` and
+/// `TerminalFailed` are both `RetryDecision` variants → compatible).
+/// Strips `?` for optionality (`T` and `T?` are branch-compatible).
+///
+/// Returns `(compatible, confident)`:
+/// - `compatible=true`: types are known to be the same (after resolution)
+/// - `compatible=false, confident=true`: types are clearly incompatible
+///   (at least one is a known primitive and they differ)
+/// - `compatible=false, confident=false`: types differ but both are DSL-defined;
+///   don't emit errors (insufficient info for type system to judge)
+fn are_branch_types_compatible(
+    a: &str,
+    b: &str,
+    variant_parents: &HashMap<String, String>,
+) -> (bool, bool) {
+    let a_resolved = variant_parents.get(a).map(|s| s.as_str()).unwrap_or(a);
+    let b_resolved = variant_parents.get(b).map(|s| s.as_str()).unwrap_or(b);
+    // Strip trailing `?` for optionality — `T` and `T?` are branch-compatible.
+    let a_base = a_resolved.trim_end_matches('?');
+    let b_base = b_resolved.trim_end_matches('?');
+    // Direct name equality (after variant + optionality resolution)
+    if a_base == b_base {
+        return (true, true);
+    }
+    let a_id = normalize_type_id(a_base);
+    let b_id = normalize_type_id(b_base);
+    let registry = gunbc_ir::type_registry::TypeRegistry::with_core_types();
+    let a_known = registry.resolve_type(&a_id).is_some();
+    let b_known = registry.resolve_type(&b_id).is_some();
+    if a_known || b_known {
+        // At least one type is a known primitive — use registry for compatibility
+        let compat = registry.is_compatible(&a_id, &b_id) || registry.is_compatible(&b_id, &a_id);
+        (compat, true)
+    } else {
+        // Both types are DSL-defined and unknown to the IR registry.
+        // Can't confidently say they're incompatible.
+        (false, false)
+    }
+}
+
 fn push_type_mismatch_if_needed(expected: &str, inferred: &ValueType) -> Vec<TypeError> {
     let Some(got) = inferred.display_name() else {
         return Vec::new();
@@ -2683,13 +3413,6 @@ fn push_type_mismatch_if_needed(expected: &str, inferred: &ValueType) -> Vec<Typ
     if !gunbc_ir::type_registry::TypeRegistry::with_core_types()
         .is_compatible(&normalize_type_id(&got), &normalize_type_id(expected))
     {
-        eprintln!("[DEBUG type_mismatch] expected={expected:?} got={got:?} inferred={inferred:?} backtrace:");
-        // Print a short backtrace to identify call site
-        let bt = std::backtrace::Backtrace::force_capture();
-        let bt_str = format!("{bt}");
-        for line in bt_str.lines().take(20) {
-            eprintln!("  {line}");
-        }
         vec![TypeError::TypeMismatch {
             expected: expected.to_string(),
             got,
@@ -2857,6 +3580,11 @@ fn validate_signature_map(
         }
     }
     errors
+}
+
+/// Check whether an auth scheme string is in the recognized set.
+fn is_valid_auth_scheme(scheme: &str) -> bool {
+    matches!(scheme, "BearerToken" | "Basic" | "ApiKey" | "None") || scheme.starts_with("Header(")
 }
 
 fn validate_service_interface_conformance(

@@ -367,7 +367,7 @@ impl ClippyConfig {
 
     /// Transport pattern configured from crate policies.
     ///
-    /// This is the repo-specific extension point: gunbc-dag can supply a
+    /// This is the repo-specific extension point: gunbc-app can supply a
     /// policy list that includes infra and other hubs.
     pub fn transport_pattern_with_crates(crates: &[crate::policy::CratePolicy]) -> Self {
         let mut config = Self::transport_pattern_base();
@@ -646,7 +646,7 @@ impl ClippyConfigRenderer {
 /// Must match `cargo::name("clippy")` — verified by test.
 const CLIPPY_GENERATOR_NAME: &str = "gunbc-clippy";
 /// Default regenerate command for clippy.toml.
-const DEFAULT_REGENERATE_CMD: &str = "cargo run -p gunbc-dag --bin gunbc-pragma";
+const DEFAULT_REGENERATE_CMD: &str = "cargo run -p gunbc-app --bin gunbc-pragma";
 
 impl ClippyConfigRenderer {
     /// Render the complete clippy.toml with header.

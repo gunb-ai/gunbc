@@ -1,6 +1,6 @@
 # Binary Elimination: Handwritten → Generated
 
-**Goal**: Eliminate all handwritten binary entrypoints in `gunbc-dag/src/bin/` except the two bootstrap exceptions (`ci.rs`, `codegen_cli.rs`). The CLI generator (`cli_gen.rs`) should produce every binary from DSL metadata.
+**Goal**: Eliminate all handwritten binary entrypoints in `gunbc-app/src/bin/` except the two bootstrap exceptions (`ci.rs`, `codegen_cli.rs`). The CLI generator (`cli_gen.rs`) should produce every binary from DSL metadata.
 
 **Guiding principle**: The DSL `.dag` file is the specification. The binary is derived code. If a binary needs hand-written Rust, that's a compiler feature gap.
 
@@ -38,7 +38,7 @@ This covers ~80% of a typical tool binary. The remaining 20% is what the handwri
 
 ### Gap 1: Profile Support (sdlc.rs, pipeline.rs)
 
-**What**: `sdlc.rs` accepts `--profile unit_test|local|cloud_run`, validates the enum, and passes it to `build_dsl_graph_with_profile()`. Profile determines which interface bindings are active.
+**What**: `sdlc.rs` accepts `--profile unit_test|local|cloud_run`, validates the enum, and threads it into `gunbc_resolve::BuildOpts.profile` when calling `build_dsl_graph(...)`. Profile determines which interface bindings are active.
 
 **DSL source**: The `.dag` file already declares profiles:
 ```
@@ -49,7 +49,7 @@ profile local { bind IssueProvider { impl: GitHubIssueProvider, ... } }
 **Solution**: The compiler already knows the profile names from `CompileOutput`. The CLI generator should:
 1. Detect when a `.dag` module has `profile` declarations
 2. Auto-generate a `--profile` CLI param with enum validation
-3. Call `build_dsl_graph_with_profile(path, &profile)` instead of `build_dsl_graph_for_entrypoint(path, func)`
+3. Call `gunbc_resolve::builder::build_dsl_graph(path, &GunbcExternResolver, BuildOpts { entry_func: Some(func), profile: Some(&profile) })`
 4. When `profile == "unit_test"` or `--dry-run`, use `auto_mock_spec` for DryRun mode
 
 **Compiler change**: `CompileOutput` should expose `available_profiles: Vec<String>`. The CLI template checks `!profiles.is_empty()` and generates profile dispatch.
@@ -151,7 +151,7 @@ Move the `param_source_*` propagation from `sdlc.rs` into `detect_entrypoints()`
 **RT59: Profile-aware CLI generation** (M)
 - Expose `available_profiles` in `CompileOutput`
 - CLI template: when profiles exist, generate `--profile` enum flag
-- Use `build_dsl_graph_with_profile()` instead of `build_dsl_graph_for_entrypoint()`
+- Use `gunbc_resolve::builder::build_dsl_graph(..., BuildOpts { entry_func, profile })`
 - Profile `unit_test` auto-enables DryRun mode
 
 ### Phase 2: Simple Binary Elimination

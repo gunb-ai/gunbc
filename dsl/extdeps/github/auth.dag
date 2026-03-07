@@ -1,0 +1,31 @@
+// extdeps/github/auth.dag -- GitHub auth materialization for active workflows.
+//
+// Transitional until structural auth injection is fully lowered. The workflow
+// surface consumes a provider-auth module rather than a shared credential helper.
+
+module extdeps.github.auth
+
+import std.patterns { credential_chain }
+import std.resources { Filesystem, Network }
+import std.types { CloudRuntime, NonEmptyStr }
+
+func github_token(
+  runtime: CloudRuntime = LocalDev,
+  project_id: NonEmptyStr = "gunbai-secrets",
+  secret_name: NonEmptyStr = "github-token"
+) -> { token: Secret }
+  uses fs: Filesystem(mode: Read)
+  uses net: Network
+{
+  cred = credential_chain(
+    runtime: runtime,
+    audience: "sigstore",
+    service_account: None,
+    secret_name: secret_name,
+    project_id: project_id,
+    source_id: "github-token",
+    required_scopes: ["repo", "gist"]
+  )
+
+  return { token: cred.token.token }
+}

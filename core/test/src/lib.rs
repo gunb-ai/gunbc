@@ -94,7 +94,7 @@ pub fn assert_typed_builder_rejects_invalid_slot<T: Clone>(dag: &gunbc_ir::Dag<T
     );
 }
 pub mod auto_mock;
-pub use auto_mock::auto_mock_spec;
+pub use auto_mock::{auto_mock_failure_variants, auto_mock_spec, FailureVariant};
 pub mod temp;
 pub use temp::{unique_temp_dir, unique_temp_file};
 

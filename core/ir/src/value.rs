@@ -178,6 +178,70 @@ pub enum Value {
     Skipped,
 }
 
+/// Explicit control flow for DAG execution.
+///
+/// Replaces the implicit dual-use of `Value::Skipped` (which conflates
+/// "guard condition failed" with "missing/null"). Nodes that may skip
+/// execution return `ControlFlow::Skipped` with an optional reason;
+/// nodes that produce a value return `ControlFlow::Continue(value)`.
+///
+/// Migration: new code should use `ControlFlow` at node boundaries.
+/// `Value::Skipped` remains for backward compat during incremental migration.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ControlFlow {
+    /// Node executed normally and produced a value.
+    Continue(Box<Value>),
+    /// Node was skipped (guard failed, branch not taken, etc.).
+    Skipped { reason: Option<String> },
+}
+
+impl ControlFlow {
+    /// Unwrap the value, panicking if skipped.
+    pub fn unwrap(self) -> Value {
+        match self {
+            ControlFlow::Continue(v) => *v,
+            ControlFlow::Skipped { reason } => panic!(
+                "called unwrap() on Skipped: {}",
+                reason.as_deref().unwrap_or("no reason")
+            ),
+        }
+    }
+
+    /// Get the value if Continue, None if Skipped.
+    pub fn into_value(self) -> Option<Value> {
+        match self {
+            ControlFlow::Continue(v) => Some(*v),
+            ControlFlow::Skipped { .. } => None,
+        }
+    }
+
+    /// Whether this is a Continue variant.
+    pub fn is_continue(&self) -> bool {
+        matches!(self, ControlFlow::Continue(_))
+    }
+
+    /// Whether this is a Skipped variant.
+    pub fn is_skipped(&self) -> bool {
+        matches!(self, ControlFlow::Skipped { .. })
+    }
+
+    /// Convert from legacy `Value` (maps `Value::Skipped` to `ControlFlow::Skipped`).
+    pub fn from_value(v: Value) -> Self {
+        match v {
+            Value::Skipped => ControlFlow::Skipped { reason: None },
+            other => ControlFlow::Continue(Box::new(other)),
+        }
+    }
+
+    /// Convert back to legacy `Value` (maps `Skipped` to `Value::Skipped`).
+    pub fn into_legacy_value(self) -> Value {
+        match self {
+            ControlFlow::Continue(v) => *v,
+            ControlFlow::Skipped { .. } => Value::Skipped,
+        }
+    }
+}
+
 /// Discriminant tag for [`Value`] variants.
 ///
 /// Allows type-level dispatch without manufacturing strings.
@@ -951,5 +1015,34 @@ mod tests {
             json.contains("storage-token-xyz"),
             "serde should serialize plaintext for storage: {json}"
         );
+    }
+
+    #[test]
+    fn control_flow_from_value_maps_skipped() {
+        let cf = ControlFlow::from_value(Value::Skipped);
+        assert!(cf.is_skipped());
+        assert_eq!(cf.into_legacy_value(), Value::Skipped);
+    }
+
+    #[test]
+    fn control_flow_from_value_maps_continue() {
+        let cf = ControlFlow::from_value(Value::Int(42));
+        assert!(cf.is_continue());
+        assert_eq!(cf.unwrap(), Value::Int(42));
+    }
+
+    #[test]
+    fn control_flow_into_value_returns_none_for_skipped() {
+        let cf = ControlFlow::Skipped {
+            reason: Some("guard failed".into()),
+        };
+        assert!(cf.into_value().is_none());
+    }
+
+    #[test]
+    fn control_flow_round_trip() {
+        let original = Value::Str("hello".into());
+        let cf = ControlFlow::from_value(original.clone());
+        assert_eq!(cf.into_legacy_value(), original);
     }
 }

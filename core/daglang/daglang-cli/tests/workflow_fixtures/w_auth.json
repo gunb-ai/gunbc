@@ -15,21 +15,21 @@
     "error_contains": null,
     "expected_json": {
       "dry_run_completion_required": true,
-      "interface_contract_verification_targets": 1,
-      "pure_node_determinism_targets": 283,
+      "interface_contract_verification_targets": 0,
+      "pure_node_determinism_targets": 64,
       "resource_acquire_targets": 4,
-      "resource_provide_targets": 1,
+      "resource_provide_targets": 0,
       "resource_release_targets": 4,
-      "service_param_source_targets": 14,
-      "service_transport_execute_targets": 114,
-      "service_transport_external_targets": 102,
-      "service_transport_hermetic_targets": 12,
-      "service_transport_idempotent_targets": 18,
-      "service_transport_parse_targets": 114,
-      "service_transport_prepare_targets": 114,
-      "service_transport_readonly_targets": 30,
-      "total_obligations": 397,
-      "transport_execution_targets": 114
+      "service_param_source_targets": 0,
+      "service_transport_execute_targets": 28,
+      "service_transport_external_targets": 21,
+      "service_transport_hermetic_targets": 7,
+      "service_transport_idempotent_targets": 15,
+      "service_transport_parse_targets": 28,
+      "service_transport_prepare_targets": 28,
+      "service_transport_readonly_targets": 12,
+      "total_obligations": 92,
+      "transport_execution_targets": 28
     }
   }
 }

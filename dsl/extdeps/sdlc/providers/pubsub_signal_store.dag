@@ -1,0 +1,140 @@
+// extdeps/sdlc/providers/pubsub_signal_store.dag
+//
+// Layer 3 concrete implementation: PubSubSignalStore implements SignalStore.
+//
+// Uses GCP Pub/Sub for durable at-least-once signal delivery.
+// Emit publishes to a topic; consume pulls from a subscription;
+// ack acknowledges a received message.
+//
+// Profile binding: cloud_run
+
+module extdeps.sdlc.providers.pubsub_signal_store
+
+import interfaces.signal_store { SignalStore }
+import std.types { NonEmptyStr, Signal, SignalType }
+import std.errors { GcpErrorShape }
+
+// =========================================================================
+// PubSubSignalStore : SignalStore
+// =========================================================================
+//
+// Profile binding: cloud_run
+// Transport: GCP Pub/Sub REST API
+// Topic: projects/{project_id}/topics/{topic}
+// Subscription: projects/{project_id}/subscriptions/{subscription}
+
+service pubsub.SignalStore : SignalStore {
+
+  config {
+    topic: NonEmptyStr
+    subscription: NonEmptyStr
+    project_id: NonEmptyStr
+    endpoint: "https://pubsub.googleapis.com"
+    auth: BearerToken
+    auth_input: access_token
+    rate_limit: { requests: 1000, per: minute, scope: pubsub }
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 503] }
+  }
+
+  operation emit {
+    input {
+      access_token: Secret
+      signal: Signal
+    }
+    output { emitted: Bool }
+    transport rest { method: POST, path: "/v1/projects/\{project_id\}/topics/\{topic\}:publish" }
+    response {
+      200 => Json
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation consume {
+    input {
+      access_token: Secret
+      signal_types: List<SignalType>
+      limit: Int?
+    }
+    output { signals: List<Signal> }
+    transport rest { method: POST, path: "/v1/projects/\{project_id\}/subscriptions/\{subscription\}:pull" }
+    response {
+      200 => Json
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation ack {
+    input {
+      access_token: Secret
+      idempotency_key: NonEmptyStr
+    }
+    output { acked: Bool }
+    idempotent
+    transport rest { method: POST, path: "/v1/projects/\{project_id\}/subscriptions/\{subscription\}:acknowledge" }
+    response {
+      200 => Json
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+}
+
+// -- Tests ──────────────────────────────────────────────────────────
+
+fixture gcs_auth {
+    mock cloud_env.config -> { provider: "gcp", runtime: "cloud-run" }
+    mock cloud_env.credential -> { token: "<MOCK_GCS_TOKEN>", source_type: "static", scheme: "bearer" }
+}
+
+test pubsub_signal_emit : gcs_auth {
+
+    input emit/prepare.signal -> {
+        type: "StageTransition",
+        idempotency_key: "sig-001",
+        payload: { issue_id: "42", from_stage: "idea", to_stage: "design" },
+        created_at: ""
+    }
+
+    mock emit/execute.response -> rest_response(200, {
+        messageIds: ["msg-001"]
+    })
+
+    expect result.emitted == true
+}
+
+test pubsub_signal_consume : gcs_auth {
+
+    mock consume/execute.response -> rest_response(200, {
+        receivedMessages: [{
+            ackId: "ack-001",
+            message: {
+                data: "",
+                attributes: {
+                    type: "StageTransition",
+                    idempotency_key: "sig-001"
+                }
+            }
+        }]
+    })
+
+    expect result.signals is NonEmpty
+}
+
+test pubsub_signal_ack : gcs_auth {
+
+    input ack/prepare.idempotency_key -> "sig-001"
+
+    mock ack/execute.response -> rest_response(200, {})
+
+    expect result.acked == true
+}

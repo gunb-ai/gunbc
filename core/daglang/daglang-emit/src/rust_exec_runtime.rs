@@ -9,7 +9,7 @@
 //! - `impl Executable for Op` with match dispatch
 //! - Handler bodies for each `HandlerKind`
 //! - `fn build_dag() -> Dag<Op>` with hardcoded graph construction
-//! - `fn main()` with CLI arg parsing + `execute_with_mode_and_inputs`
+//! - `fn main()` with CLI arg parsing + `execute_dag`
 //! - `Cargo.toml` with `gunbc-ir`/`gunbc-exec`/`gunbc-lib-transport` deps
 
 use std::collections::BTreeSet;
@@ -224,7 +224,7 @@ fn classify_nodes_with_config(
 
         let op = match &node.body {
             NodeBody::Opaque(op) => op,
-            NodeBody::SubDag(_) => continue,
+            NodeBody::SubDag(..) => continue,
         };
 
         let handler = match classify_handler(op) {
@@ -368,7 +368,7 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerClassification> {
             ..
         } => return Some(HandlerClassification::MetadataOnly),
         // C24 migration note:
-        // GetField/ExprCompute are still interpreter-backed in resolve.rs. We
+        // GetField/ExprCompute are still interpreter-backed in the resolve layer. We
         // keep layer-1 compile unblocked by emitting passthrough stubs until
         // dedicated handlers land.
         LoweredOp::Primitive {
@@ -379,9 +379,13 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerClassification> {
             kind: PrimitiveOpKind::ExprCompute { .. },
             ..
         } => return Some(HandlerClassification::Handler(HandlerKind::Passthrough)),
+        // ExprCompute already handled above
         // C24: All remaining structural primitive ops use passthrough stubs.
         LoweredOp::Primitive { kind, .. } => {
-            debug_assert!(kind.is_structural(), "unhandled non-structural primitive: {kind:?}");
+            debug_assert!(
+                kind.is_structural(),
+                "unhandled non-structural primitive: {kind:?}"
+            );
             return Some(HandlerClassification::Handler(HandlerKind::Passthrough));
         }
     }
@@ -884,9 +888,9 @@ fn build_exec_runtime_source(
     }));
     let mut gunbc_exec_items = vec![
         "ExecError".into(),
+        "ExecuteConfig".into(),
         "Executable".into(),
-        "ExecutionMode".into(),
-        "execute_with_mode_and_inputs".into(),
+        "execute_dag".into(),
     ];
     if needs_output_map {
         gunbc_exec_items.push("OutputMap".into());
@@ -1231,11 +1235,11 @@ fn build_main_raw(dag: &Dag<LoweredOp>) -> gunbc_ir::code_ir::Item {
     if entrypoints.is_empty() {
         writeln!(
             text,
-            "    let result = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, None);"
+            "    let result = execute_dag(&dag, ExecuteConfig::default());"
         )
         .unwrap();
     } else {
-        writeln!(text, "    let result = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks));").unwrap();
+        writeln!(text, "    let result = execute_dag(&dag, ExecuteConfig {{ input_mocks: Some(&input_mocks), ..Default::default() }});").unwrap();
     }
     writeln!(text, "    match result {{").unwrap();
     writeln!(text, "        Ok(log) => {{").unwrap();

@@ -528,7 +528,7 @@ functions or override behavior:
 ```rust
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "ci",
-    output = "gunbc-dag/src/ci/generated_tests.rs",
+    output = "gunbc-app/src/ci/generated_tests.rs",
     module = "ci_generated_tests",
     builder(crate::build_ci_graph().unwrap()),
     signature(crate::ci_signature()),
@@ -541,10 +541,10 @@ pub fn ci_mock_spec() -> MockSpec { ... }
 
 ```makefile
 testgen:
-    cargo run -p gunbc-dag --bin gunbc-testgen --release
+    cargo run -p gunbc-app --bin gunbc-testgen --release
 
 testgen-check:
-    cargo run -p gunbc-dag --bin gunbc-testgen --release -- --mode=verify
+    cargo run -p gunbc-app --bin gunbc-testgen --release -- --mode=verify
 ```
 
 Staleness detection via content hash in generated file header:

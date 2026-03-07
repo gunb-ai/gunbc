@@ -204,6 +204,17 @@ pub enum EmitError {
     MissingEmbeddedAsset { backend: String, key: String },
 }
 
+impl EmitError {
+    /// Stable, grep-able error code for this variant (CP-59).
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::UnsupportedConstruct { .. } => "EMI001",
+            Self::InvalidLoweredNode(..) => "EMI002",
+            Self::MissingEmbeddedAsset { .. } => "EMI003",
+        }
+    }
+}
+
 impl std::fmt::Display for EmitError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -957,7 +968,7 @@ impl NodeBodyExt for gunbc_ir::node::NodeBody<LoweredOp> {
     fn as_opaque(&self) -> Option<&LoweredOp> {
         match self {
             gunbc_ir::node::NodeBody::Opaque(op) => Some(op),
-            gunbc_ir::node::NodeBody::SubDag(_) => None,
+            gunbc_ir::node::NodeBody::SubDag(..) => None,
         }
     }
 }

@@ -69,10 +69,10 @@ fn ci_and_test_all_share_compilation() {
 
 ## Files
 
-- `gunbc-dag/src/workflow/` — WorkIdentity, flatten_workflows()
+- `gunbc-app/src/workflow/` — WorkIdentity, flatten_workflows()
 - `core/infra/src/hash.rs` — content hashing for work identity
 
 ## References
 
-- `gunbc-dag/src/workflow/spec_builders.rs` — workflow spec construction
-- `gunbc-dag/src/workflow/process_registry.rs` — process unit specs
+- `gunbc-app/src/workflow/spec_builders.rs` — workflow spec construction
+- `gunbc-app/src/workflow/process_registry.rs` — process unit specs

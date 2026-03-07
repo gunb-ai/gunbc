@@ -4,7 +4,7 @@
 // chains, token lifetimes.
 //
 // Consumers:
-//   cloud/gcp/credential.dag       — impersonation chain
+//   extdeps/sdlc/providers/gcp_credential_provider.dag — impersonation chain
 //   std/patterns.dag               — credential_chain pattern
 
 module extdeps.cloud.gcp.iam

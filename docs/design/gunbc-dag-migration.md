@@ -1,8 +1,12 @@
 # gunbc-dag Migration: Rust → Pure DSL
 
-**Goal**: Reduce gunbc-dag from a 23,107-line Rust crate with domain logic, compiler infrastructure, and repo-specific conventions to a thin execution harness. Domain knowledge lives in `.dag` files. Generic infrastructure lives in `core/` crates.
+> **Historical note**: `gunbc-dag` has been renamed to `gunbc-app` (2026-03-05).
+> References to `gunbc-dag` below are from the original plan. The directory is
+> now `gunbc-app/` and the crate is `gunbc-app`.
 
-**Principle**: gunbc-dag should contain ONLY:
+**Goal**: Reduce gunbc-dag (now `gunbc-app`) from a 23,107-line Rust crate with domain logic, compiler infrastructure, and repo-specific conventions to a thin execution harness. Domain knowledge lives in `.dag` files. Generic infrastructure lives in `core/` crates.
+
+**Principle**: gunbc-app should contain ONLY:
 1. Bootstrap exceptions (ci.rs, codegen_cli.rs) — can't be generated
 2. Resolver bridge (compile DSL → resolve to executable ops) — structural necessity
 3. Generated test files (280,603 lines, machine-produced)
@@ -18,7 +22,7 @@ Code that is not repo-specific. It implements generic algorithms that any projec
 | Module | Lines | What it does | Target crate |
 |--------|-------|--------------|--------------|
 | `resolve_service.rs` | 2,177 | Generic REST/Shell/File service interpreters parameterized by `ServiceOperationSpec`. Zero repo-specific logic. | `core/ir` or new `core/resolve` |
-| `resolve.rs` | 2,294 | Resolution framework: `LoweredOp` → `DynOp`. ~70% generic (adapter ops, primitive mapping, resource lifecycle). 30% is domain dispatch (`resolve_domain()`). | Split: generic → `core/resolve`, domain dispatch stays |
+| `core/resolve/src/resolve.rs` | 2,294 | Resolution framework: `LoweredOp` → `DynOp`. Generic resolution lives in `core/resolve`; app-specific extern/domain binding is narrowed to `gunbc-dag/src/extern_ops.rs`. | Completed split: generic → `core/resolve`, app binding stays |
 | `workflow/planner.rs` | 572 | Deterministic DAG planning: topo sort, key materialization, miss reasons, critical path | New `core/workflow` |
 | `workflow/executor.rs` | 415 | Sequential unit execution, timing, fail-closed semantics | `core/workflow` |
 | `workflow/admission.rs` | 521 | Resource claim validation, conflict detection | `core/workflow` |
@@ -32,7 +36,7 @@ Code that is not repo-specific. It implements generic algorithms that any projec
 | `workflow/errors.rs` | 108 | WorkflowAdmissionError | `core/workflow` |
 | `mock_defaults.rs` | 583 | ~60% generic: MockSpec builder, response probing, terminal observability. ~40% GCP-specific field mappings. | Split: generic → `core/test`, GCP mappings stay or → DSL |
 | `fidelity.rs` | 354 | Generic pattern: compile DSL → extract fn bodies → evaluate. Content is DSL files. | Pattern → `core/codegen` |
-| `dsl_builder.rs` | 384 | Compile-then-resolve pattern. ~80% generic. | Pattern → `core/codegen`, layout adapter stays |
+| `core/resolve/src/builder.rs` | 384 | Compile-then-resolve entrypoint. App-layer `dsl_builder.rs` is deleted; direct callers use `build_dsl_graph(relative_module, resolver, BuildOpts)`. | Completed: direct core builder API |
 | `testgen_dag/dag_test_discovery.rs` | 930 | Module discovery, test-block discovery, auto-testgen pipeline | `core/codegen` or `core/testgen` |
 | `testgen_dag/graph.rs` | 315 | Content-upsert DAG builder for testgen targets | `core/codegen` |
 | `testgen_dag/mock_interpreter.rs` | 365 | DSL Expr → Value runtime interpreter for test blocks | `core/codegen` |
@@ -51,7 +55,7 @@ Hard-coded Rust tables, mappings, and conventions that encode domain knowledge a
 | `extern_impls.rs` | 637 | 6 Rust implementations for `extern func` declarations | Blocked on: recursive types (render_tree), inventory access (discover_tools) |
 | `policy/pragma.rs` | 546 | Clippy allowlist rules, dead_code rules, lint policy | Already mirrored in DSL (`arch_rules.dag`, `clippy_policy.dag`). Delete after Phase 2. |
 | `workflow/catalog.rs` | 576 | Hardcoded workflow variant table, stage-to-claims mapping | DSL data: `data workflow_catalog`, `data default_claims` |
-| `dsl_registry.rs` | 487 | Tool discovery conventions, func→CLI mapping | DSL conventions via annotations or data declarations |
+| `core/codegen/src/tool_discovery.rs` | 487 | Tool discovery conventions, func→CLI mapping | DSL conventions via annotations or data declarations |
 | `workflow/unit_commands.rs` | 425 | Per-workflow command tables mapping NodeId→cargo commands | DSL data: `data ci_commands`, `data test_all_commands`, etc. |
 | `resources.rs` | 342 | Resource definitions, input globs, output paths | DSL data: `data testgen_resources`, `data makegen_resources` |
 | `makegen/gitignore.rs` | 372 | Gitignore category patterns, build-system rules | DSL data: `data gitignore_categories` |
@@ -118,8 +122,8 @@ Extract the 7 framework modules (planner, executor, admission, coordination, sch
 **A2: Move `resolve_service.rs` to `core/`** (S)
 100% generic. Zero repo-specific logic. Move to `core/ir/src/transport/service_ops.rs` or a new `core/resolve` crate.
 
-**A3: Split `resolve.rs`** (M)
-Extract generic resolution framework (adapter ops, primitive mapping, resource lifecycle, ~1,600 lines) to `core/resolve`. Leave `resolve_domain()` dispatch (~700 lines) in gunbc-dag.
+**A3: Split resolver surface** (M) — DONE 2026-03-05
+Generic resolution framework moved to `core/resolve`. The remaining app binding surface is `gunbc-dag/src/extern_ops.rs` via `GunbcExternResolver`.
 
 **A4: Move testgen engine to `core/codegen`** (M)
 Move `dag_test_discovery.rs`, `graph.rs`, `mock_interpreter.rs`, `ops.rs`, `profile_discovery.rs` to `core/codegen/src/testgen/`. gunbc-dag calls the engine, doesn't own it.
@@ -130,8 +134,8 @@ Generic probing/builder framework → `core/test/src/auto_mock.rs`. GCP-specific
 **A6: Move `fidelity.rs` pattern to `core/codegen`** (S)
 The compile-evaluate pattern is generic. Move to `core/codegen/src/dsl_evaluator.rs`. gunbc-dag calls it with repo-specific DSL file paths.
 
-**A7: Move `dsl_builder.rs` pattern to `core/codegen`** (S)
-Extract compile-then-resolve to `core/codegen/src/graph_builder.rs`. gunbc-dag keeps a thin adapter for workspace layout.
+**A7: Delete app-layer builder wrapper** (S) — DONE 2026-03-05
+`gunbc-dag/src/dsl_builder.rs` is deleted. Generated callers and tests use `gunbc_resolve::builder::build_dsl_graph(...)` directly with `GunbcExternResolver`.
 
 ### Stream B: Replace Rust Domain Data with DSL (needs DSL evaluation)
 
@@ -197,7 +201,7 @@ Stream A (→ core/) ───────────────────�
   A2 (resolve_service) ─┐
   A5 (mock_defaults)    ├── independent, parallel
   A6 (fidelity)         │
-  A7 (dsl_builder)      ┘
+  A7 (direct builder API)      ┘
   A1 (workflow crate) ──── after A2 (workflow may use resolve types)
   A3 (resolve split) ───── after A2 (resolve_service moved first)
   A4 (testgen engine) ──── after A5 (testgen uses mock_defaults)

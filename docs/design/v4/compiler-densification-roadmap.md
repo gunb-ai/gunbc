@@ -45,7 +45,7 @@ Ordered by: **what downstream/runtime bug class it eliminates**.
 
 ### Priority 1: Kill the interpreter (Bridges 1+2+3)
 
-**Task IDs**: Bridge 1, Bridge 2, Bridge 3 from `TODO/gunbc-dag-simplification.md`;
+**Task IDs**: Bridge 1, Bridge 2, Bridge 3 from `TODO/gunbc-app-simplification.md`;
 C24 from `docs/design/pure-dataflow-lowering.md`
 
 **Bug class eliminated**: Hidden semantics in ExprComputeOp. Match arms not guarding
@@ -77,7 +77,7 @@ guarded branches. Transport nodes inside non-matching arms produce `Value::Skipp
 
 ### Priority 2: Default parameter correctness (Bridge 2b)
 
-**Task ID**: Bridge 2b from `TODO/gunbc-dag-simplification.md`
+**Task ID**: Bridge 2b from `TODO/gunbc-app-simplification.md`
 
 **Status**: **DONE** (lowerer injects literal source nodes for omitted call args with
 defaults; `daglang-lower/src/lib.rs:9164-9189`).
@@ -140,7 +140,7 @@ adapter structs in `resolve.rs`. Adding a new service requires Rust code.
 
 ### Priority 6: Resource injection at lower time (Bridges 8+9)
 
-**Task IDs**: Bridge 8, Bridge 9 from `TODO/gunbc-dag-simplification.md`
+**Task IDs**: Bridge 8, Bridge 9 from `TODO/gunbc-app-simplification.md`
 
 **Bug class eliminated**: Filesystem resource injected at resolver time rather than
 lowerer time. File transport goes through generic adapters instead of typed IR nodes.
@@ -151,7 +151,7 @@ lowerer time. File transport goes through generic adapters instead of typed IR n
 - Resource acquisition nodes inserted by lowerer when `uses` declarations present
 - File transport uses same prepare/execute/parse triplet as REST and Shell
 
-**Design doc**: Covered in `TODO/gunbc-dag-simplification.md` (Bridge 8, Bridge 9 sections).
+**Design doc**: Covered in `TODO/gunbc-app-simplification.md` (Bridge 8, Bridge 9 sections).
 
 ## 3. What's NOT in existing task sheets (gaps identified by review)
 
@@ -181,7 +181,7 @@ from a compiled graph must not change observable behavior."
 ### Gap C: No task for `ReturnExprCompute` split-brain (from gap-analysis-tasks.md)
 
 The `docs/review/gap-analysis-tasks.md` documents this as P0-5 / P1-1, which maps exactly
-to C24 Phase 2 from the pure-dataflow-lowering design. However, the `TODO/gunbc-dag-simplification.md`
+to C24 Phase 2 from the pure-dataflow-lowering design. However, the `TODO/gunbc-app-simplification.md`
 references it as Bridge 1+2 without the P0-5 "make install fails" framing.
 
 **Action**: The simplification doc already has the right acceptance criteria. The gap-analysis
@@ -190,7 +190,7 @@ P0-5 is the same work. No new task needed — just cross-reference.
 ### Gap D: Compile-time tool registry (Bridges 6+7)
 
 The review correctly identifies this as a "larger design work" item. It's already tracked
-in `TODO/gunbc-dag-simplification.md` with the right "keep as-is, don't optimize" guidance.
+in `TODO/gunbc-app-simplification.md` with the right "keep as-is, don't optimize" guidance.
 The blocker is compiler artifact emission. No new doc needed.
 
 ## 4. Execution Order

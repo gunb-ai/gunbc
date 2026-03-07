@@ -14,7 +14,10 @@ use crate::dag::{Dag, Port};
 use crate::entrypoint::detect_entrypoints;
 use crate::node::{Node, NodeBody};
 use crate::type_registry::TypeRegistry;
-use crate::types::{NodeId, PortName, SemanticCarrierKind, StaticFingerprint, TypeId};
+use crate::types::{
+    NodeId, PortName, PresenceMode, SemanticCarrierKind, StaticFingerprint, TypeId,
+};
+use daglang_contract::{Diagnostic, DiagnosticContext};
 use std::collections::HashSet;
 use std::fmt;
 
@@ -243,11 +246,24 @@ pub fn validate_subdag_interfaces<T>(dag: &Dag<T>) -> Vec<SubDagError> {
 /// Validate that all `res:*` input ports are wired.
 ///
 /// Returns a list of unwired resource inputs (unconnected entrypoints).
+///
+/// Skips resource ports with optional cardinality (min == 0), since those
+/// are legitimately unwired when no provider is configured (e.g., `res:credential`
+/// on transport execute nodes for services without auth).
 pub fn validate_resource_wiring<T>(dag: &Dag<T>) -> Vec<UnwiredResource> {
-    detect_entrypoints(dag)
+    let entrypoints = detect_entrypoints(dag);
+    entrypoints
         .entrypoint_ports
         .iter()
         .filter(|(_, port_name, _)| port_name.is_resource())
+        .filter(|(node_id, port_name, _)| {
+            // Look up the port on its node to check cardinality.
+            dag.nodes
+                .iter()
+                .find(|n| n.id == *node_id)
+                .and_then(|n| n.inputs.iter().find(|p| p.name == *port_name))
+                .is_none_or(|p| p.cardinality.min > 0)
+        })
         .map(|(node_id, port_name, _)| UnwiredResource {
             node: node_id.clone(),
             port: port_name.clone(),
@@ -284,7 +300,7 @@ fn validate_resource_wiring_recursive_impl<T>(
     // Recurse into SubDag nodes, carrying forward any resource inputs
     // exposed on the SubDag wrapper.
     for node in &dag.nodes {
-        if let NodeBody::SubDag(ref inner) = node.body {
+        if let NodeBody::SubDag(ref inner, _) = node.body {
             let mut next_inherited = inherited_resources.clone();
             for port in &node.inputs {
                 if port.name.is_resource() {
@@ -298,7 +314,7 @@ fn validate_resource_wiring_recursive_impl<T>(
 
 fn validate_dag_recursive<T>(dag: &Dag<T>, errors: &mut Vec<SubDagError>, registry: &TypeRegistry) {
     for node in &dag.nodes {
-        if let NodeBody::SubDag(ref inner) = node.body {
+        if let NodeBody::SubDag(ref inner, _) = node.body {
             validate_single_subdag(node, inner, registry, errors);
             // Recurse into the inner DAG
             let mut nested_errors = Vec::new();
@@ -436,6 +452,11 @@ fn check_type_match(
     registry: &TypeRegistry,
     errors: &mut Vec<SubDagError>,
 ) {
+    // Skip function-typed ports — `fn(T)->R` syntax isn't handled by the
+    // type expression parser yet (WS3-2 prerequisite).
+    if parent_type.0.starts_with("fn(") || inner_type.0.starts_with("fn(") {
+        return;
+    }
     if let Err(error) = registry.validate_type_expr(parent_type) {
         errors.push(SubDagError::InvalidTypeExpression {
             node: node.clone(),
@@ -530,11 +551,7 @@ pub fn validate_fingerprint_uniqueness<T>(dag: &Dag<T>) -> Vec<FingerprintConfli
     let fingerprinted: Vec<(&NodeId, &StaticFingerprint)> = dag
         .nodes
         .iter()
-        .filter_map(|node| {
-            node.static_fingerprint
-                .as_ref()
-                .map(|fp| (&node.id, fp))
-        })
+        .filter_map(|node| node.static_fingerprint.as_ref().map(|fp| (&node.id, fp)))
         .collect();
 
     let mut conflicts = Vec::new();
@@ -578,6 +595,64 @@ impl fmt::Display for VerifyError {
             VerifyError::UnwiredResource(e) => write!(f, "{e}"),
             VerifyError::Fingerprint(e) => write!(f, "{e}"),
             VerifyError::UnwiredInput(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl VerifyError {
+    pub fn code(&self) -> &'static str {
+        match self {
+            VerifyError::SubDag(..) => "VER001",
+            VerifyError::UnwiredResource(..) => "VER002",
+            VerifyError::Fingerprint(..) => "VER003",
+            VerifyError::UnwiredInput(..) => "VER004",
+        }
+    }
+
+    pub fn help(&self) -> Option<String> {
+        match self {
+            VerifyError::UnwiredInput(error) => Some(format!(
+                "wire a producer into `{}`.`{}` or make the port optional/defaulted",
+                error.node_name, error.port_name
+            )),
+            VerifyError::UnwiredResource(error) => Some(format!(
+                "add a resource producer for `{}`.`{}` or declare the required `uses` binding",
+                error.node, error.port
+            )),
+            VerifyError::Fingerprint(error) => Some(format!(
+                "deduplicate operation fingerprint `{}` or make the conflicting nodes structurally distinct",
+                error.fingerprint
+            )),
+            VerifyError::SubDag(..) => Some(
+                "align the parent node interface with the inner SubDag boundary ports".to_string(),
+            ),
+        }
+    }
+
+    pub fn to_diagnostic(&self) -> Diagnostic {
+        let mut diagnostic =
+            Diagnostic::new(self.code(), self.to_string()).with_context(self.diagnostic_context());
+        if let Some(help) = self.help() {
+            diagnostic = diagnostic.with_help(help);
+        }
+        diagnostic
+    }
+
+    fn diagnostic_context(&self) -> DiagnosticContext {
+        match self {
+            VerifyError::UnwiredInput(error) => DiagnosticContext::Missing {
+                kind: "input",
+                name: format!("{}::{}", error.node_name, error.port_name),
+                available: Vec::new(),
+            },
+            VerifyError::UnwiredResource(error) => DiagnosticContext::Missing {
+                kind: "resource",
+                name: format!("{}::{}", error.node, error.port),
+                available: Vec::new(),
+            },
+            VerifyError::SubDag(..) | VerifyError::Fingerprint(..) => {
+                DiagnosticContext::Note(String::new())
+            }
         }
     }
 }
@@ -629,10 +704,52 @@ pub fn validate_required_inputs<T>(dag: &Dag<T>) -> Vec<UnwiredInputError> {
         .flat_map(|e| [e.from_node.0.as_str(), e.to_node.0.as_str()])
         .collect();
 
+    // Detect nodes with incoming user-facing data: nodes that receive at least
+    // one data edge to a non-resource, non-tool, non-internal port. Nodes
+    // without such edges are callable definitions (entrypoints, patterns)
+    // whose user-facing inputs are supplied externally (CLI args, pattern
+    // expansion, etc.), not by DAG edges.
+    let nodes_with_incoming_user_data: HashSet<&str> = dag
+        .edges
+        .iter()
+        .filter(|e| {
+            e.kind.carries_data()
+                && !e.to_port.is_resource()
+                && !e.to_port.is_tool()
+                && !e.to_port.is_internal()
+        })
+        .map(|e| e.to_node.0.as_str())
+        .collect();
+
     let mut errors = Vec::new();
     for node in &dag.nodes {
         // Skip island nodes (no edges at all)
         if !nodes_with_edges.contains(node.id.0.as_str()) {
+            continue;
+        }
+        // Skip SubDag nodes — their inputs are auto-inferred from the inner
+        // DAG's boundary ports and are populated by the SubDag executor or
+        // fn body evaluator, not by incoming DAG edges.
+        if matches!(node.body, crate::node::NodeBody::SubDag(..)) {
+            continue;
+        }
+        // Skip ParamSource nodes — boundary injection points whose values
+        // arrive from outside the DAG (CLI args, set_input, etc.).
+        if node.kind == crate::node::NodeKind::ParamSource {
+            continue;
+        }
+        // Skip nodes without incoming user-facing data edges — these are
+        // callable definitions (entrypoints, patterns) whose inputs
+        // are supplied externally (CLI, pattern expansion), not by DAG edges.
+        if !nodes_with_incoming_user_data.contains(node.id.0.as_str()) {
+            continue;
+        }
+        // Skip module-qualified callable nodes (e.g., "module::fn_name").
+        // These are fn body definitions from imported modules whose inputs
+        // are fn parameters — supplied by call-site wiring at evaluation
+        // time, not necessarily by DAG edges. Partial wiring is normal
+        // (a call site may wire only some args if others come from context).
+        if node.id.0.contains("::") {
             continue;
         }
         for port in &node.inputs {
@@ -693,11 +810,68 @@ pub fn verify_dag<T>(dag: &Dag<T>) -> Vec<VerifyError> {
     errors
 }
 
+/// Error from presence-mode wiring validation.
+#[derive(Debug, Clone)]
+pub struct PresenceWiringError {
+    pub from_node: NodeId,
+    pub from_port: PortName,
+    pub to_node: NodeId,
+    pub to_port: PortName,
+    pub source_presence: PresenceMode,
+    pub target_presence: PresenceMode,
+}
+
+impl fmt::Display for PresenceWiringError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "edge {}.{} ({:?}) → {}.{} ({:?}): {:?} source cannot feed {:?} target",
+            self.from_node.0,
+            self.from_port.0,
+            self.source_presence,
+            self.to_node.0,
+            self.to_port.0,
+            self.target_presence,
+            self.source_presence,
+            self.target_presence,
+        )
+    }
+}
+
+/// Validate that no Guardable output feeds a Required input.
+///
+/// A Guardable port may not produce a value (when the guard condition fails),
+/// so wiring it to a Required input could leave that input unsatisfied.
+pub fn validate_presence_wiring<T>(dag: &Dag<T>) -> Vec<PresenceWiringError> {
+    let mut errors = Vec::new();
+    for edge in &dag.edges {
+        let source_port = dag
+            .get_node(&edge.from_node)
+            .and_then(|n| n.outputs.iter().find(|p| p.name == edge.from_port));
+        let target_port = dag
+            .get_node(&edge.to_node)
+            .and_then(|n| n.inputs.iter().find(|p| p.name == edge.to_port));
+        if let (Some(src), Some(tgt)) = (source_port, target_port) {
+            if src.presence == PresenceMode::Guardable && tgt.presence == PresenceMode::Required {
+                errors.push(PresenceWiringError {
+                    from_node: edge.from_node.clone(),
+                    from_port: edge.from_port.clone(),
+                    to_node: edge.to_node.clone(),
+                    to_port: edge.to_port.clone(),
+                    source_presence: src.presence,
+                    target_presence: tgt.presence,
+                });
+            }
+        }
+    }
+    errors
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::dag::{build::*, Dag, Edge};
-    use crate::node::NodeKind;
+    use crate::node::{NodeKind, NodeOrigin, SubDagKind};
     use crate::types::{Cardinality, InputProvenance, OperationKey};
 
     #[test]
@@ -757,13 +931,14 @@ mod tests {
             id: NodeId::new("wrapper"),
             inputs: vec![port("data", "String")], // "data" != "config"
             outputs: vec![port("result", "String")],
-            body: NodeBody::SubDag(inner),
+            body: NodeBody::SubDag(inner, SubDagKind::default()),
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: NodeOrigin::default(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -793,13 +968,14 @@ mod tests {
             id: NodeId::new("wrapper"),
             inputs: vec![port("data", "String")],
             outputs: vec![port("result", "String")], // "result" != "output"
-            body: NodeBody::SubDag(inner),
+            body: NodeBody::SubDag(inner, SubDagKind::default()),
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: NodeOrigin::default(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -829,13 +1005,14 @@ mod tests {
             id: NodeId::new("wrapper"),
             inputs: vec![port("data", "String")],
             outputs: vec![port("result", "String")],
-            body: NodeBody::SubDag(inner),
+            body: NodeBody::SubDag(inner, SubDagKind::default()),
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: NodeOrigin::default(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -867,13 +1044,14 @@ mod tests {
             id: NodeId::new("wrapper"),
             inputs: vec![port("data", "String")],
             outputs: vec![port("result", "String")],
-            body: NodeBody::SubDag(inner),
+            body: NodeBody::SubDag(inner, SubDagKind::default()),
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: NodeOrigin::default(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -906,13 +1084,14 @@ mod tests {
             id: NodeId::new("wrapper"),
             inputs: vec![port("auth", "Credential")],
             outputs: vec![port("result", "String")],
-            body: NodeBody::SubDag(inner),
+            body: NodeBody::SubDag(inner, SubDagKind::default()),
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: NodeOrigin::default(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -1023,13 +1202,14 @@ mod tests {
             id: NodeId::new("broken"),
             inputs: vec![port("in1", "String"), port("in2", "Int")],
             outputs: vec![port("out", "String")],
-            body: NodeBody::SubDag(inner),
+            body: NodeBody::SubDag(inner, SubDagKind::default()),
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: NodeOrigin::default(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -1072,13 +1252,14 @@ mod tests {
             id: NodeId::new("wrapper"),
             inputs: vec![port("data", "String")],
             outputs: vec![port("result", "String")],
-            body: NodeBody::SubDag(inner),
+            body: NodeBody::SubDag(inner, SubDagKind::default()),
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: NodeOrigin::default(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -1108,13 +1289,14 @@ mod tests {
             id: NodeId::new("wrapper"),
             inputs: vec![port("data", "String")],
             outputs: vec![port("result", "String")],
-            body: NodeBody::SubDag(inner),
+            body: NodeBody::SubDag(inner, SubDagKind::default()),
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: NodeOrigin::default(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -1151,13 +1333,14 @@ mod tests {
             id: NodeId::new("wrapper"),
             inputs: vec![port("data", "String")],
             outputs: vec![port("result", "String")],
-            body: NodeBody::SubDag(inner),
+            body: NodeBody::SubDag(inner, SubDagKind::default()),
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: NodeOrigin::default(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -1298,18 +1481,27 @@ mod tests {
             OperationKey::new("github", "GetIssue"),
             vec![("id".to_string(), InputProvenance::Dynamic)],
         );
-        assert!(!fp1.conflicts_with(&fp2), "Dynamic provenance should not conflict");
+        assert!(
+            !fp1.conflicts_with(&fp2),
+            "Dynamic provenance should not conflict"
+        );
     }
 
     #[test]
     fn test_fingerprint_conflict_same_literal_keys() {
         let fp1 = StaticFingerprint::with_keys(
             OperationKey::new("fs", "Read"),
-            vec![("path".to_string(), InputProvenance::Literal("Makefile".to_string()))],
+            vec![(
+                "path".to_string(),
+                InputProvenance::Literal("Makefile".to_string()),
+            )],
         );
         let fp2 = StaticFingerprint::with_keys(
             OperationKey::new("fs", "Read"),
-            vec![("path".to_string(), InputProvenance::Literal("Makefile".to_string()))],
+            vec![(
+                "path".to_string(),
+                InputProvenance::Literal("Makefile".to_string()),
+            )],
         );
         assert!(fp1.conflicts_with(&fp2));
     }
@@ -1318,11 +1510,17 @@ mod tests {
     fn test_fingerprint_no_conflict_different_literal_keys() {
         let fp1 = StaticFingerprint::with_keys(
             OperationKey::new("fs", "Read"),
-            vec![("path".to_string(), InputProvenance::Literal("Makefile".to_string()))],
+            vec![(
+                "path".to_string(),
+                InputProvenance::Literal("Makefile".to_string()),
+            )],
         );
         let fp2 = StaticFingerprint::with_keys(
             OperationKey::new("fs", "Read"),
-            vec![("path".to_string(), InputProvenance::Literal("README.md".to_string()))],
+            vec![(
+                "path".to_string(),
+                InputProvenance::Literal("README.md".to_string()),
+            )],
         );
         assert!(!fp1.conflicts_with(&fp2));
     }
@@ -1360,11 +1558,12 @@ mod tests {
             vec![port("in", "String")],
             vec![port("out", "String")],
             (),
-        ).with_kind(NodeKind::TransportExecute)
-         .with_operation_key(OperationKey::new("cargo", "Build"));
-        n1.static_fingerprint = Some(StaticFingerprint::singleton(
-            OperationKey::new("cargo", "Build"),
-        ));
+        )
+        .with_kind(NodeKind::TransportExecute)
+        .with_operation_key(OperationKey::new("cargo", "Build"));
+        n1.static_fingerprint = Some(StaticFingerprint::singleton(OperationKey::new(
+            "cargo", "Build",
+        )));
         dag.add_node(n1);
 
         let mut n2 = Node::opaque(
@@ -1372,11 +1571,12 @@ mod tests {
             vec![port("in", "String")],
             vec![port("out", "String")],
             (),
-        ).with_kind(NodeKind::TransportExecute)
-         .with_operation_key(OperationKey::new("cargo", "Build"));
-        n2.static_fingerprint = Some(StaticFingerprint::singleton(
-            OperationKey::new("cargo", "Build"),
-        ));
+        )
+        .with_kind(NodeKind::TransportExecute)
+        .with_operation_key(OperationKey::new("cargo", "Build"));
+        n2.static_fingerprint = Some(StaticFingerprint::singleton(OperationKey::new(
+            "cargo", "Build",
+        )));
         dag.add_node(n2);
 
         let conflicts = validate_fingerprint_uniqueness(&dag);
@@ -1393,11 +1593,12 @@ mod tests {
             vec![port("in", "String")],
             vec![port("out", "String")],
             (),
-        ).with_kind(NodeKind::TransportExecute)
-         .with_operation_key(OperationKey::new("cargo", "Build"));
-        n1.static_fingerprint = Some(StaticFingerprint::singleton(
-            OperationKey::new("cargo", "Build"),
-        ));
+        )
+        .with_kind(NodeKind::TransportExecute)
+        .with_operation_key(OperationKey::new("cargo", "Build"));
+        n1.static_fingerprint = Some(StaticFingerprint::singleton(OperationKey::new(
+            "cargo", "Build",
+        )));
         dag.add_node(n1);
 
         let mut n2 = Node::opaque(
@@ -1405,15 +1606,19 @@ mod tests {
             vec![port("in", "String")],
             vec![port("out", "String")],
             (),
-        ).with_kind(NodeKind::TransportExecute)
-         .with_operation_key(OperationKey::new("cargo", "Test"));
-        n2.static_fingerprint = Some(StaticFingerprint::singleton(
-            OperationKey::new("cargo", "Test"),
-        ));
+        )
+        .with_kind(NodeKind::TransportExecute)
+        .with_operation_key(OperationKey::new("cargo", "Test"));
+        n2.static_fingerprint = Some(StaticFingerprint::singleton(OperationKey::new(
+            "cargo", "Test",
+        )));
         dag.add_node(n2);
 
         let conflicts = validate_fingerprint_uniqueness(&dag);
-        assert!(conflicts.is_empty(), "different operations should not conflict");
+        assert!(
+            conflicts.is_empty(),
+            "different operations should not conflict"
+        );
     }
 
     // ===================================================================
@@ -1438,7 +1643,12 @@ mod tests {
         // Wire "extra" so worker is not an island, but leave "data" unwired
         dag.add_edge(Edge::new("source", "out", "worker", "extra"));
         let errors = validate_required_inputs(&dag);
-        assert_eq!(errors.len(), 1, "expected 1 unwired input, got: {:?}", errors);
+        assert_eq!(
+            errors.len(),
+            1,
+            "expected 1 unwired input, got: {:?}",
+            errors
+        );
         assert_eq!(errors[0].node_id, "worker");
         assert_eq!(errors[0].port_name, "data");
     }
@@ -1460,7 +1670,11 @@ mod tests {
         ));
         dag.add_edge(Edge::new("source", "out", "sink", "data"));
         let errors = validate_required_inputs(&dag);
-        assert!(errors.is_empty(), "wired input should pass, got: {:?}", errors);
+        assert!(
+            errors.is_empty(),
+            "wired input should pass, got: {:?}",
+            errors
+        );
     }
 
     #[test]
@@ -1474,7 +1688,11 @@ mod tests {
         ));
         // res:file is unwired, but validate_required_inputs skips res:* ports
         let errors = validate_required_inputs(&dag);
-        assert!(errors.is_empty(), "resource ports should be skipped, got: {:?}", errors);
+        assert!(
+            errors.is_empty(),
+            "resource ports should be skipped, got: {:?}",
+            errors
+        );
     }
 
     #[test]
@@ -1490,7 +1708,11 @@ mod tests {
         node.inputs[0].cardinality = Cardinality::ZERO_OR_ONE;
         dag.add_node(node);
         let errors = validate_required_inputs(&dag);
-        assert!(errors.is_empty(), "optional ports should be skipped, got: {:?}", errors);
+        assert!(
+            errors.is_empty(),
+            "optional ports should be skipped, got: {:?}",
+            errors
+        );
     }
 
     #[test]
@@ -1501,13 +1723,14 @@ mod tests {
             id: NodeId::new("broken"),
             inputs: vec![port("x", "String")],
             outputs: vec![],
-            body: NodeBody::SubDag(inner),
+            body: NodeBody::SubDag(inner, SubDagKind::default()),
             examples: Vec::new(),
             log_detail: None,
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
             static_fingerprint: None,
+            origin: NodeOrigin::default(),
         };
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(bad_node);
@@ -1523,7 +1746,11 @@ mod tests {
     fn test_empty_dag_passes_verify() {
         let dag: Dag<()> = Dag::new();
         let errors = verify_dag(&dag);
-        assert!(errors.is_empty(), "empty DAG should pass, got: {:?}", errors);
+        assert!(
+            errors.is_empty(),
+            "empty DAG should pass, got: {:?}",
+            errors
+        );
     }
 
     #[test]
@@ -1555,8 +1782,12 @@ mod tests {
         // Connect resource_user so it is not an island
         dag.add_edge(Edge::new("lonely", "out", "resource_user", "result"));
         let errors = verify_dag(&dag);
-        let has_unwired_input = errors.iter().any(|e| matches!(e, VerifyError::UnwiredInput(_)));
-        let has_unwired_resource = errors.iter().any(|e| matches!(e, VerifyError::UnwiredResource(_)));
+        let has_unwired_input = errors
+            .iter()
+            .any(|e| matches!(e, VerifyError::UnwiredInput(_)));
+        let has_unwired_resource = errors
+            .iter()
+            .any(|e| matches!(e, VerifyError::UnwiredResource(_)));
         assert!(has_unwired_input, "should detect unwired input");
         assert!(has_unwired_resource, "should detect unwired resource");
     }
@@ -1579,9 +1810,73 @@ mod tests {
         // Wire "c" so multi is not an island, but leave "a" and "b" unwired
         dag.add_edge(Edge::new("source", "out", "multi", "c"));
         let errors = validate_required_inputs(&dag);
-        assert_eq!(errors.len(), 2, "expected 2 unwired inputs, got: {:?}", errors);
+        assert_eq!(
+            errors.len(),
+            2,
+            "expected 2 unwired inputs, got: {:?}",
+            errors
+        );
         let port_names: Vec<&str> = errors.iter().map(|e| e.port_name.as_str()).collect();
         assert!(port_names.contains(&"a"));
         assert!(port_names.contains(&"b"));
+    }
+
+    #[test]
+    fn presence_guardable_to_required_rejected() {
+        let mut dag: Dag<()> = Dag::default();
+        dag.add_node(Node::opaque(
+            "src",
+            vec![],
+            vec![Port::guardable("out", "Bool")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "tgt",
+            vec![Port::new("in", "Bool")],
+            vec![],
+            (),
+        ));
+        dag.add_edge(Edge::new("src", "out", "tgt", "in"));
+        let errors = validate_presence_wiring(&dag);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].from_port.0, "out");
+        assert_eq!(errors[0].to_port.0, "in");
+    }
+
+    #[test]
+    fn presence_guardable_to_optional_accepted() {
+        let mut dag: Dag<()> = Dag::default();
+        dag.add_node(Node::opaque(
+            "src",
+            vec![],
+            vec![Port::guardable("out", "Bool")],
+            (),
+        ));
+        let mut opt_port = Port::new("in", "Bool?");
+        opt_port.presence = crate::types::PresenceMode::Optional;
+        dag.add_node(Node::opaque("tgt", vec![opt_port], vec![], ()));
+        dag.add_edge(Edge::new("src", "out", "tgt", "in"));
+        let errors = validate_presence_wiring(&dag);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn presence_required_to_required_accepted() {
+        let mut dag: Dag<()> = Dag::default();
+        dag.add_node(Node::opaque(
+            "src",
+            vec![],
+            vec![Port::new("out", "Bool")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "tgt",
+            vec![Port::new("in", "Bool")],
+            vec![],
+            (),
+        ));
+        dag.add_edge(Edge::new("src", "out", "tgt", "in"));
+        let errors = validate_presence_wiring(&dag);
+        assert!(errors.is_empty());
     }
 }

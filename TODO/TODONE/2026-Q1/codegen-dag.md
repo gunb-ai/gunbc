@@ -1,14 +1,14 @@
 # Codegen DAG Pipeline (Design)
 
 ## Status
-Implemented in `gunbc-dag` (codegen DAG + CLI + makegen wiring). **Needs verification.**
+Implemented in `gunbc-app` (codegen DAG + CLI + makegen wiring). **Needs verification.**
 Previously noted blockers (resolved in this branch):
 - `core/ir/src/resource.rs`: `SecretString` now derives `Eq`.
 - `core/codegen/src/testgen/*`: compile errors fixed (missing fields/methods, `T: Clone` bounds, missing `Clone`/`Display` impls).
 
 Verification steps once blockers are cleared:
-1) `cargo run -p gunbc-dag --bin gunbc-codegen-dag --release`
-2) `cargo run -p gunbc-dag --bin gunbc-makegen --release` and confirm `make codegen` invokes codegen-dag
+1) `cargo run -p gunbc-app --bin gunbc-codegen-dag --release`
+2) `cargo run -p gunbc-app --bin gunbc-makegen --release` and confirm `make codegen` invokes codegen-dag
 3) `make codegen` then `make gist-dry` (should include `--bin gunbc-gist`)
 
 ## Problem
@@ -23,7 +23,7 @@ before running tools.
 - Avoid dependency cycles: the DAG tool must be handwritten.
 
 ## Proposed Solution
-Add a **codegen DAG tool** inside `gunbc-dag` with a handwritten CLI:
+Add a **codegen DAG tool** inside `gunbc-app` with a handwritten CLI:
 `gunbc-codegen-dag`.
 
 ### Pipeline

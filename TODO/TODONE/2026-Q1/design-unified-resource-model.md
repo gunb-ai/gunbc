@@ -139,7 +139,7 @@ If resource B depends on resource A:
 ResourceDef {
     id: "build:generated_tests",
     inputs: vec![
-        Glob("gunbc-dag/src/**/*.rs"),
+        Glob("gunbc-app/src/**/*.rs"),
         Resource("build:generated_cli"),  // <-- includes A's key
     ],
     ...
@@ -491,7 +491,7 @@ pub fn build_resources() -> Vec<ResourceDef> {
         ResourceDef {
             id: ResourceId::build("generated_tests"),
             inputs: vec![
-                InputPattern::Glob("gunbc-dag/src/**/*.rs"),
+                InputPattern::Glob("gunbc-app/src/**/*.rs"),
                 InputPattern::Resource(ResourceId::build("generated_cli")),
             ],
             outputs: vec![PathBuf::from("target/codegen/lib/*/tests.rs")],
@@ -609,10 +609,10 @@ impl ResourceManifest {
 ```makefile
 # Complex manual wiring
 test: codegen testgen-check
-	@cargo run -p gunbc-dag --bin gunbc-test --release
+	@cargo run -p gunbc-app --bin gunbc-test --release
 
 test-fix: fmt-fix lint-fix codegen testgen
-	@cargo run -p gunbc-dag --bin gunbc-test --release
+	@cargo run -p gunbc-app --bin gunbc-test --release
 ```
 
 ### 7.2 After (With Resource Model)
@@ -620,10 +620,10 @@ test-fix: fmt-fix lint-fix codegen testgen
 ```makefile
 # Mode flag only — dependencies resolved automatically
 test:
-	@cargo run -p gunbc-dag --bin gunbc-test --release -- --mode=verify
+	@cargo run -p gunbc-app --bin gunbc-test --release -- --mode=verify
 
 test-fix:
-	@cargo run -p gunbc-dag --bin gunbc-test --release -- --mode=ensure
+	@cargo run -p gunbc-app --bin gunbc-test --release -- --mode=ensure
 ```
 
 The test binary internally:
@@ -699,7 +699,7 @@ The test binary internally:
 
 **Modify:**
 - `core/codegen/src/main.rs` — Write manifest after successful codegen
-- `gunbc-dag/src/bin/testgen.rs` — Write manifest after successful testgen
+- `gunbc-app/src/bin/testgen.rs` — Write manifest after successful testgen
 
 **New behavior:**
 - After `cargo run -p gunbc-codegen`, `target/.resource-manifest.json` exists
@@ -719,8 +719,8 @@ The test binary internally:
 **Goal:** Replace file existence check with manifest check.
 
 **Modify:**
-- `gunbc-dag/src/ci/ops.rs` — Replace `PrepareCodegenExistsCheck` with manifest-based check
-- `gunbc-dag/src/ci/graph.rs` — Update graph if needed
+- `gunbc-app/src/ci/ops.rs` — Replace `PrepareCodegenExistsCheck` with manifest-based check
+- `gunbc-app/src/ci/graph.rs` — Update graph if needed
 
 **Old behavior:**
 ```rust
@@ -747,7 +747,7 @@ let fresh = manifest.check_fresh(&ResourceId::build("generated_cli"), &compute_h
 **Goal:** Add `--mode=verify|ensure` flag to build tools.
 
 **Modify:**
-- `gunbc-dag/src/bin/testgen.rs` — Replace `--check` with `--mode=verify`
+- `gunbc-app/src/bin/testgen.rs` — Replace `--check` with `--mode=verify`
 - `core/exec/src/context.rs` — Add `ExecMode` to `ExecutorContext`
 - Other bin files as needed
 
@@ -775,13 +775,13 @@ gunbc-testgen --mode=ensure      # Dev mode (regenerate if stale)
 **Goal:** Remove manual dependency wiring from makegen.
 
 **Modify:**
-- `gunbc-dag/src/makegen/registry.rs`:
+- `gunbc-app/src/makegen/registry.rs`:
   - Remove `extra_deps` field from `MetaTarget`
   - Remove `fix_deps` field from `MetaTarget`
   - Remove `PrepLevel` enum (or deprecate)
   - Add `resources: Vec<ResourceId>` to `MetaTarget`
 
-- `gunbc-dag/src/makegen/render.rs`:
+- `gunbc-app/src/makegen/render.rs`:
   - Remove `prep_dep_name()` function
   - Remove fix variant dependency transformation
   - Emit `--mode=verify` for base targets
@@ -853,10 +853,10 @@ MetaTarget::new("test", ...)
 | `core/ir/src/resource.rs` | Re-export new types |
 | `core/codegen/src/main.rs` | Write manifest after codegen |
 | `core/codegen/src/registry.rs` | Add `ResourceDef` to `ToolDef` |
-| `gunbc-dag/src/bin/testgen.rs` | Write manifest, replace `--check` with `--mode` |
-| `gunbc-dag/src/ci/ops.rs` | Replace file check with manifest check |
-| `gunbc-dag/src/makegen/registry.rs` | Remove extra_deps, fix_deps, PrepLevel |
-| `gunbc-dag/src/makegen/render.rs` | Emit `--mode` flags instead of dep chains |
+| `gunbc-app/src/bin/testgen.rs` | Write manifest, replace `--check` with `--mode` |
+| `gunbc-app/src/ci/ops.rs` | Replace file check with manifest check |
+| `gunbc-app/src/makegen/registry.rs` | Remove extra_deps, fix_deps, PrepLevel |
+| `gunbc-app/src/makegen/render.rs` | Emit `--mode` flags instead of dep chains |
 | `core/exec/src/context.rs` | Add `ExecMode` to context |
 
 ## 10. Checklist
@@ -930,8 +930,8 @@ currently have no freshness tracking. Changes to the generator require manual
 re-runs, and CI doesn't verify they're up to date.
 
 Files:
-- `gunbc-dag/src/bootstrap/` - Generates Makefile, .gitignore
-- `gunbc-dag/src/makegen/` - Generates Makefile from registry
+- `gunbc-app/src/bootstrap/` - Generates Makefile, .gitignore
+- `gunbc-app/src/makegen/` - Generates Makefile from registry
 
 Resource candidates:
 - `build:makefile` — inputs: makegen source, registry; outputs: Makefile
@@ -943,7 +943,7 @@ The dependency configuration in `deps.toml` is referenced by CI but has no
 staleness tracking against the actual project dependencies.
 
 Files:
-- `gunbc-dag/src/ci/ops.rs` — Reads deps.toml
+- `gunbc-app/src/ci/ops.rs` — Reads deps.toml
 - Root `deps.toml` file
 
 Resource candidate:
@@ -957,7 +957,7 @@ Currently testgen tracks all outputs as a single resource (`build:generated_test
 Finer granularity would allow partial regeneration when only one DAG changes.
 
 Files:
-- `gunbc-dag/src/bin/testgen.rs` — build_targets() function
+- `gunbc-app/src/bin/testgen.rs` — build_targets() function
 
 Resource candidates:
 - `build:tests_bootstrap` — inputs: bootstrap DAG sources; outputs: bootstrap/generated_tests.rs
@@ -1012,8 +1012,8 @@ The following are already on the resource model:
 | Resource | Manifest ID | Location |
 |----------|-------------|----------|
 | Generated CLI code | `build:generated_cli` | `core/codegen/src/main.rs` |
-| Generated test code | `build:generated_tests` | `gunbc-dag/src/bin/testgen.rs` |
-| CI freshness check | (uses above) | `gunbc-dag/src/ci/ops.rs` |
+| Generated test code | `build:generated_tests` | `gunbc-app/src/bin/testgen.rs` |
+| CI freshness check | (uses above) | `gunbc-app/src/ci/ops.rs` |
 
 ### 11.5 Recommended Extension Order
 

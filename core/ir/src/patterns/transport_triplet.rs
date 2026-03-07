@@ -442,7 +442,7 @@ mod tests {
         assert_eq!(dag.nodes[0].id.0, "fetch");
         assert!(dag.nodes[0].is_subdag());
 
-        if let NodeBody::SubDag(ref inner) = dag.nodes[0].body {
+        if let NodeBody::SubDag(ref inner, _) = dag.nodes[0].body {
             assert_eq!(inner.nodes.len(), 3);
             assert_eq!(inner.edges.len(), 3);
             assert!(inner.get_node(&"prepare_fetch".into()).is_some());
@@ -504,7 +504,7 @@ mod tests {
         let step = dag.get_node(&"step".into()).unwrap();
         assert!(step.is_subdag());
 
-        if let NodeBody::SubDag(ref inner) = step.body {
+        if let NodeBody::SubDag(ref inner, _) = step.body {
             assert_eq!(inner.nodes.len(), 3);
             assert_eq!(inner.edges.len(), 5); // request, skip, response, skip(2), skip_reason
         } else {
@@ -538,7 +538,7 @@ mod tests {
         assert_eq!(dag.nodes[0].id.0, "manifest");
         assert!(dag.nodes[0].is_subdag());
 
-        if let NodeBody::SubDag(ref inner) = dag.nodes[0].body {
+        if let NodeBody::SubDag(ref inner, _) = dag.nodes[0].body {
             assert_eq!(inner.nodes.len(), 3);
             // request + skip + response + passthrough = 4 edges
             assert_eq!(inner.edges.len(), 4);
@@ -585,7 +585,7 @@ mod tests {
         let node = dag
             .get_node(&"tcp_ping".into())
             .expect("subdag node exists");
-        if let NodeBody::SubDag(ref inner) = node.body {
+        if let NodeBody::SubDag(ref inner, _) = node.body {
             let prepare = inner
                 .get_node(&"prepare_tcp_ping".into())
                 .expect("prepare exists");

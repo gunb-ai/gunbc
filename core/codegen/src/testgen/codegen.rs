@@ -249,7 +249,7 @@ pub struct TestGenerator<'a, T> {
     mock_spec: Option<MockSpec>,
     /// Function path to call for MockSpec (e.g., "crate::ci::graph_mock::ci_mock_spec()")
     mock_spec_fn: Option<String>,
-    /// Function path to call for declared signature (e.g., "crate::makegen_signature()")
+    /// Rust expression to compute the declared signature (e.g., "gunbc_ir::infer_signature(&dag)")
     signature_fn: Option<String>,
     /// CLI entrypoints for contract test generation: (tool_name, entrypoints).
     cli_entrypoints: Option<(String, Vec<crate::cli_gen::CliEntrypoint>)>,
@@ -647,7 +647,9 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 },
                 format!(
                     "Interface '{}' capability '{}' behavioral contract: {}",
-                    contract.interface_name, contract.capability_name, contract.test_name()
+                    contract.interface_name,
+                    contract.capability_name,
+                    contract.test_name()
                 ),
                 ObligationSource::Contract,
             ));
@@ -665,7 +667,11 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     "Operation '{}' must handle status {} ({})",
                     contract.operation,
                     contract.status_code,
-                    if contract.is_error { "error" } else { "success" }
+                    if contract.is_error {
+                        "error"
+                    } else {
+                        "success"
+                    }
                 ),
                 ObligationSource::Contract,
             ));
@@ -989,9 +995,10 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
         file.imports.push(Import {
             path: vec!["gunbc_exec".to_string()],
             items: vec![
-                "execute_with_mode".to_string(),
+                "execute_dag".to_string(),
                 "lower".to_string(),
                 "BoundaryMocks".to_string(),
+                "ExecuteConfig".to_string(),
                 "ExecutionMode".to_string(),
             ],
         });
@@ -1055,8 +1062,9 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 path: vec!["gunbc_exec".to_string()],
                 items: vec![
                     "lower".to_string(),
+                    "ExecuteConfig".to_string(),
                     "ExecutionMode".to_string(),
-                    "execute_with_mode".to_string(),
+                    "execute_dag".to_string(),
                 ],
             });
             file.imports.push(Import {
@@ -1578,10 +1586,13 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     Self::record_ident(first, used);
                 }
             }
-            Expr::Struct { name, fields } => {
+            Expr::Struct { name, fields, rest } => {
                 Self::record_ident(name, used);
                 for (_, expr) in fields {
                     Self::collect_idents_from_expr(expr, used);
+                }
+                if let Some(base) = rest {
+                    Self::collect_idents_from_expr(base, used);
                 }
             }
             Expr::Closure { body, .. } => Self::collect_idents_from_expr(body, used),
@@ -1671,10 +1682,17 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             .any(|o| matches!(o.kind, Obligation::DryRunCompletion))
         {
             let exec = Expr::call(
-                "execute_with_mode",
+                "execute_dag",
                 vec![
                     Expr::var("dag").ref_of(),
-                    Expr::call("ExecutionMode::DryRun", vec![mocks_expr.clone()]),
+                    Expr::Struct {
+                        name: "ExecuteConfig".to_string(),
+                        fields: vec![(
+                            "mode".to_string(),
+                            Expr::call("ExecutionMode::DryRun", vec![mocks_expr.clone()]),
+                        )],
+                        rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                    },
                 ],
             )
             .method(
@@ -2132,10 +2150,17 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     let mocks_expr = self.dryrun_mocks_expr(analysis, "cardinality coverage tests");
 
                     let exec = Expr::call(
-                        "execute_with_mode",
+                        "execute_dag",
                         vec![
                             Expr::var("dag").ref_of(),
-                            Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                            Expr::Struct {
+                                name: "ExecuteConfig".to_string(),
+                                fields: vec![(
+                                    "mode".to_string(),
+                                    Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                                )],
+                                rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                            },
                         ],
                     )
                     .method(
@@ -2216,10 +2241,17 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 let mocks_expr = self.dryrun_mocks_expr(analysis, "coercion coverage tests");
 
                 let exec = Expr::call(
-                    "execute_with_mode",
+                    "execute_dag",
                     vec![
                         Expr::var("dag").ref_of(),
-                        Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                        Expr::Struct {
+                            name: "ExecuteConfig".to_string(),
+                            fields: vec![(
+                                "mode".to_string(),
+                                Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                            )],
+                            rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                        },
                     ],
                 )
                 .method(
@@ -2323,10 +2355,17 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     let mocks_expr = self.dryrun_mocks_expr(analysis, "variant coverage tests");
 
                     let exec = Expr::call(
-                        "execute_with_mode",
+                        "execute_dag",
                         vec![
                             Expr::var("dag").ref_of(),
-                            Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                            Expr::Struct {
+                                name: "ExecuteConfig".to_string(),
+                                fields: vec![(
+                                    "mode".to_string(),
+                                    Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                                )],
+                                rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                            },
                         ],
                     )
                     .method(
@@ -2664,10 +2703,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             .all
             .iter()
             .filter(|o| {
-                matches!(
-                    o.kind,
-                    Obligation::InterfaceContractCompliance { .. }
-                ) && o.needs_test()
+                matches!(o.kind, Obligation::InterfaceContractCompliance { .. }) && o.needs_test()
             })
             .collect();
         if iface_obligations.is_empty() {
@@ -2687,9 +2723,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             // Emit as a documented test function with raw body.
             let mut doc = vec![format!(
                 "Interface contract: {}.{} ({}).",
-                contract.interface_name,
-                contract.capability_name,
-                contract.kind,
+                contract.interface_name, contract.capability_name, contract.kind,
             )];
             if !contract.setup.is_empty() {
                 doc.push(format!(
@@ -2709,12 +2743,9 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     "CT-8: Interface contract test for {}.{}",
                     contract.interface_name, contract.capability_name
                 )),
+                Stmt::Comment("Provider construction requires profile-specific binding.".into()),
                 Stmt::Comment(
-                    "Provider construction requires profile-specific binding.".into(),
-                ),
-                Stmt::Comment(
-                    "Remove #[ignore] when provider bindings are wired for this interface."
-                        .into(),
+                    "Remove #[ignore] when provider bindings are wired for this interface.".into(),
                 ),
                 Stmt::Item(Item::Raw(
                     "let provider = todo!(\"bind provider for this interface\");".to_string(),
@@ -2730,9 +2761,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             });
         }
 
-        notes.push(
-            "Interface contract tests document provider obligations.".to_string(),
-        );
+        notes.push("Interface contract tests document provider obligations.".to_string());
 
         (tests, notes)
     }
@@ -2750,10 +2779,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             .all
             .iter()
             .filter(|o| {
-                matches!(
-                    o.kind,
-                    Obligation::ResponseContractCompliance { .. }
-                ) && o.needs_test()
+                matches!(o.kind, Obligation::ResponseContractCompliance { .. }) && o.needs_test()
             })
             .collect();
         if resp_obligations.is_empty() {
@@ -2768,17 +2794,18 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
 
         for contract in &self.response_contracts {
             let test_name = format!("test_{}", contract.test_name());
-            let kind = if contract.is_error { "error" } else { "success" };
+            let kind = if contract.is_error {
+                "error"
+            } else {
+                "success"
+            };
 
             let doc = vec![
                 format!(
                     "Response contract: {} status {} ({}).",
                     contract.operation, contract.status_code, kind
                 ),
-                format!(
-                    "Expected response type: {}.",
-                    contract.response_type
-                ),
+                format!("Expected response type: {}.", contract.response_type),
                 format!(
                     "Proves: operation handles HTTP {} correctly.",
                     contract.status_code
@@ -2792,7 +2819,11 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 Stmt::Comment(format!(
                     "CT-8: Response contract — {} {} for status {}",
                     contract.operation,
-                    if contract.is_error { "should produce error" } else { "should succeed" },
+                    if contract.is_error {
+                        "should produce error"
+                    } else {
+                        "should succeed"
+                    },
                     contract.status_code,
                 )),
                 Stmt::Comment(format!(
@@ -2813,9 +2844,8 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             });
         }
 
-        notes.push(
-            "Response contract tests verify status code handling per operation.".to_string(),
-        );
+        notes
+            .push("Response contract tests verify status code handling per operation.".to_string());
 
         (tests, notes)
     }
@@ -2847,10 +2877,17 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
         {
             let mocks_expr = self.dryrun_mocks_expr(analysis, "scenario all-succeed tests");
             let exec = Expr::call(
-                "execute_with_mode",
+                "execute_dag",
                 vec![
                     Expr::var("dag").ref_of(),
-                    Expr::call("ExecutionMode::DryRun", vec![mocks_expr]),
+                    Expr::Struct {
+                        name: "ExecuteConfig".to_string(),
+                        fields: vec![(
+                            "mode".to_string(),
+                            Expr::call("ExecutionMode::DryRun", vec![mocks_expr]),
+                        )],
+                        rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                    },
                 ],
             )
             .method(
@@ -2939,10 +2976,23 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                         Stmt::let_bind(
                             "_result",
                             Expr::call(
-                                "execute_with_mode",
+                                "execute_dag",
                                 vec![
                                     Expr::var("dag").ref_of(),
-                                    Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                                    Expr::Struct {
+                                        name: "ExecuteConfig".to_string(),
+                                        fields: vec![(
+                                            "mode".to_string(),
+                                            Expr::call(
+                                                "ExecutionMode::DryRun",
+                                                vec![Expr::var("mocks")],
+                                            ),
+                                        )],
+                                        rest: Some(Box::new(Expr::call(
+                                            "Default::default",
+                                            vec![],
+                                        ))),
+                                    },
                                 ],
                             ),
                         ),
@@ -3007,10 +3057,17 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 }
 
                 let exec = Expr::call(
-                    "execute_with_mode",
+                    "execute_dag",
                     vec![
                         Expr::var("dag").ref_of(),
-                        Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                        Expr::Struct {
+                            name: "ExecuteConfig".to_string(),
+                            fields: vec![(
+                                "mode".to_string(),
+                                Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                            )],
+                            rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                        },
                     ],
                 )
                 .method(
@@ -3108,13 +3165,23 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                 ],
                             )));
                             let log_true = Expr::call(
-                                "execute_with_mode",
+                                "execute_dag",
                                 vec![
                                     Expr::var("dag").ref_of(),
-                                    Expr::call(
-                                        "ExecutionMode::DryRun",
-                                        vec![Expr::var("mocks_true")],
-                                    ),
+                                    Expr::Struct {
+                                        name: "ExecuteConfig".to_string(),
+                                        fields: vec![(
+                                            "mode".to_string(),
+                                            Expr::call(
+                                                "ExecutionMode::DryRun",
+                                                vec![Expr::var("mocks_true")],
+                                            ),
+                                        )],
+                                        rest: Some(Box::new(Expr::call(
+                                            "Default::default",
+                                            vec![],
+                                        ))),
+                                    },
                                 ],
                             )
                             .method(
@@ -3161,13 +3228,23 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                 ],
                             )));
                             let log_false = Expr::call(
-                                "execute_with_mode",
+                                "execute_dag",
                                 vec![
                                     Expr::var("dag").ref_of(),
-                                    Expr::call(
-                                        "ExecutionMode::DryRun",
-                                        vec![Expr::var("mocks_false")],
-                                    ),
+                                    Expr::Struct {
+                                        name: "ExecuteConfig".to_string(),
+                                        fields: vec![(
+                                            "mode".to_string(),
+                                            Expr::call(
+                                                "ExecutionMode::DryRun",
+                                                vec![Expr::var("mocks_false")],
+                                            ),
+                                        )],
+                                        rest: Some(Box::new(Expr::call(
+                                            "Default::default",
+                                            vec![],
+                                        ))),
+                                    },
                                 ],
                             )
                             .method(
@@ -3273,10 +3350,17 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                         let mocks_expr =
                             self.dryrun_mocks_expr(analysis, "guard disconnected tests");
                         let exec = Expr::call(
-                            "execute_with_mode",
+                            "execute_dag",
                             vec![
                                 Expr::var("dag").ref_of(),
-                                Expr::call("ExecutionMode::DryRun", vec![mocks_expr]),
+                                Expr::Struct {
+                                    name: "ExecuteConfig".to_string(),
+                                    fields: vec![(
+                                        "mode".to_string(),
+                                        Expr::call("ExecutionMode::DryRun", vec![mocks_expr]),
+                                    )],
+                                    rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                                },
                             ],
                         )
                         .method(
@@ -3854,10 +3938,17 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     "log"
                 },
                 Expr::call(
-                    "execute_with_mode",
+                    "execute_dag",
                     vec![
                         Expr::var("dag").ref_of(),
-                        Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                        Expr::Struct {
+                            name: "ExecuteConfig".to_string(),
+                            fields: vec![(
+                                "mode".to_string(),
+                                Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                            )],
+                            rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                        },
                     ],
                 )
                 .method(
@@ -3976,10 +4067,17 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             Stmt::let_bind(
                 "log",
                 Expr::call(
-                    "execute_with_mode",
+                    "execute_dag",
                     vec![
                         Expr::var("dag").ref_of(),
-                        Expr::Path(vec!["ExecutionMode".to_string(), "Real".to_string()]),
+                        Expr::Struct {
+                            name: "ExecuteConfig".to_string(),
+                            fields: vec![(
+                                "mode".to_string(),
+                                Expr::Path(vec!["ExecutionMode".to_string(), "Real".to_string()]),
+                            )],
+                            rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                        },
                     ],
                 )
                 .method(
@@ -4163,10 +4261,20 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     Stmt::let_bind(
                         "log",
                         Expr::call(
-                            "execute_with_mode",
+                            "execute_dag",
                             vec![
                                 Expr::var("dag").ref_of(),
-                                Expr::Path(vec!["ExecutionMode".to_string(), "Real".to_string()]),
+                                Expr::Struct {
+                                    name: "ExecuteConfig".to_string(),
+                                    fields: vec![(
+                                        "mode".to_string(),
+                                        Expr::Path(vec![
+                                            "ExecutionMode".to_string(),
+                                            "Real".to_string(),
+                                        ]),
+                                    )],
+                                    rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                                },
                             ],
                         )
                         .method(
@@ -4192,7 +4300,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                         self.config.target_name, profile_test.profile_name
                     ),
                     notes: vec![format!(
-                        "Compiles with --profile {}, executes in Real mode.",
+                        "Compiles with concrete binding `{}`, executes in Real mode.",
                         profile_test.profile_name
                     )],
                     tests: vec![TestFn {
@@ -4246,13 +4354,21 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             }
 
             let baseline = Expr::call(
-                "execute_with_mode",
+                "execute_dag",
                 vec![
                     Expr::var("dag").ref_of(),
-                    Expr::call(
-                        "ExecutionMode::DryRun",
-                        vec![Expr::call("mock_spec", vec![]).method("to_boundary_mocks", vec![])],
-                    ),
+                    Expr::Struct {
+                        name: "ExecuteConfig".to_string(),
+                        fields: vec![(
+                            "mode".to_string(),
+                            Expr::call(
+                                "ExecutionMode::DryRun",
+                                vec![Expr::call("mock_spec", vec![])
+                                    .method("to_boundary_mocks", vec![])],
+                            ),
+                        )],
+                        rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                    },
                 ],
             )
             .method(
@@ -4307,10 +4423,17 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 Stmt::let_bind(
                     "log",
                     Expr::call(
-                        "execute_with_mode",
+                        "execute_dag",
                         vec![
                             Expr::var("window_dag").ref_of(),
-                            Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                            Expr::Struct {
+                                name: "ExecuteConfig".to_string(),
+                                fields: vec![(
+                                    "mode".to_string(),
+                                    Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                                )],
+                                rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                            },
                         ],
                     )
                     .method(
@@ -4436,13 +4559,17 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 Stmt::let_bind(
                     "baseline",
                     Expr::call(
-                        "execute_with_mode",
+                        "execute_dag",
                         vec![
                             Expr::var("flat").ref_of(),
-                            Expr::call(
-                                "ExecutionMode::DryRun",
-                                vec![Expr::call("mock_spec", vec![]).method("to_boundary_mocks", vec![])],
-                            ),
+                            Expr::Struct {
+                                name: "ExecuteConfig".to_string(),
+                                fields: vec![("mode".to_string(), Expr::call(
+                                    "ExecutionMode::DryRun",
+                                    vec![Expr::call("mock_spec", vec![]).method("to_boundary_mocks", vec![])],
+                                ))],
+                                rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                            },
                         ],
                     )
                     .method(
@@ -4488,10 +4615,14 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 Stmt::let_bind(
                     "log",
                     Expr::call(
-                        "execute_with_mode",
+                        "execute_dag",
                         vec![
                             Expr::var("window_dag").ref_of(),
-                            Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                            Expr::Struct {
+                                name: "ExecuteConfig".to_string(),
+                                fields: vec![("mode".to_string(), Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]))],
+                                rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                            },
                         ],
                     )
                     .method(
@@ -4735,10 +4866,17 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             body.push(Stmt::let_bind(
                 "log",
                 Expr::call(
-                    "execute_with_mode",
+                    "execute_dag",
                     vec![
                         Expr::var("dag").ref_of(),
-                        Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                        Expr::Struct {
+                            name: "ExecuteConfig".to_string(),
+                            fields: vec![(
+                                "mode".to_string(),
+                                Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                            )],
+                            rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                        },
                     ],
                 )
                 .method("unwrap", vec![]),

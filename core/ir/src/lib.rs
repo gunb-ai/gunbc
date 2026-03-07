@@ -93,13 +93,8 @@ pub mod validate;
 pub mod value;
 pub mod value_bridge;
 pub mod value_expr;
+pub mod verified;
 pub mod workspace_layout;
-
-// Codegen output locations used by the bootstrapper and codegen DAG.
-pub const CODEGEN_OUT_DIR: &str = "target/codegen";
-pub const CODEGEN_BIN_DIR: &str = "target/codegen/bin";
-pub const CODEGEN_LIB_DIR: &str = "target/codegen/lib";
-pub const CODEGEN_STAMP_PATH: &str = "target/codegen/.codegen-stamp";
 
 // Re-exports for convenience
 pub use algebra::{BoundedLattice, JoinSemilattice, Lattice, MeetSemilattice, PartialOrder};
@@ -141,7 +136,9 @@ pub use layout::{
 };
 pub use log_detail::LogDetailLevel;
 pub use makefile_render::MakefileStructuredRenderer;
-pub use node::{Node, NodeBody, NodeIoExample, NodeKind, ServiceTransportClass};
+pub use node::{
+    Node, NodeBody, NodeIoExample, NodeKind, NodeOrigin, ServiceTransportClass, SubDagKind,
+};
 pub use patterns::{
     canonical_authenticate_chain,
     content_upsert::{add_content_upsert_chain, ContentUpsertChain},
@@ -207,10 +204,9 @@ pub use types::{
     boundary_label, parse_map_type_id, seed_placeholder_policy_for_type_id,
     semantic_carrier_class_for_type_id, semantic_carrier_compatible,
     semantic_carrier_kind_for_type_id, value_backing_for_type_id, value_compatible_with_type_id,
-    value_kind_name, Cardinality, CardinalityMismatch, CardinalitySamplingStrategy, NodeId,
-    InputProvenance, OperationKey, PortCategory, PortName, SeedPlaceholderPolicy,
-    SemanticCarrierClass, StaticFingerprint,
-    SemanticCarrierKind, TypeId, ValueBacking,
+    value_kind_name, Cardinality, CardinalityMismatch, CardinalitySamplingStrategy,
+    InputProvenance, NodeId, OperationKey, PortCategory, PortName, SeedPlaceholderPolicy,
+    SemanticCarrierClass, SemanticCarrierKind, StaticFingerprint, TypeId, ValueBacking,
 };
 pub use validate::{
     validate_fingerprint_uniqueness, validate_required_inputs, validate_resource_wiring,
@@ -225,6 +221,7 @@ pub use value_bridge::{
     classify_value, from_bridge_json, from_bridge_json_typed, to_bridge_json, ValueCategory,
 };
 pub use value_expr::ValueExpr;
+pub use verified::VerifiedDag;
 pub use workspace_layout::{WorkspaceLayout, WorkspaceLayoutError};
 
 // Re-exports from language module for common use

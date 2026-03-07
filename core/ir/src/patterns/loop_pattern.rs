@@ -22,7 +22,7 @@
 //! - `OneOrMore` input → `OneOrMore` output
 
 use crate::dag::{Dag, Edge, Port};
-use crate::node::Node;
+use crate::node::{Node, SubDagKind};
 use crate::patterns::PatternOp;
 use crate::patterns::{validate_resource_inputs, ResourceInput};
 use crate::types::Cardinality;
@@ -191,8 +191,24 @@ impl<T: Clone> LoopBuilder<T> {
         dag.add_edge(Edge::new("body", "result", "pack", "result"));
         dag.add_edge(Edge::new("unpack", "count", "pack", "count"));
 
-        // Create the outer node
-        Node::subdag(self.name.as_str(), dag)
+        // Collect extra input ports: body entrypoints that aren't the element port.
+        let body_node = dag.get_node(&"body".into()).unwrap();
+        let extra_input_ports: Vec<String> = body_node
+            .inputs
+            .iter()
+            .filter(|p| p.name.0 != self.element_port_name)
+            .map(|p| p.name.0.clone())
+            .collect();
+
+        // Create the outer node with Loop metadata stamped.
+        let mut node = Node::subdag(self.name.as_str(), dag);
+        if let crate::node::NodeBody::SubDag(_, ref mut kind) = node.body {
+            *kind = SubDagKind::Loop {
+                element_port: self.element_port_name.clone(),
+                extra_input_ports,
+            };
+        }
+        node
     }
 }
 
@@ -236,7 +252,7 @@ mod tests {
         let node = LoopBuilder::new("test").with_body(make_loop_body()).build();
 
         match &node.body {
-            NodeBody::SubDag(dag) => {
+            NodeBody::SubDag(dag, _) => {
                 assert_eq!(dag.nodes.len(), 3);
                 assert_eq!(dag.edges.len(), 3);
 

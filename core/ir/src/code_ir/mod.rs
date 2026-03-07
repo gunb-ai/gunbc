@@ -204,10 +204,12 @@ pub enum Expr {
     RefMut(Box<Expr>),
     /// **Tier 1 (SystemsIR).** Path expression: `path::to::Item` (for enum variants, associated fns).
     Path(Vec<String>),
-    /// **Tier 0.** Struct construction: `Name { field: value, ... }`.
+    /// **Tier 0.** Struct construction: `Name { field: value, ..rest }`.
     Struct {
         name: String,
         fields: Vec<(String, Expr)>,
+        /// Optional struct update base (renders as `..base`).
+        rest: Option<Box<Expr>>,
     },
     /// **Tier 0.** Closure/lambda: `|args| body` / `lambda args: body`.
     Closure { args: Vec<String>, body: Box<Expr> },

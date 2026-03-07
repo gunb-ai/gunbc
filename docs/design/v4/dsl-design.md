@@ -143,7 +143,7 @@ Expanded:
 
 **The discovery problem**:
 ```rust
-// gunbc-dag/src/workspace/subdags/mod.rs — HARDCODED
+// gunbc-app/src/workspace/subdags/mod.rs — HARDCODED
 pub fn build_workspace_dag() -> Result<Dag<WorkspaceOp>, BuilderError> {
     dag.add_node(makegen::build_makegen_subdag());
     dag.add_node(clippy::build_clippy_lint_all_subdag());
@@ -2373,7 +2373,7 @@ gunbc's `docs/design/unified-emission.md` catalogued 13 separate rendering syste
 | 6 | **CLI entrypoints** | `CliSpec` (args from DAG entrypoint ports) | `CodegenBackend::emit_cli` | Clap/argparse/cobra wiring |
 | 7 | **Progress renderer** | `ProgressManifest` (topology, boundaries, groups) | `ProgressRenderer` trait | Frame building, JSONL emission |
 | 8 | **Makefile** | `MakefileIR` (targets, deps, rules) | `MakefileRenderer` | Makefile + .gitignore |
-| 9 | **CI YAML** | `SharedStep[]` (checkout, run, dag-step) | `CiRenderer` trait (per-provider) | GitHub Actions YAML, GitLab CI YAML |
+| 9 | **CI YAML** | `config.ci` + typed provider values (`Workflow`, `Job`, `Step`, `Cache`, `Variable`) assembled in `.dag` | DSL `cigen` leaf serialization | GitHub Actions YAML, GitLab CI YAML |
 | 10 | **Terminal layout** | `DagLayout` (wave columns, edge routes) | `TerminalRenderer` (standard/compact) | ANSI terminal output |
 | 11 | **JSONL events** | Event envelope (§6.6 protocol) | `JsonlRenderer` | Structured event stream |
 | 12 | **Content hash manifest** | `ManifestEntry` (input hash, file count) | — (serialized directly) | `.manifest.json` for freshness |
@@ -2522,7 +2522,7 @@ The simplest complete graph in gunbc. The canonical "hello world" for the DSL.
 
 ## A.1 Today: Rust (gunbc)
 
-### Graph builder (`gunbc-dag/src/makegen/graph.rs` — 137 lines)
+### Graph builder (`gunbc-app/src/makegen/graph.rs` — 137 lines)
 
 ```rust
 pub fn build_makegen_graph() -> Dag<MakegenGraphOp> {
@@ -3076,7 +3076,7 @@ Shows pipeline construct with stages, parallel groups, and aggregation.
 
 ## D.1 Today: Rust (gunbc)
 
-`gunbc-dag/src/ci/graph.rs` — 920 lines.
+`gunbc-app/src/ci/graph.rs` — 920 lines.
 
 ## D.2 DSL
 
@@ -3497,7 +3497,7 @@ Each generation's "free" capabilities compound: the DSL gets parallel execution 
 
 This appendix documents the precise failure modes that caused gunbc's codebase to accumulate glue, drift, and rework pressure — and traces each failure mode to the DSL construct that eliminates it.
 
-The framing draws on internal postmortem documents: `TODO/TODONE/refactor-pressure.md` (2026-02-05), `TODO/TODONE/architecture-debt.md` (2026-02-05), `docs/design/consolidation-plan.md`, `docs/design/unified-registration.md`, and `docs/design/unified-emission.md`.
+The framing draws on internal postmortem documents: `TODO/TODONE/2026-Q1/refactor-pressure.md` (2026-02-05), `TODO/TODONE/2026-Q1/architecture-debt.md` (2026-02-05), `docs/design/consolidation-plan.md`, `docs/design/unified-registration.md`, and `docs/design/unified-emission.md`.
 
 ## K.1 The Precise Diagnosis
 
@@ -3694,8 +3694,8 @@ For navigating between this design doc and the source material it consolidates:
 | Unified Registration | `docs/design/unified-registration.md` | 6 registration islands → unified discovery |
 | Unified Emission | `docs/design/unified-emission.md` | 13 rendering systems → OutputMedium hierarchy |
 | Consolidation Plan | `docs/design/consolidation-plan.md` | 6 work streams, reconciliation status |
-| Refactor Pressure | `TODO/TODONE/refactor-pressure.md` | Root causes A-D, decision rules, quick scans |
-| Architecture Debt | `TODO/TODONE/architecture-debt.md` | Meta-root-cause, leak→fix table |
+| Refactor Pressure | `TODO/TODONE/2026-Q1/refactor-pressure.md` | Root causes A-D, decision rules, quick scans |
+| Architecture Debt | `TODO/TODONE/2026-Q1/architecture-debt.md` | Meta-root-cause, leak→fix table |
 | IR Spec | `SPEC.md` | Formal IR specification |
 | Agent Guide | `AGENT.md` | Onboarding, guardrails |
 

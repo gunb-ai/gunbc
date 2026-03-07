@@ -135,7 +135,7 @@ Each bridge exists because the compiler doesn't do enough. For each: current sta
 **Bridge 6: `registry_tools_to_value()`** — manual Rust struct → `Value::Map` conversion for tool registry.
 **Bridge 7: `DiscoverToolsOp`** — runtime tool registry discovery.
 
-- **Locations**: `core/codegen/src/makegen/shared.rs:84-178` (~95 LOC) + `gunbc-dag/src/extern_ops.rs:151-178` (~28 LOC)
+- **Locations**: `core/codegen/src/makegen/shared.rs:84-178` (~95 LOC) + `gunbc-app/src/extern_ops.rs:151-178` (~28 LOC)
 - **Current**: Tool registry lives as Rust structs built from `inventory`. Runtime converts to `Value::Map` for DSL consumption.
 - **Final state**: Tool registry is a compile-time artifact. Compiler scans `dsl/tools/*.dag`, extracts entrypoints, emits `dsl/generated/tool_registry.dag`. Makegen/bootstrap import this artifact directly. No runtime discovery. No struct→Value conversion.
 - **Acceptance**: `registry_tools_to_value()` **deleted** from `shared.rs`. `DiscoverToolsOp` **deleted** from `extern_ops.rs`. `dsl/generated/tool_registry.dag` exists and is consumed by `tools/makegen.dag` imports. `grep -r 'registry_tools_to_value\|DiscoverToolsOp' .` returns 0.
@@ -146,11 +146,46 @@ Each bridge exists because the compiler doesn't do enough. For each: current sta
 
 ## Application Layer Cleanup
 
-Once compiler fixes land, the application layer (currently gunbc-dag) becomes simple:
+Once compiler fixes land, the application layer (currently gunbc-app) becomes simple:
+
+### Thin shims are compiler debt
+
+Thin shims in `gunbc-dag` are not harmless convenience code. They are compiler debt:
+- they create a visible hack point for new contributors
+- they let missing compiler features leak back into app Rust
+- they turn naming-only wrappers into public APIs that people start depending on
+
+Rule: if a file only renames, re-exports, or lightly wraps compiler/runtime entrypoints without
+enforcing a real invariant, delete it. Do not preserve shim layers just because they are small.
+
+Update 2026-03-05:
+- deleted `gunbc-dag/src/tool_graphs.rs`
+- deleted `gunbc-dag/src/pragma/mod.rs`
+- deleted `gunbc-dag/src/docgen/mod.rs`
+- deleted `gunbc-dag/src/dsl_builder.rs`
+- deleted `gunbc-dag/src/fs_env.rs`
+- deleted `gunbc-dag/src/dry_run.rs`
+- deleted `gunbc-dag/src/dsl_registry.rs`
+- deleted `gunbc-dag/src/resolve.rs`
+- generated callers now use direct `gunbc_resolve::builder::build_dsl_graph(...)` calls with `gunbc_dag::extern_ops::GunbcExternResolver`
+
+Remaining shim inventory:
+- none in `gunbc-dag/src`
+
+Final state:
+- generated CLIs/tests/macros call real compiler/runtime entrypoints directly
+- no public app-layer wrapper exists just to rename `build_dsl_graph*`, `infer_signature`, or re-export core APIs
+- any surviving facade must state the invariant it protects and be narrowed to the smallest visibility that works
+
+Acceptance:
+- `gunbc-dag/src/dsl_builder.rs` is deleted
+- `gunbc-dag/src/fs_env.rs`, `gunbc-dag/src/dry_run.rs`, `gunbc-dag/src/dsl_registry.rs`, and `gunbc-dag/src/resolve.rs` are deleted
+- `rg -n 'pub fn build_.*graph|pub fn .*signature' gunbc-dag/src` returns only justified compiler/runtime entrypoints, not convenience wrappers
+- generated code no longer imports repo-local wrapper symbols like `build_build_graph`, `build_pragma_graph`, or `build_docgen_graph`
 
 ### Rename
 
-`gunbc-dag` → `gunbc-app` (or `gunbc-bin`). It's the application entry point, not a DAG definition crate.
+`gunbc-dag` → `gunbc-app` (**done**). It's the application entry point, not a DAG definition crate.
 
 - **Acceptance**: `Cargo.toml` `[package] name = "gunbc-app"`. Directory renamed. All `Cargo.toml` dependency references updated. `grep -r 'gunbc-dag' Cargo.toml */Cargo.toml` returns 0.
 
@@ -159,7 +194,7 @@ Once compiler fixes land, the application layer (currently gunbc-dag) becomes si
 Currently output paths are specified in three places:
 1. `core/ir/src/workspace_layout.rs` — hardcoded `"target/codegen/bin"` constants
 2. `codegen_cli.rs` — calls `WorkspaceLayout` with string fallback
-3. `gunbc-dag/Cargo.toml` — `[[bin]]` entries: `path = "../target/codegen/bin/*/main.rs"`
+3. `gunbc-app/Cargo.toml` — `[[bin]]` entries: `path = "../target/codegen/bin/*/main.rs"`
 
 Plus `dsl/config/codegen_paths.dag` which declares intent but isn't consumed.
 
@@ -168,11 +203,11 @@ Plus `dsl/config/codegen_paths.dag` which declares intent but isn't consumed.
 
 ### Testgen engine
 
-Testgen is split between `core/codegen/src/testgen/` (14,400 LOC library) and `gunbc-dag/src/testgen_dag/` (1,500 LOC orchestration) due to a real circular dependency with testgen-registry.
+Testgen is split between `core/codegen/src/testgen/` (14,400 LOC library) and `gunbc-app/src/testgen_dag/` (1,500 LOC orchestration) due to a real circular dependency with testgen-registry.
 
 **Question**: Is the meta-circular testgen (testgen is itself a DAG that generates tests) the right design? Or should `daglang compile --emit=tests` be a compiler mode? The latter would eliminate the testgen DAG, the circular dependency, and the 1,500 LOC orchestration layer entirely.
 
-- **Acceptance (if compiler mode)**: `gunbc-dag/src/testgen_dag/` **deleted** (~1,500 LOC). `daglang compile --emit=tests` produces test files. Testgen-registry circular dependency eliminated.
+- **Acceptance (if compiler mode)**: `gunbc-app/src/testgen_dag/` **deleted** (~1,500 LOC). `daglang compile --emit=tests` produces test files. Testgen-registry circular dependency eliminated.
 
 ### What remains after cleanup
 
@@ -185,6 +220,51 @@ Testgen is split between `core/codegen/src/testgen/` (14,400 LOC library) and `g
 | 17 generated `[[bin]]` entries | — | Templates pointing to generated main.rs |
 
 Everything else either moves into the compiler (bridges 1-3, 8-9), gets deleted (bridges 4-5, 10), or waits for artifact emission (bridges 6-7).
+
+---
+
+## 2026-03-05 Rebaseline: Large Sweeps
+
+The immediate file-by-file cleanup was useful, but the next phase should be
+executed as a few larger sweeps with explicit end states.
+
+### What we're trying to accomplish
+
+1. **No app policy in compiler crates**: `core/*` should own language/compiler/runtime infrastructure, not gunbc repository conventions.
+2. **No runtime interpretation of lowered DSL**: the lowerer emits executable IR/SubDags directly; runtime stops delegating back into evaluator code.
+3. **No profile/config leakage into user-facing tools**: workflows declare semantic requirements, not concrete profile names or local fallback trees.
+4. **No runtime Rust adapters just to feed DSL**: registry discovery, struct-to-`Value` shaping, and artifact rendering become compile-time artifacts or real DSL modules.
+5. **One source of truth per concern**: output paths, build targets, auth models, and generated bin layout are each declared once and derived everywhere else.
+
+### Sweep plan
+
+| Sweep | Goal | Deletes / Moves | Acceptance |
+|-------|------|------------------|------------|
+| **Sweep A: Auth/Profile Deletion** | Remove profiles as a user/runtime concept; replace with structural auth modeling | `available_profiles`, `--profile` CLI plumbing, `dsl/profiles/*`, workflow-local credential helpers | `rg -n 'available_profiles|--profile|dsl/profiles/' core gunbc-dag dsl -g'*.rs' -g'*.dag'` returns only justified compatibility residue |
+| **Sweep B: Runtime Bridge Deletion** | Lowerer emits final runtime shape; resolver stops interpreting DSL fragments | Bridges 1, 2, 3, 8, 9 | `rg -n 'DeclaredOutputCallableOp|FnBodyCallableOp|CollectionDelegate|add_fs_env_root_node|GenericFilePrepareOp|GenericFileParseOp' core/` returns 0 |
+| **Sweep C: Makegen/App Policy Extraction** | Move gunbc repository build policy out of `core/codegen` | Remaining `core/codegen/src/makegen/{model,registry,gitignore,shared}.rs` app policy | no `compile_data_from_module(...build_targets.dag|gitignore.dag)` or runtime makegen discovery in `core/codegen` |
+| **Sweep D: Extern Collapse** | Delete app externs that only exist because artifacts/features are missing | `DiscoverToolsOp`, bootstrap render externs, `render_tree`, `build_snapshot_content`, CI/infra discovery helpers | `extern_ops.rs` contains only irreducible app bindings, each justified by a missing compiler feature |
+| **Sweep E: Output/Layout Unification** | Single source of truth for codegen output paths and app identity | hardcoded `target/codegen/*` constants, duplicated bin layout, temporary crate naming | `dsl/config/codegen_paths.dag` drives all output/layout consumers |
+
+### 2026-03-05 Progress Update
+
+1. **Sweep A (partial)**: repo-facing `--profile`/`available_profiles` plumbing is removed from tool discovery, generated CLIs, makegen projections, and active runtime diagnostics. Provider auth modules now live in `dsl/extdeps/github/auth.dag` and `dsl/extdeps/llm/auth.dag`. The deleted repo binding modules are `dsl/profiles/gist.dag`, `dsl/profiles/sdlc.dag`, and `dsl/shared/credentials.dag`. Remaining residue is compiler-internal: lowerer profile types, compatibility fixtures under `dsl/profiles/`, and historical design/docs.
+2. **Sweep C (partial)**: repo makegen policy moved from `core/codegen/src/makegen/*` into `gunbc-dag/src/makegen/*`, and the handwritten Rust Justfile renderer plus profile-specific tool projection were deleted. Remaining debt is runtime artifact discovery/rendering (`DiscoverToolsOp`, `render_makefile_from_dsl_discovery`, and Rust-side `compile_data_from_module(...)` loaders in app code).
+3. **Sweep E (partial)**: `core/ir` no longer exports hardcoded `CODEGEN_OUT_DIR`, `CODEGEN_BIN_DIR`, `CODEGEN_LIB_DIR`, or `CODEGEN_STAMP_PATH`. Remaining duplication is localized to `WorkspaceLayout`, generated-bin `Cargo.toml` entries, and fallback path strings.
+
+### Recommended execution order
+
+1. **Sweep B** first. It deletes the biggest category of “runtime compiler debt” and removes the bug class behind the gist postmortem.
+2. **Sweep A** next. Once the runtime no longer interprets lowered DSL, auth modeling can move to structural provider models without preserving `--profile`.
+3. **Sweep C** after A/B. Makegen is still one of the most obvious places where gunbc repo policy leaks into `core/codegen`.
+4. **Sweep D** after C. Artifact emission and DSL features can then delete most of `extern_ops.rs` instead of refining it.
+5. **Sweep E** last. Output-path unification and crate renaming are cleanup, but they will stick better after the app/compiler boundary is stable.
+
+### Execution rule
+
+Do not schedule the next phase as isolated files. Each change should be
+attached to one of the sweeps above and carried through until the sweep's
+acceptance grep/test criteria are satisfied.
 
 ---
 

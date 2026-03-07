@@ -144,6 +144,7 @@ fn compile_return_fields(fields: &[(String, ast::Expr)], ctx: &CompileContext) -
                 .iter()
                 .map(|(name, expr)| (name.clone(), compile_expr(expr, ctx)))
                 .collect(),
+            rest: None,
         }
     }
 }
@@ -198,6 +199,7 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
             code_ir::Expr::Struct {
                 name: struct_name,
                 fields: ir_fields,
+                rest: None,
             }
         }
         ast::Expr::Match(scrutinee, arms) => compile_match(scrutinee, arms, ctx),
@@ -1073,12 +1075,13 @@ fn substitute_var(expr: &code_ir::Expr, from: &str, to: &code_ir::Expr) -> code_
             op: op.clone(),
             expr: Box::new(substitute_var(inner, from, to)),
         },
-        code_ir::Expr::Struct { name, fields } => code_ir::Expr::Struct {
+        code_ir::Expr::Struct { name, fields, rest } => code_ir::Expr::Struct {
             name: name.clone(),
             fields: fields
                 .iter()
                 .map(|(n, e)| (n.clone(), substitute_var(e, from, to)))
                 .collect(),
+            rest: rest.as_ref().map(|r| Box::new(substitute_var(r, from, to))),
         },
         code_ir::Expr::Closure { args, body } => {
             if args.contains(&from.to_string()) {
@@ -1268,7 +1271,7 @@ pub fn body_has_empty_construct(stmts: &[code_ir::Stmt]) -> bool {
 
 fn expr_has_empty(e: &code_ir::Expr) -> bool {
     match e {
-        code_ir::Expr::Struct { name, fields } if name.is_empty() && fields.is_empty() => true,
+        code_ir::Expr::Struct { name, fields, .. } if name.is_empty() && fields.is_empty() => true,
         code_ir::Expr::Match { arms, .. } => arms.iter().any(|a| body_has_empty_construct(&a.body)),
         code_ir::Expr::If {
             then_body,
@@ -1571,7 +1574,7 @@ mod tests {
         );
         let ir = compile_expr(&expr, &empty_ctx());
         match ir {
-            code_ir::Expr::Struct { name, fields } => {
+            code_ir::Expr::Struct { name, fields, .. } => {
                 assert_eq!(name, "Point");
                 assert_eq!(fields.len(), 2);
             }
@@ -1751,6 +1754,7 @@ mod tests {
                 body: vec![code_ir::Stmt::TailExpr(code_ir::Expr::Struct {
                     name: String::new(),
                     fields: vec![],
+                    rest: None,
                 })],
             }],
         })];

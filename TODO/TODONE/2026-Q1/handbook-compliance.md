@@ -68,7 +68,7 @@ runtime failures with no compile-time detection.
 **R1. Activate `#[tool_target]` annotations** ~~(medium effort)~~ **DONE**
 
 All 7 tool graph builders have `#[tool_target]` annotations. The validation
-test (`gunbc-dag/tests/tool_registration.rs`) verifies bidirectional
+test (`gunbc-app/tests/tool_registration.rs`) verifies bidirectional
 consistency and testgen coverage. Next step: derive `all_tools()` from the
 registry to eliminate the manual list.
 
@@ -141,7 +141,7 @@ Defer until E1/E2 prove the pattern.
 
 ### Problem: Repeated prepare-execute-parse scaffolding
 
-The CI graph (`gunbc-dag/src/ci/graph.rs`, 1011 lines) has 6 transport
+The CI graph (`gunbc-app/src/ci/graph.rs`, 1011 lines) has 6 transport
 triplets that follow the same pattern:
 
 ```
@@ -154,7 +154,7 @@ Each triplet manually:
 - Propagates skip/skip_reason through the chain
 
 This pattern also appears in `lib/tools/deps/src/graph.rs` (multiple triplets)
-and `gunbc-dag/src/workspace/subdags/bootstrap.rs`.
+and `gunbc-app/src/workspace/subdags/bootstrap.rs`.
 
 No helper exists today — each graph builder stamps these out manually.
 

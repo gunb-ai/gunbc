@@ -23,7 +23,7 @@ The codebase uses a **DSL-first workflow compiler** (`core/daglang/`) where grap
 
 ## Binary Workflows
 
-All binary workflows live in `gunbc-dag/src/` and are registered via `#[tool_target]`.
+All binary workflows live in `gunbc-app/src/` and are registered via `#[tool_target]`.
 
 ### 1. Codegen (`codegen/graph.rs`)
 
@@ -274,7 +274,7 @@ PrepareChatRequest -> ResolveAuth -> CredentialEnv -> Execute -> ParseChatRespon
 
 ---
 
-## Workspace Composition (`gunbc-dag/src/workspace/`)
+## Workspace Composition (`gunbc-app/src/workspace/`)
 
 The workspace layer wraps all tool graphs into a unified `WorkspaceOp` enum for fractal DAG composition:
 
@@ -365,19 +365,19 @@ Access modes: `Read` (shared), `Write` (exclusive), `Exclusive` (no other access
 
 | Workflow | File |
 |----------|------|
-| Codegen | `gunbc-dag/src/codegen/graph.rs` |
-| Bootstrap | `gunbc-dag/src/bootstrap/graph.rs` |
-| Build | `gunbc-dag/src/build/graph.rs` |
-| Makegen | `gunbc-dag/src/makegen/graph.rs` |
-| CI | `gunbc-dag/src/ci/graph.rs` |
-| Pragma | `gunbc-dag/src/pragma/graph.rs` |
-| Testgen | `gunbc-dag/src/testgen_dag/graph.rs` |
+| Codegen | `gunbc-app/src/codegen/graph.rs` |
+| Bootstrap | `gunbc-app/src/bootstrap/graph.rs` |
+| Build | `gunbc-app/src/build/graph.rs` |
+| Makegen | `gunbc-app/src/makegen/graph.rs` |
+| CI | `gunbc-app/src/ci/graph.rs` |
+| Pragma | `gunbc-app/src/pragma/graph.rs` |
+| Testgen | `gunbc-app/src/testgen_dag/graph.rs` |
 | Gist | `lib/tools/gist/src/graph.rs` |
 | Deps | `lib/tools/deps/src/graph.rs` |
 | Clippy | `lib/tools/clippy/src/graph.rs` |
 | Review | `lib/review/src/graph.rs` |
 | LLM Chat | `lib/llm-ops/src/graph.rs` |
-| Workspace | `gunbc-dag/src/workspace/ops.rs` + `subdags/*.rs` |
+| Workspace | `gunbc-app/src/workspace/ops.rs` + `subdags/*.rs` |
 | DAG IR | `core/ir/src/dag.rs`, `builder.rs`, `node.rs` |
 | Executor | `core/exec/src/execute.rs`, `lower.rs` |
 | Tool Registry | `core/tool-registry/src/lib.rs` |

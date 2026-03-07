@@ -87,7 +87,41 @@ fn default_file_response() -> Value {
     }))
 }
 
-/// Infer the mock provider from a node ID (e.g., "github.Gist.Create/execute").
+/// Resolve MockProvider from a node's OperationKey metadata.
+///
+/// Uses the typed `OperationKey` instead of parsing node ID strings.
+/// Falls back to node ID heuristic only when no operation_key is present
+/// (e.g., nodes not stamped by the lowerer).
+fn resolve_mock_provider<T>(dag: &Dag<T>, node_id: &str) -> MockProvider {
+    if let Some(node) = dag.get_node(&NodeId::from(node_id)) {
+        if let Some(op_key) = &node.operation_key {
+            return operation_key_to_mock_provider(op_key);
+        }
+    }
+    // Fallback for nodes without operation_key (legacy or non-service nodes).
+    infer_provider_from_node_id(node_id)
+}
+
+/// Resolve MockProvider from an OperationKey's full service path.
+///
+/// Handles LLM sub-providers: "llm.Anthropic" → Anthropic, "llm.OpenAI" → OpenAi.
+fn operation_key_to_mock_provider(op_key: &gunbc_ir::OperationKey) -> MockProvider {
+    let service_lower = op_key.service.to_lowercase();
+    if service_lower.starts_with("github") {
+        MockProvider::GitHub
+    } else if service_lower.starts_with("gcp") {
+        MockProvider::Gcp
+    } else if service_lower.contains("anthropic") {
+        MockProvider::Anthropic
+    } else if service_lower.contains("openai") {
+        MockProvider::OpenAi
+    } else {
+        MockProvider::Generic
+    }
+}
+
+/// Legacy fallback: infer the mock provider from a node ID string.
+/// Only used when no OperationKey metadata is available on the node.
 fn infer_provider_from_node_id(node_id: &str) -> MockProvider {
     let lower = node_id.to_lowercase();
     if lower.starts_with("github.") || lower.contains("/github.") || lower.contains("gist") {
@@ -168,8 +202,8 @@ fn default_value_for_slot<T: Executable + Clone + Send>(
         return default_value_for_port(type_id, cardinality);
     }
 
-    // Try provider-specific REST response first (based on node ID patterns).
-    let provider = infer_provider_from_node_id(node_id);
+    // Try provider-specific REST response first (using OperationKey metadata).
+    let provider = resolve_mock_provider(dag, node_id);
     let provider_rest = rest_response_for_provider(provider);
     if response_candidate_satisfies_consumers(dag, node_id, port_name, &provider_rest) {
         return provider_rest;
@@ -484,8 +518,8 @@ fn probe_best_response<T: Executable + Clone + Send>(
     node_id: &str,
     partial_example: &NodeExample,
 ) -> Value {
-    // Try provider-specific REST response first.
-    let provider = infer_provider_from_node_id(node_id);
+    // Try provider-specific REST response first (using OperationKey metadata).
+    let provider = resolve_mock_provider(dag, node_id);
     let provider_rest = rest_response_for_provider(provider);
     {
         let mut inputs = partial_example.inputs.clone();
@@ -516,4 +550,216 @@ fn probe_best_response<T: Executable + Clone + Send>(
          candidates failed, falling back to default_shell_response()"
     );
     default_shell_response()
+}
+
+/// A failure-variant mock spec derived from a success spec.
+#[derive(Debug, Clone)]
+pub struct FailureVariant {
+    /// Human-readable tag for the failure scenario (e.g. "shell_exit_1", "rest_401_auth").
+    pub tag: String,
+    /// The modified MockSpec with one transport mock replaced by a failure response.
+    pub spec: MockSpec,
+}
+
+/// Generate failure-variant MockSpecs from a success-path MockSpec.
+///
+/// For each transport boundary mock in the spec, produces one or more
+/// failure variants:
+/// - Shell responses: exit code 1
+/// - REST responses: 401 (auth) and 500 (server error)
+///
+/// Each variant replaces exactly one boundary mock, keeping all others
+/// at their success values. This tests that the DAG handles individual
+/// transport failures correctly.
+pub fn auto_mock_failure_variants(success_spec: &MockSpec) -> Vec<FailureVariant> {
+    let mut variants = Vec::new();
+
+    for (idx, mock) in success_spec.boundary_mocks.iter().enumerate() {
+        let failure_values = failure_values_for_mock(&mock.value, &mock.node);
+        for (tag_suffix, failure_value) in failure_values {
+            let mut spec = success_spec.clone();
+            spec.boundary_mocks[idx].value = failure_value;
+            // Clear node examples — success-path matchers won't hold for failure paths.
+            spec.node_examples = Vec::new();
+            let tag = format!("{}_{}", mock.node.replace("::", "__"), tag_suffix);
+            variants.push(FailureVariant { tag, spec });
+        }
+    }
+
+    variants
+}
+
+/// Check if a MockSpec contains any transport boundary mocks that would
+/// produce failure variants.
+pub fn has_transport_boundaries(spec: &MockSpec) -> bool {
+    spec.boundary_mocks
+        .iter()
+        .any(|m| matches!(&m.value, Value::Response(_)))
+}
+
+fn failure_values_for_mock(value: &Value, node_id: &str) -> Vec<(&'static str, Value)> {
+    match value {
+        Value::Response(TransportResponse::Shell(_)) => {
+            vec![(
+                "shell_exit_1",
+                Value::Response(TransportResponse::Shell(ShellResponse {
+                    exit_code: 1,
+                    stdout: String::new(),
+                    stderr: "mock: command failed".to_string(),
+                })),
+            )]
+        }
+        Value::Response(TransportResponse::Rest(_)) => {
+            let provider = infer_provider_from_node_id(node_id);
+            vec![
+                (
+                    "rest_401_auth",
+                    Value::Response(TransportResponse::Rest(
+                        crate::synthesize_rest_response(&MockResponseSynthesis::failure(
+                            provider, 401, "auth",
+                        )),
+                    )),
+                ),
+                (
+                    "rest_500_server",
+                    Value::Response(TransportResponse::Rest(
+                        crate::synthesize_rest_response(&MockResponseSynthesis::failure(
+                            provider, 500, "server",
+                        )),
+                    )),
+                ),
+            ]
+        }
+        Value::Response(TransportResponse::File(_)) => {
+            vec![(
+                "file_not_found",
+                Value::Response(TransportResponse::File(FileResponse {
+                    path: "mock.txt".to_string(),
+                    operation: FileOp::Read,
+                    success: false,
+                    content: None,
+                    bytes: None,
+                    exists: Some(false),
+                    error: Some("No such file or directory".to_string()),
+                })),
+            )]
+        }
+        _ => vec![],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::BoundaryMock;
+
+    fn mock_spec_with_shell() -> MockSpec {
+        MockSpec {
+            name: "test".to_string(),
+            boundary_mocks: vec![BoundaryMock {
+                node: "execute_shell".to_string(),
+                port: "response".to_string(),
+                value: Value::Response(TransportResponse::Shell(ShellResponse::ok(
+                    "ok".to_string(),
+                ))),
+                sequence: None,
+            }],
+            input_expectations: vec![],
+            resource_mocks: Default::default(),
+            transport_mocks: vec![],
+            expected_outputs: vec![],
+            live_expected_outputs: vec![],
+            node_examples: vec![],
+            skipped_node_examples: vec![],
+            input_mocks: vec![],
+        }
+    }
+
+    fn mock_spec_with_rest() -> MockSpec {
+        MockSpec {
+            name: "test".to_string(),
+            boundary_mocks: vec![BoundaryMock {
+                node: "github.gists.create".to_string(),
+                port: "response".to_string(),
+                value: Value::Response(TransportResponse::Rest(RestResponse::new(
+                    200,
+                    serde_json::json!({"ok": true}),
+                ))),
+                sequence: None,
+            }],
+            input_expectations: vec![],
+            resource_mocks: Default::default(),
+            transport_mocks: vec![],
+            expected_outputs: vec![],
+            live_expected_outputs: vec![],
+            node_examples: vec![],
+            skipped_node_examples: vec![],
+            input_mocks: vec![],
+        }
+    }
+
+    #[test]
+    fn shell_failure_variant_has_exit_code_1() {
+        let variants = auto_mock_failure_variants(&mock_spec_with_shell());
+        assert_eq!(variants.len(), 1);
+        assert!(variants[0].tag.contains("shell_exit_1"));
+        match &variants[0].spec.boundary_mocks[0].value {
+            Value::Response(TransportResponse::Shell(resp)) => {
+                assert_eq!(resp.exit_code, 1);
+            }
+            other => panic!("expected shell response, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn rest_failure_variants_include_401_and_500() {
+        let variants = auto_mock_failure_variants(&mock_spec_with_rest());
+        assert_eq!(variants.len(), 2);
+        let tags: Vec<&str> = variants.iter().map(|v| v.tag.as_str()).collect();
+        assert!(tags.iter().any(|t| t.contains("rest_401_auth")));
+        assert!(tags.iter().any(|t| t.contains("rest_500_server")));
+        for v in &variants {
+            match &v.spec.boundary_mocks[0].value {
+                Value::Response(TransportResponse::Rest(resp)) => {
+                    assert!(resp.status == 401 || resp.status == 500);
+                }
+                other => panic!("expected rest response, got {:?}", other),
+            }
+        }
+    }
+
+    #[test]
+    fn non_transport_mocks_produce_no_variants() {
+        let spec = MockSpec {
+            name: "test".to_string(),
+            boundary_mocks: vec![BoundaryMock {
+                node: "some_node".to_string(),
+                port: "output".to_string(),
+                value: Value::Str("hello".to_string()),
+                sequence: None,
+            }],
+            input_expectations: vec![],
+            resource_mocks: Default::default(),
+            transport_mocks: vec![],
+            expected_outputs: vec![],
+            live_expected_outputs: vec![],
+            node_examples: vec![],
+            skipped_node_examples: vec![],
+            input_mocks: vec![],
+        };
+        assert!(auto_mock_failure_variants(&spec).is_empty());
+    }
+
+    #[test]
+    fn failure_variants_clear_node_examples() {
+        let mut spec = mock_spec_with_shell();
+        spec.node_examples.push(crate::NodeExample::new("terminal"));
+        let variants = auto_mock_failure_variants(&spec);
+        for v in &variants {
+            assert!(
+                v.spec.node_examples.is_empty(),
+                "failure variants should clear success-path node examples"
+            );
+        }
+    }
 }

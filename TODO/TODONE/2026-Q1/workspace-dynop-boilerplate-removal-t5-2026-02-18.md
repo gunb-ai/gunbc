@@ -8,8 +8,8 @@ Task: `T5`
 ### 1) Removed `WorkspaceOp` enum layer
 
 Files:
-- Deleted: `gunbc-dag/src/workspace/ops.rs`
-- Updated: `gunbc-dag/src/workspace/mod.rs`
+- Deleted: `gunbc-app/src/workspace/ops.rs`
+- Updated: `gunbc-app/src/workspace/mod.rs`
 
 Changes:
 - Replaced enum-based dispatch (`WorkspaceOp` + large `Executable` match + `From` impls)
@@ -20,10 +20,10 @@ Changes:
 ### 2) Removed `FileOpsGraph<T>` generic wrapper
 
 Files:
-- Deleted: `gunbc-dag/src/file_ops_graph.rs`
-- Updated: `gunbc-dag/src/lib.rs`
-- Updated: `gunbc-dag/src/testgen_dag/graph.rs`
-- Updated: `gunbc-dag/src/fs_env.rs`
+- Deleted: `gunbc-app/src/file_ops_graph.rs`
+- Updated: `gunbc-app/src/lib.rs`
+- Updated: `gunbc-app/src/testgen_dag/graph.rs`
+- Updated: `gunbc-app/src/fs_env.rs`
 
 Changes:
 - `TestgenGraphOp` now aliases `DynOp`.
@@ -34,19 +34,19 @@ Changes:
 ### 3) Rewired workspace subdag builders to DynOp
 
 Files:
-- `gunbc-dag/src/workspace/subdags/build.rs`
-- `gunbc-dag/src/workspace/subdags/ci.rs`
-- `gunbc-dag/src/workspace/subdags/codegen.rs`
-- `gunbc-dag/src/workspace/subdags/docgen.rs`
-- `gunbc-dag/src/workspace/subdags/pragma.rs`
-- `gunbc-dag/src/workspace/subdags/bootstrap.rs`
-- `gunbc-dag/src/workspace/subdags/makegen.rs`
-- `gunbc-dag/src/workspace/subdags/deps.rs`
-- `gunbc-dag/src/workspace/subdags/gist.rs`
-- `gunbc-dag/src/workspace/subdags/dag_viz.rs`
-- `gunbc-dag/src/workspace/subdags/clippy.rs`
-- `gunbc-dag/src/workspace/subdags/languages.rs`
-- `gunbc-dag/src/workspace/subdags/testgen.rs`
+- `gunbc-app/src/workspace/subdags/build.rs`
+- `gunbc-app/src/workspace/subdags/ci.rs`
+- `gunbc-app/src/workspace/subdags/codegen.rs`
+- `gunbc-app/src/workspace/subdags/docgen.rs`
+- `gunbc-app/src/workspace/subdags/pragma.rs`
+- `gunbc-app/src/workspace/subdags/bootstrap.rs`
+- `gunbc-app/src/workspace/subdags/makegen.rs`
+- `gunbc-app/src/workspace/subdags/deps.rs`
+- `gunbc-app/src/workspace/subdags/gist.rs`
+- `gunbc-app/src/workspace/subdags/dag_viz.rs`
+- `gunbc-app/src/workspace/subdags/clippy.rs`
+- `gunbc-app/src/workspace/subdags/languages.rs`
+- `gunbc-app/src/workspace/subdags/testgen.rs`
 
 Changes:
 - DSL-backed subdags now embed `Dag<DynOp>` directly (no convert-to-WorkspaceOp layer).
@@ -56,7 +56,7 @@ Changes:
 
 ## Validation
 
-- `cargo check -p gunbc-dag`
-- `cargo test -p gunbc-dag --lib workspace::subdags:: -- --nocapture`
-- `cargo test -p gunbc-dag --lib fs_env::tests::add_fs_env_root_node_uses_standard_shape -- --nocapture`
-- `cargo test -p gunbc-dag --lib testgen_dag::graph::tests:: -- --nocapture`
+- `cargo check -p gunbc-app`
+- `cargo test -p gunbc-app --lib workspace::subdags:: -- --nocapture`
+- `cargo test -p gunbc-app --lib fs_env::tests::add_fs_env_root_node_uses_standard_shape -- --nocapture`
+- `cargo test -p gunbc-app --lib testgen_dag::graph::tests:: -- --nocapture`

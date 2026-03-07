@@ -96,7 +96,7 @@ data packages: List<WorkspacePackage> = [
     io_boundary: false },
 
   // Main DAG crate
-  { name: "gunbc-dag",
+  { name: "gunbc-app",
     role: CodegenBootstrap,
     description: "Workspace DAG: tool graphs, extern impls, policy, registry",
     io_boundary: false },
@@ -105,10 +105,6 @@ data packages: List<WorkspacePackage> = [
   { name: "gunbc-lib-cloud-ops",
     role: Library,
     description: "Cloud operations: file-backed config, credential policy, secret cache",
-    io_boundary: false },
-  { name: "gunbc-lib-gcp-ops",
-    role: Library,
-    description: "GCP operations: IAM, Secret Manager, STS",
     io_boundary: false },
   { name: "gunbc-lib-llm-ops",
     role: Library,

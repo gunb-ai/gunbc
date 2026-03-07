@@ -7,247 +7,18 @@
 module tools.makegen
 
 import std.patterns { content_upsert }
-import extdeps.make {
-  MakeTarget, ToolTarget, EntrypointParam,
+import std.resources { Filesystem }
+import extdeps.build_targets {
   CoreWorkflow, MetaTargetDef, ResourceTargetEntry,
-  ResourceNeed, DiscoveredTool, ExtraTarget
+  DiscoveredTool
 }
+import extdeps.make_render { make_render_body, make_render_makefile }
 import config.build_targets {
   core_workflows, meta_targets, resource_targets
 }
 
-// ── Rendering helpers ──────────────────────────────────────────────
-
-fn render_target(name: String, deps: List<String>, body: List<String>, comment: String?) -> String {
-  let dep_str = deps |> join(" ")
-  let header = if dep_str != "" { "{name}: {dep_str}" } else { "{name}:" }
-  let recipe = body |> map(cmd => "\t{cmd}") |> join("\n")
-  let comment_line = match comment {
-    None => ""
-    _ => "# {comment}\n"
-  }
-  "{comment_line}{header}\n{recipe}\n"
-}
-
-fn render_section_header(title: String) -> String {
-  "# ============================================================================\n# {title}\n# ============================================================================\n"
-}
-
-fn render_phony_line(names: List<String>) -> String {
-  let all_names = names |> join(" ")
-  ".PHONY: {all_names}\n"
-}
-
-fn resolve_resource_target(resource: String, mode: String, res_targets: List<ResourceTargetEntry>) -> String {
-  let matches = res_targets |> filter(rt => rt.resource == resource)
-  let entry = matches |> first()
-  match entry {
-    None => ""
-    _ => if mode == "ensure" { entry.ensure_target } else { entry.verify_target }
-  }
-}
-
-fn resolve_meta_deps(needs: List<ResourceNeed>, res_targets: List<ResourceTargetEntry>) -> List<String> {
-  needs |> map(need => resolve_resource_target(resource: need.resource, mode: need.mode, res_targets: res_targets))
-        |> filter(dep => dep != "")
-}
-
-fn resolve_meta_fix_deps(needs: List<ResourceNeed>, res_targets: List<ResourceTargetEntry>) -> List<String> {
-  needs |> map(need => resolve_resource_target(resource: need.resource, mode: "ensure", res_targets: res_targets))
-        |> filter(dep => dep != "")
-}
-
-fn apply_prefix(prefix: String?, cmd: String) -> String {
-  match prefix {
-    None => cmd
-    _ => "@{prefix} {cmd}"
-  }
-}
-
-// ── Core workflow rendering ─────────────────────────────────────────
-
-fn render_core_targets(workflows: List<CoreWorkflow>) -> String {
-  workflows |> map(w => render_target(
-    name: w.name,
-    deps: w.deps,
-    body: w.body,
-    comment: w.comment ?? w.description
-  )) |> join("\n")
-}
-
-// ── Meta target rendering ───────────────────────────────────────────
-
-fn render_meta_base(meta: MetaTargetDef, res_targets: List<ResourceTargetEntry>) -> String {
-  let deps = resolve_meta_deps(needs: meta.resource_needs, res_targets: res_targets)
-  let cmd = apply_prefix(prefix: meta.command_prefix, cmd: meta.command)
-  render_target(name: meta.name, deps: deps, body: [cmd], comment: "{meta.name}: {meta.description}")
-}
-
-fn render_meta_fix_variant(meta: MetaTargetDef, res_targets: List<ResourceTargetEntry>) -> String {
-  let fix_deps = meta.fix_prerequisites
-  let resource_deps = resolve_meta_fix_deps(needs: meta.resource_needs, res_targets: res_targets)
-  let all_deps = fix_deps |> append(items: resource_deps)
-  let cmd = match meta.fix_command {
-    None => apply_prefix(prefix: meta.command_prefix, cmd: meta.command)
-    _ => apply_prefix(prefix: meta.command_prefix, cmd: meta.fix_command)
-  }
-  render_target(name: "{meta.name}-fix", deps: all_deps, body: [cmd], comment: "{meta.name}-fix: auto-fix then verify")
-}
-
-fn render_meta_check_variant(meta: MetaTargetDef, res_targets: List<ResourceTargetEntry>) -> String {
-  let deps = resolve_meta_deps(needs: meta.resource_needs, res_targets: res_targets)
-  match meta.check_command {
-    None => ""
-    _ => render_target(name: "{meta.name}-check", deps: deps, body: [meta.check_command], comment: None)
-  }
-}
-
-fn render_meta_target(meta: MetaTargetDef, res_targets: List<ResourceTargetEntry>) -> String {
-  let base = render_meta_base(meta: meta, res_targets: res_targets)
-  let fix = if meta.has_fix { render_meta_fix_variant(meta: meta, res_targets: res_targets) } else { "" }
-  let check = if meta.has_check { render_meta_check_variant(meta: meta, res_targets: res_targets) } else { "" }
-  "{base}{fix}{check}"
-}
-
-fn render_meta_targets(metas: List<MetaTargetDef>, res_targets: List<ResourceTargetEntry>) -> String {
-  let header = render_section_header(title: "Meta Targets - Development workflow commands")
-  let body = metas |> map(m => render_meta_target(meta: m, res_targets: res_targets)) |> join("\n")
-  "{header}\n{body}"
-}
-
-// ── Tool target rendering ───────────────────────────────────────────
-
-fn render_help_param(p: EntrypointParam) -> String {
-  let repeat_suffix = if p.repeatable { " ..." } else { "" }
-  match p.default {
-    None => "[{p.make_var}=...{repeat_suffix}]"
-    _ => "[{p.make_var}={p.default}{repeat_suffix}]"
-  }
-}
-
-fn render_help_params(params: List<EntrypointParam>) -> String {
-  params |> map(p => render_help_param(p: p)) |> join(" ")
-}
-
-fn render_tool_target(tool: DiscoveredTool) -> String {
-  let port_list = tool.entrypoints |> map(p => "{p.port_name} ({p.type_hint})") |> join(", ")
-  let main = render_target(
-    name: tool.short_name,
-    deps: tool.deps,
-    body: [tool.command],
-    comment: "{tool.binary_name} entrypoints: {port_list}"
-  )
-  let dry = render_target(
-    name: "{tool.short_name}-dry",
-    deps: tool.deps,
-    body: [tool.dry_run_command],
-    comment: None
-  )
-  let extras = tool.extra_targets |> map(extra => render_target(
-    name: "{tool.short_name}-{extra.suffix}",
-    deps: [tool.short_name],
-    body: extra.post_commands,
-    comment: "{tool.short_name}-{extra.suffix}: {extra.description}"
-  )) |> join("")
-  "{main}\n{dry}\n{extras}"
-}
-
-fn render_tool_targets(tools: List<DiscoveredTool>) -> String {
-  tools |> map(t => render_tool_target(tool: t)) |> join("\n")
-}
-
-// ── Help target ─────────────────────────────────────────────────────
-
-fn render_help_core_lines(workflows: List<CoreWorkflow>) -> String {
-  workflows |> map(w => "\t@echo \"  {w.name}  - {w.comment ?? w.description}\"") |> join("\n")
-}
-
-fn fix_description(prereqs: List<String>) -> String {
-  let joined = prereqs |> join(" + ")
-  if joined != "" { "{joined} first" } else { "auto-fix" }
-}
-
-fn render_help_meta_line(m: MetaTargetDef) -> String {
-  let base_line = "@echo \"  {m.name}  - {m.description}\""
-  let fix_desc = fix_description(prereqs: m.fix_prerequisites)
-  let fix_line = if m.has_fix {
-    "\n\t@echo \"  {m.name}-fix  - {m.description} ({fix_desc})\""
-  } else { "" }
-  let check_line = if m.has_check {
-    "\n\t@echo \"  {m.name}-check  - {m.description} (check only)\""
-  } else { "" }
-  "\t{base_line}{fix_line}{check_line}"
-}
-
-fn render_help_meta_lines(metas: List<MetaTargetDef>) -> String {
-  metas |> map(m => render_help_meta_line(m: m)) |> join("\n")
-}
-
-fn render_help_tool_line(t: DiscoveredTool) -> String {
-  let params = render_help_params(params: t.entrypoints)
-  let main_line = "@echo \"  {t.short_name} {params}  - {t.description}\""
-  let extra_lines = t.extra_targets |> map(extra =>
-    "\n\t@echo \"  {t.short_name}-{extra.suffix}  - {extra.description}\""
-  ) |> join("")
-  "\t{main_line}{extra_lines}"
-}
-
-fn render_help_tool_lines(tools: List<DiscoveredTool>) -> String {
-  tools |> map(t => render_help_tool_line(t: t)) |> join("\n")
-}
-
-fn render_help_target(workflows: List<CoreWorkflow>, metas: List<MetaTargetDef>, tools: List<DiscoveredTool>) -> String {
-  let header_lines = "help:\n\t@echo \"gunbc tools - generated Makefile\"\n\t@echo \"\"\n\t@echo \"Naming convention:\"\n\t@echo \"  make <target>      - verify only (CI-safe)\"\n\t@echo \"  make <target>-fix  - auto-fix then verify (for dev)\"\n\t@echo \"\""
-  let build_section = "\t@echo \"Build commands:\"\n" + render_help_core_lines(workflows: workflows) + "\n\t@echo \"\""
-  let dev_section = "\t@echo \"Development:\"\n" + render_help_meta_lines(metas: metas) + "\n\t@echo \"\""
-  let tool_section = "\t@echo \"Tools:\"\n" + render_help_tool_lines(tools: tools) + "\n\t@echo \"\"\n\t@echo \"Add -dry suffix for dry-run (e.g., make deps-dry)\""
-  "{header_lines}\n{build_section}\n{dev_section}\n{tool_section}\n"
-}
-
-// ── Phony line collection ───────────────────────────────────────────
-// Build as space-joined strings (avoids need for list concatenation).
-
-fn collect_core_phony_str(workflows: List<CoreWorkflow>) -> String {
-  workflows |> map(w => w.name) |> join(" ")
-}
-
-fn collect_meta_phony_str(metas: List<MetaTargetDef>) -> String {
-  let base = metas |> map(m => m.name) |> join(" ")
-  let checks = metas |> filter(m => m.has_check) |> map(m => "{m.name}-check") |> join(" ")
-  let fixes = metas |> filter(m => m.has_fix) |> map(m => "{m.name}-fix") |> join(" ")
-  "{base} {checks} {fixes}"
-}
-
-fn tool_phony_names(t: DiscoveredTool) -> String {
-  let base = "{t.short_name} {t.short_name}-dry"
-  let extras = t.extra_targets |> map(extra => "{t.short_name}-{extra.suffix}") |> join(" ")
-  if extras != "" { "{base} {extras}" } else { base }
-}
-
-fn collect_tool_phony_str(tools: List<DiscoveredTool>) -> String {
-  tools |> map(t => tool_phony_names(t: t)) |> join(" ")
-}
-
-// ── Naming convention header ────────────────────────────────────────
-
-fn render_naming_convention() -> String {
-  "# Naming convention:\n#   make <target>      - verify only (CI-safe, fails on issues)\n#   make <target>-fix  - auto-fix then verify (for dev)\n#\n# Dev default:     make test      (ensure generated artifacts, then test)\n# Dev workflow:    make test-fix  (fmt/lint fix + ensure generated artifacts, then test)\n# CI verification: make verify    (check generated artifacts)\n"
-}
-
-// ── Main rendering ──────────────────────────────────────────────────
-
 fn render_makefile_body(workflows: List<CoreWorkflow>, metas: List<MetaTargetDef>, tools: List<DiscoveredTool>, res_targets: List<ResourceTargetEntry>) -> String {
-  let convention = render_naming_convention()
-  let default_goal = ".DEFAULT_GOAL := help\n"
-  let core_phony = collect_core_phony_str(workflows: workflows)
-  let meta_phony = collect_meta_phony_str(metas: metas)
-  let tool_phony = collect_tool_phony_str(tools: tools)
-  let phony = ".PHONY: help {core_phony} {meta_phony} {tool_phony}\n"
-  let core = render_core_targets(workflows: workflows)
-  let help = render_help_target(workflows: workflows, metas: metas, tools: tools)
-  let meta = render_meta_targets(metas: metas, res_targets: res_targets)
-  let tool = render_tool_targets(tools: tools)
-  "{convention}\n{default_goal}\n{phony}\n{core}\n{help}\n{meta}\n{tool}"
+  make_render_body(workflows: workflows, metas: metas, tools: tools, res_targets: res_targets)
 }
 
 // ── Extern funcs ────────────────────────────────────────────────────
@@ -255,23 +26,24 @@ fn render_makefile_body(workflows: List<CoreWorkflow>, metas: List<MetaTargetDef
 
 extern func discover_tools() -> List<DiscoveredTool>
 
-// ── Makefile header ─────────────────────────────────────────────────
-
-fn render_header() -> String {
-  "# Generated by gunbc-makegen\n# DO NOT EDIT - regenerate with: cargo run -p gunbc-dag --bin gunbc-makegen\n"
-}
-
 // ── Full content assembly ─────────────────────────────────────────────
 
 fn render_makefile_content(workflows: List<CoreWorkflow>, metas: List<MetaTargetDef>, tools: List<DiscoveredTool>, res_targets: List<ResourceTargetEntry>) -> String {
-  let header = render_header()
-  let body = render_makefile_body(workflows: workflows, metas: metas, tools: tools, res_targets: res_targets)
-  "{header}{body}"
+  make_render_makefile(
+    workflows: workflows,
+    metas: metas,
+    tools: tools,
+    res_targets: res_targets,
+    generator: "gunbc-makegen",
+    regen_command: "cargo run -p gunbc-app --bin gunbc-makegen"
+  )
 }
 
 // ── Entry point ───────────────────────────────────────────────────────
 
-func makegen(path: String = "Makefile") -> { written: Bool } {
+func makegen(path: String = "Makefile") -> { written: Bool }
+  uses fs: Filesystem(mode: ReadWrite)
+{
   tools = discover_tools()
   content = render_makefile_content(workflows: core_workflows, metas: meta_targets, tools: tools, res_targets: resource_targets)
   result = content_upsert(content: content, path: path)

@@ -4,6 +4,7 @@ use crate::helpers::{
     optional_int, propagate_skipped, require_bool, require_int, require_value, OutputMap,
 };
 use crate::{ExecError, Executable};
+use gunbc_ir::patterns::collection::CollectionKind;
 use gunbc_ir::patterns::PatternOp;
 use gunbc_ir::Value;
 use std::collections::HashMap;
@@ -155,8 +156,80 @@ impl Executable for PatternOp {
                     .int("elapsed_ms", elapsed_ms)
                     .ok()
             }
+            PatternOp::CollectionAggregate { kind } => execute_collection_aggregate(kind, inputs),
         }
     }
+}
+
+fn execute_collection_aggregate(
+    kind: &CollectionKind,
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let items = match inputs.get("items") {
+        Some(Value::List(values)) => values.clone(),
+        Some(Value::Skipped) => return OutputMap::new().value("items", Value::Skipped).ok(),
+        None => Vec::new(),
+        Some(value) => vec![value.clone()],
+    };
+
+    let output = match kind {
+        CollectionKind::Map | CollectionKind::Filter | CollectionKind::FlatMap => {
+            Value::List(items)
+        }
+        CollectionKind::Sort => {
+            let mut sorted = items;
+            sorted.sort_by_key(|v| match v {
+                Value::Str(s) => s.clone(),
+                Value::Int(n) => n.to_string(),
+                other => format!("{other:?}"),
+            });
+            Value::List(sorted)
+        }
+        CollectionKind::Dedup => {
+            let mut out = Vec::new();
+            for item in items {
+                if !out.contains(&item) {
+                    out.push(item);
+                }
+            }
+            Value::List(out)
+        }
+        CollectionKind::Join => {
+            let joined = items
+                .iter()
+                .map(|v| match v {
+                    Value::Str(s) => s.clone(),
+                    other => format!("{other:?}"),
+                })
+                .collect::<Vec<_>>()
+                .join(",");
+            Value::Str(joined)
+        }
+        CollectionKind::Fold | CollectionKind::Len => Value::Int(items.len() as i64),
+        CollectionKind::Any => Value::Bool(
+            items
+                .iter()
+                .any(|v| !matches!(v, Value::Bool(false) | Value::Unit)),
+        ),
+        CollectionKind::All => Value::Bool(
+            items
+                .iter()
+                .all(|v| !matches!(v, Value::Bool(false) | Value::Unit)),
+        ),
+        CollectionKind::Contains => {
+            let needle = inputs
+                .get("needle")
+                .or_else(|| inputs.get("item"))
+                .or_else(|| inputs.get("contains"));
+            let found = needle
+                .map(|needle| items.iter().any(|v| v == needle))
+                .unwrap_or(false);
+            Value::Bool(found)
+        }
+        CollectionKind::Split | CollectionKind::Zip => Value::List(items),
+    };
+
+    OutputMap::new().value("items", output).ok()
 }
 
 fn list_values(inputs: &HashMap<String, Value>, key: &str) -> Vec<Value> {

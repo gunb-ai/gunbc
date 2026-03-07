@@ -1,0 +1,233 @@
+// extdeps/sdlc/providers/gcs_claim_store.dag
+//
+// Layer 3 concrete implementation: GcsClaimStore implements ClaimStore.
+//
+// Uses GCS objects with generation-based CAS for multi-worker mutual
+// exclusion. Each (issue_id, stage) pair maps to a GCS object whose
+// generation number serves as the optimistic lock.
+//
+// CAS mechanism:
+//   - acquire: write with `x-goog-if-generation-match: 0` (create-only)
+//     or with matching generation (re-acquire expired lease)
+//   - heartbeat: write with `x-goog-if-generation-match: {generation}`
+//   - release: delete with `x-goog-if-generation-match: {generation}`
+//
+// Gap E resolution: generation-based CAS for multi-worker claim safety.
+//
+// CAS wiring status (as of 2026-02-28):
+//   The DSL declares CAS intent (generation parameters, 412 test scenarios),
+//   but the compiler does NOT yet inject x-goog-if-generation-match headers
+//   from input fields. The lowerer generates static headers only. Until
+//   parameterized header support exists, the Rust worker must construct the
+//   precondition header at runtime from the generation input. Tests mock the
+//   412 response, which validates parse-layer conflict handling, but the
+//   actual header injection is not compiler-verified.
+//   See: tasks.md RT-PC1 (parameterized header injection)
+
+module extdeps.sdlc.providers.gcs_claim_store
+
+import interfaces.claim_store { ClaimStore }
+import std.types { NonEmptyStr }
+import std.errors { GcpErrorShape }
+
+// =========================================================================
+// GcsClaimStore : ClaimStore
+// =========================================================================
+//
+// Profile binding: cloud_run
+// Storage: GCS objects in gs://{bucket}/claims/{issue_id}/{stage}.json
+// CAS: GCS object generation (x-goog-if-generation-match header)
+//
+// Object layout:
+//   gs://{bucket}/claims/{issue_id}/{stage}.json
+//   Contents: { owner, generation, acquired_at_epoch_ms, expires_at_epoch_ms, lease_ttl_ms }
+//
+// Generation semantics:
+//   - Generation 0 means "object does not exist" (first acquire)
+//   - Each successful write increments the generation
+//   - x-goog-if-generation-match: N fails with 412 if current != N
+
+service gcs.ClaimStore : ClaimStore {
+
+  config {
+    bucket: NonEmptyStr
+    project_id: NonEmptyStr
+    endpoint: "https://storage.googleapis.com"
+    auth: BearerToken
+    auth_input: access_token
+    rate_limit: { requests: 1000, per: minute, scope: gcs_claims }
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 503] }
+  }
+
+  operation acquire {
+    input {
+      access_token: Secret
+      issue_id: NonEmptyStr
+      stage: NonEmptyStr
+      owner: NonEmptyStr
+      lease_ttl_ms: Int
+      expected_generation: Int = 0   // 0 = create-only; >0 = re-acquire expired lease
+    }
+    output {
+      acquired: Bool
+      conflict: Bool
+      lease_generation: Int
+    }
+    idempotent
+    transport rest { method: PUT, path: "/upload/storage/v1/b/\{bucket\}/o?uploadType=media&name=claims/\{issue_id\}/\{stage\}.json" }
+    response {
+      200 => Json
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      412 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation heartbeat {
+    input {
+      access_token: Secret
+      issue_id: NonEmptyStr
+      stage: NonEmptyStr
+      owner: NonEmptyStr
+      generation: Int
+    }
+    output { accepted: Bool }
+    idempotent
+    transport rest { method: PUT, path: "/upload/storage/v1/b/\{bucket\}/o?uploadType=media&name=claims/\{issue_id\}/\{stage\}.json" }
+    response {
+      200 => Json
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      412 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  // List all active claim objects under the claims/ prefix.
+  // Used by anti-entropy reconciler (SR-7) to find stale claims.
+  operation list_active {
+    input {
+      access_token: Secret
+    }
+    output {
+      claims: List<{
+        issue_id: String,
+        stage: String,
+        owner: String,
+        generation: Int,
+        acquired_at_epoch_ms: Int,
+        last_heartbeat_epoch_ms: Int,
+        expires_at_epoch_ms: Int
+      }>
+    }
+    readonly
+    idempotent
+    transport rest { method: GET, path: "/storage/v1/b/\{bucket\}/o?prefix=claims/" }
+    response {
+      200 => Json
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation release {
+    input {
+      access_token: Secret
+      issue_id: NonEmptyStr
+      stage: NonEmptyStr
+      owner: NonEmptyStr
+      generation: Int
+    }
+    output { released: Bool }
+    idempotent
+    transport rest { method: DELETE, path: "/storage/v1/b/\{bucket\}/o/claims%2F\{issue_id\}%2F\{stage\}.json" }
+    response {
+      204 => Unit
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      412 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+}
+
+// ── Tests ──────────────────────────────────────────────────────────
+
+fixture gcs_auth {
+    mock cloud_env.config -> { provider: "gcp", runtime: "cloud-run" }
+    mock cloud_env.credential -> { token: "<MOCK_GCS_TOKEN>", source_type: "static", scheme: "bearer" }
+}
+
+test gcs_claim_acquire_success : gcs_auth {
+
+    input acquire/prepare.issue_id -> "42"
+    input acquire/prepare.stage -> "design"
+    input acquire/prepare.owner -> "worker-1"
+    input acquire/prepare.lease_ttl_ms -> 30000
+
+    mock acquire/execute.response -> rest_response(200, {
+        name: "claims/42/design.json",
+        generation: "1706745600000000",
+        metageneration: "1"
+    })
+
+    expect result.acquired == true
+    expect result.conflict == false
+}
+
+test gcs_claim_acquire_conflict : gcs_auth {
+
+    input acquire/prepare.issue_id -> "42"
+    input acquire/prepare.stage -> "design"
+    input acquire/prepare.owner -> "worker-2"
+    input acquire/prepare.lease_ttl_ms -> 30000
+
+    // 412 Precondition Failed = another worker holds the claim
+    mock acquire/execute.response -> rest_response(412, {
+        error: {
+            code: 412,
+            message: "Precondition Failed",
+            errors: [{ reason: "conditionNotMet" }]
+        }
+    })
+
+    expect result.acquired == false
+    expect result.conflict == true
+}
+
+test gcs_claim_release_success : gcs_auth {
+
+    input release/prepare.issue_id -> "42"
+    input release/prepare.stage -> "design"
+    input release/prepare.owner -> "worker-1"
+    input release/prepare.generation -> 1706745600000000
+
+    mock release/execute.response -> rest_response(204, {})
+
+    expect result.released == true
+}
+
+test gcs_claim_heartbeat_stale : gcs_auth {
+
+    input heartbeat/prepare.issue_id -> "42"
+    input heartbeat/prepare.stage -> "design"
+    input heartbeat/prepare.owner -> "worker-1"
+    input heartbeat/prepare.generation -> 1706745500000000
+
+    // 412 = generation mismatch, lease was stolen
+    mock heartbeat/execute.response -> rest_response(412, {
+        error: { code: 412, message: "Precondition Failed" }
+    })
+
+    expect result.accepted == false
+}

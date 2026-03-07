@@ -129,13 +129,14 @@ input crate is added, the pattern silently becomes stale. Freshness checks pass 
 miss real changes.
 
 ### 6. Makefile & CI Targets (auto-derived, but fragile root)
-**Location**: `gunbc-dag/src/makegen/registry.rs`, `core/codegen/src/main.rs`
+**Location**: `gunbc-app/src/makegen/registry.rs`, `core/codegen/src/main.rs`
 **Pattern**: Derived from `all_tools()` — automatic once a tool is registered
 
 ```
 all_tools() → tools with .invocation() → Makefile targets (auto)
+all_tools() → tools with .invocation() → Justfile targets (auto)
 all_tools() → tools → CLI generation (auto)
-RenderConfig → CI YAML (hardcoded for ci tool only)
+config.ci + tools.cigen.dag + leaf CI serializer modules → CI YAML (DSL-owned for ci tool only)
 ```
 
 **What's good**: Downstream derivation is automatic. Once a tool is in `all_tools()`,
@@ -310,7 +311,7 @@ glob patterns automatically. If a crate is renamed or moved, the resolution upda
 - Keep `all_tools()` as a shim that delegates to `iter_tool_targets()`
 - Verify byte-identical CLI and Makefile output
 - Delete `GraphBuilderId` enum (replaced by registration metadata)
-- **Files**: `lib/tools/gist/src/lib.rs`, `lib/tools/deps/src/lib.rs`, `lib/review/src/lib.rs`, `gunbc-dag/src/makegen/`, `gunbc-dag/src/ci/`, `gunbc-dag/src/bootstrap/`
+- **Files**: `lib/tools/gist/src/lib.rs`, `lib/tools/deps/src/lib.rs`, `lib/review/src/lib.rs`, `gunbc-app/src/makegen/`, `gunbc-app/src/ci/`, `gunbc-app/src/bootstrap/`
 
 ### Phase 3: Boundary unification
 - `ToolRegistration` gains `mock_spec` field (path to MockSpec function)
@@ -328,7 +329,7 @@ glob patterns automatically. If a crate is renamed or moved, the resolution upda
   - Every tool crate with a `build_*_graph` function has `#[tool_target]`
   - Every `#[tool_target]` has a corresponding `#[testgen_target]`
   - No orphan registrations
-- **Files**: `gunbc-dag/tests/tool_registration.rs`
+- **Files**: `gunbc-app/tests/tool_registration.rs`
 
 ---
 

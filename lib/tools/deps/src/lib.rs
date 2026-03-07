@@ -65,3 +65,24 @@ pub fn dag_specs() -> Vec<&'static gunbc_testgen_registry::DagSpecDef> {
         .filter(|spec| spec.origin_crate == env!("CARGO_CRATE_NAME"))
         .collect()
 }
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use std::sync::{Mutex, OnceLock};
+
+    pub(crate) fn with_env_lock<F>(f: F)
+    where
+        F: FnOnce() + std::panic::UnwindSafe,
+    {
+        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let result = std::panic::catch_unwind(f);
+        std::env::remove_var(crate::STRICT_DRY_RUN_ENV);
+        if let Err(panic) = result {
+            std::panic::resume_unwind(panic);
+        }
+    }
+}
