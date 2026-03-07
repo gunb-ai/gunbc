@@ -13,22 +13,13 @@ import interfaces.signal_store { SignalStore }
 import interfaces.artifact_store { ArtifactStore }
 import interfaces.credential_provider { CredentialProvider }
 import interfaces.feedback_store { FeedbackStore }
-import extdeps.sdlc.providers.stub_providers
-import extdeps.sdlc.providers.stub_credential_provider
-import extdeps.sdlc.providers.stub_feedback_store
-import extdeps.sdlc.providers.file_feedback_store
-import extdeps.sdlc.providers.gcs_feedback_store
 import extdeps.sdlc.providers.github_issue_provider
 import extdeps.sdlc.providers.file_claim_store
 import extdeps.sdlc.providers.file_outcome_ledger
 import extdeps.sdlc.providers.codex_agent_provider
 import extdeps.sdlc.providers.file_signal_store
 import extdeps.sdlc.providers.inline_artifact_store
-import extdeps.sdlc.providers.gcp_credential_provider
-import extdeps.sdlc.providers.gcs_claim_store
-import extdeps.sdlc.providers.gcs_outcome_ledger
-import extdeps.sdlc.providers.pubsub_signal_store
-import extdeps.sdlc.providers.gcs_artifact_store
+import extdeps.sdlc.providers.file_feedback_store
 
 // =========================================================================
 // Profile binding declarations

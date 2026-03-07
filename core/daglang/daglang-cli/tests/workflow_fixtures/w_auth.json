@@ -16,20 +16,20 @@
     "expected_json": {
       "dry_run_completion_required": true,
       "interface_contract_verification_targets": 0,
-      "pure_node_determinism_targets": 64,
+      "pure_node_determinism_targets": 74,
       "resource_acquire_targets": 4,
       "resource_provide_targets": 0,
       "resource_release_targets": 4,
       "service_param_source_targets": 0,
-      "service_transport_execute_targets": 28,
-      "service_transport_external_targets": 21,
+      "service_transport_execute_targets": 33,
+      "service_transport_external_targets": 26,
       "service_transport_hermetic_targets": 7,
       "service_transport_idempotent_targets": 15,
-      "service_transport_parse_targets": 28,
-      "service_transport_prepare_targets": 28,
-      "service_transport_readonly_targets": 12,
-      "total_obligations": 92,
-      "transport_execution_targets": 28
+      "service_transport_parse_targets": 33,
+      "service_transport_prepare_targets": 33,
+      "service_transport_readonly_targets": 15,
+      "total_obligations": 107,
+      "transport_execution_targets": 33
     }
   }
 }

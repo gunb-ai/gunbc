@@ -6,6 +6,7 @@ core/daglang/daglang-syntax/src/parser.rs
 core/daglang/daglang-emit/src/lower_mips.rs
 core/daglang/daglang-lower/src/lib.rs
 gunbc-app/src/makegen/registry.rs
+gunbc-app/src/resource_targets.rs
 lib/gcp-ops/src/graph.rs
 
 [allow.lints]

@@ -279,7 +279,7 @@ fn patterns_file_contains_pattern_defs() {
     let source = parse_dsl("std/patterns.dag");
     assert_eq!(
         source.items.len(),
-        18,
+        19,
         "std/patterns.dag item count changed unexpectedly"
     );
     assert_eq!(
@@ -307,6 +307,7 @@ fn patterns_file_contains_pattern_defs() {
             "pattern content_upsert",
             "pattern credential_chain",
             "pattern transaction",
+            "pattern ensure_absent",
             "pattern retry",
             "func github_oidc",
             "func metadata_oidc",

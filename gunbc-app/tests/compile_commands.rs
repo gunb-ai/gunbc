@@ -11,6 +11,7 @@ fn ensure_test_profile_env() {
     static INIT: OnceLock<()> = OnceLock::new();
     INIT.get_or_init(|| unsafe {
         std::env::set_var("GITHUB_TOKEN", "test-github-token");
+        std::env::set_var("CODEX_API_KEY", "test-codex-api-key");
     });
 }
 
@@ -110,7 +111,6 @@ fn sdlc_worker_uses_provider_auth_modules_and_not_legacy_bindings() {
         "execute_transport_extdeps_sdlc_providers_stub_providers_stub_ClaimStore_",
         "execute_transport_extdeps_sdlc_providers_stub_providers_stub_OutcomeLedger_",
         "execute_transport_extdeps_sdlc_providers_stub_providers_stub_AgentProvider_",
-        "execute_transport_extdeps_sdlc_providers_gcp_credential_provider_GcpWifCredentialProvider_",
         "resolve_github_token",
         "resolve_llm_api_key",
     ];

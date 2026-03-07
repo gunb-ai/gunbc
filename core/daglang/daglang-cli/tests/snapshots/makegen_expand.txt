@@ -128,6 +128,13 @@ Nodes:
       * __deps: Any (0..*)
     outputs:
       * value: R (1)
+  - std.patterns::ensure_absent [callable::Pattern std.patterns.ensure_absent]
+    inputs:
+      * should_destroy: fn(Check.Output)->Bool (1)
+      * __out:absent: Bool (1)
+      * __deps: Any (0..*)
+    outputs:
+      * absent: Bool (1)
   - std.patterns::retry [callable::Pattern std.patterns.retry]
     inputs:
       * max_attempts: Int (1)

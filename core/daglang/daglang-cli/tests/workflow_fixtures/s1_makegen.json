@@ -20,7 +20,7 @@
     "expected_json": {
       "dry_run_completion_required": true,
       "interface_contract_verification_targets": 1,
-      "pure_node_determinism_targets": 133,
+      "pure_node_determinism_targets": 134,
       "resource_acquire_targets": 4,
       "resource_provide_targets": 1,
       "resource_release_targets": 4,
@@ -32,7 +32,7 @@
       "service_transport_parse_targets": 6,
       "service_transport_prepare_targets": 8,
       "service_transport_readonly_targets": 5,
-      "total_obligations": 141,
+      "total_obligations": 142,
       "transport_execution_targets": 8
     }
   }

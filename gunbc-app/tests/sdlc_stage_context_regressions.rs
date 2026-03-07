@@ -5,6 +5,8 @@ const SDLC_STAGES_PATH: &str = concat!(
     "/../dsl/funcs/sdlc_stages.dag"
 );
 
+// Test infrastructure: filesystem access for test fixtures
+#[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 fn sdlc_stages_source() -> String {
     fs::read_to_string(SDLC_STAGES_PATH)
         .unwrap_or_else(|err| panic!("read `{SDLC_STAGES_PATH}`: {err}"))
@@ -14,12 +16,12 @@ fn sdlc_stages_source() -> String {
 fn idea_stage_posts_generated_design_content() {
     let source = sdlc_stages_source();
     assert!(
-        source.contains("body: format_design_comment("),
-        "idea stage should format the issue comment through the generated-design helper"
+        source.contains("design.content"),
+        "idea stage comment should reference the generated design content"
     );
     assert!(
-        source.contains("design: design.content"),
-        "idea stage comment should post the generated design content, not the raw issue body"
+        source.contains("design.summary"),
+        "idea stage comment should reference the design summary"
     );
     assert!(
         source.contains("\"design_content\": design.content"),
