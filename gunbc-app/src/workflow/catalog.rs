@@ -74,6 +74,10 @@ struct WorkflowTemplate {
     stages: Vec<StageTemplate>,
 }
 
+pub(super) fn all_workflow_variant_defs() -> Result<&'static [WorkflowVariantDef], String> {
+    workflow_variants()
+}
+
 pub(super) fn all_tool_workflow_names() -> Result<Vec<&'static str>, String> {
     Ok(workflow_variants()?
         .iter()

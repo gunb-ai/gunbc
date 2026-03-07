@@ -158,7 +158,6 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("config.tool_registry".into(), 0),
         ("config.toolchain".into(), 0),
         ("config.workflow_catalog".into(), 0),
-        ("config.workflow_commands".into(), 0),
         ("config.workspace".into(), 0),
         ("examples.abstract_services".into(), 1),
         ("examples.deployment".into(), 9),

@@ -169,7 +169,7 @@ data allowlist_patterns: List<AllowlistPattern> = [
   { pattern: "core/daglang/daglang-resolve/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
   { pattern: "core/daglang/daglang-syntax/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
   { pattern: "core/daglang/daglang-typecheck/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
-  { pattern: "gunbc-dag/src/", rationale: "build-time DSL module discovery and workspace graph construction" },
+  { pattern: "gunbc-app/src/", rationale: "build-time DSL module discovery and workspace graph construction" },
   { pattern: "core/ir/src/workspace_layout.rs", rationale: "workspace layout discovery uses cargo metadata subprocess" },
   { pattern: "core/ir/src/transport/credential.rs", rationale: "transport boundary: credential applied to outbound requests" },
   { pattern: "core/ir/src/resource/", rationale: "capability-marker validation for resource handles" },

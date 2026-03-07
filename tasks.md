@@ -649,6 +649,9 @@ Interpret the remaining `S-*` tasks as proofs of the modeling above, not as isol
 | RV-2 | ExternId-keyed total binding (CP-47 completion) — `RuntimeBindings` keys by `ExternId` not `ProgramSymbolId` | M | Needs ExternId interner shared between typecheck and resolve. Currently `ExternId` is defined but no intern table exists. |
 | RV-3 | Golden fixture `gunbc-dag` → `gunbc-app` binary name revert — `dag-snapshot`, `dag-viz` binaries should keep `gunbc-dag-*` prefix | S | Catch from review 2026-03-06. Affects makefile_golden.txt and justfile_golden.txt. |
 | RV-4 | Testgen failure variant integration — wire `auto_mock_failure_variants()` into testgen pipeline to generate error-path tests | M | API landed (2026-03-06); not yet consumed by `auto_testgen_for_module()`. |
+| RV-5 | B1: Eliminate `depth_ordinal` duplication in `test_policy.dag` — import from `fermi.dag` instead of re-declaring | S | Blocked on `evaluate_fn_body()` cross-module fn call support. Once that lands, delete `depth_ordinal()` from `test_policy.dag` and import `fermi_ordinal`/`fermi_within_budget` from `std.fermi`. |
+| RV-6 | G1: Derive build targets from FermiDepth variants in DSL — replace 5 hand-copied `MetaTargetDef` blocks in `build_targets.dag` | M | Blocked on DSL fold/map over sum type variants at data-declaration time. Guardrail test (G2) exists in `fermi_parity_contracts.rs` to catch drift. When DSL supports variant iteration, generate test-{depth} targets from FermiDepth. |
+| RV-7 | Pragma lint allowlist modeling — `arch_rules.dag` pattern list is stringly-typed and fragile (e.g., stale `gunbc-dag/src/` after rename) | M | Design a better model: type the allowlist entries against workspace crate names or use `workspace.dag` crate metadata so renames propagate automatically. Currently just string prefix matching against repo-relative paths. |
 
 ---
 
@@ -680,8 +683,8 @@ Interpret the remaining `S-*` tasks as proofs of the modeling above, not as isol
 | G | 13 | Obligation boundary, testgen hardening | Minimalism, Resolve early |
 | H | 10 | SDLC pipeline | — |
 | J | 21 | External dependency modeling | — |
-| Backlog | 13 | Future | — |
-| **Total** | **163** | | |
+| Backlog | 16 | Future | — |
+| **Total** | **166** | | |
 
 ### Execution order (recommended)
 

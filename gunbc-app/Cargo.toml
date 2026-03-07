@@ -123,7 +123,11 @@ path = "../target/codegen/bin/justgen/main.rs"
 
 [[bin]]
 name = "gunbc-ci"
-path = "../target/codegen/bin/ci/main.rs"
+path = "src/bin/ci_runner.rs"
+
+[[bin]]
+name = "gunbc-test-all"
+path = "src/bin/test_all_runner.rs"
 
 [[bin]]
 name = "gunbc-readme"
