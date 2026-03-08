@@ -204,36 +204,69 @@ structural synthesis) instead of `synthesize_expr_compute` directly.
 
 ---
 
-### Root Cause E: No structural equivalent exists
+### Root Cause E: No structural lowering attempted
 
-Some expression forms have no corresponding structural `PrimitiveOpKind`.
-They go directly to the interpreter without attempting structural lowering.
+Some expression forms go straight to the interpreter without attempting
+structural lowering. This includes both explicitly-tagged forms (Pipe, For)
+and — critically — a `_` catch-all that silently swallows every `Expr`
+variant that isn't explicitly matched.
+
+**The catch-all is a structural invariant violation.** The `Expr` enum has
+18 variants. `resolve_return_expr_source` explicitly handles 10 of them.
+The remaining 8 fall through to `_ => synthesize_expr_compute(...)`:
+
+| Expr variant | What it is | Should lower to |
+|---|---|---|
+| `Pipe` | `expr \|> fn` | Desugar to `Call` and resolve structurally |
+| `PipeCall` | `expr \|> method(args)` | Desugar to `Call` and resolve structurally |
+| `For` | `for x in list { body }` | Structural map/collection node |
+| `Call` | `f(a, b)` | Callable endpoint wiring (already done elsewhere in lowerer) |
+| `ServiceCall` | `svc.Op(args)` | Service endpoint wiring (already done elsewhere in lowerer) |
+| `Lambda` | `x => body` | Anonymous callable / inline sub-expression |
+| `Map` | `{ "key": val }` | Structural map construction |
+| `Guarded` | `expr [when cond]` | Conditional wrapper |
+| `After` | `expr [after dep]` | Dependency edge (not a value-producing node) |
+| `Return` | `return { fields }` | Record construction + output wiring |
+
+Pipe and For are explicitly tagged (`PipeOp`, `ForOp`) for tracking purposes,
+but all three categories (Pipe/For, the 7 catch-all variants, and the
+catch-all itself) share the same fundamental problem.
 
 | # | Site | Line | Trigger |
 |---|------|------|---------|
-| E1 | `resolve_return_expr_source` (Pipe) | ~10481 | `expr |> fn()` pipe expression |
-| E2 | `resolve_return_expr_source` (PipeCall) | ~10481 | `expr |> fn(arg: val)` pipe call |
+| E1 | `resolve_return_expr_source` (Pipe) | ~10481 | `expr \|> fn()` pipe expression |
+| E2 | `resolve_return_expr_source` (PipeCall) | ~10481 | `expr \|> fn(arg: val)` pipe call |
 | E3 | `resolve_return_expr_source` (For) | ~10491 | `for x in list { body }` expression |
-| E4 | `resolve_return_expr_source` (catch-all) | ~10501 | Any unmatched `Expr` variant |
+| E4 | `resolve_return_expr_source` (catch-all) | ~10501 | `Call`, `ServiceCall`, `Lambda`, `Map`, `Guarded`, `After`, `Return` |
 
-**Pipe (E1/E2):** `x |> map(fn)` is syntactic sugar for `map(fn, x)`. The
-lowerer could desugar this to a function call and then resolve the call
-structurally. Instead it emits `PipeOp` — tagged as distinct from
-`ExprCompute` for tracking, but still interpreter-backed.
+**This violates multiple README invariants beyond Invariant 7:**
 
-**For (E3):** `for x in list { body }` is a map/fold operation. The lowerer
-could desugar to a structural `Collection` node or a `Map` primitive. Instead
-it emits `ForOp`.
+- **Invariant 2 (I/O is structural):** A `ServiceCall` inside an expression
+  that hits the catch-all gets bundled into an opaque `ExprCompute` blob.
+  The I/O is no longer visible in the graph structure — you can't tell by
+  looking at the DAG that this node does I/O. Dry-run can't intercept it.
+  Transport mocking can't reach it.
 
-**Catch-all (E4):** This handles any `Expr` variant not explicitly matched.
-Currently this includes: `Expr::NullCoalesce` (which does have a structural
-equivalent — `PrimitiveOpKind::NullCoalesce`), `Expr::Index`, `Expr::Range`,
-`Expr::TypeCast`, and potentially others. These need to be matched explicitly
-— either with structural synthesis or a clear error.
+- **Invariant 4 (each phase is a pure function):** The lowering phase is
+  supposed to transform every valid AST construct into DAG IR. For 8 of 18
+  expression forms, it defers the work to the resolve layer at runtime.
+  The lowerer isn't completing its job.
 
-**Why these exist:** The C24 migration introduced structural ops incrementally.
-`PipeOp` and `ForOp` were tagged separately from `ExprCompute` specifically
-to track elimination progress. They are explicitly acknowledged as temporary.
+- **Invariant 8 (construction, not validation):** The `_` catch-all is a
+  wildcard that silently accepts any new `Expr` variant added to the parser.
+  If someone adds `Expr::TypeCast` tomorrow, it will silently land in
+  `ExprCompute` with no compiler error, no test failure, no indication that
+  structural lowering was skipped. The match should be exhaustive with no
+  wildcard — every variant handled explicitly or rejected at compile time.
+
+**This is not common practice in the compiler.** The 10 variants that *are*
+handled all have dedicated structural synthesis functions with proper
+`PrimitiveOpKind` nodes. The C24 comments throughout the code show this was
+being built incrementally. Pipe and For are explicitly acknowledged as
+temporary (`"tagged distinctly so we can track ExprCompute elimination
+progress"`). But the `_` catch-all hiding 7 additional unhandled variants
+is a larger gap than the tagged forms — it's the silent kind of problem
+that Invariant 8 exists to prevent.
 
 ---
 
@@ -260,7 +293,7 @@ code. Under Invariant 7 this should be an `unreachable!()` or removed entirely.
 | **B: Sub-expression resolution failure** | 10 | Cascading `None` from recursive resolution | Low — these are symptoms; fix the causes (C, D, E) and B sites resolve |
 | **C: Local let binding as return source** | 2 | Direct `ExprCompute` instead of recursive structural resolution | Low — change `Ident` branch to recurse like `FieldAccess` does |
 | **D: Service call arg wiring** | 1 | Bypasses structural synthesis entirely | Low — call `resolve_return_expr_source` instead of `synthesize_expr_compute` |
-| **E: No structural equivalent** | 4 | Missing lowering for Pipe, For, catch-all | Medium–High — requires desugaring or new structural primitives |
+| **E: No structural lowering attempted** | 4 (covering 10 `Expr` variants) | Pipe, For go straight to interpreter; `_` catch-all silently swallows `Call`, `ServiceCall`, `Lambda`, `Map`, `Guarded`, `After`, `Return` | Medium–High — requires desugaring, new primitives, and exhaustive match |
 | **F: Unreachable fallback** | 1 | Dead code | Trivial — delete or `unreachable!()` |
 
 Total: 20 sites (18 reachable).
@@ -340,3 +373,19 @@ After all causes are resolved, `synthesize_expr_compute` and
    the error must explain *why* and suggest alternatives. "Cannot lower
    `for x in list { body }` to structural DAG nodes" is not actionable.
    "Use a `stage` with `map` collection instead of inline `for`" is.
+
+5. **The `_` catch-all must go.** The match in `resolve_return_expr_source`
+   must be exhaustive with no wildcard. Every `Expr` variant gets an explicit
+   arm — either structural synthesis or a clear compile error. This is the
+   minimum structural guarantee (Invariant 8): a new `Expr` variant added to
+   the parser must cause a compile-time error in the lowerer until a
+   structural lowering is implemented. Today it silently falls through to
+   `ExprCompute`.
+
+6. **`Call` and `ServiceCall` in expression position.** These are already
+   handled elsewhere in the lowerer (service call wiring, callable endpoint
+   resolution). Their presence in the catch-all means `resolve_return_expr_source`
+   doesn't recognize them — likely because they appear as nested sub-expressions
+   (e.g., inside a record field or as a pipe argument) rather than as
+   top-level statements. The fix may be to wire through to the existing
+   lowering paths, not to create new structural primitives.
