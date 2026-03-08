@@ -50,13 +50,6 @@ pub(crate) mod scope;
 pub mod spec;
 pub(crate) mod transport;
 
-/// Emit a lowerer diagnostic to stderr when DAGLANG_LOWER_WARNINGS=1.
-fn lower_warn(msg: &str) {
-    if std::env::var("DAGLANG_LOWER_WARNINGS").as_deref() == Ok("1") {
-        eprintln!("daglang-lower: {msg}");
-    }
-}
-
 pub use spec::{
     check_response_completeness, ArgvSegment, AuthRequirement, BodyEntry, ExitCodePattern,
     ExitMappingEntry, FieldSpec, FileOperationSpec, LocalOperationSpec, MockResponseEntry,
@@ -5603,12 +5596,6 @@ fn expand_single_pattern(
                 if let Some(output) = expanded {
                     last_node_id.clone_from(&output.node_id);
                     node_outputs.insert(ns.name.clone(), output);
-                } else {
-                    lower_warn(&format!(
-                        "pattern `{}` node `{}` expansion failed — \
-                         node dropped from expanded pattern",
-                        ctx.item_name, ns.name
-                    ));
                 }
             }
             Stmt::Let(name, expr) | Stmt::Assign(name, expr) => {
@@ -5696,10 +5683,6 @@ fn resolve_pattern_return_expr(
                     output_port: mapped_port,
                 })
             } else {
-                lower_warn(
-                    "resolve_pattern_return_expr: non-ident base in field access — \
-                     return field unresolved",
-                );
                 None
             }
         }
@@ -5869,14 +5852,7 @@ fn expand_pattern_body_node(
                     })
             })
         }
-        _ => {
-            lower_warn(&format!(
-                "pattern body node `{node_name}` has unsupported expression type {:?} — \
-                 node will be silently skipped (only ServiceCall, eq(), and pattern calls are supported)",
-                std::mem::discriminant(expr)
-            ));
-            None
-        }
+        _ => None,
     }
 }
 
@@ -8126,17 +8102,7 @@ fn add_service_call_edges(
                 ..fn_ctx
             };
             wire_for_loop_iterables(builder, &loop_ctx, stmts, target);
-            // Skip return wiring for fn items with non-lossy fn_body:
-            // FnBodyCallableOp evaluates the body directly, making
-            // ExprCompute return nodes redundant (and they fail on local
-            // let bindings the ExprCompute can't access).
-            let is_fn_with_body = matches!(
-                &item.node,
-                Item::FnDef(def) if !def.body.lossy
-            );
-            if !is_fn_with_body {
-                wire_callable_return_outputs(builder, &fn_ctx, stmts, target, body_lossy);
-            }
+            wire_callable_return_outputs(builder, &fn_ctx, stmts, target, body_lossy);
         }
     }
     for module in project.modules() {
@@ -12253,8 +12219,7 @@ fn wire_callable_return_outputs(
             &format!("return_{index}"),
         ) {
             Ok(result) => result,
-            Err(e) => {
-                lower_warn(&format!("wire_callable_return_outputs: {} (RT4c)", e));
+            Err(_e) => {
                 continue;
             }
         };
