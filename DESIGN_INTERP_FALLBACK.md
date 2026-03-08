@@ -483,13 +483,57 @@ feel restrictive to DSL authors. Pipe chains (`x |> map(fn) |> filter(fn)`)
 are a core ergonomic feature and restricting them to statement position
 removes much of their value.
 
+### Key finding: Collection lowering already exists
+
+The infrastructure to lower pipe chains to structural DAG nodes **already
+exists** in Phase 1:
+
+- `CollectionKind` enum (Map, Filter, Fold, Join, FlatMap, Sort, etc.)
+- `LoweredOp::Collection { module, callable, kind }` — the structural node
+- `collect_collection_ops_from_stmts` — walks statements, finds pipes
+- `build_collection_lowering_plan` — emits chained Collection nodes
+- The emitter compiles these as `Computation::Collection`
+- Tests verify `stages |> map() |> filter() |> join()` → three chained nodes
+
+This is exactly the design intent: pipe syntax is shorthand for graph IR.
+**But this infrastructure is only used in Phase 1.** When the same pipe
+expression appears in a return field, record literal, or nested inside a
+conditional, Phase 3 (`resolve_return_expr_source`) hits `Expr::Pipe` →
+`synthesize_tagged_evaluator` → `PipeOp` → interpreter. It bypasses
+the Collection lowering entirely.
+
+The problem is not "how do we lower pipes structurally." That's solved.
+The problem is "why do pipes reach Phase 3 at all when Phase 1 already
+knows how to handle them."
+
 ### Recommendation
 
-Not yet determined. The choice depends on how much inline computation the
-DSL needs to support long-term (which is a language design question, not a
-compiler implementation question). All three options eliminate the wildcards.
-Option C makes them unnecessary. Options A and B make them into exhaustive
-matches with explicit arms for every `Expr` variant.
+**Option C (restrict the language) is the natural fit.** The DSL's design
+intent is that everything is a DAG. Pipe chains already lower to structural
+Collection nodes when they're top-level statements. The compiler should
+require them to be top-level. Inline pipe chains (in return fields, record
+literals, conditional branches) should be disallowed — the DSL author must
+name the intermediate result with a `let` binding, which makes it a
+statement that Phase 1 can lower.
+
+This aligns with the existing architecture rather than fighting it. It
+requires no new lowering infrastructure. It makes the DAG shape explicit
+in the source. And it eliminates the need for `PipeOp`, `ForOp`, and
+`ExprCompute` because the expressions that trigger them would no longer
+be valid DSL.
+
+The remaining pure expressions (string interpolation, arithmetic,
+comparisons, record/list construction) already have structural
+`PrimitiveOpKind` equivalents. Their fallback to `ExprCompute` only
+triggers when a sub-expression can't be resolved — which is typically
+because a pipe chain or lambda is nested inside them. Once pipes are
+restricted to statement position, these structural synthesis functions
+should succeed without fallback.
+
+Option A (flatten) achieves the same result automatically but hides the
+transformation from the DSL author. Option B (tree-recursive) is the
+most general but the largest change. Option C is the simplest and most
+aligned with the language's design philosophy.
 
 After all causes are resolved (by any option), `synthesize_expr_compute` and
 `synthesize_tagged_evaluator` have no callers and can be deleted, along with
