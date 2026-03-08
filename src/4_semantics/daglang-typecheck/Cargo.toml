@@ -1,0 +1,12 @@
+[package]
+name = "daglang-typecheck"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Type checking, refinement validation, and interface resolution for .dag files"
+
+[dependencies]
+daglang-contract = { path = "../../0_foundation/daglang-contract" }
+daglang-syntax = { path = "../../3_source/daglang-syntax" }
+daglang-resolve = { path = "../../3_source/daglang-resolve" }
+gunbc-ir = { path = "../../0_foundation/ir" }

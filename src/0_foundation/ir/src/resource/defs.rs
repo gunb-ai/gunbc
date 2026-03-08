@@ -9,13 +9,13 @@ use std::sync::OnceLock;
 
 /// Fallback input globs used when workspace layout discovery is unavailable.
 pub const CODEGEN_INPUT_GLOBS: &[&str] = &[
-    "src/8_surfaces/codegen/src/**/*.rs",
+    "src/1_surfaces/codegen/src/**/*.rs",
     "src/0_foundation/ir/src/**/*.rs",
 ];
 
 /// Fallback individual files used when workspace layout discovery is unavailable.
 pub const CODEGEN_INPUT_FILES: &[&str] = &[
-    "src/8_surfaces/codegen/Cargo.toml",
+    "src/1_surfaces/codegen/Cargo.toml",
     "src/0_foundation/ir/Cargo.toml",
 ];
 

@@ -14,6 +14,6 @@ quote = "1.0"
 syn = { version = "2", features = ["full", "derive"] }
 
 [dev-dependencies]
-gunbc-exec = { path = "../../7_execute/exec" }
+gunbc-exec = { path = "../../9_execute/exec" }
 gunbc-ir = { path = "../ir" }
-gunbc-test = { path = "../../9_test/test" }
+gunbc-test = { path = "../../10_test/test" }

@@ -40,13 +40,13 @@ Adapted from Google C++ style for Rust:
 | Crate | Purpose |
 |-------|---------|
 | `0_foundation/` | Shared IR, contracts, and foundational macros |
-| `0_pipeline/` | Driver/orchestrator: prepare + ordered stage runner |
-| `1_source/` | Syntax and module-graph discovery |
-| `2_semantics/` | Typechecking and semantic validation |
-| `3_graph/` | Lowering to GraphIR |
-| `4_artifacts/` | Derived manifests and obligations |
-| `5_emit/` | Code emission |
-| `6_materialize/` | Runtime wiring, resolve, primitives, blob, transport |
-| `7_execute/` | DAG execution engine |
-| `8_surfaces/` | CLI, codegen, and workflow-facing entrypoints |
-| `9_test/` | Test utilities, generated tests, registry crates |
+| `1_surfaces/` | CLI, codegen, and workflow-facing entrypoints |
+| `2_pipeline/` | Driver/orchestrator: prepare + ordered stage runner |
+| `3_source/` | Syntax and module-graph discovery |
+| `4_semantics/` | Typechecking and semantic validation |
+| `5_graph/` | Lowering to GraphIR |
+| `6_artifacts/` | Derived manifests and obligations |
+| `7_emit/` | Code emission |
+| `8_materialize/` | Runtime wiring, resolve, primitives, blob, transport |
+| `9_execute/` | DAG execution engine |
+| `10_test/` | Test utilities, generated tests, registry crates |

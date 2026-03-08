@@ -1,0 +1,19 @@
+[package]
+name = "daglang-lower"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Lowers typed .dag AST to gunbc GraphIR (Dag/Node/Port/Edge)"
+
+[dependencies]
+daglang-contract = { path = "../../0_foundation/daglang-contract" }
+daglang-syntax = { path = "../../3_source/daglang-syntax" }
+daglang-typecheck = { path = "../../4_semantics/daglang-typecheck" }
+gunbc-ir = { path = "../../0_foundation/ir" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+daglang-resolve = { path = "../../3_source/daglang-resolve" }
+gunbc-exec = { path = "../../9_execute/exec" }
+gunbc-resolve = { path = "../../8_materialize/resolve" }

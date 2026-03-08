@@ -1,0 +1,17 @@
+[package]
+name = "gunbc-lib-blob"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Blob content acquisition for gunbc DAGs"
+
+[dependencies]
+gunbc-infra = { path = "../../0_foundation/infra" }
+gunbc-ir = { path = "../../0_foundation/ir" }
+gunbc-exec = { path = "../../9_execute/exec" }
+gunbc-lib-transport = { path = "../transport" }
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+gunbc-test = { path = "../../10_test/test" }

@@ -1,0 +1,12 @@
+[package]
+name = "gunbc-test"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Test infrastructure for gunbc: boundary mocks and composition tests"
+
+[dependencies]
+gunbc-ir = { path = "../../0_foundation/ir" }
+gunbc-exec = { path = "../../9_execute/exec" }
+gunbc-primitives = { path = "../../8_materialize/primitives" }
+serde_json = "1"
