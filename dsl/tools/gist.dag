@@ -59,8 +59,8 @@ fn build_snapshot_content(
   let file_sections = files
     |> map(f => render_file_section(path: f.path, content: f.content))
     |> join("\n\n")
+  let skip_lines = skipped |> map(s => "- {s}") |> join("\n")
   let skip_section = if skipped |> count() > 0 {
-    let skip_lines = skipped |> map(s => "- {s}") |> join("\n")
     "\n\n## Skipped\n\n{skip_lines}"
   } else {
     ""

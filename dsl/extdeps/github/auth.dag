@@ -1,38 +1,48 @@
 // extdeps/github/auth.dag -- GitHub auth materialization for active workflows.
 //
-// Pure REST credential chain: ADC file -> OAuth2 refresh -> Secret Manager.
-// Zero CLI dependencies -- only requires ADC file from a prior `gcloud auth
-// application-default login`.
+// Local dev: reads GITHUB_TOKEN env var directly.
+// CI/production: ADC file -> OAuth2 refresh -> Secret Manager.
 
 module extdeps.github.auth
 
 import extdeps.cloud.gcp.gcp
 import extdeps.cloud.gcp.secret_manager
-import std.resources { Network }
+import extdeps.shell
+import std.resources { Filesystem, Network }
 import std.types { NonEmptyStr }
 
 func github_token(
   project_id: NonEmptyStr = "gunbai-secrets",
   secret_name: NonEmptyStr = "github-token"
 ) -> { token: Secret }
+  uses fs: Filesystem(mode: Read)
   uses net: Network
 {
-  // Step 1: Read ADC credentials from local file (file transport, no CLI)
-  adc = gcloud.Auth.ReadADC(path: "~/.config/gcloud/application_default_credentials.json")
+  // Check for direct GITHUB_TOKEN env var (local dev shortcut)
+  env_token = shell.Env.Get(name: "GITHUB_TOKEN")
 
-  // Step 2: Refresh the access token via REST (oauth2.googleapis.com)
-  refreshed = oauth2.Google.Refresh(
-    client_id: adc.client_id,
-    client_secret: adc.client_secret,
-    refresh_token: adc.refresh_token
-  )
+  token = if env_token.value != None {
+    env_token.value as Secret
+  } else {
+    // Step 1: Read ADC credentials from local file (file transport, no CLI)
+    adc = gcloud.Auth.ReadADC(path: "~/.config/gcloud/application_default_credentials.json")
 
-  // Step 3: Access the GitHub token from Secret Manager via REST
-  secret = gcp.SecretManager.AccessVersion(
-    access_token: refreshed.access_token,
-    project_id: project_id,
-    secret: secret_name
-  )
+    // Step 2: Refresh the access token via REST (oauth2.googleapis.com)
+    refreshed = oauth2.Google.Refresh(
+      client_id: adc.client_id,
+      client_secret: adc.client_secret,
+      refresh_token: adc.refresh_token
+    )
 
-  return { token: secret.payload as Secret }
+    // Step 3: Access the GitHub token from Secret Manager via REST
+    secret = gcp.SecretManager.AccessVersion(
+      access_token: refreshed.access_token,
+      project_id: project_id,
+      secret: secret_name
+    )
+
+    secret.payload as Secret
+  }
+
+  return { token: token }
 }
