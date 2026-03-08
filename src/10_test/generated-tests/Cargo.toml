@@ -9,8 +9,8 @@ description = "Auto-generated workspace tests"
 # Empty — this crate exists only for its tests.
 
 [dev-dependencies]
-gunbc-exec = { path = "../../9_execute/exec" }
-gunbc-ir = { path = "../../0_foundation/ir" }
-gunbc-resolve = { path = "../../8_materialize/resolve" }
+gunbc-exec = { path = "../../09_execute/exec" }
+gunbc-ir = { path = "../../00_foundation/ir" }
+gunbc-resolve = { path = "../../08_materialize/resolve" }
 gunbc-test = { path = "../test" }
 serde_json = { workspace = true }

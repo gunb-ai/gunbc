@@ -1,0 +1,19 @@
+[package]
+name = "gunbc-delegate-macros"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Derive macros: DelegateExecutable, DelegateMockable, StringEnum"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "2", features = ["full", "derive"] }
+
+[dev-dependencies]
+gunbc-exec = { path = "../../09_execute/exec" }
+gunbc-ir = { path = "../ir" }
+gunbc-test = { path = "../../10_test/test" }

@@ -28,7 +28,7 @@ dsl/extdeps/cloud/gcp/gcp.dag   "What is GCP?" — real OAuth2 scopes, real endp
 dsl/tools/gist.dag               "How do we upload a gist?" — composes services
 ```
 
-The compiler pipeline (`src/2_pipeline/` through `src/7_emit/`) transforms
+The compiler pipeline (`src/02_pipeline/` through `src/07_emit/`) transforms
 `.dag` -> executable DAG IR.
 The engine (`src/`) executes it. Neither knows what the domain is.
 
@@ -42,7 +42,7 @@ the graph.
    (pure)          (the only I/O node)        (pure)
 ```
 
-`src/8_materialize/transport/` is the **only** crate that performs direct I/O.
+`src/08_materialize/transport/` is the **only** crate that performs direct I/O.
 All other crates build `TransportRequest` values (pure) and consume
 `TransportResponse` values (pure). Dry-run replaces transport nodes with
 mocks. Pure nodes always run.
@@ -81,7 +81,7 @@ abstractions.
 
 ### 6. Resolution maps DSL constructs to runtime — nothing more
 
-The runtime materialization layer (`src/8_materialize/`) is the wiring layer.
+The runtime materialization layer (`src/08_materialize/`) is the wiring layer.
 It does not contain domain logic (that's DSL) or engine logic (that's the
 pipeline, IR, and executor crates). Every `extern func` backed by Rust is
 ratcheted and must be justified.
@@ -91,16 +91,16 @@ ratcheted and must be justified.
 ```
 dsl/              Domain: .dag source files, types, data, workflows
 src/
-  0_foundation/   Shared IR and foundational crates
-  1_surfaces/     CLIs, codegen, workflow-facing entrypoints
-  2_pipeline/     Driver/orchestrator: prepare -> run staged compile
-  3_source/       Source discovery, parse, module graph
-  4_semantics/    Typechecking and semantic validation
-  5_graph/        Lowering to GraphIR
-  6_artifacts/    Derived manifests and obligations
-  7_emit/         Code emission
-  8_materialize/  Runtime wiring, resolver, primitives, blob, transport
-  9_execute/      DAG executor
+  00_foundation/  Shared IR and foundational crates
+  01_surfaces/    CLIs, codegen, workflow-facing entrypoints
+  02_pipeline/    Driver/orchestrator: prepare -> run staged compile
+  03_source/      Source discovery, parse, module graph
+  04_semantics/   Typechecking and semantic validation
+  05_graph/       Lowering to GraphIR
+  06_artifacts/   Derived manifests and obligations
+  07_emit/        Code emission
+  08_materialize/ Runtime wiring, resolver, primitives, blob, transport
+  09_execute/     DAG executor
   10_test/        Test support and generated tests
 ```
 

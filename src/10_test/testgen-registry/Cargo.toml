@@ -6,8 +6,8 @@ license.workspace = true
 description = "Registry + helpers for auto-discovered testgen targets"
 
 [dependencies]
-gunbc-codegen = { path = "../../1_surfaces/codegen" }
-gunbc-exec = { path = "../../9_execute/exec" }
-gunbc-ir = { path = "../../0_foundation/ir" }
+gunbc-codegen = { path = "../../01_surfaces/codegen" }
+gunbc-exec = { path = "../../09_execute/exec" }
+gunbc-ir = { path = "../../00_foundation/ir" }
 gunbc-test = { path = "../test" }
 inventory = "0.3"

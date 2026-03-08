@@ -1,0 +1,29 @@
+[package]
+name = "daglang-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CLI tools: dag viz, dag expand, dag manifest, dag modules"
+
+[dependencies]
+daglang-syntax = { path = "../../03_source/daglang-syntax" }
+daglang-resolve = { path = "../../03_source/daglang-resolve" }
+daglang-typecheck = { path = "../../04_semantics/daglang-typecheck" }
+daglang-lower = { path = "../../05_graph/daglang-lower" }
+daglang-contract = { path = "../../00_foundation/daglang-contract" }
+daglang-derive = { path = "../../06_artifacts/daglang-derive" }
+daglang-emit = { path = "../../07_emit/daglang-emit" }
+daglang-driver = { path = "../../02_pipeline/daglang-driver" }
+gunbc-ir = { path = "../../00_foundation/ir" }
+gunbc-exec = { path = "../../09_execute/exec" }
+gunbc-resolve = { path = "../../08_materialize/resolve" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+toml = { workspace = true }
+
+[dev-dependencies]
+gunbc-test = { path = "../../10_test/test" }
+
+[[bin]]
+name = "daglang"
+path = "src/main.rs"
