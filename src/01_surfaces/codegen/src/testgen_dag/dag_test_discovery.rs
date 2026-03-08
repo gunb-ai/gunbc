@@ -121,8 +121,20 @@ fn analyze_compilable_module(base: &Path, path: &Path) -> Option<CompilableModul
         return None;
     }
 
-    let source = std::fs::read_to_string(path).ok()?;
-    let ast = daglang_syntax::parser::parse(&source).ok()?;
+    let source = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("warning: cannot read {}: {e}", path.display());
+            return None;
+        }
+    };
+    let ast = match daglang_syntax::parser::parse(&source) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("warning: cannot parse {}: {e:?}", path.display());
+            return None;
+        }
+    };
 
     // Count callable items — these are the item types that produce executable DAGs.
     // Mirrors `module_has_callable_items()` in `daglang-driver/src/lib.rs`.

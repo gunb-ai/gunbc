@@ -609,7 +609,10 @@ impl TypeRegistry {
     ///
     /// Returns `None` if the type is not registered and no wrapper expression is present.
     pub fn resolve_type(&self, type_id: &TypeId) -> Option<Dag<TypeOp>> {
-        self.resolve_type_checked(type_id).ok().flatten()
+        match self.resolve_type_checked(type_id) {
+            Ok(shape) => shape,
+            Err(_) => None,
+        }
     }
 
     /// Resolve a type DAG, returning a diagnostic if the expression is invalid.
@@ -959,6 +962,7 @@ impl TypeRegistry {
         }
 
         // Fallback: Json accepts anything.
+        eprintln!("warning: unknown type '{}' defaulting to ValueBacking::Json", type_id.0);
         ValueBacking::Json
     }
 }
