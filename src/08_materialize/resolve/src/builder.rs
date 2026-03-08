@@ -112,7 +112,9 @@ pub fn build_dsl_graph_dag(
 
 /// Bump when cache format changes. Stale caches with a different version are
 /// discarded on load.
-const DAGBIN_CACHE_VERSION: u32 = 1;
+// Bump when lowering/resolution semantics change so source-digest cache hits
+// do not reuse stale DAG shapes compiled by older compiler code.
+const DAGBIN_CACHE_VERSION: u32 = 2;
 
 /// Serializable bundle of compilation artifacts stored in the dagbin cache.
 ///

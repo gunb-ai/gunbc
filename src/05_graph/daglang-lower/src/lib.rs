@@ -10229,6 +10229,30 @@ fn resolve_return_expr_source(
                 if let Some(Some(source)) = ctx.endpoints_by_name.get(base_ident) {
                     return Some((source.node_id.clone(), field.clone()));
                 }
+                if let Some(bound_expr) = ctx.local_let_bindings.get(base_ident.as_str()) {
+                    let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
+                    let base_source = resolve_return_expr_source(
+                        builder,
+                        ctx,
+                        bound_expr,
+                        &any_port,
+                        &format!("{output_name}_base"),
+                        &format!("{disambiguator}_base_expr"),
+                    );
+                    return match base_source {
+                        Some((base_node, base_port)) => synthesize_get_field_on_resolved(
+                            builder,
+                            ctx,
+                            &base_node,
+                            &base_port,
+                            field,
+                            output_port,
+                            output_name,
+                            disambiguator,
+                        ),
+                        None => None,
+                    };
+                }
                 // C24: For parameters, synthesize a GetField node instead of
                 // falling through to ExprCompute + __ convention.
                 if let Some(param_ty) = ctx.param_types.get(base_ident) {
@@ -10884,6 +10908,185 @@ fn synthesize_binary_op(
     Some((node_id, result_port_name.to_string()))
 }
 
+fn wire_hoisted_callable_args(
+    builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
+    call_name: &str,
+    endpoint: &LoweredEndpoint,
+    args: &[(Option<String>, Expr)],
+    output_name: &str,
+    disambiguator: &str,
+) {
+    let Some(node) = builder
+        .dag
+        .get_node(&NodeId::new(endpoint.node_id.clone()))
+        .cloned()
+    else {
+        return;
+    };
+
+    let param_ports: Vec<String> = node
+        .inputs
+        .iter()
+        .filter(|port| is_user_param_port(port.name.0.as_str()))
+        .map(|port| port.name.0.clone())
+        .collect();
+
+    for (index, (arg_name, arg_expr)) in args.iter().enumerate() {
+        let Some(param_name) = arg_name
+            .clone()
+            .or_else(|| param_ports.get(index).cloned())
+        else {
+            continue;
+        };
+        if builder.has_edge_to_port(endpoint.node_id.as_str(), param_name.as_str()) {
+            continue;
+        }
+        let arg_port = Port::with_cardinality(param_name.as_str(), "Any", Cardinality::ONE);
+        let source = resolve_return_expr_source(
+            builder,
+            ctx,
+            arg_expr,
+            &arg_port,
+            &format!("{output_name}_{param_name}"),
+            &format!("{disambiguator}_{param_name}_{index}"),
+        );
+        if let Some((src_node, src_port)) = source {
+            builder.add_edge(
+                src_node.as_str(),
+                src_port.as_str(),
+                endpoint.node_id.as_str(),
+                param_name.as_str(),
+            );
+        }
+    }
+
+    if let Some(param_defaults) = ctx.callable_param_defaults.get(call_name) {
+        for (param_name, default_expr) in param_defaults {
+            if builder.has_edge_to_port(endpoint.node_id.as_str(), param_name.as_str()) {
+                continue;
+            }
+            if let Some(json_val) = expr_to_json_literal(default_expr, ctx.variant_names) {
+                let literal = ServiceCallArgLiteral::Json(json_val);
+                let src = ensure_literal_source_node(
+                    builder,
+                    ctx.module_name,
+                    ctx.item_name,
+                    param_name.as_str(),
+                    "Any",
+                    &literal,
+                    &format!("{disambiguator}_default_{param_name}"),
+                );
+                builder.add_edge(
+                    src.as_str(),
+                    param_name.as_str(),
+                    endpoint.node_id.as_str(),
+                    param_name.as_str(),
+                );
+            }
+        }
+    }
+}
+
+fn synthesize_callable_expr_value(
+    builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
+    call_name: &str,
+    args: &[(Option<String>, Expr)],
+    output_name: &str,
+    disambiguator: &str,
+) -> Option<(String, String)> {
+    let endpoint = ctx.endpoints_by_name.get(call_name).and_then(|entry| entry.clone())?;
+    wire_hoisted_callable_args(
+        builder,
+        ctx,
+        call_name,
+        &endpoint,
+        args,
+        output_name,
+        disambiguator,
+    );
+
+    let node = builder
+        .dag
+        .get_node(&NodeId::new(endpoint.node_id.clone()))
+        .cloned()?;
+    let output_fields: Vec<String> = node
+        .outputs
+        .iter()
+        .filter(|port| !port.name.is_internal())
+        .map(|port| port.name.0.clone())
+        .collect();
+
+    if output_fields.len() == 1 && output_fields[0] == "return" {
+        return Some((endpoint.node_id, "return".to_string()));
+    }
+
+    let input_ports: Vec<Port> = output_fields
+        .iter()
+        .map(|field| Port::with_cardinality(field.as_str(), "Any", Cardinality::ONE))
+        .collect();
+    let output_ports = vec![Port::with_cardinality("result", "Any", Cardinality::ONE)];
+    let node_id = format!(
+        "record_construct_{}",
+        sanitize_identifier(&format!(
+            "{}_{}_{}_{}",
+            ctx.module_name, ctx.item_name, output_name, disambiguator
+        ))
+    );
+
+    builder.add_node(Node::opaque(
+        node_id.clone(),
+        input_ports,
+        output_ports,
+        LoweredOp::Primitive {
+            module: ctx.module_name.to_string(),
+            name: format!("record_construct::{}::{}", ctx.item_name, output_name),
+            kind: PrimitiveOpKind::RecordConstruct {
+                fields: output_fields.clone(),
+            },
+        },
+    ));
+    for field in &output_fields {
+        builder.add_edge(endpoint.node_id.as_str(), field.as_str(), &node_id, field.as_str());
+    }
+
+    Some((node_id, "result".to_string()))
+}
+
+fn lower_match_arm_for_dispatch(
+    builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
+    arm: &daglang_syntax::ast::MatchArm,
+    output_name: &str,
+    disambiguator: &str,
+    arm_index: usize,
+) -> (expr::LoweredMatchArm, Option<(String, String, String)>) {
+    if let Expr::Call(call_name, args) = &arm.body {
+        let input_port = format!("arm_body_{arm_index}");
+        if let Some((src_node, src_port)) = synthesize_callable_expr_value(
+            builder,
+            ctx,
+            call_name.as_str(),
+            args,
+            output_name,
+            &format!("{disambiguator}_arm_{arm_index}_{}", sanitize_identifier(call_name)),
+        ) {
+            let mut hoisted_arm = arm.clone();
+            hoisted_arm.body = Expr::Ident(input_port.clone());
+            return (
+                expr::lower_match_arm(&hoisted_arm, ctx.variant_names, expr::ExprLowerMode::Standard),
+                Some((input_port, src_node, src_port)),
+            );
+        }
+    }
+
+    (
+        expr::lower_match_arm(arm, ctx.variant_names, expr::ExprLowerMode::Standard),
+        None,
+    )
+}
+
 /// C24-P1: Synthesize a MatchDispatch structural node.
 /// Resolves the scrutinee and collects leaf refs from arm bodies.
 /// Falls back to ExprCompute if leaf refs can't be resolved.
@@ -10941,11 +11144,34 @@ fn synthesize_match_dispatch(
         Cardinality::ONE,
     )];
 
-    // Lower AST match arms to LoweredMatchArms.
+    let mut hoisted_arm_sources = Vec::new();
     let lowered_arms: Vec<expr::LoweredMatchArm> = arms
         .iter()
-        .map(|arm| expr::lower_match_arm(arm, ctx.variant_names, expr::ExprLowerMode::Standard))
+        .enumerate()
+        .map(|(arm_index, arm)| {
+            let (lowered, source) = lower_match_arm_for_dispatch(
+                builder,
+                ctx,
+                arm,
+                output_name,
+                disambiguator,
+                arm_index,
+            );
+            if let Some(source) = source {
+                hoisted_arm_sources.push(source);
+            }
+            lowered
+        })
         .collect();
+    for (input_port, _, _) in &hoisted_arm_sources {
+        if seen_ports.insert(input_port.clone()) {
+            input_ports.push(Port::with_cardinality(
+                input_port.as_str(),
+                "Any",
+                Cardinality::ONE,
+            ));
+        }
+    }
 
     // Wire scrutinee input — use Any-typed port (scrutinee type differs from match result).
     let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
@@ -11014,6 +11240,11 @@ fn synthesize_match_dispatch(
             | expr::LeafRef::Service { endpoint, port } => {
                 builder.add_edge(endpoint, port, &node_id, &leaf.input_port);
             }
+        }
+    }
+    for (input_port, src_node, src_port) in &hoisted_arm_sources {
+        if wired_ports.insert(input_port.clone()) {
+            builder.add_edge(src_node.as_str(), src_port.as_str(), &node_id, input_port.as_str());
         }
     }
 

@@ -45,6 +45,12 @@ fn parse_unary_generic_type_id<'a>(type_id: &'a str, wrapper: &str) -> Option<&'
 }
 
 fn optional_inner_type_id(type_id: &str) -> Option<&str> {
+    if let Some(inner) = type_id.strip_suffix('?') {
+        let inner = inner.trim();
+        if !inner.is_empty() {
+            return Some(inner);
+        }
+    }
     if let Some(inner) = parse_unary_generic_type_id(type_id, "Optional") {
         return Some(inner);
     }
@@ -71,7 +77,8 @@ fn is_placeholder_witness(value: &Value) -> bool {
 
 fn typed_witness_value(type_id: &str) -> Option<Value> {
     if let Some(inner) = optional_inner_type_id(type_id) {
-        return typed_witness_value(inner);
+        let _ = inner;
+        return Some(Value::Unit);
     }
 
     if let Some(inner) = parse_unary_generic_type_id(type_id, "List")
@@ -874,5 +881,11 @@ mod tests {
             default_value_for_type("Platform"),
             Value::Str("mock".to_string())
         );
+    }
+
+    #[test]
+    fn default_value_for_optional_prefers_absent() {
+        assert_eq!(default_value_for_type("Optional<String>"), Value::Unit);
+        assert_eq!(default_value_for_type("String?"), Value::Unit);
     }
 }
