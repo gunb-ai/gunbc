@@ -193,7 +193,6 @@ pub enum ExprLowerMode {
     /// Standard lowering for fn/func bodies during the main lowering pass.
     Standard,
     /// Remapping mode: flattens `ident.field` to `ident__field` for DAG port wiring.
-    /// Used by synthesize_expr_compute and collect_project_fn_bodies.
     Remap,
 }
 
@@ -209,8 +208,7 @@ pub fn lower_expr_remap(expr: &ast::Expr, variant_names: &HashSet<String>) -> Lo
 
 /// Lower an AST fn body with an explicit lowering mode.
 ///
-/// `Remap` mode flattens `ident.field` to `ident__field` for DAG port wiring
-/// and is used by `synthesize_expr_compute` and `collect_project_fn_bodies`.
+/// `Remap` mode flattens `ident.field` to `ident__field` for DAG port wiring.
 pub fn lower_fn_body_with_mode(
     body: &ast::FnBody,
     variant_names: &HashSet<String>,
