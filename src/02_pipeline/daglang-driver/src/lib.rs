@@ -1301,9 +1301,7 @@ fn discover_target_module_graph_for_context(
                 dependencies.push(dep_index);
                 continue;
             }
-            let Some(import_file) = resolve_import_file_path(&context.roots, &import) else {
-                continue;
-            };
+            let import_file = resolve_import_file_path(&context.roots, &import)?;
             let Some((dep_index, is_new)) = add_target_module_if_applicable(
                 &import_file,
                 Some(&import),
@@ -1431,9 +1429,8 @@ fn include_profile_modules(
             if module_index_by_decl.contains_key(&import) {
                 continue;
             }
-            if let Some(import_file) = resolve_import_file_path(roots, &import) {
-                pending.push_back(import_file);
-            }
+            let import_file = resolve_import_file_path(roots, &import)?;
+            pending.push_back(import_file);
         }
     }
 
@@ -1472,7 +1469,7 @@ fn resolve_profile_bind_implementation_module_path(
     }
     for end in (1..segments.len()).rev() {
         let prefix = ModulePath::new(segments[..end].to_vec());
-        if let Some(path) = resolve_import_file_path(roots, &prefix) {
+        if let Ok(path) = resolve_import_file_path(roots, &prefix) {
             return Some(path);
         }
     }
@@ -1590,18 +1587,25 @@ fn parse_target_module_file(
     ))
 }
 
-fn resolve_import_file_path(roots: &[PathBuf], import_path: &ModulePath) -> Option<PathBuf> {
+fn resolve_import_file_path(
+    roots: &[PathBuf],
+    import_path: &ModulePath,
+) -> Result<PathBuf, CompileError> {
     let mut relative = PathBuf::new();
     for segment in &import_path.segments {
         relative.push(segment);
     }
     relative.set_extension("dag");
-    let result = roots
+    roots
         .iter()
         .map(|root| root.join(&relative))
-        .find(|candidate| candidate.is_file());
-    let _ = result;
-    result
+        .find(|candidate| candidate.is_file())
+        .ok_or_else(|| {
+            CompileError::Message(format!(
+                "unresolved import: {}",
+                import_path.as_dotted()
+            ))
+        })
 }
 
 fn callable_scope_for_context(
