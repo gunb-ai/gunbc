@@ -327,6 +327,150 @@ impl TypeRegistry {
             ),
         );
 
+        // Common std DSL coproducts used by generated tests and DryRun input mocks.
+        self.register(
+            "WarningPolicy",
+            type_lib::coproduct(
+                "WarningPolicy",
+                vec![("DenyAll", "String"), ("Default", "String")],
+            ),
+        );
+        self.register(
+            "CloudRuntime",
+            type_lib::coproduct(
+                "CloudRuntime",
+                vec![
+                    ("GitHubActions", "String"),
+                    ("Metadata", "String"),
+                    ("LocalDev", "String"),
+                ],
+            ),
+        );
+        self.register(
+            "FermiDepth",
+            type_lib::coproduct(
+                "FermiDepth",
+                vec![
+                    ("Xs", "String"),
+                    ("S", "String"),
+                    ("M", "String"),
+                    ("L", "String"),
+                    ("Xl", "String"),
+                ],
+            ),
+        );
+        self.register(
+            "TransportClass",
+            type_lib::coproduct(
+                "TransportClass",
+                vec![
+                    ("LocalDirect", "String"),
+                    ("ShellLocal", "String"),
+                    ("FileBoundary", "String"),
+                    ("RestNetwork", "String"),
+                    ("InterfaceStub", "String"),
+                    ("Unknown", "String"),
+                ],
+            ),
+        );
+        self.register(
+            "TestClass",
+            type_lib::coproduct(
+                "TestClass",
+                vec![
+                    ("Unit", "String"),
+                    ("Hermetic", "String"),
+                    ("Integration", "String"),
+                ],
+            ),
+        );
+        self.register(
+            "DisplayWidth",
+            type_lib::coproduct(
+                "DisplayWidth",
+                vec![
+                    ("ZeroWidth", "String"),
+                    ("Narrow", "String"),
+                    ("Wide", "String"),
+                ],
+            ),
+        );
+        self.register(
+            "SemanticColor",
+            type_lib::coproduct(
+                "SemanticColor",
+                vec![
+                    ("Default", "String"),
+                    ("Success", "String"),
+                    ("Warning", "String"),
+                    ("Error", "String"),
+                    ("Info", "String"),
+                    ("Dim", "String"),
+                    ("Active", "String"),
+                    ("Accent", "String"),
+                ],
+            ),
+        );
+        self.register(
+            "Tier",
+            type_lib::coproduct(
+                "Tier",
+                vec![
+                    ("Emoji", "String"),
+                    ("Unicode", "String"),
+                    ("Ascii", "String"),
+                ],
+            ),
+        );
+        self.register(
+            "SymbolId",
+            type_lib::coproduct(
+                "SymbolId",
+                vec![
+                    ("NodePending", "String"),
+                    ("NodeRunning", "String"),
+                    ("NodeCompleted", "String"),
+                    ("NodeFailed", "String"),
+                    ("NodeSkipped", "String"),
+                    ("NodeIntercepted", "String"),
+                    ("EdgeIdle", "String"),
+                    ("EdgeFlowing", "String"),
+                    ("EdgeDone", "String"),
+                    ("EdgeDead", "String"),
+                    ("DagNotStarted", "String"),
+                    ("DagRunning", "String"),
+                    ("DagCompleted", "String"),
+                    ("DagFailed", "String"),
+                    ("BoundaryMarker", "String"),
+                    ("Spinner0", "String"),
+                    ("Spinner1", "String"),
+                    ("Spinner2", "String"),
+                    ("Spinner3", "String"),
+                    ("Spinner4", "String"),
+                    ("Spinner5", "String"),
+                    ("Spinner6", "String"),
+                    ("Spinner7", "String"),
+                    ("Spinner8", "String"),
+                    ("Spinner9", "String"),
+                    ("Success", "String"),
+                    ("Failure", "String"),
+                    ("Warning", "String"),
+                    ("Info", "String"),
+                    ("DataList", "String"),
+                    ("DataMap", "String"),
+                    ("DataSecret", "String"),
+                    ("DataUrl", "String"),
+                    ("DataTimer", "String"),
+                    ("ConnectorHorizontal", "String"),
+                    ("ConnectorVertical", "String"),
+                    ("ConnectorTeeDown", "String"),
+                    ("ConnectorTeeUp", "String"),
+                    ("ConnectorCornerBottomLeft", "String"),
+                    ("ConnectorCornerTopLeft", "String"),
+                ],
+            ),
+        );
+
         // Domain types for transport/infrastructure.
         self.register("TransportRequest", type_lib::identity("TransportRequest"));
         self.register("TransportResponse", type_lib::identity("TransportResponse"));
