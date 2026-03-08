@@ -1781,3 +1781,295 @@ Boolean) but it would implement `BoundedLattice` on the information
 ordering. A simulator backend would read the lattice structure and
 generate the correct four-valued truth tables. No compiler changes —
 just a new `.dag` file with different algebra attachments.
+
+---
+
+## Execution Plan: Type-by-Type Migration
+
+The earlier migration scope describes the abstract phases. This
+section is the concrete plan: which compiler changes come first,
+which types migrate in which order, and what "done" looks like at
+each step. The strategy is compiler-first, type-by-type, always
+green.
+
+### What the Current `.dag` Code Actually Uses
+
+Audit of all `.dag` files shows the minimal type surface:
+
+**8 primitives** (by frequency): String (~350), Int (~120),
+Bool (~80), Secret (~45), Json (~25), Float (~15), Bytes (~8),
+Unit (0 — unused)
+
+**3 containers**: `List<T>` (~95), `T?` / `Option<T>` (~60),
+`Map<K,V>` (~5)
+
+**~14 refinements** (all `T where pred`): FilePath, NonEmptyStr,
+Timestamp, Url, CommitSha, Milliseconds, GitRef, Char, ProjectId,
+ServiceAccountEmail, GistId, MimeType, TextFilePath, BinaryFilePath
+
+**~5 operations on values**: string ops (split, join, interpolation),
+int arithmetic (+, -, *, /, comparisons), bool logic (if, &&, ||, !),
+list ops (map, filter, fold, for, join, count, contains), record
+field access/construction
+
+**~6 sum types used heavily**: FermiDepth, ContentEncoding, EntryKind,
+AuthScheme, Tier, Platform
+
+This is the scope. Everything else (OperationBehavior, GCP types,
+LLM types, etc.) is domain products/coproducts that compose from these
+foundations. They don't need special migration — once the foundations
+work, they come along for free.
+
+### The Minimal Foundation Files
+
+For today's codebase, we need exactly this much foundation:
+
+```
+std/logic.dag        Classical only (Bool = Classical)
+std/algebra.dag      PartialOrder, TotalOrder, CommutativeRing
+                     (just enough for Int ordering and arithmetic)
+std/bit.dag          Bit, Byte, Word32, Word64
+std/integer.dag      Int8..64, UInt8..64, Int = Int64
+std/float.dag        Float64, Float = Float64
+std/string.dag       String, Char
+std/containers.dag   List<T>, Option<T>, Map<K,V>
+std/encoding.dag     ContentEncoding implements BoundedLattice
+```
+
+Kleene, Belnap, Group, Field, BooleanAlgebra — all of that stays
+in the design as documented but isn't needed until we target hardware
+or formal verification. The foundation files are structured so those
+extensions are additive.
+
+### Migration Order: Compiler First, Then Types
+
+Each step produces a compiling, testing, green codebase. No big bang.
+
+#### Step 0: Parser accepts new predicates (no behavior change)
+
+Add `width`, `length`, `signed`, `unsigned`, `domain` as first-class
+`Refinement` variants in the parser. They already parse today via the
+generic `Predicate(String)` fallback — this just promotes them.
+
+```
+Change: parser.rs (~30 lines), lib.rs AST (~6 variants)
+Test: new predicates parse; existing code unaffected
+Duration: 1–2 days
+```
+
+#### Step 1: Alias types register in TypeRegistry
+
+Today `collect_dsl_type_registry()` skips `TypeBody::Alias`. Fix this
+so `type Url = String where pattern(...)` produces a proper
+`Dag<TypeOp>` in the registry with `Identity → Validate(Matches)`.
+
+```
+Change: typecheck/lib.rs (~50 lines)
+Test: registry.get("Url") returns a multi-node DAG
+Duration: 2–3 days
+```
+
+After this, every type defined in `std/types.dag` — including
+refinements — has a structural DAG in the registry. This is
+independently valuable even without any further migration.
+
+#### Step 2: Product/Coproduct fields become SubDags
+
+Change `TypeOp::Product(Vec<(String, TypeId)>)` to use SubDag
+children for field types. Change `TypeOp::Coproduct` the same way.
+
+```
+Change: type_op.rs, type_lib.rs, type_registry.rs, contract.rs,
+        type_shape.rs, typecheck
+Duration: 1–2 weeks
+```
+
+This is the hardest structural change. After it, a `Product` is a
+self-contained DAG — you can walk from `Summary` through its fields
+(`total: Int`, `passed: Int`, `failed: Int`) without registry lookups.
+
+#### Step 3: Migrate `Bool` — the simplest primitive
+
+Write `std/logic.dag` with `type Classical = True | False`.
+In `std/types.dag`, change `Bool` from a compiler built-in to:
+
+```dag
+import std.logic { Classical }
+type Bool = Classical
+```
+
+Compiler change: `TypeRegistry::register_primitives()` no longer
+hardcodes `Bool`. Instead, the registry loads it from
+`std/logic.dag` → `std/types.dag`. The `BaseType::Bool` enum variant
+is still used internally as a cache, but it's *derived* from the
+DAG, not the source of truth.
+
+```
+Change: type_registry.rs, type_lib.rs, std/logic.dag, std/types.dag
+Test: all existing Bool tests pass; registry.get("Bool") returns
+      a DAG with Coproduct(True, False)
+Duration: 3–5 days
+```
+
+Why Bool first: it's the simplest primitive (2 values, no arithmetic,
+no width). It proves the full round-trip: DSL definition → parse →
+register → typecheck → lower → emit, without needing any new
+predicates.
+
+#### Step 4: Migrate `Int` and `Float` — width + arithmetic
+
+Write `std/bit.dag` (Bit, Byte, Word32, Word64), `std/integer.dag`
+(Int8..64, UInt8..64), `std/float.dag` (Float32, Float64).
+
+Compiler change: the IR `Predicate` enum gets `Width(u16)`,
+`Length(u64)`, `Signed(Option<String>)`, `Unsigned`. The lowerer and
+emitter use these to derive what today lives in `PlatformRepr`.
+
+```dag
+// std/bit.dag
+type Bit = Classical where width(1)
+type Byte = { bits: List<Bit> where length(8) }
+type Word64 = { bytes: List<Byte> where length(8) }
+
+// std/integer.dag
+type Int64 = Word64 where signed(twos_complement)
+type Int = Int64
+
+// std/float.dag
+type Float64 = Word64 where ieee754(binary64)
+type Float = Float64
+```
+
+```
+Change: type_op.rs (new Predicate variants), type_registry.rs,
+        type_lib.rs, emit backends (derive width from DAG instead
+        of PlatformRepr), new .dag files
+Test: emit("Int") still produces "i64" in Rust, "int64" in Go —
+      now derived from width(64) + signed, not string matching
+Duration: 1–2 weeks
+```
+
+Why Int next: it's the highest-frequency primitive after String,
+and it exercises the new predicates (width, signed). Float follows
+immediately since it's the same structure with `ieee754` instead of
+`signed`.
+
+#### Step 5: Migrate `String` and `Bytes`
+
+Write `std/string.dag`. String becomes a structural type
+(sequence of bytes with encoding). `Bytes` becomes `List<UInt8>`.
+
+```dag
+// std/string.dag
+type String = { bytes: List<Byte>, encoding: Encoding }
+type Char = Int where range(min: 0, max: 1114111), brand("Char")
+```
+
+```
+Change: type_registry.rs, std/string.dag, std/encoding.dag
+Test: all string operations still work; encoding lattice is
+      DAG-derived instead of Rust match arms
+Duration: 1 week
+```
+
+#### Step 6: Migrate containers (`List`, `Option`, `Map`)
+
+Write `std/containers.dag`. Containers become structural types
+where cardinality is a derived consequence.
+
+```
+Change: type_registry.rs (remove WrapperKind hardcoding),
+        std/containers.dag
+Test: List<String> still infers cardinality [0,∞)
+Duration: 1 week
+```
+
+#### Step 7: Emit backends read structure
+
+Replace `map_abstract_type(string)` with DAG walkers. The three
+divergent backend mapping strategies unify into one.
+
+```
+Change: type_mapping.rs, type_codegen.rs, lower_to_ir.rs, lower_c.rs
+Test: all codegen tests pass with structural resolution
+Duration: 1–2 weeks
+```
+
+#### Step 8: Eliminate `BaseType` enum and string classification
+
+Delete `BaseType`, `semantic_carrier_kind_for_type_id()`,
+string-based `TypeCategory`. Everything is DAG-structural now.
+
+```
+Change: types.rs, type_registry.rs (~300 lines deleted)
+Test: all tests pass without string matching
+Duration: 3–5 days
+```
+
+#### Step 9: Cardinality derived, Guard unified with Predicate
+
+Remove `Port.cardinality` as independently set. Derive it from type
+DAGs. Replace `Guard` with `Predicate` on edges.
+
+```
+Change: dag.rs, lowerer, executor
+Test: audit_cardinality_drift() reports zero drift (then delete it)
+Duration: 1 week
+```
+
+#### Step 10: Delete `MetadataPayload` and `PlatformRepr`
+
+Everything formerly in metadata is now structural. Delete the escape
+hatches.
+
+```
+Change: type_op.rs, system_model.rs, type_shape.rs
+Test: all tests pass without Meta nodes
+Duration: 3–5 days
+```
+
+### Summary: The Migration as a Table
+
+| Step | What | Compiler change | DSL change | Duration |
+|------|------|----------------|------------|----------|
+| 0 | Parser accepts new predicates | parser.rs | — | 1–2 days |
+| 1 | Alias types register in TypeRegistry | typecheck | — | 2–3 days |
+| 2 | Product/Coproduct fields → SubDags | IR foundation | — | 1–2 weeks |
+| 3 | Migrate Bool | registry, type_lib | std/logic.dag | 3–5 days |
+| 4 | Migrate Int, Float | IR predicates, emit | std/bit.dag, std/integer.dag, std/float.dag | 1–2 weeks |
+| 5 | Migrate String, Bytes | registry | std/string.dag, std/encoding.dag | 1 week |
+| 6 | Migrate containers | registry | std/containers.dag | 1 week |
+| 7 | Emit reads structure | emit backends | — | 1–2 weeks |
+| 8 | Delete BaseType, string classification | types.rs | — | 3–5 days |
+| 9 | Derive cardinality, unify Guard/Predicate | dag.rs, executor | — | 1 week |
+| 10 | Delete MetadataPayload, PlatformRepr | type_op.rs | — | 3–5 days |
+| **Total** | | | | **~10–14 weeks** |
+
+Steps 0–2 are pure compiler infrastructure. No `.dag` files change.
+No existing behavior changes. These can ship as normal PRs.
+
+Steps 3–6 are the type-by-type migration. Each introduces one
+foundation `.dag` file and removes the corresponding hardcoded Rust.
+Each step produces a green codebase. The order (Bool → Int/Float →
+String → containers) follows dependency: containers need types,
+types need integers, integers need bits, bits need logic.
+
+Steps 7–10 are cleanup. The structural path is primary. The string
+path is vestigial. Delete it.
+
+### What "Done" Looks Like
+
+After step 10:
+
+- `TypeRegistry::register_primitives()` is empty or deleted — all
+  types come from `.dag` files
+- `BaseType` enum is deleted
+- `MetadataPayload` is deleted
+- `PlatformRepr` is deleted
+- `semantic_carrier_kind_for_type_id()` is deleted
+- `map_abstract_type()` is replaced by structural DAG walkers
+- `Port.cardinality` is derived, never declared
+- `Guard` is `Predicate`
+- `tools/gist.dag` is unchanged and works exactly as before
+- Adding a new primitive type means adding a `.dag` file
+- Adding a new backend means writing a DAG walker, not a string table
