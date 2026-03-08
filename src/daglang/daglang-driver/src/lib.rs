@@ -2658,7 +2658,7 @@ fn run() -> Bool {
 
     #[test]
     fn compile_with_go_native_layer_emits_go_bundle() {
-        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../..");
+        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
         let root = workspace.join("dsl");
         let file = root.join("tools/readme.dag");
         let context = DriverContext {
@@ -2684,7 +2684,7 @@ fn run() -> Bool {
 
     #[test]
     fn compile_includes_emit_manifest_with_hashes() {
-        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../..");
+        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
         let root = workspace.join("dsl");
         let file = root.join("tools/readme.dag");
         let context = DriverContext {
@@ -2759,7 +2759,7 @@ fn run() -> Bool {
 
     #[test]
     fn determinism_single_file_compile_produces_identical_receipts() {
-        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../..");
+        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
         let root = workspace.join("dsl");
         let file = root.join("tools/readme.dag");
 

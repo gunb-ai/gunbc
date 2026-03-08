@@ -29,9 +29,9 @@ pub struct FidelityClassification {
     pub hermetic: bool,
 }
 
-const STD_TYPES_SOURCE: &str = include_str!("../../../../dsl/std/types.dag");
-const STD_FERMI_SOURCE: &str = include_str!("../../../../dsl/std/fermi.dag");
-const STD_FIDELITY_SOURCE: &str = include_str!("../../../../dsl/std/fidelity.dag");
+const STD_TYPES_SOURCE: &str = include_str!("../../../dsl/std/types.dag");
+const STD_FERMI_SOURCE: &str = include_str!("../../../dsl/std/fermi.dag");
+const STD_FIDELITY_SOURCE: &str = include_str!("../../../dsl/std/fidelity.dag");
 
 /// Embedded stdlib evaluator host with one-time compilation cache.
 struct StdLibHost {

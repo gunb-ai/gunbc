@@ -1,35 +1,32 @@
 [workspace]
 resolver = "2"
 members = [
-    # Core crates (handwritten foundation)
-    "src/core/infra",
-    "src/core/ir",
-    "src/core/exec",
-    "src/core/workflow",
-    "src/core/cli",
-    "src/core/resolve",
-    "src/core/codegen",
-    "src/core/test",
-    "src/core/testgen-registry",
-    "src/core/testgen-registry-macros",
-    "src/core/generated-tests",
-    "src/core/delegate-macros",
-    # DSL compiler (daglang)
-    "src/core/daglang/daglang-syntax",
-    "src/core/daglang/daglang-contract",
-    "src/core/daglang/daglang-resolve",
-    "src/core/daglang/daglang-typecheck",
-    "src/core/daglang/daglang-lower",
-    "src/core/daglang/daglang-derive",
-    "src/core/daglang/daglang-emit",
-    "src/core/daglang/daglang-driver",
-    "src/core/daglang/daglang-cli",
-
-    # Library crates (moved from src/lib/ into core/)
-    "src/core/primitives",
-    "src/core/blob",
-    "src/core/transport",
-
+    "src/infra",
+    "src/ir",
+    "src/exec",
+    "src/workflow",
+    "src/cli",
+    "src/resolve",
+    "src/codegen",
+    "src/test",
+    "src/testgen-registry",
+    "src/testgen-registry-macros",
+    "src/generated-tests",
+    "src/delegate-macros",
+    # DSL compiler
+    "src/daglang/daglang-syntax",
+    "src/daglang/daglang-contract",
+    "src/daglang/daglang-resolve",
+    "src/daglang/daglang-typecheck",
+    "src/daglang/daglang-lower",
+    "src/daglang/daglang-derive",
+    "src/daglang/daglang-emit",
+    "src/daglang/daglang-driver",
+    "src/daglang/daglang-cli",
+    # Runtime
+    "src/primitives",
+    "src/blob",
+    "src/transport",
 ]
 
 [workspace.package]

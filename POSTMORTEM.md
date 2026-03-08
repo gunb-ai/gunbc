@@ -7,6 +7,7 @@ Each item has enough context to be picked up cold.
 T9–T11 identified during the `make gist` credential failure investigation (2026-03-08).
 T12 identified during the silent `Error 1` investigation (2026-03-08).
 T13 identified during the zero-fallback audit (2026-03-08) — subsumes T3, T5, T6, T9, T10, T12.
+T14 identified during hardcoded-path audit (2026-03-08).
 
 **Policy:** These items are interconnected. Do not spot-fix individual items —
 they need to be considered holistically and designed together before any
@@ -23,17 +24,18 @@ issues.
 - **Executor semantics** (T1, T4): Non-deterministic fan-in + ad-hoc conditional merge. One design: deterministic edge ordering (T1) + formal ConditionalMerge node (T4), making execution order explicit in the IR.
 - **Type system gaps** (T2): Secret not first-class. One design: complete the ValueBacking model. The `IsString` accepting `Secret` workaround is a type-layer fallback (T13).
 - **Test coverage model** (T11): DryRun-only tests hide all of the above. One design: tiered execution with selective mocking, virtual backends for testable I/O, Real-mode tests for pure subgraphs. DryRun passes for every item in this document because the fallback pattern (T13) produces valid-looking output.
+- **Layout/config hygiene** (T14): Hardcoded `src/core` and other path literals in Rust and DSL. One design: derive paths from WorkspaceLayout and `dsl/config/codegen_paths.dag` (or equivalent), expose generated-tests root and core source roots via layout, remove string-literals from production path construction.
 
 ---
 
 ## T1: Deterministic fan-in ordering in executor
 
 **Priority: High**
-**Files:** `src/core/exec/src/execute/mod.rs`
+**Files:** `src/exec/src/execute/mod.rs`
 
 The executor processes fan-in edges (multiple edges targeting the same list port) in topological-sort order. The topological sort is non-deterministic for nodes at the same depth — it depends on HashMap iteration order and node insertion order. This means `Value::List` outputs built from fan-in have unstable element ordering across runs or between a full DAG and a subDAG extraction.
 
-**Current workaround:** `assert_window_outputs` in `src/core/test/src/window.rs` accepts any matching-length list instead of checking value equality. This is extremely permissive.
+**Current workaround:** `assert_window_outputs` in `src/test/src/window.rs` accepts any matching-length list instead of checking value equality. This is extremely permissive.
 
 **Proper fix:** When the executor collects fan-in values for a list port, sort by a deterministic key before constructing the `Value::List`. Candidates:
 - Edge index (already stored in `Edge.index`, but currently defaulting to 0 for all edges)
@@ -49,7 +51,7 @@ After fixing, revert the matching-length comparison in `window.rs` back to exact
 ## T2: Secret as first-class ValueBacking
 
 **Priority: Medium**
-**Files:** `src/core/ir/src/types.rs`, `src/core/test/src/auto_mock.rs`, `src/core/test/src/mock_spec.rs`, `src/core/codegen/src/testgen/codegen.rs`
+**Files:** `src/ir/src/types.rs`, `src/test/src/auto_mock.rs`, `src/test/src/mock_spec.rs`, `src/codegen/src/testgen/codegen.rs`
 
 `ValueBacking` has no `Secret` variant. `value_backing_for_type_id("Secret")` returns `ValueBacking::String`, so the auto-mock generates `OutputMatcher::IsString` for Secret-typed ports. But the runtime value is `Value::Secret(...)`, not `Value::Str(...)`.
 
@@ -72,7 +74,7 @@ After fixing, revert the matching-length comparison in `window.rs` back to exact
 **Subsumed by T13** — `ExprComputeOp` degrading to `Skipped` on unknown functions is a resolver-layer fallback.
 
 **Priority: Medium**
-**Files:** `src/core/codegen/src/testgen/codegen.rs`, `src/core/resolve/src/resolve.rs`
+**Files:** `src/codegen/src/testgen/codegen.rs`, `src/resolve/src/resolve.rs`
 
 Some fn bodies in `.dag` files contain service calls (e.g., `llm.Anthropic.Messages()` in `design.dag`). The `ExprComputeOp` evaluator can't execute these — it hits "unknown function" errors.
 
@@ -91,7 +93,7 @@ Then remove the silent "unknown function" fallback in `ExprComputeOp::execute()`
 ## T4: Scalar fan-in semantics for conditional branches
 
 **Priority: Low**
-**Files:** `src/core/exec/src/execute/mod.rs`
+**Files:** `src/exec/src/execute/mod.rs`
 
 When conditional branches (if/match lowered to CondBranch) produce edges to the same scalar port, the executor now accepts multiple upstream edges and takes the first non-Skipped value. Previously it rejected this as a "duplicate scalar port" error.
 
@@ -110,7 +112,7 @@ This works for the current pattern (exactly one branch fires, others produce Ski
 **Subsumed by T13** — skip-by-prefix workaround masks fn body evaluation fallback producing wrong values.
 
 **Priority: Low**
-**Files:** `src/core/test/src/auto_mock.rs`
+**Files:** `src/test/src/auto_mock.rs`
 
 `literal_source_*` nodes (created by the lowerer for fn body literal expressions) are skipped from terminal example generation because their fn body evaluation can produce empty values that fail the `NonEmpty` fallback matcher.
 
@@ -128,7 +130,7 @@ This works for the current pattern (exactly one branch fires, others produce Ski
 **Subsumed by T13** — `parse_body_lossy()` is the canonical lossy fallback: parser returns empty body instead of failing.
 
 **Priority: Medium**
-**Files:** `src/core/daglang/daglang-syntax/src/parser.rs`
+**Files:** `src/daglang/daglang-syntax/src/parser.rs`
 
 `parse_fn_body_lossy()` falls back to lossy parsing when the fn body contains multi-statement blocks in expression position (e.g., `let` bindings inside `if` branches). The lossy body has `fn_body: None` at resolve time, so the fn item resolves as `DeclaredOutputCallableOp` (identity passthrough) instead of `FnBodyCallableOp`. This causes a runtime error: "missing required declared output passthrough: `return`".
 
@@ -160,7 +162,7 @@ let skip_section = if skipped |> count() > 0 {
 ## T7: Filesystem interface has no concrete binding (Real mode broken)
 
 **Priority: High**
-**Files:** `dsl/extdeps/github/auth.dag`, `dsl/std/patterns.dag`, `src/core/resolve/src/service_ops/service_ops_impl.rs`
+**Files:** `dsl/extdeps/github/auth.dag`, `dsl/std/patterns.dag`, `src/resolve/src/service_ops/service_ops_impl.rs`
 
 `InterfaceStubExecuteOp` always errors in Real mode with "has no concrete binding". This means any `func` that declares `uses fs: Filesystem(...)` unconditionally fails in Real mode — even if the code path that actually uses Filesystem capabilities is never reached.
 
@@ -206,7 +208,7 @@ let skip_section = if skipped |> count() > 0 {
 **Subsumed by T13** — `lower_warn` + `continue` on unwired output is a lowerer-layer fallback.
 
 **Priority: High**
-**Files:** `src/core/daglang/daglang-lower/src/lib.rs`
+**Files:** `src/daglang/daglang-lower/src/lib.rs`
 
 `resolve_return_expr_source` (line ~10163) resolves return expressions to DAG node outputs for wiring `__out:*` passthrough ports. It checks five source maps: `param_types`, `bound_callable_sources`, `bound_service_sources`, `expanded_results`, `endpoints_by_name`. It does not track local variable assignments — identifiers bound by `let`/assignment statements inside fn/func/pattern bodies.
 
@@ -227,7 +229,7 @@ When a return expression references a local variable (e.g., `return { token: tok
 **Subsumed by T13** — T10 catalogs 8 fallback sites in the lowerer/testgen; T13 expands this to all 7 layers.
 
 **Priority: High**
-**Files:** `src/core/daglang/daglang-lower/src/lib.rs`, `src/core/test/src/auto_mock.rs`, `src/core/codegen/src/testgen/codegen.rs`
+**Files:** `src/daglang/daglang-lower/src/lib.rs`, `src/test/src/auto_mock.rs`, `src/codegen/src/testgen/codegen.rs`
 
 The compiler has several "soft warning" paths that silently degrade output instead of failing. This contradicts the project's error-or-success philosophy (see invariant I8: "Warnings are errors. If something is wrong, the build fails.").
 
@@ -260,7 +262,7 @@ Delete the `lower_warn` function and the `DAGLANG_LOWER_WARNINGS` env var gate e
 ## T11: DryRun-only test coverage hides Real-mode failures
 
 **Priority: High**
-**Files:** `src/core/codegen/src/testgen/codegen.rs`, `src/core/exec/src/execute/mod.rs`, `src/core/test/src/auto_mock.rs`
+**Files:** `src/codegen/src/testgen/codegen.rs`, `src/exec/src/execute/mod.rs`, `src/test/src/auto_mock.rs`
 
 Every generated test for every `.dag` module runs in `ExecutionMode::DryRun(mocks)`. DryRun intercepts all transport-execute nodes and boundary-mocked nodes before they execute, substituting mock outputs. This means the test suite proves DAG *structure* (edges, ports, mock compatibility) but never tests whether the DAG *executes correctly* in Real mode.
 
@@ -318,7 +320,7 @@ The test framework already has the infrastructure for this. `ExecutionMode::DryR
 **Subsumed by T13** — distributed rendering with implicit "already rendered" assumptions is a display-layer fallback.
 
 **Priority: High**
-**Files:** `src/core/exec/src/display.rs`, `src/core/codegen/src/cli_gen.rs`
+**Files:** `src/exec/src/display.rs`, `src/codegen/src/cli_gen.rs`
 
 The error rendering architecture has multiple independent decision points with no central authority on whether an error has been shown to the user. When these decision points disagree, the result is `process::exit(1)` with no user-visible diagnostic.
 
@@ -467,6 +469,7 @@ Digest computation, I/O, parsing, and storage errors in `builder.rs` are all sil
 | T1 | Independent — executor non-determinism |
 | T4 | Independent — conditional merge semantics |
 | T8 | Independent — auth architecture |
+| T14 | Independent — hardcoded path literals (layout/config hygiene) |
 
 ### Implementation order
 
@@ -475,3 +478,38 @@ Digest computation, I/O, parsing, and storage errors in `builder.rs` are all sil
 3. **Layer 3** (resolver): Remove `Skipped` degradation for eval failures. Make Pattern/Func outputs required.
 4. **Layers 4-6** (driver, codegen, types): Convert `None`/`ok()` returns to errors.
 5. **Layer 7** (cache): Add debug logging, keep best-effort behavior.
+
+---
+
+## T14: Hardcoded filepaths (especially `src/core`) in Rust and DSL
+
+**Priority: Low**
+**Scope:** Find and fix hardcoded `src/core` and other fixed path literals in Rust source and DSL so layout is derived from workspace metadata / config instead of string literals.
+
+**Hardcoded `src/core` (and equivalent) paths:**
+
+| File | Line(s) | Literal | Notes |
+|------|--------|--------|--------|
+| `src/codegen/src/testgen_dag/dag_test_discovery.rs` | 692, 719, 754 | `"src/generated-tests/src"` | Unit tests pass this as `output_dir`; should use `WorkspaceLayout` or a shared test helper. |
+| `src/codegen/src/tool_discovery.rs` | 808 | `workspace_root.join("src/core")` | Collects Rust files under a fixed segment; should derive from crate list / `WorkspaceLayout::source_globs` or config. |
+| `src/ir/src/resource/defs.rs` | 12–13, 18–19 | `"src/codegen/src/**/*.rs"`, `"src/ir/src/**/*.rs"`, `"src/codegen/Cargo.toml"`, `"src/ir/Cargo.toml"` | Fallback globs when workspace layout is unavailable; duplicate layout shape. |
+| `src/ir/src/workspace_layout.rs` | 368–369, 377, 390–395 | `"src/ir"`, `layout.workspace_root.join("src/ir")`, glob strings | Tests assert crate dir ends with `src/ir` and use literal for `relative_path`; ties tests to current tree layout. |
+| `src/codegen/src/bin/testgen_cli.rs` | 22–28 | `workspace_root.join("dsl")`, `workspace_root.join("src").join("core").join("generated-tests").join("src")` | Output dir built from literal segments; could use a `WorkspaceLayout` accessor (e.g. generated-tests root from config). |
+| `src/daglang/daglang-emit/src/rust_exec_runtime.rs` | 635, 639, 649 | `"../../core/ir"`, `"../../core/exec"`, `"../../lib/transport"` | Fallback relative paths in `dependency_path()` when layout is `None`; brittle if crate locations change. |
+
+**Other notable hardcoded paths (tests / fallbacks):**
+
+- **`/tmp/...`** — Used in many unit tests and mocks (e.g. `resolve/src/builder.rs`, `resolve/src/service_ops/service_ops_impl.rs`, `codegen/src/testgen/codegen.rs`, `infra/src/dagbin_cache.rs`, `ir/src/transport/file.rs`, `exec`, `blob`, `primitives`, `transport`, `workflow`, `daglang-*`). These are acceptable for tests; ensure no production code assumes `/tmp` without `std::env::temp_dir()` or config.
+- **`/workspace`** — `src/infra/src/dagbin_cache.rs` line 269: test uses `Path::new("/workspace")` for `from_workspace_root`; consider temp dir or workspace-relative test root.
+- **`/home/test`** — `src/test/src/corpus.rs` lines 398, 415: fallback when `HOME` is unset; test-only.
+
+**Proper fix:**
+
+1. **Single source of truth for “core” layout:** Extend `dsl/config/codegen_paths.dag` (or a small layout.dag) with optional entries for “generated-tests root”, “core source root”, or derive them from existing `generated_roots` / crate metadata so `WorkspaceLayout` exposes e.g. `generated_tests_src_dir()` and “core” Rust tree is discovered via `source_globs` / crate dirs, not `"src/core"`.
+2. **defs.rs fallbacks:** Have `codegen_input_patterns()` use the same derivation as `WorkspaceLayout::source_globs` (crate list); when layout is unavailable, keep minimal fallbacks but document that they assume the current repo shape.
+3. **testgen_cli and dag_test_discovery tests:** Use `WorkspaceLayout::from_env_manifest_dir()` (or test fixture) to get `workspace_root` and then `layout.generated_tests_src_dir()` (or equivalent) instead of literal `"src/generated-tests/src"`.
+4. **tool_discovery:** Replace `workspace_root.join("src/core")` with iterating crates from layout (or a configurable list of source roots from codegen_paths.dag).
+5. **workspace_layout tests:** Keep assertions that the current gunbc-ir crate lives under a path ending `src/ir` only if the repo structure is committed; otherwise relax to “crate_dir is under workspace_root” and derive expected globs from layout.
+6. **rust_exec_runtime dependency_path fallbacks:** When `WorkspaceLayout` is missing, use fallbacks derived from a constant or from the same config that defines codegen paths, rather than ad-hoc `"../../core/ir"` strings.
+
+**Test:** After changes, run from repo root: `cargo test -p gunbc-ir workspace_layout`, `cargo test -p gunbc-codegen testgen_dag`, and any integration test that runs testgen; confirm no remaining string search for `"src/core"` in production path construction (grep or CI check).

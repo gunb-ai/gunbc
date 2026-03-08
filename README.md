@@ -28,9 +28,8 @@ dsl/extdeps/cloud/gcp/gcp.dag   "What is GCP?" — real OAuth2 scopes, real endp
 dsl/tools/gist.dag               "How do we upload a gist?" — composes services
 ```
 
-The compiler (`src/core/daglang/`) transforms `.dag` -> executable DAG IR.
-The engine (`src/core/`, `src/lib/`) executes it. Neither knows what the
-domain is.
+The compiler (`src/daglang/`) transforms `.dag` -> executable DAG IR.
+The engine (`src/`) executes it. Neither knows what the domain is.
 
 ### 2. World I/O is structural, not annotated
 
@@ -82,14 +81,14 @@ abstractions.
 ### 6. Resolution maps DSL constructs to runtime — nothing more
 
 `src/gunbc-app/` is the wiring layer. It does not contain domain logic
-(that's DSL) or engine logic (that's `src/core/`). Every `extern func`
+(that's DSL) or engine logic (that's `src/`). Every `extern func`
 backed by Rust is ratcheted and must be justified.
 
 ## Structure
 
 ```
 dsl/              Domain: .dag source files, types, data, workflows
-src/core/
+src/
   daglang/        Compiler: parse -> typecheck -> lower -> emit
   ir/             IR: Node, Edge, Port, Dag, Value
   exec/           Executor: traverse DAG, call Executable, handle loops

@@ -632,12 +632,12 @@ fn emit_cargo_toml(
     let _ = writeln!(
         deps,
         "gunbc-ir = {{ path = \"{}\" }}",
-        dependency_path(layout.as_ref(), output_dir, "gunbc-ir", "../../core/ir")
+        dependency_path(layout.as_ref(), output_dir, "gunbc-ir", "../../ir")
     );
     let _ = writeln!(
         deps,
         "gunbc-exec = {{ path = \"{}\" }}",
-        dependency_path(layout.as_ref(), output_dir, "gunbc-exec", "../../core/exec")
+        dependency_path(layout.as_ref(), output_dir, "gunbc-exec", "../../exec")
     );
     if needs_helper {
         let _ = writeln!(

@@ -23,7 +23,6 @@ fn main() {
     let output_dir = layout
         .workspace_root
         .join("src")
-        .join("core")
         .join("generated-tests")
         .join("src");
 

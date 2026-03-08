@@ -802,10 +802,9 @@ mod tests {
         let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .and_then(|p| p.parent())
-            .and_then(|p| p.parent())
             .expect("workspace root");
         let mut files = Vec::new();
-        collect_rust_files(&workspace_root.join("src/core"), &mut files);
+        collect_rust_files(&workspace_root.join("src"), &mut files);
 
         let mut offenders = Vec::new();
         let needle = ["derive_tool_defs", "("].concat();

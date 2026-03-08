@@ -25,7 +25,7 @@ fn collect_dag_files(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> 
 #[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 #[test]
 fn corpus_covers_all_top_level_item_variants() {
-    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
     let mut dag_files = Vec::new();
     collect_dag_files(&dsl_root, &mut dag_files).expect("failed to discover .dag files");
     dag_files.sort();

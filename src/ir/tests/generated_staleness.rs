@@ -31,7 +31,7 @@ fn generated_types_are_not_stale() {
             "--module",
             "std.box_draw",
         ])
-        .current_dir(env!("CARGO_MANIFEST_DIR").to_string() + "/../../..")
+        .current_dir(env!("CARGO_MANIFEST_DIR").to_string() + "/../..")
         .output()
         .expect("failed to run daglang gen-types");
 

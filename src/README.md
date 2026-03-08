@@ -1,6 +1,7 @@
-# core/ — Compiler and Runtime
+# src/ — Compiler and Runtime
 
-This directory contains the DSL compiler pipeline and execution engine.
+All Rust crates live here. The DSL compiler pipeline, execution engine,
+IR, and runtime operations.
 
 ## Coding Standards
 

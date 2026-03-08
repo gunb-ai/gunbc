@@ -48,7 +48,7 @@ pub enum WorkspaceLayoutError {
 // ---------------------------------------------------------------------------
 
 /// Raw content of the codegen-paths DSL config, embedded at compile time.
-const CODEGEN_PATHS_DAG: &str = include_str!("../../../../dsl/config/codegen_paths.dag");
+const CODEGEN_PATHS_DAG: &str = include_str!("../../../dsl/config/codegen_paths.dag");
 
 /// Parsed codegen output paths -- derived once from the DSL config file.
 ///
@@ -365,8 +365,8 @@ mod tests {
             .crate_dir("gunbc-ir")
             .expect("workspace should include gunbc-ir crate");
         assert!(
-            ir_dir.ends_with("src/core/ir"),
-            "expected gunbc-ir dir to end with src/core/ir, got {}",
+            ir_dir.ends_with("src/ir"),
+            "expected gunbc-ir dir to end with src/ir, got {}",
             ir_dir.display()
         );
     }
@@ -374,11 +374,11 @@ mod tests {
     #[test]
     fn relative_path_computes_nested_workspace_paths() {
         let layout = WorkspaceLayout::from_env_manifest_dir().expect("resolve workspace layout");
-        let from = layout.workspace_root.join("src/core/ir");
+        let from = layout.workspace_root.join("src/ir");
         let to = layout.workspace_root.join("dsl/std/types.dag");
         assert_eq!(
             layout.relative_path(&from, &to),
-            PathBuf::from("../../../dsl/std/types.dag")
+            PathBuf::from("../../dsl/std/types.dag")
         );
     }
 
@@ -387,12 +387,12 @@ mod tests {
         let layout = WorkspaceLayout::from_env_manifest_dir().expect("resolve workspace layout");
         let globs = layout.source_globs(&["gunbc-ir"]);
         assert!(
-            globs.iter().any(|g| g == "src/core/ir/src/**/*.rs"),
-            "expected src/core/ir source glob, got: {globs:?}"
+            globs.iter().any(|g| g == "src/ir/src/**/*.rs"),
+            "expected src/ir source glob, got: {globs:?}"
         );
         assert!(
-            globs.iter().any(|g| g == "src/core/ir/Cargo.toml"),
-            "expected src/core/ir manifest glob, got: {globs:?}"
+            globs.iter().any(|g| g == "src/ir/Cargo.toml"),
+            "expected src/ir manifest glob, got: {globs:?}"
         );
     }
 

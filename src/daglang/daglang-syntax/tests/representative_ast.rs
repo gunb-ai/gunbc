@@ -5,7 +5,7 @@ use daglang_syntax::ast::{Item, SourceFile, TypeBody};
 
 fn dsl_file(path: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../../dsl")
+        .join("../../../dsl")
         .join(path)
 }
 

@@ -69,7 +69,7 @@ fn parse_module_declaration(dsl_root: &Path, path: &Path) -> String {
 
 #[test]
 fn discovers_all_real_dsl_modules() {
-    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
     let graph = ModuleGraph::discover(std::slice::from_ref(&dsl_root))
         .expect("expected real dsl graph to parse");
 
@@ -90,7 +90,7 @@ fn discovers_all_real_dsl_modules() {
 
 #[test]
 fn real_corpus_module_order_is_stable_across_discovery_runs() {
-    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
     let first =
         ModuleGraph::discover(std::slice::from_ref(&dsl_root)).expect("expected real dsl graph");
     let second = ModuleGraph::discover(&[dsl_root]).expect("expected real dsl graph");
@@ -109,7 +109,7 @@ fn real_corpus_module_order_is_stable_across_discovery_runs() {
 
 #[test]
 fn discovered_module_paths_match_ast_module_declarations() {
-    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
     let graph = ModuleGraph::discover(&[dsl_root]).expect("expected real dsl graph to parse");
 
     for module in &graph.modules {
@@ -130,7 +130,7 @@ fn discovered_module_paths_match_ast_module_declarations() {
 
 #[test]
 fn real_corpus_acyclic_dependencies_precede_dependents() {
-    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
     let graph = ModuleGraph::discover(&[dsl_root]).expect("expected real dsl graph to parse");
     for (module_idx, module) in graph.modules.iter().enumerate() {
         let module_name = module.module_path.as_dotted();
@@ -147,7 +147,7 @@ fn real_corpus_acyclic_dependencies_precede_dependents() {
 
 #[test]
 fn real_corpus_dependency_indices_are_within_bounds() {
-    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
     let graph = ModuleGraph::discover(&[dsl_root]).expect("expected real dsl graph to parse");
 
     for module in &graph.modules {
@@ -164,7 +164,7 @@ fn real_corpus_dependency_indices_are_within_bounds() {
 
 #[test]
 fn real_corpus_dependency_indices_match_declared_imports() {
-    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
     let graph = ModuleGraph::discover(&[dsl_root]).expect("expected real dsl graph to parse");
     use daglang_syntax::ast::ModulePath;
     let module_index: HashMap<ModulePath, usize> = graph
@@ -663,7 +663,7 @@ fn parse_error_display_includes_all_files_and_locations() {
 
 #[test]
 fn discovery_order_is_deterministic_across_runs() {
-    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
     let graph_a = ModuleGraph::discover(std::slice::from_ref(&dsl_root))
         .expect("first discover should succeed");
     let graph_b = ModuleGraph::discover(&[dsl_root]).expect("second discover should succeed");
@@ -684,7 +684,7 @@ fn discovery_order_is_deterministic_across_runs() {
 
 #[test]
 fn display_tree_output_is_deterministic_across_runs() {
-    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
     let graph_a = ModuleGraph::discover(std::slice::from_ref(&dsl_root))
         .expect("first discover should succeed");
     let graph_b = ModuleGraph::discover(&[dsl_root]).expect("second discover should succeed");
@@ -725,7 +725,7 @@ fn discovery_is_independent_of_root_argument_order() {
 
 #[test]
 fn display_tree_contains_expected_summary_fields() {
-    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
     let graph = ModuleGraph::discover(&[dsl_root]).expect("discover should succeed");
     let tree = graph.display_tree();
 

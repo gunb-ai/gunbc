@@ -9,14 +9,14 @@ use std::sync::OnceLock;
 
 /// Fallback input globs used when workspace layout discovery is unavailable.
 pub const CODEGEN_INPUT_GLOBS: &[&str] = &[
-    "src/core/codegen/src/**/*.rs",
-    "src/core/ir/src/**/*.rs",
+    "src/codegen/src/**/*.rs",
+    "src/ir/src/**/*.rs",
 ];
 
 /// Fallback individual files used when workspace layout discovery is unavailable.
 pub const CODEGEN_INPUT_FILES: &[&str] = &[
-    "src/core/codegen/Cargo.toml",
-    "src/core/ir/Cargo.toml",
+    "src/codegen/Cargo.toml",
+    "src/ir/Cargo.toml",
 ];
 
 static DERIVED_CODEGEN_INPUTS: OnceLock<(Vec<String>, Vec<String>)> = OnceLock::new();
@@ -94,24 +94,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn derived_codegen_input_patterns_include_core_codegen_ir_and_dag() {
+    fn derived_codegen_input_patterns_include_codegen_ir_and_dag() {
         let (globs, files) = codegen_input_patterns();
         assert!(
             globs
                 .iter()
-                .any(|g| g.ends_with("core/codegen/src/**/*.rs")),
+                .any(|g| g.ends_with("codegen/src/**/*.rs")),
             "expected codegen source glob, got {globs:?}"
         );
         assert!(
-            globs.iter().any(|g| g.ends_with("core/ir/src/**/*.rs")),
+            globs.iter().any(|g| g.ends_with("ir/src/**/*.rs")),
             "expected ir source glob, got {globs:?}"
         );
         assert!(
-            files.iter().any(|f| f.ends_with("core/codegen/Cargo.toml")),
+            files.iter().any(|f| f.ends_with("codegen/Cargo.toml")),
             "expected codegen manifest path, got {files:?}"
         );
         assert!(
-            files.iter().any(|f| f.ends_with("core/ir/Cargo.toml")),
+            files.iter().any(|f| f.ends_with("ir/Cargo.toml")),
             "expected ir manifest path, got {files:?}"
         );
     }
