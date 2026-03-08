@@ -1554,6 +1554,10 @@ struct LoweringContext<'a> {
     variant_names: &'a HashSet<String>,
     /// Default expressions for callable parameters, keyed by callable name.
     callable_param_defaults: &'a HashMap<String, Vec<(String, daglang_syntax::ast::Expr)>>,
+    /// Full-qualified endpoint lookup for cross-module Call resolution.
+    endpoints_by_full: &'a HashMap<(String, String), LoweredEndpoint>,
+    /// Resource binding types from `uses` clauses (e.g., `fs: Filesystem`).
+    uses_binding_types: &'a HashMap<String, String>,
 }
 
 fn user_code_origin(
@@ -3654,6 +3658,8 @@ fn add_dependency_edges(
                 let empty_expanded = HashMap::new();
                 let empty_locals = HashMap::new();
                 let empty_fn_bodies = std::collections::BTreeMap::new();
+                let empty_endpoints_full = HashMap::new();
+                let empty_uses = HashMap::new();
                 let ctx = LoweringContext {
                     source_file: &source_file,
                     module_name: &module_name,
@@ -3671,6 +3677,8 @@ fn add_dependency_edges(
                     all_fn_bodies: &empty_fn_bodies,
                     variant_names: wctx.variant_names,
                     callable_param_defaults: wctx.callable_param_defaults,
+                    endpoints_by_full: &empty_endpoints_full,
+                    uses_binding_types: &empty_uses,
                 };
                 let _ = expand_content_upsert_patterns(builder, &ctx, stmts, target);
                 expand_non_generic_pattern_calls(builder, project, &ctx, stmts, target);
@@ -4127,6 +4135,7 @@ fn make_loop_body_dag_from_stmts(
     let mut bound_service_sources = HashMap::<String, ServiceTransportEndpoint>::new();
     let empty_expanded = HashMap::<String, PatternExpansionResult>::new();
     let empty_locals = HashMap::new();
+    let empty_endpoints_full = HashMap::new();
 
     for (stmt_index, stmt) in site.body_stmts.iter().enumerate() {
         let (binding_name, expr) = match stmt {
@@ -4170,6 +4179,8 @@ fn make_loop_body_dag_from_stmts(
                     all_fn_bodies: ctx.all_fn_bodies,
                     variant_names: ctx.variant_names,
                     callable_param_defaults: ctx.callable_param_defaults,
+                    endpoints_by_full: &empty_endpoints_full,
+                    uses_binding_types: ctx.uses_binding_types,
                 };
                 wire_loop_body_named_args(
                     &mut builder,
@@ -4212,6 +4223,8 @@ fn make_loop_body_dag_from_stmts(
                     all_fn_bodies: ctx.all_fn_bodies,
                     variant_names: ctx.variant_names,
                     callable_param_defaults: ctx.callable_param_defaults,
+                    endpoints_by_full: &empty_endpoints_full,
+                    uses_binding_types: ctx.uses_binding_types,
                 };
                 wire_loop_body_named_args(
                     &mut builder,
@@ -4244,6 +4257,8 @@ fn make_loop_body_dag_from_stmts(
         all_fn_bodies: ctx.all_fn_bodies,
         variant_names: ctx.variant_names,
         callable_param_defaults: ctx.callable_param_defaults,
+        endpoints_by_full: &empty_endpoints_full,
+        uses_binding_types: ctx.uses_binding_types,
     };
     let expanded_results = expand_content_upsert_patterns(
         &mut builder,
@@ -5395,6 +5410,8 @@ fn expand_non_generic_pattern_calls(
             all_fn_bodies: ctx.all_fn_bodies,
             variant_names: ctx.variant_names,
             callable_param_defaults: ctx.callable_param_defaults,
+            endpoints_by_full: ctx.endpoints_by_full,
+            uses_binding_types: ctx.uses_binding_types,
         };
         let pexp = PatternExpansionParams {
             target,
@@ -7935,6 +7952,8 @@ fn add_service_call_edges(
                     all_fn_bodies: &all_fn_bodies,
                     variant_names: wctx.variant_names,
                     callable_param_defaults: wctx.callable_param_defaults,
+                    endpoints_by_full: wctx.endpoints_by_full,
+                    uses_binding_types: &uses_binding_types,
                 };
                 let mut supplied_prepare_inputs = HashSet::<String>::new();
                 for (index, arg) in call.args.iter().enumerate() {
@@ -8087,6 +8106,8 @@ fn add_service_call_edges(
                 all_fn_bodies: &all_fn_bodies,
                 variant_names: wctx.variant_names,
                 callable_param_defaults: wctx.callable_param_defaults,
+                endpoints_by_full: wctx.endpoints_by_full,
+                uses_binding_types: &uses_binding_types,
             };
             wire_fn_call_arguments(builder, &fn_ctx, stmts);
             // Wire for-loop iterable expressions to loop node "items" ports.
@@ -10497,8 +10518,30 @@ fn resolve_return_expr_source(
             output_name,
             disambiguator,
         ),
-        // Handle remaining complex expressions by synthesizing a dedicated compute node.
-        _ => synthesize_expr_compute(builder, ctx, expr, output_port, output_name, disambiguator),
+        Expr::ServiceCall(_path, _args) => {
+            // TODO(lower_expr): structural transport triplet creation
+            synthesize_expr_compute(builder, ctx, expr, output_port, output_name, disambiguator)
+        }
+        Expr::Lambda(_params, _body) => {
+            // Lambdas only valid inside Pipe/PipeCall args — standalone lambda is an error.
+            // For now, fall back to ExprCompute.
+            synthesize_expr_compute(builder, ctx, expr, output_port, output_name, disambiguator)
+        }
+        Expr::Guarded(_inner, _guard) => {
+            // Guarded expressions: lower the inner expression, guard is a dependency.
+            // For now, fall back to ExprCompute.
+            synthesize_expr_compute(builder, ctx, expr, output_port, output_name, disambiguator)
+        }
+        Expr::After(_inner, _deps) => {
+            // After expressions: lower the inner expression, deps are ordering edges.
+            // For now, fall back to ExprCompute.
+            synthesize_expr_compute(builder, ctx, expr, output_port, output_name, disambiguator)
+        }
+        Expr::Return(_fields) => {
+            // Return in expression position — treat as record construction.
+            // For now, fall back to ExprCompute.
+            synthesize_expr_compute(builder, ctx, expr, output_port, output_name, disambiguator)
+        }
     }
 }
 
