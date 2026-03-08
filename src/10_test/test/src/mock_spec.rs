@@ -945,6 +945,8 @@ pub enum OutputMatcher {
     IsInt,
     /// Output must be a string (any value).
     IsString,
+    /// Output must be a secret (any value).
+    IsSecret,
     /// Output must be a transport request.
     IsRequest,
     /// Output must be a transport response.
@@ -976,6 +978,7 @@ impl std::fmt::Debug for OutputMatcher {
             OutputMatcher::IsBool => write!(f, "IsBool"),
             OutputMatcher::IsInt => write!(f, "IsInt"),
             OutputMatcher::IsString => write!(f, "IsString"),
+            OutputMatcher::IsSecret => write!(f, "IsSecret"),
             OutputMatcher::IsRequest => write!(f, "IsRequest"),
             OutputMatcher::IsResponse => write!(f, "IsResponse"),
             OutputMatcher::IntGe(n) => write!(f, "IntGe({})", n),
@@ -1024,6 +1027,7 @@ impl OutputMatcher {
                 | OutputMatcher::IsBool
                 | OutputMatcher::IsInt
                 | OutputMatcher::IsString
+                | OutputMatcher::IsSecret
                 | OutputMatcher::IsRequest
                 | OutputMatcher::IsResponse
                 | OutputMatcher::IntGe(_)
@@ -1065,8 +1069,12 @@ impl OutputMatcher {
                 _ => Err(format!("expected Int, got {:?}", value)),
             },
             OutputMatcher::IsString => match value {
-                Value::Str(_) | Value::Secret(_) => Ok(()),
+                Value::Str(_) => Ok(()),
                 _ => Err(format!("expected String, got {:?}", value)),
+            },
+            OutputMatcher::IsSecret => match value {
+                Value::Secret(_) => Ok(()),
+                _ => Err(format!("expected Secret, got {:?}", value)),
             },
             OutputMatcher::IsRequest => match value {
                 Value::Request(_) => Ok(()),

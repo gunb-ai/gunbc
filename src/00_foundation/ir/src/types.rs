@@ -1146,6 +1146,7 @@ pub fn semantic_carrier_compatible(from: &TypeId, to: &TypeId) -> bool {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValueBacking {
     String,
+    Secret,
     Bool,
     Int,
     Float,
@@ -1163,6 +1164,7 @@ impl ValueBacking {
         use crate::value::ValueKind;
         match self {
             ValueBacking::String => kind == ValueKind::String,
+            ValueBacking::Secret => kind == ValueKind::Secret,
             ValueBacking::Bool => kind == ValueKind::Bool,
             ValueBacking::Int => kind == ValueKind::Int,
             ValueBacking::Float => kind == ValueKind::Int, // Float can accept Int

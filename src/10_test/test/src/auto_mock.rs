@@ -127,6 +127,9 @@ fn default_value_for_type(type_id: &str) -> Value {
             }
             match value_backing_for_type_id(type_id) {
                 ValueBacking::String => Value::Str("mock".to_string()),
+                ValueBacking::Secret => {
+                    Value::Secret(gunbc_ir::SecretString::new("mock"))
+                }
                 ValueBacking::Bool => Value::Bool(true),
                 ValueBacking::Int | ValueBacking::Float => Value::Int(1),
                 ValueBacking::Json => Value::Json(serde_json::json!({"mock": true})),
@@ -573,6 +576,7 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
                     ValueBacking::Bool => OutputMatcher::IsBool,
                     ValueBacking::Int | ValueBacking::Float => OutputMatcher::IsInt,
                     ValueBacking::String => OutputMatcher::IsString,
+                    ValueBacking::Secret => OutputMatcher::IsSecret,
                     _ => OutputMatcher::NonEmpty,
                 }
             };

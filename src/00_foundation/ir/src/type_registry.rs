@@ -917,7 +917,7 @@ impl TypeRegistry {
             "Bytes" => return ValueBacking::Bytes,
             "Json" => return ValueBacking::Json,
             "Unit" => return ValueBacking::Unit,
-            "Secret" => return ValueBacking::String,
+            "Secret" => return ValueBacking::Secret,
             _ => {}
         }
 
@@ -928,7 +928,7 @@ impl TypeRegistry {
             ("Float", ValueBacking::Float),
             ("Bool", ValueBacking::Bool),
             ("Bytes", ValueBacking::Bytes),
-            ("Secret", ValueBacking::String),
+            ("Secret", ValueBacking::Secret),
         ];
         for &(prim, backing) in PRIMITIVE_BACKINGS {
             if self.coercion_path(type_id, &TypeId::from(prim)).is_some() {
@@ -949,7 +949,7 @@ impl TypeRegistry {
             | SemanticCarrierKind::NetworkHandle
             | SemanticCarrierKind::ToolHandle => return ValueBacking::Json,
             SemanticCarrierKind::Credential => return ValueBacking::Map,
-            SemanticCarrierKind::Secret => return ValueBacking::String,
+            SemanticCarrierKind::Secret => return ValueBacking::Secret,
             SemanticCarrierKind::UnknownSemantic => return ValueBacking::Json,
         }
 
@@ -1694,7 +1694,7 @@ mod tests {
         let r = TypeRegistry::with_core_types();
         assert_eq!(
             r.value_backing(&TypeId::from("Secret")),
-            ValueBacking::String
+            ValueBacking::Secret
         );
     }
 

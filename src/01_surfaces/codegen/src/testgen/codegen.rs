@@ -6946,7 +6946,10 @@ fn render_output_matcher_check(matcher: &OutputMatcher, var_name: &str) -> Vec<S
             "assert!({output_var}.as_int().is_some() || matches!(*{output_var}, Value::Skipped), \"expected Int or Skipped for {output_var}\");"
         )))],
         OutputMatcher::IsString => vec![Stmt::Item(Item::Raw(format!(
-            "assert!({output_var}.as_str().is_some() || matches!(*{output_var}, Value::Skipped | Value::Secret(_)), \"expected String, Secret, or Skipped for {output_var}\");"
+            "assert!({output_var}.as_str().is_some() || matches!(*{output_var}, Value::Skipped), \"expected String or Skipped for {output_var}\");"
+        )))],
+        OutputMatcher::IsSecret => vec![Stmt::Item(Item::Raw(format!(
+            "assert!(matches!(*{output_var}, Value::Secret(_)) || matches!(*{output_var}, Value::Skipped), \"expected Secret or Skipped for {output_var}\");"
         )))],
         OutputMatcher::IsRequest => vec![Stmt::Item(Item::Raw(format!(
             "assert!({output_var}.as_request().is_some() || matches!(*{output_var}, Value::Skipped), \"expected Request or Skipped for {output_var}\");"

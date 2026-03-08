@@ -1618,6 +1618,8 @@ struct DagBuilder {
     dag: Dag<LoweredOp>,
     seen_nodes: HashSet<String>,
     seen_edges: HashSet<(String, String, String, String, EdgeKind)>,
+    /// Monotonic counter per (to_node, to_port) for deterministic fan-in ordering.
+    fan_in_counts: HashMap<(String, String), usize>,
 }
 
 impl DagBuilder {
@@ -1626,6 +1628,7 @@ impl DagBuilder {
             dag: Dag::new(),
             seen_nodes: HashSet::new(),
             seen_edges: HashSet::new(),
+            fan_in_counts: HashMap::new(),
         }
     }
 
@@ -1665,12 +1668,18 @@ impl DagBuilder {
             kind,
         );
         if self.seen_edges.insert(key) {
+            let idx = self
+                .fan_in_counts
+                .entry((to.to_string(), to_port.to_string()))
+                .or_insert(0);
+            let index = *idx;
+            *idx += 1;
             self.dag.add_edge(Edge {
                 from_node: NodeId::new(from.to_string()),
                 from_port: PortName::new(from_port.to_string()),
                 to_node: NodeId::new(to.to_string()),
                 to_port: PortName::new(to_port.to_string()),
-                index: 0,
+                index,
                 kind,
             });
         }

@@ -568,6 +568,7 @@ fn apply_expect<T>(spec: &mut MockSpec, expect: &ExpectStmt, module_prefix: &str
                 let node = qualify_node_id(&node, module_prefix, dag);
                 let matcher = match type_name.as_str() {
                     "String" => OutputMatcher::IsString,
+                    "Secret" => OutputMatcher::IsSecret,
                     "Bool" => OutputMatcher::IsBool,
                     "Int" => OutputMatcher::IsInt,
                     "NonEmpty" => OutputMatcher::NonEmpty,

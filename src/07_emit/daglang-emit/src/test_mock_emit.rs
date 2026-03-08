@@ -355,6 +355,7 @@ fn emit_expect_apply(out: &mut String, expect: &ExpectStmt, indent: &str) {
             if let Some((node, port)) = extract_result_path(lhs) {
                 let matcher = match type_name.as_str() {
                     "String" => "gunbc_test::OutputMatcher::IsString",
+                    "Secret" => "gunbc_test::OutputMatcher::IsSecret",
                     "Bool" => "gunbc_test::OutputMatcher::IsBool",
                     "Int" => "gunbc_test::OutputMatcher::IsInt",
                     "NonEmpty" => "gunbc_test::OutputMatcher::NonEmpty",
