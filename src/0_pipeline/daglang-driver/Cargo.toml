@@ -1,0 +1,23 @@
+[package]
+name = "daglang-driver"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Pure-ish compiler driver for daglang"
+
+[dependencies]
+daglang-contract = { path = "../../0_foundation/daglang-contract" }
+daglang-syntax = { path = "../../1_source/daglang-syntax" }
+daglang-resolve = { path = "../../1_source/daglang-resolve" }
+daglang-typecheck = { path = "../../2_semantics/daglang-typecheck" }
+daglang-lower = { path = "../../3_graph/daglang-lower" }
+daglang-derive = { path = "../../4_artifacts/daglang-derive" }
+daglang-emit = { path = "../../5_emit/daglang-emit" }
+gunbc-ir = { path = "../../0_foundation/ir" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+
+[dev-dependencies]
+gunbc-test = { path = "../../9_test/test" }

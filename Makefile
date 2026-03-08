@@ -10,7 +10,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help preflight-fix ensure-codegen build-release-bins lint-upsert codegen build clean testgen testgen-check deps-config deps-config-check bootstrap-check verify verify-fix fmt-fix lint-fix test-all test test-xs test-s test-m test-l test-xl test-small test-medium test-large test-extra-large test-integration test-external check clippy fmt fmt-check test-fix check-fix clippy-fix bootstrap bootstrap-dry build-all build-all-dry clippy-lint clippy-lint-dry deps deps-dry design design-dry gist gist-dry infra infra-dry readme readme-dry workflow workflow-dry
+.PHONY: help preflight-fix ensure-codegen build-release-bins lint-upsert codegen build clean testgen testgen-check bootstrap-check verify verify-fix fmt-fix lint-fix test-all test test-xs test-s test-m test-l test-xl test-small test-medium test-large test-extra-large test-integration test-external check clippy fmt fmt-check test-fix check-fix clippy-fix bootstrap bootstrap-dry build-all build-all-dry design design-dry gist gist-dry gist-diff gist-diff-dry gist-recent gist-recent-dry infra infra-dry readme readme-dry workflow workflow-dry
 
 # Preflight: auto-fix rustc warnings before running generators
 preflight-fix:
@@ -48,27 +48,17 @@ testgen: lint-upsert
 testgen-check: lint-upsert
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-codegen --bin gunbc-testgen
 
-# Ensure deps.toml matches canonical generated configuration
-deps-config: build-release-bins
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-codegen --bin gunbc-deps-config -q --release
-
-# Check if deps.toml is stale
-deps-config-check: build-release-bins
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-codegen --bin gunbc-deps-config -q --release -- --dry-run
-
 # Check if generated bootstrap artifacts are stale
 bootstrap-check: lint-upsert
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-codegen --bin gunbc-bootstrap
 
 # Verify generated artifacts match their generators
 verify: lint-upsert
-	@$(MAKE) deps-config-check
 	@$(MAKE) bootstrap-check
 	@$(MAKE) testgen-check
 
 # Ensure generated artifacts are up to date
 verify-fix: lint-upsert
-	@$(MAKE) deps-config
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-codegen --bin gunbc-bootstrap
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-codegen --bin gunbc-testgen
 
@@ -101,8 +91,6 @@ help:
 	@echo "  clean  - Clean build artifacts"
 	@echo "  testgen  - Regenerate tests from DAG structures and MockSpecs"
 	@echo "  testgen-check  - Check if generated tests are stale"
-	@echo "  deps-config  - Ensure deps.toml matches canonical generated configuration"
-	@echo "  deps-config-check  - Check if deps.toml is stale"
 	@echo "  bootstrap-check  - Check if generated bootstrap artifacts are stale"
 	@echo "  verify  - Verify generated artifacts match their generators"
 	@echo "  verify-fix  - Ensure generated artifacts are up to date"
@@ -134,8 +122,6 @@ help:
 	@echo "Tools:"
 	@echo "  bootstrap   - Bootstrap"
 	@echo "  build-all   - Build all"
-	@echo "  clippy-lint [PATHS=...]  - Clippy lint"
-	@echo "  deps   - Deps"
 	@echo "  design   - Design"
 	@echo "  gist   - Gist (snapshot)"
 	@echo "  gist-diff [BASE_REF=...]  - Gist diff"
@@ -144,7 +130,7 @@ help:
 	@echo "  readme   - Readme"
 	@echo "  workflow   - Workflow"
 	@echo ""
-	@echo "Add -dry suffix for dry-run (e.g., make deps-dry)"
+	@echo "Add -dry suffix for dry-run (e.g., make bootstrap-dry)"
 
 # ============================================================================
 # Meta Targets - Development workflow commands
@@ -235,22 +221,6 @@ build-all: ensure-codegen
 
 build-all-dry: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-codegen --bin gunbc-build-all -q --release -- --dry-run strict
-
-
-# gunbc-clippy-lint entrypoints: paths (String)
-clippy-lint: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-codegen --bin gunbc-clippy-lint -q --release
-
-clippy-lint-dry: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-codegen --bin gunbc-clippy-lint -q --release -- --dry-run strict
-
-
-# gunbc-deps entrypoints: 
-deps: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-codegen --bin gunbc-deps -q --release
-
-deps-dry: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-codegen --bin gunbc-deps -q --release -- --dry-run strict
 
 
 # gunbc-design entrypoints: 

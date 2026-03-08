@@ -28,7 +28,8 @@ dsl/extdeps/cloud/gcp/gcp.dag   "What is GCP?" — real OAuth2 scopes, real endp
 dsl/tools/gist.dag               "How do we upload a gist?" — composes services
 ```
 
-The compiler (`src/daglang/`) transforms `.dag` -> executable DAG IR.
+The compiler pipeline (`src/0_pipeline/` through `src/5_emit/`) transforms
+`.dag` -> executable DAG IR.
 The engine (`src/`) executes it. Neither knows what the domain is.
 
 ### 2. World I/O is structural, not annotated
@@ -41,7 +42,7 @@ the graph.
    (pure)          (the only I/O node)        (pure)
 ```
 
-`src/lib/transport/` is the **only** crate that performs direct I/O.
+`src/6_materialize/transport/` is the **only** crate that performs direct I/O.
 All other crates build `TransportRequest` values (pure) and consume
 `TransportResponse` values (pure). Dry-run replaces transport nodes with
 mocks. Pure nodes always run.
@@ -80,25 +81,27 @@ abstractions.
 
 ### 6. Resolution maps DSL constructs to runtime — nothing more
 
-`src/gunbc-app/` is the wiring layer. It does not contain domain logic
-(that's DSL) or engine logic (that's `src/`). Every `extern func`
-backed by Rust is ratcheted and must be justified.
+The runtime materialization layer (`src/6_materialize/`) is the wiring layer.
+It does not contain domain logic (that's DSL) or engine logic (that's the
+pipeline, IR, and executor crates). Every `extern func` backed by Rust is
+ratcheted and must be justified.
 
 ## Structure
 
 ```
 dsl/              Domain: .dag source files, types, data, workflows
 src/
-  daglang/        Compiler: parse -> typecheck -> lower -> emit
-  ir/             IR: Node, Edge, Port, Dag, Value
-  exec/           Executor: traverse DAG, call Executable, handle loops
-  resolve/        Resolver: LoweredOp -> DynOp, DSL graph builder
-  codegen/        Codegen: CLI gen, test gen, entrypoint discovery
-  infra/          Primitives: hashing, IDs, manifests, freshness
-  workflow/       Workflow engine: planner, coordination, SLO
-  transport/      I/O boundary (the ONLY crate that touches the real world)
-  primitives/     Leaf operations: parse, extract, format, map, filter, fold
-  blob/           Blob content acquisition
+  0_foundation/   Shared IR and foundational crates
+  0_pipeline/     Driver/orchestrator: prepare -> run staged compile
+  1_source/       Source discovery, parse, module graph
+  2_semantics/    Typechecking and semantic validation
+  3_graph/        Lowering to GraphIR
+  4_artifacts/    Derived manifests and obligations
+  5_emit/         Code emission
+  6_materialize/  Runtime wiring, resolver, primitives, blob, transport
+  7_execute/      DAG executor
+  8_surfaces/     CLIs, codegen, workflow-facing entrypoints
+  9_test/         Test support and generated tests
 ```
 
 ## Testing
