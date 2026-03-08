@@ -1,6 +1,7 @@
 # Design: Eliminating Interpreter Fallback from the Compiler
 
-**Status:** Problem catalog. No solution adopted yet.
+**Status:** Problem cataloged. Solution direction: expression extraction.
+Impact analysis complete.
 
 **Invariant:** README Invariant 7 — every expression lowers to structural DAG
 nodes or the compilation fails. No interpreter-backed fallback nodes.
@@ -590,51 +591,134 @@ should be expression-recursive so extraction isn't needed. But expression
 extraction gets to correctness without restructuring the compiler, and it
 can be implemented incrementally.
 
-After all causes are resolved (by any option), `synthesize_expr_compute` and
-`synthesize_tagged_evaluator` have no callers and can be deleted, along with
-`PrimitiveOpKind::ExprCompute`, `PrimitiveOpKind::PipeOp`, and
-`PrimitiveOpKind::ForOp`. The `ExprComputeOp` in the resolver and the
-`Passthrough` stubs in the emitter become dead code.
+---
+
+## Scope: Second Interpreter Path (FnBodyCallableOp)
+
+Expression extraction as described above targets the `ExprCompute` path
+(func, pattern, and lossy fn items). But there is a **second** independent
+interpreter-backed path: `FnBodyCallableOp`.
+
+For `fn` items with non-lossy bodies, the lowerer **skips return wiring
+entirely** (line ~8098-8108: `if !is_fn_with_body { wire_callable_return_outputs(...) }`).
+Instead, the resolver wraps the fn body in `FnBodyCallableOp`, which
+evaluates the entire body at runtime via `evaluate_fn_body`.
+
+This means ALL `fn` items with clean bodies — regardless of whether they
+contain pipes, calls, conditionals, etc. — bypass the structural lowering
+pipeline and run through the interpreter. The lowerer never creates
+structural nodes for their internal computation.
+
+`FnBodyCallableOp::execute()` catches ALL evaluation errors and returns
+`Value::Skipped` for all outputs (line ~249-261). This is the same
+silent-degradation pattern as `ExprComputeOp`, just applied to the whole
+fn body instead of individual expressions.
+
+**Expression extraction must cover fn bodies too.** If extraction only runs
+on return expressions of func/pattern items, fn items remain fully
+interpreter-backed. The full scope is:
+
+1. Walk ALL fn/func/pattern body statements (including return expressions)
+2. Extract pipes, calls, service calls, for-loops into synthetic let bindings
+3. Enable return wiring for fn items (remove the `is_fn_with_body` skip)
+4. `FnBodyCallableOp` becomes unnecessary — fn items use
+   `DeclaredOutputCallableOp` (passthrough) with structural return wiring
+
+---
+
+## Impact Analysis: What Gets Eliminated
+
+### Compiler infrastructure eliminated
+
+After extraction covers all fn/func/pattern bodies:
+
+| Component | Location | Status |
+|---|---|---|
+| `PrimitiveOpKind::ExprCompute` | lowerer | **Dead code** — no callers |
+| `PrimitiveOpKind::PipeOp` | lowerer | **Dead code** — pipes extracted to Collection nodes |
+| `PrimitiveOpKind::ForOp` | lowerer | **Dead code** — for-loops extracted to loop body expansion |
+| `synthesize_expr_compute()` | lowerer | **Dead code** — no callers |
+| `synthesize_tagged_evaluator()` | lowerer | **Dead code** — no callers |
+| `ExprComputeOp` | resolver | **Dead code** — no ExprCompute nodes to resolve |
+| `FnBodyCallableOp` | resolver | **Dead code** — fn items use DeclaredOutputCallableOp |
+| `Passthrough` stubs for interp-only ops | emitter | **Dead code** — no interpreter-only ops |
+| `_ => synthesize_expr_compute(...)` catch-all | lowerer | **Unreachable** — delete and make match exhaustive |
+| `_ => {}` in Phase 1 statement loop | lowerer | **Unreachable** — all expressions extracted to handled forms |
+| `is_fn_with_body` return-wiring skip | lowerer | **Removed** — fn bodies lowered structurally |
+| `evaluate_fn_body` runtime calls | resolver | **Removed** from DAG execution path (may remain for compile-time constant evaluation) |
+| `lower_warn` RT4c path | lowerer | **Eliminated** — return expressions only contain identifiers |
+| `collect_local_let_bindings` ExprCompute workaround | lowerer | **Simplified** — extraction handles what it was working around |
+| `lossy_fn_bodies` field in CompileOutput | driver | **Can become a compile error** — lossy bodies fail at lowering |
+
+### POSTMORTEM items resolved or unblocked
+
+| Item | Impact | Explanation |
+|---|---|---|
+| **T3** (unevaluable fn bodies) | **Resolved** | Service calls in fn bodies are extracted to transport triplets. The evaluator never sees them. Unevaluable expressions become compile errors (no endpoint found) instead of runtime Skipped. |
+| **T5** (literal source skip workaround) | **Resolved** | The `literal_source_*` prefix skip exists because fn body evaluation produces wrong values. With structural lowering, fn body evaluation is eliminated. |
+| **T6** (parser lossy fallback) | **Partially resolved** | Lossy fn bodies still need parser fixes. But the silent failure mode is eliminated: a lossy body → empty statements → extraction produces nothing → return wiring fails → compile error. The error surfaces at compile time instead of producing runtime Skipped. |
+| **T9** (local variable wiring) | **Resolved** | Local let bindings with calls/pipes/service-calls are the extraction targets. After extraction, the let binding contains a simple identifier referencing the extracted statement's node. `resolve_return_expr_source` resolves identifiers without fallback. |
+| **T10** (lower_warn diagnostics) | **Partially resolved** | RT4c (the most severe, cause of `make gist` failure) is eliminated. Pattern expansion failure and unsupported expression sites need separate attention. |
+| **T12** (silent exit on Skipped cascade) | **Resolved** | The Skipped cascade originates from ExprComputeOp/FnBodyCallableOp producing Skipped on failure. Both are eliminated. Wiring gaps become compile errors (UnwiredInput), not runtime Skipped. |
+| **T13** (zero-fallback policy) | **Substantially addressed** | Layers 2 and 3 (~40 of ~70 sites) are eliminated or defanged. Layer 1 (parser lossy) still needs fixing. Layers 4-6 (driver, codegen, types) are not affected. Layer 7 (cache) is intentionally best-effort. |
+
+| Item | Impact | Explanation |
+|---|---|---|
+| **T1** (fan-in ordering) | Not affected | Executor issue |
+| **T2** (Secret as ValueBacking) | Not affected | Type system gap |
+| **T4** (conditional merge) | Not affected | Executor semantics |
+| **T7** (Filesystem binding) | Not affected | Runtime binding |
+| **T8** (auth architecture) | Not affected | Design issue |
+| **T11** (DryRun-only tests) | **Unblocked** | Structural nodes can be tested in Real mode for pure subgraphs. The test gap (T11's table) shrinks because ExprCompute/FnBodyCallableOp no longer mask real execution. Not directly resolved — test infra changes still needed. |
+| **T14** (hardcoded paths) | Not affected | Layout/config issue |
+
+### Summary
+
+Expression extraction applied to all fn/func/pattern bodies would:
+- **Eliminate** 5 `PrimitiveOpKind` variants, 2 resolver ops, emitter Passthrough stubs
+- **Resolve** T3, T5, T9, T12 (4 postmortem items)
+- **Partially resolve** T6, T10, T13 (3 postmortem items)
+- **Unblock** T11 (1 postmortem item)
+- **Not affect** T1, T2, T4, T7, T8, T14 (6 postmortem items — all independent root causes)
+
+Of the 14 postmortem items, 8 are resolved, partially resolved, or
+unblocked. T13 (the meta-item that subsumes 6 others) loses ~40 of its
+~70 violation sites.
 
 ---
 
 ## Open Questions
 
-1. **Which design option?** Options A (flatten), B (tree-recursive), and C
-   (restrict language) all eliminate the wildcards. The choice is a language
-   design decision: how much inline computation should the DSL support?
-   This question must be answered before implementation begins.
+1. **Extraction scope.** Should extraction be a separate AST pass (rewrite
+   the AST before lowering) or integrated into the lowering walk? A separate
+   pass is cleaner but requires AST mutation or a new intermediate
+   representation. Integrated extraction is messier but avoids a new pass.
 
-2. **Pipe desugaring.** `x |> map(fn)` desugars to `map(fn, x)`. But `map`
-   is a stdlib function resolved by the evaluator, not a DAG node. Structural
-   pipe requires either: (a) a structural `Map` primitive that the lowerer
-   emits directly, or (b) all pipe-target functions to be resolvable as DAG
-   callables. This applies to Options A and B.
+2. **Synthetic name hygiene.** Extracted let bindings need names that don't
+   collide with user-defined names and are traceable back to the original
+   expression for error messages. Convention: `__extract_{kind}_{index}`
+   (e.g., `__extract_pipe_0`, `__extract_call_1`).
 
-3. **Match arm bindings as structural inputs.** A `MatchDispatch` node needs
-   to provide arm bindings to arm bodies. Currently the arm body is a lowered
-   expression evaluated by the dispatch op. If arm bodies themselves need
-   structural lowering (e.g., an arm body that calls a service), the
-   `MatchDispatch` op needs to be a sub-DAG, not a flat node. This applies
-   to Option B.
+3. **Match arm bodies with side effects.** Match arms that contain service
+   calls (e.g., `Ok { value } => svc.Process(data: value)`) need
+   extraction too. But arm bindings (`value`) are scoped to the arm — they
+   don't exist in the outer statement scope. Extraction would need to
+   produce conditional statements: `let __arm_0 = svc.Process(data: value) [when scrutinee matches Ok]`.
+   This may require the conditional execution infrastructure (T4) to work
+   first.
 
-4. **Error quality.** When the lowerer rejects an expression (Invariant 7),
-   the error must explain *why* and suggest alternatives. "Cannot lower
-   `for x in list { body }` to structural DAG nodes" is not actionable.
-   "Use a `stage` with `map` collection instead of inline `for`" is.
+4. **Evaluation helpers in structural ops.** `MatchDispatchOp`,
+   `BinaryOpOp`, `ConditionalOp`, etc. call `eval::value_truthy()`,
+   `eval::eval_binop()`, `eval::value_to_string()`. These are small
+   utility functions, not the full expression evaluator. They are NOT
+   interpreter fallback and should remain. The goal is to eliminate
+   `evaluate_fn_body` from the DAG execution path, not all uses of the
+   `eval` module.
 
-5. **Two wildcards, not one.** The `_` catch-all in
-   `resolve_return_expr_source` (line ~10501) is the visible problem. But
-   the `_ => {}` in Phase 1's statement loop (line ~4226) and in
-   `collect_bound_callable_sources` (line ~12342) is the original cause.
-   Both must be eliminated. Under any design option, the match in both
-   locations must be exhaustive — every `Expr` variant gets an explicit arm.
-
-6. **`Call` and `ServiceCall` in expression position.** These are already
-   lowered by Phase 1 when they appear as top-level statements. Their
-   presence in the Phase 3 catch-all means they appeared nested inside
-   another expression (record field, conditional branch, pipe argument).
-   Phase 1 never saw them because it only walks top-level statements.
-   Under Option A, desugaring would extract them. Under Option B, the
-   tree-recursive lowerer would create endpoint nodes inline. Under
-   Option C, they would be disallowed in that position.
+5. **Incremental delivery.** Extraction can be implemented one expression
+   type at a time. Priority order:
+   - Pipes/PipeCall → eliminates PipeOp, Collection lowering already exists
+   - Calls → eliminates catch-all for Call, callable lowering already exists
+   - ServiceCalls → eliminates catch-all for ServiceCall, transport lowering exists
+   - For → eliminates ForOp, loop body expansion exists
+   - Remove `is_fn_with_body` skip → eliminates FnBodyCallableOp
