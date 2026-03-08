@@ -86,6 +86,32 @@ It does not contain domain logic (that's DSL) or engine logic (that's the
 pipeline, IR, and executor crates). Every `extern func` backed by Rust is
 ratcheted and must be justified.
 
+### 7. Every expression lowers to structural DAG nodes or the compilation fails
+
+The lowerer must produce a graph where every node has explicit typed ports
+and every data dependency is an edge. No node may carry an opaque AST
+fragment to be evaluated by a runtime interpreter. If the lowerer cannot
+represent an expression structurally, the compilation must fail with a
+diagnostic — not silently emit an interpreter-backed fallback node.
+
+`ExprCompute`, `PipeOp`, and `ForOp` violate this invariant. They carry a
+`LoweredFnBody` (raw expression AST + evaluator environment) and delegate
+to `evaluate_fn_body` at runtime. The emitter cannot compile them — it
+emits `Passthrough` stubs that forward inputs unchanged. The resolver
+catches evaluation failures and degrades to `Value::Skipped`, which
+cascades silently through the DAG.
+
+See `DESIGN_INTERP_FALLBACK.md` for the full catalog of violation sites
+and the design path toward elimination.
+
+### 8. Correctness by construction, not by validation
+
+Invariants are enforced by the type system and by the structure of the
+compiler's data types — not by validation passes that scan for violations
+after the fact. If a property must hold, the API must make violations
+unrepresentable. Validation is a diagnostic tool for finding bugs in the
+compiler itself, not a substitute for structural guarantees.
+
 ## Structure
 
 ```
