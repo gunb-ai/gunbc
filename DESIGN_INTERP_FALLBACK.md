@@ -847,40 +847,65 @@ items. The remaining ~20 sites and 6 items are in Layers 1, 4, 5, 6, 7
 and the "independent" items (T1, T2, T4, T7, T8, T14). Tracing each to
 its deepest root cause reveals two shared patterns.
 
-### Pattern 1: `Option` where `Result` should be
+### Pattern 1: Redundant optionality model — compiler `Option` vs DAG cardinality
 
-The compiler's internal API surface uses `Option` (absence) for operations
-that can fail, instead of `Result` (failure with diagnostic). When a
-function returns `None`, the caller has no context — no error message, no
-source location, no suggestion. The only options are: skip, use a default,
-or fall back. This is the **mechanism** by which silent degradation enters
-every layer.
+The DAG IR already has a formal optionality system:
 
-| Layer | Function | Returns | Should return |
-|---|---|---|---|
-| 1 (parser) | `parse_body_lossy` | Lossy body (`stmts: []`) | `Result<Body, ParseError>` |
-| 1 (parser) | `consume_brace_block_expr` | `Expr::Record(None, [])` | `Result<Expr, ParseError>` |
-| 2 (lowerer) | `resolve_return_expr_source` | `Option<(NodeId, Port)>` | `Result<(NodeId, Port), LowerError>` |
-| 4 (driver) | `resolve_import_file_path` | `Option<PathBuf>` | `Result<PathBuf, ImportError>` |
-| 5 (codegen) | `gunbc_exec::lower().ok()` | `Option<_>` (swallowed) | `Result<_, LowerError>` (propagated) |
-| 5 (codegen) | `read_to_string().ok()` | `Option<_>` (swallowed) | `Result<_, io::Error>` (propagated) |
-| 6 (types) | `resolve_type` via `.ok().flatten()` | `Option<TypeShape>` | `Result<TypeShape, TypeError>` |
-| 6 (types) | `value_backing_for_type_id` | `ValueBacking::Json` (catchall) | `Result<ValueBacking, TypeError>` |
+- `Cardinality { min, max }` — `ONE` = required, `ZERO_OR_ONE` = optional,
+  `ZERO_OR_MORE` = list
+- `PresenceMode` — `Required`, `Optional`, `Guardable`
+- Port validation enforces `cardinality.min > 0` for required inputs
+- `Value::Skipped` is the runtime representation of "optional port, no value"
 
-`lower_expr` fixes one row (Layer 2). The same fix — `Option` → `Result`
-with a diagnostic — applies to every row. No new design is needed. The
-functions already know what went wrong internally; they just discard the
-error before returning.
+The compiler's Rust API introduces a **second, informal optionality model**
+via `Option` return types. This meta-Option operates outside the DAG's
+type system and contradicts it:
 
-This is the **single deepest root cause of T13's remaining sites.** Every
-Layer 1/4/5/6 fallback follows the same pattern: function encounters an
-error, converts it to `None` or a default, caller sees absence and
-degrades silently. Change the return type and the caller is forced to
-handle the error or propagate it.
+- **Port is required** (`Cardinality::ONE`, `PresenceMode::Required`) →
+  the compiler **must** wire it or fail. `Option` is wrong — the DAG says
+  "definitely," the compiler says "maybe."
+- **Port is optional** (`Cardinality::ZERO_OR_ONE`, `PresenceMode::Optional`) →
+  the DAG already handles absence via `Value::Skipped`. The compiler
+  doesn't need `Option` — optionality is already in the IR.
 
-**Layer 7 (cache) is the exception.** Cache fallbacks are intentionally
-best-effort. Cache miss on error is acceptable. These should log at debug
-level but remain `Option`.
+In neither case does the compiler need its own optionality. The Rust
+`Option` is a meta-Option that bypasses the DAG's cardinality system,
+creating a second place where "absence" can be expressed, outside the
+formal model designed to handle it.
+
+This is the **mechanism** by which silent degradation enters every layer.
+When a function returns `None`, the caller has no context — no diagnostic,
+no source location, no suggestion. It can only skip, default, or fall
+back. The error (which the function internally knew about) was discarded
+in the conversion from "compiler operation failed" to "Option::None."
+
+| Layer | Function | Returns | DAG says | Should return |
+|---|---|---|---|---|
+| 1 (parser) | `parse_body_lossy` | Lossy body (`stmts: []`) | Body is required | `Result<Body, ParseError>` |
+| 1 (parser) | `consume_brace_block_expr` | `Expr::Record(None, [])` | Expression is required | `Result<Expr, ParseError>` |
+| 2 (lowerer) | `resolve_return_expr_source` | `Option<(NodeId, Port)>` | Port cardinality decides | `Result<(NodeId, Port), LowerError>` |
+| 4 (driver) | `resolve_import_file_path` | `Option<PathBuf>` | Import is required | `Result<PathBuf, ImportError>` |
+| 5 (codegen) | `gunbc_exec::lower().ok()` | `Option<_>` (swallowed) | Lowering must succeed | `Result<_, LowerError>` (propagated) |
+| 5 (codegen) | `read_to_string().ok()` | `Option<_>` (swallowed) | Module must be readable | `Result<_, io::Error>` (propagated) |
+| 6 (types) | `resolve_type` via `.ok().flatten()` | `Option<TypeShape>` | Type must resolve | `Result<TypeShape, TypeError>` |
+| 6 (types) | `value_backing_for_type_id` | `ValueBacking::Json` (catchall) | Type must have backing | `Result<ValueBacking, TypeError>` |
+
+**The fix is not "use `Result` instead of `Option`."** The fix is:
+**eliminate the compiler's informal optionality model and use the DAG's
+cardinality system as the single source of truth for optionality.** Every
+compiler operation that resolves a DAG source either succeeds (the
+cardinality constraint is satisfiable) or fails with a diagnostic (it
+isn't). There is no "maybe" at the compiler level — "maybe" is a
+DAG-level concept expressed through `Cardinality::ZERO_OR_ONE` and
+`PresenceMode::Optional`.
+
+`lower_expr` fixes the lowerer row by changing `Option` → `Result`. The
+same principle applies to every row: the compiler respects its own type
+system instead of maintaining a parallel one.
+
+**Layer 7 (cache) is the exception.** Cache is genuinely best-effort and
+operates outside the DAG's type system. Cache fallbacks should log at
+debug level but remain non-fatal.
 
 ### Pattern 2: Incomplete models in the IR and type system
 
