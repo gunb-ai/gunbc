@@ -837,3 +837,117 @@ compile error. This is Invariant 8 (correctness by construction).
    8. Remove `is_fn_with_body` skip, delete `FnBodyCallableOp`
    9. Delete `ExprCompute`, `PipeOp`, `ForOp`, `synthesize_expr_compute`,
       `synthesize_tagged_evaluator`, `lower_warn`, `evaluate_fn_body` runtime path
+
+---
+
+## Root Cause Analysis: What Remains After `lower_expr`
+
+`lower_expr` resolves ~50 of ~70 T13 sites (Layers 2-3) and 5 postmortem
+items. The remaining ~20 sites and 6 items are in Layers 1, 4, 5, 6, 7
+and the "independent" items (T1, T2, T4, T7, T8, T14). Tracing each to
+its deepest root cause reveals two shared patterns.
+
+### Pattern 1: `Option` where `Result` should be
+
+The compiler's internal API surface uses `Option` (absence) for operations
+that can fail, instead of `Result` (failure with diagnostic). When a
+function returns `None`, the caller has no context — no error message, no
+source location, no suggestion. The only options are: skip, use a default,
+or fall back. This is the **mechanism** by which silent degradation enters
+every layer.
+
+| Layer | Function | Returns | Should return |
+|---|---|---|---|
+| 1 (parser) | `parse_body_lossy` | Lossy body (`stmts: []`) | `Result<Body, ParseError>` |
+| 1 (parser) | `consume_brace_block_expr` | `Expr::Record(None, [])` | `Result<Expr, ParseError>` |
+| 2 (lowerer) | `resolve_return_expr_source` | `Option<(NodeId, Port)>` | `Result<(NodeId, Port), LowerError>` |
+| 4 (driver) | `resolve_import_file_path` | `Option<PathBuf>` | `Result<PathBuf, ImportError>` |
+| 5 (codegen) | `gunbc_exec::lower().ok()` | `Option<_>` (swallowed) | `Result<_, LowerError>` (propagated) |
+| 5 (codegen) | `read_to_string().ok()` | `Option<_>` (swallowed) | `Result<_, io::Error>` (propagated) |
+| 6 (types) | `resolve_type` via `.ok().flatten()` | `Option<TypeShape>` | `Result<TypeShape, TypeError>` |
+| 6 (types) | `value_backing_for_type_id` | `ValueBacking::Json` (catchall) | `Result<ValueBacking, TypeError>` |
+
+`lower_expr` fixes one row (Layer 2). The same fix — `Option` → `Result`
+with a diagnostic — applies to every row. No new design is needed. The
+functions already know what went wrong internally; they just discard the
+error before returning.
+
+This is the **single deepest root cause of T13's remaining sites.** Every
+Layer 1/4/5/6 fallback follows the same pattern: function encounters an
+error, converts it to `None` or a default, caller sees absence and
+degrades silently. Change the return type and the caller is forced to
+handle the error or propagate it.
+
+**Layer 7 (cache) is the exception.** Cache fallbacks are intentionally
+best-effort. Cache miss on error is acceptable. These should log at debug
+level but remain `Option`.
+
+### Pattern 2: Incomplete models in the IR and type system
+
+The "independent" postmortem items (T1, T2, T4, T7, T8) share a common
+pattern: a concept was sketched in the IR or resource model but never
+completed. The field exists, the interface pattern exists, the framework
+is there — but the implementation was never connected.
+
+| Item | What's sketched | What's missing |
+|---|---|---|
+| **T1** (fan-in ordering) | `Edge.index` field exists in IR | Lowerer never assigns monotonic indices — all edges use `index: 0` |
+| **T2** (Secret backing) | `Value::Secret` variant exists in runtime | `ValueBacking` has no `Secret` variant — maps to `String` instead |
+| **T4** (conditional merge) | `CondBranch` nodes emit edges to same port | IR has no `ConditionalMerge` node — merge is implicit in executor heuristic |
+| **T7** (Filesystem) | `Filesystem` interface defined in `resources.dag` with `probe`/`read`/`write` | No concrete Filesystem transport binding — `InterfaceStubExecuteOp` always errors |
+| **T8** (credentials) | Resource interface + binding + profile pattern exists for Filesystem/Network | Credentials not modeled as a capability — hand-rolled functions instead |
+
+The deepest root cause here is not a single missing abstraction. It's that
+**each of these is a half-finished extension of an existing design.** The
+IR has `Edge.index` but nobody populates it. The type system has
+`Value::Secret` but the backing layer doesn't know about it. The resource
+model has interface + binding but Filesystem has no binding and credentials
+have no interface.
+
+These are completion tasks, not design tasks. The design exists. The
+implementation is partial.
+
+### Pattern 3: T11 and T14 are process gaps, not design gaps
+
+**T11 (DryRun-only tests):** The test infrastructure supports Real mode.
+DryRun was built first. The tiered testing model described in T11's proper
+fix is feasible with the existing infrastructure. The gap is that nobody
+built the Real-mode test generation path. `lower_expr` unblocks this by
+making structural nodes available for Real-mode execution.
+
+**T14 (hardcoded paths):** `WorkspaceLayout` exists and derives paths
+from Cargo metadata. Not all consumers were migrated to use it. The gap
+is a migration pass, not a design.
+
+### Summary: three root causes underlie everything
+
+| Root cause | Mechanism | Items | Fix |
+|---|---|---|---|
+| **`Option` for fallible operations** | Caller sees absence → degrades silently | T6, T10, T13 (Layers 1,4,5,6) | `Option` → `Result` with diagnostics |
+| **Incomplete model extensions** | Concept sketched but not connected | T1, T2, T4, T7, T8 | Complete the existing design |
+| **Incremental evolution without migration** | Old code uses outdated patterns | T11, T14 | Migration pass |
+
+All three reduce to the same underlying pressure: **the compiler was built
+incrementally, and error handling / model completion / migration were
+deferred.** The interpreter fallback (`lower_expr`) is the largest
+single fix because it addresses the largest cluster (Layers 2-3, ~50
+sites). The remaining clusters are smaller but follow the same pattern:
+finish what was started.
+
+### Combined impact: `lower_expr` + `Option` → `Result` + model completion
+
+| Fix | Postmortem items resolved | T13 sites |
+|---|---|---|
+| `lower_expr` alone | T3, T5, T9, T10, T12 | ~50/70 |
+| + `Option` → `Result` (Layers 1,4,5,6) | + T6 (fully) | ~65/70 |
+| + Complete models (T1, T2, T4, T7, T8) | + T1, T2, T4, T7, T8 | ~65/70 |
+| + Migration (T11, T14) | + T11, T14 | ~65/70 |
+| **Total** | **13 of 14 resolved** | **~65/70** |
+
+The only item not fully resolved is T13 itself (the meta-item). Its Layer
+7 (cache, ~4 sites) is intentionally best-effort and should remain. T13
+is "resolved" when its remaining sites are documented-as-intentional
+rather than documented-as-violations.
+
+That accounts for **all 14 postmortem items** and **~65 of ~70 T13
+sites** (with ~5 cache sites as accepted best-effort behavior).
