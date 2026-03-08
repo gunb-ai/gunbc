@@ -88,15 +88,7 @@ mod generated_tests_tools_bootstrap;
 #[cfg(test)]
 mod generated_tests_tools_build;
 #[cfg(test)]
-mod generated_tests_tools_clippy;
-#[cfg(test)]
 mod generated_tests_tools_codegen;
-#[cfg(test)]
-mod generated_tests_tools_deps;
-#[cfg(test)]
-mod generated_tests_tools_deps_config;
-#[cfg(test)]
-mod generated_tests_tools_design;
 #[cfg(test)]
 mod generated_tests_tools_gist;
 #[cfg(test)]
@@ -109,7 +101,5 @@ mod generated_tests_tools_workflow;
 mod generated_tests_workflows_bootstrap;
 #[cfg(test)]
 mod generated_tests_workflows_build_all;
-#[cfg(test)]
-mod generated_tests_workflows_deps;
 #[cfg(test)]
 mod generated_tests_workflows_webhook;

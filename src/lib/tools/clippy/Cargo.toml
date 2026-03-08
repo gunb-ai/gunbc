@@ -1,9 +1,0 @@
-[package]
-name = "gunbc-clippy"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-description = "Clippy tool configuration and lint policy"
-
-[dependencies]
-gunbc-ir = { path = "../../../core/ir" }

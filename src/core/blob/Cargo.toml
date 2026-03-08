@@ -6,12 +6,12 @@ license.workspace = true
 description = "Blob content acquisition for gunbc DAGs"
 
 [dependencies]
-gunbc-infra = { path = "../../core/infra" }
-gunbc-ir = { path = "../../core/ir" }
-gunbc-exec = { path = "../../core/exec" }
+gunbc-infra = { path = "../infra" }
+gunbc-ir = { path = "../ir" }
+gunbc-exec = { path = "../exec" }
 gunbc-lib-transport = { path = "../transport" }
 serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
-gunbc-test = { path = "../../core/test" }
+gunbc-test = { path = "../test" }

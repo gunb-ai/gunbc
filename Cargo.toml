@@ -25,18 +25,10 @@ members = [
     "src/core/daglang/daglang-driver",
     "src/core/daglang/daglang-cli",
 
-    # Library crates (DAG op libraries)
-    "src/lib/primitives",
-    "src/lib/blob",
-    "src/lib/cloud-ops",
-    "src/lib/llm-ops",
-    "src/lib/review",
-    "src/lib/design-ops",
-    "src/lib/transport",
-
-    # General tool definitions (reusable by any project)
-    "src/lib/tools/deps",
-    "src/lib/tools/clippy",
+    # Library crates (moved from src/lib/ into core/)
+    "src/core/primitives",
+    "src/core/blob",
+    "src/core/transport",
 
 ]
 

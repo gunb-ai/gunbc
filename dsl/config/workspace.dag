@@ -41,17 +41,10 @@ data workspace_crates: List<CrateSpec> = [
   { path: "src/core/daglang/daglang-emit",      name: "daglang-emit",                layer: Compiler },
   { path: "src/core/daglang/daglang-driver",    name: "daglang-driver",              layer: Compiler },
   { path: "src/core/daglang/daglang-cli",       name: "daglang-cli",                 layer: Compiler },
-  // Library crates (DAG op libraries)
-  { path: "src/lib/primitives",                 name: "gunbc-primitives",             layer: Library },
-  { path: "src/lib/blob",                       name: "gunbc-lib-blob",              layer: Library },
-  { path: "src/lib/cloud-ops",                  name: "gunbc-lib-cloud-ops",         layer: Library },
-  { path: "src/lib/llm-ops",                    name: "gunbc-lib-llm-ops",           layer: Library },
-  { path: "src/lib/review",                     name: "gunbc-lib-review",            layer: Library },
-  { path: "src/lib/design-ops",                 name: "gunbc-design-ops",            layer: Library },
-  { path: "src/lib/transport",                  name: "gunbc-lib-transport",         layer: Library },
-  // General tool definitions (reusable by any project)
-  { path: "src/lib/tools/deps",                 name: "gunbc-deps",                  layer: Tool },
-  { path: "src/lib/tools/clippy",               name: "gunbc-clippy",                layer: Tool },
+  // Library crates (moved from src/lib/ into core/)
+  { path: "src/core/primitives",                name: "gunbc-primitives",             layer: Library },
+  { path: "src/core/blob",                      name: "gunbc-lib-blob",              layer: Library },
+  { path: "src/core/transport",                 name: "gunbc-lib-transport",         layer: Library },
   // Repo-specific configuration (gunbc's own DAGs)
   { path: "src/gunbc-app",                      name: "gunbc-app",                   layer: Repo }
 ]

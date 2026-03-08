@@ -209,7 +209,6 @@ dependencies = [
  "daglang-resolve",
  "daglang-syntax",
  "daglang-typecheck",
- "gunbc-deps",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-resolve",
@@ -337,13 +336,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gunbc-clippy"
-version = "0.1.0"
-dependencies = [
- "gunbc-ir",
-]
-
-[[package]]
 name = "gunbc-codegen"
 version = "0.1.0"
 dependencies = [
@@ -379,31 +371,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.114",
-]
-
-[[package]]
-name = "gunbc-deps"
-version = "0.1.0"
-dependencies = [
- "gunbc-cli",
- "gunbc-delegate-macros",
- "gunbc-exec",
- "gunbc-ir",
- "gunbc-lib-transport",
- "gunbc-primitives",
- "gunbc-test",
- "gunbc-testgen-registry",
- "gunbc-testgen-registry-macros",
- "serde",
- "serde_json",
- "toml",
-]
-
-[[package]]
-name = "gunbc-design-ops"
-version = "0.1.0"
-dependencies = [
- "serde",
 ]
 
 [[package]]
@@ -451,48 +418,6 @@ dependencies = [
  "gunbc-ir",
  "gunbc-lib-transport",
  "gunbc-test",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "gunbc-lib-cloud-ops"
-version = "0.1.0"
-dependencies = [
- "gunbc-exec",
- "gunbc-ir",
- "gunbc-testgen-registry",
- "gunbc-testgen-registry-macros",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "gunbc-lib-llm-ops"
-version = "0.1.0"
-dependencies = [
- "gunbc-delegate-macros",
- "gunbc-exec",
- "gunbc-ir",
- "gunbc-lib-cloud-ops",
- "gunbc-test",
- "gunbc-testgen-registry",
- "gunbc-testgen-registry-macros",
- "serde_json",
-]
-
-[[package]]
-name = "gunbc-lib-review"
-version = "0.1.0"
-dependencies = [
- "gunbc-cli",
- "gunbc-delegate-macros",
- "gunbc-exec",
- "gunbc-ir",
- "gunbc-primitives",
- "gunbc-test",
- "gunbc-testgen-registry",
- "gunbc-testgen-registry-macros",
  "serde",
  "serde_json",
 ]

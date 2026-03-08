@@ -38,3 +38,6 @@ Adapted from Google C++ style for Rust:
 | `test/` | Test utilities |
 | `testgen-registry/` | Testgen target metadata registry |
 | `workflow/` | Workflow planner |
+| `primitives/` | Leaf DAG operations: parse, extract, format, map, filter, fold |
+| `blob/` | Blob content acquisition: inline, file, git, S3, HTTP |
+| `transport/` | I/O boundary — the only crate that performs direct I/O |

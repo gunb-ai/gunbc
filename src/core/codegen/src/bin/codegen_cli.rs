@@ -910,7 +910,7 @@ mod tests {
             discover_codegen_tools(&workspace_root).expect("DSL discovery should return tool defs");
         let names: BTreeSet<String> = tools.iter().map(|t| t.meta.tool_name.to_string()).collect();
 
-        for required in ["bootstrap", "deps", "readme"] {
+        for required in ["bootstrap", "readme"] {
             assert!(
                 names.contains(required),
                 "missing tool from DSL discovery: {}",

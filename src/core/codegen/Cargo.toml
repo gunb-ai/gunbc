@@ -12,9 +12,9 @@ gunbc-test = { path = "../test" }
 gunbc-exec = { path = "../exec" }
 gunbc-resolve = { path = "../resolve" }
 gunbc-cli = { path = "../cli" }
-gunbc-primitives = { path = "../../lib/primitives" }
-gunbc-lib-transport = { path = "../../lib/transport" }
-gunbc-lib-blob = { path = "../../lib/blob" }
+gunbc-primitives = { path = "../primitives" }
+gunbc-lib-transport = { path = "../transport" }
+gunbc-lib-blob = { path = "../blob" }
 daglang-derive = { path = "../daglang/daglang-derive" }
 daglang-driver = { path = "../daglang/daglang-driver" }
 daglang-emit = { path = "../daglang/daglang-emit" }
@@ -52,28 +52,12 @@ name = "gunbc-infra"
 path = "../../../target/codegen/bin/infra/main.rs"
 
 [[bin]]
-name = "gunbc-deps"
-path = "../../../target/codegen/bin/deps/main.rs"
-
-[[bin]]
-name = "gunbc-clippy-lint"
-path = "../../../target/codegen/bin/clippy-lint/main.rs"
-
-[[bin]]
 name = "gunbc-build-all"
 path = "../../../target/codegen/bin/build-all/main.rs"
 
 [[bin]]
-name = "gunbc-design"
-path = "../../../target/codegen/bin/design/main.rs"
-
-[[bin]]
 name = "gunbc-workflow"
 path = "../../../target/codegen/bin/workflow/main.rs"
-
-[[bin]]
-name = "gunbc-deps-config"
-path = "../../../target/codegen/bin/deps-config/main.rs"
 
 [[bin]]
 name = "gunbc-readme"

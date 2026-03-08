@@ -89,17 +89,17 @@ backed by Rust is ratcheted and must be justified.
 
 ```
 dsl/              Domain: .dag source files, types, data, workflows
-src/
-  core/daglang/   Compiler: parse -> typecheck -> lower -> emit
-  core/ir/        IR: Node, Edge, Port, Dag, Value
-  core/exec/      Executor: traverse DAG, call Executable, handle loops
-  core/resolve/   Resolver: LoweredOp -> DynOp, DSL graph builder
-  core/codegen/   Codegen: CLI gen, test gen, entrypoint discovery
-  core/infra/     Primitives: hashing, IDs, manifests, freshness
-  core/workflow/  Workflow engine: planner, coordination, SLO
-  lib/transport/  I/O boundary (the ONLY crate that touches the real world)
-  lib/primitives/ Leaf operations: parse, extract, format, map, filter, fold
-  gunbc-app/      Wiring: connects DSL to Rust runtime
+src/core/
+  daglang/        Compiler: parse -> typecheck -> lower -> emit
+  ir/             IR: Node, Edge, Port, Dag, Value
+  exec/           Executor: traverse DAG, call Executable, handle loops
+  resolve/        Resolver: LoweredOp -> DynOp, DSL graph builder
+  codegen/        Codegen: CLI gen, test gen, entrypoint discovery
+  infra/          Primitives: hashing, IDs, manifests, freshness
+  workflow/       Workflow engine: planner, coordination, SLO
+  transport/      I/O boundary (the ONLY crate that touches the real world)
+  primitives/     Leaf operations: parse, extract, format, map, filter, fold
+  blob/           Blob content acquisition
 ```
 
 ## Testing

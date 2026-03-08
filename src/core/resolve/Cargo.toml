@@ -12,9 +12,9 @@ daglang-lower = { path = "../daglang/daglang-lower" }
 gunbc-exec = { path = "../exec" }
 gunbc-infra = { path = "../infra" }
 gunbc-ir = { path = "../ir" }
-gunbc-lib-blob = { path = "../../lib/blob" }
-gunbc-lib-transport = { path = "../../lib/transport" }
-gunbc-primitives = { path = "../../lib/primitives" }
+gunbc-lib-blob = { path = "../blob" }
+gunbc-lib-transport = { path = "../transport" }
+gunbc-primitives = { path = "../primitives" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 

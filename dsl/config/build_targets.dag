@@ -21,7 +21,6 @@ data resource_targets: List<ResourceTargetEntry> = [
   { resource: "generated_tests",    ensure_target: "testgen",         verify_target: "testgen-check" },
   { resource: "compiled_code",      ensure_target: "build",           verify_target: "build" },
   { resource: "verified_artifacts", ensure_target: "verify-fix",      verify_target: "verify" },
-  { resource: "deps_config",        ensure_target: "deps-config",     verify_target: "deps-config-check" },
   { resource: "gitignore",          ensure_target: "bootstrap",       verify_target: "bootstrap-check" }
 ]
 
@@ -96,20 +95,6 @@ data core_workflows: List<CoreWorkflow> = [
     comment: None
   },
   {
-    name: "deps-config",
-    description: "Ensure deps.toml matches canonical generated configuration",
-    deps: ["build-release-bins"],
-    body: [{ shell: "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-deps -q --release", silent: true, ignore_errors: false }],
-    comment: None
-  },
-  {
-    name: "deps-config-check",
-    description: "Check if deps.toml is stale",
-    deps: ["build-release-bins"],
-    body: [{ shell: "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-deps -q --release -- --dry-run", silent: true, ignore_errors: false }],
-    comment: None
-  },
-  {
     name: "bootstrap-check",
     description: "Check if generated bootstrap artifacts are stale",
     deps: ["lint-upsert"],
@@ -121,7 +106,6 @@ data core_workflows: List<CoreWorkflow> = [
     description: "Verify generated artifacts match their generators",
     deps: ["lint-upsert"],
     body: [
-      { shell: "$(MAKE) deps-config-check", silent: true, ignore_errors: false },
       { shell: "$(MAKE) bootstrap-check", silent: true, ignore_errors: false },
       { shell: "$(MAKE) testgen-check", silent: true, ignore_errors: false }
     ],
@@ -132,7 +116,6 @@ data core_workflows: List<CoreWorkflow> = [
     description: "Ensure generated artifacts are up to date",
     deps: ["lint-upsert"],
     body: [
-      { shell: "$(MAKE) deps-config", silent: true, ignore_errors: false },
       { shell: "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-bootstrap", silent: true, ignore_errors: false },
       { shell: "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-testgen", silent: true, ignore_errors: false }
     ],

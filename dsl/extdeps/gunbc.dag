@@ -100,23 +100,6 @@ data packages: List<WorkspacePackage> = [
     description: "Workspace DAG: tool graphs, extern impls, policy, registry",
     io_boundary: false },
 
-  // Libraries
-  { name: "gunbc-lib-cloud-ops",
-    role: Library,
-    description: "Cloud operations: file-backed config, credential policy, secret cache",
-    io_boundary: false },
-  { name: "gunbc-lib-llm-ops",
-    role: Library,
-    description: "LLM operations: Anthropic and OpenAI API integration",
-    io_boundary: false },
-  { name: "gunbc-lib-review",
-    role: Library,
-    description: "Code review: dimension analysis, merge review",
-    io_boundary: false },
-  { name: "gunbc-deps",
-    role: Tool,
-    description: "Dependency management tool",
-    io_boundary: false }
 ]
 
 // ── Service: codegen shell operations ───────────────────────────
