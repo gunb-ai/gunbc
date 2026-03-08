@@ -10201,6 +10201,16 @@ fn resolve_return_expr_source(
             if let Some(Some(source)) = ctx.endpoints_by_name.get(name) {
                 return Some((source.node_id.clone(), source.primary_output.clone()));
             }
+            if let Some(let_expr) = ctx.local_let_bindings.get(name) {
+                return synthesize_expr_compute(
+                    builder,
+                    ctx,
+                    let_expr,
+                    output_port,
+                    output_name,
+                    disambiguator,
+                );
+            }
             None
         }
         Expr::FieldAccess(base, field) => {

@@ -5,22 +5,24 @@ Each item has enough context to be picked up cold.
 
 **Origin:** T1–T8 identified during the generated test fix-up (2026-03-08).
 T9–T11 identified during the `make gist` credential failure investigation (2026-03-08).
+T12 identified during the silent `Error 1` investigation (2026-03-08).
+T13 identified during the zero-fallback audit (2026-03-08) — subsumes T3, T5, T6, T9, T10, T12.
 
 **Policy:** These items are interconnected. Do not spot-fix individual items —
 they need to be considered holistically and designed together before any
-implementation begins. Many share root causes (e.g., T6/T9/T10 are facets of
-the same lowering gap; T7/T8 are facets of the same auth architecture gap;
-T1/T4/T11 are facets of the same executor semantics gap). A spot fix in one
-area will shift the failure to another. The goal is a single cohesive design
-pass that resolves the underlying structural issues.
+implementation begins. T13 (zero-fallback) is the root cause of 6 items and
+amplifies 3 more. The remaining independent items (T1, T4, T8) have their own
+root causes. A spot fix in one area will shift the failure to another. The
+goal is a single cohesive design pass that resolves the underlying structural
+issues.
 
 **Clusters:**
 
-- **Lowering fidelity** (T6, T9, T10): Lossy parsing → broken wiring → silent Skipped outputs → invisible via warnings-off-by-default. One design: fix the parser (T6), which eliminates T9; then promote all warnings to errors (T10) so future gaps are caught at compile time.
-- **Auth & resource architecture** (T7, T8): No concrete Filesystem binding + hand-rolled credential materialization. One design: credential provider interface (T8) with concrete transport bindings for Filesystem (T7), resolved via execution profiles.
+- **Zero-fallback policy** (T13 — subsumes T3, T5, T6, T9, T10, T12): The compiler has ~70 sites across 7 layers where it silently degrades instead of failing. This is the root cause of most items in this document. T3, T5, T6, T9, T10, and T12 are all specific symptoms of the same pattern: a fallback produces valid-looking but wrong output, which cascades into a confusing runtime failure or silent exit. One design: remove all lossy/fallback/warning paths from the compiler. Every compilation path either succeeds fully or fails with a clear error. See T13 for the full taxonomy.
+- **Auth & resource architecture** (T7, T8): No concrete Filesystem binding + hand-rolled credential materialization. One design: credential provider interface (T8) with concrete transport bindings for Filesystem (T7), resolved via execution profiles. T7's silent Skipped cascade is amplified by the fallback pattern (T13).
 - **Executor semantics** (T1, T4): Non-deterministic fan-in + ad-hoc conditional merge. One design: deterministic edge ordering (T1) + formal ConditionalMerge node (T4), making execution order explicit in the IR.
-- **Type system gaps** (T2, T3, T5): Secret not first-class + unevaluable fn bodies + literal source evaluation. One design: complete the ValueBacking model (T2), add evaluability analysis (T3), and use it for smarter example generation (T5).
-- **Test coverage model** (T11): DryRun-only tests hide all of the above. One design: tiered execution with selective mocking, virtual backends for testable I/O, Real-mode tests for pure subgraphs.
+- **Type system gaps** (T2): Secret not first-class. One design: complete the ValueBacking model. The `IsString` accepting `Secret` workaround is a type-layer fallback (T13).
+- **Test coverage model** (T11): DryRun-only tests hide all of the above. One design: tiered execution with selective mocking, virtual backends for testable I/O, Real-mode tests for pure subgraphs. DryRun passes for every item in this document because the fallback pattern (T13) produces valid-looking output.
 
 ---
 
@@ -67,6 +69,8 @@ After fixing, revert the matching-length comparison in `window.rs` back to exact
 
 ## T3: Testgen-side filter for unevaluable fn bodies
 
+**Subsumed by T13** — `ExprComputeOp` degrading to `Skipped` on unknown functions is a resolver-layer fallback.
+
 **Priority: Medium**
 **Files:** `src/core/codegen/src/testgen/codegen.rs`, `src/core/resolve/src/resolve.rs`
 
@@ -103,6 +107,8 @@ This works for the current pattern (exactly one branch fires, others produce Ski
 
 ## T5: Literal source terminal example generation
 
+**Subsumed by T13** — skip-by-prefix workaround masks fn body evaluation fallback producing wrong values.
+
 **Priority: Low**
 **Files:** `src/core/test/src/auto_mock.rs`
 
@@ -118,6 +124,8 @@ This works for the current pattern (exactly one branch fires, others produce Ski
 ---
 
 ## T6: Parser: multi-statement blocks in fn body expression position
+
+**Subsumed by T13** — `parse_body_lossy()` is the canonical lossy fallback: parser returns empty body instead of failing.
 
 **Priority: Medium**
 **Files:** `src/core/daglang/daglang-syntax/src/parser.rs`
@@ -195,6 +203,8 @@ let skip_section = if skipped |> count() > 0 {
 
 ## T9: RT4c — `resolve_return_expr_source` cannot wire local variable references
 
+**Subsumed by T13** — `lower_warn` + `continue` on unwired output is a lowerer-layer fallback.
+
 **Priority: High**
 **Files:** `src/core/daglang/daglang-lower/src/lib.rs`
 
@@ -213,6 +223,8 @@ When a return expression references a local variable (e.g., `return { token: tok
 ---
 
 ## T10: Promote `lower_warn` diagnostics to compile errors
+
+**Subsumed by T13** — T10 catalogs 8 fallback sites in the lowerer/testgen; T13 expands this to all 7 layers.
 
 **Priority: High**
 **Files:** `src/core/daglang/daglang-lower/src/lib.rs`, `src/core/test/src/auto_mock.rs`, `src/core/codegen/src/testgen/codegen.rs`
@@ -298,3 +310,168 @@ The test framework already has the infrastructure for this. `ExecutionMode::DryR
 4. **Credential flow integration test**: For `auth.dag` specifically, a Real-mode test that sets `GITHUB_TOKEN` in the process environment and verifies `github_token().token` produces a non-Skipped `Value::Secret` would have caught T6/T9 immediately. This test needs zero network access.
 
 **Test gap metric**: Of the ~24 nodes in the gist DAG, only the 3 REST transport-execute nodes (Gist.Create, and 2 git operations that happen to use shell transport) need external mocking. The remaining ~21 nodes — conditional logic, env var reads, string interpolation, field access, resource lifecycle — could run in Real mode with no I/O.
+
+---
+
+## T12: Error rendering architecture — silent exit on Skipped cascade
+
+**Subsumed by T13** — distributed rendering with implicit "already rendered" assumptions is a display-layer fallback.
+
+**Priority: High**
+**Files:** `src/core/exec/src/display.rs`, `src/core/codegen/src/cli_gen.rs`
+
+The error rendering architecture has multiple independent decision points with no central authority on whether an error has been shown to the user. When these decision points disagree, the result is `process::exit(1)` with no user-visible diagnostic.
+
+**Incident — silent `Error 1` from `make gist` (2026-03-08):**
+
+`make gist` exited with code 1 but displayed no error message. The output showed `🐧 Completed [49ms]` and `✅ 17 completed — 17/24 [49ms]` — the DAG phase was `Completed`, not `Failed`. Seven nodes were skipped (shown as `○`) because `Value::Skipped` propagated from the unwired `github_token()` output (T6/T9). The executor returned `Err(ExecError)` with a `NodeTrace` layer. Two rendering paths both declined to show the error:
+
+1. **`print_error_boxes`** checks `progress.failed_nodes()` — finds zero nodes in `NodeState::Failed` (skipped nodes are `NodeState::Skipped`). Prints nothing.
+2. **`should_render_fallback_error`** checks `err.node_trace().is_none()` — the error HAS a `NodeTrace` layer, so it assumes the error was "already rendered" by error boxes. Returns false. Prints nothing.
+
+Net result: `process::exit(1)` with zero diagnostic output.
+
+**Root cause — distributed rendering with implicit "already rendered" assumptions:**
+
+The error rendering architecture has four independent rendering paths, none of which tracks whether any other path actually rendered:
+
+| Path | What renders | Decision heuristic |
+|------|-------------|-------------------|
+| **Progress observer** (`NonTtyProgressObserver`) | `❌ Failed at node_id: ...` during execution | Renders if executor calls `on_node_failed` |
+| **Error boxes** (`print_error_boxes`) | Structured `╭─ ... ─╮` boxes after completion | Renders if `progress.failed_nodes()` is non-empty |
+| **Fallback** (`should_render_fallback_error`) | Generic `print_attention("Execution failed", ...)` | Renders if error has no `NodeTrace` layer |
+| **Success port** | "A required success check returned false." | Renders if `success_port_failed` returns true |
+
+The problem: path 3 assumes that if a `NodeTrace` is present, paths 1 or 2 already rendered. But paths 1 and 2 key on `NodeState::Failed`, while `NodeTrace` can be attached to errors from nodes that are `Skipped` in the progress tracker. When the progress state diverges from the error state, all four paths produce nothing.
+
+**Immediate fix (applied):**
+
+- Removed `should_render_fallback_error` heuristic entirely. `execute_and_display`'s `Err` path now always calls `print_attention`. This may produce mild redundancy when error boxes also rendered, but redundancy is better than a diagnostic black hole.
+- Fixed generated step-mode code in `cli_gen.rs` which had a `process::exit(1)` on success-port-false with no message.
+
+**Additional gap found during audit:**
+
+- `ChannelObserver` send failures (line ~547 in `display.rs`): if the display channel disconnects before a `NodeFailed` event is received, structured error box context is lost. The flat error is still printed via the fallback, so this is not silent, but structured context (service, HTTP, auth layers) is lost.
+
+**Proper fix — centralized error rendering:**
+
+The fundamental issue is that "has this error been shown?" is implicit, distributed across four paths that use different heuristics. This should be explicit and centralized:
+
+1. **`ErrorRendered` token**: Introduce a `rendered: bool` (or `AtomicBool` for the parallel path) threaded through all rendering paths. Each path that prints sets `rendered = true`. The final `process::exit(1)` path checks: if `!rendered`, always print the full error.
+
+2. **Single rendering chokepoint**: Instead of four independent paths, funnel all errors through a single `render_execution_error(err, progress, log)` function called once in `execute_and_display`. This function inspects the error, the progress state, and the log to decide what to render — structured box, flat message, or both. No path makes independent rendering decisions.
+
+3. **Progress/error state alignment**: When the executor returns `Err` with a `NodeTrace`, the progress tracker should mark that node as `Failed` (not leave it as `Skipped`). This ensures `print_error_boxes` finds the failure. The `DagProgress::apply` event model already supports `NodeFailed` — the gap is that the executor's error return may not have been preceded by an `on_node_failed` call (e.g., if the error originated in post-processing after the node was marked Skipped).
+
+**Relationship to other items:** T12 is a display-layer manifestation of T10's broader "silent degradation" theme. T10 covers silent degradation at compile/lower time; T12 covers silent degradation at display/exit time. Both stem from the same design gap: systems that silently decline to report problems instead of failing loudly.
+
+---
+
+## T13: Remove all fallback/lossy/warning behavior from the compiler
+
+**Priority: Critical**
+**Subsumes: T3, T5, T6, T9, T10, T12**
+**Amplifies: T2, T7, T11**
+
+The compiler was intended to have a strict zero-fallback policy: every compilation path either succeeds fully or fails with a clear error. An audit found ~70 sites across 7 layers where the compiler silently degrades instead of failing. This is the root cause of most items in this document.
+
+**The pattern:** A fallback produces valid-looking but wrong output. The wrong output flows through the DAG as `Value::Skipped`. Downstream nodes propagate the Skipped value. Eventually, a transport rejects the Skipped value with an error message that points to the consumer, not the producer. Or worse — all rendering paths decline to show the error, and the process exits silently.
+
+**Why this is one task, not six:** T3, T5, T6, T9, T10, and T12 are all specific instances of the same design gap. Fixing any one of them individually shifts the failure to the next fallback in the chain. The fix is to remove the fallback pattern itself: make every layer fail loudly on invalid input, and remove the machinery that produces "valid-looking but wrong" output.
+
+### Layer 1 — Parser lossy fallback (6 sites)
+
+`parse_body_lossy()` in `daglang-syntax/src/parser.rs` (line ~2830) is the entry point. When `parse_fn_body()` or `parse_func_body()` fails or produces errors, the parser rewinds to the start of the block, discards all errors from the attempt, calls `consume_brace_block_contents()` to skip past the `}`, and returns a body with `stmts: Vec::new()` and `lossy: true`.
+
+Called for: fn bodies (line 1882), func bodies (line 1910), pattern bodies (line 1933), resource acquire/release (lines 2168/2174), stage bodies (line 2502).
+
+Additionally, `consume_brace_block_expr()` (line 3523) handles multi-statement blocks in expression position (if/match arms). It parses `stmts` but always returns `Expr::Record(None, Vec::new())`, discarding all content. This is the root cause of T6.
+
+The driver collects lossy fn bodies in `CompileOutput.lossy_fn_bodies` (line ~63 in `daglang-driver/src/lib.rs`) but never surfaces them as errors or warnings.
+
+**Fix:** `parse_body_lossy` should be deleted. If the parser can't parse a body, it must return `Err`. `consume_brace_block_expr` should parse block expressions properly (Expr::Block with let bindings + final expression) or return `Err`. `lossy_fn_bodies` should be checked after compilation and treated as a compile error.
+
+### Layer 2 — Lowerer silent skips (~30 sites)
+
+The lowerer in `daglang-lower/src/lib.rs` uses `continue` extensively when it can't resolve endpoints, clone loop bodies, expand patterns, wire arguments, or resolve return expressions. Most of these produce no diagnostic at all. Four sites use `lower_warn()` (line ~54), which is gated behind `DAGLANG_LOWER_WARNINGS=1` — disabled by default.
+
+The four `lower_warn` sites (documented in T10):
+1. Pattern node expansion failure (line ~5580) — node dropped
+2. Non-ident base in field access return (line ~5672) — return field unresolved
+3. Unsupported expression type in pattern body (line ~5846) — node skipped
+4. RT4c: Return output can't be wired (line ~11898) — `__out:*` port unwired → `Value::Skipped`
+
+Additional silent `continue` sites (~25):
+- `endpoints_by_name.get` returns `None` → skip call/wiring (~12 sites)
+- Loop body cloning/resolution fails → skip (~3 sites at lines 4150, 4190, 4196)
+- Auth/resource wiring fails → skip (~3 sites at lines 8650, 8742, 8815)
+- Service endpoint resolution fails → skip (~5 sites)
+- Pattern expansion fails → skip (~2 sites)
+
+**Fix:** Delete `lower_warn` and the `DAGLANG_LOWER_WARNINGS` env var. Every `continue` that drops a node, edge, or wiring from the DAG should return `Err` from the lowering function. The compilation should fail with a diagnostic that names the specific construct that couldn't be lowered.
+
+### Layer 3 — Resolver degradation (~10 sites)
+
+The resolver in `resolve.rs` produces `Value::Skipped` for several failure modes that should be errors:
+- `FnBodyCallableOp` catches ALL evaluation errors and returns `Ok(Skipped)` for all outputs (line ~258). This hides real evaluator bugs.
+- `ExprComputeOp` catches "unknown function" errors and degrades to `Skipped` (line ~790). This is the root cause of T3.
+- Missing params → `Value::Skipped` (line ~296).
+- Missing ports → `Value::Skipped` (line ~747).
+- Pattern/Func callables mark all outputs as optional (line ~1529), so any unwired output silently becomes `Skipped` instead of erroring.
+
+**Fix:** `FnBodyCallableOp` should not catch all errors. If the fn body is invoked with full inputs and evaluation fails, that's a real error. `ExprComputeOp` should not degrade on "unknown function" — unevaluable fn bodies should be detected at compile time (T3's proper fix). Pattern/Func outputs should be required, not optional — the lowerer must wire them or the compilation fails.
+
+### Layer 4 — Driver import resolution (3 sites)
+
+`resolve_import_file_path` in `daglang-driver/src/lib.rs` returns `None` when it can't find an import file. The caller `continue`s, silently dropping the import from the module graph (lines 1639, 1769). A missing import can cause undefined symbols downstream, but the error appears at the use site, not at the import.
+
+**Fix:** Missing import → compile error at the import statement.
+
+### Layer 5 — Codegen/testgen degradation (~15 sites)
+
+- `gunbc_exec::lower().ok()` (line ~4813 in `codegen.rs`) swallows lowering failures and falls back to un-lowered analysis.
+- `read_to_string().ok()` / `parse().ok()` (lines 124-125 in `dag_test_discovery.rs`) silently skip modules that can't be read or parsed.
+- Corpus identity not found → `continue` after `eprintln!` (line ~5679).
+- Effectful node with ExactOutputs → silent DryRun fallback (line ~5705).
+- Port lookup failure → default `("String", Cardinality::ONE)` (line ~4902).
+
+**Fix:** Test generation should fail with a clear error when the input DAG can't be lowered or a module can't be parsed. Corpus drift and port lookup failures should be errors, not degraded output.
+
+### Layer 6 — Type system fallbacks (~5 sites)
+
+- Unknown type → `ValueBacking::Json` (line ~786 in `type_registry.rs`).
+- Unknown type → `TypeShape::Opaque("Unknown")` (line ~62 in `type_shape.rs`).
+- Type resolution error → `None` via `.ok().flatten()` (line ~437).
+
+**Fix:** Unknown types should be a compile error. `ValueBacking::Json` should not be a catchall — every type in the DSL should have an explicit backing.
+
+### Layer 7 — Cache fallbacks (4 sites)
+
+Digest computation, I/O, parsing, and storage errors in `builder.rs` are all silently swallowed (lines 217-253). Caching is documented as "best-effort."
+
+**Fix:** Cache fallbacks are the least severe. Cache miss on error is acceptable behavior — but the error should be logged at debug level so cache corruption is diagnosable. This layer can remain as-is with improved logging.
+
+### Relationship to other items
+
+| Item | Relationship to T13 |
+|------|---------------------|
+| T3 | Subsumed — resolver-layer fallback (Layer 3) |
+| T5 | Subsumed — testgen-layer fallback masking evaluation fallback (Layer 5) |
+| T6 | Subsumed — parser-layer lossy fallback (Layer 1) |
+| T9 | Subsumed — lowerer-layer silent skip (Layer 2) |
+| T10 | Subsumed — lowerer-layer `lower_warn` catalog (Layer 2, partially Layer 5) |
+| T12 | Subsumed — display-layer fallback assumptions (Layer 3 / display) |
+| T2 | Amplified — `IsString` accepting `Secret` is a type-layer fallback (Layer 6) |
+| T7 | Amplified — silent Skipped cascade from missing binding (Layer 3) |
+| T11 | Amplified — DryRun passes because fallbacks produce valid-looking output |
+| T1 | Independent — executor non-determinism |
+| T4 | Independent — conditional merge semantics |
+| T8 | Independent — auth architecture |
+
+### Implementation order
+
+1. **Layer 2 first** (lowerer): Delete `lower_warn`, convert all silent `continue` to `Err`. This immediately surfaces every wiring gap at compile time. Most T-items become compile errors instead of runtime mysteries.
+2. **Layer 1 next** (parser): Delete `parse_body_lossy`, implement proper error recovery or fail. This eliminates the `lossy: true` codepath and the need for `DeclaredOutputCallableOp`'s optional-output leniency.
+3. **Layer 3** (resolver): Remove `Skipped` degradation for eval failures. Make Pattern/Func outputs required.
+4. **Layers 4-6** (driver, codegen, types): Convert `None`/`ok()` returns to errors.
+5. **Layer 7** (cache): Add debug logging, keep best-effort behavior.

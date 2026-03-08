@@ -525,9 +525,21 @@ fn run_with_progress<T: Executable + Clone + Send + 'static>(
     // Node failures produce structured ErrorLayers (service, auth, http context).
     // If we `?` first, print_error_boxes is skipped and the caller only sees
     // the flat error string via print_attention — losing all structured context.
-    print_error_boxes(&progress, profile.tier, profile.supports_color);
+    let rendered_error_boxes = print_error_boxes(&progress, profile.tier, profile.supports_color);
 
-    let log = log_result?;
+    let log = match log_result {
+        Ok(log) => log,
+        Err(err) => {
+            // If error boxes already rendered structured diagnostics, exit
+            // here to avoid a redundant fallback print in the caller.
+            // If nothing was rendered, propagate so the caller prints the
+            // flat error as a safety net (see POSTMORTEM T12).
+            if rendered_error_boxes {
+                process::exit(1);
+            }
+            return Err(err);
+        }
+    };
 
     // Check final node states for hard failures
     let mut should_fail = progress
@@ -1888,10 +1900,14 @@ mod tests {
     #[test]
     fn print_error_boxes_returns_false_when_no_failures() {
         let snapshot = crate::DagSnapshot {
-            nodes: Vec::new(),
+            node_ids: Vec::new(),
+            edges: Vec::new(),
+            topo_order: Vec::new(),
+            boundary_nodes: Vec::new(),
+            labels: std::collections::HashMap::new(),
             groups: Vec::new(),
         };
         let progress = crate::DagProgress::new(snapshot);
-        assert!(!print_error_boxes(&progress, Tier::Basic, false));
+        assert!(!print_error_boxes(&progress, Tier::Emoji, false));
     }
 }

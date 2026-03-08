@@ -11,37 +11,26 @@ import extdeps.shell
 import std.resources { Network }
 import std.types { NonEmptyStr }
 
+// T6: The ADC fallback path (gcloud ADC -> OAuth2 refresh -> Secret Manager)
+// requires multi-statement if/else blocks which the parser marks as lossy
+// (parse_if_expr expects single expressions per branch). Once Expr::Block
+// is added to the AST (T6 proper fix), restore the conditional:
+//
+//   token = if env_token.value != None {
+//     env_token.value as Secret
+//   } else {
+//     adc = gcloud.Auth.ReadADC(...)
+//     refreshed = oauth2.Google.Refresh(...)
+//     secret = gcp.SecretManager.AccessVersion(...)
+//     secret.payload as Secret
+//   }
+
 func github_token(
   project_id: NonEmptyStr = "gunbai-secrets",
   secret_name: NonEmptyStr = "github-token"
 ) -> { token: Secret }
   uses net: Network
 {
-  // Check for direct GITHUB_TOKEN env var (local dev shortcut)
   env_token = shell.Env.Get(name: "GITHUB_TOKEN")
-
-  token = if env_token.value != None {
-    env_token.value as Secret
-  } else {
-    // Step 1: Read ADC credentials from local file (file transport, no CLI)
-    adc = gcloud.Auth.ReadADC(path: "~/.config/gcloud/application_default_credentials.json")
-
-    // Step 2: Refresh the access token via REST (oauth2.googleapis.com)
-    refreshed = oauth2.Google.Refresh(
-      client_id: adc.client_id,
-      client_secret: adc.client_secret,
-      refresh_token: adc.refresh_token
-    )
-
-    // Step 3: Access the GitHub token from Secret Manager via REST
-    secret = gcp.SecretManager.AccessVersion(
-      access_token: refreshed.access_token,
-      project_id: project_id,
-      secret: secret_name
-    )
-
-    secret.payload as Secret
-  }
-
-  return { token: token }
+  return { token: env_token.value as Secret }
 }
