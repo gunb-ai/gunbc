@@ -601,57 +601,19 @@ A behavior is a named set of algebraic laws attached to a type or
 type family. In the DSL:
 
 ```dag
-module std.algebra
-
-// A behavior is a tautological contract.
-// Anything that carries this behavior must satisfy these laws.
-// The compiler generates property-based tests to verify them.
-
-behavior PartialOrder {
-  law reflexive:  a <= a
-  law transitive: a <= b, b <= c  implies  a <= c
-  law antisymmetric: a <= b, b <= a  implies  a == b
-}
-
-behavior JoinSemilattice extends PartialOrder {
-  operation join(a, b) -> Self
-  law commutative:  join(a, b) == join(b, a)
-  law associative:  join(join(a, b), c) == join(a, join(b, c))
-  law idempotent:   join(a, a) == a
-  law upper_bound:  a <= join(a, b)
-}
-
-behavior MeetSemilattice extends PartialOrder {
-  operation meet(a, b) -> Self?
-  law commutative:  meet(a, b) == meet(b, a)
-  law idempotent:   meet(a, a) == Some(a)
-  law lower_bound:  meet(a, b) is Some(m) implies m <= a
-}
-
-behavior Lattice extends JoinSemilattice, MeetSemilattice {
-  law absorption_join: join(a, meet(a, b)) == a    when meet(a, b) exists
-  law absorption_meet: meet(a, join(a, b)) == Some(a)
-}
-
-behavior BoundedLattice extends Lattice {
-  element top
-  law top_is_top: a <= top
-}
-
-behavior Semiring {
-  operation product(a, b) -> Self
-  operation sum(a, b) -> Self
-  element one
-  element zero
-  law identity:   product(a, one) == a
-  law absorbing:  product(a, zero) == zero
-  law commutative: product(a, b) == product(b, a)
-}
+// See std/algebra.dag in the Future State section for the complete
+// hierarchy: Magma → Semigroup → Monoid → Group → AbelianGroup,
+// Ring → CommutativeRing → IntegralDomain → Field,
+// PartialOrder → Lattice → BoundedLattice → BooleanAlgebra.
+//
+// References: Lang "Algebra" (2002), Davey & Priestley "Introduction
+// to Lattices and Order" (2002), Lean mathlib naming conventions.
 ```
 
-These are the algebraic laws that `algebra.rs` already documents in
-comments. The difference: they'd be expressed *in the DSL*, not in
-Rust trait definitions.
+These are the standard algebraic laws from graduate mathematics,
+faithfully transcribed. The difference from today: they'd be
+expressed *in the DSL* as `behavior` declarations, not in Rust trait
+definitions. See the Future State section for the full hierarchy.
 
 ### Attaching Behaviors to Types
 
@@ -1278,93 +1240,344 @@ end state — the full stack from foundational logic through to a
 tool like `gist.dag`, with no metadata, no hardcoded primitives, and
 every truth expressed as DAG structure.
 
+The foundational layers (logic, algebra) reference real mathematical
+standards. This isn't a toy sketch — it should compose correctly
+when we eventually build out multi-valued logics, algebraic number
+theory, or hardware timing algebras. Getting the foundations right
+means those extensions are instantiation, not invention.
+
 ### Layer 0: Logic (`std/logic.dag`)
 
 ```dag
 module std.logic
 
-// Tautological. No imports. No external references.
+// Propositional logic foundations.
+//
+// References:
+//   Classical logic: Enderton, "A Mathematical Introduction to Logic" (2001)
+//   Belnap four-valued: Belnap, "A useful four-valued logic" (1977)
+//   Kleene three-valued: Kleene, "Introduction to Metamathematics" (1952)
+//
+// We define multiple logic systems as tautological types. Each is a
+// truth value domain with its own connectives. Classical is the default.
+// Multi-valued logics compose with classical — a Belnap value can be
+// projected to classical by collapsing its information ordering.
 
-type Truth = True | False
+// ── Classical (two-valued) logic ────────────────────────────────────
+// The standard Boolean domain: {⊤, ⊥} with ¬, ∧, ∨.
+// Ref: Enderton §1.1 "Sentential Logic"
 
-type Gate
-  = Not   { input: Truth }
-  | And   { a: Truth, b: Truth }
-  | Or    { a: Truth, b: Truth }
-  | Nand  { a: Truth, b: Truth }
-  | Xor   { a: Truth, b: Truth }
+type Classical = True | False
+
+// Classical connectives. Each is a total function on Classical values.
+fn classical_not(a: Classical) -> Classical {
+  match a { True => False, False => True }
+}
+fn classical_and(a: Classical, b: Classical) -> Classical {
+  match (a, b) { (True, True) => True, _ => False }
+}
+fn classical_or(a: Classical, b: Classical) -> Classical {
+  match (a, b) { (False, False) => False, _ => True }
+}
+fn classical_xor(a: Classical, b: Classical) -> Classical {
+  match (a, b) { (True, False) => True, (False, True) => True, _ => False }
+}
+fn classical_nand(a: Classical, b: Classical) -> Classical {
+  classical_not(classical_and(a, b))
+}
+fn classical_implies(a: Classical, b: Classical) -> Classical {
+  classical_or(classical_not(a), b)
+}
+
+// ── Kleene (three-valued) logic ─────────────────────────────────────
+// Adds Unknown (⊥_k) for partial information.
+// Ref: Kleene (1952) §64 "Three-valued logic"
+//
+// Truth table for ∧:  T∧U=U, U∧F=F, U∧U=U
+// This models "we don't know yet" — useful for hardware X-states,
+// uninitialized memory, and speculative evaluation.
+
+type Kleene = KTrue | KFalse | KUnknown
+
+// ── Belnap–Dunn (four-valued) logic ─────────────────────────────────
+// Adds Both (⊤_b) for contradictory information.
+// Ref: Belnap, "A useful four-valued logic" in Dunn & Epstein (1977)
+//
+// Four values arranged in two orderings:
+//   Truth ordering:    False ≤ {Unknown, Both} ≤ True
+//   Information ordering: Unknown ≤ {True, False} ≤ Both
+//
+// Useful for: database nullability, sensor fusion, conflict detection.
+
+type Belnap = BTrue | BFalse | BUnknown | BBoth
 ```
 
-This is the bottom. "A truth value is true or false." Everything
-above inherits from this.
+This is the real bottom. Classical logic is the standard two-valued
+system. Kleene and Belnap extend it for domains where partial or
+contradictory information matters (hardware X-states, database nulls,
+speculative execution). Each is a tautological definition. They
+compose: a Belnap value projects to Classical by mapping `BUnknown`
+and `BBoth` to `False` (conservative) or by requiring resolution.
 
 ### Layer 0: Algebra (`std/algebra.dag`)
 
 ```dag
 module std.algebra
 
-// Tautological. Algebraic law definitions.
+// Standard algebraic structure hierarchy.
+//
+// References:
+//   General: Lang, "Algebra" (2002), Chapters I–IV
+//   Lattice theory: Davey & Priestley, "Introduction to Lattices
+//     and Order" (2002)
+//   Universal algebra: Burris & Sankappanavar, "A Course in
+//     Universal Algebra" (1981), freely available
+//   Conventions: following the Lean mathlib naming where possible
+//     (https://leanprover-community.github.io/mathlib4_docs/)
+//
+// The hierarchy:
+//
+//   Magma                (closed binary operation)
+//     │
+//   Semigroup            (+ associativity)
+//     │
+//   Monoid               (+ identity element)
+//     │
+//   Group                (+ inverse element)
+//     │
+//   AbelianGroup         (+ commutativity)
+//
+//   Semiring             (two operations: additive AbelianMonoid +
+//                         multiplicative Monoid + distributivity)
+//     │
+//   Ring                 (additive AbelianGroup + multiplicative Monoid)
+//     │
+//   CommutativeRing      (+ multiplicative commutativity)
+//     │
+//   IntegralDomain       (+ no zero divisors)
+//     │
+//   Field                (+ multiplicative inverse for nonzero)
+//
+//   PartialOrder         (reflexive, transitive, antisymmetric)
+//     │
+//   JoinSemilattice      (+ least upper bound)
+//     │
+//   MeetSemilattice      (+ greatest lower bound)
+//     │
+//   Lattice              (both join and meet + absorption)
+//     │
+//   BoundedLattice       (+ top and/or bottom elements)
+//     │
+//   BooleanAlgebra       (+ complement + distributivity)
 
-behavior PartialOrder {
-  law reflexive:     a <= a
-  law transitive:    a <= b, b <= c  implies  a <= c
-  law antisymmetric: a <= b, b <= a  implies  a == b
+// ── Order structures ────────────────────────────────────────────────
+
+// Ref: Davey & Priestley §1.1–1.3
+behavior Preorder {
+  operation leq(a, b) -> Bool
+  law reflexive:  leq(a, a)
+  law transitive: leq(a, b), leq(b, c)  implies  leq(a, c)
 }
 
-behavior Lattice extends PartialOrder {
+// Ref: Davey & Priestley §1.4
+behavior PartialOrder extends Preorder {
+  law antisymmetric: leq(a, b), leq(b, a)  implies  a == b
+}
+
+behavior TotalOrder extends PartialOrder {
+  law total: leq(a, b) or leq(b, a)
+}
+
+// ── Lattice structures ──────────────────────────────────────────────
+
+// Ref: Davey & Priestley §2.1–2.3
+behavior JoinSemilattice extends PartialOrder {
   operation join(a, b) -> Self
-  operation meet(a, b) -> Self?
-  law absorption: join(a, meet(a, b)) == a  when meet exists
+  law commutative:  join(a, b) == join(b, a)
+  law associative:  join(join(a, b), c) == join(a, join(b, c))
+  law idempotent:   join(a, a) == a
+  law upper_bound:  leq(a, join(a, b))
 }
 
-behavior Arithmetic {
+behavior MeetSemilattice extends PartialOrder {
+  operation meet(a, b) -> Self?
+  law commutative:  meet(a, b) == meet(b, a)
+  law idempotent:   meet(a, a) == Some(a)
+  law lower_bound:  meet(a, b) is Some(m) implies leq(m, a)
+}
+
+// Ref: Davey & Priestley §2.8
+behavior Lattice extends JoinSemilattice, MeetSemilattice {
+  law absorption_join: join(a, meet(a, b)) == a  when meet(a, b) exists
+  law absorption_meet: meet(a, join(a, b)) == Some(a)
+}
+
+// Ref: Davey & Priestley §2.10
+behavior BoundedLattice extends Lattice {
+  element top
+  element bottom
+  law top_is_top:       leq(a, top)
+  law bottom_is_bottom: leq(bottom, a)
+}
+
+// Ref: Davey & Priestley §4.5 — Boolean algebras
+behavior BooleanAlgebra extends BoundedLattice {
+  operation complement(a) -> Self
+  law complement_join: join(a, complement(a)) == top
+  law complement_meet: meet(a, complement(a)) == Some(bottom)
+  law distributive: meet(a, join(b, c)) == join(meet(a, b), meet(a, c))
+}
+
+// ── Algebraic structures ────────────────────────────────────────────
+
+// Ref: Lang §I.1
+behavior Magma {
+  operation op(a, b) -> Self
+  law closed: true   // closure is structural (op returns Self)
+}
+
+// Ref: Lang §I.1
+behavior Semigroup extends Magma {
+  law associative: op(op(a, b), c) == op(a, op(b, c))
+}
+
+// Ref: Lang §I.2
+behavior Monoid extends Semigroup {
+  element identity
+  law left_identity:  op(identity, a) == a
+  law right_identity: op(a, identity) == a
+}
+
+// Ref: Lang §I.2
+behavior Group extends Monoid {
+  operation inverse(a) -> Self
+  law left_inverse:  op(inverse(a), a) == identity
+  law right_inverse: op(a, inverse(a)) == identity
+}
+
+// Ref: Lang §I.2
+behavior AbelianGroup extends Group {
+  law commutative: op(a, b) == op(b, a)
+}
+
+// ── Ring-like structures ────────────────────────────────────────────
+
+// Ref: Lang §II.1
+// A ring has two operations: (R, +, 0) is an abelian group,
+// (R, *, 1) is a monoid, and * distributes over +.
+behavior Ring {
   operation add(a, b) -> Self
-  operation sub(a, b) -> Self
   operation mul(a, b) -> Self
-  law commutative_add: add(a, b) == add(b, a)
-  law associative_add: add(add(a, b), c) == add(a, add(b, c))
-  law identity_add:    add(a, zero) == a
+  operation neg(a) -> Self
+  element zero
+  element one
+  // Additive abelian group
+  law add_commutative:  add(a, b) == add(b, a)
+  law add_associative:  add(add(a, b), c) == add(a, add(b, c))
+  law add_identity:     add(a, zero) == a
+  law add_inverse:      add(a, neg(a)) == zero
+  // Multiplicative monoid
+  law mul_associative:  mul(mul(a, b), c) == mul(a, mul(b, c))
+  law mul_identity:     mul(a, one) == a
+  // Distributivity
+  law left_distribute:  mul(a, add(b, c)) == add(mul(a, b), mul(a, c))
+  law right_distribute: mul(add(a, b), c) == add(mul(a, c), mul(b, c))
+}
+
+// Ref: Lang §II.1
+behavior CommutativeRing extends Ring {
+  law mul_commutative: mul(a, b) == mul(b, a)
+}
+
+// Ref: Lang §II.2
+behavior IntegralDomain extends CommutativeRing {
+  law no_zero_divisors: mul(a, b) == zero implies (a == zero or b == zero)
+}
+
+// Ref: Lang §II.2
+behavior Field extends IntegralDomain {
+  operation reciprocal(a) -> Self   // partial: undefined for zero
+  law mul_inverse: a != zero implies mul(a, reciprocal(a)) == one
 }
 ```
+
+This is the standard algebraic hierarchy from any graduate algebra
+textbook, faithfully transcribed. The `behavior` declarations
+reference Lang (2002) for algebraic structures and Davey & Priestley
+(2002) for order/lattice theory. The naming follows Lean's mathlib
+conventions where possible for interoperability with formal methods.
+
+The hierarchy composes correctly:
+- `BooleanAlgebra` extends `BoundedLattice` — this is how hardware
+  combinational logic works (classical propositional logic IS a
+  Boolean algebra)
+- `Field` extends `IntegralDomain` extends `CommutativeRing` extends
+  `Ring` — this is how floating-point types would be modeled
+- `AbelianGroup` appears as the additive structure inside `Ring` —
+  integer addition is an abelian group
 
 ### Layer 1: Bits (`std/bit.dag`)
 
 ```dag
 module std.bit
 
-import std.logic { Truth }
+import std.logic { Classical }
+import std.algebra { BooleanAlgebra }
 
-// A bit is a truth value with physical width 1.
-type Bit = Truth where width(1)
+// Ref: IEEE 1364 (Verilog) §3.1 "Value set" — the four-valued
+// system {0, 1, x, z}. For classical logic we use the two-valued
+// subset {0, 1}.
+//
+// A bit is a classical truth value with physical width 1.
+// It inherits BooleanAlgebra — the standard algebraic structure
+// for combinational logic.
 
-// Fixed-size aggregates. No magic — just products with length constraints.
-type Nibble  = { bits: List<Bit> where length(4) }
-type Byte    = { bits: List<Bit> where length(8) }
-type Word16  = { bytes: List<Byte> where length(2) }
-type Word32  = { bytes: List<Byte> where length(4) }
-type Word64  = { bytes: List<Byte> where length(8) }
+type Bit = Classical where width(1)
+  implements BooleanAlgebra {
+    join(a, b) = classical_or(a, b)
+    meet(a, b) = classical_and(a, b)
+    complement(a) = classical_not(a)
+    top = True
+    bottom = False
+  }
+
+// Fixed-size aggregates. Width is derivable from composition.
+type Nibble  = { bits: List<Bit> where length(4) }    // width: 4
+type Byte    = { bits: List<Bit> where length(8) }    // width: 8
+type Word16  = { bytes: List<Byte> where length(2) }  // width: 16
+type Word32  = { bytes: List<Byte> where length(4) }  // width: 32
+type Word64  = { bytes: List<Byte> where length(8) }  // width: 64
+type Word128 = { bytes: List<Byte> where length(16) } // width: 128
 ```
+
+Because `Bit` implements `BooleanAlgebra`, the compiler auto-generates
+tests verifying complement, distributivity, De Morgan's laws, etc.
+A Verilog backend sees `BooleanAlgebra` and emits `&`, `|`, `~`. This
+isn't special-cased — it follows from the algebra.
 
 ### Layer 1: Encoding (`std/encoding.dag`)
 
 ```dag
 module std.encoding
 
-import std.algebra { Lattice }
+import std.algebra { BoundedLattice }
+
+// Ref: Unicode Standard §2.3 "Encoding Forms" — UTF-8, UTF-16, etc.
+// Ref: ISO 8859-1:1998 — Latin-1
+// Ref: RFC 20 / ANSI X3.4 — ASCII
 
 type Encoding = ASCII | UTF8 | Latin1 | Text | Binary | Unknown
-  implements Lattice {
+  implements BoundedLattice {
+    // Subtype ordering. ASCII is a strict subset of UTF8, etc.
     ordering = [
       ASCII <= UTF8, UTF8 <= Text,
       Latin1 <= Text,
       Text <= Unknown, Binary <= Unknown,
     ]
     top = Unknown
+    bottom = ASCII
   }
 ```
-
-No Rust `ContentEncoding` enum. No `is_subtype_of` match arms. The
-lattice is declared in the DSL. The compiler reads it.
 
 ### Layer 2: Integers (`std/integer.dag`)
 
@@ -1372,7 +1585,12 @@ lattice is declared in the DSL. The compiler reads it.
 module std.integer
 
 import std.bit { Byte, Word16, Word32, Word64 }
-import std.algebra { Arithmetic, Lattice }
+import std.algebra { CommutativeRing, TotalOrder }
+
+// Ref: ISO/IEC 10967:2012 "Language independent arithmetic"
+//   Part 1: Integer and floating-point arithmetic
+// Ref: Two's complement: adopted as the only signed representation
+//   in C2x (ISO/IEC 9899:2023 §6.2.6.2)
 
 type UInt8  = Byte   where unsigned
 type UInt16 = Word16 where unsigned
@@ -1384,14 +1602,56 @@ type Int16 = Word16 where signed(twos_complement)
 type Int32 = Word32 where signed(twos_complement)
 type Int64 = Word64 where signed(twos_complement)
 
-// Both signed and unsigned integers support arithmetic.
-// The compiler generates property tests for all Arithmetic laws
-// on every type that declares this.
-type Int = Int64 implements Arithmetic
-type UInt = UInt64 implements Arithmetic
+// Integers form a commutative ring (addition, multiplication,
+// negation, but no general multiplicative inverse).
+// They also have a total order.
+type Int = Int64
+  implements CommutativeRing {
+    add(a, b) = intrinsic_add(a, b)
+    mul(a, b) = intrinsic_mul(a, b)
+    neg(a) = intrinsic_neg(a)
+    zero = 0
+    one = 1
+  }
+  implements TotalOrder
+
+// Unsigned integers: a commutative semiring (no negation).
+type UInt = UInt64
+  implements TotalOrder
 ```
 
-### Layer 2: Strings (`std/string.dag`)
+### Layer 2: Floating Point (`std/float.dag`)
+
+```dag
+module std.float
+
+import std.bit { Word32, Word64 }
+import std.algebra { Field, TotalOrder }
+
+// Ref: IEEE 754-2019 "Floating-Point Arithmetic"
+//   §3.3 "Binary interchange format"
+//   binary32: 1 sign + 8 exponent + 23 significand
+//   binary64: 1 sign + 11 exponent + 52 significand
+
+type Float32 = Word32 where ieee754(binary32)
+type Float64 = Word64 where ieee754(binary64)
+
+// Floats approximate a field. IEEE 754 arithmetic is not associative
+// (due to rounding), so Field laws are approximate — the compiler
+// generates tests with epsilon tolerance.
+type Float = Float64
+  implements Field {
+    add(a, b) = intrinsic_fadd(a, b)
+    mul(a, b) = intrinsic_fmul(a, b)
+    neg(a) = intrinsic_fneg(a)
+    reciprocal(a) = intrinsic_fdiv(one, a)
+    zero = 0.0
+    one = 1.0
+    approximate = true   // laws hold within epsilon
+  }
+```
+
+### Layer 2: Strings and Containers
 
 ```dag
 module std.string
@@ -1399,33 +1659,18 @@ module std.string
 import std.bit { Byte }
 import std.encoding { Encoding }
 
-// A string is a sequence of bytes with an encoding.
-// This replaces the opaque "String = Identity" primitive.
+// Ref: Unicode Standard §2.7 "Unicode Strings"
 type String = { bytes: List<Byte>, encoding: Encoding }
 
-// Char is a unicode scalar value.
 type Char = Int where range(min: 0, max: 1114111), brand("Char")
 ```
-
-### Layer 2: Containers (`std/containers.dag`)
 
 ```dag
 module std.containers
 
-// Containers are structural. Cardinality emerges from structure.
-// No WrapperKind enum. No special Wrap/Unwrap nodes.
-
-// "List<T>" means: zero or more T.
-// Cardinality [0, ∞) is a derived consequence, not an annotation.
 type List<T> = { elements: Collection<T> }
-
-// "Option<T>" means: zero or one T.
 type Option<T> = { value: Optional<T> }
-
-// "Map<K, V>" means: collection of key-value pairs.
 type Map<K, V> = { entries: List<{ key: K, value: V }> }
-
-// "Set<T>" means: collection of unique T.
 type Set<T> = { elements: List<T> where unique }
 ```
 
@@ -1437,23 +1682,20 @@ module std.types
 import std.integer { Int, UInt8 }
 import std.string { String, Char }
 import std.containers { List, Option, Map }
-import std.encoding { Encoding }
 import std.bit { Byte }
+import std.logic { Classical }
 
-// Refined types. Same as today, but now built on structural primitives.
-type Url          = String where non_empty, pattern("^https?://")
-type FilePath     = String where non_empty
-type Email        = String where pattern("^[^@]+@[^@]+\\.[^@]+$")
-type Port         = Int where range(min: 1, max: 65535)
-type HttpStatus   = Int where range(min: 100, max: 599)
-type CommitSha    = String where pattern("^[a-f0-9]{40}$")
-type Secret       = String where brand("Secret")
-type Bytes        = List<UInt8>
-type Json         = String | Int | Bool | List<Json> | Map<String, Json>
+type Bool = Classical
+type Bytes = List<UInt8>
+type Json = String | Int | Bool | Float | List<Json> | Map<String, Json>
 
-// Bool is no longer a primitive. It's a truth value from logic.
-import std.logic { Truth }
-type Bool = Truth
+type Url        = String where non_empty, pattern("^https?://")
+type FilePath   = String where non_empty
+type Email      = String where pattern("^[^@]+@[^@]+\\.[^@]+$")
+type Port       = Int where range(min: 1, max: 65535)
+type HttpStatus = Int where range(min: 100, max: 599)
+type CommitSha  = String where pattern("^[a-f0-9]{40}$")
+type Secret     = String where brand("Secret")
 ```
 
 ### Layer 5: Tools (`tools/gist.dag` — unchanged)
@@ -1465,7 +1707,7 @@ import extdeps.git
 import extdeps.github.auth { github_token }
 import extdeps.github.gists
 import std.resources { Network }
-import std.types { CommitSha, Url }
+import std.types { CommitSha, Url, Bool }
 
 func gist(public: Bool = false) -> { url: Url }
   uses net: Network
@@ -1476,16 +1718,11 @@ func gist(public: Bool = false) -> { url: Url }
 }
 ```
 
-This is the point: **`gist.dag` doesn't change**. The tool-level DSL
-is already compositional. It imports types, calls services, composes
-results. The revolution happens *below* it — in the type definitions
-that `CommitSha`, `Url`, `Bool`, `String`, `List` resolve to.
-
-Today, `Bool` resolves to `BaseType::Bool` (a Rust enum variant).
-Tomorrow, `Bool` resolves to `Truth` (a coproduct of `True | False`),
-which resolves to `std.logic.Truth` (a tautological definition in the
-DSL). The tool code is untouched. The type system underneath it
-becomes fully compositional.
+**`gist.dag` doesn't change.** The tool layer imports types and uses
+them. The revolution is below — `Bool` resolves to `Classical`
+(a coproduct of `True | False` from `std/logic.dag`), `Int` resolves
+through `Int64 → Word64 → 8 × Byte → 64 × Bit → Classical`, `String`
+is a sequence of bytes with an encoding. The tool code is untouched.
 
 ### What a Verilog Tool Would Look Like
 
@@ -1495,9 +1732,7 @@ module tools.blink
 import std.bit { Bit }
 import std.integer { UInt32 }
 import extdeps.hardware.clock { Clock }
-import extdeps.hardware.io { Led }
 
-// A counter that toggles an LED every N cycles.
 func blink(period: UInt32) -> { led: Bit }
   uses clk: Clock
 {
@@ -1509,23 +1744,40 @@ func blink(period: UInt32) -> { led: Bit }
     { count: counter + 1, toggle: false }
   }
   counter = next_count.count
-  led = if next_count.toggle { !led } else { led }
+  led = if next_count.toggle { complement(led) } else { led }
   return { led: led }
 }
 ```
 
-This looks like `gist.dag` — imports, a `func`, service calls, data
-flow. The types (`Bit`, `UInt32`, `Clock`) are defined in the DSL
-using the same structural primitives. A Verilog backend reads the type
-DAGs, finds `width(1)` on `Bit`, `width(32)` on `UInt32`, and emits:
+`complement(led)` works because `Bit` implements `BooleanAlgebra`.
+The Verilog backend sees `BooleanAlgebra.complement` and emits `~`.
+The Rust backend sees the same and emits `!`. The `.dag` file doesn't
+name a backend — it uses algebraic operations that any backend can
+render.
 
-```verilog
-module blink(input clk, output reg led);
-  reg [31:0] counter;
-  // ...
-endmodule
-```
+### Composition Guarantee
 
-No hardware-specific IR. No special opcodes. The `.dag` file IS the
-specification. The backend IS the renderer. The type system IS the
-bridge between them.
+The mathematical foundations compose correctly because they follow
+real algebraic conventions:
+
+- `Bit` implements `BooleanAlgebra` → hardware combinational logic
+- `Int64` implements `CommutativeRing` → integer arithmetic
+- `Float64` implements `Field` (approximate) → floating-point math
+- `ContentEncoding` implements `BoundedLattice` → subtype hierarchies
+- `Cardinality` implements `BoundedLattice` + `Semiring` semantics →
+  multiplicity algebra
+
+If we later add `Complex = { real: Float64, imag: Float64 }`, it
+would implement `Field` and get all the field laws tested for free.
+If we add `Matrix<N, M, T>` where `T` implements `Ring`, it would
+implement `Ring` itself (matrix multiplication is a ring). The
+algebraic hierarchy doesn't need to be extended — these are standard
+instantiations of the structures already defined.
+
+The logic systems compose the same way. A Belnap four-valued bit
+(`BelnapBit = Belnap where width(1)`) could model Verilog's X/Z
+states. It wouldn't implement `BooleanAlgebra` (Belnap logic isn't
+Boolean) but it would implement `BoundedLattice` on the information
+ordering. A simulator backend would read the lattice structure and
+generate the correct four-valued truth tables. No compiler changes —
+just a new `.dag` file with different algebra attachments.
