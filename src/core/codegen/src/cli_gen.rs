@@ -1331,6 +1331,7 @@ fn build_run_single_step_fn(tool: &ToolMeta) -> FnDef {
                  \n\
                  // Check for failure\n\
                  if let Some(Value::Bool(false)) = outputs.get(\"{success_port_or_empty}\") {{\n\
+                    eprintln!(\"Step '{{step_name}}' failed: success port '{success_port_or_empty}' returned false\");\n\
                      process::exit(1);\n\
                  }}\n\
              }}\n\

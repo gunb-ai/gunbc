@@ -230,12 +230,11 @@ pub fn execute_and_display<T: Executable + Clone + Send + 'static>(
             }
         }
         Err(err) => {
-            // Node failures are already rendered by observers/error boxes.
-            // Pre-node failures (e.g., lowering) need a fallback attention
-            // block so users never get a silent exit.
-            if should_render_fallback_error(&err) {
-                print_attention(AttentionLevel::Error, "Execution failed", &err.to_string());
-            }
+            // Safety net: always print the error. Structured error boxes may
+            // have already rendered richer context upstream, but silence on
+            // exit(1) is never acceptable. Redundancy is better than a
+            // diagnostic black hole (see POSTMORTEM T12).
+            print_attention(AttentionLevel::Error, "Execution failed", &err.to_string());
             process::exit(1);
         }
     }
@@ -1208,14 +1207,11 @@ fn success_port_failed(log: &crate::ExecutionLog, success_port: Option<&str>) ->
     !matches!(fallback, None | Some(Value::Bool(true)))
 }
 
-/// Returns true when the caller should print an explicit fallback error block.
-///
-/// Node failures carry a NodeTrace layer and are rendered by progress observers
-/// (plain mode) or error boxes (animated mode). Errors without NodeTrace are
-/// typically pre-node failures and need explicit fallback rendering.
-fn should_render_fallback_error(err: &ExecError) -> bool {
-    err.node_trace().is_none()
-}
+// should_render_fallback_error was removed — the caller now always prints
+// the error. The previous heuristic (suppress if NodeTrace is present)
+// assumed error boxes already rendered the diagnostic, but this assumption
+// breaks when progress state diverges from the executor error (e.g., a node
+// is Skipped in progress but the executor returned Err). See POSTMORTEM T12.
 
 /// Render error detail boxes for all failed nodes in the DAG.
 ///
@@ -1225,10 +1221,10 @@ fn should_render_fallback_error(err: &ExecError) -> bool {
 /// is truncated to [`ERROR_OUTPUT_MAX_LINES`] lines.
 ///
 /// [`ERROR_OUTPUT_MAX_LINES`]: crate::box_draw::ERROR_OUTPUT_MAX_LINES
-pub fn print_error_boxes(progress: &DagProgress, tier: Tier, use_color: bool) {
+pub fn print_error_boxes(progress: &DagProgress, tier: Tier, use_color: bool) -> bool {
     let failures = progress.failed_nodes();
     if failures.is_empty() {
-        return;
+        return false;
     }
 
     let mut stderr = io::stderr();
@@ -1314,6 +1310,7 @@ pub fn print_error_boxes(progress: &DagProgress, tier: Tier, use_color: bool) {
         }
         let _ = writeln!(stderr);
     }
+    true
 }
 
 /// Print a high-signal attention block.
@@ -1889,19 +1886,12 @@ mod tests {
     }
 
     #[test]
-    fn fallback_error_rendering_required_without_node_trace() {
-        let err = ExecError::new("lowering failed");
-        assert!(should_render_fallback_error(&err));
-    }
-
-    #[test]
-    fn fallback_error_rendering_not_required_with_node_trace() {
-        let err = ExecError::new("node failed").with_layer(ErrorLayer::NodeTrace(
-            crate::NodeTraceLayer {
-                node_id: "n1".to_string(),
-                role: NodeRole::Pure,
-            },
-        ));
-        assert!(!should_render_fallback_error(&err));
+    fn print_error_boxes_returns_false_when_no_failures() {
+        let snapshot = crate::DagSnapshot {
+            nodes: Vec::new(),
+            groups: Vec::new(),
+        };
+        let progress = crate::DagProgress::new(snapshot);
+        assert!(!print_error_boxes(&progress, Tier::Basic, false));
     }
 }
