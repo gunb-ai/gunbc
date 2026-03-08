@@ -604,12 +604,7 @@ fn eval_call(
             }
         }
         let outputs = evaluate_fn_body(fn_body, &fn_inputs, sibling_fns)?;
-        // Return the primary output (first key or "return")
-        return outputs
-            .get("return")
-            .or_else(|| outputs.values().next())
-            .cloned()
-            .ok_or_else(|| EvalError::new(format!("fn {name} produced no output")));
+        return sibling_fn_value(name, outputs);
     }
 
     // Built-in functions
@@ -657,6 +652,16 @@ fn record_update(base: &Value, updates: &Value) -> Result<Value, EvalError> {
         }
         _ => Err(EvalError::new("'with' requires record values")),
     }
+}
+
+fn sibling_fn_value(name: &str, outputs: HashMap<String, Value>) -> Result<Value, EvalError> {
+    if let Some(value) = outputs.get("return") {
+        return Ok(value.clone());
+    }
+    if outputs.is_empty() {
+        return Err(EvalError::new(format!("fn {name} produced no output")));
+    }
+    Ok(Value::Map(outputs.into_iter().collect()))
 }
 
 pub fn eval_match(
@@ -804,11 +809,7 @@ fn eval_sibling_fn(
             }
         }
         let outputs = evaluate_fn_body(fn_body, &fn_inputs, sibling_fns)?;
-        outputs
-            .get("return")
-            .or_else(|| outputs.values().next())
-            .cloned()
-            .ok_or_else(|| EvalError::new(format!("pipe fn {name} produced no output")))
+        sibling_fn_value(name, outputs)
     } else {
         Err(EvalError::new(format!("unknown pipe method: {name}")))
     }
@@ -1478,6 +1479,37 @@ mod tests {
             [("greet".to_string(), greet_body)].into_iter().collect();
         let result = evaluate_fn_body(&body, &HashMap::new(), &siblings).unwrap();
         assert_eq!(result["return"], Value::Str("hi world".to_string()));
+    }
+
+    #[test]
+    fn eval_sibling_fn_preserves_named_record_outputs() {
+        let auth_body = LoweredFnBody {
+            stmts: vec![LoweredStmt::Return(vec![(
+                "token".to_string(),
+                LoweredExpr::Literal(LoweredLiteral::String("secret".to_string())),
+            )])],
+        };
+
+        let body = LoweredFnBody {
+            stmts: vec![LoweredStmt::Return(vec![(
+                "return".to_string(),
+                LoweredExpr::Call {
+                    name: "auth".to_string(),
+                    args: vec![],
+                },
+            )])],
+        };
+
+        let siblings: HashMap<String, LoweredFnBody> =
+            [("auth".to_string(), auth_body)].into_iter().collect();
+        let result = evaluate_fn_body(&body, &HashMap::new(), &siblings).unwrap();
+
+        let expected = Value::Map(
+            [("token".to_string(), Value::Str("secret".to_string()))]
+                .into_iter()
+                .collect::<BTreeMap<_, _>>(),
+        );
+        assert_eq!(result["return"], expected);
     }
 
     #[test]

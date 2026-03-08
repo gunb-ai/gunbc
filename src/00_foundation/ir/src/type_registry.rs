@@ -22,7 +22,7 @@
 use crate::contract::{self, TypeContract};
 use crate::dag::Dag;
 use crate::type_lib;
-use crate::type_op::{BaseType, Coercion, TypeOp, WrapperKind};
+use crate::type_op::{BaseType, Coercion, Predicate, TypeOp, WrapperKind};
 use crate::types::{Cardinality, TypeId};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
@@ -299,13 +299,35 @@ impl TypeRegistry {
     /// These are structural refinements over primitives (e.g., Url is a refined String).
     pub fn register_core_types(&mut self) {
         self.register("NonEmptyString", type_lib::non_empty_string());
+        self.register("NonEmptyStr", type_lib::non_empty_string());
         self.register("SecretName", type_lib::non_empty_string());
+        self.register("LanguageId", type_lib::non_empty_string());
         self.register("Url", type_lib::url());
         self.register("FilePath", type_lib::file_path());
         self.register("Path", type_lib::file_path());
         self.register("Email", type_lib::email());
         self.register("PositiveInt", type_lib::positive_int());
         self.register("NonNegativeInt", type_lib::non_negative_int());
+        self.register("GitRef", type_lib::non_empty_string());
+        self.register(
+            "ProjectId",
+            type_lib::refined(
+                "String",
+                vec![
+                    Predicate::NonEmpty,
+                    Predicate::Matches("^[a-z][a-z0-9-]{4,28}[a-z0-9]$".to_string()),
+                ],
+            ),
+        );
+        self.register(
+            "ServiceAccountEmail",
+            type_lib::refined(
+                "String",
+                vec![Predicate::Matches(
+                    "^[a-z][a-z0-9-]*@[a-z0-9-]+\\.iam\\.gserviceaccount\\.com$".to_string(),
+                )],
+            ),
+        );
 
         // Content-encoded file path types (set-theoretic type system).
         self.register("TextFilePath", type_lib::text_file_path());
@@ -323,6 +345,159 @@ impl TypeRegistry {
                     ("ASCII", "String"),
                     ("Latin1", "String"),
                     ("Binary", "Bytes"),
+                ],
+            ),
+        );
+        self.register(
+            "WarningPolicy",
+            type_lib::coproduct(
+                "WarningPolicy",
+                vec![("DenyAll", "String"), ("Default", "String")],
+            ),
+        );
+        self.register(
+            "CloudRuntime",
+            type_lib::coproduct(
+                "CloudRuntime",
+                vec![
+                    ("GitHubActions", "String"),
+                    ("Metadata", "String"),
+                    ("LocalDev", "String"),
+                ],
+            ),
+        );
+        self.register(
+            "AuthScheme",
+            type_lib::coproduct(
+                "AuthScheme",
+                vec![
+                    ("Bearer", "String"),
+                    ("Header", "String"),
+                    ("Basic", "String"),
+                ],
+            ),
+        );
+        self.register(
+            "FermiDepth",
+            type_lib::coproduct(
+                "FermiDepth",
+                vec![
+                    ("Xs", "String"),
+                    ("S", "String"),
+                    ("M", "String"),
+                    ("L", "String"),
+                    ("Xl", "String"),
+                ],
+            ),
+        );
+        self.register(
+            "TransportClass",
+            type_lib::coproduct(
+                "TransportClass",
+                vec![
+                    ("LocalDirect", "String"),
+                    ("ShellLocal", "String"),
+                    ("FileBoundary", "String"),
+                    ("RestNetwork", "String"),
+                    ("InterfaceStub", "String"),
+                    ("Unknown", "String"),
+                ],
+            ),
+        );
+        self.register(
+            "TestClass",
+            type_lib::coproduct(
+                "TestClass",
+                vec![
+                    ("Unit", "String"),
+                    ("Hermetic", "String"),
+                    ("Integration", "String"),
+                ],
+            ),
+        );
+        self.register(
+            "DisplayWidth",
+            type_lib::coproduct(
+                "DisplayWidth",
+                vec![
+                    ("ZeroWidth", "String"),
+                    ("Narrow", "String"),
+                    ("Wide", "String"),
+                ],
+            ),
+        );
+        self.register(
+            "SemanticColor",
+            type_lib::coproduct(
+                "SemanticColor",
+                vec![
+                    ("Default", "String"),
+                    ("Success", "String"),
+                    ("Warning", "String"),
+                    ("Error", "String"),
+                    ("Info", "String"),
+                    ("Dim", "String"),
+                    ("Active", "String"),
+                    ("Accent", "String"),
+                ],
+            ),
+        );
+        self.register(
+            "Tier",
+            type_lib::coproduct(
+                "Tier",
+                vec![
+                    ("Emoji", "String"),
+                    ("Unicode", "String"),
+                    ("Ascii", "String"),
+                ],
+            ),
+        );
+        self.register(
+            "SymbolId",
+            type_lib::coproduct(
+                "SymbolId",
+                vec![
+                    ("NodePending", "String"),
+                    ("NodeRunning", "String"),
+                    ("NodeCompleted", "String"),
+                    ("NodeFailed", "String"),
+                    ("NodeSkipped", "String"),
+                    ("NodeIntercepted", "String"),
+                    ("EdgeIdle", "String"),
+                    ("EdgeFlowing", "String"),
+                    ("EdgeDone", "String"),
+                    ("EdgeDead", "String"),
+                    ("DagNotStarted", "String"),
+                    ("DagRunning", "String"),
+                    ("DagCompleted", "String"),
+                    ("DagFailed", "String"),
+                    ("BoundaryMarker", "String"),
+                    ("Spinner0", "String"),
+                    ("Spinner1", "String"),
+                    ("Spinner2", "String"),
+                    ("Spinner3", "String"),
+                    ("Spinner4", "String"),
+                    ("Spinner5", "String"),
+                    ("Spinner6", "String"),
+                    ("Spinner7", "String"),
+                    ("Spinner8", "String"),
+                    ("Spinner9", "String"),
+                    ("Success", "String"),
+                    ("Failure", "String"),
+                    ("Warning", "String"),
+                    ("Info", "String"),
+                    ("DataList", "String"),
+                    ("DataMap", "String"),
+                    ("DataSecret", "String"),
+                    ("DataUrl", "String"),
+                    ("DataTimer", "String"),
+                    ("ConnectorHorizontal", "String"),
+                    ("ConnectorVertical", "String"),
+                    ("ConnectorTeeDown", "String"),
+                    ("ConnectorTeeUp", "String"),
+                    ("ConnectorCornerBottomLeft", "String"),
+                    ("ConnectorCornerTopLeft", "String"),
                 ],
             ),
         );
@@ -1253,6 +1428,21 @@ mod tests {
         assert!(registry.contains(&TypeId::from("TextFilePath")));
         assert!(registry.contains(&TypeId::from("BinaryFilePath")));
         assert!(registry.contains(&TypeId::from("ContentEncoding")));
+        assert!(registry.contains(&TypeId::from("NonEmptyStr")));
+        assert!(registry.contains(&TypeId::from("LanguageId")));
+        assert!(registry.contains(&TypeId::from("GitRef")));
+        assert!(registry.contains(&TypeId::from("ProjectId")));
+        assert!(registry.contains(&TypeId::from("ServiceAccountEmail")));
+        assert!(registry.contains(&TypeId::from("WarningPolicy")));
+        assert!(registry.contains(&TypeId::from("CloudRuntime")));
+        assert!(registry.contains(&TypeId::from("AuthScheme")));
+        assert!(registry.contains(&TypeId::from("FermiDepth")));
+        assert!(registry.contains(&TypeId::from("TransportClass")));
+        assert!(registry.contains(&TypeId::from("TestClass")));
+        assert!(registry.contains(&TypeId::from("DisplayWidth")));
+        assert!(registry.contains(&TypeId::from("SemanticColor")));
+        assert!(registry.contains(&TypeId::from("Tier")));
+        assert!(registry.contains(&TypeId::from("SymbolId")));
         assert!(registry.contains(&TypeId::from("TransportRequest")));
         assert!(registry.contains(&TypeId::from("TransportResponse")));
         assert!(registry.contains(&TypeId::from("Credential")));

@@ -35,18 +35,19 @@ Adapted from Google C++ style for Rust:
   See `POSTMORTEM.md` T13 for the full taxonomy of the ~70 violations that
   motivated this invariant.
 
-## Crate Map
+## Testing Invariants
 
-| Crate | Purpose |
-|-------|---------|
-| `0_foundation/` | Shared IR, contracts, and foundational macros |
-| `1_surfaces/` | CLI, codegen, and workflow-facing entrypoints |
-| `2_pipeline/` | Driver/orchestrator: prepare + ordered stage runner |
-| `3_source/` | Syntax and module-graph discovery |
-| `4_semantics/` | Typechecking and semantic validation |
-| `5_graph/` | Lowering to GraphIR |
-| `6_artifacts/` | Derived manifests and obligations |
-| `7_emit/` | Code emission |
-| `8_materialize/` | Runtime wiring, resolve, primitives, blob, transport |
-| `9_execute/` | DAG execution engine |
-| `10_test/` | Test utilities, generated tests, registry crates |
+- **Behavioral only.** Tests assert observable behavior — outputs given inputs,
+  error messages, public API contracts. Never assert internal implementation
+  details like which private functions were called, what order internal steps
+  execute in, or how many times an internal helper runs.
+
+- **Hermetic unit tests only.** Tests must not touch the filesystem, network,
+  or environment. All external dependencies are injected or mocked. A test
+  that passes on one machine must pass on every machine.
+
+- **No tautological tests.** A test that mirrors the implementation — restating
+  the production code in test form — proves nothing. Tests must encode an
+  independent specification of *what* the code should do, not *how* it does it.
+  If deleting the test body and replacing it with a copy of the production code
+  would still pass, the test is tautological.

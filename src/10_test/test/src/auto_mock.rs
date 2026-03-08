@@ -11,11 +11,13 @@ use gunbc_ir::transport::{
     TransportResponse,
 };
 use gunbc_ir::{
-    detect_boundaries, detect_entrypoints, value_backing_for_type_id, Cardinality, Dag, NodeId,
-    PortName, Value, ValueBacking,
+    detect_boundaries, detect_entrypoints, parse_map_type_id, value_backing_for_type_id,
+    variant_witnesses, Cardinality, Dag, NodeId, PortName, TypeId, TypeRegistry, Value,
+    ValueBacking,
 };
 use gunbc_primitives::filename;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::OnceLock;
 
 use crate::{
     extract_mock_requirements, MockProvider, MockResponseSynthesis, MockSpec, NodeExample,
@@ -27,23 +29,107 @@ fn default_fs_handle() -> Value {
     fs.into()
 }
 
+fn mock_type_registry() -> &'static TypeRegistry {
+    static REGISTRY: OnceLock<TypeRegistry> = OnceLock::new();
+    REGISTRY.get_or_init(TypeRegistry::with_core_types)
+}
+
+fn parse_unary_generic_type_id<'a>(type_id: &'a str, wrapper: &str) -> Option<&'a str> {
+    let rest = type_id.strip_prefix(wrapper)?;
+    let inner = rest.strip_prefix('<')?.strip_suffix('>')?.trim();
+    if inner.is_empty() {
+        None
+    } else {
+        Some(inner)
+    }
+}
+
+fn optional_inner_type_id(type_id: &str) -> Option<&str> {
+    if let Some(inner) = parse_unary_generic_type_id(type_id, "Optional") {
+        return Some(inner);
+    }
+    let inner = type_id.strip_prefix("Optional")?;
+    if inner.is_empty() {
+        None
+    } else {
+        Some(inner)
+    }
+}
+
+fn parse_container_alias_inner<'a>(type_id: &'a str, suffix: &str) -> Option<&'a str> {
+    let inner = type_id.strip_suffix(suffix)?;
+    if inner.is_empty() {
+        None
+    } else {
+        Some(inner)
+    }
+}
+
+fn is_placeholder_witness(value: &Value) -> bool {
+    matches!(value, Value::Str(s) if s.starts_with('<') && s.ends_with('>'))
+}
+
+fn typed_witness_value(type_id: &str) -> Option<Value> {
+    if let Some(inner) = optional_inner_type_id(type_id) {
+        return typed_witness_value(inner);
+    }
+
+    if let Some(inner) = parse_unary_generic_type_id(type_id, "List")
+        .or_else(|| parse_container_alias_inner(type_id, "List"))
+    {
+        return typed_witness_value(inner).map(|value| Value::List(vec![value]));
+    }
+
+    if let Some(inner) = parse_unary_generic_type_id(type_id, "Set")
+        .or_else(|| parse_container_alias_inner(type_id, "Set"))
+    {
+        return typed_witness_value(inner).map(|value| Value::Set(vec![value]));
+    }
+
+    if let Some((key_type, value_type)) = parse_map_type_id(type_id) {
+        if key_type == "String" {
+            let value = typed_witness_value(&value_type)?;
+            let mut map = BTreeMap::new();
+            map.insert("mock_key".to_string(), value);
+            return Some(Value::Map(map));
+        }
+    }
+
+    let registry = mock_type_registry();
+    if let Some((_, value)) = variant_witnesses(type_id, registry).into_iter().next() {
+        return Some(value);
+    }
+
+    let type_dag = registry.resolve_type(&TypeId::from(type_id))?;
+    gunbc_ir::contract::witnesses_checked(&type_dag)
+        .ok()?
+        .into_iter()
+        .map(|witness| witness.value)
+        .find(|value| !matches!(value, Value::Unit) && !is_placeholder_witness(value))
+}
+
 fn default_value_for_type(type_id: &str) -> Value {
     match type_id {
         "TransportResponse" => default_shell_response(),
         "TransportRequest" => Value::Request(TransportRequest::Shell(ShellRequest::new("true"))),
         "Secret" => Value::Secret(gunbc_ir::SecretString::new("mock")),
         "FilesystemHandle" => default_fs_handle(),
-        _ => match value_backing_for_type_id(type_id) {
-            ValueBacking::String => Value::Str("mock".to_string()),
-            ValueBacking::Bool => Value::Bool(true),
-            ValueBacking::Int | ValueBacking::Float => Value::Int(1),
-            ValueBacking::Json => Value::Json(serde_json::json!({"mock": true})),
-            ValueBacking::Map => Value::Map(std::collections::BTreeMap::new()),
-            ValueBacking::List => Value::List(vec![Value::Str("mock".to_string())]),
-            ValueBacking::Set => Value::Set(vec![Value::Str("mock".to_string())]),
-            ValueBacking::Unit => Value::Unit,
-            ValueBacking::Bytes => Value::List(vec![Value::Int(0)]),
-        },
+        _ => {
+            if let Some(value) = typed_witness_value(type_id) {
+                return value;
+            }
+            match value_backing_for_type_id(type_id) {
+                ValueBacking::String => Value::Str("mock".to_string()),
+                ValueBacking::Bool => Value::Bool(true),
+                ValueBacking::Int | ValueBacking::Float => Value::Int(1),
+                ValueBacking::Json => Value::Json(serde_json::json!({"mock": true})),
+                ValueBacking::Map => Value::Map(BTreeMap::new()),
+                ValueBacking::List => Value::List(vec![Value::Str("mock".to_string())]),
+                ValueBacking::Set => Value::Set(vec![Value::Str("mock".to_string())]),
+                ValueBacking::Unit => Value::Unit,
+                ValueBacking::Bytes => Value::List(vec![Value::Int(0)]),
+            }
+        }
     }
 }
 
@@ -764,5 +850,29 @@ mod tests {
                 "failure variants should clear success-path node examples"
             );
         }
+    }
+
+    #[test]
+    fn default_value_for_cloud_runtime_uses_variant_witness() {
+        assert_eq!(
+            default_value_for_type("CloudRuntime"),
+            Value::Str("GitHubActions".to_string())
+        );
+    }
+
+    #[test]
+    fn default_value_for_list_of_fermi_depth_uses_variant_elements() {
+        assert_eq!(
+            default_value_for_type("List<FermiDepth>"),
+            Value::List(vec![Value::Str("Xs".to_string())])
+        );
+    }
+
+    #[test]
+    fn default_value_for_platform_skips_placeholder_witnesses() {
+        assert_eq!(
+            default_value_for_type("Platform"),
+            Value::Str("mock".to_string())
+        );
     }
 }
