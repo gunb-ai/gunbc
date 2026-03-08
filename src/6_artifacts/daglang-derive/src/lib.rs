@@ -47,7 +47,7 @@ pub struct DerivedArtifacts {
 ///
 /// These are raw facts about what transports and behavioral flags a callable
 /// transitively reaches. Classification into test tiers
-/// is the DSL's job (via `config/test_policy.dag`), not ours.
+/// is the DSL's job, not ours.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CallableProperties {
     pub transport_classes: Vec<ServiceTransportClass>,

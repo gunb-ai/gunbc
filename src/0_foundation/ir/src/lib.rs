@@ -45,12 +45,12 @@
 //! This allows business logic to remain pure while transport execution
 //! happens at well-defined boundaries.
 
-/// DSL-generated types from `dsl/std/{symbols,render,box_draw}.dag`.
+/// DSL-generated types from `dsl/std/{symbols,render}.dag`.
 ///
 /// Regenerate:
 /// ```sh
 /// daglang gen-types dsl/std \
-///   --module std.symbols --module std.render --module std.box_draw \
+///   --module std.symbols --module std.render \
 ///   --output src/0_foundation/ir/src/generated/mod.rs
 /// ```
 pub mod generated;

@@ -4,7 +4,7 @@
 //! If this test fails, regenerate with:
 //!   cargo run -p daglang-cli -- gen-types dsl/std \
 //!     --module std.symbols --module std.unicode --module std.width \
-//!     --module std.render --module std.box_draw \
+//!     --module std.render \
 //!     --output src/0_foundation/ir/src/generated/mod.rs
 
 #[allow(clippy::disallowed_methods)] // Test infrastructure: needs Command::new and fs::read_to_string
@@ -28,8 +28,6 @@ fn generated_types_are_not_stale() {
             "std.width",
             "--module",
             "std.render",
-            "--module",
-            "std.box_draw",
         ])
         .current_dir(env!("CARGO_MANIFEST_DIR").to_string() + "/../../..")
         .output()
@@ -51,7 +49,7 @@ fn generated_types_are_not_stale() {
             "src/0_foundation/ir/src/generated/mod.rs is stale. Regenerate with:\n  \
              cargo run -p daglang-cli -- gen-types dsl/std \
              --module std.symbols --module std.unicode --module std.width \
-             --module std.render --module std.box_draw \
+             --module std.render \
              --output src/0_foundation/ir/src/generated/mod.rs"
         );
     }

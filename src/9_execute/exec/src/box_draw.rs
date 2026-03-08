@@ -1,8 +1,8 @@
 //! Box rendering utilities for terminal output.
 //!
 //! Type definitions (`BoxStyle`, `BoxChars`) and data tables
-//! (`UNICODE_BOX_CHARS`, `ASCII_BOX_CHARS`) are DSL-generated — see
-//! `dsl/std/box_draw.dag`.  This file provides the runtime `TermBox`
+//! (`UNICODE_BOX_CHARS`, `ASCII_BOX_CHARS`) are DSL-generated (see
+//! `ir/src/generated/mod.rs`).  This file provides the runtime `TermBox`
 //! builder with `Write` I/O that the DSL cannot express.
 
 use gunbc_ir::generated::{BoxChars, ASCII_BOX_CHARS, UNICODE_BOX_CHARS};

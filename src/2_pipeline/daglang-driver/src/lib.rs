@@ -497,7 +497,7 @@ pub fn compile_data_from_sources_permissive(
 ///
 /// # Arguments
 /// * `dsl_root` — Root of the DSL source tree (e.g., `workspace_root.join("dsl")`)
-/// * `module_path` — Relative path within `dsl_root` (e.g., `"config/resources.dag"`)
+/// * `module_path` — Relative path within `dsl_root` (e.g., `"config/codegen_paths.dag"`)
 pub fn compile_data_from_module_permissive(
     dsl_root: &Path,
     module_path: &str,
