@@ -102,6 +102,49 @@ exists because some expression forms still have no structural synthesis,
 and the function lacks the infrastructure (endpoint registries, transport
 wiring, argument binding) that Phase 1 has.
 
+### The deeper root cause: statement-centric lowering in an expression-centric language
+
+The three-phase split is itself a symptom. The real flaw is that **the
+lowerer is statement-centric when the language is expression-centric.**
+
+In a DAG language, there is no meaningful distinction between a statement
+and an expression. `svc.Op(args)` should produce the same transport
+triplet whether it appears as:
+
+```
+let result = svc.Op(args)           // top-level let binding
+return { result: svc.Op(args) }     // return field
+other_call(input: svc.Op(args))     // function argument
+if svc.Op(args).success { ... }     // condition
+```
+
+Each of these creates the same DAG node. The only difference is what the
+output gets wired to — a named binding, a return port, an argument port,
+or a condition input. That's a **wiring** question, not a **node-creation**
+question.
+
+The lowerer conflates these two concerns. Node creation is tied to
+statement position (Phase 1). Wiring is tied to expression position
+(Phase 3). They should be the same operation: **lower an expression to a
+DAG node and return a reference to its output.**
+
+The function `lower_expr(expr) -> (NodeId, Port)` does not exist. If it
+did:
+- It would be recursive: sub-expressions lower first, producing nodes;
+  the parent expression wires to their outputs
+- It would be uniform: same function regardless of position (let binding,
+  return, argument, condition, record field)
+- It would be exhaustive: every `Expr` variant gets an arm, no wildcard
+- Phase 1 and Phase 3 would be the same function
+- `ExprCompute`, `FnBodyCallableOp`, the wildcards, and expression
+  extraction would all be unnecessary
+
+`resolve_return_expr_source` is the closest thing to `lower_expr` that
+exists today, but it started as a wiring function and was never given the
+node-creation infrastructure (endpoint resolution, transport triplet
+creation, collection lowering) that it needs to be a full expression
+lowerer.
+
 ### The wildcards
 
 There are **two** wildcards, and they compound:
@@ -119,6 +162,11 @@ There are **two** wildcards, and they compound:
 The first wildcard creates the problem. The second wildcard hides it.
 `ExprCompute` is the mechanism by which the lowerer avoids confronting the
 fact that Phase 1 didn't lower the expression.
+
+Both wildcards exist because the lowerer treats statement-level and
+expression-level lowering as separate mechanisms. A uniform `lower_expr`
+function would have neither wildcard — every `Expr` variant would be
+handled at every position.
 
 ---
 
@@ -543,7 +591,15 @@ identically. The fact that it doesn't is an architecture flaw, not a
 language design issue. The DSL should not force authors to manually
 extract let bindings to work around a compiler limitation.
 
-**Revised recommendation: expression extraction (lightweight Option A).**
+**The real fix: a uniform `lower_expr` function (Option B).** The lowerer
+needs a single recursive `lower_expr(expr) -> (NodeId, Port)` that works
+for any expression in any position. This eliminates the Phase 1 / Phase 3
+split entirely. `resolve_return_expr_source` is already ~80% of the way
+there — it just needs the node-creation infrastructure that Phase 1
+currently hoards (endpoint resolution, transport triplet creation,
+collection lowering).
+
+**Pragmatic path: expression extraction (lightweight Option A).**
 Add a pre-lowering normalization pass that walks the body's statements
 (including return expressions and record fields), finds sub-expressions
 that need node creation (pipes, calls, service calls), lifts them into
