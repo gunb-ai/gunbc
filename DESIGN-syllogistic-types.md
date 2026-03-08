@@ -1,5 +1,35 @@
 # Design: Syllogistic Type System
 
+## The Unifying Idea
+
+Types, domain models, and workflows should be the same structure.
+
+Today, extdeps modeling and workflow DAGs already share a common form:
+both are `Dag<Op>` defined in `.dag` files, composed through layers,
+processed by the same infrastructure. The type system is the outlier —
+it uses `TypeId(String)` backed by hardcoded Rust enums, living in a
+parallel universe from the DAGs it's supposed to describe.
+
+But the deeper point is this: the DAG is not just a data structure for
+workflows. It's a substrate for expressing *arbitrary causal truths*.
+A workflow DAG says "prepare, then execute, then parse" — that's a
+causal chain. A type DAG says "start with String, validate NonEmpty,
+validate URL pattern" — that's also a causal chain. An extdeps module
+says "HTTP errors have a status, a type, a message" — that's a
+structural truth expressed in the same `.dag` vocabulary.
+
+**Types are data.** Specifically, types are syllogistic truths —
+premises that compose into conclusions — expressed as DAG structure.
+A bit is a classical proposition with width 1. A byte is 8 bits.
+An integer is a word with signed arithmetic. Each statement is a
+truth. Each truth composes from simpler truths. The type DAG carries
+those truths exactly the way a workflow DAG carries causal steps.
+
+This means every algebraic property the system reasons about —
+cardinality, ordering, compatibility, encoding, presence — should
+live *on* the DAG, not beside it in ad-hoc Rust enums and match
+statements.
+
 ## Problem Statement
 
 gunbc's type system has a split personality.
@@ -426,6 +456,208 @@ Rust, or `uint8_t` in C.
 The types carry the knowledge. The compiler carries the infrastructure.
 The backends carry the rendering rules. Nothing else is needed.
 
+## Reconciling Cardinality and Set Algebra onto the DAG
+
+### The Current Split
+
+Today the system has well-developed algebraic structures — cardinality
+intervals, content encoding lattices, predicate entailment, presence
+ordering — but they live in *parallel* to the DAG, not *on* it.
+
+Cardinality is the clearest example. It exists in three places that
+don't fully agree:
+
+1. **On ports** — `Port.cardinality: Cardinality` is a direct field,
+   set manually by the lowerer: `Port::list("items", "String")` stamps
+   `ZERO_OR_MORE` at construction time.
+
+2. **In type DAGs** — `TypeOp::Wrap(WrapperKind::List)` encodes
+   "this is a list" in the type's DAG structure. `contract::cardinality()`
+   can *derive* `ZERO_OR_MORE` by walking the Wrap node.
+
+3. **In the registry bridge** — `Port::infer_cardinality(registry)` can
+   override the declared cardinality by resolving the port's `TypeId`
+   through the registry and extracting cardinality from the type DAG.
+
+These three sources can *drift apart*. The system even has a
+`audit_cardinality_drift()` function that detects when Source 1 (port
+annotation) disagrees with Source 2 (type DAG truth). The existence of
+that function is proof that cardinality isn't truly on the DAG yet.
+
+### What Should Be True
+
+The DAG should be the single source of truth. Cardinality, encoding,
+presence, access mode — every algebraic property should be a
+*derivable consequence* of the DAG structure, not a separately
+maintained annotation.
+
+In the syllogistic model:
+
+```dag
+// Cardinality is a truth expressed as type structure.
+// "List<T>" isn't a special Wrap node — it's a compositional claim:
+// "zero or more values of type T."
+
+// Layer 0: The concept of multiplicity
+type Multiplicity
+  = Exactly { count: Int where range(min: 0) }
+  | AtLeast { min: Int where range(min: 0) }
+  | Between { min: Int where range(min: 0), max: Int }
+
+// Layer 1: Named cardinalities as multiplicity specializations
+type Scalar      = Multiplicity where exactly(1)
+type Optional    = Multiplicity where between(0, 1)
+type Collection  = Multiplicity where at_least(0)
+type NonEmpty    = Multiplicity where at_least(1)
+```
+
+A `List<String>` would be expressed as a type DAG where the element
+type is `String` and the cardinality node says `Collection` (which is
+`Multiplicity where at_least(0)`). The `[0, ∞)` interval isn't a
+separate annotation — it's a structural consequence of the type's DAG.
+
+The `Cardinality` struct and its lattice algebra (join, meet, product,
+sum) remain as the *computational kernel* — the efficient
+representation the compiler uses internally. But the *source of truth*
+is the DAG, and the compiler derives the `Cardinality` interval by
+walking it.
+
+### The Full Inventory of Algebraic Truths
+
+The codebase has fourteen algebraic structures. Here is where each
+lives today and where it should live:
+
+| Structure | Algebra | Currently | Should Be |
+|-----------|---------|-----------|-----------|
+| **Cardinality** | BoundedLattice + Semiring | Port field + type DAG (dual-tracked, can drift) | Type DAG only; ports derive from it |
+| **ContentEncoding** | BoundedLattice | Rust match arms + `Predicate::Content` | Lattice ordering in `.dag`; encoding is a type |
+| **TypeContract** | Composite lattice | Extracted from `Dag<TypeOp>` by `contract.rs` | Already emerges from DAG; keep as efficient cache |
+| **Predicate** | Entailment preorder | `Validate` nodes in type DAGs | Already on DAG; formalize as `PartialOrder` trait |
+| **PresenceMode** | 3-element chain | Port field (`Required < Optional < Guardable`) | DAG metadata; formalize as `PartialOrder` |
+| **AccessMode** | Conflict relation | Port field | Should flow through resource edges on DAG |
+| **Guard** | Eq/NotEq only | Port field (impoverished) | Unify with `Predicate`; guards ARE predicates |
+| **EdgeKind** | 3-variant (DataFlow/Control/TriggerGate) | Edge field | Already on DAG |
+| **NodeKind** | 10-variant flat classification | Node field | Could be derived from edge types |
+| **FermiDepth** | Total order (Xs < S < M < L < Xl) | DSL coproduct + Rust match arms | Ordering should be in `.dag` |
+| **ServiceTransportClass** | Maps to FermiDepth | Node field | Order should emerge from FermiDepth DAG |
+| **BaseType** | Minimal lattice (Json = top) | Standalone function | Should emerge from type DAGs |
+| **SemanticCarrierKind** | Compatibility partition | String matching | Should be DAG metadata |
+| **ObligationCategory** | Flat classification | Collapsed to NodeKind | Could be derived |
+
+### The Three Unifications
+
+#### 1. Cardinality Becomes a Derivable Property
+
+Today `Port.cardinality` is an independent field. After migration,
+cardinality is derived from the port's type DAG:
+
+- `Port` for type `List<String>` → walk type DAG → find
+  `Collection` (at_least(0)) → derive `Cardinality { min: 0, max: None }`
+- `Port` for type `String` → walk type DAG → find `Scalar`
+  (exactly(1)) → derive `Cardinality { min: 1, max: Some(1) }`
+- `Port` for type `Option<Int>` → walk type DAG → find `Optional`
+  (between(0,1)) → derive `Cardinality { min: 0, max: Some(1) }`
+
+The `audit_cardinality_drift()` function becomes unnecessary — there's
+only one source. The `Cardinality` struct stays as the efficient
+internal representation, but it's always derived, never declared.
+
+The cardinality lattice operations (join, meet, product, sum) become
+*operations on type DAGs*: joining two types means joining their
+cardinality nodes. This is already how `TypeContract` works — the
+migration makes it the *only* path.
+
+#### 2. Guards Unify with Predicates
+
+Today, `Guard` is an impoverished version of `Predicate`:
+
+| Guard has | Predicate has |
+|-----------|--------------|
+| `Eq(Value)` | `Equals(PredicateValue)` |
+| `NotEq(Value)` | `Not(Box<Predicate>)` |
+| — | `InRange { min, max }` |
+| — | `Matches(String)` |
+| — | `And(Vec<Predicate>)` |
+| — | `Or(Vec<Predicate>)` |
+| — | `Content(ContentEncoding)` |
+| — | `NonEmpty` |
+
+Guards on edges and predicates on type DAGs are the same thing: truth
+assertions that gate data flow. The type DAG says "this value must
+match URL pattern" (validation). The edge guard says "this branch
+fires when condition is true" (routing). Same mechanism.
+
+After unification, `Guard` disappears. Edge gating uses `Predicate`.
+A `TriggerGate` edge carries a `Predicate` that must be satisfied for
+the downstream node to execute. This means edge guards get the full
+predicate algebra for free — range checks, pattern matching, boolean
+composition.
+
+#### 3. Lattice Orderings Move to `.dag` Files
+
+Today, the `ContentEncoding` subtype ordering
+(`ASCII < UTF8 < Text`, `Binary | Text < Unknown`) is encoded in
+Rust match arms. The `FermiDepth` ordering (`Xs < S < M < L < Xl`)
+is encoded in DSL functions but with a Rust-side match for transport
+classification.
+
+These orderings are *truths about the domain*. They belong in the DSL:
+
+```dag
+module std.encoding
+
+// The encoding lattice: ASCII is a subtype of UTF8,
+// which is a subtype of Text. Binary is incomparable with Text.
+// Unknown is top.
+type ContentEncoding
+  = ASCII   where subtype_of(UTF8)
+  | UTF8    where subtype_of(Text)
+  | Latin1  where subtype_of(Text)
+  | Text
+  | Binary
+  | Unknown where top
+
+// This IS the lattice. The compiler reads it and derives
+// join/meet/partial-order from the declared subtype_of edges.
+```
+
+The Rust `ContentEncoding` enum stays as the efficient internal
+representation, but the lattice structure is *read from the DAG*, not
+hardcoded. Adding a new encoding (say, `UTF16`) means adding a line
+to the `.dag` file with its subtype position — no Rust changes.
+
+### Why This Matters for Verilog (and Everything Else)
+
+The syllogistic type system isn't just about cleaner code. It's about
+making the DAG a *universal substrate for causal reasoning*.
+
+When a type DAG says "Bit = ClassicalProposition where width(1)", it
+carries multiple truths simultaneously:
+
+- **Cardinality truth**: exactly one value (scalar)
+- **Width truth**: 1 bit
+- **Domain truth**: classical logic
+- **Arithmetic truth**: none (a single bit has no arithmetic)
+- **Encoding truth**: binary
+
+A Verilog backend reads ALL of these truths from a single DAG walk.
+A Rust backend reads the SAME truths and renders them differently.
+A test generator reads the SAME truths and generates appropriate
+boundary values.
+
+If cardinality lived outside the DAG (as it does today), the Verilog
+backend would need to cross-reference port annotations with type
+definitions — two sources of truth, potentially inconsistent. With
+everything on the DAG, there's one source, one walk, one truth.
+
+This is what it means for types to be "arbitrary truths expressed as
+DAG structure": every fact about a type — its width, its cardinality,
+its domain, its lattice position, its valid operations — is a node or
+predicate in the type DAG. The compiler's job is to walk DAGs and
+derive consequences. The backends' job is to render those consequences
+into target-specific syntax. The `.dag` files' job is to state the
+truths.
+
 ---
 
 ## Migration Scope: Complete Audit
@@ -708,6 +940,52 @@ Test: All classification tests pass with DAG-structural queries
 
 This is cleanup. By Phase 6, the string-based paths are vestigial.
 
+#### Phase 8: Cardinality Derived from Type DAGs (1 week)
+
+Remove `Port.cardinality` as a manually-set field. Cardinality is
+always derived from the port's type DAG via the registry.
+
+```
+Touches: dag.rs (Port), lowerer (all Port::scalar/list/optional calls),
+         coerce.rs (remove audit_cardinality_drift — no longer needed)
+Lines changed: ~200 (mostly deleting cardinality arguments)
+Risk: Medium — behavioral change, but audit_cardinality_drift already
+      validates the equivalence
+Test: All existing cardinality tests pass with derived-only path
+```
+
+After this, the dual-source problem is resolved. There's one truth
+(the type DAG) and one derivation path.
+
+#### Phase 9: Guard/Predicate Unification (1 week)
+
+Replace `Guard` with `Predicate` on edge ports. `TriggerGate` edges
+carry full predicates instead of `Eq(Value)` / `NotEq(Value)`.
+
+```
+Touches: dag.rs (Guard → Predicate), lowerer (guard construction),
+         executor (guard evaluation)
+Lines changed: ~150
+Risk: Medium — behavioral equivalence but different representation
+Test: All conditional/match DAG tests pass with Predicate-based guards
+```
+
+After this, type validation and edge gating share the same algebra.
+
+#### Phase 10: Lattice Orderings in `.dag` (1 week)
+
+Define `ContentEncoding` subtype ordering, `FermiDepth` ordering,
+and `PresenceMode` ordering in `.dag` files. The compiler reads
+lattice structure from the DAG instead of Rust match arms.
+
+```
+Touches: type_op.rs (ContentEncoding lattice → DAG-derived),
+         fermi depth mapping, new .dag files
+Lines changed: ~200 (mostly deleting Rust match arms, adding .dag)
+Risk: Low — orderings are well-tested, just moving the source
+Test: Lattice property tests pass with DAG-derived orderings
+```
+
 ### Total Effort Estimate
 
 | Phase | Duration | Risk | Prerequisite |
@@ -719,7 +997,10 @@ This is cleanup. By Phase 6, the string-based paths are vestigial.
 | 5. Emit reads structure | 2 weeks | Medium | Phase 4 |
 | 6. DSL-defined primitives | 1 week | Medium | Phase 5 |
 | 7. Eliminate string classification | 1 week | Low | Phase 6 |
-| **Total** | **~10 weeks** | | |
+| 8. Cardinality derived from type DAGs | 1 week | Medium | Phase 4 |
+| 9. Guard/Predicate unification | 1 week | Medium | Phase 1 |
+| 10. Lattice orderings in `.dag` | 1 week | Low | Phase 6 |
+| **Total** | **~13 weeks** | | |
 
 Phases 1-2 are safe, incremental, and independently valuable. They
 can ship without committing to the full migration.
@@ -731,6 +1012,12 @@ fundamentally DAG-structural. Everything after is cleanup and payoff.
 Phases 5-7 are where the payoff materializes: backends become
 domain-agnostic, primitives move to the DSL, and string matching
 disappears.
+
+Phases 8-10 complete the unification: all algebraic truths
+(cardinality, predicates, lattice orderings) live on the DAG. The
+compiler becomes a pure DAG-walking machine. Phase 9 (guard/predicate
+unification) can run in parallel with phases 3-7 since it's
+independent.
 
 ### What This Enables
 
@@ -750,3 +1037,15 @@ After all seven phases:
 - **The compiler is domain-agnostic infrastructure.** It processes
   DAGs. It doesn't know what a bit is, what a secret is, or what an
   HTTP error is. The `.dag` files carry all domain knowledge.
+
+- **Cardinality, encoding, and ordering are derived, not declared.**
+  No more `Port::list("items", "String")` stamping cardinality
+  manually. The type DAG says "Collection of String" and the
+  compiler derives `[0, ∞)`. No more Rust match arms encoding
+  `ASCII < UTF8 < Text`. The `.dag` file declares subtype
+  relationships and the compiler reads them.
+
+- **Guards and predicates are the same thing.** Type validation
+  ("this string must match a URL pattern") and edge gating ("this
+  branch fires when condition is true") use the same `Predicate`
+  algebra. One mechanism for all truth assertions.
