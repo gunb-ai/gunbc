@@ -1,0 +1,22 @@
+[package]
+name = "gunbc-resolve"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared DAG resolution operations for service transports"
+
+[dependencies]
+daglang-derive = { path = "../../06_artifacts/daglang-derive" }
+daglang-driver = { path = "../../02_pipeline/daglang-driver" }
+daglang-lower = { path = "../../05_graph/daglang-lower" }
+gunbc-exec = { path = "../../09_execute/exec" }
+gunbc-infra = { path = "../../00_foundation/infra" }
+gunbc-ir = { path = "../../00_foundation/ir" }
+gunbc-lib-blob = { path = "../blob" }
+gunbc-lib-transport = { path = "../transport" }
+gunbc-primitives = { path = "../primitives" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+gunbc-test = { path = "../../10_test/test" }

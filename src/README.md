@@ -25,20 +25,29 @@ Adapted from Google C++ style for Rust:
   `InferredEntrypoint`, etc.), not through runtime `extern func` callbacks.
   The `extern func` feature has been eliminated.
 
-## Crate Map
+- **No hacks or fallbacks.** Every code path either succeeds fully or fails
+  with a clear error. No silent degradation: no lossy recovery that discards
+  input, no `.ok()` that swallows errors on fallible operations, no `continue`
+  that silently drops work, no fallback defaults that produce valid-looking but
+  wrong output. If a function cannot complete its job, it must return `Err` —
+  not an empty value, not `Value::Skipped`, not a quietly truncated result.
+  Caching is the sole exception (cache miss on error is acceptable).
+  See `POSTMORTEM.md` T13 for the full taxonomy of the ~70 violations that
+  motivated this invariant.
 
-| Crate | Purpose |
-|-------|---------|
-| `daglang/` | Compiler pipeline: parse → typecheck → lower → emit |
-| `ir/` | Core IR types, DAG structure, patterns, transport model |
-| `exec/` | DAG execution engine |
-| `resolve/` | LoweredOp → DynOp resolution, builder, dry-run |
-| `codegen/` | CLI and test code generation |
-| `infra/` | Leaf crate: hashing, manifests, freshness, workspace model |
-| `cli/` | CLI argument parsing and dispatch |
-| `test/` | Test utilities |
-| `testgen-registry/` | Testgen target metadata registry |
-| `workflow/` | Workflow planner |
-| `primitives/` | Leaf DAG operations: parse, extract, format, map, filter, fold |
-| `blob/` | Blob content acquisition: inline, file, git, S3, HTTP |
-| `transport/` | I/O boundary — the only crate that performs direct I/O |
+## Testing Invariants
+
+- **Behavioral only.** Tests assert observable behavior — outputs given inputs,
+  error messages, public API contracts. Never assert internal implementation
+  details like which private functions were called, what order internal steps
+  execute in, or how many times an internal helper runs.
+
+- **Hermetic unit tests only.** Tests must not touch the filesystem, network,
+  or environment. All external dependencies are injected or mocked. A test
+  that passes on one machine must pass on every machine.
+
+- **No tautological tests.** A test that mirrors the implementation — restating
+  the production code in test form — proves nothing. Tests must encode an
+  independent specification of *what* the code should do, not *how* it does it.
+  If deleting the test body and replacing it with a copy of the production code
+  would still pass, the test is tautological.

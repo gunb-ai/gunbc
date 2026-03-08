@@ -34,8 +34,6 @@ mod generated_tests_tools_build;
 #[cfg(test)]
 mod generated_tests_tools_codegen;
 #[cfg(test)]
-mod generated_tests_tools_design;
-#[cfg(test)]
 mod generated_tests_tools_gist;
 #[cfg(test)]
 mod generated_tests_tools_readme;

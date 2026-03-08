@@ -222,6 +222,10 @@ When a return expression references a local variable (e.g., `return { token: tok
 
 **Incident:** See T6 incident note. `github_token().token` always returns `Value::Skipped` due to this wiring gap, breaking `make gist` even when `GITHUB_TOKEN` is correctly set.
 
+**Incident — `make test-all` `tools/readme` failures (2026-03-08):** `std.patterns.acquire_subject_token()` binds `token = match runtime { ... }` where each arm calls another callable (`github_oidc`, `metadata_oidc`, `local_auth`) and then returns `token.token`. This is the same structural family as T9 even though it does not require lossy parsing: the lowerer preserved the local binding but collapsed the field access into `ExprComputeOp` instead of keeping a structural DAG path to the arm result. `ExprComputeOp` can evaluate simple record/local expressions, but it cannot execute embedded callable arms, so the return path diverges from the real graph shape. The result was a large `generated_tests_tools_readme` failure cluster: coercion/resource-handle tests, flow tests, and transport interception all disagreed with the lowered DAG. Proper fix is broader than plain `Expr::Ident` tracking: local-bound field access over conditional/callable results must lower structurally (for example via explicit record construction plus match-dispatch wiring) rather than degrading to opaque expression evaluation.
+
+**TBD — narrow or remove interpreter-backed fallback nodes:** The higher-level DAG intent is compositional modeling, not lossless modeling of every local string/arithmetic expression. That leaves an open design question: should interpreter-backed nodes exist only for closed pure leaf expressions (`PureExpr`-style semantics), with everything else required to lower structurally or fail, or should the compiler continue to permit broader evaluator-backed nodes during the C24 migration? Current `ExprCompute` / `FnBodyCallableOp` behavior mixes these two roles. That ambiguity is the underlying design pressure behind this incident and should be resolved explicitly before more fallback cases accumulate.
+
 ---
 
 ## T10: Promote `lower_warn` diagnostics to compile errors

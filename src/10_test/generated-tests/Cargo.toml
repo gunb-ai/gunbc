@@ -1,0 +1,16 @@
+[package]
+name = "gunbc-tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Auto-generated workspace tests"
+
+[dependencies]
+# Empty — this crate exists only for its tests.
+
+[dev-dependencies]
+gunbc-exec = { path = "../../09_execute/exec" }
+gunbc-ir = { path = "../../00_foundation/ir" }
+gunbc-resolve = { path = "../../08_materialize/resolve" }
+gunbc-test = { path = "../test" }
+serde_json = { workspace = true }
