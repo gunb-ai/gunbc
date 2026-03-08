@@ -456,6 +456,93 @@ Rust, or `uint8_t` in C.
 The types carry the knowledge. The compiler carries the infrastructure.
 The backends carry the rendering rules. Nothing else is needed.
 
+## No Metadata: Structure or Nothing
+
+### The Anti-Pattern
+
+The current IR has a `TypeOp::Meta(MetadataPayload)` node that carries
+"inert" information:
+
+```rust
+pub enum MetadataPayload {
+    SystemId(String),
+    SystemKind(String),
+    BehaviorId(String),
+    Invocation(String),
+    Property(String),
+    InputContract { name, type_id, required },
+    OutputContract { name, type_id },
+    PlatformRepr(PlatformRepr),   // bits, signed, float, discrete
+}
+```
+
+`Meta` is explicitly documented as "non-semantic, non-failing" — it's
+traversable but must not change runtime behavior. This is the escape
+hatch. When something is true about a type but can't be expressed as
+structure, it gets stuffed into `Meta`.
+
+`PlatformRepr` is the clearest example. It carries `{ bits: 64,
+signed: true, float: false, discrete: true }` — four fields that
+tell backends "this is `i64`." But this information is *metadata*,
+not *structure*. It's an annotation someone attached, not a
+consequence of composition. Nothing in the type DAG *derives*
+`bits: 64` from the type's structural definition. It's just... there.
+
+`SystemId`, `SystemKind`, `BehaviorId`, `Invocation`, `Property` —
+these are all the same problem. They're truths about a node that
+aren't expressed as DAG structure.
+
+### The Principle
+
+**If it's true, it's structure. If it's structure, it's in the DAG.**
+There is no metadata. There is no sidecar. If a type is 64 bits wide,
+that fact is a `width(64)` predicate on a structural node, derivable
+from the composition: `Word64 = 8 × Byte = 8 × (8 × Bit) = 64 × Bit`.
+If a system has `ReadOnly` behavior, that fact is an `implements`
+clause on the service type, not a `Property(String)` metadata blob.
+
+The `Meta` node variant should be eliminated. Everything currently in
+`MetadataPayload` either:
+
+1. **Becomes structural** — `PlatformRepr` becomes derivable from
+   type composition (width × signedness × domain). `SystemKind`
+   becomes a type relationship (service type implements a behavior).
+
+2. **Moves to the DSL** — `BehaviorId`, `Invocation`, `Property`
+   become `data` declarations or `behavior` implementations in `.dag`
+   files, same as extdeps behavioral data.
+
+3. **Disappears** — if a piece of information can't be expressed
+   structurally or as a DSL declaration, it probably shouldn't exist.
+
+### `PlatformRepr` Specifically
+
+Today:
+
+```rust
+PlatformRepr { bits: 64, signed: true, float: false, discrete: true }
+```
+
+This is metadata attached to `Int` to tell backends "emit `i64`."
+
+After the migration, there is no `PlatformRepr`. Instead:
+
+```dag
+type Int64 = Word64 where signed(twos_complement)
+```
+
+The backend walks the type DAG:
+- `Int64` → `Word64` → `8 × Byte` → `8 × (8 × Bit)` → width is
+  `8 × 8 = 64` (derived from structure)
+- `signed(twos_complement)` → signed (declared as predicate)
+- `Word64` → discrete (bit-based types are always discrete)
+- Not float (no float-domain marker in the chain)
+
+Every field of `PlatformRepr` is now a *derived consequence* of
+structure, not an opaque annotation. The backend computes the same
+`{ bits: 64, signed: true, float: false, discrete: true }` tuple,
+but it computes it by walking the DAG, not by reading a metadata blob.
+
 ## Stacking Tautologies: The General Mechanism
 
 ### The Insight
@@ -1174,3 +1261,271 @@ After all seven phases:
   ("this string must match a URL pattern") and edge gating ("this
   branch fires when condition is true") use the same `Predicate`
   algebra. One mechanism for all truth assertions.
+
+- **No metadata.** There is no `Meta` node, no `PlatformRepr`, no
+  `MetadataPayload`. If something is true, it's structure. If it's
+  structure, it's in the DAG. Backends derive everything by walking
+  the DAG — bit width from composition, signedness from predicates,
+  domain from type ancestry.
+
+---
+
+## Future State: What the `.dag` World Looks Like
+
+The existing `.dag` files are not sacred. If this design is right,
+they can be rewritten to match. What follows is a sketch of the
+end state — the full stack from foundational logic through to a
+tool like `gist.dag`, with no metadata, no hardcoded primitives, and
+every truth expressed as DAG structure.
+
+### Layer 0: Logic (`std/logic.dag`)
+
+```dag
+module std.logic
+
+// Tautological. No imports. No external references.
+
+type Truth = True | False
+
+type Gate
+  = Not   { input: Truth }
+  | And   { a: Truth, b: Truth }
+  | Or    { a: Truth, b: Truth }
+  | Nand  { a: Truth, b: Truth }
+  | Xor   { a: Truth, b: Truth }
+```
+
+This is the bottom. "A truth value is true or false." Everything
+above inherits from this.
+
+### Layer 0: Algebra (`std/algebra.dag`)
+
+```dag
+module std.algebra
+
+// Tautological. Algebraic law definitions.
+
+behavior PartialOrder {
+  law reflexive:     a <= a
+  law transitive:    a <= b, b <= c  implies  a <= c
+  law antisymmetric: a <= b, b <= a  implies  a == b
+}
+
+behavior Lattice extends PartialOrder {
+  operation join(a, b) -> Self
+  operation meet(a, b) -> Self?
+  law absorption: join(a, meet(a, b)) == a  when meet exists
+}
+
+behavior Arithmetic {
+  operation add(a, b) -> Self
+  operation sub(a, b) -> Self
+  operation mul(a, b) -> Self
+  law commutative_add: add(a, b) == add(b, a)
+  law associative_add: add(add(a, b), c) == add(a, add(b, c))
+  law identity_add:    add(a, zero) == a
+}
+```
+
+### Layer 1: Bits (`std/bit.dag`)
+
+```dag
+module std.bit
+
+import std.logic { Truth }
+
+// A bit is a truth value with physical width 1.
+type Bit = Truth where width(1)
+
+// Fixed-size aggregates. No magic — just products with length constraints.
+type Nibble  = { bits: List<Bit> where length(4) }
+type Byte    = { bits: List<Bit> where length(8) }
+type Word16  = { bytes: List<Byte> where length(2) }
+type Word32  = { bytes: List<Byte> where length(4) }
+type Word64  = { bytes: List<Byte> where length(8) }
+```
+
+### Layer 1: Encoding (`std/encoding.dag`)
+
+```dag
+module std.encoding
+
+import std.algebra { Lattice }
+
+type Encoding = ASCII | UTF8 | Latin1 | Text | Binary | Unknown
+  implements Lattice {
+    ordering = [
+      ASCII <= UTF8, UTF8 <= Text,
+      Latin1 <= Text,
+      Text <= Unknown, Binary <= Unknown,
+    ]
+    top = Unknown
+  }
+```
+
+No Rust `ContentEncoding` enum. No `is_subtype_of` match arms. The
+lattice is declared in the DSL. The compiler reads it.
+
+### Layer 2: Integers (`std/integer.dag`)
+
+```dag
+module std.integer
+
+import std.bit { Byte, Word16, Word32, Word64 }
+import std.algebra { Arithmetic, Lattice }
+
+type UInt8  = Byte   where unsigned
+type UInt16 = Word16 where unsigned
+type UInt32 = Word32 where unsigned
+type UInt64 = Word64 where unsigned
+
+type Int8  = Byte   where signed(twos_complement)
+type Int16 = Word16 where signed(twos_complement)
+type Int32 = Word32 where signed(twos_complement)
+type Int64 = Word64 where signed(twos_complement)
+
+// Both signed and unsigned integers support arithmetic.
+// The compiler generates property tests for all Arithmetic laws
+// on every type that declares this.
+type Int = Int64 implements Arithmetic
+type UInt = UInt64 implements Arithmetic
+```
+
+### Layer 2: Strings (`std/string.dag`)
+
+```dag
+module std.string
+
+import std.bit { Byte }
+import std.encoding { Encoding }
+
+// A string is a sequence of bytes with an encoding.
+// This replaces the opaque "String = Identity" primitive.
+type String = { bytes: List<Byte>, encoding: Encoding }
+
+// Char is a unicode scalar value.
+type Char = Int where range(min: 0, max: 1114111), brand("Char")
+```
+
+### Layer 2: Containers (`std/containers.dag`)
+
+```dag
+module std.containers
+
+// Containers are structural. Cardinality emerges from structure.
+// No WrapperKind enum. No special Wrap/Unwrap nodes.
+
+// "List<T>" means: zero or more T.
+// Cardinality [0, ∞) is a derived consequence, not an annotation.
+type List<T> = { elements: Collection<T> }
+
+// "Option<T>" means: zero or one T.
+type Option<T> = { value: Optional<T> }
+
+// "Map<K, V>" means: collection of key-value pairs.
+type Map<K, V> = { entries: List<{ key: K, value: V }> }
+
+// "Set<T>" means: collection of unique T.
+type Set<T> = { elements: List<T> where unique }
+```
+
+### Layer 3: Refinements (`std/types.dag` — rewritten)
+
+```dag
+module std.types
+
+import std.integer { Int, UInt8 }
+import std.string { String, Char }
+import std.containers { List, Option, Map }
+import std.encoding { Encoding }
+import std.bit { Byte }
+
+// Refined types. Same as today, but now built on structural primitives.
+type Url          = String where non_empty, pattern("^https?://")
+type FilePath     = String where non_empty
+type Email        = String where pattern("^[^@]+@[^@]+\\.[^@]+$")
+type Port         = Int where range(min: 1, max: 65535)
+type HttpStatus   = Int where range(min: 100, max: 599)
+type CommitSha    = String where pattern("^[a-f0-9]{40}$")
+type Secret       = String where brand("Secret")
+type Bytes        = List<UInt8>
+type Json         = String | Int | Bool | List<Json> | Map<String, Json>
+
+// Bool is no longer a primitive. It's a truth value from logic.
+import std.logic { Truth }
+type Bool = Truth
+```
+
+### Layer 5: Tools (`tools/gist.dag` — unchanged)
+
+```dag
+module tools.gist
+
+import extdeps.git
+import extdeps.github.auth { github_token }
+import extdeps.github.gists
+import std.resources { Network }
+import std.types { CommitSha, Url }
+
+func gist(public: Bool = false) -> { url: Url }
+  uses net: Network
+{
+  branch_info = git.Core.CurrentBranch()
+  listing = git.Core.LsFiles()
+  // ... exactly the same as today ...
+}
+```
+
+This is the point: **`gist.dag` doesn't change**. The tool-level DSL
+is already compositional. It imports types, calls services, composes
+results. The revolution happens *below* it — in the type definitions
+that `CommitSha`, `Url`, `Bool`, `String`, `List` resolve to.
+
+Today, `Bool` resolves to `BaseType::Bool` (a Rust enum variant).
+Tomorrow, `Bool` resolves to `Truth` (a coproduct of `True | False`),
+which resolves to `std.logic.Truth` (a tautological definition in the
+DSL). The tool code is untouched. The type system underneath it
+becomes fully compositional.
+
+### What a Verilog Tool Would Look Like
+
+```dag
+module tools.blink
+
+import std.bit { Bit }
+import std.integer { UInt32 }
+import extdeps.hardware.clock { Clock }
+import extdeps.hardware.io { Led }
+
+// A counter that toggles an LED every N cycles.
+func blink(period: UInt32) -> { led: Bit }
+  uses clk: Clock
+{
+  counter = UInt32 where range(min: 0, max: period)
+  tick = clk.Tick()
+  next_count = if counter == period {
+    { count: 0, toggle: true }
+  } else {
+    { count: counter + 1, toggle: false }
+  }
+  counter = next_count.count
+  led = if next_count.toggle { !led } else { led }
+  return { led: led }
+}
+```
+
+This looks like `gist.dag` — imports, a `func`, service calls, data
+flow. The types (`Bit`, `UInt32`, `Clock`) are defined in the DSL
+using the same structural primitives. A Verilog backend reads the type
+DAGs, finds `width(1)` on `Bit`, `width(32)` on `UInt32`, and emits:
+
+```verilog
+module blink(input clk, output reg led);
+  reg [31:0] counter;
+  // ...
+endmodule
+```
+
+No hardware-specific IR. No special opcodes. The `.dag` file IS the
+specification. The backend IS the renderer. The type system IS the
+bridge between them.
