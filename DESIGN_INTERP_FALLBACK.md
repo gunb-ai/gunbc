@@ -530,10 +530,65 @@ because a pipe chain or lambda is nested inside them. Once pipes are
 restricted to statement position, these structural synthesis functions
 should succeed without fallback.
 
-Option A (flatten) achieves the same result automatically but hides the
+~~Option A (flatten) achieves the same result automatically but hides the
 transformation from the DSL author. Option B (tree-recursive) is the
 most general but the largest change. Option C is the simplest and most
-aligned with the language's design philosophy.
+aligned with the language's design philosophy.~~
+
+**Update:** Option C (restrict the language) is wrong. `return { total:
+stages |> count() }` is trivially equivalent to `let total = stages |>
+count(); return { total: total }`. The compiler should handle both
+identically. The fact that it doesn't is an architecture flaw, not a
+language design issue. The DSL should not force authors to manually
+extract let bindings to work around a compiler limitation.
+
+**Revised recommendation: expression extraction (lightweight Option A).**
+Add a pre-lowering normalization pass that walks the body's statements
+(including return expressions and record fields), finds sub-expressions
+that need node creation (pipes, calls, service calls), lifts them into
+synthetic `let` bindings prepended to the statement list, and replaces
+them with identifiers.
+
+After extraction:
+```
+// Before (what the DSL author writes):
+return { total: stages |> count(), passed: passed }
+
+// After extraction (what the lowerer sees):
+let __pipe_0 = stages |> count()
+return { total: __pipe_0, passed: passed }
+```
+
+Phase 1 handles `let __pipe_0 = stages |> count()` — it's a top-level
+pipe chain, so it creates Collection nodes and registers the binding.
+Phase 3 handles `return { total: __pipe_0 }` — it's an identifier
+reference, so it wires to the Collection node's output.
+
+This is:
+- **Small**: one new function (`extract_nested_computation`)
+- **Localized**: pre-processing step, doesn't change Phase 1 or Phase 3
+- **Correct**: extracted form is semantically identical to the original
+- **Aligned**: uses the existing architecture instead of fighting it
+- **Incremental**: can extract one expression type at a time (pipes first,
+  then calls, then service calls)
+
+The expression types to extract (in priority order):
+1. `Pipe` / `PipeCall` — triggers PipeOp fallback; Collection lowering exists
+2. `Call` — triggers catch-all; callable endpoint creation exists
+3. `ServiceCall` — triggers catch-all; transport triplet creation exists
+4. `For` — triggers ForOp fallback; loop body expansion exists
+
+After extracting these four, the only expressions remaining in return
+position are: identifiers, field accesses, literals, and pure structural
+operations (arithmetic, string interpolation, conditionals, records, lists).
+These are exactly the forms that `resolve_return_expr_source` already
+handles structurally. The `_` catch-all and `synthesize_expr_compute`
+become unreachable.
+
+Long-term, the Phase 1 / Phase 3 split is the real flaw — the lowerer
+should be expression-recursive so extraction isn't needed. But expression
+extraction gets to correctness without restructuring the compiler, and it
+can be implemented incrementally.
 
 After all causes are resolved (by any option), `synthesize_expr_compute` and
 `synthesize_tagged_evaluator` have no callers and can be deleted, along with
