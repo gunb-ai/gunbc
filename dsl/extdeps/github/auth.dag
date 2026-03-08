@@ -8,14 +8,13 @@ module extdeps.github.auth
 import extdeps.cloud.gcp.gcp
 import extdeps.cloud.gcp.secret_manager
 import extdeps.shell
-import std.resources { Filesystem, Network }
+import std.resources { Network }
 import std.types { NonEmptyStr }
 
 func github_token(
   project_id: NonEmptyStr = "gunbai-secrets",
   secret_name: NonEmptyStr = "github-token"
 ) -> { token: Secret }
-  uses fs: Filesystem(mode: Read)
   uses net: Network
 {
   // Check for direct GITHUB_TOKEN env var (local dev shortcut)

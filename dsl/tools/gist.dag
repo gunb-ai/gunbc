@@ -10,8 +10,7 @@ module tools.gist
 import extdeps.git
 import extdeps.github.auth { github_token }
 import extdeps.github.gists
-import std.resources { Filesystem, Network }
-import std.patterns { read_text_files }
+import std.resources { Network }
 import std.types { CommitSha, Url }
 
 // ── Content rendering (pure DSL) ────────────────────────────────────
@@ -76,18 +75,24 @@ fn render_diff_markdown(diff: String, branch: String, base_ref: CommitSha) -> St
 // ── Entrypoints ─────────────────────────────────────────────────────
 
 func gist(public: Bool = false) -> { url: Url }
-  uses fs: Filesystem(mode: Read)
   uses net: Network
 {
   branch_info = git.Core.CurrentBranch()
   listing = git.Core.LsFiles()
 
-  result = read_text_files(paths: listing.files)
+  // Read each tracked file via git show HEAD:path.
+  // Uses git's committed tree, bypassing the unimplemented Filesystem
+  // interface. Binary files produce empty content (git show errors
+  // are non-fatal for the gist use case).
+  file_contents = for path in listing.files {
+    content = git.Core.Show(ref: "HEAD", path: path)
+    { path: path, content: content.content }
+  }
 
   content = build_snapshot_content(
     branch: branch_info.branch,
-    files: result.files,
-    skipped: result.skipped
+    files: file_contents,
+    skipped: []
   )
   token = github_token()
   gist_result = github.Gist.Create(
@@ -100,7 +105,6 @@ func gist(public: Bool = false) -> { url: Url }
 }
 
 func gist_diff(base_ref: CommitSha = "HEAD~1", public: Bool = false) -> { url: Url }
-  uses fs: Filesystem(mode: Read)
   uses net: Network
 {
   current = git.Core.CurrentBranch()
@@ -117,7 +121,6 @@ func gist_diff(base_ref: CommitSha = "HEAD~1", public: Bool = false) -> { url: U
 }
 
 func gist_recent(since: String = "3.days.ago", public: Bool = false) -> { url: Url }
-  uses fs: Filesystem(mode: Read)
   uses net: Network
 {
   current = git.Core.CurrentBranch()

@@ -71,7 +71,7 @@ pub fn build_dsl_graph(
                 ))
             })?;
 
-        slice_dag_from_entry(result.dag, &entrypoint.node_id)?
+        slice_dag_from_entry_preserving_fn_bodies(result.dag, &entrypoint.node_id)?
     } else {
         result.dag
     };
@@ -281,13 +281,37 @@ fn try_store_to_cache(
     Ok(())
 }
 
-fn slice_dag_from_entry<T>(mut dag: Dag<T>, entry_node_id: &str) -> Result<Dag<T>, BuilderError> {
+/// Slice a `Dag<LoweredOp>` to the entry node's reachable subgraph,
+/// preserving all Callable nodes with fn_body.
+///
+/// fn items with bodies are used by `evaluate_fn_body` as sibling functions.
+/// They're referenced by name from within other fn bodies, not via DAG edges,
+/// so standard edge-based reachability misses them. Including all fn_body nodes
+/// ensures the sibling fn lookup in `resolve_lowered_dag_with` succeeds.
+fn slice_dag_from_entry_preserving_fn_bodies(
+    mut dag: Dag<daglang_lower::LoweredOp>,
+    entry_node_id: &str,
+) -> Result<Dag<daglang_lower::LoweredOp>, BuilderError> {
     if !dag.nodes.iter().any(|node| node.id.0 == entry_node_id) {
         return Err(BuilderError::InternalInvariant(format!(
             "entry node `{entry_node_id}` not found in compiled DAG"
         )));
     }
 
+    // Collect IDs of all Callable nodes with fn_body — these must survive slicing.
+    let fn_body_node_ids: HashSet<String> = dag
+        .nodes
+        .iter()
+        .filter_map(|node| match &node.body {
+            gunbc_ir::NodeBody::Opaque(daglang_lower::LoweredOp::Callable {
+                fn_body: Some(_),
+                ..
+            }) => Some(node.id.0.clone()),
+            _ => None,
+        })
+        .collect();
+
+    // Standard edge-based reachability from entry node.
     let mut include = HashSet::<String>::new();
     let mut backward_stack = vec![entry_node_id.to_string()];
     while let Some(node_id) = backward_stack.pop() {
@@ -301,8 +325,8 @@ fn slice_dag_from_entry<T>(mut dag: Dag<T>, entry_node_id: &str) -> Result<Dag<T
         }
     }
 
-    let mut forward_seen = HashSet::<String>::new();
     let mut forward_stack = vec![entry_node_id.to_string()];
+    let mut forward_seen = HashSet::<String>::new();
     while let Some(node_id) = forward_stack.pop() {
         if !forward_seen.insert(node_id.clone()) {
             continue;
@@ -314,6 +338,9 @@ fn slice_dag_from_entry<T>(mut dag: Dag<T>, entry_node_id: &str) -> Result<Dag<T
             }
         }
     }
+
+    // Preserve all fn_body nodes (used by evaluate_fn_body as sibling fns).
+    include.extend(fn_body_node_ids);
 
     dag.nodes.retain(|node| include.contains(&node.id.0));
     dag.edges

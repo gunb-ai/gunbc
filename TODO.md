@@ -95,3 +95,77 @@ This works for the current pattern (exactly one branch fires, others produce Ski
 - Only trial-validate when the fallback `NonEmpty` matcher is used (not typed matchers like IsBool/IsInt)
 - Accept the example if the trial execution fails (the test may work differently)
 - Only skip if the trial succeeds AND the matcher explicitly fails on the produced value
+
+---
+
+## T6: Parser: multi-statement blocks in fn body expression position
+
+**Priority: Medium**
+**Files:** `src/core/daglang/daglang-syntax/src/parser.rs`
+
+`parse_fn_body_lossy()` falls back to lossy parsing when the fn body contains multi-statement blocks in expression position (e.g., `let` bindings inside `if` branches). The lossy body has `fn_body: None` at resolve time, so the fn item resolves as `DeclaredOutputCallableOp` (identity passthrough) instead of `FnBodyCallableOp`. This causes a runtime error: "missing required declared output passthrough: `return`".
+
+**Current workaround:** DSL authors must hoist `let` bindings out of `if`/`match` branches in `fn` items. Example from `tools/gist.dag`:
+```
+// BROKEN: let inside if branch causes lossy parse
+let skip_section = if skipped |> count() > 0 {
+    let skip_lines = skipped |> map(s => "- {s}") |> join("\n")
+    "\n\n## Skipped\n\n{skip_lines}"
+} else { "" }
+
+// FIXED: hoist let before if
+let skip_lines = skipped |> map(s => "- {s}") |> join("\n")
+let skip_section = if skipped |> count() > 0 {
+    "\n\n## Skipped\n\n{skip_lines}"
+} else { "" }
+```
+
+**Proper fix:** `consume_brace_block_expr()` in the parser should handle multi-statement blocks in expression position — parse `let` bindings + final expression as a block expression (similar to Rust's `{ let x = ...; expr }`). This would also unblock lambdas with `let` bindings inside fn bodies, which currently produce empty Records.
+
+**Diagnosis:** When `parse_fn_body()` fails or adds errors, `parse_body_lossy()` resets position and calls `consume_brace_block_contents()`, discarding the entire body and marking `lossy: true`. The lowerer then skips fn_body collection for lossy bodies (line ~2415 in `daglang-lower/src/lib.rs`).
+
+**Detection gap:** Lossy fn bodies are tracked in `CompileOutput.lossy_fn_bodies` but only for informational purposes — no warning or error is emitted. Adding a compile-time warning for lossy fn bodies would catch this class of bug earlier.
+
+---
+
+## T7: Filesystem interface has no concrete binding (Real mode broken)
+
+**Priority: High**
+**Files:** `dsl/extdeps/github/auth.dag`, `dsl/std/patterns.dag`, `src/core/resolve/src/service_ops/service_ops_impl.rs`
+
+`InterfaceStubExecuteOp` always errors in Real mode with "has no concrete binding". This means any `func` that declares `uses fs: Filesystem(...)` unconditionally fails in Real mode — even if the code path that actually uses Filesystem capabilities is never reached.
+
+**Impact:** Resource acquisition runs unconditionally at DAG execution start. If the acquire node errors, `GenericRestPrepareOp` sees Skipped inputs downstream and skips the entire prepare → execute → parse chain, producing empty output. This caused `make gist` to silently produce empty results despite dry-run passing.
+
+**Current workaround:** Removed `uses fs: Filesystem(mode: Read)` from `github_token()` in `auth.dag`. The ADC fallback path (reading `~/.config/gcloud/application_default_credentials.json`) is now unreachable — `github_token` only works via the `GITHUB_TOKEN` env var. Any DSL tool using `read_text_files` or `classify_files` from `std/patterns.dag` also fails in Real mode for the same reason.
+
+**Proper fix:** Implement a concrete Filesystem transport binding (file read/write/probe via actual I/O), or make resource acquisition conditional so unused resources don't block execution.
+
+**Affected patterns:**
+- `std.patterns.read_text_files` — uses `Filesystem.probe` + `Filesystem.read`
+- `std.patterns.classify_files` — uses `Filesystem.probe`
+- Any `func` with `uses fs: Filesystem(...)` in its signature
+
+---
+
+## T8: Auth layer separation — services should declare needs, not materialization
+
+**Priority: Medium**
+**Files:** `dsl/extdeps/github/auth.dag`, `dsl/extdeps/cloud/gcp/gcp.dag`
+
+`github_token()` in `auth.dag` mixes two concerns: what GitHub needs (a token with `gist` scope) and how to get it (env var, ADC refresh, Secret Manager). This is a GitHub-specific credential function, but the materialization logic (env → ADC → Secret Manager) is generic and will be duplicated for every service that needs a secret.
+
+**Current state:** Each service consumer manually calls `github_token()` and threads the token through. The service definition (`gists.dag`) takes `auth_token: Secret` as an explicit input. If we add a second GitHub service (issues, PRs), each caller must independently acquire and pass the token.
+
+**Proper fix:** Follow the same interface/binding pattern used for resources:
+
+1. **Service declares requirements**: `github.Gist.Create` declares "I need a credential with `gist` scope" as a capability requirement, not an explicit input field
+2. **Credential provider interface**: Generic `CredentialProvider` interface with operations like `resolve(scope) -> Secret`. Concrete bindings: `EnvVarProvider` (reads env), `GcpSecretManagerProvider` (ADC + refresh + Secret Manager), etc.
+3. **Runtime resolution**: The executor resolves credential requirements to a provider based on execution environment (local dev → env var, CI → GCP Secret Manager), similar to how resource interfaces get concrete bindings
+4. **Service config binding**: The `auth: BearerToken` + `auth_input: auth_token` fields in service config would reference the credential provider instead of an explicit input port
+
+**Benefits:**
+- GitHub service definitions only declare what scopes they need
+- Credential materialization is defined once, reused across all services
+- Environment-specific auth strategies are configured at the profile level (unit_test / local / cloud_run), matching the existing profile model in `dsl/sdlc/profiles/`
+- No more threading `auth_token` through every caller

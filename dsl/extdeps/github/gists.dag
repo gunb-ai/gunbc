@@ -119,7 +119,15 @@ service github.Gist {
       id: GistId
       html_url: Url
     }
-    transport rest { method: POST, path: "/gists" }
+    transport rest {
+      method: POST,
+      path: "/gists",
+      body: {
+        description: description,
+        public: public,
+        files: { "snapshot.md": { content: content } }
+      }
+    }
     response {
       201 => Gist
       401 => GitHubErrorShape
