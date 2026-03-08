@@ -66,3 +66,7 @@ path = "../../target/codegen/bin/readme/main.rs"
 [[bin]]
 name = "gunbc-gist"
 path = "../../target/codegen/bin/gist/main.rs"
+
+[[bin]]
+name = "gunbc-design"
+path = "../../target/codegen/bin/design/main.rs"
