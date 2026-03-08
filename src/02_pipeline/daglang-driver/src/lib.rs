@@ -542,16 +542,14 @@ pub fn compile_data_from_module_permissive(
     })
 }
 
-/// Extract fn bodies from a lowered DAG, including those inside SubDag nodes
-/// (Bridge 1: fn items lowered as SubDag with ExprCompute inner node).
+/// Extract fn bodies from a lowered DAG.
 fn extract_fn_bodies_from_dag(
     dag: &gunbc_ir::Dag<daglang_lower::LoweredOp>,
     fns: &mut HashMap<String, daglang_lower::LoweredFnBody>,
 ) {
-    use daglang_lower::{CallableKind, LoweredOp, PrimitiveOpKind};
+    use daglang_lower::{CallableKind, LoweredOp};
     for node in &dag.nodes {
         match &node.body {
-            // Callable nodes with fn_body (e.g., loop body ops).
             gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable {
                 kind: CallableKind::Fn,
                 name,
@@ -559,19 +557,6 @@ fn extract_fn_bodies_from_dag(
                 ..
             }) => {
                 fns.insert(name.clone(), *body.clone());
-            }
-            // Bridge 1: SubDag nodes containing ExprCompute.
-            gunbc_ir::node::NodeBody::SubDag(inner, _) => {
-                for inner_node in &inner.nodes {
-                    if let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive {
-                        kind: PrimitiveOpKind::ExprCompute { fn_body, .. },
-                        name,
-                        ..
-                    }) = &inner_node.body
-                    {
-                        fns.insert(name.clone(), *fn_body.clone());
-                    }
-                }
             }
             _ => {}
         }

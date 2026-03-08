@@ -335,19 +335,13 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerClassification> {
             kind: PrimitiveOpKind::ContentUpsertOutputPath { .. },
             ..
         } => return Some(HandlerClassification::MetadataOnly),
-        // C24 migration note:
-        // GetField/ExprCompute are still interpreter-backed in the resolve layer. We
+        // C24: GetField is still interpreter-backed in the resolve layer. We
         // keep layer-1 compile unblocked by emitting passthrough stubs until
-        // dedicated handlers land.
+        // a dedicated handler lands.
         LoweredOp::Primitive {
             kind: PrimitiveOpKind::GetField { .. },
             ..
         } => return Some(HandlerClassification::Handler(HandlerKind::Passthrough)),
-        LoweredOp::Primitive {
-            kind: PrimitiveOpKind::ExprCompute { .. },
-            ..
-        } => return Some(HandlerClassification::Handler(HandlerKind::Passthrough)),
-        // ExprCompute already handled above
         // C24: All remaining structural primitive ops use passthrough stubs.
         LoweredOp::Primitive { kind, .. } => {
             debug_assert!(

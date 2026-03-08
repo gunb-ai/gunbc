@@ -208,19 +208,7 @@ pub enum PrimitiveOpKind {
     ContentUpsertOutputPath {
         path: String,
     },
-    /// A compute node that evaluates a lowered expression body.
-    /// Created by the lowerer when complex expressions cannot be represented
-    /// as direct wiring edges.
-    ExprCompute {
-        fn_body: Box<LoweredFnBody>,
-        /// Pure `fn` definitions the expression body may call at runtime.
-        /// Populated when the expression contains `Call("fn_name", ...)`
-        /// references to user-defined pure fns (e.g., `stage_from_output`).
-        /// BTreeMap for deterministic serialization in DAG snapshots.
-        sibling_fns: std::collections::BTreeMap<String, LoweredFnBody>,
-    },
     /// C24: Extract a named field from a Map/Record/JSON input.
-    /// Replaces `ExprCompute` + `__` convention for simple field projections.
     GetField {
         field: String,
     },
@@ -268,19 +256,6 @@ pub enum PrimitiveOpKind {
     /// Output is a Value::List of all elements in order.
     ListConstruct {
         count: usize,
-    },
-    /// C24: Pipe expression — `expr |> method(args)`.
-    /// Delegates to the expression evaluator (like ExprCompute) but tagged
-    /// distinctly so we can track ExprCompute elimination progress.
-    PipeOp {
-        fn_body: Box<LoweredFnBody>,
-        sibling_fns: std::collections::BTreeMap<String, LoweredFnBody>,
-    },
-    /// C24: For expression — `for x in list { body }`.
-    /// Like PipeOp, delegates to evaluator but tagged distinctly.
-    ForOp {
-        fn_body: Box<LoweredFnBody>,
-        sibling_fns: std::collections::BTreeMap<String, LoweredFnBody>,
     },
 }
 
@@ -370,8 +345,6 @@ impl PrimitiveOpKind {
                 | Self::NullCoalesce
                 | Self::VariantConstruct { .. }
                 | Self::ListConstruct { .. }
-                | Self::PipeOp { .. }
-                | Self::ForOp { .. }
         )
     }
 
@@ -389,7 +362,6 @@ impl PrimitiveOpKind {
             }
             Self::CompareEquality => ObligationCategory::InterfaceContractVerification,
             Self::ContentUpsertOutputPath { .. } => ObligationCategory::None,
-            Self::ExprCompute { .. } => ObligationCategory::None,
             Self::GetField { .. } => ObligationCategory::None,
             // C24: All remaining structural primitives are pure computation — no obligations.
             _ => {
@@ -1533,15 +1505,13 @@ struct LoweringContext<'a> {
     bound_service_sources: &'a HashMap<String, ServiceTransportEndpoint>,
     expanded_results: &'a HashMap<String, PatternExpansionResult>,
     /// Local let bindings (non-call) from the current callable body.
-    /// Used to resolve local variable references in return expressions
-    /// so they can be synthesized as ExprCompute nodes (C10 fix).
+    /// Used to resolve local variable references in return expressions.
     local_let_bindings: &'a HashMap<String, &'a Expr>,
-    /// The body statements of the current callable, for including
-    /// local let stmts in ExprCompute fn bodies.
+    /// The body statements of the current callable, for fn body evaluation.
     body_stmts: &'a [Stmt],
     /// Pre-collected lowered bodies for all pure `fn` definitions in the project.
-    /// Passed to ExprCompute nodes as `sibling_fns` so the runtime evaluator
-    /// can execute user-defined fn calls (e.g., `stage_from_output`).
+    /// Passed to structural nodes (e.g. MatchDispatch) as `sibling_fns` so
+    /// the runtime evaluator can execute user-defined fn calls.
     all_fn_bodies: &'a std::collections::BTreeMap<String, LoweredFnBody>,
     /// C24: Known sum-type variant names for match arm lowering.
     variant_names: &'a HashSet<String>,
@@ -7637,9 +7607,8 @@ fn derive_service_transport_triplets(
 
 /// Collect lowered fn bodies for all pure `fn` definitions in the project.
 ///
-/// These are passed as `sibling_fns` to ExprCompute nodes so the runtime
-/// evaluator can execute calls to user-defined pure fns (e.g., `stage_from_output`)
-/// that appear inside ExprCompute expression bodies.
+/// These are passed as `sibling_fns` to structural nodes (e.g. MatchDispatch)
+/// so the runtime evaluator can execute calls to user-defined pure fns.
 fn collect_project_fn_bodies(
     project: &TypedProject,
     variant_names: &HashSet<String>,
@@ -7783,7 +7752,7 @@ fn add_service_call_edges(
     profile_bound_interfaces: &HashSet<String>,
     known_interface_types: &HashSet<String>,
 ) -> Result<(), LowerError> {
-    // Collect all pure fn bodies so ExprCompute nodes can call them at runtime.
+    // Collect all pure fn bodies so structural nodes can call them at runtime.
     let all_fn_bodies = collect_project_fn_bodies(project, wctx.variant_names)?;
     // Track transport endpoint usage across ALL modules and callables so
     // that the second caller to reference the same service operation gets
@@ -10232,8 +10201,7 @@ fn lower_expr(
                         ctx.module_name, ctx.item_name
                     )));
                 }
-                // C24: For parameters, synthesize a GetField node instead of
-                // falling through to ExprCompute + __ convention.
+                // C24: For parameters, synthesize a GetField node.
                 if let Some(param_ty) = ctx.param_types.get(base_ident) {
                     return synthesize_get_field(
                         builder,
@@ -10252,8 +10220,6 @@ fn lower_expr(
             }
             // C24: For complex base expressions, try recursive resolution.
             // If the base resolves, add a structural GetField node.
-            // If not, fall through to ExprCompute (don't force synthesis for
-            // expressions with local let bindings — the fn body evaluator handles those).
             let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
             let (base_node, base_port) = lower_expr(
                 builder,
@@ -10832,7 +10798,6 @@ fn collect_expr_leaf_refs(
 }
 
 /// C24: Synthesize a GetField node to extract a named field from a parameter.
-/// Replaces `ExprCompute` + `__` convention for simple `param.field` projections.
 fn synthesize_get_field(
     builder: &mut DagBuilder,
     ctx: &LoweringContext<'_>,
@@ -11124,7 +11089,6 @@ fn lower_match_arm_for_dispatch(
 
 /// C24-P1: Synthesize a MatchDispatch structural node.
 /// Resolves the scrutinee and collects leaf refs from arm bodies.
-/// Falls back to ExprCompute if leaf refs can't be resolved.
 fn synthesize_match_dispatch(
     builder: &mut DagBuilder,
     ctx: &LoweringContext<'_>,

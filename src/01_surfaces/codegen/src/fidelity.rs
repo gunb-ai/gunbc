@@ -142,19 +142,6 @@ fn compile_stdlib_fns() -> HashMap<String, LoweredFnBody> {
             }) => {
                 fns.insert(name.clone(), *body.clone());
             }
-            // Bridge 1: SubDag containing ExprCompute
-            NodeBody::SubDag(inner, _) => {
-                for inner_node in &inner.nodes {
-                    if let NodeBody::Opaque(LoweredOp::Primitive {
-                        kind: daglang_lower::PrimitiveOpKind::ExprCompute { fn_body, .. },
-                        name,
-                        ..
-                    }) = &inner_node.body
-                    {
-                        fns.insert(name.clone(), *fn_body.clone());
-                    }
-                }
-            }
             _ => {}
         }
     }

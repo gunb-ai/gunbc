@@ -474,8 +474,7 @@ func run() -> { report: String } {
     let resolved =
         resolve_lowered_dag(&lowered.dag).expect("resolved DAG should build from lowered graph");
     // C10: FnBodyCallableOp evaluates the fn body directly, producing the
-    // return value from the fn's computation instead of requiring passthrough
-    // wiring from ExprCompute nodes.
+    // return value from the fn's computation.
     let result = execute_resolved_dag(&resolved, ExecutionMode::Real, None);
     assert!(
         result.is_ok(),

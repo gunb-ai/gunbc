@@ -419,17 +419,11 @@ fn classify_primitive(
             outputs,
             body: PureBody::Literal(serde_json::Value::Null),
         }),
-        // C24: GetField and ExprCompute are interpreter-only operations
-        // resolved at runtime by the resolve layer.
-        // They must not reach the emitter —
-        // the InterpreterOnly guard in rust_exec_runtime.rs enforces this.
+        // C24: GetField is an interpreter-only operation resolved at runtime
+        // by the resolve layer. It must not reach the emitter.
         PrimitiveOpKind::GetField { field } => Err(ClassifyError::UnrecognizedOp {
             node_id: name.to_string(),
             detail: format!("GetField({field}) is interpreter-only and cannot be emitted"),
-        }),
-        PrimitiveOpKind::ExprCompute { .. } => Err(ClassifyError::UnrecognizedOp {
-            node_id: name.to_string(),
-            detail: "ExprCompute is interpreter-only and cannot be emitted".to_string(),
         }),
         // C24: All remaining structural primitive ops are interpreter-only
         // (resolved at runtime by the resolve layer). They must not reach the emitter.

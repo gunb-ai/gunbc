@@ -3650,8 +3650,8 @@ func run(a: String, b: String) -> { out: String } {
     )]);
     let dag = lower_target_module(&typed, "sample.lists");
 
-    // List literals in return expressions become ListConstruct nodes
-    // or get folded into ExprCompute/PipeOp. Find any list_construct node.
+    // List literals in return expressions become ListConstruct nodes.
+    // Find any list_construct node.
     let lc_node = dag
         .nodes
         .iter()
@@ -3677,7 +3677,7 @@ func run(a: String, b: String) -> { out: String } {
             other => panic!("expected ListConstruct, got {other:?}"),
         }
     } else {
-        // List may be folded into a PipeOp or ExprCompute fn body.
+        // List may be folded into a fn body.
         // Verify the DAG at least compiles and has the expected callable.
         assert!(
             dag.nodes.iter().any(|n| n.id.0.contains("lists::run")),

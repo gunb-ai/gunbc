@@ -34,8 +34,7 @@ pub fn evaluate_fn_body(
             LoweredStmt::Let(name, expr) => {
                 let value = eval_expr(expr, &env, sibling_fns)?;
                 // Flatten Map/JSON fields into `parent__field` entries so that
-                // the `__` convention works for local let bindings (same as
-                // ExprComputeOp::execute does for input port values).
+                // the `__` convention works for local let bindings.
                 match &value {
                     Value::Map(fields) => {
                         for (field_name, field_value) in fields {
