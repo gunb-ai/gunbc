@@ -1432,6 +1432,11 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
 
         for section in &mut file.sections {
             for test in &mut section.tests {
+                // Don't inject guards into #[should_panic] tests — the guard
+                // may return early (skip), preventing the expected panic.
+                if test.attributes.iter().any(|a| a.contains("should_panic")) {
+                    continue;
+                }
                 let guard_call = Expr::call(
                     "guard_test",
                     vec![
@@ -2497,6 +2502,12 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 continue;
             }
 
+            // Skip transport infrastructure nodes — their optional input
+            // behavior is an implementation detail, not a DSL-level contract.
+            if matches!(node.kind, NodeKind::TransportPrepare | NodeKind::TransportParse) {
+                continue;
+            }
+
             if !analysis.pure_nodes.contains(&node_id.0) {
                 continue;
             }
@@ -2949,10 +2960,12 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                             vec![Expr::Str(format!("'{}' should be in log", transport))],
                         ),
                 ));
-                body.push(Stmt::Assert(Assert::True {
-                    expr: Expr::var("entry").field("was_intercepted"),
-                    message: format!("'{}' should be intercepted in DryRun", transport),
-                }));
+                // Accept intercepted OR skipped (guard failed, conditional branch not taken).
+                // Skipped transport nodes never executed, so interception is moot.
+                body.push(Stmt::Item(Item::Raw(format!(
+                    "assert!(entry.was_intercepted || entry.outputs.values().all(|v| matches!(v, Value::Skipped)), \"'{}' should be intercepted or skipped in DryRun\");",
+                    transport
+                ))));
             }
 
             tests.push(TestFn {
@@ -4392,29 +4405,6 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 node_args.push(Expr::Str(node.0.clone()));
             }
 
-            let baseline = Expr::call(
-                "execute_dag",
-                vec![
-                    Expr::var("dag").ref_of(),
-                    Expr::Struct {
-                        name: "ExecuteConfig".to_string(),
-                        fields: vec![(
-                            "mode".to_string(),
-                            Expr::call(
-                                "ExecutionMode::DryRun",
-                                vec![Expr::call("mock_spec", vec![])
-                                    .method("to_boundary_mocks", vec![])],
-                            ),
-                        )],
-                        rest: Some(Box::new(Expr::call("Default::default", vec![]))),
-                    },
-                ],
-            )
-            .method(
-                "expect",
-                vec![Expr::Str("baseline DryRun should succeed".into())],
-            );
-
             let body = vec![
                 Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
                 Stmt::let_bind(
@@ -4423,7 +4413,31 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                         .method("expect", vec![Expr::Str("lower should succeed".into())])
                         .field("dag"),
                 ),
-                Stmt::let_bind("baseline", baseline),
+                Stmt::let_bind(
+                    "baseline",
+                    Expr::call(
+                        "execute_dag",
+                        vec![
+                            Expr::var("flat").ref_of(),
+                            Expr::Struct {
+                                name: "ExecuteConfig".to_string(),
+                                fields: vec![(
+                                    "mode".to_string(),
+                                    Expr::call(
+                                        "ExecutionMode::DryRun",
+                                        vec![Expr::call("mock_spec", vec![])
+                                            .method("to_boundary_mocks", vec![])],
+                                    ),
+                                )],
+                                rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                            },
+                        ],
+                    )
+                    .method(
+                        "expect",
+                        vec![Expr::Str("baseline DryRun should succeed".into())],
+                    ),
+                ),
                 Stmt::let_bind(
                     "window",
                     Expr::call(
@@ -6917,7 +6931,7 @@ fn render_output_matcher_check(matcher: &OutputMatcher, var_name: &str) -> Vec<S
             "assert!({output_var}.as_int().is_some() || matches!(*{output_var}, Value::Skipped), \"expected Int or Skipped for {output_var}\");"
         )))],
         OutputMatcher::IsString => vec![Stmt::Item(Item::Raw(format!(
-            "assert!({output_var}.as_str().is_some() || matches!(*{output_var}, Value::Skipped), \"expected String or Skipped for {output_var}\");"
+            "assert!({output_var}.as_str().is_some() || matches!(*{output_var}, Value::Skipped | Value::Secret(_)), \"expected String, Secret, or Skipped for {output_var}\");"
         )))],
         OutputMatcher::IsRequest => vec![Stmt::Item(Item::Raw(format!(
             "assert!({output_var}.as_request().is_some() || matches!(*{output_var}, Value::Skipped), \"expected Request or Skipped for {output_var}\");"

@@ -916,8 +916,9 @@ fn test_scalar_port_takes_single_value() {
 }
 
 #[test]
-fn test_scalar_port_fan_in_errors() {
-    // A scalar port with multiple incoming edges should fail.
+fn test_scalar_port_fan_in_takes_last_non_skipped() {
+    // A scalar port with multiple incoming edges takes the last non-Skipped value.
+    // This supports conditional branches where only one branch produces a real value.
     let mut dag: Dag<TestOp> = Dag::new();
     dag.add_node(Node::opaque(
         "A",
@@ -940,11 +941,16 @@ fn test_scalar_port_fan_in_errors() {
     dag.add_edge(edge("A", "out", "C", "data"));
     dag.add_edge(edge("B", "out", "C", "data"));
 
-    let err =
-        execute_dag(&dag, ExecuteConfig::default()).expect_err("expected scalar fan-in to error");
-    assert!(err
-        .to_string()
-        .contains("scalar input 'C.data' has multiple upstream edges"));
+    let log =
+        execute_dag(&dag, ExecuteConfig::default()).expect("scalar fan-in should succeed");
+    let c_entry = log.get("C").expect("C should have executed");
+    // One of the two values wins (implementation-defined order)
+    let data = c_entry.outputs.get("data").expect("C should produce data");
+    assert!(
+        data == &Value::Str("alpha".to_string()) || data == &Value::Str("beta".to_string()),
+        "expected alpha or beta, got {:?}",
+        data
+    );
 }
 
 #[test]

@@ -652,14 +652,15 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
                                 let bucket = fan_in.entry(edge.to_port.0.clone()).or_default();
                                 bucket.extend(elements);
                             }
-                        } else {
-                            if let Some(prev) = scalar_sources.get(&edge.to_port.0) {
-                                let current = format!("{}.{}", edge.from_node.0, edge.from_port.0);
-                                return Err(ExecError::new(format!(
-                                    "scalar input '{}.{}' has multiple upstream edges: {} and {}",
-                                    edge.to_node.0, edge.to_port.0, prev, current
-                                )));
+                        } else if scalar_sources.contains_key(&edge.to_port.0) {
+                            // Multiple upstream edges to a scalar port.
+                            // In conditional branches, only one branch produces
+                            // a real value; others produce Skipped. Take the
+                            // first non-Skipped value.
+                            if !matches!(val, Value::Skipped) {
+                                inputs.insert(edge.to_port.0.clone(), val.clone());
                             }
+                        } else {
                             scalar_sources.insert(
                                 edge.to_port.0.clone(),
                                 format!("{}.{}", edge.from_node.0, edge.from_port.0),
@@ -1246,14 +1247,15 @@ fn build_node_inputs<T>(
                             let bucket = fan_in.entry(edge.to_port.0.clone()).or_default();
                             bucket.extend(elements);
                         }
-                    } else {
-                        if let Some(prev) = scalar_sources.get(&edge.to_port.0) {
-                            let current = format!("{}.{}", edge.from_node.0, edge.from_port.0);
-                            return Err(ExecError::new(format!(
-                                "scalar input '{}.{}' has multiple upstream edges: {} and {}",
-                                edge.to_node.0, edge.to_port.0, prev, current
-                            )));
+                    } else if scalar_sources.contains_key(&edge.to_port.0) {
+                        // Multiple upstream edges to a scalar port.
+                        // In conditional branches, only one branch produces
+                        // a real value; others produce Skipped. Take the
+                        // first non-Skipped value.
+                        if !matches!(val, Value::Skipped) {
+                            inputs.insert(edge.to_port.0.clone(), val.clone());
                         }
+                    } else {
                         scalar_sources.insert(
                             edge.to_port.0.clone(),
                             format!("{}.{}", edge.from_node.0, edge.from_port.0),

@@ -1065,7 +1065,7 @@ impl OutputMatcher {
                 _ => Err(format!("expected Int, got {:?}", value)),
             },
             OutputMatcher::IsString => match value {
-                Value::Str(_) => Ok(()),
+                Value::Str(_) | Value::Secret(_) => Ok(()),
                 _ => Err(format!("expected String, got {:?}", value)),
             },
             OutputMatcher::IsRequest => match value {

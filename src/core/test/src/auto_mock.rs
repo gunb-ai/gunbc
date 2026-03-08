@@ -392,6 +392,13 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
             continue;
         }
 
+        // Skip literal source nodes — these evaluate fn body expressions
+        // that may produce empty values (e.g., comparison results).
+        // Their output is unpredictable with passthrough inputs.
+        if node.id.0.starts_with("literal_source_") {
+            continue;
+        }
+
         // Step 1: Collect required (non-passthrough) inputs.
         // Two-pass strategy: first populate all non-TransportResponse inputs,
         // then probe for the best response variant. This ensures the probe

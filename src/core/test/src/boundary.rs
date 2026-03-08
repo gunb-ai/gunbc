@@ -79,12 +79,20 @@ pub fn assert_boundary_mockable<T: gunbc_exec::Executable + Clone + Send>(
         },
     ) {
         Ok(log) => {
-            // Verify all transport executors were intercepted
+            // Verify all transport executors were intercepted or skipped.
+            // Skipped nodes (guard failed, conditional branch not taken) are
+            // acceptable — they never executed, so interception is moot.
             let mut all_intercepted = true;
             for node_id in &transport_executors {
                 if let Some(entry) = log.get(node_id) {
                     if !entry.was_intercepted {
-                        all_intercepted = false;
+                        let all_skipped = entry
+                            .outputs
+                            .values()
+                            .all(|v| matches!(v, Value::Skipped));
+                        if !all_skipped {
+                            all_intercepted = false;
+                        }
                     }
                 }
             }
