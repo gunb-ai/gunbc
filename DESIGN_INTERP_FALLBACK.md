@@ -48,6 +48,79 @@ This creates three problems:
 
 ---
 
+## Architectural Root Cause
+
+The individual fallback sites (cataloged below) are symptoms. The root cause
+is an architectural mismatch: **the lowerer has a flat, statement-level design
+but the AST is tree-structured.**
+
+### The lowerer's three-phase architecture
+
+The lowerer processes fn/func/pattern bodies in three phases:
+
+**Phase 1 — Statement-level node creation.** Walks top-level statements.
+For each `let name = expr` or `name = expr`:
+
+- If `expr` is `Call(name, args)` → creates a callable endpoint DAG node,
+  records `name → endpoint` in `bound_callable_sources`
+- If `expr` is `ServiceCall(path, args)` → creates a transport triplet
+  (prepare/execute/parse), records `name → triplet` in
+  `bound_service_sources`
+- **Everything else → `_ => {}` — silently skipped** (line ~4226, ~12342)
+
+**Phase 2 — Argument wiring.** `wire_fn_call_arguments` and
+`wire_service_call_arg_to_port` wire inputs to the DAG nodes created in
+Phase 1. These use the same source maps (params, callables, services).
+
+**Phase 3 — Return wiring.** `wire_callable_return_outputs` extracts
+return expressions and calls `resolve_return_expr_source` to map each one
+to a `(node_id, port)` pair — an existing DAG source.
+
+### Where the design breaks
+
+Phase 1 only creates DAG nodes for `Call` and `ServiceCall` at the
+**top level** of a statement. It does not recurse into expressions. A
+`ServiceCall` nested inside a record literal, a `Call` inside a conditional
+branch, a pipe chain in a return expression — none of these are seen by
+Phase 1. No DAG nodes are created for them.
+
+Phase 3 then tries to resolve the return expression. It finds identifiers
+that reference things Phase 1 created (`bound_callable_sources`,
+`bound_service_sources`). But when the return expression contains inline
+computation — calls, conditionals, pipes, string interpolation — Phase 3
+can't find DAG nodes for those sub-expressions because **they were never
+lowered.**
+
+`resolve_return_expr_source` grew incrementally to fill this gap. It
+started as a simple wiring function (resolve an ident to a DAG source)
+and was progressively extended with structural synthesis functions
+(`synthesize_conditional`, `synthesize_match_dispatch`,
+`synthesize_binary_op`, etc.) to handle expressions that Phase 1 skipped.
+But it was never designed to be a full lowering pass. The `_` catch-all
+exists because some expression forms still have no structural synthesis,
+and the function lacks the infrastructure (endpoint registries, transport
+wiring, argument binding) that Phase 1 has.
+
+### The wildcards
+
+There are **two** wildcards, and they compound:
+
+1. **Phase 1's `_ => {}`** (line ~4226, ~12342): If a statement's
+   expression is not `Call` or `ServiceCall`, Phase 1 silently does nothing.
+   The expression is not lowered. It's recorded in `local_let_bindings` by
+   `collect_local_let_bindings` (the cleanup crew for Phase 1's gaps).
+
+2. **Phase 3's `_ => synthesize_expr_compute(...)`** (line ~10501):
+   If `resolve_return_expr_source` encounters an `Expr` variant it can't
+   structuralize, it punts to the interpreter. This is the cleanup crew
+   for Phase 3's gaps.
+
+The first wildcard creates the problem. The second wildcard hides it.
+`ExprCompute` is the mechanism by which the lowerer avoids confronting the
+fact that Phase 1 didn't lower the expression.
+
+---
+
 ## Catalog of Interpreter Fallback Sites
 
 ### Notation
@@ -300,7 +373,7 @@ Total: 20 sites (18 reachable).
 
 ---
 
-## Dependency Order
+## Dependency Order (Site-Level)
 
 Root causes are not independent. Fixing one unlocks others:
 
@@ -320,28 +393,105 @@ F (unreachable fallback)
   └─ trivial cleanup, no dependencies
 ```
 
-The suggested order:
+But all of these are downstream of the architectural root cause. Fixing
+individual sites within `resolve_return_expr_source` treats the symptom:
+the function keeps growing as a second lowering pass grafted onto a wiring
+function. The site-level fixes are valid but don't resolve the structural
+problem.
 
-1. **C first.** Highest leverage: two sites, low complexity, unlocks cascade.
-   Change `resolve_return_expr_source`'s `Expr::Ident` branch to recurse
-   through local let bindings structurally (like `FieldAccess` already does).
-   Change `wire_fn_call_arguments` similarly.
+## Design Direction
 
-2. **D next.** One site, low complexity, independent.
+The architectural root cause is the flat Phase 1 / Phase 3 split: Phase 1
+lowers statements, Phase 3 tries to wire returns, and the gap between them
+is filled by `ExprCompute`. Two possible design directions:
 
-3. **A after C.** Once C is fixed, many `has_local_refs` cases disappear
-   because the let binding itself resolves structurally and its transitive
-   references become visible. The remaining A cases (arm bindings, lambda
-   params) need the leaf-ref collector to understand scoped bindings.
+### Option A: Flatten before lowering (normalize the AST)
 
-4. **E last.** Requires new structural primitives or desugaring. Pipe is
-   likely a desugar to `Call`. For requires either a structural `Map` node
-   or desugar to a collection operation. The catch-all needs each remaining
-   `Expr` variant to be handled explicitly.
+Add a pre-lowering desugaring pass that extracts nested computation from
+expressions into top-level let bindings. After desugaring, every statement
+is either a `Call`, a `ServiceCall`, or a simple binding to a resolvable
+expression. Return expressions only reference identifiers, field accesses,
+and literals — never inline computation.
 
-5. **F trivially.** Delete the unreachable branch.
+Example before desugaring:
+```
+return { result: if cond { svc.Op(x: input) } else { fallback(y: input) } }
+```
 
-After all causes are resolved, `synthesize_expr_compute` and
+After desugaring:
+```
+let __branch_result = svc.Op(x: input) [when cond]
+let __else_result = fallback(y: input) [when !cond]
+let __merged = __branch_result ?? __else_result
+return { result: __merged }
+```
+
+Phase 1 would then see `svc.Op` and `fallback` as top-level statements and
+lower them normally. Phase 3 would only wire identifiers.
+
+**Pros:** Minimal changes to the lowerer's Phase 1 architecture. The existing
+statement-level lowering and wiring infrastructure handles everything.
+The desugaring pass is a self-contained pre-processing step.
+
+**Cons:** The desugared AST may not map well to all expression forms
+(match arms with bindings, for loops with closures, pipe chains). Some
+expressions may not have obvious desugaring targets. Error messages would
+reference synthesized names (`__branch_result`) unless carefully mapped back.
+
+### Option B: Make lowering tree-recursive
+
+Replace the Phase 1 / Phase 3 split with a single recursive lowering pass
+that walks the expression tree. Every `Expr` node produces either a
+reference to an existing DAG node or a newly-created structural DAG node.
+`Call` and `ServiceCall` create endpoint/transport nodes at the point
+where they appear in the tree, not only when they're top-level statements.
+
+This is what `resolve_return_expr_source` was evolving toward — but it
+lacked the infrastructure (endpoint registries, transport wiring, service
+resolution) that Phase 1 has. Option B would give it that infrastructure
+by design rather than by incremental accretion.
+
+**Pros:** Direct. No intermediate desugaring. Every expression form gets
+a structural lowering at the point where it appears. The match in the
+recursive lowering function would be exhaustive — no wildcard. New `Expr`
+variants cause a compile error until handled.
+
+**Cons:** Significant refactor. Phase 1's infrastructure (endpoint
+resolution, transport triplet creation, argument wiring, resource
+acquisition) would need to be available during tree-recursive lowering.
+The current separation between "create nodes" and "wire edges" would
+change: node creation and edge wiring would be interleaved as the tree
+is walked.
+
+### Option C: Restrict the language
+
+Disallow nested computation in return expressions and other non-statement
+positions. The DSL grammar or typechecker would reject:
+- `ServiceCall` outside of a top-level statement
+- `Call` outside of a top-level statement (except as arg to another call)
+- `Pipe`/`For` outside of a top-level statement
+
+This makes the Phase 1 assumption true by construction: all effectful
+computation is a top-level statement, and return expressions are pure wiring.
+
+**Pros:** Simplest. No lowerer changes. The constraint is arguably good
+language design — it forces DSL authors to name intermediate results,
+making the DAG shape explicit in the source.
+
+**Cons:** Breaks existing `.dag` files that use inline computation. May
+feel restrictive to DSL authors. Pipe chains (`x |> map(fn) |> filter(fn)`)
+are a core ergonomic feature and restricting them to statement position
+removes much of their value.
+
+### Recommendation
+
+Not yet determined. The choice depends on how much inline computation the
+DSL needs to support long-term (which is a language design question, not a
+compiler implementation question). All three options eliminate the wildcards.
+Option C makes them unnecessary. Options A and B make them into exhaustive
+matches with explicit arms for every `Expr` variant.
+
+After all causes are resolved (by any option), `synthesize_expr_compute` and
 `synthesize_tagged_evaluator` have no callers and can be deleted, along with
 `PrimitiveOpKind::ExprCompute`, `PrimitiveOpKind::PipeOp`, and
 `PrimitiveOpKind::ForOp`. The `ExprComputeOp` in the resolver and the
@@ -351,41 +501,41 @@ After all causes are resolved, `synthesize_expr_compute` and
 
 ## Open Questions
 
-1. **Scope of structural expressibility.** Should every DSL expression be
-   structuralizable, or should some expression forms be restricted/disallowed
-   in fn/func bodies? For example, `for x in list { complex_body }` might
-   be better expressed as a pipeline stage than as an inline expression.
+1. **Which design option?** Options A (flatten), B (tree-recursive), and C
+   (restrict language) all eliminate the wildcards. The choice is a language
+   design decision: how much inline computation should the DSL support?
+   This question must be answered before implementation begins.
 
 2. **Pipe desugaring.** `x |> map(fn)` desugars to `map(fn, x)`. But `map`
    is a stdlib function resolved by the evaluator, not a DAG node. Structural
    pipe requires either: (a) a structural `Map` primitive that the lowerer
    emits directly, or (b) all pipe-target functions to be resolvable as DAG
-   callables.
+   callables. This applies to Options A and B.
 
 3. **Match arm bindings as structural inputs.** A `MatchDispatch` node needs
    to provide arm bindings to arm bodies. Currently the arm body is a lowered
    expression evaluated by the dispatch op. If arm bodies themselves need
    structural lowering (e.g., an arm body that calls a service), the
-   `MatchDispatch` op needs to be a sub-DAG, not a flat node. This is a
-   significant structural change.
+   `MatchDispatch` op needs to be a sub-DAG, not a flat node. This applies
+   to Option B.
 
 4. **Error quality.** When the lowerer rejects an expression (Invariant 7),
    the error must explain *why* and suggest alternatives. "Cannot lower
    `for x in list { body }` to structural DAG nodes" is not actionable.
    "Use a `stage` with `map` collection instead of inline `for`" is.
 
-5. **The `_` catch-all must go.** The match in `resolve_return_expr_source`
-   must be exhaustive with no wildcard. Every `Expr` variant gets an explicit
-   arm — either structural synthesis or a clear compile error. This is the
-   minimum structural guarantee (Invariant 8): a new `Expr` variant added to
-   the parser must cause a compile-time error in the lowerer until a
-   structural lowering is implemented. Today it silently falls through to
-   `ExprCompute`.
+5. **Two wildcards, not one.** The `_` catch-all in
+   `resolve_return_expr_source` (line ~10501) is the visible problem. But
+   the `_ => {}` in Phase 1's statement loop (line ~4226) and in
+   `collect_bound_callable_sources` (line ~12342) is the original cause.
+   Both must be eliminated. Under any design option, the match in both
+   locations must be exhaustive — every `Expr` variant gets an explicit arm.
 
 6. **`Call` and `ServiceCall` in expression position.** These are already
-   handled elsewhere in the lowerer (service call wiring, callable endpoint
-   resolution). Their presence in the catch-all means `resolve_return_expr_source`
-   doesn't recognize them — likely because they appear as nested sub-expressions
-   (e.g., inside a record field or as a pipe argument) rather than as
-   top-level statements. The fix may be to wire through to the existing
-   lowering paths, not to create new structural primitives.
+   lowered by Phase 1 when they appear as top-level statements. Their
+   presence in the Phase 3 catch-all means they appeared nested inside
+   another expression (record field, conditional branch, pipe argument).
+   Phase 1 never saw them because it only walks top-level statements.
+   Under Option A, desugaring would extract them. Under Option B, the
+   tree-recursive lowerer would create endpoint nodes inline. Under
+   Option C, they would be disallowed in that position.
