@@ -1,7 +1,7 @@
 // tools/deps.dag -- Dependency installation and config generation.
 //
 // Two modes:
-//   1. Install: read deps.toml, run install scripts per-platform
+//   1. Install: receive pre-parsed DepsManifest, run install scripts per-platform
 //   2. Generate: render deps.toml from tool registry, content_upsert
 //
 // Replaces: lib/tools/deps/src/graph.rs
@@ -12,6 +12,7 @@ import std.patterns { content_upsert }
 import std.resources { Filesystem }
 import std.types { Platform, ToolRegistry }
 import shared.dag_util { generated_header }
+import extdeps.shell
 
 type DepsManifest {
   deps: List<DepEntry>
@@ -23,10 +24,6 @@ type DepEntry {
   check_command: String?
   platform: Platform?
 }
-
-extern func parse_deps_toml(content: String) -> { return: DepsManifest }
-extern func shell_check(command: String) -> { exists: Bool }
-extern func shell_exec(script: String) -> { success: Bool }
 
 fn render_deps_toml(registry: ToolRegistry) -> String {
   let header = generated_header(tool: "deps")
@@ -44,16 +41,13 @@ fn select_platform_deps(manifest: DepsManifest, platform: Platform) -> List<DepE
     })
 }
 
-func deps(manifest_path: String = "deps.toml", platform: Platform) -> { all_installed: Bool }
-  uses fs: Filesystem(mode: Read)
+func deps(manifest: DepsManifest, platform: Platform) -> { all_installed: Bool }
 {
-  manifest_content = fs.read(path: manifest_path)
-  manifest = parse_deps_toml(content: manifest_content.content)
   platform_deps = select_platform_deps(manifest: manifest, platform: platform)
 
   results = for dep in platform_deps {
-    node check = shell_check(command: dep.check_command) [when dep.check_command]
-    node install [when !check.exists] = shell_exec(script: dep.install_script)
+    node check = shell.Exec.Check(command: dep.check_command) [when dep.check_command]
+    node install [when !check.exists] = shell.Exec.Run(script: dep.install_script)
     install
   }
 
@@ -69,9 +63,6 @@ func deps_generate(registry: ToolRegistry) -> { written: Bool }
 }
 
 // ── Tests ──────────────────────────────────────────────────────────
-//
-// NOTE: Complex mock values (FilesystemHandle, Platform) still use Rust
-// helpers via @rust_mock_helpers.
 
 // Shared filesystem and platform mocks.
 fixture deps_env {
@@ -81,9 +72,6 @@ fixture deps_env {
 
 test deps_install_dryrun : deps_env {
 
-    // File transport mock: load manifest
-    mock load_manifest/execute_load_manifest.response -> file_response("deps.toml")
-
     // Shell transport mocks: install commands
     mock execute_installs/execute_installs.response -> shell_response(0, "installed ripgrep")
 
@@ -92,9 +80,6 @@ test deps_install_dryrun : deps_env {
 }
 
 test deps_install_pkg_fails : deps_env {
-
-    // File transport mock: load manifest
-    mock load_manifest/execute_load_manifest.response -> file_response("deps.toml")
 
     // Shell transport mock: install fails
     mock execute_installs/execute_installs.response -> shell_response(1, "error: package not found")

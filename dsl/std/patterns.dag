@@ -108,8 +108,8 @@ pattern read_binary_files(paths: List<FilePath>) -> { files: List<{ path: FilePa
   classified = classify_files(paths: paths)
 
   data = for path in classified.skipped {
-    info = fs.stat(path: path)
-    { path: path, size: info.size }
+    probe = fs.probe(path: path)
+    { path: path, size: probe.classification.size }
   }
 
   return { files: data, skipped: classified.readable }
@@ -334,7 +334,7 @@ pattern retry<Op>(max_attempts: Int = 3, backoff_ms: Milliseconds = 1000) -> {} 
 //     run_key: rk,
 //     outcomes: outcomes,
 //     claims: claims,
-//     owner: "pipelines.sdlc",
+//     owner: "workflows.webhook",
 //     generation: claim.lease_generation
 //   )
 //   // Execution stops here. Pipeline is re-entered on next discovery.

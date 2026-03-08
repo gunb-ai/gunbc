@@ -1,0 +1,9 @@
+[package]
+name = "gunbc-design-ops"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Typed design prompt/review transforms for workflow runtime"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }

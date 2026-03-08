@@ -14,7 +14,6 @@ cache:
   key: cargo-${CI_COMMIT_REF_SLUG}
   paths:
     - .cargo/
-    - target/
 
 ci:
   stage: ci

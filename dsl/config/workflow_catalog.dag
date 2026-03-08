@@ -16,63 +16,7 @@ type WorkflowVariantDef {
 }
 
 data workflow_variants: List<WorkflowVariantDef> = [
-  // Core planner workflows
-  {
-    canonical_name: "ci",
-    aliases: [],
-    file: "ci.dag",
-    pipeline: "ci",
-    mode: None,
-    namespace: "ci",
-    is_tool: false
-  },
-  {
-    canonical_name: "test-all",
-    aliases: ["test_all"],
-    file: "test_all.dag",
-    pipeline: "test_all",
-    mode: None,
-    namespace: "test_all",
-    is_tool: false
-  },
-  {
-    canonical_name: "sdlc",
-    aliases: ["sdlc_worker", "sdlc-worker"],
-    file: "sdlc.dag",
-    pipeline: "sdlc",
-    mode: None,
-    namespace: "sdlc",
-    is_tool: false
-  },
-
   // Tool workflow variants
-  {
-    canonical_name: "gist",
-    aliases: ["gist_snapshot", "gist-snapshot"],
-    file: "gist.dag",
-    pipeline: "gist",
-    mode: "gist",
-    namespace: "gist",
-    is_tool: true
-  },
-  {
-    canonical_name: "gist-diff",
-    aliases: ["gist_diff"],
-    file: "gist.dag",
-    pipeline: "gist",
-    mode: "gist-diff",
-    namespace: "gist",
-    is_tool: true
-  },
-  {
-    canonical_name: "gist-recent",
-    aliases: ["gist_recent"],
-    file: "gist.dag",
-    pipeline: "gist",
-    mode: "gist-recent",
-    namespace: "gist",
-    is_tool: true
-  },
   {
     canonical_name: "bootstrap",
     aliases: [],
@@ -80,24 +24,6 @@ data workflow_variants: List<WorkflowVariantDef> = [
     pipeline: "bootstrap",
     mode: None,
     namespace: "bootstrap",
-    is_tool: true
-  },
-  {
-    canonical_name: "makegen",
-    aliases: [],
-    file: "makegen.dag",
-    pipeline: "makegen",
-    mode: None,
-    namespace: "makegen",
-    is_tool: true
-  },
-  {
-    canonical_name: "pragma",
-    aliases: [],
-    file: "pragma.dag",
-    pipeline: "pragma",
-    mode: None,
-    namespace: "pragma",
     is_tool: true
   },
   {

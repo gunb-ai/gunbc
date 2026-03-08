@@ -27,10 +27,10 @@ type MetaTarget {
   description: String
   has_check: Bool
   has_fix: Bool
-  command: String
-  check_command: String?
-  fix_command: String?
-  command_prefix: String?
+  command: RecipeLine
+  check_command: RecipeLine?
+  fix_command: RecipeLine?
+  env: List<EnvBinding>
   resource_needs: List<ResourceNeed>
   fix_prerequisites: List<String>
 }
@@ -42,8 +42,8 @@ type ResourceNeed {
 
 // ── Workflow catalog ───────────────────────────────────────────────────
 // Each DSL-invocable tool is a workflow spec. This data drives
-// codegen (CLI entrypoints), makegen (Makefile targets), and
-// the tool registry.
+// codegen (CLI entrypoints), tool discovery, and
+// higher-level workflow automation.
 
 data workflow_specs: List<WorkflowSpec> = [
   { name: "bootstrap",      kind: Tool, description: "Generate bootstrap artifacts (.gitignore, clippy.toml)",
@@ -52,20 +52,6 @@ data workflow_specs: List<WorkflowSpec> = [
     dsl_module: "tools/codegen", entry_func: "codegen", has_dry_run: true },
   { name: "deps",           kind: Tool, description: "Manage workspace dependency configuration",
     dsl_module: "tools/deps", entry_func: "deps", has_dry_run: true },
-  { name: "gist",           kind: Tool, description: "Create gist snapshot of workspace",
-    dsl_module: "tools/gist", entry_func: "gist", has_dry_run: true },
-  { name: "gist-diff",      kind: Tool, description: "Gist snapshot with diff against previous",
-    dsl_module: "tools/gist", entry_func: "gist_diff", has_dry_run: true },
-  { name: "gist-recent",    kind: Tool, description: "List recent gist snapshots",
-    dsl_module: "tools/gist", entry_func: "gist_recent", has_dry_run: true },
-  { name: "makegen",        kind: Tool, description: "Generate Makefile from tool registry",
-    dsl_module: "tools/makegen", entry_func: "makegen", has_dry_run: true },
-  { name: "pragma",         kind: Tool, description: "Generate pragma lint configuration",
-    dsl_module: "tools/pragma", entry_func: "pragma", has_dry_run: true },
   { name: "testgen",        kind: Tool, description: "Generate tests from DAG structures and MockSpecs",
-    dsl_module: "tools/testgen", entry_func: "testgen", has_dry_run: true },
-  { name: "ci",             kind: Pipeline, description: "Run CI via workflow planner",
-    dsl_module: None, entry_func: None, has_dry_run: false },
-  { name: "test-all",       kind: Pipeline, description: "Run all tests via workflow planner",
     dsl_module: None, entry_func: None, has_dry_run: false }
 ]

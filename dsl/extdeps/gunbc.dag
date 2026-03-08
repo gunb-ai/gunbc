@@ -3,13 +3,12 @@
 // Meta model of this repo's workspace structure. Technically an
 // internal system, but modeled as an extdep because:
 //   1. The crate graph is a stable fact (changes rarely)
-//   2. Multiple tools derive from it (clippy policy, makegen, testgen)
+//   2. Multiple tools derive from it (clippy policy, codegen, testgen)
 //   3. Treating it uniformly with external deps simplifies composition
 //
 // Consumers:
 //   config/arch_rules.dag    — exemption scopes reference packages
 //   config/clippy_policy.dag — crate policies reference roles
-//   tools/makegen.dag        — registry references workspace binaries
 //   tools/codegen.dag        — codegen shell operations
 
 module extdeps.gunbc

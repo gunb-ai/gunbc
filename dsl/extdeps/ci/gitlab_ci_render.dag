@@ -1,0 +1,53 @@
+// extdeps/ci/gitlab_ci_render.dag -- GitLab CI YAML leaf serializer.
+
+module extdeps.ci.gitlab_ci_render
+
+import extdeps.ci.script { render_script_block_lines }
+import extdeps.ci.gitlab_ci { CacheConfig, Pipeline, Variable }
+import extdeps.yaml {
+  yaml_header, yaml_indented_item, yaml_indented_mapping, yaml_sequence_block
+}
+
+fn render_pipeline_variables(variables: List<Variable>) -> String {
+  let lines = variables
+    |> map(v => yaml_indented_mapping(level: 1, key: v.key, value: "\"{v.value}\""))
+    |> join("\n")
+  "variables:\n{lines}"
+}
+
+fn render_job_variables(variables: List<Variable>) -> String {
+  let lines = variables
+    |> map(v => yaml_indented_mapping(level: 2, key: v.key, value: "\"{v.value}\""))
+    |> join("\n")
+  "  variables:\n{lines}"
+}
+
+fn render_cache(cache: CacheConfig) -> String {
+  let lines = cache.paths
+    |> map(path => yaml_indented_item(level: 2, value: path))
+    |> join("\n")
+  "cache:\n  key: {cache.key}\n  paths:\n{lines}"
+}
+
+fn render_gitlab_jobs_block(pipeline: Pipeline) -> String {
+  pipeline.jobs |> map(job => {
+    let script_lines = render_script_block_lines(block: job.script)
+      |> map(line => yaml_indented_item(level: 2, value: line))
+      |> join("\n")
+    let variables = if job.variables |> count() == 0 {
+      ""
+    } else {
+      "\n" + render_job_variables(variables: job.variables)
+    }
+    "{job.id}:\n  stage: {job.stage}\n  script:\n{script_lines}{variables}"
+  }) |> join("\n\n")
+}
+
+fn render_gitlab_pipeline_yaml(pipeline: Pipeline, generator: String, regen_command: String) -> String {
+  let header = yaml_header(generator: generator, regen_command: regen_command)
+  let vars = render_pipeline_variables(variables: pipeline.variables)
+  let stages = yaml_sequence_block(header: "stages:", level: 1, items: pipeline.stages)
+  let cache = "\n\n" + render_cache(cache: pipeline.cache ?? { key: "", paths: [] })
+  let jobs = render_gitlab_jobs_block(pipeline: pipeline)
+  "{header}\n\nimage: {pipeline.image}\n\n{vars}\n\n{stages}{cache}\n\n{jobs}\n"
+}

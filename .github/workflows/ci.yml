@@ -32,6 +32,8 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93.0"
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -41,7 +43,6 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
 
           key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
@@ -56,6 +57,8 @@ jobs:
             mkdir -p "$dir" && echo 'fn main() {}' > "$dir/main.rs"
           done
           cargo check -p gunbc-app --bin gunbc-codegen --bin gunbc-ci
+          # Replace bootstrap stubs with real generated entrypoints before running generated bins.
+          cargo run -p gunbc-app --bin gunbc-codegen -- codegen
 
       - name: Run CI Pipeline
         run: cargo run -p gunbc-app --bin gunbc-ci

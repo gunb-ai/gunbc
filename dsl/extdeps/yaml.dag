@@ -15,6 +15,7 @@ module extdeps.yaml
 
 import std.languages { yaml_format }
 import std.render {
+  OutputFormat,
   config_format_header, format_comment,
   indent_text, kv_pair, indented_kv, list_item, indented_list_item,
   text_block, list_block, kv_block
@@ -77,4 +78,15 @@ fn yaml_comment(text: String) -> String {
 
 fn yaml_header(generator: String, regen_command: String) -> String {
   config_format_header(format: yaml_format, generator: generator, regen_command: regen_command)
+}
+
+// OutputFormat parameterization for YAML.
+data yaml_output_format: OutputFormat = {
+  name: "YAML",
+  indent_unit: "  ",
+  kv_separator: ": ",
+  list_prefix: "- ",
+  comment_prefix: "#",
+  section_separator: "\n",
+  trailing_newline: true
 }

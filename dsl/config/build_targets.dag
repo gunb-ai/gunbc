@@ -3,10 +3,14 @@
 // These data declarations are the source of truth for core workflows,
 // meta targets, and resource target mappings. The Makefile renderer
 // consumes these to produce the complete Makefile.
+//
+// Recipe lines use structured RecipeLine records so that the silent
+// flag (Make's "@" prefix per §5.2) is typed data, not an embedded
+// string prefix.
 
 module config.build_targets
 
-import extdeps.make
+import extdeps.build.targets
 
 // ============================================================================
 // Resource Target Mappings — how resources are provided as Make targets
@@ -15,11 +19,9 @@ import extdeps.make
 data resource_targets: List<ResourceTargetEntry> = [
   { resource: "generated_cli",      ensure_target: "ensure-codegen",  verify_target: "ensure-codegen" },
   { resource: "generated_tests",    ensure_target: "testgen",         verify_target: "testgen-check" },
-  { resource: "pragma_config",      ensure_target: "pragma",          verify_target: "pragma-check" },
   { resource: "compiled_code",      ensure_target: "build",           verify_target: "build" },
   { resource: "verified_artifacts", ensure_target: "verify-fix",      verify_target: "verify" },
   { resource: "deps_config",        ensure_target: "deps-config",     verify_target: "deps-config-check" },
-  { resource: "makefile",           ensure_target: "makegen",         verify_target: "makegen-check" },
   { resource: "gitignore",          ensure_target: "bootstrap",       verify_target: "bootstrap-check" }
 ]
 
@@ -32,21 +34,21 @@ data core_workflows: List<CoreWorkflow> = [
     name: "preflight-fix",
     description: "Preflight: auto-fix rustc warnings before running generators",
     deps: [],
-    body: ["@cargo fix --workspace --all-targets --allow-dirty --allow-staged"],
+    body: [{ shell: "cargo fix --workspace --all-targets --allow-dirty --allow-staged", silent: true, ignore_errors: false }],
     comment: None
   },
   {
     name: "ensure-codegen",
     description: "Ensure CLI entrypoints exist (bootstrap-safe)",
     deps: [],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-codegen -- codegen"],
+    body: [{ shell: "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-codegen -- codegen", silent: true, ignore_errors: false }],
     comment: None
   },
   {
     name: "build-release-bins",
     description: "Build workspace binaries once for direct tool execution",
     deps: ["ensure-codegen"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo build --workspace --release --bins"],
+    body: [{ shell: "RUSTFLAGS=\"-D warnings\" cargo build --workspace --release --bins", silent: true, ignore_errors: false }],
     comment: None
   },
   {
@@ -54,8 +56,7 @@ data core_workflows: List<CoreWorkflow> = [
     description: "Lint upsert: fix if needed, then verify",
     deps: ["ensure-codegen", "preflight-fix"],
     body: [
-      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-pragma",
-      "@cargo clippy --all-targets -- -D warnings || (cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings && cargo clippy --all-targets -- -D warnings)"
+      { shell: "cargo clippy --all-targets -- -D warnings || (cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings && cargo clippy --all-targets -- -D warnings)", silent: true, ignore_errors: false }
     ],
     comment: None
   },
@@ -63,70 +64,56 @@ data core_workflows: List<CoreWorkflow> = [
     name: "codegen",
     description: "Generate CLI entrypoints (DAG upsert)",
     deps: ["lint-upsert"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-codegen-dag"],
+    body: [{ shell: "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-codegen-dag", silent: true, ignore_errors: false }],
     comment: None
   },
   {
     name: "build",
     description: "Full build transaction",
     deps: ["codegen", "testgen"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo build --all-targets"],
+    body: [{ shell: "RUSTFLAGS=\"-D warnings\" cargo build --all-targets", silent: true, ignore_errors: false }],
     comment: "Full build transaction: codegen \u{2192} testgen \u{2192} cargo build"
   },
   {
     name: "clean",
     description: "Clean build artifacts",
     deps: [],
-    body: ["@cargo clean"],
+    body: [{ shell: "cargo clean", silent: true, ignore_errors: false }],
     comment: None
   },
   {
     name: "testgen",
     description: "Regenerate tests from DAG structures and MockSpecs",
     deps: ["lint-upsert"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-testgen"],
+    body: [{ shell: "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-testgen", silent: true, ignore_errors: false }],
     comment: None
   },
   {
     name: "testgen-check",
     description: "Check if generated tests are stale",
     deps: ["lint-upsert"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-testgen"],
+    body: [{ shell: "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-testgen", silent: true, ignore_errors: false }],
     comment: None
   },
   {
     name: "deps-config",
     description: "Ensure deps.toml matches canonical generated configuration",
     deps: ["build-release-bins"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-deps -q --release"],
+    body: [{ shell: "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-deps -q --release", silent: true, ignore_errors: false }],
     comment: None
   },
   {
     name: "deps-config-check",
     description: "Check if deps.toml is stale",
     deps: ["build-release-bins"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-deps -q --release -- --dry-run"],
-    comment: None
-  },
-  {
-    name: "makegen-check",
-    description: "Check if generated Makefile is stale",
-    deps: ["lint-upsert"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-makegen"],
+    body: [{ shell: "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-deps -q --release -- --dry-run", silent: true, ignore_errors: false }],
     comment: None
   },
   {
     name: "bootstrap-check",
     description: "Check if generated bootstrap artifacts are stale",
     deps: ["lint-upsert"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-bootstrap"],
-    comment: None
-  },
-  {
-    name: "pragma-check",
-    description: "Check if pragma artifacts are stale",
-    deps: ["lint-upsert"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-pragma"],
+    body: [{ shell: "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-bootstrap", silent: true, ignore_errors: false }],
     comment: None
   },
   {
@@ -134,11 +121,9 @@ data core_workflows: List<CoreWorkflow> = [
     description: "Verify generated artifacts match their generators",
     deps: ["lint-upsert"],
     body: [
-      "@$(MAKE) deps-config-check",
-      "@$(MAKE) makegen-check",
-      "@$(MAKE) bootstrap-check",
-      "@$(MAKE) testgen-check",
-      "@$(MAKE) pragma-check"
+      { shell: "$(MAKE) deps-config-check", silent: true, ignore_errors: false },
+      { shell: "$(MAKE) bootstrap-check", silent: true, ignore_errors: false },
+      { shell: "$(MAKE) testgen-check", silent: true, ignore_errors: false }
     ],
     comment: None
   },
@@ -147,11 +132,9 @@ data core_workflows: List<CoreWorkflow> = [
     description: "Ensure generated artifacts are up to date",
     deps: ["lint-upsert"],
     body: [
-      "@$(MAKE) deps-config",
-      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-makegen",
-      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-bootstrap",
-      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-testgen",
-      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-pragma"
+      { shell: "$(MAKE) deps-config", silent: true, ignore_errors: false },
+      { shell: "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-bootstrap", silent: true, ignore_errors: false },
+      { shell: "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-testgen", silent: true, ignore_errors: false }
     ],
     comment: None
   },
@@ -159,28 +142,21 @@ data core_workflows: List<CoreWorkflow> = [
     name: "fmt-fix",
     description: "fmt-fix: apply formatting (alias for fmt)",
     deps: [],
-    body: ["@cargo fmt"],
+    body: [{ shell: "cargo fmt", silent: true, ignore_errors: false }],
     comment: None
   },
   {
     name: "lint-fix",
     description: "lint-fix: auto-fix lint issues where possible",
-    deps: ["pragma"],
-    body: ["@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings"],
-    comment: None
-  },
-  {
-    name: "ci",
-    description: "Run CI via build DAG (typed units, deterministic keying)",
-    deps: ["ensure-codegen"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-ci -q --release"],
+    deps: [],
+    body: [{ shell: "cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings", silent: true, ignore_errors: false }],
     comment: None
   },
   {
     name: "test-all",
     description: "Alias for test-xl (full Fermi budget)",
     deps: ["ensure-codegen"],
-    body: ["@$(MAKE) test-xl"],
+    body: [{ shell: "$(MAKE) test-xl", silent: true, ignore_errors: false }],
     comment: None
   }
 ]
@@ -195,10 +171,10 @@ data meta_targets: List<MetaTargetDef> = [
     description: "Alias for test-s (<=S)",
     has_check: false,
     has_fix: true,
-    command: "@$(MAKE) test-s",
+    command: { shell: "$(MAKE) test-s", silent: true, ignore_errors: false },
     check_command: None,
     fix_command: None,
-    command_prefix: None,
+    env: [],
     resource_needs: [],
     fix_prerequisites: ["fmt-fix", "lint-fix"]
   },
@@ -207,10 +183,10 @@ data meta_targets: List<MetaTargetDef> = [
     description: "Run tests (<=XS)",
     has_check: false,
     has_fix: false,
-    command: "@RUSTFLAGS=\"-D warnings\" cargo test",
+    command: { shell: "RUSTFLAGS=\"-D warnings\" cargo test", silent: true, ignore_errors: false },
     check_command: None,
     fix_command: None,
-    command_prefix: "GUNBC_TEST_MAX_COST=XS",
+    env: [{ name: "GUNBC_TEST_MAX_COST", value: "XS" }],
     resource_needs: [
       { resource: "compiled_code", mode: "ensure" },
       { resource: "verified_artifacts", mode: "ensure" }
@@ -222,10 +198,10 @@ data meta_targets: List<MetaTargetDef> = [
     description: "Run tests (<=S)",
     has_check: false,
     has_fix: false,
-    command: "@RUSTFLAGS=\"-D warnings\" cargo test",
+    command: { shell: "RUSTFLAGS=\"-D warnings\" cargo test", silent: true, ignore_errors: false },
     check_command: None,
     fix_command: None,
-    command_prefix: "GUNBC_TEST_MAX_COST=S",
+    env: [{ name: "GUNBC_TEST_MAX_COST", value: "S" }],
     resource_needs: [
       { resource: "compiled_code", mode: "ensure" },
       { resource: "verified_artifacts", mode: "ensure" }
@@ -237,10 +213,10 @@ data meta_targets: List<MetaTargetDef> = [
     description: "Run tests (<=M)",
     has_check: false,
     has_fix: false,
-    command: "@RUSTFLAGS=\"-D warnings\" cargo test",
+    command: { shell: "RUSTFLAGS=\"-D warnings\" cargo test", silent: true, ignore_errors: false },
     check_command: None,
     fix_command: None,
-    command_prefix: "GUNBC_TEST_MAX_COST=M",
+    env: [{ name: "GUNBC_TEST_MAX_COST", value: "M" }],
     resource_needs: [
       { resource: "compiled_code", mode: "ensure" },
       { resource: "verified_artifacts", mode: "ensure" }
@@ -252,10 +228,10 @@ data meta_targets: List<MetaTargetDef> = [
     description: "Run tests (<=L)",
     has_check: false,
     has_fix: false,
-    command: "@RUSTFLAGS=\"-D warnings\" cargo test",
+    command: { shell: "RUSTFLAGS=\"-D warnings\" cargo test", silent: true, ignore_errors: false },
     check_command: None,
     fix_command: None,
-    command_prefix: "GUNBC_TEST_MAX_COST=L",
+    env: [{ name: "GUNBC_TEST_MAX_COST", value: "L" }],
     resource_needs: [
       { resource: "compiled_code", mode: "ensure" },
       { resource: "verified_artifacts", mode: "ensure" }
@@ -267,10 +243,10 @@ data meta_targets: List<MetaTargetDef> = [
     description: "Run tests (<=XL)",
     has_check: false,
     has_fix: false,
-    command: "@RUSTFLAGS=\"-D warnings\" cargo test",
+    command: { shell: "RUSTFLAGS=\"-D warnings\" cargo test", silent: true, ignore_errors: false },
     check_command: None,
     fix_command: None,
-    command_prefix: "GUNBC_TEST_MAX_COST=XL",
+    env: [{ name: "GUNBC_TEST_MAX_COST", value: "XL" }],
     resource_needs: [
       { resource: "compiled_code", mode: "ensure" },
       { resource: "verified_artifacts", mode: "ensure" }
@@ -282,10 +258,10 @@ data meta_targets: List<MetaTargetDef> = [
     description: "Alias for test-s",
     has_check: false,
     has_fix: false,
-    command: "@$(MAKE) test-s",
+    command: { shell: "$(MAKE) test-s", silent: true, ignore_errors: false },
     check_command: None,
     fix_command: None,
-    command_prefix: None,
+    env: [],
     resource_needs: [],
     fix_prerequisites: []
   },
@@ -294,10 +270,10 @@ data meta_targets: List<MetaTargetDef> = [
     description: "Alias for test-m",
     has_check: false,
     has_fix: false,
-    command: "@$(MAKE) test-m",
+    command: { shell: "$(MAKE) test-m", silent: true, ignore_errors: false },
     check_command: None,
     fix_command: None,
-    command_prefix: None,
+    env: [],
     resource_needs: [],
     fix_prerequisites: []
   },
@@ -306,10 +282,10 @@ data meta_targets: List<MetaTargetDef> = [
     description: "Alias for test-l",
     has_check: false,
     has_fix: false,
-    command: "@$(MAKE) test-l",
+    command: { shell: "$(MAKE) test-l", silent: true, ignore_errors: false },
     check_command: None,
     fix_command: None,
-    command_prefix: None,
+    env: [],
     resource_needs: [],
     fix_prerequisites: []
   },
@@ -318,10 +294,10 @@ data meta_targets: List<MetaTargetDef> = [
     description: "Alias for test-xl",
     has_check: false,
     has_fix: false,
-    command: "@$(MAKE) test-xl",
+    command: { shell: "$(MAKE) test-xl", silent: true, ignore_errors: false },
     check_command: None,
     fix_command: None,
-    command_prefix: None,
+    env: [],
     resource_needs: [],
     fix_prerequisites: []
   },
@@ -330,10 +306,10 @@ data meta_targets: List<MetaTargetDef> = [
     description: "Run integration-focused tests",
     has_check: false,
     has_fix: false,
-    command: "@RUSTFLAGS=\"-D warnings\" cargo test integration",
+    command: { shell: "RUSTFLAGS=\"-D warnings\" cargo test integration", silent: true, ignore_errors: false },
     check_command: None,
     fix_command: None,
-    command_prefix: "GUNBC_TEST_MAX_COST=XL",
+    env: [{ name: "GUNBC_TEST_MAX_COST", value: "XL" }],
     resource_needs: [
       { resource: "compiled_code", mode: "ensure" },
       { resource: "verified_artifacts", mode: "ensure" }
@@ -345,10 +321,10 @@ data meta_targets: List<MetaTargetDef> = [
     description: "Run external/live-flow tests",
     has_check: false,
     has_fix: false,
-    command: "@RUSTFLAGS=\"-D warnings\" cargo test live_flow",
+    command: { shell: "RUSTFLAGS=\"-D warnings\" cargo test live_flow", silent: true, ignore_errors: false },
     check_command: None,
     fix_command: None,
-    command_prefix: "GUNBC_TEST_MAX_COST=XL",
+    env: [{ name: "GUNBC_TEST_MAX_COST", value: "XL" }],
     resource_needs: [
       { resource: "compiled_code", mode: "ensure" },
       { resource: "verified_artifacts", mode: "ensure" }
@@ -360,13 +336,12 @@ data meta_targets: List<MetaTargetDef> = [
     description: "Type check all targets",
     has_check: false,
     has_fix: true,
-    command: "@RUSTFLAGS=\"-D warnings\" cargo check --all-targets",
+    command: { shell: "RUSTFLAGS=\"-D warnings\" cargo check --all-targets", silent: true, ignore_errors: false },
     check_command: None,
     fix_command: None,
-    command_prefix: None,
+    env: [],
     resource_needs: [
-      { resource: "generated_cli", mode: "ensure" },
-      { resource: "pragma_config", mode: "verify" }
+      { resource: "generated_cli", mode: "ensure" }
     ],
     fix_prerequisites: ["fmt-fix"]
   },
@@ -375,13 +350,12 @@ data meta_targets: List<MetaTargetDef> = [
     description: "Run clippy linter",
     has_check: false,
     has_fix: true,
-    command: "@cargo clippy --all-targets -- -D warnings",
+    command: { shell: "cargo clippy --all-targets -- -D warnings", silent: true, ignore_errors: false },
     check_command: None,
-    fix_command: "@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings",
-    command_prefix: None,
+    fix_command: { shell: "cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings", silent: true, ignore_errors: false },
+    env: [],
     resource_needs: [
-      { resource: "generated_cli", mode: "ensure" },
-      { resource: "pragma_config", mode: "verify" }
+      { resource: "generated_cli", mode: "ensure" }
     ],
     fix_prerequisites: []
   },
@@ -390,10 +364,10 @@ data meta_targets: List<MetaTargetDef> = [
     description: "Format all code",
     has_check: true,
     has_fix: false,
-    command: "@cargo fmt",
-    check_command: "@cargo fmt --check",
+    command: { shell: "cargo fmt", silent: true, ignore_errors: false },
+    check_command: { shell: "cargo fmt --check", silent: true, ignore_errors: false },
     fix_command: None,
-    command_prefix: None,
+    env: [],
     resource_needs: [],
     fix_prerequisites: []
   },
@@ -402,10 +376,10 @@ data meta_targets: List<MetaTargetDef> = [
     description: "Generate CI workflow YAML (GitHub Actions & GitLab CI)",
     has_check: false,
     has_fix: false,
-    command: "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-codegen -- cigen",
+    command: { shell: "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-app --bin gunbc-codegen -- cigen", silent: true, ignore_errors: false },
     check_command: None,
     fix_command: None,
-    command_prefix: None,
+    env: [],
     resource_needs: [],
     fix_prerequisites: []
   }

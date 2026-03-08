@@ -1,8 +1,7 @@
-// tools/bootstrap.dag -- Workspace bootstrap (Makefile + .gitignore generation).
+// tools/bootstrap.dag -- Workspace bootstrap (.gitignore generation).
 //
-// Scans the workspace for crates, then generates Makefile and .gitignore
-// using content_upsert for each. Two parallel upsert chains share the
-// same crate discovery step.
+// Generates .gitignore from DSL discovery + config data. Dynamic tool output
+// categories are pre-computed by the binary and injected as a parameter.
 //
 // Replaces: gunbc-app/src/bootstrap/graph.rs (~16 nodes)
 
@@ -10,29 +9,34 @@ module tools.bootstrap
 
 import std.patterns { content_upsert }
 import std.resources { Filesystem }
-import extdeps.shell { shell.Find }
+import config.gitignore { categories }
+import extdeps.gitignore {
+  GitignoreCategory,
+  GitignoreFile,
+  filter_categories
+}
+import extdeps.gitignore_render { render_gitignore_file }
 
-// ── Render helpers ──────────────────────────────────────────────────
+// ── Entry point ─────────────────────────────────────────────────────
 
-extern func render_bootstrap_makefile(crate_names: List<String>) -> { return: String }
-extern func render_bootstrap_gitignore(crate_names: List<String>) -> { return: String }
-
-func bootstrap(check_mode: Bool?) -> { success: Bool, crate_count: Int, makefile_written: Bool, gitignore_written: Bool }
+func bootstrap(check_mode: Bool?, gitignore_categories: List<GitignoreCategory>) -> { success: Bool, crate_count: Int, gitignore_written: Bool }
   uses fs: Filesystem(mode: ReadWrite)
 {
-  scan = shell.Find.ListDirs(path: "crates")
-
-  makefile_content = render_bootstrap_makefile(crate_names: scan.dirs)
-  makefile = content_upsert(content: makefile_content.return, path: "Makefile")
-
-  gitignore_content = render_bootstrap_gitignore(crate_names: scan.dirs)
-  gitignore = content_upsert(content: gitignore_content.return, path: ".gitignore")
+  static_gitignore_categories = filter_categories(categories: categories, build_system: "cargo")
+  gitignore_file = {
+    rule_comment: "Rule: Ignore anything that is (a) reproducible from committed source-of-truth files, or (b) environment-specific and not shared across developers.",
+    categories: static_gitignore_categories |> append(items: gitignore_categories)
+  }
+  gitignore_content = render_gitignore_file(
+    file: gitignore_file,
+    generator: "gunbc-bootstrap",
+    regen_command: "cargo run -p gunbc-app --bin gunbc-bootstrap"
+  )
+  gitignore = content_upsert(content: gitignore_content, path: ".gitignore")
 
   return {
-    success: scan.dirs |> count() > 0,
-    crate_count: scan.dirs |> count(),
-    makefile_written: makefile.written,
+    success: true,
+    crate_count: 0,
     gitignore_written: gitignore.written
   }
 }
-

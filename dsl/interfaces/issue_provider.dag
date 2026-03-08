@@ -1,7 +1,7 @@
 // interfaces/issue_provider.dag -- Abstract issue management interface.
 //
-// Provider-fungible contract for issue lifecycle management. The SDLC
-// pipeline imports this interface — never concrete implementations.
+// Provider-fungible contract for issue lifecycle management. Workflow logic
+// imports this interface — never concrete implementations.
 //
 // Implementations:
 //   GitHubIssueProvider  (@rest api.github.com)  — local, cloud_run profiles

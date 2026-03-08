@@ -9,7 +9,7 @@
 
 module extdeps.github.gists
 
-import extdeps.github.core { GitHubUser }
+import extdeps.github.github { GitHubUser }
 import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
 }
@@ -126,6 +126,21 @@ service github.Gist {
       403 => GitHubErrorShape
       422 => GitHubErrorShape
       5xx => GitHubErrorShape
+    }
+    mock_response {
+      201 => {
+        id: "gist-abc123",
+        description: "Mock gist",
+        public: false,
+        files: { "snippet.rs": { filename: "snippet.rs", content: "fn main() {}", language: "Rust", size: 12 } },
+        owner: { login: "mock-user" },
+        html_url: "https://gist.github.com/mock-user/gist-abc123",
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z"
+      } "Gist created successfully",
+      401 => { message: "Bad credentials", documentation_url: "https://docs.github.com/rest" } "Invalid or missing auth token",
+      403 => { message: "Forbidden", documentation_url: "https://docs.github.com/rest" } "Insufficient scopes",
+      422 => { message: "Validation Failed", errors: [{ resource: "Gist", code: "missing_field", field: "files" }] } "Empty files rejected"
     }
   }
 }

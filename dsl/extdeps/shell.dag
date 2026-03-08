@@ -7,8 +7,7 @@
 // Consumers:
 //   tools/bootstrap.dag     — find directories
 //   tools/clippy.dag        — which command
-//   pipelines/cloud_e2e.dag — env vars
-//   pipelines/scale_test.dag — env vars
+//   tools/deps.dag          — run install scripts, check commands
 
 module extdeps.shell
 
@@ -49,6 +48,29 @@ service shell.Which {
     exit {
       0 => Unit "Command found"
       1 => Unit "Command not found"
+    }
+  }
+}
+
+service shell.Exec {
+  operation Run {
+    input { script: String }
+    output { success: Bool, stdout: String, stderr: String }
+    transport shell { argv: ["sh", "-lc", "{script}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Script failed"
+    }
+  }
+
+  operation Check {
+    input { command: String }
+    output { exists: Bool }
+    readonly
+    transport shell { argv: ["sh", "-lc", "{command}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Command failed"
     }
   }
 }

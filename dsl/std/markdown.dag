@@ -7,7 +7,7 @@
 //
 // Types only. Rendering fns live in std.markdown_render (pure DSL)
 // to avoid the lowerer injecting unconnected fn nodes into consumers.
-// render_tree is the only extern func (recursive algorithm in Rust).
+// render_tree was an extern func (recursive algorithm) — removed with gist tool.
 
 module std.markdown
 
@@ -26,13 +26,6 @@ type MarkdownNode
 type MarkdownDoc {
   nodes: List<MarkdownNode>
 }
-
-// ── Extern func declarations ──────────────────────────────────────────
-//
-// render_tree needs recursive tree algorithm (not expressible in DSL).
-// Implementation: gunbc-app/src/extern_ops.rs
-
-extern func render_tree(paths: List<String>) -> { return: String }
 
 // Pure DSL rendering fns (including render_heading) are in
 // std.markdown_render to avoid the lowerer injecting unconnected fn

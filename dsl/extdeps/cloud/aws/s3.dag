@@ -8,7 +8,7 @@
 
 module extdeps.cloud.aws.s3
 
-import extdeps.cloud.aws.core { AwsRegion }
+import extdeps.cloud.aws.aws { AwsRegion }
 import extdeps.cloud.aws.iam { AwsPolicyDocument }
 import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity

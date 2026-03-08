@@ -69,7 +69,7 @@ func approval_yield(
 
   return {
     yielded: outcome.updated && release.released,
-    approval_marker: "sdlc:approval-pending:{stage}"
+    approval_marker: "stage:approval-pending:{stage}"
   }
 }
 
@@ -134,7 +134,7 @@ test approval_yield_persists_and_releases {
 
     input yield/prepare.issue_id -> "42"
     input yield/prepare.stage -> "design-review"
-    input yield/prepare.run_key -> "sdlc::42::design-review::v1"
+    input yield/prepare.run_key -> "stage::42::design-review::v1"
     input yield/prepare.owner -> "worker-1"
     input yield/prepare.generation -> 1
 
@@ -153,7 +153,7 @@ test approval_resume_with_label {
 
     input resume/prepare.issue_id -> "42"
     input resume/prepare.stage -> "design-review"
-    input resume/prepare.run_key -> "sdlc::42::design-review::v1"
+    input resume/prepare.run_key -> "stage::42::design-review::v1"
     input resume/prepare.approval_label -> "approved"
 
     mock get/execute.response -> rest_response(200, {
@@ -168,7 +168,7 @@ test approval_resume_with_label {
     mock issues_get/execute.response -> rest_response(200, {
       id: "42",
       title: "Test issue",
-      labels: ["sdlc:design-review", "approved"],
+      labels: ["stage:design-review", "approved"],
       state: "open"
     })
 
@@ -180,7 +180,7 @@ test approval_resume_without_label {
 
     input resume/prepare.issue_id -> "42"
     input resume/prepare.stage -> "design-review"
-    input resume/prepare.run_key -> "sdlc::42::design-review::v1"
+    input resume/prepare.run_key -> "stage::42::design-review::v1"
     input resume/prepare.approval_label -> "approved"
 
     mock get/execute.response -> rest_response(200, {
@@ -195,7 +195,7 @@ test approval_resume_without_label {
     mock issues_get/execute.response -> rest_response(200, {
       id: "42",
       title: "Test issue",
-      labels: ["sdlc:design-review"],
+      labels: ["stage:design-review"],
       state: "open"
     })
 

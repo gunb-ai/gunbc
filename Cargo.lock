@@ -9,12 +9,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
-name = "anyhow"
-version = "1.0.102"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
-
-[[package]]
 name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -46,9 +40,6 @@ name = "bitflags"
 version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
-dependencies = [
- "serde_core",
-]
 
 [[package]]
 name = "block-buffer"
@@ -153,7 +144,6 @@ dependencies = [
  "daglang-resolve",
  "daglang-syntax",
  "daglang-typecheck",
- "gunbc-app",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-resolve",
@@ -184,6 +174,7 @@ dependencies = [
 name = "daglang-driver"
 version = "0.1.0"
 dependencies = [
+ "daglang-contract",
  "daglang-derive",
  "daglang-emit",
  "daglang-lower",
@@ -218,7 +209,6 @@ dependencies = [
  "daglang-resolve",
  "daglang-syntax",
  "daglang-typecheck",
- "gunbc-app",
  "gunbc-deps",
  "gunbc-exec",
  "gunbc-ir",
@@ -340,43 +330,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
-name = "gunbc-app"
-version = "0.1.0"
-dependencies = [
- "cargo_metadata",
- "daglang-derive",
- "daglang-driver",
- "daglang-emit",
- "daglang-lower",
- "daglang-syntax",
- "glob",
- "gunbc-cli",
- "gunbc-clippy",
- "gunbc-codegen",
- "gunbc-delegate-macros",
- "gunbc-deps",
- "gunbc-design-ops",
- "gunbc-exec",
- "gunbc-infra",
- "gunbc-ir",
- "gunbc-lib-blob",
- "gunbc-lib-llm-ops",
- "gunbc-lib-review",
- "gunbc-lib-transport",
- "gunbc-primitives",
- "gunbc-resolve",
- "gunbc-test",
- "gunbc-testgen-registry",
- "gunbc-testgen-registry-macros",
- "gunbc-workflow",
- "ron",
- "serde",
- "serde_json",
- "serde_yml",
- "toml_edit",
-]
-
-[[package]]
 name = "gunbc-cli"
 version = "0.1.0"
 dependencies = [
@@ -394,6 +347,7 @@ dependencies = [
 name = "gunbc-codegen"
 version = "0.1.0"
 dependencies = [
+ "cargo_metadata",
  "daglang-derive",
  "daglang-driver",
  "daglang-emit",
@@ -412,6 +366,7 @@ dependencies = [
  "gunbc-test",
  "serde",
  "serde_json",
+ "toml_edit",
 ]
 
 [[package]]
@@ -476,6 +431,7 @@ dependencies = [
 name = "gunbc-ir"
 version = "0.1.0"
 dependencies = [
+ "daglang-contract",
  "glob",
  "gunbc-delegate-macros",
  "gunbc-infra",
@@ -574,11 +530,13 @@ dependencies = [
  "daglang-driver",
  "daglang-lower",
  "gunbc-exec",
+ "gunbc-infra",
  "gunbc-ir",
  "gunbc-lib-blob",
  "gunbc-lib-transport",
  "gunbc-primitives",
  "gunbc-test",
+ "serde",
  "serde_json",
 ]
 
@@ -610,6 +568,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "gunbc-tests"
+version = "0.1.0"
+dependencies = [
+ "gunbc-exec",
+ "gunbc-ir",
+ "gunbc-resolve",
+ "gunbc-test",
+ "serde_json",
 ]
 
 [[package]]
@@ -697,16 +666,6 @@ name = "libm"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
-
-[[package]]
-name = "libyml"
-version = "0.0.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3302702afa434ffa30847a83305f0a69d6abd74293b6554c18ec85c7ef30c980"
-dependencies = [
- "anyhow",
- "version_check",
-]
 
 [[package]]
 name = "linux-raw-sys"
@@ -886,20 +845,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ron"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd490c5b18261893f14449cbd28cb9c0b637aebf161cd77900bfdedaff21ec32"
-dependencies = [
- "bitflags",
- "once_cell",
- "serde",
- "serde_derive",
- "typeid",
- "unicode-ident",
-]
-
-[[package]]
 name = "rustix"
 version = "0.38.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -941,12 +886,6 @@ dependencies = [
  "tempfile",
  "wait-timeout",
 ]
-
-[[package]]
-name = "ryu"
-version = "1.0.23"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
 name = "sct"
@@ -1018,21 +957,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf41e0cfaf7226dca15e8197172c295a782857fcb97fad1808a166870dee75a3"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "serde_yml"
-version = "0.0.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59e2dd588bf1597a252c3b920e0143eb99b0f76e4e082f4c92ce34fbc9e71ddd"
-dependencies = [
- "indexmap",
- "itoa",
- "libyml",
- "memchr",
- "ryu",
- "serde",
- "version_check",
 ]
 
 [[package]]
@@ -1174,12 +1098,6 @@ name = "toml_write"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
-
-[[package]]
-name = "typeid"
-version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc7d623258602320d5c55d1bc22793b57daff0ec7efc270ea7d55ce1d5f5471c"
 
 [[package]]
 name = "typenum"

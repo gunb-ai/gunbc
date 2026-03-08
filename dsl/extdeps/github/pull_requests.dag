@@ -5,11 +5,11 @@
 // review → merged/closed.
 //
 // Consumers:
-//   funcs/sdlc_stages.dag           — code review stage
+//   workflow handlers               — code review stage
 
 module extdeps.github.pull_requests
 
-import extdeps.github.core { Repository }
+import extdeps.github.github { Repository }
 import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
 }
@@ -222,6 +222,11 @@ service github.PullRequest {
       422 => GitHubErrorShape
       5xx => GitHubErrorShape
     }
+    mock_response {
+      201 => { number: 99, title: "Mock PR", html_url: "https://github.com/mock/repo/pull/99", id: 9876543, node_id: "PR_mock", head: { sha: "abc123def456" }, state: "open", draft: false } "PR created",
+      401 => { message: "Bad credentials", documentation_url: "https://docs.github.com/rest" } "Auth failure",
+      422 => { message: "Validation Failed", errors: [{ resource: "PullRequest", code: "invalid", field: "head" }] } "Invalid head branch"
+    }
   }
 
   operation Get {
@@ -250,6 +255,10 @@ service github.PullRequest {
       404 => GitHubErrorShape
       5xx => GitHubErrorShape
     }
+    mock_response {
+      200 => { number: 99, title: "Mock PR", body: "PR body", state: "open", html_url: "https://github.com/mock/repo/pull/99", head: { sha: "abc123" }, base: { ref: "main" }, mergeable: true, merged: false } "PR found",
+      404 => { message: "Not Found", documentation_url: "https://docs.github.com/rest" } "PR not found"
+    }
   }
 
   operation AddComment {
@@ -272,6 +281,11 @@ service github.PullRequest {
       404 => GitHubErrorShape
       422 => GitHubErrorShape
       5xx => GitHubErrorShape
+    }
+    mock_response {
+      201 => { id: 555, html_url: "https://github.com/mock/repo/pull/99#issuecomment-555", body: "Mock comment" } "Comment added",
+      404 => { message: "Not Found", documentation_url: "https://docs.github.com/rest" } "PR not found",
+      401 => { message: "Bad credentials", documentation_url: "https://docs.github.com/rest" } "Auth failure"
     }
   }
 
@@ -302,6 +316,11 @@ service github.PullRequest {
       422 => GitHubErrorShape
       5xx => GitHubErrorShape
     }
+    mock_response {
+      200 => { merged: true, sha: "merge-sha-001", message: "Pull Request successfully merged" } "PR merged",
+      405 => { message: "Pull Request is not mergeable", documentation_url: "https://docs.github.com/rest" } "Merge conflicts",
+      409 => { message: "Head branch was modified", documentation_url: "https://docs.github.com/rest" } "Concurrent update"
+    }
   }
 
   operation ListFiles {
@@ -322,6 +341,10 @@ service github.PullRequest {
       404 => GitHubErrorShape
       422 => GitHubErrorShape
       5xx => GitHubErrorShape
+    }
+    mock_response {
+      200 => [{ filename: "src/main.rs", status: "modified", additions: 10, deletions: 2 }, { filename: "tests/test.rs", status: "added", additions: 50, deletions: 0 }] "Files listed",
+      404 => { message: "Not Found", documentation_url: "https://docs.github.com/rest" } "PR not found"
     }
   }
 
@@ -345,6 +368,10 @@ service github.PullRequest {
       422 => GitHubErrorShape
       5xx => GitHubErrorShape
     }
+    mock_response {
+      201 => { number: 99, html_url: "https://github.com/mock/repo/pull/99", requested_reviewers: [{ login: "reviewer-1" }] } "Reviewers requested",
+      422 => { message: "Validation Failed", errors: [{ resource: "PullRequest", code: "invalid", field: "reviewers" }] } "Invalid reviewer"
+    }
   }
 
   operation ListReviews {
@@ -363,6 +390,10 @@ service github.PullRequest {
       200 => List<Review>
       404 => GitHubErrorShape
       5xx => GitHubErrorShape
+    }
+    mock_response {
+      200 => [{ id: 1, user: { login: "reviewer-1" }, state: "APPROVED", body: "LGTM", submitted_at: "2026-01-01T00:00:00Z" }] "Reviews listed",
+      404 => { message: "Not Found", documentation_url: "https://docs.github.com/rest" } "PR not found"
     }
   }
 }

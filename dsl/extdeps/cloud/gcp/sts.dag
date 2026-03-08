@@ -4,12 +4,12 @@
 // token responses. Used for Workload Identity Federation.
 //
 // Consumers:
-//   extdeps/sdlc/providers/gcp_credential_provider.dag — WIF credential chain step
+//   std/patterns.dag           — credential_chain pattern
 //   std/patterns.dag           — credential_chain pattern
 
 module extdeps.cloud.gcp.sts
 
-import extdeps.cloud.core { CloudAuthScheme }
+import extdeps.cloud.cloud { CloudAuthScheme }
 import std.types { Url }
 import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
@@ -117,6 +117,11 @@ service gcp.STS {
       429 => GcpErrorShape
       5xx => GcpErrorShape
     }
+    mock_response {
+      200 => { access_token: "ya29.mock-sts-token", issued_token_type: "urn:ietf:params:oauth:token-type:access_token", token_type: "Bearer", expires_in: 3600 } "Token exchanged",
+      400 => { error: "invalid_grant", error_description: "Subject token is expired" } "Invalid or expired token",
+      403 => { error: { code: 403, message: "WIF pool not bound to service account", status: "PERMISSION_DENIED" } } "WIF not configured"
+    }
   }
 }
 
@@ -145,6 +150,11 @@ service github.OIDC {
       403 => GitHubErrorShape
       5xx => GitHubErrorShape
     }
+    mock_response {
+      200 => { value: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.mock-oidc-token", count: 1 } "OIDC token acquired",
+      401 => { message: "Bad credentials", documentation_url: "https://docs.github.com/rest" } "Invalid request token",
+      403 => { message: "Forbidden", documentation_url: "https://docs.github.com/rest" } "Not running on GitHub Actions"
+    }
   }
 }
 
@@ -161,6 +171,10 @@ service gcp.Metadata {
       200 => String
       404 => GcpErrorShape
       5xx => GcpErrorShape
+    }
+    mock_response {
+      200 => "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.mock-identity-token" "Identity token from metadata server",
+      404 => { error: { code: 404, message: "Metadata server not available", status: "NOT_FOUND" } } "Not running on GCP"
     }
   }
 }

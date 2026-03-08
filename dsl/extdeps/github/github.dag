@@ -1,0 +1,70 @@
+// extdeps/github/core.dag -- "What is GitHub?"
+//
+// Core resource model: repositories, users, auth, pagination.
+// Complements extdeps/api/github_ops.dag (which covers rate limits and tiers).
+//
+// Consumers:
+//   extdeps/github/issues.dag        — issue resource model
+//   extdeps/github/pull_requests.dag — PR resource model
+//   extdeps/github/gists.dag         — gist resource model
+//   services/github/*                — transport wiring
+
+module extdeps.github.github
+
+import std.types { Timestamp }
+
+// ── Users ─────────────────────────────────────────────────────────
+
+type UserType = HumanUser | Bot | Organization
+
+type GitHubUser {
+  login: String
+  id: Int
+  type: UserType
+}
+
+// ── Repositories ──────────────────────────────────────────────────
+
+type Repository {
+  owner: String
+  name: String
+  full_name: String
+  private: Bool
+  default_branch: String
+}
+
+// ── Authentication ────────────────────────────────────────────────
+
+type GitHubAuthToken {
+  token: Secret
+  scopes: List<String>
+  expires_at: Timestamp?
+}
+
+type GitHubScope
+  = ScopeRepo
+  | ScopeGist
+  | ScopeWorkflow
+  | ScopeReadOrg
+  | ScopeReadUser
+
+// ── Pagination ────────────────────────────────────────────────────
+// GitHub uses Link-header cursor-based pagination.
+
+type Pagination {
+  per_page: Int
+  cursor: String?
+  has_next: Bool
+}
+
+// ── Permissions ───────────────────────────────────────────────────
+
+type GitHubPermission = PermRead | PermWrite | PermAdmin
+
+// ── Constants ─────────────────────────────────────────────────────
+
+data default_api_base: String = "https://api.github.com"
+
+data default_per_page: Int = 30
+
+data max_per_page: Int = 100

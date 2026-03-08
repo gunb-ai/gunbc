@@ -1,0 +1,64 @@
+// extdeps/ci/gitlab_ci.dag -- "What is GitLab CI?"
+//
+// Stable domain model of GitLab CI/CD platform.
+// Tautological definitions: a pipeline has stages, variables, and
+// jobs. A job has a stage, script, needs, and optional cache.
+//
+// Facts about the platform's schema — no opinions about our repo.
+// Our CI configuration lives in config/ci.dag (Layer 2).
+//
+// Consumers:
+//   config/ci.dag          — our CI configuration data
+//   tools/cigen.dag        — rendering + tool entrypoint
+
+module extdeps.ci.gitlab_ci
+
+import extdeps.ci.script { ScriptBlock }
+
+// ── Variable ───────────────────────────────────────────────────────
+
+type Variable {
+  key: String
+  value: String
+}
+
+// ── Dependency ─────────────────────────────────────────────────────
+// "What must complete before this job?"
+
+type Need {
+  job: String
+}
+
+// ── Cache ──────────────────────────────────────────────────────────
+
+type CacheConfig {
+  key: String
+  paths: List<String>
+}
+
+// ── Job ────────────────────────────────────────────────────────────
+// "What is a GitLab CI job?"
+
+type Job {
+  id: String
+  stage: String
+  script: ScriptBlock
+  needs: List<Need>
+  variables: List<Variable>
+}
+
+// ── Pipeline ───────────────────────────────────────────────────────
+// "What is a GitLab CI pipeline?"
+
+type Pipeline {
+  image: String
+  stages: List<String>
+  variables: List<Variable>
+  cache: CacheConfig?
+  jobs: List<Job>
+}
+
+// ── Defaults ───────────────────────────────────────────────────────
+
+data default_image: String = "rust:latest"
+data output_path: String = ".gitlab-ci.yml"

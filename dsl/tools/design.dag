@@ -1,6 +1,6 @@
 // tools/design.dag -- Design generation and review workflow helpers.
 //
-// Canonical SDLC design tool module (CG1).
+// Canonical design tool module (CG1).
 // Uses provider-specific LLM services behind a provider selector.
 
 module tools.design

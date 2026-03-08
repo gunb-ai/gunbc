@@ -13,7 +13,7 @@
 
 module extdeps.cloud.gcp.storage
 
-import extdeps.cloud.gcp.core { GcpProject, GcpRegion }
+import extdeps.cloud.gcp.gcp { GcpProject, GcpRegion }
 import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, Severity
 }

@@ -4,7 +4,6 @@
 //
 // Structure:
 // compilation_ensure -> codegen_ensure -> workspace_scan ->
-//   generate_makefile -> upsert_makefile -> report
 //   generate_gitignore -> upsert_gitignore -> report
 
 module workflows.bootstrap
@@ -24,15 +23,10 @@ pipeline bootstrap {
   stage workspace_scan [after codegen_ensure] {
   }
 
-  stage generate_makefile [after workspace_scan] {}
-
   stage generate_gitignore [after workspace_scan] {}
-
-  stage upsert_makefile [after generate_makefile] {
-  }
 
   stage upsert_gitignore [after generate_gitignore] {
   }
 
-  stage report [after upsert_makefile, after upsert_gitignore] {}
+  stage report [after upsert_gitignore] {}
 }

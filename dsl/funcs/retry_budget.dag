@@ -124,7 +124,7 @@ func mark_terminal(
 
 test first_attempt_gets_full_budget {
 
-    input check/prepare.run_key -> "sdlc::42::design::v1"
+    input check/prepare.run_key -> "stage::42::design::v1"
     input check/prepare.stage -> "design"
     input check/prepare.max_retries -> 3
 
@@ -137,7 +137,7 @@ test first_attempt_gets_full_budget {
 
 test failed_stage_decrements_budget {
 
-    input check/prepare.run_key -> "sdlc::42::design::v1"
+    input check/prepare.run_key -> "stage::42::design::v1"
     input check/prepare.stage -> "design"
     input check/prepare.max_retries -> 3
 
@@ -155,7 +155,7 @@ test failed_stage_decrements_budget {
 
 test budget_exhausted_terminal {
 
-    input check/prepare.run_key -> "sdlc::42::design::v1"
+    input check/prepare.run_key -> "stage::42::design::v1"
     input check/prepare.stage -> "design"
     input check/prepare.max_retries -> 3
 
@@ -174,7 +174,7 @@ test budget_exhausted_terminal {
 // Success status → AlreadySucceeded (stage completed, no retry needed)
 test successful_stage_skips {
 
-    input check/prepare.run_key -> "sdlc::42::design::v1"
+    input check/prepare.run_key -> "stage::42::design::v1"
     input check/prepare.stage -> "design"
 
     mock get/execute.response -> rest_response(200, {
@@ -192,7 +192,7 @@ test successful_stage_skips {
 // PendingApproval status → AwaitingApproval (not yet succeeded, waiting on human)
 test pending_approval_awaits {
 
-    input check/prepare.run_key -> "sdlc::42::design::v1"
+    input check/prepare.run_key -> "stage::42::design::v1"
     input check/prepare.stage -> "design"
 
     mock get/execute.response -> rest_response(200, {
@@ -209,7 +209,7 @@ test pending_approval_awaits {
 
 test record_preserves_budget {
 
-    input record/prepare.run_key -> "sdlc::42::design::v1"
+    input record/prepare.run_key -> "stage::42::design::v1"
     input record/prepare.stage -> "design"
     input record/prepare.success -> true
     input record/prepare.attempt_number -> 2

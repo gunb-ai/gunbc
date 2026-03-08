@@ -8,7 +8,7 @@ func process_issues(owner: String, repo: String) -> { count: Int }
   uses issues: IssueProvider
 {
     discovered = issues.discover(
-        labels: ["sdlc:idea"],
+        labels: ["stage:idea"],
         state: "open"
     )
     details = for issue in discovered.issues {

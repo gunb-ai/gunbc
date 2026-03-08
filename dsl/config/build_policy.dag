@@ -2,7 +2,6 @@
 //
 // Source of truth for how the Rust compiler treats diagnostics.
 // cargo_compile_env is the projection of warning_policy to env vars.
-// BuildConfig::cargo() mirrors this; a contract test ensures agreement.
 
 module config.build_policy
 

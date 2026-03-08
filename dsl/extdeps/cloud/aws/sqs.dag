@@ -8,7 +8,7 @@
 
 module extdeps.cloud.aws.sqs
 
-import extdeps.cloud.aws.core { Arn }
+import extdeps.cloud.aws.aws { Arn }
 import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
 }

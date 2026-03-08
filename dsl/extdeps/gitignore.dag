@@ -7,6 +7,8 @@
 
 module extdeps.gitignore
 
+import std.render { OutputFormat }
+
 // A category of gitignore rules with provenance tracking.
 type GitignoreCategory {
   id: String
@@ -23,29 +25,15 @@ type GitignoreFile {
   categories: List<GitignoreCategory>
 }
 
-// ── Domain rendering ─────────────────────────────────────────────────
-
-fn render_category_header(cat: GitignoreCategory) -> String {
-  match cat.source {
-    None => "# --- {cat.name} ---"
-    _ => "# --- {cat.name} (from {cat.source}) ---"
-  }
-}
-
-fn render_category(cat: GitignoreCategory) -> String {
-  let header = render_category_header(cat: cat)
-  let rationale_line = match cat.rationale {
-    None => ""
-    _ => "# {cat.rationale}\n"
-  }
-  let items = cat.items |> join("\n")
-  "{header}\n{rationale_line}{items}\n"
-}
-
-fn render_gitignore_content(file: GitignoreFile) -> String {
-  let rule = "# {file.rule_comment}\n\n"
-  let body = file.categories |> map(c => render_category(cat: c)) |> join("\n")
-  "{rule}{body}"
+// OutputFormat parameterization for .gitignore.
+data gitignore_output_format: OutputFormat = {
+  name: "Gitignore",
+  indent_unit: "",
+  kv_separator: "",
+  list_prefix: "",
+  comment_prefix: "#",
+  section_separator: "\n",
+  trailing_newline: true
 }
 
 // ── Category filtering ───────────────────────────────────────────────

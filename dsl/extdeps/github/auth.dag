@@ -1,21 +1,38 @@
 // extdeps/github/auth.dag -- GitHub auth materialization for active workflows.
 //
-// Transitional until structural auth injection is fully lowered. The workflow
-// surface consumes a provider-auth module rather than a shared credential helper.
+// Pure REST credential chain: ADC file -> OAuth2 refresh -> Secret Manager.
+// Zero CLI dependencies -- only requires ADC file from a prior `gcloud auth
+// application-default login`.
 
 module extdeps.github.auth
 
-import extdeps.cloud.gcp.core { shell.GCloud }
+import extdeps.cloud.gcp.gcp
+import extdeps.cloud.gcp.secret_manager
+import std.resources { Network }
 import std.types { NonEmptyStr }
 
 func github_token(
   project_id: NonEmptyStr = "gunbai-secrets",
   secret_name: NonEmptyStr = "github-token"
-) -> { token: Secret } {
-  secret = shell.GCloud.SecretManagerAccessVersion(
-    project_id: project_id,
-    secret_name: secret_name
+) -> { token: Secret }
+  uses net: Network
+{
+  // Step 1: Read ADC credentials from local file (file transport, no CLI)
+  adc = gcloud.Auth.ReadADC(path: "~/.config/gcloud/application_default_credentials.json")
+
+  // Step 2: Refresh the access token via REST (oauth2.googleapis.com)
+  refreshed = oauth2.Google.Refresh(
+    client_id: adc.client_id,
+    client_secret: adc.client_secret,
+    refresh_token: adc.refresh_token
   )
 
-  return { token: secret.secret_value }
+  // Step 3: Access the GitHub token from Secret Manager via REST
+  secret = gcp.SecretManager.AccessVersion(
+    access_token: refreshed.access_token,
+    project_id: project_id,
+    secret: secret_name
+  )
+
+  return { token: secret.payload as Secret }
 }

@@ -1,3 +1,0 @@
-# gunbc-infra: Infrastructure layer
-#
-# Pure hashing/manifest primitives; no direct filesystem access.

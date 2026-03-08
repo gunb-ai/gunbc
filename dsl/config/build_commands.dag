@@ -1,8 +1,7 @@
 // config/build_commands.dag -- Pre-rendered build command strings.
 //
 // These are the concrete shell commands for cargo-based builds.
-// BuildConfig::cargo() in Rust computes these; this DSL module
-// is the forward source of truth for the Makefile renderer.
+// This DSL module is the source of truth for the Makefile renderer.
 //
 // All compilation commands include RUSTFLAGS="-D warnings" (deny policy).
 // All commands are prefixed with @ for Makefile silent execution.

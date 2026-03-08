@@ -1,0 +1,78 @@
+// extdeps/cloud/azure/core.dag -- "What is Azure?"
+//
+// Azure identity model: subscriptions, tenants, managed identities,
+// federated credentials, regions, resource groups.
+//
+// Consumers:
+//   extdeps/cloud/azure/{blob_storage,identity,container_apps,key_vault,service_bus}.dag
+//   cloud/azure/credential.dag — credential chain
+
+module extdeps.cloud.azure.azure
+
+import extdeps.cloud.cloud { CloudAuthScheme, ServiceEndpoint }
+import std.types { Url }
+
+// ── Subscriptions ─────────────────────────────────────────────────
+
+type AzureSubscriptionState = AzEnabled | AzDisabled | Warned | PastDue | AzDeleted
+
+type AzureSubscription {
+  id: String
+  display_name: String
+  state: AzureSubscriptionState
+}
+
+// ── Tenants ───────────────────────────────────────────────────────
+
+type AzureTenant {
+  id: String
+  display_name: String
+}
+
+// ── Managed identities ────────────────────────────────────────────
+
+type AzureIdentityType = SystemAssigned | UserAssigned
+
+type ManagedIdentity {
+  client_id: String
+  principal_id: String
+  type: AzureIdentityType
+}
+
+// ── Federated credentials ─────────────────────────────────────────
+
+type FederatedCredential {
+  issuer: String
+  subject: String
+  audience: String
+}
+
+// ── Regions ───────────────────────────────────────────────────────
+
+type AzureRegion {
+  name: String
+  display_name: String
+  paired_region: String?
+}
+
+data regions: List<AzureRegion> = [
+  { name: "eastus", display_name: "East US", paired_region: "westus" },
+  { name: "westus", display_name: "West US", paired_region: "eastus" },
+  { name: "westeurope", display_name: "West Europe", paired_region: "northeurope" },
+  { name: "northeurope", display_name: "North Europe", paired_region: "westeurope" },
+  { name: "southeastasia", display_name: "Southeast Asia", paired_region: "eastasia" }
+]
+
+// ── Resource groups ───────────────────────────────────────────────
+
+type ResourceGroup {
+  name: String
+  location: String
+  subscription_id: String
+}
+
+// ── Constants ─────────────────────────────────────────────────────
+
+data auth_endpoint: Url = "https://login.microsoftonline.com"
+
+data management_endpoint: Url = "https://management.azure.com"

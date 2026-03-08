@@ -4,13 +4,10 @@
 // Types live in std.markdown (types-only module); rendering fns live here to
 // avoid the lowerer injecting unconnected fn nodes into every consumer that
 // imports std.markdown.
-//
-// render_tree remains extern func in std.markdown (recursive tree algorithm).
-// render_heading is pure DSL (repeat pipe in this module).
 
 module std.markdown_render
 
-import std.markdown { MarkdownNode, MarkdownDoc, render_tree }
+import std.markdown { MarkdownNode, MarkdownDoc }
 
 fn render_heading(level: Int, text: String) -> String {
   let prefix = "#" |> repeat(level)
@@ -37,7 +34,7 @@ fn render_node(node: MarkdownNode) -> String {
     Paragraph { text } => text
     BulletList { items } => render_bullet_list(items: items)
     NumberedList { items } => render_numbered_list(items: items)
-    Tree { paths } => render_tree(paths: paths)
+    Tree { paths } => paths |> join("\n")
     ThematicBreak => "---"
     BlockQuote { text } => "> {text}"
   }

@@ -5,7 +5,7 @@
 
 module extdeps.llm.auth
 
-import extdeps.cloud.gcp.core { shell.GCloud }
+import extdeps.cloud.gcp.gcp { shell.GCloud }
 import std.types { NonEmptyStr }
 
 fn llm_secret_name(provider: String) -> NonEmptyStr {

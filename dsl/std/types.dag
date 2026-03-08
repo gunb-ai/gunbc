@@ -452,7 +452,7 @@ type DagDiff {
   changed: List<String>
 }
 
-// --- Codegen / pragma (simple products) --------------------------------
+// --- Codegen (simple products) --------------------------------
 
 type CodegenTarget {
   name: String
@@ -470,7 +470,7 @@ type PragmaDirective {
   scope: String?
 }
 
-// --- SDLC lifecycle types (Level 4+3: Coproduct + Product) ---------------
+// --- Issue lifecycle types (Level 4+3: Coproduct + Product) ---------------
 //
 // The issue lifecycle model is PROVIDER-AGNOSTIC. These types define
 // the abstract state machine; concrete bindings (GitHub Issues, Linear,
@@ -489,7 +489,7 @@ type PragmaDirective {
 // Similarly:
 //   TrackedIssue/DesignOutput = abstract (std.types)
 //   github/issues.dag        = concrete service binding
-//   funcs/sdlc_worker.dag    = works against abstract types
+//   workflow handlers        = work against abstract types
 
 // Lifecycle stages. Each maps to a label (GitHub), status (Linear),
 // or row state (local DB). The pipeline doesn't care which.
@@ -589,11 +589,11 @@ type PipelineArtifact {
   url: Url?                     // Link to where it was posted
 }
 
-// --- SDLC Domain Model (Level 3+4: Full domain entity catalog) -----------
+// --- Workflow Domain Model (Level 3+4: Full domain entity catalog) --------
 //
-// These types define the complete domain model for the SDLC pipeline.
+// These types define the complete domain model for the issue workflow.
 // Every entity, its identity, state machine, and invariants are specified
-// in docs/design/sdlc/domain-modeling-comprehensive.md.
+// in the workflow domain model notes.
 //
 // Canonical reference: domain-modeling-comprehensive.md §3 "Core Entities"
 
@@ -608,7 +608,7 @@ type BindingStatus
   | Conflicted                  // Multiple issues matched intent_id (fail-closed)
   | Terminated                  // Issue lifecycle complete
 
-// The entry point to the SDLC system. An intent represents a request to do work.
+// The entry point to the workflow system. An intent represents a request to do work.
 // Identity: intent_id (globally unique, deterministic from content).
 // Invariants: INV-1 (deterministic ID), INV-2 (at most one active binding).
 type IntentSheet {
@@ -616,7 +616,7 @@ type IntentSheet {
   intent_version:   Int               // Monotonic version for update detection
   title:            NonEmptyStr       // Human-readable summary
   body:             String            // Detailed description (markdown)
-  labels:           List<String>      // Initial labels (e.g., ["sdlc:idea"])
+  labels:           List<String>      // Initial labels (e.g., ["stage:idea"])
   owner:            NonEmptyStr       // GitHub owner (org or user)
   repo:             NonEmptyStr       // GitHub repository name
   created_at:       Timestamp         // When the intent was first submitted

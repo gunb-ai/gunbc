@@ -4,14 +4,14 @@
 // delivery guarantees, dead letter policies.
 //
 // Consumers:
-//   extdeps/sdlc/providers/pubsub_signal_store.dag — signal queue
+//   workflows/webhook.dag        — signal queue
 //   infra/gcp/resources.dag                         — queue resource
 
 module extdeps.cloud.gcp.pubsub
 
 import std.types { Url }
 
-import extdeps.cloud.gcp.core { GcpProject }
+import extdeps.cloud.gcp.gcp { GcpProject }
 import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
 }

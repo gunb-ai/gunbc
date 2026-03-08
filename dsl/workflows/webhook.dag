@@ -1,7 +1,7 @@
 // workflows/webhook.dag -- SP-7: Webhook-driven stage transitions.
 //
 // Cloud Run HTTP endpoint that receives GitHub webhook events and
-// triggers SDLC pipeline stage transitions.
+// triggers issue-workflow stage transitions.
 //
 // Architecture:
 //   GitHub --> webhook HTTP POST --> Cloud Run --> webhook handler
@@ -13,8 +13,8 @@
 //                                      +--> dispatch worker if immediate
 //
 // Supported webhook events:
-//   - issues.labeled:    New SDLC label -> WorkReady signal
-//   - issues.unlabeled:  SDLC label removed -> reconciliation check
+//   - issues.labeled:    New stage label -> WorkReady signal
+//   - issues.unlabeled:  Stage label removed -> reconciliation check
 //   - issue_comment.created: Approval comment -> ApprovalGranted signal
 //   - pull_request.closed:   PR merged -> TestReady signal
 //   - pull_request.review:   Review submitted -> ReviewComplete signal
@@ -56,8 +56,8 @@ type WebhookResponse {
 
 // ── Event classification ────────────────────────────────────────────
 
-fn is_sdlc_label(label: String) -> Bool {
-  label |> starts_with(prefix: "sdlc:")
+fn is_stage_label(label: String) -> Bool {
+  label |> starts_with(prefix: "stage:")
 }
 
 fn is_approval_comment(body: String) -> Bool {
@@ -73,7 +73,7 @@ fn event_to_signal_type(event: WebhookEvent) -> SignalType? {
         None => None
       }
     }
-    IssueUnlabeled { issue_number, label } => if is_sdlc_label(label: label) {
+    IssueUnlabeled { issue_number, label } => if is_stage_label(label: label) {
       ReconcileTick { window_id: "issue-{issue_number}" }
     } else {
       None
@@ -221,7 +221,7 @@ test webhook_issue_labeled_emits_work_ready : webhook_env {
 
     input handle_webhook.event -> IssueLabeled {
       issue_number: 42,
-      label: "sdlc:idea",
+      label: "stage:idea",
       sender: "test-user"
     }
     input handle_webhook.delivery_id -> "d1234-5678"
@@ -260,7 +260,7 @@ test webhook_pr_merged_emits_test_ready : webhook_env {
     input handle_webhook.event -> PullRequestClosed {
       pr_number: 123,
       merged: true,
-      head_branch: "sdlc/issue-42",
+      head_branch: "stage/issue-42",
       sender: "test-user"
     }
     input handle_webhook.delivery_id -> "d1234-5680"
@@ -278,7 +278,7 @@ test webhook_invalid_signature_rejected : webhook_env {
 
     input handle_webhook.event -> IssueLabeled {
       issue_number: 42,
-      label: "sdlc:idea",
+      label: "stage:idea",
       sender: "attacker"
     }
     input handle_webhook.delivery_id -> "d1234-5681"
@@ -315,7 +315,7 @@ test webhook_duplicate_delivery_idempotent : webhook_env {
     // the signal store deduplicates.
     input handle_webhook.event -> IssueLabeled {
       issue_number: 42,
-      label: "sdlc:design",
+      label: "stage:design",
       sender: "test-user"
     }
     input handle_webhook.delivery_id -> "d1234-duplicate"

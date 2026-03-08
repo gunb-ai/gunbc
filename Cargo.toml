@@ -2,43 +2,42 @@
 resolver = "2"
 members = [
     # Core crates (handwritten foundation)
-    "core/infra",
-    "core/ir",
-    "core/exec",
-    "core/workflow",
-    "core/cli",
-    "core/resolve",
-    "core/codegen",
-    "core/test",
-    "core/testgen-registry",
-    "core/testgen-registry-macros",
-    "core/delegate-macros",
+    "src/core/infra",
+    "src/core/ir",
+    "src/core/exec",
+    "src/core/workflow",
+    "src/core/cli",
+    "src/core/resolve",
+    "src/core/codegen",
+    "src/core/test",
+    "src/core/testgen-registry",
+    "src/core/testgen-registry-macros",
+    "src/core/generated-tests",
+    "src/core/delegate-macros",
     # DSL compiler (daglang)
-    "core/daglang/daglang-syntax",
-    "core/daglang/daglang-contract",
-    "core/daglang/daglang-resolve",
-    "core/daglang/daglang-typecheck",
-    "core/daglang/daglang-lower",
-    "core/daglang/daglang-derive",
-    "core/daglang/daglang-emit",
-    "core/daglang/daglang-driver",
-    "core/daglang/daglang-cli",
-    
+    "src/core/daglang/daglang-syntax",
+    "src/core/daglang/daglang-contract",
+    "src/core/daglang/daglang-resolve",
+    "src/core/daglang/daglang-typecheck",
+    "src/core/daglang/daglang-lower",
+    "src/core/daglang/daglang-derive",
+    "src/core/daglang/daglang-emit",
+    "src/core/daglang/daglang-driver",
+    "src/core/daglang/daglang-cli",
+
     # Library crates (DAG op libraries)
-    "lib/primitives",
-    "lib/blob",
-    "lib/cloud-ops",
-    "lib/llm-ops",
-    "lib/review",
-    "lib/design-ops",
-    "lib/transport",
-    
+    "src/lib/primitives",
+    "src/lib/blob",
+    "src/lib/cloud-ops",
+    "src/lib/llm-ops",
+    "src/lib/review",
+    "src/lib/design-ops",
+    "src/lib/transport",
+
     # General tool definitions (reusable by any project)
-    "lib/tools/deps",
-    "lib/tools/clippy",
-    
-    # Repo-specific configuration (gunbc's own DAGs)
-    "gunbc-app",
+    "src/lib/tools/deps",
+    "src/lib/tools/clippy",
+
 ]
 
 [workspace.package]

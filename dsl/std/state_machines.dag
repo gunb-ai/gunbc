@@ -135,55 +135,55 @@ fn validate_transition_with_budget(
 
 fn stage_to_label(stage: IssueLifecycleStage) -> String {
   match stage {
-    Idea           => "sdlc:idea"
-    Design         => "sdlc:design"
-    DesignReview   => "sdlc:design-review"
-    Accepted       => "sdlc:accepted"
-    Implementing   => "sdlc:implementing"
-    CodeReview     => "sdlc:code-review"
-    Testing        => "sdlc:testing"
-    Done           => "sdlc:done"
-    TerminalFailed => "sdlc:terminal-failed"
+    Idea           => "stage:idea"
+    Design         => "stage:design"
+    DesignReview   => "stage:design-review"
+    Accepted       => "stage:accepted"
+    Implementing   => "stage:implementing"
+    CodeReview     => "stage:code-review"
+    Testing        => "stage:testing"
+    Done           => "stage:done"
+    TerminalFailed => "stage:terminal-failed"
   }
 }
 
 fn label_to_stage(label: String) -> IssueLifecycleStage? {
   match label {
-    "sdlc:idea"            => Idea
-    "sdlc:design"          => Design
-    "sdlc:design-review"   => DesignReview
-    "sdlc:accepted"        => Accepted
-    "sdlc:implementing"    => Implementing
-    "sdlc:code-review"     => CodeReview
-    "sdlc:testing"         => Testing
-    "sdlc:done"            => Done
-    "sdlc:terminal-failed" => TerminalFailed
+    "stage:idea"            => Idea
+    "stage:design"          => Design
+    "stage:design-review"   => DesignReview
+    "stage:accepted"        => Accepted
+    "stage:implementing"    => Implementing
+    "stage:code-review"     => CodeReview
+    "stage:testing"         => Testing
+    "stage:done"            => Done
+    "stage:terminal-failed" => TerminalFailed
     _                      => None
   }
 }
 
 // Determine the current stage from a list of labels.
-// If multiple sdlc:* labels exist, uses the most advanced stage (highest ordinal).
-// If no sdlc:* label exists, returns Idea (default).
+// If multiple stage:* labels exist, uses the most advanced stage (highest ordinal).
+// If no stage:* label exists, returns Idea (default).
 fn determine_stage(labels: List<String>) -> IssueLifecycleStage {
-  let sdlc_stages = labels
+  let stage_labels = labels
     |> filter_map(l => label_to_stage(label: l))
 
-  match sdlc_stages |> count() {
+  match stage_labels |> count() {
     0 => Idea
-    _ => sdlc_stages
+    _ => stage_labels
       |> max_by(s => stage_ordinal(stage: s))
   }
 }
 
-// Compute the labels for a stage transition: remove old sdlc:* labels,
-// add the new stage label. Preserves non-sdlc labels.
+// Compute the labels for a stage transition: remove old stage:* labels,
+// add the new stage label. Preserves non-stage labels.
 fn transition_labels(
   current_labels: List<String>,
   to_stage: IssueLifecycleStage
 ) -> List<String> {
-  let non_sdlc = current_labels |> filter(l => !(l |> starts_with(prefix: "sdlc:")))
-  non_sdlc |> append(stage_to_label(stage: to_stage))
+  let non_stage = current_labels |> filter(l => !(l |> starts_with(prefix: "stage:")))
+  non_stage |> append(stage_to_label(stage: to_stage))
 }
 
 // --- Backward transition target ------------------------------------------

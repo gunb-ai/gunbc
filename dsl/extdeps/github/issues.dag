@@ -1,16 +1,16 @@
 // extdeps/github/issues.dag -- "What is a GitHub Issue?"
 //
 // The issue resource model: states, labels, events, comments, timeline.
-// This is the raw GitHub model. The SDLC lifecycle stage model
+// This is the raw GitHub model. The issue lifecycle stage model
 // (IssueLifecycleStage) lives in std/types.dag and maps onto this.
 //
 // Consumers:
-//   funcs/sdlc_stages.dag                  — stage handler logic
+//   workflow handlers                      — stage handler logic
 //   extdeps/github/pull_requests.dag       — cross-reference
 
 module extdeps.github.issues
 
-import extdeps.github.core { GitHubUser }
+import extdeps.github.github { GitHubUser }
 import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
 }
@@ -218,6 +218,12 @@ service github.Issues {
       422 => GitHubErrorShape
       5xx => GitHubErrorShape
     }
+    mock_response {
+      201 => { number: 42, title: "Mock issue", body: "Created via mock", state: "open", labels: [{ name: "idea" }], html_url: "https://github.com/mock/repo/issues/42", user: { login: "mock-user" } } "Issue created",
+      401 => { message: "Bad credentials", documentation_url: "https://docs.github.com/rest" } "Auth failure",
+      403 => { message: "Forbidden", documentation_url: "https://docs.github.com/rest" } "Insufficient permissions",
+      422 => { message: "Validation Failed", errors: [{ resource: "Issue", code: "missing_field", field: "title" }] } "Missing title"
+    }
   }
 
   operation get {
@@ -238,6 +244,10 @@ service github.Issues {
       410 => GitHubErrorShape
       5xx => GitHubErrorShape
     }
+    mock_response {
+      200 => { number: 42, title: "Mock issue", body: "Issue body", state: "open", labels: [{ name: "idea" }], html_url: "https://github.com/mock/repo/issues/42", user: { login: "mock-user" } } "Issue found",
+      404 => { message: "Not Found", documentation_url: "https://docs.github.com/rest" } "Issue does not exist"
+    }
   }
 
   operation close {
@@ -256,6 +266,11 @@ service github.Issues {
       404 => GitHubErrorShape
       422 => GitHubErrorShape
       5xx => GitHubErrorShape
+    }
+    mock_response {
+      200 => { number: 42, title: "Mock issue", state: "closed", state_reason: "completed", html_url: "https://github.com/mock/repo/issues/42", user: { login: "mock-user" } } "Issue closed",
+      404 => { message: "Not Found", documentation_url: "https://docs.github.com/rest" } "Issue not found",
+      403 => { message: "Forbidden", documentation_url: "https://docs.github.com/rest" } "No write access"
     }
   }
 
@@ -283,6 +298,11 @@ service github.Issues {
       422 => GitHubErrorShape
       5xx => GitHubErrorShape
     }
+    mock_response {
+      201 => { id: 999, body: "Mock comment", user: "mock-user", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", html_url: "https://github.com/mock/repo/issues/42#issuecomment-999" } "Comment created",
+      404 => { message: "Not Found", documentation_url: "https://docs.github.com/rest" } "Issue not found",
+      401 => { message: "Bad credentials", documentation_url: "https://docs.github.com/rest" } "Auth failure"
+    }
   }
 
   // --- Labels (lifecycle stage transitions) ------------------------------
@@ -308,6 +328,11 @@ service github.Issues {
       422 => GitHubErrorShape
       5xx => GitHubErrorShape
     }
+    mock_response {
+      200 => [{ id: 1, name: "idea", color: "0e8a16", description: "New idea" }] "Labels set",
+      404 => { message: "Not Found", documentation_url: "https://docs.github.com/rest" } "Issue not found",
+      401 => { message: "Bad credentials", documentation_url: "https://docs.github.com/rest" } "Auth failure"
+    }
   }
 
   // --- Listing (for polling / batch processing) --------------------------
@@ -330,6 +355,10 @@ service github.Issues {
       422 => GitHubErrorShape
       5xx => GitHubErrorShape
     }
+    mock_response {
+      200 => [{ number: 1, title: "First issue", state: "open", labels: [{ name: "idea" }], html_url: "https://github.com/mock/repo/issues/1", user: { login: "mock-user" } }] "Issues listed",
+      404 => { message: "Not Found", documentation_url: "https://docs.github.com/rest" } "Repository not found"
+    }
   }
 
   operation list_events {
@@ -348,6 +377,10 @@ service github.Issues {
       404 => GitHubErrorShape
       410 => GitHubErrorShape
       5xx => GitHubErrorShape
+    }
+    mock_response {
+      200 => [{ id: 1, event: "labeled", actor: { login: "mock-user" }, created_at: "2026-01-01T00:00:00Z", label: { name: "idea", color: "0e8a16" } }] "Events listed",
+      404 => { message: "Not Found", documentation_url: "https://docs.github.com/rest" } "Issue not found"
     }
   }
 }

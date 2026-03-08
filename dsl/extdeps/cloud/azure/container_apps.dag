@@ -8,7 +8,7 @@
 
 module extdeps.cloud.azure.container_apps
 
-import extdeps.cloud.azure.core { AzureRegion, ResourceGroup }
+import extdeps.cloud.azure.azure { AzureRegion, ResourceGroup }
 import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
 }

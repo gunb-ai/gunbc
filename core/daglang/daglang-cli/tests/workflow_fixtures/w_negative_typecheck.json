@@ -1,7 +1,0 @@
-{
-  "source": "module fixture.negative\nfn run() -> String { 1 }\n",
-  "expand_contract": {
-    "status": "typecheck_error",
-    "error_contains": "type mismatch"
-  }
-}

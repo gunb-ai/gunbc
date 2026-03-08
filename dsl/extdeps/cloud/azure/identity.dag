@@ -9,7 +9,7 @@
 
 module extdeps.cloud.azure.identity
 
-import extdeps.cloud.azure.core { AzureTenant, ManagedIdentity }
+import extdeps.cloud.azure.azure { AzureTenant, ManagedIdentity }
 import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
 }

@@ -5,12 +5,12 @@
 //
 // Consumers:
 //   infra/gcp/resources.dag    — compute resource impl
-//   infra/sdlc/deploy.dag      — SDLC deployment spec
+//   infra/gcp/resources.dag    — compute resource impl
 //   config/ci.dag              — CI deploy targets
 
 module extdeps.cloud.gcp.cloud_run
 
-import extdeps.cloud.gcp.core { GcpProject, GcpRegion, GcpServiceAccount }
+import extdeps.cloud.gcp.gcp { GcpProject, GcpRegion, GcpServiceAccount }
 import std.behavioral {
   OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
 }
