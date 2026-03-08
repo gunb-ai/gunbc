@@ -68,6 +68,22 @@ pub struct CompileOutput {
     pub data_values: HashMap<String, serde_json::Value>,
 }
 
+/// Context prepared for the stage-ordered compile runner.
+///
+/// This packages the context-sensitive setup that still depends on driver
+/// inputs (profile discovery, target-module selection, path validation,
+/// deterministic source digest seeding) so the main stage runner can focus on
+/// the compile pipeline itself.
+#[derive(Debug)]
+pub struct PreparedCompileContext {
+    module_graph: ModuleGraph,
+    callable_scope: Option<HashSet<String>>,
+    entry_module_name: Option<String>,
+    target_module_name: Option<String>,
+    lossy_fn_bodies: Vec<String>,
+    source_digest: Option<String>,
+}
+
 impl CompileOutput {
     /// Emit a data-only `.dag` artifact containing compilation metadata.
     ///
@@ -738,35 +754,71 @@ fn validate_structural_primitive_input_wiring_recursive(
 ///
 /// This is the shared compilation path used by both the direct context-based
 /// flow and the pipeline-based flow (DL5). The pipeline handles discovery,
-/// parsing, and module graph construction; this function handles validation,
-/// typechecking, lowering, and emission.
+/// parsing, and module graph construction; this wrapper handles the remaining
+/// context-sensitive preparation and then delegates to [`run_compile_pipeline`].
 pub fn compile_from_module_graph_with_options(
     context: &DriverContext,
-    mut module_graph: ModuleGraph,
+    module_graph: ModuleGraph,
     options: CompileOptions,
 ) -> Result<CompileOutput, CompileError> {
+    let prepared = prepare_compile_context(context, module_graph, &options)?;
+    run_compile_pipeline(prepared, options)
+}
+
+/// Prepare a discovered module graph for stage-ordered compilation.
+///
+/// This is the impure edge of the driver pipeline. It may augment the module
+/// graph from the filesystem (profile modules), canonicalize target paths for
+/// matching, validate module/filename consistency, and seed the deterministic
+/// source digest from the already loaded module sources.
+pub fn prepare_compile_context(
+    context: &DriverContext,
+    mut module_graph: ModuleGraph,
+    options: &CompileOptions,
+) -> Result<PreparedCompileContext, CompileError> {
     include_profile_modules(
         &mut module_graph,
         &context.roots,
         options.profile.as_deref(),
+    )?;
+    validate_module_path_consistency(
+        &module_graph,
+        &context.roots,
+        context.target_file.as_deref(),
     )?;
     let callable_scope_result = callable_scope_for_context(context, &module_graph)?;
     let (callable_scope, entry_module_name) = match callable_scope_result {
         Some((scope, entry)) => (Some(scope), Some(entry)),
         None => (None, None),
     };
-    // Save source file paths before typechecking consumes the module graph.
-    let source_paths: Vec<PathBuf> = module_graph
-        .modules
-        .iter()
-        .map(|m| m.path.clone())
-        .collect();
-    validate_module_path_consistency(
-        &module_graph,
-        &context.roots,
-        context.target_file.as_deref(),
-    )?;
-    let lossy_fn_bodies = collect_lossy_fn_bodies(&module_graph);
+
+    Ok(PreparedCompileContext {
+        source_digest: Some(compute_source_digest_from_module_graph(&module_graph)),
+        target_module_name: target_module_name_for_context(context, &module_graph)?,
+        lossy_fn_bodies: collect_lossy_fn_bodies(&module_graph),
+        module_graph,
+        callable_scope,
+        entry_module_name,
+    })
+}
+
+/// Run the compile pipeline stages in order over prepared inputs.
+///
+/// The stage runner itself does not perform discovery, load profile files, or
+/// reread source text for receipts. It simply applies the compiler stages in
+/// order to the provided inputs.
+pub fn run_compile_pipeline(
+    prepared: PreparedCompileContext,
+    options: CompileOptions,
+) -> Result<CompileOutput, CompileError> {
+    let PreparedCompileContext {
+        module_graph,
+        callable_scope,
+        entry_module_name,
+        target_module_name,
+        lossy_fn_bodies,
+        source_digest,
+    } = prepared;
     let typed = typecheck_module_graph_located(
         &module_graph,
         TypecheckOptions {
@@ -803,20 +855,6 @@ pub fn compile_from_module_graph_with_options(
 
     let derived = derive_artifacts(&verified_dag).map_err(CompileError::Derive)?;
 
-    let target_module_name = if let Some(tf) = context.target_file.as_ref() {
-        let canonical = {
-            #[allow(clippy::disallowed_methods)]
-            std::fs::canonicalize(tf).ok()
-        };
-        module_graph
-            .modules
-            .iter()
-            .find(|m| m.path == *tf || canonical.as_ref().is_some_and(|c| m.path == *c))
-            .map(|m| m.module_path.as_dotted())
-    } else {
-        None
-    };
-
     let target = options.target;
     let layer = options.layer;
     let mut emitted = emit_with_options(
@@ -828,12 +866,10 @@ pub fn compile_from_module_graph_with_options(
     )?;
     let emit_manifest_path = append_emit_manifest(&mut emitted, target, layer)?;
 
-    let receipt = Some(compute_receipt(
-        &verified_dag,
-        &emitted,
-        &emit_manifest_path,
-        &source_paths,
-    )?);
+    let receipt = source_digest
+        .as_deref()
+        .map(|digest| compute_receipt(&verified_dag, &emitted, &emit_manifest_path, digest))
+        .transpose()?;
 
     Ok(CompileOutput {
         lowered_dag: verified_dag,
@@ -1449,6 +1485,22 @@ fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(hasher.finalize())
 }
 
+fn compute_source_digest_from_module_graph(module_graph: &ModuleGraph) -> String {
+    let mut source_hashes: Vec<String> = module_graph
+        .modules
+        .iter()
+        .map(|module| {
+            format!(
+                "{}:{}",
+                module.path.display(),
+                sha256_hex(module.source.as_bytes())
+            )
+        })
+        .collect();
+    source_hashes.sort();
+    sha256_hex(source_hashes.join("\n").as_bytes())
+}
+
 /// Compute a deterministic compilation receipt from the compilation artifacts.
 ///
 /// The receipt contains content-addressable digests for source files, the
@@ -1458,14 +1510,8 @@ fn compute_receipt(
     dag: &Dag<LoweredOp>,
     emitted: &EmissionBundle,
     emit_manifest_path: &str,
-    source_paths: &[PathBuf],
+    source_digest: &str,
 ) -> Result<CompileReceipt, CompileError> {
-    // Source digest: sha256 of sorted path:hash pairs.
-    // Including the path prevents false cache hits when files are renamed
-    // or contents are swapped between files.
-    let source_digest = compute_source_digest(source_paths)
-        .map_err(|e| CompileError::Message(format!("failed to compute source digest: {e}")))?;
-
     // Program IR digest: sha256 of canonical IR JSON.
     let canonical_json = daglang_lower::canonical_ir_json(dag)
         .map_err(|e| CompileError::Message(format!("failed to render canonical IR JSON: {e}")))?;
@@ -1484,7 +1530,7 @@ fn compute_receipt(
         })?;
 
     Ok(CompileReceipt {
-        source_digest,
+        source_digest: source_digest.to_string(),
         program_ir_digest,
         emit_manifest_digest,
     })
@@ -1548,18 +1594,12 @@ impl From<&CachedEntrypoint> for InferredEntrypoint {
 /// Compute the source digest for a compilation context without performing
 /// the full compilation pipeline (C26).
 ///
-/// Discovers the module graph, reads all source files, and computes a
-/// content-addressable SHA-256 digest. This is much cheaper than full
-/// compilation (parse + typecheck + lower + emit).
+/// Discovers the module graph and computes a content-addressable SHA-256
+/// digest from the already loaded module sources. This is much cheaper than
+/// full compilation (parse + typecheck + lower + emit).
 pub fn compute_source_digest_for_context(context: &DriverContext) -> Result<String, CompileError> {
     let module_graph = discover_module_graph_for_context(context)?;
-    let source_paths: Vec<PathBuf> = module_graph
-        .modules
-        .iter()
-        .map(|m| m.path.clone())
-        .collect();
-    compute_source_digest(&source_paths)
-        .map_err(|e| CompileError::Message(format!("failed to compute source digest: {e}")))
+    Ok(compute_source_digest_from_module_graph(&module_graph))
 }
 
 /// Compute a source digest from a list of source file paths.
@@ -1943,28 +1983,9 @@ fn callable_scope_for_context(
     context: &DriverContext,
     module_graph: &ModuleGraph,
 ) -> Result<Option<(HashSet<String>, String)>, CompileError> {
-    let Some(target_file) = context.target_file.as_ref() else {
+    let Some(target_index) = target_module_index_for_context(context, module_graph)? else {
         return Ok(None);
     };
-    let canonical_target = {
-        #[allow(clippy::disallowed_methods)]
-        std::fs::canonicalize(target_file).ok()
-    };
-    let target_index = module_graph
-        .modules
-        .iter()
-        .position(|module| {
-            module.path == *target_file
-                || canonical_target
-                    .as_ref()
-                    .is_some_and(|canonical| module.path == *canonical)
-        })
-        .ok_or_else(|| {
-            CompileError::from(format!(
-                "target file `{}` was not found in discovered module graph",
-                target_file.display()
-            ))
-        })?;
     let Some(target_module) = module_graph.modules.get(target_index) else {
         return Err("internal error: target module index out of bounds".into());
     };
@@ -1992,6 +2013,48 @@ fn callable_scope_for_context(
         scope.insert(entry_module_name.clone());
     }
     Ok(Some((scope, entry_module_name)))
+}
+
+fn target_module_name_for_context(
+    context: &DriverContext,
+    module_graph: &ModuleGraph,
+) -> Result<Option<String>, CompileError> {
+    let Some(target_index) = target_module_index_for_context(context, module_graph)? else {
+        return Ok(None);
+    };
+    Ok(module_graph
+        .modules
+        .get(target_index)
+        .map(|module| module.module_path.as_dotted()))
+}
+
+fn target_module_index_for_context(
+    context: &DriverContext,
+    module_graph: &ModuleGraph,
+) -> Result<Option<usize>, CompileError> {
+    let Some(target_file) = context.target_file.as_ref() else {
+        return Ok(None);
+    };
+    let canonical_target = {
+        #[allow(clippy::disallowed_methods)]
+        std::fs::canonicalize(target_file).ok()
+    };
+    let target_index = module_graph
+        .modules
+        .iter()
+        .position(|module| {
+            module.path == *target_file
+                || canonical_target
+                    .as_ref()
+                    .is_some_and(|canonical| module.path == *canonical)
+        })
+        .ok_or_else(|| {
+            CompileError::from(format!(
+                "target file `{}` was not found in discovered module graph",
+                target_file.display()
+            ))
+        })?;
+    Ok(Some(target_index))
 }
 
 fn module_has_callable_items(module: &ResolvedModule) -> bool {
@@ -2610,6 +2673,47 @@ fn run(values: List<String>) -> String {
             .collect::<HashSet<_>>();
         assert!(node_ids.contains("sample::run::MapNode_0"));
         assert!(node_ids.contains("sample::run::JoinNode_1"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn run_compile_pipeline_from_prepared_context_preserves_receipt_digest() {
+        let root = unique_temp_dir("compile_prepared_context");
+        std::fs::create_dir_all(&root).expect("failed to create temp root");
+        let file = root.join("sample.dag");
+        std::fs::write(&file, "module sample\nfn run() -> Unit {}\n")
+            .expect("failed to write source");
+
+        let context = DriverContext {
+            roots: vec![root.clone()],
+            target_file: Some(file.clone()),
+        };
+        let module_graph =
+            discover_module_graph_for_context(&context).expect("module graph should discover");
+        let options = CompileOptions::default();
+        let prepared = prepare_compile_context(&context, module_graph, &options)
+            .expect("prepared context should succeed");
+        let output = run_compile_pipeline(prepared, options)
+            .expect("stage runner should compile prepared context");
+
+        assert!(
+            output
+                .lowered_dag
+                .nodes
+                .iter()
+                .any(|node| node.id.0 == "sample::run"),
+            "compiled DAG should include the target callable"
+        );
+        let receipt = output
+            .receipt
+            .expect("prepared compilation should emit a receipt");
+        let expected_digest =
+            compute_source_digest(&[file]).expect("legacy path-based digest should succeed");
+        assert_eq!(
+            receipt.source_digest, expected_digest,
+            "prepared pipeline digest should match the legacy path-based digest"
+        );
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }

@@ -25,6 +25,16 @@ Adapted from Google C++ style for Rust:
   `InferredEntrypoint`, etc.), not through runtime `extern func` callbacks.
   The `extern func` feature has been eliminated.
 
+- **No hacks or fallbacks.** Every code path either succeeds fully or fails
+  with a clear error. No silent degradation: no lossy recovery that discards
+  input, no `.ok()` that swallows errors on fallible operations, no `continue`
+  that silently drops work, no fallback defaults that produce valid-looking but
+  wrong output. If a function cannot complete its job, it must return `Err` —
+  not an empty value, not `Value::Skipped`, not a quietly truncated result.
+  Caching is the sole exception (cache miss on error is acceptable).
+  See `POSTMORTEM.md` T13 for the full taxonomy of the ~70 violations that
+  motivated this invariant.
+
 ## Crate Map
 
 | Crate | Purpose |
