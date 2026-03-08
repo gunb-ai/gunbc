@@ -456,207 +456,319 @@ Rust, or `uint8_t` in C.
 The types carry the knowledge. The compiler carries the infrastructure.
 The backends carry the rendering rules. Nothing else is needed.
 
-## Reconciling Cardinality and Set Algebra onto the DAG
+## Stacking Tautologies: The General Mechanism
 
-### The Current Split
+### The Insight
 
-Today the system has well-developed algebraic structures — cardinality
-intervals, content encoding lattices, predicate entailment, presence
-ordering — but they live in *parallel* to the DAG, not *on* it.
+Cardinality, set algebra, content encoding, predicate entailment —
+these aren't special cases to be individually migrated. They're
+*examples* of a general capability: **any tautological behavior should
+be stackable onto a DAG node, and the system should enforce it
+through testing**.
 
-Cardinality is the clearest example. It exists in three places that
-don't fully agree:
+Today the codebase has ~14 algebraic structures (cardinality lattice,
+content encoding lattice, predicate entailment, presence ordering,
+access modes, guards, fermi depth, etc.). Each is implemented as a
+bespoke Rust type with hand-written algebraic laws. The algebra
+module (`algebra.rs`) defines the right traits — `PartialOrder`,
+`JoinSemilattice`, `MeetSemilattice`, `Lattice`, `BoundedLattice` —
+but only two types implement them (`Cardinality` and
+`ContentEncoding`). Everything else has implicit algebraic structure
+encoded in ad-hoc match statements.
 
-1. **On ports** — `Port.cardinality: Cardinality` is a direct field,
-   set manually by the lowerer: `Port::list("items", "String")` stamps
-   `ZERO_OR_MORE` at construction time.
+The problem isn't that cardinality is "outside the DAG." The problem
+is that the system has no *general mechanism* for:
 
-2. **In type DAGs** — `TypeOp::Wrap(WrapperKind::List)` encodes
-   "this is a list" in the type's DAG structure. `contract::cardinality()`
-   can *derive* `ZERO_OR_MORE` by walking the Wrap node.
+1. Declaring a tautological behavior in the DSL
+2. Attaching it to a type (or a node, or an edge)
+3. Having the compiler enforce it
+4. Having tests verify the algebraic laws automatically
 
-3. **In the registry bridge** — `Port::infer_cardinality(registry)` can
-   override the declared cardinality by resolving the port's `TypeId`
-   through the registry and extracting cardinality from the type DAG.
+Cardinality is just one behavior. Width is another. Signedness is
+another. Ordering is another. The system should handle all of them
+the same way — as stackable tautologies on the DAG.
 
-These three sources can *drift apart*. The system even has a
-`audit_cardinality_drift()` function that detects when Source 1 (port
-annotation) disagrees with Source 2 (type DAG truth). The existence of
-that function is proof that cardinality isn't truly on the DAG yet.
+### What a Tautology Is
 
-### What Should Be True
+In the extdeps model, a tautology is a definition that's true by
+construction: "a CAS mechanism is one of: generation-based,
+ETag-based, version ID, or row version." You don't prove it. You
+define it. Everything downstream inherits it.
 
-The DAG should be the single source of truth. Cardinality, encoding,
-presence, access mode — every algebraic property should be a
-*derivable consequence* of the DAG structure, not a separately
-maintained annotation.
+The same applies to type behaviors:
 
-In the syllogistic model:
+- "Cardinality is an interval [min, max] on ℕ ∪ {∞} with join,
+  meet, product, and sum operations." — tautology
+- "A bit has width 1." — tautology
+- "Signed arithmetic uses two's complement." — tautology
+- "ASCII is a subtype of UTF8." — tautology
+- "A list has cardinality [0, ∞)." — tautology
+
+Each of these is a *truth you attach to a type DAG*. Each carries
+algebraic laws (lattice, ordering, entailment). Each should be
+expressible in the DSL and enforceable by the compiler.
+
+### The Mechanism: Behaviors as DAG-Attached Truths
+
+A behavior is a named set of algebraic laws attached to a type or
+type family. In the DSL:
 
 ```dag
-// Cardinality is a truth expressed as type structure.
-// "List<T>" isn't a special Wrap node — it's a compositional claim:
-// "zero or more values of type T."
+module std.algebra
 
-// Layer 0: The concept of multiplicity
-type Multiplicity
-  = Exactly { count: Int where range(min: 0) }
-  | AtLeast { min: Int where range(min: 0) }
-  | Between { min: Int where range(min: 0), max: Int }
+// A behavior is a tautological contract.
+// Anything that carries this behavior must satisfy these laws.
+// The compiler generates property-based tests to verify them.
 
-// Layer 1: Named cardinalities as multiplicity specializations
-type Scalar      = Multiplicity where exactly(1)
-type Optional    = Multiplicity where between(0, 1)
-type Collection  = Multiplicity where at_least(0)
-type NonEmpty    = Multiplicity where at_least(1)
+behavior PartialOrder {
+  law reflexive:  a <= a
+  law transitive: a <= b, b <= c  implies  a <= c
+  law antisymmetric: a <= b, b <= a  implies  a == b
+}
+
+behavior JoinSemilattice extends PartialOrder {
+  operation join(a, b) -> Self
+  law commutative:  join(a, b) == join(b, a)
+  law associative:  join(join(a, b), c) == join(a, join(b, c))
+  law idempotent:   join(a, a) == a
+  law upper_bound:  a <= join(a, b)
+}
+
+behavior MeetSemilattice extends PartialOrder {
+  operation meet(a, b) -> Self?
+  law commutative:  meet(a, b) == meet(b, a)
+  law idempotent:   meet(a, a) == Some(a)
+  law lower_bound:  meet(a, b) is Some(m) implies m <= a
+}
+
+behavior Lattice extends JoinSemilattice, MeetSemilattice {
+  law absorption_join: join(a, meet(a, b)) == a    when meet(a, b) exists
+  law absorption_meet: meet(a, join(a, b)) == Some(a)
+}
+
+behavior BoundedLattice extends Lattice {
+  element top
+  law top_is_top: a <= top
+}
+
+behavior Semiring {
+  operation product(a, b) -> Self
+  operation sum(a, b) -> Self
+  element one
+  element zero
+  law identity:   product(a, one) == a
+  law absorbing:  product(a, zero) == zero
+  law commutative: product(a, b) == product(b, a)
+}
 ```
 
-A `List<String>` would be expressed as a type DAG where the element
-type is `String` and the cardinality node says `Collection` (which is
-`Multiplicity where at_least(0)`). The `[0, ∞)` interval isn't a
-separate annotation — it's a structural consequence of the type's DAG.
+These are the algebraic laws that `algebra.rs` already documents in
+comments. The difference: they'd be expressed *in the DSL*, not in
+Rust trait definitions.
 
-The `Cardinality` struct and its lattice algebra (join, meet, product,
-sum) remain as the *computational kernel* — the efficient
-representation the compiler uses internally. But the *source of truth*
-is the DAG, and the compiler derives the `Cardinality` interval by
-walking it.
+### Attaching Behaviors to Types
 
-### The Full Inventory of Algebraic Truths
+A type acquires behaviors by declaration. The behaviors stack:
 
-The codebase has fourteen algebraic structures. Here is where each
-lives today and where it should live:
+```dag
+module std.cardinality
 
-| Structure | Algebra | Currently | Should Be |
-|-----------|---------|-----------|-----------|
-| **Cardinality** | BoundedLattice + Semiring | Port field + type DAG (dual-tracked, can drift) | Type DAG only; ports derive from it |
-| **ContentEncoding** | BoundedLattice | Rust match arms + `Predicate::Content` | Lattice ordering in `.dag`; encoding is a type |
-| **TypeContract** | Composite lattice | Extracted from `Dag<TypeOp>` by `contract.rs` | Already emerges from DAG; keep as efficient cache |
-| **Predicate** | Entailment preorder | `Validate` nodes in type DAGs | Already on DAG; formalize as `PartialOrder` trait |
-| **PresenceMode** | 3-element chain | Port field (`Required < Optional < Guardable`) | DAG metadata; formalize as `PartialOrder` |
-| **AccessMode** | Conflict relation | Port field | Should flow through resource edges on DAG |
-| **Guard** | Eq/NotEq only | Port field (impoverished) | Unify with `Predicate`; guards ARE predicates |
-| **EdgeKind** | 3-variant (DataFlow/Control/TriggerGate) | Edge field | Already on DAG |
-| **NodeKind** | 10-variant flat classification | Node field | Could be derived from edge types |
-| **FermiDepth** | Total order (Xs < S < M < L < Xl) | DSL coproduct + Rust match arms | Ordering should be in `.dag` |
-| **ServiceTransportClass** | Maps to FermiDepth | Node field | Order should emerge from FermiDepth DAG |
-| **BaseType** | Minimal lattice (Json = top) | Standalone function | Should emerge from type DAGs |
-| **SemanticCarrierKind** | Compatibility partition | String matching | Should be DAG metadata |
-| **ObligationCategory** | Flat classification | Collapsed to NodeKind | Could be derived |
+import std.algebra { BoundedLattice, Semiring }
 
-### The Three Unifications
+// Cardinality carries BoundedLattice + Semiring behaviors.
+// The compiler enforces all laws from both behaviors.
+type Cardinality {
+  min: Int where range(min: 0)
+  max: Int?
+}
+  implements BoundedLattice {
+    join(a, b) = { min: min(a.min, b.min), max: interval_max(a.max, b.max) }
+    meet(a, b) = ...
+    top = { min: 0, max: null }
+  }
+  implements Semiring {
+    product(a, b) = { min: a.min * b.min, max: interval_mul(a.max, b.max) }
+    sum(a, b) = { min: a.min + b.min, max: interval_add(a.max, b.max) }
+    one = { min: 1, max: 1 }
+    zero = { min: 0, max: 0 }
+  }
+```
 
-#### 1. Cardinality Becomes a Derivable Property
-
-Today `Port.cardinality` is an independent field. After migration,
-cardinality is derived from the port's type DAG:
-
-- `Port` for type `List<String>` → walk type DAG → find
-  `Collection` (at_least(0)) → derive `Cardinality { min: 0, max: None }`
-- `Port` for type `String` → walk type DAG → find `Scalar`
-  (exactly(1)) → derive `Cardinality { min: 1, max: Some(1) }`
-- `Port` for type `Option<Int>` → walk type DAG → find `Optional`
-  (between(0,1)) → derive `Cardinality { min: 0, max: Some(1) }`
-
-The `audit_cardinality_drift()` function becomes unnecessary — there's
-only one source. The `Cardinality` struct stays as the efficient
-internal representation, but it's always derived, never declared.
-
-The cardinality lattice operations (join, meet, product, sum) become
-*operations on type DAGs*: joining two types means joining their
-cardinality nodes. This is already how `TypeContract` works — the
-migration makes it the *only* path.
-
-#### 2. Guards Unify with Predicates
-
-Today, `Guard` is an impoverished version of `Predicate`:
-
-| Guard has | Predicate has |
-|-----------|--------------|
-| `Eq(Value)` | `Equals(PredicateValue)` |
-| `NotEq(Value)` | `Not(Box<Predicate>)` |
-| — | `InRange { min, max }` |
-| — | `Matches(String)` |
-| — | `And(Vec<Predicate>)` |
-| — | `Or(Vec<Predicate>)` |
-| — | `Content(ContentEncoding)` |
-| — | `NonEmpty` |
-
-Guards on edges and predicates on type DAGs are the same thing: truth
-assertions that gate data flow. The type DAG says "this value must
-match URL pattern" (validation). The edge guard says "this branch
-fires when condition is true" (routing). Same mechanism.
-
-After unification, `Guard` disappears. Edge gating uses `Predicate`.
-A `TriggerGate` edge carries a `Predicate` that must be satisfied for
-the downstream node to execute. This means edge guards get the full
-predicate algebra for free — range checks, pattern matching, boolean
-composition.
-
-#### 3. Lattice Orderings Move to `.dag` Files
-
-Today, the `ContentEncoding` subtype ordering
-(`ASCII < UTF8 < Text`, `Binary | Text < Unknown`) is encoded in
-Rust match arms. The `FermiDepth` ordering (`Xs < S < M < L < Xl`)
-is encoded in DSL functions but with a Rust-side match for transport
-classification.
-
-These orderings are *truths about the domain*. They belong in the DSL:
+The same mechanism works for any domain:
 
 ```dag
 module std.encoding
 
-// The encoding lattice: ASCII is a subtype of UTF8,
-// which is a subtype of Text. Binary is incomparable with Text.
-// Unknown is top.
-type ContentEncoding
-  = ASCII   where subtype_of(UTF8)
-  | UTF8    where subtype_of(Text)
-  | Latin1  where subtype_of(Text)
-  | Text
-  | Binary
-  | Unknown where top
+import std.algebra { BoundedLattice }
 
-// This IS the lattice. The compiler reads it and derives
-// join/meet/partial-order from the declared subtype_of edges.
+type ContentEncoding
+  = ASCII | UTF8 | Latin1 | Text | Binary | Unknown
+  implements BoundedLattice {
+    // Subtype ordering declared as data:
+    ordering = [
+      ASCII <= UTF8,
+      UTF8 <= Text,
+      Latin1 <= Text,
+      Text <= Unknown,
+      Binary <= Unknown,
+    ]
+    top = Unknown
+  }
 ```
 
-The Rust `ContentEncoding` enum stays as the efficient internal
-representation, but the lattice structure is *read from the DAG*, not
-hardcoded. Adding a new encoding (say, `UTF16`) means adding a line
-to the `.dag` file with its subtype position — no Rust changes.
+And for entirely new domains that don't exist yet:
 
-### Why This Matters for Verilog (and Everything Else)
+```dag
+module hardware.timing
 
-The syllogistic type system isn't just about cleaner code. It's about
-making the DAG a *universal substrate for causal reasoning*.
+import std.algebra { PartialOrder }
 
-When a type DAG says "Bit = ClassicalProposition where width(1)", it
-carries multiple truths simultaneously:
+type Latency {
+  cycles: Int where range(min: 0)
+  pipeline_stages: Int where range(min: 1)
+}
+  implements PartialOrder {
+    a <= b = a.cycles <= b.cycles
+  }
 
-- **Cardinality truth**: exactly one value (scalar)
-- **Width truth**: 1 bit
-- **Domain truth**: classical logic
-- **Arithmetic truth**: none (a single bit has no arithmetic)
-- **Encoding truth**: binary
+behavior Schedulable {
+  operation delay(self) -> Latency
+  law bounded: delay(self).cycles >= 0
+  law composable: delay(a >> b).cycles == delay(a).cycles + delay(b).cycles
+}
+```
 
-A Verilog backend reads ALL of these truths from a single DAG walk.
-A Rust backend reads the SAME truths and renders them differently.
-A test generator reads the SAME truths and generates appropriate
-boundary values.
+### Test Generation from Behaviors
 
-If cardinality lived outside the DAG (as it does today), the Verilog
-backend would need to cross-reference port annotations with type
-definitions — two sources of truth, potentially inconsistent. With
-everything on the DAG, there's one source, one walk, one truth.
+This is where "enforced via testing" comes in. When a type declares
+`implements BoundedLattice`, the compiler can *automatically generate*
+the property-based tests that `algebra.rs` currently has by hand:
 
-This is what it means for types to be "arbitrary truths expressed as
-DAG structure": every fact about a type — its width, its cardinality,
-its domain, its lattice position, its valid operations — is a node or
-predicate in the type DAG. The compiler's job is to walk DAGs and
-derive consequences. The backends' job is to render those consequences
-into target-specific syntax. The `.dag` files' job is to state the
-truths.
+```rust
+// AUTO-GENERATED from: Cardinality implements BoundedLattice
+proptest! {
+    #[test]
+    fn cardinality_partial_order_reflexive(a in arb_cardinality()) {
+        prop_assert!(a.leq(&a));
+    }
+    #[test]
+    fn cardinality_join_commutative(a in arb_cardinality(), b in arb_cardinality()) {
+        prop_assert_eq!(a.join(b), b.join(a));
+    }
+    #[test]
+    fn cardinality_top_is_top(a in arb_cardinality()) {
+        prop_assert!(a.leq(&Cardinality::top()));
+    }
+    // ... all BoundedLattice + Semiring laws ...
+}
+```
+
+Today these tests are written by hand in `algebra.rs` and
+`type_op.rs`. With declarative behaviors, the *behavior definition*
+carries the laws, and the *test generator* produces the property tests
+from any `implements` declaration. Adding a new behavior to an
+existing type automatically generates and runs the corresponding
+tests.
+
+This is the same pattern as testgen for service operations: the
+`OperationBehavior` data in extdeps drives test generation for
+transport contracts. Algebraic behaviors would drive test generation
+for type contracts.
+
+### What "Stacking Tautologies" Looks Like
+
+A fully compositional type stacks multiple tautological behaviors:
+
+```dag
+type Int64 = Word64
+  where signed(twos_complement), arithmetic
+  implements BoundedLattice {
+    // Integer ordering: the usual <=
+    top = max_int64
+  }
+  implements Semiring {
+    // Arithmetic: +, *
+    product(a, b) = a * b
+    sum(a, b) = a + b
+    one = 1
+    zero = 0
+  }
+  implements Bitwise {
+    // Bit operations
+    and(a, b) = ...
+    or(a, b) = ...
+    xor(a, b) = ...
+    shift_left(a, n) = ...
+    shift_right(a, n) = ...
+  }
+```
+
+Each `implements` clause is a tautology stacked on top of the
+structural definition. The structural definition says "64 bits, signed,
+two's complement." The behaviors say "you can order these, do
+arithmetic, and do bitwise operations." The compiler enforces all
+laws from all behaviors. The backends read the structural properties
+AND the behaviors to decide how to emit.
+
+A Verilog backend sees `Bitwise` and emits `&`, `|`, `^`, `<<`, `>>`.
+A Rust backend sees the same and emits the same operators with
+different syntax. A test generator sees `Semiring` and generates
+identity/absorbing/commutativity tests. Nobody hardcodes what `Int64`
+can do — the `.dag` file declares it, and everything follows.
+
+### The Current State as a Starting Point
+
+The codebase already has the *right ideas* in the wrong places:
+
+| What exists | Where | What it should become |
+|-------------|-------|---------------------|
+| `algebra.rs` traits | Rust trait definitions | `std/algebra.dag` behavior definitions |
+| `Cardinality` lattice impl | Rust `impl` blocks | `Cardinality implements BoundedLattice` in `.dag` |
+| `ContentEncoding` lattice impl | Rust `impl` + match arms | `ContentEncoding implements BoundedLattice` in `.dag` |
+| `Predicate::entails()` | Rust method | `Predicate implements PartialOrder` in `.dag` |
+| Property-based tests in `algebra.rs` | Hand-written proptest | Auto-generated from `behavior` law declarations |
+| `TypeContract` composite lattice | Rust struct + impls | Emerges from stacked behaviors on types |
+
+The Rust `algebra.rs` traits don't go away. They become the
+*compiled representation* of what the `.dag` behaviors declare — the
+same way `Dag<LoweredOp>` is the compiled representation of `.dag`
+workflow files. The DSL declares the truths. The compiler verifies and
+compiles them. The Rust types are the efficient runtime form.
+
+### Relationship to Cardinality Specifically
+
+Cardinality is the clearest example of the current split. Today it
+exists in three places that can drift:
+
+1. `Port.cardinality` — manually set at construction
+2. `TypeOp::Wrap(WrapperKind)` — structural truth in the type DAG
+3. `TypeRegistry::infer_cardinality()` — bridge that derives (1) from (2)
+
+The system even has `audit_cardinality_drift()` to detect when these
+disagree.
+
+In the tautology-stacking model, this collapse is straightforward.
+`List<T>` is a type whose DAG says "collection of T with cardinality
+[0, ∞)." The cardinality isn't a separate annotation — it's a
+structural consequence of the type's behavior declarations. The
+`Cardinality` struct stays as the efficient internal kernel, but it's
+always *derived* from the DAG, never independently declared.
+
+The `audit_cardinality_drift()` function becomes unnecessary. The
+dual-source problem disappears. There's one truth (the type DAG with
+its stacked behaviors) and one derivation path.
+
+### Guards and Predicates: Same Tautology
+
+Guards on edges and predicates on type DAGs are the same thing:
+truth assertions that gate data flow. Today `Guard` has only
+`Eq(Value)` / `NotEq(Value)`, while `Predicate` has the full algebra
+(`InRange`, `Matches`, `And`, `Or`, `Not`, `Content`, `NonEmpty`).
+
+In the tautology model, there's no distinction. An edge carries a
+predicate. A type node carries a predicate. Both assert a truth.
+Both use the same algebra. Both are tested by the same mechanism.
+`Guard` as a separate concept disappears.
 
 ---
 
@@ -940,51 +1052,61 @@ Test: All classification tests pass with DAG-structural queries
 
 This is cleanup. By Phase 6, the string-based paths are vestigial.
 
-#### Phase 8: Cardinality Derived from Type DAGs (1 week)
+#### Phase 8: Behavior Declarations in DSL (2 weeks)
 
-Remove `Port.cardinality` as a manually-set field. Cardinality is
-always derived from the port's type DAG via the registry.
-
-```
-Touches: dag.rs (Port), lowerer (all Port::scalar/list/optional calls),
-         coerce.rs (remove audit_cardinality_drift — no longer needed)
-Lines changed: ~200 (mostly deleting cardinality arguments)
-Risk: Medium — behavioral change, but audit_cardinality_drift already
-      validates the equivalence
-Test: All existing cardinality tests pass with derived-only path
-```
-
-After this, the dual-source problem is resolved. There's one truth
-(the type DAG) and one derivation path.
-
-#### Phase 9: Guard/Predicate Unification (1 week)
-
-Replace `Guard` with `Predicate` on edge ports. `TriggerGate` edges
-carry full predicates instead of `Eq(Value)` / `NotEq(Value)`.
+Add `behavior` and `implements` as DSL constructs. Parse `behavior`
+definitions with `law` and `operation` clauses. Parse `implements`
+clauses on type definitions.
 
 ```
-Touches: dag.rs (Guard → Predicate), lowerer (guard construction),
-         executor (guard evaluation)
-Lines changed: ~150
-Risk: Medium — behavioral equivalence but different representation
-Test: All conditional/match DAG tests pass with Predicate-based guards
+Touches: parser.rs (new syntax), lib.rs (AST nodes), typecheck
+         (validate implements clauses against behavior contracts)
+Lines changed: ~400
+Risk: Medium — new syntax, but purely additive
+Test: behavior/implements parse and validate; no codegen yet
 ```
 
-After this, type validation and edge gating share the same algebra.
+This is the foundation. Once behaviors are expressible in the DSL,
+everything else is incremental.
 
-#### Phase 10: Lattice Orderings in `.dag` (1 week)
+#### Phase 9: Test Generation from Behaviors (2 weeks)
 
-Define `ContentEncoding` subtype ordering, `FermiDepth` ordering,
-and `PresenceMode` ordering in `.dag` files. The compiler reads
-lattice structure from the DAG instead of Rust match arms.
+The compiler reads `behavior` law declarations and `implements`
+clauses, then auto-generates property-based tests verifying the
+algebraic laws. Replaces the hand-written proptests in `algebra.rs`.
 
 ```
-Touches: type_op.rs (ContentEncoding lattice → DAG-derived),
-         fermi depth mapping, new .dag files
-Lines changed: ~200 (mostly deleting Rust match arms, adding .dag)
-Risk: Low — orderings are well-tested, just moving the source
-Test: Lattice property tests pass with DAG-derived orderings
+Touches: testgen (new law-driven test generator), algebra.rs
+         (hand-written tests become auto-generated)
+Lines changed: ~500 (new generator), ~300 (deleted hand-written tests)
+Risk: Medium — generated tests must match hand-written coverage
+Test: Auto-generated tests for Cardinality and ContentEncoding
+      produce equivalent coverage to existing hand-written tests
 ```
+
+After this, declaring `implements BoundedLattice` on a type
+automatically produces and runs reflexivity, transitivity,
+commutativity, absorption, and top-element tests.
+
+#### Phase 10: Migrate Existing Algebras to Behaviors (1 week)
+
+Move `Cardinality`, `ContentEncoding`, and `Predicate` lattice
+implementations from Rust trait impls to DSL `implements` clauses.
+Unify `Guard` with `Predicate`. Derive port cardinality from type
+DAGs.
+
+```
+Touches: algebra.rs (Rust impls become thin wrappers over DAG-derived
+         behavior), type_op.rs (ContentEncoding lattice → .dag),
+         dag.rs (Guard → Predicate, Port.cardinality derived)
+Lines changed: ~400 (mostly moving, some deleting)
+Risk: Medium — behavioral equivalence, different source of truth
+Test: All existing algebraic property tests pass via auto-generation
+```
+
+After this, the 14 ad-hoc algebraic structures are expressed as
+stacked tautologies in `.dag` files, enforced by auto-generated
+tests, and compiled to efficient Rust representations.
 
 ### Total Effort Estimate
 
@@ -997,10 +1119,10 @@ Test: Lattice property tests pass with DAG-derived orderings
 | 5. Emit reads structure | 2 weeks | Medium | Phase 4 |
 | 6. DSL-defined primitives | 1 week | Medium | Phase 5 |
 | 7. Eliminate string classification | 1 week | Low | Phase 6 |
-| 8. Cardinality derived from type DAGs | 1 week | Medium | Phase 4 |
-| 9. Guard/Predicate unification | 1 week | Medium | Phase 1 |
-| 10. Lattice orderings in `.dag` | 1 week | Low | Phase 6 |
-| **Total** | **~13 weeks** | | |
+| 8. Behavior declarations in DSL | 2 weeks | Medium | Phase 1 |
+| 9. Test generation from behaviors | 2 weeks | Medium | Phase 8 |
+| 10. Migrate existing algebras to behaviors | 1 week | Medium | Phase 9 |
+| **Total** | **~15 weeks** | | |
 
 Phases 1-2 are safe, incremental, and independently valuable. They
 can ship without committing to the full migration.
@@ -1013,11 +1135,13 @@ Phases 5-7 are where the payoff materializes: backends become
 domain-agnostic, primitives move to the DSL, and string matching
 disappears.
 
-Phases 8-10 complete the unification: all algebraic truths
-(cardinality, predicates, lattice orderings) live on the DAG. The
-compiler becomes a pure DAG-walking machine. Phase 9 (guard/predicate
-unification) can run in parallel with phases 3-7 since it's
-independent.
+Phases 8-10 are the generalization: the system gains a universal
+mechanism for attaching and enforcing arbitrary tautological
+behaviors. Cardinality, encoding, ordering, arithmetic — anything
+with algebraic laws — becomes a stackable behavior declaration in
+`.dag`, enforced by auto-generated tests, compiled to efficient Rust.
+Phase 8 (behavior declarations) can start as early as Phase 1 since
+it's additive syntax.
 
 ### What This Enables
 
@@ -1038,12 +1162,13 @@ After all seven phases:
   DAGs. It doesn't know what a bit is, what a secret is, or what an
   HTTP error is. The `.dag` files carry all domain knowledge.
 
-- **Cardinality, encoding, and ordering are derived, not declared.**
-  No more `Port::list("items", "String")` stamping cardinality
-  manually. The type DAG says "Collection of String" and the
-  compiler derives `[0, ∞)`. No more Rust match arms encoding
-  `ASCII < UTF8 < Text`. The `.dag` file declares subtype
-  relationships and the compiler reads them.
+- **Arbitrary behaviors stack as tautologies.** Cardinality, encoding,
+  ordering, arithmetic, bitwise operations — any algebraic behavior
+  is a `behavior` declaration in `.dag` with `law` clauses. Types
+  acquire behaviors via `implements`. The compiler auto-generates
+  property-based tests from the laws. Adding a new algebra to an
+  existing type means adding an `implements` clause and getting
+  tests for free. No Rust changes.
 
 - **Guards and predicates are the same thing.** Type validation
   ("this string must match a URL pattern") and edge gating ("this
