@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 13 obligations (0 discharged, 13 testable [0 compiler gaps]: A=4, B=9, C=0, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 81d65b4abc605095f3f1117f44ae662edf3083d0a3b23b81683c108dbc3cf30c
+// Content-Hash: 0d32dd726e81fa25449654d41921f38fe34a47919f120d88eefa419d0f1921b2
 // 
 // Probe-Observer Coverage:
 //   Probes: 3
@@ -25,8 +25,7 @@ use gunbc_ir::{Value, detect_boundaries};
 use gunbc_test::{FermiCost, MockSpec, TestClass, assert_boundary_mockable, guard_test};
 
 fn mock_spec() -> MockSpec {
-    let dag = gunbc_resolve::builder::build_dsl_graph_dag("std/logic.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
-    gunbc_test::auto_mock_spec(&dag, "std-logic")
+    { let __r = gunbc_resolve::builder::build_dsl_graph("std/logic.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build"); gunbc_test::auto_mock_spec(&__r.dag, "std-logic", Some(&__r.dsl_type_registry)) }
 }
 
 // =========================================================================
@@ -163,8 +162,8 @@ fn test_optional_missing_std_logic_classical_not_deps() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("std/logic.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("a".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Str("True".to_string()));
+    inputs.insert("a".to_string(), Value::Str("True".to_string()));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.logic::classical_not", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.logic::classical_not.__deps missing should not error");
 }
 
@@ -178,9 +177,9 @@ fn test_optional_missing_std_logic_classical_and_deps() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("std/logic.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("a".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("b".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Str("True".to_string()));
+    inputs.insert("a".to_string(), Value::Str("True".to_string()));
+    inputs.insert("b".to_string(), Value::Str("True".to_string()));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.logic::classical_and", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.logic::classical_and.__deps missing should not error");
 }
 
@@ -194,9 +193,9 @@ fn test_optional_missing_std_logic_classical_or_deps() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("std/logic.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("a".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("b".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Str("True".to_string()));
+    inputs.insert("a".to_string(), Value::Str("True".to_string()));
+    inputs.insert("b".to_string(), Value::Str("True".to_string()));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.logic::classical_or", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.logic::classical_or.__deps missing should not error");
 }
 
@@ -227,7 +226,7 @@ fn test_boundary_std_logic_classical_and_mockable() {
     assert!(boundaries.is_boundary_node(&"std.logic::classical_and".into()), "std.logic::classical_and should be a boundary");
 
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("std.logic::classical_and", "return", Value::Json(serde_json::json!({"mock":true})));
+    mocks.set_value("std.logic::classical_and", "return", Value::Str("True".to_string()));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("std.logic::classical_and").expect("node should be in log");
@@ -246,7 +245,7 @@ fn test_boundary_std_logic_classical_not_mockable() {
     assert!(boundaries.is_boundary_node(&"std.logic::classical_not".into()), "std.logic::classical_not should be a boundary");
 
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("std.logic::classical_not", "return", Value::Json(serde_json::json!({"mock":true})));
+    mocks.set_value("std.logic::classical_not", "return", Value::Str("True".to_string()));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("std.logic::classical_not").expect("node should be in log");
@@ -265,7 +264,7 @@ fn test_boundary_std_logic_classical_or_mockable() {
     assert!(boundaries.is_boundary_node(&"std.logic::classical_or".into()), "std.logic::classical_or should be a boundary");
 
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("std.logic::classical_or", "return", Value::Json(serde_json::json!({"mock":true})));
+    mocks.set_value("std.logic::classical_or", "return", Value::Str("True".to_string()));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("std.logic::classical_or").expect("node should be in log");
@@ -308,9 +307,9 @@ fn test_example_std_logic_classical_not_0() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("std/logic.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("a".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Str("True".to_string()));
+    inputs.insert("a".to_string(), Value::Str("True".to_string()));
+    inputs.insert("return".to_string(), Value::Str("True".to_string()));
     let outputs = gunbc_exec::execute_single_node(&dag, "std.logic::classical_not", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'std.logic::classical_not' should execute successfully");
 
     // Check output port 'return'
@@ -328,10 +327,10 @@ fn test_example_std_logic_classical_and_1() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("std/logic.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("a".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("b".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Str("True".to_string()));
+    inputs.insert("a".to_string(), Value::Str("True".to_string()));
+    inputs.insert("b".to_string(), Value::Str("True".to_string()));
+    inputs.insert("return".to_string(), Value::Str("True".to_string()));
     let outputs = gunbc_exec::execute_single_node(&dag, "std.logic::classical_and", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'std.logic::classical_and' should execute successfully");
 
     // Check output port 'return'
@@ -349,10 +348,10 @@ fn test_example_std_logic_classical_or_2() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("std/logic.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("a".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("b".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Str("True".to_string()));
+    inputs.insert("a".to_string(), Value::Str("True".to_string()));
+    inputs.insert("b".to_string(), Value::Str("True".to_string()));
+    inputs.insert("return".to_string(), Value::Str("True".to_string()));
     let outputs = gunbc_exec::execute_single_node(&dag, "std.logic::classical_or", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'std.logic::classical_or' should execute successfully");
 
     // Check output port 'return'

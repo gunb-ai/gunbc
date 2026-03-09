@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 226 obligations (41 discharged, 185 testable [5 compiler gaps]: A=61, B=124, C=0, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 14041222b3ae1004efc977ef696a0b21237ee66e8769876fa9436811d020aefb
+// Content-Hash: 5e2a9cfe3b480422b7b57179ea6a35b56a237be04663f24ddc96fd8358d6db5c
 // 
 // Probe-Observer Coverage:
 //   Probes: 50
@@ -140,8 +140,7 @@ use gunbc_test::{FermiCost, MockSpec, TestClass, Window, apply_window_inputs, as
 use std::collections::HashMap;
 
 fn mock_spec() -> MockSpec {
-    let dag = gunbc_resolve::builder::build_dsl_graph_dag("extdeps/gitignore_render.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
-    gunbc_test::auto_mock_spec(&dag, "extdeps-gitignore_render")
+    { let __r = gunbc_resolve::builder::build_dsl_graph("extdeps/gitignore_render.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build"); gunbc_test::auto_mock_spec(&__r.dag, "extdeps-gitignore_render", Some(&__r.dsl_type_registry)) }
 }
 
 // =========================================================================
@@ -1358,7 +1357,7 @@ fn test_optional_missing_std_unicode_char_width_deps() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("extdeps/gitignore_render.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Int(1));
-    inputs.insert("c".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("c".to_string(), Value::Int(1));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.unicode::char_width", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.unicode::char_width.__deps missing should not error");
 }
 
@@ -4244,7 +4243,7 @@ fn test_example_std_unicode_char_width_19() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("extdeps/gitignore_render.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Int(1));
-    inputs.insert("c".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("c".to_string(), Value::Int(1));
     inputs.insert("return".to_string(), Value::Int(1));
     let outputs = gunbc_exec::execute_single_node(&dag, "std.unicode::char_width", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'std.unicode::char_width' should execute successfully");
 

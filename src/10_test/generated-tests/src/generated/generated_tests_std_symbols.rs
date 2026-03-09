@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 11 obligations (0 discharged, 11 testable [0 compiler gaps]: A=4, B=7, C=0, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 940264e80a3e3fdf80f185bca6916a501b2e99bbee93bbdf2fd493717d3d4f84
+// Content-Hash: 8f38c2af7aea1e13d5e2d8f2afebe145ba7395003bc929976c6172a517728544
 // 
 // Probe-Observer Coverage:
 //   Probes: 3
@@ -25,8 +25,7 @@ use gunbc_ir::{Value, detect_boundaries};
 use gunbc_test::{FermiCost, MockSpec, TestClass, assert_boundary_mockable, guard_test};
 
 fn mock_spec() -> MockSpec {
-    let dag = gunbc_resolve::builder::build_dsl_graph_dag("std/symbols.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
-    gunbc_test::auto_mock_spec(&dag, "std-symbols")
+    { let __r = gunbc_resolve::builder::build_dsl_graph("std/symbols.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build"); gunbc_test::auto_mock_spec(&__r.dag, "std-symbols", Some(&__r.dsl_type_registry)) }
 }
 
 // =========================================================================

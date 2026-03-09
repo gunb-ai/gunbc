@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 339 obligations (118 discharged, 221 testable [13 compiler gaps]: A=67, B=123, C=31, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: c460e54a62bca8cb145d4d30dc326889e2f86751d94efb5f3d6febd3eb780ea3
+// Content-Hash: 6d37a189b26da7c00d2d82810923251829914cc850f780f3b614eb76cace95c1
 // 
 // Probe-Observer Coverage:
 //   Probes: 45
@@ -160,8 +160,7 @@ use gunbc_test::{FermiCost, MockSpec, TestClass, Window, apply_window_inputs, as
 use std::collections::HashMap;
 
 fn mock_spec() -> MockSpec {
-    let dag = gunbc_resolve::builder::build_dsl_graph_dag("gunbc/auth/patterns.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
-    gunbc_test::auto_mock_spec(&dag, "gunbc-auth-patterns")
+    { let __r = gunbc_resolve::builder::build_dsl_graph("gunbc/auth/patterns.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build"); gunbc_test::auto_mock_spec(&__r.dag, "gunbc-auth-patterns", Some(&__r.dsl_type_registry)) }
 }
 
 // =========================================================================

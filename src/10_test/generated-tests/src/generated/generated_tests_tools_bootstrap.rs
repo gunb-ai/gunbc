@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 444 obligations (96 discharged, 4 INVALID, 344 testable [23 compiler gaps]: A=105, B=234, C=5, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 0433157dfec5ff34ff586ffa0fb05392f33be8ae386dae90fa2eb6a3d702c0c5
+// Content-Hash: 248e9029a60db78f6ce407c1eac8efbb9f494e50337b9bc6a02e81c6b8d5eb98
 // 
 // Probe-Observer Coverage:
 //   Probes: 72
@@ -183,8 +183,7 @@ use gunbc_test::{FermiCost, MockSpec, TestClass, Window, apply_window_inputs, as
 use std::collections::HashMap;
 
 fn mock_spec() -> MockSpec {
-    let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/bootstrap.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
-    gunbc_test::auto_mock_spec(&dag, "tools-bootstrap")
+    { let __r = gunbc_resolve::builder::build_dsl_graph("tools/bootstrap.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build"); gunbc_test::auto_mock_spec(&__r.dag, "tools-bootstrap", Some(&__r.dsl_type_registry)) }
 }
 
 // =========================================================================
@@ -2004,7 +2003,7 @@ fn test_optional_missing_std_patterns_retry_deps() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/bootstrap.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Unit);
-    inputs.insert("backoff_ms".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("backoff_ms".to_string(), Value::Int(1));
     inputs.insert("max_attempts".to_string(), Value::Int(1));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.patterns::retry", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.patterns::retry.__deps missing should not error");
 }
@@ -2546,7 +2545,7 @@ fn test_optional_missing_std_unicode_char_width_deps() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/bootstrap.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Int(1));
-    inputs.insert("c".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("c".to_string(), Value::Int(1));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.unicode::char_width", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.unicode::char_width.__deps missing should not error");
 }
 
@@ -3051,7 +3050,7 @@ fn test_boundary_std_patterns_read_binary_files_mockable() {
 
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("std.patterns::read_binary_files", "files", Value::List(vec![Value::Str("mock".to_string())]));
-    mocks.set_value("std.patterns::read_binary_files", "skipped", Value::List(vec![Value::Str("/tmp/example".to_string())]));
+    mocks.set_value("std.patterns::read_binary_files", "skipped", Value::List(vec![Value::Str("example".to_string())]));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("std.patterns::read_binary_files").expect("node should be in log");
@@ -3071,7 +3070,7 @@ fn test_boundary_std_patterns_read_text_files_mockable() {
 
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("std.patterns::read_text_files", "files", Value::List(vec![Value::Str("mock".to_string())]));
-    mocks.set_value("std.patterns::read_text_files", "skipped", Value::List(vec![Value::Str("/tmp/example".to_string())]));
+    mocks.set_value("std.patterns::read_text_files", "skipped", Value::List(vec![Value::Str("example".to_string())]));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("std.patterns::read_text_files").expect("node should be in log");
@@ -5990,7 +5989,7 @@ fn test_example_std_patterns_retry_2() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/bootstrap.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Unit);
-    inputs.insert("backoff_ms".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("backoff_ms".to_string(), Value::Int(1));
     inputs.insert("max_attempts".to_string(), Value::Int(1));
     inputs.insert("return".to_string(), Value::Unit);
     let outputs = gunbc_exec::execute_single_node(&dag, "std.patterns::retry", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'std.patterns::retry' should execute successfully");
@@ -6418,7 +6417,7 @@ fn test_example_std_unicode_char_width_22() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/bootstrap.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Int(1));
-    inputs.insert("c".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("c".to_string(), Value::Int(1));
     inputs.insert("return".to_string(), Value::Int(1));
     let outputs = gunbc_exec::execute_single_node(&dag, "std.unicode::char_width", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'std.unicode::char_width' should execute successfully");
 

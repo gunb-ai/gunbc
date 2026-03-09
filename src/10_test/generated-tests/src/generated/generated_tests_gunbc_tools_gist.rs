@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 365 obligations (126 discharged, 1 INVALID, 238 testable [15 compiler gaps]: A=66, B=135, C=37, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: c15d4b1dad3ebf840d4f285b1ef34d6989c32df1f6bbbfbf8beee2d14e227386
+// Content-Hash: 9f1d36c0feeaf966624d2abc84e8926ab65213ad6733d3307b32d5f524325b5f
 // 
 // Probe-Observer Coverage:
 //   Probes: 40
@@ -101,8 +101,7 @@ use gunbc_test::{FermiCost, MockSpec, TestClass, Window, apply_window_inputs, as
 use std::collections::HashMap;
 
 fn mock_spec() -> MockSpec {
-    let dag = gunbc_resolve::builder::build_dsl_graph_dag("gunbc/tools/gist.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
-    gunbc_test::auto_mock_spec(&dag, "gunbc-tools-gist")
+    { let __r = gunbc_resolve::builder::build_dsl_graph("gunbc/tools/gist.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build"); gunbc_test::auto_mock_spec(&__r.dag, "gunbc-tools-gist", Some(&__r.dsl_type_registry)) }
 }
 
 // =========================================================================
@@ -1159,7 +1158,7 @@ fn test_optional_missing_gunbc_tools_gist_gist_diff_deps() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("gunbc/tools/gist.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:url".to_string(), Value::Str("https://example.com".to_string()));
-    inputs.insert("base_ref".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("base_ref".to_string(), Value::Str("example".to_string()));
     inputs.insert("public".to_string(), Value::Str("True".to_string()));
     let _outputs = gunbc_exec::execute_single_node(&dag, "gunbc.tools.gist::gist_diff", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input gunbc.tools.gist::gist_diff.__deps missing should not error");
 }

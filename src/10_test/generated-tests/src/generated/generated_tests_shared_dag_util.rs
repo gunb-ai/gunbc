@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 60 obligations (0 discharged, 60 testable [0 compiler gaps]: A=18, B=42, C=0, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 3fbae0c261b8607f01b07bbba4e6793121bf24f3413445b959963afa4dd839d9
+// Content-Hash: 7ddcc5e2c5feb6cd4667018abab991478206fb7123568ce1840f7c7145b66717
 // 
 // Probe-Observer Coverage:
 //   Probes: 17
@@ -53,8 +53,7 @@ use gunbc_ir::{Value, detect_boundaries};
 use gunbc_test::{FermiCost, MockSpec, TestClass, assert_boundary_mockable, guard_test};
 
 fn mock_spec() -> MockSpec {
-    let dag = gunbc_resolve::builder::build_dsl_graph_dag("shared/dag_util.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
-    gunbc_test::auto_mock_spec(&dag, "shared-dag_util")
+    { let __r = gunbc_resolve::builder::build_dsl_graph("shared/dag_util.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build"); gunbc_test::auto_mock_spec(&__r.dag, "shared-dag_util", Some(&__r.dsl_type_registry)) }
 }
 
 // =========================================================================

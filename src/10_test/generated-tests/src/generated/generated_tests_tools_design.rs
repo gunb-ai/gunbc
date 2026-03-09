@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 164 obligations (45 discharged, 4 INVALID, 115 testable [3 compiler gaps]: A=38, B=70, C=7, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 7d665db838182b2af78dedf0d67c09c2b4123167617ceee951b8b9228c8f2fc3
+// Content-Hash: 73152064f1e4232d0df3837f256e1464afa08c83b67f06eb4bc7c0ad28066a6c
 // 
 // Probe-Observer Coverage:
 //   Probes: 52
@@ -125,8 +125,7 @@ use gunbc_test::{FermiCost, MockSpec, TestClass, Window, apply_window_inputs, as
 use std::collections::HashMap;
 
 fn mock_spec() -> MockSpec {
-    let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/design.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
-    gunbc_test::auto_mock_spec(&dag, "tools-design")
+    { let __r = gunbc_resolve::builder::build_dsl_graph("tools/design.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build"); gunbc_test::auto_mock_spec(&__r.dag, "tools-design", Some(&__r.dsl_type_registry)) }
 }
 
 // =========================================================================

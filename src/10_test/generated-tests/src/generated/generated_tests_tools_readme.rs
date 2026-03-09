@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 255 obligations (63 discharged, 3 INVALID, 189 testable [12 compiler gaps]: A=49, B=135, C=5, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 9f9669dae2822171018a04532656421a32d8373e28e1e3d07521e28bcf55c389
+// Content-Hash: 67d7d4b43cc756b29cbaba55b32691f561c3df2eefd7d6c765d16b2a8185bd8f
 // 
 // Probe-Observer Coverage:
 //   Probes: 33
@@ -86,8 +86,7 @@ use gunbc_test::{FermiCost, MockSpec, TestClass, Window, apply_window_inputs, as
 use std::collections::HashMap;
 
 fn mock_spec() -> MockSpec {
-    let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/readme.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
-    gunbc_test::auto_mock_spec(&dag, "tools-readme")
+    { let __r = gunbc_resolve::builder::build_dsl_graph("tools/readme.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build"); gunbc_test::auto_mock_spec(&__r.dag, "tools-readme", Some(&__r.dsl_type_registry)) }
 }
 
 // =========================================================================
@@ -1580,7 +1579,7 @@ fn test_optional_missing_std_patterns_retry_deps() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/readme.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Unit);
-    inputs.insert("backoff_ms".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("backoff_ms".to_string(), Value::Int(1));
     inputs.insert("max_attempts".to_string(), Value::Int(1));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.patterns::retry", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.patterns::retry.__deps missing should not error");
 }
@@ -1979,7 +1978,7 @@ fn test_boundary_std_patterns_read_binary_files_mockable() {
 
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("std.patterns::read_binary_files", "files", Value::List(vec![Value::Str("mock".to_string())]));
-    mocks.set_value("std.patterns::read_binary_files", "skipped", Value::List(vec![Value::Str("/tmp/example".to_string())]));
+    mocks.set_value("std.patterns::read_binary_files", "skipped", Value::List(vec![Value::Str("example".to_string())]));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("std.patterns::read_binary_files").expect("node should be in log");
@@ -1999,7 +1998,7 @@ fn test_boundary_std_patterns_read_text_files_mockable() {
 
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("std.patterns::read_text_files", "files", Value::List(vec![Value::Str("mock".to_string())]));
-    mocks.set_value("std.patterns::read_text_files", "skipped", Value::List(vec![Value::Str("/tmp/example".to_string())]));
+    mocks.set_value("std.patterns::read_text_files", "skipped", Value::List(vec![Value::Str("example".to_string())]));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("std.patterns::read_text_files").expect("node should be in log");
@@ -3202,7 +3201,7 @@ fn test_example_std_patterns_retry_3() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/readme.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Unit);
-    inputs.insert("backoff_ms".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("backoff_ms".to_string(), Value::Int(1));
     inputs.insert("max_attempts".to_string(), Value::Int(1));
     inputs.insert("return".to_string(), Value::Unit);
     let outputs = gunbc_exec::execute_single_node(&dag, "std.patterns::retry", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'std.patterns::retry' should execute successfully");

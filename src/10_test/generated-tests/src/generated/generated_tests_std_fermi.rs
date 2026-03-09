@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 52 obligations (9 discharged, 43 testable [0 compiler gaps]: A=12, B=31, C=0, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 77f856c074b195d87550a7acb6589db7301fde09b4f910db2204a0b0738682c2
+// Content-Hash: c2f3d76e5ae83336ccbabf9baf58d85d8d71845e3d8b8657f3727591bcc7c1b8
 // 
 // Probe-Observer Coverage:
 //   Probes: 10
@@ -46,8 +46,7 @@ use gunbc_test::{FermiCost, MockSpec, TestClass, Window, apply_window_inputs, as
 use std::collections::HashMap;
 
 fn mock_spec() -> MockSpec {
-    let dag = gunbc_resolve::builder::build_dsl_graph_dag("std/fermi.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
-    gunbc_test::auto_mock_spec(&dag, "std-fermi")
+    { let __r = gunbc_resolve::builder::build_dsl_graph("std/fermi.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build"); gunbc_test::auto_mock_spec(&__r.dag, "std-fermi", Some(&__r.dsl_type_registry)) }
 }
 
 // =========================================================================

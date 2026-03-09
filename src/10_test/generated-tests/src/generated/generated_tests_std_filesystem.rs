@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 14 obligations (0 discharged, 14 testable [0 compiler gaps]: A=4, B=10, C=0, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 416a53f5b8e1ec3aeff537ea52322f73c7ce8f563062d220a6d77418085c417c
+// Content-Hash: 7e869e43aa453af8e322def7bb3ad795be5c5385dc88b669196d3aa031115e6f
 // 
 // Probe-Observer Coverage:
 //   Probes: 3
@@ -25,8 +25,7 @@ use gunbc_ir::{Value, detect_boundaries};
 use gunbc_test::{FermiCost, MockSpec, TestClass, assert_boundary_mockable, guard_test};
 
 fn mock_spec() -> MockSpec {
-    let dag = gunbc_resolve::builder::build_dsl_graph_dag("std/filesystem.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
-    gunbc_test::auto_mock_spec(&dag, "std-filesystem")
+    { let __r = gunbc_resolve::builder::build_dsl_graph("std/filesystem.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build"); gunbc_test::auto_mock_spec(&__r.dag, "std-filesystem", Some(&__r.dsl_type_registry)) }
 }
 
 // =========================================================================
