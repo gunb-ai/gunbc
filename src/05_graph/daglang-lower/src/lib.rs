@@ -3596,7 +3596,7 @@ fn add_dependency_edges(
                     callable
                         .params
                         .iter()
-                        .map(|param| (param.name.clone(), param.ty.clone()))
+                        .map(|param| (param.name.clone(), param.ty.0.clone()))
                         .collect::<HashMap<_, _>>(),
                 )),
                 _ => None,

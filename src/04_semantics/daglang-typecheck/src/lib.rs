@@ -177,7 +177,7 @@ pub struct TypedCallableSignature {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypedBinding {
     pub name: String,
-    pub ty: String,
+    pub ty: gunbc_ir::types::TypeId,
 }
 
 /// Errors during type checking.
@@ -1183,7 +1183,7 @@ fn collect_signatures(
                                 .iter()
                                 .map(|f| TypedBinding {
                                     name: f.name.clone(),
-                                    ty: type_expr_to_string(&f.ty),
+                                    ty: gunbc_ir::types::TypeId::from(type_expr_to_string(&f.ty)),
                                 })
                                 .collect(),
                         )
@@ -1199,7 +1199,7 @@ fn collect_signatures(
                             ReturnContract::single(type_expr_to_string(&def.return_type)),
                             vec![TypedBinding {
                                 name: "return".to_string(),
-                                ty: type_expr_to_string(&def.return_type),
+                                ty: gunbc_ir::types::TypeId::from(type_expr_to_string(&def.return_type)),
                             }],
                         )
                     }
@@ -1221,7 +1221,7 @@ fn collect_signatures(
                         .iter()
                         .map(|param| TypedBinding {
                             name: param.name.clone(),
-                            ty: type_expr_to_string(&param.ty),
+                            ty: gunbc_ir::types::TypeId::from(type_expr_to_string(&param.ty)),
                         })
                         .collect(),
                     outputs,
@@ -1280,7 +1280,7 @@ fn collect_signatures(
                         .iter()
                         .map(|param| TypedBinding {
                             name: param.name.clone(),
-                            ty: type_expr_to_string(&param.ty),
+                            ty: gunbc_ir::types::TypeId::from(type_expr_to_string(&param.ty)),
                         })
                         .collect(),
                     outputs: def
@@ -1288,7 +1288,7 @@ fn collect_signatures(
                         .iter()
                         .map(|field| TypedBinding {
                             name: field.name.clone(),
-                            ty: type_expr_to_string(&field.ty),
+                            ty: gunbc_ir::types::TypeId::from(type_expr_to_string(&field.ty)),
                         })
                         .collect(),
                 }));
@@ -1335,7 +1335,7 @@ fn collect_signatures(
                         .iter()
                         .map(|param| TypedBinding {
                             name: param.name.clone(),
-                            ty: type_expr_to_string(&param.ty),
+                            ty: gunbc_ir::types::TypeId::from(type_expr_to_string(&param.ty)),
                         })
                         .collect(),
                     outputs: def
@@ -1343,7 +1343,7 @@ fn collect_signatures(
                         .iter()
                         .map(|field| TypedBinding {
                             name: field.name.clone(),
-                            ty: type_expr_to_string(&field.ty),
+                            ty: gunbc_ir::types::TypeId::from(type_expr_to_string(&field.ty)),
                         })
                         .collect(),
                 }));

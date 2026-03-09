@@ -894,6 +894,11 @@ impl TypeId {
         Self(id.into())
     }
 
+    /// Get the underlying string representation.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
     // ── Typed constructors (CP-17) ──────────────────────────────────
 
     pub fn bool() -> Self {
@@ -1257,6 +1262,12 @@ pub fn value_compatible_with_type_id(type_id: &str, value: &crate::value::Value)
 impl From<&str> for TypeId {
     fn from(s: &str) -> Self {
         Self(s.to_string())
+    }
+}
+
+impl From<String> for TypeId {
+    fn from(s: String) -> Self {
+        Self(s)
     }
 }
 
