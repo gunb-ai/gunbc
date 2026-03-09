@@ -2526,7 +2526,13 @@ of all nominal/identity fallback paths. Tasks are ordered so that
 each task's dependencies appear earlier in the list. Tasks at the
 same tier can be done in parallel.
 
-### Current state snapshot (final)
+### Current state snapshot
+
+**Scope:** Structural typing substrate + language-model-based emit
+transition. The compiler's type emission now flows through structural
+`TypeShape` resolution via language model data. `emit_identity_type`
+is deleted. This is NOT yet "the compiler fully lives on structural
+types end to end" — see follow-up debt below.
 
 | What | Status |
 |------|--------|
@@ -2534,19 +2540,16 @@ same tier can be done in parallel.
 | Compositional width derivation | **Done** (Byte→8, Word32→32, UInt8→8, Float32→32) |
 | Language model data structures | **Done** (scalars, named, containers, transport, composites for Rust/Go/C) |
 | Brand-aware emission | **Done** (brands check named entries before unwrapping) |
-| Registry wired to emit | **Done** (lower_to_* passes with_core_types registry) |
+| Registry wired to emit | **Partial** — `lower_to_*` passes `with_core_types()`, not the project-aware `merged_type_registry()`. DSL-defined types are not visible to the emit path unless the full pipeline is used. |
 | Scalar resolver | **Done** (exact domain, arithmetic check, no silent fallback) |
-| String structural in kernel | **Done** (Product matching string_type.dag) |
+| String structural in kernel | **Done** (Product matching string_type.dag). Note: kernel-only contexts (`with_core_types()` without DSL merge) have a structural Product that references `Bytes` and `ContentEncoding` by identity — full resolution requires the merged registry. |
 | Identity ratchet | **Done** — 4 types: Any, Json, Record, Unit (all intentionally opaque) |
 | `emit_identity_type` | **Deleted** |
 | `try_refined_to_rust_structural` | **Deleted** |
 | Structural Product/Coproduct emission | **Done** (CompositeFormat per backend) |
-| Fail-loud on unresolved types | **Done** (warnings + post-Pass-2 audit) |
+| Fail-loud on unresolved types | **Partial** — warnings emitted at registration time; unknown types still pass through verbatim at emit time (`resolve_and_emit` returns the name as-is). |
 | `type_codegen.rs` container hardcoding | **Done** (routes through language model) |
 | `c_type_from_emitted` string roundtrip | **Done** (c_type_from_shape for structural path) |
-| Port cardinality derivation | Backlogged (see BACKLOG.md) |
-| `behavior` DSL construct | Backlogged (see BACKLOG.md) |
-| Language model serialization (JSON IR) | Backlogged (see BACKLOG.md) |
 
 ### Completed tasks
 
@@ -2560,8 +2563,25 @@ same tier can be done in parallel.
 | T2a | **`emit_identity_type` DELETED** |
 | T2b | `try_refined_to_rust_structural` deleted |
 
-### Remaining backlog
+### Follow-up: Structural Authority Cleanup
 
-See `BACKLOG.md` in the repo root for items that are not blocking
-but would improve architectural purity, add new capabilities, or
-tighten invariants.
+Concrete debt from this feature that should be addressed before
+the structural authority story is fully closed. See `BACKLOG.md`
+for the full list including longer-term items.
+
+1. **Production emit uses merged registry.** `lower_to_*()` currently
+   constructs `TypeRegistry::with_core_types()`. The target is
+   threading `CompileOutput::merged_type_registry()` through the
+   pipeline so DSL-defined structural types are visible at emit time.
+
+2. **Unknown named types error at emit, not pass through verbatim.**
+   `resolve_and_emit("FooBar", ...)` currently returns `"FooBar"`
+   with a warning. This should be a compile error — emitting raw
+   unresolved type names is the nominal fallback the migration is
+   eliminating.
+
+3. **Document intentionally lossy backend container rendering.**
+   The C language model renders `Map<K,V>` as `{V}*`, discarding
+   the key. This is correct for C (no native generic map syntax),
+   but should be documented as an intentional backend limitation
+   rather than left as an implicit gap.

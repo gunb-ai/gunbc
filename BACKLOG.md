@@ -1,17 +1,58 @@
 # Backlog: Syllogistic Type System
 
-Non-blocking items remaining after the structural type migration.
-The core migration is complete — `emit_identity_type` is deleted,
-all type emission flows through structural `TypeShape` resolution
-via the language model, and the identity ratchet is at 4 types
-(Any, Json, Record, Unit — all intentionally opaque).
+The structural typing substrate + language-model-based emit
+transition is complete. `emit_identity_type` is deleted. The
+identity ratchet is at 4 types (Any, Json, Record, Unit — all
+intentionally opaque).
 
-These items improve architectural purity, add new capabilities, or
-tighten invariants. None are required for correct operation.
+This backlog tracks follow-up debt and future capabilities.
 
 ---
 
-## Invariant / consistency
+## Structural Authority Cleanup
+
+Concrete debt that should be addressed to close the gap between
+"emit transition landed" and "the compiler fully lives on structural
+types end to end."
+
+### Production emit uses merged registry
+
+`lower_to_*()` currently constructs `TypeRegistry::with_core_types()`
+and passes it to the `_with_registry` variant. This is better than
+`None` but is not project-aware — DSL-defined structural types are
+not visible. The target is threading
+`CompileOutput::merged_type_registry()` through the codegen pipeline.
+
+**Files:** `daglang-driver/src/pipeline.rs`, `daglang-emit/src/lower_rust.rs`,
+`lower_go.rs`, `lower_c.rs`
+**Effort:** Small (plumbing change, callers already accept `Option<&TypeRegistry>`)
+
+### Unknown named types error at emit
+
+`resolve_and_emit("FooBar", ...)` currently returns `"FooBar"` with
+a warning. Tests still bless this as acceptable
+(`assert_eq!(resolve_and_emit("FooBar", None, Rust), "FooBar")`).
+This should be a compile error — emitting unresolved type names into
+generated code is the nominal fallback the migration is eliminating.
+
+**Files:** `type_mapping.rs` (resolve_and_emit fallback), tests
+**Effort:** Small (change warning to error, update tests to expect failure)
+
+### Document lossy backend container rendering as intentional
+
+The C language model renders `Map<K,V>` as `{V}*`, discarding the
+key type. This is correct for C (no native generic map syntax). The
+Go model renders maps as `map[{K}]{V}` (preserves both). This
+asymmetry should be documented as an intentional backend limitation
+in the language model, not left as an implicit gap that gets
+reopened every time C emission is reviewed.
+
+**Files:** `language_model.rs` (C_CONTAINERS comment)
+**Effort:** Trivial (documentation)
+
+---
+
+## Invariant / Consistency
 
 ### Port cardinality derivation
 
@@ -43,27 +84,21 @@ updating all callers through `register_type_def` and
 - `Unit`: zero-element type — could be a zero-field product
 - `Record`: anonymous product alias — could be `Product(None, [])`
 
-Decision needed: which are permanently opaque vs. structural.
-Likely answer: all four stay opaque (they represent concepts
-where internal structure is meaningless to backends).
+Likely answer: all four stay permanently opaque (they represent
+concepts where internal structure is meaningless to backends).
+Document the decision.
 
 ---
 
-## Maintainability
+## Future Capabilities
 
 ### Language model serialization to JSON IR
 
 Move language model data from static Rust arrays to JSON files
 (`backend/rust.ir.json`, etc.). Benefit: modifying backend type
-mappings doesn't require recompiling the compiler. Matters more
-with many backends; fine for 3 backends that change rarely.
+mappings doesn't require recompiling the compiler.
 
-**Files:** `language_model.rs` + new JSON files
-**Effort:** Medium (serde infrastructure)
-
----
-
-## New capabilities
+**Effort:** Medium
 
 ### `behavior` DSL construct + property-based test generation
 
@@ -74,32 +109,23 @@ behavior PartialOrder extends Preorder {
 }
 ```
 
-Types acquire behaviors via `implements` (already parsed for
-services/resources). Auto-generate property-based tests from `law`
-declarations.
+Auto-generate property-based tests from `law` declarations.
 
-**Files:** parser, typecheck, testgen
-**Effort:** Large (new syntax + semantics + test generation)
+**Effort:** Large
 
 ### Real `containers.dag` with generic substitution
 
 The parser handles `type List<T>` syntax but `T` is never
-substituted into the body. Container behavior lives in Rust-side
-`type_lib` constructors. Making containers fully DSL-defined would
-satisfy the "adding a type requires only a `.dag` definition"
-invariant, but containers are stable infrastructure that won't
-change.
+substituted into the body. Making containers fully DSL-defined
+would satisfy the "adding a type requires only a `.dag` definition"
+invariant.
 
-**Files:** `daglang-typecheck/src/lib.rs`, `dsl/std/containers.dag`
-**Effort:** Large (generic substitution semantics)
+**Effort:** Large
 
 ### Structural coercion paths
 
-Multi-step coercion via derivation chain walking (e.g., `UInt8 →
-Int32` via width widening). Downcast acknowledgment syntax
-(`coerce X -> Y where lossy(...)`). Current `is_compatible()` with
-structural shape comparison + predicate entailment handles all
+Multi-step coercion via derivation chain walking. Downcast
+acknowledgment syntax. Current `is_compatible()` handles all
 existing use cases.
 
-**Files:** `type_registry.rs`, `daglang-syntax`
-**Effort:** Large (derivation chain walking, brand policy, new syntax)
+**Effort:** Large
