@@ -418,28 +418,336 @@ These follow directly from the extdeps invariants:
    is a new set of tautological definitions and compositions in the
    DSL. The compiler and its backends never change.
 
-## Relationship to XLS
+## XLS Parity Analysis
 
-Google's XLS project generates Verilog from a Rust-like DSL (DSLX).
-XLS achieves this by building hardware knowledge into the compiler:
-~60 opcodes for bit-level operations, a scheduling pass for pipeline
-stages, a delay model for timing, and a dedicated Block IR for RTL.
+Google's XLS project generates synthesizable Verilog from DSLX
+(a Rust-like hardware DSL). This section maps every XLS capability
+to what gunbc provides after the syllogistic migration, identifies
+what's covered, what's missing, and how the syllogistic approach
+makes closing each gap easier.
 
-The syllogistic approach is philosophically different. Instead of
-teaching the compiler about hardware, we teach the *type system* about
-hardware — and the compiler remains domain-agnostic. If `Bit` is
-defined as `ClassicalProposition where width(1)`, and `ClassicalGate`
-is defined as a coproduct of `Not | And | Or | ...`, then a Verilog
-backend has everything it needs without the compiler containing any
-hardware-specific IR.
+### XLS Architecture (for reference)
 
-This is not a shortcut. XLS's scheduling pass, delay models, and
-pipeline register insertion are genuinely hard problems that would
-still need solutions. But the *type-level* foundation — "what is a
-bit, what is a gate, what is a register" — falls out of the
-syllogistic type system for free. The remaining problems (scheduling,
-timing, optimization) are concerns of a specific backend, not of the
-type system or the core compiler.
+```
+DSLX source → IR conversion → optimization → scheduling → codegen → Verilog
+```
+
+- **DSLX**: Rust-like syntax, `bits[N]` types, parametric generics,
+  `for` loops, `match`, structs, enums, procs (stateful), channels
+- **IR**: ~60 opcodes, SSA dataflow (sea-of-nodes), three
+  abstractions (Function, Proc, Block)
+- **Scheduling**: assigns IR ops to clock cycles, delay modeling,
+  pipeline register insertion
+- **Codegen**: IR → Verilog modules with `always_comb`/`always_ff`,
+  port declarations, reset logic
+
+### Layer 1: Type System
+
+| XLS Capability | XLS Implementation | gunbc After Migration | Gap? |
+|---|---|---|---|
+| **Fixed-width bits** `bits[N]` | Built-in type, N is compile-time constant | `Bit where width(N)` — structural, N from `width` predicate | **Covered** |
+| **Signed/unsigned** `sN`, `uN` | Built-in signed/unsigned integer types | `Word where signed(twos_complement)` / `where unsigned` | **Covered** |
+| **Arbitrary width** `bits[37]` | Any N from 1 to ~2^16 | `List<Bit> where length(37)` → width(37) derived | **Covered** |
+| **Bool** | `bool` = `bits[1]` | `Bool = Classical` where `Bit = Classical where width(1)` | **Covered** |
+| **Arrays** `T[N]` | Fixed-size, homogeneous | `List<T> where length(N)` | **Covered** |
+| **Tuples** `(T1, T2)` | Fixed-size, heterogeneous | Anonymous product `{ a: T1, b: T2 }` | **Covered** |
+| **Structs** | Named products with fields | `type S { field: T }` — same as today | **Covered** |
+| **Enums** | Tagged unions | `type E = A \| B { payload }` — same as today | **Covered** |
+| **Parametric types** `fn f<N: u32>(x: bits[N])` | Compile-time parametric instantiation | Generic types `List<T>`, `Map<K,V>` exist; **width parametrics need work** | **Partial** |
+| **Token** | Opaque ordering type for channel I/O | No equivalent — could be `type Token = Unit where brand("Token")` with control edges | **Gap** |
+
+**Assessment**: The syllogistic type system covers XLS's type surface
+almost completely. The main gaps are width parametrics (writing
+`fn add<N>(a: bits[N], b: bits[N]) -> bits[N]` where N is inferred
+from call site) and the token type for channel ordering.
+
+### Layer 2: Operations (~60 XLS IR Opcodes)
+
+XLS has ~60 opcodes. Here's every category and how it maps.
+
+#### Arithmetic (XLS: `add`, `sub`, `neg`, `umul`, `smul`, `udiv`, `sdiv`, `umod`, `smod`)
+
+| Op | XLS | gunbc After Migration |
+|----|-----|----------------------|
+| Add | `add(x, y)` | `x + y` — `Int implements CommutativeRing { add }` | 
+| Sub | `sub(x, y)` | `x - y` — `Ring { add(a, neg(b)) }` |
+| Neg | `neg(x)` | `-x` — `Ring { neg }` |
+| Mul | `umul/smul` | `x * y` — `Ring { mul }` |
+| Div | `udiv/sdiv` | `x / y` — needs `EuclideanDomain` or `DivisionAlgebra` behavior |
+| Mod | `umod/smod` | `x % y` — same as div |
+
+**Gap**: Division and modulus. The current `CommutativeRing` behavior
+doesn't include division. Need to either add a `EuclideanDomain`
+behavior or a simpler `DivMod` behavior. Small addition to
+`std/algebra.dag`.
+
+#### Bitwise (XLS: `and`, `or`, `xor`, `not`, `nand`, `nor`)
+
+| Op | XLS | gunbc After Migration |
+|----|-----|----------------------|
+| And | `and(x, y)` | `x & y` — `Bit implements BooleanAlgebra { meet }` |
+| Or | `or(x, y)` | `x \| y` — `BooleanAlgebra { join }` |
+| Not | `not(x)` | `~x` — `BooleanAlgebra { complement }` |
+| Xor | `xor(x, y)` | `x ^ y` — `BooleanAlgebra { join(meet(a, complement(b)), meet(complement(a), b)) }` or explicit |
+| Nand | `nand(x, y)` | `complement(meet(x, y))` — derived from BooleanAlgebra |
+| Nor | `nor(x, y)` | `complement(join(x, y))` — derived |
+
+**Gap**: None for single bits. For multi-bit words, need **bitwise
+extension** — applying BooleanAlgebra element-wise across a
+`List<Bit>`. This is a `behavior Bitwise` that lifts single-bit
+BooleanAlgebra to words. Add to `std/bit.dag`.
+
+#### Shifts (XLS: `shll`, `shrl`, `shra`)
+
+| Op | XLS | gunbc After Migration |
+|----|-----|----------------------|
+| Shift left | `shll(x, amount)` | Needs `Bitwise { shift_left }` behavior |
+| Shift right logical | `shrl(x, amount)` | Needs `Bitwise { shift_right_logical }` |
+| Shift right arithmetic | `shra(x, amount)` | Needs `Bitwise { shift_right_arithmetic }` |
+
+**Gap**: Shift operations. Not derivable from BooleanAlgebra alone.
+Need explicit shift operations in a `Bitwise` behavior extension.
+
+#### Bit Manipulation (XLS: `bit_slice`, `bit_slice_update`, `concat`, `reverse`, `sign_ext`, `zero_ext`, `encode`, `decode`)
+
+| Op | XLS | gunbc After Migration |
+|----|-----|----------------------|
+| Bit slice `x[3:0]` | `bit_slice(x, start, width)` | Needs `Bitwise { slice }` — structural on `List<Bit>` |
+| Bit slice update | `bit_slice_update(x, start, value)` | Needs `Bitwise { slice_update }` |
+| Concat | `concat(x, y)` | List append on `List<Bit>` — structural |
+| Reverse | `reverse(x)` | List reverse on `List<Bit>` — structural |
+| Sign extend | `sign_ext(x, new_width)` | Needs `Signed { sign_extend }` behavior |
+| Zero extend | `zero_ext(x, new_width)` | List prepend zeros — structural |
+| Encode | `encode(x)` | Needs `Encoding` behavior (one-hot → binary) |
+| Decode | `decode(x, width)` | Needs `Encoding` behavior (binary → one-hot) |
+
+**Gap**: Bit slicing, sign extension, encode/decode. These are
+specific hardware operations that need explicit behavior definitions.
+Concat and reverse are structural on `List<Bit>`.
+
+#### Comparison (XLS: `eq`, `ne`, `ult`, `ugt`, `ule`, `uge`, `slt`, `sgt`, `sle`, `sge`)
+
+| Op | XLS | gunbc After Migration |
+|----|-----|----------------------|
+| Eq/Ne | `eq(x, y)`, `ne(x, y)` | `x == y`, `x != y` — structural equality |
+| Unsigned compare | `ult`, `ugt`, `ule`, `uge` | `UInt implements TotalOrder { leq }` |
+| Signed compare | `slt`, `sgt`, `sle`, `sge` | `Int implements TotalOrder { leq }` |
+
+**Gap**: None. `TotalOrder` from `std/algebra.dag` covers all
+comparison operations. Signed vs unsigned is distinguished by the
+type's signedness predicate.
+
+#### Selection (XLS: `sel`, `one_hot`, `one_hot_sel`, `priority_sel`)
+
+| Op | XLS | gunbc After Migration |
+|----|-----|----------------------|
+| Select (mux) | `sel(selector, cases, default)` | `match selector { ... }` — existing DSL construct |
+| One-hot | `one_hot(input, lsb_prio)` | Needs hardware `Multiplexing` behavior |
+| One-hot select | `one_hot_sel(selector, cases)` | Needs hardware `Multiplexing` behavior |
+| Priority select | `priority_sel(selector, cases)` | Needs hardware `Multiplexing` behavior |
+
+**Gap**: Hardware multiplexing primitives (one-hot encoding/decoding,
+priority selection). These are hardware-domain operations that need
+an `extdeps/hardware/multiplexing.dag` module — defined as behaviors
+the same way cloud APIs are defined as extdeps.
+
+#### Array/Tuple (XLS: `array`, `array_index`, `array_update`, `array_concat`, `array_slice`, `tuple`, `tuple_index`)
+
+| Op | XLS | gunbc After Migration |
+|----|-----|----------------------|
+| Array construct | `[a, b, c]` | `[a, b, c]` — existing DSL syntax |
+| Array index | `a[i]` | List index — structural |
+| Array update | `update(a, i, v)` | Needs list update operation |
+| Array concat | `array_concat(a, b)` | List append — structural |
+| Array slice | `a[start:end]` | Needs list slice operation |
+| Tuple construct | `(a, b)` | `{ a: x, b: y }` — anonymous product |
+| Tuple index | `t.0` | `t.a` — field access |
+
+**Gap**: Array/list update and slice. Minor — these are standard
+collection operations, not hardware-specific.
+
+#### Channel/State (XLS: `send`, `receive`, `after_all`, Proc state)
+
+| Op | XLS | gunbc After Migration |
+|----|-----|----------------------|
+| Send | `send(tok, channel, data)` | No direct equivalent today |
+| Receive | `recv(tok, channel)` | No direct equivalent today |
+| After all | `after_all(tok1, tok2)` | Control edge ordering in DAG — structural |
+| Proc state | `next(state) -> state` | `func` with `uses` clauses — conceptual parallel |
+
+**Gap**: **Channels and procs are the biggest gap.** XLS's proc model
+(stateful processes communicating via channels with ready/valid
+handshake) has no direct equivalent in gunbc. However, this maps
+naturally to the existing `func ... uses` pattern:
+
+```dag
+// Hypothetical hardware proc in gunbc syntax
+func counter() -> { count: UInt32 }
+  uses clk: Clock
+  state { count: UInt32 = 0 }
+  channels {
+    increment: chan<Bool> in
+    value: chan<UInt32> out
+  }
+{
+  inc = receive(increment)
+  next_count = if inc { count + 1 } else { count }
+  send(value, next_count)
+  return { count: next_count }
+}
+```
+
+This uses existing DSL constructs (`func`, `uses`, `state`, `return`)
+with new `channels` syntax. The `state` block parallels XLS's
+`init`/`next` pattern. The `channels` block parallels XLS's channel
+declarations. The compiler would lower this to a DAG with
+`DataFlow` and `Control` edges — which already exist.
+
+### Layer 3: Scheduling and Timing
+
+| XLS Capability | XLS Implementation | gunbc Equivalent | Gap? |
+|---|---|---|---|
+| **Clock period** | `--clock_period_ps` flag | No equivalent | **Gap** |
+| **Pipeline stages** | `--pipeline_stages` flag | No equivalent | **Gap** |
+| **Delay model** | `--delay_model=asap7\|sky130` | No equivalent | **Gap** |
+| **Operation latency** | Per-op delay in cycles/picoseconds | No equivalent | **Gap** |
+| **Register insertion** | Automatic at stage boundaries | No equivalent | **Gap** |
+| **Schedule optimization** | Minimize pipeline registers | No equivalent | **Gap** |
+
+**Gap**: This is the hardest layer. XLS's scheduler is sophisticated —
+it uses per-operation delay models (from ASIC libraries like ASAP7 or
+SKY130), assigns operations to clock cycles, and inserts pipeline
+registers at stage boundaries.
+
+**However**, the syllogistic approach makes this more tractable than
+building it from scratch:
+
+1. **Delay models are extdeps.** A delay model IS an external
+   specification: "an ASAP7 adder takes 150ps." This is the same
+   pattern as "a GCP Secret Manager access is ReadOnly with 200ms
+   latency." It belongs in `extdeps/hardware/asap7.dag`:
+
+```dag
+module extdeps.hardware.asap7
+
+// Ref: ASAP7 PDK — Arizona State University
+// https://github.com/The-OpenROAD-Project/asap7
+
+data gate_delays: List<GateDelay> = [
+  { gate: "add",    width: 32, delay_ps: 150 },
+  { gate: "mul",    width: 32, delay_ps: 400 },
+  { gate: "and",    width: 1,  delay_ps: 20 },
+  { gate: "or",     width: 1,  delay_ps: 20 },
+  { gate: "mux2",   width: 1,  delay_ps: 30 },
+  { gate: "reg",    width: 1,  delay_ps: 50, is_sequential: true },
+]
+```
+
+2. **Scheduling is a backend concern.** The scheduler reads the
+   DAG topology (which operations depend on which), reads the delay
+   model (from extdeps), and partitions operations into pipeline
+   stages. This is a Verilog backend pass, not a core compiler
+   feature. The DAG structure (nodes, edges, data flow) already
+   provides the dependency information the scheduler needs.
+
+3. **Pipeline stages map to existing DAG constructs.** gunbc
+   already has `Pipeline { stages, stage_names }` in `LoweredOp`.
+   Today these are workflow stages. For hardware, they'd be clock-
+   cycle stages. Same structure, different domain.
+
+### Layer 4: Verilog Codegen
+
+| XLS Capability | XLS Implementation | gunbc Equivalent | Gap? |
+|---|---|---|---|
+| **Module declaration** | `module name(ports)` | Product type → module ports (structural) | **Covered** by type system |
+| **Port widths** | Derived from `bits[N]` types | Derived from `width(N)` predicate | **Covered** |
+| **Wire/reg** | Inferred from combinational vs sequential | Needs `Combinational`/`Sequential` behavior markers | **Gap** (small) |
+| **`always_comb`** | For purely combinational logic | `fn` (pure functions) → combinational | **Covered** conceptually |
+| **`always_ff`** | For registered (stateful) logic | `func` with `state` → sequential | **Gap** (needs `state` syntax) |
+| **Reset logic** | `--reset` / `--reset_active_low` flags | Needs reset behavior on state types | **Gap** (small) |
+| **Clock gating** | Automatic for unused registers | Backend optimization pass | **Gap** (backend concern) |
+| **Instantiation** | Sub-module instantiation | SubDag → sub-module | **Covered** structurally |
+
+### Summary: The Gap Map
+
+| Category | XLS Opcodes | Covered by Syllogistic Types | Needs New Behavior | Needs Backend Work |
+|----------|-------------|-------|------|------|
+| **Type system** | `bits[N]`, signed/unsigned, arrays, tuples, structs, enums | 9/10 | Parametric widths | — |
+| **Arithmetic** | add, sub, neg, mul, div, mod | 4/6 | DivMod behavior | — |
+| **Bitwise** | and, or, xor, not, nand, nor | 6/6 via BooleanAlgebra | Bitwise word-lift | — |
+| **Shifts** | shll, shrl, shra | 0/3 | Bitwise { shift } | — |
+| **Bit manipulation** | slice, update, concat, reverse, sign_ext, zero_ext, encode, decode | 2/8 structural | 6 ops in Bitwise/Signed | — |
+| **Comparison** | eq, ne, unsigned, signed (10 ops) | 10/10 via TotalOrder | — | — |
+| **Selection** | sel, one_hot, one_hot_sel, priority_sel | 1/4 (match) | Multiplexing behavior | — |
+| **Array/Tuple** | construct, index, update, concat, slice, tuple_index | 4/7 structural | update, slice | — |
+| **Channels/Procs** | send, receive, after_all, proc state | 0/4 | Channel behavior + state syntax | — |
+| **Scheduling** | clock, pipeline, delay model, register insertion | 0/4 | — | Full backend pass |
+| **Codegen** | module, ports, wire/reg, always_comb/ff, reset | 3/7 structural | wire/reg, state, reset | Verilog emitter |
+
+### What This Tells Us
+
+**The syllogistic type system covers ~60% of XLS's capability surface
+for free** — types, arithmetic, comparison, basic structure. This is
+the part that falls out of the type-by-type migration without any
+hardware-specific work.
+
+**Another ~25% is new behaviors** (`Bitwise`, `DivMod`,
+`Multiplexing`, channels) that follow the same pattern as everything
+else: `.dag` files declaring tautological operations with algebraic
+laws. These are `extdeps/hardware/*.dag` modules, no different from
+`extdeps/cloud/gcp/*.dag`.
+
+**The remaining ~15% is genuine backend work**: a scheduling pass
+(reading delay models from extdeps, partitioning into pipeline
+stages), a Verilog emitter (rendering DAGs as `module` declarations
+with `always_comb`/`always_ff` blocks), and state/reset handling.
+
+Crucially, that ~15% is *localized to the backend*. It doesn't
+require changes to the compiler core, the type system, or the DAG
+infrastructure. A Verilog backend is a new emitter — the same way
+the Rust, Go, C, and MIPS backends are emitters — that reads DAGs
+and renders them as Verilog.
+
+### Path to Parity
+
+Given the execution plan, here's when each XLS capability becomes
+available:
+
+| After Step | XLS Parity Gained |
+|-----------|-------------------|
+| Step 4 (Int/Float) | Fixed-width types, signed/unsigned, arithmetic, comparison |
+| Step 6 (containers) | Arrays, tuples, structural concat/reverse |
+| Step 7 (emit reads structure) | Backends can derive port widths from type DAGs |
+| **New: Hardware behaviors** | Bitwise, shifts, bit slicing, DivMod, Multiplexing |
+| **New: Channel/state syntax** | Procs, channels, stateful logic |
+| **New: Delay extdeps** | extdeps/hardware/asap7.dag, sky130.dag |
+| **New: Verilog backend** | Scheduling pass, Verilog emitter |
+
+Steps 0–10 from the execution plan give us the foundation. After
+that, hardware support is additive:
+
+1. **`extdeps/hardware/` modules** (~2–4 weeks): Define `Bitwise`,
+   `Multiplexing`, `Schedulable` behaviors. Define delay models for
+   ASAP7/SKY130 as extdeps data. Define `Clock`, `Reset` as resource
+   types.
+
+2. **Channel and state syntax** (~2 weeks): Add `state { }` and
+   `channels { }` blocks to `func`. Parse, typecheck, lower to DAG
+   nodes with appropriate edges.
+
+3. **Verilog emitter** (~4–6 weeks): A new emit backend that reads
+   DAGs and produces `.v` files. Includes scheduling pass that reads
+   delay extdeps to assign pipeline stages.
+
+**Total additional work beyond the type migration: ~8–12 weeks.**
+Combined with the ~10–14 week type migration, the full path from
+today to Verilog emission is **~20–26 weeks**.
+
+For comparison, XLS has been in development since ~2020 with a
+multi-person team. The syllogistic approach gets to parity faster
+because the type system, DAG infrastructure, and DSL surface already
+exist — we're adding a domain (hardware) to an existing framework,
+not building a hardware compiler from scratch.
 
 ## Summary
 
