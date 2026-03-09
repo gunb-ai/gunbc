@@ -3495,6 +3495,10 @@ impl Parser {
     }
 
     fn consume_brace_block_expr(&mut self) -> Result<Expr, ParseError> {
+        let expr = self.parse_expr(0)?;
+        if self.check(&TokenKind::RBrace) {
+            return Ok(expr);
+        }
         Err(self.err(
             "multi-statement blocks in expression position are not yet supported".to_string(),
         ))
