@@ -917,8 +917,45 @@ fn test_scalar_port_takes_single_value() {
 
 #[test]
 fn test_scalar_port_fan_in_takes_last_non_skipped() {
-    // A scalar port with multiple incoming edges takes the last non-Skipped value.
-    // This supports conditional branches where only one branch produces a real value.
+    // A scalar port with one Skipped edge and one real edge should take the
+    // non-Skipped value (conditional merge: only one branch fires).
+    let mut dag: Dag<TestOp> = Dag::new();
+    dag.add_node(Node::opaque(
+        "A",
+        vec![],
+        vec![port("out", "String")],
+        TestOp::produce("out", Value::Skipped),
+    ));
+    dag.add_node(Node::opaque(
+        "B",
+        vec![],
+        vec![port("out", "String")],
+        TestOp::produce("out", Value::Str("beta".to_string())),
+    ));
+    dag.add_node(Node::opaque(
+        "C",
+        vec![port("data", "String")],
+        vec![port("data", "String")],
+        TestOp::echo(),
+    ));
+    dag.add_edge(edge("A", "out", "C", "data"));
+    dag.add_edge(edge("B", "out", "C", "data"));
+
+    let log = execute_dag(&dag, ExecuteConfig::default()).expect("scalar fan-in should succeed");
+    let c_entry = log.get("C").expect("C should have executed");
+    let data = c_entry.outputs.get("data").expect("C should produce data");
+    assert_eq!(
+        data,
+        &Value::Str("beta".to_string()),
+        "expected the non-Skipped value 'beta', got {:?}",
+        data
+    );
+}
+
+#[test]
+fn test_scalar_port_fan_in_rejects_multiple_non_skipped() {
+    // Two non-Skipped values arriving at a scalar port means two conditional
+    // branches both fired, which is a structural error.
     let mut dag: Dag<TestOp> = Dag::new();
     dag.add_node(Node::opaque(
         "A",
@@ -941,14 +978,12 @@ fn test_scalar_port_fan_in_takes_last_non_skipped() {
     dag.add_edge(edge("A", "out", "C", "data"));
     dag.add_edge(edge("B", "out", "C", "data"));
 
-    let log = execute_dag(&dag, ExecuteConfig::default()).expect("scalar fan-in should succeed");
-    let c_entry = log.get("C").expect("C should have executed");
-    // One of the two values wins (implementation-defined order)
-    let data = c_entry.outputs.get("data").expect("C should produce data");
+    let err = execute_dag(&dag, ExecuteConfig::default())
+        .expect_err("should reject multiple non-Skipped values at scalar port");
+    let msg = err.to_string();
     assert!(
-        data == &Value::Str("alpha".to_string()) || data == &Value::Str("beta".to_string()),
-        "expected alpha or beta, got {:?}",
-        data
+        msg.contains("conditional merge error"),
+        "expected conditional merge error, got: {msg}"
     );
 }
 
@@ -2284,4 +2319,214 @@ fn dry_run_rejects_kindless_effectful_node() {
     );
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("kind: Pure"));
+}
+
+// =========================================================================
+// Tiered test execution (T11 — Phase 4b)
+//
+// The test suite uses three execution tiers to provide layered confidence:
+//
+//   Tier 1 — DryRun (structure):
+//     All transport/resource/tool nodes are intercepted with explicit mocks.
+//     Proves DAG wiring, port cardinality, coercion, conditional skip, and
+//     topological ordering. No real I/O occurs. This is the tier used by
+//     the majority of existing tests.
+//
+//   Tier 2 — Selective Real (computation):
+//     Pure nodes and safe environment interactions (env var reads, timestamp,
+//     filesystem reads in temp dirs, conditionals) execute for real. Only
+//     external-facing transport nodes remain mocked. Proves that computation
+//     logic within the DAG produces correct values, not just correct shapes.
+//
+//   Tier 3 — Full Real (integration):
+//     All nodes execute for real. Only used in controlled environments with
+//     sandboxed credentials (e.g., CI with scoped tokens). Proves end-to-end
+//     behavior including HTTP calls and cloud API interactions.
+//
+// The test below demonstrates Tier 2: a DAG node that reads a real
+// environment variable, executed in Real mode with no mocking.
+// =========================================================================
+
+/// Tier 2 test: a single-node DAG reads a real environment variable in
+/// Real mode and produces a `Value::Secret`. This proves that Real-mode
+/// execution works for safe, pure-environment operations — the node is
+/// never intercepted.
+#[test]
+fn env_var_read_real_mode() {
+    use gunbc_ir::value::SecretString;
+
+    #[derive(Debug, Clone)]
+    struct EnvReadOp {
+        var_name: String,
+    }
+
+    impl Executable for EnvReadOp {
+        fn execute(
+            &self,
+            _inputs: HashMap<String, Value>,
+        ) -> Result<HashMap<String, Value>, ExecError> {
+            let value = std::env::var(&self.var_name).map_err(|_| {
+                ExecError::new(format!("env var '{}' not set", self.var_name))
+            })?;
+            let mut out = HashMap::new();
+            out.insert(
+                "credential".to_string(),
+                Value::Secret(SecretString::new(value)),
+            );
+            Ok(out)
+        }
+    }
+
+    // Serialize env-mutating tests to prevent process-global races.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = ENV_LOCK.lock().unwrap();
+
+    let var_name = "GUNBC_TEST_CREDENTIAL_T11";
+    let secret_value = "test-secret-value-t11";
+    // SAFETY: Serialized by ENV_LOCK above. No other test uses this variable.
+    unsafe {
+        std::env::set_var(var_name, secret_value);
+    }
+
+    let mut dag: Dag<EnvReadOp> = Dag::new();
+    dag.add_node(Node::opaque(
+        "env_read",
+        vec![],
+        vec![port("credential", "Secret")],
+        EnvReadOp {
+            var_name: var_name.to_string(),
+        },
+    ));
+
+    // Act: execute in Real mode — no DryRun, no mocks
+    let log = execute_dag(&dag, ExecuteConfig::default()).unwrap();
+
+    // Assert
+    assert_eq!(log.entries.len(), 1);
+    let entry = log.get("env_read").expect("env_read node should exist");
+    assert!(
+        !entry.was_intercepted,
+        "Real-mode execution must not intercept pure nodes"
+    );
+
+    #[allow(clippy::disallowed_methods)]
+    match entry.outputs.get("credential") {
+        Some(Value::Secret(s)) => {
+            assert_eq!(
+                s.expose_plaintext_for_transport(),
+                secret_value,
+                "Secret value should match the env var we set"
+            );
+        }
+        other => panic!(
+            "expected Value::Secret with the test credential, got {:?}",
+            other
+        ),
+    }
+
+    // Verify no interception occurred anywhere
+    assert!(
+        !log.has_intercepted(),
+        "Real-mode execution log should have zero intercepted nodes"
+    );
+
+    // Cleanup
+    unsafe {
+        std::env::remove_var(var_name);
+    }
+}
+
+/// Tier 2 test: verifies that Real mode actually *executes* a node that
+/// DryRun would intercept. A node with `NodeKind::ResourceEnvironment`
+/// is intercepted in DryRun but should run its real body in Real mode.
+#[test]
+fn real_mode_executes_resource_environment_node() {
+    use gunbc_ir::value::SecretString;
+
+    #[derive(Debug, Clone)]
+    struct CredentialProviderOp {
+        var_name: String,
+    }
+
+    impl Executable for CredentialProviderOp {
+        fn execute(
+            &self,
+            _inputs: HashMap<String, Value>,
+        ) -> Result<HashMap<String, Value>, ExecError> {
+            let value = std::env::var(&self.var_name).map_err(|_| {
+                ExecError::new(format!("env var '{}' not set", self.var_name))
+            })?;
+            let mut out = HashMap::new();
+            out.insert(
+                "credential".to_string(),
+                Value::Secret(SecretString::new(value)),
+            );
+            Ok(out)
+        }
+    }
+
+    static ENV_LOCK2: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = ENV_LOCK2.lock().unwrap();
+
+    let var_name = "GUNBC_TEST_CRED_RESOURCE_T11";
+    let secret_value = "real-credential-from-env";
+    // SAFETY: Serialized by ENV_LOCK2 above. No other test uses this variable.
+    unsafe {
+        std::env::set_var(var_name, secret_value);
+    }
+
+    let mut dag: Dag<CredentialProviderOp> = Dag::new();
+    dag.add_node(
+        Node::opaque(
+            "cred_env",
+            vec![],
+            vec![port("credential", "Credential")],
+            CredentialProviderOp {
+                var_name: var_name.to_string(),
+            },
+        )
+        .with_kind(NodeKind::ResourceEnvironment),
+    );
+
+    // In DryRun this node would be intercepted; in Real mode it runs.
+    let log = execute_dag(&dag, ExecuteConfig::default()).unwrap();
+
+    let entry = log.get("cred_env").expect("cred_env node should exist");
+    assert!(
+        !entry.was_intercepted,
+        "Real mode must execute ResourceEnvironment nodes, not intercept them"
+    );
+
+    #[allow(clippy::disallowed_methods)]
+    match entry.outputs.get("credential") {
+        Some(Value::Secret(s)) => {
+            assert_eq!(s.expose_plaintext_for_transport(), secret_value);
+        }
+        other => panic!("expected Value::Secret, got {:?}", other),
+    }
+
+    // Contrast: the same DAG in DryRun *would* intercept
+    let mut mocks = BoundaryMocks::new();
+    mocks.set_value(
+        "cred_env",
+        "credential",
+        Value::Secret(SecretString::new("mocked-cred".to_string())),
+    );
+    let dry_log = execute_dag(
+        &dag,
+        ExecuteConfig {
+            mode: ExecutionMode::DryRun(mocks),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let dry_entry = dry_log.get("cred_env").unwrap();
+    assert!(
+        dry_entry.was_intercepted,
+        "DryRun should intercept ResourceEnvironment nodes"
+    );
+
+    unsafe {
+        std::env::remove_var(var_name);
+    }
 }

@@ -168,7 +168,7 @@ fn typed_mock_for_response(response_type: &str) -> &'static str {
 
 fn mock_for_backing_type(type_id: &str) -> &'static str {
     match value_backing_for_type_id(type_id) {
-        ValueBacking::String => "mock-response",
+        ValueBacking::String | ValueBacking::Secret => "mock-response",
         ValueBacking::Bool => "true",
         ValueBacking::Int | ValueBacking::Float => "1",
         ValueBacking::Json => r#"{"ok":true}"#,
@@ -204,7 +204,7 @@ pub fn witness_mock_responses(response_type: &str) -> Vec<String> {
         _ => {
             let one = typed_mock_for_response(response_type).to_string();
             let alternate = match value_backing_for_type_id(response_type) {
-                ValueBacking::String => "alt-mock-response".to_string(),
+                ValueBacking::String | ValueBacking::Secret => "alt-mock-response".to_string(),
                 ValueBacking::Bool => "false".to_string(),
                 ValueBacking::Int | ValueBacking::Float => "2".to_string(),
                 ValueBacking::Json => r#"{"ok":false}"#.to_string(),

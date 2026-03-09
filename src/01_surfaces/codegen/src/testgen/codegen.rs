@@ -4816,7 +4816,13 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
         // Use lowered DAG for boundary analysis so node IDs match lowered MockSpec IDs.
         // SubDag nodes in the un-lowered DAG become flattened, prefixed nodes after lowering;
         // the MockSpec uses these lowered IDs since the executor operates on the lowered DAG.
-        let lowered_result = gunbc_exec::lower(self.dag).ok();
+        let lowered_result = match gunbc_exec::lower(self.dag) {
+            Ok(lowered) => Some(lowered),
+            Err(e) => {
+                eprintln!("warning: lowering failed during test generation: {e}");
+                None
+            }
+        };
         let lowered_analysis = lowered_result.as_ref().map(|lr| analyze_dag(&lr.dag));
         let boundary_analysis = lowered_analysis.as_ref().unwrap_or(analysis);
 
@@ -4906,7 +4912,10 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                             p.node_id == node_id.0 && p.port_name == port_name.0 && !p.is_input
                         })
                         .map(|p| (p.type_id.0.as_str(), p.cardinality))
-                        .unwrap_or(("String", Cardinality::ONE));
+                        .unwrap_or_else(|| {
+                            eprintln!("warning: port type lookup failed, defaulting to String");
+                            ("String", Cardinality::ONE)
+                        });
 
                     let mock_value =
                         self.get_mock_value(&node_id.0, &port_name.0, type_id, cardinality);
@@ -6937,7 +6946,10 @@ fn render_output_matcher_check(matcher: &OutputMatcher, var_name: &str) -> Vec<S
             "assert!({output_var}.as_int().is_some() || matches!(*{output_var}, Value::Skipped), \"expected Int or Skipped for {output_var}\");"
         )))],
         OutputMatcher::IsString => vec![Stmt::Item(Item::Raw(format!(
-            "assert!({output_var}.as_str().is_some() || matches!(*{output_var}, Value::Skipped | Value::Secret(_)), \"expected String, Secret, or Skipped for {output_var}\");"
+            "assert!({output_var}.as_str().is_some() || matches!(*{output_var}, Value::Skipped), \"expected String or Skipped for {output_var}\");"
+        )))],
+        OutputMatcher::IsSecret => vec![Stmt::Item(Item::Raw(format!(
+            "assert!(matches!(*{output_var}, Value::Secret(_)) || matches!(*{output_var}, Value::Skipped), \"expected Secret or Skipped for {output_var}\");"
         )))],
         OutputMatcher::IsRequest => vec![Stmt::Item(Item::Raw(format!(
             "assert!({output_var}.as_request().is_some() || matches!(*{output_var}, Value::Skipped), \"expected Request or Skipped for {output_var}\");"

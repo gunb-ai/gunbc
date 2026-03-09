@@ -50,13 +50,6 @@ pub(crate) mod scope;
 pub mod spec;
 pub(crate) mod transport;
 
-/// Emit a lowerer diagnostic to stderr when DAGLANG_LOWER_WARNINGS=1.
-fn lower_warn(msg: &str) {
-    if std::env::var("DAGLANG_LOWER_WARNINGS").as_deref() == Ok("1") {
-        eprintln!("daglang-lower: {msg}");
-    }
-}
-
 pub use spec::{
     check_response_completeness, ArgvSegment, AuthRequirement, BodyEntry, ExitCodePattern,
     ExitMappingEntry, FieldSpec, FileOperationSpec, LocalOperationSpec, MockResponseEntry,
@@ -215,19 +208,7 @@ pub enum PrimitiveOpKind {
     ContentUpsertOutputPath {
         path: String,
     },
-    /// A compute node that evaluates a lowered expression body.
-    /// Created by the lowerer when complex expressions cannot be represented
-    /// as direct wiring edges.
-    ExprCompute {
-        fn_body: Box<LoweredFnBody>,
-        /// Pure `fn` definitions the expression body may call at runtime.
-        /// Populated when the expression contains `Call("fn_name", ...)`
-        /// references to user-defined pure fns (e.g., `stage_from_output`).
-        /// BTreeMap for deterministic serialization in DAG snapshots.
-        sibling_fns: std::collections::BTreeMap<String, LoweredFnBody>,
-    },
     /// C24: Extract a named field from a Map/Record/JSON input.
-    /// Replaces `ExprCompute` + `__` convention for simple field projections.
     GetField {
         field: String,
     },
@@ -275,19 +256,6 @@ pub enum PrimitiveOpKind {
     /// Output is a Value::List of all elements in order.
     ListConstruct {
         count: usize,
-    },
-    /// C24: Pipe expression — `expr |> method(args)`.
-    /// Delegates to the expression evaluator (like ExprCompute) but tagged
-    /// distinctly so we can track ExprCompute elimination progress.
-    PipeOp {
-        fn_body: Box<LoweredFnBody>,
-        sibling_fns: std::collections::BTreeMap<String, LoweredFnBody>,
-    },
-    /// C24: For expression — `for x in list { body }`.
-    /// Like PipeOp, delegates to evaluator but tagged distinctly.
-    ForOp {
-        fn_body: Box<LoweredFnBody>,
-        sibling_fns: std::collections::BTreeMap<String, LoweredFnBody>,
     },
 }
 
@@ -377,8 +345,6 @@ impl PrimitiveOpKind {
                 | Self::NullCoalesce
                 | Self::VariantConstruct { .. }
                 | Self::ListConstruct { .. }
-                | Self::PipeOp { .. }
-                | Self::ForOp { .. }
         )
     }
 
@@ -396,7 +362,6 @@ impl PrimitiveOpKind {
             }
             Self::CompareEquality => ObligationCategory::InterfaceContractVerification,
             Self::ContentUpsertOutputPath { .. } => ObligationCategory::None,
-            Self::ExprCompute { .. } => ObligationCategory::None,
             Self::GetField { .. } => ObligationCategory::None,
             // C24: All remaining structural primitives are pure computation — no obligations.
             _ => {
@@ -1540,20 +1505,22 @@ struct LoweringContext<'a> {
     bound_service_sources: &'a HashMap<String, ServiceTransportEndpoint>,
     expanded_results: &'a HashMap<String, PatternExpansionResult>,
     /// Local let bindings (non-call) from the current callable body.
-    /// Used to resolve local variable references in return expressions
-    /// so they can be synthesized as ExprCompute nodes (C10 fix).
+    /// Used to resolve local variable references in return expressions.
     local_let_bindings: &'a HashMap<String, &'a Expr>,
-    /// The body statements of the current callable, for including
-    /// local let stmts in ExprCompute fn bodies.
+    /// The body statements of the current callable, for fn body evaluation.
     body_stmts: &'a [Stmt],
     /// Pre-collected lowered bodies for all pure `fn` definitions in the project.
-    /// Passed to ExprCompute nodes as `sibling_fns` so the runtime evaluator
-    /// can execute user-defined fn calls (e.g., `stage_from_output`).
+    /// Passed to structural nodes (e.g. MatchDispatch) as `sibling_fns` so
+    /// the runtime evaluator can execute user-defined fn calls.
     all_fn_bodies: &'a std::collections::BTreeMap<String, LoweredFnBody>,
     /// C24: Known sum-type variant names for match arm lowering.
     variant_names: &'a HashSet<String>,
     /// Default expressions for callable parameters, keyed by callable name.
     callable_param_defaults: &'a HashMap<String, Vec<(String, daglang_syntax::ast::Expr)>>,
+    /// Full-qualified endpoint lookup for cross-module Call resolution.
+    endpoints_by_full: &'a HashMap<(String, String), LoweredEndpoint>,
+    /// Resource binding types from `uses` clauses (e.g., `fs: Filesystem`).
+    uses_binding_types: &'a HashMap<String, String>,
 }
 
 fn user_code_origin(
@@ -1651,6 +1618,8 @@ struct DagBuilder {
     dag: Dag<LoweredOp>,
     seen_nodes: HashSet<String>,
     seen_edges: HashSet<(String, String, String, String, EdgeKind)>,
+    /// Monotonic counter per (to_node, to_port) for deterministic fan-in ordering.
+    fan_in_counts: HashMap<(String, String), usize>,
 }
 
 impl DagBuilder {
@@ -1659,6 +1628,7 @@ impl DagBuilder {
             dag: Dag::new(),
             seen_nodes: HashSet::new(),
             seen_edges: HashSet::new(),
+            fan_in_counts: HashMap::new(),
         }
     }
 
@@ -1698,12 +1668,18 @@ impl DagBuilder {
             kind,
         );
         if self.seen_edges.insert(key) {
+            let idx = self
+                .fan_in_counts
+                .entry((to.to_string(), to_port.to_string()))
+                .or_insert(0);
+            let index = *idx;
+            *idx += 1;
             self.dag.add_edge(Edge {
                 from_node: NodeId::new(from.to_string()),
                 from_port: PortName::new(from_port.to_string()),
                 to_node: NodeId::new(to.to_string()),
                 to_port: PortName::new(to_port.to_string()),
-                index: 0,
+                index,
                 kind,
             });
         }
@@ -1902,6 +1878,8 @@ pub enum LowerError {
         name: String,
         missing_port: String,
     },
+    /// Expression could not be lowered to a DAG source.
+    ExprLower(String),
 }
 
 impl std::fmt::Display for LowerError {
@@ -2047,7 +2025,14 @@ impl std::fmt::Display for LowerError {
                 "callable node `{node}` (name: `{name}`) has fn_body: None and no `{missing_port}` \
                  input port — it will fail at resolve time"
             ),
+            Self::ExprLower(msg) => write!(f, "{msg}"),
         }
+    }
+}
+
+impl From<String> for LowerError {
+    fn from(s: String) -> Self {
+        Self::ExprLower(s)
     }
 }
 
@@ -2079,6 +2064,7 @@ impl LowerError {
             Self::UnknownProviderPrefix { .. } => "LOW022",
             Self::UnknownProviderSchemaType { .. } => "LOW023",
             Self::MissingCallablePassthrough { .. } => "LOW024",
+            Self::ExprLower(..) => "LOW025",
         }
     }
 
@@ -3654,6 +3640,8 @@ fn add_dependency_edges(
                 let empty_expanded = HashMap::new();
                 let empty_locals = HashMap::new();
                 let empty_fn_bodies = std::collections::BTreeMap::new();
+                let empty_endpoints_full = HashMap::new();
+                let empty_uses = HashMap::new();
                 let ctx = LoweringContext {
                     source_file: &source_file,
                     module_name: &module_name,
@@ -3671,6 +3659,8 @@ fn add_dependency_edges(
                     all_fn_bodies: &empty_fn_bodies,
                     variant_names: wctx.variant_names,
                     callable_param_defaults: wctx.callable_param_defaults,
+                    endpoints_by_full: &empty_endpoints_full,
+                    uses_binding_types: &empty_uses,
                 };
                 let _ = expand_content_upsert_patterns(builder, &ctx, stmts, target);
                 expand_non_generic_pattern_calls(builder, project, &ctx, stmts, target);
@@ -4127,6 +4117,7 @@ fn make_loop_body_dag_from_stmts(
     let mut bound_service_sources = HashMap::<String, ServiceTransportEndpoint>::new();
     let empty_expanded = HashMap::<String, PatternExpansionResult>::new();
     let empty_locals = HashMap::new();
+    let empty_endpoints_full = HashMap::new();
 
     for (stmt_index, stmt) in site.body_stmts.iter().enumerate() {
         let (binding_name, expr) = match stmt {
@@ -4170,6 +4161,8 @@ fn make_loop_body_dag_from_stmts(
                     all_fn_bodies: ctx.all_fn_bodies,
                     variant_names: ctx.variant_names,
                     callable_param_defaults: ctx.callable_param_defaults,
+                    endpoints_by_full: &empty_endpoints_full,
+                    uses_binding_types: ctx.uses_binding_types,
                 };
                 wire_loop_body_named_args(
                     &mut builder,
@@ -4212,6 +4205,8 @@ fn make_loop_body_dag_from_stmts(
                     all_fn_bodies: ctx.all_fn_bodies,
                     variant_names: ctx.variant_names,
                     callable_param_defaults: ctx.callable_param_defaults,
+                    endpoints_by_full: &empty_endpoints_full,
+                    uses_binding_types: ctx.uses_binding_types,
                 };
                 wire_loop_body_named_args(
                     &mut builder,
@@ -4244,6 +4239,8 @@ fn make_loop_body_dag_from_stmts(
         all_fn_bodies: ctx.all_fn_bodies,
         variant_names: ctx.variant_names,
         callable_param_defaults: ctx.callable_param_defaults,
+        endpoints_by_full: &empty_endpoints_full,
+        uses_binding_types: ctx.uses_binding_types,
     };
     let expanded_results = expand_content_upsert_patterns(
         &mut builder,
@@ -5395,6 +5392,8 @@ fn expand_non_generic_pattern_calls(
             all_fn_bodies: ctx.all_fn_bodies,
             variant_names: ctx.variant_names,
             callable_param_defaults: ctx.callable_param_defaults,
+            endpoints_by_full: ctx.endpoints_by_full,
+            uses_binding_types: ctx.uses_binding_types,
         };
         let pexp = PatternExpansionParams {
             target,
@@ -5576,12 +5575,6 @@ fn expand_single_pattern(
                 if let Some(output) = expanded {
                     last_node_id.clone_from(&output.node_id);
                     node_outputs.insert(ns.name.clone(), output);
-                } else {
-                    lower_warn(&format!(
-                        "pattern `{}` node `{}` expansion failed — \
-                         node dropped from expanded pattern",
-                        ctx.item_name, ns.name
-                    ));
                 }
             }
             Stmt::Let(name, expr) | Stmt::Assign(name, expr) => {
@@ -5669,10 +5662,6 @@ fn resolve_pattern_return_expr(
                     output_port: mapped_port,
                 })
             } else {
-                lower_warn(
-                    "resolve_pattern_return_expr: non-ident base in field access — \
-                     return field unresolved",
-                );
                 None
             }
         }
@@ -5842,14 +5831,7 @@ fn expand_pattern_body_node(
                     })
             })
         }
-        _ => {
-            lower_warn(&format!(
-                "pattern body node `{node_name}` has unsupported expression type {:?} — \
-                 node will be silently skipped (only ServiceCall, eq(), and pattern calls are supported)",
-                std::mem::discriminant(expr)
-            ));
-            None
-        }
+        _ => None,
     }
 }
 
@@ -7634,9 +7616,8 @@ fn derive_service_transport_triplets(
 
 /// Collect lowered fn bodies for all pure `fn` definitions in the project.
 ///
-/// These are passed as `sibling_fns` to ExprCompute nodes so the runtime
-/// evaluator can execute calls to user-defined pure fns (e.g., `stage_from_output`)
-/// that appear inside ExprCompute expression bodies.
+/// These are passed as `sibling_fns` to structural nodes (e.g. MatchDispatch)
+/// so the runtime evaluator can execute calls to user-defined pure fns.
 fn collect_project_fn_bodies(
     project: &TypedProject,
     variant_names: &HashSet<String>,
@@ -7780,7 +7761,7 @@ fn add_service_call_edges(
     profile_bound_interfaces: &HashSet<String>,
     known_interface_types: &HashSet<String>,
 ) -> Result<(), LowerError> {
-    // Collect all pure fn bodies so ExprCompute nodes can call them at runtime.
+    // Collect all pure fn bodies so structural nodes can call them at runtime.
     let all_fn_bodies = collect_project_fn_bodies(project, wctx.variant_names)?;
     // Track transport endpoint usage across ALL modules and callables so
     // that the second caller to reference the same service operation gets
@@ -7935,6 +7916,8 @@ fn add_service_call_edges(
                     all_fn_bodies: &all_fn_bodies,
                     variant_names: wctx.variant_names,
                     callable_param_defaults: wctx.callable_param_defaults,
+                    endpoints_by_full: wctx.endpoints_by_full,
+                    uses_binding_types: &uses_binding_types,
                 };
                 let mut supplied_prepare_inputs = HashSet::<String>::new();
                 for (index, arg) in call.args.iter().enumerate() {
@@ -8087,6 +8070,8 @@ fn add_service_call_edges(
                 all_fn_bodies: &all_fn_bodies,
                 variant_names: wctx.variant_names,
                 callable_param_defaults: wctx.callable_param_defaults,
+                endpoints_by_full: wctx.endpoints_by_full,
+                uses_binding_types: &uses_binding_types,
             };
             wire_fn_call_arguments(builder, &fn_ctx, stmts);
             // Wire for-loop iterable expressions to loop node "items" ports.
@@ -8096,9 +8081,11 @@ fn add_service_call_edges(
             };
             wire_for_loop_iterables(builder, &loop_ctx, stmts, target);
             // Skip return wiring for fn items with non-lossy fn_body:
-            // FnBodyCallableOp evaluates the body directly, making
-            // ExprCompute return nodes redundant (and they fail on local
-            // let bindings the ExprCompute can't access).
+            // FnBodyCallableOp evaluates the body directly. Enabling
+            // passthrough wiring for these items would be unsafe because
+            // callable endpoints are shared and argument wiring is
+            // first-write-only — multiple call sites could make a function
+            // return values from an unrelated invocation.
             let is_fn_with_body = matches!(
                 &item.node,
                 Item::FnDef(def) if !def.body.lossy
@@ -8287,24 +8274,10 @@ fn wire_service_call_arg_to_port(
         return true;
     }
 
-    let output_port = Port::with_cardinality(dest_port, "Any", Cardinality::ONE);
-    if let Some((src_node, src_port)) = synthesize_expr_compute(
-        builder,
-        ctx,
-        &arg.expr,
-        &output_port,
-        dest_port,
-        disambiguator,
-    ) {
-        builder.add_edge(
-            src_node.as_str(),
-            src_port.as_str(),
-            dest_node_id,
-            dest_port,
-        );
-        return true;
-    }
-
+    eprintln!(
+        "warning: cannot wire service call argument '{}' on {}.{} (no structural source found)",
+        dest_port, ctx.module_name, ctx.item_name
+    );
     false
 }
 
@@ -9508,7 +9481,6 @@ pub(crate) struct ServiceCallArgSite {
     pub(crate) field_access: Option<(String, String)>,
     pub(crate) call: Option<String>,
     pub(crate) literal: Option<ServiceCallArgLiteral>,
-    pub(crate) expr: Expr,
 }
 
 #[derive(Debug, Clone)]
@@ -9779,7 +9751,6 @@ fn service_call_arg_site((name, arg): &(Option<String>, Expr)) -> ServiceCallArg
             _ => None,
         },
         literal: service_call_literal_arg(arg),
-        expr: arg.clone(),
     }
 }
 
@@ -10013,13 +9984,9 @@ fn wire_fn_call_arguments(builder: &mut DagBuilder, ctx: &LoweringContext<'_>, s
                     );
                     continue;
                 }
-                // Local let binding: synthesize an ExprCompute for the binding
-                // expression and wire it to the fn endpoint's param port.
-                // This handles cases like `stages = [stage_from_output(...), ...]`
-                // passed as `aggregate_results(stages: stages)`.
                 if let Some(let_expr) = ctx.local_let_bindings.get(arg_ident) {
                     let output_port = Port::with_cardinality(param_name, "Any", Cardinality::ONE);
-                    if let Some((src_node, src_port)) = synthesize_expr_compute(
+                    match lower_expr(
                         builder,
                         ctx,
                         let_expr,
@@ -10027,6 +9994,7 @@ fn wire_fn_call_arguments(builder: &mut DagBuilder, ctx: &LoweringContext<'_>, s
                         param_name,
                         &format!("arg_{index}"),
                     ) {
+                        Ok((src_node, src_port)) => {
                         builder.add_edge(
                             src_node.as_str(),
                             src_port.as_str(),
@@ -10034,6 +10002,13 @@ fn wire_fn_call_arguments(builder: &mut DagBuilder, ctx: &LoweringContext<'_>, s
                             param_name,
                         );
                         continue;
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "warning: cannot wire fn call argument '{}' in {}.{}: {e}",
+                                param_name, ctx.module_name, ctx.item_name
+                            );
+                        }
                     }
                 }
             }
@@ -10160,14 +10135,14 @@ fn return_literal_arg(expr: &Expr) -> Option<ServiceCallArgLiteral> {
     }
 }
 
-fn resolve_return_expr_source(
+fn lower_expr(
     builder: &mut DagBuilder,
     ctx: &LoweringContext<'_>,
     expr: &Expr,
     output_port: &Port,
     output_name: &str,
     disambiguator: &str,
-) -> Option<(String, String)> {
+) -> Result<(String, String), LowerError> {
     let expr = unwrap_return_expr(expr);
     match expr {
         Expr::Ident(name) => {
@@ -10179,30 +10154,30 @@ fn resolve_return_expr_source(
                     name,
                     param_ty.as_str(),
                 );
-                return Some((src, name.clone()));
+                return Ok((src, name.clone()));
             }
             if let Some(source) = ctx.bound_callable_sources.get(name) {
-                return Some((source.node_id.clone(), source.primary_output.clone()));
+                return Ok((source.node_id.clone(), source.primary_output.clone()));
             }
             if let Some(source) = ctx.bound_service_sources.get(name) {
-                return Some((
+                return Ok((
                     source.parse.node_id.clone(),
                     source.parse.primary_output.clone(),
                 ));
             }
             if let Some(result) = ctx.expanded_results.get(name.as_str()) {
                 if let Some(first_output) = result.return_outputs.values().next() {
-                    return Some((
+                    return Ok((
                         first_output.node_id.clone(),
                         first_output.output_port.clone(),
                     ));
                 }
             }
             if let Some(Some(source)) = ctx.endpoints_by_name.get(name) {
-                return Some((source.node_id.clone(), source.primary_output.clone()));
+                return Ok((source.node_id.clone(), source.primary_output.clone()));
             }
             if let Some(let_expr) = ctx.local_let_bindings.get(name) {
-                return synthesize_expr_compute(
+                return lower_expr(
                     builder,
                     ctx,
                     let_expr,
@@ -10211,50 +10186,53 @@ fn resolve_return_expr_source(
                     disambiguator,
                 );
             }
-            None
+            Err(LowerError::from(format!(
+                "cannot lower expression in {}.{}: unresolved ident `{name}`",
+                ctx.module_name, ctx.item_name
+            )))
         }
         Expr::FieldAccess(base, field) => {
             if let Expr::Ident(base_ident) = base.as_ref() {
                 if let Some(source) = ctx.bound_callable_sources.get(base_ident) {
-                    return Some((source.node_id.clone(), field.clone()));
+                    return Ok((source.node_id.clone(), field.clone()));
                 }
                 if let Some(source) = ctx.bound_service_sources.get(base_ident) {
-                    return Some((source.parse.node_id.clone(), field.clone()));
+                    return Ok((source.parse.node_id.clone(), field.clone()));
                 }
                 if let Some(result) = ctx.expanded_results.get(base_ident.as_str()) {
                     if let Some(output) = result.return_outputs.get(field.as_str()) {
-                        return Some((output.node_id.clone(), output.output_port.clone()));
+                        return Ok((output.node_id.clone(), output.output_port.clone()));
                     }
                 }
                 if let Some(Some(source)) = ctx.endpoints_by_name.get(base_ident) {
-                    return Some((source.node_id.clone(), field.clone()));
+                    return Ok((source.node_id.clone(), field.clone()));
                 }
                 if let Some(bound_expr) = ctx.local_let_bindings.get(base_ident.as_str()) {
                     let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
-                    let base_source = resolve_return_expr_source(
+                    let (base_node, base_port) = lower_expr(
                         builder,
                         ctx,
                         bound_expr,
                         &any_port,
                         &format!("{output_name}_base"),
                         &format!("{disambiguator}_base_expr"),
-                    );
-                    return match base_source {
-                        Some((base_node, base_port)) => synthesize_get_field_on_resolved(
-                            builder,
-                            ctx,
-                            &base_node,
-                            &base_port,
-                            field,
-                            output_port,
-                            output_name,
-                            disambiguator,
-                        ),
-                        None => None,
-                    };
+                    )?;
+                    return synthesize_get_field_on_resolved(
+                        builder,
+                        ctx,
+                        &base_node,
+                        &base_port,
+                        field,
+                        output_port,
+                        output_name,
+                        disambiguator,
+                    )
+                    .ok_or_else(|| LowerError::from(format!(
+                        "cannot lower expression in {}.{}: field access on resolved base",
+                        ctx.module_name, ctx.item_name
+                    )));
                 }
-                // C24: For parameters, synthesize a GetField node instead of
-                // falling through to ExprCompute + __ convention.
+                // C24: For parameters, synthesize a GetField node.
                 if let Some(param_ty) = ctx.param_types.get(base_ident) {
                     return synthesize_get_field(
                         builder,
@@ -10264,43 +10242,53 @@ fn resolve_return_expr_source(
                         field,
                         output_port,
                         disambiguator,
-                    );
+                    )
+                    .ok_or_else(|| LowerError::from(format!(
+                        "cannot lower expression in {}.{}: get field on param `{base_ident}`",
+                        ctx.module_name, ctx.item_name
+                    )));
                 }
             }
             // C24: For complex base expressions, try recursive resolution.
             // If the base resolves, add a structural GetField node.
-            // If not, fall through to ExprCompute (don't force synthesis for
-            // expressions with local let bindings — the fn body evaluator handles those).
             let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
-            let base_source = resolve_return_expr_source(
+            let (base_node, base_port) = lower_expr(
                 builder,
                 ctx,
                 base,
                 &any_port,
                 &format!("{output_name}_base"),
                 &format!("{disambiguator}_base"),
-            );
-            match base_source {
-                Some((base_node, base_port)) => synthesize_get_field_on_resolved(
-                    builder,
-                    ctx,
-                    &base_node,
-                    &base_port,
-                    field,
-                    output_port,
-                    output_name,
-                    disambiguator,
-                ),
-                None => None,
-            }
+            )?;
+            synthesize_get_field_on_resolved(
+                builder,
+                ctx,
+                &base_node,
+                &base_port,
+                field,
+                output_port,
+                output_name,
+                disambiguator,
+            )
+            .ok_or_else(|| LowerError::from(format!(
+                "cannot lower expression in {}.{}: field access on complex base",
+                ctx.module_name, ctx.item_name
+            )))
         }
         Expr::Call(name, _) => ctx
             .endpoints_by_name
             .get(name)
             .and_then(|entry| entry.clone())
-            .map(|source| (source.node_id, source.primary_output)),
+            .map(|source| (source.node_id, source.primary_output))
+            .ok_or_else(|| LowerError::from(format!(
+                "cannot lower expression in {}.{}: unresolved call `{name}`",
+                ctx.module_name, ctx.item_name
+            ))),
         Expr::Literal(_) | Expr::Map(_) => {
-            let literal = return_literal_arg(expr)?;
+            let literal = return_literal_arg(expr).ok_or_else(|| LowerError::from(format!(
+                "cannot lower expression in {}.{}: non-literal in literal position",
+                ctx.module_name, ctx.item_name
+            )))?;
             let src = ensure_literal_source_node(
                 builder,
                 ctx.module_name,
@@ -10310,7 +10298,7 @@ fn resolve_return_expr_source(
                 &literal,
                 disambiguator,
             );
-            Some((src, output_name.to_string()))
+            Ok((src, output_name.to_string()))
         }
         // C24: String interpolation — try literal path first, then structural.
         Expr::StringInterp(parts) => {
@@ -10324,7 +10312,7 @@ fn resolve_return_expr_source(
                     &literal,
                     disambiguator,
                 );
-                Some((src, output_name.to_string()))
+                Ok((src, output_name.to_string()))
             } else {
                 synthesize_string_interpolate(
                     builder,
@@ -10334,6 +10322,10 @@ fn resolve_return_expr_source(
                     output_name,
                     disambiguator,
                 )
+                .ok_or_else(|| LowerError::from(format!(
+                    "cannot lower expression in {}.{}",
+                    ctx.module_name, ctx.item_name
+                )))
             }
         }
         // C24: List literal — try literal path first, then structural.
@@ -10348,7 +10340,7 @@ fn resolve_return_expr_source(
                     &literal,
                     disambiguator,
                 );
-                Some((src, output_name.to_string()))
+                Ok((src, output_name.to_string()))
             } else {
                 synthesize_list_construct(
                     builder,
@@ -10358,6 +10350,10 @@ fn resolve_return_expr_source(
                     output_name,
                     disambiguator,
                 )
+                .ok_or_else(|| LowerError::from(format!(
+                    "cannot lower expression in {}.{}",
+                    ctx.module_name, ctx.item_name
+                )))
             }
         }
         // C24-P1: Direct BinOp → BinaryOp structural node.
@@ -10365,7 +10361,7 @@ fn resolve_return_expr_source(
             // Sub-expressions may have different types from the BinOp result
             // (e.g., `a + b > 5` — operands are Int, result is Bool).
             let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
-            let left_source = resolve_return_expr_source(
+            let left_source = lower_expr(
                 builder,
                 ctx,
                 left,
@@ -10373,7 +10369,7 @@ fn resolve_return_expr_source(
                 &format!("{output_name}_lhs"),
                 &format!("{disambiguator}_lhs"),
             );
-            let right_source = resolve_return_expr_source(
+            let right_source = lower_expr(
                 builder,
                 ctx,
                 right,
@@ -10382,7 +10378,7 @@ fn resolve_return_expr_source(
                 &format!("{disambiguator}_rhs"),
             );
             match (left_source, right_source) {
-                (Some((l_node, l_port)), Some((r_node, r_port))) => synthesize_binary_op(
+                (Ok((l_node, l_port)), Ok((r_node, r_port))) => synthesize_binary_op(
                     builder,
                     ctx,
                     op,
@@ -10393,15 +10389,15 @@ fn resolve_return_expr_source(
                     output_port,
                     output_name,
                     disambiguator,
-                ),
-                _ => synthesize_expr_compute(
-                    builder,
-                    ctx,
-                    expr,
-                    output_port,
-                    output_name,
-                    disambiguator,
-                ),
+                )
+                .ok_or_else(|| LowerError::from(format!(
+                    "cannot lower expression in {}.{}",
+                    ctx.module_name, ctx.item_name
+                ))),
+                _ => Err(LowerError::from(format!(
+                    "cannot resolve operand in {}.{}",
+                    ctx.module_name, ctx.item_name
+                ))),
             }
         }
         // C24-P1: Direct Match → MatchDispatch structural node.
@@ -10413,7 +10409,11 @@ fn resolve_return_expr_source(
             output_port,
             output_name,
             disambiguator,
-        ),
+        )
+        .ok_or_else(|| LowerError::from(format!(
+            "cannot lower expression in {}.{}",
+            ctx.module_name, ctx.item_name
+        ))),
         // C24-P2: If/Else → Conditional structural node.
         Expr::If(cond, then_, else_) => synthesize_conditional(
             builder,
@@ -10424,11 +10424,15 @@ fn resolve_return_expr_source(
             output_port,
             output_name,
             disambiguator,
-        ),
+        )
+        .ok_or_else(|| LowerError::from(format!(
+            "cannot lower expression in {}.{}",
+            ctx.module_name, ctx.item_name
+        ))),
         // C24-P2: UnaryOp → UnaryOp structural node.
         Expr::UnaryOp(op, inner) => {
             let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
-            let inner_source = resolve_return_expr_source(
+            let inner_source = lower_expr(
                 builder,
                 ctx,
                 inner,
@@ -10437,7 +10441,7 @@ fn resolve_return_expr_source(
                 &format!("{disambiguator}_inner"),
             );
             match inner_source {
-                Some((src_node, src_port)) => synthesize_unary_op(
+                Ok((src_node, src_port)) => synthesize_unary_op(
                     builder,
                     ctx,
                     op,
@@ -10446,15 +10450,15 @@ fn resolve_return_expr_source(
                     output_port,
                     output_name,
                     disambiguator,
-                ),
-                None => synthesize_expr_compute(
-                    builder,
-                    ctx,
-                    expr,
-                    output_port,
-                    output_name,
-                    disambiguator,
-                ),
+                )
+                .ok_or_else(|| LowerError::from(format!(
+                    "cannot lower expression in {}.{}",
+                    ctx.module_name, ctx.item_name
+                ))),
+                Err(_) => Err(LowerError::from(format!(
+                    "cannot resolve operand in {}.{}",
+                    ctx.module_name, ctx.item_name
+                ))),
             }
         }
         // C24-P2: Tagged variant record → VariantConstruct; plain record → RecordConstruct.
@@ -10468,6 +10472,10 @@ fn resolve_return_expr_source(
                 output_name,
                 disambiguator,
             )
+            .ok_or_else(|| LowerError::from(format!(
+                "cannot lower expression in {}.{}",
+                ctx.module_name, ctx.item_name
+            )))
         }
         Expr::Record(_, fields) => synthesize_record_construct(
             builder,
@@ -10476,29 +10484,53 @@ fn resolve_return_expr_source(
             output_port,
             output_name,
             disambiguator,
-        ),
-        // C24: Pipe/PipeCall → tagged evaluator (distinct from ExprCompute for tracking).
-        Expr::Pipe(..) | Expr::PipeCall(..) => synthesize_tagged_evaluator(
-            builder,
-            ctx,
-            expr,
-            "pipe",
-            output_port,
-            output_name,
-            disambiguator,
-        ),
-        // C24: For expression → tagged evaluator.
-        Expr::For(..) => synthesize_tagged_evaluator(
-            builder,
-            ctx,
-            expr,
-            "for",
-            output_port,
-            output_name,
-            disambiguator,
-        ),
-        // Handle remaining complex expressions by synthesizing a dedicated compute node.
-        _ => synthesize_expr_compute(builder, ctx, expr, output_port, output_name, disambiguator),
+        )
+        .ok_or_else(|| LowerError::from(format!(
+            "cannot lower expression in {}.{}",
+            ctx.module_name, ctx.item_name
+        ))),
+        Expr::Pipe(..) | Expr::PipeCall(..) => {
+            Err(LowerError::from(format!(
+                "unsupported expression in {}.{}: pipe/for not yet structuralized",
+                ctx.module_name, ctx.item_name
+            )))
+        }
+        Expr::For(..) => {
+            Err(LowerError::from(format!(
+                "unsupported expression in {}.{}: pipe/for not yet structuralized",
+                ctx.module_name, ctx.item_name
+            )))
+        }
+        Expr::ServiceCall(_path, _args) => {
+            Err(LowerError::from(format!(
+                "unsupported expression in {}.{}: ServiceCall",
+                ctx.module_name, ctx.item_name
+            )))
+        }
+        Expr::Lambda(_params, _body) => {
+            Err(LowerError::from(format!(
+                "unsupported expression in {}.{}: Lambda",
+                ctx.module_name, ctx.item_name
+            )))
+        }
+        Expr::Guarded(_inner, _guard) => {
+            Err(LowerError::from(format!(
+                "unsupported expression in {}.{}: Guarded",
+                ctx.module_name, ctx.item_name
+            )))
+        }
+        Expr::After(_inner, _deps) => {
+            Err(LowerError::from(format!(
+                "unsupported expression in {}.{}: After",
+                ctx.module_name, ctx.item_name
+            )))
+        }
+        Expr::Return(_fields) => {
+            Err(LowerError::from(format!(
+                "unsupported expression in {}.{}: Return",
+                ctx.module_name, ctx.item_name
+            )))
+        }
     }
 }
 
@@ -10797,7 +10829,6 @@ fn collect_expr_leaf_refs(
 }
 
 /// C24: Synthesize a GetField node to extract a named field from a parameter.
-/// Replaces `ExprCompute` + `__` convention for simple `param.field` projections.
 fn synthesize_get_field(
     builder: &mut DagBuilder,
     ctx: &LoweringContext<'_>,
@@ -10943,14 +10974,14 @@ fn wire_hoisted_callable_args(
             continue;
         }
         let arg_port = Port::with_cardinality(param_name.as_str(), "Any", Cardinality::ONE);
-        let source = resolve_return_expr_source(
+        let source = lower_expr(
             builder,
             ctx,
             arg_expr,
             &arg_port,
             &format!("{output_name}_{param_name}"),
             &format!("{disambiguator}_{param_name}_{index}"),
-        );
+        ).ok();
         if let Some((src_node, src_port)) = source {
             builder.add_edge(
                 src_node.as_str(),
@@ -11089,7 +11120,6 @@ fn lower_match_arm_for_dispatch(
 
 /// C24-P1: Synthesize a MatchDispatch structural node.
 /// Resolves the scrutinee and collects leaf refs from arm bodies.
-/// Falls back to ExprCompute if leaf refs can't be resolved.
 fn synthesize_match_dispatch(
     builder: &mut DagBuilder,
     ctx: &LoweringContext<'_>,
@@ -11107,14 +11137,7 @@ fn synthesize_match_dispatch(
     collect_expr_leaf_refs(&whole_expr, ctx, &mut refs, &mut seen, &mut has_local_refs);
 
     if has_local_refs {
-        return synthesize_expr_compute(
-            builder,
-            ctx,
-            &whole_expr,
-            output_port,
-            output_name,
-            disambiguator,
-        );
+        return None;
     }
 
     // Build input ports: "scrutinee" + all leaf refs from arm bodies (deduplicated).
@@ -11175,24 +11198,15 @@ fn synthesize_match_dispatch(
 
     // Wire scrutinee input — use Any-typed port (scrutinee type differs from match result).
     let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
-    let scrutinee_source = resolve_return_expr_source(
+    let scrutinee_source = lower_expr(
         builder,
         ctx,
         scrutinee,
         &any_port,
         &format!("{output_name}_scrutinee"),
         &format!("{disambiguator}_scrutinee"),
-    );
-    let Some((scrutinee_node, scrutinee_port)) = scrutinee_source else {
-        return synthesize_expr_compute(
-            builder,
-            ctx,
-            &whole_expr,
-            output_port,
-            output_name,
-            disambiguator,
-        );
-    };
+    ).ok();
+    let (scrutinee_node, scrutinee_port) = scrutinee_source?;
 
     let node_id = format!(
         "match_dispatch_{}",
@@ -11276,14 +11290,7 @@ fn synthesize_conditional(
     collect_expr_leaf_refs(&whole_expr, ctx, &mut refs, &mut seen, &mut has_local_refs);
 
     if has_local_refs {
-        return synthesize_expr_compute(
-            builder,
-            ctx,
-            &whole_expr,
-            output_port,
-            output_name,
-            disambiguator,
-        );
+        return None;
     }
 
     // Build input ports: "condition", "then", "else" + all leaf refs.
@@ -11305,65 +11312,36 @@ fn synthesize_conditional(
 
     // Wire condition — use Bool-typed port (condition is always Bool).
     let bool_port = Port::with_cardinality("result", "Bool", Cardinality::ONE);
-    let cond_source = resolve_return_expr_source(
+    let cond_source = lower_expr(
         builder,
         ctx,
         cond,
         &bool_port,
         &format!("{output_name}_cond"),
         &format!("{disambiguator}_cond"),
-    );
-    let Some((cond_node, cond_port)) = cond_source else {
-        return synthesize_expr_compute(
-            builder,
-            ctx,
-            &whole_expr,
-            output_port,
-            output_name,
-            disambiguator,
-        );
-    };
+    ).ok();
+    let (cond_node, cond_port) = cond_source?;
 
     // Wire then branch.
-    let then_source = resolve_return_expr_source(
+    let (then_node, then_port) = lower_expr(
         builder,
         ctx,
         then_,
         output_port,
         &format!("{output_name}_then"),
         &format!("{disambiguator}_then"),
-    );
-    let Some((then_node, then_port)) = then_source else {
-        return synthesize_expr_compute(
-            builder,
-            ctx,
-            &whole_expr,
-            output_port,
-            output_name,
-            disambiguator,
-        );
-    };
+    ).ok()?;
 
     let else_source = if let Some(else_expr) = else_ {
-        let source = resolve_return_expr_source(
+        let source = lower_expr(
             builder,
             ctx,
             else_expr,
             output_port,
             &format!("{output_name}_else"),
             &format!("{disambiguator}_else"),
-        );
-        let Some((else_node, else_port)) = source else {
-            return synthesize_expr_compute(
-                builder,
-                ctx,
-                &whole_expr,
-                output_port,
-                output_name,
-                disambiguator,
-            );
-        };
-        Some((else_node, else_port))
+        ).ok()?;
+        Some(source)
     } else {
         None
     };
@@ -11478,14 +11456,14 @@ fn synthesize_variant_construct(
     let mut field_sources: Vec<(String, String, String)> = Vec::new();
     let mut all_resolved = true;
     for (field_name, field_expr) in fields {
-        let source = resolve_return_expr_source(
+        let source = lower_expr(
             builder,
             ctx,
             field_expr,
             &any_port,
             &format!("{output_name}_{field_name}"),
             &format!("{disambiguator}_{field_name}"),
-        );
+        ).ok();
         if let Some((src_node, src_port)) = source {
             field_sources.push((field_name.clone(), src_node, src_port));
         } else {
@@ -11495,15 +11473,7 @@ fn synthesize_variant_construct(
     }
 
     if !all_resolved {
-        // Fall back to ExprCompute which preserves the tag via lower_expr_remap.
-        return synthesize_expr_compute(
-            builder,
-            ctx,
-            &Expr::Record(Some(tag.to_string()), fields.to_vec()),
-            output_port,
-            output_name,
-            disambiguator,
-        );
+        return None;
     }
 
     let field_names: Vec<String> = fields.iter().map(|(name, _)| name.clone()).collect();
@@ -11565,14 +11535,14 @@ fn synthesize_record_construct(
     let mut field_sources: Vec<(String, String, String)> = Vec::new();
     let mut all_resolved = true;
     for (field_name, field_expr) in fields {
-        let source = resolve_return_expr_source(
+        let source = lower_expr(
             builder,
             ctx,
             field_expr,
             &any_port,
             &format!("{output_name}_{field_name}"),
             &format!("{disambiguator}_{field_name}"),
-        );
+        ).ok();
         if let Some((src_node, src_port)) = source {
             field_sources.push((field_name.clone(), src_node, src_port));
         } else {
@@ -11582,15 +11552,7 @@ fn synthesize_record_construct(
     }
 
     if !all_resolved {
-        let whole_expr = Expr::Record(None, fields.to_vec());
-        return synthesize_expr_compute(
-            builder,
-            ctx,
-            &whole_expr,
-            output_port,
-            output_name,
-            disambiguator,
-        );
+        return None;
     }
 
     let field_names: Vec<String> = fields.iter().map(|(name, _)| name.clone()).collect();
@@ -11651,25 +11613,18 @@ fn synthesize_list_construct(
     let mut elem_sources: Vec<(String, String, String)> = Vec::new();
     for (i, elem) in elements.iter().enumerate() {
         let port_name = format!("elem_{i}");
-        let source = resolve_return_expr_source(
+        let source = lower_expr(
             builder,
             ctx,
             elem,
             &any_port,
             &format!("{output_name}_{port_name}"),
             &format!("{disambiguator}_{port_name}"),
-        );
+        ).ok();
         match source {
             Some((node, port)) => elem_sources.push((port_name, node, port)),
             None => {
-                return synthesize_expr_compute(
-                    builder,
-                    ctx,
-                    &Expr::List(elements.to_vec()),
-                    output_port,
-                    output_name,
-                    disambiguator,
-                );
+                return None;
             }
         }
     }
@@ -11740,29 +11695,21 @@ fn synthesize_string_interpolate(
             daglang_syntax::ast::StringPart::Expr(expr) => {
                 parts.push(std::mem::take(&mut current_literal));
                 let port_name = format!("interp_{i}");
-                let source = resolve_return_expr_source(
+                let source = lower_expr(
                     builder,
                     ctx,
                     expr,
                     &any_port,
                     &format!("{output_name}_{port_name}"),
                     &format!("{disambiguator}_{port_name}"),
-                );
+                ).ok();
                 match source {
                     Some((node, port)) => {
                         input_sources.push((port_name.clone(), node, port));
                         input_port_names.push(port_name);
                     }
                     None => {
-                        // Can't resolve an interpolated expression — fall back.
-                        return synthesize_expr_compute(
-                            builder,
-                            ctx,
-                            &Expr::StringInterp(string_parts.to_vec()),
-                            output_port,
-                            output_name,
-                            disambiguator,
-                        );
+                        return None;
                     }
                 }
             }
@@ -11865,224 +11812,6 @@ fn synthesize_get_field_on_resolved(
     Some((node_id, result_port_name.to_string()))
 }
 
-/// Shared intermediate artifacts for evaluator/compute node synthesis.
-struct EvaluatorParts {
-    input_ports: Vec<Port>,
-    output_ports: Vec<Port>,
-    fn_body: LoweredFnBody,
-    sibling_fns: std::collections::BTreeMap<String, LoweredFnBody>,
-    refs: Vec<ExprLeafRef>,
-}
-
-/// Build the shared core of an evaluator node: leaf refs, ports, fn body, sibling fns.
-/// Returns `None` if the expression has unresolvable local references.
-fn build_evaluator_parts(
-    ctx: &LoweringContext<'_>,
-    expr: &Expr,
-    output_port: &Port,
-) -> Option<EvaluatorParts> {
-    let mut refs: Vec<ExprLeafRef> = Vec::new();
-    let mut seen = HashSet::new();
-    let mut has_local_refs = false;
-    collect_expr_leaf_refs(expr, ctx, &mut refs, &mut seen, &mut has_local_refs);
-
-    if has_local_refs {
-        return None;
-    }
-
-    let input_ports: Vec<Port> = refs
-        .iter()
-        .map(|leaf| match &leaf.source {
-            expr::LeafRef::Param { ty, .. } => {
-                Port::with_cardinality(leaf.input_port.as_str(), ty.as_str(), Cardinality::ONE)
-            }
-            expr::LeafRef::Callable { .. } | expr::LeafRef::Service { .. } => {
-                Port::with_cardinality(leaf.input_port.as_str(), "Any", Cardinality::ONE)
-            }
-        })
-        .collect();
-    let output_type = output_port.type_id.0.as_str();
-    let result_port_name = "result";
-    let output_ports = vec![Port::with_cardinality(
-        result_port_name,
-        output_type,
-        Cardinality::ONE,
-    )];
-
-    // Build fn body: include local let stmts (C10) then the return.
-    // Local let stmts are non-call bindings from the callable body that the
-    // return expression may reference. Skip let bindings whose name is also
-    // an input port — those are already provided via DAG edges.
-    let input_port_names: HashSet<String> = refs.iter().map(|r| r.input_port.clone()).collect();
-    let mut fn_stmts: Vec<expr::LoweredStmt> = Vec::new();
-    if !ctx.local_let_bindings.is_empty() {
-        for stmt in ctx.body_stmts {
-            match stmt {
-                Stmt::Let(name, _) | Stmt::Assign(name, _) => {
-                    if ctx.local_let_bindings.contains_key(name) && !input_port_names.contains(name)
-                    {
-                        fn_stmts.push(expr::lower_stmt_with_mode(
-                            stmt,
-                            ctx.variant_names,
-                            expr::ExprLowerMode::Remap,
-                        ));
-                    }
-                }
-                Stmt::Node(node_stmt) => {
-                    if ctx.local_let_bindings.contains_key(&node_stmt.name)
-                        && !input_port_names.contains(&node_stmt.name)
-                    {
-                        fn_stmts.push(expr::lower_stmt_with_mode(
-                            stmt,
-                            ctx.variant_names,
-                            expr::ExprLowerMode::Remap,
-                        ));
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    let lowered_expr = expr::lower_expr_remap(expr, ctx.variant_names);
-    fn_stmts.push(expr::LoweredStmt::Return(vec![(
-        result_port_name.to_string(),
-        lowered_expr,
-    )]));
-    let fn_body = LoweredFnBody { stmts: fn_stmts };
-
-    // Collect sibling fn bodies that the expression may call at runtime,
-    // including fns called from local let bindings included in the body.
-    let mut sibling_fns = collect_called_fn_bodies(expr, ctx.all_fn_bodies);
-    for stmt in ctx.body_stmts {
-        match stmt {
-            Stmt::Let(name, let_expr) | Stmt::Assign(name, let_expr)
-                if ctx.local_let_bindings.contains_key(name) =>
-            {
-                sibling_fns.extend(collect_called_fn_bodies(let_expr, ctx.all_fn_bodies));
-            }
-            _ => {}
-        }
-    }
-
-    Some(EvaluatorParts {
-        input_ports,
-        output_ports,
-        fn_body,
-        sibling_fns,
-        refs,
-    })
-}
-
-/// Wire evaluator node edges from leaf refs to the node.
-fn wire_evaluator_edges(
-    builder: &mut DagBuilder,
-    ctx: &LoweringContext<'_>,
-    node_id: &str,
-    refs: &[ExprLeafRef],
-) {
-    for leaf in refs {
-        match &leaf.source {
-            expr::LeafRef::Param { name, ty, .. } => {
-                let param_source_id =
-                    ensure_param_source_node(builder, ctx.module_name, ctx.item_name, name, ty);
-                builder.add_edge(&param_source_id, name, node_id, &leaf.input_port);
-            }
-            expr::LeafRef::Callable { endpoint, port }
-            | expr::LeafRef::Service { endpoint, port } => {
-                builder.add_edge(endpoint, port, node_id, &leaf.input_port);
-            }
-        }
-    }
-}
-
-/// C24: Synthesize a pipe/for expression as a tagged evaluator node.
-/// Like ExprCompute but with a distinct PrimitiveOpKind for tracking.
-#[allow(clippy::too_many_arguments)]
-fn synthesize_tagged_evaluator(
-    builder: &mut DagBuilder,
-    ctx: &LoweringContext<'_>,
-    expr: &Expr,
-    kind_tag: &str,
-    output_port: &Port,
-    output_name: &str,
-    disambiguator: &str,
-) -> Option<(String, String)> {
-    let parts = build_evaluator_parts(ctx, expr, output_port)?;
-
-    let kind = match kind_tag {
-        "pipe" => PrimitiveOpKind::PipeOp {
-            fn_body: Box::new(parts.fn_body),
-            sibling_fns: parts.sibling_fns,
-        },
-        "for" => PrimitiveOpKind::ForOp {
-            fn_body: Box::new(parts.fn_body),
-            sibling_fns: parts.sibling_fns,
-        },
-        _ => PrimitiveOpKind::ExprCompute {
-            fn_body: Box::new(parts.fn_body),
-            sibling_fns: parts.sibling_fns,
-        },
-    };
-
-    let node_id = format!(
-        "{kind_tag}_{}",
-        sanitize_identifier(&format!(
-            "{}_{}_{}_{}",
-            ctx.module_name, ctx.item_name, output_name, disambiguator
-        ))
-    );
-    builder.add_node(Node::opaque(
-        node_id.clone(),
-        parts.input_ports,
-        parts.output_ports,
-        LoweredOp::Primitive {
-            module: ctx.module_name.to_string(),
-            name: format!("{kind_tag}::{}::{}", ctx.item_name, output_name),
-            kind,
-        },
-    ));
-
-    wire_evaluator_edges(builder, ctx, &node_id, &parts.refs);
-    Some((node_id, "result".to_string()))
-}
-
-/// Synthesize a compute node for a complex return expression.
-/// Creates a node that evaluates the expression using `evaluate_fn_body` at runtime.
-fn synthesize_expr_compute(
-    builder: &mut DagBuilder,
-    ctx: &LoweringContext<'_>,
-    expr: &Expr,
-    output_port: &Port,
-    output_name: &str,
-    disambiguator: &str,
-) -> Option<(String, String)> {
-    let parts = build_evaluator_parts(ctx, expr, output_port)?;
-
-    let node_id = format!(
-        "expr_compute_{}",
-        sanitize_identifier(&format!(
-            "{}_{}_{}_{}",
-            ctx.module_name, ctx.item_name, output_name, disambiguator
-        ))
-    );
-    builder.add_node(Node::opaque(
-        node_id.clone(),
-        parts.input_ports,
-        parts.output_ports,
-        LoweredOp::Primitive {
-            module: ctx.module_name.to_string(),
-            name: format!("expr_compute::{}::{}", ctx.item_name, output_name),
-            kind: PrimitiveOpKind::ExprCompute {
-                fn_body: Box::new(parts.fn_body),
-                sibling_fns: parts.sibling_fns,
-            },
-        },
-    ));
-
-    wire_evaluator_edges(builder, ctx, &node_id, &parts.refs);
-    Some((node_id, "result".to_string()))
-}
-
 fn wire_callable_return_outputs(
     builder: &mut DagBuilder,
     ctx: &LoweringContext<'_>,
@@ -12111,27 +11840,23 @@ fn wire_callable_return_outputs(
         if builder.has_edge_to_port(target.node_id.as_str(), dest_port.as_str()) {
             continue;
         }
-        let Some((source_node, source_port)) = resolve_return_expr_source(
+        let (source_node, source_port) = match lower_expr(
             builder,
             ctx,
             &expr,
             &output_port,
             output_name.as_str(),
             &format!("return_{index}"),
-        ) else {
-            // RT4c: Return output can't be wired.
-            //
-            // synthesize_expr_compute() handles BinOp, UnaryOp, If, Match,
-            // Pipe etc. — it returns None only when the expression references
-            // local variables (has_local_refs) that can't be resolved as
-            // compute node inputs. These are known gaps (e.g. fn bodies with
-            // `let` bindings flowing into return expressions).
-            lower_warn(&format!(
-                "wire_callable_return_outputs: `{}` output `{}` \
-                 can't be wired (RT4c — likely local-ref expression)",
-                target.node_id, output_name
-            ));
-            continue;
+        ) {
+            Ok(result) => result,
+            Err(e) => {
+                eprintln!(
+                    "warning: wire_callable_return_outputs: `{}` output `{}` \
+                     cannot be wired: {e}",
+                    target.node_id, output_name
+                );
+                continue;
+            }
         };
         if source_node == target.node_id {
             continue;

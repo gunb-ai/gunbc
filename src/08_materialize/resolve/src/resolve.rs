@@ -42,9 +42,9 @@ use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv};
 
 use crate::service_ops::{
-    GenericFileParseOp, GenericFilePrepareOp, GenericLocalParseOp, GenericLocalPrepareOp,
-    GenericRestParseOp, GenericRestPrepareOp, GenericShellParseOp, GenericShellPrepareOp,
-    InterfaceStubExecuteOp, InterfaceStubParseOp, InterfaceStubPrepareOp,
+    FilesystemExecuteOp, GenericFileParseOp, GenericFilePrepareOp, GenericLocalParseOp,
+    GenericLocalPrepareOp, GenericRestParseOp, GenericRestPrepareOp, GenericShellParseOp,
+    GenericShellPrepareOp, InterfaceStubExecuteOp, InterfaceStubParseOp, InterfaceStubPrepareOp,
 };
 
 // ============================================================================
@@ -162,8 +162,7 @@ impl Executable for DeclaredOutputCallableOp {
 
 /// C10: Callable op for `fn` items that evaluates the fn body directly.
 ///
-/// Instead of relying on passthrough wiring from ExprCompute nodes, this op
-/// evaluates the fn's lowered body using the expression evaluator. The fn body
+/// Evaluates the fn's lowered body using the expression evaluator. The fn body
 /// can handle if/else, for-loops, match, pipes, records, and all other pure
 /// expression forms — producing the return value directly from the fn's logic.
 ///
@@ -728,174 +727,6 @@ impl Executable for ListConstructOp {
     }
 }
 
-/// Compute node for lowered expression evaluation.
-/// Evaluates a `LoweredFnBody` using `evaluate_fn_body` with inputs from predecessor nodes.
-#[derive(Debug, Clone)]
-struct ExprComputeOp {
-    fn_body: daglang_lower::LoweredFnBody,
-    input_ports: Vec<String>,
-    referenced_vars: Vec<String>,
-    output_port: String,
-    /// Pure `fn` definitions the expression body may call at runtime.
-    sibling_fns: HashMap<String, daglang_lower::LoweredFnBody>,
-}
-
-impl Executable for ExprComputeOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let mut env = HashMap::new();
-        for port in &self.input_ports {
-            let value = inputs.get(port).cloned().unwrap_or(Value::Skipped);
-            // Flatten Map fields into `parent__field` env vars to match the
-            // lowerer's `__` convention (e.g., `entry.kind` lowers to `entry__kind`).
-            if let Value::Map(fields) = &value {
-                for (field_name, field_value) in fields {
-                    env.insert(format!("{port}__{field_name}"), field_value.clone());
-                }
-            } else if let Value::Json(serde_json::Value::Object(map)) = &value {
-                for (field_name, field_value) in map {
-                    env.insert(
-                        format!("{port}__{field_name}"),
-                        Value::Json(field_value.clone()),
-                    );
-                }
-            }
-            env.insert(port.clone(), value);
-        }
-        // Pre-seed referenced identifiers so that `__`-flattened field access
-        // variables resolve to Skipped when the parent input is itself Skipped
-        // (the lowerer emits `entry__kind` but when `entry` is Skipped, the
-        // Map flattening above has nothing to flatten).
-        for ref_name in &self.referenced_vars {
-            if !env.contains_key(ref_name) {
-                env.insert(ref_name.clone(), Value::Skipped);
-            }
-        }
-        let result =
-            match daglang_lower::eval::evaluate_fn_body(&self.fn_body, &env, &self.sibling_fns) {
-                Ok(r) => r,
-                Err(e) => {
-                    // When all real inputs are Skipped, this ExprCompute node is
-                    // an orphan (e.g., fn call argument wiring inside a fn item
-                    // whose body is evaluated by FnBodyCallableOp). Propagate
-                    // Skipped instead of hard-erroring.
-                    let all_skipped = self.input_ports.iter().all(|p| {
-                        matches!(inputs.get(p).unwrap_or(&Value::Skipped), Value::Skipped)
-                    });
-                    if all_skipped {
-                        return OutputMap::new()
-                            .value(self.output_port.as_str(), Value::Skipped)
-                            .ok();
-                    }
-                    // Fn bodies referencing external services (e.g. LLM calls)
-                    // can't be evaluated in dry-run mode. Degrade to Skipped.
-                    if e.message.contains("unknown function") {
-                        return OutputMap::new()
-                            .value(self.output_port.as_str(), Value::Skipped)
-                            .ok();
-                    }
-                    return Err(ExecError::new(e.message));
-                }
-            };
-        // The fn body returns { result: <value> }, extract and output it.
-        if let Some(value) = result.get(&self.output_port) {
-            OutputMap::new()
-                .value(self.output_port.as_str(), value.clone())
-                .ok()
-        } else {
-            // Fallback: return whatever the fn body produced.
-            Ok(result)
-        }
-    }
-}
-
-/// Collect all `Ident` names referenced in a lowered fn body.
-///
-/// Used to pre-seed the expression environment with `Value::Skipped` for
-/// `__`-flattened field access variables (e.g., `entry__kind`) when the
-/// parent input is itself Skipped — the Map flattening only fires for
-/// actual `Value::Map` inputs.
-fn collect_fn_body_idents(body: &daglang_lower::LoweredFnBody) -> Vec<String> {
-    let mut idents = Vec::new();
-    for stmt in &body.stmts {
-        match stmt {
-            daglang_lower::expr::LoweredStmt::Return(fields) => {
-                for (_, expr) in fields {
-                    collect_lowered_expr_idents(expr, &mut idents);
-                }
-            }
-            daglang_lower::expr::LoweredStmt::Let(_, expr) => {
-                collect_lowered_expr_idents(expr, &mut idents);
-            }
-            daglang_lower::expr::LoweredStmt::Expr(expr) => {
-                collect_lowered_expr_idents(expr, &mut idents);
-            }
-        }
-    }
-    idents.sort();
-    idents.dedup();
-    idents
-}
-
-fn collect_lowered_expr_idents(expr: &daglang_lower::expr::LoweredExpr, out: &mut Vec<String>) {
-    use daglang_lower::expr::LoweredExpr;
-    match expr {
-        LoweredExpr::Ident(name) => out.push(name.clone()),
-        LoweredExpr::BinOp { left, right, .. } => {
-            collect_lowered_expr_idents(left, out);
-            collect_lowered_expr_idents(right, out);
-        }
-        LoweredExpr::UnaryOp { expr, .. } => collect_lowered_expr_idents(expr, out),
-        LoweredExpr::IfElse {
-            cond, then_, else_, ..
-        } => {
-            collect_lowered_expr_idents(cond, out);
-            collect_lowered_expr_idents(then_, out);
-            if let Some(e) = else_ {
-                collect_lowered_expr_idents(e, out);
-            }
-        }
-        LoweredExpr::StringInterp(parts) => {
-            for part in parts {
-                if let daglang_lower::expr::LoweredStringPart::Expr(e) = part {
-                    collect_lowered_expr_idents(e, out);
-                }
-            }
-        }
-        LoweredExpr::Pipe { receiver, call } => {
-            collect_lowered_expr_idents(receiver, out);
-            collect_lowered_expr_idents(call, out);
-        }
-        LoweredExpr::Call { args, .. } => {
-            for (_, arg) in args {
-                collect_lowered_expr_idents(arg, out);
-            }
-        }
-        LoweredExpr::FieldAccess { expr, .. } => collect_lowered_expr_idents(expr, out),
-        LoweredExpr::Record { fields, .. } => {
-            for (_, field) in fields {
-                collect_lowered_expr_idents(field, out);
-            }
-        }
-        LoweredExpr::List(items) => {
-            for item in items {
-                collect_lowered_expr_idents(item, out);
-            }
-        }
-        LoweredExpr::Lambda { body, .. } => collect_lowered_expr_idents(body, out),
-        LoweredExpr::Match { expr, arms } => {
-            collect_lowered_expr_idents(expr, out);
-            for arm in arms {
-                collect_lowered_expr_idents(&arm.body, out);
-            }
-        }
-        LoweredExpr::For { iterable, body, .. } => {
-            collect_lowered_expr_idents(iterable, out);
-            collect_lowered_expr_idents(body, out);
-        }
-        _ => {}
-    }
-}
-
 /// Standard resource kinds from `dsl/std/resources.dag`.
 ///
 /// Parsed once at resolution time (fail-fast). Unknown resource names
@@ -1415,53 +1246,6 @@ fn resolve_primitive(
                 output_port,
             }))
         }
-        PrimitiveOpKind::PipeOp {
-            fn_body,
-            sibling_fns,
-        }
-        | PrimitiveOpKind::ForOp {
-            fn_body,
-            sibling_fns,
-        } => {
-            // Same execution as ExprCompute — the distinct tag is for tracking.
-            let input_ports: Vec<String> = inputs.iter().map(|p| p.name.0.clone()).collect();
-            let referenced_vars = collect_fn_body_idents(fn_body);
-            let output_port = outputs
-                .first()
-                .map(|port| port.name.0.clone())
-                .unwrap_or_else(|| "result".to_string());
-            Ok(DynOp::new(ExprComputeOp {
-                fn_body: *fn_body.clone(),
-                input_ports,
-                referenced_vars,
-                output_port,
-                sibling_fns: sibling_fns
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect(),
-            }))
-        }
-        PrimitiveOpKind::ExprCompute {
-            fn_body,
-            sibling_fns,
-        } => {
-            let input_ports: Vec<String> = inputs.iter().map(|p| p.name.0.clone()).collect();
-            let referenced_vars = collect_fn_body_idents(fn_body);
-            let output_port = outputs
-                .first()
-                .map(|port| port.name.0.clone())
-                .unwrap_or_else(|| "result".to_string());
-            Ok(DynOp::new(ExprComputeOp {
-                fn_body: *fn_body.clone(),
-                input_ports,
-                referenced_vars,
-                output_port,
-                sibling_fns: sibling_fns
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect(),
-            }))
-        }
     }
 }
 
@@ -1504,8 +1288,7 @@ fn resolve_domain(
         return resolve_service_transport(node_id, module, name, outputs, service_metadata);
     }
     // 5. C10: fn items with fn bodies use FnBodyCallableOp to evaluate the
-    //    body directly, producing outputs from the fn's computation rather
-    //    than relying on passthrough wiring from ExprCompute nodes.
+    //    body directly, producing outputs from the fn's computation.
     if let Some(body) = fn_body {
         return Ok(DynOp::new(FnBodyCallableOp {
             fn_body: body.clone(),
@@ -1603,6 +1386,7 @@ fn resolve_service_transport(
     // Execute nodes: for InterfaceStub specs, use the stub execute op
     // (errors in Real mode, auto-mocked in DryRun). All others use the
     // standard transport executor.
+    // Filesystem interface gets a concrete binding via FilesystemExecuteOp.
     if role == Some(TransportRole::Execute) {
         if let Some(metadata) = service_metadata {
             if let Some(ServiceOperationSpec::InterfaceStub {
@@ -1610,6 +1394,11 @@ fn resolve_service_transport(
                 capability,
             }) = &metadata.spec
             {
+                if interface == "Filesystem" {
+                    return Ok(DynOp::new(FilesystemExecuteOp {
+                        capability: capability.clone(),
+                    }));
+                }
                 return Ok(DynOp::new(InterfaceStubExecuteOp {
                     interface: interface.clone(),
                     capability: capability.clone(),

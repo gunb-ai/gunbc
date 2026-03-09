@@ -612,7 +612,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
 
         // Gather inputs from upstream edges (cardinality-aware).
         let mut inputs: HashMap<String, Value> = HashMap::new();
-        let mut fan_in: HashMap<String, Vec<Value>> = HashMap::new();
+        let mut fan_in: HashMap<String, Vec<(usize, Vec<Value>)>> = HashMap::new();
         let mut scalar_sources: HashMap<String, String> = HashMap::new();
         let mut applied_coercions: Vec<AppliedCoercion> = Vec::new();
 
@@ -650,15 +650,30 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
 
                             if let Some(elements) = collect_fan_in(val, from_cardinality) {
                                 let bucket = fan_in.entry(edge.to_port.0.clone()).or_default();
-                                bucket.extend(elements);
+                                bucket.push((edge.index, elements));
                             }
                         } else if scalar_sources.contains_key(&edge.to_port.0) {
-                            // Multiple upstream edges to a scalar port.
+                            // Conditional merge: multiple upstream edges to a scalar port.
                             // In conditional branches, only one branch produces
                             // a real value; others produce Skipped. Take the
                             // first non-Skipped value.
                             if !matches!(val, Value::Skipped) {
+                                if let Some(existing) = inputs.get(&edge.to_port.0) {
+                                    if !matches!(existing, Value::Skipped) {
+                                        return Err(ExecError::new(format!(
+                                            "conditional merge error at node '{}' port '{}': \
+                                             multiple non-Skipped values (from '{}' and previous source '{}')",
+                                            node_id.0, edge.to_port.0,
+                                            edge.from_node.0,
+                                            scalar_sources.get(&edge.to_port.0).map(|s| s.as_str()).unwrap_or("unknown"),
+                                        )));
+                                    }
+                                }
                                 inputs.insert(edge.to_port.0.clone(), val.clone());
+                                scalar_sources.insert(
+                                    edge.to_port.0.clone(),
+                                    format!("{}.{}", edge.from_node.0, edge.from_port.0),
+                                );
                             }
                         } else {
                             scalar_sources.insert(
@@ -672,8 +687,10 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
             }
         }
 
-        // Wrap collected fan-in values as Value::List
-        for (port_name, values) in fan_in {
+        // Wrap collected fan-in values as Value::List, sorted by edge index
+        for (port_name, mut groups) in fan_in {
+            groups.sort_by_key(|(idx, _)| *idx);
+            let values: Vec<Value> = groups.into_iter().flat_map(|(_, elems)| elems).collect();
             inputs.insert(port_name, Value::List(values));
         }
 
@@ -1208,7 +1225,7 @@ fn build_node_inputs<T>(
 ) -> Result<(HashMap<String, Value>, Vec<AppliedCoercion>), ExecError> {
     // Gather inputs from upstream edges (cardinality-aware).
     let mut inputs: HashMap<String, Value> = HashMap::new();
-    let mut fan_in: HashMap<String, Vec<Value>> = HashMap::new();
+    let mut fan_in: HashMap<String, Vec<(usize, Vec<Value>)>> = HashMap::new();
     let mut scalar_sources: HashMap<String, String> = HashMap::new();
     let mut applied_coercions: Vec<AppliedCoercion> = Vec::new();
 
@@ -1245,15 +1262,30 @@ fn build_node_inputs<T>(
 
                         if let Some(elements) = collect_fan_in(val, from_cardinality) {
                             let bucket = fan_in.entry(edge.to_port.0.clone()).or_default();
-                            bucket.extend(elements);
+                            bucket.push((edge.index, elements));
                         }
                     } else if scalar_sources.contains_key(&edge.to_port.0) {
-                        // Multiple upstream edges to a scalar port.
+                        // Conditional merge: multiple upstream edges to a scalar port.
                         // In conditional branches, only one branch produces
                         // a real value; others produce Skipped. Take the
                         // first non-Skipped value.
                         if !matches!(val, Value::Skipped) {
+                            if let Some(existing) = inputs.get(&edge.to_port.0) {
+                                if !matches!(existing, Value::Skipped) {
+                                    return Err(ExecError::new(format!(
+                                        "conditional merge error at node '{}' port '{}': \
+                                         multiple non-Skipped values (from '{}' and previous source '{}')",
+                                        node_id.0, edge.to_port.0,
+                                        edge.from_node.0,
+                                        scalar_sources.get(&edge.to_port.0).map(|s| s.as_str()).unwrap_or("unknown"),
+                                    )));
+                                }
+                            }
                             inputs.insert(edge.to_port.0.clone(), val.clone());
+                            scalar_sources.insert(
+                                edge.to_port.0.clone(),
+                                format!("{}.{}", edge.from_node.0, edge.from_port.0),
+                            );
                         }
                     } else {
                         scalar_sources.insert(
@@ -1267,7 +1299,10 @@ fn build_node_inputs<T>(
         }
     }
 
-    for (port_name, values) in fan_in {
+    // Wrap collected fan-in values as Value::List, sorted by edge index
+    for (port_name, mut groups) in fan_in {
+        groups.sort_by_key(|(idx, _)| *idx);
+        let values: Vec<Value> = groups.into_iter().flat_map(|(_, elems)| elems).collect();
         inputs.insert(port_name, Value::List(values));
     }
 

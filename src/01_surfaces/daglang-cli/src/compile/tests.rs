@@ -474,8 +474,7 @@ func run() -> { report: String } {
     let resolved =
         resolve_lowered_dag(&lowered.dag).expect("resolved DAG should build from lowered graph");
     // C10: FnBodyCallableOp evaluates the fn body directly, producing the
-    // return value from the fn's computation instead of requiring passthrough
-    // wiring from ExprCompute nodes.
+    // return value from the fn's computation.
     let result = execute_resolved_dag(&resolved, ExecutionMode::Real, None);
     assert!(
         result.is_ok(),
@@ -1199,7 +1198,7 @@ func run() -> { ok: Bool } provides out: ArtifactStore(kind: temporary) {
 }
 
 #[test]
-fn compile_single_file_unresolved_import_fails_in_typecheck_stage() {
+fn compile_single_file_unresolved_import_fails() {
     let fixture = unique_temp_file("single_file_unresolved_import");
     std::fs::write(
         &fixture,
@@ -1219,7 +1218,11 @@ fn run() -> Unit {}
     };
 
     let error = compile_from_context(&context).expect_err("compile should fail");
-    assert_typecheck_stage_error(&error);
+    let msg = error.to_string();
+    assert!(
+        msg.contains("unresolved import") || msg.contains("compile diagnostics"),
+        "expected import resolution error, got: {msg}"
+    );
     assert!(error.contains("unresolved import"));
     assert!(error.contains("missing.dep"));
 

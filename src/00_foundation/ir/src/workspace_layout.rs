@@ -273,14 +273,19 @@ impl WorkspaceLayout {
         self.workspace_root.join(Self::TEST_ARTIFACTS_REL)
     }
 
+    /// Absolute DSL root directory (`<workspace>/dsl`).
+    pub fn dsl_root(&self) -> PathBuf {
+        self.workspace_root.join("dsl")
+    }
+
     /// Absolute DSL tool module root.
     pub fn dsl_tools_root(&self) -> PathBuf {
-        self.workspace_root.join("dsl/tools")
+        self.dsl_root().join("tools")
     }
 
     /// Absolute DSL pipeline module root.
     pub fn dsl_pipelines_root(&self) -> PathBuf {
-        self.workspace_root.join("dsl/pipelines")
+        self.dsl_root().join("pipelines")
     }
 
     fn absolutize(&self, path: &Path) -> PathBuf {

@@ -173,6 +173,7 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
     }
 
     // Fallback: completely unknown.
+    eprintln!("warning: unknown type shape for dag with {} node(s), using Opaque", dag.nodes.len());
     TypeShape::Opaque("Unknown".to_string())
 }
 

@@ -123,7 +123,7 @@ pattern read_binary_files(paths: List<FilePath>) -> { files: List<{ path: FilePa
 pattern acquire_subject_token(
   runtime: CloudRuntime,
   audience: NonEmptyStr
-) -> { token: String } {
+) -> { token: Secret } {
   node token = match runtime {
     GitHubActions => github_oidc(audience: audience)
     Metadata     => metadata_oidc(audience: audience)
@@ -138,19 +138,17 @@ pattern acquire_subject_token(
 // SA impersonation outside of the credential chain.
 
 pattern optional_impersonation(
-  access_token: String,
+  access_token: Secret,
   service_account: ServiceAccountEmail?,
   lifetime_seconds: Int where range(min: 1, max: 3600)= 3600
-) -> { token: String } {
+) -> { token: Secret } {
+  impersonated = gcp.IAM.GenerateAccessToken(
+    access_token: access_token,
+    target_sa: service_account,
+    lifetime_seconds: lifetime_seconds
+  ) [when service_account != None]
   node result = match service_account {
-    Some(sa) => {
-      response = gcp.IAM.GenerateAccessToken(
-        access_token: access_token,
-        target_sa: sa,
-        lifetime_seconds: lifetime_seconds
-      )
-      { token: response.access_token }
-    }
+    Some(_sa) => { token: impersonated.access_token }
     None => { token: access_token }
   }
   return { token: result.token }
@@ -366,7 +364,7 @@ pattern retry<Op>(max_attempts: Int = 3, backoff_ms: Milliseconds = 1000) -> {} 
 // Real implementations replacing stubs. Each acquires a subject token
 // from the runtime environment using the appropriate protocol.
 
-func github_oidc(audience: String) -> { token: String }
+func github_oidc(audience: String) -> { token: Secret }
   uses net: Network
 {
   url = shell.Env.Get(name: "ACTIONS_ID_TOKEN_REQUEST_URL")
@@ -380,7 +378,7 @@ func github_oidc(audience: String) -> { token: String }
   return { token: response.subject_token as String }
 }
 
-func metadata_oidc(audience: String) -> { token: String }
+func metadata_oidc(audience: String) -> { token: Secret }
   uses net: Network
 {
   response = gcp.Metadata.GetIdentityToken(audience: audience)
@@ -391,25 +389,16 @@ func metadata_oidc(audience: String) -> { token: String }
 // ADC check -> OAuth2 refresh -> conditional re-auth via gcloud -> merge.
 // This replaces the old handwritten Rust local-auth graph path.
 
-func local_auth() -> { token: String }
+func local_auth() -> { token: Secret }
   uses fs: Filesystem(mode: Read)
 {
   adc_path = shell.Env.Get(name: "GOOGLE_APPLICATION_CREDENTIALS")
 
-  adc_check = if adc_path.value != None {
-    adc_content = fs.read(path: adc_path.value)
-    shell.OAuth2.RefreshToken(refresh_token: adc_content.content)
-  }
+  adc_content = fs.read(path: adc_path.value) [when adc_path.value != None]
+  adc_refresh = shell.OAuth2.RefreshToken(refresh_token: adc_content.content) [when adc_path.value != None]
+  gcloud_auth = shell.GCloud.AuthPrintAccessToken()
 
-  // If ADC check failed or no credentials, fall back to gcloud auth
-  result = if adc_check?.valid != true {
-    gcloud_auth = shell.GCloud.AuthPrintAccessToken()
-    { token: gcloud_auth.access_token }
-  } else {
-    { token: adc_check.access_token }
-  }
-
-  return { token: result.token }
+  return { token: gcloud_auth.access_token }
 }
 
 // --- IAM preflight (D-3c: Identity interface) --------------------------
@@ -442,20 +431,6 @@ func iam_preflight_check(
     service_account: service_account,
     role: required_role
   )
-
-  result = if has_binding.has_role != true {
-    updated = add_iam_binding(
-      bindings: policy.bindings,
-      service_account: service_account,
-      role: required_role
-    )
-    gcp.ResourceManager.SetIamPolicy(
-      access_token: access_token,
-      project_id: project_id,
-      bindings: updated.updated_bindings,
-      etag: policy.etag
-    )
-  }
 
   return { ok: true }
 }

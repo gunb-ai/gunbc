@@ -8,6 +8,13 @@ use gunbc_ir::WorkspaceLayout;
 use std::path::Path;
 use std::process;
 
+/// Workspace-relative path to the generated-tests source directory.
+///
+/// The testgen binary writes auto-generated test modules here.
+// TODO(T14): promote to WorkspaceLayout accessor once the generated-tests
+// crate location is stabilized (currently separate from src/10_test/).
+const GENERATED_TESTS_SRC_REL: &str = "src/generated-tests/src";
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let dry_run = args.iter().any(|a| a == "--dry-run");
@@ -19,12 +26,8 @@ fn main() {
             process::exit(1);
         });
 
-    let dsl_root = layout.workspace_root.join("dsl");
-    let output_dir = layout
-        .workspace_root
-        .join("src")
-        .join("generated-tests")
-        .join("src");
+    let dsl_root = layout.dsl_root();
+    let output_dir = layout.workspace_root.join(GENERATED_TESTS_SRC_REL);
 
     let modules = discover_compilable_modules(&dsl_root);
     let total = modules.len();

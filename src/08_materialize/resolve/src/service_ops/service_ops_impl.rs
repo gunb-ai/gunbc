@@ -1402,6 +1402,161 @@ impl Executable for InterfaceStubExecuteOp {
     }
 }
 
+/// Concrete Filesystem transport binding. Handles `probe`, `read`, and `write`
+/// capabilities using `std::fs` operations so that `uses fs: Filesystem(...)`
+/// works in Real mode without an external transport.
+#[derive(Debug, Clone)]
+pub struct FilesystemExecuteOp {
+    pub capability: String,
+}
+
+impl FilesystemExecuteOp {
+    fn extract_path(inputs: &HashMap<String, Value>) -> Result<String, ExecError> {
+        if let Some(Value::Request(TransportRequest::Local(req))) = inputs.get("request") {
+            if let Some(serde_json::Value::String(p)) = req.inputs.get("path") {
+                return Ok(p.clone());
+            }
+        }
+        // Fallback: path passed directly (e.g. from test harnesses).
+        if let Some(Value::Str(p)) = inputs.get("path") {
+            return Ok(p.clone());
+        }
+        Err(ExecError::new(
+            "FilesystemExecuteOp: missing 'path' in request inputs".to_string(),
+        ))
+    }
+
+    fn probe(path: &str) -> HashMap<String, Value> {
+        let metadata = std::fs::symlink_metadata(path);
+        let (kind, size) = match &metadata {
+            Ok(m) if m.is_dir() => ("Directory", m.len() as i64),
+            Ok(m) if m.file_type().is_symlink() => ("Symlink", m.len() as i64),
+            Ok(m) => ("RegularFile", m.len() as i64),
+            Err(_) => ("Missing", 0i64),
+        };
+        let encoding = match kind {
+            "RegularFile" => {
+                let is_text = std::fs::read(path)
+                    .map(|bytes| {
+                        let check_len = bytes.len().min(8192);
+                        !bytes[..check_len].contains(&0)
+                    })
+                    .unwrap_or(false);
+                if is_text {
+                    Value::Enum {
+                        ty: "ContentEncoding".to_string(),
+                        variant: "UTF8".to_string(),
+                    }
+                } else {
+                    Value::Enum {
+                        ty: "ContentEncoding".to_string(),
+                        variant: "Binary".to_string(),
+                    }
+                }
+            }
+            _ => Value::Unit,
+        };
+
+        let mut classification = std::collections::BTreeMap::new();
+        classification.insert("path".to_string(), Value::Str(path.to_string()));
+        classification.insert(
+            "kind".to_string(),
+            Value::Enum {
+                ty: "EntryKind".to_string(),
+                variant: kind.to_string(),
+            },
+        );
+        classification.insert("encoding".to_string(), encoding);
+        classification.insert("symlink_target".to_string(), Value::Unit);
+        classification.insert("size".to_string(), Value::Int(size));
+        classification.insert("mime".to_string(), Value::Unit);
+
+        let mut out = HashMap::new();
+        out.insert("classification".to_string(), Value::Map(classification));
+        out
+    }
+
+    fn read_text(path: &str) -> Result<HashMap<String, Value>, ExecError> {
+        let content = std::fs::read_to_string(path).map_err(|e| {
+            ExecError::new(format!("Filesystem.read failed for '{path}': {e}"))
+        })?;
+        let mut out = HashMap::new();
+        out.insert("content".to_string(), Value::Str(content));
+        Ok(out)
+    }
+}
+
+impl Executable for FilesystemExecuteOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        if inputs
+            .get("skip")
+            .is_some_and(|v| matches!(v, Value::Bool(true)))
+            || inputs.values().any(|v| matches!(v, Value::Skipped))
+        {
+            let mut out = HashMap::new();
+            match self.capability.as_str() {
+                "probe" => {
+                    out.insert("classification".to_string(), Value::Skipped);
+                }
+                "read" | "read_bytes" => {
+                    out.insert("content".to_string(), Value::Skipped);
+                }
+                "write" => {
+                    out.insert("written".to_string(), Value::Skipped);
+                }
+                _ => {
+                    out.insert("result".to_string(), Value::Skipped);
+                }
+            }
+            return Ok(out);
+        }
+
+        let path = Self::extract_path(&inputs)?;
+
+        match self.capability.as_str() {
+            "probe" => Ok(Self::probe(&path)),
+            "read" => Self::read_text(&path),
+            "read_bytes" => {
+                let bytes = std::fs::read(&path).map_err(|e| {
+                    ExecError::new(format!("Filesystem.read_bytes failed for '{path}': {e}"))
+                })?;
+                let mut out = HashMap::new();
+                out.insert("content".to_string(), Value::Bytes(bytes));
+                Ok(out)
+            }
+            "write" => {
+                let content = if let Some(Value::Request(TransportRequest::Local(req))) =
+                    inputs.get("request")
+                {
+                    req.inputs
+                        .get("content")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                } else {
+                    inputs
+                        .get("content")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                };
+                let content = content.ok_or_else(|| {
+                    ExecError::new(format!(
+                        "Filesystem.write: missing or non-string 'content' for '{path}'"
+                    ))
+                })?;
+                std::fs::write(&path, &content).map_err(|e| {
+                    ExecError::new(format!("Filesystem.write failed for '{path}': {e}"))
+                })?;
+                let mut out = HashMap::new();
+                out.insert("written".to_string(), Value::Bool(true));
+                Ok(out)
+            }
+            other => Err(ExecError::new(format!(
+                "FilesystemExecuteOp: unknown capability '{other}'"
+            ))),
+        }
+    }
+}
+
 /// Interface stub parse: identity passthrough. Forwards typed capability
 /// outputs from execute (or from DryRun mocks) unchanged.
 #[derive(Debug, Clone)]

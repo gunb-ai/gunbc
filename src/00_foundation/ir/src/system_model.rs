@@ -995,6 +995,7 @@ fn rust_type_for_type_id(type_id: &TypeId) -> String {
     // Use ValueBacking for structural mapping.
     match crate::types::value_backing_for_type_id(raw) {
         ValueBacking::String => "String".to_string(),
+        ValueBacking::Secret => "String".to_string(),
         ValueBacking::Bool => "bool".to_string(),
         ValueBacking::Int => "i64".to_string(),
         ValueBacking::Float => "f64".to_string(),

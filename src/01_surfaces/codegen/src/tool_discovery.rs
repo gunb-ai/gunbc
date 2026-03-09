@@ -122,7 +122,7 @@ pub fn try_discover_tool_defs_from_dsl() -> Result<Vec<ToolDef>, String> {
     let layout = WorkspaceLayout::from_env_manifest_dir()
         .or_else(|_| WorkspaceLayout::from_cargo_metadata())
         .map_err(|e| format!("workspace layout for DSL discovery: {e}"))?;
-    let dsl_root = layout.workspace_root.join("dsl");
+    let dsl_root = layout.dsl_root();
 
     let mut cache = DiscoveryCache::load(&layout.workspace_root)?.unwrap_or_default();
     let mut cache_dirty = false;

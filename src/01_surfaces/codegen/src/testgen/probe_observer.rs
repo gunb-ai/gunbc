@@ -148,6 +148,7 @@ fn is_input_independent(matcher: &OutputMatcher) -> bool {
         OutputMatcher::IsBool => true,
         OutputMatcher::IsInt => true,
         OutputMatcher::IsString => true,
+        OutputMatcher::IsSecret => true,
         OutputMatcher::IsRequest => true,
         OutputMatcher::IsResponse => true,
         OutputMatcher::IntGe(_) => true,

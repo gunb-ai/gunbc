@@ -542,38 +542,21 @@ pub fn compile_data_from_module_permissive(
     })
 }
 
-/// Extract fn bodies from a lowered DAG, including those inside SubDag nodes
-/// (Bridge 1: fn items lowered as SubDag with ExprCompute inner node).
+/// Extract fn bodies from a lowered DAG.
 fn extract_fn_bodies_from_dag(
     dag: &gunbc_ir::Dag<daglang_lower::LoweredOp>,
     fns: &mut HashMap<String, daglang_lower::LoweredFnBody>,
 ) {
-    use daglang_lower::{CallableKind, LoweredOp, PrimitiveOpKind};
+    use daglang_lower::{CallableKind, LoweredOp};
     for node in &dag.nodes {
-        match &node.body {
-            // Callable nodes with fn_body (e.g., loop body ops).
-            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable {
-                kind: CallableKind::Fn,
-                name,
-                fn_body: Some(body),
-                ..
-            }) => {
-                fns.insert(name.clone(), *body.clone());
-            }
-            // Bridge 1: SubDag nodes containing ExprCompute.
-            gunbc_ir::node::NodeBody::SubDag(inner, _) => {
-                for inner_node in &inner.nodes {
-                    if let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive {
-                        kind: PrimitiveOpKind::ExprCompute { fn_body, .. },
-                        name,
-                        ..
-                    }) = &inner_node.body
-                    {
-                        fns.insert(name.clone(), *fn_body.clone());
-                    }
-                }
-            }
-            _ => {}
+        if let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable {
+            kind: CallableKind::Fn,
+            name,
+            fn_body: Some(body),
+            ..
+        }) = &node.body
+        {
+            fns.insert(name.clone(), *body.clone());
         }
     }
 }
@@ -1316,9 +1299,7 @@ fn discover_target_module_graph_for_context(
                 dependencies.push(dep_index);
                 continue;
             }
-            let Some(import_file) = resolve_import_file_path(&context.roots, &import) else {
-                continue;
-            };
+            let import_file = resolve_import_file_path(&context.roots, &import)?;
             let Some((dep_index, is_new)) = add_target_module_if_applicable(
                 &import_file,
                 Some(&import),
@@ -1446,9 +1427,8 @@ fn include_profile_modules(
             if module_index_by_decl.contains_key(&import) {
                 continue;
             }
-            if let Some(import_file) = resolve_import_file_path(roots, &import) {
-                pending.push_back(import_file);
-            }
+            let import_file = resolve_import_file_path(roots, &import)?;
+            pending.push_back(import_file);
         }
     }
 
@@ -1487,7 +1467,7 @@ fn resolve_profile_bind_implementation_module_path(
     }
     for end in (1..segments.len()).rev() {
         let prefix = ModulePath::new(segments[..end].to_vec());
-        if let Some(path) = resolve_import_file_path(roots, &prefix) {
+        if let Ok(path) = resolve_import_file_path(roots, &prefix) {
             return Some(path);
         }
     }
@@ -1605,18 +1585,25 @@ fn parse_target_module_file(
     ))
 }
 
-fn resolve_import_file_path(roots: &[PathBuf], import_path: &ModulePath) -> Option<PathBuf> {
+fn resolve_import_file_path(
+    roots: &[PathBuf],
+    import_path: &ModulePath,
+) -> Result<PathBuf, CompileError> {
     let mut relative = PathBuf::new();
     for segment in &import_path.segments {
         relative.push(segment);
     }
     relative.set_extension("dag");
-    let result = roots
+    roots
         .iter()
         .map(|root| root.join(&relative))
-        .find(|candidate| candidate.is_file());
-    let _ = result;
-    result
+        .find(|candidate| candidate.is_file())
+        .ok_or_else(|| {
+            CompileError::Message(format!(
+                "unresolved import: {}",
+                import_path.as_dotted()
+            ))
+        })
 }
 
 fn callable_scope_for_context(

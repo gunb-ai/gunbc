@@ -609,7 +609,7 @@ impl TypeRegistry {
     ///
     /// Returns `None` if the type is not registered and no wrapper expression is present.
     pub fn resolve_type(&self, type_id: &TypeId) -> Option<Dag<TypeOp>> {
-        self.resolve_type_checked(type_id).ok().flatten()
+        self.resolve_type_checked(type_id).unwrap_or_default()
     }
 
     /// Resolve a type DAG, returning a diagnostic if the expression is invalid.
@@ -914,7 +914,7 @@ impl TypeRegistry {
             "Bytes" => return ValueBacking::Bytes,
             "Json" => return ValueBacking::Json,
             "Unit" => return ValueBacking::Unit,
-            "Secret" => return ValueBacking::String,
+            "Secret" => return ValueBacking::Secret,
             _ => {}
         }
 
@@ -925,7 +925,7 @@ impl TypeRegistry {
             ("Float", ValueBacking::Float),
             ("Bool", ValueBacking::Bool),
             ("Bytes", ValueBacking::Bytes),
-            ("Secret", ValueBacking::String),
+            ("Secret", ValueBacking::Secret),
         ];
         for &(prim, backing) in PRIMITIVE_BACKINGS {
             if self.coercion_path(type_id, &TypeId::from(prim)).is_some() {
@@ -946,7 +946,7 @@ impl TypeRegistry {
             | SemanticCarrierKind::NetworkHandle
             | SemanticCarrierKind::ToolHandle => return ValueBacking::Json,
             SemanticCarrierKind::Credential => return ValueBacking::Map,
-            SemanticCarrierKind::Secret => return ValueBacking::String,
+            SemanticCarrierKind::Secret => return ValueBacking::Secret,
             SemanticCarrierKind::UnknownSemantic => return ValueBacking::Json,
         }
 
@@ -959,6 +959,7 @@ impl TypeRegistry {
         }
 
         // Fallback: Json accepts anything.
+        eprintln!("warning: unknown type '{}' defaulting to ValueBacking::Json", type_id.0);
         ValueBacking::Json
     }
 }
@@ -1690,7 +1691,7 @@ mod tests {
         let r = TypeRegistry::with_core_types();
         assert_eq!(
             r.value_backing(&TypeId::from("Secret")),
-            ValueBacking::String
+            ValueBacking::Secret
         );
     }
 

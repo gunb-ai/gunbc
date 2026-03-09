@@ -1,29 +1,14 @@
-// extdeps/github/auth.dag -- GitHub auth materialization for active workflows.
+// extdeps/github/auth.dag -- GitHub credential acquisition.
 //
-// Local dev: reads GITHUB_TOKEN env var directly.
-// CI/production: ADC file -> OAuth2 refresh -> Secret Manager.
+// Delegates to std.credentials.env_credential for materialization.
+// Service-specific knowledge (which env var, which scopes) stays here;
+// materialization mechanics are in std.credentials.
 
 module extdeps.github.auth
 
-import extdeps.cloud.gcp.gcp
-import extdeps.cloud.gcp.secret_manager
-import extdeps.shell
+import std.credentials { env_credential }
 import std.resources { Network }
 import std.types { NonEmptyStr }
-
-// T6: The ADC fallback path (gcloud ADC -> OAuth2 refresh -> Secret Manager)
-// requires multi-statement if/else blocks which the parser marks as lossy
-// (parse_if_expr expects single expressions per branch). Once Expr::Block
-// is added to the AST (T6 proper fix), restore the conditional:
-//
-//   token = if env_token.value != None {
-//     env_token.value as Secret
-//   } else {
-//     adc = gcloud.Auth.ReadADC(...)
-//     refreshed = oauth2.Google.Refresh(...)
-//     secret = gcp.SecretManager.AccessVersion(...)
-//     secret.payload as Secret
-//   }
 
 func github_token(
   project_id: NonEmptyStr = "gunbai-secrets",
@@ -31,6 +16,6 @@ func github_token(
 ) -> { token: Secret }
   uses net: Network
 {
-  env_token = shell.Env.Get(name: "GITHUB_TOKEN")
-  return { token: env_token.value as Secret }
+  cred = env_credential(env_var: "GITHUB_TOKEN")
+  return { token: cred.token }
 }

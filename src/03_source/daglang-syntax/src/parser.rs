@@ -1880,7 +1880,9 @@ impl Parser {
         self.expect(&TokenKind::Arrow)?;
         let return_type = self.parse_return_type_expr()?;
         let body = if self.eat(&TokenKind::LBrace) {
-            self.parse_fn_body_lossy()?
+            let body = self.parse_fn_body()?;
+            self.expect(&TokenKind::RBrace)?;
+            body
         } else {
             FnBody {
                 stmts: Vec::new(),
@@ -1907,7 +1909,8 @@ impl Parser {
         let outputs = self.parse_output_fields()?;
         let (uses, provides) = self.parse_uses_provides()?;
         self.expect(&TokenKind::LBrace)?;
-        let body = self.parse_func_body_lossy()?;
+        let body = self.parse_func_body()?;
+        self.expect(&TokenKind::RBrace)?;
         Ok(FuncDef {
             name,
             type_params,
@@ -1930,7 +1933,8 @@ impl Parser {
         let outputs = self.parse_output_fields()?;
         let (uses, provides) = self.parse_uses_provides()?;
         self.expect(&TokenKind::LBrace)?;
-        let body = self.parse_func_body_lossy()?;
+        let body = self.parse_func_body()?;
+        self.expect(&TokenKind::RBrace)?;
         Ok(PatternDef {
             name,
             type_params,
@@ -2165,13 +2169,15 @@ impl Parser {
                 TokenKind::Acquire => {
                     self.advance();
                     self.expect(&TokenKind::LBrace)?;
-                    let body = self.parse_func_body_lossy()?;
+                    let body = self.parse_func_body()?;
+                    self.expect(&TokenKind::RBrace)?;
                     acquire = Some(body);
                 }
                 TokenKind::Release => {
                     self.advance();
                     self.expect(&TokenKind::LBrace)?;
-                    let body = self.parse_func_body_lossy()?;
+                    let body = self.parse_func_body()?;
+                    self.expect(&TokenKind::RBrace)?;
                     release = Some(body);
                 }
                 TokenKind::Capability => {
@@ -2499,7 +2505,8 @@ impl Parser {
             self.expect(&TokenKind::RBracket)?;
         }
         self.expect(&TokenKind::LBrace)?;
-        let body = self.parse_func_body_lossy()?;
+        let body = self.parse_func_body()?;
+        self.expect(&TokenKind::RBrace)?;
         Ok(StageDef {
             name,
             body,
@@ -2827,40 +2834,7 @@ impl Parser {
         }
     }
 
-    fn parse_body_lossy<T>(
-        &mut self,
-        parse: impl FnOnce(&mut Self) -> Result<T, ParseError>,
-        make_lossy: impl FnOnce() -> T,
-    ) -> Result<T, ParseError> {
-        let start_pos = self.pos;
-        let start_errors = self.errors.len();
-        let parsed = parse(self);
 
-        let should_fallback = parsed.is_err() || self.errors.len() > start_errors;
-        if !should_fallback {
-            self.expect(&TokenKind::RBrace)?;
-            return parsed;
-        }
-
-        self.pos = start_pos;
-        self.errors.truncate(start_errors);
-        self.consume_brace_block_contents()?;
-        Ok(make_lossy())
-    }
-
-    fn parse_fn_body_lossy(&mut self) -> Result<FnBody, ParseError> {
-        self.parse_body_lossy(Self::parse_fn_body, || FnBody {
-            stmts: Vec::new(),
-            lossy: true,
-        })
-    }
-
-    fn parse_func_body_lossy(&mut self) -> Result<FuncBody, ParseError> {
-        self.parse_body_lossy(Self::parse_func_body, || FuncBody {
-            stmts: Vec::new(),
-            lossy: true,
-        })
-    }
 
     // ── fields / params ────────────────────────────────────────────
 
@@ -3521,11 +3495,13 @@ impl Parser {
     }
 
     fn consume_brace_block_expr(&mut self) -> Result<Expr, ParseError> {
-        // Statement-style brace expressions may nest loops/matches with their own
-        // blocks, so reuse statement parsing instead of manually counting braces.
-        let _ = self.parse_stmts()?;
-        self.expect(&TokenKind::RBrace)?;
-        Ok(Expr::Record(None, Vec::new()))
+        let expr = self.parse_expr(0)?;
+        if self.check(&TokenKind::RBrace) {
+            return Ok(expr);
+        }
+        Err(self.err(
+            "multi-statement blocks in expression position are not yet supported".to_string(),
+        ))
     }
 
     fn brace_contains_top_level_colon(&self) -> bool {

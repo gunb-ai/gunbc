@@ -384,13 +384,10 @@ pub fn assert_window_outputs<T>(
                 continue;
             }
 
-            // For lists, accept matching length. Fan-in order depends on
-            // topological sort which may differ between full DAG and window
-            // subDAG, causing order-dependent computations to produce
-            // different values. Since assert_window_outputs is deprecated
-            // (tautological), strict list matching is not required.
-            if let (Value::List(a), Value::List(b)) = (&expected, &actual) {
-                if a.len() == b.len() {
+            // Fan-in order is now deterministic (edges carry monotonic indices),
+            // so lists are compared by exact equality.
+            if let (Value::List(_), Value::List(_)) = (&expected, &actual) {
+                if expected == actual {
                     continue;
                 }
             }
