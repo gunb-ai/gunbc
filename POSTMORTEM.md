@@ -591,6 +591,9 @@ once the underlying paths are made principled:
   too; the rendering API should not encode "skipped but emit a file".
 - `gunbc-tests`: tracked `src/lib.rs` + `build.rs` auto-discovery scaffold so
   the crate compiles without checked-in generated sources. Revisit once
-  generated tests have a stable non-hacky home and inclusion model.
+  generated tests have a stable non-hacky home and inclusion model. In
+  particular, stop glob-including every `src/generated/*.rs` file; the module
+  index must be derived from the current testgen discovery set or the generator
+  must remove stale outputs on rename/delete.
 - dagbin cache: manual cache-epoch bump to flush stale lowered graphs after the
   lowering fix. Replace with a more principled cache key/versioning strategy.
