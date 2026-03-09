@@ -1,20 +1,21 @@
-// extdeps/github/auth.dag -- GitHub auth materialization for active workflows.
+// extdeps/github/auth.dag -- GitHub credential acquisition.
 //
-// Local dev: reads GITHUB_TOKEN env var directly.
-// CI/production: ADC file -> OAuth2 refresh -> Secret Manager.
-
-module extdeps.github.auth
-
-import extdeps.cloud.gcp.gcp
-import extdeps.cloud.gcp.secret_manager
-import extdeps.shell
-import std.resources { Network }
-import std.types { NonEmptyStr }
-
-// T6: The ADC fallback path (gcloud ADC -> OAuth2 refresh -> Secret Manager)
-// requires multi-statement if/else blocks which the parser marks as lossy
-// (parse_if_expr expects single expressions per branch). Once Expr::Block
-// is added to the AST (T6 proper fix), restore the conditional:
+// T8 (POSTMORTEM): Credential materialization now delegates to the
+// standard env_credential pattern from std.credentials instead of
+// inlining shell.Env.Get. The service-specific knowledge (which env
+// var, which scopes) stays here; the materialization mechanics are
+// in std.credentials.
+//
+// Local dev: reads GITHUB_TOKEN env var via std.credentials.env_credential.
+// CI/production: will use credential_chain (std.patterns) once T6/T7
+// are fully resolved and the execution profile can dispatch by
+// environment.
+//
+// T6: The ADC fallback path (gcloud ADC -> OAuth2 refresh -> Secret
+// Manager) requires multi-statement if/else blocks which the parser
+// marks as lossy (parse_if_expr expects single expressions per
+// branch). Once Expr::Block is added to the AST (T6 proper fix),
+// restore the conditional:
 //
 //   token = if env_token.value != None {
 //     env_token.value as Secret
@@ -24,6 +25,20 @@ import std.types { NonEmptyStr }
 //     secret = gcp.SecretManager.AccessVersion(...)
 //     secret.payload as Secret
 //   }
+//
+// FUTURE: When the full credential provider interface is implemented,
+// github_token() will be replaced by a CredentialBinding in the
+// execution profile:
+//   { intent: GitHubApi, resolution: EnvVar(name: "GITHUB_TOKEN") }
+// and callers (tools/gist.dag etc.) won't call github_token() at
+// all -- the credential will be injected into github.Gist service
+// config automatically via the auth_input binding.
+
+module extdeps.github.auth
+
+import std.credentials { env_credential }
+import std.resources { Network }
+import std.types { NonEmptyStr }
 
 func github_token(
   project_id: NonEmptyStr = "gunbai-secrets",
@@ -31,6 +46,6 @@ func github_token(
 ) -> { token: Secret }
   uses net: Network
 {
-  env_token = shell.Env.Get(name: "GITHUB_TOKEN")
-  return { token: env_token.value as Secret }
+  cred = env_credential(env_var: "GITHUB_TOKEN")
+  return { token: cred.token }
 }
