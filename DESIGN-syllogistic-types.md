@@ -1041,29 +1041,72 @@ at the family layer. If only one language has it, it belongs at the
 language layer. If nothing shares it, it doesn't need a layer at
 all.
 
-### Bootstrap and Circularity
+### Bootstrap: Language Models as IR
 
-The compiler needs language models to emit code, but if language
-models are `.dag` files compiled by the compiler, there's a
-bootstrap loop. Three stages, in order of implementation:
+The compiler needs language models to emit code. If language models
+are `.dag` files compiled by the compiler, there's a bootstrap loop.
+But `.dag` is sugar over IR. The IR (`Dag<TypeOp>`) is the canonical
+representation, and it can be constructed and consumed without the
+`.dag` pipeline.
 
-**Stage 1 (now): Rust structs mirroring DAG structure.** Define
-`LanguageModel`, `ScalarType`, `ContainerType`, `CompositePattern`
-as Rust structs. Populate them for Rust/Go/C from the existing
-match tables — this is a mechanical extraction. The Rust structs
-are the source of truth initially. Same pattern as
-`register_kernel_types()`: Rust-side bootstrap that DSL eventually
-overrides.
+This is the key insight: **language models can be expressed directly
+as IR**, using the same `Dag<TypeOp>` vocabulary that type DAGs use.
+No separate `LanguageModel` struct, no parallel type system. The
+language model for Rust IS a `Dag<TypeOp>` — a type DAG whose
+predicates describe Rust's representational capabilities.
 
-**Stage 2: Build-time compilation.** A `build.rs` step compiles
-`.dag` language models into serialized Rust data embedded in the
-compiler binary. Source of truth moves to `.dag`, but no runtime
-circularity.
+The infrastructure already supports this:
 
-**Stage 3: Full DAG bootstrap.** Language models are regular `.dag`
-files loaded at compiler startup, same as the std/ type library.
-Requires the compiler to self-host its type resolution. This is
-the end state.
+- `Dag<TypeOp>` derives `Serialize`/`Deserialize` — language models
+  can be serialized as JSON and loaded at startup
+- `type_lib` provides constructors (`refined()`, `product_resolved()`,
+  `coproduct_resolved()`, `branded()`) for building DAGs
+  programmatically
+- `register_kernel_types()` already constructs structural type DAGs
+  in pure Rust — `Bool` as `coproduct_resolved("Bool", [("True",
+  unit()), ("False", unit())])`, `Bytes` as `list(identity("Byte"))`,
+  etc.
+- The `Predicate` enum already has `Width`, `Signed`, `Domain`,
+  `Arithmetic` — exactly the predicates language models need
+
+A language model entry for Rust's `i32` is a `Dag<TypeOp>` with:
+- `Validate(Width(32))` node
+- `Validate(Signed)` node
+- `Validate(Arithmetic)` node
+- A `Brand("i32")` node carrying the syntax string
+
+This is structurally identical to our source type `Int32` — because
+it IS the same statement. `Int32` says "I am a 32-bit signed
+arithmetic type." Rust's `i32` says "I represent 32-bit signed
+arithmetic types as `i32`." Resolution is structural matching of
+two `Dag<TypeOp>` instances.
+
+**Circularity is broken** because `Dag<TypeOp>` consumption is
+independent of the `.dag` compilation pipeline. The compiler loads
+language model DAGs the same way it loads kernel type DAGs: directly
+from Rust code or deserialized data, not through parsing and
+typechecking.
+
+**Migration path:**
+
+1. **Now:** Construct language model DAGs in Rust using `type_lib`
+   helpers and `Dag::new()`. Register them in a `LanguageModelRegistry`
+   alongside the `TypeRegistry`. Same pattern as
+   `register_kernel_types()`.
+
+2. **Next:** Serialize language models as JSON IR. Load from
+   `backend/rust.ir.json`, `backend/go.ir.json`, etc. Source of
+   truth moves out of Rust code into data files.
+
+3. **Later:** Write `.dag` files that compile to the same IR.
+   `backend/rust.dag` becomes sugar for `backend/rust.ir.json`.
+   The `.dag` pipeline produces the IR; the compiler consumes
+   the IR. No circularity at any stage.
+
+The same DAG-to-DAG resolution that matches source types against
+language models is the same mechanism that will eventually power
+cross-language coercion, structural testgen, and backend-specific
+transport rewrites. One IR, one resolution mechanism, all domains.
 
 ### Connections to Coercion and Testgen
 
@@ -1880,6 +1923,50 @@ through `Int64 → Word64 → 8 × Byte → 64 × Bit → Classical`.
 | Identity type ratchet | **DONE** (ratchet test: 13 allowed identity types in with_core_types baseline) |
 | Value compatibility tightening | **DONE** (Bool accepts only "True"/"False"; Platform accepts only canonical variants) |
 
+### Honest Assessment: Substrate vs. Authority
+
+The structural substrate is real. `Dag<TypeOp>` with predicate-based
+classification, SubDag field embedding, and predicate-driven emission
+— that infrastructure works and is tested. But the system is still
+hybrid, not fully structural end-to-end.
+
+**What's real:**
+
+- Foundational scalar/type DSL definitions exist and compile
+- Sum-type registration handles unit and payload variants structurally
+- Core coproduct catalogs have `.dag` definitions
+- Product/Coproduct fields are SubDag children, not TypeId strings
+- The two-phase bootstrap (kernel → DSL merge) works correctly
+- Structural emit works for numeric types with explicit predicates
+
+**What's still nominal or mixed:**
+
+- `String`, `Int`, `Float` are identity placeholders in kernel-only
+  contexts (`with_core_types()` without DSL merge) — the ratchet
+  test documents 13 allowed identity types as the baseline
+- Containers are partially structural: `resolve_field_type_dag()`
+  handles generics, but `Map<K,V>` erases keys, container refinement
+  predicates (`where length(8)`) aren't applied, and `containers.dag`
+  is comments-only
+- Compositional width derivation doesn't exist yet — `Byte` has no
+  derived width(8), `Word32` has no derived width(32), so aliases
+  like `UInt8` and `Float32` can't recover their width from structure
+  alone
+- Production emit still routes through `emit_identity_type()` with
+  per-backend match arms — the structural path exists but callers
+  pass `None` for the registry
+- Cardinality is stored on ports, not derived from type DAGs
+- Structural coercion is a design, not an implementation — the legacy
+  `CoercionEdge`/`TypeContract` model is still live
+
+**The framing:**
+
+Not half-baked as a substrate. Half-migrated as a source of truth.
+
+The substrate is real. The authority path is still mixed. The line
+between "we have a structural type system in principle" and "the
+compiler actually lives on it" is the remaining work below.
+
 ### Design Stance: Minimal Structural Kernel
 
 The compiler owns a minimal non-DSL kernel for bootstrapping. This is
@@ -1897,19 +1984,41 @@ immediately" but "the compiler's kernel shrinks over time as more
 structure moves to DSL definitions." Identity placeholders are
 transitional debt, not the end state.
 
-### Next PR: Structural Containers + Compositional Derivation
+### Next Milestones: Containers → Derivation → Authority
 
-Per review feedback, the remaining work is the actual hard part of
-the design. The next wave focuses on structural containers and
-compositional derivation — not on adding more nominal stdlib layers.
+The remaining work is the actual hard part of the design. The first
+PR landed the substrate; the next milestones land the authority.
 
-The specific milestone: make `List<T>`, `Option<T>`, `Map<K,V>`,
-fixed arrays, and type references first-class structural constructors;
-make width/scalar-kind/encoding derivation compositional; make
-backends pattern-match normalized structure rather than nominal names.
+The critical path, in order of dependency:
 
-Once these three are real, the "truth → bit → byte → char →
-list\<char\>" story becomes implementable.
+1. **Finish structural containers** — `Map<K,V>` keys, container
+   refinement predicates, real `containers.dag` definitions. Without
+   `List<Bit> where length(8)` carrying its constraint, nothing
+   downstream can compose width.
+
+2. **Make width/scalar-kind/encoding derivation compositional** —
+   `Byte` gets width(8) from `8 × Bit`, `Word32` gets width(32)
+   from `4 × Byte`, aliases inherit. This is the structural
+   watershed: the system can recover all backend-relevant facts
+   from composition alone.
+
+3. **Wire the merged registry into production emit and replace
+   nominal fallback tables with language-model resolution** — the
+   compiler crosses the line from "structural path exists" to
+   "structural path is the only path." Language models as IR
+   (see Backend Language Models section) replace `emit_identity_type`.
+
+4. **Derive cardinality from type DAGs** instead of storing it on
+   ports.
+
+5. **Finish structural coercion** — explicit translation rules,
+   brand policy, downcast acknowledgment syntax.
+
+6. **Shrink the kernel** — `String`, `Int`, `Float` stop being
+   identity placeholders even in kernel-only contexts.
+
+That is the line between "we have a structural type system in
+principle" and "the compiler actually lives on it."
 
 #### Phase A: Structural Containers (Gap 8) — PARTIALLY DONE
 
@@ -1984,39 +2093,45 @@ ShellResponse/FileResponse/RestResponse/HttpResponse → products.
 codegen pipeline so production callers use
 `lower_to_*_with_registry(Some(reg))`.
 
-**D2.** Define hierarchical language model Rust structs: `LanguageModel`,
-`ScalarType`, `ContainerType`, `CompositePattern`. These mirror the
-DAG structure described in "Backend Language Models" above but are
-Rust-side bootstrap (Stage 1) — the source of truth moves to `.dag`
-files later.
+**D2.** Construct language models as `Dag<TypeOp>` instances using
+`type_lib` helpers. Each language model is a collection of type DAGs
+whose predicates describe the target language's representational
+capabilities. No separate `LanguageModel` struct — the IR is the
+model. See "Bootstrap: Language Models as IR" in the Backend
+Language Models section.
 
-Hierarchy:
-- `MachineFoundation`: width, signedness, domain — shared by all targets
-- `CFamily`: extends machine with C-style scalars, struct, enum, pointer
-- `Hardware`: extends machine with wire, register, no heap
-- Concrete: Rust/Go/C extend CFamily; Verilog extends Hardware
+Hierarchy (expressed as DAG composition):
+- Machine foundation: `Dag<TypeOp>` with Width/Signed/Domain predicates
+- C-family: extends machine with struct/enum/pointer patterns
+- Hardware: extends machine with wire/register patterns
+- Concrete: Rust/Go/C extend C-family; Verilog extends hardware
 
 **D3.** Populate language models for Rust, Go, C by mechanical
 extraction from the existing match tables in `emit_identity_type()`,
-`emit_platform_type()`, and container mapping. Each language model
-declares:
-- Scalar types with predicate sets (width + signedness + domain → syntax)
-- Container types with syntax templates (List → `Vec<{T}>`, etc.)
-- Composite patterns (Product(bytes, encoding) → `String`, etc.)
-- Unit/opaque fallbacks
+`emit_platform_type()`, and container mapping. Each entry becomes a
+`Dag<TypeOp>` with:
+- Predicate nodes (Width, Signed, Domain, Arithmetic) defining what
+  the target type represents
+- A Brand or Identity node carrying the syntax string
+- SubDag composition for containers and composite patterns
 
 **D4.** Implement structural resolution:
-`resolve(StructuralProperties, &LanguageModel) -> String`. The
-resolver walks the language model hierarchy, finds the most specific
-type whose predicate set is satisfied, and instantiates its syntax
-template. Recursive decomposition: if no match at the current
-structural level, peel one level from the source type and retry.
+`resolve(source_dag: &Dag<TypeOp>, model: &[Dag<TypeOp>]) -> String`.
+The resolver structurally matches the source type's predicates
+against each language model entry's predicates, finds the most
+specific match, and returns the syntax string. Recursive
+decomposition: if no match at the current structural level, peel
+one level from the source type and retry.
 
 **D5.** Replace `emit_platform_type()` and `emit_identity_type()`
 with calls to the structural resolver.
 
 **D6.** Delete `emit_identity_type()`, `map_primitive()`,
 `try_refined_to_rust()`, `map_to_c_type_static()`.
+
+**D7.** Serialize language models as JSON IR (`backend/rust.ir.json`,
+etc.) so they can be loaded as data rather than constructed in Rust
+code. This moves the source of truth from Rust to data files.
 
 #### Phase E: Structural Coercion (replaces legacy coercion model)
 
