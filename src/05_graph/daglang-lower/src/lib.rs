@@ -27,7 +27,7 @@ use daglang_syntax::ast::{
 };
 use daglang_syntax::ast_utils::{
     canonical_resource_type_name, is_type_expr_optional, resource_type_name,
-    service_call_lookup_keys, type_expr_to_string, walk_stmts,
+    service_call_lookup_keys, type_expr_to_string, walk_expr, walk_stmts,
 };
 use daglang_syntax::span::Span as SyntaxSpan;
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
@@ -1689,6 +1689,30 @@ impl DagBuilder {
         self.seen_edges
             .iter()
             .any(|(_, _, tn, tp, _)| tn == to_node && tp == to_port)
+    }
+
+    /// Add a guarded input port to an existing node and wire an edge to it.
+    ///
+    /// Used by `[when]` guard lowering: the guard condition becomes a new
+    /// input port on the transport execute node with a `Guard` that
+    /// determines whether the node executes or is skipped.
+    fn wire_guard_input(
+        &mut self,
+        execute_node_id: &str,
+        guard_port_name: &str,
+        guard: Guard,
+        source_node_id: &str,
+        source_port: &str,
+    ) {
+        if let Some(node) = self.dag.nodes.iter_mut().find(|n| n.id.0 == execute_node_id) {
+            node.inputs.push(Port::guarded_with_cardinality(
+                guard_port_name,
+                "Bool",
+                Cardinality::ZERO_OR_ONE,
+                guard,
+            ));
+        }
+        self.add_edge(source_node_id, source_port, execute_node_id, guard_port_name);
     }
 
     /// Apply a transport manifest's nodes and edges to the builder.
@@ -8048,6 +8072,20 @@ fn add_service_call_edges(
                     item_name,
                     call_index,
                 );
+                // Wire [when guard] to the execute node if present.
+                // The guard expression references a binding whose output determines
+                // whether the transport executes or is skipped.
+                if let Some(guard_expr) = &call.when_guard {
+                    wire_when_guard(
+                        builder,
+                        guard_expr,
+                        &effective_endpoint.execute_node_id,
+                        call_index,
+                        &bound_callable_sources,
+                        &bound_service_sources,
+                        &param_types,
+                    );
+                }
             }
             // Augment callable sources with for-loop result bindings so that
             // downstream fn call arguments like `file_contents: file_contents`
@@ -8465,6 +8503,84 @@ fn collect_bound_service_sources(
         }
     }
     Ok(bound)
+}
+
+/// Wire a `[when guard_expr]` condition from a func body `NodeStmt` onto the
+/// transport execute node as a guarded input port.
+///
+/// Resolves the guard expression to a source DAG node and port, then adds a
+/// guarded input port to the execute node with the appropriate `Guard` value.
+///
+/// Supported guard expression shapes:
+///   - `!binding.field`  → Guard::Eq(Bool(false)) on the field output
+///   - `binding.field`   → Guard::Eq(Bool(true)) on the field output
+///   - `!binding`        → Guard::Eq(Bool(false)) on the primary output
+///   - `binding`         → Guard::Eq(Bool(true)) on the primary output
+fn wire_when_guard(
+    builder: &mut DagBuilder,
+    guard_expr: &Expr,
+    execute_node_id: &str,
+    call_index: usize,
+    bound_callable_sources: &HashMap<String, LoweredEndpoint>,
+    bound_service_sources: &HashMap<String, ServiceTransportEndpoint>,
+    _param_types: &HashMap<String, String>,
+) {
+    let (inner_expr, negated) = match guard_expr {
+        Expr::UnaryOp(daglang_syntax::ast::UnaryOp::Not, inner) => (inner.as_ref(), true),
+        other => (other, false),
+    };
+
+    let guard = if negated {
+        Guard::Eq(Value::Bool(false))
+    } else {
+        Guard::Eq(Value::Bool(true))
+    };
+
+    let guard_port_name = format!("guard:{call_index}");
+
+    match inner_expr {
+        Expr::FieldAccess(base, field) => {
+            if let Expr::Ident(binding_name) = base.as_ref() {
+                if let Some(source) = bound_callable_sources.get(binding_name.as_str()) {
+                    builder.wire_guard_input(
+                        execute_node_id,
+                        &guard_port_name,
+                        guard,
+                        &source.node_id,
+                        field,
+                    );
+                } else if let Some(source) = bound_service_sources.get(binding_name.as_str()) {
+                    builder.wire_guard_input(
+                        execute_node_id,
+                        &guard_port_name,
+                        guard,
+                        &source.parse.node_id,
+                        field,
+                    );
+                }
+            }
+        }
+        Expr::Ident(binding_name) => {
+            if let Some(source) = bound_callable_sources.get(binding_name.as_str()) {
+                builder.wire_guard_input(
+                    execute_node_id,
+                    &guard_port_name,
+                    guard,
+                    &source.node_id,
+                    &source.primary_output,
+                );
+            } else if let Some(source) = bound_service_sources.get(binding_name.as_str()) {
+                builder.wire_guard_input(
+                    execute_node_id,
+                    &guard_port_name,
+                    guard,
+                    &source.parse.node_id,
+                    &source.parse.primary_output,
+                );
+            }
+        }
+        _ => {}
+    }
 }
 
 fn wire_profile_binding_config_inputs(
@@ -9487,6 +9603,10 @@ pub(crate) struct ServiceCallArgSite {
 pub(crate) struct ServiceCallSite {
     pub(crate) path: Vec<String>,
     pub(crate) args: Vec<ServiceCallArgSite>,
+    /// `[when expr]` guard from the enclosing `NodeStmt`, if any.
+    /// Captured so that `add_service_call_edges` can wire the guard
+    /// as a conditional input on the transport execute node.
+    pub(crate) when_guard: Option<Expr>,
 }
 
 #[derive(Debug, Clone)]
@@ -9638,14 +9758,68 @@ fn build_collection_lowering_plan(
 }
 
 pub(crate) fn collect_service_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<ServiceCallSite>) {
-    walk_stmts(stmts, &mut |expr| {
-        if let Expr::ServiceCall(path, args) = expr {
-            calls.push(ServiceCallSite {
-                path: path.clone(),
-                args: args.iter().map(service_call_arg_site).collect::<Vec<_>>(),
-            });
+    for stmt in stmts {
+        match stmt {
+            Stmt::Node(ns) => {
+                let inner = unwrap_guarded_expr(&ns.expr);
+                if let Expr::ServiceCall(path, args) = inner {
+                    calls.push(ServiceCallSite {
+                        path: path.clone(),
+                        args: args.iter().map(service_call_arg_site).collect::<Vec<_>>(),
+                        when_guard: ns.when_guard.clone(),
+                    });
+                }
+                // Walk remaining sub-expressions for nested service calls
+                // (e.g., service calls inside the when_guard itself).
+                walk_expr(&ns.expr, &mut |expr| {
+                    if let Expr::ServiceCall(path, args) = expr {
+                        if !std::ptr::eq(expr, inner) {
+                            calls.push(ServiceCallSite {
+                                path: path.clone(),
+                                args: args.iter().map(service_call_arg_site).collect::<Vec<_>>(),
+                                when_guard: None,
+                            });
+                        }
+                    }
+                });
+                if let Some(guard) = &ns.when_guard {
+                    walk_expr(guard, &mut |expr| {
+                        if let Expr::ServiceCall(path, args) = expr {
+                            calls.push(ServiceCallSite {
+                                path: path.clone(),
+                                args: args.iter().map(service_call_arg_site).collect::<Vec<_>>(),
+                                when_guard: None,
+                            });
+                        }
+                    });
+                }
+            }
+            Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => {
+                walk_expr(expr, &mut |e| {
+                    if let Expr::ServiceCall(path, args) = e {
+                        calls.push(ServiceCallSite {
+                            path: path.clone(),
+                            args: args.iter().map(service_call_arg_site).collect::<Vec<_>>(),
+                            when_guard: None,
+                        });
+                    }
+                });
+            }
+            Stmt::Return(fields) => {
+                for (_, expr) in fields {
+                    walk_expr(expr, &mut |e| {
+                        if let Expr::ServiceCall(path, args) = e {
+                            calls.push(ServiceCallSite {
+                                path: path.clone(),
+                                args: args.iter().map(service_call_arg_site).collect::<Vec<_>>(),
+                                when_guard: None,
+                            });
+                        }
+                    });
+                }
+            }
         }
-    });
+    }
 }
 
 fn collect_fn_calls_with_args(stmts: &[Stmt], calls: &mut Vec<FnCallSite>) {

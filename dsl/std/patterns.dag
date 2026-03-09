@@ -405,7 +405,10 @@ func local_auth() -> { token: Secret }
 // Ensure the service account has the required IAM bindings.
 // Uses getIamPolicy -> check -> conditional setIamPolicy.
 
-// STUB: always returns false — requires JSON array iteration (FC-CF5 prerequisite)
+// STUB: always returns false — requires JSON array iteration (FC-CF5 prerequisite).
+// WARNING: Because this is a constant-return stub, any [when] guard that depends
+// on its output will always evaluate the same way. Do NOT use this stub as a
+// guard condition for write operations until FC-CF5 lands.
 fn check_iam_binding(bindings: Json, service_account: String, role: String) -> { has_role: Bool } {
   return { has_role: false }
 }
@@ -415,7 +418,13 @@ fn add_iam_binding(bindings: Json, service_account: String, role: String) -> { u
   return { updated_bindings: bindings }
 }
 
-// STUB: depends on check_iam_binding + add_iam_binding stubs above
+// IAM preflight: read-only policy check.
+//
+// The write path (add_iam_binding → SetIamPolicy) is gated on check_iam_binding,
+// which is currently a stub (FC-CF5 prerequisite). Until the stub is replaced
+// with real JSON array iteration, the write path MUST remain guarded so that
+// preflight never performs an unconditional IAM write. Callers that lack
+// setIamPolicy permission would otherwise get false-negative preflight failures.
 func iam_preflight_check(
   access_token: Secret,
   project_id: ProjectId,
