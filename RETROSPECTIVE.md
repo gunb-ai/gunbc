@@ -20,10 +20,6 @@ Observations and architectural debt noted during development.
    `shell.OAuth2.RefreshToken`, `shell.GitHub.OIDCToken`). They are
    GCP/GitHub-specific implementations, not standard library abstractions.
 
-3. **IAM preflight** — `check_iam_binding`, `add_iam_binding`,
-   `iam_preflight_check`. These call `gcp.ResourceManager.GetIamPolicy` /
-   `SetIamPolicy` directly.
-
 **Why it matters:** `std/` should define provider-agnostic interfaces and
 generic patterns. Concrete provider implementations (GCP, GitHub, shell
 commands) belong under `extdeps/` or a dedicated `providers/` tree. Having
@@ -31,7 +27,11 @@ them in `std/` means every consumer of standard patterns transitively imports
 GCP service definitions, and it blurs the line between "what the DSL provides"
 and "what a specific cloud integration provides."
 
-**Suggested fix:** Extract auth and IAM functions into provider-specific
-modules (e.g., `extdeps/cloud/gcp/auth.dag`, `extdeps/cloud/gcp/iam_preflight.dag`).
-If `std/` needs an auth abstraction, define an interface or pattern signature
-there and let the provider modules implement it.
+**Suggested fix:** Extract auth flows into provider-specific modules
+(e.g., `extdeps/cloud/gcp/auth.dag`). If `std/` needs an auth abstraction,
+define an interface or pattern signature there and let the provider modules
+implement it.
+
+IAM preflight code (`check_iam_binding`, `add_iam_binding`,
+`iam_preflight_check`) was removed — see `POSTMORTEM.md` for analysis of the
+`[when]` guard lowering gap it exposed.

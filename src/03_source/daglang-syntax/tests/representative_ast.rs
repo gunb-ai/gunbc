@@ -246,9 +246,6 @@ fn patterns_file_contains_pattern_defs() {
             "func github_oidc",
             "func metadata_oidc",
             "func local_auth",
-            "fn check_iam_binding",
-            "fn add_iam_binding",
-            "func iam_preflight_check",
         ]
     );
 }
