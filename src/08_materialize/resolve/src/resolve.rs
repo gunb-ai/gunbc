@@ -42,9 +42,9 @@ use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv};
 
 use crate::service_ops::{
-    GenericFileParseOp, GenericFilePrepareOp, GenericLocalParseOp, GenericLocalPrepareOp,
-    GenericRestParseOp, GenericRestPrepareOp, GenericShellParseOp, GenericShellPrepareOp,
-    InterfaceStubExecuteOp, InterfaceStubParseOp, InterfaceStubPrepareOp,
+    FilesystemExecuteOp, GenericFileParseOp, GenericFilePrepareOp, GenericLocalParseOp,
+    GenericLocalPrepareOp, GenericRestParseOp, GenericRestPrepareOp, GenericShellParseOp,
+    GenericShellPrepareOp, InterfaceStubExecuteOp, InterfaceStubParseOp, InterfaceStubPrepareOp,
 };
 
 // ============================================================================
@@ -1386,6 +1386,7 @@ fn resolve_service_transport(
     // Execute nodes: for InterfaceStub specs, use the stub execute op
     // (errors in Real mode, auto-mocked in DryRun). All others use the
     // standard transport executor.
+    // Filesystem interface gets a concrete binding via FilesystemExecuteOp.
     if role == Some(TransportRole::Execute) {
         if let Some(metadata) = service_metadata {
             if let Some(ServiceOperationSpec::InterfaceStub {
@@ -1393,6 +1394,11 @@ fn resolve_service_transport(
                 capability,
             }) = &metadata.spec
             {
+                if interface == "Filesystem" {
+                    return Ok(DynOp::new(FilesystemExecuteOp {
+                        capability: capability.clone(),
+                    }));
+                }
                 return Ok(DynOp::new(InterfaceStubExecuteOp {
                     interface: interface.clone(),
                     capability: capability.clone(),
