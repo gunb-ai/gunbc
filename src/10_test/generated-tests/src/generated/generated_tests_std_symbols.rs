@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 11 obligations (0 discharged, 11 testable [0 compiler gaps]: A=4, B=7, C=0, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 8f38c2af7aea1e13d5e2d8f2afebe145ba7395003bc929976c6172a517728544
+// Content-Hash: a16159c9aafcb6266f094722f77039c9e58f62e2fe6432e6288f2bf63e4378bd
 // 
 // Probe-Observer Coverage:
 //   Probes: 3
@@ -13,8 +13,8 @@
 //     std.symbols::ansi_code (boundary mock)
 //   
 //   Observers: 3
-//     std.symbols::ansi_code [terminal] (return: NonEmpty)
-//     std.symbols::resolve_symbol [terminal] (return: NonEmpty)
+//     std.symbols::ansi_code [terminal] (return: IsString)
+//     std.symbols::resolve_symbol [terminal] (return: IsString)
 //     std.symbols::symbol_color [terminal] (return: NonEmpty)
 //   
 //   Integration tests: 0
@@ -342,7 +342,7 @@ fn test_example_std_symbols_resolve_symbol_0() {
 
     // Check output port 'return'
     let output_return = outputs.get("return").expect("output port 'return' should exist");
-    assert!(!output_return.is_empty() || matches!(*output_return, Value::Skipped | Value::Unit), "expected non-empty value, Skipped, or Unit");
+    assert!(output_return.as_str().is_some() || matches!(*output_return, Value::Skipped), "expected String or Skipped for output_return");
 }
 
 /// Node example: std.symbols::symbol_color (example 1)
@@ -382,6 +382,6 @@ fn test_example_std_symbols_ansi_code_2() {
 
     // Check output port 'return'
     let output_return = outputs.get("return").expect("output port 'return' should exist");
-    assert!(!output_return.is_empty() || matches!(*output_return, Value::Skipped | Value::Unit), "expected non-empty value, Skipped, or Unit");
+    assert!(output_return.as_str().is_some() || matches!(*output_return, Value::Skipped), "expected String or Skipped for output_return");
 }
 

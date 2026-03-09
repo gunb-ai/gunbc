@@ -421,7 +421,7 @@ persists — see "Manually maintained registries" section below.
 
 ---
 
-### P2 — Data declarations invisible to fn-body evaluator (76→658 after code_point/chars fix)
+### P2 — Data declarations invisible to fn-body evaluator (658→~95 after fix)
 
 **Invariant**: #8 (correctness by construction)
 
@@ -431,37 +431,34 @@ DSL `data` declarations (compile-time constants) are evaluated by
 service call argument references a data ident, the lowerer creates a literal
 source node.
 
-But fn-body evaluation runs at **runtime** via `evaluate_fn_body()`, which
-receives only `inputs: HashMap<String, Value>` and `sibling_fns`. The
-evaluator's `Env` has no mechanism to look up data declarations.
+But fn-body evaluation ran at **runtime** via `evaluate_fn_body()`, which
+received only `inputs: HashMap<String, Value>` and `sibling_fns`. The
+evaluator's `Env` had no mechanism to look up data declarations.
 
-This breaks when a fn body directly references a data identifier:
+**Fixed (2026-03-09):** Added `evaluate_fn_body_with_data()` in
+`daglang-lower/src/eval.rs` that accepts `data_values: &HashMap<String,
+serde_json::Value>` and seeds the evaluator's `Env` with converted values
+before executing statements. Added `json_to_eval_value()` for recursive
+`serde_json::Value` → `Value` conversion (objects → `Value::Map`, arrays →
+`Value::List`).
 
-```dag
-data standard_symbols: List<SymbolEntry> = [ ... ]
+Threading path: `LowerOutput.data_values` → `CompileLoweredResult.data_values`
+→ `CachedCompileData.data_values` (with `#[serde(default)]` for cache
+compat) → `resolve_lowered_dag_with_data()` → `resolve_node_body()` →
+`resolve_op()` → `resolve_domain()` → `FnBodyCallableOp.data_values` →
+`evaluate_fn_body_with_data()`.
 
-fn resolve_symbol(id: SymbolId, tier: Tier) -> String {
-  let entry = standard_symbols |> filter(e => e.id == id) |> ...
-  //          ^^^^^^^^^^^^^^^^ unbound at evaluation time
-}
-```
+Cache version bumped from 3 → 4 to invalidate stale cached DAGs without
+`data_values`.
 
-**Count increased after code_point/chars fix:** The 591 `unknown function`
-failures previously masked this layer. With code_point/chars now evaluating
-correctly, those fn bodies get further and hit the data declaration gap
-instead. The dominant failure is now `unbound variable: zero_width_codepoints`
-(582) from `std/unicode.dag::char_display_width`, which uses
-`zero_width_codepoints`, `zero_width_blocks`, and `wide_blocks` data
-declarations.
-
-Affected data declarations: `zero_width_codepoints`, `zero_width_blocks`,
-`wide_blocks` (from `std/unicode.dag`), `standard_symbols`, `ansi_mappings`
-(from `std/symbols.dag`), plus `items`, `entries`, `sections`, `lines`,
-`stages`, `categories` (from various modules).
-
-**Fix direction**: Thread `data_values` into `FnBodyCallableOp` and seed the
-evaluator's `Env` with data bindings before execution. The data is already
-compiled — it just isn't passed through.
+**Result:** 658 → ~95 failures. Most data declaration references now resolve.
+~38 remaining `zero_width_codepoints` failures are in generated tests that
+construct their own mocks and DAGs (bypassing `build_dsl_graph`), so
+`data_values` doesn't reach them through the test execution path. ~57
+remaining `unbound variable` failures are in other data declarations
+(`items`, `entries`, `sections`, `lines`, `stages`, `categories`) where the
+data either isn't propagated through a specific test path or the ident uses
+a qualified name not matching the `data_values` key.
 
 ---
 
@@ -703,25 +700,107 @@ Fix: added `product_witness()` in `auto_mock.rs` that detects `Product`
 type DAGs, extracts field names and their SubDag type DAGs, and recursively
 builds `Value::Map` with field-level witnesses (depth-limited to 4).
 
-**Result:** 1,013 → 888 → 1,165 (same root causes, more test modules generated).
+**Progression:** 1,013 → 888 → 1,165 (more test modules) → 791 (after all fixes).
 
-After code_point/chars eval fix, the error distribution shifted:
+Current error distribution (791 remaining):
 
 | Category | Count | Root cause |
 |----------|-------|------------|
-| `unbound variable: zero_width_*` | 582 | Data declarations not in fn body eval context (unmasked by code_point fix) |
 | `unknown function: llm.*` | 72 | Service call names leaking into fn-body eval via MatchDispatch |
-| `WrapScalar` / `{"mock": true}` | 64 | Resource handle mocks in different code path than product_witness |
-| `unbound variable` (other data) | 76 | Data declarations not in fn body eval context |
+| `unbound variable` (residual data) | ~95 | Data decls not reaching generated test paths |
+| `WrapScalar` / `{"mock": true}` | ~67 | Resource handle mocks in different code path than product_witness |
 | `no match arm matched` | 10 | Sum type placeholder strings don't match variant arms |
-| Other downstream cascades | ~361 | Effects of above |
+| Other downstream cascades | ~547 | Effects of above |
 
 These are all DSL evaluator completeness gaps, not mock generation issues.
-The dominant blocker is now the data declaration gap (658 total).
 
 ---
 
 ## Scenario backlog
+
+### P1 — Shared fn nodes caused wrong data flow across entrypoints
+
+**Date:** 2026-03-09
+**Status:** Fixed in lowering (`daglang-lower/src/lib.rs`).
+
+`gist-recent` produced an empty gist and dumped a 599K-line diff to the
+console as a boundary output. `gist-diff` was unaffected.
+
+**What happened:**
+
+`gist.dag` defines three `func` entrypoints (`gist`, `gist_diff`,
+`gist_recent`) and a shared `fn render_diff_markdown(diff, branch, base_ref)`.
+Both `gist_diff` and `gist_recent` call `render_diff_markdown`.
+
+The lowerer creates a single DAG node for each `fn` item. When multiple
+`func` callables reference the same `fn`, the lowerer wires data edges from
+caller-specific transport outputs to the shared fn node's input ports. A
+`has_edge_to_port` guard prevents duplicate edges to the same port — but
+this means only the **first** caller's edges are wired. The second caller's
+transport outputs remain unconnected.
+
+At runtime with entrypoint slicing for `gist_recent`:
+
+1. The shared `render_diff_markdown` node received inputs from `gist_diff`'s
+   context (unsuffixed Diff transport, CurrentBranch_c1, gist_diff's
+   base_ref param) — wrong data.
+2. `gist_recent`'s Diff_c1 transport parse output (`diff`) had no downstream
+   data edge, so `detect_boundaries` flagged it as a boundary output. The
+   executor printed the entire 599K-line diff to the console.
+3. The gist content was empty because `render_diff_markdown` received
+   gist_diff's mock/empty inputs, not gist_recent's actual diff.
+
+A secondary issue compounded the problem: `add_callable_nodes` creates
+`__deps` ordering edges from all called fn endpoints to the caller's target
+using the global `endpoints_by_name` map, which always points to the
+original fn node. This meant the original `render_diff_markdown` was
+backward-reachable from `gist_recent` via `__deps`, pulling `gist_diff`'s
+entire transport subgraph into the sliced DAG (7 extra nodes).
+
+**Fix — fn node cloning with `__deps` redirect:**
+
+Two changes in `add_service_call_edges` (`lib.rs` lines 7741–7821):
+
+1. **Fn node cloning:** Track per-fn-node usage across callables via
+   `fn_node_use_count`. When a fn_body node is referenced by a second
+   caller, clone it with `_fc{N}` suffix (e.g., `render_diff_markdown_fc1`).
+   Only fn items (with `fn_body: Some(..)`) are cloned — func items use
+   passthrough wiring (`__out:` ports) that doesn't carry over to clones.
+   Update `bound_callable_sources` and `fn_name_overrides` to point to
+   the clone, so `wire_fn_call_arguments` and service call arg wiring
+   resolve to the correct per-caller copy.
+
+2. **`__deps` edge redirect:** After cloning, find the `__deps` edge from
+   the original fn node to the current callable's target and redirect
+   `from_node` to the clone. This prevents backward reachability from
+   pulling in the wrong caller's transport subgraph during entrypoint
+   slicing.
+
+This mirrors the existing `clone_transport_triplet` pattern for service
+call transport nodes.
+
+**Result:**
+
+| Metric | Before | After |
+|--------|--------|-------|
+| gist-recent sliced nodes | 42 (7 from gist_diff) | 35 (clean) |
+| gist-recent progress | 42/43 done, 1 skipped | 36/36 done, 0 skipped |
+| Boundary diff dump | 599K lines on console | Gone |
+| All workspace tests | Pass | Pass |
+
+**What made this preventable:**
+
+- The `has_edge_to_port` guard was designed for a world where each fn node
+  is called from exactly one entrypoint context. The guard silently
+  succeeded (returned early) instead of failing loudly when a second caller
+  tried to wire the same port.
+- The `__deps` edges were created in `add_callable_nodes` using a global
+  endpoint map, then never revisited when fn cloning happened in a later
+  pass (`add_service_call_edges`). The two passes didn't coordinate.
+- No test exercised a `.dag` file with multiple `func` entrypoints calling
+  the same `fn` item and then slicing to the second caller.
+
+---
 
 ### P2 — `gist_recent` modeled a time cutoff as a git ref
 

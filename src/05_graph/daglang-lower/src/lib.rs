@@ -7802,7 +7802,23 @@ fn add_service_call_edges(
                     primary_output: endpoint.primary_output.clone(),
                 };
                 fn_name_overrides.insert(fn_name.to_string(), cloned_ep.clone());
-                bound_callable_sources.insert(binding.to_string(), cloned_ep);
+                // Redirect the __deps edge from the original fn node to the
+                // clone. add_callable_nodes created a __deps edge from the
+                // original endpoint to this callable's target, but the clone
+                // is the actual data supplier for this caller.
+                let original_id = endpoint.node_id.clone();
+                let original_output = endpoint.primary_output.clone();
+                bound_callable_sources.insert(binding.to_string(), cloned_ep.clone());
+                for edge in &mut builder.dag.edges {
+                    if edge.from_node.0 == original_id
+                        && edge.from_port.0 == original_output
+                        && edge.to_node.0 == target.node_id
+                        && edge.to_port.0 == PortName::DEPS
+                    {
+                        edge.from_node = cloned_ep.node_id.clone().into();
+                        break;
+                    }
+                }
             }
             // Build per-callable endpoints_by_name with overrides if any
             // fn nodes were cloned, so wire_fn_call_arguments and service
