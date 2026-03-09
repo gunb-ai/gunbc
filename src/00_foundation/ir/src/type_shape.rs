@@ -240,11 +240,26 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
 /// base properties like width and signedness.
 pub fn derive_structural_properties(dag: &Dag<TypeOp>) -> StructuralProperties {
     let mut props = StructuralProperties::default();
+
+    // Step 1: Collect explicit predicates on this DAG's own Validate nodes.
     for node in &dag.nodes {
         if let NodeBody::Opaque(TypeOp::Validate(pred)) = &node.body {
             collect_predicate(&mut props, pred);
         }
-        // Recurse into SubDags — inherit missing properties from children.
+    }
+
+    // Step 2: Compositional width derivation for Product types.
+    // Must run BEFORE SubDag recursion — otherwise recursion inherits the
+    // element width (e.g., Bit's width=1) rather than the composed width
+    // (e.g., Byte's width=8×1=8).
+    if props.width.is_none() {
+        if let Some(width) = derive_compositional_width(dag) {
+            props.width = Some(width);
+        }
+    }
+
+    // Step 3: Recurse into SubDags — inherit missing properties from children.
+    for node in &dag.nodes {
         if let NodeBody::SubDag(subdag, _) = &node.body {
             let inner = derive_structural_properties(subdag);
             if props.width.is_none() {
@@ -265,26 +280,18 @@ pub fn derive_structural_properties(dag: &Dag<TypeOp>) -> StructuralProperties {
         }
     }
 
-    // Compositional width derivation: if this is a Product with exactly one
-    // field that is a List container with a Length(N) predicate, and the list
-    // element has known width W, then this type has width N * W.
-    // This enables Byte(8×1=8), Word32(4×8=32), etc.
-    if props.width.is_none() {
-        if let Some(width) = derive_compositional_width(dag) {
-            props.width = Some(width);
-        }
-    }
-
     props
 }
 
 /// Derive width compositionally from Product→List→element structure.
 ///
-/// Walks Product nodes with exactly one field. If that field's SubDag is a
-/// List container with a `Length(N)` predicate, and the list element has
+/// Walks Product nodes with exactly one field. If that field is (or contains)
+/// a List container with a `Length(N)` predicate, and the list element has
 /// known width `W`, the composed width is `N * W`.
+///
+/// Handles the `refined_with_base` pattern where the List is nested inside
+/// a `base_type` SubDag with `Validate(Length(N))` at the outer level.
 fn derive_compositional_width(dag: &Dag<TypeOp>) -> Option<u16> {
-    // Find a Product node with exactly one field.
     for node in &dag.nodes {
         if let NodeBody::Opaque(TypeOp::Product(fields)) = &node.body {
             if fields.len() != 1 {
@@ -294,32 +301,70 @@ fn derive_compositional_width(dag: &Dag<TypeOp>) -> Option<u16> {
             let child_id = format!("field_{field_name}");
             let field_dag = named_subdag(dag, &child_id)?;
 
-            // Check if the field is a List container.
-            let mut is_list = false;
-            let mut list_length: Option<u64> = None;
-            for fnode in &field_dag.nodes {
-                if let NodeBody::Opaque(TypeOp::Wrap(WrapperKind::List)) = &fnode.body {
-                    is_list = true;
-                }
-                if let NodeBody::Opaque(TypeOp::Validate(Predicate::Length(l))) = &fnode.body {
-                    list_length = Some(*l);
-                }
+            if let Some(width) = extract_list_composed_width(field_dag) {
+                return Some(width);
             }
-
-            if !is_list {
-                continue;
-            }
-            let length = list_length?;
-
-            // Get the element type's width from the list's inner SubDag.
-            let element_dag = inner_subdag(field_dag)?;
-            let elem_props = derive_structural_properties(element_dag);
-            let elem_width = elem_props.width?;
-
-            return Some((length as u16) * elem_width);
         }
     }
     None
+}
+
+/// Extract composed width from a DAG that represents a constrained list.
+///
+/// Handles two layouts:
+/// 1. Direct: `Wrap(List)` + `Validate(Length(N))` + element SubDag at same level
+/// 2. Refined: `SubDag("base_type", list_dag)` + `Validate(Length(N))` at outer level
+///    (produced by `refined_with_base(list_dag, [Length(N)])`)
+fn extract_list_composed_width(dag: &Dag<TypeOp>) -> Option<u16> {
+    let mut is_list = false;
+    let mut list_length: Option<u64> = None;
+    let mut element_dag: Option<&Dag<TypeOp>> = None;
+
+    for fnode in &dag.nodes {
+        match &fnode.body {
+            NodeBody::Opaque(TypeOp::Wrap(WrapperKind::List)) => {
+                is_list = true;
+            }
+            NodeBody::Opaque(TypeOp::Validate(Predicate::Length(l))) => {
+                list_length = Some(*l);
+            }
+            _ => {}
+        }
+    }
+
+    if is_list {
+        element_dag = inner_subdag(dag);
+    } else {
+        // Check for refined_with_base pattern: base_type SubDag contains the list
+        if let Some(base) = named_subdag(dag, "base_type") {
+            for bnode in &base.nodes {
+                if let NodeBody::Opaque(TypeOp::Wrap(WrapperKind::List)) = &bnode.body {
+                    is_list = true;
+                }
+            }
+            if is_list {
+                element_dag = inner_subdag(base);
+                if list_length.is_none() {
+                    for fnode in &dag.nodes {
+                        if let NodeBody::Opaque(TypeOp::Validate(Predicate::Length(l))) =
+                            &fnode.body
+                        {
+                            list_length = Some(*l);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if !is_list {
+        return None;
+    }
+    let length = list_length?;
+    let elem_props = derive_structural_properties(element_dag?);
+    let elem_width = elem_props.width?;
+
+    Some((length as u16) * elem_width)
 }
 
 /// Collect a single predicate into structural properties.
@@ -777,5 +822,79 @@ mod tests {
         assert_eq!(props.signed, Some(true));
         assert!(props.arithmetic);
         assert_eq!(props.domain.as_deref(), Some("ieee754_binary32"));
+    }
+
+    // =========================================================================
+    // Phase A2: Container refinement predicates propagate
+    // =========================================================================
+
+    #[test]
+    fn container_refinement_length_propagates() {
+        let bit_dag = type_lib::refined("Bit", vec![Predicate::Width(1)]);
+        let list_bit = type_lib::list(bit_dag);
+        let list_bit_len8 = type_lib::refined_with_base("Byte.bits", list_bit, vec![Predicate::Length(8)]);
+
+        let props = derive_structural_properties(&list_bit_len8);
+        assert_eq!(props.length, Some(8), "Length(8) predicate should propagate through container refinement");
+        assert_eq!(props.width, Some(1), "Inner element width should be inherited from SubDag");
+    }
+
+    // =========================================================================
+    // Phase B: Compositional width derivation
+    // =========================================================================
+
+    #[test]
+    fn compositional_width_byte_from_8_bits() {
+        let bit_dag = type_lib::refined("Bit", vec![Predicate::Width(1)]);
+        let list_bit_len8 = type_lib::refined_with_base(
+            "Byte.bits",
+            type_lib::list(bit_dag),
+            vec![Predicate::Length(8)],
+        );
+        let byte_dag = type_lib::product_resolved("Byte", vec![("bits", list_bit_len8)]);
+
+        let props = derive_structural_properties(&byte_dag);
+        assert_eq!(props.width, Some(8), "Byte = Product(bits: List<Bit> where length(8)) should derive width 8×1=8");
+    }
+
+    #[test]
+    fn compositional_width_word32_from_4_bytes() {
+        let bit_dag = type_lib::refined("Bit", vec![Predicate::Width(1)]);
+        let byte_bits = type_lib::refined_with_base(
+            "Byte.bits",
+            type_lib::list(bit_dag),
+            vec![Predicate::Length(8)],
+        );
+        let byte_dag = type_lib::product_resolved("Byte", vec![("bits", byte_bits)]);
+        let list_byte_len4 = type_lib::refined_with_base(
+            "Word32.bytes",
+            type_lib::list(byte_dag),
+            vec![Predicate::Length(4)],
+        );
+        let word32_dag = type_lib::product_resolved("Word32", vec![("bytes", list_byte_len4)]);
+
+        let props = derive_structural_properties(&word32_dag);
+        assert_eq!(props.width, Some(32), "Word32 = Product(bytes: List<Byte> where length(4)) should derive width 4×8=32");
+    }
+
+    #[test]
+    fn width_inheritance_through_alias() {
+        let bit_dag = type_lib::refined("Bit", vec![Predicate::Width(1)]);
+        let byte_bits = type_lib::refined_with_base(
+            "Byte.bits",
+            type_lib::list(bit_dag),
+            vec![Predicate::Length(8)],
+        );
+        let byte_dag = type_lib::product_resolved("Byte", vec![("bits", byte_bits)]);
+        let uint8_dag = type_lib::refined_with_base(
+            "UInt8",
+            byte_dag,
+            vec![Predicate::Unsigned, Predicate::Arithmetic],
+        );
+
+        let props = derive_structural_properties(&uint8_dag);
+        assert_eq!(props.width, Some(8), "UInt8 = Byte where unsigned, arithmetic should inherit width 8 from Byte");
+        assert_eq!(props.signed, Some(false));
+        assert!(props.arithmetic);
     }
 }
