@@ -299,73 +299,60 @@ a pure truth-value coproduct with two unit variants.
 - Single-field payload variants → resolved field type DAG
 - Multi-field payload variants → anonymous product DAG
 
-### FIXED: Merge Order / Stale-Child Problem (Partial)
+### FIXED: Merge Order / Stale-Child Problem
 
-**Problem:** `merged_type_registry()` called `with_core_types()` which
-registered core types (CliResult, ContentEncoding, etc.) BEFORE the DSL
-merge. Core types that reference primitives (e.g., `CliResult` with
-`exit_code: Int`) embedded identity-placeholder child DAGs. The
-subsequent `merge_dsl_types()` only overwrote top-level names — it did
-not rebuild already-registered core types. So core types kept stale
-placeholder children even after structural DSL definitions were merged.
+**Problem:** `merged_type_registry()` previously registered core types
+BEFORE the DSL merge, so Rust-side coproduct registrations clobbered
+DSL structural types.
 
-**Fix (this PR):** `merged_type_registry()` now uses the sequence:
-kernel → DSL merge → core types. Core types are registered AFTER the
-DSL merge, so their child type lookups find structural DAGs.
+**Fix:** `merged_type_registry()` now uses the sequence:
+kernel → core types → DSL merge. Rust-side core types are registered
+FIRST as bootstrap fallbacks, then `merge_dsl_types()` overrides them
+with DSL structural definitions. DSL always wins.
 
-**Remaining risk:** `register_core_types()` calls `register_product()`
-and `register_coproduct()` which resolve child types through the
-registry at registration time. If a core type references another core
-type that hasn't been registered yet in the same batch, the child will
-still be an identity placeholder. Mitigation: topological ordering of
-`register_core_types()`, or a rebuild pass. Low priority — most core
-types reference only primitives, which are resolved after DSL merge.
+### Gap 1: Kernel Types — Partially Resolved
 
-### Gap 1: Kernel Types Are Still Identity Placeholders
+`register_kernel_types()` registers `String`, `Int`, `Float` as
+identity placeholders. These are overridden by DSL merge
+(`string_type.dag`, `integer.dag`, `float.dag`), so post-merge they
+are structural.
 
-`register_kernel_types()` registers `String`, `Bool`, `Int`, `Float`,
-`Bytes`, `Secret` as `identity(name)` — single-node passthrough DAGs
-with no structural predicates. The DSL files define these types
-structurally, but the registry doesn't compose them.
+`Bool`, `Bytes`, `Secret` are already structural in the kernel:
+- `Bool` → Coproduct(True: Unit, False: Unit)
+- `Bytes` → List\<Byte\>
+- `Secret` → Branded\<String\>
 
-**Impact:** The structural emit path (`emit_platform_type`) works for
-refined types like `Int32` that have explicit predicates, but the
-default aliases (`Int`, `String`, `Bool`) fall through to the
-name-match table because their registry DAGs are identity nodes.
-
-**Fix:** Replace `identity("String")` with the structural DAG from
-`string_type.dag`. Replace `identity("Bool")` with the `Classical`
-coproduct from `logic.dag`. Etc. The DSL files exist — the registry
-just needs to compose them instead of storing placeholders.
-
-| Type   | Current DAG          | Target DAG                       |
+| Type   | Kernel DAG           | After DSL merge                  |
 |--------|----------------------|----------------------------------|
 | String | `identity("String")` | Product(bytes: List\<Byte\>, encoding: Encoding) |
-| Bool   | `identity("Bool")`   | Coproduct(True, False)           |
+| Bool   | Coproduct(True, False) | Same (no DSL override)         |
 | Int    | `identity("Int")`    | Int64 alias → Word64 + Signed + Arithmetic |
 | Float  | `identity("Float")`  | Float64 alias → Word64 + Domain(ieee754) |
-| Bytes  | `identity("Bytes")` | List\<Byte\>                      |
-| Secret | `identity("Secret")` | String + Brand("Secret")         |
+| Bytes  | List\<Byte\>          | Same (no DSL override)          |
+| Secret | Branded\<String\>    | Same (no DSL override)           |
+
+**Remaining gap:** `String`, `Int`, `Float` are identity in kernel-only
+contexts (`with_core_types()` without DSL merge). This is acceptable
+for bootstrapping — the ratchet test documents the baseline.
 
 ### Gap 2: Hardcoded Name-Match Tables in Emit Layer
 
-`emit_identity_type()` in `type_mapping.rs` has a 60-line match
-statement replicated per backend (Rust, Go, C) that maps type names
-to target-language syntax. This same list is duplicated in
-`map_primitive()` (type_codegen.rs) and `map_to_c_type_static()`
-(lower_c.rs) — 5 independent copies of the same knowledge.
+`emit_identity_type()` in `type_mapping.rs` has a match statement
+per backend (Rust, Go, C) that maps type names to target-language
+syntax. `map_to_c_type_static()` has been deleted.
 
-**Impact:** Adding a type requires updating up to 5 locations.
-Adding a backend requires adding another arm to every match. This is
-the exact problem the syllogistic system was designed to eliminate.
+**Impact:** Adding a type requires updating the match arms. Adding
+a backend requires adding another arm.
 
-**Root cause:** Gap 1. Because kernel types are identity placeholders,
-the structural emit path has nothing to work with, so the name-match
-table is the only thing that produces correct output.
+**Root cause:** Named products/coproducts still route through
+`emit_identity_type()` (see `emit_shape` arms for `Product(Some(name))`
+and `Coproduct(Some(name))`). This is correct for language primitives
+(String→String, Bool→bool) and opaque runtime types, but it means
+the emit path is not fully structural yet.
 
-**Fix:** Eliminate Gap 1 (structural kernel types), then the
-structural path handles all types and `emit_identity_type()` becomes
-dead code.
+**Fix (deferred):** Wire `CompileOutput::merged_type_registry()` to
+production emit paths (Gap 3), then backend rule sets can replace
+name-match tables. See Phase D.
 
 ### Gap 3: Registry Not Threaded to Emit Layer in Production
 
@@ -386,10 +373,11 @@ enum exists.
 `Port::with_cardinality` is already `pub(crate)` — no post-construction
 mutation from outside the IR crate.
 
-### Gap 6: `register_core_types()` Coproduct Lists (PARTIALLY RESOLVED)
+### ~~Gap 6: `register_core_types()` Coproduct Lists~~ (RESOLVED)
 
-`register_core_types()` hardcodes variant lists for ~10 coproducts.
-All now have corresponding DSL definitions in `.dag` files:
+`register_core_types()` hardcodes variant lists for 11 coproducts.
+All now use `"Unit"` variant payloads (matching DSL unit variants),
+and all have corresponding DSL definitions in `.dag` files:
 - ContentEncoding → `std/types.dag`
 - SemanticColor, Tier, SymbolId → `std/symbols.dag`
 - FermiDepth → `std/types.dag`
@@ -398,8 +386,9 @@ All now have corresponding DSL definitions in `.dag` files:
 - WarningPolicy → `std/policy.dag`
 - CloudRuntime, AuthScheme → `std/cloud.dag`
 
-The Rust-side registrations remain as bootstrap fallbacks for contexts
+The Rust-side registrations are bootstrap fallbacks for contexts
 without DSL compilation. `merge_dsl_types()` overrides them.
+Merge order (core types first, DSL merge second) ensures DSL wins.
 
 ### Gap 7: Transport Rewrite Tables
 
@@ -408,30 +397,24 @@ hardcoded name→function pairs mapping abstract transport operations
 to target-language runtime functions. These are replicated across
 backends with minor syntax differences.
 
-### Gap 8: Non-Structural Generic/Container Composition (NEW)
+### Gap 8: Generic/Container Composition (PARTIALLY RESOLVED)
 
-`std.containers.dag` is documentation-only — it describes `List<T>`,
-`Option<T>`, `Map<K,V>`, `Set<T>` in comments but provides no
-structural definitions. `resolve_field_type_dag()` does not handle
-`TypeExpr::Generic(...)` — it falls back to `type_expr_to_string()`
-which produces "List<Bit>" as a flat string, then identity fallback.
+`resolve_field_type_dag()` now handles `TypeExpr::Generic(...)` for
+`List<T>`, `Option<T>`, `Set<T>`, and `Map<K,V>`. Container types
+produce structural DAGs, not identity strings.
 
-**Impact:** The truth→bit→byte derivation chain breaks at containers.
-`type Byte { bits: List<Bit> where length(8) }` registers the field
-type for `bits` as `identity("List<Bit>")` — a flat string with no
-structural content. The container is nominal, not structural.
+**Resolved:** `List<Bit>` → `type_lib::list(resolve(Bit))`, etc.
+`TypeExpr::Optional` and `TypeExpr::Refined` also structurally resolve.
 
-**Fix:** Make `List<T>`, `Option<T>`, `Map<K,V>`, and fixed arrays
-first-class structural constructors in the registry path.
-`resolve_field_type_dag()` must handle `TypeExpr::Generic` by:
-1. Resolving the inner type parameter(s) through the registry
-2. Wrapping in the appropriate `type_lib::list()` / `type_lib::optional()` /
-   `type_lib::map()` constructor
-3. Applying any refinement predicates (e.g., `where length(8)`)
+**Remaining gap: Map key erasure.** `Map<K,V>` resolves only the value
+type — `type_lib::map(val)` drops the key. `Map<String, Int>` and
+`Map<Int, Int>` are structurally indistinguishable. Fix requires
+extending `type_lib::map()` to accept key + value DAGs.
 
-This is the **single most important gap** for the structural watershed.
-Without structural containers, the entire bit→byte→word→integer
-derivation chain is broken at every product boundary.
+**Remaining gap: Refinement predicates on containers.** `List<Bit>
+where length(8)` does not yet apply the `length(8)` predicate to the
+container DAG. The derivation chain `Byte.bits → List<Bit> where
+length(8)` is resolved as a plain `List<Bit>` without the constraint.
 
 ### Gap 9: No Compositional Width Derivation (NEW)
 
@@ -1451,16 +1434,19 @@ through `Int64 → Word64 → 8 × Byte → 64 × Bit → Classical`.
 | Task 0: Parser accepts new predicates | **DONE** |
 | Task 1: Alias types register in TypeRegistry | **DONE** |
 | Task 2: Product/Coproduct fields become SubDags | **DONE** |
-| Task 3: Migrate Bool (DSL definition) | **DONE** (logic.dag exists) |
+| Task 3: Migrate Bool (DSL definition) | **DONE** (logic.dag exists; kernel has structural Coproduct(True, False)) |
 | Task 4: Migrate Int, Float (DSL definitions) | **DONE** (bit.dag, integer.dag, float.dag exist; structural emit works for predicates) |
-| Task 5: Migrate String, Bytes (DSL definitions) | **DONE** (string_type.dag, encoding.dag exist; registry still uses identity for kernel) |
-| Task 6: Migrate containers (DSL definitions) | **PARTIAL** (containers.dag exists as comments; structural in registry) |
-| Task 7: Emit backends read structure | **PARTIAL** (structural path exists but not wired in production) |
+| Task 5: Migrate String, Bytes (DSL definitions) | **DONE** (string_type.dag, encoding.dag exist; kernel identity overridden by DSL merge) |
+| Task 6: Migrate containers (DSL definitions) | **PARTIAL** (`resolve_field_type_dag` handles List/Option/Set/Map structurally; Map key erased; container refinement predicates not applied) |
+| Task 7: Emit backends read structure | **PARTIAL** (structural path exists but not wired in production — Gap 3) |
 | Task 8: Delete BaseType, string classification | **DONE** |
-| Task 9: Cardinality derived, Guard→Predicate | **PARTIAL** (edge guards migrated; Guard still in executor; cardinality still stored) |
+| Task 9: Cardinality derived, Guard→Predicate | **PARTIAL** (edge guards migrated; cardinality still stored on ports) |
 | Task 10: Delete MetadataPayload, PlatformRepr | **DONE** (MetadataPayload deleted; PlatformRepr → StructuralProperties) |
 | Sum type registration | **DONE** (unit variants get Unit DAG, payload variants get resolved type DAGs) |
-| Merge order / stale-child | **DONE** (merged_type_registry: kernel → DSL merge → core types) |
+| Coproduct variant payloads | **DONE** (all 11 Rust-side coproducts use "Unit" payloads, matching DSL unit variants) |
+| Merge order / stale-child | **DONE** (merged_type_registry: kernel → core types → DSL merge; DSL wins) |
+| Identity type ratchet | **DONE** (ratchet test: 13 allowed identity types in with_core_types baseline) |
+| Value compatibility tightening | **DONE** (Bool accepts only "True"/"False"; Platform accepts only canonical variants) |
 
 ### Design Stance: Minimal Structural Kernel
 
@@ -1469,11 +1455,10 @@ explicit and intentional. The kernel provides DAG infrastructure, not
 types. DSL-defined types are the library built on top of that kernel.
 
 The kernel registers identity placeholders so the DSL typechecker can
-reference primitive names during compilation. After typecheck,
-`merge_dsl_types()` overwrites placeholders with structural
-definitions from the compiled `.dag` files. Core types
-(`register_core_types()`) are registered after the merge so they
-resolve children structurally.
+reference primitive names during compilation. Core types
+(`register_core_types()`) are registered as Rust-side fallbacks, then
+`merge_dsl_types()` overwrites them with structural definitions from
+the compiled `.dag` files. DSL always takes precedence.
 
 The goal is NOT "the compiler must read DSL for every primitive
 immediately" but "the compiler's kernel shrinks over time as more
@@ -1494,37 +1479,29 @@ backends pattern-match normalized structure rather than nominal names.
 Once these three are real, the "truth → bit → byte → char →
 list\<char\>" story becomes implementable.
 
-#### Phase A: Structural Containers (Gap 8) — THE CRITICAL PATH
+#### Phase A: Structural Containers (Gap 8) — PARTIALLY DONE
 
-Make generic container types first-class structural constructors in
-the registry. This is the single most important remaining gap.
-
-**A1.** Extend `resolve_field_type_dag()` to handle
+**A1. DONE.** `resolve_field_type_dag()` handles
 `TypeExpr::Generic(name, params)`:
 - `List<T>` → `type_lib::list(resolve_field_type_dag(T, registry))`
 - `Option<T>` → `type_lib::optional(resolve_field_type_dag(T, registry))`
-- `Map<K,V>` → `type_lib::map(resolve(K), resolve(V))`
+- `Map<K,V>` → `type_lib::map(resolve(V))` (**key erased — A1a**)
 - `Set<T>` → `type_lib::set(resolve_field_type_dag(T, registry))`
 
-**A2.** Apply refinement predicates to generic containers:
-- `List<Bit> where length(8)` → list DAG with Length(8) validation node
-- This enables `Byte.bits` to be a structurally-typed fixed-length list
+**A1a. DEFERRED.** Map key type erasure. `type_lib::map()` only
+accepts a value DAG. Fix requires extending to `map(key_dag, val_dag)`
+and updating `ContainerShape::Map`, `TypeShape`, structural
+compatibility, and all downstream consumers.
 
-**A3.** Replace `containers.dag` documentation-only comments with
-structural definitions:
-```dag
-type List<T> = { elements: Collection<T> }
-type Option<T> = { value: Optional<T> }
-type Map<K, V> = { entries: List<{ key: K, value: V }> }
-type Set<T> = { elements: List<T> where unique }
-```
-(Or keep containers as registry-level constructors with DSL syntax
-sugar — the key is that `resolve_field_type_dag` produces structural
-DAGs, not identity strings.)
+**A2. DEFERRED.** Refinement predicates on containers.
+`List<Bit> where length(8)` → list DAG without Length(8) constraint.
+Needed for compositional width derivation (Phase B).
 
-**A4.** Verify: `Byte.bits` resolves to a structural
-`List(element: Bit(width(1))) where Length(8)` DAG, not
-`identity("List<Bit>")`.
+**A3. DEFERRED.** Replace `containers.dag` documentation-only comments
+with structural definitions.
+
+**A4. DEFERRED.** Verify `Byte.bits` resolves to structural
+`List(element: Bit(width(1))) where Length(8)` — blocked on A2.
 
 #### Phase B: Compositional Width Derivation (Gap 9)
 
@@ -1551,20 +1528,23 @@ Make `derive_structural_properties()` compose width from structure.
 registry's `UInt8` returns `width: Some(8), signed: Some(false),
 arithmetic: true`. Same for `Float32` → `width: Some(32)`.
 
-#### Phase C: Structural Kernel Types (Gap 1)
+#### Phase C: Structural Kernel Types (Gap 1) — PARTIALLY DONE
 
-With containers and width derivation working, kernel types can
-become structural.
+**C1. PARTIAL.** `register_kernel_types()` has structural DAGs for:
+- `Bool` → Coproduct(True: Unit, False: Unit)
+- `Bytes` → List\<Byte\>
+- `Secret` → Branded\<String\>
 
-**C1.** `register_kernel_types()` — replace `identity("String")`
-with the structural DAG composed from `string_type.dag`. Same for
-Bool (from `logic.dag` Classical), Int (from `integer.dag` Int64
-chain), Float (from `float.dag` Float64 chain), Bytes
-(List\<Byte\>), Secret (branded String).
+`String`, `Int`, `Float` remain identity in kernel but are overridden
+by DSL merge (`string_type.dag`, `integer.dag`, `float.dag`).
 
-**C2.** Verify: `audit_identity_types()` on the merged registry
-returns a documented baseline (only truly opaque types like `Any`,
-`TransportRequest`, etc.).
+**C2. DONE.** `ratchet_identity_types_in_core_registry` test documents
+the baseline: 13 allowed identity types in `with_core_types()`. The
+merged registry has fewer (DSL overrides String, Int, Float, Credential).
+
+**C3. DONE.** `register_core_types()` identity placeholders reduced:
+Platform → coproduct, Timestamp → refined Int, NetworkHandle → Unit,
+ShellResponse/FileResponse/RestResponse/HttpResponse → products.
 
 #### Phase D: Wire Registry to Emit + Backend Rules (Gaps 2-3)
 
@@ -1591,27 +1571,36 @@ retry.
 
 #### Phase E: Structural Coercion (replaces legacy coercion model)
 
-With structural containers and compositional width derivation in
-place, the derivation chain is walkable. Coercion becomes a DAG walk.
+**Open design decisions (deferred to next PR):**
 
-**E1.** Implement `structural_coercion_path(from_dag, to_dag)` — finds
-the derivation path between two type DAGs by walking the std/ type
-hierarchy. Returns the sequence of structural steps (embed, refine,
-extract, strip).
+1. **Derivation ≠ coercion.** A derivation path (Bit → Byte) does not
+   imply a free cast. `Bit → Byte` is composition (8 bits), not
+   supertype. `Int32 → Float32` needs conversion semantics (same width,
+   different interpretation). The coercion search space is the derivation
+   graph, but each edge needs an explicit structural translation rule.
 
-**E2.** Replace `is_compatible()` — instead of L1/L2/L3 checks and
-BFS on manual edges, check whether a structural upcast path exists
-between the two type DAGs.
+2. **Brand semantics.** `structural_shapes_compatible()` currently
+   strips brands when comparing `Brand(_, inner) → other`. This makes
+   `Secret → String` structurally compatible, which may be wrong for
+   sensitive types. Options: (a) brands are one-way refinements
+   (current), (b) brands are strict nominal barriers, (c) per-brand
+   policy. Decision needed before implementing coercion.
 
-**E3.** Add `.dag` syntax for downcast acknowledgment — explicit
-annotation that a lossy coercion is intentional.
+3. **Post-hoc validation.** Legacy coercion edges are gone. The new
+   `is_compatible()` uses structural shape comparison + predicate
+   entailment. If any graph construction path bypasses the builder
+   (deserialization, manual DAG construction, test fixtures), there
+   is no post-hoc coercion safety net. Audit needed.
 
-**E4.** Delete legacy coercion infrastructure: `CoercionEdge`,
-`coercion_edges` HashMap, `register_coercion_edge()`,
-`coercion_path()`, `coercion_neighbors()`, `TypeContract`,
-`can_safely_coerce_to_with()`, `base_type_upcasts_to()` (both the
-registry method and the hardcoded free function in contract.rs),
-`base_type_join()`, `base_type_meet()`, `CoercionStrategy`.
+**E1.** Implement `structural_coercion_path(from_dag, to_dag)` using
+explicit translation rules over structure, not automatic derivation
+path casts.
+
+**E2.** Replace `is_compatible()` with structural coercion check.
+
+**E3.** Add `.dag` syntax for downcast acknowledgment.
+
+**E4.** Delete remaining legacy coercion infrastructure.
 
 #### Phase F: Fail-Loud + Cleanup (Gaps 4-7, 10)
 
