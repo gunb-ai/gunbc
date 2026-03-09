@@ -1149,7 +1149,6 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 name: "mock_spec".to_string(),
                 return_type: "MockSpec".to_string(),
                 body: vec![
-                    Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
                     Stmt::tail(Expr::var(mock_spec_fn)),
                 ],
             });

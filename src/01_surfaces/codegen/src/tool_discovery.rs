@@ -438,7 +438,7 @@ fn build_tool_defs_from_cached_params(
         for ep in module_entrypoints {
             let subcmd_name = ep.func_name.replace('_', "-");
             let graph_builder_args = dsl_graph_builder_args(rel_path, &ep.func_name);
-            let mock_spec = format!("gunbc_test::auto_mock_spec(&dag, \"{}\")", subcmd_name,);
+            let mock_spec = format!("gunbc_test::auto_mock_spec(&dag, \"{}\", None)", subcmd_name,);
             let entrypoints = func_params
                 .get(&ep.func_name)
                 .map(|params| derive_entrypoints(params))
@@ -458,7 +458,7 @@ fn build_tool_defs_from_cached_params(
         }
 
         let first_args = dsl_graph_builder_args(rel_path, &module_entrypoints[0].func_name);
-        let mock_spec = format!("gunbc_test::auto_mock_spec(&dag, \"{}\")", module_tool_name,);
+        let mock_spec = format!("gunbc_test::auto_mock_spec(&dag, \"{}\", None)", module_tool_name,);
 
         let mut tool = ToolDef::new(
             String::from("crate"),
@@ -494,7 +494,7 @@ fn build_tool_defs_from_cached_params(
         let tool_name = ep.func_name.replace('_', "-");
         let graph_builder_args = dsl_graph_builder_args(rel_path, &ep.func_name);
         let description = humanize_tool_name(&tool_name);
-        let mock_spec = format!("gunbc_test::auto_mock_spec(&dag, \"{}\")", tool_name,);
+        let mock_spec = format!("gunbc_test::auto_mock_spec(&dag, \"{}\", None)", tool_name,);
         let entrypoints = func_params
             .get(&ep.func_name)
             .map(|params| derive_entrypoints(params))

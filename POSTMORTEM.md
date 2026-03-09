@@ -503,27 +503,37 @@ The gap: the invariant says "no hacks or fallbacks" but enforcement is zero.
 ### Fix: structured diagnostics that fail closed
 
 Replace `eprintln!("warning: ...")` + default-value with a structured
-diagnostic channel that tests and CI can assert against.
+diagnostic channel. Ban `eprintln!` via `disallowed_methods`.
 
-1. **`Diagnostics` accumulator.** A `Vec<Diagnostic>` threaded through
-   compilation, lowering, mock generation, and emission. Each fallback site
-   pushes a typed diagnostic (severity, code, message, source location)
-   instead of printing to stderr.
+**Three severity levels, two of which halt:**
 
-2. **Severity-gated failure.** After each pipeline phase, check the
-   accumulator. If any diagnostic exceeds the configured severity threshold
-   (e.g., `Warning` in CI, `Error` in production), fail the phase. The
-   threshold is explicit — not buried in `match` arm defaults.
+- **`Diagnostic::Success`** — informational progress. Never fails. Replaces
+  `eprintln!` used for status output (e.g., "dagbin cache hit").
+- **`Diagnostic::Warning`** — **panics unconditionally.** If you think you
+  need a warning, you have a bug. Every current `eprintln!("warning: ...")`
+  site must become either a `Success` (if the behavior is correct) or an
+  `Error` (if it's a fallback). There is no valid middle ground.
+- **`Diagnostic::Error`** — propagates as `Err`, stops the pipeline phase.
 
-3. **Test assertion.** `auto_mock_spec` (and callers) return
-   `(MockSpec, Vec<Diagnostic>)`. Tests assert `diagnostics.is_empty()` for
-   modules that should compile cleanly. Existing tests that exercise unknown
-   types assert the *specific* diagnostic code — not silent success.
+**Why WARNING panics:** The entire class of bugs documented in this
+postmortem exists because `eprintln!("warning: ...")` let code silently
+degrade and continue. A warning that nobody reads is worse than no warning
+— it creates the illusion of observability while masking failures. If a
+condition is worth reporting, it's either normal (Success) or broken (Error).
 
-4. **`eprintln!("warning: ...")` lint.** Add a clippy disallowed-methods
-   entry (or a grep-based CI check) that bans `eprintln!` containing
-   `"warning"` in `src/`. Fallback behavior must go through the diagnostic
-   channel, not stderr.
+**Enforcement:**
+
+1. Add `eprintln` to `disallowed_methods` in the clippy policy. All current
+   `eprintln!` sites must migrate to the diagnostic channel or get an
+   explicit `#[allow]` with justification (binary entrypoints only).
+
+2. `auto_mock_spec` (and callers) return `(MockSpec, Vec<Diagnostic>)`.
+   Tests assert `diagnostics.is_empty()` for modules that should compile
+   cleanly.
+
+3. Each `eprintln!("warning: ...")` site becomes a forced decision: "is this
+   actually an error I should fail on, or is it informational?" No more
+   print-and-pray.
 
 This converts the current "print and pray" pattern into a testable,
 assertable contract. The 1,019 generated test failures would have shown up
