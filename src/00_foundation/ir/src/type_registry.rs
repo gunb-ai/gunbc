@@ -784,6 +784,11 @@ impl TypeRegistry {
         self.coercion_path(from, to).is_some()
     }
 
+    /// Strict semantic carrier compatibility.
+    pub fn is_type_compatible(&self, from: &TypeId, to: &TypeId) -> bool {
+        crate::types::semantic_carrier_compatible(from, to)
+    }
+
     /// Check structural + strict semantic-carrier compatibility.
     ///
     /// This is stricter than [`Self::is_compatible`]:
@@ -791,7 +796,7 @@ impl TypeRegistry {
     /// - semantic carrier kinds must be compatible (no semantic→structural fallback)
     /// - unknown semantic carriers are rejected (fail-closed)
     pub fn is_compatible_strict_semantic(&self, from: &TypeId, to: &TypeId) -> bool {
-        self.is_compatible(from, to) && crate::types::semantic_carrier_compatible(from, to)
+        self.is_compatible(from, to) && self.is_type_compatible(from, to)
     }
 
     /// Check whether `from` is a structural refinement of `to`.
@@ -969,8 +974,8 @@ impl TypeRegistry {
 
         // Identity types (no coercion path to primitives): use semantic carrier
         // classification to determine backing.
-        use crate::types::{semantic_carrier_kind_for_type_id, SemanticCarrierKind};
-        match semantic_carrier_kind_for_type_id(raw) {
+        use crate::types::SemanticCarrierKind;
+        match self.semantic_carrier_kind(type_id) {
             SemanticCarrierKind::Structural => {} // fall through to suffix check
             SemanticCarrierKind::Platform => return ValueBacking::String,
             SemanticCarrierKind::Timestamp => return ValueBacking::Int,

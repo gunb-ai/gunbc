@@ -43,12 +43,21 @@ impl Default for CConfig {
 
 /// Lower an AbstractIR `SourceFile` to a `CSourceFile`.
 pub fn lower_to_c(source: &SourceFile, config: &CConfig) -> Result<CSourceFile, LowerError> {
+    lower_to_c_with_registry(source, config, None)
+}
+
+/// Lower to C with an optional type registry for structural emission.
+pub fn lower_to_c_with_registry(
+    source: &SourceFile,
+    config: &CConfig,
+    registry: Option<&gunbc_ir::TypeRegistry>,
+) -> Result<CSourceFile, LowerError> {
     let includes = collect_c_includes(source, config);
     let mut items: Vec<CItem> = Vec::new();
 
     // Lower each item.
     for item in &source.items {
-        lower_item_into(&mut items, item, config)?;
+        lower_item_into(&mut items, item, config, registry)?;
     }
 
     Ok(CSourceFile { includes, items })
@@ -98,16 +107,17 @@ fn lower_item_into(
     items: &mut Vec<CItem>,
     item: &Item,
     config: &CConfig,
+    registry: Option<&gunbc_ir::TypeRegistry>,
 ) -> Result<(), LowerError> {
     match item {
         Item::Fn(f) => {
-            items.push(CItem::FnDef(lower_fn_def(f, config)?));
+            items.push(CItem::FnDef(lower_fn_def(f, config, registry)?));
         }
         Item::Struct(s) => {
             let fields: Vec<(String, CType)> = s
                 .fields
                 .iter()
-                .map(|(name, ty, _)| (name.clone(), map_to_c_type(ty)))
+                .map(|(name, ty, _)| (name.clone(), map_to_c_type_with_registry(ty, registry)))
                 .collect();
             items.push(CItem::StructDef {
                 name: s.name.clone(),
@@ -132,7 +142,7 @@ fn lower_item_into(
             // C doesn't have impl blocks — emit each method as a free function
             // with the type name prefixed.
             for func in &impl_block.items {
-                let mut c_func = lower_fn_def(func, config)?;
+                let mut c_func = lower_fn_def(func, config, registry)?;
                 c_func.name = format!("{}_{}", impl_block.type_name, c_func.name);
                 items.push(CItem::FnDef(c_func));
             }
@@ -148,7 +158,11 @@ fn lower_item_into(
 // B4.5: Function lowering with error code return
 // ===========================================================================
 
-fn lower_fn_def(f: &FnDef, config: &CConfig) -> Result<CFnDef, LowerError> {
+fn lower_fn_def(
+    f: &FnDef,
+    config: &CConfig,
+    registry: Option<&gunbc_ir::TypeRegistry>,
+) -> Result<CFnDef, LowerError> {
     let has_transport = body_has_transport_calls(&f.body);
 
     // B4.5: Functions with transport calls return int (0 = ok, -1 = error).
@@ -157,14 +171,14 @@ fn lower_fn_def(f: &FnDef, config: &CConfig) -> Result<CFnDef, LowerError> {
     } else {
         f.return_type
             .as_ref()
-            .map(|t| map_to_c_type(t))
+            .map(|t| map_to_c_type_with_registry(t, registry))
             .unwrap_or(CType::Void)
     };
 
     let params: Vec<(String, CType)> = f
         .params
         .iter()
-        .map(|(name, ty)| (name.clone(), map_to_c_type(ty)))
+        .map(|(name, ty)| (name.clone(), map_to_c_type_with_registry(ty, registry)))
         .collect();
 
     let mut body = lower_body(&f.body, has_transport, config);
@@ -370,7 +384,7 @@ fn lower_stmt_into(out: &mut Vec<CStmt>, stmt: &Stmt, in_fallible_fn: bool, conf
         Stmt::Item(item) => {
             // Nested items are unusual in C but possible.
             let mut inner_items = Vec::new();
-            let _ = lower_item_into(&mut inner_items, item, config);
+            let _ = lower_item_into(&mut inner_items, item, config, None);
             for ci in inner_items {
                 if let CItem::FnDef(f) = ci {
                     for s in f.body {
@@ -641,10 +655,6 @@ fn map_to_c_type_static(abstract_type: &str) -> CType {
     }
 }
 
-/// Map an abstract type name to its C equivalent (no registry).
-fn map_to_c_type(abstract_type: &str) -> CType {
-    map_to_c_type_with_registry(abstract_type, None)
-}
 
 /// Infer C type from an abstract expression (best effort).
 fn infer_c_type(expr: &Expr) -> CType {
@@ -697,6 +707,10 @@ mod tests {
     use super::*;
     use gunbc_ir::code_ir::{EnumDef, StructDef};
     use gunbc_ir::ValueExpr;
+
+    fn map_to_c_type(abstract_type: &str) -> CType {
+        map_to_c_type_with_registry(abstract_type, None)
+    }
 
     fn make_abstract_main(stmts: Vec<Stmt>) -> SourceFile {
         SourceFile {

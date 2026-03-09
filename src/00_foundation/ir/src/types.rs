@@ -932,25 +932,6 @@ impl TypeId {
         Self(name.into())
     }
 
-    // ── Existing methods ────────────────────────────────────────────
-
-    /// Classify placeholder seed policy for this type.
-    ///
-    /// This is fail-closed: unknown/new types default to
-    /// `ExplicitSeedRequired`.
-    pub fn seed_placeholder_policy(&self) -> SeedPlaceholderPolicy {
-        seed_placeholder_policy_for_type_id(&self.0)
-    }
-
-    /// Classify this type into structural vs semantic-carrier seed class.
-    pub fn semantic_carrier_class(&self) -> SemanticCarrierClass {
-        semantic_carrier_class_for_type_id(&self.0)
-    }
-
-    /// Classify this type into a refined semantic-carrier kind.
-    pub fn semantic_carrier_kind(&self) -> SemanticCarrierKind {
-        semantic_carrier_kind_for_type_id(&self.0)
-    }
 }
 
 /// Parse a parametric map type-id of the form `Map<K,V>`.
@@ -1013,24 +994,8 @@ fn parse_container_alias_inner<'a>(type_id: &'a str, suffix: &str) -> Option<&'a
     }
 }
 
-/// Classify placeholder seed policy for a raw type ID.
-pub fn seed_placeholder_policy_for_type_id(type_id: &str) -> SeedPlaceholderPolicy {
-    match semantic_carrier_class_for_type_id(type_id) {
-        SemanticCarrierClass::StructuralGeneratable => SeedPlaceholderPolicy::Generated,
-        SemanticCarrierClass::SemanticCarrier => SeedPlaceholderPolicy::ExplicitSeedRequired,
-    }
-}
-
-/// Classify semantic-carrier class for a raw type ID.
-pub fn semantic_carrier_class_for_type_id(type_id: &str) -> SemanticCarrierClass {
-    match semantic_carrier_kind_for_type_id(type_id) {
-        SemanticCarrierKind::Structural => SemanticCarrierClass::StructuralGeneratable,
-        _ => SemanticCarrierClass::SemanticCarrier,
-    }
-}
-
 /// Refined semantic carrier kind for a raw type ID.
-pub fn semantic_carrier_kind_for_type_id(type_id: &str) -> SemanticCarrierKind {
+pub(crate) fn semantic_carrier_kind_for_type_id(type_id: &str) -> SemanticCarrierKind {
     if let Some((key_type, value_type)) = parse_map_type_id(type_id) {
         if key_type == "String"
             && semantic_carrier_kind_for_type_id(&value_type) == SemanticCarrierKind::Structural
@@ -1097,7 +1062,7 @@ pub fn semantic_carrier_kind_for_type_id(type_id: &str) -> SemanticCarrierKind {
 /// - structural ↔ structural is allowed
 /// - known semantic carrier kinds must match exactly
 /// - unknown semantic kinds fail closed
-pub fn semantic_carrier_compatible(from: &TypeId, to: &TypeId) -> bool {
+pub(crate) fn semantic_carrier_compatible(from: &TypeId, to: &TypeId) -> bool {
     use SemanticCarrierKind as Kind;
 
     let from_kind = semantic_carrier_kind_for_type_id(&from.0);
@@ -1252,6 +1217,20 @@ impl std::fmt::Display for TypeId {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn seed_placeholder_policy_for_type_id(type_id: &str) -> SeedPlaceholderPolicy {
+        match semantic_carrier_class_for_type_id(type_id) {
+            SemanticCarrierClass::StructuralGeneratable => SeedPlaceholderPolicy::Generated,
+            SemanticCarrierClass::SemanticCarrier => SeedPlaceholderPolicy::ExplicitSeedRequired,
+        }
+    }
+
+    fn semantic_carrier_class_for_type_id(type_id: &str) -> SemanticCarrierClass {
+        match semantic_carrier_kind_for_type_id(type_id) {
+            SemanticCarrierKind::Structural => SemanticCarrierClass::StructuralGeneratable,
+            _ => SemanticCarrierClass::SemanticCarrier,
+        }
+    }
 
     // --- Query tests ---
 
@@ -1419,15 +1398,15 @@ mod tests {
             SemanticCarrierClass::SemanticCarrier
         );
         assert_eq!(
-            TypeId::from("ToolHandle").semantic_carrier_class(),
+            semantic_carrier_class_for_type_id("ToolHandle"),
             SemanticCarrierClass::SemanticCarrier
         );
         assert_eq!(
-            TypeId::from("Map<String,String>").semantic_carrier_class(),
+            semantic_carrier_class_for_type_id("Map<String,String>"),
             SemanticCarrierClass::StructuralGeneratable
         );
         assert_eq!(
-            TypeId::from("Map<String,Credential>").semantic_carrier_class(),
+            semantic_carrier_class_for_type_id("Map<String,Credential>"),
             SemanticCarrierClass::SemanticCarrier
         );
     }
@@ -1600,7 +1579,7 @@ mod tests {
             SeedPlaceholderPolicy::ExplicitSeedRequired
         );
         assert_eq!(
-            TypeId::from("SomeNewCarrierType").seed_placeholder_policy(),
+            seed_placeholder_policy_for_type_id("SomeNewCarrierType"),
             SeedPlaceholderPolicy::ExplicitSeedRequired
         );
     }

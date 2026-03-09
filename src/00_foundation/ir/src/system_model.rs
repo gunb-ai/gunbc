@@ -688,7 +688,7 @@ fn behavior_properties_from_type_dag(
     for node in &dag.nodes {
         if let crate::node::NodeBody::Opaque(op) = &node.body {
             let marker = match op {
-                TypeOp::Meta(crate::MetadataPayload::Property(raw)) => Some(raw.as_str()),
+                TypeOp::Meta(crate::SystemModelMeta::Property(raw)) => Some(raw.as_str()),
                 _ => None,
             };
             if let Some(raw) = marker {
@@ -738,7 +738,7 @@ pub fn system_behavior_type_id(system_id: &str, behavior_id: &str) -> TypeId {
 ///
 /// The descriptor encodes:
 /// - system + behavior metadata as `TypeOp::Meta(...)` nodes
-/// - behavior properties as `TypeOp::Meta(MetadataPayload::Property(...))` nodes
+/// - behavior properties as `TypeOp::Meta(SystemModelMeta::Property(...))` nodes
 /// - input/output contracts as `TypeOp::Meta(...)` nodes
 /// - optional inputs as explicit `TypeOp::Wrap(WrapperKind::Optional)` nodes
 ///
@@ -785,25 +785,25 @@ fn build_behavior_contract_dag(
         &mut dag,
         &mut prev,
         &mut idx,
-        crate::MetadataPayload::SystemId(model.id.clone()),
+        crate::SystemModelMeta::SystemId(model.id.clone()),
     );
     append_meta_step(
         &mut dag,
         &mut prev,
         &mut idx,
-        crate::MetadataPayload::SystemKind(format!("{:?}", model.kind)),
+        crate::SystemModelMeta::SystemKind(format!("{:?}", model.kind)),
     );
     append_meta_step(
         &mut dag,
         &mut prev,
         &mut idx,
-        crate::MetadataPayload::BehaviorId(behavior.id.clone()),
+        crate::SystemModelMeta::BehaviorId(behavior.id.clone()),
     );
     append_meta_step(
         &mut dag,
         &mut prev,
         &mut idx,
-        crate::MetadataPayload::Invocation(invocation_tag(&behavior.invocation)),
+        crate::SystemModelMeta::Invocation(invocation_tag(&behavior.invocation)),
     );
 
     for property in &behavior.properties {
@@ -811,7 +811,7 @@ fn build_behavior_contract_dag(
             &mut dag,
             &mut prev,
             &mut idx,
-            crate::MetadataPayload::Property(format!("{property:?}")),
+            crate::SystemModelMeta::Property(format!("{property:?}")),
         );
     }
 
@@ -821,7 +821,7 @@ fn build_behavior_contract_dag(
             &mut dag,
             &mut prev,
             &mut idx,
-            crate::MetadataPayload::InputContract {
+            crate::SystemModelMeta::InputContract {
                 name: sanitize_ident(&input.name),
                 type_id: input.input_type.type_id().0.clone(),
                 required: input.required,
@@ -852,7 +852,7 @@ fn build_behavior_contract_dag(
             &mut dag,
             &mut prev,
             &mut idx,
-            crate::MetadataPayload::OutputContract {
+            crate::SystemModelMeta::OutputContract {
                 name: sanitize_ident(&output.name),
                 type_id: output.output_type.type_id().0.clone(),
             },
@@ -874,24 +874,24 @@ fn append_meta_step(
     dag: &mut Dag<TypeOp>,
     prev: &mut String,
     idx: &mut usize,
-    payload: crate::MetadataPayload,
+    payload: crate::SystemModelMeta,
 ) {
     let marker = match &payload {
-        crate::MetadataPayload::SystemId(value) => format!("system_id_{}", sanitize_ident(value)),
-        crate::MetadataPayload::SystemKind(value) => {
+        crate::SystemModelMeta::SystemId(value) => format!("system_id_{}", sanitize_ident(value)),
+        crate::SystemModelMeta::SystemKind(value) => {
             format!("system_kind_{}", sanitize_ident(value))
         }
-        crate::MetadataPayload::BehaviorId(value) => {
+        crate::SystemModelMeta::BehaviorId(value) => {
             format!("behavior_id_{}", sanitize_ident(value))
         }
-        crate::MetadataPayload::Invocation(value) => {
+        crate::SystemModelMeta::Invocation(value) => {
             format!("invocation_{}", sanitize_ident(value))
         }
-        crate::MetadataPayload::Property(value) => format!("property_{}", sanitize_ident(value)),
-        crate::MetadataPayload::InputContract { name, type_id, .. } => {
+        crate::SystemModelMeta::Property(value) => format!("property_{}", sanitize_ident(value)),
+        crate::SystemModelMeta::InputContract { name, type_id, .. } => {
             format!("input_{}_{}", sanitize_ident(name), sanitize_ident(type_id))
         }
-        crate::MetadataPayload::OutputContract { name, type_id } => {
+        crate::SystemModelMeta::OutputContract { name, type_id } => {
             format!(
                 "output_{}_{}",
                 sanitize_ident(name),
@@ -1142,17 +1142,17 @@ fn behavior_contract_shape(
     for node in &dag.nodes {
         if let crate::node::NodeBody::Opaque(op) = &node.body {
             match op {
-                TypeOp::Meta(crate::MetadataPayload::Property(raw)) => {
+                TypeOp::Meta(crate::SystemModelMeta::Property(raw)) => {
                     properties.push(raw.to_string());
                 }
-                TypeOp::Meta(crate::MetadataPayload::InputContract {
+                TypeOp::Meta(crate::SystemModelMeta::InputContract {
                     name,
                     type_id,
                     required,
                 }) => {
                     inputs.push((name.clone(), type_id.clone(), *required));
                 }
-                TypeOp::Meta(crate::MetadataPayload::OutputContract { name, type_id }) => {
+                TypeOp::Meta(crate::SystemModelMeta::OutputContract { name, type_id }) => {
                     outputs.push((name.clone(), type_id.clone()));
                 }
                 TypeOp::Wrap(WrapperKind::Optional) => {

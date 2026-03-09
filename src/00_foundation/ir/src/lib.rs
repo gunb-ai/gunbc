@@ -188,7 +188,7 @@ pub use transport::{
     TransportKind, TransportMiddlewareConfig, TransportRequest, TransportResponse,
 };
 pub use type_op::{
-    ContentEncoding, MetadataPayload, Predicate, PredicateValue, SystemModelMeta, TypeOp,
+    ContentEncoding, Predicate, PredicateValue, SystemModelMeta, TypeOp,
     WrapperKind,
 };
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
@@ -200,9 +200,7 @@ pub use typed_io::{
     TypedOutput, TypedPort, UrlTag,
 };
 pub use types::{
-    boundary_label, parse_map_type_id, seed_placeholder_policy_for_type_id,
-    semantic_carrier_class_for_type_id, semantic_carrier_compatible,
-    semantic_carrier_kind_for_type_id, value_backing_for_type_id, value_compatible_with_type_id,
+    boundary_label, parse_map_type_id, value_backing_for_type_id, value_compatible_with_type_id,
     value_kind_name, Cardinality, CardinalityMismatch, CardinalitySamplingStrategy,
     InputProvenance, NodeId, OperationKey, PortCategory, PortName, SeedPlaceholderPolicy,
     SemanticCarrierClass, SemanticCarrierKind, StaticFingerprint, TypeId, ValueBacking,

@@ -99,8 +99,6 @@ pub enum SystemModelMeta {
     },
 }
 
-/// Backwards-compatible alias for [`SystemModelMeta`].
-pub type MetadataPayload = SystemModelMeta;
 
 /// Content encoding lattice for file content classification.
 ///
@@ -363,13 +361,13 @@ mod tests {
     fn test_type_op_variants() {
         let identity = TypeOp::Identity;
         let validate = TypeOp::Validate(Predicate::NonEmpty);
-        let meta = TypeOp::Meta(MetadataPayload::SystemId("gcp".to_string()));
+        let meta = TypeOp::Meta(SystemModelMeta::SystemId("gcp".to_string()));
         let transform = TypeOp::Transform("String".to_string(), "Int".to_string());
         let wrap = TypeOp::Wrap(WrapperKind::Optional);
 
         assert_eq!(identity, TypeOp::Identity);
         assert!(matches!(validate, TypeOp::Validate(Predicate::NonEmpty)));
-        assert!(matches!(meta, TypeOp::Meta(MetadataPayload::SystemId(_))));
+        assert!(matches!(meta, TypeOp::Meta(SystemModelMeta::SystemId(_))));
         assert!(matches!(transform, TypeOp::Transform(_, _)));
         assert!(matches!(wrap, TypeOp::Wrap(WrapperKind::Optional)));
     }

@@ -608,11 +608,11 @@ impl<T> DagBuilder<T> {
                 from_node: from.node_id.clone(),
                 from_port: from.port.clone(),
                 from_type: Box::new(from_port.type_id.clone()),
-                from_kind: from_port.type_id.semantic_carrier_kind(),
+                from_kind: self.type_registry.semantic_carrier_kind(&from_port.type_id),
                 to_node: to.node_id.clone(),
                 to_port: to.port.clone(),
                 to_type: Box::new(to_port.type_id.clone()),
-                to_kind: to_port.type_id.semantic_carrier_kind(),
+                to_kind: self.type_registry.semantic_carrier_kind(&to_port.type_id),
             });
         }
 

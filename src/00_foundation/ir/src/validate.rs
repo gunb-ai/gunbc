@@ -517,8 +517,8 @@ fn check_type_match(
             direction,
             parent_type: parent_type.clone(),
             inner_type: inner_type.clone(),
-            parent_kind: parent_type.semantic_carrier_kind(),
-            inner_kind: inner_type.semantic_carrier_kind(),
+            parent_kind: registry.semantic_carrier_kind(parent_type),
+            inner_kind: registry.semantic_carrier_kind(inner_type),
         });
     }
 }

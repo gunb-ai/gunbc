@@ -274,12 +274,11 @@ fn normalize_value_inner(value: &Value, home: &str, tmp: &str) -> Value {
 ///
 /// Types like Secret, Credential, and various Handle types should not
 /// have their values included in corpus examples or test assertions.
-pub fn is_redacted_type(type_id: &str) -> bool {
-    use gunbc_ir::semantic_carrier_kind_for_type_id;
+pub fn is_redacted_type(type_id: &str, registry: &gunbc_ir::TypeRegistry) -> bool {
     use gunbc_ir::SemanticCarrierKind;
-
+    let tid = gunbc_ir::TypeId::new(type_id);
     matches!(
-        semantic_carrier_kind_for_type_id(type_id),
+        registry.semantic_carrier_kind(&tid),
         SemanticCarrierKind::Secret
             | SemanticCarrierKind::Credential
             | SemanticCarrierKind::ToolHandle
@@ -428,19 +427,21 @@ mod tests {
 
     #[test]
     fn is_redacted_type_identifies_sensitive_types() {
-        assert!(is_redacted_type("Secret"));
-        assert!(is_redacted_type("Credential"));
-        assert!(is_redacted_type("ToolHandle"));
-        assert!(is_redacted_type("FilesystemHandle"));
-        assert!(is_redacted_type("NetworkHandle"));
+        let reg = gunbc_ir::TypeRegistry::with_core_types();
+        assert!(is_redacted_type("Secret", &reg));
+        assert!(is_redacted_type("Credential", &reg));
+        assert!(is_redacted_type("ToolHandle", &reg));
+        assert!(is_redacted_type("FilesystemHandle", &reg));
+        assert!(is_redacted_type("NetworkHandle", &reg));
     }
 
     #[test]
     fn is_redacted_type_allows_structural_types() {
-        assert!(!is_redacted_type("String"));
-        assert!(!is_redacted_type("Int"));
-        assert!(!is_redacted_type("Bool"));
-        assert!(!is_redacted_type("List<String>"));
+        let reg = gunbc_ir::TypeRegistry::with_core_types();
+        assert!(!is_redacted_type("String", &reg));
+        assert!(!is_redacted_type("Int", &reg));
+        assert!(!is_redacted_type("Bool", &reg));
+        assert!(!is_redacted_type("List<String>", &reg));
     }
 
     #[test]

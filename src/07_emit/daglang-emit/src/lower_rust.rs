@@ -38,7 +38,19 @@ impl Default for RustConfig {
 }
 
 /// Lower an AbstractIR `SourceFile` to a Rust-specific `SourceFile`.
+///
+/// If `registry` is provided, structural type emission is used (via `resolve_and_emit`).
+/// Otherwise, falls back to the static type mapping tables.
 pub fn lower_to_rust(source: &SourceFile, config: &RustConfig) -> Result<SourceFile, LowerError> {
+    lower_to_rust_with_registry(source, config, None)
+}
+
+/// Lower to Rust with an optional type registry for structural emission.
+pub fn lower_to_rust_with_registry(
+    source: &SourceFile,
+    config: &RustConfig,
+    registry: Option<&gunbc_ir::TypeRegistry>,
+) -> Result<SourceFile, LowerError> {
     let imports = collect_imports(source, config);
     let mut items: Vec<Item> = Vec::new();
 
@@ -49,7 +61,7 @@ pub fn lower_to_rust(source: &SourceFile, config: &RustConfig) -> Result<SourceF
 
     // Lower each item.
     for item in &source.items {
-        items.push(lower_item(item, config)?);
+        items.push(lower_item(item, config, registry)?);
     }
 
     Ok(SourceFile {
@@ -62,9 +74,13 @@ pub fn lower_to_rust(source: &SourceFile, config: &RustConfig) -> Result<SourceF
 // Item lowering
 // ===========================================================================
 
-fn lower_item(item: &Item, config: &RustConfig) -> Result<Item, LowerError> {
+fn lower_item(
+    item: &Item,
+    config: &RustConfig,
+    registry: Option<&gunbc_ir::TypeRegistry>,
+) -> Result<Item, LowerError> {
     match item {
-        Item::Fn(f) => Ok(Item::Fn(lower_fn_def(f, config)?)),
+        Item::Fn(f) => Ok(Item::Fn(lower_fn_def(f, config, registry)?)),
         Item::Struct(s) => {
             // B2.2: Add derive macros.
             let mut lowered = s.clone();
@@ -90,7 +106,11 @@ fn lower_item(item: &Item, config: &RustConfig) -> Result<Item, LowerError> {
 // B2.1: Function lowering with Result wrapping
 // ===========================================================================
 
-fn lower_fn_def(f: &FnDef, config: &RustConfig) -> Result<FnDef, LowerError> {
+fn lower_fn_def(
+    f: &FnDef,
+    config: &RustConfig,
+    registry: Option<&gunbc_ir::TypeRegistry>,
+) -> Result<FnDef, LowerError> {
     let has_transport = body_has_transport_calls(&f.body);
 
     // B2.1: If the function contains transport calls, wrap return type in Result.
@@ -112,7 +132,7 @@ fn lower_fn_def(f: &FnDef, config: &RustConfig) -> Result<FnDef, LowerError> {
     Ok(FnDef {
         name: f.name.clone(),
         is_pub: f.is_pub,
-        params: lower_params(&f.params, config),
+        params: lower_params(&f.params, config, registry),
         return_type,
         body: final_body,
         doc: f.doc.clone(),
@@ -121,10 +141,14 @@ fn lower_fn_def(f: &FnDef, config: &RustConfig) -> Result<FnDef, LowerError> {
 }
 
 /// Lower function parameters — map abstract types to Rust types.
-fn lower_params(params: &[(String, String)], _config: &RustConfig) -> Vec<(String, String)> {
+fn lower_params(
+    params: &[(String, String)],
+    _config: &RustConfig,
+    registry: Option<&gunbc_ir::TypeRegistry>,
+) -> Vec<(String, String)> {
     params
         .iter()
-        .map(|(name, ty)| (name.clone(), map_to_rust_type(ty)))
+        .map(|(name, ty)| (name.clone(), map_to_rust_type_with_registry(ty, registry)))
         .collect()
 }
 
@@ -161,7 +185,7 @@ fn lower_stmt(stmt: &Stmt, in_fallible_fn: bool, config: &RustConfig) -> Stmt {
             iter: lower_expr(iter, in_fallible_fn, config),
             body: lower_body(body, in_fallible_fn, config),
         },
-        Stmt::Item(item) => match lower_item(item, config) {
+        Stmt::Item(item) => match lower_item(item, config, None) {
             Ok(lowered) => Stmt::Item(lowered),
             Err(_) => stmt.clone(),
         },
@@ -442,11 +466,6 @@ fn map_to_rust_type_with_registry(
     )
 }
 
-/// Map an abstract type name to its Rust equivalent (no registry).
-fn map_to_rust_type(abstract_type: &str) -> String {
-    map_to_rust_type_with_registry(abstract_type, None)
-}
-
 // ===========================================================================
 // Tests (B2.6)
 // ===========================================================================
@@ -456,6 +475,10 @@ mod tests {
     use super::*;
     use gunbc_ir::code_ir::{EnumDef, StructDef};
     use gunbc_ir::ValueExpr;
+
+    fn map_to_rust_type(abstract_type: &str) -> String {
+        map_to_rust_type_with_registry(abstract_type, None)
+    }
 
     fn make_abstract_main(stmts: Vec<Stmt>) -> SourceFile {
         SourceFile {

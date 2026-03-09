@@ -43,7 +43,7 @@ use gunbc_ir::language::NamingCase;
 use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
 use gunbc_ir::{
-    contract, parse_map_type_id, semantic_carrier_class_for_type_id, value_compatible_with_type_id,
+    contract, parse_map_type_id, value_compatible_with_type_id,
     value_kind_name, Cardinality, Dag, NodeId, NodeKind, Os, PortName, SecretString,
     SeedPlaceholderPolicy, SemanticCarrierClass, TypeRegistry, Value, ValueExpr,
 };
@@ -92,7 +92,8 @@ fn seed_matrix_for_context(context: SeedContext) -> SeedMatrix {
 }
 
 fn seed_class_for_type(type_id: &str) -> SeedClass {
-    semantic_carrier_class_for_type_id(type_id)
+    let reg = TypeRegistry::with_core_types();
+    reg.semantic_carrier_class(&gunbc_ir::TypeId::new(type_id))
 }
 
 fn seed_policy_for_type(type_id: &str) -> SeedPolicy {
