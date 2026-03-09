@@ -1252,6 +1252,14 @@ fn resolve_field_type_dag(
                     return gunbc_ir::type_lib::set(elem);
                 }
                 ("Map", 2) => {
+                    let key_name = type_expr_to_string(&args[0]);
+                    if key_name != "String" {
+                        eprintln!(
+                            "warning: Map<{key_name}, ...> has non-String key type; \
+                             runtime Value::Map is string-keyed, this type cannot be \
+                             satisfied at runtime"
+                        );
+                    }
                     let key = resolve_field_type_dag(&args[0], registry);
                     let val = resolve_field_type_dag(&args[1], registry);
                     return gunbc_ir::type_lib::map(key, val);
