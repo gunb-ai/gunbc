@@ -182,10 +182,6 @@ fn render_type_expr(expr: &TypeExpr) -> String {
     }
 }
 
-fn map_key_is_string(expr: &TypeExpr) -> bool {
-    matches!(expr, TypeExpr::Named(name) if name == "String")
-}
-
 fn parse_type_expr(raw: &str) -> Result<TypeExpr, TypeExprError> {
     let expr = raw.trim();
     if expr.is_empty() {
@@ -214,9 +210,6 @@ fn parse_type_expr(raw: &str) -> Result<TypeExpr, TypeExprError> {
             }
             let key = parse_type_expr(args[0])?;
             let value = parse_type_expr(args[1])?;
-            if !map_key_is_string(&key) {
-                return Err(TypeExprError::new(expr, "Map key type must be String"));
-            }
             return Ok(TypeExpr::Map(Box::new(key), Box::new(value)));
         }
         return Ok(TypeExpr::Named(expr.to_string()));
@@ -757,18 +750,18 @@ impl TypeRegistry {
                     WrapperKind::NonEmptyList => type_lib::non_empty_list(inner_dag),
                     WrapperKind::Set => type_lib::set(inner_dag),
                     WrapperKind::NonEmptySet => type_lib::non_empty_set(inner_dag),
-                    WrapperKind::Map => type_lib::map(inner_dag),
+                    WrapperKind::Map => type_lib::map(type_lib::string(), inner_dag),
                 };
                 Some(dag)
             }
             TypeExpr::Map(key, value) => {
-                let _ = self.resolve_expr(key, ResolveMode::InWrapper)?;
+                let key_dag = self.resolve_expr(key, ResolveMode::InWrapper)?;
                 let value_dag = self.resolve_expr(value, ResolveMode::InWrapper)?;
                 let name = render_type_expr(expr);
                 if let Some(dag) = self.get_by_name(&name) {
                     return Some(dag.clone());
                 }
-                Some(type_lib::map(value_dag))
+                Some(type_lib::map(key_dag, value_dag))
             }
         }
     }
@@ -1120,6 +1113,24 @@ impl TypeRegistry {
 fn base_type_recursive(dag: &Dag<TypeOp>) -> Option<String> {
     if let Some(base) = contract::base_type(dag) {
         return Some(base);
+    }
+    // For Map wrappers, prefer the value_type SubDag over key_type.
+    let has_map_wrapper = dag.nodes.iter().any(|n| {
+        matches!(
+            &n.body,
+            crate::node::NodeBody::Opaque(TypeOp::Wrap(crate::type_op::WrapperKind::Map))
+        )
+    });
+    if has_map_wrapper {
+        for node in &dag.nodes {
+            if node.id.0 == "value_type" {
+                if let crate::node::NodeBody::SubDag(inner, _) = &node.body {
+                    if let Some(base) = base_type_recursive(inner) {
+                        return Some(base);
+                    }
+                }
+            }
+        }
     }
     for node in &dag.nodes {
         if let crate::node::NodeBody::SubDag(inner, _) = &node.body {
@@ -1483,9 +1494,6 @@ mod tests {
             .is_err());
         assert!(registry
             .validate_type_expr(&TypeId::from("Map<,Int>"))
-            .is_err());
-        assert!(registry
-            .validate_type_expr(&TypeId::from("Map<Int,String>"))
             .is_err());
     }
 

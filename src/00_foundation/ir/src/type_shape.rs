@@ -202,10 +202,18 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
                 WrapperKind::Set | WrapperKind::NonEmptySet => {
                     TypeShape::Container(ContainerShape::Set(Box::new(inner_shape)))
                 }
-                WrapperKind::Map => TypeShape::Container(ContainerShape::Map(
-                    Box::new(TypeShape::Opaque("String".to_string())),
-                    Box::new(inner_shape),
-                )),
+                WrapperKind::Map => {
+                    let key_shape = named_subdag(dag, "key_type")
+                        .map(type_shape)
+                        .unwrap_or_else(|| TypeShape::Opaque("String".to_string()));
+                    let value_shape = named_subdag(dag, "value_type")
+                        .map(type_shape)
+                        .unwrap_or(inner_shape);
+                    TypeShape::Container(ContainerShape::Map(
+                        Box::new(key_shape),
+                        Box::new(value_shape),
+                    ))
+                }
             };
         }
     }
@@ -505,7 +513,7 @@ mod tests {
 
     #[test]
     fn shape_of_map() {
-        let map_dag = type_lib::map(type_lib::int());
+        let map_dag = type_lib::map(type_lib::string(), type_lib::int());
         let shape = type_shape(&map_dag);
         match &shape {
             TypeShape::Container(ContainerShape::Map(key, value)) => {

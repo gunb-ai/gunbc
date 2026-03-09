@@ -1252,8 +1252,9 @@ fn resolve_field_type_dag(
                     return gunbc_ir::type_lib::set(elem);
                 }
                 ("Map", 2) => {
+                    let key = resolve_field_type_dag(&args[0], registry);
                     let val = resolve_field_type_dag(&args[1], registry);
-                    return gunbc_ir::type_lib::map(val);
+                    return gunbc_ir::type_lib::map(key, val);
                 }
                 _ => { /* fall through to string-based path */ }
             }
