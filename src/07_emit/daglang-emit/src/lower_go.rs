@@ -520,8 +520,23 @@ fn expr_uses_json(expr: &Expr) -> bool {
 // ===========================================================================
 
 /// Map an abstract type name to its Go equivalent.
+///
+/// When a `TypeRegistry` is available, delegates to `resolve_and_emit` for
+/// structural type resolution. Falls back to the static mapping table.
+fn map_to_go_type_with_registry(
+    abstract_type: &str,
+    registry: Option<&gunbc_ir::TypeRegistry>,
+) -> String {
+    crate::type_mapping::resolve_and_emit(
+        abstract_type,
+        registry,
+        crate::type_mapping::Backend::Go,
+    )
+}
+
+/// Map an abstract type name to its Go equivalent (no registry).
 fn map_to_go_type(abstract_type: &str) -> String {
-    crate::type_mapping::map_abstract_type(&crate::type_mapping::GO_TYPE_MAPPING, abstract_type)
+    map_to_go_type_with_registry(abstract_type, None)
 }
 
 // ===========================================================================
@@ -876,6 +891,23 @@ mod tests {
         assert_eq!(map_to_go_type("Optional<Int>"), "*int64");
         assert_eq!(map_to_go_type("Map<String, Int>"), "map[string]int64");
         assert_eq!(map_to_go_type("UnknownType"), "interface{}");
+    }
+
+    #[test]
+    fn map_to_go_type_with_registry_structural_emit() {
+        use gunbc_ir::type_op::Predicate;
+        let mut registry = gunbc_ir::TypeRegistry::with_primitives();
+        registry.register(
+            "UInt32",
+            gunbc_ir::type_lib::refined("Int", vec![
+                Predicate::Width(32),
+                Predicate::Unsigned,
+                Predicate::Arithmetic,
+            ]),
+        );
+        assert_eq!(map_to_go_type_with_registry("UInt32", Some(&registry)), "uint32");
+        // Fallback still works
+        assert_eq!(map_to_go_type_with_registry("String", Some(&registry)), "string");
     }
 
     // -- B3.4: FormatStr lowering --

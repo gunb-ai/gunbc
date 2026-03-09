@@ -15,7 +15,9 @@
 //! ## Fn mapping
 //!   - `fn name(params) -> Ret`     → `pub fn name(params) -> Ret` signature
 
-use daglang_syntax::ast::{DataDef, Expr, FnDef, Literal, TypeBody, TypeDef, TypeExpr, Variant};
+use daglang_syntax::ast::{
+    DataDef, Expr, FnDef, Literal, Refinement, TypeBody, TypeDef, TypeExpr, Variant,
+};
 use daglang_syntax::span::Spanned;
 use gunbc_ir::code_ir::{self, EnumDef, SourceFile, StructDef};
 
@@ -23,6 +25,51 @@ use crate::fn_codegen;
 
 /// Default derives applied to every generated type.
 const DEFAULT_DERIVES: &[&str] = &["Debug", "Clone", "PartialEq", "Eq"];
+
+/// Try to derive a concrete Rust type from a refined type expression.
+///
+/// Inspects refinement predicates (Width, Signed, Unsigned, Domain, Arithmetic)
+/// to determine platform-native types. Returns `None` if the refinements don't
+/// contain structural predicates, in which case the caller should strip refinements.
+fn try_refined_to_rust(_inner: &TypeExpr, refinements: &[Refinement]) -> Option<String> {
+    let mut width: Option<u16> = None;
+    let mut signed: Option<bool> = None;
+    let mut arithmetic = false;
+    let mut domain: Option<&str> = None;
+
+    for r in refinements {
+        match r {
+            Refinement::Width(Expr::Literal(Literal::Int(w))) => width = Some(*w as u16),
+            Refinement::Signed(_) => signed = Some(true),
+            Refinement::Unsigned => signed = Some(false),
+            Refinement::Arithmetic => arithmetic = true,
+            Refinement::Domain(d) => domain = Some(d.as_str()),
+            _ => {}
+        }
+    }
+
+    if !arithmetic && width.is_none() && signed.is_none() && domain.is_none() {
+        return None;
+    }
+
+    if let Some(d) = domain {
+        if d.starts_with("ieee754") {
+            return Some(match width {
+                Some(32) => "f32".to_string(),
+                _ => "f64".to_string(),
+            });
+        }
+    }
+
+    if let Some(w) = width {
+        let is_signed = signed.unwrap_or(true);
+        let prefix = if is_signed { "i" } else { "u" };
+        return Some(format!("{prefix}{w}"));
+    }
+
+    // Has some predicates but not enough for concrete type — fall through
+    None
+}
 
 /// Convert a DSL `TypeExpr` to a Rust type string.
 fn type_expr_to_rust(expr: &TypeExpr) -> String {
@@ -36,7 +83,12 @@ fn type_expr_to_rust(expr: &TypeExpr) -> String {
         TypeExpr::Optional(inner) => {
             format!("Option<{}>", type_expr_to_rust(inner))
         }
-        TypeExpr::Refined(inner, _) => type_expr_to_rust(inner),
+        TypeExpr::Refined(inner, refinements) => {
+            if let Some(ty) = try_refined_to_rust(inner, refinements) {
+                return ty;
+            }
+            type_expr_to_rust(inner)
+        }
         TypeExpr::Record(fields) => {
             let field_strs: Vec<String> = fields
                 .iter()
@@ -1428,5 +1480,54 @@ mod tests {
         assert_eq!(escape_rust_string("hello"), "hello");
         assert_eq!(escape_rust_string("a\"b"), "a\\\"b");
         assert_eq!(escape_rust_string("a\nb"), "a\\nb");
+    }
+
+    #[test]
+    fn refined_type_with_width_signed_produces_i64() {
+        let expr = TypeExpr::Refined(
+            Box::new(TypeExpr::Named("Int".to_string())),
+            vec![
+                Refinement::Width(Expr::Literal(Literal::Int(64))),
+                Refinement::Signed(None),
+                Refinement::Arithmetic,
+            ],
+        );
+        assert_eq!(type_expr_to_rust(&expr), "i64");
+    }
+
+    #[test]
+    fn refined_type_with_width_unsigned_produces_u8() {
+        let expr = TypeExpr::Refined(
+            Box::new(TypeExpr::Named("Int".to_string())),
+            vec![
+                Refinement::Width(Expr::Literal(Literal::Int(8))),
+                Refinement::Unsigned,
+                Refinement::Arithmetic,
+            ],
+        );
+        assert_eq!(type_expr_to_rust(&expr), "u8");
+    }
+
+    #[test]
+    fn refined_type_with_ieee754_produces_f32() {
+        let expr = TypeExpr::Refined(
+            Box::new(TypeExpr::Named("Float".to_string())),
+            vec![
+                Refinement::Width(Expr::Literal(Literal::Int(32))),
+                Refinement::Domain("ieee754_binary32".to_string()),
+                Refinement::Arithmetic,
+            ],
+        );
+        assert_eq!(type_expr_to_rust(&expr), "f32");
+    }
+
+    #[test]
+    fn refined_type_without_structural_predicates_strips() {
+        let expr = TypeExpr::Refined(
+            Box::new(TypeExpr::Named("String".to_string())),
+            vec![Refinement::NonEmpty],
+        );
+        // Should fall through to stripping refinements
+        assert_eq!(type_expr_to_rust(&expr), "String");
     }
 }

@@ -512,8 +512,22 @@ fn go_input_params(fields: &[FieldSpec]) -> String {
         .join(", ")
 }
 
+/// Map a field's type ID to its Go equivalent.
+///
+/// When a `TypeRegistry` is available, delegates to `resolve_and_emit`.
+fn go_type_for_field_with_registry(
+    type_id: &str,
+    registry: Option<&gunbc_ir::TypeRegistry>,
+) -> String {
+    crate::type_mapping::resolve_and_emit(
+        type_id,
+        registry,
+        crate::type_mapping::Backend::Go,
+    )
+}
+
 fn go_type_for_field(type_id: &str) -> String {
-    crate::type_mapping::map_abstract_type(&crate::type_mapping::GO_TYPE_MAPPING, type_id)
+    go_type_for_field_with_registry(type_id, None)
 }
 
 fn go_pascal_case(name: &str) -> String {

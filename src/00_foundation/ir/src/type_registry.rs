@@ -597,6 +597,19 @@ impl TypeRegistry {
         registry
     }
 
+    /// Create a type registry with all default types, ready for DSL merge.
+    ///
+    /// Registers kernel types, primitives, and core types. After construction,
+    /// call [`merge_dsl_types`] to override with structural definitions from
+    /// compiled `.dag` files.
+    pub fn with_defaults() -> Self {
+        let mut registry = Self::new();
+        registry.register_kernel_types();
+        registry.register_primitives();
+        registry.register_core_types();
+        registry
+    }
+
     /// Register a type DAG with a name.
     pub fn register(&mut self, name: impl Into<TypeId>, type_dag: Dag<TypeOp>) {
         self.types.insert(name.into(), type_dag);
@@ -982,6 +995,58 @@ impl TypeRegistry {
         // Fallback: Json accepts anything.
         eprintln!("warning: unknown type '{}' defaulting to ValueBacking::Json", type_id.0);
         ValueBacking::Json
+    }
+
+    /// Classify a type's semantic carrier kind using registry knowledge.
+    ///
+    /// Inspects the resolved type DAG for structural properties (transport
+    /// request/response shapes, credential shapes, etc.) when available.
+    /// Falls back to the string-based classification for unregistered types.
+    pub fn semantic_carrier_kind(
+        &self,
+        type_id: &TypeId,
+    ) -> crate::types::SemanticCarrierKind {
+        // Try registry-based structural classification first
+        if let Some(dag) = self.resolve_type(type_id) {
+            let contract = crate::contract::TypeContract::from_type_dag(&dag);
+            if let Some(base) = &contract.base_type {
+                // Check if the base type maps to a known carrier kind
+                let kind = crate::types::semantic_carrier_kind_for_type_id(base);
+                if kind != crate::types::SemanticCarrierKind::UnknownSemantic {
+                    return kind;
+                }
+            }
+        }
+        // Fall back to string-based classification
+        crate::types::semantic_carrier_kind_for_type_id(&type_id.0)
+    }
+
+    /// Classify a type's semantic carrier class using registry knowledge.
+    pub fn semantic_carrier_class(
+        &self,
+        type_id: &TypeId,
+    ) -> crate::types::SemanticCarrierClass {
+        match self.semantic_carrier_kind(type_id) {
+            crate::types::SemanticCarrierKind::Structural => {
+                crate::types::SemanticCarrierClass::StructuralGeneratable
+            }
+            _ => crate::types::SemanticCarrierClass::SemanticCarrier,
+        }
+    }
+
+    /// Classify placeholder seed policy using registry knowledge.
+    pub fn seed_placeholder_policy(
+        &self,
+        type_id: &TypeId,
+    ) -> crate::types::SeedPlaceholderPolicy {
+        match self.semantic_carrier_class(type_id) {
+            crate::types::SemanticCarrierClass::StructuralGeneratable => {
+                crate::types::SeedPlaceholderPolicy::Generated
+            }
+            crate::types::SemanticCarrierClass::SemanticCarrier => {
+                crate::types::SeedPlaceholderPolicy::ExplicitSeedRequired
+            }
+        }
     }
 }
 
@@ -1724,6 +1789,70 @@ mod tests {
         assert_eq!(
             r.value_backing(&TypeId::from("CompletelyUnknownType")),
             ValueBacking::Json
+        );
+    }
+
+    #[test]
+    fn test_with_defaults_contains_kernel_and_primitives() {
+        let registry = TypeRegistry::with_defaults();
+        // Kernel types
+        assert!(registry.contains(&TypeId::from("Unit")));
+        assert!(registry.contains(&TypeId::from("Json")));
+        assert!(registry.contains(&TypeId::from("Any")));
+        assert!(registry.contains(&TypeId::from("Record")));
+        // Primitives
+        assert!(registry.contains(&TypeId::from("String")));
+        assert!(registry.contains(&TypeId::from("Bool")));
+        assert!(registry.contains(&TypeId::from("Int")));
+        assert!(registry.contains(&TypeId::from("Float")));
+        // Core types
+        assert!(registry.contains(&TypeId::from("Url")));
+        assert!(registry.contains(&TypeId::from("FilePath")));
+    }
+
+    #[test]
+    fn test_merge_dsl_types_overrides() {
+        let mut registry = TypeRegistry::with_defaults();
+        let mut dsl_registry = TypeRegistry::new();
+        // Register a structural Int64 type from DSL
+        dsl_registry.register(
+            "Int64",
+            type_lib::refined("Int", vec![
+                Predicate::Width(64),
+                Predicate::Signed(None),
+                Predicate::Arithmetic,
+            ]),
+        );
+        registry.merge_dsl_types(&dsl_registry);
+        assert!(registry.contains(&TypeId::from("Int64")));
+        let dag = registry.resolve_type(&TypeId::from("Int64")).unwrap();
+        // Verify the resolved DAG has Width(64) and Signed predicates
+        use crate::node::NodeBody;
+        use crate::type_op::TypeOp;
+        let has_width_64 = dag.nodes.iter().any(|n| {
+            matches!(
+                &n.body,
+                NodeBody::Opaque(TypeOp::Validate(Predicate::Width(64)))
+            )
+        });
+        assert!(has_width_64, "Int64 should have Width(64) predicate");
+    }
+
+    #[test]
+    fn test_semantic_carrier_kind_on_registry() {
+        use crate::types::SemanticCarrierKind;
+        let registry = TypeRegistry::with_core_types();
+        assert_eq!(
+            registry.semantic_carrier_kind(&TypeId::from("String")),
+            SemanticCarrierKind::Structural
+        );
+        assert_eq!(
+            registry.semantic_carrier_kind(&TypeId::from("Secret")),
+            SemanticCarrierKind::Secret
+        );
+        assert_eq!(
+            registry.semantic_carrier_kind(&TypeId::from("TransportRequest")),
+            SemanticCarrierKind::TransportRequest
         );
     }
 }

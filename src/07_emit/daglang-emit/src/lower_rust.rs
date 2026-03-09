@@ -428,8 +428,23 @@ fn expr_uses_json(expr: &Expr) -> bool {
 // ===========================================================================
 
 /// Map an abstract type name to its Rust equivalent.
+///
+/// When a `TypeRegistry` is available, delegates to `resolve_and_emit` for
+/// structural type resolution. Falls back to the static mapping table.
+fn map_to_rust_type_with_registry(
+    abstract_type: &str,
+    registry: Option<&gunbc_ir::TypeRegistry>,
+) -> String {
+    crate::type_mapping::resolve_and_emit(
+        abstract_type,
+        registry,
+        crate::type_mapping::Backend::Rust,
+    )
+}
+
+/// Map an abstract type name to its Rust equivalent (no registry).
 fn map_to_rust_type(abstract_type: &str) -> String {
-    crate::type_mapping::map_abstract_type(&crate::type_mapping::RUST_TYPE_MAPPING, abstract_type)
+    map_to_rust_type_with_registry(abstract_type, None)
 }
 
 // ===========================================================================
@@ -949,5 +964,22 @@ mod tests {
         assert_eq!(map_to_rust_type("ToolRegistry"), "serde_json::Value");
         assert_eq!(map_to_rust_type("List<String>"), "Vec<String>");
         assert_eq!(map_to_rust_type("UnknownType"), "serde_json::Value");
+    }
+
+    #[test]
+    fn map_to_rust_type_with_registry_structural_emit() {
+        use gunbc_ir::type_op::Predicate;
+        let mut registry = gunbc_ir::TypeRegistry::with_primitives();
+        registry.register(
+            "Int64",
+            gunbc_ir::type_lib::refined("Int", vec![
+                Predicate::Width(64),
+                Predicate::Signed(None),
+                Predicate::Arithmetic,
+            ]),
+        );
+        assert_eq!(map_to_rust_type_with_registry("Int64", Some(&registry)), "i64");
+        // Fallback still works
+        assert_eq!(map_to_rust_type_with_registry("String", Some(&registry)), "String");
     }
 }

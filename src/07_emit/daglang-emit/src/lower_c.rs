@@ -582,7 +582,45 @@ fn lower_value_expr(v: &gunbc_ir::ValueExpr) -> CExpr {
 // ===========================================================================
 
 /// Map an abstract type name to its C equivalent.
-fn map_to_c_type(abstract_type: &str) -> CType {
+///
+/// When a `TypeRegistry` is available, attempts structural resolution first.
+/// Falls back to the hardcoded mapping table.
+fn map_to_c_type_with_registry(
+    abstract_type: &str,
+    registry: Option<&gunbc_ir::TypeRegistry>,
+) -> CType {
+    // Try structural resolution via registry
+    if let Some(reg) = registry {
+        let type_id = gunbc_ir::TypeId::new(abstract_type);
+        if let Some(dag) = reg.resolve_type(&type_id) {
+            let props =
+                crate::type_mapping::derive_platform_properties(&dag);
+            if props.arithmetic {
+                if let Some(domain) = &props.domain {
+                    if domain.starts_with("ieee754") {
+                        return match props.width {
+                            Some(32) => CType::Float(CFloatKind::Float),
+                            _ => CType::Float(CFloatKind::Double),
+                        };
+                    }
+                }
+                if let Some(width) = props.width {
+                    let signed = props.signed.unwrap_or(true);
+                    return if signed {
+                        CType::Int(CIntKind::Fixed(width as u8))
+                    } else {
+                        CType::Int(CIntKind::UFixed(width as u8))
+                    };
+                }
+            }
+        }
+    }
+    // Fall back to static mapping
+    map_to_c_type_static(abstract_type)
+}
+
+/// Static C type mapping (no registry).
+fn map_to_c_type_static(abstract_type: &str) -> CType {
     match abstract_type {
         "String" | "Path" => CType::Ptr(Box::new(CType::Const(Box::new(CType::Char)))),
         "Bool" | "bool" => CType::Int(CIntKind::Int), // C uses int for bool.
@@ -595,12 +633,17 @@ fn map_to_c_type(abstract_type: &str) -> CType {
                 .strip_prefix("List<")
                 .and_then(|rest| rest.strip_suffix('>'))
             {
-                return CType::Ptr(Box::new(map_to_c_type(inner)));
+                return CType::Ptr(Box::new(map_to_c_type_static(inner)));
             }
             // Default: void pointer.
             CType::Ptr(Box::new(CType::Void))
         }
     }
+}
+
+/// Map an abstract type name to its C equivalent (no registry).
+fn map_to_c_type(abstract_type: &str) -> CType {
+    map_to_c_type_with_registry(abstract_type, None)
 }
 
 /// Infer C type from an abstract expression (best effort).
@@ -769,6 +812,29 @@ mod tests {
         assert!(matches!(
             map_to_c_type("List<String>"),
             CType::Ptr(inner) if matches!(inner.as_ref(), CType::Ptr(_))
+        ));
+    }
+
+    #[test]
+    fn map_to_c_type_with_registry_structural_emit() {
+        use gunbc_ir::type_op::Predicate;
+        let mut registry = gunbc_ir::TypeRegistry::with_primitives();
+        registry.register(
+            "UInt8",
+            gunbc_ir::type_lib::refined("Int", vec![
+                Predicate::Width(8),
+                Predicate::Unsigned,
+                Predicate::Arithmetic,
+            ]),
+        );
+        assert!(matches!(
+            map_to_c_type_with_registry("UInt8", Some(&registry)),
+            CType::Int(CIntKind::UFixed(8))
+        ));
+        // Fallback still works
+        assert!(matches!(
+            map_to_c_type_with_registry("Bool", Some(&registry)),
+            CType::Int(CIntKind::Int)
         ));
     }
 

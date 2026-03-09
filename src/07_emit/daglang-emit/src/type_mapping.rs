@@ -233,6 +233,32 @@ pub fn emit_type(dag: &gunbc_ir::dag::Dag<gunbc_ir::type_op::TypeOp>, backend: B
     }
 }
 
+/// Resolve a type name structurally via the registry, then emit for the backend.
+///
+/// This is the single entry point that all backends should use. When a registry
+/// is provided and contains a structural definition for `type_name`, the type
+/// DAG is resolved and emitted via [`emit_type`]. Otherwise, falls back to
+/// the string-based [`map_abstract_type`] path.
+pub fn resolve_and_emit(
+    type_name: &str,
+    registry: Option<&gunbc_ir::TypeRegistry>,
+    backend: Backend,
+) -> String {
+    if let Some(reg) = registry {
+        let type_id = gunbc_ir::TypeId::new(type_name);
+        if let Some(dag) = reg.resolve_type(&type_id) {
+            return emit_type(&dag, backend);
+        }
+    }
+    // Fall back to string-based mapping
+    let mapping = match backend {
+        Backend::Rust => &RUST_TYPE_MAPPING,
+        Backend::Go => &GO_TYPE_MAPPING,
+        Backend::C => &RUST_TYPE_MAPPING, // C reuses Rust mapping as default
+    };
+    map_abstract_type(mapping, type_name)
+}
+
 // =========================================================================
 // Per-backend static tables
 // =========================================================================
@@ -538,5 +564,55 @@ mod tests {
         let dag = gunbc_ir::type_lib::string();
         assert_eq!(emit_type(&dag, Backend::Rust), "String");
         assert_eq!(emit_type(&dag, Backend::Go), "string");
+    }
+
+    // ── resolve_and_emit tests ────────────────────────────────────
+
+    #[test]
+    fn resolve_and_emit_without_registry_falls_back() {
+        assert_eq!(resolve_and_emit("String", None, Backend::Rust), "String");
+        assert_eq!(resolve_and_emit("Int", None, Backend::Go), "int64");
+        assert_eq!(resolve_and_emit("Bool", None, Backend::C), "bool");
+    }
+
+    #[test]
+    fn resolve_and_emit_with_registry_uses_structural() {
+        use gunbc_ir::type_op::Predicate;
+        let mut registry = gunbc_ir::TypeRegistry::with_primitives();
+        // Register a structural Int64 type
+        registry.register(
+            "Int64",
+            gunbc_ir::type_lib::refined("Int", vec![
+                Predicate::Width(64),
+                Predicate::Signed(None),
+                Predicate::Arithmetic,
+            ]),
+        );
+        assert_eq!(resolve_and_emit("Int64", Some(&registry), Backend::Rust), "i64");
+        assert_eq!(resolve_and_emit("Int64", Some(&registry), Backend::Go), "int64");
+        assert_eq!(resolve_and_emit("Int64", Some(&registry), Backend::C), "int64_t");
+    }
+
+    #[test]
+    fn resolve_and_emit_unknown_type_falls_back() {
+        let registry = gunbc_ir::TypeRegistry::with_primitives();
+        assert_eq!(
+            resolve_and_emit("UnknownType", Some(&registry), Backend::Rust),
+            "serde_json::Value"
+        );
+    }
+
+    #[test]
+    fn resolve_and_emit_matches_map_abstract_type_for_known_types() {
+        let registry = gunbc_ir::TypeRegistry::with_core_types();
+        // String is in the registry — structural path should produce same result
+        assert_eq!(
+            resolve_and_emit("String", Some(&registry), Backend::Rust),
+            map_abstract_type(&RUST_TYPE_MAPPING, "String")
+        );
+        assert_eq!(
+            resolve_and_emit("Bool", Some(&registry), Backend::Rust),
+            map_abstract_type(&RUST_TYPE_MAPPING, "Bool")
+        );
     }
 }
