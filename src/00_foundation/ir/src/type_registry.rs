@@ -282,6 +282,19 @@ impl TypeRegistry {
         registry
     }
 
+    /// Register the minimal kernel types needed to bootstrap DSL typecheck.
+    ///
+    /// These are structural types that the compiler needs before any `.dag`
+    /// files are processed: Unit (bottom), Json (top), Any, Record.
+    /// Primitives (String, Int, etc.) are also included because the DSL
+    /// files reference them in type positions.
+    pub fn register_kernel_types(&mut self) {
+        self.register("Unit", type_lib::unit());
+        self.register("Json", type_lib::json());
+        self.register("Any", type_lib::identity("Any"));
+        self.register("Record", type_lib::identity("Record"));
+    }
+
     /// Register primitive types (String, Bool, Int, Float, Bytes, Unit, Json, Secret).
     pub fn register_primitives(&mut self) {
         self.register("String", type_lib::string());
@@ -292,6 +305,17 @@ impl TypeRegistry {
         self.register("Unit", type_lib::unit());
         self.register("Json", type_lib::json());
         self.register("Secret", type_lib::secret());
+    }
+
+    /// Merge types from a DSL typecheck pass into this registry.
+    ///
+    /// Types resolved from `.dag` files are merged in, overriding any
+    /// matching kernel/primitive registrations. This enables the two-phase
+    /// bootstrap: kernel types first, then DSL-defined structural types.
+    pub fn merge_dsl_types(&mut self, other: &TypeRegistry) {
+        for (type_id, type_dag) in &other.types {
+            self.types.insert(type_id.clone(), type_dag.clone());
+        }
     }
 
     /// Register common refined/core types used across the repo.
