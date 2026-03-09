@@ -22,6 +22,22 @@ pub fn run_compile_pipeline(
         source_digest,
         exec_runtime_emit_config,
     } = prepared;
+
+    // Invariant (README §7): every expression lowers to structural DAG nodes
+    // or the compilation fails. Lossy fn bodies violate this — the parser
+    // fell back to an empty body, so the lowerer would emit an identity
+    // passthrough instead of the function's actual logic.
+    if !lossy_fn_bodies.is_empty() {
+        return Err(CompileError::Message(format!(
+            "compilation rejected: {} fn body/bodies could not be fully parsed (lossy recovery). \
+             Affected functions: [{}]. \
+             The compiler requires all fn bodies to be structurally lowered; \
+             lossy passthroughs are not permitted.",
+            lossy_fn_bodies.len(),
+            lossy_fn_bodies.join(", "),
+        )));
+    }
+
     let typed = typecheck_module_graph_located(
         &module_graph,
         TypecheckOptions {

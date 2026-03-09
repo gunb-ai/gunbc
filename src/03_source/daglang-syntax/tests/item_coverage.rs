@@ -1,9 +1,17 @@
+//! Corpus integration test — NOT a hermetic unit test.
+//!
+//! This file walks the real `dsl/` source tree to verify that the parser
+//! covers all top-level item variants. It requires filesystem access and
+//! is therefore an exception to the "hermetic unit tests only" invariant
+//! from `src/README.md`. It belongs in `tests/` (Rust integration test
+//! directory) rather than alongside unit tests precisely because of this
+//! filesystem dependency.
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use daglang_syntax::ast::Item;
 
-// Test infrastructure: filesystem access for test fixtures
 #[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 fn collect_dag_files(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
     if !dir.is_dir() {
@@ -21,7 +29,6 @@ fn collect_dag_files(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> 
     Ok(())
 }
 
-// Test infrastructure: filesystem access for test fixtures
 #[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 #[test]
 fn corpus_covers_all_top_level_item_variants() {

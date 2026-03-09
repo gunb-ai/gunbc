@@ -63,11 +63,10 @@ pub struct CompileOutput {
     pub receipt: Option<CompileReceipt>,
     /// Pure `fn` items whose bodies were lossy-parsed (parser recovery).
     ///
-    /// These functions had bodies the parser could not fully capture, so
-    /// the lowerer treats them as identity passthroughs. This list makes
-    /// the certainty gap explicit: callers can inspect it to know which
-    /// functions were not fully compiled. An empty list means all `fn`
-    /// bodies were successfully parsed.
+    /// Always empty on successful compilation — `run_compile_pipeline`
+    /// rejects any compilation where lossy fn bodies are present
+    /// (README invariant §7). Retained in the output struct for
+    /// diagnostic tooling.
     pub lossy_fn_bodies: Vec<String>,
     /// Data declaration values evaluated at compile time.
     ///
@@ -1694,18 +1693,13 @@ fn module_has_callable_items(module: &ResolvedModule) -> bool {
 
 /// Collect `fn` items whose body was lossy-parsed (parser recovery).
 ///
-/// A lossy `fn` body means the parser could not parse the pure function
-/// body and fell back to an empty body. The lowerer produces a
-/// DeclaredOutputCallableOp (identity passthrough) instead of evaluating
-/// the function's actual logic.
-///
-/// `func` and `pattern` items with lossy bodies are NOT collected because
-/// the lowerer handles them correctly via service-call wiring — the body
-/// is expressed as transport nodes, not fn body evaluation.
+/// A lossy `fn` body means the parser could not fully capture the pure
+/// function body. `run_compile_pipeline` rejects any compilation where
+/// this list is non-empty — lossy passthroughs violate README invariant §7
+/// ("every expression lowers to structural DAG nodes or the compilation
+/// fails").
 ///
 /// Returns a list of `"module::name"` strings for all affected `fn` items.
-/// The caller can embed this in `CompileOutput` to make the certainty gap
-/// explicit and prevent the compilation from masquerading as fully successful.
 fn collect_lossy_fn_bodies(graph: &ModuleGraph) -> Vec<String> {
     let mut lossy_items = Vec::new();
     for module in &graph.modules {
