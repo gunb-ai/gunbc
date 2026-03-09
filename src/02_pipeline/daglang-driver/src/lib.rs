@@ -522,7 +522,7 @@ pub fn compile_data_from_module_permissive(
     let mut fns = HashMap::new();
     // Derive the module dotted path from the file path for entry_module scoping.
     // This prevents lowering unrelated callables from transitively imported modules
-    // (e.g., credential_chain in std/patterns.dag when only makegen.dag is needed).
+    // (e.g., credential_chain in runtime/auth/patterns.dag when only makegen.dag is needed).
     let entry_module = module_path
         .strip_suffix(".dag")
         .unwrap_or(module_path)

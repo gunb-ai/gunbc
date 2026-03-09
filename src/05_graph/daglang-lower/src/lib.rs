@@ -3045,7 +3045,7 @@ mod parity {
         if candidate_ids.contains("acquire_resource_std_resources_Network") {
             canonical_nodes.insert("net_env".to_string());
         }
-        if candidate_ids.contains("std.patterns::acquire_subject_token") {
+        if candidate_ids.contains("runtime.auth.patterns::acquire_subject_token") {
             canonical_nodes.insert("prepare_github_oidc".to_string());
             canonical_nodes.insert("execute_github_oidc".to_string());
             canonical_nodes.insert("parse_github_oidc".to_string());
@@ -3059,7 +3059,7 @@ mod parity {
             canonical_nodes.insert("execute_sts".to_string());
             canonical_nodes.insert("parse_sts".to_string());
         }
-        if candidate_ids.contains("std.patterns::optional_impersonation") {
+        if candidate_ids.contains("runtime.auth.patterns::optional_impersonation") {
             canonical_nodes.insert("should_impersonate".to_string());
             canonical_nodes.insert("prepare_impersonate".to_string());
             canonical_nodes.insert("execute_impersonate".to_string());
@@ -3077,7 +3077,7 @@ mod parity {
             canonical_nodes.insert("execute_secret_access".to_string());
             canonical_nodes.insert("parse_secret_access".to_string());
         }
-        if candidate_ids.contains("std.patterns::credential_chain") {
+        if candidate_ids.contains("runtime.auth.patterns::credential_chain") {
             canonical_nodes.insert("build_credential".to_string());
         }
         build_gcp_credential_canonical_graph(&canonical_nodes, |id| LoweredOp::Callable {

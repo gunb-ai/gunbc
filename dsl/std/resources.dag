@@ -93,7 +93,7 @@ resource AuthContext {
   mode: Read
   expires: true
   acquire {
-    // Acquisition is itself a func (see credential_chain pattern).
+    // Acquisition is itself a func (see runtime.auth.patterns::credential_chain).
     // The compiler wires credential_chain output to this resource.
   }
   release {}
