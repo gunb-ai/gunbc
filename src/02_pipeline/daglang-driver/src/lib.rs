@@ -69,6 +69,17 @@ pub struct CompileOutput {
 }
 
 impl CompileOutput {
+    /// Build a merged type registry: core types + DSL-defined types.
+    ///
+    /// The DSL registry overrides core registrations when present, so that
+    /// DSL-defined structural types (with predicates, resolved field DAGs,
+    /// etc.) take precedence over the built-in identity definitions.
+    pub fn merged_type_registry(&self) -> TypeRegistry {
+        let mut registry = TypeRegistry::with_core_types();
+        registry.merge_dsl_types(&self.dsl_type_registry);
+        registry
+    }
+
     /// Emit a data-only `.dag` artifact containing compilation metadata.
     ///
     /// Produces a file with:
