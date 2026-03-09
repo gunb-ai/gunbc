@@ -693,6 +693,27 @@ impl Port {
         Self::with_cardinality(name, "Unit", Cardinality::ZERO)
     }
 
+    /// Create a port with cardinality derived from the type registry.
+    ///
+    /// This is the preferred constructor when a registry is available.
+    /// The type_id is resolved through the registry to infer cardinality:
+    /// - Container types (OptionalString, StringList, List<Int>) → derived cardinality
+    /// - Non-container types (String, Int) → ONE (scalar)
+    ///
+    /// Callers without registry access should continue using the explicit
+    /// constructors (`scalar`, `optional`, `list`, etc.).
+    pub fn typed(
+        name: impl Into<PortName>,
+        type_id: impl Into<TypeId>,
+        registry: &crate::type_registry::TypeRegistry,
+    ) -> Self {
+        let type_id = type_id.into();
+        let cardinality = registry
+            .infer_cardinality(&type_id)
+            .unwrap_or(Cardinality::ONE);
+        Self::with_cardinality(name, type_id, cardinality)
+    }
+
     /// Set an execution log detail override for this port.
     pub fn with_log_detail(mut self, log_detail: LogDetailLevel) -> Self {
         self.log_detail = Some(log_detail);
@@ -1114,6 +1135,31 @@ mod tests {
         // Port with unregistered type - should fall back to declared cardinality
         let port5 = Port::optional("p5", "Unknown");
         assert_eq!(port5.infer_cardinality(&registry), Cardinality::ZERO_OR_ONE);
+    }
+
+    #[test]
+    fn test_port_typed_derives_cardinality() {
+        use crate::type_lib;
+        use crate::type_registry::TypeRegistry;
+
+        let mut registry = TypeRegistry::with_primitives();
+        registry.register("MaybeValue", type_lib::optional(type_lib::string()));
+        registry.register("ValueCollection", type_lib::list(type_lib::string()));
+
+        let scalar = Port::typed("p1", "String", &registry);
+        assert_eq!(scalar.cardinality, Cardinality::ONE);
+
+        let optional = Port::typed("p2", "MaybeValue", &registry);
+        assert_eq!(optional.cardinality, Cardinality::ZERO_OR_ONE);
+
+        let list = Port::typed("p3", "ValueCollection", &registry);
+        assert_eq!(list.cardinality, Cardinality::ZERO_OR_MORE);
+
+        let generic_list = Port::typed("p4", "List<String>", &registry);
+        assert_eq!(generic_list.cardinality, Cardinality::ZERO_OR_MORE);
+
+        let unknown = Port::typed("p5", "UnknownType", &registry);
+        assert_eq!(unknown.cardinality, Cardinality::ONE);
     }
 
     #[test]

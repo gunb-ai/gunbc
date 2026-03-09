@@ -787,8 +787,17 @@ impl TypeRegistry {
     }
 
     /// Strict semantic carrier compatibility.
+    ///
+    /// Uses registry-based classification for both types. Structural types
+    /// are mutually compatible; non-structural carrier kinds must match exactly.
     pub fn is_type_compatible(&self, from: &TypeId, to: &TypeId) -> bool {
-        crate::types::semantic_carrier_compatible(from, to)
+        use crate::types::SemanticCarrierKind as Kind;
+        let from_kind = self.semantic_carrier_kind(from);
+        let to_kind = self.semantic_carrier_kind(to);
+        match (from_kind, to_kind) {
+            (Kind::Structural, Kind::Structural) => true,
+            (lhs, rhs) => lhs == rhs,
+        }
     }
 
     /// Check structural + strict semantic-carrier compatibility.
@@ -1006,26 +1015,25 @@ impl TypeRegistry {
 
     /// Classify a type's semantic carrier kind using registry knowledge.
     ///
-    /// Inspects the resolved type DAG for structural properties (transport
-    /// request/response shapes, credential shapes, etc.) when available.
-    /// Falls back to the string-based classification for unregistered types.
+    /// Resolves the type DAG and extracts the base type name, then classifies
+    /// by the base type's carrier kind. Resolved types without a specific
+    /// carrier kind are Structural. Unresolvable types fall back to
+    /// name-based classification (which is fail-closed for unknown names).
     pub fn semantic_carrier_kind(
         &self,
         type_id: &TypeId,
     ) -> crate::types::SemanticCarrierKind {
-        // Try registry-based structural classification first
         if let Some(dag) = self.resolve_type(type_id) {
             let contract = crate::contract::TypeContract::from_type_dag(&dag);
             if let Some(base) = &contract.base_type {
-                // Check if the base type maps to a known carrier kind
-                let kind = crate::types::semantic_carrier_kind_for_type_id(base);
+                let kind = crate::types::semantic_carrier_kind_for_type_name(base);
                 if kind != crate::types::SemanticCarrierKind::UnknownSemantic {
                     return kind;
                 }
             }
+            return crate::types::SemanticCarrierKind::Structural;
         }
-        // Fall back to string-based classification
-        crate::types::semantic_carrier_kind_for_type_id(&type_id.0)
+        crate::types::semantic_carrier_kind_for_type_name(&type_id.0)
     }
 
     /// Classify a type's semantic carrier class using registry knowledge.
