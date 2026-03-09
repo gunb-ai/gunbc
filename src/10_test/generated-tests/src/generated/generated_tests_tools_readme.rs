@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 255 obligations (63 discharged, 3 INVALID, 189 testable [12 compiler gaps]: A=49, B=135, C=5, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 67d7d4b43cc756b29cbaba55b32691f561c3df2eefd7d6c765d16b2a8185bd8f
+// Content-Hash: a1b65a18329977eef9b404deaf6e8fec19a2629cfc0fdf78a8f9a11d62e8d98a
 // 
 // Probe-Observer Coverage:
 //   Probes: 33
@@ -48,8 +48,8 @@
 //     release_resource_std_resources_Clock [terminal] (released: NonEmpty)
 //     release_resource_std_resources_Filesystem [terminal] (released: NonEmpty)
 //     release_resource_std_resources_Network [terminal] (released: NonEmpty)
-//     std.filesystem::is_text_readable [terminal] (return: NonEmpty)
-//     std.filesystem::skip_reason [terminal] (return: NonEmpty)
+//     std.filesystem::is_text_readable [terminal] (return: IsBool)
+//     std.filesystem::skip_reason [terminal] (return: IsString)
 //     std.patterns::retry [terminal] (return: NonEmpty)
 //     std.patterns::transaction [terminal] (value: NonEmpty)
 //     std.patterns::upsert [terminal] (value: NonEmpty)
@@ -1305,7 +1305,7 @@ fn test_optional_missing_tools_readme_render_tool_row_deps() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/readme.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
-    inputs.insert("tool".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("tool".to_string(), Value::Map(std::collections::BTreeMap::from([("description".to_string(), Value::Str("example".to_string())), ("name".to_string(), Value::Str("example".to_string()))])));
     let _outputs = gunbc_exec::execute_single_node(&dag, "tools.readme::render_tool_row", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input tools.readme::render_tool_row.__deps missing should not error");
 }
 
@@ -1502,7 +1502,7 @@ fn test_optional_missing_tools_readme_readme_deps() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/readme.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:written".to_string(), Value::Bool(true));
-    inputs.insert("tools".to_string(), Value::List(vec![Value::Str("mock".to_string())]));
+    inputs.insert("tools".to_string(), Value::List(vec![Value::Map(std::collections::BTreeMap::from([("description".to_string(), Value::Str("example".to_string())), ("name".to_string(), Value::Str("example".to_string()))]))]));
     let _outputs = gunbc_exec::execute_single_node(&dag, "tools.readme::readme", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input tools.readme::readme.__deps missing should not error");
 }
 
@@ -1595,7 +1595,7 @@ fn test_optional_missing_std_filesystem_is_text_readable_deps() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/readme.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("True".to_string()));
-    inputs.insert("entry".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("entry".to_string(), Value::Map(std::collections::BTreeMap::from([("encoding".to_string(), Value::Str("mock".to_string())), ("kind".to_string(), Value::Str("RegularFile".to_string())), ("mime".to_string(), Value::Str("mock".to_string())), ("path".to_string(), Value::Str("example".to_string())), ("size".to_string(), Value::Int(1)), ("symlink_target".to_string(), Value::Str("mock".to_string()))])));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.filesystem::is_text_readable", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.filesystem::is_text_readable.__deps missing should not error");
 }
 
@@ -1610,7 +1610,7 @@ fn test_optional_missing_std_filesystem_skip_reason_deps() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/readme.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
-    inputs.insert("entry".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("entry".to_string(), Value::Map(std::collections::BTreeMap::from([("encoding".to_string(), Value::Str("mock".to_string())), ("kind".to_string(), Value::Str("RegularFile".to_string())), ("mime".to_string(), Value::Str("mock".to_string())), ("path".to_string(), Value::Str("example".to_string())), ("size".to_string(), Value::Int(1)), ("symlink_target".to_string(), Value::Str("mock".to_string()))])));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.filesystem::skip_reason", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.filesystem::skip_reason.__deps missing should not error");
 }
 
@@ -1919,8 +1919,8 @@ fn test_boundary_std_filesystem_partition_entries_mockable() {
     assert!(boundaries.is_boundary_node(&"std.filesystem::partition_entries".into()), "std.filesystem::partition_entries should be a boundary");
 
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("std.filesystem::partition_entries", "readable", Value::List(vec![Value::Str("mock".to_string())]));
-    mocks.set_value("std.filesystem::partition_entries", "skipped", Value::List(vec![Value::Str("mock".to_string())]));
+    mocks.set_value("std.filesystem::partition_entries", "readable", Value::List(vec![Value::Map(std::collections::BTreeMap::from([("encoding".to_string(), Value::Str("mock".to_string())), ("kind".to_string(), Value::Str("RegularFile".to_string())), ("mime".to_string(), Value::Str("mock".to_string())), ("path".to_string(), Value::Str("example".to_string())), ("size".to_string(), Value::Int(1)), ("symlink_target".to_string(), Value::Str("mock".to_string()))]))]));
+    mocks.set_value("std.filesystem::partition_entries", "skipped", Value::List(vec![Value::Map(std::collections::BTreeMap::from([("encoding".to_string(), Value::Str("mock".to_string())), ("kind".to_string(), Value::Str("RegularFile".to_string())), ("mime".to_string(), Value::Str("mock".to_string())), ("path".to_string(), Value::Str("example".to_string())), ("size".to_string(), Value::Int(1)), ("symlink_target".to_string(), Value::Str("mock".to_string()))]))]));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("std.filesystem::partition_entries").expect("node should be in log");
@@ -3142,7 +3142,7 @@ fn test_example_tools_readme_render_tool_row_0() {
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
     inputs.insert("return".to_string(), Value::Str("example".to_string()));
-    inputs.insert("tool".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("tool".to_string(), Value::Map(std::collections::BTreeMap::from([("description".to_string(), Value::Str("example".to_string())), ("name".to_string(), Value::Str("example".to_string()))])));
     let outputs = gunbc_exec::execute_single_node(&dag, "tools.readme::render_tool_row", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'tools.readme::render_tool_row' should execute successfully");
 
     // Check output port 'return'
@@ -3222,13 +3222,13 @@ fn test_example_std_filesystem_is_text_readable_4() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/readme.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("True".to_string()));
-    inputs.insert("entry".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("entry".to_string(), Value::Map(std::collections::BTreeMap::from([("encoding".to_string(), Value::Str("mock".to_string())), ("kind".to_string(), Value::Str("RegularFile".to_string())), ("mime".to_string(), Value::Str("mock".to_string())), ("path".to_string(), Value::Str("example".to_string())), ("size".to_string(), Value::Int(1)), ("symlink_target".to_string(), Value::Str("mock".to_string()))])));
     inputs.insert("return".to_string(), Value::Str("True".to_string()));
     let outputs = gunbc_exec::execute_single_node(&dag, "std.filesystem::is_text_readable", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'std.filesystem::is_text_readable' should execute successfully");
 
     // Check output port 'return'
     let output_return = outputs.get("return").expect("output port 'return' should exist");
-    assert!(!output_return.is_empty() || matches!(*output_return, Value::Skipped | Value::Unit), "expected non-empty value, Skipped, or Unit");
+    assert!(output_return.as_bool().is_some() || matches!(*output_return, Value::Skipped), "expected Bool or Skipped for output_return");
 }
 
 /// Node example: std.filesystem::skip_reason (example 5)
@@ -3242,13 +3242,13 @@ fn test_example_std_filesystem_skip_reason_5() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/readme.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
-    inputs.insert("entry".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("entry".to_string(), Value::Map(std::collections::BTreeMap::from([("encoding".to_string(), Value::Str("mock".to_string())), ("kind".to_string(), Value::Str("RegularFile".to_string())), ("mime".to_string(), Value::Str("mock".to_string())), ("path".to_string(), Value::Str("example".to_string())), ("size".to_string(), Value::Int(1)), ("symlink_target".to_string(), Value::Str("mock".to_string()))])));
     inputs.insert("return".to_string(), Value::Str("example".to_string()));
     let outputs = gunbc_exec::execute_single_node(&dag, "std.filesystem::skip_reason", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'std.filesystem::skip_reason' should execute successfully");
 
     // Check output port 'return'
     let output_return = outputs.get("return").expect("output port 'return' should exist");
-    assert!(!output_return.is_empty() || matches!(*output_return, Value::Skipped | Value::Unit), "expected non-empty value, Skipped, or Unit");
+    assert!(output_return.as_str().is_some() || matches!(*output_return, Value::Skipped), "expected String or Skipped for output_return");
 }
 
 /// Node example: output_path_annotation_readme (example 6)

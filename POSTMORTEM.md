@@ -361,19 +361,20 @@ Sites not covered by the entries above:
 
 ---
 
-### P2 — Generated DAG test failure themes (1,019 failures observed 2026-03-09)
+### P2 — Generated DAG test failure themes (1,019→888 after fix, observed 2026-03-09)
 
 **Invariants**: "no hacks or fallbacks" — downstream consequence of the
 type-registry, auto-mock, and type-shape fallbacks documented above.
 
-The fallback chain `unknown type → ValueBacking::Json → Value::Json({"mock": true})`
-produces structurally invalid mocks that crash at execution time. Five themes:
+**Fixed (themes 1, 3, 4):** The fallback chain
+`unknown type → ValueBacking::Json → Value::Json({"mock": true})` produced
+structurally invalid mocks. Threading the DSL type registry into
+`auto_mock_spec` and adding `product_witness()` for record types eliminated
+all `GetField on {"mock": true}` failures, WrapScalar coercion failures,
+and field-access-on-wrong-shape failures. 1,019 → 888 failures.
 
-- **GetField on mock objects** (~530): `GetField 'comment'/'indent'/'spans'/'text'` on `{"mock": true}` — record-typed ports receive a mock without the expected fields
-- **Unknown function in FnBody/MatchDispatch** (~132): `code_point`, `llm.Anthropic.Messages` — fn-body evaluator missing builtins or service op references
-- **Field access on wrong value shape** (~55): fn bodies try `value.name` on mock values that lack the field
-- **WrapScalar coercion** (~16): resource acquire nodes produce `{"mock": true}` instead of a list-coercible handle
-- **Wrong output type** (~8): variant tests expect `Bool` but get a different shape from mock-driven execution
+**Remaining (theme 2, 888 failures):** FnBody evaluator gaps — see
+"Root cause and fix" section below for breakdown by category.
 
 ---
 
@@ -540,21 +541,49 @@ assertable contract. The 1,019 generated test failures would have shown up
 immediately as diagnostic-count assertions at mock generation time, rather
 than as downstream executor crashes.
 
-### Root cause: `auto_mock_spec` doesn't receive the DSL type registry
+### Root cause and fix: `auto_mock_spec` lacked DSL type registry + product witness generation
+
+**Root cause 1 — missing registry (fixed 2026-03-09):**
 
 The DSL type registry (`CompileOutput.dsl_type_registry`) contains every
 type defined in `.dag` files — Format, Line, Span, FileEntry, FermiDepth,
 etc. It is available at every call site that invokes `auto_mock_spec`.
 
-But `auto_mock_spec` constructs its own static `TypeRegistry::with_core_
-types()` singleton (auto_mock.rs:34), which only contains kernel + core
-types. DSL-defined types are invisible to it.
+But `auto_mock_spec` constructed its own static `TypeRegistry::with_core_
+types()` singleton, which only contained kernel + core types. DSL-defined
+types were invisible to it.
 
-The information exists and is compiled correctly. It just isn't passed to the
-mock generator. A single parameter change (`auto_mock_spec(&dag, &name,
-&registry)`) would give mock generation access to all structural type
-information, enabling it to produce records with the correct fields instead
-of `{"mock": true}`.
+Fix: added `dsl_registry: Option<&TypeRegistry>` parameter to
+`auto_mock_spec`. All call sites updated — compile-time callers pass
+`Some(&result.dsl_type_registry)`, generated test code rebuilds the graph
+and passes the registry at test runtime.
+
+**Root cause 2 — no product witness generation (fixed 2026-03-09):**
+
+Even with the DSL type registry available, `typed_witness_value` could not
+produce structural mock values for product (record) types. The path was:
+`resolve_type("ConfigFormat")` → type DAG with `Product` node →
+`witnesses_checked()` → `scalar_witness_for_base("ConfigFormat")` →
+`Value::Str("<ConfigFormat>")` (placeholder) → filtered out → fallback to
+`ValueBacking::Json` → `{"mock": true}`.
+
+Fix: added `product_witness()` in `auto_mock.rs` that detects `Product`
+type DAGs, extracts field names and their SubDag type DAGs, and recursively
+builds `Value::Map` with field-level witnesses (depth-limited to 4).
+
+**Result:** 1,013 failures → 888. All `GetField on {"mock": true}` errors
+(themes 1-3) eliminated. Remaining 888 are FnBody evaluator gaps (theme 4):
+
+| Category | Count | Root cause |
+|----------|-------|------------|
+| `unknown function: code_point` | 558 | DSL evaluator missing `code_point` pipe method |
+| `unknown function: chars` | 26 | DSL evaluator missing `chars` pipe method |
+| `unbound variable` (data decls) | 76 | Data declarations not available in fn body eval context |
+| Collection ops on wrong shape | 36 | `map`/`join`/`fold` on non-list mocks (downstream cascade) |
+| Field access on placeholder | 15 | Fn body evaluator's own placeholder logic, not auto_mock |
+| `no match arm matched` | 10 | Sum type placeholder strings don't match variant arms |
+
+These are all DSL evaluator completeness gaps, not mock generation issues.
 
 ---
 

@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 204 obligations (37 discharged, 167 testable [5 compiler gaps]: A=55, B=112, C=0, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: f5316d98752de74b612e5d7bdd9b6afb4f773277b8625b05b1237450490f2649
+// Content-Hash: 88d631c29d71a0acb3c8e1633094d1879ac4d19c8ebe5d08e8ff2cadafee595f
 // 
 // Probe-Observer Coverage:
 //   Probes: 44
@@ -73,7 +73,7 @@
 //     std.symbols::resolve_symbol [terminal] (return: NonEmpty)
 //     std.symbols::symbol_color [terminal] (return: NonEmpty)
 //     std.unicode::char_width [terminal] (return: NonEmpty)
-//     std.unicode::in_block [terminal] (return: NonEmpty)
+//     std.unicode::in_block [terminal] (return: IsBool)
 //     std.width::truncate_text [terminal] (return: NonEmpty)
 //   
 //   Integration tests: 43
@@ -771,7 +771,7 @@ fn test_optional_missing_extdeps_gitignore_filter_categories_categories() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("extdeps/gitignore.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::List(vec![Value::Str("mock".to_string())]));
+    inputs.insert("__out:return".to_string(), Value::List(vec![Value::Map(std::collections::BTreeMap::from([("id".to_string(), Value::Str("example".to_string())), ("items".to_string(), Value::Str("mock".to_string())), ("name".to_string(), Value::Str("example".to_string())), ("rationale".to_string(), Value::Str("mock".to_string())), ("source".to_string(), Value::Str("mock".to_string())), ("when_build_system".to_string(), Value::Str("mock".to_string()))]))]));
     inputs.insert("build_system".to_string(), Value::Str("example".to_string()));
     let _outputs = gunbc_exec::execute_single_node(&dag, "extdeps.gitignore::filter_categories", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input extdeps.gitignore::filter_categories.categories missing should not error");
 }
@@ -786,9 +786,9 @@ fn test_optional_missing_extdeps_gitignore_filter_categories_deps() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("extdeps/gitignore.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::List(vec![Value::Str("mock".to_string())]));
+    inputs.insert("__out:return".to_string(), Value::List(vec![Value::Map(std::collections::BTreeMap::from([("id".to_string(), Value::Str("example".to_string())), ("items".to_string(), Value::Str("mock".to_string())), ("name".to_string(), Value::Str("example".to_string())), ("rationale".to_string(), Value::Str("mock".to_string())), ("source".to_string(), Value::Str("mock".to_string())), ("when_build_system".to_string(), Value::Str("mock".to_string()))]))]));
     inputs.insert("build_system".to_string(), Value::Str("example".to_string()));
-    inputs.insert("categories".to_string(), Value::List(vec![Value::Str("mock".to_string())]));
+    inputs.insert("categories".to_string(), Value::List(vec![Value::Map(std::collections::BTreeMap::from([("id".to_string(), Value::Str("example".to_string())), ("items".to_string(), Value::Str("mock".to_string())), ("name".to_string(), Value::Str("example".to_string())), ("rationale".to_string(), Value::Str("mock".to_string())), ("source".to_string(), Value::Str("mock".to_string())), ("when_build_system".to_string(), Value::Str("mock".to_string()))]))]));
     let _outputs = gunbc_exec::execute_single_node(&dag, "extdeps.gitignore::filter_categories", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input extdeps.gitignore::filter_categories.__deps missing should not error");
 }
 
@@ -803,7 +803,7 @@ fn test_optional_missing_std_render_span_width_deps() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("extdeps/gitignore.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Int(1));
-    inputs.insert("span".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("span".to_string(), Value::Map(std::collections::BTreeMap::from([("style".to_string(), Value::Map(std::collections::BTreeMap::from([("bold".to_string(), Value::Str("True".to_string())), ("color".to_string(), Value::Str("mock".to_string())), ("italic".to_string(), Value::Str("True".to_string())), ("symbol".to_string(), Value::Str("mock".to_string()))]))), ("text".to_string(), Value::Str("example".to_string()))])));
     inputs.insert("tier".to_string(), Value::Str("Emoji".to_string()));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.render::span_width", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.render::span_width.__deps missing should not error");
 }
@@ -818,8 +818,8 @@ fn test_optional_missing_std_render_constrain_line_deps() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("extdeps/gitignore.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("line".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("indent".to_string(), Value::Int(1)), ("max_width".to_string(), Value::Str("mock".to_string())), ("spans".to_string(), Value::Str("mock".to_string()))])));
+    inputs.insert("line".to_string(), Value::Map(std::collections::BTreeMap::from([("indent".to_string(), Value::Int(1)), ("max_width".to_string(), Value::Str("mock".to_string())), ("spans".to_string(), Value::Str("mock".to_string()))])));
     inputs.insert("max_width".to_string(), Value::Int(1));
     inputs.insert("tier".to_string(), Value::Str("Emoji".to_string()));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.render::constrain_line", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.render::constrain_line.__deps missing should not error");
@@ -835,10 +835,10 @@ fn test_optional_missing_std_render_constrain_frame_deps() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("extdeps/gitignore.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("frame".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("cursor_action".to_string(), Value::Str("Overwrite".to_string())), ("lines".to_string(), Value::Str("mock".to_string()))])));
+    inputs.insert("frame".to_string(), Value::Map(std::collections::BTreeMap::from([("cursor_action".to_string(), Value::Str("Overwrite".to_string())), ("lines".to_string(), Value::Str("mock".to_string()))])));
     inputs.insert("tier".to_string(), Value::Str("Emoji".to_string()));
-    inputs.insert("viewport".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("viewport".to_string(), Value::Map(std::collections::BTreeMap::from([("height".to_string(), Value::Int(1)), ("unit".to_string(), Value::Str("Chars".to_string())), ("width".to_string(), Value::Int(1))])));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.render::constrain_frame", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.render::constrain_frame.__deps missing should not error");
 }
 
@@ -868,7 +868,7 @@ fn test_optional_missing_std_render_config_comment_prefix_deps() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("extdeps/gitignore.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
-    inputs.insert("format".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("format".to_string(), Value::Map(std::collections::BTreeMap::from([("comment".to_string(), Value::Map(std::collections::BTreeMap::from([("block_end".to_string(), Value::Str("mock".to_string())), ("block_start".to_string(), Value::Str("mock".to_string())), ("doc_prefix".to_string(), Value::Str("mock".to_string())), ("line_prefix".to_string(), Value::Str("mock".to_string()))]))), ("extensions".to_string(), Value::Str("mock".to_string())), ("id".to_string(), Value::Str("example".to_string())), ("name".to_string(), Value::Str("example".to_string()))])));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.render::config_comment_prefix", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.render::config_comment_prefix.__deps missing should not error");
 }
 
@@ -883,7 +883,7 @@ fn test_optional_missing_std_render_language_comment_prefix_deps() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("extdeps/gitignore.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
-    inputs.insert("lang".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("lang".to_string(), Value::Map(std::collections::BTreeMap::from([("comment".to_string(), Value::Map(std::collections::BTreeMap::from([("block_end".to_string(), Value::Str("mock".to_string())), ("block_start".to_string(), Value::Str("mock".to_string())), ("doc_prefix".to_string(), Value::Str("mock".to_string())), ("line_prefix".to_string(), Value::Str("mock".to_string()))]))), ("extensions".to_string(), Value::Str("mock".to_string())), ("id".to_string(), Value::Str("example".to_string())), ("name".to_string(), Value::Str("example".to_string())), ("naming".to_string(), Value::Str("mock".to_string())), ("types".to_string(), Value::Str("mock".to_string()))])));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.render::language_comment_prefix", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.render::language_comment_prefix.__deps missing should not error");
 }
 
@@ -915,7 +915,7 @@ fn test_optional_missing_std_render_config_format_header_deps() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("extdeps/gitignore.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
-    inputs.insert("format".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("format".to_string(), Value::Map(std::collections::BTreeMap::from([("comment".to_string(), Value::Map(std::collections::BTreeMap::from([("block_end".to_string(), Value::Str("mock".to_string())), ("block_start".to_string(), Value::Str("mock".to_string())), ("doc_prefix".to_string(), Value::Str("mock".to_string())), ("line_prefix".to_string(), Value::Str("mock".to_string()))]))), ("extensions".to_string(), Value::Str("mock".to_string())), ("id".to_string(), Value::Str("example".to_string())), ("name".to_string(), Value::Str("example".to_string()))])));
     inputs.insert("generator".to_string(), Value::Str("example".to_string()));
     inputs.insert("regen_command".to_string(), Value::Str("example".to_string()));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.render::config_format_header", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.render::config_format_header.__deps missing should not error");
@@ -933,7 +933,7 @@ fn test_optional_missing_std_render_language_format_header_deps() {
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
     inputs.insert("generator".to_string(), Value::Str("example".to_string()));
-    inputs.insert("lang".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("lang".to_string(), Value::Map(std::collections::BTreeMap::from([("comment".to_string(), Value::Map(std::collections::BTreeMap::from([("block_end".to_string(), Value::Str("mock".to_string())), ("block_start".to_string(), Value::Str("mock".to_string())), ("doc_prefix".to_string(), Value::Str("mock".to_string())), ("line_prefix".to_string(), Value::Str("mock".to_string()))]))), ("extensions".to_string(), Value::Str("mock".to_string())), ("id".to_string(), Value::Str("example".to_string())), ("name".to_string(), Value::Str("example".to_string())), ("naming".to_string(), Value::Str("mock".to_string())), ("types".to_string(), Value::Str("mock".to_string()))])));
     inputs.insert("regen_command".to_string(), Value::Str("example".to_string()));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.render::language_format_header", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.render::language_format_header.__deps missing should not error");
 }
@@ -949,7 +949,7 @@ fn test_optional_missing_std_render_format_comment_deps() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("extdeps/gitignore.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
-    inputs.insert("syntax".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("syntax".to_string(), Value::Map(std::collections::BTreeMap::from([("block_end".to_string(), Value::Str("mock".to_string())), ("block_start".to_string(), Value::Str("mock".to_string())), ("doc_prefix".to_string(), Value::Str("mock".to_string())), ("line_prefix".to_string(), Value::Str("mock".to_string()))])));
     inputs.insert("text".to_string(), Value::Str("example".to_string()));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.render::format_comment", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.render::format_comment.__deps missing should not error");
 }
@@ -965,7 +965,7 @@ fn test_optional_missing_std_render_format_section_header_deps() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("extdeps/gitignore.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
-    inputs.insert("syntax".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("syntax".to_string(), Value::Map(std::collections::BTreeMap::from([("block_end".to_string(), Value::Str("mock".to_string())), ("block_start".to_string(), Value::Str("mock".to_string())), ("doc_prefix".to_string(), Value::Str("mock".to_string())), ("line_prefix".to_string(), Value::Str("mock".to_string()))])));
     inputs.insert("title".to_string(), Value::Str("example".to_string()));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.render::format_section_header", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.render::format_section_header.__deps missing should not error");
 }
@@ -1206,7 +1206,7 @@ fn test_optional_missing_std_unicode_in_block_deps() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("extdeps/gitignore.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("True".to_string()));
-    inputs.insert("block".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("block".to_string(), Value::Map(std::collections::BTreeMap::from([("default_width".to_string(), Value::Str("ZeroWidth".to_string())), ("end_inclusive".to_string(), Value::Int(1)), ("name".to_string(), Value::Str("example".to_string())), ("start".to_string(), Value::Int(1))])));
     inputs.insert("cp".to_string(), Value::Int(1));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.unicode::in_block", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.unicode::in_block.__deps missing should not error");
 }
@@ -1329,7 +1329,7 @@ fn test_boundary_extdeps_gitignore_filter_categories_mockable() {
     assert!(boundaries.is_boundary_node(&"extdeps.gitignore::filter_categories".into()), "extdeps.gitignore::filter_categories should be a boundary");
 
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("extdeps.gitignore::filter_categories", "return", Value::List(vec![Value::Str("mock".to_string())]));
+    mocks.set_value("extdeps.gitignore::filter_categories", "return", Value::List(vec![Value::Map(std::collections::BTreeMap::from([("id".to_string(), Value::Str("example".to_string())), ("items".to_string(), Value::Str("mock".to_string())), ("name".to_string(), Value::Str("example".to_string())), ("rationale".to_string(), Value::Str("mock".to_string())), ("source".to_string(), Value::Str("mock".to_string())), ("when_build_system".to_string(), Value::Str("mock".to_string()))]))]));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("extdeps.gitignore::filter_categories").expect("node should be in log");
@@ -1405,7 +1405,7 @@ fn test_boundary_std_render_constrain_frame_mockable() {
     assert!(boundaries.is_boundary_node(&"std.render::constrain_frame".into()), "std.render::constrain_frame should be a boundary");
 
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("std.render::constrain_frame", "return", Value::Json(serde_json::json!({"mock":true})));
+    mocks.set_value("std.render::constrain_frame", "return", Value::Map(std::collections::BTreeMap::from([("cursor_action".to_string(), Value::Str("Overwrite".to_string())), ("lines".to_string(), Value::Str("mock".to_string()))])));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("std.render::constrain_frame").expect("node should be in log");
@@ -1424,7 +1424,7 @@ fn test_boundary_std_render_constrain_line_mockable() {
     assert!(boundaries.is_boundary_node(&"std.render::constrain_line".into()), "std.render::constrain_line should be a boundary");
 
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("std.render::constrain_line", "return", Value::Json(serde_json::json!({"mock":true})));
+    mocks.set_value("std.render::constrain_line", "return", Value::Map(std::collections::BTreeMap::from([("indent".to_string(), Value::Int(1)), ("max_width".to_string(), Value::Str("mock".to_string())), ("spans".to_string(), Value::Str("mock".to_string()))])));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("std.render::constrain_line").expect("node should be in log");
@@ -1690,7 +1690,7 @@ fn test_boundary_std_render_truncate_spans_mockable() {
     assert!(boundaries.is_boundary_node(&"std.render::truncate_spans".into()), "std.render::truncate_spans should be a boundary");
 
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("std.render::truncate_spans", "return", Value::List(vec![Value::Str("mock".to_string())]));
+    mocks.set_value("std.render::truncate_spans", "return", Value::List(vec![Value::Map(std::collections::BTreeMap::from([("style".to_string(), Value::Map(std::collections::BTreeMap::from([("bold".to_string(), Value::Str("True".to_string())), ("color".to_string(), Value::Str("mock".to_string())), ("italic".to_string(), Value::Str("True".to_string())), ("symbol".to_string(), Value::Str("mock".to_string()))]))), ("text".to_string(), Value::Str("example".to_string()))]))]));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("std.render::truncate_spans").expect("node should be in log");
@@ -3489,9 +3489,9 @@ fn test_example_extdeps_gitignore_filter_categories_0() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("extdeps/gitignore.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::List(vec![Value::Str("mock".to_string())]));
+    inputs.insert("__out:return".to_string(), Value::List(vec![Value::Map(std::collections::BTreeMap::from([("id".to_string(), Value::Str("example".to_string())), ("items".to_string(), Value::Str("mock".to_string())), ("name".to_string(), Value::Str("example".to_string())), ("rationale".to_string(), Value::Str("mock".to_string())), ("source".to_string(), Value::Str("mock".to_string())), ("when_build_system".to_string(), Value::Str("mock".to_string()))]))]));
     inputs.insert("build_system".to_string(), Value::Str("example".to_string()));
-    inputs.insert("return".to_string(), Value::List(vec![Value::Str("mock".to_string())]));
+    inputs.insert("return".to_string(), Value::List(vec![Value::Map(std::collections::BTreeMap::from([("id".to_string(), Value::Str("example".to_string())), ("items".to_string(), Value::Str("mock".to_string())), ("name".to_string(), Value::Str("example".to_string())), ("rationale".to_string(), Value::Str("mock".to_string())), ("source".to_string(), Value::Str("mock".to_string())), ("when_build_system".to_string(), Value::Str("mock".to_string()))]))]));
     let outputs = gunbc_exec::execute_single_node(&dag, "extdeps.gitignore::filter_categories", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'extdeps.gitignore::filter_categories' should execute successfully");
 
     // Check output port 'return'
@@ -3511,7 +3511,7 @@ fn test_example_std_render_span_width_1() {
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Int(1));
     inputs.insert("return".to_string(), Value::Int(1));
-    inputs.insert("span".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("span".to_string(), Value::Map(std::collections::BTreeMap::from([("style".to_string(), Value::Map(std::collections::BTreeMap::from([("bold".to_string(), Value::Str("True".to_string())), ("color".to_string(), Value::Str("mock".to_string())), ("italic".to_string(), Value::Str("True".to_string())), ("symbol".to_string(), Value::Str("mock".to_string()))]))), ("text".to_string(), Value::Str("example".to_string()))])));
     inputs.insert("tier".to_string(), Value::Str("Emoji".to_string()));
     let outputs = gunbc_exec::execute_single_node(&dag, "std.render::span_width", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'std.render::span_width' should execute successfully");
 
@@ -3530,10 +3530,10 @@ fn test_example_std_render_constrain_line_2() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("extdeps/gitignore.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("line".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("indent".to_string(), Value::Int(1)), ("max_width".to_string(), Value::Str("mock".to_string())), ("spans".to_string(), Value::Str("mock".to_string()))])));
+    inputs.insert("line".to_string(), Value::Map(std::collections::BTreeMap::from([("indent".to_string(), Value::Int(1)), ("max_width".to_string(), Value::Str("mock".to_string())), ("spans".to_string(), Value::Str("mock".to_string()))])));
     inputs.insert("max_width".to_string(), Value::Int(1));
-    inputs.insert("return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("return".to_string(), Value::Map(std::collections::BTreeMap::from([("indent".to_string(), Value::Int(1)), ("max_width".to_string(), Value::Str("mock".to_string())), ("spans".to_string(), Value::Str("mock".to_string()))])));
     inputs.insert("tier".to_string(), Value::Str("Emoji".to_string()));
     let outputs = gunbc_exec::execute_single_node(&dag, "std.render::constrain_line", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'std.render::constrain_line' should execute successfully");
 
@@ -3552,11 +3552,11 @@ fn test_example_std_render_constrain_frame_3() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("extdeps/gitignore.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("frame".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("cursor_action".to_string(), Value::Str("Overwrite".to_string())), ("lines".to_string(), Value::Str("mock".to_string()))])));
+    inputs.insert("frame".to_string(), Value::Map(std::collections::BTreeMap::from([("cursor_action".to_string(), Value::Str("Overwrite".to_string())), ("lines".to_string(), Value::Str("mock".to_string()))])));
+    inputs.insert("return".to_string(), Value::Map(std::collections::BTreeMap::from([("cursor_action".to_string(), Value::Str("Overwrite".to_string())), ("lines".to_string(), Value::Str("mock".to_string()))])));
     inputs.insert("tier".to_string(), Value::Str("Emoji".to_string()));
-    inputs.insert("viewport".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("viewport".to_string(), Value::Map(std::collections::BTreeMap::from([("height".to_string(), Value::Int(1)), ("unit".to_string(), Value::Str("Chars".to_string())), ("width".to_string(), Value::Int(1))])));
     let outputs = gunbc_exec::execute_single_node(&dag, "std.render::constrain_frame", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'std.render::constrain_frame' should execute successfully");
 
     // Check output port 'return'
@@ -3575,7 +3575,7 @@ fn test_example_std_render_config_comment_prefix_4() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("extdeps/gitignore.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
-    inputs.insert("format".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("format".to_string(), Value::Map(std::collections::BTreeMap::from([("comment".to_string(), Value::Map(std::collections::BTreeMap::from([("block_end".to_string(), Value::Str("mock".to_string())), ("block_start".to_string(), Value::Str("mock".to_string())), ("doc_prefix".to_string(), Value::Str("mock".to_string())), ("line_prefix".to_string(), Value::Str("mock".to_string()))]))), ("extensions".to_string(), Value::Str("mock".to_string())), ("id".to_string(), Value::Str("example".to_string())), ("name".to_string(), Value::Str("example".to_string()))])));
     inputs.insert("return".to_string(), Value::Str("example".to_string()));
     let outputs = gunbc_exec::execute_single_node(&dag, "std.render::config_comment_prefix", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'std.render::config_comment_prefix' should execute successfully");
 
@@ -3595,7 +3595,7 @@ fn test_example_std_render_language_comment_prefix_5() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("extdeps/gitignore.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
-    inputs.insert("lang".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("lang".to_string(), Value::Map(std::collections::BTreeMap::from([("comment".to_string(), Value::Map(std::collections::BTreeMap::from([("block_end".to_string(), Value::Str("mock".to_string())), ("block_start".to_string(), Value::Str("mock".to_string())), ("doc_prefix".to_string(), Value::Str("mock".to_string())), ("line_prefix".to_string(), Value::Str("mock".to_string()))]))), ("extensions".to_string(), Value::Str("mock".to_string())), ("id".to_string(), Value::Str("example".to_string())), ("name".to_string(), Value::Str("example".to_string())), ("naming".to_string(), Value::Str("mock".to_string())), ("types".to_string(), Value::Str("mock".to_string()))])));
     inputs.insert("return".to_string(), Value::Str("example".to_string()));
     let outputs = gunbc_exec::execute_single_node(&dag, "std.render::language_comment_prefix", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'std.render::language_comment_prefix' should execute successfully");
 
@@ -3615,7 +3615,7 @@ fn test_example_std_render_config_format_header_6() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("extdeps/gitignore.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
-    inputs.insert("format".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("format".to_string(), Value::Map(std::collections::BTreeMap::from([("comment".to_string(), Value::Map(std::collections::BTreeMap::from([("block_end".to_string(), Value::Str("mock".to_string())), ("block_start".to_string(), Value::Str("mock".to_string())), ("doc_prefix".to_string(), Value::Str("mock".to_string())), ("line_prefix".to_string(), Value::Str("mock".to_string()))]))), ("extensions".to_string(), Value::Str("mock".to_string())), ("id".to_string(), Value::Str("example".to_string())), ("name".to_string(), Value::Str("example".to_string()))])));
     inputs.insert("generator".to_string(), Value::Str("example".to_string()));
     inputs.insert("regen_command".to_string(), Value::Str("example".to_string()));
     inputs.insert("return".to_string(), Value::Str("example".to_string()));
@@ -3638,7 +3638,7 @@ fn test_example_std_render_language_format_header_7() {
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
     inputs.insert("generator".to_string(), Value::Str("example".to_string()));
-    inputs.insert("lang".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("lang".to_string(), Value::Map(std::collections::BTreeMap::from([("comment".to_string(), Value::Map(std::collections::BTreeMap::from([("block_end".to_string(), Value::Str("mock".to_string())), ("block_start".to_string(), Value::Str("mock".to_string())), ("doc_prefix".to_string(), Value::Str("mock".to_string())), ("line_prefix".to_string(), Value::Str("mock".to_string()))]))), ("extensions".to_string(), Value::Str("mock".to_string())), ("id".to_string(), Value::Str("example".to_string())), ("name".to_string(), Value::Str("example".to_string())), ("naming".to_string(), Value::Str("mock".to_string())), ("types".to_string(), Value::Str("mock".to_string()))])));
     inputs.insert("regen_command".to_string(), Value::Str("example".to_string()));
     inputs.insert("return".to_string(), Value::Str("example".to_string()));
     let outputs = gunbc_exec::execute_single_node(&dag, "std.render::language_format_header", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'std.render::language_format_header' should execute successfully");
@@ -3660,7 +3660,7 @@ fn test_example_std_render_format_comment_8() {
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
     inputs.insert("return".to_string(), Value::Str("example".to_string()));
-    inputs.insert("syntax".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("syntax".to_string(), Value::Map(std::collections::BTreeMap::from([("block_end".to_string(), Value::Str("mock".to_string())), ("block_start".to_string(), Value::Str("mock".to_string())), ("doc_prefix".to_string(), Value::Str("mock".to_string())), ("line_prefix".to_string(), Value::Str("mock".to_string()))])));
     inputs.insert("text".to_string(), Value::Str("example".to_string()));
     let outputs = gunbc_exec::execute_single_node(&dag, "std.render::format_comment", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'std.render::format_comment' should execute successfully");
 
@@ -3681,7 +3681,7 @@ fn test_example_std_render_format_section_header_9() {
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
     inputs.insert("return".to_string(), Value::Str("example".to_string()));
-    inputs.insert("syntax".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("syntax".to_string(), Value::Map(std::collections::BTreeMap::from([("block_end".to_string(), Value::Str("mock".to_string())), ("block_start".to_string(), Value::Str("mock".to_string())), ("doc_prefix".to_string(), Value::Str("mock".to_string())), ("line_prefix".to_string(), Value::Str("mock".to_string()))])));
     inputs.insert("title".to_string(), Value::Str("example".to_string()));
     let outputs = gunbc_exec::execute_single_node(&dag, "std.render::format_section_header", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'std.render::format_section_header' should execute successfully");
 
@@ -3836,14 +3836,14 @@ fn test_example_std_unicode_in_block_16() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("extdeps/gitignore.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("True".to_string()));
-    inputs.insert("block".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("block".to_string(), Value::Map(std::collections::BTreeMap::from([("default_width".to_string(), Value::Str("ZeroWidth".to_string())), ("end_inclusive".to_string(), Value::Int(1)), ("name".to_string(), Value::Str("example".to_string())), ("start".to_string(), Value::Int(1))])));
     inputs.insert("cp".to_string(), Value::Int(1));
     inputs.insert("return".to_string(), Value::Str("True".to_string()));
     let outputs = gunbc_exec::execute_single_node(&dag, "std.unicode::in_block", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'std.unicode::in_block' should execute successfully");
 
     // Check output port 'return'
     let output_return = outputs.get("return").expect("output port 'return' should exist");
-    assert!(!output_return.is_empty() || matches!(*output_return, Value::Skipped | Value::Unit), "expected non-empty value, Skipped, or Unit");
+    assert!(output_return.as_bool().is_some() || matches!(*output_return, Value::Skipped), "expected Bool or Skipped for output_return");
 }
 
 /// Node example: std.unicode::char_width (example 17)

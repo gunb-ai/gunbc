@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 159 obligations (41 discharged, 118 testable [4 compiler gaps]: A=34, B=74, C=10, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 7ab4943602ce6d5af2526d68b30c57d3064232a1bc96c8431522f2f7b7630621
+// Content-Hash: 32d38d16415284c1c8b9e53c911eebd8f7fde666d19d38d5c1fb00457bd496bb
 // 
 // Probe-Observer Coverage:
 //   Probes: 24
@@ -425,7 +425,7 @@ fn test_optional_missing_tools_build_build_all_deps() {
     inputs.insert("__out:clippy_stderr".to_string(), Value::Str("example".to_string()));
     inputs.insert("__out:overall_success".to_string(), Value::Str("True".to_string()));
     inputs.insert("__out:report".to_string(), Value::Str("example".to_string()));
-    inputs.insert("__out:summary".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:summary".to_string(), Value::Map(std::collections::BTreeMap::from([("failed".to_string(), Value::Int(1)), ("passed".to_string(), Value::Int(1)), ("total".to_string(), Value::Int(1))])));
     inputs.insert("__out:test_stderr".to_string(), Value::Str("example".to_string()));
     let _outputs = gunbc_exec::execute_single_node(&dag, "tools.build::build_all", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input tools.build::build_all.__deps missing should not error");
 }
@@ -483,7 +483,7 @@ fn test_optional_missing_shared_dag_util_all_succeeded_deps() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("True".to_string()));
-    inputs.insert("stages".to_string(), Value::List(vec![Value::Str("mock".to_string())]));
+    inputs.insert("stages".to_string(), Value::List(vec![Value::Map(std::collections::BTreeMap::from([("name".to_string(), Value::Str("example".to_string())), ("skipped".to_string(), Value::Str("True".to_string())), ("stderr".to_string(), Value::Str("example".to_string())), ("stdout".to_string(), Value::Str("example".to_string())), ("success".to_string(), Value::Str("True".to_string()))]))]));
     let _outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::all_succeeded", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input shared.dag_util::all_succeeded.__deps missing should not error");
 }
 
@@ -527,7 +527,7 @@ fn test_optional_missing_shared_dag_util_stage_result_deps() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("name".to_string(), Value::Str("example".to_string())), ("skipped".to_string(), Value::Str("True".to_string())), ("stderr".to_string(), Value::Str("example".to_string())), ("stdout".to_string(), Value::Str("example".to_string())), ("success".to_string(), Value::Str("True".to_string()))])));
     inputs.insert("name".to_string(), Value::Str("example".to_string()));
     inputs.insert("stderr".to_string(), Value::Str("example".to_string()));
     inputs.insert("success".to_string(), Value::Str("True".to_string()));
@@ -544,7 +544,7 @@ fn test_optional_missing_shared_dag_util_skipped_stage_deps() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("name".to_string(), Value::Str("example".to_string())), ("skipped".to_string(), Value::Str("True".to_string())), ("stderr".to_string(), Value::Str("example".to_string())), ("stdout".to_string(), Value::Str("example".to_string())), ("success".to_string(), Value::Str("True".to_string()))])));
     inputs.insert("name".to_string(), Value::Str("example".to_string()));
     let _outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::skipped_stage", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input shared.dag_util::skipped_stage.__deps missing should not error");
 }
@@ -593,7 +593,7 @@ fn test_optional_missing_shared_dag_util_text_line_deps() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("is_blank".to_string(), Value::Str("True".to_string())), ("is_comment".to_string(), Value::Str("True".to_string())), ("text".to_string(), Value::Str("example".to_string()))])));
     inputs.insert("text".to_string(), Value::Str("example".to_string()));
     let _outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::text_line", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input shared.dag_util::text_line.__deps missing should not error");
 }
@@ -608,7 +608,7 @@ fn test_optional_missing_shared_dag_util_comment_line_deps() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("is_blank".to_string(), Value::Str("True".to_string())), ("is_comment".to_string(), Value::Str("True".to_string())), ("text".to_string(), Value::Str("example".to_string()))])));
     inputs.insert("text".to_string(), Value::Str("example".to_string()));
     let _outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::comment_line", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input shared.dag_util::comment_line.__deps missing should not error");
 }
@@ -623,7 +623,7 @@ fn test_optional_missing_shared_dag_util_blank_line_deps() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("is_blank".to_string(), Value::Str("True".to_string())), ("is_comment".to_string(), Value::Str("True".to_string())), ("text".to_string(), Value::Str("example".to_string()))])));
     let _outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::blank_line", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input shared.dag_util::blank_line.__deps missing should not error");
 }
 
@@ -637,7 +637,7 @@ fn test_optional_missing_shared_dag_util_section_lines() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("has_title".to_string(), Value::Str("True".to_string())), ("lines".to_string(), Value::Str("mock".to_string())), ("title".to_string(), Value::Str("example".to_string()))])));
     let _outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::section", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input shared.dag_util::section.lines missing should not error");
 }
 
@@ -651,8 +651,8 @@ fn test_optional_missing_shared_dag_util_section_deps() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("lines".to_string(), Value::List(vec![Value::Str("mock".to_string())]));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("has_title".to_string(), Value::Str("True".to_string())), ("lines".to_string(), Value::Str("mock".to_string())), ("title".to_string(), Value::Str("example".to_string()))])));
+    inputs.insert("lines".to_string(), Value::List(vec![Value::Map(std::collections::BTreeMap::from([("is_blank".to_string(), Value::Str("True".to_string())), ("is_comment".to_string(), Value::Str("True".to_string())), ("text".to_string(), Value::Str("example".to_string()))]))]));
     let _outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::section", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input shared.dag_util::section.__deps missing should not error");
 }
 
@@ -666,7 +666,7 @@ fn test_optional_missing_shared_dag_util_titled_section_lines() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("has_title".to_string(), Value::Str("True".to_string())), ("lines".to_string(), Value::Str("mock".to_string())), ("title".to_string(), Value::Str("example".to_string()))])));
     inputs.insert("title".to_string(), Value::Str("example".to_string()));
     let _outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::titled_section", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input shared.dag_util::titled_section.lines missing should not error");
 }
@@ -681,8 +681,8 @@ fn test_optional_missing_shared_dag_util_titled_section_deps() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("lines".to_string(), Value::List(vec![Value::Str("mock".to_string())]));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("has_title".to_string(), Value::Str("True".to_string())), ("lines".to_string(), Value::Str("mock".to_string())), ("title".to_string(), Value::Str("example".to_string()))])));
+    inputs.insert("lines".to_string(), Value::List(vec![Value::Map(std::collections::BTreeMap::from([("is_blank".to_string(), Value::Str("True".to_string())), ("is_comment".to_string(), Value::Str("True".to_string())), ("text".to_string(), Value::Str("example".to_string()))]))]));
     inputs.insert("title".to_string(), Value::Str("example".to_string()));
     let _outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::titled_section", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input shared.dag_util::titled_section.__deps missing should not error");
 }
@@ -697,7 +697,7 @@ fn test_optional_missing_shared_dag_util_doc_sections() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("comment_prefix".to_string(), Value::Str("example".to_string())), ("has_header".to_string(), Value::Str("True".to_string())), ("header".to_string(), Value::Str("example".to_string())), ("sections".to_string(), Value::Str("mock".to_string())), ("trailing_newline".to_string(), Value::Str("True".to_string()))])));
     let _outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::doc", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input shared.dag_util::doc.sections missing should not error");
 }
 
@@ -711,8 +711,8 @@ fn test_optional_missing_shared_dag_util_doc_deps() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("sections".to_string(), Value::List(vec![Value::Str("mock".to_string())]));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("comment_prefix".to_string(), Value::Str("example".to_string())), ("has_header".to_string(), Value::Str("True".to_string())), ("header".to_string(), Value::Str("example".to_string())), ("sections".to_string(), Value::Str("mock".to_string())), ("trailing_newline".to_string(), Value::Str("True".to_string()))])));
+    inputs.insert("sections".to_string(), Value::List(vec![Value::Map(std::collections::BTreeMap::from([("has_title".to_string(), Value::Str("True".to_string())), ("lines".to_string(), Value::Str("mock".to_string())), ("title".to_string(), Value::Str("example".to_string()))]))]));
     let _outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::doc", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input shared.dag_util::doc.__deps missing should not error");
 }
 
@@ -726,7 +726,7 @@ fn test_optional_missing_shared_dag_util_doc_with_header_sections() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("comment_prefix".to_string(), Value::Str("example".to_string())), ("has_header".to_string(), Value::Str("True".to_string())), ("header".to_string(), Value::Str("example".to_string())), ("sections".to_string(), Value::Str("mock".to_string())), ("trailing_newline".to_string(), Value::Str("True".to_string()))])));
     inputs.insert("comment_prefix".to_string(), Value::Str("example".to_string()));
     inputs.insert("header".to_string(), Value::Str("example".to_string()));
     let _outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::doc_with_header", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input shared.dag_util::doc_with_header.sections missing should not error");
@@ -742,10 +742,10 @@ fn test_optional_missing_shared_dag_util_doc_with_header_deps() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("comment_prefix".to_string(), Value::Str("example".to_string())), ("has_header".to_string(), Value::Str("True".to_string())), ("header".to_string(), Value::Str("example".to_string())), ("sections".to_string(), Value::Str("mock".to_string())), ("trailing_newline".to_string(), Value::Str("True".to_string()))])));
     inputs.insert("comment_prefix".to_string(), Value::Str("example".to_string()));
     inputs.insert("header".to_string(), Value::Str("example".to_string()));
-    inputs.insert("sections".to_string(), Value::List(vec![Value::Str("mock".to_string())]));
+    inputs.insert("sections".to_string(), Value::List(vec![Value::Map(std::collections::BTreeMap::from([("has_title".to_string(), Value::Str("True".to_string())), ("lines".to_string(), Value::Str("mock".to_string())), ("title".to_string(), Value::Str("example".to_string()))]))]));
     let _outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::doc_with_header", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input shared.dag_util::doc_with_header.__deps missing should not error");
 }
 
@@ -761,7 +761,7 @@ fn test_optional_missing_shared_dag_util_render_document_line_deps() {
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
     inputs.insert("comment_prefix".to_string(), Value::Str("example".to_string()));
-    inputs.insert("line".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("line".to_string(), Value::Map(std::collections::BTreeMap::from([("is_blank".to_string(), Value::Str("True".to_string())), ("is_comment".to_string(), Value::Str("True".to_string())), ("text".to_string(), Value::Str("example".to_string()))])));
     let _outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::render_document_line", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input shared.dag_util::render_document_line.__deps missing should not error");
 }
 
@@ -777,7 +777,7 @@ fn test_optional_missing_shared_dag_util_render_document_section_deps() {
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
     inputs.insert("comment_prefix".to_string(), Value::Str("example".to_string()));
-    inputs.insert("section".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("section".to_string(), Value::Map(std::collections::BTreeMap::from([("has_title".to_string(), Value::Str("True".to_string())), ("lines".to_string(), Value::Str("mock".to_string())), ("title".to_string(), Value::Str("example".to_string()))])));
     let _outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::render_document_section", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input shared.dag_util::render_document_section.__deps missing should not error");
 }
 
@@ -792,7 +792,7 @@ fn test_optional_missing_shared_dag_util_render_document_deps() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
-    inputs.insert("document".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("document".to_string(), Value::Map(std::collections::BTreeMap::from([("comment_prefix".to_string(), Value::Str("example".to_string())), ("has_header".to_string(), Value::Str("True".to_string())), ("header".to_string(), Value::Str("example".to_string())), ("sections".to_string(), Value::Str("mock".to_string())), ("trailing_newline".to_string(), Value::Str("True".to_string()))])));
     let _outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::render_document", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input shared.dag_util::render_document.__deps missing should not error");
 }
 
@@ -983,7 +983,7 @@ fn test_boundary_shared_dag_util_blank_line_mockable() {
     assert!(boundaries.is_boundary_node(&"shared.dag_util::blank_line".into()), "shared.dag_util::blank_line should be a boundary");
 
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("shared.dag_util::blank_line", "return", Value::Json(serde_json::json!({"mock":true})));
+    mocks.set_value("shared.dag_util::blank_line", "return", Value::Map(std::collections::BTreeMap::from([("is_blank".to_string(), Value::Str("True".to_string())), ("is_comment".to_string(), Value::Str("True".to_string())), ("text".to_string(), Value::Str("example".to_string()))])));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("shared.dag_util::blank_line").expect("node should be in log");
@@ -1002,7 +1002,7 @@ fn test_boundary_shared_dag_util_comment_line_mockable() {
     assert!(boundaries.is_boundary_node(&"shared.dag_util::comment_line".into()), "shared.dag_util::comment_line should be a boundary");
 
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("shared.dag_util::comment_line", "return", Value::Json(serde_json::json!({"mock":true})));
+    mocks.set_value("shared.dag_util::comment_line", "return", Value::Map(std::collections::BTreeMap::from([("is_blank".to_string(), Value::Str("True".to_string())), ("is_comment".to_string(), Value::Str("True".to_string())), ("text".to_string(), Value::Str("example".to_string()))])));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("shared.dag_util::comment_line").expect("node should be in log");
@@ -1021,7 +1021,7 @@ fn test_boundary_shared_dag_util_doc_mockable() {
     assert!(boundaries.is_boundary_node(&"shared.dag_util::doc".into()), "shared.dag_util::doc should be a boundary");
 
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("shared.dag_util::doc", "return", Value::Json(serde_json::json!({"mock":true})));
+    mocks.set_value("shared.dag_util::doc", "return", Value::Map(std::collections::BTreeMap::from([("comment_prefix".to_string(), Value::Str("example".to_string())), ("has_header".to_string(), Value::Str("True".to_string())), ("header".to_string(), Value::Str("example".to_string())), ("sections".to_string(), Value::Str("mock".to_string())), ("trailing_newline".to_string(), Value::Str("True".to_string()))])));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("shared.dag_util::doc").expect("node should be in log");
@@ -1040,7 +1040,7 @@ fn test_boundary_shared_dag_util_doc_with_header_mockable() {
     assert!(boundaries.is_boundary_node(&"shared.dag_util::doc_with_header".into()), "shared.dag_util::doc_with_header should be a boundary");
 
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("shared.dag_util::doc_with_header", "return", Value::Json(serde_json::json!({"mock":true})));
+    mocks.set_value("shared.dag_util::doc_with_header", "return", Value::Map(std::collections::BTreeMap::from([("comment_prefix".to_string(), Value::Str("example".to_string())), ("has_header".to_string(), Value::Str("True".to_string())), ("header".to_string(), Value::Str("example".to_string())), ("sections".to_string(), Value::Str("mock".to_string())), ("trailing_newline".to_string(), Value::Str("True".to_string()))])));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("shared.dag_util::doc_with_header").expect("node should be in log");
@@ -1135,7 +1135,7 @@ fn test_boundary_shared_dag_util_section_mockable() {
     assert!(boundaries.is_boundary_node(&"shared.dag_util::section".into()), "shared.dag_util::section should be a boundary");
 
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("shared.dag_util::section", "return", Value::Json(serde_json::json!({"mock":true})));
+    mocks.set_value("shared.dag_util::section", "return", Value::Map(std::collections::BTreeMap::from([("has_title".to_string(), Value::Str("True".to_string())), ("lines".to_string(), Value::Str("mock".to_string())), ("title".to_string(), Value::Str("example".to_string()))])));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("shared.dag_util::section").expect("node should be in log");
@@ -1154,7 +1154,7 @@ fn test_boundary_shared_dag_util_skipped_stage_mockable() {
     assert!(boundaries.is_boundary_node(&"shared.dag_util::skipped_stage".into()), "shared.dag_util::skipped_stage should be a boundary");
 
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("shared.dag_util::skipped_stage", "return", Value::Json(serde_json::json!({"mock":true})));
+    mocks.set_value("shared.dag_util::skipped_stage", "return", Value::Map(std::collections::BTreeMap::from([("name".to_string(), Value::Str("example".to_string())), ("skipped".to_string(), Value::Str("True".to_string())), ("stderr".to_string(), Value::Str("example".to_string())), ("stdout".to_string(), Value::Str("example".to_string())), ("success".to_string(), Value::Str("True".to_string()))])));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("shared.dag_util::skipped_stage").expect("node should be in log");
@@ -1173,7 +1173,7 @@ fn test_boundary_shared_dag_util_stage_result_mockable() {
     assert!(boundaries.is_boundary_node(&"shared.dag_util::stage_result".into()), "shared.dag_util::stage_result should be a boundary");
 
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("shared.dag_util::stage_result", "return", Value::Json(serde_json::json!({"mock":true})));
+    mocks.set_value("shared.dag_util::stage_result", "return", Value::Map(std::collections::BTreeMap::from([("name".to_string(), Value::Str("example".to_string())), ("skipped".to_string(), Value::Str("True".to_string())), ("stderr".to_string(), Value::Str("example".to_string())), ("stdout".to_string(), Value::Str("example".to_string())), ("success".to_string(), Value::Str("True".to_string()))])));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("shared.dag_util::stage_result").expect("node should be in log");
@@ -1192,7 +1192,7 @@ fn test_boundary_shared_dag_util_text_line_mockable() {
     assert!(boundaries.is_boundary_node(&"shared.dag_util::text_line".into()), "shared.dag_util::text_line should be a boundary");
 
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("shared.dag_util::text_line", "return", Value::Json(serde_json::json!({"mock":true})));
+    mocks.set_value("shared.dag_util::text_line", "return", Value::Map(std::collections::BTreeMap::from([("is_blank".to_string(), Value::Str("True".to_string())), ("is_comment".to_string(), Value::Str("True".to_string())), ("text".to_string(), Value::Str("example".to_string()))])));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("shared.dag_util::text_line").expect("node should be in log");
@@ -1211,7 +1211,7 @@ fn test_boundary_shared_dag_util_titled_section_mockable() {
     assert!(boundaries.is_boundary_node(&"shared.dag_util::titled_section".into()), "shared.dag_util::titled_section should be a boundary");
 
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("shared.dag_util::titled_section", "return", Value::Json(serde_json::json!({"mock":true})));
+    mocks.set_value("shared.dag_util::titled_section", "return", Value::Map(std::collections::BTreeMap::from([("has_title".to_string(), Value::Str("True".to_string())), ("lines".to_string(), Value::Str("mock".to_string())), ("title".to_string(), Value::Str("example".to_string()))])));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("shared.dag_util::titled_section").expect("node should be in log");
@@ -1231,7 +1231,7 @@ fn test_boundary_tools_build_build_all_mockable() {
 
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("tools.build::build_all", "overall_success", Value::Str("True".to_string()));
-    mocks.set_value("tools.build::build_all", "summary", Value::Json(serde_json::json!({"mock":true})));
+    mocks.set_value("tools.build::build_all", "summary", Value::Map(std::collections::BTreeMap::from([("failed".to_string(), Value::Int(1)), ("passed".to_string(), Value::Int(1)), ("total".to_string(), Value::Int(1))])));
     mocks.set_value("tools.build::build_all", "report", Value::Str("example".to_string()));
     mocks.set_value("tools.build::build_all", "build_stderr", Value::Str("example".to_string()));
     mocks.set_value("tools.build::build_all", "test_stderr", Value::Str("example".to_string()));
@@ -1952,13 +1952,13 @@ fn test_example_tools_build_build_all_0() {
     inputs.insert("__out:clippy_stderr".to_string(), Value::Str("example".to_string()));
     inputs.insert("__out:overall_success".to_string(), Value::Str("True".to_string()));
     inputs.insert("__out:report".to_string(), Value::Str("example".to_string()));
-    inputs.insert("__out:summary".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:summary".to_string(), Value::Map(std::collections::BTreeMap::from([("failed".to_string(), Value::Int(1)), ("passed".to_string(), Value::Int(1)), ("total".to_string(), Value::Int(1))])));
     inputs.insert("__out:test_stderr".to_string(), Value::Str("example".to_string()));
     inputs.insert("build_stderr".to_string(), Value::Str("example".to_string()));
     inputs.insert("clippy_stderr".to_string(), Value::Str("example".to_string()));
     inputs.insert("overall_success".to_string(), Value::Str("True".to_string()));
     inputs.insert("report".to_string(), Value::Str("example".to_string()));
-    inputs.insert("summary".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("summary".to_string(), Value::Map(std::collections::BTreeMap::from([("failed".to_string(), Value::Int(1)), ("passed".to_string(), Value::Int(1)), ("total".to_string(), Value::Int(1))])));
     inputs.insert("test_stderr".to_string(), Value::Str("example".to_string()));
     let outputs = gunbc_exec::execute_single_node(&dag, "tools.build::build_all", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'tools.build::build_all' should execute successfully");
 
@@ -2011,9 +2011,9 @@ fn test_example_shared_dag_util_stage_result_2() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("name".to_string(), Value::Str("example".to_string())), ("skipped".to_string(), Value::Str("True".to_string())), ("stderr".to_string(), Value::Str("example".to_string())), ("stdout".to_string(), Value::Str("example".to_string())), ("success".to_string(), Value::Str("True".to_string()))])));
     inputs.insert("name".to_string(), Value::Str("example".to_string()));
-    inputs.insert("return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("return".to_string(), Value::Map(std::collections::BTreeMap::from([("name".to_string(), Value::Str("example".to_string())), ("skipped".to_string(), Value::Str("True".to_string())), ("stderr".to_string(), Value::Str("example".to_string())), ("stdout".to_string(), Value::Str("example".to_string())), ("success".to_string(), Value::Str("True".to_string()))])));
     inputs.insert("stderr".to_string(), Value::Str("example".to_string()));
     inputs.insert("success".to_string(), Value::Str("True".to_string()));
     let outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::stage_result", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'shared.dag_util::stage_result' should execute successfully");
@@ -2033,9 +2033,9 @@ fn test_example_shared_dag_util_skipped_stage_3() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("name".to_string(), Value::Str("example".to_string())), ("skipped".to_string(), Value::Str("True".to_string())), ("stderr".to_string(), Value::Str("example".to_string())), ("stdout".to_string(), Value::Str("example".to_string())), ("success".to_string(), Value::Str("True".to_string()))])));
     inputs.insert("name".to_string(), Value::Str("example".to_string()));
-    inputs.insert("return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("return".to_string(), Value::Map(std::collections::BTreeMap::from([("name".to_string(), Value::Str("example".to_string())), ("skipped".to_string(), Value::Str("True".to_string())), ("stderr".to_string(), Value::Str("example".to_string())), ("stdout".to_string(), Value::Str("example".to_string())), ("success".to_string(), Value::Str("True".to_string()))])));
     let outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::skipped_stage", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'shared.dag_util::skipped_stage' should execute successfully");
 
     // Check output port 'return'
@@ -2073,8 +2073,8 @@ fn test_example_shared_dag_util_text_line_5() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("is_blank".to_string(), Value::Str("True".to_string())), ("is_comment".to_string(), Value::Str("True".to_string())), ("text".to_string(), Value::Str("example".to_string()))])));
+    inputs.insert("return".to_string(), Value::Map(std::collections::BTreeMap::from([("is_blank".to_string(), Value::Str("True".to_string())), ("is_comment".to_string(), Value::Str("True".to_string())), ("text".to_string(), Value::Str("example".to_string()))])));
     inputs.insert("text".to_string(), Value::Str("example".to_string()));
     let outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::text_line", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'shared.dag_util::text_line' should execute successfully");
 
@@ -2093,8 +2093,8 @@ fn test_example_shared_dag_util_comment_line_6() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("is_blank".to_string(), Value::Str("True".to_string())), ("is_comment".to_string(), Value::Str("True".to_string())), ("text".to_string(), Value::Str("example".to_string()))])));
+    inputs.insert("return".to_string(), Value::Map(std::collections::BTreeMap::from([("is_blank".to_string(), Value::Str("True".to_string())), ("is_comment".to_string(), Value::Str("True".to_string())), ("text".to_string(), Value::Str("example".to_string()))])));
     inputs.insert("text".to_string(), Value::Str("example".to_string()));
     let outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::comment_line", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'shared.dag_util::comment_line' should execute successfully");
 
@@ -2113,8 +2113,8 @@ fn test_example_shared_dag_util_blank_line_7() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("is_blank".to_string(), Value::Str("True".to_string())), ("is_comment".to_string(), Value::Str("True".to_string())), ("text".to_string(), Value::Str("example".to_string()))])));
+    inputs.insert("return".to_string(), Value::Map(std::collections::BTreeMap::from([("is_blank".to_string(), Value::Str("True".to_string())), ("is_comment".to_string(), Value::Str("True".to_string())), ("text".to_string(), Value::Str("example".to_string()))])));
     let outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::blank_line", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'shared.dag_util::blank_line' should execute successfully");
 
     // Check output port 'return'
@@ -2132,8 +2132,8 @@ fn test_example_shared_dag_util_section_8() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("has_title".to_string(), Value::Str("True".to_string())), ("lines".to_string(), Value::Str("mock".to_string())), ("title".to_string(), Value::Str("example".to_string()))])));
+    inputs.insert("return".to_string(), Value::Map(std::collections::BTreeMap::from([("has_title".to_string(), Value::Str("True".to_string())), ("lines".to_string(), Value::Str("mock".to_string())), ("title".to_string(), Value::Str("example".to_string()))])));
     let outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::section", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'shared.dag_util::section' should execute successfully");
 
     // Check output port 'return'
@@ -2151,8 +2151,8 @@ fn test_example_shared_dag_util_titled_section_9() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("has_title".to_string(), Value::Str("True".to_string())), ("lines".to_string(), Value::Str("mock".to_string())), ("title".to_string(), Value::Str("example".to_string()))])));
+    inputs.insert("return".to_string(), Value::Map(std::collections::BTreeMap::from([("has_title".to_string(), Value::Str("True".to_string())), ("lines".to_string(), Value::Str("mock".to_string())), ("title".to_string(), Value::Str("example".to_string()))])));
     inputs.insert("title".to_string(), Value::Str("example".to_string()));
     let outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::titled_section", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'shared.dag_util::titled_section' should execute successfully");
 
@@ -2171,8 +2171,8 @@ fn test_example_shared_dag_util_doc_10() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("comment_prefix".to_string(), Value::Str("example".to_string())), ("has_header".to_string(), Value::Str("True".to_string())), ("header".to_string(), Value::Str("example".to_string())), ("sections".to_string(), Value::Str("mock".to_string())), ("trailing_newline".to_string(), Value::Str("True".to_string()))])));
+    inputs.insert("return".to_string(), Value::Map(std::collections::BTreeMap::from([("comment_prefix".to_string(), Value::Str("example".to_string())), ("has_header".to_string(), Value::Str("True".to_string())), ("header".to_string(), Value::Str("example".to_string())), ("sections".to_string(), Value::Str("mock".to_string())), ("trailing_newline".to_string(), Value::Str("True".to_string()))])));
     let outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::doc", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'shared.dag_util::doc' should execute successfully");
 
     // Check output port 'return'
@@ -2190,10 +2190,10 @@ fn test_example_shared_dag_util_doc_with_header_11() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("comment_prefix".to_string(), Value::Str("example".to_string())), ("has_header".to_string(), Value::Str("True".to_string())), ("header".to_string(), Value::Str("example".to_string())), ("sections".to_string(), Value::Str("mock".to_string())), ("trailing_newline".to_string(), Value::Str("True".to_string()))])));
     inputs.insert("comment_prefix".to_string(), Value::Str("example".to_string()));
     inputs.insert("header".to_string(), Value::Str("example".to_string()));
-    inputs.insert("return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("return".to_string(), Value::Map(std::collections::BTreeMap::from([("comment_prefix".to_string(), Value::Str("example".to_string())), ("has_header".to_string(), Value::Str("True".to_string())), ("header".to_string(), Value::Str("example".to_string())), ("sections".to_string(), Value::Str("mock".to_string())), ("trailing_newline".to_string(), Value::Str("True".to_string()))])));
     let outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::doc_with_header", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'shared.dag_util::doc_with_header' should execute successfully");
 
     // Check output port 'return'
@@ -2213,7 +2213,7 @@ fn test_example_shared_dag_util_render_document_line_12() {
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
     inputs.insert("comment_prefix".to_string(), Value::Str("example".to_string()));
-    inputs.insert("line".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("line".to_string(), Value::Map(std::collections::BTreeMap::from([("is_blank".to_string(), Value::Str("True".to_string())), ("is_comment".to_string(), Value::Str("True".to_string())), ("text".to_string(), Value::Str("example".to_string()))])));
     inputs.insert("return".to_string(), Value::Str("example".to_string()));
     let outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::render_document_line", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'shared.dag_util::render_document_line' should execute successfully");
 
@@ -2235,7 +2235,7 @@ fn test_example_shared_dag_util_render_document_section_13() {
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
     inputs.insert("comment_prefix".to_string(), Value::Str("example".to_string()));
     inputs.insert("return".to_string(), Value::Str("example".to_string()));
-    inputs.insert("section".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("section".to_string(), Value::Map(std::collections::BTreeMap::from([("has_title".to_string(), Value::Str("True".to_string())), ("lines".to_string(), Value::Str("mock".to_string())), ("title".to_string(), Value::Str("example".to_string()))])));
     let outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::render_document_section", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'shared.dag_util::render_document_section' should execute successfully");
 
     // Check output port 'return'
@@ -2254,7 +2254,7 @@ fn test_example_shared_dag_util_render_document_14() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("tools/build.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
-    inputs.insert("document".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("document".to_string(), Value::Map(std::collections::BTreeMap::from([("comment_prefix".to_string(), Value::Str("example".to_string())), ("has_header".to_string(), Value::Str("True".to_string())), ("header".to_string(), Value::Str("example".to_string())), ("sections".to_string(), Value::Str("mock".to_string())), ("trailing_newline".to_string(), Value::Str("True".to_string()))])));
     inputs.insert("return".to_string(), Value::Str("example".to_string()));
     let outputs = gunbc_exec::execute_single_node(&dag, "shared.dag_util::render_document", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'shared.dag_util::render_document' should execute successfully");
 

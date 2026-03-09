@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 28 obligations (4 discharged, 24 testable [0 compiler gaps]: A=8, B=16, C=0, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: b09666b6289a875944552035bfe72ed589d2d2abb71c9713b8948bf4ee3979e2
+// Content-Hash: cf073f6b14d2794bf6337d55d639284a83f247cd08507186a938fd3fbaab3190
 // 
 // Probe-Observer Coverage:
 //   Probes: 6
@@ -17,7 +17,7 @@
 //   
 //   Observers: 4
 //     std.unicode::char_width [terminal] (return: NonEmpty)
-//     std.unicode::in_block [terminal] (return: NonEmpty)
+//     std.unicode::in_block [terminal] (return: IsBool)
 //     std.unicode::string_display_width [terminal] (return: NonEmpty)
 //     std.width::truncate_text [terminal] (return: NonEmpty)
 //   
@@ -187,7 +187,7 @@ fn test_optional_missing_std_unicode_in_block_deps() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("std/width.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("True".to_string()));
-    inputs.insert("block".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("block".to_string(), Value::Map(std::collections::BTreeMap::from([("default_width".to_string(), Value::Str("ZeroWidth".to_string())), ("end_inclusive".to_string(), Value::Int(1)), ("name".to_string(), Value::Str("example".to_string())), ("start".to_string(), Value::Int(1))])));
     inputs.insert("cp".to_string(), Value::Int(1));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.unicode::in_block", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.unicode::in_block.__deps missing should not error");
 }
@@ -527,14 +527,14 @@ fn test_example_std_unicode_in_block_1() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("std/width.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("True".to_string()));
-    inputs.insert("block".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("block".to_string(), Value::Map(std::collections::BTreeMap::from([("default_width".to_string(), Value::Str("ZeroWidth".to_string())), ("end_inclusive".to_string(), Value::Int(1)), ("name".to_string(), Value::Str("example".to_string())), ("start".to_string(), Value::Int(1))])));
     inputs.insert("cp".to_string(), Value::Int(1));
     inputs.insert("return".to_string(), Value::Str("True".to_string()));
     let outputs = gunbc_exec::execute_single_node(&dag, "std.unicode::in_block", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'std.unicode::in_block' should execute successfully");
 
     // Check output port 'return'
     let output_return = outputs.get("return").expect("output port 'return' should exist");
-    assert!(!output_return.is_empty() || matches!(*output_return, Value::Skipped | Value::Unit), "expected non-empty value, Skipped, or Unit");
+    assert!(output_return.as_bool().is_some() || matches!(*output_return, Value::Skipped), "expected Bool or Skipped for output_return");
 }
 
 /// Node example: std.unicode::char_width (example 2)

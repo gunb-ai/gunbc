@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 73 obligations (11 discharged, 62 testable [1 compiler gaps]: A=17, B=45, C=0, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 601e75fd7927b8ad49ab52bf99b864b9e2810ee285be76bab05ed2e48c7b6461
+// Content-Hash: 9fd0a4cd0735f20b76ba307cb37ddf279d089178a7d206823b7f5b620d0370a0
 // 
 // Probe-Observer Coverage:
 //   Probes: 14
@@ -637,7 +637,7 @@ fn test_optional_missing_std_fidelity_classify_transports_transports() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("std/fidelity.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("depth".to_string(), Value::Str("Xs".to_string())), ("hermetic".to_string(), Value::Str("True".to_string())), ("test_class".to_string(), Value::Str("Unit".to_string()))])));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.fidelity::classify_transports", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.fidelity::classify_transports.transports missing should not error");
 }
 
@@ -651,7 +651,7 @@ fn test_optional_missing_std_fidelity_classify_transports_deps() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("std/fidelity.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("depth".to_string(), Value::Str("Xs".to_string())), ("hermetic".to_string(), Value::Str("True".to_string())), ("test_class".to_string(), Value::Str("Unit".to_string()))])));
     inputs.insert("transports".to_string(), Value::List(vec![Value::Str("LocalDirect".to_string())]));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.fidelity::classify_transports", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.fidelity::classify_transports.__deps missing should not error");
 }
@@ -973,7 +973,7 @@ fn test_boundary_std_fidelity_classify_transports_mockable() {
     assert!(boundaries.is_boundary_node(&"std.fidelity::classify_transports".into()), "std.fidelity::classify_transports should be a boundary");
 
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("std.fidelity::classify_transports", "return", Value::Json(serde_json::json!({"mock":true})));
+    mocks.set_value("std.fidelity::classify_transports", "return", Value::Map(std::collections::BTreeMap::from([("depth".to_string(), Value::Str("Xs".to_string())), ("hermetic".to_string(), Value::Str("True".to_string())), ("test_class".to_string(), Value::Str("Unit".to_string()))])));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("std.fidelity::classify_transports").expect("node should be in log");
@@ -1541,8 +1541,8 @@ fn test_example_std_fidelity_classify_transports_2() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("std/fidelity.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:return".to_string(), Value::Json(serde_json::json!({"mock":true})));
-    inputs.insert("return".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("__out:return".to_string(), Value::Map(std::collections::BTreeMap::from([("depth".to_string(), Value::Str("Xs".to_string())), ("hermetic".to_string(), Value::Str("True".to_string())), ("test_class".to_string(), Value::Str("Unit".to_string()))])));
+    inputs.insert("return".to_string(), Value::Map(std::collections::BTreeMap::from([("depth".to_string(), Value::Str("Xs".to_string())), ("hermetic".to_string(), Value::Str("True".to_string())), ("test_class".to_string(), Value::Str("Unit".to_string()))])));
     let outputs = gunbc_exec::execute_single_node(&dag, "std.fidelity::classify_transports", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'std.fidelity::classify_transports' should execute successfully");
 
     // Check output port 'return'

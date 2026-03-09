@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 339 obligations (118 discharged, 221 testable [13 compiler gaps]: A=67, B=123, C=31, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 6d37a189b26da7c00d2d82810923251829914cc850f780f3b614eb76cace95c1
+// Content-Hash: af244d21a22116e810f8ffca38546898da6c04766fc66f501296ef0cc23b05cf
 // 
 // Probe-Observer Coverage:
 //   Probes: 45
@@ -1612,7 +1612,7 @@ fn test_boundary_gunbc_auth_patterns_credential_chain_mockable() {
     assert!(boundaries.is_boundary_node(&"gunbc.auth.patterns::credential_chain".into()), "gunbc.auth.patterns::credential_chain should be a boundary");
 
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("gunbc.auth.patterns::credential_chain", "token", Value::Json(serde_json::json!({"mock":true})));
+    mocks.set_value("gunbc.auth.patterns::credential_chain", "token", Value::Map(std::collections::BTreeMap::from([("expires_at".to_string(), Value::Str("mock".to_string())), ("scheme".to_string(), Value::Str("Bearer".to_string())), ("token".to_string(), Value::Str("example".to_string()))])));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("gunbc.auth.patterns::credential_chain").expect("node should be in log");

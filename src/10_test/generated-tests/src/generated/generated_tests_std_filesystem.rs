@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 14 obligations (0 discharged, 14 testable [0 compiler gaps]: A=4, B=10, C=0, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 7e869e43aa453af8e322def7bb3ad795be5c5385dc88b669196d3aa031115e6f
+// Content-Hash: 860aa619fce852b0dce4230988a4a44108820340b546d73c898a0590b7f01d8d
 // 
 // Probe-Observer Coverage:
 //   Probes: 3
@@ -13,9 +13,9 @@
 //     std.filesystem::skip_reason (boundary mock)
 //   
 //   Observers: 3
-//     std.filesystem::is_text_readable [terminal] (return: NonEmpty)
+//     std.filesystem::is_text_readable [terminal] (return: IsBool)
 //     std.filesystem::partition_entries [terminal] (readable: NonEmpty, skipped: NonEmpty)
-//     std.filesystem::skip_reason [terminal] (return: NonEmpty)
+//     std.filesystem::skip_reason [terminal] (return: IsString)
 //   
 //   Integration tests: 0
 
@@ -191,7 +191,7 @@ fn test_optional_missing_std_filesystem_is_text_readable_deps() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("std/filesystem.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("True".to_string()));
-    inputs.insert("entry".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("entry".to_string(), Value::Map(std::collections::BTreeMap::from([("encoding".to_string(), Value::Str("mock".to_string())), ("kind".to_string(), Value::Str("RegularFile".to_string())), ("mime".to_string(), Value::Str("mock".to_string())), ("path".to_string(), Value::Str("example".to_string())), ("size".to_string(), Value::Int(1)), ("symlink_target".to_string(), Value::Str("mock".to_string()))])));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.filesystem::is_text_readable", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.filesystem::is_text_readable.__deps missing should not error");
 }
 
@@ -205,8 +205,8 @@ fn test_optional_missing_std_filesystem_partition_entries_entries() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("std/filesystem.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:readable".to_string(), Value::List(vec![Value::Str("mock".to_string())]));
-    inputs.insert("__out:skipped".to_string(), Value::List(vec![Value::Str("mock".to_string())]));
+    inputs.insert("__out:readable".to_string(), Value::List(vec![Value::Map(std::collections::BTreeMap::from([("encoding".to_string(), Value::Str("mock".to_string())), ("kind".to_string(), Value::Str("RegularFile".to_string())), ("mime".to_string(), Value::Str("mock".to_string())), ("path".to_string(), Value::Str("example".to_string())), ("size".to_string(), Value::Int(1)), ("symlink_target".to_string(), Value::Str("mock".to_string()))]))]));
+    inputs.insert("__out:skipped".to_string(), Value::List(vec![Value::Map(std::collections::BTreeMap::from([("encoding".to_string(), Value::Str("mock".to_string())), ("kind".to_string(), Value::Str("RegularFile".to_string())), ("mime".to_string(), Value::Str("mock".to_string())), ("path".to_string(), Value::Str("example".to_string())), ("size".to_string(), Value::Int(1)), ("symlink_target".to_string(), Value::Str("mock".to_string()))]))]));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.filesystem::partition_entries", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.filesystem::partition_entries.entries missing should not error");
 }
 
@@ -220,9 +220,9 @@ fn test_optional_missing_std_filesystem_partition_entries_deps() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("std/filesystem.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:readable".to_string(), Value::List(vec![Value::Str("mock".to_string())]));
-    inputs.insert("__out:skipped".to_string(), Value::List(vec![Value::Str("mock".to_string())]));
-    inputs.insert("entries".to_string(), Value::List(vec![Value::Str("mock".to_string())]));
+    inputs.insert("__out:readable".to_string(), Value::List(vec![Value::Map(std::collections::BTreeMap::from([("encoding".to_string(), Value::Str("mock".to_string())), ("kind".to_string(), Value::Str("RegularFile".to_string())), ("mime".to_string(), Value::Str("mock".to_string())), ("path".to_string(), Value::Str("example".to_string())), ("size".to_string(), Value::Int(1)), ("symlink_target".to_string(), Value::Str("mock".to_string()))]))]));
+    inputs.insert("__out:skipped".to_string(), Value::List(vec![Value::Map(std::collections::BTreeMap::from([("encoding".to_string(), Value::Str("mock".to_string())), ("kind".to_string(), Value::Str("RegularFile".to_string())), ("mime".to_string(), Value::Str("mock".to_string())), ("path".to_string(), Value::Str("example".to_string())), ("size".to_string(), Value::Int(1)), ("symlink_target".to_string(), Value::Str("mock".to_string()))]))]));
+    inputs.insert("entries".to_string(), Value::List(vec![Value::Map(std::collections::BTreeMap::from([("encoding".to_string(), Value::Str("mock".to_string())), ("kind".to_string(), Value::Str("RegularFile".to_string())), ("mime".to_string(), Value::Str("mock".to_string())), ("path".to_string(), Value::Str("example".to_string())), ("size".to_string(), Value::Int(1)), ("symlink_target".to_string(), Value::Str("mock".to_string()))]))]));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.filesystem::partition_entries", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.filesystem::partition_entries.__deps missing should not error");
 }
 
@@ -237,7 +237,7 @@ fn test_optional_missing_std_filesystem_skip_reason_deps() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("std/filesystem.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
-    inputs.insert("entry".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("entry".to_string(), Value::Map(std::collections::BTreeMap::from([("encoding".to_string(), Value::Str("mock".to_string())), ("kind".to_string(), Value::Str("RegularFile".to_string())), ("mime".to_string(), Value::Str("mock".to_string())), ("path".to_string(), Value::Str("example".to_string())), ("size".to_string(), Value::Int(1)), ("symlink_target".to_string(), Value::Str("mock".to_string()))])));
     let _outputs = gunbc_exec::execute_single_node(&dag, "std.filesystem::skip_reason", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input std.filesystem::skip_reason.__deps missing should not error");
 }
 
@@ -287,8 +287,8 @@ fn test_boundary_std_filesystem_partition_entries_mockable() {
     assert!(boundaries.is_boundary_node(&"std.filesystem::partition_entries".into()), "std.filesystem::partition_entries should be a boundary");
 
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("std.filesystem::partition_entries", "readable", Value::List(vec![Value::Str("mock".to_string())]));
-    mocks.set_value("std.filesystem::partition_entries", "skipped", Value::List(vec![Value::Str("mock".to_string())]));
+    mocks.set_value("std.filesystem::partition_entries", "readable", Value::List(vec![Value::Map(std::collections::BTreeMap::from([("encoding".to_string(), Value::Str("mock".to_string())), ("kind".to_string(), Value::Str("RegularFile".to_string())), ("mime".to_string(), Value::Str("mock".to_string())), ("path".to_string(), Value::Str("example".to_string())), ("size".to_string(), Value::Int(1)), ("symlink_target".to_string(), Value::Str("mock".to_string()))]))]));
+    mocks.set_value("std.filesystem::partition_entries", "skipped", Value::List(vec![Value::Map(std::collections::BTreeMap::from([("encoding".to_string(), Value::Str("mock".to_string())), ("kind".to_string(), Value::Str("RegularFile".to_string())), ("mime".to_string(), Value::Str("mock".to_string())), ("path".to_string(), Value::Str("example".to_string())), ("size".to_string(), Value::Int(1)), ("symlink_target".to_string(), Value::Str("mock".to_string()))]))]));
 
     let log = execute_dag(&dag, ExecuteConfig { mode: ExecutionMode::DryRun(mocks), ..Default::default() }).unwrap();
     let entry = log.get("std.filesystem::partition_entries").expect("node should be in log");
@@ -352,13 +352,13 @@ fn test_example_std_filesystem_is_text_readable_0() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("std/filesystem.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("True".to_string()));
-    inputs.insert("entry".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("entry".to_string(), Value::Map(std::collections::BTreeMap::from([("encoding".to_string(), Value::Str("mock".to_string())), ("kind".to_string(), Value::Str("RegularFile".to_string())), ("mime".to_string(), Value::Str("mock".to_string())), ("path".to_string(), Value::Str("example".to_string())), ("size".to_string(), Value::Int(1)), ("symlink_target".to_string(), Value::Str("mock".to_string()))])));
     inputs.insert("return".to_string(), Value::Str("True".to_string()));
     let outputs = gunbc_exec::execute_single_node(&dag, "std.filesystem::is_text_readable", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'std.filesystem::is_text_readable' should execute successfully");
 
     // Check output port 'return'
     let output_return = outputs.get("return").expect("output port 'return' should exist");
-    assert!(!output_return.is_empty() || matches!(*output_return, Value::Skipped | Value::Unit), "expected non-empty value, Skipped, or Unit");
+    assert!(output_return.as_bool().is_some() || matches!(*output_return, Value::Skipped), "expected Bool or Skipped for output_return");
 }
 
 /// Node example: std.filesystem::partition_entries (example 1)
@@ -371,10 +371,10 @@ fn test_example_std_filesystem_partition_entries_1() {
 };
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("std/filesystem.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("__out:readable".to_string(), Value::List(vec![Value::Str("mock".to_string())]));
-    inputs.insert("__out:skipped".to_string(), Value::List(vec![Value::Str("mock".to_string())]));
-    inputs.insert("readable".to_string(), Value::List(vec![Value::Str("mock".to_string())]));
-    inputs.insert("skipped".to_string(), Value::List(vec![Value::Str("mock".to_string())]));
+    inputs.insert("__out:readable".to_string(), Value::List(vec![Value::Map(std::collections::BTreeMap::from([("encoding".to_string(), Value::Str("mock".to_string())), ("kind".to_string(), Value::Str("RegularFile".to_string())), ("mime".to_string(), Value::Str("mock".to_string())), ("path".to_string(), Value::Str("example".to_string())), ("size".to_string(), Value::Int(1)), ("symlink_target".to_string(), Value::Str("mock".to_string()))]))]));
+    inputs.insert("__out:skipped".to_string(), Value::List(vec![Value::Map(std::collections::BTreeMap::from([("encoding".to_string(), Value::Str("mock".to_string())), ("kind".to_string(), Value::Str("RegularFile".to_string())), ("mime".to_string(), Value::Str("mock".to_string())), ("path".to_string(), Value::Str("example".to_string())), ("size".to_string(), Value::Int(1)), ("symlink_target".to_string(), Value::Str("mock".to_string()))]))]));
+    inputs.insert("readable".to_string(), Value::List(vec![Value::Map(std::collections::BTreeMap::from([("encoding".to_string(), Value::Str("mock".to_string())), ("kind".to_string(), Value::Str("RegularFile".to_string())), ("mime".to_string(), Value::Str("mock".to_string())), ("path".to_string(), Value::Str("example".to_string())), ("size".to_string(), Value::Int(1)), ("symlink_target".to_string(), Value::Str("mock".to_string()))]))]));
+    inputs.insert("skipped".to_string(), Value::List(vec![Value::Map(std::collections::BTreeMap::from([("encoding".to_string(), Value::Str("mock".to_string())), ("kind".to_string(), Value::Str("RegularFile".to_string())), ("mime".to_string(), Value::Str("mock".to_string())), ("path".to_string(), Value::Str("example".to_string())), ("size".to_string(), Value::Int(1)), ("symlink_target".to_string(), Value::Str("mock".to_string()))]))]));
     let outputs = gunbc_exec::execute_single_node(&dag, "std.filesystem::partition_entries", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'std.filesystem::partition_entries' should execute successfully");
 
     // Check output port 'readable'
@@ -396,12 +396,12 @@ fn test_example_std_filesystem_skip_reason_2() {
     let dag = gunbc_resolve::builder::build_dsl_graph_dag("std/filesystem.dag", gunbc_resolve::BuildOpts::default()).expect("graph should build");
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("__out:return".to_string(), Value::Str("example".to_string()));
-    inputs.insert("entry".to_string(), Value::Json(serde_json::json!({"mock":true})));
+    inputs.insert("entry".to_string(), Value::Map(std::collections::BTreeMap::from([("encoding".to_string(), Value::Str("mock".to_string())), ("kind".to_string(), Value::Str("RegularFile".to_string())), ("mime".to_string(), Value::Str("mock".to_string())), ("path".to_string(), Value::Str("example".to_string())), ("size".to_string(), Value::Int(1)), ("symlink_target".to_string(), Value::Str("mock".to_string()))])));
     inputs.insert("return".to_string(), Value::Str("example".to_string()));
     let outputs = gunbc_exec::execute_single_node(&dag, "std.filesystem::skip_reason", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'std.filesystem::skip_reason' should execute successfully");
 
     // Check output port 'return'
     let output_return = outputs.get("return").expect("output port 'return' should exist");
-    assert!(!output_return.is_empty() || matches!(*output_return, Value::Skipped | Value::Unit), "expected non-empty value, Skipped, or Unit");
+    assert!(output_return.as_str().is_some() || matches!(*output_return, Value::Skipped), "expected String or Skipped for output_return");
 }
 
