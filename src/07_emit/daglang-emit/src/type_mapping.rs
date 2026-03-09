@@ -9,32 +9,32 @@
 ///
 /// `dsl_names` lists *all* recognised spellings of the same concept (e.g.
 /// `["Int", "i64", "I64"]`).  `target` is the target-language representation.
-pub struct PrimitiveMapping {
-    pub dsl_names: &'static [&'static str],
-    pub target: &'static str,
+pub(crate) struct PrimitiveMapping {
+    pub(crate) dsl_names: &'static [&'static str],
+    pub(crate) target: &'static str,
 }
 
 /// Language-specific type mapping configuration.
 ///
-/// Backends construct a `&'static DslTypeMapping` with their tables and pass
-/// it to [`map_abstract_type`] to resolve an abstract type string.
-pub struct DslTypeMapping {
+/// Internal to the emit crate. External callers should use [`resolve_and_emit`]
+/// or [`emit_type`] instead of accessing these tables directly.
+pub(crate) struct DslTypeMapping {
     /// Primitive type mappings (checked in order; first match wins).
-    pub primitives: &'static [PrimitiveMapping],
+    pub(crate) primitives: &'static [PrimitiveMapping],
     /// Format wrapper for `List<T>` — receives the mapped inner type.
     /// Example: `"Vec<{}>"` (Rust), `"[]{}"` (Go).
-    pub list_fmt: &'static str,
+    pub(crate) list_fmt: &'static str,
     /// Format wrapper for `Optional<T>`.
     /// Example: `"Option<{}>"` (Rust), `"*{}"` (Go).  `None` means no
     /// explicit wrapper (C backend).
-    pub optional_fmt: Option<&'static str>,
+    pub(crate) optional_fmt: Option<&'static str>,
     /// Format wrapper for `Map<K,V>`.
     /// Example: `"HashMap<{}, {}>"` (Rust), `"map[{}]{}"` (Go).  `None`
     /// means fall through to `fallback`.
-    pub map_fmt: Option<&'static str>,
+    pub(crate) map_fmt: Option<&'static str>,
     /// The default type when no mapping matches (e.g. `"serde_json::Value"`,
     /// `"interface{}"`, or a sentinel the caller interprets).
-    pub fallback: &'static str,
+    pub(crate) fallback: &'static str,
 }
 
 /// Look up a primitive type name in the mapping table.
@@ -43,7 +43,7 @@ pub struct DslTypeMapping {
 /// [`map_abstract_type`], this does NOT handle generics or fallback — callers
 /// that handle generic structure themselves (e.g., `type_expr_to_rust`) should
 /// use this to avoid double-wrapping.
-pub fn lookup_primitive(mapping: &DslTypeMapping, name: &str) -> Option<&'static str> {
+pub(crate) fn lookup_primitive(mapping: &DslTypeMapping, name: &str) -> Option<&'static str> {
     for entry in mapping.primitives {
         if entry.dsl_names.contains(&name) {
             return Some(entry.target);
@@ -56,7 +56,7 @@ pub fn lookup_primitive(mapping: &DslTypeMapping, name: &str) -> Option<&'static
 ///
 /// Handles primitives, `List<T>`, `Optional<T>`, and `Map<K,V>` generics
 /// recursively.  Falls back to [`DslTypeMapping::fallback`] for unknown types.
-pub fn map_abstract_type(mapping: &DslTypeMapping, abstract_type: &str) -> String {
+pub(crate) fn map_abstract_type(mapping: &DslTypeMapping, abstract_type: &str) -> String {
     // 1. Check primitives.
     for entry in mapping.primitives {
         if entry.dsl_names.contains(&abstract_type) {
@@ -305,7 +305,7 @@ pub fn resolve_and_emit(
 // =========================================================================
 
 /// Rust backend type mapping table.
-pub static RUST_TYPE_MAPPING: DslTypeMapping = DslTypeMapping {
+pub(crate) static RUST_TYPE_MAPPING: DslTypeMapping = DslTypeMapping {
     primitives: &[
         PrimitiveMapping {
             dsl_names: &[
@@ -371,7 +371,7 @@ pub static RUST_TYPE_MAPPING: DslTypeMapping = DslTypeMapping {
 };
 
 /// Go backend type mapping table.
-pub static GO_TYPE_MAPPING: DslTypeMapping = DslTypeMapping {
+pub(crate) static GO_TYPE_MAPPING: DslTypeMapping = DslTypeMapping {
     primitives: &[
         PrimitiveMapping {
             dsl_names: &[

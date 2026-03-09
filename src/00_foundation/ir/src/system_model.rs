@@ -688,7 +688,7 @@ fn behavior_properties_from_type_dag(
     for node in &dag.nodes {
         if let crate::node::NodeBody::Opaque(op) = &node.body {
             let marker = match op {
-                TypeOp::Meta(crate::SystemModelMeta::Property(raw)) => Some(raw.as_str()),
+                TypeOp::Validate(crate::type_op::Predicate::Meta(crate::SystemModelMeta::Property(raw))) => Some(raw.as_str()),
                 _ => None,
             };
             if let Some(raw) = marker {
@@ -737,9 +737,9 @@ pub fn system_behavior_type_id(system_id: &str, behavior_id: &str) -> TypeId {
 /// and registered into `TypeRegistry` under [`system_behavior_type_id`].
 ///
 /// The descriptor encodes:
-/// - system + behavior metadata as `TypeOp::Meta(...)` nodes
-/// - behavior properties as `TypeOp::Meta(SystemModelMeta::Property(...))` nodes
-/// - input/output contracts as `TypeOp::Meta(...)` nodes
+/// - system + behavior metadata as `TypeOp::Validate(Predicate::Meta(...)` nodes
+/// - behavior properties as `TypeOp::Validate(Predicate::Meta(SystemModelMeta::Property(...))` nodes
+/// - input/output contracts as `TypeOp::Validate(Predicate::Meta(...)` nodes
 /// - optional inputs as explicit `TypeOp::Wrap(WrapperKind::Optional)` nodes
 ///
 /// All referenced input/output `TypeId`s are validated against the current
@@ -904,7 +904,7 @@ fn append_meta_step(
         node_id.as_str(),
         vec![Port::scalar("in", "Json")],
         vec![Port::scalar("out", "Json")],
-        TypeOp::Meta(payload),
+        TypeOp::Validate(crate::type_op::Predicate::Meta(payload)),
     ));
     dag.add_edge(Edge::new(prev.as_str(), "out", node_id.as_str(), "in"));
     *prev = node_id;
@@ -1142,17 +1142,17 @@ fn behavior_contract_shape(
     for node in &dag.nodes {
         if let crate::node::NodeBody::Opaque(op) = &node.body {
             match op {
-                TypeOp::Meta(crate::SystemModelMeta::Property(raw)) => {
+                TypeOp::Validate(crate::type_op::Predicate::Meta(crate::SystemModelMeta::Property(raw))) => {
                     properties.push(raw.to_string());
                 }
-                TypeOp::Meta(crate::SystemModelMeta::InputContract {
+                TypeOp::Validate(crate::type_op::Predicate::Meta(crate::SystemModelMeta::InputContract {
                     name,
                     type_id,
                     required,
-                }) => {
+                })) => {
                     inputs.push((name.clone(), type_id.clone(), *required));
                 }
-                TypeOp::Meta(crate::SystemModelMeta::OutputContract { name, type_id }) => {
+                TypeOp::Validate(crate::type_op::Predicate::Meta(crate::SystemModelMeta::OutputContract { name, type_id })) => {
                     outputs.push((name.clone(), type_id.clone()));
                 }
                 TypeOp::Wrap(WrapperKind::Optional) => {
@@ -1659,7 +1659,7 @@ mod tests {
         let non_meta_nodes: Vec<_> = dag
             .nodes
             .iter()
-            .filter(|n| !matches!(&n.body, crate::node::NodeBody::Opaque(TypeOp::Meta(_))))
+            .filter(|n| !matches!(&n.body, crate::node::NodeBody::Opaque(TypeOp::Validate(crate::type_op::Predicate::Meta(_)))))
             .collect();
 
         // Must have at least the two Identity bookends.

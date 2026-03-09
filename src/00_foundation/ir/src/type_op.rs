@@ -42,11 +42,6 @@ pub enum TypeOp {
     /// If validation fails, the type DAG produces an error.
     Validate(Predicate),
 
-    /// Inert metadata payload (non-semantic, non-failing).
-    ///
-    /// `Meta` is traversable/inspectable but must not change runtime behavior.
-    /// Used exclusively by system model DAGs for behavioral catalog metadata.
-    Meta(SystemModelMeta),
 
     /// Transformation — coerces value from one type to another.
     /// Used for type conversions (e.g., String → Int parsing).
@@ -267,6 +262,13 @@ pub enum Predicate {
 
     /// Arithmetic constraint — type supports arithmetic operations.
     Arithmetic,
+
+    /// Inert system model metadata (non-semantic, non-failing).
+    ///
+    /// Used by system model DAGs to encode behavioral catalog metadata
+    /// (system identity, behavior properties, I/O contracts). Traversable
+    /// and inspectable but does not change runtime behavior.
+    Meta(SystemModelMeta),
 }
 
 /// Simple values that can appear in predicates.
@@ -361,13 +363,18 @@ mod tests {
     fn test_type_op_variants() {
         let identity = TypeOp::Identity;
         let validate = TypeOp::Validate(Predicate::NonEmpty);
-        let meta = TypeOp::Meta(SystemModelMeta::SystemId("gcp".to_string()));
+        let meta = TypeOp::Validate(Predicate::Meta(SystemModelMeta::SystemId(
+            "gcp".to_string(),
+        )));
         let transform = TypeOp::Transform("String".to_string(), "Int".to_string());
         let wrap = TypeOp::Wrap(WrapperKind::Optional);
 
         assert_eq!(identity, TypeOp::Identity);
         assert!(matches!(validate, TypeOp::Validate(Predicate::NonEmpty)));
-        assert!(matches!(meta, TypeOp::Meta(SystemModelMeta::SystemId(_))));
+        assert!(matches!(
+            meta,
+            TypeOp::Validate(Predicate::Meta(SystemModelMeta::SystemId(_)))
+        ));
         assert!(matches!(transform, TypeOp::Transform(_, _)));
         assert!(matches!(wrap, TypeOp::Wrap(WrapperKind::Optional)));
     }
