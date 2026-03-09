@@ -351,135 +351,135 @@ impl TypeRegistry {
         self.register_coproduct(
             "ContentEncoding",
             vec![
-                ("Unknown", "String"),
-                ("Text", "String"),
-                ("UTF8", "String"),
-                ("ASCII", "String"),
-                ("Latin1", "String"),
-                ("Binary", "Bytes"),
+                ("Unknown", "Unit"),
+                ("Text", "Unit"),
+                ("UTF8", "Unit"),
+                ("ASCII", "Unit"),
+                ("Latin1", "Unit"),
+                ("Binary", "Unit"),
             ],
         );
         self.register_coproduct(
             "WarningPolicy",
-            vec![("DenyAll", "String"), ("Default", "String")],
+            vec![("DenyAll", "Unit"), ("Default", "Unit")],
         );
         self.register_coproduct(
             "CloudRuntime",
             vec![
-                ("GitHubActions", "String"),
-                ("Metadata", "String"),
-                ("LocalDev", "String"),
+                ("GitHubActions", "Unit"),
+                ("Metadata", "Unit"),
+                ("LocalDev", "Unit"),
             ],
         );
         self.register_coproduct(
             "AuthScheme",
             vec![
-                ("Bearer", "String"),
-                ("Header", "String"),
-                ("Basic", "String"),
+                ("Bearer", "Unit"),
+                ("Header", "Unit"),
+                ("Basic", "Unit"),
             ],
         );
         self.register_coproduct(
             "FermiDepth",
             vec![
-                ("Xs", "String"),
-                ("S", "String"),
-                ("M", "String"),
-                ("L", "String"),
-                ("Xl", "String"),
+                ("Xs", "Unit"),
+                ("S", "Unit"),
+                ("M", "Unit"),
+                ("L", "Unit"),
+                ("Xl", "Unit"),
             ],
         );
         self.register_coproduct(
             "TransportClass",
             vec![
-                ("LocalDirect", "String"),
-                ("ShellLocal", "String"),
-                ("FileBoundary", "String"),
-                ("RestNetwork", "String"),
-                ("InterfaceStub", "String"),
-                ("Unknown", "String"),
+                ("LocalDirect", "Unit"),
+                ("ShellLocal", "Unit"),
+                ("FileBoundary", "Unit"),
+                ("RestNetwork", "Unit"),
+                ("InterfaceStub", "Unit"),
+                ("Unknown", "Unit"),
             ],
         );
         self.register_coproduct(
             "TestClass",
             vec![
-                ("Unit", "String"),
-                ("Hermetic", "String"),
-                ("Integration", "String"),
+                ("Unit", "Unit"),
+                ("Hermetic", "Unit"),
+                ("Integration", "Unit"),
             ],
         );
         self.register_coproduct(
             "DisplayWidth",
             vec![
-                ("ZeroWidth", "String"),
-                ("Narrow", "String"),
-                ("Wide", "String"),
+                ("ZeroWidth", "Unit"),
+                ("Narrow", "Unit"),
+                ("Wide", "Unit"),
             ],
         );
         self.register_coproduct(
             "SemanticColor",
             vec![
-                ("Default", "String"),
-                ("Success", "String"),
-                ("Warning", "String"),
-                ("Error", "String"),
-                ("Info", "String"),
-                ("Dim", "String"),
-                ("Active", "String"),
-                ("Accent", "String"),
+                ("Default", "Unit"),
+                ("Success", "Unit"),
+                ("Warning", "Unit"),
+                ("Error", "Unit"),
+                ("Info", "Unit"),
+                ("Dim", "Unit"),
+                ("Active", "Unit"),
+                ("Accent", "Unit"),
             ],
         );
         self.register_coproduct(
             "Tier",
             vec![
-                ("Emoji", "String"),
-                ("Unicode", "String"),
-                ("Ascii", "String"),
+                ("Emoji", "Unit"),
+                ("Unicode", "Unit"),
+                ("Ascii", "Unit"),
             ],
         );
         self.register_coproduct(
             "SymbolId",
             vec![
-                ("NodePending", "String"),
-                ("NodeRunning", "String"),
-                ("NodeCompleted", "String"),
-                ("NodeFailed", "String"),
-                ("NodeSkipped", "String"),
-                ("NodeIntercepted", "String"),
-                ("EdgeIdle", "String"),
-                ("EdgeFlowing", "String"),
-                ("EdgeDone", "String"),
-                ("EdgeDead", "String"),
-                ("DagNotStarted", "String"),
-                ("DagRunning", "String"),
-                ("DagCompleted", "String"),
-                ("DagFailed", "String"),
-                ("BoundaryMarker", "String"),
-                ("Spinner0", "String"),
-                ("Spinner1", "String"),
-                ("Spinner2", "String"),
-                ("Spinner3", "String"),
-                ("Spinner4", "String"),
-                ("Spinner5", "String"),
-                ("Spinner6", "String"),
-                ("Spinner7", "String"),
-                ("Spinner8", "String"),
-                ("Spinner9", "String"),
-                ("Success", "String"),
-                ("Failure", "String"),
-                ("Warning", "String"),
-                ("Info", "String"),
-                ("DataList", "String"),
-                ("DataMap", "String"),
-                ("DataSecret", "String"),
-                ("DataUrl", "String"),
-                ("DataTimer", "String"),
-                ("ConnectorHorizontal", "String"),
-                ("ConnectorVertical", "String"),
-                ("ConnectorTeeDown", "String"),
-                ("ConnectorTeeUp", "String"),
-                ("ConnectorCornerBottomLeft", "String"),
-                ("ConnectorCornerTopLeft", "String"),
+                ("NodePending", "Unit"),
+                ("NodeRunning", "Unit"),
+                ("NodeCompleted", "Unit"),
+                ("NodeFailed", "Unit"),
+                ("NodeSkipped", "Unit"),
+                ("NodeIntercepted", "Unit"),
+                ("EdgeIdle", "Unit"),
+                ("EdgeFlowing", "Unit"),
+                ("EdgeDone", "Unit"),
+                ("EdgeDead", "Unit"),
+                ("DagNotStarted", "Unit"),
+                ("DagRunning", "Unit"),
+                ("DagCompleted", "Unit"),
+                ("DagFailed", "Unit"),
+                ("BoundaryMarker", "Unit"),
+                ("Spinner0", "Unit"),
+                ("Spinner1", "Unit"),
+                ("Spinner2", "Unit"),
+                ("Spinner3", "Unit"),
+                ("Spinner4", "Unit"),
+                ("Spinner5", "Unit"),
+                ("Spinner6", "Unit"),
+                ("Spinner7", "Unit"),
+                ("Spinner8", "Unit"),
+                ("Spinner9", "Unit"),
+                ("Success", "Unit"),
+                ("Failure", "Unit"),
+                ("Warning", "Unit"),
+                ("Info", "Unit"),
+                ("DataList", "Unit"),
+                ("DataMap", "Unit"),
+                ("DataSecret", "Unit"),
+                ("DataUrl", "Unit"),
+                ("DataTimer", "Unit"),
+                ("ConnectorHorizontal", "Unit"),
+                ("ConnectorVertical", "Unit"),
+                ("ConnectorTeeDown", "Unit"),
+                ("ConnectorTeeUp", "Unit"),
+                ("ConnectorCornerBottomLeft", "Unit"),
+                ("ConnectorCornerTopLeft", "Unit"),
             ],
         );
 
@@ -488,7 +488,7 @@ impl TypeRegistry {
         self.register("TransportResponse", type_lib::identity("TransportResponse"));
         self.register("Credential", type_lib::identity("Credential"));
         self.register("FilesystemHandle", type_lib::identity("FilesystemHandle"));
-        self.register("NetworkHandle", type_lib::identity("NetworkHandle"));
+        self.register("NetworkHandle", type_lib::unit());
         self.register_product(
             "CliResult",
             vec![
@@ -498,15 +498,53 @@ impl TypeRegistry {
             ],
         );
         self.register("ToolHandle", type_lib::identity("ToolHandle"));
-        self.register("Platform", type_lib::identity("Platform"));
-        self.register("Timestamp", type_lib::identity("Timestamp"));
+        self.register_coproduct(
+            "Platform",
+            vec![
+                ("Linux", "Unit"),
+                ("Macos", "Unit"),
+                ("Windows", "Unit"),
+            ],
+        );
+        self.register(
+            "Timestamp",
+            type_lib::refined("Int", vec![Predicate::NonEmpty]),
+        );
         self.register("Record", type_lib::identity("Record"));
 
-        // Transport response subtypes (json-backed).
-        self.register("FileResponse", type_lib::identity("FileResponse"));
-        self.register("ShellResponse", type_lib::identity("ShellResponse"));
-        self.register("RestResponse", type_lib::identity("RestResponse"));
-        self.register("HttpResponse", type_lib::identity("HttpResponse"));
+        // Transport response subtypes (structural products).
+        self.register_product(
+            "FileResponse",
+            vec![
+                ("path", "String"),
+                ("success", "Bool"),
+                ("content", "String"),
+            ],
+        );
+        self.register_product(
+            "ShellResponse",
+            vec![
+                ("exit_code", "Int"),
+                ("stdout", "String"),
+                ("stderr", "String"),
+            ],
+        );
+        self.register_product(
+            "RestResponse",
+            vec![
+                ("status", "Int"),
+                ("headers", "Json"),
+                ("body", "Json"),
+            ],
+        );
+        self.register_product(
+            "HttpResponse",
+            vec![
+                ("status", "Int"),
+                ("headers", "Json"),
+                ("body", "String"),
+            ],
+        );
 
         // GCP/OIDC identity types (string-backed refinements).
         self.register("OidcAudience", type_lib::non_empty_string());
@@ -1730,6 +1768,37 @@ mod tests {
             vec![("name", "String"), ("flag", "Bool")],
         );
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn ratchet_identity_types_in_core_registry() {
+        let registry = TypeRegistry::with_core_types();
+        let identities = registry.audit_identity_types();
+        let allowed: std::collections::BTreeSet<&str> = [
+            "Any",
+            "Json",
+            "NetworkHandle",
+            "Record",
+            "String",
+            "Int",
+            "Float",
+            "Unit",
+            "TransportRequest",
+            "TransportResponse",
+            "Credential",
+            "FilesystemHandle",
+            "ToolHandle",
+        ]
+        .into_iter()
+        .collect();
+        let actual: std::collections::BTreeSet<&str> =
+            identities.iter().map(|t| t.0.as_str()).collect();
+        let unexpected: Vec<_> = actual.difference(&allowed).collect();
+        assert!(
+            unexpected.is_empty(),
+            "unexpected identity types (add structural DAG or update allowlist): {:?}",
+            unexpected
+        );
     }
 
     #[test]

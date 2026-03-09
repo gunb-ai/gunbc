@@ -880,10 +880,10 @@ mod tests {
     }
 
     #[test]
-    fn default_value_for_platform_skips_placeholder_witnesses() {
+    fn default_value_for_platform_uses_first_variant() {
         assert_eq!(
             default_value_for_type("Platform"),
-            Value::Str("mock".to_string())
+            Value::Str("Linux".to_string())
         );
     }
 
