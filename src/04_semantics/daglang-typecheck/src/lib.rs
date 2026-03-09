@@ -1037,6 +1037,17 @@ fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> TypeRegistry {
         register_type_def(def, &mut registry);
     }
 
+    // Post-Pass-2 audit: check for DSL types still stuck as identity placeholders.
+    let identities = registry.audit_identity_types();
+    if !identities.is_empty() {
+        let names: Vec<&str> = identities.iter().map(|t| t.0.as_str()).collect();
+        eprintln!(
+            "warning: {} DSL type(s) still identity after structural resolution: {:?}",
+            identities.len(),
+            names
+        );
+    }
+
     registry
 }
 
@@ -1181,7 +1192,10 @@ fn register_type_def(def: &daglang_syntax::ast::TypeDef, registry: &mut TypeRegi
             let inner_dag = if predicates.is_empty() {
                 match base_dag_opt {
                     Some(dag) => dag,
-                    None => gunbc_ir::type_lib::identity(&base_name),
+                    None => {
+                        eprintln!("warning: unresolved type alias base '{base_name}' in type '{}', producing identity placeholder", def.name);
+                        gunbc_ir::type_lib::identity(&base_name)
+                    }
                 }
             } else {
                 match base_dag_opt {
@@ -1228,8 +1242,17 @@ fn resolve_field_type_dag(
                     return gunbc_ir::type_lib::set(elem);
                 }
                 ("Map", 2) => {
+                    let key_name = type_expr_to_string(&args[0]);
+                    if key_name != "String" {
+                        eprintln!(
+                            "warning: Map<{key_name}, ...> has non-String key type; \
+                             runtime Value::Map is string-keyed, this type cannot be \
+                             satisfied at runtime"
+                        );
+                    }
+                    let key = resolve_field_type_dag(&args[0], registry);
                     let val = resolve_field_type_dag(&args[1], registry);
-                    return gunbc_ir::type_lib::map(val);
+                    return gunbc_ir::type_lib::map(key, val);
                 }
                 _ => { /* fall through to string-based path */ }
             }
@@ -1256,7 +1279,10 @@ fn resolve_field_type_dag(
     let predicates = collect_predicates_from_type_expr(ty);
     let base_dag_opt = registry.get_by_name(&base_name).cloned();
     if predicates.is_empty() {
-        base_dag_opt.unwrap_or_else(|| gunbc_ir::type_lib::identity(&base_name))
+        base_dag_opt.unwrap_or_else(|| {
+            eprintln!("warning: unresolved type '{base_name}', producing identity placeholder");
+            gunbc_ir::type_lib::identity(&base_name)
+        })
     } else {
         match base_dag_opt {
             Some(dag) => gunbc_ir::type_lib::refined_with_base(&base_name, dag, predicates),

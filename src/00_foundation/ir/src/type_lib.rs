@@ -503,14 +503,15 @@ pub fn non_empty_set(element_type: Dag<TypeOp>) -> Dag<TypeOp> {
     dag
 }
 
-/// Map type — string-keyed map with typed values.
+/// Map type with typed keys and values.
 ///
-/// The value type DAG is included as a SubDag. Keys are always String
-/// (enforced by the type registry at parse time).
-pub fn map(value_type: Dag<TypeOp>) -> Dag<TypeOp> {
+/// Both key and value type DAGs are included as SubDags, preserving full
+/// structural information for both. Key and value are named `"key_type"`
+/// and `"value_type"` respectively, matching the SubDag naming convention
+/// used by Product fields (`field_{name}`) and Coproduct variants.
+pub fn map(key_type: Dag<TypeOp>, value_type: Dag<TypeOp>) -> Dag<TypeOp> {
     let mut dag = Dag::new();
 
-    // Input: map of values
     dag.add_node(Node::opaque(
         "input",
         vec![Port::scalar("in", "Map")],
@@ -518,9 +519,10 @@ pub fn map(value_type: Dag<TypeOp>) -> Dag<TypeOp> {
         TypeOp::Wrap(WrapperKind::Map),
     ));
 
-    // Value type validation (as SubDag, applied to each value)
+    dag.add_node(Node::subdag("key_type", key_type));
     dag.add_node(Node::subdag("value_type", value_type));
 
+    dag.add_edge(Edge::new("input", "out", "key_type", "in"));
     dag.add_edge(Edge::new("input", "out", "value_type", "in"));
 
     dag
@@ -615,13 +617,13 @@ mod tests {
         let string_list = list(string());
         let non_empty_strings = non_empty_list(string());
         let non_empty_set = non_empty_set(string());
-        let string_map = map(string());
+        let string_map = map(string(), string());
 
         assert!(optional_string.nodes.len() >= 2);
         assert!(string_list.nodes.len() >= 2);
         assert!(non_empty_strings.nodes.len() >= 3);
         assert!(non_empty_set.nodes.len() >= 3);
-        assert!(string_map.nodes.len() >= 2);
+        assert!(string_map.nodes.len() >= 3);
     }
 
     #[test]
@@ -631,7 +633,7 @@ mod tests {
         let list_type = list(string());
         let non_empty_type = non_empty_list(string());
         let non_empty_set_type = non_empty_set(string());
-        let map_type = map(string());
+        let map_type = map(string(), string());
 
         assert_eq!(infer_cardinality(&string_type), Cardinality::ONE);
         assert_eq!(infer_cardinality(&optional_type), Cardinality::ZERO_OR_ONE);
@@ -648,10 +650,10 @@ mod tests {
     fn test_map_type_has_value_subdag() {
         use crate::contract::wrapper_kind;
 
-        let int_map = map(int());
+        let int_map = map(string(), int());
 
-        // Map DAG should have input node + value_type SubDag
-        assert_eq!(int_map.nodes.len(), 2);
+        // Map DAG should have input node + key_type SubDag + value_type SubDag
+        assert_eq!(int_map.nodes.len(), 3);
         assert_eq!(wrapper_kind(&int_map), Some(WrapperKind::Map));
 
         // Cardinality should be ONE (maps are scalar containers)

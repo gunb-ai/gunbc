@@ -42,7 +42,8 @@ impl Default for GoConfig {
 
 /// Lower an AbstractIR `SourceFile` to a Go-specific `SourceFile`.
 pub fn lower_to_go(source: &SourceFile, config: &GoConfig) -> Result<SourceFile, LowerError> {
-    lower_to_go_with_registry(source, config, None)
+    let registry = gunbc_ir::TypeRegistry::with_core_types();
+    lower_to_go_with_registry(source, config, Some(&registry))
 }
 
 /// Lower to Go with an optional type registry for structural emission.
@@ -415,26 +416,8 @@ fn rewrite_transport_call_go(name: &str, config: &GoConfig) -> Option<String> {
     if !config.use_exec_runtime {
         return None;
     }
-
-    match name {
-        "prepare_file_read" => Some("transport.NewFileReadRequest".to_string()),
-        "execute_file_read" => Some("transport.Execute".to_string()),
-        "parse_file_read_response" => Some("transport.ParseFileResponse".to_string()),
-        "prepare_file_write" => Some("transport.NewFileWriteRequest".to_string()),
-        "execute_file_write" => Some("transport.Execute".to_string()),
-        "parse_file_write_response" => Some("transport.ParseFileResponse".to_string()),
-        "prepare_file_exists" => Some("transport.NewFileExistsRequest".to_string()),
-        "execute_file_exists" => Some("transport.Execute".to_string()),
-        "prepare_shell_exec" => Some("transport.NewShellRequest".to_string()),
-        "execute_shell_exec" => Some("transport.Execute".to_string()),
-        "parse_shell_exec_response" => Some("transport.ParseShellResponse".to_string()),
-        "prepare_http_request" => Some("transport.NewHTTPRequest".to_string()),
-        "execute_http_request" => Some("transport.Execute".to_string()),
-        "prepare_directory_list" => Some("transport.NewDirListRequest".to_string()),
-        "execute_directory_list" => Some("transport.Execute".to_string()),
-        "acquire_resource" => Some("resource.Acquire".to_string()),
-        _ => None,
-    }
+    crate::language_model::resolve_transport(name, &crate::language_model::GO_MODEL)
+        .map(|s| s.to_string())
 }
 
 // ===========================================================================

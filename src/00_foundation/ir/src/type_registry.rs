@@ -182,10 +182,6 @@ fn render_type_expr(expr: &TypeExpr) -> String {
     }
 }
 
-fn map_key_is_string(expr: &TypeExpr) -> bool {
-    matches!(expr, TypeExpr::Named(name) if name == "String")
-}
-
 fn parse_type_expr(raw: &str) -> Result<TypeExpr, TypeExprError> {
     let expr = raw.trim();
     if expr.is_empty() {
@@ -214,9 +210,6 @@ fn parse_type_expr(raw: &str) -> Result<TypeExpr, TypeExprError> {
             }
             let key = parse_type_expr(args[0])?;
             let value = parse_type_expr(args[1])?;
-            if !map_key_is_string(&key) {
-                return Err(TypeExprError::new(expr, "Map key type must be String"));
-            }
             return Ok(TypeExpr::Map(Box::new(key), Box::new(value)));
         }
         return Ok(TypeExpr::Named(expr.to_string()));
@@ -289,12 +282,37 @@ impl TypeRegistry {
             type_lib::branded("Secret", type_lib::identity("String")),
         );
 
-        // String, Int, Float are identity placeholders here — the DSL files
-        // (string_type.dag, integer.dag, float.dag) provide structural
-        // definitions that override these via merge_dsl_types().
-        for name in ["String", "Int", "Float"] {
-            self.register(name, type_lib::identity(name));
-        }
+        // String: structural Product matching string_type.dag.
+        self.register_product(
+            "String",
+            vec![("bytes", "Bytes"), ("encoding", "ContentEncoding")],
+        );
+
+        // Int, Float: structural kernel definitions matching the DSL files
+        // (integer.dag, float.dag). These produce Platform shapes via
+        // Width/Signed/Domain predicates, which the emit layer handles.
+        self.register(
+            "Int",
+            type_lib::refined(
+                "Int",
+                vec![
+                    Predicate::Width(64),
+                    Predicate::Signed(None),
+                    Predicate::Arithmetic,
+                ],
+            ),
+        );
+        self.register(
+            "Float",
+            type_lib::refined(
+                "Float",
+                vec![
+                    Predicate::Width(64),
+                    Predicate::Domain("ieee754_binary64".to_string()),
+                    Predicate::Arithmetic,
+                ],
+            ),
+        );
     }
 
     /// Merge types from a DSL typecheck pass into this registry.
@@ -472,11 +490,35 @@ impl TypeRegistry {
         );
 
         // Domain types for transport/infrastructure.
-        self.register("TransportRequest", type_lib::identity("TransportRequest"));
-        self.register("TransportResponse", type_lib::identity("TransportResponse"));
-        self.register("Credential", type_lib::identity("Credential"));
-        self.register("FilesystemHandle", type_lib::identity("FilesystemHandle"));
-        self.register("NetworkHandle", type_lib::unit());
+        self.register_product(
+            "TransportRequest",
+            vec![
+                ("method", "String"),
+                ("url", "String"),
+                ("headers", "Json"),
+                ("body", "String"),
+            ],
+        );
+        self.register_product(
+            "TransportResponse",
+            vec![
+                ("status", "Int"),
+                ("headers", "Json"),
+                ("body", "String"),
+            ],
+        );
+        self.register(
+            "Credential",
+            type_lib::branded("Credential", type_lib::string()),
+        );
+        self.register(
+            "FilesystemHandle",
+            type_lib::branded("FilesystemHandle", type_lib::file_path()),
+        );
+        self.register(
+            "NetworkHandle",
+            type_lib::branded("NetworkHandle", type_lib::unit()),
+        );
         self.register_product(
             "CliResult",
             vec![
@@ -485,7 +527,10 @@ impl TypeRegistry {
                 ("exit_code", "Int"),
             ],
         );
-        self.register("ToolHandle", type_lib::identity("ToolHandle"));
+        self.register(
+            "ToolHandle",
+            type_lib::branded("ToolHandle", type_lib::string()),
+        );
         self.register_coproduct(
             "Platform",
             vec![("Linux", "Unit"), ("Macos", "Unit"), ("Windows", "Unit")],
@@ -725,18 +770,18 @@ impl TypeRegistry {
                     WrapperKind::NonEmptyList => type_lib::non_empty_list(inner_dag),
                     WrapperKind::Set => type_lib::set(inner_dag),
                     WrapperKind::NonEmptySet => type_lib::non_empty_set(inner_dag),
-                    WrapperKind::Map => type_lib::map(inner_dag),
+                    WrapperKind::Map => type_lib::map(type_lib::string(), inner_dag),
                 };
                 Some(dag)
             }
             TypeExpr::Map(key, value) => {
-                let _ = self.resolve_expr(key, ResolveMode::InWrapper)?;
+                let key_dag = self.resolve_expr(key, ResolveMode::InWrapper)?;
                 let value_dag = self.resolve_expr(value, ResolveMode::InWrapper)?;
                 let name = render_type_expr(expr);
                 if let Some(dag) = self.get_by_name(&name) {
                     return Some(dag.clone());
                 }
-                Some(type_lib::map(value_dag))
+                Some(type_lib::map(key_dag, value_dag))
             }
         }
     }
@@ -859,12 +904,14 @@ impl TypeRegistry {
                 | crate::type_shape::ContainerShape::Set(inner) => inner.as_ref(),
                 crate::type_shape::ContainerShape::Map(_, _) => return false,
             };
-            // Same-name Opaque wrapping (e.g., String → List<String>)
-            if let (
-                crate::type_shape::TypeShape::Opaque(a),
-                crate::type_shape::TypeShape::Opaque(b),
-            ) = (&from_shape, inner)
-            {
+            // Name-based wrapping: extract declared type names from any
+            // shape variant (Opaque, named Product, named Coproduct) and
+            // compare. This handles structural types (e.g., Product("String"))
+            // being wrapped into containers built with identity elements
+            // (e.g., List(Opaque("String"))).
+            let from_name = shape_declared_name(&from_shape);
+            let inner_name = shape_declared_name(inner);
+            if let (Some(a), Some(b)) = (from_name, inner_name) {
                 if a == b {
                     return true;
                 }
@@ -975,7 +1022,7 @@ impl TypeRegistry {
             return self.value_backing(&TypeId::from(inner));
         }
 
-        // Primitives (direct match).
+        // Primitives (direct match on well-known type names).
         match raw.as_str() {
             "String" => return ValueBacking::String,
             "Bool" => return ValueBacking::Bool,
@@ -1086,9 +1133,24 @@ impl TypeRegistry {
 }
 
 /// Recursively extract the innermost base type from a type DAG.
+///
+/// For containers, prefers semantically meaningful SubDags by name:
+/// `value_type` (Map), `element_type` (List/Set), `inner_type` (Optional/Brand).
 fn base_type_recursive(dag: &Dag<TypeOp>) -> Option<String> {
     if let Some(base) = contract::base_type(dag) {
         return Some(base);
+    }
+    // Prefer named SubDags that carry the semantic element type.
+    for preferred in &["value_type", "element_type", "inner_type"] {
+        for node in &dag.nodes {
+            if node.id.0 == *preferred {
+                if let crate::node::NodeBody::SubDag(inner, _) = &node.body {
+                    if let Some(base) = base_type_recursive(inner) {
+                        return Some(base);
+                    }
+                }
+            }
+        }
     }
     for node in &dag.nodes {
         if let crate::node::NodeBody::SubDag(inner, _) = &node.body {
@@ -1100,18 +1162,24 @@ fn base_type_recursive(dag: &Dag<TypeOp>) -> Option<String> {
     None
 }
 
+/// Extract the declared type name from any shape variant.
+///
+/// Handles `Opaque(n)`, `Product(Some(n), _)`, `Coproduct(Some(n), _)`, and `Brand(n, _)`.
+fn shape_declared_name(shape: &crate::type_shape::TypeShape) -> Option<&str> {
+    match shape {
+        crate::type_shape::TypeShape::Opaque(n) => Some(n.as_str()),
+        crate::type_shape::TypeShape::Product(Some(n), _) => Some(n.as_str()),
+        crate::type_shape::TypeShape::Coproduct(Some(n), _) => Some(n.as_str()),
+        crate::type_shape::TypeShape::Brand(n, _) => Some(n.as_str()),
+        _ => None,
+    }
+}
+
 /// Structural shape compatibility check.
 ///
 /// Two type shapes are compatible if the source shape's values can safely
 /// inhabit the target shape. This is the structural (DAG-derived) alternative
 /// to nominal type equality.
-///
-/// Rules:
-/// - Refinement: if both are Platform, source must have at least the target's
-///   constraints (width, signedness, domain)
-/// - Container: covariant element compatibility (List<A> → List<B> if A → B)
-/// - Coproduct: variant subset (A|B → A|B|C)
-/// - Brand: strip for structural comparison
 /// - Opaque: same name only
 fn structural_shapes_compatible(
     from: &crate::type_shape::TypeShape,
@@ -1447,9 +1515,6 @@ mod tests {
         assert!(registry
             .validate_type_expr(&TypeId::from("Map<,Int>"))
             .is_err());
-        assert!(registry
-            .validate_type_expr(&TypeId::from("Map<Int,String>"))
-            .is_err());
     }
 
     #[test]
@@ -1515,9 +1580,10 @@ mod tests {
     fn test_value_backing_regression_tool_handle() {
         use crate::types::ValueBacking;
         let r = TypeRegistry::with_core_types();
+        // ToolHandle is branded("ToolHandle", String) — structurally a String.
         assert_eq!(
             r.value_backing(&TypeId::from("ToolHandle")),
-            ValueBacking::Json
+            ValueBacking::String
         );
     }
 
@@ -1571,6 +1637,8 @@ mod tests {
     fn test_value_backing_regression_transport_types() {
         use crate::types::ValueBacking;
         let r = TypeRegistry::with_core_types();
+        // TransportRequest/Response are Products — no primitive match,
+        // fall through to semantic carrier → Json.
         assert_eq!(
             r.value_backing(&TypeId::from("TransportRequest")),
             ValueBacking::Json
@@ -1579,10 +1647,13 @@ mod tests {
             r.value_backing(&TypeId::from("TransportResponse")),
             ValueBacking::Json
         );
+        // FilesystemHandle is branded(FilePath) which is refined(String) —
+        // structurally compatible with String.
         assert_eq!(
             r.value_backing(&TypeId::from("FilesystemHandle")),
-            ValueBacking::Json
+            ValueBacking::String
         );
+        // NetworkHandle is unit().
         assert_eq!(
             r.value_backing(&TypeId::from("NetworkHandle")),
             ValueBacking::Json
@@ -1741,17 +1812,8 @@ mod tests {
         let allowed: std::collections::BTreeSet<&str> = [
             "Any",
             "Json",
-            "NetworkHandle",
             "Record",
-            "String",
-            "Int",
-            "Float",
             "Unit",
-            "TransportRequest",
-            "TransportResponse",
-            "Credential",
-            "FilesystemHandle",
-            "ToolHandle",
         ]
         .into_iter()
         .collect();

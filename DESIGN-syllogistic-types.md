@@ -502,7 +502,7 @@ The derivation chain IS the type. A backend doesn't need to know the
 *name* — it pattern-matches on *structure* and selects the highest-level
 native construct that covers the structural pattern.
 
-### Backend as a Rule Set
+### Backend as a Rule Set (Intermediate Form)
 
 A backend is a function:
 
@@ -546,6 +546,13 @@ constituents.
 the compiler.** A Verilog backend would have different rules (no
 native string, no native containers) and would decompose further down
 the chain.
+
+This flat rule-set model is a useful stepping stone and captures the
+mechanical behavior correctly. But it doesn't model *why* Rust and Go
+share `i32`/`int32` for the same structural pattern while Verilog
+doesn't — that relationship is implicit in the rule ordering. The
+backend language model (see next section) gives these relationships
+structure.
 
 ### Recursive Decomposition
 
@@ -659,6 +666,555 @@ emission:
 
 These participate in type compatibility checking and static analysis
 but are transparent to the emitter.
+
+---
+
+## Backend Language Models: Hierarchical Target Modeling
+
+### The Deeper Point
+
+The flat rule-set model above tells the emitter *what to do* but not
+*what the target is*. Each backend is an opaque list of patterns. If
+Rust, Go, and C all emit `i32`/`int32`/`int32_t` for the same
+structural pattern, that's not a coincidence — they share a common
+ancestry in how they represent machine integers. The rule-set model
+can't express that; it just happens to have similar entries.
+
+The type system got this right: types are structural DAGs, not
+opaque names. `Int32` isn't a magic string — it's `Word32 where
+signed, arithmetic`, which is `{ bytes: List<Byte> where length(4) }`
+all the way down to `Classical`. The structure carries the knowledge.
+
+Backend languages should follow the same pattern. A compilation
+target is a *structure* — a set of representational capabilities
+with hierarchical relationships. Rust's `i32` IS a signed 32-bit
+machine integer with Rust-specific syntax. Go's `int32` IS the same
+machine integer with Go-specific syntax. They share that structure
+because both ultimately target the same ISA registers — that's an
+objective fact documented in their respective specs and the
+compilation chains that connect them to the hardware.
+
+If we model this hierarchy, then emitting a type into a backend is
+not a lookup — it's structural resolution. The source type's
+predicates (width=32, signed, arithmetic) resolve against the
+target language's type hierarchy. The type unpacks itself into the
+backend's structure the same way it unpacks itself into the source's
+derivation chain.
+
+### The Three Hierarchies
+
+The system has three parallel hierarchies, all following the same
+pattern: tautological foundations at the bottom, composition at the
+top, structure all the way through.
+
+```
+Types:       Classical → Bit → Byte → Word → Int32
+Targets:     ISA → C → Rust / Go / C++
+Extdeps:     behavioral → cloud → gcp → SecretManager
+```
+
+Types model *what data is*. Targets model *how data renders*.
+Extdeps model *where data lives*. All three are compositional,
+layered, and (eventually) DAG-expressible. The emit function sits
+at the intersection of the first two: given a type DAG and a target
+DAG, find where they align.
+
+### The Organizing Principle: Compilation Target Chains
+
+The extdeps system layers external API knowledge, and every layer
+points to a concrete specification:
+
+```
+Layer 0  std/behavioral.dag     "What is idempotency?"     (tautology)
+Layer 1  cloud/cloud.dag        "What is a cloud provider?" (abstract)
+Layer 2  cloud/gcp/gcp.dag      "What is GCP?"              (instantiation)
+Layer 3  cloud/gcp/sm.dag       "What is Secret Manager?"   (composition)
+```
+
+Adding Stripe means instantiating existing vocabulary with Stripe's
+documented facts. No Rust changes.
+
+Backend targets should follow the same rigor. But the organizing
+relationship isn't "family membership" (that's vague and subjective).
+It's the **compilation target chain**: each language compiles to a
+lower-level representation, and that relationship is objective,
+verifiable, and backed by a concrete specification.
+
+```
+Rust (The Rust Reference)
+  compiles via rustc to → LLVM IR (LLVM Language Reference Manual)
+    compiles via llc to → x86-64 assembly
+      assembles to → x86-64 machine code (Intel® 64 and IA-32 SDM)
+
+Go (The Go Programming Language Specification)
+  compiles via gc to → machine code (architecture-specific)
+
+C (ISO/IEC 9899:2018 — C17)
+  compiles via gcc/clang to → assembly / LLVM IR → machine code
+
+Verilog (IEEE 1364-2005)
+  synthesizes to → netlist → FPGA bitstream / ASIC layout
+```
+
+The compilation chain explains *why* languages share type
+representations: Rust and C both have 32-bit signed integers because
+both ultimately target machines with 32-bit registers. They differ
+on tagged unions because Rust's spec adds them while C's spec
+doesn't. Verilog shares widths and signedness with the ISA level
+but has no pointers or heap because synthesis targets hardware, not
+a Von Neumann machine.
+
+These are objective, citable relationships — not taxonomic opinions.
+Every node in the hierarchy is a real specification document.
+
+### The Hierarchy
+
+```
+Layer 0  backend/isa.dag            Ref: ISA manuals (x86-64 SDM, ARM ARM, RISC-V spec)
+         "What can a machine register hold?"
+
+Layer 1  backend/c.dag              Ref: ISO/IEC 9899:2018 (C17)
+         "What does ISO C define over the ISA?"
+         backend/verilog.dag        Ref: IEEE 1364-2005
+         "What does Verilog define over the ISA?"
+
+Layer 2  backend/rust.dag           Ref: The Rust Reference
+         "What does Rust define over C's model?"
+         backend/go.dag             Ref: The Go Programming Language Specification
+         "What does Go define over its machine target?"
+         backend/cpp.dag            Ref: ISO/IEC 14882:2020 (C++20)
+         "What does C++ define over C's model?"
+```
+
+The "over" relationships are compiler I/O chains:
+- Rust compiles through LLVM, which targets the same machine model
+  that C targets. Rust's type capabilities are a superset of C's
+  for the same reason: it targets the same ISA, through a compatible
+  intermediate representation.
+- Go compiles to machine code via its own backend, but its scalar
+  types still reflect the ISA's register widths.
+- C++ is literally a superset of C (modulo edge cases), targeting
+  the same backends.
+- Verilog branches from the ISA level directly — it targets hardware
+  synthesis, not a Von Neumann instruction stream.
+
+### Layer 0: ISA — Instruction Set Architecture
+
+What the machine physically provides. Every software compilation
+target eventually produces instructions for one of these. Every
+hardware target eventually produces a circuit that implements
+equivalent logic.
+
+Ref: Intel® 64 and IA-32 Architectures Software Developer's Manual;
+ARM Architecture Reference Manual; The RISC-V Instruction Set Manual
+
+```dag
+module backend.isa
+
+// Ref: x86-64 SDM Vol. 1 §3.1 — Fundamental Data Types
+// A machine provides fixed-width general-purpose registers.
+type GPR {
+    width: Int
+}
+
+// Ref: x86-64 SDM Vol. 1 §3.1.2
+// Signedness is an interpretation of the bit pattern.
+type SignedGPR = GPR where signed
+type UnsignedGPR = GPR where unsigned
+
+// Ref: IEEE 754-2019 §3.3; x86-64 SDM Vol. 1 §4.2.2
+// The machine provides IEEE 754 floating-point via SSE/AVX registers.
+type FPR = GPR where domain("ieee754")
+
+// Ref: x86-64 SDM Vol. 1 §3.4.1
+// Standard register widths available on x86-64.
+data register_widths: List<Int> = [8, 16, 32, 64]
+```
+
+This layer defines what the silicon provides: registers with widths,
+two interpretations (signed/unsigned), and IEEE 754 float support.
+Nothing about `struct`, `enum`, pointers, heap, or syntax — those
+are language-level concepts that don't exist at the ISA level.
+
+### Layer 1: C and Verilog — Direct ISA Abstractions
+
+These languages are the first abstraction layer over the ISA. They
+add named types, composite structures, and (for C) pointer-based
+memory access. Each has a concrete specification that defines
+exactly what it provides.
+
+**C** (Ref: ISO/IEC 9899:2018 — C17):
+
+```dag
+module backend.c
+
+import backend.isa { GPR, SignedGPR, UnsignedGPR, FPR }
+
+// Ref: C17 §7.20.1.1 — Exact-width integer types
+type int8_t   = SignedGPR   where width(8),  syntax("int8_t")
+type int16_t  = SignedGPR   where width(16), syntax("int16_t")
+type int32_t  = SignedGPR   where width(32), syntax("int32_t")
+type int64_t  = SignedGPR   where width(64), syntax("int64_t")
+type uint8_t  = UnsignedGPR where width(8),  syntax("uint8_t")
+type uint16_t = UnsignedGPR where width(16), syntax("uint16_t")
+type uint32_t = UnsignedGPR where width(32), syntax("uint32_t")
+type uint64_t = UnsignedGPR where width(64), syntax("uint64_t")
+
+// Ref: C17 §6.2.5 ¶10 — Real floating types
+type c_float  = FPR where width(32), domain("ieee754_binary32"), syntax("float")
+type c_double = FPR where width(64), domain("ieee754_binary64"), syntax("double")
+
+// Ref: C17 §6.7.2.1 — Structure specifiers
+type c_struct {
+    syntax_template: "struct {name} { {fields} }"
+}
+
+// Ref: C17 §6.7.2.2 — Enumeration specifiers
+// C enums are untagged integer constants — no payload support.
+type c_enum {
+    syntax_template: "enum {name} { {variants} }"
+    payload_support: false
+}
+
+// Ref: C17 §6.7.6 — Pointer declarators
+type c_pointer {
+    syntax_template: "{T}*"
+}
+
+// C has no generic containers, no tagged unions, no GC.
+// Containers decompose to pointer arithmetic.
+type c_bool where syntax("bool")         // Ref: C17 §7.18 (stdbool.h)
+type c_void where syntax("void")
+type c_string where syntax("const char*")
+```
+
+**Verilog** (Ref: IEEE 1364-2005):
+
+```dag
+module backend.verilog
+
+import backend.isa { GPR, FPR }
+
+// Ref: IEEE 1364-2005 §3.2.2 — Nets
+type wire = GPR where kind("combinational"),
+    syntax("wire [{W-1}:0] {name}")
+
+// Ref: IEEE 1364-2005 §3.2.4 — Regs
+type reg = GPR where kind("sequential"),
+    syntax("reg [{W-1}:0] {name}")
+type reg_signed = GPR where kind("sequential"), signed,
+    syntax("reg signed [{W-1}:0] {name}")
+
+// Ref: IEEE 1364-2005 §3.9 — Real, realtime
+type real = FPR where syntax("real")
+
+// Verilog has no pointers, no heap, no containers.
+// Composite data flattens to bit vectors or port bundles.
+// Ref: IEEE 1364-2005 §12 — Hierarchical structures (modules, ports)
+```
+
+C and Verilog both sit directly on top of the ISA, but they model
+different aspects: C models the Von Neumann execution model
+(sequential instructions, memory, pointers), Verilog models the
+hardware fabric (combinational logic, registers, clock domains).
+The branching is not a taxonomy — it's a consequence of targeting
+different physical substrates from the same ISA-level primitives.
+
+### Layer 2: Rust, Go, C++ — Higher-Level Targets
+
+These languages compile through (or alongside) the Layer 1 targets.
+Their type systems are supersets of what the ISA provides, adding
+language-specific constructs. Each addition is documented in the
+language's specification.
+
+**Rust** (Ref: The Rust Reference, doc.rust-lang.org/reference):
+
+```dag
+module backend.rust
+
+import backend.c { int8_t, uint8_t, c_float, c_double, c_struct, ... }
+
+// Ref: Rust Reference §6.1.1 — Integer types
+// Rust's integer types map to the same ISA registers as C's,
+// through LLVM IR (LLVM Language Reference Manual).
+type i8  = int8_t   where syntax("i8")
+type i16 = int16_t  where syntax("i16")
+type i32 = int32_t  where syntax("i32")
+type i64 = int64_t  where syntax("i64")
+type u8  = uint8_t  where syntax("u8")
+type u16 = uint16_t where syntax("u16")
+type u32 = uint32_t where syntax("u32")
+type u64 = uint64_t where syntax("u64")
+
+// Ref: Rust Reference §6.1.2 — Floating-point types
+type f32 = c_float  where syntax("f32")
+type f64 = c_double where syntax("f64")
+
+// Ref: Rust Reference §6.1.9 — Struct types
+type rust_struct = c_struct where syntax("struct {name} { {fields} }")
+
+// Ref: Rust Reference §6.1.10 — Enumerated types
+// Rust extends C's enum with tagged payloads (algebraic data types).
+// This is a capability C does not have — it's in the Rust spec, not the C spec.
+type rust_enum {
+    syntax_template: "enum {name} { {variants} }"
+    payload_support: true
+}
+
+// Ref: Rust Reference §8.1 — std::vec::Vec
+type rust_vec     { syntax_template: "Vec<{T}>" }
+type rust_option  { syntax_template: "Option<{T}>" }
+type rust_hashmap { syntax_template: "HashMap<{K}, {V}>" }
+type rust_hashset { syntax_template: "HashSet<{T}>" }
+
+// Composite patterns: structural shapes that map to Rust builtins.
+type rust_string = Product(bytes: List<Width(8)>, encoding: _)
+    where syntax("String")
+type rust_bool = Coproduct(2, all_unit) where syntax("bool")
+type rust_unit where syntax("()")
+```
+
+**Go** (Ref: The Go Programming Language Specification, go.dev/ref/spec):
+
+```dag
+module backend.go
+
+import backend.isa { SignedGPR, UnsignedGPR, FPR }
+
+// Ref: Go spec §Numeric types
+// Go targets machine code via its own compiler (gc), not through C.
+// Its integer types still reflect ISA register widths.
+type go_int8   = SignedGPR   where width(8),  syntax("int8")
+type go_int16  = SignedGPR   where width(16), syntax("int16")
+type go_int32  = SignedGPR   where width(32), syntax("int32")
+type go_int64  = SignedGPR   where width(64), syntax("int64")
+type go_uint8  = UnsignedGPR where width(8),  syntax("uint8")
+type go_uint16 = UnsignedGPR where width(16), syntax("uint16")
+type go_uint32 = UnsignedGPR where width(32), syntax("uint32")
+type go_uint64 = UnsignedGPR where width(64), syntax("uint64")
+
+// Ref: Go spec §Numeric types — float32, float64
+type go_float32 = FPR where width(32), domain("ieee754_binary32"), syntax("float32")
+type go_float64 = FPR where width(64), domain("ieee754_binary64"), syntax("float64")
+
+// Ref: Go spec §Struct types
+type go_struct { syntax_template: "type {name} struct { {fields} }" }
+
+// Go has no algebraic enums. Coproducts decompose to interface + variants.
+// Ref: Go spec §Interface types
+
+// Ref: Go spec §Slice types, Map types
+type go_slice { syntax_template: "[]{T}" }
+type go_map   { syntax_template: "map[{K}]{V}" }
+
+type go_string = Product(bytes: List<Width(8)>, encoding: _)
+    where syntax("string")
+type go_bool = Coproduct(2, all_unit) where syntax("bool")
+type go_unit where syntax("struct{}")
+```
+
+Note that Go imports from `backend.isa` directly, not from
+`backend.c`. This reflects reality: Go's compiler (`gc`) has its
+own backend and does not compile through C. It shares scalar
+representations with C because both target the same ISA registers,
+not because Go "extends" C. The hierarchy captures this by letting
+both C and Go import from the ISA layer independently.
+
+### Why the Compilation Chain Matters
+
+The compilation target chain explains three things that a subjective
+taxonomy cannot:
+
+1. **Why types are shared.** Rust, Go, and C all have a 32-bit
+   signed integer because all three ultimately target machines with
+   32-bit registers. The ISA spec is the shared ancestor — that's
+   a citable fact, not a classification judgment.
+
+2. **Why types diverge.** Rust has `enum` with payloads because the
+   Rust Reference §6.1.10 defines them. C does not because ISO
+   C §6.7.2.2 defines enums as integer constants only. The
+   divergence is traceable to specific sections of specific specs.
+
+3. **Where decomposition boundaries fall.** When emitting `String`
+   to Verilog, the emitter decomposes because IEEE 1364-2005
+   defines no string type. This is not a heuristic — it's a
+   consequence of what the Verilog spec provides. The language
+   model's contents are derived from the spec; the emitter reads
+   the model; the decomposition follows.
+
+Where the hierarchy should NOT be forced:
+
+- Some targets don't fit a clean chain. TypeScript (ECMA-262)
+  targets a VM with no fixed-width integers — it may import from
+  the ISA layer for floats (IEEE 754 via `Number`) but not for
+  integers. The hierarchy should reflect that honestly rather than
+  inventing an intermediate node.
+- Container representations vary across languages even when scalar
+  types align. That's fine — each language model declares its own
+  container syntax. Shared structure exists at the ISA/scalar level;
+  divergent structure exists at the language level.
+- The compilation chain is the *primary* organizing relationship
+  but not the only one. A future `backend/wasm.dag` (Ref: WebAssembly
+  Core Specification) would import ISA-level concepts but represent
+  a virtual machine, not physical silicon. The model accommodates
+  this without forcing WASM into a physical-ISA chain.
+
+### How Resolution Works
+
+Emission becomes structural resolution between two DAGs — the
+source type DAG and the target language DAG. The algorithm:
+
+```
+resolve(source_type, language_model):
+  1. Extract StructuralProperties from source_type
+  2. Walk the language_model's type entries
+  3. Find the most specific language type whose structural
+     predicates are satisfied by the source's properties
+  4. Instantiate the syntax template with resolved values
+  5. If no match: decompose source one structural level, retry
+```
+
+This is the same operation as type coercion (structural DAG walk
+to find a compatible target) and extdeps resolution (structural
+matching of API signatures to provider implementations). One
+mechanism across all three domains.
+
+#### Resolution Example: UInt32 → Rust
+
+```
+Source: UInt32
+  → StructuralProperties { width: 32, signed: false, arithmetic: true }
+
+Language model walk (backend.rust):
+  u32
+    = uint32_t (C17 §7.20.1.1) where syntax("u32")
+    = UnsignedGPR where width(32) (ISA: 32-bit register)
+  Match: width(32) ✓, unsigned ✓, arithmetic ✓
+
+Result: "u32"
+```
+
+No match table consulted. The source type's properties structurally
+unify with the language model's type definition, traceable through
+the compilation chain all the way to the ISA.
+
+#### Resolution Example: String → Verilog
+
+```
+Source: String
+  → TypeShape::Product(bytes: List<Width(8)>, encoding: Coproduct)
+
+Language model walk (backend.verilog):
+  wire: scalar only — no match
+  reg: scalar only — no match
+  (no composite patterns — IEEE 1364-2005 has no native string)
+
+Decompose one level:
+  bytes field: List<Byte>
+    → reg where width(8), array syntax
+    → "reg [7:0] {name}_bytes []"
+  encoding field: Coproduct(6 variants)
+    → flatten to bit vector, width = ceil(log2(6)) = 3
+    → "reg [2:0] {name}_encoding"
+```
+
+Decomposition happens because the Verilog spec (IEEE 1364-2005)
+defines no string type. The language model faithfully reflects the
+spec; the emitter reads the model; the decomposition follows.
+
+### Bootstrap: Language Models as IR
+
+The compiler needs language models to emit code. If language models
+are `.dag` files compiled by the compiler, there's a bootstrap loop.
+But `.dag` is sugar over IR. The IR (`Dag<TypeOp>`) is the canonical
+representation, and it can be constructed and consumed without the
+`.dag` pipeline.
+
+This is the key insight: **language models can be expressed directly
+as IR**, using the same `Dag<TypeOp>` vocabulary that type DAGs use.
+No separate `LanguageModel` struct, no parallel type system. The
+language model for Rust IS a `Dag<TypeOp>` — a type DAG whose
+predicates describe Rust's representational capabilities.
+
+The infrastructure already supports this:
+
+- `Dag<TypeOp>` derives `Serialize`/`Deserialize` — language models
+  can be serialized as JSON and loaded at startup
+- `type_lib` provides constructors (`refined()`, `product_resolved()`,
+  `coproduct_resolved()`, `branded()`) for building DAGs
+  programmatically
+- `register_kernel_types()` already constructs structural type DAGs
+  in pure Rust — `Bool` as `coproduct_resolved("Bool", [("True",
+  unit()), ("False", unit())])`, `Bytes` as `list(identity("Byte"))`,
+  etc.
+- The `Predicate` enum already has `Width`, `Signed`, `Domain`,
+  `Arithmetic` — exactly the predicates language models need
+
+A language model entry for Rust's `i32` is a `Dag<TypeOp>` with:
+- `Validate(Width(32))` node
+- `Validate(Signed)` node
+- `Validate(Arithmetic)` node
+- A `Brand("i32")` node carrying the syntax string
+
+This is structurally identical to our source type `Int32` — because
+it IS the same statement. `Int32` says "I am a 32-bit signed
+arithmetic type." Rust's `i32` says "I represent 32-bit signed
+arithmetic types as `i32`." Resolution is structural matching of
+two `Dag<TypeOp>` instances.
+
+**Circularity is broken** because `Dag<TypeOp>` consumption is
+independent of the `.dag` compilation pipeline. The compiler loads
+language model DAGs the same way it loads kernel type DAGs: directly
+from Rust code or deserialized data, not through parsing and
+typechecking.
+
+**Migration path:**
+
+1. **Now:** Construct language model DAGs in Rust using `type_lib`
+   helpers and `Dag::new()`. Register them in a `LanguageModelRegistry`
+   alongside the `TypeRegistry`. Same pattern as
+   `register_kernel_types()`.
+
+2. **Next:** Serialize language models as JSON IR. Load from
+   `backend/rust.ir.json`, `backend/go.ir.json`, etc. Source of
+   truth moves out of Rust code into data files.
+
+3. **Later:** Write `.dag` files that compile to the same IR.
+   `backend/rust.dag` becomes sugar for `backend/rust.ir.json`.
+   The `.dag` pipeline produces the IR; the compiler consumes
+   the IR. No circularity at any stage.
+
+The same DAG-to-DAG resolution that matches source types against
+language models is the same mechanism that will eventually power
+cross-language coercion, structural testgen, and backend-specific
+transport rewrites. One IR, one resolution mechanism, all domains.
+
+### Connections to Coercion and Testgen
+
+**Coercion.** If backend language models describe structural
+relationships between target types (e.g., Go's `int` is platform-
+dependent width while Rust's `i64` is fixed-width 64), then cross-
+language coercion becomes structural too. "Can this Go output feed
+into this Rust input?" is a resolution against both language models.
+The coercion search space is the intersection of the two target
+hierarchies.
+
+**Testgen.** With structural language models, test generation gains
+per-target precision. If the Rust model declares `i32` IS `{ width:
+32, signed: true }` and the source type structurally matches, that's
+an identity — no coercion test needed. If the source is `Width(64)`
+targeting a backend where the best match is `Width(32)`, the model
+tells testgen it's a narrowing conversion and boundary tests are
+generated. The language model carries the information that drives
+test decisions, replacing the current flat heuristics.
+
+**Transport rewrite tables.** The three `rewrite_transport_call`
+functions (Rust, Go, C) with ~15 hardcoded name→function pairs each
+follow the same pattern. Transport operations can be modeled in the
+language model: each language declares how abstract transport ops
+(file read, HTTP request, shell exec) map to its runtime library.
+The rewrite becomes a resolution against the language model's
+transport vocabulary, not a per-backend match table.
 
 ---
 
@@ -897,7 +1453,7 @@ status for types.
 
 | Knowledge | Location | Current Form | DAG Form |
 |-----------|----------|-------------|----------|
-| Backend type mappings | `type_mapping.rs:164-222` | 3× duplicated match tables (Rust/Go/C) | Backend rule DAGs with structural pattern predicates |
+| Backend type mappings | `type_mapping.rs:164-222` | 3× duplicated match tables (Rust/Go/C) | Language model DAGs organized by compilation target chain (ISA → C → Rust/Go); structural resolution replaces match tables (see Backend Language Models section) |
 | Coercion graph | `type_registry.rs` (`CoercionEdge`, `coercion_path`) | Manual edge registration + BFS | Structural derivation chain walk (see Coercion section) |
 | Base type lattice | `contract.rs:1827-1838` | Hardcoded `base_type_upcasts_to()` match | Derived from std/ type DAG hierarchy |
 | TypeContract L1/L2/L3 | `contract.rs:1690-1804` | Tri-level struct with `can_safely_coerce_to_with()` | Two DAGs in, structural path out |
@@ -1448,6 +2004,50 @@ through `Int64 → Word64 → 8 × Byte → 64 × Bit → Classical`.
 | Identity type ratchet | **DONE** (ratchet test: 13 allowed identity types in with_core_types baseline) |
 | Value compatibility tightening | **DONE** (Bool accepts only "True"/"False"; Platform accepts only canonical variants) |
 
+### Honest Assessment: Substrate vs. Authority
+
+The structural substrate is real. `Dag<TypeOp>` with predicate-based
+classification, SubDag field embedding, and predicate-driven emission
+— that infrastructure works and is tested. But the system is still
+hybrid, not fully structural end-to-end.
+
+**What's real:**
+
+- Foundational scalar/type DSL definitions exist and compile
+- Sum-type registration handles unit and payload variants structurally
+- Core coproduct catalogs have `.dag` definitions
+- Product/Coproduct fields are SubDag children, not TypeId strings
+- The two-phase bootstrap (kernel → DSL merge) works correctly
+- Structural emit works for numeric types with explicit predicates
+
+**What's still nominal or mixed:**
+
+- `String`, `Int`, `Float` are identity placeholders in kernel-only
+  contexts (`with_core_types()` without DSL merge) — the ratchet
+  test documents 13 allowed identity types as the baseline
+- Containers are partially structural: `resolve_field_type_dag()`
+  handles generics, but `Map<K,V>` erases keys, container refinement
+  predicates (`where length(8)`) aren't applied, and `containers.dag`
+  is comments-only
+- Compositional width derivation doesn't exist yet — `Byte` has no
+  derived width(8), `Word32` has no derived width(32), so aliases
+  like `UInt8` and `Float32` can't recover their width from structure
+  alone
+- Production emit still routes through `emit_identity_type()` with
+  per-backend match arms — the structural path exists but callers
+  pass `None` for the registry
+- Cardinality is stored on ports, not derived from type DAGs
+- Structural coercion is a design, not an implementation — the legacy
+  `CoercionEdge`/`TypeContract` model is still live
+
+**The framing:**
+
+Not half-baked as a substrate. Half-migrated as a source of truth.
+
+The substrate is real. The authority path is still mixed. The line
+between "we have a structural type system in principle" and "the
+compiler actually lives on it" is the remaining work below.
+
 ### Design Stance: Minimal Structural Kernel
 
 The compiler owns a minimal non-DSL kernel for bootstrapping. This is
@@ -1465,159 +2065,407 @@ immediately" but "the compiler's kernel shrinks over time as more
 structure moves to DSL definitions." Identity placeholders are
 transitional debt, not the end state.
 
-### Next PR: Structural Containers + Compositional Derivation
+### Next Milestones: Containers → Derivation → Authority
 
-Per review feedback, the remaining work is the actual hard part of
-the design. The next wave focuses on structural containers and
-compositional derivation — not on adding more nominal stdlib layers.
+The remaining work is the actual hard part of the design. The first
+PR landed the substrate; the next milestones land the authority.
 
-The specific milestone: make `List<T>`, `Option<T>`, `Map<K,V>`,
-fixed arrays, and type references first-class structural constructors;
-make width/scalar-kind/encoding derivation compositional; make
-backends pattern-match normalized structure rather than nominal names.
+The critical path, in order of dependency:
 
-Once these three are real, the "truth → bit → byte → char →
-list\<char\>" story becomes implementable.
+1. **Finish structural containers** — `Map<K,V>` keys, container
+   refinement predicates, real `containers.dag` definitions. Without
+   `List<Bit> where length(8)` carrying its constraint, nothing
+   downstream can compose width.
 
-#### Phase A: Structural Containers (Gap 8) — PARTIALLY DONE
+2. **Make width/scalar-kind/encoding derivation compositional** —
+   `Byte` gets width(8) from `8 × Bit`, `Word32` gets width(32)
+   from `4 × Byte`, aliases inherit. This is the structural
+   watershed: the system can recover all backend-relevant facts
+   from composition alone.
 
-**A1. DONE.** `resolve_field_type_dag()` handles
-`TypeExpr::Generic(name, params)`:
-- `List<T>` → `type_lib::list(resolve_field_type_dag(T, registry))`
-- `Option<T>` → `type_lib::optional(resolve_field_type_dag(T, registry))`
-- `Map<K,V>` → `type_lib::map(resolve(V))` (**key erased — A1a**)
-- `Set<T>` → `type_lib::set(resolve_field_type_dag(T, registry))`
+3. **Wire the merged registry into production emit and replace
+   nominal fallback tables with language-model resolution** — the
+   compiler crosses the line from "structural path exists" to
+   "structural path is the only path." Language models as IR
+   (see Backend Language Models section) replace `emit_identity_type`.
 
-**A1a. DEFERRED.** Map key type erasure. `type_lib::map()` only
-accepts a value DAG. Fix requires extending to `map(key_dag, val_dag)`
-and updating `ContainerShape::Map`, `TypeShape`, structural
-compatibility, and all downstream consumers.
+4. **Derive cardinality from type DAGs** instead of storing it on
+   ports.
 
-**A2. DEFERRED.** Refinement predicates on containers.
-`List<Bit> where length(8)` → list DAG without Length(8) constraint.
-Needed for compositional width derivation (Phase B).
+5. **Finish structural coercion** — explicit translation rules,
+   brand policy, downcast acknowledgment syntax.
 
-**A3. DEFERRED.** Replace `containers.dag` documentation-only comments
-with structural definitions.
+6. **Shrink the kernel** — `String`, `Int`, `Float` stop being
+   identity placeholders even in kernel-only contexts.
 
-**A4. DEFERRED.** Verify `Byte.bits` resolves to structural
-`List(element: Bit(width(1))) where Length(8)` — blocked on A2.
+That is the line between "we have a structural type system in
+principle" and "the compiler actually lives on it."
+
+#### Phase A: Structural Containers (Gap 8)
+
+Status: `resolve_field_type_dag()` handles `List<T>`, `Option<T>`,
+`Set<T>`, `Map<K,V>` generics. Map key is erased. Container
+refinement predicates chain correctly via `refined_with_base()` in
+the `TypeExpr::Refined` arm. `containers.dag` is comments-only.
+
+**A1. Map key type support.**
+
+| File | Change |
+|------|--------|
+| `ir/src/type_lib.rs` L512-529 | Change `map(value_type)` → `map(key_type, value_type)`. Add second SubDag node `"key_type"` alongside `"value_type"`. |
+| `typecheck/src/lib.rs` L1257 | Map arm: resolve both args. `("Map", 2) => { let key = resolve_field_type_dag(&args[0], registry); let val = resolve_field_type_dag(&args[1], registry); return type_lib::map(key, val); }` |
+| `ir/src/type_shape.rs` | `type_shape()` Wrap(Map) extraction: resolve key SubDag shape. Currently `ContainerShape::Map` already has `(Box<TypeShape>, Box<TypeShape>)` — wire the key from the SubDag named `"key_type"`. |
+| `ir/src/type_registry.rs` | Update all `type_lib::map(val)` callers to `type_lib::map(key, val)`. |
+| `type_mapping.rs` | `emit_shape` Map arm already handles `(key, value)` — no change needed. |
+
+**A2. Verify container refinement predicates propagate.**
+
+The `TypeExpr::Refined` arm in `resolve_field_type_dag()` already
+chains predicates via `refined_with_base()`. Verify with a test:
+`resolve_field_type_dag` on `List<Bit> where length(8)` should
+produce a DAG with `Wrap(List)` → `Validate(Length(8))` chain, and
+`derive_structural_properties()` should find `length: Some(8)`.
+
+| File | Change |
+|------|--------|
+| `ir/src/type_shape.rs` | Add test: `derive_structural_properties` on `refined_with_base("Byte.bits", list(bit_dag), vec![Predicate::Length(8)])` returns `length: Some(8)`. |
+| `ir/src/type_registry.rs` | Add test: merged registry's `Byte` resolves to a product whose `bits` field's SubDag has `Length(8)` predicate. |
+
+**A3. Real `containers.dag` definitions.**
+
+Replace documentation-only comments with parseable type definitions.
+`containers.dag` currently has no parseable types. At minimum:
+
+```dag
+module std.containers
+type List<T> { elements: Collection<T> }
+type Option<T> { value: Optional<T> }
+type Map<K, V> { entries: List<{ key: K, value: V }> }
+type Set<T> { elements: List<T> where unique }
+```
+
+This may require parser support for generic type parameters in type
+definitions (`type List<T>`). If parser changes are too invasive for
+this phase, defer to Phase F and document the gap.
 
 #### Phase B: Compositional Width Derivation (Gap 9)
 
-Make `derive_structural_properties()` compose width from structure.
+Status: `derive_structural_properties()` reads explicit `Width`,
+`Signed`, `Domain` predicates from Validate nodes and recurses into
+SubDags. It does NOT compose width from `Length × element_width`.
 
-**B1.** Width from fixed-length homogeneous containers:
-- Product with single field `List<T> where length(N)` where T has
-  width W → derived width = N × W
-- This gives `Byte` width 8, `Word32` width 32, etc.
+**B1. Compose width from fixed-length containers.**
 
-**B2.** Width inheritance through aliases:
-- `UInt8 = Byte where unsigned, arithmetic` → inherit Byte's width 8
-- `Float32 = Word32 where domain(...)` → inherit Word32's width 32
+| File | Change |
+|------|--------|
+| `ir/src/type_shape.rs` `derive_structural_properties()` | After collecting explicit predicates and recursing into SubDags, add composition logic: if the DAG contains `Wrap(List)` with a SubDag element type that has derived `width: Some(W)`, AND a `Validate(Length(N))` node in the chain, then `derived_width = N × W`. |
 
-**B3.** Recursive width resolution:
-- `derive_structural_properties()` already recurses into SubDags
-- After Phase A, SubDags contain structural container DAGs
-- Width derivation follows: `Word32` → field `bytes: List<Byte>
-  where length(4)` → element `Byte` → field `bits: List<Bit> where
-  length(8)` → element `Bit` → width(1) → Byte width = 8 × 1 = 8
-  → Word32 width = 4 × 8 = 32
+Algorithm sketch:
+```
+1. If props.width.is_none() && props.length.is_some():
+   a. Find Wrap(List) node in the DAG
+   b. Recurse into element_type SubDag → get element_props
+   c. If element_props.width.is_some():
+      props.width = Some(props.length.unwrap() * element_props.width.unwrap())
+```
 
-**B4.** Verify: `derive_structural_properties()` on the merged
-registry's `UInt8` returns `width: Some(8), signed: Some(false),
-arithmetic: true`. Same for `Float32` → `width: Some(32)`.
+**B2. Inherit width through aliases.**
 
-#### Phase C: Structural Kernel Types (Gap 1) — PARTIALLY DONE
+`refined_with_base()` already embeds the base DAG as a SubDag.
+`derive_structural_properties()` already recurses into SubDags.
+After B1, `Byte` will have derived `width: 8`. Then `UInt8 = Byte
+where unsigned, arithmetic` recurses into `Byte`'s SubDag and
+inherits `width: 8`.
 
-**C1. PARTIAL.** `register_kernel_types()` has structural DAGs for:
-- `Bool` → Coproduct(True: Unit, False: Unit)
-- `Bytes` → List\<Byte\>
-- `Secret` → Branded\<String\>
+Verify this works transitively: `Word32` → field SubDag → `Byte`
+→ width 8 → `Word32` derives width 4×8=32 → `UInt32 = Word32
+where unsigned` inherits width 32.
 
-`String`, `Int`, `Float` remain identity in kernel but are overridden
-by DSL merge (`string_type.dag`, `integer.dag`, `float.dag`).
+**B3. Compose width through products.**
 
-**C2. DONE.** `ratchet_identity_types_in_core_registry` test documents
-the baseline: 13 allowed identity types in `with_core_types()`. The
-merged registry has fewer (DSL overrides String, Int, Float, Credential).
+Products with a single fixed-length list field (like `Byte { bits:
+List<Bit> where length(8) }`) should derive width from that field.
 
-**C3. DONE.** `register_core_types()` identity placeholders reduced:
-Platform → coproduct, Timestamp → refined Int, NetworkHandle → Unit,
-ShellResponse/FileResponse/RestResponse/HttpResponse → products.
+| File | Change |
+|------|--------|
+| `ir/src/type_shape.rs` | After Product detection in `derive_structural_properties()`: if a product has exactly one field and that field's SubDag has a composed width, inherit it. This makes `Byte.width = 8` because its only field `bits` has composed width `8 × 1 = 8`. |
 
-#### Phase D: Wire Registry to Emit + Backend Rules (Gaps 2-3)
+**B4. Tests.**
 
-**D1.** Thread `CompileOutput::merged_type_registry()` through the
-codegen pipeline so production callers use
-`lower_to_*_with_registry(Some(reg))`.
+| Test | Expected |
+|------|----------|
+| `derive_structural_properties` on merged registry `Bit` | `width: Some(1)` (explicit predicate) |
+| `derive_structural_properties` on merged registry `Byte` | `width: Some(8)` (composed: 8 × 1) |
+| `derive_structural_properties` on merged registry `Word32` | `width: Some(32)` (composed: 4 × 8) |
+| `derive_structural_properties` on merged registry `UInt8` | `width: Some(8), signed: Some(false), arithmetic: true` |
+| `derive_structural_properties` on merged registry `Float32` | `width: Some(32), domain: Some("ieee754_binary32")` |
+| `derive_structural_properties` on merged registry `Int64` | `width: Some(64), signed: Some(true), arithmetic: true` |
 
-**D2.** Define `BackendRules` as a declarative Rust structure —
-ordered list of (TypeShape pattern → native syntax template) per
-backend. Include rules for:
-- Product(bytes: List\<u8\>, encoding: _) → String
-- Coproduct(2 units) → bool
-- List\<Width(8)+Unsigned\> → Vec\<u8\> / []byte / uint8_t*
-- Arithmetic + Domain(ieee754) + Width(W) → f{W}
-- Arithmetic + Signed + Width(W) → i{W}
-- Arithmetic + Unsigned + Width(W) → u{W}
+#### Phase C: Eliminate Remaining Identity Types
 
-**D3.** Implement recursive decomposition: if no backend rule
-matches a type's top-level shape, peel one structural level and
-retry.
+Status: ratchet test allows 13 identity types in `with_core_types()`.
+5 are infrastructure types that need structural definitions. 4 are
+intentionally opaque (`Any`, `Json`, `Unit`, `Record`). 3 are
+overridden by DSL merge (`String`, `Int`, `Float`).
 
-**D4.** Delete `emit_identity_type()`, `map_primitive()`,
-`try_refined_to_rust()`, `map_to_c_type_static()`.
+**C1. Structural definitions for infrastructure types.**
 
-#### Phase E: Structural Coercion (replaces legacy coercion model)
+| Type | Current | Structural replacement |
+|------|---------|----------------------|
+| `TransportRequest` | `identity("TransportRequest")` | `product_resolved("TransportRequest", [("method", string()), ("url", url()), ("headers", json()), ("body", optional(json()))])` |
+| `TransportResponse` | `identity("TransportResponse")` | `product_resolved("TransportResponse", [("status", int()), ("headers", json()), ("body", string())])` |
+| `Credential` | `identity("Credential")` | `branded("Credential", string())` — or a product if it has multiple fields |
+| `FilesystemHandle` | `identity("FilesystemHandle")` | `branded("FilesystemHandle", file_path())` |
+| `ToolHandle` | `identity("ToolHandle")` | `branded("ToolHandle", string())` |
 
-**Open design decisions (deferred to next PR):**
+| File | Change |
+|------|--------|
+| `ir/src/type_registry.rs` L487-500 | Replace `identity()` calls with structural DAGs per table above. |
+| `ir/src/type_registry.rs` ratchet test | Reduce allowed identity set from 13 to 8: `Any`, `Json`, `Unit`, `Record`, `String`, `Int`, `Float`, `NetworkHandle`. |
 
-1. **Derivation ≠ coercion.** A derivation path (Bit → Byte) does not
-   imply a free cast. `Bit → Byte` is composition (8 bits), not
-   supertype. `Int32 → Float32` needs conversion semantics (same width,
-   different interpretation). The coercion search space is the derivation
-   graph, but each edge needs an explicit structural translation rule.
+**C2. Kernel identity placeholders.**
 
-2. **Brand semantics.** `structural_shapes_compatible()` currently
-   strips brands when comparing `Brand(_, inner) → other`. This makes
-   `Secret → String` structurally compatible, which may be wrong for
-   sensitive types. Options: (a) brands are one-way refinements
-   (current), (b) brands are strict nominal barriers, (c) per-brand
-   policy. Decision needed before implementing coercion.
+`String`, `Int`, `Float` are identity in kernel-only contexts but
+overridden by DSL merge. To make the kernel self-sufficient:
 
-3. **Post-hoc validation.** Legacy coercion edges are gone. The new
-   `is_compatible()` uses structural shape comparison + predicate
-   entailment. If any graph construction path bypasses the builder
-   (deserialization, manual DAG construction, test fixtures), there
-   is no post-hoc coercion safety net. Audit needed.
+| File | Change |
+|------|--------|
+| `ir/src/type_registry.rs` `register_kernel_types()` | Replace `identity("String")` with `product_resolved("String", [("bytes", list(identity("Byte"))), ("encoding", identity("Encoding"))])` — matching `string_type.dag`. |
+| Same | Replace `identity("Int")` with `refined_with_base("Int", identity("Word64"), vec![Predicate::Signed, Predicate::Arithmetic])` — matching `integer.dag`. |
+| Same | Replace `identity("Float")` with `refined_with_base("Float", identity("Word64"), vec![Predicate::Domain("ieee754_binary64"), Predicate::Arithmetic])` — matching `float.dag`. |
+| Ratchet test | Reduce allowed identity set further. Target: `Any`, `Json`, `Unit`, `Record` only (4 intentionally opaque types). |
+
+Note: `Any`, `Json`, `Unit`, `Record` may stay identity permanently —
+they are infrastructure/dynamic types whose internal structure is
+opaque by design. `NetworkHandle` can become `unit()` if not already.
+
+#### Phase D: Registry Wiring + Language Models (Gaps 2-3)
+
+Status: `CompileOutput::merged_type_registry()` exists but is never
+called in the production emit path. All 3 backends call
+`lower_to_*_with_registry(None)`. The structural emit path
+(`emit_shape` → `emit_platform_type`) works but is only reachable
+when a registry is provided.
+
+**D1. Thread the merged registry to emit.**
+
+| File | Change |
+|------|--------|
+| `daglang-cli/src/pipeline.rs` | After `compile()`, call `output.merged_type_registry()` and pass it to the emit phase. |
+| `daglang-emit/src/lower_rust.rs` L44 | Change `lower_to_rust()` to call `lower_to_rust_with_registry(source, config, Some(&registry))`. |
+| `daglang-emit/src/lower_go.rs` L44 | Same pattern: pass `Some(&registry)`. |
+| `daglang-emit/src/lower_c.rs` L45 | Same pattern: pass `Some(&registry)`. |
+| `daglang-emit/src/lower_to_ir.rs` L525-529 | Change `resolve_and_emit(abstract_type, None, ...)` to pass registry. |
+| `daglang-emit/src/type_codegen.rs` L31,220,232 | Change `None` to pass registry through from callers. |
+
+After D1, the structural path is live in production. Named
+Products/Coproducts still fall through to `emit_identity_type()`
+in `emit_shape()` — that's expected until D2-D5 replace it.
+
+**D2. Language model: ISA layer.**
+
+| File | Change |
+|------|--------|
+| `daglang-emit/src/language_model.rs` (new) | Define `LanguageModelEntry { predicates: StructuralProperties, syntax: String }` and `LanguageModel { entries: Vec<LanguageModelEntry>, containers: Vec<ContainerEntry>, composites: Vec<CompositeEntry> }`. These are Rust structs that mirror `Dag<TypeOp>` structure — Stage 1 bootstrap. |
+| Same | ISA-level entries: `{ width: 8, signed: true } → "i8"` etc. for widths 8/16/32/64 × signed/unsigned, plus IEEE 754 floats. These entries are shared by all backends. |
+
+**D3. Language models: Rust, Go, C.**
+
+| File | Change |
+|------|--------|
+| `daglang-emit/src/language_model.rs` | Populate per-backend models by mechanical extraction from `emit_identity_type()` (L164-222) and `emit_platform_type()` (L97-154). Each entry in the match table becomes a `LanguageModelEntry`. |
+| Same | Container entries: `{ kind: List, template: "Vec<{T}>" }` etc., extracted from `emit_shape()` container arms (L52-86). |
+| Same | Composite pattern entries: `{ Product(bytes: List<u8>, encoding: _) → "String" }` etc. for types currently handled by name match in `emit_identity_type()`. |
+
+**D4. Structural resolver.**
+
+| File | Change |
+|------|--------|
+| `daglang-emit/src/language_model.rs` | `resolve(shape: &TypeShape, model: &LanguageModel) -> String`. Walk entries, find best predicate match. For containers: match container kind, recurse on element. For composites: match product/coproduct patterns. Fallback: recursive decomposition — peel one structural level and retry. |
+| `daglang-emit/src/type_mapping.rs` | `resolve_and_emit()`: if registry is Some, resolve type DAG → TypeShape → `resolve(shape, model)` instead of `emit_shape()`. Preserve `emit_shape()` as intermediate step until fully replaced. |
+
+**D5. Replace emit functions.**
+
+| File | Change |
+|------|--------|
+| `type_mapping.rs` | `emit_shape()`: replace `Product(Some(name), _) → emit_identity_type(name)` with `resolve(shape, model)`. Same for `Coproduct(Some(name), _)` and `Opaque(name)`. |
+| `type_codegen.rs` L52-54 | Remove hardcoded `"List" → "Vec"`, `"Map" → "HashMap"`, `"Set" → "HashSet"` — these become language model container entries. |
+| `lower_c.rs` `c_type_from_emitted()` L616-661 | Gradually eliminate as the resolver produces `CType` directly instead of parsing strings. |
+
+**D6. Delete nominal emit infrastructure.**
+
+Delete `emit_identity_type()` (L164-222 in `type_mapping.rs`).
+Delete `try_refined_to_rust_structural()` (type_codegen.rs).
+Update ratchet/regression tests.
+
+**D7. Serialize language models as JSON IR.**
+
+Move language model data from Rust code to `backend/rust.ir.json`,
+`backend/go.ir.json`, `backend/c.ir.json`. Load at startup.
+Source of truth moves to data files.
+
+#### Phase E: Structural Coercion
+
+Status: the legacy coercion infrastructure (`CoercionEdge`,
+`TypeContract`, `base_type_upcasts_to`, `coercion_path` BFS) does
+**not exist** in the codebase. It was already deleted. The current
+system uses `is_compatible()` with structural shape comparison +
+predicate entailment. `coerce.rs` handles cardinality coercion only
+(WrapScalar, OptionalToList, Widen).
+
+The remaining coercion work is about strengthening what already
+exists, not replacing a legacy system.
+
+**Open design decisions:**
+
+1. **Derivation ≠ coercion.** A derivation path (Bit → Byte) does
+   not imply a free cast. Each coercion edge needs an explicit
+   structural translation rule.
+
+2. **Brand semantics.** `structural_shapes_compatible()` strips
+   brands: `Secret → String` is structurally compatible. Decision
+   needed: (a) one-way refinements (current), (b) strict nominal
+   barriers, (c) per-brand policy.
+
+3. **Cross-type coercion paths.** `is_compatible()` checks direct
+   structural compatibility. It does not walk derivation chains to
+   find multi-step coercion paths (e.g., `UInt8 → Int32` via
+   width widening). This is a new capability, not a migration of
+   existing infrastructure.
 
 **E1.** Implement `structural_coercion_path(from_dag, to_dag)` using
-explicit translation rules over structure, not automatic derivation
-path casts.
+explicit translation rules over structure.
 
-**E2.** Replace `is_compatible()` with structural coercion check.
+**E2.** Strengthen `is_compatible()` to support derivation-chain
+walking for safe upcasts (same derivation chain, same or weaker
+predicates).
 
 **E3.** Add `.dag` syntax for downcast acknowledgment.
 
-**E4.** Delete remaining legacy coercion infrastructure.
+#### Phase F: Structural String + Fail-Loud
 
-#### Phase F: Fail-Loud + Cleanup (Gaps 4-7, 10)
+**F1. Make kernel String structural (currently blocked).**
 
-**F1.** Replace silent identity fallbacks with `Result` returns on
-the structural path. Keep silent fallbacks only in kernel bootstrap.
+Status: String remains identity in the kernel because making it a
+Product breaks scalar→list fan-in coercion (`String → StringList`).
 
-**F2.** Eliminate remaining `Guard` references in executor.
+Root cause (audited): `is_compatible()` in `type_registry.rs` has a
+container-wrapping fallback (L930-946) that allows `Opaque("X")` →
+`Container(List(Opaque("X")))` by comparing the Opaque names. When
+String becomes `Product(Some("String"), fields...)`, the from-shape
+is no longer Opaque, so the name comparison `if let (Opaque(a),
+Opaque(b))` fails to match. `structural_shapes_compatible` also
+returns false because one side is Opaque and the other is Product.
 
-**F3.** Derive port cardinality from type DAGs; restrict
-`Port.cardinality` to `pub(crate)`.
+The container's inner element stays `Opaque("String")` because
+`StringList = type_lib::list(type_lib::string())` is registered in
+`register_core_types()` using `type_lib::string()` which returns
+`identity("String")`.
 
-**F4.** Replace `register_core_types()` coproduct lists with
-DSL-sourced registration via `merge_dsl_types()`.
+Fix: Extend the container-wrapping fallback in `is_compatible()` to
+extract declared type names from structural shapes, not just Opaque.
 
-**F5.** Surface topological sort cycles as structural errors.
+| File | Change |
+|------|--------|
+| `ir/src/type_registry.rs` L930-946 | Add name extraction from Product/Coproduct shapes: `Product(Some(name), _)` and `Coproduct(Some(name), _)` yield the declared name, same as `Opaque(name)`. Compare extracted names between source and container element. |
 
-**F6.** Model transport rewrite tables as data.
+Pseudocode for the fix:
+```rust
+// In is_compatible(), container-wrapping fallback:
+let from_name = match &from_shape {
+    TypeShape::Opaque(n) => Some(n.as_str()),
+    TypeShape::Product(Some(n), _) => Some(n.as_str()),
+    TypeShape::Coproduct(Some(n), _) => Some(n.as_str()),
+    _ => None,
+};
+let inner_name = match inner {
+    TypeShape::Opaque(n) => Some(n.as_str()),
+    TypeShape::Product(Some(n), _) => Some(n.as_str()),
+    TypeShape::Coproduct(Some(n), _) => Some(n.as_str()),
+    _ => None,
+};
+if let (Some(a), Some(b)) = (from_name, inner_name) {
+    if a == b { return true; }
+}
+```
+
+After this fix:
+- `Product(Some("String"), ...)` → `Container(List(Opaque("String")))`
+  extracts names `"String"` and `"String"` → match → compatible
+- Then update `register_kernel_types()` to make String a structural
+  Product matching `string_type.dag`
+- Tighten ratchet test from 6 → 5 identity types
+
+**F2. Fail-loud on unresolved types.**
+
+Status: Two silent-swallow points in `resolve_field_type_dag` and
+`register_type_def` produce `identity(name)` when a type is not in
+the registry.
+
+The two-pass registration in `collect_dsl_type_registry()` works as:
+- Pass 1 (L1000-1008): registers every DSL type as `identity(name)`
+- Pass 2 (L1035-1044): re-registers with structural DAGs in topo order
+- `resolve_field_type_dag` runs during Pass 2, so the registry
+  contains both Pass 1 identity placeholders and kernel types
+
+The silent-swallow sites:
+
+| Site | Line | Condition | Behavior |
+|------|------|-----------|----------|
+| `resolve_field_type_dag` | L1284 | `registry.get_by_name(name)` is `None` and no predicates | Returns `identity(name)` |
+| `register_type_def` alias | L1206 | `registry.get_by_name(base_name)` is `None` and no predicates | Returns `identity(base_name)` |
+
+In both cases, `None` means the type is not in the DSL (Pass 1
+would have registered it) AND not in the kernel. This IS genuinely
+missing — the identity fallback silently swallows the error.
+
+Fix (two stages):
+
+**Stage 1 (warning + audit):** Replace silent identity fallback with
+`eprintln!("warning: unresolved type '{name}'")` plus identity
+fallback. Add a post-Pass-2 audit function:
+
+| File | Change |
+|------|--------|
+| `typecheck/src/lib.rs` L1284 | Add `eprintln!` before identity fallback |
+| `typecheck/src/lib.rs` L1206 | Same |
+| `typecheck/src/lib.rs` after L1044 | Add `audit_unresolved_identities(&registry)` that checks how many DSL-registered types are still identity after Pass 2. Warn on any. |
+
+**Stage 2 (Result-returning):** Make `resolve_field_type_dag` return
+`Result<Dag<TypeOp>, UnresolvedTypeError>`. This propagates through
+`register_type_def` and `collect_dsl_type_registry`, surfacing
+compile errors for genuinely missing types. The Pass 1 placeholders
+remain intentional identity registrations (not errors).
+
+| File | Change |
+|------|--------|
+| `typecheck/src/lib.rs` `resolve_field_type_dag` | Return type `Result<Dag<TypeOp>, String>`. `None` from registry → `Err(format!("unresolved type '{name}'"))`. |
+| `typecheck/src/lib.rs` `register_type_def` | Propagate `Result` from `resolve_field_type_dag`. Collect errors per type def. |
+| `typecheck/src/lib.rs` `collect_dsl_type_registry` | Collect all errors from Pass 2. Return `Result<TypeRegistry, Vec<String>>`. |
+| Callers of `collect_dsl_type_registry` | Handle the Result, surfacing errors as compile diagnostics. |
+
+Stage 2 is a larger refactor because every call to
+`resolve_field_type_dag` needs error handling. Stage 1 is safe to
+land immediately and provides visibility into the problem.
+
+**F3. DONE. Transport rewrite tables as data.**
+
+The 3 `rewrite_transport_call` match tables are now
+`TransportEntry` arrays in the language model, resolved via
+`language_model::resolve_transport()`.
+
+**F4. Generic type parameter support in parser.**
+
+If A3 (real `containers.dag`) requires `type List<T>` syntax, add
+parser support for generic type parameters in type definitions.
+This enables `containers.dag` to carry real structural definitions
+instead of comments.
+
+**F5. Derive port cardinality from type DAGs.**
+
+`Port.cardinality` is currently stored directly. It should be
+derivable from the port's type DAG (a `List<T>` port has ZeroOrMore,
+an `Optional<T>` port has ZeroOrOne, etc.).
 
 #### Future: Behavior Declarations (not this PR)
 
@@ -1656,7 +2504,8 @@ When Phases A-F are complete:
 - Type coercion is determined by structural derivation chain walk,
   not by manual edge registration or hardcoded name matching
 - Downcasts require explicit `.dag` acknowledgment
-- Adding a new backend requires only defining a `BackendRules` set
+- Adding a new backend requires only defining a language model
+  that imports from the appropriate level of the compilation chain
 - Adding a new type requires only a `.dag` definition
 - No type's properties (width, signedness, cardinality) are
   determined by string matching
@@ -1667,3 +2516,72 @@ When Phases A-F are complete:
 - `cargo clippy --all-targets -- -D warnings` passes
 - All codegen tests produce identical output
 - All existing `.dag` files compile without warnings
+
+---
+
+## Completion Plan: Topologically Sorted Tasks
+
+Every task needed to reach full structural migration and deletion
+of all nominal/identity fallback paths. Tasks are ordered so that
+each task's dependencies appear earlier in the list. Tasks at the
+same tier can be done in parallel.
+
+### Current state snapshot
+
+**Scope:** Structural typing substrate + language-model-based emit
+transition. The compiler's type emission now flows through structural
+`TypeShape` resolution via language model data. `emit_identity_type`
+is deleted. This is NOT yet "the compiler fully lives on structural
+types end to end" — see follow-up debt below.
+
+| What | Status |
+|------|--------|
+| Type DAGs carry full structure | **Done** (Products, Coproducts, Brands, containers, predicates) |
+| Compositional width derivation | **Done** (Byte→8, Word32→32, UInt8→8, Float32→32) |
+| Language model data structures | **Done** (scalars, named, containers, transport, composites for Rust/Go/C) |
+| Brand-aware emission | **Done** (brands check named entries before unwrapping) |
+| Registry wired to emit | **Partial** — `lower_to_*` passes `with_core_types()`, not the project-aware `merged_type_registry()`. DSL-defined types are not visible to the emit path unless the full pipeline is used. |
+| Scalar resolver | **Done** (exact domain, arithmetic check, no silent fallback) |
+| String structural in kernel | **Done** (Product matching string_type.dag). Note: kernel-only contexts (`with_core_types()` without DSL merge) have a structural Product that references `Bytes` and `ContentEncoding` by identity — full resolution requires the merged registry. |
+| Identity ratchet | **Done** — 4 types: Any, Json, Record, Unit (all intentionally opaque) |
+| `emit_identity_type` | **Deleted** |
+| `try_refined_to_rust_structural` | **Deleted** |
+| Structural Product/Coproduct emission | **Done** (CompositeFormat per backend) |
+| Fail-loud on unresolved types | **Partial** — warnings emitted at registration time; unknown types still pass through verbatim at emit time (`resolve_and_emit` returns the name as-is). |
+| `type_codegen.rs` container hardcoding | **Done** (routes through language model) |
+| `c_type_from_emitted` string roundtrip | **Done** (c_type_from_shape for structural path) |
+
+### Completed tasks
+
+| Task | What |
+|------|------|
+| T0a | Fail-loud warnings on unresolved types + post-Pass-2 identity audit |
+| T0b | Structural Product/Coproduct emission (CompositeFormat per backend) |
+| T0c | type_codegen container hardcoding → language model |
+| T0d | NetworkHandle → structural, ratchet 5→4 |
+| T1a | C backend c_type_from_shape — direct TypeShape→CType |
+| T2a | **`emit_identity_type` DELETED** |
+| T2b | `try_refined_to_rust_structural` deleted |
+
+### Follow-up: Structural Authority Cleanup
+
+Concrete debt from this feature that should be addressed before
+the structural authority story is fully closed. See `BACKLOG.md`
+for the full list including longer-term items.
+
+1. **Production emit uses merged registry.** `lower_to_*()` currently
+   constructs `TypeRegistry::with_core_types()`. The target is
+   threading `CompileOutput::merged_type_registry()` through the
+   pipeline so DSL-defined structural types are visible at emit time.
+
+2. **Unknown named types error at emit, not pass through verbatim.**
+   `resolve_and_emit("FooBar", ...)` currently returns `"FooBar"`
+   with a warning. This should be a compile error — emitting raw
+   unresolved type names is the nominal fallback the migration is
+   eliminating.
+
+3. **Document intentionally lossy backend container rendering.**
+   The C language model renders `Map<K,V>` as `{V}*`, discarding
+   the key. This is correct for C (no native generic map syntax),
+   but should be documented as an intentional backend limitation
+   rather than left as an implicit gap.
