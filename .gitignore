@@ -50,3 +50,8 @@ Thumbs.db
 # --- Workflow runtime state (from workflow) ---
 # Local execution ledger and config; not source-of-truth
 /.gunbc/
+
+# --- Auto-generated test sources (from gunbc-testgen) ---
+# Local/generated test files; regenerate via gunbc-testgen when needed
+/src/generated-tests/
+/src/10_test/generated-tests/src/

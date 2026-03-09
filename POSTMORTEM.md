@@ -297,6 +297,85 @@ All three backends (Rust, Go, C) have this fallback. The test `identity_type_unk
 
 ---
 
+### P2 — Type registry and type-shape inference fall back on unknown types
+
+**Invariants**: #8 (correctness by construction), "no hacks or fallbacks"
+
+Two earlier compiler layers still degrade unknown type information into lossy
+stand-ins instead of failing the compile:
+
+| Site | Function | Behavior |
+|------|----------|----------|
+| `src/00_foundation/ir/src/type_registry.rs` ~L1025 | `TypeRegistry::value_backing_for_type` | Prints warning and returns `ValueBacking::Json` |
+| `src/00_foundation/ir/src/type_shape.rs` ~L216 | `infer_type_shape` | Prints warning and returns `TypeShape::Opaque("Unknown")` |
+
+These are distinct from emit-time fallback. They change the compiler's own
+internal understanding of the type before codegen or testgen even starts.
+
+**Impact**: New or drifted DSL types silently collapse to generic JSON/opaque
+shapes, which then propagates into testgen, emission, and runtime defaults.
+
+**Fix direction**: Make unknown type registrations a hard diagnostic, or gate
+these fallbacks behind an explicit compatibility mode that is off by default.
+
+---
+
+### P2 — Testgen fabricates `Json(Null)` mocks for unknown types
+
+**Invariants**: #8 (correctness by construction), "no hacks or fallbacks"
+
+`src/01_surfaces/codegen/src/testgen/codegen.rs` ~L7415 defaults any
+DSL-defined product/coproduct type without an explicit mock entry to
+`ValueExpr::Json(JsonValue::Null)`:
+
+```rust
+eprintln!(
+    "warning: no explicit mock for type_id '{}'; using Json(Null) default",
+    type_id
+);
+ValueExpr::Json(JsonValue::Null)
+```
+
+**Impact**: Generated tests continue with semantically invalid placeholder
+inputs, so failures show up later as noisy runtime mismatches rather than as an
+immediate unsupported-type error in test generation.
+
+**Fix direction**: Make mock generation return `Result<ValueExpr, MockGenError>`
+and require either an explicit mock or a structurally derived mock for every
+reachable type.
+
+---
+
+### P1 — Auto-testgen degrades compile failures into placeholder source files
+
+**Invariants**: #8 (correctness by construction), "no hacks or fallbacks"
+
+`src/01_surfaces/codegen/src/testgen_dag/dag_test_discovery.rs` currently
+models compile failure as `AutoTestgenResult::Skipped { reason }`, and
+`render_auto_testgen_for_module` converts that into a commented placeholder
+Rust file instead of failing:
+
+```rust
+RenderedTestgenModule {
+    content: format!(
+        "// Auto-testgen skipped for '{}':\n{commented_reason}\n",
+        module.module_name,
+    ),
+    path: output_path_for_module(output_dir, module),
+}
+```
+
+The `gunbc-testgen` binary was fixed to fail closed instead of writing these
+placeholders, but the helper remains and still encodes the fail-open behavior.
+
+**Impact**: A caller can still treat an uncompilable module as a successful
+testgen render, which masks the real compiler error and weakens test coverage.
+
+**Fix direction**: Remove placeholder rendering entirely and make skipped
+results unrepresentable at the rendering API boundary.
+
+---
+
 ### P3 — `Value::Skipped` → fabricated default values
 
 **Invariant**: "no hacks or fallbacks" — explicitly names `Value::Skipped`
@@ -419,3 +498,51 @@ Inspiration only:
 - Fail closed when callable arg wiring fails instead of logging and continuing.
 - Fall back to a helper fn-body expression node for complex pure arg
   expressions when structural lowering is incomplete.
+
+### P1 — dagbin cache reused stale lowered graphs across compiler changes
+
+**Date:** 2026-03-09
+**Status:** Fixed by bumping the cache epoch; kept here as a preventable case.
+
+After lowering semantics changed, source-digest dagbin cache hits were still
+treated as valid and reused previously lowered DAG shapes. That let an old,
+structurally incomplete graph survive even after the compiler bug had been
+fixed.
+
+What made this preventable:
+
+- The cache key only reflected source content, not compiler semantics.
+- The failure showed up on a cache hit, which made the lowering fix appear
+  ineffective until the cache epoch was bumped.
+- The compiler had no invariant asserting that cached DAG shape/version matched
+  the currently running lowerer.
+
+Inspiration only:
+
+- Treat compiler-semantics changes as cache-format changes by default.
+- Add a targeted regression that exercises a changed lowering path through a
+  warm cache and expects a rebuild.
+
+### P1 — omitted repeatable CLI params collapsed to "missing" instead of `[]`
+
+**Date:** 2026-03-09
+**Status:** Fixed in CLI parsing; kept here as a preventable case.
+
+`parse_generated_cli_args` omitted repeatable params entirely when the user
+passed no values, instead of materializing the declared empty list. For
+bootstrap, that meant `gitignore_categories` was absent rather than `[]`, which
+changed downstream pure-fn behavior and contributed to the runtime failure.
+
+What made this preventable:
+
+- Repeatable params have a clear neutral element: the empty list.
+- Generated CLI behavior and inline-evaluator behavior diverged on the same
+  schema.
+- The failure happened at the argument-materialization boundary, not in
+  business logic.
+
+Inspiration only:
+
+- Treat repeatable params as present-with-empty-list even when omitted.
+- Add cross-checks so generated CLI materialization and in-process execution
+  share the same cardinality semantics.

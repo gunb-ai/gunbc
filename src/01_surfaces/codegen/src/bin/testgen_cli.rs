@@ -13,10 +13,11 @@ use std::process;
 
 /// Workspace-relative path to the generated-tests source directory.
 ///
-/// The testgen binary writes auto-generated test modules here.
+/// The testgen binary writes auto-generated test modules here, inside the
+/// tracked `gunbc-tests` crate.
 // TODO(T14): promote to WorkspaceLayout accessor once the generated-tests
-// crate location is stabilized (currently separate from src/10_test/).
-const GENERATED_TESTS_SRC_REL: &str = "src/generated-tests/src";
+// crate layout is stabilized.
+const GENERATED_TESTS_SRC_REL: &str = "src/10_test/generated-tests/src";
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
