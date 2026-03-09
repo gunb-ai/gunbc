@@ -1015,25 +1015,34 @@ fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> TypeRegistry {
                     }
                     TypeBody::Alias(type_expr) => {
                         let base_name = type_expr_to_string(type_expr);
-                        // Build predicates from refinements (if any)
                         let predicates = collect_predicates_from_type_expr(type_expr);
-                        if predicates.is_empty() {
-                            // Simple alias: look up base type or create identity
-                            if let Some(base_dag) = registry.get_by_name(&base_name) {
-                                registry.register(def.name.as_str(), base_dag.clone());
-                            } else {
-                                registry.register(
-                                    def.name.as_str(),
-                                    gunbc_ir::type_lib::identity(&base_name),
-                                );
+                        let brand_name = collect_brand_from_type_expr(type_expr);
+                        let base_dag_opt = registry.get_by_name(&base_name).cloned();
+
+                        // Build the inner DAG — embed base if available so
+                        // structural predicates (width, domain, etc.) are inherited.
+                        let inner_dag = if predicates.is_empty() {
+                            match base_dag_opt {
+                                Some(dag) => dag,
+                                None => gunbc_ir::type_lib::identity(&base_name),
                             }
                         } else {
-                            // Refined alias: create a refined type DAG
-                            registry.register(
-                                def.name.as_str(),
-                                gunbc_ir::type_lib::refined(&base_name, predicates),
-                            );
-                        }
+                            match base_dag_opt {
+                                Some(dag) => gunbc_ir::type_lib::refined_with_base(
+                                    &base_name, dag, predicates,
+                                ),
+                                None => gunbc_ir::type_lib::refined(&base_name, predicates),
+                            }
+                        };
+
+                        // Wrap in a Brand node if the alias carries a brand refinement
+                        let final_dag = if let Some(bname) = brand_name {
+                            gunbc_ir::type_lib::branded(&bname, inner_dag)
+                        } else {
+                            inner_dag
+                        };
+
+                        registry.register(def.name.as_str(), final_dag);
                     }
                 }
             }
@@ -3874,13 +3883,35 @@ fn validate_type_expr(
                             });
                         }
                     }
+                    Refinement::Width(expr) => {
+                        if let Some(v) = extract_int_literal(expr) {
+                            if v < 1 || v > u16::MAX as i64 {
+                                errors.push(TypeError::UnsatisfiableRefinement {
+                                    ty: type_expr_to_string(inner),
+                                    constraint: format!(
+                                        "width({v}) out of range — must be 1..{}", u16::MAX
+                                    ),
+                                });
+                            }
+                        }
+                    }
+                    Refinement::Length(expr) => {
+                        if let Some(v) = extract_int_literal(expr) {
+                            if v < 0 {
+                                errors.push(TypeError::UnsatisfiableRefinement {
+                                    ty: type_expr_to_string(inner),
+                                    constraint: format!(
+                                        "length({v}) must be non-negative"
+                                    ),
+                                });
+                            }
+                        }
+                    }
                     Refinement::NonEmpty
                     | Refinement::Format(_)
                     | Refinement::Predicate(_)
                     | Refinement::RawBody
                     | Refinement::FileTypes(_)
-                    | Refinement::Width(_)
-                    | Refinement::Length(_)
                     | Refinement::Signed(_)
                     | Refinement::Unsigned
                     | Refinement::Arithmetic
@@ -3971,6 +4002,23 @@ fn collect_predicates_recursive(
     }
 }
 
+/// Extract the brand name from a type expression's refinements (if any).
+fn collect_brand_from_type_expr(type_expr: &TypeExpr) -> Option<String> {
+    match type_expr {
+        TypeExpr::Refined(inner, refinements) => {
+            // Check current level first
+            for r in refinements {
+                if let Refinement::Brand(name) = r {
+                    return Some(name.clone());
+                }
+            }
+            // Recurse into inner
+            collect_brand_from_type_expr(inner)
+        }
+        _ => None,
+    }
+}
+
 fn refinement_to_predicate(refinement: &Refinement) -> Option<gunbc_ir::type_op::Predicate> {
     use gunbc_ir::type_op::Predicate;
     match refinement {
@@ -3988,7 +4036,9 @@ fn refinement_to_predicate(refinement: &Refinement) -> Option<gunbc_ir::type_op:
             str_to_content_encoding(enc).map(Predicate::Content)
         }
         Refinement::Width(expr) => {
-            extract_int_literal(expr).map(|v| Predicate::Width(v as u16))
+            extract_int_literal(expr).and_then(|v| {
+                u16::try_from(v).ok().filter(|&w| w > 0).map(Predicate::Width)
+            })
         }
         Refinement::Length(expr) => {
             extract_int_literal(expr).map(|v| Predicate::Length(v as u64))

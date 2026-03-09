@@ -244,6 +244,56 @@ pub fn refined(type_name: &str, predicates: Vec<Predicate>) -> Dag<TypeOp> {
     dag
 }
 
+/// Create a refined type that inherits structure from a resolved base DAG.
+///
+/// The base type's DAG is embedded as a SubDag so that `derive_platform_properties`
+/// (which recurses into SubDags) can discover the base type's predicates
+/// (width, signed, domain, etc.). New predicates are chained after the base.
+///
+/// ```text
+/// base_type(SubDag) → validate_0 → validate_1 → ... → output
+/// ```
+pub fn refined_with_base(
+    type_name: &str,
+    base_dag: Dag<TypeOp>,
+    predicates: Vec<Predicate>,
+) -> Dag<TypeOp> {
+    let mut dag = Dag::new();
+
+    // Embed the base type as a SubDag so structural predicates are inherited
+    dag.add_node(Node::subdag("base_type", base_dag));
+
+    if predicates.is_empty() {
+        return dag;
+    }
+
+    let mut prev_node = "base_type".to_string();
+    let prev_port = "out";
+
+    // Chain new validation nodes after the base
+    for (i, pred) in predicates.into_iter().enumerate() {
+        let node_id = format!("validate_{}", i);
+
+        dag.add_node(Node::opaque(
+            node_id.as_str(),
+            vec![Port::scalar("in", type_name)],
+            vec![Port::scalar("out", type_name)],
+            TypeOp::Validate(pred),
+        ));
+
+        dag.add_edge(Edge::new(
+            prev_node.as_str(),
+            prev_port,
+            node_id.as_str(),
+            "in",
+        ));
+
+        prev_node = node_id;
+    }
+
+    dag
+}
+
 /// Non-empty string type.
 pub fn non_empty_string() -> Dag<TypeOp> {
     refined("String", vec![Predicate::NonEmpty])
@@ -588,6 +638,58 @@ mod tests {
         assert_eq!(contract.base_type, Some("Int".to_string()));
         assert_eq!(contract.wrapper_kind, Some(WrapperKind::Map));
         assert_eq!(contract.cardinality, Cardinality::ONE);
+    }
+
+    #[test]
+    fn test_refined_with_base_inherits_predicates() {
+        // Simulate: Word32 has Width(32), then Float32 = Word32 where domain, arithmetic
+        let word32 = refined("Word32", vec![Predicate::Width(32)]);
+        let float32 = refined_with_base(
+            "Word32",
+            word32,
+            vec![
+                Predicate::Domain("ieee754_binary32".to_string()),
+                Predicate::Arithmetic,
+            ],
+        );
+
+        // The base DAG is embedded as a SubDag, so derive_platform_properties
+        // (which recurses into SubDags) should find Width(32)
+        let props = crate::contract::predicates(&float32);
+        // The new predicates are at the top level
+        assert!(props.iter().any(|p| matches!(p, Predicate::Domain(d) if d == "ieee754_binary32")));
+        assert!(props.iter().any(|p| matches!(p, Predicate::Arithmetic)));
+        // Width(32) is inside the SubDag — not visible via flat predicate scan,
+        // but derive_platform_properties recurses into SubDags.
+        // Verify the SubDag is present.
+        use crate::node::NodeBody;
+        let has_subdag = float32.nodes.iter().any(|n| matches!(&n.body, NodeBody::SubDag(_, _)));
+        assert!(has_subdag, "base DAG should be embedded as SubDag");
+    }
+
+    #[test]
+    fn test_refined_with_base_empty_predicates_returns_base() {
+        let base = refined("Int", vec![Predicate::Width(64), Predicate::Signed(None)]);
+        let alias = refined_with_base("Int", base.clone(), vec![]);
+        // With empty predicates, just returns the base as a SubDag
+        use crate::node::NodeBody;
+        let has_subdag = alias.nodes.iter().any(|n| matches!(&n.body, NodeBody::SubDag(_, _)));
+        assert!(has_subdag);
+    }
+
+    #[test]
+    fn test_branded_wraps_inner() {
+        let inner = refined("String", vec![Predicate::NonEmpty]);
+        let branded_type = branded("PathSegment", inner);
+
+        use crate::node::NodeBody;
+        use crate::type_op::TypeOp;
+        let has_brand = branded_type.nodes.iter().any(|n| {
+            matches!(&n.body, NodeBody::Opaque(TypeOp::Brand(name)) if name == "PathSegment")
+        });
+        assert!(has_brand, "branded type should have Brand node");
+        let has_subdag = branded_type.nodes.iter().any(|n| matches!(&n.body, NodeBody::SubDag(_, _)));
+        assert!(has_subdag, "branded type should embed inner as SubDag");
     }
 
     #[test]

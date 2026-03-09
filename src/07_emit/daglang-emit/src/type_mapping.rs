@@ -603,6 +603,48 @@ mod tests {
     }
 
     #[test]
+    fn derive_platform_properties_inherits_from_base_dag() {
+        use gunbc_ir::type_op::Predicate;
+        // Word32 has Width(32)
+        let word32 = gunbc_ir::type_lib::refined("Word32", vec![Predicate::Width(32)]);
+        // Float32 = Word32 where domain("ieee754_binary32"), arithmetic
+        // Uses refined_with_base to embed Word32's DAG
+        let float32 = gunbc_ir::type_lib::refined_with_base(
+            "Word32",
+            word32,
+            vec![
+                Predicate::Domain("ieee754_binary32".to_string()),
+                Predicate::Arithmetic,
+            ],
+        );
+        let props = derive_platform_properties(&float32);
+        // Width(32) inherited from base via SubDag recursion
+        assert_eq!(props.width, Some(32));
+        assert_eq!(props.domain.as_deref(), Some("ieee754_binary32"));
+        assert!(props.arithmetic);
+        // Emits correctly
+        assert_eq!(emit_type(&float32, Backend::Rust), "f32");
+        assert_eq!(emit_type(&float32, Backend::Go), "float32");
+        assert_eq!(emit_type(&float32, Backend::C), "float");
+    }
+
+    #[test]
+    fn emit_type_refined_with_base_signed_integer() {
+        use gunbc_ir::type_op::Predicate;
+        // Byte has Width(8)
+        let byte = gunbc_ir::type_lib::refined("Byte", vec![Predicate::Width(8)]);
+        // Int8 = Byte where signed, arithmetic — inherits Width(8) from base
+        let int8 = gunbc_ir::type_lib::refined_with_base(
+            "Byte",
+            byte,
+            vec![Predicate::Signed(None), Predicate::Arithmetic],
+        );
+        assert_eq!(emit_type(&int8, Backend::Rust), "i8");
+        assert_eq!(emit_type(&int8, Backend::Go), "int8");
+        assert_eq!(emit_type(&int8, Backend::C), "int8_t");
+    }
+
+    #[test]
     fn resolve_and_emit_matches_map_abstract_type_for_known_types() {
         let registry = gunbc_ir::TypeRegistry::with_core_types();
         // String is in the registry — structural path should produce same result
