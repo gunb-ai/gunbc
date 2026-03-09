@@ -233,7 +233,7 @@ pub fn execute_and_display<T: Executable + Clone + Send + 'static>(
             // Safety net: always print the error. Structured error boxes may
             // have already rendered richer context upstream, but silence on
             // exit(1) is never acceptable. Redundancy is better than a
-            // diagnostic black hole (see POSTMORTEM T12).
+            // diagnostic black hole.
             print_attention(AttentionLevel::Error, "Execution failed", &err.to_string());
             process::exit(1);
         }
@@ -533,7 +533,7 @@ fn run_with_progress<T: Executable + Clone + Send + 'static>(
             // If error boxes already rendered structured diagnostics, exit
             // here to avoid a redundant fallback print in the caller.
             // If nothing was rendered, propagate so the caller prints the
-            // flat error as a safety net (see POSTMORTEM T12).
+            // flat error as a safety net.
             if rendered_error_boxes {
                 process::exit(1);
             }
@@ -1223,7 +1223,7 @@ fn success_port_failed(log: &crate::ExecutionLog, success_port: Option<&str>) ->
 // the error. The previous heuristic (suppress if NodeTrace is present)
 // assumed error boxes already rendered the diagnostic, but this assumption
 // breaks when progress state diverges from the executor error (e.g., a node
-// is Skipped in progress but the executor returned Err). See POSTMORTEM T12.
+// is Skipped in progress but the executor returned Err).
 
 /// Render error detail boxes for all failed nodes in the DAG.
 ///

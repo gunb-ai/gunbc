@@ -94,15 +94,10 @@ fragment to be evaluated by a runtime interpreter. If the lowerer cannot
 represent an expression structurally, the compilation must fail with a
 diagnostic — not silently emit an interpreter-backed fallback node.
 
-`ExprCompute`, `PipeOp`, and `ForOp` violate this invariant. They carry a
-`LoweredFnBody` (raw expression AST + evaluator environment) and delegate
-to `evaluate_fn_body` at runtime. The emitter cannot compile them — it
-emits `Passthrough` stubs that forward inputs unchanged. The resolver
-catches evaluation failures and degrades to `Value::Skipped`, which
-cascades silently through the DAG.
-
-See `DESIGN_INTERP_FALLBACK.md` for the full catalog of violation sites
-and the design path toward elimination.
+The `lower_expr` function enforces this: it returns `Result` (not
+`Option`) and its match on `Expr` variants is exhaustive with no wildcard.
+A new `Expr` variant added to the parser without a corresponding lowering
+arm is a Rust compile error.
 
 ### 8. Correctness by construction, not by validation
 

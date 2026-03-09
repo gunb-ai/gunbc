@@ -32,8 +32,6 @@ Adapted from Google C++ style for Rust:
   wrong output. If a function cannot complete its job, it must return `Err` —
   not an empty value, not `Value::Skipped`, not a quietly truncated result.
   Caching is the sole exception (cache miss on error is acceptable).
-  See `POSTMORTEM.md` T13 for the full taxonomy of the ~70 violations that
-  motivated this invariant.
 
 ## Testing Invariants
 
@@ -85,4 +83,4 @@ All nodes execute for real against live services. Only viable in
 controlled environments with sandboxed credentials (CI runners with
 scoped tokens, disposable cloud resources). Proves end-to-end behavior
 including HTTP transport and cloud API interactions. Not yet implemented;
-requires credential injection infrastructure (see `POSTMORTEM.md` T11).
+requires credential injection infrastructure.
