@@ -255,9 +255,12 @@ impl Executable for FnBodyCallableOp {
                 // Only suppress the error in that case; if real inputs were
                 // provided and evaluation still failed, propagate the error
                 // (README: "no silent degradation").
+                //
+                // Value::Unit IS a real input (the unit type, explicitly
+                // provided). Only Value::Skipped indicates "no value wired."
                 let has_real_inputs = eval_inputs
                     .values()
-                    .any(|v| !matches!(v, Value::Skipped | Value::Unit));
+                    .any(|v| !matches!(v, Value::Skipped));
                 if has_real_inputs {
                     return Err(ExecError::new(format!(
                         "FnBody evaluation failed with real inputs present: {eval_err}"
