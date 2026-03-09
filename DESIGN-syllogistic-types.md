@@ -2526,247 +2526,42 @@ of all nominal/identity fallback paths. Tasks are ordered so that
 each task's dependencies appear earlier in the list. Tasks at the
 same tier can be done in parallel.
 
-### Current state snapshot (post-PR)
+### Current state snapshot (final)
 
 | What | Status |
 |------|--------|
-| Type DAGs carry full structure | Done (Products, Coproducts, Brands, containers, predicates) |
-| Compositional width derivation | Done (Byte→8, Word32→32, UInt8→8, Float32→32) |
-| Language model data structures | Done (scalars, named, containers, transport for Rust/Go/C) |
-| Brand-aware emission | Done (brands check named entries before unwrapping) |
-| Registry wired to emit | Done (lower_to_* passes with_core_types registry) |
-| Scalar resolver | Done (exact domain, arithmetic check, no silent fallback) |
-| String structural in kernel | Done (Product matching string_type.dag) |
-| Identity ratchet | 5 types: Any, Json, NetworkHandle, Record, Unit |
-| `emit_identity_type` | Still exists — Products/Coproducts/Opaques delegate to it |
-| Structural Product/Coproduct emission | Not started |
-| Fail-loud on unresolved types | Not started |
-| `type_codegen.rs` container hardcoding | Still present |
-| `c_type_from_emitted` string roundtrip | Still present |
-| Port cardinality derivation | Not started |
-| `behavior` DSL construct | Not started |
-| Language model serialization (JSON IR) | Not started |
+| Type DAGs carry full structure | **Done** (Products, Coproducts, Brands, containers, predicates) |
+| Compositional width derivation | **Done** (Byte→8, Word32→32, UInt8→8, Float32→32) |
+| Language model data structures | **Done** (scalars, named, containers, transport, composites for Rust/Go/C) |
+| Brand-aware emission | **Done** (brands check named entries before unwrapping) |
+| Registry wired to emit | **Done** (lower_to_* passes with_core_types registry) |
+| Scalar resolver | **Done** (exact domain, arithmetic check, no silent fallback) |
+| String structural in kernel | **Done** (Product matching string_type.dag) |
+| Identity ratchet | **Done** — 4 types: Any, Json, Record, Unit (all intentionally opaque) |
+| `emit_identity_type` | **Deleted** |
+| `try_refined_to_rust_structural` | **Deleted** |
+| Structural Product/Coproduct emission | **Done** (CompositeFormat per backend) |
+| Fail-loud on unresolved types | **Done** (warnings + post-Pass-2 audit) |
+| `type_codegen.rs` container hardcoding | **Done** (routes through language model) |
+| `c_type_from_emitted` string roundtrip | **Done** (c_type_from_shape for structural path) |
+| Port cardinality derivation | Backlogged (see BACKLOG.md) |
+| `behavior` DSL construct | Backlogged (see BACKLOG.md) |
+| Language model serialization (JSON IR) | Backlogged (see BACKLOG.md) |
 
-### Tier 0: No dependencies (can start immediately, parallelizable)
+### Completed tasks
 
-**T0a. Fail-loud on unresolved types.**
+| Task | What |
+|------|------|
+| T0a | Fail-loud warnings on unresolved types + post-Pass-2 identity audit |
+| T0b | Structural Product/Coproduct emission (CompositeFormat per backend) |
+| T0c | type_codegen container hardcoding → language model |
+| T0d | NetworkHandle → structural, ratchet 5→4 |
+| T1a | C backend c_type_from_shape — direct TypeShape→CType |
+| T2a | **`emit_identity_type` DELETED** |
+| T2b | `try_refined_to_rust_structural` deleted |
 
-Make `resolve_field_type_dag` and `register_type_def` surface errors
-for genuinely missing types instead of silently producing identity
-DAGs.
+### Remaining backlog
 
-| File | Line | Change |
-|------|------|--------|
-| `typecheck/src/lib.rs` | L1292 | `unwrap_or_else(identity)` → `eprintln!("warning: unresolved type '{name}'"); identity(name)` (Stage 1) |
-| `typecheck/src/lib.rs` | L1206 | Same warning |
-| `typecheck/src/lib.rs` | after L1044 | Add `audit_unresolved_identities(&registry)` post-Pass-2 |
-| `typecheck/src/lib.rs` | Later | `resolve_field_type_dag` returns `Result` (Stage 2) |
-
-**T0b. Structural Product/Coproduct emission in `emit_shape`.**
-
-Replace the `Product(Some(name), fields)` → `emit_identity_type(name)`
-and `Coproduct(Some(name), variants)` → `emit_identity_type(name)`
-arms with structural field/variant emission.
-
-| File | Line | Change |
-|------|------|--------|
-| `type_mapping.rs` | L94-98 | For `Product(Some(name), fields)`: try language model named lookup first (handles well-known types like String, Bool). If no match, emit as struct-like syntax using recursive `emit_shape` on each field. For `Coproduct(Some(name), variants)`: same pattern with enum-like syntax. |
-
-Requires adding composite syntax templates to the language model
-(struct/enum formatting per backend). Pseudocode:
-
-```rust
-TypeShape::Product(name, fields) => {
-    // Try named entry first (String, CliResult, etc.)
-    if let Some(n) = name {
-        if let Some(s) = resolve_named(n, model) { return s.to_string(); }
-    }
-    // Structural: emit fields recursively
-    let model = model_for_backend(backend);
-    let field_strs: Vec<String> = fields.iter()
-        .map(|(n, s)| format!("{}: {}", n, emit_shape(s, backend)))
-        .collect();
-    format_product(name, &field_strs, model)
-}
-```
-
-**T0c. Eliminate `type_codegen.rs` hardcoded container names.**
-
-Route through the language model's container entries instead of
-`"List" → "Vec"`, `"Map" → "HashMap"`, `"Set" → "HashSet"`.
-
-| File | Line | Change |
-|------|------|--------|
-| `type_codegen.rs` | L52-60 | Replace match arms with `language_model::resolve_named(name, model)` or `resolve_container(kind, ...)`. The language model already has these entries. |
-
-**T0d. NetworkHandle → structural.**
-
-| File | Line | Change |
-|------|------|--------|
-| `type_registry.rs` | `register_core_types()` | `NetworkHandle` is already `unit()` which maps to `identity("Unit")`. Change to `branded("NetworkHandle", unit())` or a domain-specific product. |
-| `type_registry.rs` | ratchet test | Remove `NetworkHandle` from allowed set. Target: 4 identity types (Any, Json, Record, Unit). |
-
-**T0e. Port cardinality derivation.**
-
-Make `Port.cardinality` derivable from the type DAG rather than
-stored directly on the port.
-
-| File | Change |
-|------|--------|
-| `dag.rs` | Add `Port::derive_cardinality(&self, registry: &TypeRegistry) -> Cardinality` that infers from the type's wrapper structure. |
-| `lower_to_ir.rs` | L564-738: Replace hardcoded `Cardinality::Scalar` with `Port::typed()` or derived cardinality. |
-| `plan.rs` | Same: use derived cardinality at port construction. |
-
-### Tier 1: Depends on T0b
-
-**T1a. Eliminate `c_type_from_emitted` string roundtrip.**
-
-Once Products/Coproducts emit structurally (T0b), the C backend
-can build `CType` directly from `TypeShape` instead of emitting a
-string and re-parsing it.
-
-| File | Line | Change |
-|------|------|--------|
-| `lower_c.rs` | L617-662 | Replace `c_type_from_emitted` with `c_type_from_shape(shape: &TypeShape) -> CType` that pattern-matches the TypeShape directly. |
-| `lower_c.rs` | `map_to_c_type_with_registry` | Call `c_type_from_shape` instead of `resolve_and_emit` → string → `c_type_from_emitted`. |
-
-**T1b. Structural coercion paths.**
-
-Implement `structural_coercion_path(from_dag, to_dag)` using the
-now-stable structural shapes. Decide brand policy (keep current
-one-way refinement behavior). Add `.dag` syntax for downcast
-acknowledgment.
-
-| File | Change |
-|------|--------|
-| `type_registry.rs` | `is_compatible()`: extend structural_shapes_compatible to walk derivation chains for safe upcasts. |
-| `type_registry.rs` | Add `structural_coercion_path(from, to) -> Option<CoercionPath>`. |
-| `daglang-syntax` | Add `coerce ... where lossy(...)` syntax for downcast acknowledgment. |
-
-### Tier 2: Depends on T0b + T0c + T1a
-
-**T2a. Delete `emit_identity_type`.**
-
-Once all callers have been migrated:
-- Products/Coproducts emit structurally (T0b)
-- Containers route through language model (T0c)
-- C backend uses TypeShape directly (T1a)
-- Brands check named entries (already done)
-- Opaques handled by resolve_named (already done for known types)
-
-| File | Line | Change |
-|------|------|--------|
-| `type_mapping.rs` | L122-136 | Delete `emit_identity_type`. |
-| `type_mapping.rs` | L141-153 | `resolve_and_emit` fallback: use `resolve_named` + `model.opaque_fallback` instead of `emit_identity_type`. |
-| `type_mapping.rs` | Tests | Update all test assertions that call `emit_identity_type` directly. |
-
-**T2b. Delete `try_refined_to_rust_structural`.**
-
-Already delegates to `emit_shape` + `TypeShape::Platform`. Once
-`emit_shape` handles all cases structurally, this wrapper is
-redundant.
-
-| File | Line | Change |
-|------|------|--------|
-| `type_codegen.rs` | L98-120 | Inline the `emit_shape` call into the `Refined` arm at L73. Delete the function. |
-
-### Tier 3: Depends on T2a
-
-**T3a. Language model serialization to JSON IR.**
-
-Move language model data from static Rust arrays to serialized
-JSON files that are loaded at startup.
-
-| File | Change |
-|------|--------|
-| `backend/rust.ir.json` (new) | Serialized `LanguageModel` for Rust |
-| `backend/go.ir.json` (new) | Same for Go |
-| `backend/c.ir.json` (new) | Same for C |
-| `language_model.rs` | Replace `static RUST_MODEL` etc. with deserialization from embedded JSON. |
-
-### Tier 4: Independent, larger scope
-
-**T4a. Real `containers.dag` with generic substitution.**
-
-Requires semantic support for generic type parameters — the parser
-already handles `type List<T>` syntax, but `T` is never substituted
-into the body during type registration.
-
-| File | Change |
-|------|--------|
-| `typecheck/src/lib.rs` `register_type_def` | For types with `params: Vec<String>`, record the generic definition. On instantiation (`List<Int>`), substitute params into field types. |
-| `dsl/std/containers.dag` | Replace comments with real definitions: `type List<T> { elements: Collection<T> }` etc. |
-
-**T4b. `behavior` DSL construct + property-based test generation.**
-
-| File | Change |
-|------|--------|
-| `daglang-syntax/src/parser.rs` | Add `behavior` keyword, `law` declarations, `element` entries. |
-| `daglang-typecheck/src/lib.rs` | Validate behavior declarations, check `implements` conformance. |
-| `testgen` | Auto-generate property-based tests from `law` declarations (e.g., `law reflexive: leq(a, a)` → generates reflexivity test). |
-
-**T4c. Opaque → structural for remaining identity types.**
-
-Decide the structural story for `Any`, `Json`, `Record`, `Unit`:
-- `Unit` is already `identity("Unit")` — could become a zero-field product or stay as-is (it IS a primitive in the DAG sense)
-- `Json` is dynamic/untyped by nature — may stay opaque permanently
-- `Record` is an anonymous product — could become `Product(None, [])` or stay opaque
-- `Any` is the top type — stays opaque by definition
-
-These may be intentionally opaque. Decision: document which are
-permanent opaque types vs. which should become structural.
-
-### Dependency graph
-
-```
-T0a (fail-loud)──────────────────────────────┐
-T0b (structural product/coproduct emit)──┬───┤
-T0c (type_codegen containers)────────────┤   │
-T0d (NetworkHandle structural)───────────┤   │
-T0e (port cardinality derivation)────────┤   │
-                                         │   │
-T1a (c_type_from_emitted) ← T0b─────────┤   │
-T1b (structural coercion) ← T0b─────────┤   │
-                                         │   │
-T2a (delete emit_identity_type) ← T0b, T0c, T1a
-T2b (delete try_refined) ← T2a──────────┘   │
-                                             │
-T3a (language model JSON IR) ← T2a──────────┘
-
-T4a (real containers.dag) ← independent, large scope
-T4b (behavior DSL) ← independent, large scope
-T4c (opaque type decisions) ← T2a
-```
-
-### Estimated effort per task
-
-| Task | Files | Scope | Risk |
-|------|-------|-------|------|
-| T0a (fail-loud) | 1 | Small — add warnings + audit function | Low |
-| T0b (structural emit) | 2 | Medium — composite syntax templates per backend + recursive field emit | Medium (may break existing tests) |
-| T0c (type_codegen) | 1 | Small — redirect to language model | Low |
-| T0d (NetworkHandle) | 1 | Trivial | None |
-| T0e (port cardinality) | 3 | Medium — audit all Port construction sites | Medium |
-| T1a (c_type_from_emitted) | 1 | Medium — new CType-from-shape function | Low |
-| T1b (structural coercion) | 3+ | Large — derivation chain walking, brand policy, new syntax | High |
-| T2a (delete emit_identity_type) | 1 | Small once deps done — delete + update tests | Low |
-| T2b (delete try_refined) | 1 | Trivial | None |
-| T3a (JSON IR) | 4 | Medium — serde infrastructure | Low |
-| T4a (containers.dag) | 3 | Large — generic substitution semantics | High |
-| T4b (behavior DSL) | 4+ | Large — new syntax + semantics + testgen | High |
-| T4c (opaque decisions) | 1 | Design decision + documentation | None |
-
-### Critical path
-
-The shortest path to deleting `emit_identity_type` (the core
-migration milestone) is:
-
-```
-T0b → T1a → T2a → done
-  └── T0c ──┘
-```
-
-Three tasks, medium total effort. Everything else (fail-loud,
-port cardinality, coercion, containers.dag, behavior) is valuable
-but not on the critical path for eliminating the nominal emit
-fallback.
+See `BACKLOG.md` in the repo root for items that are not blocking
+but would improve architectural purity, add new capabilities, or
+tighten invariants.
