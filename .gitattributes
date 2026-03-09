@@ -1,1 +1,1 @@
-*.dag linguist-language=TypeScript
+**/*.dag linguist-language=Rust
