@@ -2142,7 +2142,8 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
         })
         .collect();
 
-    // Non-pipe-method builtins (standalone functions, render helpers, etc.).
+    // Non-pipe-method builtins: only entries with actual .dag call sites.
+    // Dead entries removed 2026-03-09 — see POSTMORTEM.md "manually maintained registries".
     contracts.extend([
         (
             "eq".to_string(),
@@ -2169,46 +2170,6 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
             },
         ),
         (
-            "render_cytoscape_html".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["snapshot".to_string()]),
-                output: ValueType::Named("String".to_string()),
-            },
-        ),
-        (
-            "render_mermaid_markdown".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["snapshot".to_string()]),
-                output: ValueType::Named("String".to_string()),
-            },
-        ),
-        (
-            "render_test_listings".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["sources".to_string()]),
-                output: ValueType::Named("String".to_string()),
-            },
-        ),
-        (
-            "render_graph_structure".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["sources".to_string()]),
-                output: ValueType::Named("String".to_string()),
-            },
-        ),
-        (
-            "render_source_artifacts".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["sources".to_string()]),
-                output: ValueType::Named("String".to_string()),
-            },
-        ),
-        (
             "build_token".to_string(),
             CallableContract {
                 arity: 5,
@@ -2220,50 +2181,6 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
                     "required_scopes".to_string(),
                 ]),
                 output: ValueType::Named("AccessToken".to_string()),
-            },
-        ),
-        (
-            "generate".to_string(),
-            CallableContract {
-                arity: 0,
-                params: HashSet::new(),
-                output: ValueType::Named("String".to_string()),
-            },
-        ),
-        (
-            "now".to_string(),
-            CallableContract {
-                arity: 0,
-                params: HashSet::new(),
-                output: ValueType::Named("String".to_string()),
-            },
-        ),
-        (
-            "compute_topology_diff".to_string(),
-            CallableContract {
-                arity: 2,
-                params: HashSet::from(["current".to_string(), "base".to_string()]),
-                output: ValueType::Named("DagDiff".to_string()),
-            },
-        ),
-        (
-            "render_annotated_mermaid".to_string(),
-            CallableContract {
-                arity: 3,
-                params: HashSet::from([
-                    "diff".to_string(),
-                    "topology".to_string(),
-                    "title".to_string(),
-                ]),
-                output: ValueType::Named("String".to_string()),
-            },
-        ),
-        (
-            "detect_runtime".to_string(),
-            CallableContract {
-                arity: 0,
-                params: HashSet::new(),
-                output: ValueType::Named("CloudRuntime".to_string()),
             },
         ),
     ]);

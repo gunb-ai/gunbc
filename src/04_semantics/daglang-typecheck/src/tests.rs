@@ -451,18 +451,10 @@ fn strict_mode_accepts_std_helper_intrinsic_call_targets() {
     let graph = module_graph_from_sources(&[(
         "sample/helpers.dag",
         r#"module sample.helpers
-type DocgenSources {}
 
-fn run(sources: DocgenSources, payload: String) -> String {
+fn run(payload: String) -> String {
   let a = "template" |> replace_section("section", "value")
-  let b = render_test_listings(sources: sources)
-  let c = render_graph_structure(sources: sources)
-  let d = render_source_artifacts(sources: sources)
-  let e = compute_topology_diff(current: "{}", base: "{}")
-  let f = render_annotated_mermaid(diff: e, topology: "{}", title: "title")
-  let g = detect_runtime()
-  let h = generate()
-  let i = now()
+  let b = eq(a: "x", b: "y")
   let j = build_token(
 payload: payload,
 scheme: "Bearer",

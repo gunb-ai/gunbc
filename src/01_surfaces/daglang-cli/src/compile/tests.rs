@@ -1459,18 +1459,10 @@ fn compile_directory_std_helper_intrinsics_typecheck_in_strict_mode() {
     std::fs::write(
         root.join("sample/main.dag"),
         r#"module sample.main
-type DocgenSources {}
 
-fn run(sources: DocgenSources, payload: String) -> String {
+fn run(payload: String) -> String {
   let a = "template" |> replace_section("section", "value")
-  let b = render_test_listings(sources: sources)
-  let c = render_graph_structure(sources: sources)
-  let d = render_source_artifacts(sources: sources)
-  let e = compute_topology_diff(current: "{}", base: "{}")
-  let f = render_annotated_mermaid(diff: e, topology: "{}", title: "title")
-  let g = detect_runtime()
-  let h = generate()
-  let i = now()
+  let b = eq(a: "x", b: "y")
   let j = build_token(
     payload: payload,
     scheme: "Bearer",
