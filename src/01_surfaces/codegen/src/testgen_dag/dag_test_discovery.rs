@@ -687,7 +687,7 @@ mod tests {
             callable_count: 1,
             has_test_blocks: true,
         };
-        let output_dir = std::path::Path::new("src/10_test/generated-tests/src");
+        let output_dir = std::path::Path::new("src/10_test/generated-tests/src/generated");
         let result = auto_testgen_for_module(&module, output_dir);
         match result {
             AutoTestgenResult::Generated { test_code, .. } => {
@@ -714,7 +714,7 @@ mod tests {
             callable_count: 1,
             has_test_blocks: true,
         };
-        let output_dir = std::path::Path::new("src/10_test/generated-tests/src");
+        let output_dir = std::path::Path::new("src/10_test/generated-tests/src/generated");
         let result = auto_testgen_for_module(&module, output_dir);
         match result {
             AutoTestgenResult::Generated { test_code, .. } => {
@@ -749,7 +749,7 @@ mod tests {
             callable_count: 1,
             has_test_blocks: false,
         };
-        let output_dir = std::path::Path::new("src/10_test/generated-tests/src");
+        let output_dir = std::path::Path::new("src/10_test/generated-tests/src/generated");
         let result = auto_testgen_for_module(&module, output_dir);
         assert!(
             matches!(result, AutoTestgenResult::Skipped { .. }),
