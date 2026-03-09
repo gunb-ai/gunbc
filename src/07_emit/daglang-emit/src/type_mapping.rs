@@ -108,6 +108,132 @@ pub fn map_abstract_type(mapping: &DslTypeMapping, abstract_type: &str) -> Strin
 }
 
 // =========================================================================
+// Structural type DAG emission (syllogistic types)
+// =========================================================================
+
+/// Target backend for structural type emission.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Backend {
+    Rust,
+    Go,
+    C,
+}
+
+/// Platform properties derived from a type DAG's structural predicates.
+#[derive(Debug, Clone, Default)]
+pub struct PlatformProperties {
+    /// Bit width (from Width predicate).
+    pub width: Option<u16>,
+    /// Whether the type is signed (from Signed predicate).
+    pub signed: Option<bool>,
+    /// Whether the type supports arithmetic (from Arithmetic predicate).
+    pub arithmetic: bool,
+    /// Domain constraint (from Domain predicate, e.g., "ieee754_binary32").
+    pub domain: Option<String>,
+    /// Collection/string length constraint (from Length predicate).
+    pub length: Option<u64>,
+}
+
+/// Derive platform properties from a type DAG by walking its predicate nodes.
+pub fn derive_platform_properties(dag: &gunbc_ir::dag::Dag<gunbc_ir::type_op::TypeOp>) -> PlatformProperties {
+    use gunbc_ir::node::NodeBody;
+    use gunbc_ir::type_op::{Predicate, TypeOp};
+
+    let mut props = PlatformProperties::default();
+
+    for node in &dag.nodes {
+        if let NodeBody::Opaque(TypeOp::Validate(pred)) = &node.body {
+            match pred {
+                Predicate::Width(w) => props.width = Some(*w),
+                Predicate::Signed(_) => props.signed = Some(true),
+                Predicate::Unsigned => props.signed = Some(false),
+                Predicate::Arithmetic => props.arithmetic = true,
+                Predicate::Domain(d) => props.domain = Some(d.clone()),
+                Predicate::Length(l) => props.length = Some(*l),
+                _ => {}
+            }
+        }
+        // Recurse into SubDags
+        if let NodeBody::SubDag(subdag, _) = &node.body {
+            let inner = derive_platform_properties(subdag);
+            if props.width.is_none() {
+                props.width = inner.width;
+            }
+            if props.signed.is_none() {
+                props.signed = inner.signed;
+            }
+            if !props.arithmetic {
+                props.arithmetic = inner.arithmetic;
+            }
+            if props.domain.is_none() {
+                props.domain = inner.domain;
+            }
+            if props.length.is_none() {
+                props.length = inner.length;
+            }
+        }
+    }
+
+    props
+}
+
+/// Emit a native type string from a type DAG for the given backend.
+///
+/// Uses structural properties (width, signedness, domain) to determine
+/// the native type. Falls back to string-based `map_abstract_type` for
+/// types that don't carry structural predicates.
+pub fn emit_type(dag: &gunbc_ir::dag::Dag<gunbc_ir::type_op::TypeOp>, backend: Backend) -> String {
+    let props = derive_platform_properties(dag);
+
+    // If we have structural width+signedness, emit a platform-native type
+    if props.arithmetic {
+        if let Some(domain) = &props.domain {
+            if domain.starts_with("ieee754") {
+                return match (backend, props.width) {
+                    (Backend::Rust, Some(32)) => "f32".to_string(),
+                    (Backend::Rust, _) => "f64".to_string(),
+                    (Backend::Go, Some(32)) => "float32".to_string(),
+                    (Backend::Go, _) => "float64".to_string(),
+                    (Backend::C, Some(32)) => "float".to_string(),
+                    (Backend::C, _) => "double".to_string(),
+                };
+            }
+        }
+
+        if let Some(width) = props.width {
+            let signed = props.signed.unwrap_or(true);
+            return match backend {
+                Backend::Rust => {
+                    let prefix = if signed { "i" } else { "u" };
+                    format!("{prefix}{width}")
+                }
+                Backend::Go => {
+                    let prefix = if signed { "int" } else { "uint" };
+                    format!("{prefix}{width}")
+                }
+                Backend::C => {
+                    let prefix = if signed { "int" } else { "uint" };
+                    format!("{prefix}{width}_t")
+                }
+            };
+        }
+    }
+
+    // Fall back to the base type name from the DAG
+    let base = gunbc_ir::contract::base_type(dag);
+    let mapping = match backend {
+        Backend::Rust => &RUST_TYPE_MAPPING,
+        Backend::Go => &GO_TYPE_MAPPING,
+        Backend::C => &RUST_TYPE_MAPPING, // C reuses Rust mapping as default
+    };
+    if let Some(base_name) = base {
+        map_abstract_type(mapping, &base_name)
+    } else {
+        mapping.fallback.to_string()
+    }
+}
+
+// =========================================================================
 // Per-backend static tables
 // =========================================================================
 
@@ -341,5 +467,76 @@ mod tests {
             "serde_json::Value"
         );
         assert_eq!(map_abstract_type(&GO_TYPE_MAPPING, "FooBar"), "interface{}");
+    }
+
+    // ── Structural emit tests ──────────────────────────────────────
+
+    #[test]
+    fn derive_platform_properties_empty_dag() {
+        let dag = gunbc_ir::dag::Dag::new();
+        let props = derive_platform_properties(&dag);
+        assert!(props.width.is_none());
+        assert!(props.signed.is_none());
+        assert!(!props.arithmetic);
+    }
+
+    #[test]
+    fn derive_platform_properties_from_predicates() {
+        use gunbc_ir::type_op::Predicate;
+        let dag = gunbc_ir::type_lib::refined("Byte", vec![
+            Predicate::Width(8),
+            Predicate::Unsigned,
+            Predicate::Arithmetic,
+        ]);
+        let props = derive_platform_properties(&dag);
+        assert_eq!(props.width, Some(8));
+        assert_eq!(props.signed, Some(false));
+        assert!(props.arithmetic);
+    }
+
+    #[test]
+    fn emit_type_unsigned_8bit() {
+        use gunbc_ir::type_op::Predicate;
+        let dag = gunbc_ir::type_lib::refined("Byte", vec![
+            Predicate::Width(8),
+            Predicate::Unsigned,
+            Predicate::Arithmetic,
+        ]);
+        assert_eq!(emit_type(&dag, Backend::Rust), "u8");
+        assert_eq!(emit_type(&dag, Backend::Go), "uint8");
+        assert_eq!(emit_type(&dag, Backend::C), "uint8_t");
+    }
+
+    #[test]
+    fn emit_type_signed_64bit() {
+        use gunbc_ir::type_op::Predicate;
+        let dag = gunbc_ir::type_lib::refined("Word64", vec![
+            Predicate::Width(64),
+            Predicate::Signed(None),
+            Predicate::Arithmetic,
+        ]);
+        assert_eq!(emit_type(&dag, Backend::Rust), "i64");
+        assert_eq!(emit_type(&dag, Backend::Go), "int64");
+        assert_eq!(emit_type(&dag, Backend::C), "int64_t");
+    }
+
+    #[test]
+    fn emit_type_float64() {
+        use gunbc_ir::type_op::Predicate;
+        let dag = gunbc_ir::type_lib::refined("Word64", vec![
+            Predicate::Width(64),
+            Predicate::Domain("ieee754_binary64".to_string()),
+            Predicate::Arithmetic,
+        ]);
+        assert_eq!(emit_type(&dag, Backend::Rust), "f64");
+        assert_eq!(emit_type(&dag, Backend::Go), "float64");
+        assert_eq!(emit_type(&dag, Backend::C), "double");
+    }
+
+    #[test]
+    fn emit_type_fallback_to_string_mapping() {
+        let dag = gunbc_ir::type_lib::string();
+        assert_eq!(emit_type(&dag, Backend::Rust), "String");
+        assert_eq!(emit_type(&dag, Backend::Go), "string");
     }
 }
