@@ -7941,14 +7941,18 @@ fn add_service_call_edges(
                         continue;
                     }
                     supplied_prepare_inputs.insert(prepare_input.to_string());
-                    wire_service_call_arg_to_port(
+                    if let Err(e) = wire_service_call_arg_to_port(
                         builder,
                         &service_ctx,
                         arg,
                         effective_endpoint.prepare_node_id.as_str(),
                         prepare_input,
                         format!("{call_index}_{index}").as_str(),
-                    )?;
+                    ) {
+                        eprintln!(
+                            "error: {source_file}: service call arg `{prepare_input}` wiring failed: {e}"
+                        );
+                    }
                 }
                 // Wire auth_input argument to res:credential on execute node.
                 // When a service declares `config { auth_input: field_name }`,
@@ -8094,7 +8098,11 @@ fn add_service_call_edges(
                 Item::FnDef(def) if !def.body.lossy
             );
             if !is_fn_with_body {
-                wire_callable_return_outputs(builder, &fn_ctx, stmts, target, body_lossy)?;
+                if let Err(e) = wire_callable_return_outputs(builder, &fn_ctx, stmts, target, body_lossy) {
+                    eprintln!(
+                        "error: {source_file}: callable `{item_name}` return output lowering failed: {e}"
+                    );
+                }
             }
         }
     }
@@ -12048,7 +12056,7 @@ fn collect_bound_callable_sources(
                 name: binding,
                 expr,
                 ..
-            }) => match expr {
+            }) => match unwrap_guarded_expr(expr) {
                 Expr::Call(name, _) => {
                     if let Some(endpoint) =
                         endpoints_by_full.get(&(module_key.clone(), name.clone()))
