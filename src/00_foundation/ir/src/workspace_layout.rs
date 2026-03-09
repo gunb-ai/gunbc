@@ -392,7 +392,9 @@ mod tests {
         let layout = WorkspaceLayout::from_env_manifest_dir().expect("resolve workspace layout");
         let globs = layout.source_globs(&["gunbc-ir"]);
         assert!(
-            globs.iter().any(|g| g == "src/00_foundation/ir/src/**/*.rs"),
+            globs
+                .iter()
+                .any(|g| g == "src/00_foundation/ir/src/**/*.rs"),
             "expected src/00_foundation/ir source glob, got: {globs:?}"
         );
         assert!(

@@ -100,7 +100,8 @@ impl DiscoveryCache {
 
 /// Discover tool definitions from DSL entrypoint inference.
 ///
-/// Scans `dsl/tools/*.dag` for `func` items with untapped inputs
+/// Scans tool roots under `dsl/tools/*.dag` and `dsl/gunbc/tools/*.dag`
+/// for `func` items with untapped inputs
 /// (structurally inferred entrypoints). Each entrypoint produces a
 /// [`ToolDef`] with:
 /// - CLI entrypoints derived from func params (convention-based)
@@ -131,21 +132,21 @@ pub fn try_discover_tool_defs_from_dsl() -> Result<Vec<ToolDef>, String> {
     // so dedicated files like gist_diff.dag win over combined gist.dag).
     let mut tool_map: BTreeMap<String, ToolDef> = BTreeMap::new();
 
-    // Scan dsl/tools/*.dag
-    let tools_dir = dsl_root.join("tools");
-    let entries = std::fs::read_dir(&tools_dir)
-        .map_err(|e| format!("cannot read tools directory {}: {e}", tools_dir.display()))?;
     let mut paths: Vec<PathBuf> = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|e| {
-            format!(
-                "cannot iterate tools directory entries in {}: {e}",
-                tools_dir.display()
-            )
-        })?;
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) == Some("dag") {
-            paths.push(path);
+    for tools_dir in [dsl_root.join("tools"), dsl_root.join("gunbc").join("tools")] {
+        let entries = std::fs::read_dir(&tools_dir)
+            .map_err(|e| format!("cannot read tools directory {}: {e}", tools_dir.display()))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| {
+                format!(
+                    "cannot iterate tools directory entries in {}: {e}",
+                    tools_dir.display()
+                )
+            })?;
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("dag") {
+                paths.push(path);
+            }
         }
     }
     paths.sort();

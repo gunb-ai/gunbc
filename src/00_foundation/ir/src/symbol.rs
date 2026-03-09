@@ -18,7 +18,7 @@ use std::fmt;
 /// stable key for hashing, ordering, and deterministic diagnostics.
 ///
 /// Examples:
-/// - `"tools.gist::build_snapshot_content"` (func)
+/// - `"gunbc.tools.gist::build_snapshot_content"` (func)
 /// - `"pipelines.ci::ci"` (pipeline)
 /// - `"tools.bootstrap::gitignore_content"` (extern asset)
 ///
@@ -91,9 +91,9 @@ mod tests {
 
     #[test]
     fn symbol_id_from_parts() {
-        let sym = ProgramSymbolId::from_parts("tools.gist", "build_snapshot_content");
-        assert_eq!(sym.as_str(), "tools.gist::build_snapshot_content");
-        assert_eq!(sym.module(), Some("tools.gist"));
+        let sym = ProgramSymbolId::from_parts("gunbc.tools.gist", "build_snapshot_content");
+        assert_eq!(sym.as_str(), "gunbc.tools.gist::build_snapshot_content");
+        assert_eq!(sym.module(), Some("gunbc.tools.gist"));
         assert_eq!(sym.name(), Some("build_snapshot_content"));
     }
 

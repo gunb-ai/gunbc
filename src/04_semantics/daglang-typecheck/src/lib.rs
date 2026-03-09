@@ -29,8 +29,7 @@ use daglang_syntax::ast::{
     Refinement, Stmt, TypeBody, TypeExpr, UsesClause,
 };
 use daglang_syntax::ast_utils::{
-    is_function_type, resource_type_name, service_call_lookup_keys, type_expr_to_string,
-    walk_stmts,
+    is_function_type, resource_type_name, service_call_lookup_keys, type_expr_to_string, walk_stmts,
 };
 use gunbc_ir::TypeRegistry;
 
@@ -1001,10 +1000,7 @@ fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> TypeRegistry {
     // This ensures forward references resolve to a known type instead of
     // triggering the fallback code path.
     for def in &all_type_defs {
-        registry.register(
-            def.name.as_str(),
-            gunbc_ir::type_lib::identity(&def.name),
-        );
+        registry.register(def.name.as_str(), gunbc_ir::type_lib::identity(&def.name));
     }
 
     // Build a dependency graph for topological ordering (Pass 2).
@@ -1143,64 +1139,46 @@ fn topological_sort_types<'a>(
 }
 
 /// Register a single type definition into the registry (Pass 2 worker).
-fn register_type_def(
-    def: &daglang_syntax::ast::TypeDef,
-    registry: &mut TypeRegistry,
-) {
+fn register_type_def(def: &daglang_syntax::ast::TypeDef, registry: &mut TypeRegistry) {
     match &def.body {
         TypeBody::Sum(variants) => {
             // Unit variants get "Unit" type, payload variants get resolved field DAGs.
-            let resolved_variants: Vec<(&str, gunbc_ir::Dag<gunbc_ir::type_op::TypeOp>)> =
-                variants
-                    .iter()
-                    .map(|variant| {
-                        let dag = if variant.fields.is_empty() {
-                            gunbc_ir::type_lib::unit()
-                        } else if variant.fields.len() == 1 {
-                            resolve_field_type_dag(&variant.fields[0].ty, registry)
-                        } else {
-                            // Multi-field payload variant: wrap fields as an anonymous product.
-                            let resolved_fields: Vec<(
-                                &str,
-                                gunbc_ir::Dag<gunbc_ir::type_op::TypeOp>,
-                            )> = variant
+            let resolved_variants: Vec<(&str, gunbc_ir::Dag<gunbc_ir::type_op::TypeOp>)> = variants
+                .iter()
+                .map(|variant| {
+                    let dag = if variant.fields.is_empty() {
+                        gunbc_ir::type_lib::unit()
+                    } else if variant.fields.len() == 1 {
+                        resolve_field_type_dag(&variant.fields[0].ty, registry)
+                    } else {
+                        // Multi-field payload variant: wrap fields as an anonymous product.
+                        let resolved_fields: Vec<(&str, gunbc_ir::Dag<gunbc_ir::type_op::TypeOp>)> =
+                            variant
                                 .fields
                                 .iter()
-                                .map(|f| {
-                                    (f.name.as_str(), resolve_field_type_dag(&f.ty, registry))
-                                })
+                                .map(|f| (f.name.as_str(), resolve_field_type_dag(&f.ty, registry)))
                                 .collect();
-                            gunbc_ir::type_lib::product_resolved(
-                                &variant.name,
-                                resolved_fields,
-                            )
-                        };
-                        (variant.name.as_str(), dag)
-                    })
-                    .collect();
+                        gunbc_ir::type_lib::product_resolved(&variant.name, resolved_fields)
+                    };
+                    (variant.name.as_str(), dag)
+                })
+                .collect();
             registry.register(
                 def.name.as_str(),
-                gunbc_ir::type_lib::coproduct_resolved(
-                    def.name.as_str(),
-                    resolved_variants,
-                ),
+                gunbc_ir::type_lib::coproduct_resolved(def.name.as_str(), resolved_variants),
             );
         }
         TypeBody::Record(fields) => {
-            let resolved_fields: Vec<(&str, gunbc_ir::Dag<gunbc_ir::type_op::TypeOp>)> =
-                fields
-                    .iter()
-                    .map(|field| {
-                        let dag = resolve_field_type_dag(&field.ty, registry);
-                        (field.name.as_str(), dag)
-                    })
-                    .collect();
+            let resolved_fields: Vec<(&str, gunbc_ir::Dag<gunbc_ir::type_op::TypeOp>)> = fields
+                .iter()
+                .map(|field| {
+                    let dag = resolve_field_type_dag(&field.ty, registry);
+                    (field.name.as_str(), dag)
+                })
+                .collect();
             registry.register(
                 def.name.as_str(),
-                gunbc_ir::type_lib::product_resolved(
-                    def.name.as_str(),
-                    resolved_fields,
-                ),
+                gunbc_ir::type_lib::product_resolved(def.name.as_str(), resolved_fields),
             );
         }
         TypeBody::Alias(type_expr) => {
@@ -1221,9 +1199,7 @@ fn register_type_def(
                 }
             } else {
                 match base_dag_opt {
-                    Some(dag) => gunbc_ir::type_lib::refined_with_base(
-                        &base_name, dag, predicates,
-                    ),
+                    Some(dag) => gunbc_ir::type_lib::refined_with_base(&base_name, dag, predicates),
                     None => gunbc_ir::type_lib::refined(&base_name, predicates),
                 }
             };
@@ -1309,9 +1285,7 @@ fn resolve_field_type_dag(
         })
     } else {
         match base_dag_opt {
-            Some(dag) => {
-                gunbc_ir::type_lib::refined_with_base(&base_name, dag, predicates)
-            }
+            Some(dag) => gunbc_ir::type_lib::refined_with_base(&base_name, dag, predicates),
             None => gunbc_ir::type_lib::refined(&base_name, predicates),
         }
     }
@@ -1474,7 +1448,9 @@ fn collect_signatures(
                             ReturnContract::single(type_expr_to_string(&def.return_type)),
                             vec![TypedBinding {
                                 name: "return".to_string(),
-                                ty: gunbc_ir::types::TypeId::from(type_expr_to_string(&def.return_type)),
+                                ty: gunbc_ir::types::TypeId::from(type_expr_to_string(
+                                    &def.return_type,
+                                )),
                             }],
                         )
                     }
@@ -4152,7 +4128,8 @@ fn validate_type_expr(
                                 errors.push(TypeError::UnsatisfiableRefinement {
                                     ty: type_expr_to_string(inner),
                                     constraint: format!(
-                                        "width({v}) out of range — must be 1..{}", u16::MAX
+                                        "width({v}) out of range — must be 1..{}",
+                                        u16::MAX
                                     ),
                                 });
                             }
@@ -4163,9 +4140,7 @@ fn validate_type_expr(
                             if v < 0 {
                                 errors.push(TypeError::UnsatisfiableRefinement {
                                     ty: type_expr_to_string(inner),
-                                    constraint: format!(
-                                        "length({v}) must be non-negative"
-                                    ),
+                                    constraint: format!("length({v}) must be non-negative"),
                                 });
                             }
                         }
@@ -4287,25 +4262,28 @@ fn refinement_to_predicate(refinement: &Refinement) -> Option<gunbc_ir::type_op:
     match refinement {
         Refinement::Pattern(regex) => Some(Predicate::Matches(regex.clone())),
         Refinement::Range { min, max } => {
-            let min_val = min.as_ref().and_then(extract_int_literal).unwrap_or(i64::MIN);
-            let max_val = max.as_ref().and_then(extract_int_literal).unwrap_or(i64::MAX);
+            let min_val = min
+                .as_ref()
+                .and_then(extract_int_literal)
+                .unwrap_or(i64::MIN);
+            let max_val = max
+                .as_ref()
+                .and_then(extract_int_literal)
+                .unwrap_or(i64::MAX);
             Some(Predicate::InRange {
                 min: min_val,
                 max: max_val,
             })
         }
         Refinement::NonEmpty => Some(Predicate::NonEmpty),
-        Refinement::Content(enc) => {
-            str_to_content_encoding(enc).map(Predicate::Content)
-        }
-        Refinement::Width(expr) => {
-            extract_int_literal(expr).and_then(|v| {
-                u16::try_from(v).ok().filter(|&w| w > 0).map(Predicate::Width)
-            })
-        }
-        Refinement::Length(expr) => {
-            extract_int_literal(expr).map(|v| Predicate::Length(v as u64))
-        }
+        Refinement::Content(enc) => str_to_content_encoding(enc).map(Predicate::Content),
+        Refinement::Width(expr) => extract_int_literal(expr).and_then(|v| {
+            u16::try_from(v)
+                .ok()
+                .filter(|&w| w > 0)
+                .map(Predicate::Width)
+        }),
+        Refinement::Length(expr) => extract_int_literal(expr).map(|v| Predicate::Length(v as u64)),
         Refinement::Signed(repr) => Some(Predicate::Signed(repr.clone())),
         Refinement::Unsigned => Some(Predicate::Unsigned),
         Refinement::Arithmetic => Some(Predicate::Arithmetic),

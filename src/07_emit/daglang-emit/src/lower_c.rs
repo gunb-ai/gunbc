@@ -727,7 +727,6 @@ fn c_type_from_emitted(s: &str) -> CType {
     }
 }
 
-
 /// Infer C type from an abstract expression (best effort).
 fn infer_c_type(expr: &Expr) -> CType {
     match expr {
@@ -892,11 +891,14 @@ mod tests {
         let mut registry = gunbc_ir::TypeRegistry::with_primitives();
         registry.register(
             "UInt8",
-            gunbc_ir::type_lib::refined("Int", vec![
-                Predicate::Width(8),
-                Predicate::Unsigned,
-                Predicate::Arithmetic,
-            ]),
+            gunbc_ir::type_lib::refined(
+                "Int",
+                vec![
+                    Predicate::Width(8),
+                    Predicate::Unsigned,
+                    Predicate::Arithmetic,
+                ],
+            ),
         );
         assert!(matches!(
             map_to_c_type_with_registry("UInt8", Some(&registry)),

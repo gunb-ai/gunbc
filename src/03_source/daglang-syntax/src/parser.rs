@@ -1745,7 +1745,9 @@ impl Parser {
                             self.advance();
                             r
                         }
-                        _ => return Err(self.err("expected string for signed representation".into())),
+                        _ => {
+                            return Err(self.err("expected string for signed representation".into()))
+                        }
                     };
                     self.expect(&TokenKind::RParen)?;
                     Ok(Refinement::Signed(Some(repr)))
@@ -1928,9 +1930,7 @@ impl Parser {
             self.expect(&TokenKind::RBrace)?;
             body
         } else {
-            FnBody {
-                stmts: Vec::new(),
-            }
+            FnBody { stmts: Vec::new() }
         };
         Ok(FnDef {
             name,
@@ -2877,8 +2877,6 @@ impl Parser {
         }
     }
 
-
-
     // ── fields / params ────────────────────────────────────────────
 
     fn parse_field_list_until_rbrace(&mut self) -> Result<Vec<Field>, ParseError> {
@@ -3540,9 +3538,8 @@ impl Parser {
         if self.check(&TokenKind::RBrace) {
             return Ok(expr);
         }
-        Err(self.err(
-            "multi-statement blocks in expression position are not yet supported".to_string(),
-        ))
+        Err(self
+            .err("multi-statement blocks in expression position are not yet supported".to_string()))
     }
 
     fn brace_contains_top_level_colon(&self) -> bool {
@@ -5068,7 +5065,10 @@ service rest.T {
             .unwrap();
         let diag = err.to_diagnostic(std::path::Path::new("sample.dag"), src);
         assert_eq!(diag.kind, DiagnosticKind::Parse);
-        assert_eq!(diag.file.as_ref().and_then(|f| f.to_str()), Some("sample.dag"));
+        assert_eq!(
+            diag.file.as_ref().and_then(|f| f.to_str()),
+            Some("sample.dag")
+        );
         assert!(diag.span.is_some());
         assert_eq!(diag.line, Some(2));
     }
@@ -5136,7 +5136,10 @@ service rest.T {
         ] {
             let result = std::panic::catch_unwind(|| parse(source));
             assert!(result.is_ok(), "parser panicked on: {source:?}");
-            assert!(result.unwrap().is_err(), "should return error for: {source:?}");
+            assert!(
+                result.unwrap().is_err(),
+                "should return error for: {source:?}"
+            );
         }
     }
 
@@ -5144,7 +5147,9 @@ service rest.T {
     fn lexer_unknown_character_surfaces_as_parser_diagnostic() {
         let errors = parse("module bad\n$").expect_err("should fail");
         assert!(
-            errors.iter().any(|e| e.message.contains("unexpected character '$'")),
+            errors
+                .iter()
+                .any(|e| e.message.contains("unexpected character '$'")),
             "lex diagnostic should surface through parser: {errors:?}"
         );
     }
@@ -5204,9 +5209,15 @@ service rest.T {
         let ast = parse_or_panic(source);
 
         let has = |pred: fn(&Item) -> bool| ast.items.iter().any(|i| pred(&i.node));
-        assert!(has(|i| matches!(i, Item::TypeDef(d) if matches!(d.body, TypeBody::Record(_)))));
-        assert!(has(|i| matches!(i, Item::TypeDef(d) if matches!(d.body, TypeBody::Sum(_)))));
-        assert!(has(|i| matches!(i, Item::TypeDef(d) if matches!(d.body, TypeBody::Alias(_)))));
+        assert!(has(
+            |i| matches!(i, Item::TypeDef(d) if matches!(d.body, TypeBody::Record(_)))
+        ));
+        assert!(has(
+            |i| matches!(i, Item::TypeDef(d) if matches!(d.body, TypeBody::Sum(_)))
+        ));
+        assert!(has(
+            |i| matches!(i, Item::TypeDef(d) if matches!(d.body, TypeBody::Alias(_)))
+        ));
         assert!(has(|i| matches!(i, Item::DataDef(_))));
         assert!(has(|i| matches!(i, Item::FnDef(_))));
         assert!(has(|i| matches!(i, Item::FuncDef(_))));

@@ -22,8 +22,8 @@
 //! The Create node has a guard that only executes if Check returns `false`.
 
 use crate::dag::{Dag, Edge, Port};
-use crate::type_op::{Predicate, PredicateValue};
 use crate::node::Node;
+use crate::type_op::{Predicate, PredicateValue};
 use crate::types::Cardinality;
 
 /// Builder for the upsert pattern.

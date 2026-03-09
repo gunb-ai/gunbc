@@ -26,9 +26,9 @@ use daglang_syntax::ast::{
     RateLimitUnit, ServiceDef, Stmt, TransportBinding, TypeBody,
 };
 use daglang_syntax::ast_utils::{
-    canonical_resource_type_name, is_bool_type, is_list_type, is_map_string_string,
-    is_secret_type, is_type_expr_optional, resource_type_name, service_call_lookup_keys,
-    type_expr_to_string, walk_stmts,
+    canonical_resource_type_name, is_bool_type, is_list_type, is_map_string_string, is_secret_type,
+    is_type_expr_optional, resource_type_name, service_call_lookup_keys, type_expr_to_string,
+    walk_stmts,
 };
 use daglang_syntax::span::Span as SyntaxSpan;
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
@@ -1405,7 +1405,10 @@ fn derive_interface_stub_transport_triplets(
                         fn_body: None,
                     },
                 )
-                .with_input_guard("request", Predicate::Not(Box::new(Predicate::Equals(PredicateValue::Skipped))))
+                .with_input_guard(
+                    "request",
+                    Predicate::Not(Box::new(Predicate::Equals(PredicateValue::Skipped))),
+                )
                 .with_operation_key(OperationKey::new(&interface.name, &capability.name))
                 .with_origin(origin.clone());
                 manifest.add_node(execute_node);
@@ -3045,7 +3048,7 @@ mod parity {
         if candidate_ids.contains("acquire_resource_std_resources_Network") {
             canonical_nodes.insert("net_env".to_string());
         }
-        if candidate_ids.contains("std.patterns::acquire_subject_token") {
+        if candidate_ids.contains("gunbc.auth.patterns::acquire_subject_token") {
             canonical_nodes.insert("prepare_github_oidc".to_string());
             canonical_nodes.insert("execute_github_oidc".to_string());
             canonical_nodes.insert("parse_github_oidc".to_string());
@@ -3059,7 +3062,7 @@ mod parity {
             canonical_nodes.insert("execute_sts".to_string());
             canonical_nodes.insert("parse_sts".to_string());
         }
-        if candidate_ids.contains("std.patterns::optional_impersonation") {
+        if candidate_ids.contains("gunbc.auth.patterns::optional_impersonation") {
             canonical_nodes.insert("should_impersonate".to_string());
             canonical_nodes.insert("prepare_impersonate".to_string());
             canonical_nodes.insert("execute_impersonate".to_string());
@@ -3077,7 +3080,7 @@ mod parity {
             canonical_nodes.insert("execute_secret_access".to_string());
             canonical_nodes.insert("parse_secret_access".to_string());
         }
-        if candidate_ids.contains("std.patterns::credential_chain") {
+        if candidate_ids.contains("gunbc.auth.patterns::credential_chain") {
             canonical_nodes.insert("build_credential".to_string());
         }
         build_gcp_credential_canonical_graph(&canonical_nodes, |id| LoweredOp::Callable {
@@ -3432,11 +3435,9 @@ fn lower_callable(
                 // Use Port::typed when registry is available — derives
                 // cardinality at construction instead of post-mutation.
                 match type_registry {
-                    Some(registry) => Port::typed(
-                        binding.name.as_str(),
-                        binding.ty.as_str(),
-                        registry,
-                    ),
+                    Some(registry) => {
+                        Port::typed(binding.name.as_str(), binding.ty.as_str(), registry)
+                    }
                     None => Port::scalar(binding.name.as_str(), binding.ty.as_str()),
                 }
             })
@@ -3446,16 +3447,15 @@ fn lower_callable(
         .params
         .iter()
         .map(|binding| match type_registry {
-            Some(registry) => Port::typed(
-                binding.name.as_str(),
-                binding.ty.as_str(),
-                registry,
-            ),
+            Some(registry) => Port::typed(binding.name.as_str(), binding.ty.as_str(), registry),
             None => Port::scalar(binding.name.as_str(), binding.ty.as_str()),
         })
         .collect::<Vec<_>>();
     for output in &outputs {
-        inputs.push(Port::scalar(output_passthrough_input_name(output.name.0.as_str()), output.type_id.0.as_str()));
+        inputs.push(Port::scalar(
+            output_passthrough_input_name(output.name.0.as_str()),
+            output.type_id.0.as_str(),
+        ));
     }
     inputs.push(Port::fan_in(PortName::DEPS, "Any"));
     let obligation = infer_fn_obligation(&callable.name, kind, &outputs);
@@ -4341,7 +4341,10 @@ fn make_loop_body_dag(
                     fn_body: None,
                 },
             )
-            .with_input_guard("request", Predicate::Not(Box::new(Predicate::Equals(PredicateValue::Skipped))));
+            .with_input_guard(
+                "request",
+                Predicate::Not(Box::new(Predicate::Equals(PredicateValue::Skipped))),
+            );
             dag.add_node(execute_node);
             dag.add_node(Node::opaque(
                 parse_id.clone(),
@@ -4508,7 +4511,10 @@ fn make_branch_body_dag(
                     fn_body: None,
                 },
             )
-            .with_input_guard("request", Predicate::Not(Box::new(Predicate::Equals(PredicateValue::Skipped))));
+            .with_input_guard(
+                "request",
+                Predicate::Not(Box::new(Predicate::Equals(PredicateValue::Skipped))),
+            );
             dag.add_node(execute_node);
             dag.add_node(Node::opaque(
                 parse_id.clone(),
@@ -7416,7 +7422,8 @@ fn derive_service_transport_triplets(
                 );
                 let mut execute_inputs = vec![Port::scalar("request", "TransportRequest")];
                 if has_auth {
-                    execute_inputs.push(Port::optional(PortName::RESOURCE_CREDENTIAL, "Credential"));
+                    execute_inputs
+                        .push(Port::optional(PortName::RESOURCE_CREDENTIAL, "Credential"));
                 }
                 let execute_node = Node::opaque(
                     execute_id.clone(),
@@ -7436,7 +7443,10 @@ fn derive_service_transport_triplets(
                         fn_body: None,
                     },
                 )
-                .with_input_guard("request", Predicate::Not(Box::new(Predicate::Equals(PredicateValue::Skipped))))
+                .with_input_guard(
+                    "request",
+                    Predicate::Not(Box::new(Predicate::Equals(PredicateValue::Skipped))),
+                )
                 .with_operation_key(OperationKey::new(&service.name, &operation.name))
                 .with_origin(origin.clone());
                 manifest.add_node(execute_node);
@@ -7994,7 +8004,7 @@ fn add_service_call_edges(
                 endpoints_by_full: wctx.endpoints_by_full,
                 uses_binding_types: &uses_binding_types,
             };
-            wire_fn_call_arguments(builder, &fn_ctx, stmts);
+            wire_fn_call_arguments(builder, &fn_ctx, stmts)?;
             // Wire for-loop iterable expressions to loop node "items" ports.
             let loop_ctx = LoweringContext {
                 bound_callable_sources: &bound_callable_sources,
@@ -8744,7 +8754,10 @@ fn add_provided_resource_nodes(
                 builder.add_node(Node::opaque(
                     provider_node_id.clone(),
                     vec![Port::scalar("trigger", "Any")],
-                    vec![Port::scalar(provided.binding.as_str(), resource_type.as_str())],
+                    vec![Port::scalar(
+                        provided.binding.as_str(),
+                        resource_type.as_str(),
+                    )],
                     LoweredOp::Callable {
                         module: module_name.clone(),
                         kind: CallableKind::Pattern,
@@ -9392,6 +9405,7 @@ fn collect_direct_call_names(expr: &Expr, calls: &mut BTreeSet<String>) {
 #[derive(Debug, Clone)]
 pub(crate) struct ServiceCallArgSite {
     pub(crate) name: Option<String>,
+    pub(crate) expr: Expr,
     pub(crate) ident: Option<String>,
     pub(crate) field_access: Option<(String, String)>,
     pub(crate) call: Option<String>,
@@ -9650,6 +9664,7 @@ fn collect_direct_fn_calls_with_args(expr: &Expr, calls: &mut Vec<FnCallSite>) {
 fn service_call_arg_site((name, arg): &(Option<String>, Expr)) -> ServiceCallArgSite {
     ServiceCallArgSite {
         name: name.clone(),
+        expr: arg.clone(),
         ident: match arg {
             Expr::Ident(ident) => Some(ident.clone()),
             _ => None,
@@ -9810,7 +9825,11 @@ fn collect_callable_param_defaults(
     defaults
 }
 
-fn wire_fn_call_arguments(builder: &mut DagBuilder, ctx: &LoweringContext<'_>, stmts: &[Stmt]) {
+fn wire_fn_call_arguments(
+    builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
+    stmts: &[Stmt],
+) -> Result<(), LowerError> {
     let mut fn_calls = Vec::new();
     collect_fn_calls_with_args(stmts, &mut fn_calls);
     for fn_call in &fn_calls {
@@ -9899,33 +9918,6 @@ fn wire_fn_call_arguments(builder: &mut DagBuilder, ctx: &LoweringContext<'_>, s
                     );
                     continue;
                 }
-                if let Some(let_expr) = ctx.local_let_bindings.get(arg_ident) {
-                    let output_port = Port::scalar(param_name, "Any");
-                    match lower_expr(
-                        builder,
-                        ctx,
-                        let_expr,
-                        &output_port,
-                        param_name,
-                        &format!("arg_{index}"),
-                    ) {
-                        Ok((src_node, src_port)) => {
-                        builder.add_edge(
-                            src_node.as_str(),
-                            src_port.as_str(),
-                            fn_endpoint.node_id.as_str(),
-                            param_name,
-                        );
-                        continue;
-                        }
-                        Err(e) => {
-                            eprintln!(
-                                "warning: cannot wire fn call argument '{}' in {}.{}: {e}",
-                                param_name, ctx.module_name, ctx.item_name
-                            );
-                        }
-                    }
-                }
             }
             if let Some(literal) = arg.literal.as_ref() {
                 let src = ensure_literal_source_node(
@@ -9943,6 +9935,54 @@ fn wire_fn_call_arguments(builder: &mut DagBuilder, ctx: &LoweringContext<'_>, s
                     fn_endpoint.node_id.as_str(),
                     param_name,
                 );
+                continue;
+            }
+
+            let output_port = Port::scalar(param_name, "Any");
+            let expr_for_arg = arg
+                .ident
+                .as_deref()
+                .and_then(|ident| ctx.local_let_bindings.get(ident).copied())
+                .unwrap_or(&arg.expr);
+            match lower_expr(
+                builder,
+                ctx,
+                expr_for_arg,
+                &output_port,
+                param_name,
+                &format!("arg_{index}"),
+            ) {
+                Ok((src_node, src_port)) => {
+                    builder.add_edge(
+                        src_node.as_str(),
+                        src_port.as_str(),
+                        fn_endpoint.node_id.as_str(),
+                        param_name,
+                    );
+                    continue;
+                }
+                Err(e) => {
+                    if let Some((src_node, src_port)) = synthesize_expr_value_fallback(
+                        builder,
+                        ctx,
+                        expr_for_arg,
+                        &output_port,
+                        param_name,
+                        &format!("arg_{index}"),
+                    ) {
+                        builder.add_edge(
+                            src_node.as_str(),
+                            src_port.as_str(),
+                            fn_endpoint.node_id.as_str(),
+                            param_name,
+                        );
+                        continue;
+                    }
+                    return Err(LowerError::from(format!(
+                        "cannot wire fn call argument `{}` in {}.{}: {e}",
+                        param_name, ctx.module_name, ctx.item_name
+                    )));
+                }
             }
         }
         // Inject default values for callable params that were omitted from the call.
@@ -9972,12 +10012,10 @@ fn wire_fn_call_arguments(builder: &mut DagBuilder, ctx: &LoweringContext<'_>, s
             }
         }
     }
+    Ok(())
 }
 
-fn collect_return_bindings(
-    stmts: &[Stmt],
-    output_ports: &[Port],
-) -> Vec<(String, Expr)> {
+fn collect_return_bindings(stmts: &[Stmt], output_ports: &[Port]) -> Vec<(String, Expr)> {
     if output_ports.is_empty() {
         return Vec::new();
     }
@@ -10141,10 +10179,12 @@ fn lower_expr(
                         output_name,
                         disambiguator,
                     )
-                    .ok_or_else(|| LowerError::from(format!(
-                        "cannot lower expression in {}.{}: field access on resolved base",
-                        ctx.module_name, ctx.item_name
-                    )));
+                    .ok_or_else(|| {
+                        LowerError::from(format!(
+                            "cannot lower expression in {}.{}: field access on resolved base",
+                            ctx.module_name, ctx.item_name
+                        ))
+                    });
                 }
                 // C24: For parameters, synthesize a GetField node.
                 if let Some(param_ty) = ctx.param_types.get(base_ident) {
@@ -10157,10 +10197,12 @@ fn lower_expr(
                         output_port,
                         disambiguator,
                     )
-                    .ok_or_else(|| LowerError::from(format!(
-                        "cannot lower expression in {}.{}: get field on param `{base_ident}`",
-                        ctx.module_name, ctx.item_name
-                    )));
+                    .ok_or_else(|| {
+                        LowerError::from(format!(
+                            "cannot lower expression in {}.{}: get field on param `{base_ident}`",
+                            ctx.module_name, ctx.item_name
+                        ))
+                    });
                 }
             }
             // C24: For complex base expressions, try recursive resolution.
@@ -10184,25 +10226,31 @@ fn lower_expr(
                 output_name,
                 disambiguator,
             )
-            .ok_or_else(|| LowerError::from(format!(
-                "cannot lower expression in {}.{}: field access on complex base",
-                ctx.module_name, ctx.item_name
-            )))
+            .ok_or_else(|| {
+                LowerError::from(format!(
+                    "cannot lower expression in {}.{}: field access on complex base",
+                    ctx.module_name, ctx.item_name
+                ))
+            })
         }
         Expr::Call(name, _) => ctx
             .endpoints_by_name
             .get(name)
             .and_then(|entry| entry.clone())
             .map(|source| (source.node_id, source.primary_output))
-            .ok_or_else(|| LowerError::from(format!(
-                "cannot lower expression in {}.{}: unresolved call `{name}`",
-                ctx.module_name, ctx.item_name
-            ))),
+            .ok_or_else(|| {
+                LowerError::from(format!(
+                    "cannot lower expression in {}.{}: unresolved call `{name}`",
+                    ctx.module_name, ctx.item_name
+                ))
+            }),
         Expr::Literal(_) | Expr::Map(_) => {
-            let literal = return_literal_arg(expr).ok_or_else(|| LowerError::from(format!(
-                "cannot lower expression in {}.{}: non-literal in literal position",
-                ctx.module_name, ctx.item_name
-            )))?;
+            let literal = return_literal_arg(expr).ok_or_else(|| {
+                LowerError::from(format!(
+                    "cannot lower expression in {}.{}: non-literal in literal position",
+                    ctx.module_name, ctx.item_name
+                ))
+            })?;
             let src = ensure_literal_source_node(
                 builder,
                 ctx.module_name,
@@ -10236,10 +10284,12 @@ fn lower_expr(
                     output_name,
                     disambiguator,
                 )
-                .ok_or_else(|| LowerError::from(format!(
-                    "cannot lower expression in {}.{}",
-                    ctx.module_name, ctx.item_name
-                )))
+                .ok_or_else(|| {
+                    LowerError::from(format!(
+                        "cannot lower expression in {}.{}",
+                        ctx.module_name, ctx.item_name
+                    ))
+                })
             }
         }
         // C24: List literal — try literal path first, then structural.
@@ -10264,10 +10314,12 @@ fn lower_expr(
                     output_name,
                     disambiguator,
                 )
-                .ok_or_else(|| LowerError::from(format!(
-                    "cannot lower expression in {}.{}",
-                    ctx.module_name, ctx.item_name
-                )))
+                .ok_or_else(|| {
+                    LowerError::from(format!(
+                        "cannot lower expression in {}.{}",
+                        ctx.module_name, ctx.item_name
+                    ))
+                })
             }
         }
         // C24-P1: Direct BinOp → BinaryOp structural node.
@@ -10304,10 +10356,12 @@ fn lower_expr(
                     output_name,
                     disambiguator,
                 )
-                .ok_or_else(|| LowerError::from(format!(
-                    "cannot lower expression in {}.{}",
-                    ctx.module_name, ctx.item_name
-                ))),
+                .ok_or_else(|| {
+                    LowerError::from(format!(
+                        "cannot lower expression in {}.{}",
+                        ctx.module_name, ctx.item_name
+                    ))
+                }),
                 _ => Err(LowerError::from(format!(
                     "cannot resolve operand in {}.{}",
                     ctx.module_name, ctx.item_name
@@ -10324,10 +10378,12 @@ fn lower_expr(
             output_name,
             disambiguator,
         )
-        .ok_or_else(|| LowerError::from(format!(
-            "cannot lower expression in {}.{}",
-            ctx.module_name, ctx.item_name
-        ))),
+        .ok_or_else(|| {
+            LowerError::from(format!(
+                "cannot lower expression in {}.{}",
+                ctx.module_name, ctx.item_name
+            ))
+        }),
         // C24-P2: If/Else → Conditional structural node.
         Expr::If(cond, then_, else_) => synthesize_conditional(
             builder,
@@ -10339,10 +10395,12 @@ fn lower_expr(
             output_name,
             disambiguator,
         )
-        .ok_or_else(|| LowerError::from(format!(
-            "cannot lower expression in {}.{}",
-            ctx.module_name, ctx.item_name
-        ))),
+        .ok_or_else(|| {
+            LowerError::from(format!(
+                "cannot lower expression in {}.{}",
+                ctx.module_name, ctx.item_name
+            ))
+        }),
         // C24-P2: UnaryOp → UnaryOp structural node.
         Expr::UnaryOp(op, inner) => {
             let any_port = Port::scalar("result", "Any");
@@ -10365,10 +10423,12 @@ fn lower_expr(
                     output_name,
                     disambiguator,
                 )
-                .ok_or_else(|| LowerError::from(format!(
-                    "cannot lower expression in {}.{}",
-                    ctx.module_name, ctx.item_name
-                ))),
+                .ok_or_else(|| {
+                    LowerError::from(format!(
+                        "cannot lower expression in {}.{}",
+                        ctx.module_name, ctx.item_name
+                    ))
+                }),
                 Err(_) => Err(LowerError::from(format!(
                     "cannot resolve operand in {}.{}",
                     ctx.module_name, ctx.item_name
@@ -10386,10 +10446,12 @@ fn lower_expr(
                 output_name,
                 disambiguator,
             )
-            .ok_or_else(|| LowerError::from(format!(
-                "cannot lower expression in {}.{}",
-                ctx.module_name, ctx.item_name
-            )))
+            .ok_or_else(|| {
+                LowerError::from(format!(
+                    "cannot lower expression in {}.{}",
+                    ctx.module_name, ctx.item_name
+                ))
+            })
         }
         Expr::Record(_, fields) => synthesize_record_construct(
             builder,
@@ -10399,52 +10461,40 @@ fn lower_expr(
             output_name,
             disambiguator,
         )
-        .ok_or_else(|| LowerError::from(format!(
-            "cannot lower expression in {}.{}",
+        .ok_or_else(|| {
+            LowerError::from(format!(
+                "cannot lower expression in {}.{}",
+                ctx.module_name, ctx.item_name
+            ))
+        }),
+        Expr::Pipe(..) | Expr::PipeCall(..) => Err(LowerError::from(format!(
+            "unsupported expression in {}.{}: pipe/for not yet structuralized",
             ctx.module_name, ctx.item_name
         ))),
-        Expr::Pipe(..) | Expr::PipeCall(..) => {
-            Err(LowerError::from(format!(
-                "unsupported expression in {}.{}: pipe/for not yet structuralized",
-                ctx.module_name, ctx.item_name
-            )))
-        }
-        Expr::For(..) => {
-            Err(LowerError::from(format!(
-                "unsupported expression in {}.{}: pipe/for not yet structuralized",
-                ctx.module_name, ctx.item_name
-            )))
-        }
-        Expr::ServiceCall(_path, _args) => {
-            Err(LowerError::from(format!(
-                "unsupported expression in {}.{}: ServiceCall",
-                ctx.module_name, ctx.item_name
-            )))
-        }
-        Expr::Lambda(_params, _body) => {
-            Err(LowerError::from(format!(
-                "unsupported expression in {}.{}: Lambda",
-                ctx.module_name, ctx.item_name
-            )))
-        }
-        Expr::Guarded(_inner, _guard) => {
-            Err(LowerError::from(format!(
-                "unsupported expression in {}.{}: Guarded",
-                ctx.module_name, ctx.item_name
-            )))
-        }
-        Expr::After(_inner, _deps) => {
-            Err(LowerError::from(format!(
-                "unsupported expression in {}.{}: After",
-                ctx.module_name, ctx.item_name
-            )))
-        }
-        Expr::Return(_fields) => {
-            Err(LowerError::from(format!(
-                "unsupported expression in {}.{}: Return",
-                ctx.module_name, ctx.item_name
-            )))
-        }
+        Expr::For(..) => Err(LowerError::from(format!(
+            "unsupported expression in {}.{}: pipe/for not yet structuralized",
+            ctx.module_name, ctx.item_name
+        ))),
+        Expr::ServiceCall(_path, _args) => Err(LowerError::from(format!(
+            "unsupported expression in {}.{}: ServiceCall",
+            ctx.module_name, ctx.item_name
+        ))),
+        Expr::Lambda(_params, _body) => Err(LowerError::from(format!(
+            "unsupported expression in {}.{}: Lambda",
+            ctx.module_name, ctx.item_name
+        ))),
+        Expr::Guarded(_inner, _guard) => Err(LowerError::from(format!(
+            "unsupported expression in {}.{}: Guarded",
+            ctx.module_name, ctx.item_name
+        ))),
+        Expr::After(_inner, _deps) => Err(LowerError::from(format!(
+            "unsupported expression in {}.{}: After",
+            ctx.module_name, ctx.item_name
+        ))),
+        Expr::Return(_fields) => Err(LowerError::from(format!(
+            "unsupported expression in {}.{}: Return",
+            ctx.module_name, ctx.item_name
+        ))),
     }
 }
 
@@ -10810,10 +10860,7 @@ fn synthesize_binary_op(
     let result_port_name = "result";
     let output_type = output_port.type_id.0.as_str();
 
-    let input_ports = vec![
-        Port::scalar("left", "Any"),
-        Port::scalar("right", "Any"),
-    ];
+    let input_ports = vec![Port::scalar("left", "Any"), Port::scalar("right", "Any")];
     let output_ports = vec![Port::scalar(result_port_name, output_type)];
 
     let node_id = format!(
@@ -10866,10 +10913,7 @@ fn wire_hoisted_callable_args(
         .collect();
 
     for (index, (arg_name, arg_expr)) in args.iter().enumerate() {
-        let Some(param_name) = arg_name
-            .clone()
-            .or_else(|| param_ports.get(index).cloned())
-        else {
+        let Some(param_name) = arg_name.clone().or_else(|| param_ports.get(index).cloned()) else {
             continue;
         };
         if builder.has_edge_to_port(endpoint.node_id.as_str(), param_name.as_str()) {
@@ -10883,7 +10927,8 @@ fn wire_hoisted_callable_args(
             &arg_port,
             &format!("{output_name}_{param_name}"),
             &format!("{disambiguator}_{param_name}_{index}"),
-        ).ok();
+        )
+        .ok();
         if let Some((src_node, src_port)) = source {
             builder.add_edge(
                 src_node.as_str(),
@@ -10929,7 +10974,10 @@ fn synthesize_callable_expr_value(
     output_name: &str,
     disambiguator: &str,
 ) -> Option<(String, String)> {
-    let endpoint = ctx.endpoints_by_name.get(call_name).and_then(|entry| entry.clone())?;
+    let endpoint = ctx
+        .endpoints_by_name
+        .get(call_name)
+        .and_then(|entry| entry.clone())?;
     wire_hoisted_callable_args(
         builder,
         ctx,
@@ -10981,10 +11029,137 @@ fn synthesize_callable_expr_value(
         },
     ));
     for field in &output_fields {
-        builder.add_edge(endpoint.node_id.as_str(), field.as_str(), &node_id, field.as_str());
+        builder.add_edge(
+            endpoint.node_id.as_str(),
+            field.as_str(),
+            &node_id,
+            field.as_str(),
+        );
     }
 
     Some((node_id, "result".to_string()))
+}
+
+fn helper_leaf_input_port(leaf: &ExprLeafRef) -> String {
+    match &leaf.source {
+        expr::LeafRef::Param {
+            name,
+            field: Some(field),
+            ..
+        } => format!("{name}__{field}"),
+        _ => leaf.input_port.clone(),
+    }
+}
+
+fn synthesize_expr_value_fallback(
+    builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
+    expr: &Expr,
+    output_port: &Port,
+    output_name: &str,
+    disambiguator: &str,
+) -> Option<(String, String)> {
+    let mut refs: Vec<ExprLeafRef> = Vec::new();
+    let mut seen = HashSet::new();
+    let mut has_local_refs = false;
+    collect_expr_leaf_refs(expr, ctx, &mut refs, &mut seen, &mut has_local_refs);
+    if has_local_refs {
+        return None;
+    }
+
+    let mut input_ports = Vec::new();
+    let mut seen_ports = HashSet::new();
+    for leaf in &refs {
+        let input_port = helper_leaf_input_port(leaf);
+        if !seen_ports.insert(input_port.clone()) {
+            continue;
+        }
+        let ty = match &leaf.source {
+            expr::LeafRef::Param {
+                ty, field: None, ..
+            } => ty.as_str(),
+            _ => "Any",
+        };
+        input_ports.push(Port::scalar(input_port.as_str(), ty));
+    }
+
+    let result_port_name = "result";
+    let output_ports = vec![Port::scalar(
+        result_port_name,
+        output_port.type_id.0.as_str(),
+    )];
+    let node_id = format!(
+        "expr_value_{}",
+        sanitize_identifier(&format!(
+            "{}_{}_{}_{}",
+            ctx.module_name, ctx.item_name, output_name, disambiguator
+        ))
+    );
+    let fn_body = expr::lower_fn_body_with_mode(
+        &daglang_syntax::ast::FnBody {
+            stmts: vec![Stmt::Return(vec![("result".to_string(), expr.clone())])],
+        },
+        ctx.variant_names,
+        expr::ExprLowerMode::Remap,
+    );
+
+    builder.add_node(Node::opaque(
+        node_id.clone(),
+        input_ports,
+        output_ports,
+        LoweredOp::Callable {
+            module: ctx.module_name.to_string(),
+            kind: CallableKind::Fn,
+            name: format!("{}::expr_value::{}", ctx.item_name, output_name),
+            obligation: ObligationCategory::None,
+            service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
+            fn_body: Some(Box::new(fn_body)),
+        },
+    ));
+
+    let mut wired_ports = HashSet::new();
+    for leaf in &refs {
+        let input_port = helper_leaf_input_port(leaf);
+        if !wired_ports.insert(input_port.clone()) {
+            continue;
+        }
+        match &leaf.source {
+            expr::LeafRef::Param {
+                name,
+                field: Some(field),
+                ty,
+            } => {
+                let any_port = Port::scalar("result", "Any");
+                let (src_node, src_port) = synthesize_get_field(
+                    builder,
+                    ctx,
+                    name,
+                    ty,
+                    field,
+                    &any_port,
+                    &format!("{disambiguator}_{input_port}"),
+                )?;
+                builder.add_edge(&src_node, &src_port, &node_id, input_port.as_str());
+            }
+            expr::LeafRef::Param {
+                name,
+                field: None,
+                ty,
+            } => {
+                let param_source_id =
+                    ensure_param_source_node(builder, ctx.module_name, ctx.item_name, name, ty);
+                builder.add_edge(&param_source_id, name, &node_id, input_port.as_str());
+            }
+            expr::LeafRef::Callable { endpoint, port }
+            | expr::LeafRef::Service { endpoint, port } => {
+                builder.add_edge(endpoint, port, &node_id, input_port.as_str());
+            }
+        }
+    }
+
+    Some((node_id, result_port_name.to_string()))
 }
 
 fn lower_match_arm_for_dispatch(
@@ -11003,12 +11178,19 @@ fn lower_match_arm_for_dispatch(
             call_name.as_str(),
             args,
             output_name,
-            &format!("{disambiguator}_arm_{arm_index}_{}", sanitize_identifier(call_name)),
+            &format!(
+                "{disambiguator}_arm_{arm_index}_{}",
+                sanitize_identifier(call_name)
+            ),
         ) {
             let mut hoisted_arm = arm.clone();
             hoisted_arm.body = Expr::Ident(input_port.clone());
             return (
-                expr::lower_match_arm(&hoisted_arm, ctx.variant_names, expr::ExprLowerMode::Standard),
+                expr::lower_match_arm(
+                    &hoisted_arm,
+                    ctx.variant_names,
+                    expr::ExprLowerMode::Standard,
+                ),
                 Some((input_port, src_node, src_port)),
             );
         }
@@ -11095,7 +11277,8 @@ fn synthesize_match_dispatch(
         &any_port,
         &format!("{output_name}_scrutinee"),
         &format!("{disambiguator}_scrutinee"),
-    ).ok();
+    )
+    .ok();
     let (scrutinee_node, scrutinee_port) = scrutinee_source?;
 
     let node_id = format!(
@@ -11148,7 +11331,12 @@ fn synthesize_match_dispatch(
     }
     for (input_port, src_node, src_port) in &hoisted_arm_sources {
         if wired_ports.insert(input_port.clone()) {
-            builder.add_edge(src_node.as_str(), src_port.as_str(), &node_id, input_port.as_str());
+            builder.add_edge(
+                src_node.as_str(),
+                src_port.as_str(),
+                &node_id,
+                input_port.as_str(),
+            );
         }
     }
 
@@ -11205,7 +11393,8 @@ fn synthesize_conditional(
         &bool_port,
         &format!("{output_name}_cond"),
         &format!("{disambiguator}_cond"),
-    ).ok();
+    )
+    .ok();
     let (cond_node, cond_port) = cond_source?;
 
     // Wire then branch.
@@ -11216,7 +11405,8 @@ fn synthesize_conditional(
         output_port,
         &format!("{output_name}_then"),
         &format!("{disambiguator}_then"),
-    ).ok()?;
+    )
+    .ok()?;
 
     let else_source = if let Some(else_expr) = else_ {
         let source = lower_expr(
@@ -11226,7 +11416,8 @@ fn synthesize_conditional(
             output_port,
             &format!("{output_name}_else"),
             &format!("{disambiguator}_else"),
-        ).ok()?;
+        )
+        .ok()?;
         Some(source)
     } else {
         None
@@ -11345,7 +11536,8 @@ fn synthesize_variant_construct(
             &any_port,
             &format!("{output_name}_{field_name}"),
             &format!("{disambiguator}_{field_name}"),
-        ).ok();
+        )
+        .ok();
         if let Some((src_node, src_port)) = source {
             field_sources.push((field_name.clone(), src_node, src_port));
         } else {
@@ -11420,7 +11612,8 @@ fn synthesize_record_construct(
             &any_port,
             &format!("{output_name}_{field_name}"),
             &format!("{disambiguator}_{field_name}"),
-        ).ok();
+        )
+        .ok();
         if let Some((src_node, src_port)) = source {
             field_sources.push((field_name.clone(), src_node, src_port));
         } else {
@@ -11494,7 +11687,8 @@ fn synthesize_list_construct(
             &any_port,
             &format!("{output_name}_{port_name}"),
             &format!("{disambiguator}_{port_name}"),
-        ).ok();
+        )
+        .ok();
         match source {
             Some((node, port)) => elem_sources.push((port_name, node, port)),
             None => {
@@ -11572,7 +11766,8 @@ fn synthesize_string_interpolate(
                     &any_port,
                     &format!("{output_name}_{port_name}"),
                     &format!("{disambiguator}_{port_name}"),
-                ).ok();
+                )
+                .ok();
                 match source {
                     Some((node, port)) => {
                         input_sources.push((port_name.clone(), node, port));

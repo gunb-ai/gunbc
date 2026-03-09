@@ -387,9 +387,7 @@ pub fn parse(argv: &[String], schema: &[CliParam]) -> Result<ParseResult, ParseE
             }
         } else if param.is_repeatable() {
             let items = lists.remove(&idx).unwrap_or_default();
-            if !items.is_empty() {
-                values.insert(param.port_name.clone(), Value::str_list(items));
-            }
+            values.insert(param.port_name.clone(), Value::str_list(items));
         } else {
             match scalars.get(&idx) {
                 Some(Some(val)) => {
@@ -495,7 +493,7 @@ mod tests {
             vec![CliParam::new("extensions", ParamType::Str)
                 .with_cardinality(Cardinality::ZERO_OR_MORE)];
         let result = parse(&argv(&["prog"]), &schema).unwrap();
-        assert!(!result.values.contains_key("extensions"));
+        assert_eq!(result.values["extensions"], Value::List(Vec::new()));
     }
 
     #[test]

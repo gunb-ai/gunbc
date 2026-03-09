@@ -29,7 +29,9 @@ pub type PlatformProperties = gunbc_ir::StructuralProperties;
 ///
 /// Delegates to the canonical `gunbc_ir::derive_structural_properties`, which
 /// recursively walks SubDag children and inherits missing properties.
-pub fn derive_platform_properties(dag: &gunbc_ir::dag::Dag<gunbc_ir::type_op::TypeOp>) -> PlatformProperties {
+pub fn derive_platform_properties(
+    dag: &gunbc_ir::dag::Dag<gunbc_ir::type_op::TypeOp>,
+) -> PlatformProperties {
     gunbc_ir::derive_structural_properties(dag)
 }
 
@@ -147,10 +149,6 @@ fn emit_platform_type(props: &gunbc_ir::StructuralProperties, backend: Backend) 
     model.opaque_fallback.to_string()
 }
 
-/// Emit a native type for an identity/named type.
-///
-/// Delegates to the language model's named entry resolver. Unknown names
-/// return the name verbatim with a warning.
 /// Resolve a type name structurally via the registry, then emit for the backend.
 ///
 /// The type name is resolved through the registry to a `Dag<TypeOp>`, which
@@ -227,11 +225,14 @@ mod tests {
     #[test]
     fn derive_platform_properties_from_predicates() {
         use gunbc_ir::type_op::Predicate;
-        let dag = gunbc_ir::type_lib::refined("Byte", vec![
-            Predicate::Width(8),
-            Predicate::Unsigned,
-            Predicate::Arithmetic,
-        ]);
+        let dag = gunbc_ir::type_lib::refined(
+            "Byte",
+            vec![
+                Predicate::Width(8),
+                Predicate::Unsigned,
+                Predicate::Arithmetic,
+            ],
+        );
         let props = derive_platform_properties(&dag);
         assert_eq!(props.width, Some(8));
         assert_eq!(props.signed, Some(false));
@@ -241,11 +242,14 @@ mod tests {
     #[test]
     fn emit_type_unsigned_8bit() {
         use gunbc_ir::type_op::Predicate;
-        let dag = gunbc_ir::type_lib::refined("Byte", vec![
-            Predicate::Width(8),
-            Predicate::Unsigned,
-            Predicate::Arithmetic,
-        ]);
+        let dag = gunbc_ir::type_lib::refined(
+            "Byte",
+            vec![
+                Predicate::Width(8),
+                Predicate::Unsigned,
+                Predicate::Arithmetic,
+            ],
+        );
         assert_eq!(emit_type(&dag, Backend::Rust), "u8");
         assert_eq!(emit_type(&dag, Backend::Go), "uint8");
         assert_eq!(emit_type(&dag, Backend::C), "uint8_t");
@@ -254,11 +258,14 @@ mod tests {
     #[test]
     fn emit_type_signed_64bit() {
         use gunbc_ir::type_op::Predicate;
-        let dag = gunbc_ir::type_lib::refined("Word64", vec![
-            Predicate::Width(64),
-            Predicate::Signed(None),
-            Predicate::Arithmetic,
-        ]);
+        let dag = gunbc_ir::type_lib::refined(
+            "Word64",
+            vec![
+                Predicate::Width(64),
+                Predicate::Signed(None),
+                Predicate::Arithmetic,
+            ],
+        );
         assert_eq!(emit_type(&dag, Backend::Rust), "i64");
         assert_eq!(emit_type(&dag, Backend::Go), "int64");
         assert_eq!(emit_type(&dag, Backend::C), "int64_t");
@@ -267,11 +274,14 @@ mod tests {
     #[test]
     fn emit_type_float64() {
         use gunbc_ir::type_op::Predicate;
-        let dag = gunbc_ir::type_lib::refined("Word64", vec![
-            Predicate::Width(64),
-            Predicate::Domain("ieee754_binary64".to_string()),
-            Predicate::Arithmetic,
-        ]);
+        let dag = gunbc_ir::type_lib::refined(
+            "Word64",
+            vec![
+                Predicate::Width(64),
+                Predicate::Domain("ieee754_binary64".to_string()),
+                Predicate::Arithmetic,
+            ],
+        );
         assert_eq!(emit_type(&dag, Backend::Rust), "f64");
         assert_eq!(emit_type(&dag, Backend::Go), "float64");
         assert_eq!(emit_type(&dag, Backend::C), "double");
@@ -299,15 +309,27 @@ mod tests {
         let mut registry = gunbc_ir::TypeRegistry::with_primitives();
         registry.register(
             "Int64",
-            gunbc_ir::type_lib::refined("Int", vec![
-                Predicate::Width(64),
-                Predicate::Signed(None),
-                Predicate::Arithmetic,
-            ]),
+            gunbc_ir::type_lib::refined(
+                "Int",
+                vec![
+                    Predicate::Width(64),
+                    Predicate::Signed(None),
+                    Predicate::Arithmetic,
+                ],
+            ),
         );
-        assert_eq!(resolve_and_emit("Int64", Some(&registry), Backend::Rust), "i64");
-        assert_eq!(resolve_and_emit("Int64", Some(&registry), Backend::Go), "int64");
-        assert_eq!(resolve_and_emit("Int64", Some(&registry), Backend::C), "int64_t");
+        assert_eq!(
+            resolve_and_emit("Int64", Some(&registry), Backend::Rust),
+            "i64"
+        );
+        assert_eq!(
+            resolve_and_emit("Int64", Some(&registry), Backend::Go),
+            "int64"
+        );
+        assert_eq!(
+            resolve_and_emit("Int64", Some(&registry), Backend::C),
+            "int64_t"
+        );
     }
 
     #[test]

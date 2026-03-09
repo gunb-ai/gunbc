@@ -897,7 +897,6 @@ pub enum SemanticCarrierKind {
     UnknownSemantic,
 }
 
-
 impl TypeId {
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
@@ -952,7 +951,6 @@ impl TypeId {
     pub fn domain(name: &str) -> Self {
         Self(name.into())
     }
-
 }
 
 /// Parse a parametric map type-id of the form `Map<K,V>`.
@@ -1014,12 +1012,38 @@ pub(crate) fn optional_inner_type_id(type_id: &str) -> Option<&str> {
 /// and DAG-based resolution before reaching here.
 pub(crate) fn semantic_carrier_kind_for_type_name(type_name: &str) -> SemanticCarrierKind {
     match type_name {
-        "String" | "Bool" | "Int" | "Float" | "Bytes" | "Unit" | "Json" | "Void" | "Any"
-        | "Error" | "NonEmptyString" | "NonEmptyStr" | "SecretName" | "Url" | "FilePath"
-        | "Path" | "Email" | "PositiveInt" | "NonNegativeInt" | "OidcAudience" | "WifAudience"
-        | "GcpProjectId" | "GcpSecretId" | "GcpSecretVersion" | "GcpServiceAccountEmail"
-        | "GcpSubjectToken" | "OidcSubjectToken" | "LanguageId" | "ProjectId"
-        | "ServiceAccountEmail" | "Char" | "Record" => SemanticCarrierKind::Structural,
+        "String"
+        | "Bool"
+        | "Int"
+        | "Float"
+        | "Bytes"
+        | "Unit"
+        | "Json"
+        | "Void"
+        | "Any"
+        | "Error"
+        | "NonEmptyString"
+        | "NonEmptyStr"
+        | "SecretName"
+        | "Url"
+        | "FilePath"
+        | "Path"
+        | "Email"
+        | "PositiveInt"
+        | "NonNegativeInt"
+        | "OidcAudience"
+        | "WifAudience"
+        | "GcpProjectId"
+        | "GcpSecretId"
+        | "GcpSecretVersion"
+        | "GcpServiceAccountEmail"
+        | "GcpSubjectToken"
+        | "OidcSubjectToken"
+        | "LanguageId"
+        | "ProjectId"
+        | "ServiceAccountEmail"
+        | "Char"
+        | "Record" => SemanticCarrierKind::Structural,
         "TransportRequest" | "FileRequest" | "ShellRequest" | "RestRequest" | "HttpRequest"
         | "TcpRequest" => SemanticCarrierKind::TransportRequest,
         "TransportResponse" | "FileResponse" | "ShellResponse" | "RestResponse"

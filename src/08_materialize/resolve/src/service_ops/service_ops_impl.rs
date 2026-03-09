@@ -1477,9 +1477,8 @@ impl FilesystemExecuteOp {
     }
 
     fn read_text(path: &str) -> Result<HashMap<String, Value>, ExecError> {
-        let content = std::fs::read_to_string(path).map_err(|e| {
-            ExecError::new(format!("Filesystem.read failed for '{path}': {e}"))
-        })?;
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| ExecError::new(format!("Filesystem.read failed for '{path}': {e}")))?;
         let mut out = HashMap::new();
         out.insert("content".to_string(), Value::Str(content));
         Ok(out)

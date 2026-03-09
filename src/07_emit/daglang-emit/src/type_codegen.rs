@@ -75,7 +75,10 @@ pub fn type_expr_to_rust_with_registry(
             }
         }
         TypeExpr::Optional(inner) => {
-            format!("Option<{}>", type_expr_to_rust_with_registry(inner, registry))
+            format!(
+                "Option<{}>",
+                type_expr_to_rust_with_registry(inner, registry)
+            )
         }
         TypeExpr::Refined(inner, refinements) => {
             let mut props = gunbc_ir::StructuralProperties::default();
@@ -1290,9 +1293,7 @@ mod tests {
                 },
             ],
             return_type: TypeExpr::Named("String".into()),
-            body: FnBody {
-                stmts: vec![],
-            },
+            body: FnBody { stmts: vec![] },
         };
         let ctx = fn_codegen::CompileContext::new();
         let items = fndef_to_code_ir(&fd, &ctx);

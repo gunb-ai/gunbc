@@ -177,7 +177,6 @@ pub struct CoercionError {
     pub reason: String,
 }
 
-
 impl std::fmt::Display for CoercionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -268,7 +267,6 @@ pub fn validate_coercions_with_registry<T>(
 
     CoercionReport { coercions, errors }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -491,5 +489,4 @@ mod tests {
         assert!(display.contains("merge.outputs"));
         assert!(display.contains("WrapScalar"));
     }
-
 }

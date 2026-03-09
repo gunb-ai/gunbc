@@ -4,8 +4,8 @@
 // chains, token lifetimes.
 //
 // Consumers:
-//   std/patterns.dag               — credential_chain pattern
-//   std/patterns.dag               — credential_chain pattern
+//   gunbc/auth/patterns.dag        — credential_chain pattern
+//   gunbc/auth/patterns.dag        — credential_chain pattern
 
 module extdeps.cloud.gcp.iam
 

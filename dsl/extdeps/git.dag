@@ -4,7 +4,7 @@
 // Facts about Git's data model, not how we invoke it (that's services/git.dag).
 //
 // Consumers:
-//   tools/gist.dag                    — branch name
+//   gunbc/tools/gist.dag           — branch name
 //   shared/gist_modes.dag             — git operations
 //   extdeps/github/pull_requests.dag — PR branch refs
 //   tools/build.dag                — branch detection
@@ -236,15 +236,14 @@ service git.Core {
     }
   }
 
-  operation RevListBase {
-    input { since: String }
+  operation RevListBefore {
+    input { before: String }
     output { base_ref: CommitSha }
     readonly
-    transport shell { argv: ["git", "merge-base", "HEAD", "\{since\}"] }
+    transport shell { argv: ["git", "rev-list", "-1", "--before=\{before\}", "HEAD"] }
     exit {
       0 => Unit
-      1 => String "No common ancestor found"
-      128 => String "Invalid ref or not a git repository"
+      128 => String "Invalid date expression or not a git repository"
     }
   }
 

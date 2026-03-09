@@ -127,10 +127,7 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
     for node in &dag.nodes {
         if let NodeBody::Opaque(TypeOp::Coproduct(variants)) = &node.body {
             // Extract the type name from the node's output port type_id.
-            let type_name = node
-                .outputs
-                .first()
-                .map(|p| p.type_id.0.clone());
+            let type_name = node.outputs.first().map(|p| p.type_id.0.clone());
             let shaped_variants: Vec<(String, TypeShape)> = variants
                 .iter()
                 .map(|name| {
@@ -149,10 +146,7 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
     for node in &dag.nodes {
         if let NodeBody::Opaque(TypeOp::Product(fields)) = &node.body {
             // Extract the type name from the node's output port type_id.
-            let type_name = node
-                .outputs
-                .first()
-                .map(|p| p.type_id.0.clone());
+            let type_name = node.outputs.first().map(|p| p.type_id.0.clone());
             let shaped_fields: Vec<(String, TypeShape)> = fields
                 .iter()
                 .map(|name| {
@@ -231,7 +225,10 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
     }
 
     // Fallback: completely unknown.
-    eprintln!("warning: unknown type shape for dag with {} node(s), using Opaque", dag.nodes.len());
+    eprintln!(
+        "warning: unknown type shape for dag with {} node(s), using Opaque",
+        dag.nodes.len()
+    );
     TypeShape::Opaque("Unknown".to_string())
 }
 
@@ -651,10 +648,8 @@ mod tests {
 
     #[test]
     fn shape_of_platform_uint8_from_predicates() {
-        let dag = build_predicate_platform_dag(
-            "UInt8",
-            vec![Predicate::Width(8), Predicate::Unsigned],
-        );
+        let dag =
+            build_predicate_platform_dag("UInt8", vec![Predicate::Width(8), Predicate::Unsigned]);
         let shape = type_shape(&dag);
         match &shape {
             TypeShape::Platform(props) => {
@@ -757,10 +752,7 @@ mod tests {
         };
         let product_dag = type_lib::product_resolved(
             "CliResult",
-            vec![
-                ("stdout", type_lib::string()),
-                ("exit_code", int64_dag),
-            ],
+            vec![("stdout", type_lib::string()), ("exit_code", int64_dag)],
         );
         let shape = type_shape(&product_dag);
         match &shape {

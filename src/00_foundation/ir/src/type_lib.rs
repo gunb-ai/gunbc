@@ -123,10 +123,8 @@ pub fn branded(name: &str, inner_type: Dag<TypeOp>) -> Dag<TypeOp> {
 /// Uses string-based type names, wrapping each in an `identity()` DAG.
 /// Prefer `product_resolved` when resolved type DAGs are available.
 pub fn product(name: &str, fields: Vec<(&str, &str)>) -> Dag<TypeOp> {
-    let resolved: Vec<(&str, Dag<TypeOp>)> = fields
-        .into_iter()
-        .map(|(n, t)| (n, identity(t)))
-        .collect();
+    let resolved: Vec<(&str, Dag<TypeOp>)> =
+        fields.into_iter().map(|(n, t)| (n, identity(t))).collect();
     product_resolved(name, resolved)
 }
 
@@ -679,13 +677,18 @@ mod tests {
         // (which recurses into SubDags) should find Width(32)
         let props = crate::contract::predicates(&float32);
         // The new predicates are at the top level
-        assert!(props.iter().any(|p| matches!(p, Predicate::Domain(d) if d == "ieee754_binary32")));
+        assert!(props
+            .iter()
+            .any(|p| matches!(p, Predicate::Domain(d) if d == "ieee754_binary32")));
         assert!(props.iter().any(|p| matches!(p, Predicate::Arithmetic)));
         // Width(32) is inside the SubDag — not visible via flat predicate scan,
         // but derive_platform_properties recurses into SubDags.
         // Verify the SubDag is present.
         use crate::node::NodeBody;
-        let has_subdag = float32.nodes.iter().any(|n| matches!(&n.body, NodeBody::SubDag(_, _)));
+        let has_subdag = float32
+            .nodes
+            .iter()
+            .any(|n| matches!(&n.body, NodeBody::SubDag(_, _)));
         assert!(has_subdag, "base DAG should be embedded as SubDag");
     }
 
@@ -695,7 +698,10 @@ mod tests {
         let alias = refined_with_base("Int", base.clone(), vec![]);
         // With empty predicates, just returns the base as a SubDag
         use crate::node::NodeBody;
-        let has_subdag = alias.nodes.iter().any(|n| matches!(&n.body, NodeBody::SubDag(_, _)));
+        let has_subdag = alias
+            .nodes
+            .iter()
+            .any(|n| matches!(&n.body, NodeBody::SubDag(_, _)));
         assert!(has_subdag);
     }
 
@@ -706,11 +712,14 @@ mod tests {
 
         use crate::node::NodeBody;
         use crate::type_op::TypeOp;
-        let has_brand = branded_type.nodes.iter().any(|n| {
-            matches!(&n.body, NodeBody::Opaque(TypeOp::Brand(name)) if name == "PathSegment")
-        });
+        let has_brand = branded_type.nodes.iter().any(
+            |n| matches!(&n.body, NodeBody::Opaque(TypeOp::Brand(name)) if name == "PathSegment"),
+        );
         assert!(has_brand, "branded type should have Brand node");
-        let has_subdag = branded_type.nodes.iter().any(|n| matches!(&n.body, NodeBody::SubDag(_, _)));
+        let has_subdag = branded_type
+            .nodes
+            .iter()
+            .any(|n| matches!(&n.body, NodeBody::SubDag(_, _)));
         assert!(has_subdag, "branded type should embed inner as SubDag");
     }
 

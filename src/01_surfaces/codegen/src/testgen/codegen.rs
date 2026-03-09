@@ -43,9 +43,9 @@ use gunbc_ir::language::NamingCase;
 use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
 use gunbc_ir::{
-    contract, parse_map_type_id, value_compatible_with_type_id,
-    value_kind_name, Cardinality, Dag, NodeId, NodeKind, Os, PortName, SecretString,
-    SeedPlaceholderPolicy, SemanticCarrierClass, TypeRegistry, Value, ValueExpr,
+    contract, parse_map_type_id, value_compatible_with_type_id, value_kind_name, Cardinality, Dag,
+    NodeId, NodeKind, Os, PortName, SecretString, SeedPlaceholderPolicy, SemanticCarrierClass,
+    TypeRegistry, Value, ValueExpr,
 };
 use gunbc_test::{FailureVariant, FermiCost, MockSpec, OutputMatcher, TestClass};
 use serde_json::Value as JsonValue;
@@ -7294,7 +7294,10 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
         ty if parse_map_type_id(ty).is_some() => {
             let (key_type, value_type) = parse_map_type_id(ty).expect("already checked");
             if key_type != "String" {
-                panic!("unsupported map key type '{}'; only String keys are supported", key_type);
+                panic!(
+                    "unsupported map key type '{}'; only String keys are supported",
+                    key_type
+                );
             }
             ValueExpr::Map(vec![(
                 "mock_key".to_string(),
@@ -7314,10 +7317,19 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
         "Unknown" => ValueExpr::Json(JsonValue::Null),
         "ToolId" => ValueExpr::Str("clippy".to_string()),
         "ToolHandle" => ValueExpr::Map(vec![
-            ("type".to_string(), ValueExpr::Str("tool_handle".to_string())),
+            (
+                "type".to_string(),
+                ValueExpr::Str("tool_handle".to_string()),
+            ),
             ("id".to_string(), ValueExpr::Str("clippy".to_string())),
-            ("path".to_string(), ValueExpr::Str("/mock/clippy".to_string())),
-            ("cap".to_string(), ValueExpr::Secret("capability".to_string())),
+            (
+                "path".to_string(),
+                ValueExpr::Str("/mock/clippy".to_string()),
+            ),
+            (
+                "cap".to_string(),
+                ValueExpr::Secret("capability".to_string()),
+            ),
         ]),
         "CliResult" => ValueExpr::Map(vec![
             ("success".to_string(), ValueExpr::Bool(true)),
@@ -7327,21 +7339,45 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
         ]),
         "Timestamp" => ValueExpr::Int(0),
         "Credential" => ValueExpr::Map(vec![
-            ("token".to_string(), ValueExpr::Secret("mock-token".to_string())),
-            ("source_type".to_string(), ValueExpr::Str("static".to_string())),
+            (
+                "token".to_string(),
+                ValueExpr::Secret("mock-token".to_string()),
+            ),
+            (
+                "source_type".to_string(),
+                ValueExpr::Str("static".to_string()),
+            ),
             ("scheme".to_string(), ValueExpr::Str("bearer".to_string())),
-            ("cap".to_string(), ValueExpr::Secret("capability".to_string())),
+            (
+                "cap".to_string(),
+                ValueExpr::Secret("capability".to_string()),
+            ),
         ]),
         "FilesystemHandle" => ValueExpr::Map(vec![
-            ("type".to_string(), ValueExpr::Str("filesystem_handle".to_string())),
+            (
+                "type".to_string(),
+                ValueExpr::Str("filesystem_handle".to_string()),
+            ),
             ("scope".to_string(), ValueExpr::Str("read".to_string())),
-            ("targets".to_string(), ValueExpr::List(vec![ValueExpr::Str("ext4".to_string())])),
+            (
+                "targets".to_string(),
+                ValueExpr::List(vec![ValueExpr::Str("ext4".to_string())]),
+            ),
             ("replacement".to_string(), ValueExpr::Str("-".to_string())),
-            ("cap".to_string(), ValueExpr::Secret("capability".to_string())),
+            (
+                "cap".to_string(),
+                ValueExpr::Secret("capability".to_string()),
+            ),
         ]),
         "NetworkHandle" => ValueExpr::Map(vec![
-            ("type".to_string(), ValueExpr::Str("network_handle".to_string())),
-            ("cap".to_string(), ValueExpr::Secret("capability".to_string())),
+            (
+                "type".to_string(),
+                ValueExpr::Str("network_handle".to_string()),
+            ),
+            (
+                "cap".to_string(),
+                ValueExpr::Secret("capability".to_string()),
+            ),
         ]),
         "TransportRequest" => ValueExpr::Struct {
             name: "TransportRequest::Shell".to_string(),

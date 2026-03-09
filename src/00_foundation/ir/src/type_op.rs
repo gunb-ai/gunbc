@@ -42,7 +42,6 @@ pub enum TypeOp {
     /// If validation fails, the type DAG produces an error.
     Validate(Predicate),
 
-
     /// Transformation — coerces value from one type to another.
     /// Used for type conversions (e.g., String → Int parsing).
     /// Carries (from_type_name, to_type_name).
@@ -93,7 +92,6 @@ pub enum SystemModelMeta {
         type_id: String,
     },
 }
-
 
 /// Content encoding lattice for file content classification.
 ///
@@ -335,12 +333,10 @@ impl Predicate {
 
             // Unsigned is atomic — exact match handled above
             // Arithmetic is atomic — exact match handled above
-
             _ => false,
         }
     }
 }
-
 
 /// Wrapper kinds for container types.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -385,16 +381,10 @@ mod tests {
 
     #[test]
     fn test_type_op_product_coproduct_brand() {
-        let product = TypeOp::Product(vec![
-            "path".to_string(),
-            "encoding".to_string(),
-        ]);
+        let product = TypeOp::Product(vec!["path".to_string(), "encoding".to_string()]);
         assert!(matches!(product, TypeOp::Product(ref fields) if fields.len() == 2));
 
-        let coproduct = TypeOp::Coproduct(vec![
-            "UTF8".to_string(),
-            "Binary".to_string(),
-        ]);
+        let coproduct = TypeOp::Coproduct(vec!["UTF8".to_string(), "Binary".to_string()]);
         assert!(matches!(coproduct, TypeOp::Coproduct(ref variants) if variants.len() == 2));
 
         let brand = TypeOp::Brand("TextFilePath".to_string());
@@ -703,11 +693,10 @@ mod tests {
                 .collect();
 
         // All Rust ContentEncoding variants:
-        let rust_variants: std::collections::BTreeSet<&str> = [
-            "Unknown", "Text", "UTF8", "ASCII", "Latin1", "Binary",
-        ]
-        .into_iter()
-        .collect();
+        let rust_variants: std::collections::BTreeSet<&str> =
+            ["Unknown", "Text", "UTF8", "ASCII", "Latin1", "Binary"]
+                .into_iter()
+                .collect();
 
         assert_eq!(
             dsl_variants, rust_variants,

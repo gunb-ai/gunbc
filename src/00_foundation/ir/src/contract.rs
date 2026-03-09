@@ -1672,7 +1672,6 @@ impl ProtocolStack {
     }
 }
 
-
 // ============================================================================
 // M21: Structural primitives for codegen — CodegenTypeShape + CodegenPlatformRepr
 // ============================================================================

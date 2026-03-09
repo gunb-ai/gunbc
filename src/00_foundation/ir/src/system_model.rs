@@ -688,7 +688,9 @@ fn behavior_properties_from_type_dag(
     for node in &dag.nodes {
         if let crate::node::NodeBody::Opaque(op) = &node.body {
             let marker = match op {
-                TypeOp::Validate(crate::type_op::Predicate::Meta(crate::SystemModelMeta::Property(raw))) => Some(raw.as_str()),
+                TypeOp::Validate(crate::type_op::Predicate::Meta(
+                    crate::SystemModelMeta::Property(raw),
+                )) => Some(raw.as_str()),
                 _ => None,
             };
             if let Some(raw) = marker {
@@ -1142,17 +1144,23 @@ fn behavior_contract_shape(
     for node in &dag.nodes {
         if let crate::node::NodeBody::Opaque(op) = &node.body {
             match op {
-                TypeOp::Validate(crate::type_op::Predicate::Meta(crate::SystemModelMeta::Property(raw))) => {
+                TypeOp::Validate(crate::type_op::Predicate::Meta(
+                    crate::SystemModelMeta::Property(raw),
+                )) => {
                     properties.push(raw.to_string());
                 }
-                TypeOp::Validate(crate::type_op::Predicate::Meta(crate::SystemModelMeta::InputContract {
-                    name,
-                    type_id,
-                    required,
-                })) => {
+                TypeOp::Validate(crate::type_op::Predicate::Meta(
+                    crate::SystemModelMeta::InputContract {
+                        name,
+                        type_id,
+                        required,
+                    },
+                )) => {
                     inputs.push((name.clone(), type_id.clone(), *required));
                 }
-                TypeOp::Validate(crate::type_op::Predicate::Meta(crate::SystemModelMeta::OutputContract { name, type_id })) => {
+                TypeOp::Validate(crate::type_op::Predicate::Meta(
+                    crate::SystemModelMeta::OutputContract { name, type_id },
+                )) => {
                     outputs.push((name.clone(), type_id.clone()));
                 }
                 TypeOp::Wrap(WrapperKind::Optional) => {
@@ -1659,7 +1667,14 @@ mod tests {
         let non_meta_nodes: Vec<_> = dag
             .nodes
             .iter()
-            .filter(|n| !matches!(&n.body, crate::node::NodeBody::Opaque(TypeOp::Validate(crate::type_op::Predicate::Meta(_)))))
+            .filter(|n| {
+                !matches!(
+                    &n.body,
+                    crate::node::NodeBody::Opaque(TypeOp::Validate(
+                        crate::type_op::Predicate::Meta(_)
+                    ))
+                )
+            })
             .collect();
 
         // Must have at least the two Identity bookends.

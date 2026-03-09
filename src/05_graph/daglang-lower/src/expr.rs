@@ -551,9 +551,7 @@ mod tests {
 
     #[test]
     fn lower_empty_fn_body() {
-        let body = ast::FnBody {
-            stmts: vec![],
-        };
+        let body = ast::FnBody { stmts: vec![] };
         let lowered = lower_fn_body(&body, &HashSet::new());
         assert!(lowered.stmts.is_empty());
     }
