@@ -7696,6 +7696,12 @@ fn add_service_call_edges(
     // a cloned triplet (_c1, _c2, …) instead of wiring duplicate scalar
     // edges to the original.
     let mut endpoint_use_count: HashMap<String, usize> = HashMap::new();
+    // Track fn node usage across ALL modules and callables so that the
+    // second caller to reference the same fn item gets a cloned copy.
+    // This mirrors the transport triplet cloning pattern and prevents
+    // shared fn nodes from receiving inputs from the wrong caller's
+    // context after entrypoint slicing.
+    let mut fn_node_use_count: HashMap<String, usize> = HashMap::new();
     for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         let source_file = module.path.display().to_string();
@@ -7726,12 +7732,93 @@ fn add_service_call_edges(
                 .iter()
                 .map(|param| (param.name.clone(), type_expr_to_string(&param.ty)))
                 .collect::<HashMap<_, _>>();
-            let bound_callable_sources = collect_bound_callable_sources(
+            let mut bound_callable_sources = collect_bound_callable_sources(
                 module_name.as_str(),
                 stmts,
                 wctx.endpoints_by_full,
                 wctx.endpoints_by_name,
             );
+            // Clone fn nodes that were already wired by a previous caller.
+            // Without cloning, shared fn nodes receive inputs from the first
+            // caller only (has_edge_to_port guard in wire_fn_call_arguments),
+            // and entrypoint slicing then pulls in the wrong caller's
+            // transport nodes via backward reachability through the fn node.
+            let mut fn_name_overrides: HashMap<String, LoweredEndpoint> = HashMap::new();
+            for stmt in stmts {
+                let (binding, fn_name) = match stmt {
+                    Stmt::Let(b, expr) | Stmt::Assign(b, expr) => {
+                        match unwrap_guarded_expr(expr) {
+                            Expr::Call(name, _) => (b.as_str(), name.as_str()),
+                            _ => continue,
+                        }
+                    }
+                    Stmt::Node(node_stmt) => {
+                        match unwrap_guarded_expr(&node_stmt.expr) {
+                            Expr::Call(name, _) => (node_stmt.name.as_str(), name.as_str()),
+                            _ => continue,
+                        }
+                    }
+                    _ => continue,
+                };
+                let Some(endpoint) = bound_callable_sources.get(binding) else {
+                    continue;
+                };
+                let count = fn_node_use_count
+                    .entry(endpoint.node_id.clone())
+                    .or_insert(0);
+                *count += 1;
+                if *count <= 1 {
+                    continue;
+                }
+                // Only clone fn_body nodes (fn items). Func items use
+                // passthrough wiring (__out: ports) which doesn't carry
+                // over to clones — cloning them would produce nodes that
+                // fail with "missing required declared output passthrough".
+                let Some(original_node) = builder
+                    .dag
+                    .nodes
+                    .iter()
+                    .find(|n| n.id.0 == endpoint.node_id)
+                    .cloned()
+                else {
+                    continue;
+                };
+                let has_fn_body = matches!(
+                    &original_node.body,
+                    gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable {
+                        fn_body: Some(_),
+                        ..
+                    })
+                );
+                if !has_fn_body {
+                    continue;
+                }
+                let clone_id = format!("{}_fc{}", endpoint.node_id, *count - 1);
+                let mut cloned_node = original_node;
+                cloned_node.id = clone_id.clone().into();
+                builder.add_node(cloned_node);
+                let cloned_ep = LoweredEndpoint {
+                    node_id: clone_id,
+                    primary_output: endpoint.primary_output.clone(),
+                };
+                fn_name_overrides.insert(fn_name.to_string(), cloned_ep.clone());
+                bound_callable_sources.insert(binding.to_string(), cloned_ep);
+            }
+            // Build per-callable endpoints_by_name with overrides if any
+            // fn nodes were cloned, so wire_fn_call_arguments and service
+            // call arg wiring resolve to the correct per-caller clones.
+            let effective_endpoints_by_name_owned;
+            let endpoints_for_ctx: &HashMap<String, Option<LoweredEndpoint>> =
+                if fn_name_overrides.is_empty() {
+                    wctx.endpoints_by_name
+                } else {
+                    let mut m = wctx.endpoints_by_name.clone();
+                    for (name, ep) in fn_name_overrides {
+                        m.insert(name, Some(ep));
+                    }
+                    effective_endpoints_by_name_owned = m;
+                    &effective_endpoints_by_name_owned
+                };
             let caller = format!("{module_name}::{item_name}");
             let mut bound_service_sources = collect_bound_service_sources(
                 caller.as_str(),
@@ -7832,7 +7919,7 @@ fn add_service_call_edges(
                     item_name,
                     item_span: item.span,
                     param_types: &param_types,
-                    endpoints_by_name: wctx.endpoints_by_name,
+                    endpoints_by_name: endpoints_for_ctx,
                     data_values: wctx.data_values,
                     service_registry: wctx.service_registry,
                     bound_callable_sources: &bound_callable_sources,
@@ -7990,7 +8077,7 @@ fn add_service_call_edges(
                 item_name,
                 item_span: item.span,
                 param_types: &param_types,
-                endpoints_by_name: wctx.endpoints_by_name,
+                endpoints_by_name: endpoints_for_ctx,
                 data_values: wctx.data_values,
                 service_registry: wctx.service_registry,
                 bound_callable_sources: &augmented_callable_sources,

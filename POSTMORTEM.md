@@ -377,7 +377,7 @@ and field-access-on-wrong-shape failures. 1,019 → 888 failures.
 
 ---
 
-### P2 — Builtin callable contracts have no evaluator implementation (584 failures)
+### P2 — Builtin callable contracts have no evaluator implementation (584→0 after fix)
 
 **Invariant**: #8 (correctness by construction)
 
@@ -392,31 +392,36 @@ call sites in any .dag file and were removed: `render_cytoscape_html`,
 `detect_runtime`, `generate`, `now`. 4 remain with actual callers: `eq`,
 `chars`, `code_point`, `build_token`.
 
-These builtins exist in **three** places with **different implementations**:
+These builtins existed in **three** places with **different implementations**:
 
 | Layer | Mechanism | Status |
 |-------|-----------|--------|
 | Typecheck | `CallableContract` in `builtin_callable_contracts()` | Accepts the call |
 | Lowerer | `LoweredExpr::Call { name, args }` — passthrough, no validation | Produces IR |
 | Emit | Special-case codegen in `fn_codegen.rs` (e.g., `code_point` → `code_point_i64()`, `chars` → `.chars()`) | Works for compiled binaries |
-| Evaluator | Not handled in `eval_call()` | **Fails: `unknown function: {name}`** |
+| Evaluator | Not handled in `eval_call()` | **Was: `unknown function: {name}`** |
 
-The emit path (compiled binaries) handles them. The evaluator path (DryRun,
-testgen) does not. This means fn bodies that call builtins work when
-compiled to executables but crash under DryRun/test execution.
+**Fixed (2026-03-09):** Added `code_point` and `chars` implementations to
+`eval_call()` and `eval_pipe_method()` in `daglang-lower/src/eval.rs`:
 
-558 of the 584 failures are `code_point`; 26 are `chars`. Both are used
-in `dsl/std/unicode.dag` which is transitively imported by most modules.
+- `code_point(c: Char) -> Int`: returns Unicode scalar value (`c as i64`)
+- `chars(s: String) -> List<Char>`: splits string into single-char strings
+- `PipeMethod::Chars`: same as standalone `chars`, moved out of the
+  delegate-to-sibling-fn fallback group
 
-**Fix direction**: Either (a) add evaluator implementations for the builtins
-actually called in fn bodies (`code_point`, `chars`) — just two functions,
-or (b) make `builtin_callable_contracts` a structured registry that pairs
-each contract with an evaluator function, so registration without
-implementation becomes unrepresentable.
+This eliminated all 591 `unknown function: code_point/chars` failures.
+The fix unmasked the next layer: those fn bodies now get one step further
+and fail on `unbound variable: zero_width_codepoints` (data declaration
+gap, documented below).
+
+**Open question:** The remaining 4 builtins (`eq`, `chars`, `code_point`,
+`build_token`) are still a manually maintained list with no structural
+binding between typecheck, emit, and eval. The three-layer disconnect
+persists — see "Manually maintained registries" section below.
 
 ---
 
-### P2 — Data declarations invisible to fn-body evaluator (76 failures)
+### P2 — Data declarations invisible to fn-body evaluator (76→658 after code_point/chars fix)
 
 **Invariant**: #8 (correctness by construction)
 
@@ -441,9 +446,18 @@ fn resolve_symbol(id: SymbolId, tier: Tier) -> String {
 }
 ```
 
-Affected data declarations: `standard_symbols`, `ansi_mappings` (from
-`std/symbols.dag`), plus `items`, `entries`, `sections`, `lines`, `stages`,
-`categories` (from various modules).
+**Count increased after code_point/chars fix:** The 591 `unknown function`
+failures previously masked this layer. With code_point/chars now evaluating
+correctly, those fn bodies get further and hit the data declaration gap
+instead. The dominant failure is now `unbound variable: zero_width_codepoints`
+(582) from `std/unicode.dag::char_display_width`, which uses
+`zero_width_codepoints`, `zero_width_blocks`, and `wide_blocks` data
+declarations.
+
+Affected data declarations: `zero_width_codepoints`, `zero_width_blocks`,
+`wide_blocks` (from `std/unicode.dag`), `standard_symbols`, `ansi_mappings`
+(from `std/symbols.dag`), plus `items`, `entries`, `sections`, `lines`,
+`stages`, `categories` (from various modules).
 
 **Fix direction**: Thread `data_values` into `FnBodyCallableOp` and seed the
 evaluator's `Env` with data bindings before execution. The data is already
@@ -471,6 +485,28 @@ DSL type registry, so they fall back to placeholder strings.
 
 **Fix direction**: Ensure all paths that construct mock values for fn-body
 parameters use the same `product_witness` logic with the DSL type registry.
+
+---
+
+### P2 — Service call names leak into fn-body evaluation via MatchDispatch (72 failures)
+
+**Invariant**: #8 (correctness by construction)
+
+`tools_design` uses match/dispatch patterns where the lowerer creates
+`MatchDispatch` nodes that reference service call qualified names (e.g.,
+`llm.Anthropic.Messages`). When these nodes execute in DryRun/test mode,
+the fn-body evaluator tries to resolve `llm.Anthropic.Messages` as a
+function call, producing `unknown function: llm.Anthropic.Messages`.
+
+The error path: `MatchDispatch` node → `eval_call("llm.Anthropic.Messages")`
+→ not a sibling fn, not a builtin, not uppercase → `unknown function` error.
+
+This affects `tools_design` (69 failures) and `tools_readme` (3 failures) —
+modules that use service-call-based match dispatch patterns.
+
+**Fix direction**: `MatchDispatch` nodes in DryRun mode should produce a
+default/mock value for the matched service call rather than trying to
+evaluate the service call name as a function.
 
 ---
 
@@ -667,19 +703,21 @@ Fix: added `product_witness()` in `auto_mock.rs` that detects `Product`
 type DAGs, extracts field names and their SubDag type DAGs, and recursively
 builds `Value::Map` with field-level witnesses (depth-limited to 4).
 
-**Result:** 1,013 failures → 888. All `GetField on {"mock": true}` errors
-(themes 1-3) eliminated. Remaining 888 are FnBody evaluator gaps (theme 4):
+**Result:** 1,013 → 888 → 1,165 (same root causes, more test modules generated).
+
+After code_point/chars eval fix, the error distribution shifted:
 
 | Category | Count | Root cause |
 |----------|-------|------------|
-| `unknown function: code_point` | 558 | DSL evaluator missing `code_point` pipe method |
-| `unknown function: chars` | 26 | DSL evaluator missing `chars` pipe method |
-| `unbound variable` (data decls) | 76 | Data declarations not available in fn body eval context |
-| Collection ops on wrong shape | 36 | `map`/`join`/`fold` on non-list mocks (downstream cascade) |
-| Field access on placeholder | 15 | Fn body evaluator's own placeholder logic, not auto_mock |
+| `unbound variable: zero_width_*` | 582 | Data declarations not in fn body eval context (unmasked by code_point fix) |
+| `unknown function: llm.*` | 72 | Service call names leaking into fn-body eval via MatchDispatch |
+| `WrapScalar` / `{"mock": true}` | 64 | Resource handle mocks in different code path than product_witness |
+| `unbound variable` (other data) | 76 | Data declarations not in fn body eval context |
 | `no match arm matched` | 10 | Sum type placeholder strings don't match variant arms |
+| Other downstream cascades | ~361 | Effects of above |
 
 These are all DSL evaluator completeness gaps, not mock generation issues.
+The dominant blocker is now the data declaration gap (658 total).
 
 ---
 

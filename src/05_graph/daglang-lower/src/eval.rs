@@ -22,12 +22,31 @@ use crate::CollectionOpKind;
 ///
 /// `sibling_fns` maps fn names → their lowered bodies for recursive calls
 /// within the same module.
+///
+/// `data_values` provides compile-time `data` declaration bindings. These are
+/// seeded into the evaluator's environment so fn bodies can reference them.
 pub fn evaluate_fn_body(
     body: &LoweredFnBody,
     inputs: &HashMap<String, Value>,
     sibling_fns: &HashMap<String, LoweredFnBody>,
 ) -> Result<HashMap<String, Value>, EvalError> {
+    evaluate_fn_body_with_data(body, inputs, sibling_fns, &HashMap::new())
+}
+
+/// Like `evaluate_fn_body` but with explicit data declaration bindings.
+pub fn evaluate_fn_body_with_data(
+    body: &LoweredFnBody,
+    inputs: &HashMap<String, Value>,
+    sibling_fns: &HashMap<String, LoweredFnBody>,
+    data_values: &HashMap<String, serde_json::Value>,
+) -> Result<HashMap<String, Value>, EvalError> {
     let mut env = Env::from_inputs(inputs);
+    // Seed data declarations into the environment (lower priority than inputs).
+    for (name, json_val) in data_values {
+        if !env.bindings.contains_key(name) {
+            env.bind(name.clone(), json_to_eval_value(json_val));
+        }
+    }
 
     for stmt in &body.stmts {
         match stmt {
@@ -626,6 +645,29 @@ fn eval_call(
                 Ok(Value::Unit)
             }
         }
+        // code_point(c: Char) -> Int: Unicode scalar value of a character
+        "code_point" => {
+            let val = eval_named_arg("c", args, env, sibling_fns)?;
+            match &val {
+                Value::Str(s) => {
+                    let c = s.chars().next().ok_or_else(|| EvalError::new("code_point: empty string"))?;
+                    Ok(Value::Int(c as i64))
+                }
+                Value::Int(n) => Ok(Value::Int(*n)),
+                _ => Err(EvalError::new(format!("code_point: expected Char, got {:?}", val))),
+            }
+        }
+        // chars(s: String) -> List<Char>: split string into individual characters
+        "chars" => {
+            let val = eval_named_arg("s", args, env, sibling_fns)?;
+            match &val {
+                Value::Str(s) => {
+                    let chars: Vec<Value> = s.chars().map(|c| Value::Str(c.to_string())).collect();
+                    Ok(Value::List(chars))
+                }
+                _ => Err(EvalError::new(format!("chars: expected String, got {:?}", val))),
+            }
+        }
         _ if name.chars().next().unwrap_or('a').is_uppercase() => {
             // Generic variant constructor (e.g. `Ok { value: "x" }`, `Closed`)
             let mut map = BTreeMap::new();
@@ -637,6 +679,53 @@ fn eval_call(
             Ok(Value::Map(map))
         }
         _ => Err(EvalError::new(format!("unknown function: {name}"))),
+    }
+}
+
+/// Evaluate a named argument from a call's argument list.
+fn eval_named_arg(
+    param: &str,
+    args: &[(Option<String>, LoweredExpr)],
+    env: &Env,
+    sibling_fns: &HashMap<String, LoweredFnBody>,
+) -> Result<Value, EvalError> {
+    for (name, expr) in args {
+        if name.as_deref() == Some(param) {
+            return eval_expr(expr, env, sibling_fns);
+        }
+    }
+    // Fall back to positional first arg
+    if let Some((_, expr)) = args.first() {
+        return eval_expr(expr, env, sibling_fns);
+    }
+    Err(EvalError::new(format!("missing argument '{param}'")))
+}
+
+/// Convert a `serde_json::Value` to a `Value` for the evaluator environment.
+/// Recursively converts objects to `Value::Map` and arrays to `Value::List`
+/// so that field access and collection operations work on data declarations.
+fn json_to_eval_value(json: &serde_json::Value) -> Value {
+    match json {
+        serde_json::Value::Null => Value::Unit,
+        serde_json::Value::Bool(b) => Value::Bool(*b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Value::Int(i)
+            } else if let Some(f) = n.as_f64() {
+                Value::Float(f)
+            } else {
+                Value::Str(n.to_string())
+            }
+        }
+        serde_json::Value::String(s) => Value::Str(s.clone()),
+        serde_json::Value::Array(arr) => {
+            Value::List(arr.iter().map(json_to_eval_value).collect())
+        }
+        serde_json::Value::Object(map) => {
+            let btree: BTreeMap<String, Value> =
+                map.iter().map(|(k, v)| (k.clone(), json_to_eval_value(v))).collect();
+            Value::Map(btree)
+        }
     }
 }
 
@@ -1241,9 +1330,17 @@ fn eval_pipe_method(
             }
         }
 
+        // chars: split string into individual characters
+        PipeMethod::Chars => match &receiver {
+            Value::Str(s) => {
+                let chars: Vec<Value> = s.chars().map(|c| Value::Str(c.to_string())).collect();
+                Ok(Value::List(chars))
+            }
+            _ => Err(EvalError::new(format!("chars: expected String, got {:?}", receiver))),
+        },
+
         // Variants with no direct eval implementation — delegate to sibling fns.
         PipeMethod::MaxBy
-        | PipeMethod::Chars
         | PipeMethod::ReplaceSection
         | PipeMethod::ToBytes
         | PipeMethod::ToJson
