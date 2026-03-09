@@ -467,7 +467,7 @@ Inspiration only:
 ### P1 — bootstrap swallowed a callable-arg lowering failure and crashed later
 
 **Date:** 2026-03-09
-**Status:** Fixed in lowering; kept here as a preventable case.
+**Status:** Fixed in lowering; temporary lowering fallback remains.
 
 `tools.bootstrap` called `render_gitignore_file(file: gitignore_file, ...)`,
 where `gitignore_file` was a local record binding with a pipe-based field
@@ -493,11 +493,16 @@ What made this preventable:
 - The expression itself was still evaluable by the fn-body evaluator; only the
   structural lowering path had a gap.
 
-Inspiration only:
+Temporary containment added in this PR:
 
 - Fail closed when callable arg wiring fails instead of logging and continuing.
-- Fall back to a helper fn-body expression node for complex pure arg
-  expressions when structural lowering is incomplete.
+- Fall back to a synthesized helper fn-body expression node for complex pure
+  arg expressions when structural lowering is incomplete.
+
+Removal trigger:
+
+- Delete the helper-expression fallback once structural lowering can directly
+  lower the relevant local/imported record-with-pipe arg shapes.
 
 ### P1 — dagbin cache reused stale lowered graphs across compiler changes
 
@@ -568,3 +573,24 @@ Small process change to add:
 4. Verify a fresh checkout still builds or regenerates cleanly after removals.
 5. Add a CI check that fails when non-allowlisted generated/snapshot files are
    tracked.
+
+### P2 — temporary scaffolding added during generated-test cleanup should be removed
+
+**Date:** 2026-03-09
+**Status:** Open removal list.
+
+This cleanup PR introduced a few tactical compatibility/scaffolding changes.
+They were reasonable for containment, but they should be explicitly removed
+once the underlying paths are made principled:
+
+- `daglang-lower`: synthesized `expr_value_*` fallback nodes for complex pure
+  fn-call arguments. Remove once structural lowering handles those expressions
+  directly.
+- `gunbc-testgen`: binary-level fail-closed aggregation around
+  `AutoTestgenResult::Skipped`. Remove the underlying placeholder-render path
+  too; the rendering API should not encode "skipped but emit a file".
+- `gunbc-tests`: tracked `src/lib.rs` + `build.rs` auto-discovery scaffold so
+  the crate compiles without checked-in generated sources. Revisit once
+  generated tests have a stable non-hacky home and inclusion model.
+- dagbin cache: manual cache-epoch bump to flush stale lowered graphs after the
+  lowering fix. Replace with a more principled cache key/versioning strategy.
