@@ -701,11 +701,11 @@ impl Port {
         }
     }
 
-    /// Create a port with a guard and explicit cardinality.
+    /// Create a port with a guard and explicit cardinality (internal use only).
     ///
-    /// Used by Branch patterns for routing and by the lowerer for `[when]`
-    /// guard propagation from func body `NodeStmt` to transport execute nodes.
-    pub fn guarded_with_cardinality(
+    /// This is used internally by Branch and other patterns for routing.
+    /// Not part of the public API — use explicit Branch patterns instead.
+    pub(crate) fn guarded_with_cardinality(
         name: impl Into<PortName>,
         type_id: impl Into<TypeId>,
         cardinality: Cardinality,

@@ -296,22 +296,6 @@ pub enum Obligation {
         guard_port: PortName,
     },
 
-    /// Stub guard ineffective: a guarded node's guard input comes from a
-    /// node whose fn body always returns the same constant value. This means
-    /// the guard can never change evaluation — one branch is permanently dead.
-    ///
-    /// Detected when a guard port's upstream source is a pure fn node with a
-    /// constant-return body (every return field is a literal). The guard is
-    /// effectively a no-op, making the conditional execution unconditional.
-    StubGuardIneffective {
-        /// The guarded node.
-        guarded_node: NodeId,
-        /// The guard port that is always the same value.
-        guard_port: PortName,
-        /// The upstream fn node that always returns a constant.
-        source_node: NodeId,
-    },
-
     // -----------------------------------------------------------------------
     // Bucket D: Resource Hygiene (structural, capability-grant model)
     //
@@ -644,63 +628,6 @@ pub fn collect_obligations<T>(
     collect_resource_obligations(dag, resource_accesses, &mut obligations);
 
     ObligationSet { all: obligations }
-}
-
-/// Collect obligations for constant-return fn stubs that feed guard inputs.
-///
-/// `constant_return_nodes` is the set of node IDs whose fn body always returns
-/// the same literal values regardless of inputs (i.e., stub functions).
-///
-/// When such a node's output feeds a guard port on another node, the guard can
-/// never change — one branch is permanently dead. This is flagged as an
-/// `Invalid` obligation because it's a provable structural error: the guard is
-/// a no-op.
-pub fn collect_stub_guard_obligations<T>(
-    dag: &Dag<T>,
-    constant_return_nodes: &std::collections::HashSet<NodeId>,
-) -> Vec<ProofObligation> {
-    let mut obligations = Vec::new();
-    if constant_return_nodes.is_empty() {
-        return obligations;
-    }
-
-    for node in &dag.nodes {
-        for port in &node.inputs {
-            if !port.has_guard() {
-                continue;
-            }
-            // Find the upstream edge feeding this guard port.
-            let upstream = dag
-                .edges
-                .iter()
-                .find(|e| e.to_node == node.id && e.to_port == port.name);
-            let Some(edge) = upstream else {
-                continue;
-            };
-            if constant_return_nodes.contains(&edge.from_node) {
-                obligations.push(
-                    ProofObligation::new(
-                        Obligation::StubGuardIneffective {
-                            guarded_node: node.id.clone(),
-                            guard_port: port.name.clone(),
-                            source_node: edge.from_node.clone(),
-                        },
-                        format!(
-                            "Guard on {}.{} depends on constant-return stub '{}' — \
-                             the guard can never change, making conditional execution unconditional",
-                            node.id.0, port.name.0, edge.from_node.0
-                        ),
-                        ObligationSource::Structure,
-                    )
-                    .invalidate(format!(
-                        "Guard on {}.{} is fed by constant-return stub '{}' — one branch is dead",
-                        node.id.0, port.name.0, edge.from_node.0
-                    )),
-                );
-            }
-        }
-    }
-    obligations
 }
 
 /// Bucket A: Execution semantics obligations.

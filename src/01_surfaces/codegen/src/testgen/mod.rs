@@ -32,8 +32,8 @@ pub mod render_rust;
 pub use analyze::{analyze_dag, analyze_dag_with_obligations, DagAnalysis};
 pub use codegen::{TestConfig, TestGenerator};
 pub use obligation::{
-    collect_obligations, collect_stub_guard_obligations, DischargeStatus, EntailmentStatus,
-    Obligation, ObligationSet, ObligationSource, ObligationStats, ProofObligation,
+    collect_obligations, DischargeStatus, EntailmentStatus, Obligation, ObligationSet,
+    ObligationSource, ObligationStats, ProofObligation,
 };
 pub use probe_observer::{
     analyze_probe_observers, observability_report, CoverageGap, Observer, Probe,
