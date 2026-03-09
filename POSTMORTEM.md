@@ -341,3 +341,81 @@ Silently swallows any I/O error when emitting CI workflow commands.
 - **Phases 02–04, 06**: No `eprintln!`, no I/O side effects — clean pure functions.
 - **I/O boundary** (Invariant 2): Only `08_materialize/transport/` performs direct I/O.
 - **No backdoors**: Compiler provides metadata through output types, not callbacks.
+
+---
+
+## Scenario backlog
+
+### P2 — `gist_recent` modeled a time cutoff as a git ref
+
+**Date:** 2026-03-09
+**Status:** Fixed in the DSL model; kept here as a preventable case.
+
+`gunbc.tools.gist::gist_recent` accepted `since: "3.days.ago"` but called a
+DSL extdep op named `git.Core.RevListBase`. In the DSL model, that op was
+wired to:
+
+```dag
+transport shell { argv: ["git", "merge-base", "HEAD", "{since}"] }
+```
+
+At runtime, `3.days.ago` was treated as an object name instead of a time
+expression, producing:
+
+```text
+fatal: Not a valid object name 3.days.ago
+```
+
+What made this preventable:
+
+- The lower Rust git transport already had the correct concept,
+  `RevListBefore(before)` using `git rev-list -1 --before=... HEAD`, with
+  tests.
+- The DSL extdep model drifted from that transport model and nothing enforced
+  parity.
+- A hermetic temp-repo execution test for `gunbc.tools.gist::gist_recent`
+  would have exercised the real git command before manual use.
+
+Inspiration only:
+
+- Add parity checks between DSL extdep service definitions and lower transport
+  models.
+- Generate hermetic git-backed integration tests for DAG tools that consume
+  date/ref inputs.
+- Strengthen git-facing types so time expressions and refs cannot flow through
+  the same `String` slot unnoticed.
+
+### P1 — bootstrap swallowed a callable-arg lowering failure and crashed later
+
+**Date:** 2026-03-09
+**Status:** Fixed in lowering; kept here as a preventable case.
+
+`tools.bootstrap` called `render_gitignore_file(file: gitignore_file, ...)`,
+where `gitignore_file` was a local record binding with a pipe-based field
+expression. The lowerer hit:
+
+```text
+warning: cannot wire fn call argument 'file' in tools.bootstrap.bootstrap: ...
+```
+
+and continued lowering. That produced a DAG where the pure fn callable
+executed without its `file` input wired. Runtime then failed later in
+bootstrap with:
+
+```text
+FnBody evaluation failed with real inputs present: eval error: unbound variable: file
+```
+
+What made this preventable:
+
+- The compiler already knew the `file` arg wiring had failed.
+- The warning came from a swallowed lowering error, not from an unknown runtime
+  condition.
+- The expression itself was still evaluable by the fn-body evaluator; only the
+  structural lowering path had a gap.
+
+Inspiration only:
+
+- Fail closed when callable arg wiring fails instead of logging and continuing.
+- Fall back to a helper fn-body expression node for complex pure arg
+  expressions when structural lowering is incomplete.

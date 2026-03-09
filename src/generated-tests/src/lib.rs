@@ -10,6 +10,12 @@ mod generated_tests_extdeps_gitignore;
 #[cfg(test)]
 mod generated_tests_extdeps_gitignore_render;
 #[cfg(test)]
+mod generated_tests_gunbc_auth_credentials;
+#[cfg(test)]
+mod generated_tests_gunbc_auth_patterns;
+#[cfg(test)]
+mod generated_tests_gunbc_tools_gist;
+#[cfg(test)]
 mod generated_tests_shared_dag_util;
 #[cfg(test)]
 mod generated_tests_std_credentials;
@@ -39,7 +45,5 @@ mod generated_tests_tools_build;
 mod generated_tests_tools_codegen;
 #[cfg(test)]
 mod generated_tests_tools_design;
-#[cfg(test)]
-mod generated_tests_tools_gist;
 #[cfg(test)]
 mod generated_tests_tools_readme;

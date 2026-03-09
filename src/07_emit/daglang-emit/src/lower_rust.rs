@@ -996,14 +996,23 @@ mod tests {
         let mut registry = gunbc_ir::TypeRegistry::with_primitives();
         registry.register(
             "Int64",
-            gunbc_ir::type_lib::refined("Int", vec![
-                Predicate::Width(64),
-                Predicate::Signed(None),
-                Predicate::Arithmetic,
-            ]),
+            gunbc_ir::type_lib::refined(
+                "Int",
+                vec![
+                    Predicate::Width(64),
+                    Predicate::Signed(None),
+                    Predicate::Arithmetic,
+                ],
+            ),
         );
-        assert_eq!(map_to_rust_type_with_registry("Int64", Some(&registry)), "i64");
+        assert_eq!(
+            map_to_rust_type_with_registry("Int64", Some(&registry)),
+            "i64"
+        );
         // Fallback still works
-        assert_eq!(map_to_rust_type_with_registry("String", Some(&registry)), "String");
+        assert_eq!(
+            map_to_rust_type_with_registry("String", Some(&registry)),
+            "String"
+        );
     }
 }

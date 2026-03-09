@@ -2,9 +2,9 @@
 
 use crate::boundary::detect_boundaries;
 use crate::dag::{Dag, Port};
-use crate::type_op::Predicate;
 use crate::entrypoint::detect_entrypoints;
 use crate::log_detail::LogDetailLevel;
+use crate::type_op::Predicate;
 use crate::types::{Cardinality, NodeId, OperationKey, PortName, StaticFingerprint};
 use crate::Value;
 use serde::{Deserialize, Serialize};

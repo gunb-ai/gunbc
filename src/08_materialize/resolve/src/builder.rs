@@ -114,7 +114,7 @@ pub fn build_dsl_graph_dag(
 /// discarded on load.
 // Bump when lowering/resolution semantics change so source-digest cache hits
 // do not reuse stale DAG shapes compiled by older compiler code.
-const DAGBIN_CACHE_VERSION: u32 = 2;
+const DAGBIN_CACHE_VERSION: u32 = 3;
 
 /// Serializable bundle of compilation artifacts stored in the dagbin cache.
 ///
@@ -352,7 +352,7 @@ fn slice_dag_from_entry_preserving_fn_bodies(
 
 /// Derive module name from a relative `.dag` path.
 ///
-/// `"tools/gist.dag"` -> `"tools.gist"`
+/// `"gunbc/tools/gist.dag"` -> `"gunbc.tools.gist"`
 fn module_name_from_path(relative_module: &str) -> String {
     relative_module
         .strip_suffix(".dag")
@@ -367,7 +367,10 @@ mod tests {
 
     #[test]
     fn module_name_from_path_strips_suffix() {
-        assert_eq!(module_name_from_path("tools/gist.dag"), "tools.gist");
+        assert_eq!(
+            module_name_from_path("gunbc/tools/gist.dag"),
+            "gunbc.tools.gist"
+        );
         assert_eq!(
             module_name_from_path("tools/bootstrap.dag"),
             "tools.bootstrap"

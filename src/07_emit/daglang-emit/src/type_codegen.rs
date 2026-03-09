@@ -66,7 +66,10 @@ pub fn type_expr_to_rust_with_registry(
             format!("{}<{}>", mapped, arg_strs.join(", "))
         }
         TypeExpr::Optional(inner) => {
-            format!("Option<{}>", type_expr_to_rust_with_registry(inner, registry))
+            format!(
+                "Option<{}>",
+                type_expr_to_rust_with_registry(inner, registry)
+            )
         }
         TypeExpr::Refined(inner, refinements) => {
             // Try structural resolution via the refinement predicates.
@@ -109,7 +112,11 @@ fn try_refined_to_rust_structural(_inner: &TypeExpr, refinements: &[Refinement])
         }
     }
 
-    if props.width.is_none() && props.signed.is_none() && props.domain.is_none() && !props.arithmetic {
+    if props.width.is_none()
+        && props.signed.is_none()
+        && props.domain.is_none()
+        && !props.arithmetic
+    {
         return None;
     }
 
@@ -1293,9 +1300,7 @@ mod tests {
                 },
             ],
             return_type: TypeExpr::Named("String".into()),
-            body: FnBody {
-                stmts: vec![],
-            },
+            body: FnBody { stmts: vec![] },
         };
         let ctx = fn_codegen::CompileContext::new();
         let items = fndef_to_code_ir(&fd, &ctx);

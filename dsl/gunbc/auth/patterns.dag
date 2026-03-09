@@ -1,10 +1,10 @@
-// runtime/auth/patterns.dag -- Provider/runtime-specific auth composition.
+// gunbc/auth/patterns.dag -- Gunbc-specific auth composition.
 //
 // These patterns intentionally live outside std/: they compose concrete
 // runtime environments, provider services, and local tooling to materialize
 // credentials and auth contexts.
 
-module runtime.auth.patterns
+module gunbc.auth.patterns
 
 import std.resources { Filesystem, Network, AuthContext }
 import std.types {

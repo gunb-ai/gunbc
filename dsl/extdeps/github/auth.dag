@@ -1,12 +1,12 @@
 // extdeps/github/auth.dag -- GitHub credential acquisition.
 //
-// Delegates to runtime.auth.credentials for concrete materialization.
+// Delegates to gunbc.auth.credentials for concrete materialization.
 // Service-specific knowledge (which secret, which scopes) stays here;
-// materialization mechanics live in runtime.auth.
+// materialization mechanics live in gunbc.auth.
 
 module extdeps.github.auth
 
-import runtime.auth.credentials { gcp_secret_credential }
+import gunbc.auth.credentials { gcp_secret_credential }
 import std.resources { Network }
 import std.types { NonEmptyStr }
 

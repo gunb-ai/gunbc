@@ -495,12 +495,12 @@ mod tests {
     #[test]
     fn diagnostic_display_with_file_and_span() {
         let d = test_diagnostic("TC014", "type mismatch: expected String, got Int")
-            .with_file(PathBuf::from("tools/gist.dag"))
+            .with_file(PathBuf::from("gunbc/tools/gist.dag"))
             .with_span(Span::new(42, 55))
             .with_help("change argument type to String");
         let s = d.to_string();
         assert!(s.contains("[TC014]"));
-        assert!(s.contains("tools/gist.dag"));
+        assert!(s.contains("gunbc/tools/gist.dag"));
         assert!(s.contains("type mismatch"));
         assert!(s.contains("help:"));
     }

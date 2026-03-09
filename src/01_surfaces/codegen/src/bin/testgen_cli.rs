@@ -3,7 +3,10 @@
 //! Discovers all compilable `.dag` modules, renders auto-generated tests,
 //! and writes them with a content-freshness check (content_upsert semantics).
 
-use gunbc_codegen::testgen_dag::{discover_compilable_modules, render_auto_testgen_for_module};
+use gunbc_codegen::testgen_dag::{
+    auto_testgen_for_module, discover_compilable_modules, AutoTestgenResult, CompilableModule,
+    RenderedTestgenModule,
+};
 use gunbc_ir::WorkspaceLayout;
 use std::path::Path;
 use std::process;
@@ -35,12 +38,22 @@ fn main() {
     });
     let total = modules.len();
 
+    let rendered_modules = collect_rendered_modules(&modules, &output_dir).unwrap_or_else(|errs| {
+        eprintln!("error: auto-testgen failed for {} module(s):", errs.len());
+        for (module_name, reason) in errs {
+            eprintln!("  {module_name}");
+            for line in reason.lines() {
+                eprintln!("    {line}");
+            }
+        }
+        process::exit(1);
+    });
+
     let mut written = 0usize;
     let mut fresh = 0usize;
     let mut mod_names = Vec::new();
 
-    for module in &modules {
-        let rendered = render_auto_testgen_for_module(module, &output_dir);
+    for rendered in &rendered_modules {
         let path = Path::new(&rendered.path);
 
         // Collect module name for lib.rs generation
@@ -99,6 +112,35 @@ fn main() {
     );
 }
 
+fn collect_rendered_modules(
+    modules: &[CompilableModule],
+    output_dir: &Path,
+) -> Result<Vec<RenderedTestgenModule>, Vec<(String, String)>> {
+    let mut rendered = Vec::with_capacity(modules.len());
+    let mut failures = Vec::new();
+
+    for module in modules {
+        match auto_testgen_for_module(module, output_dir) {
+            AutoTestgenResult::Generated {
+                target_def,
+                test_code,
+            } => rendered.push(RenderedTestgenModule {
+                content: test_code,
+                path: target_def.output_path.into_owned(),
+            }),
+            AutoTestgenResult::Skipped { reason } => {
+                failures.push((module.module_name.clone(), reason));
+            }
+        }
+    }
+
+    if failures.is_empty() {
+        Ok(rendered)
+    } else {
+        Err(failures)
+    }
+}
+
 fn generate_lib_rs(mod_names: &[String]) -> String {
     let mut out = String::from(
         "// Auto-generated workspace tests.\n\
@@ -110,4 +152,38 @@ fn generate_lib_rs(mod_names: &[String]) -> String {
         out.push_str(&format!("#[cfg(test)]\nmod {name};\n"));
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn collect_rendered_modules_fails_closed_when_any_module_is_uncompilable() {
+        let modules = vec![
+            CompilableModule {
+                dsl_path: "tools/bootstrap.dag".to_string(),
+                module_name: "tools.bootstrap".to_string(),
+                callable_count: 1,
+                has_test_blocks: true,
+            },
+            CompilableModule {
+                dsl_path: "nonexistent/fake.dag".to_string(),
+                module_name: "nonexistent.fake".to_string(),
+                callable_count: 1,
+                has_test_blocks: false,
+            },
+        ];
+
+        let output_dir = std::path::Path::new("src/10_test/generated-tests/src");
+        let err = collect_rendered_modules(&modules, output_dir)
+            .expect_err("any uncompilable module should stop auto-testgen");
+
+        assert!(
+            err.iter()
+                .any(|(module_name, reason)| module_name == "nonexistent.fake"
+                    && reason.contains("compile error")),
+            "expected compile failure for nonexistent module, got: {err:?}"
+        );
+    }
 }

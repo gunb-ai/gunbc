@@ -443,7 +443,7 @@ type PragmaDirective {
   scope: String?
 }
 
-// Workflow/repo-specific types live in domain.workflow.types.
+// Workflow/repo-specific types live in gunbc.workflow.types.
 
 // --- Docgen (product with refinement) ----------------------------------
 

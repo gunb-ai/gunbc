@@ -4,8 +4,8 @@
 // token responses. Used for Workload Identity Federation.
 //
 // Consumers:
-//   runtime/auth/patterns.dag  — credential_chain pattern
-//   runtime/auth/patterns.dag  — credential_chain pattern
+//   gunbc/auth/patterns.dag    — credential_chain pattern
+//   gunbc/auth/patterns.dag    — credential_chain pattern
 
 module extdeps.cloud.gcp.sts
 
@@ -132,7 +132,7 @@ service github.OIDC {
   // Endpoint and auth token come from per-job env vars on GitHub Actions
   // (ACTIONS_ID_TOKEN_REQUEST_URL / ACTIONS_ID_TOKEN_REQUEST_TOKEN).
   // Both are wired as explicit data-flow inputs by github_oidc() in
-  // runtime/auth/patterns.dag so that skip propagation handles the
+  // gunbc/auth/patterns.dag so that skip propagation handles the
   // "not on GitHub Actions" case without any runtime Rust.
 
   operation GetToken {

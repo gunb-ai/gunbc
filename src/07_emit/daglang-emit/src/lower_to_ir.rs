@@ -522,11 +522,7 @@ fn transport_kind_name(kind: TransportKind) -> &'static str {
 }
 
 fn map_abstract_type(abstract_type: &str) -> String {
-    crate::type_mapping::resolve_and_emit(
-        abstract_type,
-        None,
-        crate::type_mapping::Backend::Rust,
-    )
+    crate::type_mapping::resolve_and_emit(abstract_type, None, crate::type_mapping::Backend::Rust)
 }
 
 fn sanitize_identifier(value: &str) -> String {

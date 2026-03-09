@@ -1,10 +1,10 @@
-// domain/workflow/types.dag -- Repo/process workflow domain model.
+// gunbc/workflow/types.dag -- Gunbc workflow domain model.
 //
 // These types are intentionally not part of std/: they model this repo's
 // workflow, review, approval, runtime, and audit domain rather than a
 // provider-neutral standard library surface.
 
-module domain.workflow.types
+module gunbc.workflow.types
 
 import std.types {
   ContentHash,

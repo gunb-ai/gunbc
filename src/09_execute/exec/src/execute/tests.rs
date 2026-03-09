@@ -2338,9 +2338,8 @@ fn env_var_read_real_mode() {
             &self,
             _inputs: HashMap<String, Value>,
         ) -> Result<HashMap<String, Value>, ExecError> {
-            let value = std::env::var(&self.var_name).map_err(|_| {
-                ExecError::new(format!("env var '{}' not set", self.var_name))
-            })?;
+            let value = std::env::var(&self.var_name)
+                .map_err(|_| ExecError::new(format!("env var '{}' not set", self.var_name)))?;
             let mut out = HashMap::new();
             out.insert(
                 "credential".to_string(),
@@ -2426,9 +2425,8 @@ fn real_mode_executes_resource_environment_node() {
             &self,
             _inputs: HashMap<String, Value>,
         ) -> Result<HashMap<String, Value>, ExecError> {
-            let value = std::env::var(&self.var_name).map_err(|_| {
-                ExecError::new(format!("env var '{}' not set", self.var_name))
-            })?;
+            let value = std::env::var(&self.var_name)
+                .map_err(|_| ExecError::new(format!("env var '{}' not set", self.var_name)))?;
             let mut out = HashMap::new();
             out.insert(
                 "credential".to_string(),

@@ -1042,7 +1042,7 @@ mod tests {
                 vec![Port::scalar("items", "List<String>")],
                 vec![Port::scalar("items", "List<String>")],
                 LoweredOp::Collection {
-                    module: "tools.gist".to_string(),
+                    module: "gunbc.tools.gist".to_string(),
                     callable: "render_snapshot".to_string(),
                     kind: daglang_lower::CollectionOpKind::Map,
                 },
@@ -1055,7 +1055,7 @@ mod tests {
                 vec![Port::scalar("items", "List<String>")],
                 vec![Port::scalar("items", "String")],
                 LoweredOp::Collection {
-                    module: "tools.gist".to_string(),
+                    module: "gunbc.tools.gist".to_string(),
                     callable: "render_snapshot".to_string(),
                     kind: daglang_lower::CollectionOpKind::Join,
                 },
@@ -1064,7 +1064,7 @@ mod tests {
         );
         dag.add_node(callable_node(
             "gist_snapshot",
-            "tools.gist",
+            "gunbc.tools.gist",
             "gist_snapshot",
         ));
 
@@ -1072,8 +1072,8 @@ mod tests {
         assert_eq!(
             artifacts.manifest.scatter_points,
             vec![
-                "tools.gist.render_snapshot".to_string(),
-                "tools.gist.render_snapshot".to_string()
+                "gunbc.tools.gist.render_snapshot".to_string(),
+                "gunbc.tools.gist.render_snapshot".to_string()
             ]
         );
     }

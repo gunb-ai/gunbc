@@ -1141,7 +1141,7 @@ mod tests {
         let args = vec![
             "daglang".to_string(),
             "obligations".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
         ];
         let format = super::parse_output_format("obligations", &args)
             .expect("three-argument form should parse");
@@ -1153,14 +1153,14 @@ mod tests {
         let json_args = vec![
             "daglang".to_string(),
             "obligations".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
             "--format".to_string(),
             "json".to_string(),
         ];
         let text_args = vec![
             "daglang".to_string(),
             "show-triplets".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
             "--format".to_string(),
             "text".to_string(),
         ];
@@ -1179,34 +1179,34 @@ mod tests {
         let missing_value = vec![
             "daglang".to_string(),
             "obligations".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
             "--format".to_string(),
         ];
         let bad_flag = vec![
             "daglang".to_string(),
             "obligations".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
             "--fmt".to_string(),
             "json".to_string(),
         ];
         let bad_value = vec![
             "daglang".to_string(),
             "show-triplets".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
             "--format".to_string(),
             "yaml".to_string(),
         ];
         let bad_case_variant_value = vec![
             "daglang".to_string(),
             "obligations".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
             "--format".to_string(),
             "JSON".to_string(),
         ];
         let bad_title_case_value = vec![
             "daglang".to_string(),
             "show-triplets".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
             "--format".to_string(),
             "Json".to_string(),
         ];
@@ -1252,14 +1252,14 @@ mod tests {
         let args = vec![
             "daglang".to_string(),
             "viz".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
             "--format".to_string(),
             "mermaid".to_string(),
         ];
         let (target, format) = super::parse_viz_args(&args).expect("viz args should parse");
         assert!(matches!(
             target,
-            super::VizTarget::CompiledTarget(ref path) if path == "dsl/tools/gist.dag"
+            super::VizTarget::CompiledTarget(ref path) if path == "dsl/gunbc/tools/gist.dag"
         ));
         assert!(matches!(format, super::VizFormat::Mermaid));
     }
@@ -1278,7 +1278,7 @@ mod tests {
             "daglang".to_string(),
             "viz".to_string(),
             "--self".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
         ];
         let usage = "viz <file.dag>|--self [--format ascii|mermaid]".to_string();
         assert_eq!(super::parse_viz_args(&missing_target), Err(usage.clone()));
@@ -1328,7 +1328,7 @@ mod tests {
             "daglang".to_string(),
             "expand".to_string(),
             "--emit-collection-nodes".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
         ];
         let parsed = super::parse_compile_command_args(
             "expand",
@@ -1337,7 +1337,7 @@ mod tests {
             true,
         )
         .expect("expand compile args should parse");
-        assert_eq!(parsed.input.as_deref(), Some("dsl/tools/gist.dag"));
+        assert_eq!(parsed.input.as_deref(), Some("dsl/gunbc/tools/gist.dag"));
         assert!(parsed.emit_collection_nodes);
         assert!(parsed.target.is_none());
         assert!(parsed.layer.is_none());
@@ -1352,7 +1352,7 @@ mod tests {
         let valid = vec![
             "daglang".to_string(),
             "compile".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
             "--trace-stages".to_string(),
             "--target".to_string(),
             "rust".to_string(),
@@ -1363,7 +1363,7 @@ mod tests {
         let canonical_json = vec![
             "daglang".to_string(),
             "compile".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
             "--format".to_string(),
             "canonical-json".to_string(),
         ];
@@ -1430,7 +1430,10 @@ mod tests {
 
         let parsed_valid = super::parse_compile_command_args("compile", &valid, usage, false)
             .expect("compile parser should accept full codegen args");
-        assert_eq!(parsed_valid.input.as_deref(), Some("dsl/tools/gist.dag"));
+        assert_eq!(
+            parsed_valid.input.as_deref(),
+            Some("dsl/gunbc/tools/gist.dag")
+        );
         assert_eq!(
             parsed_valid.target,
             Some(daglang_driver::CodegenTarget::Rust)
@@ -1509,21 +1512,21 @@ mod tests {
         let with_target = vec![
             "daglang".to_string(),
             "expand".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
             "--target".to_string(),
             "rust".to_string(),
         ];
         let with_out = vec![
             "daglang".to_string(),
             "expand".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
             "--out".to_string(),
             "target/generated".to_string(),
         ];
         let with_format = vec![
             "daglang".to_string(),
             "expand".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
             "--format".to_string(),
             "canonical-json".to_string(),
         ];
@@ -1561,14 +1564,14 @@ mod tests {
         let args = vec![
             "daglang".to_string(),
             "progress".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
             "--emit-collection-nodes".to_string(),
             "--format".to_string(),
             "json".to_string(),
         ];
         let parsed = super::parse_progress_command_args("progress", &args)
             .expect("progress args should parse");
-        assert_eq!(parsed.input, "dsl/tools/gist.dag");
+        assert_eq!(parsed.input, "dsl/gunbc/tools/gist.dag");
         assert!(matches!(parsed.format, super::OutputFormat::Json));
         assert!(parsed.emit_collection_nodes);
     }
@@ -1578,11 +1581,11 @@ mod tests {
         let args = vec![
             "daglang".to_string(),
             "progress".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
         ];
         let parsed = super::parse_progress_command_args("progress", &args)
             .expect("progress args should parse");
-        assert_eq!(parsed.input, "dsl/tools/gist.dag");
+        assert_eq!(parsed.input, "dsl/gunbc/tools/gist.dag");
         assert!(matches!(parsed.format, super::OutputFormat::Text));
     }
 
@@ -1594,7 +1597,7 @@ mod tests {
         let duplicate_format = vec![
             "daglang".to_string(),
             "progress".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
             "--format".to_string(),
             "text".to_string(),
             "--format".to_string(),
@@ -1603,14 +1606,14 @@ mod tests {
         let duplicate_collection_flag = vec![
             "daglang".to_string(),
             "progress".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
             "--emit-collection-nodes".to_string(),
             "--emit-collection-nodes".to_string(),
         ];
         let unknown_flag = vec![
             "daglang".to_string(),
             "progress".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
             "--collection".to_string(),
         ];
         assert_eq!(
@@ -1636,10 +1639,10 @@ mod tests {
         let args = vec![
             "daglang".to_string(),
             "run".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
         ];
         let parsed = super::parse_run_args(&args).expect("run args should parse");
-        assert_eq!(parsed.input_path, "dsl/tools/gist.dag");
+        assert_eq!(parsed.input_path, "dsl/gunbc/tools/gist.dag");
         assert_eq!(parsed.output_path, None);
         assert_eq!(parsed.mode, super::RunMode::Real);
     }
@@ -1651,10 +1654,10 @@ mod tests {
             "run".to_string(),
             "--dry-run".to_string(),
             "--output=tmp/generated.mk".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
         ];
         let parsed = super::parse_run_args(&args).expect("run args should parse");
-        assert_eq!(parsed.input_path, "dsl/tools/gist.dag");
+        assert_eq!(parsed.input_path, "dsl/gunbc/tools/gist.dag");
         assert_eq!(parsed.output_path.as_deref(), Some("tmp/generated.mk"));
         assert_eq!(parsed.mode, super::RunMode::DryRun);
     }
@@ -1667,10 +1670,10 @@ mod tests {
             "--check-mode".to_string(),
             "--output".to_string(),
             "tmp/generated.mk".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
         ];
         let parsed = super::parse_run_args(&args).expect("run args should parse");
-        assert_eq!(parsed.input_path, "dsl/tools/gist.dag");
+        assert_eq!(parsed.input_path, "dsl/gunbc/tools/gist.dag");
         assert_eq!(parsed.output_path.as_deref(), Some("tmp/generated.mk"));
         assert_eq!(parsed.mode, super::RunMode::CheckMode);
     }
@@ -1683,7 +1686,7 @@ mod tests {
             "--output".to_string(),
             "a.mk".to_string(),
             "--output=b.mk".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
         ];
         let error = super::parse_run_args(&args).expect_err("duplicate output should fail");
         assert!(error.contains("duplicate --output"));
@@ -1695,7 +1698,7 @@ mod tests {
             "daglang".to_string(),
             "run".to_string(),
             "--mystery".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
         ];
         let error = super::parse_run_args(&args).expect_err("unknown flag should fail");
         assert!(error.contains("unknown flag"));
@@ -1719,7 +1722,7 @@ mod tests {
             "run".to_string(),
             "--dry-run".to_string(),
             "--dry-run".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
         ];
         let error = super::parse_run_args(&args).expect_err("duplicate dry-run should fail");
         assert!(error.contains("duplicate --dry-run"));
@@ -1732,7 +1735,7 @@ mod tests {
             "run".to_string(),
             "--check-mode".to_string(),
             "--check-mode".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
         ];
         let error = super::parse_run_args(&args).expect_err("duplicate check-mode should fail");
         assert!(error.contains("duplicate --check-mode"));
@@ -1745,7 +1748,7 @@ mod tests {
             "run".to_string(),
             "--dry-run".to_string(),
             "--check-mode".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
         ];
         let error = super::parse_run_args(&args).expect_err("conflicting modes should fail");
         assert!(error.contains("cannot be combined"));
@@ -1767,7 +1770,7 @@ mod tests {
         let args = vec![
             "daglang".to_string(),
             "run".to_string(),
-            "dsl/tools/gist.dag".to_string(),
+            "dsl/gunbc/tools/gist.dag".to_string(),
             "dsl/tools/other.dag".to_string(),
         ];
         let error = super::parse_run_args(&args).expect_err("multiple inputs should fail");

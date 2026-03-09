@@ -3407,7 +3407,10 @@ fn scope_optional_impersonation_hoists_service_call() {
         "hoisted service call is a direct service call"
     );
     assert!(
-        body.direct_service_calls()[0].path.join(".").contains("GenerateAccessToken"),
+        body.direct_service_calls()[0]
+            .path
+            .join(".")
+            .contains("GenerateAccessToken"),
         "should be GenerateAccessToken, got: {:?}",
         body.direct_service_calls()[0].path
     );
@@ -3666,6 +3669,109 @@ func run(a: String, b: String) -> { out: String } {
             dag.nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
         );
     }
+}
+
+#[test]
+fn fn_call_argument_falls_back_to_expr_value_for_local_record_with_pipe_field() {
+    let typed = typed_project_from_sources(&[(
+        "sample/fn_args.dag",
+        r#"module sample.fn_args
+type FileSpec {
+  rule: String
+  categories: List<String>
+}
+fn render_file(file: FileSpec, prefix: String) -> String {
+  "{prefix}:{file.rule}:{file.categories |> join(",")}"
+}
+func run(extra: List<String>) -> { out: String } {
+  base = ["core"]
+  categories = base |> append(items: extra)
+  file = { rule: "rule", categories: categories }
+  out = render_file(file: file, prefix: "gen")
+  return { out: out }
+}"#,
+    )]);
+    let dag = lower_target_module(&typed, "sample.fn_args");
+
+    let expr_value_node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0.starts_with("expr_value_"))
+        .expect("complex fn arg should synthesize an expr_value helper node");
+
+    assert!(
+        dag.edges.iter().any(|edge| {
+            edge.from_node.0 == expr_value_node.id.0
+                && edge.to_node.0 == "sample.fn_args::render_file"
+                && edge.to_port.0 == "file"
+        }),
+        "expected expr_value helper to wire render_file.file; edges: {:?}",
+        dag.edges
+            .iter()
+            .map(|e| (
+                e.from_node.0.clone(),
+                e.from_port.0.clone(),
+                e.to_node.0.clone(),
+                e.to_port.0.clone(),
+            ))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn imported_fn_call_argument_falls_back_to_expr_value_for_local_record_with_pipe_field() {
+    let dag = lower_target_module_from_sources_with_entry(
+        "sample.caller",
+        &[
+            (
+                "sample/render.dag",
+                r#"module sample.render
+type FileSpec {
+  rule: String
+  categories: List<String>
+}
+fn render_file(file: FileSpec, prefix: String) -> String {
+  "{prefix}:{file.rule}:{file.categories |> join(",")}"
+}"#,
+            ),
+            (
+                "sample/caller.dag",
+                r#"module sample.caller
+import sample.render { render_file }
+func run(extra: List<String>) -> { out: String } {
+  base = ["core"]
+  categories = base |> append(items: extra)
+  file = { rule: "rule", categories: categories }
+  out = render_file(file: file, prefix: "gen")
+  return { out: out }
+}"#,
+            ),
+        ],
+    );
+
+    let expr_value_node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0.starts_with("expr_value_"))
+        .expect("imported complex fn arg should synthesize an expr_value helper node");
+
+    assert!(
+        dag.edges.iter().any(|edge| {
+            edge.from_node.0 == expr_value_node.id.0
+                && edge.to_node.0 == "sample.render::render_file"
+                && edge.to_port.0 == "file"
+        }),
+        "expected expr_value helper to wire imported render_file.file; edges: {:?}",
+        dag.edges
+            .iter()
+            .map(|e| (
+                e.from_node.0.clone(),
+                e.from_port.0.clone(),
+                e.to_node.0.clone(),
+                e.to_port.0.clone(),
+            ))
+            .collect::<Vec<_>>()
+    );
 }
 
 fn lower_target_module_with_collections(typed: &TypedProject, module_name: &str) -> Dag<LoweredOp> {

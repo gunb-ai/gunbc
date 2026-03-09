@@ -715,9 +715,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
         // Default fan-in inputs to empty when still missing.
         // FanIn ports always allow empty (zero upstream edges is valid).
         for port in &node.inputs {
-            if port.multiplicity == PortMultiplicity::FanIn
-                && !inputs.contains_key(&port.name.0)
-            {
+            if port.multiplicity == PortMultiplicity::FanIn && !inputs.contains_key(&port.name.0) {
                 inputs.insert(port.name.0.clone(), Value::List(vec![]));
             }
         }
