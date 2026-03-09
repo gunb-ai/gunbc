@@ -4255,13 +4255,16 @@ fn make_loop_body_dag_from_stmts(
         local_let_bindings: &local_let_bindings,
         ..expansion_ctx
     };
-    wire_callable_return_outputs(
+    if let Err(e) = wire_callable_return_outputs(
         &mut builder,
         &return_ctx,
         site.body_stmts.as_slice(),
         &body_target,
         false,
-    );
+    ) {
+        eprintln!("error: loop body return wiring failed: {e}");
+        return None;
+    }
 
     if let Some(element_type) = builder
         .dag
@@ -7938,14 +7941,14 @@ fn add_service_call_edges(
                         continue;
                     }
                     supplied_prepare_inputs.insert(prepare_input.to_string());
-                    let _ = wire_service_call_arg_to_port(
+                    wire_service_call_arg_to_port(
                         builder,
                         &service_ctx,
                         arg,
                         effective_endpoint.prepare_node_id.as_str(),
                         prepare_input,
                         format!("{call_index}_{index}").as_str(),
-                    );
+                    )?;
                 }
                 // Wire auth_input argument to res:credential on execute node.
                 // When a service declares `config { auth_input: field_name }`,
@@ -8091,7 +8094,7 @@ fn add_service_call_edges(
                 Item::FnDef(def) if !def.body.lossy
             );
             if !is_fn_with_body {
-                wire_callable_return_outputs(builder, &fn_ctx, stmts, target, body_lossy);
+                wire_callable_return_outputs(builder, &fn_ctx, stmts, target, body_lossy)?;
             }
         }
     }
@@ -8164,7 +8167,7 @@ fn wire_service_call_arg_to_port(
     dest_node_id: &str,
     dest_port: &str,
     disambiguator: &str,
-) -> bool {
+) -> Result<(), LowerError> {
     if let Some(arg_ident) = arg.ident.as_deref() {
         if let Some(param_ty) = ctx.param_types.get(arg_ident) {
             let param_source = ensure_param_source_node(
@@ -8175,7 +8178,7 @@ fn wire_service_call_arg_to_port(
                 param_ty.as_str(),
             );
             builder.add_edge(param_source.as_str(), arg_ident, dest_node_id, dest_port);
-            return true;
+            return Ok(());
         }
         if let Some(bound_source) = ctx.bound_callable_sources.get(arg_ident) {
             builder.add_edge(
@@ -8184,7 +8187,7 @@ fn wire_service_call_arg_to_port(
                 dest_node_id,
                 dest_port,
             );
-            return true;
+            return Ok(());
         }
         if let Some(bound_source) = ctx.bound_service_sources.get(arg_ident) {
             builder.add_edge(
@@ -8193,7 +8196,7 @@ fn wire_service_call_arg_to_port(
                 dest_node_id,
                 dest_port,
             );
-            return true;
+            return Ok(());
         }
         if let Some(json_val) = ctx.data_values.get(arg_ident) {
             let literal = ServiceCallArgLiteral::Json(json_val.clone());
@@ -8207,7 +8210,7 @@ fn wire_service_call_arg_to_port(
                 disambiguator,
             );
             builder.add_edge(literal_source.as_str(), dest_port, dest_node_id, dest_port);
-            return true;
+            return Ok(());
         }
     }
 
@@ -8219,7 +8222,7 @@ fn wire_service_call_arg_to_port(
                 dest_node_id,
                 dest_port,
             );
-            return true;
+            return Ok(());
         }
         if let Some(bound_source) = ctx.bound_service_sources.get(base_ident) {
             builder.add_edge(
@@ -8228,7 +8231,7 @@ fn wire_service_call_arg_to_port(
                 dest_node_id,
                 dest_port,
             );
-            return true;
+            return Ok(());
         }
         if let Some(param_ty) = ctx.param_types.get(base_ident.as_str()) {
             let param_source = ensure_param_source_node(
@@ -8244,7 +8247,7 @@ fn wire_service_call_arg_to_port(
                 dest_node_id,
                 dest_port,
             );
-            return true;
+            return Ok(());
         }
     }
 
@@ -8256,7 +8259,7 @@ fn wire_service_call_arg_to_port(
                 dest_node_id,
                 dest_port,
             );
-            return true;
+            return Ok(());
         }
     }
 
@@ -8271,14 +8274,13 @@ fn wire_service_call_arg_to_port(
             disambiguator,
         );
         builder.add_edge(literal_source.as_str(), dest_port, dest_node_id, dest_port);
-        return true;
+        return Ok(());
     }
 
-    eprintln!(
-        "warning: cannot wire service call argument '{}' on {}.{} (no structural source found)",
+    return Err(LowerError::ExprLower(format!(
+        "cannot wire service call argument '{}' on {}.{} (no structural source found)",
         dest_port, ctx.module_name, ctx.item_name
-    );
-    false
+    )));
 }
 
 #[derive(Debug, Clone)]
@@ -11818,14 +11820,14 @@ fn wire_callable_return_outputs(
     stmts: &[Stmt],
     target: &LoweredEndpoint,
     body_lossy: bool,
-) {
+) -> Result<(), LowerError> {
     let outputs = match builder.dag.get_node(&NodeId::new(target.node_id.clone())) {
         Some(node) => node.outputs.clone(),
-        None => return,
+        None => return Ok(()),
     };
     let output_bindings = collect_return_bindings(stmts, &outputs, body_lossy);
     if output_bindings.is_empty() {
-        return;
+        return Ok(());
     }
 
     for (index, (output_name, expr)) in output_bindings.into_iter().enumerate() {
@@ -11840,24 +11842,20 @@ fn wire_callable_return_outputs(
         if builder.has_edge_to_port(target.node_id.as_str(), dest_port.as_str()) {
             continue;
         }
-        let (source_node, source_port) = match lower_expr(
+        let (source_node, source_port) = lower_expr(
             builder,
             ctx,
             &expr,
             &output_port,
             output_name.as_str(),
             &format!("return_{index}"),
-        ) {
-            Ok(result) => result,
-            Err(e) => {
-                eprintln!(
-                    "warning: wire_callable_return_outputs: `{}` output `{}` \
-                     cannot be wired: {e}",
-                    target.node_id, output_name
-                );
-                continue;
-            }
-        };
+        )
+        .map_err(|e| {
+            LowerError::ExprLower(format!(
+                "wire_callable_return_outputs: `{}` output `{}` cannot be lowered: {e}",
+                target.node_id, output_name
+            ))
+        })?;
         if source_node == target.node_id {
             continue;
         }
@@ -11868,6 +11866,7 @@ fn wire_callable_return_outputs(
             dest_port.as_str(),
         );
     }
+    Ok(())
 }
 
 /// Collect for-loop result bindings from top-level statements.

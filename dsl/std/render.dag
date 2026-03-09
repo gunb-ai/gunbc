@@ -72,7 +72,21 @@ fn span_width(span: Span, tier: Tier) -> Int {
 }
 
 fn truncate_spans(spans: List<Span>, budget: Int, tier: Tier) -> List<Span> {
-  spans
+  let state = spans |> fold(
+    init: { kept: [], remaining: budget },
+    f: (acc, span) => if acc.remaining <= 0 {
+      acc
+    } else {
+      let w = span_width(span: span, tier: tier)
+      if w <= acc.remaining {
+        { kept: acc.kept + [span], remaining: acc.remaining - w }
+      } else {
+        let truncated = truncate_text(text: span.text, max_width: acc.remaining)
+        { kept: acc.kept + [Span { text: truncated, style: span.style }], remaining: 0 }
+      }
+    }
+  )
+  state.kept
 }
 
 fn constrain_line(line: Line, max_width: Int, tier: Tier) -> Line {

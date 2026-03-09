@@ -396,9 +396,9 @@ func local_auth() -> { token: Secret }
 
   adc_content = fs.read(path: adc_path.value) [when adc_path.value != None]
   adc_refresh = shell.OAuth2.RefreshToken(refresh_token: adc_content.content) [when adc_path.value != None]
-  gcloud_auth = shell.GCloud.AuthPrintAccessToken()
+  gcloud_auth = shell.GCloud.AuthPrintAccessToken() [when adc_path.value == None]
 
-  return { token: gcloud_auth.access_token }
+  return { token: if adc_path.value != None { adc_refresh.access_token } else { gcloud_auth.access_token } }
 }
 
 // --- IAM preflight (D-3c: Identity interface) --------------------------
@@ -432,5 +432,18 @@ func iam_preflight_check(
     role: required_role
   )
 
-  return { ok: true }
+  updated = add_iam_binding(
+    bindings: policy.bindings,
+    service_account: service_account,
+    role: required_role
+  ) [when !has_binding.has_role]
+
+  set_result = gcp.ResourceManager.SetIamPolicy(
+    access_token: access_token,
+    project_id: project_id,
+    bindings: updated.updated_bindings,
+    etag: policy.etag
+  ) [when !has_binding.has_role]
+
+  return { ok: if has_binding.has_role { true } else { set_result.ok } }
 }
