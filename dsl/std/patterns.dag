@@ -396,7 +396,7 @@ func local_auth() -> { token: Secret }
 
   adc_content = fs.read(path: adc_path.value) [when adc_path.value != None]
   adc_refresh = shell.OAuth2.RefreshToken(refresh_token: adc_content.content) [when adc_path.value != None]
-  gcloud_auth = shell.GCloud.AuthPrintAccessToken() [when adc_path.value == None]
+  gcloud_auth = shell.GCloud.AuthPrintAccessToken()
 
   return { token: if adc_path.value != None { adc_refresh.access_token } else { gcloud_auth.access_token } }
 }
