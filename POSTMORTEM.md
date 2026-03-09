@@ -546,3 +546,25 @@ Inspiration only:
 - Treat repeatable params as present-with-empty-list even when omitted.
 - Add cross-checks so generated CLI materialization and in-process execution
   share the same cardinality semantics.
+
+### P2 — no structured artifact-hygiene pass let stale outputs accumulate
+
+**Date:** 2026-03-09
+**Status:** Open process gap.
+
+We found multiple out-of-place generated or snapshot artifacts during cleanup:
+
+- duplicate generated-test trees (`src/generated-tests/` and
+  `src/10_test/generated-tests/...`)
+- checked-in generated test sources that should have been ignored
+- a tracked local snapshot artifact at `.dag-snapshots/workspace.json`
+
+Small process change to add:
+
+1. Inventory tracked generated/snapshot/temp paths with a scripted audit.
+2. Classify each path as source-of-truth vs reproducible artifact.
+3. For reproducible artifacts, add ignore rules before changing generator
+   output paths.
+4. Verify a fresh checkout still builds or regenerates cleanly after removals.
+5. Add a CI check that fails when non-allowlisted generated/snapshot files are
+   tracked.
