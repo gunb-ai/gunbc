@@ -192,7 +192,9 @@ pub use type_op::{
     WrapperKind,
 };
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
-pub use type_shape::{type_shape, ContainerShape, StructuralProperties, TypeShape};
+pub use type_shape::{
+    derive_structural_properties, type_shape, ContainerShape, StructuralProperties, TypeShape,
+};
 pub use typed_io::{
     typed_input, typed_output, typed_port, AnyTag, CredentialTag, FilePathTag, FilesystemHandleTag,
     ListTag, NetworkHandleTag, NonEmptyListTag, OptionalTag, PlatformTag, PortTypeTag, SecretTag,

@@ -994,10 +994,7 @@ fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> TypeRegistry {
                             .iter()
                             .map(|variant| (variant.name.as_str(), "String"))
                             .collect();
-                        registry.register(
-                            def.name.as_str(),
-                            gunbc_ir::type_lib::coproduct(def.name.as_str(), variant_pairs),
-                        );
+                        registry.register_coproduct(def.name.as_str(), variant_pairs);
                     }
                     TypeBody::Record(fields) => {
                         let field_type_strings: Vec<(String, String)> = fields
@@ -1008,10 +1005,7 @@ fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> TypeRegistry {
                             .iter()
                             .map(|(name, ty)| (name.as_str(), ty.as_str()))
                             .collect();
-                        registry.register(
-                            def.name.as_str(),
-                            gunbc_ir::type_lib::product(def.name.as_str(), field_pairs),
-                        );
+                        registry.register_product(def.name.as_str(), field_pairs);
                     }
                     TypeBody::Alias(type_expr) => {
                         let base_name = type_expr_to_string(type_expr);

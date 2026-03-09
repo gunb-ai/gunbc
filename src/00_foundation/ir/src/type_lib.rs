@@ -120,8 +120,21 @@ pub fn branded(name: &str, inner_type: Dag<TypeOp>) -> Dag<TypeOp> {
 /// Product type — a record with named typed fields.
 ///
 /// Field types are embedded as SubDag children named `field_{name}`.
-/// e.g., `product("FileInfo", vec![("path", "FilePath"), ("encoding", "ContentEncoding")])`
+/// Uses string-based type names, wrapping each in an `identity()` DAG.
+/// Prefer `product_resolved` when resolved type DAGs are available.
 pub fn product(name: &str, fields: Vec<(&str, &str)>) -> Dag<TypeOp> {
+    let resolved: Vec<(&str, Dag<TypeOp>)> = fields
+        .into_iter()
+        .map(|(n, t)| (n, identity(t)))
+        .collect();
+    product_resolved(name, resolved)
+}
+
+/// Product type with resolved field type DAGs.
+///
+/// Each field's type DAG is embedded as a SubDag child named `field_{name}`,
+/// enabling structural recursion through record boundaries.
+pub fn product_resolved(name: &str, fields: Vec<(&str, Dag<TypeOp>)>) -> Dag<TypeOp> {
     let mut dag = Dag::new();
 
     let field_names: Vec<String> = fields.iter().map(|(n, _)| n.to_string()).collect();
@@ -133,10 +146,9 @@ pub fn product(name: &str, fields: Vec<(&str, &str)>) -> Dag<TypeOp> {
         TypeOp::Product(field_names),
     ));
 
-    // Each field type becomes a SubDag child
-    for (field_name, field_type) in &fields {
+    for (field_name, field_dag) in fields {
         let child_id = format!("field_{field_name}");
-        dag.add_node(Node::subdag(child_id.as_str(), identity(field_type)));
+        dag.add_node(Node::subdag(child_id.as_str(), field_dag));
         dag.add_edge(Edge::new("product", "out", child_id.as_str(), "in"));
     }
 
@@ -145,9 +157,21 @@ pub fn product(name: &str, fields: Vec<(&str, &str)>) -> Dag<TypeOp> {
 
 /// Coproduct type — a tagged union of named typed variants.
 ///
-/// Variant types are embedded as SubDag children named `variant_{name}`.
-/// e.g., `coproduct("ContentEncoding", vec![("UTF8", "String"), ("Binary", "Bytes")])`
+/// Uses string-based type names, wrapping each in an `identity()` DAG.
+/// Prefer `coproduct_resolved` when resolved type DAGs are available.
 pub fn coproduct(name: &str, variants: Vec<(&str, &str)>) -> Dag<TypeOp> {
+    let resolved: Vec<(&str, Dag<TypeOp>)> = variants
+        .into_iter()
+        .map(|(n, t)| (n, identity(t)))
+        .collect();
+    coproduct_resolved(name, resolved)
+}
+
+/// Coproduct type with resolved variant type DAGs.
+///
+/// Each variant's type DAG is embedded as a SubDag child named `variant_{name}`,
+/// enabling structural recursion through union boundaries.
+pub fn coproduct_resolved(name: &str, variants: Vec<(&str, Dag<TypeOp>)>) -> Dag<TypeOp> {
     let mut dag = Dag::new();
 
     let variant_names: Vec<String> = variants.iter().map(|(n, _)| n.to_string()).collect();
@@ -159,10 +183,9 @@ pub fn coproduct(name: &str, variants: Vec<(&str, &str)>) -> Dag<TypeOp> {
         TypeOp::Coproduct(variant_names),
     ));
 
-    // Each variant type becomes a SubDag child
-    for (variant_name, variant_type) in &variants {
+    for (variant_name, variant_dag) in variants {
         let child_id = format!("variant_{variant_name}");
-        dag.add_node(Node::subdag(child_id.as_str(), identity(variant_type)));
+        dag.add_node(Node::subdag(child_id.as_str(), variant_dag));
         dag.add_edge(Edge::new("coproduct", "out", child_id.as_str(), "in"));
     }
 

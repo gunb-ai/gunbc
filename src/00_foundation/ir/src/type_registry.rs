@@ -358,172 +358,139 @@ impl TypeRegistry {
         self.register("BinaryFilePath", type_lib::binary_file_path());
 
         // ContentEncoding variants as a coproduct type.
-        self.register(
+        self.register_coproduct(
             "ContentEncoding",
-            type_lib::coproduct(
-                "ContentEncoding",
-                vec![
-                    ("Unknown", "String"),
-                    ("Text", "String"),
-                    ("UTF8", "String"),
-                    ("ASCII", "String"),
-                    ("Latin1", "String"),
-                    ("Binary", "Bytes"),
-                ],
-            ),
+            vec![
+                ("Unknown", "String"),
+                ("Text", "String"),
+                ("UTF8", "String"),
+                ("ASCII", "String"),
+                ("Latin1", "String"),
+                ("Binary", "Bytes"),
+            ],
         );
-        self.register(
+        self.register_coproduct(
             "WarningPolicy",
-            type_lib::coproduct(
-                "WarningPolicy",
-                vec![("DenyAll", "String"), ("Default", "String")],
-            ),
+            vec![("DenyAll", "String"), ("Default", "String")],
         );
-        self.register(
+        self.register_coproduct(
             "CloudRuntime",
-            type_lib::coproduct(
-                "CloudRuntime",
-                vec![
-                    ("GitHubActions", "String"),
-                    ("Metadata", "String"),
-                    ("LocalDev", "String"),
-                ],
-            ),
+            vec![
+                ("GitHubActions", "String"),
+                ("Metadata", "String"),
+                ("LocalDev", "String"),
+            ],
         );
-        self.register(
+        self.register_coproduct(
             "AuthScheme",
-            type_lib::coproduct(
-                "AuthScheme",
-                vec![
-                    ("Bearer", "String"),
-                    ("Header", "String"),
-                    ("Basic", "String"),
-                ],
-            ),
+            vec![
+                ("Bearer", "String"),
+                ("Header", "String"),
+                ("Basic", "String"),
+            ],
         );
-        self.register(
+        self.register_coproduct(
             "FermiDepth",
-            type_lib::coproduct(
-                "FermiDepth",
-                vec![
-                    ("Xs", "String"),
-                    ("S", "String"),
-                    ("M", "String"),
-                    ("L", "String"),
-                    ("Xl", "String"),
-                ],
-            ),
+            vec![
+                ("Xs", "String"),
+                ("S", "String"),
+                ("M", "String"),
+                ("L", "String"),
+                ("Xl", "String"),
+            ],
         );
-        self.register(
+        self.register_coproduct(
             "TransportClass",
-            type_lib::coproduct(
-                "TransportClass",
-                vec![
-                    ("LocalDirect", "String"),
-                    ("ShellLocal", "String"),
-                    ("FileBoundary", "String"),
-                    ("RestNetwork", "String"),
-                    ("InterfaceStub", "String"),
-                    ("Unknown", "String"),
-                ],
-            ),
+            vec![
+                ("LocalDirect", "String"),
+                ("ShellLocal", "String"),
+                ("FileBoundary", "String"),
+                ("RestNetwork", "String"),
+                ("InterfaceStub", "String"),
+                ("Unknown", "String"),
+            ],
         );
-        self.register(
+        self.register_coproduct(
             "TestClass",
-            type_lib::coproduct(
-                "TestClass",
-                vec![
-                    ("Unit", "String"),
-                    ("Hermetic", "String"),
-                    ("Integration", "String"),
-                ],
-            ),
+            vec![
+                ("Unit", "String"),
+                ("Hermetic", "String"),
+                ("Integration", "String"),
+            ],
         );
-        self.register(
+        self.register_coproduct(
             "DisplayWidth",
-            type_lib::coproduct(
-                "DisplayWidth",
-                vec![
-                    ("ZeroWidth", "String"),
-                    ("Narrow", "String"),
-                    ("Wide", "String"),
-                ],
-            ),
+            vec![
+                ("ZeroWidth", "String"),
+                ("Narrow", "String"),
+                ("Wide", "String"),
+            ],
         );
-        self.register(
+        self.register_coproduct(
             "SemanticColor",
-            type_lib::coproduct(
-                "SemanticColor",
-                vec![
-                    ("Default", "String"),
-                    ("Success", "String"),
-                    ("Warning", "String"),
-                    ("Error", "String"),
-                    ("Info", "String"),
-                    ("Dim", "String"),
-                    ("Active", "String"),
-                    ("Accent", "String"),
-                ],
-            ),
+            vec![
+                ("Default", "String"),
+                ("Success", "String"),
+                ("Warning", "String"),
+                ("Error", "String"),
+                ("Info", "String"),
+                ("Dim", "String"),
+                ("Active", "String"),
+                ("Accent", "String"),
+            ],
         );
-        self.register(
+        self.register_coproduct(
             "Tier",
-            type_lib::coproduct(
-                "Tier",
-                vec![
-                    ("Emoji", "String"),
-                    ("Unicode", "String"),
-                    ("Ascii", "String"),
-                ],
-            ),
+            vec![
+                ("Emoji", "String"),
+                ("Unicode", "String"),
+                ("Ascii", "String"),
+            ],
         );
-        self.register(
+        self.register_coproduct(
             "SymbolId",
-            type_lib::coproduct(
-                "SymbolId",
-                vec![
-                    ("NodePending", "String"),
-                    ("NodeRunning", "String"),
-                    ("NodeCompleted", "String"),
-                    ("NodeFailed", "String"),
-                    ("NodeSkipped", "String"),
-                    ("NodeIntercepted", "String"),
-                    ("EdgeIdle", "String"),
-                    ("EdgeFlowing", "String"),
-                    ("EdgeDone", "String"),
-                    ("EdgeDead", "String"),
-                    ("DagNotStarted", "String"),
-                    ("DagRunning", "String"),
-                    ("DagCompleted", "String"),
-                    ("DagFailed", "String"),
-                    ("BoundaryMarker", "String"),
-                    ("Spinner0", "String"),
-                    ("Spinner1", "String"),
-                    ("Spinner2", "String"),
-                    ("Spinner3", "String"),
-                    ("Spinner4", "String"),
-                    ("Spinner5", "String"),
-                    ("Spinner6", "String"),
-                    ("Spinner7", "String"),
-                    ("Spinner8", "String"),
-                    ("Spinner9", "String"),
-                    ("Success", "String"),
-                    ("Failure", "String"),
-                    ("Warning", "String"),
-                    ("Info", "String"),
-                    ("DataList", "String"),
-                    ("DataMap", "String"),
-                    ("DataSecret", "String"),
-                    ("DataUrl", "String"),
-                    ("DataTimer", "String"),
-                    ("ConnectorHorizontal", "String"),
-                    ("ConnectorVertical", "String"),
-                    ("ConnectorTeeDown", "String"),
-                    ("ConnectorTeeUp", "String"),
-                    ("ConnectorCornerBottomLeft", "String"),
-                    ("ConnectorCornerTopLeft", "String"),
-                ],
-            ),
+            vec![
+                ("NodePending", "String"),
+                ("NodeRunning", "String"),
+                ("NodeCompleted", "String"),
+                ("NodeFailed", "String"),
+                ("NodeSkipped", "String"),
+                ("NodeIntercepted", "String"),
+                ("EdgeIdle", "String"),
+                ("EdgeFlowing", "String"),
+                ("EdgeDone", "String"),
+                ("EdgeDead", "String"),
+                ("DagNotStarted", "String"),
+                ("DagRunning", "String"),
+                ("DagCompleted", "String"),
+                ("DagFailed", "String"),
+                ("BoundaryMarker", "String"),
+                ("Spinner0", "String"),
+                ("Spinner1", "String"),
+                ("Spinner2", "String"),
+                ("Spinner3", "String"),
+                ("Spinner4", "String"),
+                ("Spinner5", "String"),
+                ("Spinner6", "String"),
+                ("Spinner7", "String"),
+                ("Spinner8", "String"),
+                ("Spinner9", "String"),
+                ("Success", "String"),
+                ("Failure", "String"),
+                ("Warning", "String"),
+                ("Info", "String"),
+                ("DataList", "String"),
+                ("DataMap", "String"),
+                ("DataSecret", "String"),
+                ("DataUrl", "String"),
+                ("DataTimer", "String"),
+                ("ConnectorHorizontal", "String"),
+                ("ConnectorVertical", "String"),
+                ("ConnectorTeeDown", "String"),
+                ("ConnectorTeeUp", "String"),
+                ("ConnectorCornerBottomLeft", "String"),
+                ("ConnectorCornerTopLeft", "String"),
+            ],
         );
 
         // Domain types for transport/infrastructure.
@@ -532,16 +499,13 @@ impl TypeRegistry {
         self.register("Credential", type_lib::identity("Credential"));
         self.register("FilesystemHandle", type_lib::identity("FilesystemHandle"));
         self.register("NetworkHandle", type_lib::identity("NetworkHandle"));
-        self.register(
+        self.register_product(
             "CliResult",
-            type_lib::product(
-                "CliResult",
-                vec![
-                    ("stdout", "String"),
-                    ("stderr", "String"),
-                    ("exit_code", "Int"),
-                ],
-            ),
+            vec![
+                ("stdout", "String"),
+                ("stderr", "String"),
+                ("exit_code", "Int"),
+            ],
         );
         self.register("ToolHandle", type_lib::identity("ToolHandle"));
         self.register("Platform", type_lib::identity("Platform"));
@@ -613,6 +577,49 @@ impl TypeRegistry {
     /// Register a type DAG with a name.
     pub fn register(&mut self, name: impl Into<TypeId>, type_dag: Dag<TypeOp>) {
         self.types.insert(name.into(), type_dag);
+    }
+
+    /// Register a product type with field types resolved through the registry.
+    ///
+    /// For each field, if the field's type name is already registered, the
+    /// resolved type DAG is embedded directly. Otherwise, falls back to an
+    /// identity wrapper. This enables structural recursion through record
+    /// boundaries.
+    pub fn register_product(&mut self, name: &str, fields: Vec<(&str, &str)>) {
+        let resolved: Vec<(&str, Dag<TypeOp>)> = fields
+            .into_iter()
+            .map(|(field_name, type_name)| {
+                let type_id = TypeId::from(type_name);
+                let dag = self
+                    .types
+                    .get(&type_id)
+                    .cloned()
+                    .unwrap_or_else(|| type_lib::identity(type_name));
+                (field_name, dag)
+            })
+            .collect();
+        self.register(name, type_lib::product_resolved(name, resolved));
+    }
+
+    /// Register a coproduct type with variant types resolved through the registry.
+    ///
+    /// For each variant, if the variant's type name is already registered, the
+    /// resolved type DAG is embedded directly. Otherwise, falls back to an
+    /// identity wrapper.
+    pub fn register_coproduct(&mut self, name: &str, variants: Vec<(&str, &str)>) {
+        let resolved: Vec<(&str, Dag<TypeOp>)> = variants
+            .into_iter()
+            .map(|(variant_name, type_name)| {
+                let type_id = TypeId::from(type_name);
+                let dag = self
+                    .types
+                    .get(&type_id)
+                    .cloned()
+                    .unwrap_or_else(|| type_lib::identity(type_name));
+                (variant_name, dag)
+            })
+            .collect();
+        self.register(name, type_lib::coproduct_resolved(name, resolved));
     }
 
     /// Register an explicit coercion edge between named types.

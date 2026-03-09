@@ -120,61 +120,17 @@ pub enum Backend {
 }
 
 /// Platform properties derived from a type DAG's structural predicates.
-#[derive(Debug, Clone, Default)]
-pub struct PlatformProperties {
-    /// Bit width (from Width predicate).
-    pub width: Option<u16>,
-    /// Whether the type is signed (from Signed predicate).
-    pub signed: Option<bool>,
-    /// Whether the type supports arithmetic (from Arithmetic predicate).
-    pub arithmetic: bool,
-    /// Domain constraint (from Domain predicate, e.g., "ieee754_binary32").
-    pub domain: Option<String>,
-    /// Collection/string length constraint (from Length predicate).
-    pub length: Option<u64>,
-}
+///
+/// This is a re-export of `gunbc_ir::StructuralProperties` for backward
+/// compatibility within the emit crate.
+pub type PlatformProperties = gunbc_ir::StructuralProperties;
 
 /// Derive platform properties from a type DAG by walking its predicate nodes.
+///
+/// Delegates to the canonical `gunbc_ir::derive_structural_properties`, which
+/// recursively walks SubDag children and inherits missing properties.
 pub fn derive_platform_properties(dag: &gunbc_ir::dag::Dag<gunbc_ir::type_op::TypeOp>) -> PlatformProperties {
-    use gunbc_ir::node::NodeBody;
-    use gunbc_ir::type_op::{Predicate, TypeOp};
-
-    let mut props = PlatformProperties::default();
-
-    for node in &dag.nodes {
-        if let NodeBody::Opaque(TypeOp::Validate(pred)) = &node.body {
-            match pred {
-                Predicate::Width(w) => props.width = Some(*w),
-                Predicate::Signed(_) => props.signed = Some(true),
-                Predicate::Unsigned => props.signed = Some(false),
-                Predicate::Arithmetic => props.arithmetic = true,
-                Predicate::Domain(d) => props.domain = Some(d.clone()),
-                Predicate::Length(l) => props.length = Some(*l),
-                _ => {}
-            }
-        }
-        // Recurse into SubDags
-        if let NodeBody::SubDag(subdag, _) = &node.body {
-            let inner = derive_platform_properties(subdag);
-            if props.width.is_none() {
-                props.width = inner.width;
-            }
-            if props.signed.is_none() {
-                props.signed = inner.signed;
-            }
-            if !props.arithmetic {
-                props.arithmetic = inner.arithmetic;
-            }
-            if props.domain.is_none() {
-                props.domain = inner.domain;
-            }
-            if props.length.is_none() {
-                props.length = inner.length;
-            }
-        }
-    }
-
-    props
+    gunbc_ir::derive_structural_properties(dag)
 }
 
 /// Emit a native type string from a type DAG for the given backend.

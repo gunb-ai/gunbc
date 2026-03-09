@@ -778,15 +778,16 @@ impl Port {
 
 /// Convert a `Value` to its `PredicateValue` equivalent for guard construction.
 ///
-/// Supports the value variants used in guard predicates: Bool, Str, and Skipped.
-/// Panics for unsupported value types — guards only operate on these three.
+/// Supports the value variants used in guard predicates: Bool, Int, Str, and
+/// Skipped. Panics for unsupported value types.
 pub fn value_to_predicate_value(v: &Value) -> PredicateValue {
     match v {
         Value::Bool(b) => PredicateValue::Bool(*b),
+        Value::Int(n) => PredicateValue::Int(*n),
         Value::Str(s) => PredicateValue::Str(s.clone()),
         Value::Skipped => PredicateValue::Skipped,
         other => panic!(
-            "cannot convert {:?} to PredicateValue — only Bool, Str, and Skipped are supported",
+            "cannot convert {:?} to PredicateValue — only Bool, Int, Str, and Skipped are supported",
             other
         ),
     }
