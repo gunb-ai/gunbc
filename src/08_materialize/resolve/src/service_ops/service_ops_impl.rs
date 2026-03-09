@@ -1490,7 +1490,7 @@ impl Executable for FilesystemExecuteOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         if inputs
             .get("skip")
-            .map_or(false, |v| matches!(v, Value::Bool(true)))
+            .is_some_and(|v| matches!(v, Value::Bool(true)))
         {
             return OutputMap::new()
                 .value("classification", Value::Skipped)

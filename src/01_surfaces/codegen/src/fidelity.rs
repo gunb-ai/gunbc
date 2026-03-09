@@ -132,17 +132,14 @@ fn compile_stdlib_fns() -> HashMap<String, LoweredFnBody> {
 
     let mut fns = HashMap::new();
     for node in &lowered.nodes {
-        match &node.body {
-            // Legacy path: Callable with fn_body
-            NodeBody::Opaque(LoweredOp::Callable {
-                kind: CallableKind::Fn,
-                name,
-                fn_body: Some(body),
-                ..
-            }) => {
-                fns.insert(name.clone(), *body.clone());
-            }
-            _ => {}
+        if let NodeBody::Opaque(LoweredOp::Callable {
+            kind: CallableKind::Fn,
+            name,
+            fn_body: Some(body),
+            ..
+        }) = &node.body
+        {
+            fns.insert(name.clone(), *body.clone());
         }
     }
     fns

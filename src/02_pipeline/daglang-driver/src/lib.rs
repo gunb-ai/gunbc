@@ -549,16 +549,14 @@ fn extract_fn_bodies_from_dag(
 ) {
     use daglang_lower::{CallableKind, LoweredOp};
     for node in &dag.nodes {
-        match &node.body {
-            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable {
-                kind: CallableKind::Fn,
-                name,
-                fn_body: Some(body),
-                ..
-            }) => {
-                fns.insert(name.clone(), *body.clone());
-            }
-            _ => {}
+        if let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable {
+            kind: CallableKind::Fn,
+            name,
+            fn_body: Some(body),
+            ..
+        }) = &node.body
+        {
+            fns.insert(name.clone(), *body.clone());
         }
     }
 }

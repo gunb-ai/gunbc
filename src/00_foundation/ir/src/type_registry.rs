@@ -609,10 +609,7 @@ impl TypeRegistry {
     ///
     /// Returns `None` if the type is not registered and no wrapper expression is present.
     pub fn resolve_type(&self, type_id: &TypeId) -> Option<Dag<TypeOp>> {
-        match self.resolve_type_checked(type_id) {
-            Ok(shape) => shape,
-            Err(_) => None,
-        }
+        self.resolve_type_checked(type_id).unwrap_or_default()
     }
 
     /// Resolve a type DAG, returning a diagnostic if the expression is invalid.

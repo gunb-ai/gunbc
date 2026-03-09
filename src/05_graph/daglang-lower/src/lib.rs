@@ -9465,7 +9465,6 @@ pub(crate) struct ServiceCallArgSite {
     pub(crate) field_access: Option<(String, String)>,
     pub(crate) call: Option<String>,
     pub(crate) literal: Option<ServiceCallArgLiteral>,
-    pub(crate) expr: Expr,
 }
 
 #[derive(Debug, Clone)]
@@ -9736,7 +9735,6 @@ fn service_call_arg_site((name, arg): &(Option<String>, Expr)) -> ServiceCallArg
             _ => None,
         },
         literal: service_call_literal_arg(arg),
-        expr: arg.clone(),
     }
 }
 
@@ -11184,9 +11182,7 @@ fn synthesize_match_dispatch(
         &format!("{output_name}_scrutinee"),
         &format!("{disambiguator}_scrutinee"),
     ).ok();
-    let Some((scrutinee_node, scrutinee_port)) = scrutinee_source else {
-        return None;
-    };
+    let (scrutinee_node, scrutinee_port) = scrutinee_source?;
 
     let node_id = format!(
         "match_dispatch_{}",
@@ -11300,22 +11296,17 @@ fn synthesize_conditional(
         &format!("{output_name}_cond"),
         &format!("{disambiguator}_cond"),
     ).ok();
-    let Some((cond_node, cond_port)) = cond_source else {
-        return None;
-    };
+    let (cond_node, cond_port) = cond_source?;
 
     // Wire then branch.
-    let then_source = lower_expr(
+    let (then_node, then_port) = lower_expr(
         builder,
         ctx,
         then_,
         output_port,
         &format!("{output_name}_then"),
         &format!("{disambiguator}_then"),
-    ).ok();
-    let Some((then_node, then_port)) = then_source else {
-        return None;
-    };
+    ).ok()?;
 
     let else_source = if let Some(else_expr) = else_ {
         let source = lower_expr(
@@ -11325,11 +11316,8 @@ fn synthesize_conditional(
             output_port,
             &format!("{output_name}_else"),
             &format!("{disambiguator}_else"),
-        ).ok();
-        let Some((else_node, else_port)) = source else {
-            return None;
-        };
-        Some((else_node, else_port))
+        ).ok()?;
+        Some(source)
     } else {
         None
     };
