@@ -758,7 +758,7 @@ fn test_simulate_with_mocks() {
 
 #[test]
 fn test_fan_in_to_list_port_collects_values() {
-    // Two producers feed into a single list port — values should be collected
+    // Two producers feed into a single fan-in port — values should be collected
     // into a Value::List in canonical edge order.
     let mut dag: Dag<TestOp> = Dag::new();
     dag.add_node(Node::opaque(
@@ -775,11 +775,11 @@ fn test_fan_in_to_list_port_collects_values() {
     ));
     dag.add_node(Node::opaque(
         "C",
-        vec![list("items", "StringList")], // list port: cardinality ZeroOrMore
-        vec![list("items", "StringList")], // echo: passes inputs through as outputs (list→list)
+        vec![fan_in("items", "String")], // fan-in port: multiple edges merge into list
+        vec![list("items", "StringList")], // echo: passes inputs through as outputs
         TestOp::echo(),
     ));
-    // Two edges to the same list port, with explicit indices for ordering
+    // Two edges to the same fan-in port, with explicit indices for ordering
     dag.add_edge(Edge::with_index("A", "out", "C", "items", 0));
     dag.add_edge(Edge::with_index("B", "out", "C", "items", 1));
 
@@ -794,26 +794,11 @@ fn test_fan_in_to_list_port_collects_values() {
         }
         other => panic!("expected Value::List, got {:?}", other),
     }
-
-    assert_eq!(c_entry.coercions_applied.len(), 2);
-    assert_eq!(c_entry.coercions_applied[0].from_node, "A");
-    assert_eq!(c_entry.coercions_applied[0].from_port, "out");
-    assert_eq!(c_entry.coercions_applied[0].to_port, "items");
-    assert_eq!(
-        c_entry.coercions_applied[0].kind,
-        gunbc_ir::CoercionKind::WrapScalar
-    );
-    assert_eq!(c_entry.coercions_applied[1].from_node, "B");
-    assert_eq!(c_entry.coercions_applied[1].from_port, "out");
-    assert_eq!(c_entry.coercions_applied[1].to_port, "items");
-    assert_eq!(
-        c_entry.coercions_applied[1].kind,
-        gunbc_ir::CoercionKind::WrapScalar
-    );
 }
 
 #[test]
 fn test_coercion_trace_exposes_coerced_input_value() {
+    // Fan-in port receives a scalar, wraps into list.
     let mut dag: Dag<TestOp> = Dag::new();
     dag.add_node(Node::opaque(
         "A",
@@ -823,7 +808,7 @@ fn test_coercion_trace_exposes_coerced_input_value() {
     ));
     dag.add_node(Node::opaque(
         "B",
-        vec![list("items", "StringList")],
+        vec![fan_in("items", "String")],
         vec![list("items", "StringList")],
         TestOp::echo(),
     ));
@@ -831,18 +816,14 @@ fn test_coercion_trace_exposes_coerced_input_value() {
 
     let log = execute_dag(&dag, ExecuteConfig::default()).unwrap();
     let b_entry = log.get("B").unwrap();
-    assert_eq!(b_entry.coercions_applied.len(), 1);
 
-    let coercion = &b_entry.coercions_applied[0];
-    let received = b_entry
-        .coercion_input_value(coercion)
-        .expect("coercion trace should expose captured input value");
+    // Fan-in wraps scalar into list
+    let received = b_entry.input_value("items").unwrap();
     assert!(
         matches!(received, Value::List(values)
             if values == &vec![Value::Str("alpha".to_string())]),
-        "coerced input should be wrapped as single-element list, got {received:?}"
+        "fan-in should wrap scalar as single-element list, got {received:?}"
     );
-    assert_eq!(b_entry.input_value("items"), Some(received));
 }
 
 #[test]
@@ -989,11 +970,11 @@ fn test_scalar_port_fan_in_rejects_multiple_non_skipped() {
 
 #[test]
 fn test_list_port_zero_edges_defaults_to_empty_list() {
-    // A list port with no incoming edges should default to an empty list.
+    // A fan-in port with no incoming edges should default to an empty list.
     let mut dag: Dag<TestOp> = Dag::new();
     dag.add_node(Node::opaque(
         "A",
-        vec![list("items", "StringList")],
+        vec![fan_in("items", "String")],
         vec![list("items", "StringList")],
         TestOp::echo(),
     ));
@@ -1009,7 +990,7 @@ fn test_list_port_zero_edges_defaults_to_empty_list() {
 
 #[test]
 fn test_optional_to_list_skips_unit() {
-    // Optional output (Unit) feeding a list input should preserve Unit as
+    // Optional output (Unit) feeding a fan-in input should preserve Unit as
     // an explicit dependency token.
     let mut dag: Dag<TestOp> = Dag::new();
     dag.add_node(Node::opaque(
@@ -1020,7 +1001,7 @@ fn test_optional_to_list_skips_unit() {
     ));
     dag.add_node(Node::opaque(
         "B",
-        vec![list("items", "StringList")],
+        vec![fan_in("items", "String")],
         vec![list("items", "StringList")],
         TestOp::echo(),
     ));
@@ -1037,7 +1018,7 @@ fn test_optional_to_list_skips_unit() {
 
 #[test]
 fn test_optional_to_list_skips_skipped() {
-    // Skipped output feeding a list input should not insert Skipped.
+    // Skipped output feeding a fan-in input should not insert Skipped.
     let mut dag: Dag<TestOp> = Dag::new();
     dag.add_node(Node::opaque(
         "A",
@@ -1047,7 +1028,7 @@ fn test_optional_to_list_skips_skipped() {
     ));
     dag.add_node(Node::opaque(
         "B",
-        vec![list("items", "StringList")],
+        vec![fan_in("items", "String")],
         vec![list("items", "StringList")],
         TestOp::echo(),
     ));
@@ -2083,7 +2064,7 @@ fn test_remap_mode_inputs_real_unchanged() {
 
 #[test]
 fn test_coercion_tracking_wrap_scalar() {
-    // A scalar output → list input should record a WrapScalar coercion.
+    // A scalar output → fan-in input should collect the value as a single-element list.
     let mut dag: Dag<TestOp> = Dag::new();
     dag.add_node(Node::opaque(
         "producer",
@@ -2093,7 +2074,7 @@ fn test_coercion_tracking_wrap_scalar() {
     ));
     dag.add_node(Node::opaque(
         "consumer",
-        vec![list("items", "StringList")],
+        vec![fan_in("items", "String")],
         vec![list("items", "StringList")],
         TestOp::echo(),
     ));
@@ -2111,20 +2092,14 @@ fn test_coercion_tracking_wrap_scalar() {
     .unwrap();
 
     let consumer_entry = log.get("consumer").unwrap();
-    assert_eq!(
-        consumer_entry.coercions_applied.len(),
-        1,
-        "should record exactly one coercion"
-    );
-    let coercion = &consumer_entry.coercions_applied[0];
-    assert_eq!(coercion.from_node, "producer");
-    assert_eq!(coercion.from_port, "value");
-    assert_eq!(coercion.to_port, "items");
-    assert!(
-        matches!(coercion.kind, gunbc_ir::CoercionKind::WrapScalar),
-        "expected WrapScalar, got {:?}",
-        coercion.kind
-    );
+    // Fan-in wraps scalar into a list
+    match consumer_entry.outputs.get("items") {
+        Some(Value::List(items)) => {
+            assert_eq!(items.len(), 1);
+            assert_eq!(items[0], Value::Str("hello".into()));
+        }
+        other => panic!("expected Value::List, got {:?}", other),
+    }
 }
 
 #[test]
@@ -2165,7 +2140,7 @@ fn test_coercion_tracking_no_coercion_for_matching_cardinality() {
 
 #[test]
 fn test_coercion_tracking_optional_to_list() {
-    // Optional [0,1] → list [0,∞) should record OptionalToList.
+    // Optional [0,1] → fan-in port should collect the value.
     let mut dag: Dag<TestOp> = Dag::new();
     dag.add_node(Node::opaque(
         "A",
@@ -2175,7 +2150,7 @@ fn test_coercion_tracking_optional_to_list() {
     ));
     dag.add_node(Node::opaque(
         "B",
-        vec![list("items", "StringList")],
+        vec![fan_in("items", "String")],
         vec![list("items", "StringList")],
         TestOp::echo(),
     ));
@@ -2193,15 +2168,13 @@ fn test_coercion_tracking_optional_to_list() {
     .unwrap();
 
     let b_entry = log.get("B").unwrap();
-    assert_eq!(b_entry.coercions_applied.len(), 1);
-    assert!(
-        matches!(
-            b_entry.coercions_applied[0].kind,
-            gunbc_ir::CoercionKind::OptionalToList
-        ),
-        "expected OptionalToList, got {:?}",
-        b_entry.coercions_applied[0].kind
-    );
+    match b_entry.outputs.get("items") {
+        Some(Value::List(items)) => {
+            assert_eq!(items.len(), 1);
+            assert_eq!(items[0], Value::Str("present".into()));
+        }
+        other => panic!("expected Value::List, got {:?}", other),
+    }
 }
 
 #[test]

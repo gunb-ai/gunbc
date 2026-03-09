@@ -1639,11 +1639,7 @@ mod tests {
                 "execute_rest",
                 vec![
                     Port::scalar("request", "TransportRequest"),
-                    Port::with_cardinality(
-                        "res:credential",
-                        "Credential",
-                        Cardinality::ZERO_OR_ONE,
-                    ),
+                    Port::optional("res:credential", "Credential"),
                 ],
                 vec![Port::scalar("response", "TransportResponse")],
                 (),
@@ -1686,11 +1682,7 @@ mod tests {
                 "execute_rest",
                 vec![
                     Port::scalar("request", "TransportRequest"),
-                    Port::with_cardinality(
-                        "res:credential",
-                        "Credential",
-                        Cardinality::ZERO_OR_ONE,
-                    ),
+                    Port::optional("res:credential", "Credential"),
                 ],
                 vec![Port::scalar("response", "TransportResponse")],
                 (),

@@ -1383,11 +1383,7 @@ fn derive_interface_stub_transport_triplets(
                         .iter()
                         .map(|field| {
                             let ty = type_expr_to_string(&field.ty);
-                            Port::with_cardinality(
-                                field.name.as_str(),
-                                ty.as_str(),
-                                Cardinality::ONE,
-                            )
+                            Port::scalar(field.name.as_str(), ty.as_str())
                         })
                         .collect::<Vec<_>>()
                 };
@@ -2538,7 +2534,7 @@ fn lower_typed_project_impl(
                         Node::opaque(
                             node_id,
                             vec![],
-                            vec![Port::with_cardinality("stages", "Int", Cardinality::ONE)],
+                            vec![Port::scalar("stages", "Int")],
                             LoweredOp::Pipeline {
                                 module: module_name.clone(),
                                 name: name.clone(),
@@ -3140,206 +3136,134 @@ mod parity {
             (
                 "build_credential",
                 vec![
-                    Port::with_cardinality("secret", "String", Cardinality::ONE),
-                    Port::with_cardinality("scheme", "String", Cardinality::ONE),
-                    Port::with_cardinality(
-                        "header_name",
-                        "OptionalString",
-                        Cardinality::ZERO_OR_ONE,
-                    ),
-                    Port::with_cardinality("source_id", "String", Cardinality::ONE),
-                    Port::with_cardinality("required_scopes", "String", Cardinality::ZERO_OR_MORE),
+                    Port::scalar("secret", "String"),
+                    Port::scalar("scheme", "String"),
+                    Port::optional("header_name", "OptionalString"),
+                    Port::scalar("source_id", "String"),
+                    Port::fan_in("required_scopes", "String"),
                 ],
-                vec![Port::with_cardinality(
-                    "credential",
-                    "Credential",
-                    Cardinality::ONE,
-                )],
+                vec![Port::scalar("credential", "Credential")],
             ),
             (
                 "net_env",
                 vec![],
-                vec![Port::with_cardinality(
-                    "api:network",
-                    "NetworkHandle",
-                    Cardinality::ONE,
-                )],
+                vec![Port::scalar("api:network", "NetworkHandle")],
             ),
             (
                 "prepare_github_oidc",
                 vec![
-                    Port::with_cardinality("audience", "String", Cardinality::ONE),
-                    Port::with_cardinality(
-                        "request_token",
-                        "OptionalString",
-                        Cardinality::ZERO_OR_ONE,
-                    ),
-                    Port::with_cardinality(
-                        "request_url",
-                        "OptionalString",
-                        Cardinality::ZERO_OR_ONE,
-                    ),
+                    Port::scalar("audience", "String"),
+                    Port::optional("request_token", "OptionalString"),
+                    Port::optional("request_url", "OptionalString"),
                 ],
                 vec![
-                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
-                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                    Port::scalar("request", "TransportRequest"),
+                    Port::scalar("skip", "Bool"),
                 ],
             ),
             (
                 "execute_github_oidc",
                 vec![
-                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
-                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
-                    Port::with_cardinality("res:api:network", "NetworkHandle", Cardinality::ONE),
+                    Port::scalar("request", "TransportRequest"),
+                    Port::scalar("skip", "Bool"),
+                    Port::scalar("res:api:network", "NetworkHandle"),
                 ],
-                vec![Port::with_cardinality(
-                    "response",
-                    "TransportResponse",
-                    Cardinality::ONE,
-                )],
+                vec![Port::scalar("response", "TransportResponse")],
             ),
             (
                 "parse_github_oidc",
-                vec![Port::with_cardinality(
-                    "response",
-                    "TransportResponse",
-                    Cardinality::ONE,
-                )],
-                vec![Port::with_cardinality(
-                    "subject_token",
-                    "String",
-                    Cardinality::ONE,
-                )],
+                vec![Port::scalar("response", "TransportResponse")],
+                vec![Port::scalar("subject_token", "String")],
             ),
             (
                 "prepare_sts",
                 vec![
-                    Port::with_cardinality("subject_token", "String", Cardinality::ONE),
-                    Port::with_cardinality("audience", "String", Cardinality::ONE),
+                    Port::scalar("subject_token", "String"),
+                    Port::scalar("audience", "String"),
                 ],
                 vec![
-                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
-                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                    Port::scalar("request", "TransportRequest"),
+                    Port::scalar("skip", "Bool"),
                 ],
             ),
             (
                 "execute_sts",
                 vec![
-                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
-                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
-                    Port::with_cardinality("res:api:network", "NetworkHandle", Cardinality::ONE),
+                    Port::scalar("request", "TransportRequest"),
+                    Port::scalar("skip", "Bool"),
+                    Port::scalar("res:api:network", "NetworkHandle"),
                 ],
-                vec![Port::with_cardinality(
-                    "response",
-                    "TransportResponse",
-                    Cardinality::ONE,
-                )],
+                vec![Port::scalar("response", "TransportResponse")],
             ),
             (
                 "parse_sts",
-                vec![Port::with_cardinality(
-                    "response",
-                    "TransportResponse",
-                    Cardinality::ONE,
-                )],
+                vec![Port::scalar("response", "TransportResponse")],
                 vec![
-                    Port::with_cardinality("access_token", "String", Cardinality::ONE),
-                    Port::with_cardinality("expires_in", "Int", Cardinality::ONE),
+                    Port::scalar("access_token", "String"),
+                    Port::scalar("expires_in", "Int"),
                 ],
             ),
             (
                 "should_impersonate",
-                vec![Port::with_cardinality(
-                    "service_account",
-                    "String",
-                    Cardinality::ONE,
-                )],
-                vec![Port::with_cardinality("should", "Bool", Cardinality::ONE)],
+                vec![Port::scalar("service_account", "String")],
+                vec![Port::scalar("should", "Bool")],
             ),
             (
                 "prepare_impersonate",
                 vec![
-                    Port::with_cardinality("access_token", "String", Cardinality::ONE),
-                    Port::with_cardinality("service_account", "String", Cardinality::ONE),
-                    Port::with_cardinality(
-                        "lifetime_seconds",
-                        "OptionalInt",
-                        Cardinality::ZERO_OR_ONE,
-                    ),
-                    Port::with_cardinality(
-                        "should_impersonate",
-                        "OptionalBool",
-                        Cardinality::ZERO_OR_ONE,
-                    ),
+                    Port::scalar("access_token", "String"),
+                    Port::scalar("service_account", "String"),
+                    Port::optional("lifetime_seconds", "OptionalInt"),
+                    Port::optional("should_impersonate", "OptionalBool"),
                 ],
                 vec![
-                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
-                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                    Port::scalar("request", "TransportRequest"),
+                    Port::scalar("skip", "Bool"),
                 ],
             ),
             (
                 "execute_impersonate",
                 vec![
-                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
-                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
-                    Port::with_cardinality("res:api:network", "NetworkHandle", Cardinality::ONE),
+                    Port::scalar("request", "TransportRequest"),
+                    Port::scalar("skip", "Bool"),
+                    Port::scalar("res:api:network", "NetworkHandle"),
                 ],
-                vec![Port::with_cardinality(
-                    "response",
-                    "TransportResponse",
-                    Cardinality::ONE,
-                )],
+                vec![Port::scalar("response", "TransportResponse")],
             ),
             (
                 "parse_impersonate",
                 vec![
-                    Port::with_cardinality("response", "TransportResponse", Cardinality::ONE),
-                    Port::with_cardinality(
-                        "base_access_token",
-                        "OptionalString",
-                        Cardinality::ZERO_OR_ONE,
-                    ),
+                    Port::scalar("response", "TransportResponse"),
+                    Port::optional("base_access_token", "OptionalString"),
                 ],
-                vec![Port::with_cardinality(
-                    "access_token",
-                    "String",
-                    Cardinality::ONE,
-                )],
+                vec![Port::scalar("access_token", "String")],
             ),
             (
                 "prepare_secret_access",
                 vec![
-                    Port::with_cardinality("access_token", "String", Cardinality::ONE),
-                    Port::with_cardinality("project", "String", Cardinality::ONE),
-                    Port::with_cardinality("secret", "String", Cardinality::ONE),
-                    Port::with_cardinality("version", "OptionalString", Cardinality::ZERO_OR_ONE),
+                    Port::scalar("access_token", "String"),
+                    Port::scalar("project", "String"),
+                    Port::scalar("secret", "String"),
+                    Port::optional("version", "OptionalString"),
                 ],
                 vec![
-                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
-                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                    Port::scalar("request", "TransportRequest"),
+                    Port::scalar("skip", "Bool"),
                 ],
             ),
             (
                 "execute_secret_access",
                 vec![
-                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
-                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
-                    Port::with_cardinality("res:api:network", "NetworkHandle", Cardinality::ONE),
+                    Port::scalar("request", "TransportRequest"),
+                    Port::scalar("skip", "Bool"),
+                    Port::scalar("res:api:network", "NetworkHandle"),
                 ],
-                vec![Port::with_cardinality(
-                    "response",
-                    "TransportResponse",
-                    Cardinality::ONE,
-                )],
+                vec![Port::scalar("response", "TransportResponse")],
             ),
             (
                 "parse_secret_access",
-                vec![Port::with_cardinality(
-                    "response",
-                    "TransportResponse",
-                    Cardinality::ONE,
-                )],
-                vec![Port::with_cardinality("secret", "String", Cardinality::ONE)],
+                vec![Port::scalar("response", "TransportResponse")],
+                vec![Port::scalar("secret", "String")],
             ),
         ]
     }
@@ -3495,21 +3419,28 @@ fn lower_callable(
     is_interactive: bool,
     fn_body: Option<Box<LoweredFnBody>>,
     origin: NodeOrigin,
-    _type_registry: Option<&gunbc_ir::TypeRegistry>,
+    type_registry: Option<&gunbc_ir::TypeRegistry>,
 ) -> (Node<LoweredOp>, LoweredEndpoint) {
-    // Note: type_registry is threaded here for future use. Callable ports
-    // always use Cardinality::ONE because each port carries a single value
-    // (even if that value is a List or Optional). Port cardinality represents
-    // how many values flow through the port, not the type's internal structure.
     let node_id = lowered_node_id(module_name, &callable.name);
     let outputs = if callable.outputs.is_empty() {
-        vec![Port::with_cardinality("return", "Unit", Cardinality::ONE)]
+        vec![Port::scalar("return", "Unit")]
     } else {
         callable
             .outputs
             .iter()
             .map(|binding| {
-                Port::with_cardinality(binding.name.as_str(), binding.ty.as_str(), Cardinality::ONE)
+                let mut port = Port::scalar(binding.name.as_str(), binding.ty.as_str());
+                // Derive cardinality from type DAG when registry is available.
+                // A port typed `List<Bool>` gets ZERO_OR_MORE cardinality, but
+                // stays Singular multiplicity (one list value on one edge).
+                if let Some(registry) = type_registry {
+                    if let Some(inferred) =
+                        registry.infer_cardinality(&gunbc_ir::TypeId::from(binding.ty.as_str()))
+                    {
+                        port.cardinality = inferred;
+                    }
+                }
+                port
             })
             .collect()
     };
@@ -3517,21 +3448,21 @@ fn lower_callable(
         .params
         .iter()
         .map(|binding| {
-            Port::with_cardinality(binding.name.as_str(), binding.ty.as_str(), Cardinality::ONE)
+            let mut port = Port::scalar(binding.name.as_str(), binding.ty.as_str());
+            if let Some(registry) = type_registry {
+                if let Some(inferred) =
+                    registry.infer_cardinality(&gunbc_ir::TypeId::from(binding.ty.as_str()))
+                {
+                    port.cardinality = inferred;
+                }
+            }
+            port
         })
         .collect::<Vec<_>>();
     for output in &outputs {
-        inputs.push(Port::with_cardinality(
-            output_passthrough_input_name(output.name.0.as_str()),
-            output.type_id.0.as_str(),
-            Cardinality::ONE,
-        ));
+        inputs.push(Port::scalar(output_passthrough_input_name(output.name.0.as_str()), output.type_id.0.as_str()));
     }
-    inputs.push(Port::with_cardinality(
-        PortName::DEPS,
-        "Any",
-        Cardinality::ZERO_OR_MORE,
-    ));
+    inputs.push(Port::fan_in(PortName::DEPS, "Any"));
     let obligation = infer_fn_obligation(&callable.name, kind, &outputs);
     let primary_output = outputs
         .first()
@@ -4095,11 +4026,7 @@ fn make_loop_body_dag_from_stmts(
         body_inputs.push(Port::scalar(passthrough.as_str(), "Any"));
     }
     body_inputs.push(Port::scalar(output_passthrough_input_name("result"), "Any"));
-    body_inputs.push(Port::with_cardinality(
-        PortName::DEPS,
-        "Any",
-        Cardinality::ZERO_OR_MORE,
-    ));
+    body_inputs.push(Port::fan_in(PortName::DEPS, "Any"));
 
     let body_target = LoweredEndpoint {
         node_id: "body_op".to_string(),
@@ -5004,7 +4931,7 @@ fn expand_single_content_upsert(
     builder.add_node(
         Node::opaque(
             written_id.clone(),
-            vec![Port::with_cardinality("operand", "Any", Cardinality::ONE)],
+            vec![Port::scalar("operand", "Any")],
             vec![Port::scalar("result", "Bool")],
             LoweredOp::Primitive {
                 module: ctx.module_name.to_string(),
@@ -7153,12 +7080,11 @@ fn service_prepare_ports(operation: &OperationDef, metadata: &ServiceCallMetadat
     declared_inputs
         .into_iter()
         .map(|(name, ty, is_optional)| {
-            let cardinality = if is_optional {
-                Cardinality::ZERO_OR_ONE
+            if is_optional {
+                Port::optional(name.as_str(), ty.as_str())
             } else {
-                Cardinality::ONE
-            };
-            Port::with_cardinality(name.as_str(), ty.as_str(), cardinality)
+                Port::scalar(name.as_str(), ty.as_str())
+            }
         })
         .collect()
 }
@@ -7198,12 +7124,11 @@ fn capability_prepare_ports(
     declared_inputs
         .into_iter()
         .map(|(name, ty, is_optional)| {
-            let cardinality = if is_optional {
-                Cardinality::ZERO_OR_ONE
+            if is_optional {
+                Port::optional(name.as_str(), ty.as_str())
             } else {
-                Cardinality::ONE
-            };
-            Port::with_cardinality(name.as_str(), ty.as_str(), cardinality)
+                Port::scalar(name.as_str(), ty.as_str())
+            }
         })
         .collect()
 }
@@ -7496,11 +7421,7 @@ fn derive_service_transport_triplets(
                 );
                 let mut execute_inputs = vec![Port::scalar("request", "TransportRequest")];
                 if has_auth {
-                    execute_inputs.push(Port::with_cardinality(
-                        PortName::RESOURCE_CREDENTIAL,
-                        "Credential",
-                        Cardinality::ZERO_OR_ONE,
-                    ));
+                    execute_inputs.push(Port::optional(PortName::RESOURCE_CREDENTIAL, "Credential"));
                 }
                 let execute_node = Node::opaque(
                     execute_id.clone(),
@@ -7532,11 +7453,7 @@ fn derive_service_transport_triplets(
                         .iter()
                         .map(|field| {
                             let ty = type_expr_to_string(&field.ty);
-                            Port::with_cardinality(
-                                field.name.as_str(),
-                                ty.as_str(),
-                                Cardinality::ONE,
-                            )
+                            Port::scalar(field.name.as_str(), ty.as_str())
                         })
                         .collect::<Vec<_>>()
                 };
@@ -8832,11 +8749,7 @@ fn add_provided_resource_nodes(
                 builder.add_node(Node::opaque(
                     provider_node_id.clone(),
                     vec![Port::scalar("trigger", "Any")],
-                    vec![Port::with_cardinality(
-                        provided.binding.as_str(),
-                        resource_type.as_str(),
-                        Cardinality::ONE,
-                    )],
+                    vec![Port::scalar(provided.binding.as_str(), resource_type.as_str())],
                     LoweredOp::Callable {
                         module: module_name.clone(),
                         kind: CallableKind::Pattern,
@@ -9222,8 +9135,8 @@ fn ensure_param_source_node(
     builder.add_node(
         Node::opaque(
             node_id.clone(),
-            vec![Port::with_cardinality(param, ty, Cardinality::ONE)],
-            vec![Port::with_cardinality(param, ty, Cardinality::ONE)],
+            vec![Port::scalar(param, ty)],
+            vec![Port::scalar(param, ty)],
             LoweredOp::Primitive {
                 module: module_name.to_string(),
                 name: format!("call_param_source::{callable}::{param}"),
@@ -9314,7 +9227,7 @@ fn ensure_literal_source_node(
     builder.add_node(Node::opaque(
         node_id.clone(),
         vec![],
-        vec![Port::with_cardinality(param, ty, Cardinality::ONE)],
+        vec![Port::scalar(param, ty)],
         LoweredOp::Primitive {
             module: module_name.to_string(),
             name: format!("call_literal_source::{}", encode_literal_for_name(literal)),
@@ -9612,10 +9525,10 @@ fn build_collection_lowering_plan(
         let node = Node::opaque(
             spec.node_id.clone(),
             vec![
-                Port::with_cardinality("items", "Any", Cardinality::ONE),
-                Port::with_cardinality(PortName::DEPS, "Any", Cardinality::ZERO_OR_MORE),
+                Port::scalar("items", "Any"),
+                Port::fan_in(PortName::DEPS, "Any"),
             ],
-            vec![Port::with_cardinality("items", "Any", Cardinality::ONE)],
+            vec![Port::scalar("items", "Any")],
             LoweredOp::Collection {
                 module: module_name.to_string(),
                 callable: callable_node_id.to_string(),
@@ -9992,7 +9905,7 @@ fn wire_fn_call_arguments(builder: &mut DagBuilder, ctx: &LoweringContext<'_>, s
                     continue;
                 }
                 if let Some(let_expr) = ctx.local_let_bindings.get(arg_ident) {
-                    let output_port = Port::with_cardinality(param_name, "Any", Cardinality::ONE);
+                    let output_port = Port::scalar(param_name, "Any");
                     match lower_expr(
                         builder,
                         ctx,
@@ -10214,7 +10127,7 @@ fn lower_expr(
                     return Ok((source.node_id.clone(), field.clone()));
                 }
                 if let Some(bound_expr) = ctx.local_let_bindings.get(base_ident.as_str()) {
-                    let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
+                    let any_port = Port::scalar("result", "Any");
                     let (base_node, base_port) = lower_expr(
                         builder,
                         ctx,
@@ -10257,7 +10170,7 @@ fn lower_expr(
             }
             // C24: For complex base expressions, try recursive resolution.
             // If the base resolves, add a structural GetField node.
-            let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
+            let any_port = Port::scalar("result", "Any");
             let (base_node, base_port) = lower_expr(
                 builder,
                 ctx,
@@ -10366,7 +10279,7 @@ fn lower_expr(
         Expr::BinOp(left, op, right) => {
             // Sub-expressions may have different types from the BinOp result
             // (e.g., `a + b > 5` — operands are Int, result is Bool).
-            let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
+            let any_port = Port::scalar("result", "Any");
             let left_source = lower_expr(
                 builder,
                 ctx,
@@ -10437,7 +10350,7 @@ fn lower_expr(
         ))),
         // C24-P2: UnaryOp → UnaryOp structural node.
         Expr::UnaryOp(op, inner) => {
-            let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
+            let any_port = Port::scalar("result", "Any");
             let inner_source = lower_expr(
                 builder,
                 ctx,
@@ -10846,16 +10759,8 @@ fn synthesize_get_field(
 ) -> Option<(String, String)> {
     let output_type = output_port.type_id.0.as_str();
     let result_port_name = "result";
-    let input_ports = vec![Port::with_cardinality(
-        base_param,
-        param_ty,
-        Cardinality::ONE,
-    )];
-    let output_ports = vec![Port::with_cardinality(
-        result_port_name,
-        output_type,
-        Cardinality::ONE,
-    )];
+    let input_ports = vec![Port::scalar(base_param, param_ty)];
+    let output_ports = vec![Port::scalar(result_port_name, output_type)];
 
     let node_id = format!(
         "get_field_{}",
@@ -10911,14 +10816,10 @@ fn synthesize_binary_op(
     let output_type = output_port.type_id.0.as_str();
 
     let input_ports = vec![
-        Port::with_cardinality("left", "Any", Cardinality::ONE),
-        Port::with_cardinality("right", "Any", Cardinality::ONE),
+        Port::scalar("left", "Any"),
+        Port::scalar("right", "Any"),
     ];
-    let output_ports = vec![Port::with_cardinality(
-        result_port_name,
-        output_type,
-        Cardinality::ONE,
-    )];
+    let output_ports = vec![Port::scalar(result_port_name, output_type)];
 
     let node_id = format!(
         "binary_op_{}",
@@ -10979,7 +10880,7 @@ fn wire_hoisted_callable_args(
         if builder.has_edge_to_port(endpoint.node_id.as_str(), param_name.as_str()) {
             continue;
         }
-        let arg_port = Port::with_cardinality(param_name.as_str(), "Any", Cardinality::ONE);
+        let arg_port = Port::scalar(param_name.as_str(), "Any");
         let source = lower_expr(
             builder,
             ctx,
@@ -11061,9 +10962,9 @@ fn synthesize_callable_expr_value(
 
     let input_ports: Vec<Port> = output_fields
         .iter()
-        .map(|field| Port::with_cardinality(field.as_str(), "Any", Cardinality::ONE))
+        .map(|field| Port::scalar(field.as_str(), "Any"))
         .collect();
-    let output_ports = vec![Port::with_cardinality("result", "Any", Cardinality::ONE)];
+    let output_ports = vec![Port::scalar("result", "Any")];
     let node_id = format!(
         "record_construct_{}",
         sanitize_identifier(&format!(
@@ -11147,7 +11048,7 @@ fn synthesize_match_dispatch(
     }
 
     // Build input ports: "scrutinee" + all leaf refs from arm bodies (deduplicated).
-    let mut input_ports = vec![Port::with_cardinality("scrutinee", "Any", Cardinality::ONE)];
+    let mut input_ports = vec![Port::scalar("scrutinee", "Any")];
     let mut seen_ports = HashSet::new();
     seen_ports.insert("scrutinee".to_string());
     for leaf in &refs {
@@ -11158,20 +11059,12 @@ fn synthesize_match_dispatch(
             expr::LeafRef::Param { ty, .. } => ty.as_str(),
             _ => "Any",
         };
-        input_ports.push(Port::with_cardinality(
-            leaf.input_port.as_str(),
-            ty,
-            Cardinality::ONE,
-        ));
+        input_ports.push(Port::scalar(leaf.input_port.as_str(), ty));
     }
 
     let result_port_name = "result";
     let output_type = output_port.type_id.0.as_str();
-    let output_ports = vec![Port::with_cardinality(
-        result_port_name,
-        output_type,
-        Cardinality::ONE,
-    )];
+    let output_ports = vec![Port::scalar(result_port_name, output_type)];
 
     let mut hoisted_arm_sources = Vec::new();
     let lowered_arms: Vec<expr::LoweredMatchArm> = arms
@@ -11194,16 +11087,12 @@ fn synthesize_match_dispatch(
         .collect();
     for (input_port, _, _) in &hoisted_arm_sources {
         if seen_ports.insert(input_port.clone()) {
-            input_ports.push(Port::with_cardinality(
-                input_port.as_str(),
-                "Any",
-                Cardinality::ONE,
-            ));
+            input_ports.push(Port::scalar(input_port.as_str(), "Any"));
         }
     }
 
     // Wire scrutinee input — use Any-typed port (scrutinee type differs from match result).
-    let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
+    let any_port = Port::scalar("result", "Any");
     let scrutinee_source = lower_expr(
         builder,
         ctx,
@@ -11301,23 +11190,19 @@ fn synthesize_conditional(
 
     // Build input ports: "condition", "then", "else" + all leaf refs.
     let mut input_ports = vec![
-        Port::with_cardinality("condition", "Bool", Cardinality::ONE),
-        Port::with_cardinality("then", "Any", Cardinality::ONE),
+        Port::scalar("condition", "Bool"),
+        Port::scalar("then", "Any"),
     ];
     if else_.is_some() {
-        input_ports.push(Port::with_cardinality("else", "Any", Cardinality::ONE));
+        input_ports.push(Port::scalar("else", "Any"));
     }
 
     let result_port_name = "result";
     let output_type = output_port.type_id.0.as_str();
-    let output_ports = vec![Port::with_cardinality(
-        result_port_name,
-        output_type,
-        Cardinality::ONE,
-    )];
+    let output_ports = vec![Port::scalar(result_port_name, output_type)];
 
     // Wire condition — use Bool-typed port (condition is always Bool).
-    let bool_port = Port::with_cardinality("result", "Bool", Cardinality::ONE);
+    let bool_port = Port::scalar("result", "Bool");
     let cond_source = lower_expr(
         builder,
         ctx,
@@ -11400,12 +11285,8 @@ fn synthesize_unary_op(
     let result_port_name = "result";
     let output_type = output_port.type_id.0.as_str();
 
-    let input_ports = vec![Port::with_cardinality("operand", "Any", Cardinality::ONE)];
-    let output_ports = vec![Port::with_cardinality(
-        result_port_name,
-        output_type,
-        Cardinality::ONE,
-    )];
+    let input_ports = vec![Port::scalar("operand", "Any")];
+    let output_ports = vec![Port::scalar(result_port_name, output_type)];
 
     let node_id = format!(
         "unary_op_{}",
@@ -11458,7 +11339,7 @@ fn synthesize_variant_construct(
     }
 
     // Payload variant — resolve each field, then emit VariantConstruct node.
-    let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
+    let any_port = Port::scalar("result", "Any");
     let mut field_sources: Vec<(String, String, String)> = Vec::new();
     let mut all_resolved = true;
     for (field_name, field_expr) in fields {
@@ -11485,16 +11366,12 @@ fn synthesize_variant_construct(
     let field_names: Vec<String> = fields.iter().map(|(name, _)| name.clone()).collect();
     let input_ports: Vec<Port> = field_names
         .iter()
-        .map(|name| Port::with_cardinality(name.as_str(), "Any", Cardinality::ONE))
+        .map(|name| Port::scalar(name.as_str(), "Any"))
         .collect();
 
     let result_port_name = "result";
     let output_type = output_port.type_id.0.as_str();
-    let output_ports = vec![Port::with_cardinality(
-        result_port_name,
-        output_type,
-        Cardinality::ONE,
-    )];
+    let output_ports = vec![Port::scalar(result_port_name, output_type)];
 
     let node_id = format!(
         "variant_construct_{}",
@@ -11537,7 +11414,7 @@ fn synthesize_record_construct(
 ) -> Option<(String, String)> {
     // Resolve each field to a source. If any can't be resolved, fall back.
     // Use Any-typed port for field values (individual fields differ from the record type).
-    let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
+    let any_port = Port::scalar("result", "Any");
     let mut field_sources: Vec<(String, String, String)> = Vec::new();
     let mut all_resolved = true;
     for (field_name, field_expr) in fields {
@@ -11564,16 +11441,12 @@ fn synthesize_record_construct(
     let field_names: Vec<String> = fields.iter().map(|(name, _)| name.clone()).collect();
     let input_ports: Vec<Port> = field_names
         .iter()
-        .map(|name| Port::with_cardinality(name.as_str(), "Any", Cardinality::ONE))
+        .map(|name| Port::scalar(name.as_str(), "Any"))
         .collect();
 
     let result_port_name = "result";
     let output_type = output_port.type_id.0.as_str();
-    let output_ports = vec![Port::with_cardinality(
-        result_port_name,
-        output_type,
-        Cardinality::ONE,
-    )];
+    let output_ports = vec![Port::scalar(result_port_name, output_type)];
 
     let node_id = format!(
         "record_construct_{}",
@@ -11613,7 +11486,7 @@ fn synthesize_list_construct(
     output_name: &str,
     disambiguator: &str,
 ) -> Option<(String, String)> {
-    let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
+    let any_port = Port::scalar("result", "Any");
 
     // Resolve each element recursively.
     let mut elem_sources: Vec<(String, String, String)> = Vec::new();
@@ -11637,15 +11510,11 @@ fn synthesize_list_construct(
 
     let input_ports: Vec<Port> = elem_sources
         .iter()
-        .map(|(name, _, _)| Port::with_cardinality(name.as_str(), "Any", Cardinality::ONE))
+        .map(|(name, _, _)| Port::scalar(name.as_str(), "Any"))
         .collect();
     let result_port_name = "result";
     let output_type = output_port.type_id.0.as_str();
-    let output_ports = vec![Port::with_cardinality(
-        result_port_name,
-        output_type,
-        Cardinality::ONE,
-    )];
+    let output_ports = vec![Port::scalar(result_port_name, output_type)];
 
     let node_id = format!(
         "list_construct_{}",
@@ -11685,7 +11554,7 @@ fn synthesize_string_interpolate(
     output_name: &str,
     disambiguator: &str,
 ) -> Option<(String, String)> {
-    let any_port = Port::with_cardinality("result", "Any", Cardinality::ONE);
+    let any_port = Port::scalar("result", "Any");
 
     let mut parts: Vec<String> = Vec::new();
     let mut input_port_names: Vec<String> = Vec::new();
@@ -11726,15 +11595,11 @@ fn synthesize_string_interpolate(
 
     let input_ports: Vec<Port> = input_port_names
         .iter()
-        .map(|name| Port::with_cardinality(name.as_str(), "Any", Cardinality::ONE))
+        .map(|name| Port::scalar(name.as_str(), "Any"))
         .collect();
     let result_port_name = "result";
     let output_type = output_port.type_id.0.as_str();
-    let output_ports = vec![Port::with_cardinality(
-        result_port_name,
-        output_type,
-        Cardinality::ONE,
-    )];
+    let output_ports = vec![Port::scalar(result_port_name, output_type)];
 
     let node_id = format!(
         "string_interpolate_{}",
@@ -11781,16 +11646,8 @@ fn synthesize_get_field_on_resolved(
     let result_port_name = "result";
     let output_type = output_port.type_id.0.as_str();
     let input_port_name = "base";
-    let input_ports = vec![Port::with_cardinality(
-        input_port_name,
-        "Any",
-        Cardinality::ONE,
-    )];
-    let output_ports = vec![Port::with_cardinality(
-        result_port_name,
-        output_type,
-        Cardinality::ONE,
-    )];
+    let input_ports = vec![Port::scalar(input_port_name, "Any")];
+    let output_ports = vec![Port::scalar(result_port_name, output_type)];
 
     let node_id = format!(
         "get_field_{}",

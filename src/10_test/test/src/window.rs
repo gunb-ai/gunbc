@@ -935,7 +935,7 @@ mod assert_chain_outputs_tests {
 mod tests {
     use super::*;
     use gunbc_exec::LogEntry;
-    use gunbc_ir::{Cardinality, Dag, Node, Port};
+    use gunbc_ir::{Dag, Node, Port};
     use std::collections::HashMap;
 
     #[test]
@@ -944,11 +944,7 @@ mod tests {
         dag.add_node(Node::opaque(
             "a",
             vec![],
-            vec![Port::with_cardinality(
-                "out",
-                "String",
-                Cardinality::ZERO_OR_ONE,
-            )],
+            vec![Port::optional("out", "String")],
             (),
         ));
 

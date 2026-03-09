@@ -7,7 +7,6 @@ use daglang_resolve::{self, ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{ModulePath, SourceFile};
 use daglang_syntax::diagnostic::{self, Diagnostic, DiagnosticKind};
 use daglang_syntax::parser;
-use gunbc_ir::types::Cardinality;
 use gunbc_ir::{Dag, Edge, Node, Port};
 
 const NODE_DISCOVER: &str = "discover_files";
@@ -205,50 +204,46 @@ pub fn build_pipeline_dag() -> Dag<CompilerOp> {
 
     dag.add_node(Node::opaque(
         NODE_DISCOVER,
-        vec![Port::with_cardinality(
-            PORT_CONTEXT,
-            "PipelineContext",
-            Cardinality::ONE,
-        )],
+        vec![Port::scalar(PORT_CONTEXT, "PipelineContext")],
         vec![
-            Port::with_cardinality(PORT_FILES, "Vec<FileSource>", Cardinality::ONE),
-            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+            Port::scalar(PORT_FILES, "Vec<FileSource>"),
+            Port::scalar(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
         ],
         CompilerOp::DiscoverFiles,
     ));
     dag.add_node(Node::opaque(
         NODE_PARSE,
         vec![
-            Port::with_cardinality(PORT_FILES, "Vec<FileSource>", Cardinality::ONE),
-            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+            Port::scalar(PORT_FILES, "Vec<FileSource>"),
+            Port::scalar(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
         ],
         vec![
-            Port::with_cardinality(PORT_PARSED_MODULES, "Vec<ParsedModule>", Cardinality::ONE),
-            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+            Port::scalar(PORT_PARSED_MODULES, "Vec<ParsedModule>"),
+            Port::scalar(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
         ],
         CompilerOp::ParseAll,
     ));
     dag.add_node(Node::opaque(
         NODE_BUILD,
         vec![
-            Port::with_cardinality(PORT_PARSED_MODULES, "Vec<ParsedModule>", Cardinality::ONE),
-            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+            Port::scalar(PORT_PARSED_MODULES, "Vec<ParsedModule>"),
+            Port::scalar(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
         ],
         vec![
-            Port::with_cardinality(PORT_MODULE_GRAPH, "ModuleGraph", Cardinality::ONE),
-            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+            Port::scalar(PORT_MODULE_GRAPH, "ModuleGraph"),
+            Port::scalar(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
         ],
         CompilerOp::BuildModuleGraph,
     ));
     dag.add_node(Node::opaque(
         NODE_REPORT,
         vec![
-            Port::with_cardinality(PORT_MODULE_GRAPH, "ModuleGraph", Cardinality::ONE),
-            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+            Port::scalar(PORT_MODULE_GRAPH, "ModuleGraph"),
+            Port::scalar(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
         ],
         vec![
-            Port::with_cardinality(PORT_REPORT, "String", Cardinality::ONE),
-            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+            Port::scalar(PORT_REPORT, "String"),
+            Port::scalar(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
         ],
         CompilerOp::ReportModules,
     ));
@@ -294,87 +289,83 @@ pub fn build_compile_stage_dag() -> Dag<CompilerOp> {
 
     dag.add_node(Node::opaque(
         NODE_DISCOVER,
-        vec![Port::with_cardinality(
-            PORT_CONTEXT,
-            "PipelineContext",
-            Cardinality::ONE,
-        )],
+        vec![Port::scalar(PORT_CONTEXT, "PipelineContext")],
         vec![
-            Port::with_cardinality(PORT_FILES, "Vec<FileSource>", Cardinality::ONE),
-            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+            Port::scalar(PORT_FILES, "Vec<FileSource>"),
+            Port::scalar(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
         ],
         CompilerOp::DiscoverFiles,
     ));
     dag.add_node(Node::opaque(
         NODE_PARSE,
         vec![
-            Port::with_cardinality(PORT_FILES, "Vec<FileSource>", Cardinality::ONE),
-            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+            Port::scalar(PORT_FILES, "Vec<FileSource>"),
+            Port::scalar(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
         ],
         vec![
-            Port::with_cardinality(PORT_PARSED_MODULES, "Vec<ParsedModule>", Cardinality::ONE),
-            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+            Port::scalar(PORT_PARSED_MODULES, "Vec<ParsedModule>"),
+            Port::scalar(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
         ],
         CompilerOp::ParseAll,
     ));
     dag.add_node(Node::opaque(
         NODE_RESOLVE,
         vec![
-            Port::with_cardinality(PORT_PARSED_MODULES, "Vec<ParsedModule>", Cardinality::ONE),
-            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+            Port::scalar(PORT_PARSED_MODULES, "Vec<ParsedModule>"),
+            Port::scalar(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
         ],
         vec![
-            Port::with_cardinality(PORT_MODULE_GRAPH, "ModuleGraph", Cardinality::ONE),
-            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+            Port::scalar(PORT_MODULE_GRAPH, "ModuleGraph"),
+            Port::scalar(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
         ],
         CompilerOp::ResolveModuleGraph,
     ));
     dag.add_node(Node::opaque(
         NODE_TYPECHECK,
         vec![
-            Port::with_cardinality(PORT_MODULE_GRAPH, "ModuleGraph", Cardinality::ONE),
-            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+            Port::scalar(PORT_MODULE_GRAPH, "ModuleGraph"),
+            Port::scalar(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
         ],
         vec![
-            Port::with_cardinality(PORT_TYPED_PROJECT, "TypedProject", Cardinality::ONE),
-            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+            Port::scalar(PORT_TYPED_PROJECT, "TypedProject"),
+            Port::scalar(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
         ],
         CompilerOp::TypecheckModules,
     ));
     dag.add_node(Node::opaque(
         NODE_LOWER,
         vec![
-            Port::with_cardinality(PORT_TYPED_PROJECT, "TypedProject", Cardinality::ONE),
-            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+            Port::scalar(PORT_TYPED_PROJECT, "TypedProject"),
+            Port::scalar(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
         ],
         vec![
-            Port::with_cardinality(PORT_LOWERED_DAG, "Dag<LoweredOp>", Cardinality::ONE),
-            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+            Port::scalar(PORT_LOWERED_DAG, "Dag<LoweredOp>"),
+            Port::scalar(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
         ],
         CompilerOp::LowerGraphIr,
     ));
     dag.add_node(Node::opaque(
         NODE_DERIVE,
         vec![
-            Port::with_cardinality(PORT_LOWERED_DAG, "Dag<LoweredOp>", Cardinality::ONE),
-            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+            Port::scalar(PORT_LOWERED_DAG, "Dag<LoweredOp>"),
+            Port::scalar(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
         ],
         vec![
-            Port::with_cardinality(PORT_DERIVED_ARTIFACTS, "DerivedArtifacts", Cardinality::ONE),
-            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+            Port::scalar(PORT_DERIVED_ARTIFACTS, "DerivedArtifacts"),
+            Port::scalar(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
         ],
         CompilerOp::DeriveMetadata,
     ));
     dag.add_node(Node::opaque(
         NODE_EMIT,
         vec![
-            Port::with_cardinality(PORT_LOWERED_DAG, "Dag<LoweredOp>", Cardinality::ONE),
-            Port::with_cardinality(PORT_DERIVED_ARTIFACTS, "DerivedArtifacts", Cardinality::ONE),
-            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+            Port::scalar(PORT_LOWERED_DAG, "Dag<LoweredOp>"),
+            Port::scalar(PORT_DERIVED_ARTIFACTS, "DerivedArtifacts"),
+            Port::scalar(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
         ],
         vec![
-            Port::with_cardinality(PORT_EMITTED_FILES, "Vec<EmittedFile>", Cardinality::ONE),
-            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+            Port::scalar(PORT_EMITTED_FILES, "Vec<EmittedFile>"),
+            Port::scalar(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
         ],
         CompilerOp::EmitTargetFiles,
     ));
@@ -965,6 +956,7 @@ fn validate_pipeline_semantics(dag: &Dag<CompilerOp>) -> Result<(), String> {
 #[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 mod tests {
     use super::*;
+    use gunbc_ir::types::Cardinality;
     use gunbc_test::unique_temp_dir;
 
     #[test]
@@ -2757,7 +2749,7 @@ mod tests {
             .expect("parse node should exist");
         parse_node
             .inputs
-            .push(Port::with_cardinality("extra", "Debug", Cardinality::ONE));
+            .push(Port::scalar("extra", "Debug"));
 
         let err = validate_pipeline_semantics(&dag)
             .expect_err("non-entrypoint with unconnected input should fail");
@@ -2864,11 +2856,9 @@ mod tests {
             .iter_mut()
             .find(|node| node.id.0 == NODE_PARSE)
             .expect("parse node should exist");
-        parse_node.inputs.push(Port::with_cardinality(
-            PORT_FILES,
-            "Vec<FileSource>",
-            Cardinality::ONE,
-        ));
+        parse_node
+            .inputs
+            .push(Port::scalar(PORT_FILES, "Vec<FileSource>"));
 
         let err = validate_pipeline_semantics(&dag)
             .expect_err("duplicate input ports should fail validation");
@@ -2883,11 +2873,9 @@ mod tests {
             .iter_mut()
             .find(|node| node.id.0 == NODE_PARSE)
             .expect("parse node should exist");
-        parse_node.outputs.push(Port::with_cardinality(
-            PORT_PARSED_MODULES,
-            "Vec<ParsedModule>",
-            Cardinality::ONE,
-        ));
+        parse_node
+            .outputs
+            .push(Port::scalar(PORT_PARSED_MODULES, "Vec<ParsedModule>"));
 
         let err = validate_pipeline_semantics(&dag)
             .expect_err("duplicate output ports should fail validation");
@@ -2914,7 +2902,7 @@ mod tests {
         dag.add_node(Node::opaque(
             "orphan_node",
             vec![],
-            vec![Port::with_cardinality("out", "Unit", Cardinality::ONE)],
+            vec![Port::scalar("out", "Unit")],
             CompilerOp::ReportModules,
         ));
 
