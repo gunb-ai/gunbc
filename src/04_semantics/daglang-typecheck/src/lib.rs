@@ -1013,7 +1013,28 @@ fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> TypeRegistry {
                             gunbc_ir::type_lib::product(def.name.as_str(), field_pairs),
                         );
                     }
-                    TypeBody::Alias(_) => {}
+                    TypeBody::Alias(type_expr) => {
+                        let base_name = type_expr_to_string(type_expr);
+                        // Build predicates from refinements (if any)
+                        let predicates = collect_predicates_from_type_expr(type_expr);
+                        if predicates.is_empty() {
+                            // Simple alias: look up base type or create identity
+                            if let Some(base_dag) = registry.get_by_name(&base_name) {
+                                registry.register(def.name.as_str(), base_dag.clone());
+                            } else {
+                                registry.register(
+                                    def.name.as_str(),
+                                    gunbc_ir::type_lib::identity(&base_name),
+                                );
+                            }
+                        } else {
+                            // Refined alias: create a refined type DAG
+                            registry.register(
+                                def.name.as_str(),
+                                gunbc_ir::type_lib::refined(&base_name, predicates),
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -3906,10 +3927,83 @@ fn canonical_content_encoding(raw: &str) -> Option<String> {
     }
 }
 
+fn str_to_content_encoding(raw: &str) -> Option<gunbc_ir::type_op::ContentEncoding> {
+    use gunbc_ir::type_op::ContentEncoding;
+    match raw {
+        "Text" => Some(ContentEncoding::Text),
+        "UTF8" => Some(ContentEncoding::UTF8),
+        "ASCII" => Some(ContentEncoding::ASCII),
+        "Latin1" => Some(ContentEncoding::Latin1),
+        "Binary" => Some(ContentEncoding::Binary),
+        "Unknown" => Some(ContentEncoding::Unknown),
+        _ => None,
+    }
+}
+
 fn extract_int_literal(expr: &Expr) -> Option<i64> {
     match expr {
         Expr::Literal(Literal::Int(value)) => Some(*value),
         _ => None,
+    }
+}
+
+/// Extract IR predicates from a type expression's refinements.
+///
+/// Walks through `Refined(inner, refinements)` wrappers and converts
+/// each `Refinement` variant to its corresponding `Predicate`.
+fn collect_predicates_from_type_expr(type_expr: &TypeExpr) -> Vec<gunbc_ir::type_op::Predicate> {
+    let mut predicates = Vec::new();
+    collect_predicates_recursive(type_expr, &mut predicates);
+    predicates
+}
+
+fn collect_predicates_recursive(
+    type_expr: &TypeExpr,
+    predicates: &mut Vec<gunbc_ir::type_op::Predicate>,
+) {
+    if let TypeExpr::Refined(inner, refinements) = type_expr {
+        collect_predicates_recursive(inner, predicates);
+        for refinement in refinements {
+            if let Some(pred) = refinement_to_predicate(refinement) {
+                predicates.push(pred);
+            }
+        }
+    }
+}
+
+fn refinement_to_predicate(refinement: &Refinement) -> Option<gunbc_ir::type_op::Predicate> {
+    use gunbc_ir::type_op::Predicate;
+    match refinement {
+        Refinement::Pattern(regex) => Some(Predicate::Matches(regex.clone())),
+        Refinement::Range { min, max } => {
+            let min_val = min.as_ref().and_then(extract_int_literal).unwrap_or(i64::MIN);
+            let max_val = max.as_ref().and_then(extract_int_literal).unwrap_or(i64::MAX);
+            Some(Predicate::InRange {
+                min: min_val,
+                max: max_val,
+            })
+        }
+        Refinement::NonEmpty => Some(Predicate::NonEmpty),
+        Refinement::Content(enc) => {
+            str_to_content_encoding(enc).map(Predicate::Content)
+        }
+        Refinement::Width(expr) => {
+            extract_int_literal(expr).map(|v| Predicate::Width(v as u16))
+        }
+        Refinement::Length(expr) => {
+            extract_int_literal(expr).map(|v| Predicate::Length(v as u64))
+        }
+        Refinement::Signed(repr) => Some(Predicate::Signed(repr.clone())),
+        Refinement::Unsigned => Some(Predicate::Unsigned),
+        Refinement::Arithmetic => Some(Predicate::Arithmetic),
+        Refinement::Domain(dom) => Some(Predicate::Domain(dom.clone())),
+        // Brand is handled structurally (not as a predicate)
+        Refinement::Brand(_) => None,
+        // These are surface-level annotations, not type predicates
+        Refinement::Format(_)
+        | Refinement::Predicate(_)
+        | Refinement::RawBody
+        | Refinement::FileTypes(_) => None,
     }
 }
 
