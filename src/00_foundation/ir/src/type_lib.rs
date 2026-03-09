@@ -648,7 +648,7 @@ mod tests {
 
     #[test]
     fn test_map_type_has_value_subdag() {
-        use crate::contract::{wrapper_kind, TypeContract};
+        use crate::contract::wrapper_kind;
 
         let int_map = map(int());
 
@@ -656,11 +656,8 @@ mod tests {
         assert_eq!(int_map.nodes.len(), 2);
         assert_eq!(wrapper_kind(&int_map), Some(WrapperKind::Map));
 
-        // TypeContract recursion extracts inner base type
-        let contract = TypeContract::from_type_dag(&int_map);
-        assert_eq!(contract.base_type, Some("Int".to_string()));
-        assert_eq!(contract.wrapper_kind, Some(WrapperKind::Map));
-        assert_eq!(contract.cardinality, Cardinality::ONE);
+        // Cardinality should be ONE (maps are scalar containers)
+        assert_eq!(infer_cardinality(&int_map), Cardinality::ONE);
     }
 
     #[test]

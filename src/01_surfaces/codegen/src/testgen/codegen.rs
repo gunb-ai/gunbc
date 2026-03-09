@@ -8604,9 +8604,10 @@ mod tests {
             SeedPolicy::Generated
         );
         assert_eq!(seed_policy_for_type("StringList"), SeedPolicy::Generated);
+        // Map containers are structurally generatable (structural type system).
         assert_eq!(
             seed_policy_for_type("Map<String,Credential>"),
-            SeedPolicy::ExplicitSeedRequired
+            SeedPolicy::Generated
         );
 
         // Fail-closed: unknown/new types default to ExplicitSeedRequired.

@@ -86,9 +86,9 @@ pub fn emit_shape(shape: &gunbc_ir::TypeShape, backend: Backend) -> String {
             }
         },
         TypeShape::Brand(_, inner) => emit_shape(inner, backend),
-        TypeShape::Product(Some(name), _) => name.clone(),
+        TypeShape::Product(Some(name), _) => emit_identity_type(name, backend),
         TypeShape::Product(None, _) => emit_identity_type("Record", backend),
-        TypeShape::Coproduct(Some(name), _) => name.clone(),
+        TypeShape::Coproduct(Some(name), _) => emit_identity_type(name, backend),
         TypeShape::Coproduct(None, _) => emit_identity_type("Record", backend),
         TypeShape::Opaque(name) => emit_identity_type(name, backend),
     }

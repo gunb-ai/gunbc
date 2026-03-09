@@ -1162,6 +1162,18 @@ pub fn value_compatible_with_type_id(type_id: &str, value: &crate::value::Value)
         return true;
     }
 
+    // Bool accepts both Bool values and coproduct variant strings ("True"/"False")
+    if type_id == "Bool" && kind == ValueKind::String {
+        return true;
+    }
+
+    // Handle types accept Map backing (serialized as maps at runtime)
+    if (type_id == "FilesystemHandle" || type_id == "NetworkHandle" || type_id == "ToolHandle")
+        && kind == ValueKind::Map
+    {
+        return true;
+    }
+
     // Default to structural backing compatibility
     value_backing_for_type_id(type_id).accepts_value_kind(kind)
 }

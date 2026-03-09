@@ -286,6 +286,41 @@ std/containers.dag   List, Option, Map, Set                       (comments only
 
 ## Remaining Gaps
 
+### FIXED: Sum Types Were Registered With "String" Payload Placeholders
+
+**Problem:** `register_type_def()` mapped every `TypeBody::Sum` variant
+to `("variant_name", "String")`, regardless of whether the variant was
+a unit variant or carried payload fields. So `Classical = True | False`
+was registered as a coproduct with two String-backed variants, not as
+a pure truth-value coproduct with two unit variants.
+
+**Fix (this PR):** `register_type_def()` now distinguishes:
+- Unit variants (no fields) → `type_lib::unit()` DAG
+- Single-field payload variants → resolved field type DAG
+- Multi-field payload variants → anonymous product DAG
+
+### FIXED: Merge Order / Stale-Child Problem (Partial)
+
+**Problem:** `merged_type_registry()` called `with_core_types()` which
+registered core types (CliResult, ContentEncoding, etc.) BEFORE the DSL
+merge. Core types that reference primitives (e.g., `CliResult` with
+`exit_code: Int`) embedded identity-placeholder child DAGs. The
+subsequent `merge_dsl_types()` only overwrote top-level names — it did
+not rebuild already-registered core types. So core types kept stale
+placeholder children even after structural DSL definitions were merged.
+
+**Fix (this PR):** `merged_type_registry()` now uses the sequence:
+kernel → DSL merge → core types. Core types are registered AFTER the
+DSL merge, so their child type lookups find structural DAGs.
+
+**Remaining risk:** `register_core_types()` calls `register_product()`
+and `register_coproduct()` which resolve child types through the
+registry at registration time. If a core type references another core
+type that hasn't been registered yet in the same batch, the child will
+still be an identity placeholder. Mitigation: topological ordering of
+`register_core_types()`, or a rebuild pass. Low priority — most core
+types reference only primitives, which are resolved after DSL merge.
+
 ### Gap 1: Kernel Types Are Still Identity Placeholders
 
 `register_kernel_types()` registers `String`, `Bool`, `Int`, `Float`,
@@ -341,30 +376,30 @@ passes a real registry. The structural emit path is scaffolding only.
 **Fix:** Thread `CompileOutput::merged_type_registry()` through the
 codegen pipeline to the emit backends.
 
-### Gap 4: `Guard` Still Exists in Executor
+### ~~Gap 4: `Guard` Still Exists in Executor~~ (RESOLVED)
 
-`Guard::Eq`/`Guard::NotEq` is still used in executor edge evaluation,
-transport ops, and testgen codegen. The edge guards were migrated to
-`Predicate` in the IR, but the executor's display and evaluation paths
-still reference `Guard`.
+Guard type is already `Option<Predicate>` in the IR. No separate Guard
+enum exists.
 
-**Files:** `exec/src/display.rs`, `transport/src/ops.rs`,
-`transport/tests/basic_transports_integration.rs`,
-`codegen/src/testgen/codegen.rs`
+### ~~Gap 5: Port Cardinality Stored-and-Mutated~~ (RESOLVED)
 
-### Gap 5: Port Cardinality Stored-and-Mutated
+`Port::with_cardinality` is already `pub(crate)` — no post-construction
+mutation from outside the IR crate.
 
-`Port.cardinality` is set at construction and then mutated
-post-construction in the builder and lowerer. `Port::with_cardinality`
-exists in 6 files. Cardinality should be derived from the type DAG,
-not independently stamped.
+### Gap 6: `register_core_types()` Coproduct Lists (PARTIALLY RESOLVED)
 
-### Gap 6: `register_core_types()` Coproduct Lists
+`register_core_types()` hardcodes variant lists for ~10 coproducts.
+All now have corresponding DSL definitions in `.dag` files:
+- ContentEncoding → `std/types.dag`
+- SemanticColor, Tier, SymbolId → `std/symbols.dag`
+- FermiDepth → `std/types.dag`
+- TransportClass, TestClass → `std/fidelity.dag`
+- DisplayWidth → `std/unicode.dag`
+- WarningPolicy → `std/policy.dag`
+- CloudRuntime, AuthScheme → `std/cloud.dag`
 
-`register_core_types()` hardcodes variant lists for ~10 coproducts
-(ContentEncoding, SemanticColor, SymbolId, FermiDepth, etc.). These
-types already exist as DSL definitions in `.dag` files, making this a
-duplicated source of truth.
+The Rust-side registrations remain as bootstrap fallbacks for contexts
+without DSL compilation. `merge_dsl_types()` overrides them.
 
 ### Gap 7: Transport Rewrite Tables
 
@@ -372,6 +407,83 @@ duplicated source of truth.
 hardcoded name→function pairs mapping abstract transport operations
 to target-language runtime functions. These are replicated across
 backends with minor syntax differences.
+
+### Gap 8: Non-Structural Generic/Container Composition (NEW)
+
+`std.containers.dag` is documentation-only — it describes `List<T>`,
+`Option<T>`, `Map<K,V>`, `Set<T>` in comments but provides no
+structural definitions. `resolve_field_type_dag()` does not handle
+`TypeExpr::Generic(...)` — it falls back to `type_expr_to_string()`
+which produces "List<Bit>" as a flat string, then identity fallback.
+
+**Impact:** The truth→bit→byte derivation chain breaks at containers.
+`type Byte { bits: List<Bit> where length(8) }` registers the field
+type for `bits` as `identity("List<Bit>")` — a flat string with no
+structural content. The container is nominal, not structural.
+
+**Fix:** Make `List<T>`, `Option<T>`, `Map<K,V>`, and fixed arrays
+first-class structural constructors in the registry path.
+`resolve_field_type_dag()` must handle `TypeExpr::Generic` by:
+1. Resolving the inner type parameter(s) through the registry
+2. Wrapping in the appropriate `type_lib::list()` / `type_lib::optional()` /
+   `type_lib::map()` constructor
+3. Applying any refinement predicates (e.g., `where length(8)`)
+
+This is the **single most important gap** for the structural watershed.
+Without structural containers, the entire bit→byte→word→integer
+derivation chain is broken at every product boundary.
+
+### Gap 9: No Compositional Width Derivation (NEW)
+
+`derive_structural_properties()` copies explicit `Width`, `Length`,
+`Domain` predicates from DAG nodes but does not compose them. Width
+is only derived when an explicit `Predicate::Width(N)` node exists.
+
+**Impact:**
+- `Bit = Classical where width(1)` → width(1) ✓ (explicit predicate)
+- `Byte = { bits: List<Bit> where length(8) }` → width(?) ✗ (no explicit
+  width predicate; should derive width = 8 × 1 = 8)
+- `Word32 = { bytes: List<Byte> where length(4) }` → width(?) ✗ (should
+  derive width = 4 × 8 = 32)
+- `UInt8 = Byte where unsigned, arithmetic` → width(?) ✗ (no derived
+  width from Byte)
+- `Float32 = Word32 where domain("ieee754_binary32")` → width(?) ✗
+  (should derive width = 32 from Word32)
+
+This means the structural emit path (`emit_platform_type`) cannot
+determine the width of `UInt8` or `Float32` from their type DAGs
+alone, defeating the purpose of the derivation chain.
+
+**Fix:** `derive_structural_properties()` must compose width:
+1. For products with a single `List<T> where length(N)` field where
+   `T` has known width `W`: derived width = `N × W`
+2. For alias types whose base has known width: inherit width
+3. This is a recursive walk — `Byte` gets width 8 from its field
+   `List<Bit> where length(8)` where `Bit` has width 1.
+
+### Gap 10: Unresolved Refs Still Silently Degrade (NEW)
+
+Multiple authoritative paths silently fall back to identity/nominal
+wrappers instead of failing on unresolved structure:
+
+- `resolve_field_type_dag()` falls back to `identity(name)`
+- `register_product()` / `register_coproduct()` silently use identity
+  for unresolved child types
+- Topological sort cycle breaker skips cycles without error
+
+The `register_product_checked()` / `register_coproduct_checked()`
+helpers exist and return errors, but the primary registration paths
+still use the silent versions.
+
+**Fix:** Adopt a "fail-loud" policy on the structural path:
+1. Replace `register_product` / `register_coproduct` calls in
+   `register_type_def` with their `_checked` variants
+2. Make `resolve_field_type_dag` return `Result`, surfacing unresolved
+   types as compile errors
+3. Surface topological sort cycles as structural errors, not silent
+   skips
+4. Keep the silent paths only for the kernel bootstrap (where identity
+   placeholders are intentional)
 
 ---
 
@@ -567,6 +679,184 @@ but are transparent to the emitter.
 
 ---
 
+## Coercion: DAG → DAG Translation
+
+### The Principle
+
+Everything is a DAG. Converting any type to any other type is a
+structural DAG-to-DAG translation. The derivation chain in `std/`
+*is* the coercion graph. No separate coercion registry, no tri-level
+checks, no hardcoded upcast tables.
+
+Given two type DAGs, the compiler walks the structural derivation
+chain between them. If a path exists, coercion is possible. The
+direction determines safety.
+
+### Upcast (Safe)
+
+An upcast walks *downstream* in the derivation chain — from a simpler
+type toward a more composed type. Each step either:
+
+- **Embeds** a value into a richer structure (Bit → Byte: the bit
+  becomes one element of a product), or
+- **Adds predicates** that narrow the domain (Byte → UInt8: adds
+  `unsigned`, `arithmetic`)
+
+Upcasts are safe because every step is information-adding. The
+compiler can derive them automatically from the type DAG structure —
+if `Byte = { bits: List<Bit> where length(8) }`, then `Bit → Byte`
+is an upcast derivable from the structural relationship.
+
+```
+Upcast chain: Bit → Byte → UInt8
+                         → Word32 → Int32
+                                  → Float32
+```
+
+### Downcast (Lossy, Must Be Acknowledged)
+
+A downcast walks *upstream* — reversing the derivation chain. Each
+step either:
+
+- **Extracts** a component from a composite (Byte → Bit: which of
+  the 8 bits? information is lost), or
+- **Strips predicates** that were constraining the domain (UInt8 →
+  Byte: the value is no longer guaranteed unsigned)
+
+Downcasts are mechanically reversible — the compiler can unwind the
+derivation chain — but they are lossy and must be explicitly
+acknowledged in the `.dag` file. Without acknowledgment, the compiler
+refuses the coercion.
+
+```
+Downcast chain: Int32 → Word32 → Byte → Bit (each step lossy)
+```
+
+### Worked Examples
+
+#### Bit → UInt8 (upcast, safe)
+
+The compiler walks the derivation chain:
+1. `Bit` → embed into `Byte.bits[0]` (structural composition)
+2. `Byte` → refine to `UInt8` (add unsigned + arithmetic)
+
+Each step is structurally derivable from the std/ type DAGs. No
+manual registration needed.
+
+#### UInt8 → Bit (downcast, lossy)
+
+The compiler reverses:
+1. `UInt8` → strip `unsigned`, `arithmetic` → `Byte`
+2. `Byte` → extract from `bits` field → `Bit` (which one? truncation)
+
+The `.dag` must acknowledge:
+```dag
+// Possible future syntax:
+coerce UInt8 -> Bit where lossy("truncates to least significant bit")
+```
+
+#### Int32 → Float32 (lateral, same width)
+
+Both derive from `Word32` — same structural base, different
+predicates. This is neither strictly upcast nor downcast. The compiler
+sees:
+1. `Int32` → strip `signed`, `arithmetic` → `Word32`
+2. `Word32` → add `domain("ieee754_binary32")`, `arithmetic` → `Float32`
+
+This is a **reinterpretation** — same bits, different semantics.
+Requires acknowledgment (semantically lossy even if bit-preserving).
+
+### Workflow Coercion: Types Are Not Special
+
+The coercion model applies identically to workflows because types and
+workflows are the same substrate: `Dag<T>` parameterized over
+operation type. `Dag<TypeOp>` and `Dag<LoweredOp>` share `Node`,
+`Port`, `Edge`, `Cardinality`, `SubDag` composition — no seams.
+
+A workflow has a structural shape: inputs, outputs, composition
+depth, internal causal chain. That shape IS a type. A type's
+validation chain IS a workflow (validate non-empty, then validate
+pattern, then validate range — that's a causal sequence).
+
+#### Example: gist → extended_gist (workflow upcast)
+
+```
+gist:
+  repo_path → ls_files → for_each(show) → build_content → create_gist → gist_url
+
+extended_gist:
+  repo_path → ls_files → for_each(show) → build_content → format_md → write_file → (gist_url, local_path)
+```
+
+**Upcast** (gist → extended_gist): gist's structure embeds into
+extended_gist. The first four steps are structurally identical. The
+extended process adds steps after `build_content` — it *contains*
+gist's causal chain as a prefix. This is the same relationship as
+Bit → Byte: the simpler structure is a component of the richer one.
+
+**Downcast** (extended_gist → gist): strip `format_md`, `write_file`,
+truncate outputs to `gist_url` only. Lossy — the markdown formatting
+and local file are lost. Must acknowledge.
+
+The compiler walks the DAG structure the same way for both:
+- For types: walk SubDag children, compare predicates, check embedding
+- For workflows: walk SubDag children, compare port shapes, check
+  that the source's causal chain is a structural sub-path of the
+  target's
+
+#### Why this matters
+
+If coercion only worked on types, we'd have two systems: one for
+"data compatibility" and one for "process compatibility." But because
+both are `Dag<T>`, there's one mechanism. A workflow's output ports
+have type shapes. If workflow A's output shape structurally upcasts
+to workflow B's input shape, the coercion is safe — regardless of
+whether A and B are "types" or "processes." The distinction doesn't
+exist at the DAG level.
+
+This means:
+- A tool's output type can be coerced into another tool's input type
+  by the same structural walk that coerces Int32 to Float32
+- A workflow can be extended (upcast) by embedding it as a sub-DAG
+  in a richer workflow, same as Bit embedding in Byte
+- A workflow can be narrowed (downcast) by truncating to a sub-path,
+  same as Byte → Bit, and requires the same explicit acknowledgment
+
+### What This Replaces
+
+The current coercion system has several layers of nominal machinery
+that this model eliminates:
+
+| Current (legacy)                        | Structural replacement                    |
+|-----------------------------------------|-------------------------------------------|
+| `CoercionEdge { to, transform }`        | Derivation chain walk                     |
+| `register_coercion_edge(from, to)`      | Automatic from type DAG structure         |
+| `coercion_edges: HashMap<TypeId, Vec>`  | No separate registry — the type DAGs ARE the graph |
+| `coercion_path()` BFS on manual edges   | Structural DAG walk through std/ hierarchy |
+| `coercion_neighbors()` with Json top    | Structural ancestry from type composition |
+| `TypeContract` L1/L2/L3 model           | Two DAGs in, structural path out          |
+| `can_safely_coerce_to_with()` tri-check | Direction of derivation chain walk        |
+| `base_type_upcasts_to()` hardcoded match| Derived from std/ type DAG relationships  |
+| `CoercionStrategy::ValidateTo`          | Downcast acknowledgment in .dag           |
+
+### Status
+
+The current system still uses the old nominal model. All items in
+the left column above exist in the codebase. Migration path:
+
+1. **Phase 1:** Make the structural derivation chain walkable
+   (requires Gap 8 — structural containers — so the chain doesn't
+   break at product/list boundaries)
+2. **Phase 2:** Implement `structural_coercion_path(from_dag, to_dag)`
+   that finds the derivation path between two type DAGs
+3. **Phase 3:** Replace `is_compatible()` with structural path check
+4. **Phase 4:** Add `.dag` syntax for downcast acknowledgment
+5. **Phase 5:** Delete `CoercionEdge`, `coercion_edges`,
+   `register_coercion_edge`, `TypeContract`, `base_type_upcasts_to`,
+   `coercion_neighbors`
+
+---
+
 ## No Metadata: Structure or Nothing
 
 ### The Principle
@@ -589,6 +879,185 @@ as a predicate rather than a separate `TypeOp::Meta` variant. This is
 a deliberate extension point for metadata that genuinely lives at the
 system boundary, not the type level. New `SystemModelMeta` variants
 require design justification.
+
+---
+
+## DAG Universality: Gap Analysis
+
+### The Principle
+
+Everything is a DAG. Types, workflows, policies, configurations,
+coercions, backend rules — all domain knowledge should live in the
+DAG substrate. The compiler's Rust code provides DAG *infrastructure*
+(the `Dag<T>` struct, the executor loop, registry lookups). Domain
+*knowledge* lives in DAGs.
+
+The terminology should converge: "type" and "workflow" and "policy"
+are all just DAGs with different operation vocabularies. Eventually,
+we should refer to everything as a "DAG" or "workflow" — no special
+status for types.
+
+### What's Already DAG-Expressed (correct pattern)
+
+| Domain | Representation | Status |
+|--------|---------------|--------|
+| Types | `Dag<TypeOp>` — validation chains, products, coproducts | Done |
+| Workflows | `Dag<LoweredOp>` — service calls, loops, branches | Done |
+| System models | Behavior catalogs as `Dag<TypeOp>` with predicates | Done |
+| Extdeps | `.dag` files — tautological API definitions | Done |
+| Test policy | `test_policy.dag` — classification via DSL evaluation | Done |
+| Tool rendering | `makegen.dag` — Makefile generation via DSL fns | Done |
+
+### Domain Knowledge Still in Rust (should migrate to DAGs)
+
+#### Tier 1: Direct blockers for structural watershed
+
+| Knowledge | Location | Current Form | DAG Form |
+|-----------|----------|-------------|----------|
+| Backend type mappings | `type_mapping.rs:164-222` | 3× duplicated match tables (Rust/Go/C) | Backend rule DAGs with structural pattern predicates |
+| Coercion graph | `type_registry.rs` (`CoercionEdge`, `coercion_path`) | Manual edge registration + BFS | Structural derivation chain walk (see Coercion section) |
+| Base type lattice | `contract.rs:1827-1838` | Hardcoded `base_type_upcasts_to()` match | Derived from std/ type DAG hierarchy |
+| TypeContract L1/L2/L3 | `contract.rs:1690-1804` | Tri-level struct with `can_safely_coerce_to_with()` | Two DAGs in, structural path out |
+
+#### Tier 2: Algebraic structures as enums
+
+| Knowledge | Location | Current Form | DAG Form |
+|-----------|----------|-------------|----------|
+| ContentEncoding lattice | `type_op.rs:98-148` | 6-variant enum with `is_subtype_of()` match | Coproduct type DAG with subtype predicates; already in `encoding.dag` |
+| AccessMode conflicts | `resource/mod.rs:118-142` | 3-variant enum with `conflicts_with()` match | Conflict DAG or behavior declaration |
+| Cardinality algebra | `types.rs:53-149`, `algebra.rs` | Struct with lattice trait impls | Boundary — traits are infrastructure; constants could be DAG-discovered |
+| FermiDepth/TestClass | `fermi.rs:8-80` | Enums with timeout match tables | Already partially in `test_policy.dag`; complete migration pending |
+| TransportClass | `transport_types.rs:6-143` | 9-variant enum with query methods | Transport catalog DAG or system model extension |
+| EndpointBehavior | `transport_types.rs:80-143` | 8-variant enum with boolean queries | Behavior predicates on system model DAGs |
+
+#### Tier 3: Configuration as Rust structs
+
+| Knowledge | Location | Current Form | DAG Form |
+|-----------|----------|-------------|----------|
+| ToolDef metadata | `codegen/registry.rs:16-60` | Rust struct with static fields | DSL declarations (partially done via entrypoint inference) |
+| TestgenTargetDef | `codegen/registry.rs:62-113` | Rust struct with 10+ fields | DSL declarations in testgen spec |
+| SystemKind taxonomy | `system_model.rs:18-30` | 10-variant enum | System model catalog DAG |
+| Property taxonomy | `system_model.rs:32-53` | 11-variant enum | Behavior predicates |
+
+### Legitimately Rust (infrastructure, not domain knowledge)
+
+These should stay as Rust code because they ARE the DAG machinery:
+
+- `Dag<T>`, `Node<T>`, `Port`, `Edge` — the substrate itself
+- Executor engine (`execute_dag`, `ExecutionMode`, topo-sort)
+- Primitive ops (`GuardOp`, `LoopOp`, `BranchOp`) — execution atoms
+- Registry lookup mechanics (HashMap indexing)
+- Parser, lexer, lowerer — compiler pipeline stages
+- Serde serialization/deserialization
+- CLI argument handling
+
+The distinction: **infrastructure** provides the DAG machinery.
+**Domain knowledge** lives *in* DAGs expressed through that machinery.
+Rust match tables encoding domain knowledge are the migration target.
+
+### Migration Priority
+
+The highest-value migrations are Tier 1 — they directly block the
+structural watershed. Tier 2 items are algebraic structures that
+the `behavior` / `implements` DSL constructs (future Phase G) will
+address. Tier 3 items are configuration that migrates incrementally
+as DSL tooling matures.
+
+---
+
+## Structural Testing: What the DAG Guarantees
+
+### The Principle
+
+**Structurally guaranteed → validated → test generated.** Tests
+should only cover what the structure cannot guarantee. If the DAG
+substrate makes a property structurally impossible to violate, no
+test is needed for it. If the DAG can validate a property at compile
+time, a compile-time check replaces a runtime test. Tests are reserved
+for properties that can only be verified at runtime.
+
+This is the testing analog of "no metadata" — if it's true, it's
+structure; if it's structure, the compiler enforces it; if the
+compiler enforces it, no test is needed.
+
+### What the DAG Already Guarantees (no tests needed)
+
+These properties are structurally enforced by the `Dag<T>` substrate
+and cannot be violated at runtime:
+
+| Property | How the DAG guarantees it | Previously tested? |
+|----------|--------------------------|-------------------|
+| **Port connectivity** | `Edge` connects named ports; missing ports are compile errors | Yes — redundant connectivity tests exist |
+| **Acyclicity** | Topo-sort at execution time; cycles are structural errors | Yes — cycle detection tests exist but the executor inherently prevents cycles |
+| **Node existence** | Edges reference node IDs; invalid IDs fail at DAG construction | Yes — some tests verify "node exists" |
+| **Type identity** | `Port.type_id` is a `TypeId`; the registry resolves or fails | Partially — type resolution tests |
+
+### What the DAG Can Validate at Compile Time (tests → compiler checks)
+
+With structural containers (Gap 8) and compositional derivation
+(Gap 9), the compiler can check these at compile time instead of
+generating runtime tests:
+
+| Property | Current test approach | Structural approach |
+|----------|----------------------|---------------------|
+| **Cardinality compatibility** | Generated coercion tests per edge | Compiler validates `Port.cardinality` satisfies connected port — structural guarantee once cardinality is derived from type DAG |
+| **Type coercion safety** | Generated tests per type pair | Structural derivation chain walk — if upcast path exists, coercion is safe by construction |
+| **Width consistency** | No systematic check | Compositional width derivation (Phase B) makes width a structural property — Int32 MUST be 32 bits because Word32 = 4×Byte = 4×8×Bit |
+| **Predicate entailment** | Test-per-predicate-pair | Compiler walks predicate DAG; entailment is structural |
+| **Resource conflict detection** | Generated tests for access mode pairs | Once AccessMode is a DAG, conflict detection is a structural walk |
+
+### What Still Needs Generated Tests (runtime properties)
+
+These properties cannot be guaranteed structurally and require
+runtime verification:
+
+| Property | Why tests are needed | Structural information available |
+|----------|---------------------|--------------------------------|
+| **Transport correctness** | HTTP responses depend on external services | Transport class, endpoint behavior, retry policy — the *contract* is structural, the *response* is runtime |
+| **Value domain correctness** | `Int where range(1, 65535)` — the constraint is structural but the value is runtime | Predicate DAG provides the constraint; test generates boundary values |
+| **Semantic equivalence** | Two workflows producing "the same" output | Output type shape is structural; content equivalence is runtime |
+| **Performance / Fermi cost** | Execution time depends on environment | FermiDepth classification is structural; actual timing is runtime |
+| **Idempotency** | Whether re-execution produces same result | `Idempotent` predicate is structural; verification requires re-execution |
+
+### Orthogonality and Independent Testing
+
+The DAG structure reveals which properties are orthogonal — they can
+be tested independently because they don't interact structurally:
+
+| Property A | Property B | Orthogonal? | Why |
+|-----------|-----------|-------------|-----|
+| Cardinality | Type compatibility | Yes | Cardinality is an interval lattice on ℕ; type compatibility is a DAG walk. Different algebras, no interaction. Already tested independently. |
+| Width | Signedness | Yes | Width is a natural number predicate; signedness is a boolean predicate. `width(32) + signed` and `width(32) + unsigned` are independent refinements. |
+| Content encoding | File path validity | Yes | Encoding is a lattice (ASCII ⊆ UTF8 ⊆ Text); path validity is a string predicate. No structural interaction. |
+| Transport class | Endpoint behavior | Partially | Transport class constrains which behaviors are possible (e.g., Shell cannot be Paginated). The constraint is structural — discoverable from the transport catalog DAG. |
+| Resource access mode | Workflow topology | No | Access conflicts depend on which nodes run concurrently, which depends on DAG topology. Must be tested together via `validate_resource_wiring_recursive()`. |
+
+**Key insight:** Orthogonal properties reduce the test space
+multiplicatively. If width has W values, signedness has S values,
+and domain has D values, non-orthogonal testing requires W×S×D tests.
+Orthogonal testing requires W+S+D tests. The DAG structure tells you
+which are orthogonal.
+
+### Current Testgen Gap Analysis
+
+The existing testgen system generates tests from the workflow DAG
+structure. With structural types and coercion, several test categories
+become redundant or can be strengthened:
+
+| Current test category | Count | After structural types |
+|----------------------|-------|----------------------|
+| **Coercion tests** (type A → type B compatibility) | ~200 per module | Most become compile-time checks. Only lateral/downcast coercions need runtime tests. |
+| **Boundary tests** (each callable is independently mockable) | ~10 per callable | Keep — boundary isolation is a runtime property |
+| **Skip propagation** (Skipped values propagate correctly) | ~5 per transport | Keep — skip behavior depends on runtime execution order |
+| **Flow tests** (end-to-end DAG execution) | 1 per module | Keep — integration coverage |
+| **DryRun completion** (all mocks exercised) | 1 per module | Keep — mock completeness is runtime |
+| **Mock spec consistency** | 1 per module | Partially structural — type shapes can validate mock signatures at compile time |
+
+**Net effect:** Structural types should eliminate ~40-60% of generated
+coercion tests (those verifiable by structural derivation chain walk)
+while strengthening the remaining tests with structural information
+(e.g., boundary tests can use type DAG shapes to generate smarter
+mock values).
 
 ---
 
@@ -984,91 +1453,195 @@ through `Int64 → Word64 → 8 × Byte → 64 × Bit → Classical`.
 | Task 2: Product/Coproduct fields become SubDags | **DONE** |
 | Task 3: Migrate Bool (DSL definition) | **DONE** (logic.dag exists) |
 | Task 4: Migrate Int, Float (DSL definitions) | **DONE** (bit.dag, integer.dag, float.dag exist; structural emit works for predicates) |
-| Task 5: Migrate String, Bytes (DSL definitions) | **PARTIAL** (string_type.dag, encoding.dag exist; registry still uses identity) |
+| Task 5: Migrate String, Bytes (DSL definitions) | **DONE** (string_type.dag, encoding.dag exist; registry still uses identity for kernel) |
 | Task 6: Migrate containers (DSL definitions) | **PARTIAL** (containers.dag exists as comments; structural in registry) |
 | Task 7: Emit backends read structure | **PARTIAL** (structural path exists but not wired in production) |
 | Task 8: Delete BaseType, string classification | **DONE** |
 | Task 9: Cardinality derived, Guard→Predicate | **PARTIAL** (edge guards migrated; Guard still in executor; cardinality still stored) |
 | Task 10: Delete MetadataPayload, PlatformRepr | **DONE** (MetadataPayload deleted; PlatformRepr → StructuralProperties) |
+| Sum type registration | **DONE** (unit variants get Unit DAG, payload variants get resolved type DAGs) |
+| Merge order / stale-child | **DONE** (merged_type_registry: kernel → DSL merge → core types) |
 
-### Next PR: Cross the Structural Watershed
+### Design Stance: Minimal Structural Kernel
 
-The goal: eliminate `emit_identity_type()` and all hardcoded
-name-match tables. After this PR, adding a type or a backend requires
-zero compiler changes.
+The compiler owns a minimal non-DSL kernel for bootstrapping. This is
+explicit and intentional. The kernel provides DAG infrastructure, not
+types. DSL-defined types are the library built on top of that kernel.
 
-#### Phase A: Structural Kernel Types (Gap 1)
+The kernel registers identity placeholders so the DSL typechecker can
+reference primitive names during compilation. After typecheck,
+`merge_dsl_types()` overwrites placeholders with structural
+definitions from the compiled `.dag` files. Core types
+(`register_core_types()`) are registered after the merge so they
+resolve children structurally.
 
-Replace identity placeholders with structural DAGs in the registry.
+The goal is NOT "the compiler must read DSL for every primitive
+immediately" but "the compiler's kernel shrinks over time as more
+structure moves to DSL definitions." Identity placeholders are
+transitional debt, not the end state.
 
-**A1.** `register_kernel_types()` — replace `identity("String")` with
-the structural DAG composed from `string_type.dag`. Same for Bool
-(from `logic.dag` Classical), Int (from `integer.dag` Int64 chain),
-Float (from `float.dag` Float64 chain), Bytes (List\<Byte\>), Secret
-(branded String).
+### Next PR: Structural Containers + Compositional Derivation
 
-**A2.** Verify: `audit_identity_types()` on the merged registry
-returns zero (or a documented baseline for truly opaque types like
-`Any`).
+Per review feedback, the remaining work is the actual hard part of
+the design. The next wave focuses on structural containers and
+compositional derivation — not on adding more nominal stdlib layers.
 
-**A3.** Two-pass registration in `collect_dsl_type_registry()` —
-forward refs resolve to pass-1 placeholders instead of identity
-fallback. Topological sort for pass 2 minimizes residual placeholders.
+The specific milestone: make `List<T>`, `Option<T>`, `Map<K,V>`,
+fixed arrays, and type references first-class structural constructors;
+make width/scalar-kind/encoding derivation compositional; make
+backends pattern-match normalized structure rather than nominal names.
 
-**Verification:** Every type in `register_kernel_types()` resolves to
-a multi-node structural DAG. `cargo test --workspace` green.
+Once these three are real, the "truth → bit → byte → char →
+list\<char\>" story becomes implementable.
 
-#### Phase B: Wire Registry to Emit (Gap 3)
+#### Phase A: Structural Containers (Gap 8) — THE CRITICAL PATH
 
-Thread `CompileOutput::merged_type_registry()` through the codegen
-pipeline so production callers use
-`lower_to_*_with_registry(Some(reg))` instead of `None`.
+Make generic container types first-class structural constructors in
+the registry. This is the single most important remaining gap.
 
-**Verification:** `resolve_and_emit` hits the structural path in
-production. `emit_platform_type` handles all numeric types.
+**A1.** Extend `resolve_field_type_dag()` to handle
+`TypeExpr::Generic(name, params)`:
+- `List<T>` → `type_lib::list(resolve_field_type_dag(T, registry))`
+- `Option<T>` → `type_lib::optional(resolve_field_type_dag(T, registry))`
+- `Map<K,V>` → `type_lib::map(resolve(K), resolve(V))`
+- `Set<T>` → `type_lib::set(resolve_field_type_dag(T, registry))`
 
-#### Phase C: Backend Rule Sets (Gap 2)
+**A2.** Apply refinement predicates to generic containers:
+- `List<Bit> where length(8)` → list DAG with Length(8) validation node
+- This enables `Byte.bits` to be a structurally-typed fixed-length list
 
-Replace `emit_identity_type()` with structural pattern matching.
+**A3.** Replace `containers.dag` documentation-only comments with
+structural definitions:
+```dag
+type List<T> = { elements: Collection<T> }
+type Option<T> = { value: Optional<T> }
+type Map<K, V> = { entries: List<{ key: K, value: V }> }
+type Set<T> = { elements: List<T> where unique }
+```
+(Or keep containers as registry-level constructors with DSL syntax
+sugar — the key is that `resolve_field_type_dag` produces structural
+DAGs, not identity strings.)
 
-**C1.** Define `BackendRules` as a declarative Rust structure —
+**A4.** Verify: `Byte.bits` resolves to a structural
+`List(element: Bit(width(1))) where Length(8)` DAG, not
+`identity("List<Bit>")`.
+
+#### Phase B: Compositional Width Derivation (Gap 9)
+
+Make `derive_structural_properties()` compose width from structure.
+
+**B1.** Width from fixed-length homogeneous containers:
+- Product with single field `List<T> where length(N)` where T has
+  width W → derived width = N × W
+- This gives `Byte` width 8, `Word32` width 32, etc.
+
+**B2.** Width inheritance through aliases:
+- `UInt8 = Byte where unsigned, arithmetic` → inherit Byte's width 8
+- `Float32 = Word32 where domain(...)` → inherit Word32's width 32
+
+**B3.** Recursive width resolution:
+- `derive_structural_properties()` already recurses into SubDags
+- After Phase A, SubDags contain structural container DAGs
+- Width derivation follows: `Word32` → field `bytes: List<Byte>
+  where length(4)` → element `Byte` → field `bits: List<Bit> where
+  length(8)` → element `Bit` → width(1) → Byte width = 8 × 1 = 8
+  → Word32 width = 4 × 8 = 32
+
+**B4.** Verify: `derive_structural_properties()` on the merged
+registry's `UInt8` returns `width: Some(8), signed: Some(false),
+arithmetic: true`. Same for `Float32` → `width: Some(32)`.
+
+#### Phase C: Structural Kernel Types (Gap 1)
+
+With containers and width derivation working, kernel types can
+become structural.
+
+**C1.** `register_kernel_types()` — replace `identity("String")`
+with the structural DAG composed from `string_type.dag`. Same for
+Bool (from `logic.dag` Classical), Int (from `integer.dag` Int64
+chain), Float (from `float.dag` Float64 chain), Bytes
+(List\<Byte\>), Secret (branded String).
+
+**C2.** Verify: `audit_identity_types()` on the merged registry
+returns a documented baseline (only truly opaque types like `Any`,
+`TransportRequest`, etc.).
+
+#### Phase D: Wire Registry to Emit + Backend Rules (Gaps 2-3)
+
+**D1.** Thread `CompileOutput::merged_type_registry()` through the
+codegen pipeline so production callers use
+`lower_to_*_with_registry(Some(reg))`.
+
+**D2.** Define `BackendRules` as a declarative Rust structure —
 ordered list of (TypeShape pattern → native syntax template) per
-backend.
+backend. Include rules for:
+- Product(bytes: List\<u8\>, encoding: _) → String
+- Coproduct(2 units) → bool
+- List\<Width(8)+Unsigned\> → Vec\<u8\> / []byte / uint8_t*
+- Arithmetic + Domain(ieee754) + Width(W) → f{W}
+- Arithmetic + Signed + Width(W) → i{W}
+- Arithmetic + Unsigned + Width(W) → u{W}
 
-**C2.** Implement recursive decomposition: if no rule matches, peel
-one structural level and retry.
+**D3.** Implement recursive decomposition: if no backend rule
+matches a type's top-level shape, peel one structural level and
+retry.
 
-**C3.** Add rules for String (Product with bytes+encoding), Bool
-(Coproduct with 2 units), Bytes (List\<u8\>).
-
-**C4.** Delete `emit_identity_type()`, `map_primitive()`,
+**D4.** Delete `emit_identity_type()`, `map_primitive()`,
 `try_refined_to_rust()`, `map_to_c_type_static()`.
 
-**Verification:** Zero hardcoded type-name match tables in the emit
-layer. Adding a new type requires only a `.dag` definition.
+#### Phase E: Structural Coercion (replaces legacy coercion model)
 
-#### Phase D: Cleanup (Gaps 4-7)
+With structural containers and compositional width derivation in
+place, the derivation chain is walkable. Coercion becomes a DAG walk.
 
-**D1.** Eliminate remaining `Guard` references in executor.
-**D2.** Derive port cardinality from type DAGs; restrict
+**E1.** Implement `structural_coercion_path(from_dag, to_dag)` — finds
+the derivation path between two type DAGs by walking the std/ type
+hierarchy. Returns the sequence of structural steps (embed, refine,
+extract, strip).
+
+**E2.** Replace `is_compatible()` — instead of L1/L2/L3 checks and
+BFS on manual edges, check whether a structural upcast path exists
+between the two type DAGs.
+
+**E3.** Add `.dag` syntax for downcast acknowledgment — explicit
+annotation that a lossy coercion is intentional.
+
+**E4.** Delete legacy coercion infrastructure: `CoercionEdge`,
+`coercion_edges` HashMap, `register_coercion_edge()`,
+`coercion_path()`, `coercion_neighbors()`, `TypeContract`,
+`can_safely_coerce_to_with()`, `base_type_upcasts_to()` (both the
+registry method and the hardcoded free function in contract.rs),
+`base_type_join()`, `base_type_meet()`, `CoercionStrategy`.
+
+#### Phase F: Fail-Loud + Cleanup (Gaps 4-7, 10)
+
+**F1.** Replace silent identity fallbacks with `Result` returns on
+the structural path. Keep silent fallbacks only in kernel bootstrap.
+
+**F2.** Eliminate remaining `Guard` references in executor.
+
+**F3.** Derive port cardinality from type DAGs; restrict
 `Port.cardinality` to `pub(crate)`.
-**D3.** Replace `register_core_types()` coproduct lists with
+
+**F4.** Replace `register_core_types()` coproduct lists with
 DSL-sourced registration via `merge_dsl_types()`.
-**D4.** Model transport rewrite tables as data (separate concern,
-can be follow-up).
+
+**F5.** Surface topological sort cycles as structural errors.
+
+**F6.** Model transport rewrite tables as data.
 
 #### Future: Behavior Declarations (not this PR)
 
-**E1.** Add `behavior` and `implements` as DSL constructs.
-**E2.** Auto-generate property-based tests from `law` declarations.
-**E3.** Migrate `Cardinality`, `ContentEncoding`, `Predicate` lattice
+**G1.** Add `behavior` and `implements` as DSL constructs.
+**G2.** Auto-generate property-based tests from `law` declarations.
+**G3.** Migrate `Cardinality`, `ContentEncoding`, `Predicate` lattice
 impls from Rust to DSL `implements` clauses.
 
 ---
 
 ## Verification: Final Acceptance Criteria
 
-When Phases A-D are complete:
+When Phases A-F are complete:
 
 **Deletions verified** (all return 0 results from `rg --type rust`):
 - `emit_identity_type`
@@ -1077,16 +1650,28 @@ When Phases A-D are complete:
 - `map_to_c_type_static`
 - `Guard::` (in non-test code)
 - `Port::with_cardinality`
+- `CoercionEdge`
+- `register_coercion_edge`
+- `TypeContract`
+- `base_type_upcasts_to`
 
 **Structural invariants:**
 - Every type in `register_kernel_types()` resolves to a multi-node
   structural DAG (not a single Identity node)
+- `resolve_field_type_dag()` handles `TypeExpr::Generic` and produces
+  structural container DAGs (not identity strings)
+- `derive_structural_properties()` derives width compositionally
+  (Byte → 8, Word32 → 32, UInt8 → 8, Float32 → 32)
 - All type emission flows through structural pattern matching on
   `TypeShape`, not string-name matching
+- Type coercion is determined by structural derivation chain walk,
+  not by manual edge registration or hardcoded name matching
+- Downcasts require explicit `.dag` acknowledgment
 - Adding a new backend requires only defining a `BackendRules` set
 - Adding a new type requires only a `.dag` definition
 - No type's properties (width, signedness, cardinality) are
   determined by string matching
+- Unresolved type references fail compilation on the structural path
 
 **Behavioral invariants:**
 - `cargo test --workspace` passes

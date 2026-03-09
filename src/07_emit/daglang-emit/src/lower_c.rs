@@ -597,59 +597,64 @@ fn lower_value_expr(v: &gunbc_ir::ValueExpr) -> CExpr {
 
 /// Map an abstract type name to its C equivalent.
 ///
-/// When a `TypeRegistry` is available, attempts structural resolution first.
-/// Falls back to the hardcoded mapping table.
+/// Delegates to `resolve_and_emit()` for unified type resolution, then parses
+/// the emitted string back into a `CType`. When a `TypeRegistry` is available,
+/// structural resolution provides precise width/signedness/domain information.
 fn map_to_c_type_with_registry(
     abstract_type: &str,
     registry: Option<&gunbc_ir::TypeRegistry>,
 ) -> CType {
-    // Try structural resolution via registry
-    if let Some(reg) = registry {
-        let type_id = gunbc_ir::TypeId::new(abstract_type);
-        if let Some(dag) = reg.resolve_type(&type_id) {
-            let props =
-                crate::type_mapping::derive_platform_properties(&dag);
-            if props.arithmetic {
-                if let Some(domain) = &props.domain {
-                    if domain.starts_with("ieee754") {
-                        return match props.width {
-                            Some(32) => CType::Float(CFloatKind::Float),
-                            _ => CType::Float(CFloatKind::Double),
-                        };
-                    }
-                }
-                if let Some(width) = props.width {
-                    let signed = props.signed.unwrap_or(true);
-                    return if signed {
-                        CType::Int(CIntKind::Fixed(width as u8))
-                    } else {
-                        CType::Int(CIntKind::UFixed(width as u8))
-                    };
-                }
-            }
-        }
-    }
-    // Fall back to static mapping
-    map_to_c_type_static(abstract_type)
+    let emitted = crate::type_mapping::resolve_and_emit(
+        abstract_type,
+        registry,
+        crate::type_mapping::Backend::C,
+    );
+    c_type_from_emitted(&emitted)
 }
 
-/// Static C type mapping (no registry).
-fn map_to_c_type_static(abstract_type: &str) -> CType {
-    match abstract_type {
-        "String" | "Path" => CType::Ptr(Box::new(CType::Const(Box::new(CType::Char)))),
-        "Bool" | "bool" => CType::Int(CIntKind::Int), // C uses int for bool.
-        "Int" | "i64" | "I64" => CType::Int(CIntKind::Fixed(64)),
-        "Float" | "f64" => CType::Float(CFloatKind::Double),
-        "ToolRegistry" => CType::Ptr(Box::new(CType::Void)),
-        "FilesystemHandle" => CType::Ptr(Box::new(CType::Const(Box::new(CType::Char)))),
+/// Parse a C type string (as emitted by resolve_and_emit) into a CType.
+fn c_type_from_emitted(s: &str) -> CType {
+    match s {
+        "const char*" => CType::Ptr(Box::new(CType::Const(Box::new(CType::Char)))),
+        "bool" => CType::Int(CIntKind::Int),
+        "void" => CType::Void,
+        "void*" => CType::Ptr(Box::new(CType::Void)),
+        "uint8_t*" => CType::Ptr(Box::new(CType::Int(CIntKind::UFixed(8)))),
+        "char" => CType::Char,
+        "float" => CType::Float(CFloatKind::Float),
+        "double" => CType::Float(CFloatKind::Double),
         other => {
+            // intN_t / uintN_t patterns
+            if let Some(rest) = other.strip_suffix("_t") {
+                if let Some(width_str) = rest.strip_prefix("int") {
+                    if let Ok(w) = width_str.parse::<u8>() {
+                        return CType::Int(CIntKind::Fixed(w));
+                    }
+                }
+                if let Some(width_str) = rest.strip_prefix("uint") {
+                    if let Ok(w) = width_str.parse::<u8>() {
+                        return CType::Int(CIntKind::UFixed(w));
+                    }
+                }
+            }
+            // Generic container: List<T> → T*
             if let Some(inner) = other
                 .strip_prefix("List<")
                 .and_then(|rest| rest.strip_suffix('>'))
             {
-                return CType::Ptr(Box::new(map_to_c_type_static(inner)));
+                return CType::Ptr(Box::new(c_type_from_emitted(
+                    &crate::type_mapping::resolve_and_emit(
+                        inner,
+                        None,
+                        crate::type_mapping::Backend::C,
+                    ),
+                )));
             }
-            // Default: void pointer.
+            // Pointer suffix
+            if let Some(inner) = other.strip_suffix('*') {
+                return CType::Ptr(Box::new(c_type_from_emitted(inner.trim())));
+            }
+            // Unknown — void pointer
             CType::Ptr(Box::new(CType::Void))
         }
     }

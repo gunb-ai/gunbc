@@ -22,7 +22,6 @@
 //! // Reports: parse_response.output [1,1] → merge.outputs [0,∞) = WrapScalar
 //! ```
 
-use crate::contract::{CoercionResult, TypeContract};
 use crate::dag::Dag;
 use crate::type_registry::TypeRegistry;
 use crate::types::{Cardinality, NodeId, PortName};
@@ -231,42 +230,8 @@ pub fn validate_coercions_with_registry<T>(
             None => tp.cardinality,
         };
 
-        if let Some(reg) = registry {
-            if let (Some(from_dag), Some(to_dag)) =
-                (reg.resolve_type(&fp.type_id), reg.resolve_type(&tp.type_id))
-            {
-                let mut from_contract = TypeContract::from_type_dag(&from_dag);
-                let mut to_contract = TypeContract::from_type_dag(&to_dag);
-                // Registry-provided wrappers override port cardinality.
-                from_contract.cardinality = from_card;
-                to_contract.cardinality = to_card;
-
-                match from_contract.can_safely_coerce_to_with(&to_contract, |from, to| {
-                    reg.base_type_upcasts_to(from, to)
-                }) {
-                    CoercionResult::Ok => {}
-                    CoercionResult::Err(reason) => {
-                        let reason = if let Some(strategy) =
-                            reg.coercion_strategy(&fp.type_id, &tp.type_id)
-                        {
-                            format!("{reason}. Explicit transform: {strategy}")
-                        } else {
-                            reason
-                        };
-                        errors.push(CoercionError {
-                            from_node: edge.from_node.clone(),
-                            from_port: edge.from_port.clone(),
-                            to_node: edge.to_node.clone(),
-                            to_port: edge.to_port.clone(),
-                            from_cardinality: from_card,
-                            to_cardinality: to_card,
-                            reason,
-                        });
-                        continue;
-                    }
-                }
-            }
-        }
+        // Type compatibility is checked by the builder at edge creation time.
+        // The coercion pass focuses on cardinality analysis only.
 
         if from_card == to_card {
             // Identical — no coercion needed

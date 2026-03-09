@@ -1017,20 +1017,20 @@ fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> TypeRegistry {
         let mut my_deps = Vec::new();
         match &def.body {
             TypeBody::Alias(type_expr) => {
-                let base = type_expr_to_string(type_expr);
-                if type_names.contains(base.as_str()) {
-                    my_deps.push(*type_names.get(base.as_str()).unwrap());
-                }
+                collect_type_deps_from_expr(type_expr, &type_names, &mut my_deps);
             }
             TypeBody::Record(fields) => {
                 for field in fields {
-                    let field_type = type_expr_to_string(&field.ty);
-                    if type_names.contains(field_type.as_str()) {
-                        my_deps.push(*type_names.get(field_type.as_str()).unwrap());
+                    collect_type_deps_from_expr(&field.ty, &type_names, &mut my_deps);
+                }
+            }
+            TypeBody::Sum(variants) => {
+                for variant in variants {
+                    for field in &variant.fields {
+                        collect_type_deps_from_expr(&field.ty, &type_names, &mut my_deps);
                     }
                 }
             }
-            TypeBody::Sum(_) => {} // no deps — variants are unit/string
         }
         deps.insert(def.name.as_str(), my_deps);
     }
@@ -1042,6 +1042,42 @@ fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> TypeRegistry {
     }
 
     registry
+}
+
+/// Recursively extract dependency type names from a TypeExpr.
+///
+/// Descends into Generic args, Optional inners, and Refined bases to find
+/// all referenced type names that exist in `type_names`. This ensures
+/// dependencies like `List<Bit>` correctly extract `Bit` instead of the
+/// stringified `"List<Bit>"`.
+fn collect_type_deps_from_expr<'a>(
+    expr: &TypeExpr,
+    type_names: &std::collections::HashSet<&'a str>,
+    deps: &mut Vec<&'a str>,
+) {
+    match expr {
+        TypeExpr::Named(name) => {
+            if let Some(&dep) = type_names.get(name.as_str()) {
+                deps.push(dep);
+            }
+        }
+        TypeExpr::Generic(_, args) => {
+            for arg in args {
+                collect_type_deps_from_expr(arg, type_names, deps);
+            }
+        }
+        TypeExpr::Optional(inner) => {
+            collect_type_deps_from_expr(inner, type_names, deps);
+        }
+        TypeExpr::Refined(inner, _) => {
+            collect_type_deps_from_expr(inner, type_names, deps);
+        }
+        TypeExpr::Record(fields) => {
+            for field in fields {
+                collect_type_deps_from_expr(&field.ty, type_names, deps);
+            }
+        }
+    }
 }
 
 /// Topological sort of type definitions. Falls back to original order for cycles.
@@ -1102,11 +1138,42 @@ fn register_type_def(
 ) {
     match &def.body {
         TypeBody::Sum(variants) => {
-            let variant_pairs: Vec<(&str, &str)> = variants
-                .iter()
-                .map(|variant| (variant.name.as_str(), "String"))
-                .collect();
-            registry.register_coproduct(def.name.as_str(), variant_pairs);
+            // Unit variants get "Unit" type, payload variants get resolved field DAGs.
+            let resolved_variants: Vec<(&str, gunbc_ir::Dag<gunbc_ir::type_op::TypeOp>)> =
+                variants
+                    .iter()
+                    .map(|variant| {
+                        let dag = if variant.fields.is_empty() {
+                            gunbc_ir::type_lib::unit()
+                        } else if variant.fields.len() == 1 {
+                            resolve_field_type_dag(&variant.fields[0].ty, registry)
+                        } else {
+                            // Multi-field payload variant: wrap fields as an anonymous product.
+                            let resolved_fields: Vec<(
+                                &str,
+                                gunbc_ir::Dag<gunbc_ir::type_op::TypeOp>,
+                            )> = variant
+                                .fields
+                                .iter()
+                                .map(|f| {
+                                    (f.name.as_str(), resolve_field_type_dag(&f.ty, registry))
+                                })
+                                .collect();
+                            gunbc_ir::type_lib::product_resolved(
+                                &variant.name,
+                                resolved_fields,
+                            )
+                        };
+                        (variant.name.as_str(), dag)
+                    })
+                    .collect();
+            registry.register(
+                def.name.as_str(),
+                gunbc_ir::type_lib::coproduct_resolved(
+                    def.name.as_str(),
+                    resolved_variants,
+                ),
+            );
         }
         TypeBody::Record(fields) => {
             let resolved_fields: Vec<(&str, gunbc_ir::Dag<gunbc_ir::type_op::TypeOp>)> =
@@ -1161,13 +1228,54 @@ fn register_type_def(
 
 /// Build a type DAG for a field's TypeExpr, preserving refinement predicates.
 ///
-/// If the type is `Refined(inner, refinements)`, the predicates are embedded
-/// in the DAG alongside the resolved base type. Non-refined types fall back
-/// to registry lookup or an identity DAG.
+/// Handles structural containers (List, Optional, Set, Map) by recursing into
+/// their type arguments and building structural DAGs instead of flattening to
+/// identity strings. Non-refined named types fall back to registry lookup or
+/// an identity DAG.
 fn resolve_field_type_dag(
     ty: &TypeExpr,
     registry: &TypeRegistry,
 ) -> gunbc_ir::Dag<gunbc_ir::type_op::TypeOp> {
+    match ty {
+        TypeExpr::Generic(name, args) => {
+            match (name.as_str(), args.len()) {
+                ("List", 1) => {
+                    let elem = resolve_field_type_dag(&args[0], registry);
+                    return gunbc_ir::type_lib::list(elem);
+                }
+                ("Option" | "Optional", 1) => {
+                    let inner = resolve_field_type_dag(&args[0], registry);
+                    return gunbc_ir::type_lib::optional(inner);
+                }
+                ("Set", 1) => {
+                    let elem = resolve_field_type_dag(&args[0], registry);
+                    return gunbc_ir::type_lib::set(elem);
+                }
+                ("Map", 2) => {
+                    let val = resolve_field_type_dag(&args[1], registry);
+                    return gunbc_ir::type_lib::map(val);
+                }
+                _ => { /* fall through to string-based path */ }
+            }
+        }
+        TypeExpr::Optional(inner) => {
+            let inner_dag = resolve_field_type_dag(inner, registry);
+            return gunbc_ir::type_lib::optional(inner_dag);
+        }
+        TypeExpr::Refined(inner, _) => {
+            let base_dag = resolve_field_type_dag(inner, registry);
+            let predicates = collect_predicates_from_type_expr(ty);
+            if predicates.is_empty() {
+                return base_dag;
+            } else {
+                let base_name = type_expr_to_string(inner);
+                return gunbc_ir::type_lib::refined_with_base(&base_name, base_dag, predicates);
+            }
+        }
+        _ => { /* Named, Record — fall through */ }
+    }
+
+    // String-based fallback for Named types and unmatched Generic.
     let base_name = type_expr_to_string(ty);
     let predicates = collect_predicates_from_type_expr(ty);
     let base_dag_opt = registry.get_by_name(&base_name).cloned();

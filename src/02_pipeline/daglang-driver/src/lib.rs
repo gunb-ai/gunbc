@@ -69,14 +69,16 @@ pub struct CompileOutput {
 }
 
 impl CompileOutput {
-    /// Build a merged type registry: core types + DSL-defined types.
+    /// Build a merged type registry: kernel → DSL merge → core types.
     ///
-    /// The DSL registry overrides core registrations when present, so that
-    /// DSL-defined structural types (with predicates, resolved field DAGs,
-    /// etc.) take precedence over the built-in identity definitions.
+    /// Core types (CliResult, ContentEncoding, etc.) are registered AFTER
+    /// the DSL merge so their child types (Int, String, etc.) resolve to
+    /// structural DAGs rather than identity placeholders. This ensures
+    /// transitively structural core types.
     pub fn merged_type_registry(&self) -> TypeRegistry {
-        let mut registry = TypeRegistry::with_core_types();
+        let mut registry = TypeRegistry::with_primitives();
         registry.merge_dsl_types(&self.dsl_type_registry);
+        registry.register_core_types();
         registry
     }
 

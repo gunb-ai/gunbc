@@ -119,7 +119,7 @@ pub use contract::{
     validate_provider_compliance, validate_response_contract_coverage, variant_witness_for,
     variant_witnesses, BoundaryWitness, CodegenPlatformRepr, CodegenTypeShape, Platform,
     ProtocolLayer, ProtocolLayerKind, ProtocolStack, ProtocolStackError, ProviderBinding,
-    ProviderResponseContract, ScalarKind, StatusSemantic, TypeContract, TypeLayer,
+    ProviderResponseContract, ScalarKind, StatusSemantic, TypeLayer,
 };
 pub use dag::{
     build, canonical_edge_order, edges_to_port, evaluate_guard_predicate, value_to_predicate_value,

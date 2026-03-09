@@ -26,51 +26,6 @@ use crate::fn_codegen;
 /// Default derives applied to every generated type.
 const DEFAULT_DERIVES: &[&str] = &["Debug", "Clone", "PartialEq", "Eq"];
 
-/// Try to derive a concrete Rust type from a refined type expression.
-///
-/// Inspects refinement predicates (Width, Signed, Unsigned, Domain, Arithmetic)
-/// to determine platform-native types. Returns `None` if the refinements don't
-/// contain structural predicates, in which case the caller should strip refinements.
-fn try_refined_to_rust(_inner: &TypeExpr, refinements: &[Refinement]) -> Option<String> {
-    let mut width: Option<u16> = None;
-    let mut signed: Option<bool> = None;
-    let mut arithmetic = false;
-    let mut domain: Option<&str> = None;
-
-    for r in refinements {
-        match r {
-            Refinement::Width(Expr::Literal(Literal::Int(w))) => width = Some(*w as u16),
-            Refinement::Signed(_) => signed = Some(true),
-            Refinement::Unsigned => signed = Some(false),
-            Refinement::Arithmetic => arithmetic = true,
-            Refinement::Domain(d) => domain = Some(d.as_str()),
-            _ => {}
-        }
-    }
-
-    if !arithmetic && width.is_none() && signed.is_none() && domain.is_none() {
-        return None;
-    }
-
-    if let Some(d) = domain {
-        if d.starts_with("ieee754") {
-            return Some(match width {
-                Some(32) => "f32".to_string(),
-                _ => "f64".to_string(),
-            });
-        }
-    }
-
-    if let Some(w) = width {
-        let is_signed = signed.unwrap_or(true);
-        let prefix = if is_signed { "i" } else { "u" };
-        return Some(format!("{prefix}{w}"));
-    }
-
-    // Has some predicates but not enough for concrete type — fall through
-    None
-}
-
 /// Convert a DSL `TypeExpr` to a Rust type string.
 fn type_expr_to_rust(expr: &TypeExpr) -> String {
     type_expr_to_rust_with_registry(expr, None)
@@ -79,26 +34,31 @@ fn type_expr_to_rust(expr: &TypeExpr) -> String {
 /// Convert a DSL `TypeExpr` to a Rust type string, using the registry when
 /// available for structural type resolution.
 ///
-/// When a registry is provided, named types and refined types are resolved
-/// through the structural path (`resolve_and_emit`) instead of the legacy
-/// string-based `map_primitive`/`try_refined_to_rust` functions.
+/// All named types are resolved through `resolve_and_emit` which uses the
+/// structural path when a registry is available, falling back to identity-type
+/// name-based mapping for opaque types.
 pub fn type_expr_to_rust_with_registry(
     expr: &TypeExpr,
     registry: Option<&gunbc_ir::TypeRegistry>,
 ) -> String {
     match expr {
-        TypeExpr::Named(name) => {
-            if let Some(reg) = registry {
-                return crate::type_mapping::resolve_and_emit(
-                    name,
-                    Some(reg),
-                    crate::type_mapping::Backend::Rust,
-                );
-            }
-            map_primitive(name)
-        }
+        TypeExpr::Named(name) => crate::type_mapping::resolve_and_emit(
+            name,
+            registry,
+            crate::type_mapping::Backend::Rust,
+        ),
         TypeExpr::Generic(name, args) => {
-            let mapped = map_primitive(name);
+            // Container wrapper names need direct mapping (not in registry).
+            let mapped = match name.as_str() {
+                "List" => "Vec".to_string(),
+                "Map" => "std::collections::HashMap".to_string(),
+                "Set" => "std::collections::HashSet".to_string(),
+                other => crate::type_mapping::resolve_and_emit(
+                    other,
+                    registry,
+                    crate::type_mapping::Backend::Rust,
+                ),
+            };
             let arg_strs: Vec<String> = args
                 .iter()
                 .map(|a| type_expr_to_rust_with_registry(a, registry))
@@ -109,7 +69,8 @@ pub fn type_expr_to_rust_with_registry(
             format!("Option<{}>", type_expr_to_rust_with_registry(inner, registry))
         }
         TypeExpr::Refined(inner, refinements) => {
-            if let Some(ty) = try_refined_to_rust(inner, refinements) {
+            // Try structural resolution via the refinement predicates.
+            if let Some(ty) = try_refined_to_rust_structural(inner, refinements) {
                 return ty;
             }
             type_expr_to_rust_with_registry(inner, registry)
@@ -130,25 +91,32 @@ pub fn type_expr_to_rust_with_registry(
     }
 }
 
-/// Map DSL primitive type names to Rust equivalents.
-fn map_primitive(name: &str) -> String {
-    match name {
-        "List" => "Vec".to_string(),
-        "Map" => "std::collections::HashMap".to_string(),
-        "String" | "Path" | "NonEmptyStr" | "Url" | "GistId" | "ProjectId"
-        | "ServiceAccountEmail" | "FilePath" | "Secret" => "String".to_string(),
-        "Bool" | "bool" => "bool".to_string(),
-        "Int" | "i64" | "I64" => "i64".to_string(),
-        "Float" | "f64" => "f64".to_string(),
-        "Char" => "char".to_string(),
-        "Bytes" => "Vec<u8>".to_string(),
-        "Json" | "ToolRegistry" => "serde_json::Value".to_string(),
-        "TransportRequest" => "TransportRequest".to_string(),
-        "TransportResponse" => "TransportResponse".to_string(),
-        "FilesystemHandle" => "PathBuf".to_string(),
-        "Unit" => "()".to_string(),
-        _ => name.to_string(),
+/// Try to derive a concrete Rust type from a refined type expression's predicates.
+///
+/// Extracts width, signedness, and domain from refinements and delegates to
+/// the structural emit path. Returns `None` if no platform predicates found.
+fn try_refined_to_rust_structural(_inner: &TypeExpr, refinements: &[Refinement]) -> Option<String> {
+    let mut props = gunbc_ir::StructuralProperties::default();
+
+    for r in refinements {
+        match r {
+            Refinement::Width(Expr::Literal(Literal::Int(w))) => props.width = Some(*w as u16),
+            Refinement::Signed(_) => props.signed = Some(true),
+            Refinement::Unsigned => props.signed = Some(false),
+            Refinement::Arithmetic => props.arithmetic = true,
+            Refinement::Domain(d) => props.domain = Some(d.clone()),
+            _ => {}
+        }
     }
+
+    if props.width.is_none() && props.signed.is_none() && props.domain.is_none() && !props.arithmetic {
+        return None;
+    }
+
+    Some(crate::type_mapping::emit_shape(
+        &gunbc_ir::TypeShape::Platform(props),
+        crate::type_mapping::Backend::Rust,
+    ))
 }
 
 /// Check whether all variants of a sum type are simple (no fields).
@@ -249,11 +217,24 @@ fn type_expr_to_static_rust(expr: &TypeExpr) -> String {
             if name == "String" {
                 "&'static str".to_string()
             } else {
-                map_primitive(name)
+                crate::type_mapping::resolve_and_emit(
+                    name,
+                    None,
+                    crate::type_mapping::Backend::Rust,
+                )
             }
         }
         TypeExpr::Generic(name, args) => {
-            let mapped = map_primitive(name);
+            let mapped = match name.as_str() {
+                "List" => "Vec".to_string(),
+                "Map" => "std::collections::HashMap".to_string(),
+                "Set" => "std::collections::HashSet".to_string(),
+                other => crate::type_mapping::resolve_and_emit(
+                    other,
+                    None,
+                    crate::type_mapping::Backend::Rust,
+                ),
+            };
             let arg_strs: Vec<String> = args.iter().map(type_expr_to_static_rust).collect();
             format!("{}<{}>", mapped, arg_strs.join(", "))
         }

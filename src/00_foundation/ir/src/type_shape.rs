@@ -256,7 +256,62 @@ pub fn derive_structural_properties(dag: &Dag<TypeOp>) -> StructuralProperties {
             }
         }
     }
+
+    // Compositional width derivation: if this is a Product with exactly one
+    // field that is a List container with a Length(N) predicate, and the list
+    // element has known width W, then this type has width N * W.
+    // This enables Byte(8×1=8), Word32(4×8=32), etc.
+    if props.width.is_none() {
+        if let Some(width) = derive_compositional_width(dag) {
+            props.width = Some(width);
+        }
+    }
+
     props
+}
+
+/// Derive width compositionally from Product→List→element structure.
+///
+/// Walks Product nodes with exactly one field. If that field's SubDag is a
+/// List container with a `Length(N)` predicate, and the list element has
+/// known width `W`, the composed width is `N * W`.
+fn derive_compositional_width(dag: &Dag<TypeOp>) -> Option<u16> {
+    // Find a Product node with exactly one field.
+    for node in &dag.nodes {
+        if let NodeBody::Opaque(TypeOp::Product(fields)) = &node.body {
+            if fields.len() != 1 {
+                continue;
+            }
+            let field_name = &fields[0];
+            let child_id = format!("field_{field_name}");
+            let field_dag = named_subdag(dag, &child_id)?;
+
+            // Check if the field is a List container.
+            let mut is_list = false;
+            let mut list_length: Option<u64> = None;
+            for fnode in &field_dag.nodes {
+                if let NodeBody::Opaque(TypeOp::Wrap(WrapperKind::List)) = &fnode.body {
+                    is_list = true;
+                }
+                if let NodeBody::Opaque(TypeOp::Validate(Predicate::Length(l))) = &fnode.body {
+                    list_length = Some(*l);
+                }
+            }
+
+            if !is_list {
+                continue;
+            }
+            let length = list_length?;
+
+            // Get the element type's width from the list's inner SubDag.
+            let element_dag = inner_subdag(field_dag)?;
+            let elem_props = derive_structural_properties(element_dag);
+            let elem_width = elem_props.width?;
+
+            return Some((length as u16) * elem_width);
+        }
+    }
+    None
 }
 
 /// Collect a single predicate into structural properties.
