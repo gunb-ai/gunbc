@@ -16,7 +16,7 @@
 //!   - `fn name(params) -> Ret`     → `pub fn name(params) -> Ret` signature
 
 use daglang_syntax::ast::{
-    DataDef, Expr, FnDef, Literal, Refinement, TypeBody, TypeDef, TypeExpr, Variant,
+    DataDef, Expr, FnDef, Literal, TypeBody, TypeDef, TypeExpr, Variant,
 };
 use daglang_syntax::span::Spanned;
 use gunbc_ir::code_ir::{self, EnumDef, SourceFile, StructDef};
@@ -78,9 +78,24 @@ pub fn type_expr_to_rust_with_registry(
             format!("Option<{}>", type_expr_to_rust_with_registry(inner, registry))
         }
         TypeExpr::Refined(inner, refinements) => {
-            // Try structural resolution via the refinement predicates.
-            if let Some(ty) = try_refined_to_rust_structural(inner, refinements) {
-                return ty;
+            let mut props = gunbc_ir::StructuralProperties::default();
+            for r in refinements {
+                match r {
+                    daglang_syntax::ast::Refinement::Width(daglang_syntax::ast::Expr::Literal(
+                        daglang_syntax::ast::Literal::Int(w),
+                    )) => props.width = Some(*w as u16),
+                    daglang_syntax::ast::Refinement::Signed(_) => props.signed = Some(true),
+                    daglang_syntax::ast::Refinement::Unsigned => props.signed = Some(false),
+                    daglang_syntax::ast::Refinement::Arithmetic => props.arithmetic = true,
+                    daglang_syntax::ast::Refinement::Domain(d) => props.domain = Some(d.clone()),
+                    _ => {}
+                }
+            }
+            if props.width.is_some() || props.signed.is_some() || props.domain.is_some() || props.arithmetic {
+                return crate::type_mapping::emit_shape(
+                    &gunbc_ir::TypeShape::Platform(props),
+                    crate::type_mapping::Backend::Rust,
+                );
             }
             type_expr_to_rust_with_registry(inner, registry)
         }
@@ -98,34 +113,6 @@ pub fn type_expr_to_rust_with_registry(
             format!("{{ {} }}", field_strs.join(", "))
         }
     }
-}
-
-/// Try to derive a concrete Rust type from a refined type expression's predicates.
-///
-/// Extracts width, signedness, and domain from refinements and delegates to
-/// the structural emit path. Returns `None` if no platform predicates found.
-fn try_refined_to_rust_structural(_inner: &TypeExpr, refinements: &[Refinement]) -> Option<String> {
-    let mut props = gunbc_ir::StructuralProperties::default();
-
-    for r in refinements {
-        match r {
-            Refinement::Width(Expr::Literal(Literal::Int(w))) => props.width = Some(*w as u16),
-            Refinement::Signed(_) => props.signed = Some(true),
-            Refinement::Unsigned => props.signed = Some(false),
-            Refinement::Arithmetic => props.arithmetic = true,
-            Refinement::Domain(d) => props.domain = Some(d.clone()),
-            _ => {}
-        }
-    }
-
-    if props.width.is_none() && props.signed.is_none() && props.domain.is_none() && !props.arithmetic {
-        return None;
-    }
-
-    Some(crate::type_mapping::emit_shape(
-        &gunbc_ir::TypeShape::Platform(props),
-        crate::type_mapping::Backend::Rust,
-    ))
 }
 
 /// Check whether all variants of a sum type are simple (no fields).
@@ -1053,7 +1040,8 @@ fn builtin_body(name: &str) -> Option<Vec<code_ir::Stmt>> {
 mod tests {
     use super::*;
     use daglang_syntax::ast::{
-        DataDef, Expr, Field, FnBody, FnDef, Literal, Param, TypeBody, TypeDef, TypeExpr, Variant,
+        DataDef, Expr, Field, FnBody, FnDef, Literal, Param, Refinement, TypeBody, TypeDef,
+        TypeExpr, Variant,
     };
 
     #[test]

@@ -1,12 +1,11 @@
-//! Type emission for the syllogistic type system.
+//! Structural type emission for the syllogistic type system.
 //!
-//! Types are emitted by walking their `Dag<TypeOp>` structure via `TypeShape`.
-//! Platform scalars and containers resolve through language model entries.
-//! Named Products, Coproducts, and Opaque types still fall through to
-//! `emit_identity_type`, which delegates to the language model's named
-//! entries. This is an intermediate state — the end goal is full structural
-//! resolution via `resolve(shape, model)` with composite pattern matching
-//! and recursive decomposition (see DESIGN-syllogistic-types.md Phase D).
+//! Types are emitted by walking their `Dag<TypeOp>` structure via `TypeShape`,
+//! then resolving against the backend language model. All type shapes —
+//! Platform scalars, containers, brands, Products, Coproducts — resolve
+//! through the language model. Named types try model lookup first; unknown
+//! Products/Coproducts emit structural field/variant syntax. Opaque types
+//! resolve through named entries or return verbatim with a warning.
 
 // =========================================================================
 // Structural type DAG emission (syllogistic types)
@@ -117,7 +116,18 @@ pub fn emit_shape(shape: &gunbc_ir::TypeShape, backend: Backend) -> String {
                 .collect();
             (model.composite.format_coproduct)(name.as_deref(), &typed_variants)
         }
-        TypeShape::Opaque(name) => emit_identity_type(name, backend),
+        TypeShape::Opaque(name) => {
+            let model = crate::language_model::model_for_backend(backend);
+            if name == "Unit" {
+                return model.unit_syntax.to_string();
+            }
+            if let Some(syntax) = crate::language_model::resolve_named(name, model) {
+                syntax.to_string()
+            } else {
+                eprintln!("warning: unknown opaque type '{}' for {}", name, model.name);
+                name.to_string()
+            }
+        }
     }
 }
 
@@ -141,25 +151,11 @@ fn emit_platform_type(props: &gunbc_ir::StructuralProperties, backend: Backend) 
 ///
 /// Delegates to the language model's named entry resolver. Unknown names
 /// return the name verbatim with a warning.
-fn emit_identity_type(name: &str, backend: Backend) -> String {
-    let model = crate::language_model::model_for_backend(backend);
-    if name == "Unit" {
-        return model.unit_syntax.to_string();
-    }
-    if let Some(syntax) = crate::language_model::resolve_named(name, model) {
-        return syntax.to_string();
-    }
-    eprintln!("warning: unknown type '{name}' for backend {}, returning verbatim", model.name);
-    name.to_string()
-}
-
 /// Resolve a type name structurally via the registry, then emit for the backend.
 ///
-/// This is the single entry point that all backends should use. The type name
-/// is resolved through the registry to a `Dag<TypeOp>`, which is then emitted
-/// via [`emit_type`] (fully structural path). If the type is not in the
-/// registry, falls through to identity-type mapping with a warning for
-/// unrecognized names.
+/// The type name is resolved through the registry to a `Dag<TypeOp>`, which
+/// is emitted via [`emit_type`] (structural path). If the type is not in the
+/// registry, resolves through the language model's named entries.
 pub fn resolve_and_emit(
     type_name: &str,
     registry: Option<&gunbc_ir::TypeRegistry>,
@@ -171,7 +167,15 @@ pub fn resolve_and_emit(
             return emit_type(&dag, backend);
         }
     }
-    emit_identity_type(type_name, backend)
+    let model = crate::language_model::model_for_backend(backend);
+    if type_name == "Unit" {
+        return model.unit_syntax.to_string();
+    }
+    if let Some(syntax) = crate::language_model::resolve_named(type_name, model) {
+        return syntax.to_string();
+    }
+    eprintln!("warning: unresolved type '{type_name}' for {}, returning verbatim", model.name);
+    type_name.to_string()
 }
 
 // =========================================================================
@@ -183,30 +187,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn identity_type_rust_primitives() {
-        assert_eq!(emit_identity_type("String", Backend::Rust), "String");
-        assert_eq!(emit_identity_type("Path", Backend::Rust), "String");
-        assert_eq!(emit_identity_type("Bool", Backend::Rust), "bool");
-        assert_eq!(emit_identity_type("Int", Backend::Rust), "i64");
-        assert_eq!(emit_identity_type("i64", Backend::Rust), "i64");
-        assert_eq!(emit_identity_type("Float", Backend::Rust), "f64");
-        assert_eq!(emit_identity_type("ToolRegistry", Backend::Rust), "serde_json::Value");
-        assert_eq!(emit_identity_type("FilesystemHandle", Backend::Rust), "PathBuf");
+    fn named_type_rust_primitives() {
+        assert_eq!(resolve_and_emit("String", None, Backend::Rust), "String");
+        assert_eq!(resolve_and_emit("Path", None, Backend::Rust), "String");
+        assert_eq!(resolve_and_emit("Bool", None, Backend::Rust), "bool");
+        assert_eq!(resolve_and_emit("Int", None, Backend::Rust), "i64");
+        assert_eq!(resolve_and_emit("i64", None, Backend::Rust), "i64");
+        assert_eq!(resolve_and_emit("Float", None, Backend::Rust), "f64");
+        assert_eq!(resolve_and_emit("ToolRegistry", None, Backend::Rust), "serde_json::Value");
+        assert_eq!(resolve_and_emit("FilesystemHandle", None, Backend::Rust), "PathBuf");
     }
 
     #[test]
-    fn identity_type_go_primitives() {
-        assert_eq!(emit_identity_type("String", Backend::Go), "string");
-        assert_eq!(emit_identity_type("Bool", Backend::Go), "bool");
-        assert_eq!(emit_identity_type("Int", Backend::Go), "int64");
-        assert_eq!(emit_identity_type("Float", Backend::Go), "float64");
-        assert_eq!(emit_identity_type("ToolRegistry", Backend::Go), "interface{}");
+    fn named_type_go_primitives() {
+        assert_eq!(resolve_and_emit("String", None, Backend::Go), "string");
+        assert_eq!(resolve_and_emit("Bool", None, Backend::Go), "bool");
+        assert_eq!(resolve_and_emit("Int", None, Backend::Go), "int64");
+        assert_eq!(resolve_and_emit("Float", None, Backend::Go), "float64");
+        assert_eq!(resolve_and_emit("ToolRegistry", None, Backend::Go), "interface{}");
     }
 
     #[test]
-    fn identity_type_unknown_emits_name_verbatim() {
-        assert_eq!(emit_identity_type("FooBar", Backend::Rust), "FooBar");
-        assert_eq!(emit_identity_type("FooBar", Backend::Go), "FooBar");
+    fn unknown_type_emits_name_verbatim() {
+        assert_eq!(resolve_and_emit("FooBar", None, Backend::Rust), "FooBar");
+        assert_eq!(resolve_and_emit("FooBar", None, Backend::Go), "FooBar");
     }
 
     // ── Structural emit tests ──────────────────────────────────────
@@ -351,15 +355,15 @@ mod tests {
     }
 
     #[test]
-    fn resolve_and_emit_structural_matches_identity_for_known_types() {
+    fn resolve_and_emit_structural_matches_named_for_known_types() {
         let registry = gunbc_ir::TypeRegistry::with_core_types();
         assert_eq!(
             resolve_and_emit("String", Some(&registry), Backend::Rust),
-            emit_identity_type("String", Backend::Rust)
+            resolve_and_emit("String", None, Backend::Rust)
         );
         assert_eq!(
             resolve_and_emit("Bool", Some(&registry), Backend::Rust),
-            emit_identity_type("Bool", Backend::Rust)
+            resolve_and_emit("Bool", None, Backend::Rust)
         );
     }
 
@@ -367,14 +371,14 @@ mod tests {
 
     #[test]
     fn c_backend_emits_correct_native_types() {
-        assert_eq!(emit_identity_type("String", Backend::C), "const char*");
-        assert_eq!(emit_identity_type("Int", Backend::C), "int64_t");
-        assert_eq!(emit_identity_type("Float", Backend::C), "double");
-        assert_eq!(emit_identity_type("Bytes", Backend::C), "uint8_t*");
-        assert_eq!(emit_identity_type("Json", Backend::C), "void*");
-        assert_eq!(emit_identity_type("FilesystemHandle", Backend::C), "const char*");
-        assert_eq!(emit_identity_type("Unit", Backend::C), "void");
-        assert_eq!(emit_identity_type("Bool", Backend::C), "bool");
+        assert_eq!(resolve_and_emit("String", None, Backend::C), "const char*");
+        assert_eq!(resolve_and_emit("Int", None, Backend::C), "int64_t");
+        assert_eq!(resolve_and_emit("Float", None, Backend::C), "double");
+        assert_eq!(resolve_and_emit("Bytes", None, Backend::C), "uint8_t*");
+        assert_eq!(resolve_and_emit("Json", None, Backend::C), "void*");
+        assert_eq!(resolve_and_emit("FilesystemHandle", None, Backend::C), "const char*");
+        assert_eq!(resolve_and_emit("Unit", None, Backend::C), "void");
+        assert_eq!(resolve_and_emit("Bool", None, Backend::C), "bool");
     }
 
     // ── Product/Coproduct structural emission ─────────────────────
