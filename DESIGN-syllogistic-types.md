@@ -502,7 +502,7 @@ The derivation chain IS the type. A backend doesn't need to know the
 *name* — it pattern-matches on *structure* and selects the highest-level
 native construct that covers the structural pattern.
 
-### Backend as a Rule Set
+### Backend as a Rule Set (Intermediate Form)
 
 A backend is a function:
 
@@ -546,6 +546,13 @@ constituents.
 the compiler.** A Verilog backend would have different rules (no
 native string, no native containers) and would decompose further down
 the chain.
+
+This flat rule-set model is a useful stepping stone and captures the
+mechanical behavior correctly. But it doesn't model *why* Rust and Go
+share `i32`/`int32` for the same structural pattern while Verilog
+doesn't — that relationship is implicit in the rule ordering. The
+backend language model (see next section) gives these relationships
+structure.
 
 ### Recursive Decomposition
 
@@ -659,6 +666,431 @@ emission:
 
 These participate in type compatibility checking and static analysis
 but are transparent to the emitter.
+
+---
+
+## Backend Language Models: Hierarchical Target Modeling
+
+### The Deeper Point
+
+The flat rule-set model above tells the emitter *what to do* but not
+*what the target is*. Each backend is an opaque list of patterns. If
+Rust, Go, and C all emit `i32`/`int32`/`int32_t` for the same
+structural pattern, that's not a coincidence — they share a common
+ancestry in how they represent machine integers. The rule-set model
+can't express that; it just happens to have similar entries.
+
+The type system got this right: types are structural DAGs, not
+opaque names. `Int32` isn't a magic string — it's `Word32 where
+signed, arithmetic`, which is `{ bytes: List<Byte> where length(4) }`
+all the way down to `Classical`. The structure carries the knowledge.
+
+Backend languages should follow the same pattern. A compilation
+target is a *structure* — a set of representational capabilities
+with hierarchical relationships. Rust's `i32` IS a signed 32-bit
+machine integer with Rust-specific syntax. Go's `int32` IS the same
+machine integer with Go-specific syntax. They share that structure
+because they inherit from the same representational ancestor: the
+C-family signed integer, which itself inherits from the machine
+word.
+
+If we model this hierarchy, then emitting a type into a backend is
+not a lookup — it's structural resolution. The source type's
+predicates (width=32, signed, arithmetic) resolve against the
+target language's type hierarchy. The type unpacks itself into the
+backend's structure the same way it unpacks itself into the source's
+derivation chain.
+
+### The Three Hierarchies
+
+The system has three parallel hierarchies, all following the same
+pattern: tautological foundations at the bottom, composition at the
+top, structure all the way through.
+
+```
+Types:       Classical → Bit → Byte → Word → Int32
+Targets:     Machine → CFamily → Rust / Go / C
+Extdeps:     behavioral → cloud → gcp → SecretManager
+```
+
+Types model *what data is*. Targets model *how data renders*.
+Extdeps model *where data lives*. All three are compositional,
+layered, and (eventually) DAG-expressible. The emit function sits
+at the intersection of the first two: given a type DAG and a target
+DAG, find where they align.
+
+### The Analogy: Extdeps Got This Right (Again)
+
+The extdeps system layers external API knowledge:
+
+```
+Layer 0  std/behavioral.dag     "What is idempotency?"     (tautology)
+Layer 1  cloud/cloud.dag        "What is a cloud provider?" (abstract)
+Layer 2  cloud/gcp/gcp.dag      "What is GCP?"              (instantiation)
+Layer 3  cloud/gcp/sm.dag       "What is Secret Manager?"   (composition)
+```
+
+Adding Stripe means instantiating existing vocabulary with Stripe's
+documented facts. No Rust changes.
+
+The same pattern works for backend targets:
+
+```
+Layer 0  backend/machine.dag    "What is a machine word?"     (tautology)
+Layer 1  backend/c_family.dag   "What is a C-family target?"  (abstract)
+Layer 2  backend/rust/rust.dag  "What is Rust?"               (instantiation)
+         backend/go/go.dag      "What is Go?"
+         backend/c/c.dag        "What is C?"
+```
+
+Adding Verilog means instantiating the machine-level vocabulary
+(widths, signedness, registers) with Verilog's rendering rules — it
+doesn't extend `c_family.dag` because Verilog isn't a C-family
+language. It branches from `machine.dag` directly, through a
+`hardware.dag` family layer:
+
+```
+Layer 0  backend/machine.dag       "What is a machine word?"
+Layer 1  backend/c_family.dag      "What is a C-family target?"
+         backend/hardware.dag      "What is a hardware target?"
+Layer 2  backend/rust/rust.dag     (extends c_family)
+         backend/go/go.dag         (extends c_family)
+         backend/c/c.dag           (extends c_family)
+         backend/verilog/verilog.dag  (extends hardware)
+```
+
+### Layer 0: Machine Foundations
+
+What every compilation target shares, regardless of language family.
+These are tautological — true by definition of "targeting a machine."
+
+```dag
+module backend.machine
+
+// A machine has fixed-width scalar values.
+type MachineScalar {
+    width: Int
+    syntax: String
+}
+
+// A machine can interpret scalars as signed or unsigned.
+type SignedScalar = MachineScalar where signed
+type UnsignedScalar = MachineScalar where unsigned
+
+// A machine can interpret scalars as IEEE 754 floats.
+type FloatScalar = MachineScalar where domain("ieee754")
+
+// A machine has some way to represent composite data.
+type CompositeRepr {
+    kind: CompositeKind
+    syntax_template: String
+}
+
+type CompositeKind = ProductRepr | CoproductRepr | ContainerRepr
+```
+
+This layer doesn't know about `struct` or `enum` or `Vec` — those
+are language-family concepts. It knows that targets have scalars
+with widths and interpretations, and some mechanism for composites.
+
+### Layer 1: Language Families
+
+A language family is a set of shared representational conventions
+that multiple concrete languages inherit. This is where the natural
+relationships live — not forced, but observed.
+
+**C-family** (stack-allocated by default, typed pointers, named
+struct/enum/union):
+
+```dag
+module backend.c_family
+
+import backend.machine { MachineScalar, CompositeRepr }
+
+// C-family targets have named integer scalars at standard widths.
+type CInt8   = MachineScalar where width(8),  signed,   syntax_pattern("{sign}{width}")
+type CInt16  = MachineScalar where width(16), signed,   syntax_pattern("{sign}{width}")
+type CInt32  = MachineScalar where width(32), signed,   syntax_pattern("{sign}{width}")
+type CInt64  = MachineScalar where width(64), signed,   syntax_pattern("{sign}{width}")
+type CUint8  = MachineScalar where width(8),  unsigned, syntax_pattern("{sign}{width}")
+type CUint16 = MachineScalar where width(16), unsigned, syntax_pattern("{sign}{width}")
+type CUint32 = MachineScalar where width(32), unsigned, syntax_pattern("{sign}{width}")
+type CUint64 = MachineScalar where width(64), unsigned, syntax_pattern("{sign}{width}")
+
+// C-family targets have IEEE 754 floats at 32 and 64 bits.
+type CFloat32 = MachineScalar where width(32), domain("ieee754_binary32")
+type CFloat64 = MachineScalar where width(64), domain("ieee754_binary64")
+
+// C-family targets have struct (product) and enum (coproduct).
+type CStruct = CompositeRepr where kind(ProductRepr),
+    syntax_template("struct {name} { {fields} }")
+type CEnum = CompositeRepr where kind(CoproductRepr)
+
+// C-family targets have some notion of a pointer/reference.
+type Indirection {
+    syntax_template: String
+}
+```
+
+**Hardware** (wires, registers, no heap, no pointers):
+
+```dag
+module backend.hardware
+
+import backend.machine { MachineScalar }
+
+// Hardware targets represent scalars as wires or registers.
+type Wire = MachineScalar where kind("combinational")
+type Register = MachineScalar where kind("sequential")
+
+// Hardware targets have no pointer indirection.
+// Hardware targets have no heap-allocated containers.
+// Composite data is flattened to bit vectors or port bundles.
+```
+
+The key observation: C-family and hardware branch from the same
+machine foundations but diverge completely on composites and memory.
+The hierarchy captures that without forcing a false unification.
+Other families (JVM, WASM, etc.) would branch similarly from
+`machine.dag` with their own representational conventions.
+
+### Layer 2: Specific Languages
+
+Each concrete language instantiates its family's vocabulary with
+its own syntax and representational choices. This is exactly the
+extdeps pattern: GCP instantiates `cloud.dag` vocabulary with
+GCP-specific facts.
+
+**Rust** (extends c_family: ownership, algebraic enums, generics):
+
+```dag
+module backend.rust
+
+import backend.c_family { CInt8, CUint8, CFloat32, CFloat64, ... }
+
+// Rust scalars: same machine integers, Rust-specific syntax.
+type RustI8  = CInt8   where syntax("i8")
+type RustI16 = CInt16  where syntax("i16")
+type RustI32 = CInt32  where syntax("i32")
+type RustI64 = CInt64  where syntax("i64")
+type RustU8  = CUint8  where syntax("u8")
+type RustU16 = CUint16 where syntax("u16")
+type RustU32 = CUint32 where syntax("u32")
+type RustU64 = CUint64 where syntax("u64")
+type RustF32 = CFloat32 where syntax("f32")
+type RustF64 = CFloat64 where syntax("f64")
+
+// Rust containers: generic, heap-allocated.
+type RustVec     = ContainerRepr where kind(List),     syntax("Vec<{T}>")
+type RustOption  = ContainerRepr where kind(Optional), syntax("Option<{T}>")
+type RustHashMap = ContainerRepr where kind(Map),      syntax("HashMap<{K}, {V}>")
+type RustHashSet = ContainerRepr where kind(Set),      syntax("HashSet<{T}>")
+
+// Rust composites: algebraic enums (tagged coproducts with payloads).
+type RustStruct = CStruct where syntax("struct {name} { {fields} }")
+type RustEnum   = CEnum where syntax("enum {name} { {variants} }"),
+    payload_support(true)
+
+// Rust-specific: encoded byte sequence has native String.
+type RustString = Product(bytes: List<Width(8)>, encoding: _)
+    where syntax("String")
+
+// Rust-specific: two-valued coproduct has native bool.
+type RustBool = Coproduct(2, all_unit) where syntax("bool")
+
+// Rust unit.
+type RustUnit where syntax("()")
+```
+
+**Go** (extends c_family: GC, slices, interfaces, no payload enums):
+
+```dag
+module backend.go
+
+import backend.c_family { CInt8, CUint8, CFloat32, CFloat64, ... }
+
+type GoInt8  = CInt8   where syntax("int8")
+type GoInt16 = CInt16  where syntax("int16")
+type GoInt32 = CInt32  where syntax("int32")
+type GoInt64 = CInt64  where syntax("int64")
+// ...
+
+type GoSlice   = ContainerRepr where kind(List),     syntax("[]{T}")
+type GoPointer = ContainerRepr where kind(Optional), syntax("*{T}")
+type GoMap     = ContainerRepr where kind(Map),       syntax("map[{K}]{V}")
+
+type GoStruct = CStruct where syntax("type {name} struct { {fields} }")
+// Go has no algebraic enums — coproducts decompose to interface + variants.
+
+type GoString = Product(bytes: List<Width(8)>, encoding: _)
+    where syntax("string")
+type GoBool = Coproduct(2, all_unit) where syntax("bool")
+type GoUnit where syntax("struct{}")
+```
+
+**Verilog** (extends hardware, not c_family):
+
+```dag
+module backend.verilog
+
+import backend.hardware { Wire, Register }
+
+type VerilogWire = Wire where syntax("wire [{W-1}:0] {name}")
+type VerilogReg  = Register where syntax("reg [{W-1}:0] {name}")
+type VerilogSignedReg = Register where signed,
+    syntax("reg signed [{W-1}:0] {name}")
+
+// Verilog has no native string, no containers, no heap.
+// Compound types flatten to bit vectors.
+type VerilogReal = FloatScalar where syntax("real")
+```
+
+### How Resolution Works
+
+Emission becomes structural resolution between two DAGs — the
+source type DAG and the target language DAG. The algorithm:
+
+```
+resolve(source_type, language_model):
+  1. Extract StructuralProperties from source_type
+  2. Walk the language_model's type hierarchy
+  3. Find the most specific language type whose structural
+     predicates are satisfied by the source's properties
+  4. Instantiate the syntax template with resolved values
+  5. If no match: decompose source one structural level, retry
+```
+
+This is the same operation as type coercion (structural DAG walk
+to find a compatible target) and extdeps resolution (structural
+matching of API signatures to provider implementations). One
+mechanism across all three domains.
+
+#### Resolution Example: UInt32 → Rust
+
+```
+Source: UInt32
+  → StructuralProperties { width: 32, signed: false, arithmetic: true }
+
+Language model walk:
+  RustU32
+    = CUint32 where syntax("u32")
+    = MachineScalar where width(32), unsigned, syntax_pattern(...)
+  Match: width(32) ✓, unsigned ✓, arithmetic ✓
+
+Result: "u32"
+```
+
+No match table consulted. The source type's properties structurally
+unify with the language model's type definition. The type unpacked
+itself.
+
+#### Resolution Example: String → Verilog
+
+```
+Source: String
+  → TypeShape::Product(bytes: List<Width(8)>, encoding: Coproduct)
+
+Language model walk:
+  VerilogWire: scalar only — no match
+  VerilogReg: scalar only — no match
+  (no composite patterns in Verilog model)
+
+Decompose one level:
+  bytes field: List<Byte>
+    → VerilogReg where width(8), array syntax
+    → "reg [7:0] {name}_bytes []"
+  encoding field: Coproduct(6 variants)
+    → flatten to bit vector, width = ceil(log2(6)) = 3
+    → "reg [2:0] {name}_encoding"
+```
+
+The Verilog model has no string concept, so decomposition kicks in
+automatically. The source type's structure drives the decomposition
+— no Verilog-specific logic needed in the emitter.
+
+### Why Hierarchy Matters (and Where Not to Force It)
+
+The hierarchy captures real relationships:
+
+- Rust, Go, and C *do* share a common representational model for
+  machine integers. That's not an abstraction — it's a fact about
+  how these languages work. `CInt32` captures that shared truth.
+- Verilog *doesn't* share the C-family model. It branches from
+  `machine.dag` through a different family. The hierarchy reflects
+  that naturally.
+
+Where the hierarchy should NOT be forced:
+
+- Not every language fits neatly into one family. TypeScript targets
+  a VM with no fixed-width integers — it might branch from `machine`
+  through a `dynamic_family` layer, or it might not extend `machine`
+  at all. The hierarchy should be descriptive, not prescriptive.
+- Container representations vary more than scalar representations.
+  Rust's `Vec<T>`, Go's `[]T`, and C's `T*` are structurally
+  different even though they all represent "list of T." The family
+  layer can define an abstract `ContainerRepr`, but the concrete
+  syntax and semantics come from each language.
+- Some languages have unique constructs with no family-level
+  ancestor (Rust's lifetimes, Go's channels, Verilog's `always`
+  blocks). These live only at Layer 2 and don't need to be forced
+  into the hierarchy.
+
+The guiding principle: model what's true, at the level where it's
+true. If three languages share a representational fact, it belongs
+at the family layer. If only one language has it, it belongs at the
+language layer. If nothing shares it, it doesn't need a layer at
+all.
+
+### Bootstrap and Circularity
+
+The compiler needs language models to emit code, but if language
+models are `.dag` files compiled by the compiler, there's a
+bootstrap loop. Three stages, in order of implementation:
+
+**Stage 1 (now): Rust structs mirroring DAG structure.** Define
+`LanguageModel`, `ScalarType`, `ContainerType`, `CompositePattern`
+as Rust structs. Populate them for Rust/Go/C from the existing
+match tables — this is a mechanical extraction. The Rust structs
+are the source of truth initially. Same pattern as
+`register_kernel_types()`: Rust-side bootstrap that DSL eventually
+overrides.
+
+**Stage 2: Build-time compilation.** A `build.rs` step compiles
+`.dag` language models into serialized Rust data embedded in the
+compiler binary. Source of truth moves to `.dag`, but no runtime
+circularity.
+
+**Stage 3: Full DAG bootstrap.** Language models are regular `.dag`
+files loaded at compiler startup, same as the std/ type library.
+Requires the compiler to self-host its type resolution. This is
+the end state.
+
+### Connections to Coercion and Testgen
+
+**Coercion.** If backend language models describe structural
+relationships between target types (e.g., Go's `int` is platform-
+dependent width while Rust's `i64` is fixed-width 64), then cross-
+language coercion becomes structural too. "Can this Go output feed
+into this Rust input?" is a resolution against both language models.
+The coercion search space is the intersection of the two target
+hierarchies.
+
+**Testgen.** With structural language models, test generation gains
+per-target precision. If the Rust model declares `i32` IS `{ width:
+32, signed: true }` and the source type structurally matches, that's
+an identity — no coercion test needed. If the source is `Width(64)`
+targeting a backend where the best match is `Width(32)`, the model
+tells testgen it's a narrowing conversion and boundary tests are
+generated. The language model carries the information that drives
+test decisions, replacing the current flat heuristics.
+
+**Transport rewrite tables.** The three `rewrite_transport_call`
+functions (Rust, Go, C) with ~15 hardcoded name→function pairs each
+follow the same pattern. Transport operations can be modeled in the
+language model: each language declares how abstract transport ops
+(file read, HTTP request, shell exec) map to its runtime library.
+The rewrite becomes a resolution against the language model's
+transport vocabulary, not a per-backend match table.
 
 ---
 
@@ -897,7 +1329,7 @@ status for types.
 
 | Knowledge | Location | Current Form | DAG Form |
 |-----------|----------|-------------|----------|
-| Backend type mappings | `type_mapping.rs:164-222` | 3× duplicated match tables (Rust/Go/C) | Backend rule DAGs with structural pattern predicates |
+| Backend type mappings | `type_mapping.rs:164-222` | 3× duplicated match tables (Rust/Go/C) | Hierarchical language model DAGs (machine → c_family → lang); structural resolution replaces match tables (see Backend Language Models section) |
 | Coercion graph | `type_registry.rs` (`CoercionEdge`, `coercion_path`) | Manual edge registration + BFS | Structural derivation chain walk (see Coercion section) |
 | Base type lattice | `contract.rs:1827-1838` | Hardcoded `base_type_upcasts_to()` match | Derived from std/ type DAG hierarchy |
 | TypeContract L1/L2/L3 | `contract.rs:1690-1804` | Tri-level struct with `can_safely_coerce_to_with()` | Two DAGs in, structural path out |
@@ -1546,27 +1978,44 @@ merged registry has fewer (DSL overrides String, Int, Float, Credential).
 Platform → coproduct, Timestamp → refined Int, NetworkHandle → Unit,
 ShellResponse/FileResponse/RestResponse/HttpResponse → products.
 
-#### Phase D: Wire Registry to Emit + Backend Rules (Gaps 2-3)
+#### Phase D: Backend Language Models + Registry Wiring (Gaps 2-3)
 
 **D1.** Thread `CompileOutput::merged_type_registry()` through the
 codegen pipeline so production callers use
 `lower_to_*_with_registry(Some(reg))`.
 
-**D2.** Define `BackendRules` as a declarative Rust structure —
-ordered list of (TypeShape pattern → native syntax template) per
-backend. Include rules for:
-- Product(bytes: List\<u8\>, encoding: _) → String
-- Coproduct(2 units) → bool
-- List\<Width(8)+Unsigned\> → Vec\<u8\> / []byte / uint8_t*
-- Arithmetic + Domain(ieee754) + Width(W) → f{W}
-- Arithmetic + Signed + Width(W) → i{W}
-- Arithmetic + Unsigned + Width(W) → u{W}
+**D2.** Define hierarchical language model Rust structs: `LanguageModel`,
+`ScalarType`, `ContainerType`, `CompositePattern`. These mirror the
+DAG structure described in "Backend Language Models" above but are
+Rust-side bootstrap (Stage 1) — the source of truth moves to `.dag`
+files later.
 
-**D3.** Implement recursive decomposition: if no backend rule
-matches a type's top-level shape, peel one structural level and
-retry.
+Hierarchy:
+- `MachineFoundation`: width, signedness, domain — shared by all targets
+- `CFamily`: extends machine with C-style scalars, struct, enum, pointer
+- `Hardware`: extends machine with wire, register, no heap
+- Concrete: Rust/Go/C extend CFamily; Verilog extends Hardware
 
-**D4.** Delete `emit_identity_type()`, `map_primitive()`,
+**D3.** Populate language models for Rust, Go, C by mechanical
+extraction from the existing match tables in `emit_identity_type()`,
+`emit_platform_type()`, and container mapping. Each language model
+declares:
+- Scalar types with predicate sets (width + signedness + domain → syntax)
+- Container types with syntax templates (List → `Vec<{T}>`, etc.)
+- Composite patterns (Product(bytes, encoding) → `String`, etc.)
+- Unit/opaque fallbacks
+
+**D4.** Implement structural resolution:
+`resolve(StructuralProperties, &LanguageModel) -> String`. The
+resolver walks the language model hierarchy, finds the most specific
+type whose predicate set is satisfied, and instantiates its syntax
+template. Recursive decomposition: if no match at the current
+structural level, peel one level from the source type and retry.
+
+**D5.** Replace `emit_platform_type()` and `emit_identity_type()`
+with calls to the structural resolver.
+
+**D6.** Delete `emit_identity_type()`, `map_primitive()`,
 `try_refined_to_rust()`, `map_to_c_type_static()`.
 
 #### Phase E: Structural Coercion (replaces legacy coercion model)
@@ -1656,7 +2105,8 @@ When Phases A-F are complete:
 - Type coercion is determined by structural derivation chain walk,
   not by manual edge registration or hardcoded name matching
 - Downcasts require explicit `.dag` acknowledgment
-- Adding a new backend requires only defining a `BackendRules` set
+- Adding a new backend requires only defining a language model
+  (Layer 2) that extends the appropriate family model
 - Adding a new type requires only a `.dag` definition
 - No type's properties (width, signedness, cardinality) are
   determined by string matching
