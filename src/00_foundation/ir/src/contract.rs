@@ -2114,10 +2114,8 @@ pub enum Platform {
 ///
 /// # Naming
 ///
-/// Prefixed `Codegen` to distinguish from [`crate::type_op::PlatformRepr`],
-/// which describes machine-level properties (bit width, signedness, float).
-/// `CodegenPlatformRepr` describes the language-level name and shape;
-/// `PlatformRepr` describes the hardware-level contract.
+/// Describes the language-level platform representation for codegen.
+/// Backends use this to decide which native primitive type to emit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodegenPlatformRepr {
     /// The target platform.

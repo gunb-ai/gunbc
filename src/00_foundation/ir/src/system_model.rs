@@ -898,14 +898,6 @@ fn append_meta_step(
                 sanitize_ident(type_id)
             )
         }
-        crate::MetadataPayload::PlatformRepr(repr) => {
-            format!(
-                "platform_repr_{}_{}_{}",
-                repr.bits,
-                if repr.signed { "s" } else { "u" },
-                if repr.float { "f" } else { "i" }
-            )
-        }
     };
     let node_id = format!("step_{}_{}", idx, sanitize_ident(&marker));
     dag.add_node(Node::opaque(

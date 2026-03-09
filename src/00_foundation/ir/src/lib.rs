@@ -110,9 +110,8 @@ pub use code_ir::{
 };
 pub use codegen_bridge::{BridgeEnum, BridgeField, BridgeFunction, BridgeModule, BridgeStruct};
 pub use coerce::{
-    audit_cardinality_drift, classify_coercion, detect_coercions, validate_coercions,
-    AppliedCoercion, CardinalityCoercion, CardinalityDrift, CoercionError, CoercionKind,
-    CoercionReport,
+    classify_coercion, detect_coercions, validate_coercions, AppliedCoercion,
+    CardinalityCoercion, CoercionError, CoercionKind, CoercionReport,
 };
 pub use contract::{
     cross_product_witnesses, generate_compliance_test_suite, generate_contract_test_body,
@@ -189,11 +188,10 @@ pub use transport::{
     TransportKind, TransportMiddlewareConfig, TransportRequest, TransportResponse,
 };
 pub use type_op::{
-    BaseType, Coercion, ContentEncoding, MetadataPayload, PlatformRepr, Predicate, PredicateValue,
-    TypeOp, WrapperKind,
+    ContentEncoding, MetadataPayload, Predicate, PredicateValue, TypeOp, WrapperKind,
 };
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
-pub use type_shape::{type_shape, ContainerShape, TypeShape};
+pub use type_shape::{type_shape, ContainerShape, StructuralProperties, TypeShape};
 pub use typed_io::{
     typed_input, typed_output, typed_port, AnyTag, CredentialTag, FilePathTag, FilesystemHandleTag,
     ListTag, NetworkHandleTag, NonEmptyListTag, OptionalTag, PlatformTag, PortTypeTag, SecretTag,

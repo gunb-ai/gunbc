@@ -22,7 +22,7 @@
 use crate::contract::{self, TypeContract};
 use crate::dag::Dag;
 use crate::type_lib;
-use crate::type_op::{BaseType, Coercion, Predicate, TypeOp, WrapperKind};
+use crate::type_op::{Predicate, TypeOp, WrapperKind};
 use crate::types::{Cardinality, TypeId};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
@@ -604,7 +604,7 @@ impl TypeRegistry {
 
     /// Register an explicit coercion edge between named types.
     ///
-    /// This records a `TypeOp::Transform(Coercion)` edge in the registry-level
+    /// This records a `TypeOp::Transform` edge in the registry-level
     /// coercion graph so discovery can find paths that are not implied by base
     /// ancestry alone.
     pub fn register_coercion_edge(&mut self, from: impl Into<TypeId>, to: impl Into<TypeId>) {
@@ -612,10 +612,7 @@ impl TypeRegistry {
         let to = to.into();
         let edge = CoercionEdge {
             to: to.clone(),
-            transform: TypeOp::Transform(Coercion::new(
-                BaseType::named(from.0.clone()),
-                BaseType::named(to.0.clone()),
-            )),
+            transform: TypeOp::Transform(from.0.clone(), to.0.clone()),
         };
         self.coercion_edges.entry(from).or_default().push(edge);
     }
@@ -843,10 +840,10 @@ impl TypeRegistry {
         let mut neighbors = Vec::new();
         let mut has_structural_parent = false;
 
-        // Explicit registry edges via TypeOp::Transform(Coercion).
+        // Explicit registry edges via TypeOp::Transform.
         if let Some(edges) = self.coercion_edges.get(current) {
             neighbors.extend(edges.iter().filter_map(|edge| match &edge.transform {
-                TypeOp::Transform(_) => Some(edge.to.clone()),
+                TypeOp::Transform(_, _) => Some(edge.to.clone()),
                 _ => None,
             }));
         }
@@ -1175,7 +1172,7 @@ mod tests {
             .get(&TypeId::from("String"))
             .expect("coercion edge should be stored");
         assert!(edges.iter().any(|edge| {
-            edge.to == TypeId::from("Url") && matches!(edge.transform, TypeOp::Transform(_))
+            edge.to == TypeId::from("Url") && matches!(edge.transform, TypeOp::Transform(_, _))
         }));
     }
 
