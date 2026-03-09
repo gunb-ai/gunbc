@@ -2365,19 +2365,332 @@ types need integers, integers need bits, bits need logic.
 Steps 7–10 are cleanup. The structural path is primary. The string
 path is vestigial. Delete it.
 
-### What "Done" Looks Like
+---
 
-After step 10:
+## Task Sheet
 
-- `TypeRegistry::register_primitives()` is empty or deleted — all
-  types come from `.dag` files
-- `BaseType` enum is deleted
-- `MetadataPayload` is deleted
-- `PlatformRepr` is deleted
-- `semantic_carrier_kind_for_type_id()` is deleted
-- `map_abstract_type()` is replaced by structural DAG walkers
-- `Port.cardinality` is derived, never declared
-- `Guard` is `Predicate`
-- `tools/gist.dag` is unchanged and works exactly as before
-- Adding a new primitive type means adding a `.dag` file
-- Adding a new backend means writing a DAG walker, not a string table
+Each task has: what to create, what to change, what to delete, and
+acceptance criteria. Every task produces a green codebase. Tasks are
+ordered by dependency — a task's prerequisites are all prior tasks.
+
+The acceptance test for the entire migration: `cargo test` passes,
+`cargo clippy --all-targets -- -D warnings` passes, `tools/gist.dag`
+compiles and emits identical output to today, and every item in the
+"Must Be Deleted" column is gone.
+
+---
+
+### Task 0: Parser Accepts New Predicates
+
+**Create:**
+- Nothing
+
+**Change:**
+- `src/03_source/daglang-syntax/src/lib.rs` — add `Refinement` variants: `Width(Expr)`, `Length(Expr)`, `Unsigned`, `Signed(Option<String>)`, `Arithmetic`, `Domain(String)`
+- `src/03_source/daglang-syntax/src/parser.rs` — add 6 match arms in `parse_refinement()` before the `other =>` fallback (~30 lines)
+
+**Delete:**
+- Nothing
+
+**Acceptance:**
+- `type Bit = Bool where width(1)` parses to `TypeExpr::Refined(Named("Bool"), [Width(1)])`
+- `type Int64 = Word64 where signed(twos_complement)` parses to `Refined(Named("Word64"), [Signed(Some("twos_complement"))])`
+- `type Byte = { bits: List<Bit> where length(8) }` parses correctly
+- All existing parser tests pass unchanged
+- `cargo test -p daglang-syntax` green
+
+---
+
+### Task 1: Alias Types Register in TypeRegistry
+
+**Create:**
+- Nothing
+
+**Change:**
+- `src/04_semantics/daglang-typecheck/src/lib.rs` — in `collect_dsl_type_registry()`, handle `TypeBody::Alias(type_expr)` (currently `TypeBody::Alias(_) => {}`): construct `Dag<TypeOp>` with Identity + Validate nodes from refinements, register in `TypeRegistry`
+- Map `Refinement::Pattern` → `Predicate::Matches`, `Refinement::Range` → `Predicate::InRange`, `Refinement::NonEmpty` → `Predicate::NonEmpty`, `Refinement::Brand` → `TypeOp::Brand`, `Refinement::Content` → `Predicate::Content`, new refinements → new predicates (from Task 0)
+
+**Delete:**
+- Nothing
+
+**Acceptance:**
+- `type Url = String where non_empty, pattern("^https?://")` produces a 3-node DAG: `Identity("String") → Validate(NonEmpty) → Validate(Matches("^https?://"))`
+- `type Port = Int where range(min: 1, max: 65535)` produces a 2-node DAG: `Identity("Int") → Validate(InRange(1, 65535))`
+- `type Char = Int where brand("Char"), range(min: 0, max: 1114111)` produces the right Brand + Validate DAG
+- `registry.get("Url")` returns `Some(dag)` with 3 nodes (previously returned `None`)
+- All existing typecheck tests pass unchanged
+- `cargo test -p daglang-typecheck` green
+
+---
+
+### Task 2: Product/Coproduct Fields Become SubDags
+
+**Create:**
+- Nothing
+
+**Change:**
+- `src/00_foundation/ir/src/type_op.rs` — change `Product(Vec<(String, TypeId)>)` to `Product(Vec<String>)` with field type DAGs as SubDag children; same for `Coproduct`
+- `src/00_foundation/ir/src/type_lib.rs` — `product()` and `coproduct()` builders add SubDag nodes for each field type (resolved from registry)
+- `src/00_foundation/ir/src/type_registry.rs` — `register_core_types()` updated for new Product/Coproduct shape
+- `src/00_foundation/ir/src/contract.rs` — `TypeContract::from_type_dag()` walks SubDag children for field types
+- `src/00_foundation/ir/src/type_shape.rs` — `type_shape()` recurses into SubDag children
+- `src/04_semantics/daglang-typecheck/src/lib.rs` — `collect_dsl_type_registry()` builds Products/Coproducts with SubDag children
+
+**Delete:**
+- Nothing yet (old `TypeId` references in Product/Coproduct removed)
+
+**Acceptance:**
+- `type Summary { total: Int, passed: Int, failed: Int }` produces a Product DAG with 3 SubDag children, each containing the field's type DAG
+- `type Platform = Linux | Macos | Windows` produces a Coproduct DAG with 3 SubDag children
+- Walking the DAG from `Summary` reaches `Int`'s Identity DAG without registry lookups
+- `TypeContract::from_type_dag()` correctly extracts field types from SubDags
+- All existing tests pass (contract tests, shape tests, typecheck tests)
+- `cargo test` green (full suite)
+
+---
+
+### Task 3: Migrate Bool
+
+**Create:**
+- `dsl/std/logic.dag` — `module std.logic` with `type Classical = True | False`
+
+**Change:**
+- `dsl/std/types.dag` — add `import std.logic { Classical }` and `type Bool = Classical`
+- `src/00_foundation/ir/src/type_registry.rs` — `register_primitives()` no longer hardcodes `Bool`; it's loaded from the DSL type registry (populated by typecheck from `std/logic.dag` → `std/types.dag`)
+- `src/00_foundation/ir/src/type_lib.rs` — `bool()` returns the registry-resolved DAG instead of `identity("Bool")`
+
+**Delete:**
+- The `"Bool"` entry in `register_primitives()` (registration moves to DSL)
+
+**Acceptance:**
+- `registry.get("Bool")` returns a DAG equivalent to `Coproduct(True, False)` — resolved from `std/logic.dag`, not from Rust
+- `registry.get("Classical")` returns the same DAG
+- `registry.is_compatible(&TypeId::from("Bool"), &TypeId::from("Classical"))` is true
+- All existing tests that use `Bool` pass unchanged
+- `tools/gist.dag` compiles successfully (uses `Bool` in `public: Bool = false`)
+- `cargo test` green
+
+---
+
+### Task 4: Migrate Int, Float
+
+**Create:**
+- `dsl/std/bit.dag` — `type Bit = Classical where width(1)`, `type Byte = { bits: List<Bit> where length(8) }`, `type Word32`, `type Word64`
+- `dsl/std/integer.dag` — `type Int8..64`, `type UInt8..64`, `type Int = Int64`
+- `dsl/std/float.dag` — `type Float64 = Word64 where ieee754(binary64)`, `type Float = Float64`
+
+**Change:**
+- `src/00_foundation/ir/src/type_op.rs` — add `Predicate::Width(u16)`, `Predicate::Length(u64)`, `Predicate::Signed(Option<String>)`, `Predicate::Unsigned` to IR `Predicate` enum
+- `src/00_foundation/ir/src/type_registry.rs` — `register_primitives()` no longer hardcodes `Int`, `Float`, `Bytes`
+- `src/07_emit/daglang-emit/src/type_mapping.rs` — begin reading width/signedness from type DAGs for Rust/Go mapping (e.g., `width(64) + signed → i64`)
+- `src/07_emit/daglang-emit/src/type_codegen.rs` — inspect refinements instead of stripping them
+
+**Delete:**
+- `"Int"`, `"Float"`, `"Bytes"` entries from `register_primitives()`
+
+**Acceptance:**
+- `registry.get("Int")` returns a DAG chain: `Int → Int64 → Word64 → {List<Byte> where length(8)} → ...`
+- `registry.get("Bit")` returns a DAG with `width(1)` predicate
+- Walking Int's DAG and extracting all `Width` predicates yields total width 64
+- Walking Int's DAG finds `Signed(Some("twos_complement"))`
+- Emit for Int still produces `i64` (Rust), `int64` (Go), `int64_t` (C) — now derived from DAG, not string table
+- Emit for Float still produces `f64` (Rust), `float64` (Go), `double` (C)
+- `tools/gist.dag` compiles (uses `Int` in skip count, `Bool` in conditions)
+- `cargo test` green
+
+---
+
+### Task 5: Migrate String, Bytes
+
+**Create:**
+- `dsl/std/string.dag` — `type String = { bytes: List<Byte>, encoding: Encoding }`, `type Char`
+- `dsl/std/encoding.dag` — `type Encoding = ASCII | UTF8 | Latin1 | Text | Binary | Unknown` with lattice ordering declared in DSL
+
+**Change:**
+- `src/00_foundation/ir/src/type_registry.rs` — `register_primitives()` no longer hardcodes `String`, `Secret`, `Bytes`; `register_core_types()` no longer hardcodes `ContentEncoding` lattice — it's read from `std/encoding.dag`
+- `src/00_foundation/ir/src/type_op.rs` — `ContentEncoding` lattice ordering driven by DSL declarations (the Rust enum may remain as a cache but `is_subtype_of` reads from registry)
+
+**Delete:**
+- `"String"`, `"Secret"`, `"Bytes"` entries from `register_primitives()`
+- Hardcoded `ContentEncoding` lattice match arms in `type_op.rs` (replaced by DSL-declared ordering)
+
+**Acceptance:**
+- `registry.get("String")` returns a structural DAG (not an Identity node)
+- `registry.get("Encoding")` returns a Coproduct with lattice metadata
+- `ContentEncoding::ASCII.is_subtype_of(&ContentEncoding::UTF8)` still returns `true` — now derived from the DSL-declared ordering
+- `Predicate::Content(ASCII).entails(&Predicate::Content(UTF8))` still works
+- All content encoding lattice tests pass (join, meet, absorption)
+- All string operation tests pass
+- `tools/gist.dag` compiles (heavy String usage throughout)
+- `cargo test` green
+
+---
+
+### Task 6: Migrate Containers
+
+**Create:**
+- `dsl/std/containers.dag` — `type List<T>`, `type Option<T>`, `type Map<K,V>`, `type Set<T>`
+
+**Change:**
+- `src/00_foundation/ir/src/type_registry.rs` — container types loaded from DSL; `WrapperKind` enum may remain internally but is derived from the container type DAGs
+- `src/00_foundation/ir/src/type_lib.rs` — `list()`, `optional()`, `map()`, `set()` become registry lookups, not hardcoded DAG builders
+- `src/00_foundation/ir/src/contract.rs` — `cardinality()` derives from structural container type DAGs
+
+**Delete:**
+- Container registrations in `register_core_types()` (`OptionalString`, `StringList`, `IntList`, etc. — ~20 entries)
+
+**Acceptance:**
+- `registry.resolve_type(&TypeId::from("List<String>"))` returns a structural DAG
+- `contract::cardinality(&list_string_dag)` returns `ZERO_OR_MORE`
+- `registry.infer_cardinality(&TypeId::from("Optional<Int>"))` returns `Some(ZERO_OR_ONE)`
+- All cardinality algebra tests pass (join, meet, product, sum, satisfies)
+- All coercion tests pass
+- `tools/gist.dag` compiles (uses `List<{ path, content }>`, `List<String>`)
+- `cargo test` green
+
+---
+
+### Task 7: Emit Backends Read Structure
+
+**Create:**
+- Nothing
+
+**Change:**
+- `src/07_emit/daglang-emit/src/type_mapping.rs` — replace `map_abstract_type(&str)` with `emit_type(&Dag<TypeOp>)` that pattern-matches on `TypeShape`; delete `RUST_TYPE_MAPPING` and `GO_TYPE_MAPPING` static tables
+- `src/07_emit/daglang-emit/src/type_codegen.rs` — stop stripping refinements (`Refined(inner, _) => inner`); inspect predicates for width/signedness to derive target types
+- `src/07_emit/daglang-emit/src/lower_to_ir.rs` — use shared structural mapper, delete duplicate mapping
+- `src/07_emit/daglang-emit/src/lower_c.rs` — use shared structural mapper, delete inline C mapping
+- `src/07_emit/daglang-emit/src/lower_go.rs` — use shared structural mapper
+
+**Delete:**
+- `RUST_TYPE_MAPPING` static table (type_mapping.rs)
+- `GO_TYPE_MAPPING` static table (type_mapping.rs)
+- Duplicate type mapping in `lower_to_ir.rs`
+- Inline C type mapping in `lower_c.rs`
+- `map_abstract_type()` function
+
+**Acceptance:**
+- No function in the emit crate takes a type name string and returns a target type string
+- All type mapping goes through `Dag<TypeOp>` → `TypeShape` → target string
+- `emit_type(registry.resolve("Int"))` returns `"i64"` for Rust backend
+- `emit_type(registry.resolve("Optional<String>"))` returns `"Option<String>"` for Rust backend
+- All codegen tests pass (Rust, Go, C, MIPS emit identical output)
+- `tools/gist.dag` produces identical Rust output to pre-migration
+- `cargo test` green
+
+---
+
+### Task 8: Eliminate BaseType Enum and String Classification
+
+**Create:**
+- Nothing
+
+**Change:**
+- `src/00_foundation/ir/src/types.rs` — replace `semantic_carrier_kind_for_type_id()` with DAG-structural queries; replace `TypeId::category()` string matching with registry-based category derivation
+
+**Delete:**
+- `BaseType` enum (type_op.rs) — 11 variants, ~21 references
+- `semantic_carrier_kind_for_type_id()` (types.rs) — ~70-line match statement
+- `semantic_carrier_class_for_type_id()` (types.rs)
+- `seed_placeholder_policy_for_type_id()` (types.rs)
+- `TypeCategory` enum and `TypeId::category()` string matching (types.rs) — ~20 references
+- `value_backing_for_type_id()` free function (types.rs) — replaced by `TypeRegistry::value_backing()` which already exists
+
+**Acceptance:**
+- `BaseType` does not appear anywhere in the codebase (`rg 'BaseType' --type rust` returns 0 results)
+- `semantic_carrier_kind_for_type_id` does not appear (`rg 'semantic_carrier_kind_for_type_id' --type rust` returns 0 results outside of tests that verify the replacement)
+- `TypeCategory` does not appear
+- All semantic carrier compatibility tests pass via structural queries
+- All seed placeholder policy tests pass via structural queries
+- `cargo test` green
+
+---
+
+### Task 9: Cardinality Derived, Guard Unified with Predicate
+
+**Create:**
+- Nothing
+
+**Change:**
+- `src/00_foundation/ir/src/dag.rs` — `Port.cardinality` becomes a derived method (reads from type DAG via registry) instead of a stored field; `Guard` enum replaced by `Predicate` on ports
+- `src/05_graph/daglang-lower/src/lib.rs` — all `Port::scalar()`, `Port::list()`, `Port::optional()` calls simplified: cardinality no longer passed, derived from type
+- `src/06_artifacts/daglang-derive/src/lib.rs` — same port simplification
+- `src/09_execute/exec/` — guard evaluation uses `Predicate::evaluate()` instead of `Guard::evaluate()`
+
+**Delete:**
+- `Port.cardinality` as a stored field (dag.rs)
+- `Port::with_cardinality()` constructor (dag.rs)
+- `Port::scalar()`, `Port::list()`, `Port::optional()`, `Port::non_empty_list()` as cardinality-stamping constructors — replaced by `Port::new(name, type_id)` with cardinality derived
+- `Guard` enum (dag.rs)
+- `audit_cardinality_drift()` function (coerce.rs) — no longer needed
+- `CardinalityDrift` struct (coerce.rs)
+
+**Acceptance:**
+- `Guard` does not appear anywhere in the codebase (`rg 'Guard' --type rust` returns 0 results, excluding test comments)
+- `audit_cardinality_drift` does not appear
+- `Port::with_cardinality` does not appear
+- Constructing `Port::new("items", "List<String>")` and querying its cardinality via the registry returns `ZERO_OR_MORE`
+- All cardinality satisfaction tests pass
+- All conditional/match DAG execution tests pass with Predicate-based gating
+- `cargo test` green
+
+---
+
+### Task 10: Delete MetadataPayload and PlatformRepr
+
+**Create:**
+- Nothing
+
+**Change:**
+- `src/00_foundation/ir/src/type_shape.rs` — derive platform properties from structural predicates (width, signed, float-domain) instead of reading `MetadataPayload::PlatformRepr`
+
+**Delete:**
+- `MetadataPayload` enum (type_op.rs)
+- `PlatformRepr` struct (type_op.rs)
+- `TypeOp::Meta(MetadataPayload)` variant (type_op.rs)
+- All `MetadataPayload::SystemId`, `SystemKind`, `BehaviorId`, `Invocation`, `Property`, `InputContract`, `OutputContract` usages in `system_model.rs` (~25 references)
+- `Meta` node construction in any DAG builder
+
+**Acceptance:**
+- `MetadataPayload` does not appear anywhere in the codebase (`rg 'MetadataPayload' --type rust` returns 0 results)
+- `PlatformRepr` does not appear (`rg 'PlatformRepr' --type rust` returns 0 results)
+- `TypeOp::Meta` does not appear (`rg 'TypeOp::Meta' --type rust` returns 0 results)
+- `type_shape()` for Int returns `TypeShape::Platform` with correct properties (bits=64, signed=true) — derived from DAG predicates
+- All type shape tests pass
+- All system model tests pass
+- `cargo test` green
+
+---
+
+### Final Acceptance: Migration Complete
+
+When all 11 tasks are done, the following invariants hold:
+
+**Deletions verified** (all return 0 results from `rg --type rust`):
+- `BaseType::`
+- `MetadataPayload`
+- `PlatformRepr`
+- `TypeOp::Meta`
+- `Guard::`
+- `audit_cardinality_drift`
+- `semantic_carrier_kind_for_type_id`
+- `seed_placeholder_policy_for_type_id`
+- `map_abstract_type`
+- `RUST_TYPE_MAPPING`
+- `GO_TYPE_MAPPING`
+- `Port::with_cardinality`
+
+**Structural invariants:**
+- Every type referenced in any `.dag` file resolves to a `Dag<TypeOp>` via the registry
+- Every `Dag<TypeOp>` for a primitive type contains structural nodes (not a single Identity node) traceable to `std/logic.dag` or `std/bit.dag`
+- No type's properties (width, signedness, cardinality) are determined by string matching — all derived from DAG walks
+- Emit backends produce identical output to pre-migration for all existing `.dag` files
+
+**Behavioral invariants:**
+- `cargo test` passes (full suite)
+- `cargo clippy --all-targets -- -D warnings` passes
+- `tools/gist.dag` compiles and emits identical Rust/Go/C output
+- All codegen tests produce identical output
+- All cardinality algebra property tests pass
+- All content encoding lattice property tests pass
+- All predicate entailment tests pass
