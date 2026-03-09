@@ -1,9 +1,15 @@
 //! Backend language models: hierarchical target modeling via compilation target chains.
 //!
-//! Each language model is a collection of entries that describe how a target
-//! language represents types. The structural resolver matches source type
-//! properties against model entries to produce native syntax — replacing
-//! the hardcoded match tables in `emit_identity_type`.
+//! Each language model is a declarative collection of entries that describe
+//! how a target language represents types. This centralizes backend knowledge
+//! (scalars, named types, containers, transport ops) that was previously
+//! duplicated across per-backend match arms.
+//!
+//! Current state: the models are static Rust data that `emit_identity_type`
+//! and `emit_platform_type` delegate to. Named Products/Coproducts still
+//! route through name-based lookup. The end-state is full structural
+//! resolution (`resolve(shape, model)`) with composite pattern matching
+//! and recursive decomposition — see DESIGN-syllogistic-types.md.
 //!
 //! Hierarchy (following compilation target chains):
 //! - ISA layer: scalar widths, signedness, IEEE 754 domains
@@ -321,27 +327,26 @@ pub fn resolve_named(name: &str, model: &LanguageModel) -> Option<&'static str> 
 }
 
 /// Resolve structural properties against the language model's scalar entries.
+///
+/// Matching rules (in priority order):
+/// 1. Domain + width: exact match on domain string and width (for floats)
+/// 2. Width + signedness: exact match (for integers)
+///
+/// Returns `None` if no entry matches — callers must handle the failure
+/// explicitly rather than silently falling back to a default type.
 pub fn resolve_scalar(props: &gunbc_ir::StructuralProperties, model: &LanguageModel) -> Option<&'static str> {
-    // Float types: match domain first (most specific)
+    // Domain types (floats): exact domain + width match
     if let Some(domain) = &props.domain {
         for entry in model.scalars {
             if let Some(ed) = entry.domain {
-                if (domain.starts_with(ed.split('_').next().unwrap_or(ed)) || domain == ed)
-                    && (entry.width.is_none() || entry.width == props.width)
-                {
+                if domain == ed && entry.width == props.width {
                     return Some(entry.syntax);
                 }
             }
         }
-        // Partial domain match: find best width match
-        for entry in model.scalars {
-            if entry.domain.is_some() && entry.width == props.width {
-                return Some(entry.syntax);
-            }
-        }
     }
 
-    // Integer types: match width + signedness
+    // Integer types: exact width + signedness match
     if let Some(width) = props.width {
         let signed = props.signed.unwrap_or(true);
         for entry in model.scalars {

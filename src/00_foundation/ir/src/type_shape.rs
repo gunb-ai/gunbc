@@ -367,7 +367,8 @@ fn extract_list_composed_width(dag: &Dag<TypeOp>) -> Option<u16> {
     let elem_props = derive_structural_properties(element_dag?);
     let elem_width = elem_props.width?;
 
-    Some((length as u16) * elem_width)
+    let composed = (length as u32).checked_mul(elem_width as u32)?;
+    u16::try_from(composed).ok()
 }
 
 /// Collect a single predicate into structural properties.

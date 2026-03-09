@@ -1,9 +1,12 @@
-//! Structural type emission for the syllogistic type system.
+//! Type emission for the syllogistic type system.
 //!
 //! Types are emitted by walking their `Dag<TypeOp>` structure via `TypeShape`.
-//! Identity types (String, Bool, etc.) that lack structural predicates are
-//! handled by `emit_identity_type`, a closed name-based match that warns on
-//! unrecognized names instead of silently falling back.
+//! Platform scalars and containers resolve through language model entries.
+//! Named Products, Coproducts, and Opaque types still fall through to
+//! `emit_identity_type`, which delegates to the language model's named
+//! entries. This is an intermediate state — the end goal is full structural
+//! resolution via `resolve(shape, model)` with composite pattern matching
+//! and recursive decomposition (see DESIGN-syllogistic-types.md Phase D).
 
 // =========================================================================
 // Structural type DAG emission (syllogistic types)
@@ -88,14 +91,18 @@ pub fn emit_shape(shape: &gunbc_ir::TypeShape, backend: Backend) -> String {
 
 /// Emit a platform-native type from structural properties.
 ///
-/// Delegates to the language model's scalar resolver. The model entries
-/// replace the per-backend match arms that were here previously.
+/// Delegates to the language model's scalar resolver. Returns the
+/// resolved syntax or warns and returns a fallback if no entry matches.
 fn emit_platform_type(props: &gunbc_ir::StructuralProperties, backend: Backend) -> String {
     let model = crate::language_model::model_for_backend(backend);
     if let Some(syntax) = crate::language_model::resolve_scalar(props, model) {
         return syntax.to_string();
     }
-    emit_identity_type("Int", backend)
+    eprintln!(
+        "warning: no {} scalar entry for width={:?} signed={:?} domain={:?} arithmetic={}",
+        model.name, props.width, props.signed, props.domain, props.arithmetic
+    );
+    model.opaque_fallback.to_string()
 }
 
 /// Emit a native type for an identity/named type.

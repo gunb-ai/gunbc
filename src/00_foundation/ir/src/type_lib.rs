@@ -524,6 +524,7 @@ pub fn map(key_type: Dag<TypeOp>, value_type: Dag<TypeOp>) -> Dag<TypeOp> {
     dag.add_node(Node::subdag("key_type", key_type));
     dag.add_node(Node::subdag("value_type", value_type));
 
+    dag.add_edge(Edge::new("input", "out", "key_type", "in"));
     dag.add_edge(Edge::new("input", "out", "value_type", "in"));
 
     dag
