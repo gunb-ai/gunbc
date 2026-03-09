@@ -84,57 +84,58 @@ pub struct RenderedTestgenModule {
 /// Pure-library modules with only types/data/services are excluded since
 /// they're tested transitively when imported by a compilable module.
 #[allow(clippy::disallowed_methods)] // Needs fs access for recursive .dag discovery
-pub fn discover_compilable_modules(dsl_root: &Path) -> Vec<CompilableModule> {
+pub fn discover_compilable_modules(dsl_root: &Path) -> Result<Vec<CompilableModule>, String> {
     let mut modules = Vec::new();
-    collect_dag_files(dsl_root, dsl_root, &mut modules);
+    collect_dag_files(dsl_root, dsl_root, &mut modules)?;
     modules.sort_by(|a, b| a.dsl_path.cmp(&b.dsl_path));
-    modules
+    Ok(modules)
 }
 
 /// Discover one compilable `.dag` module by relative path from `dsl_root`.
-pub fn find_compilable_module(dsl_root: &Path, dsl_path: &str) -> Option<CompilableModule> {
+pub fn find_compilable_module(
+    dsl_root: &Path,
+    dsl_path: &str,
+) -> Result<Option<CompilableModule>, String> {
     analyze_compilable_module(dsl_root, &dsl_root.join(dsl_path))
 }
 
 #[allow(clippy::disallowed_methods)]
-fn collect_dag_files(base: &Path, dir: &Path, out: &mut Vec<CompilableModule>) {
+fn collect_dag_files(
+    base: &Path,
+    dir: &Path,
+    out: &mut Vec<CompilableModule>,
+) -> Result<(), String> {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
-        Err(_) => return,
+        Err(_) => return Ok(()),
     };
 
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            collect_dag_files(base, &path, out);
+            collect_dag_files(base, &path, out)?;
             continue;
         }
-        if let Some(module) = analyze_compilable_module(base, &path) {
+        if let Some(module) = analyze_compilable_module(base, &path)? {
             out.push(module);
         }
     }
+    Ok(())
 }
 
 #[allow(clippy::disallowed_methods)]
-fn analyze_compilable_module(base: &Path, path: &Path) -> Option<CompilableModule> {
+fn analyze_compilable_module(
+    base: &Path,
+    path: &Path,
+) -> Result<Option<CompilableModule>, String> {
     if path.extension().and_then(|e| e.to_str()) != Some("dag") {
-        return None;
+        return Ok(None);
     }
 
-    let source = match std::fs::read_to_string(path) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("warning: cannot read {}: {e}", path.display());
-            return None;
-        }
-    };
-    let ast = match daglang_syntax::parser::parse(&source) {
-        Ok(a) => a,
-        Err(e) => {
-            eprintln!("warning: cannot parse {}: {e:?}", path.display());
-            return None;
-        }
-    };
+    let source = std::fs::read_to_string(path)
+        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let ast = daglang_syntax::parser::parse(&source)
+        .map_err(|e| format!("cannot parse {}: {e:?}", path.display()))?;
 
     // Count callable items — these are the item types that produce executable DAGs.
     // Mirrors `module_has_callable_items()` in `daglang-driver/src/lib.rs`.
@@ -151,7 +152,7 @@ fn analyze_compilable_module(base: &Path, path: &Path) -> Option<CompilableModul
         .count();
 
     if callable_count == 0 {
-        return None;
+        return Ok(None);
     }
 
     let has_test_blocks = ast
@@ -165,7 +166,7 @@ fn analyze_compilable_module(base: &Path, path: &Path) -> Option<CompilableModul
         .to_string_lossy()
         .to_string();
 
-    Some(CompilableModule {
+    Ok(Some(CompilableModule {
         module_name: rel_path
             .strip_suffix(".dag")
             .unwrap_or(&rel_path)
@@ -173,7 +174,7 @@ fn analyze_compilable_module(base: &Path, path: &Path) -> Option<CompilableModul
         dsl_path: rel_path,
         callable_count,
         has_test_blocks,
-    })
+    }))
 }
 
 /// Run the auto-testgen pipeline on a single compilable module.
@@ -647,7 +648,8 @@ mod tests {
             .or_else(|_| gunbc_ir::WorkspaceLayout::from_cargo_metadata())
             .expect("workspace layout");
         let dsl_root = layout.workspace_root.join("dsl");
-        let modules = discover_compilable_modules(&dsl_root);
+        let modules = discover_compilable_modules(&dsl_root)
+            .expect("module discovery should succeed");
 
         // Should find at least the 6 tool modules + some std/extdeps with fn items
         assert!(

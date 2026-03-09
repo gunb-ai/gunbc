@@ -29,7 +29,10 @@ fn main() {
     let dsl_root = layout.dsl_root();
     let output_dir = layout.workspace_root.join(GENERATED_TESTS_SRC_REL);
 
-    let modules = discover_compilable_modules(&dsl_root);
+    let modules = discover_compilable_modules(&dsl_root).unwrap_or_else(|e| {
+        eprintln!("error: module discovery failed: {e}");
+        process::exit(1);
+    });
     let total = modules.len();
 
     let mut written = 0usize;
