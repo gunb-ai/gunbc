@@ -4976,4 +4976,198 @@ service rest.T {
             other => panic!("expected ServiceDef, got {other:?}"),
         }
     }
+
+    // ── Diagnostic behavior (was tests/diagnostics.rs) ─────────────────
+
+    #[test]
+    fn byte_to_line_col_handles_multiline_offsets_and_eof_clamp() {
+        let src = "module test\nfn broken(\n";
+        assert_eq!(byte_to_line_col(src, 0), (1, 1));
+        assert_eq!(byte_to_line_col(src, 7), (1, 8));
+        assert_eq!(byte_to_line_col(src, 12), (2, 1));
+        assert_eq!(
+            byte_to_line_col(src, src.len() + 100),
+            byte_to_line_col(src, src.len()),
+            "offsets beyond EOF should clamp to EOF"
+        );
+    }
+
+    #[test]
+    fn byte_to_line_col_handles_utf8_byte_offsets() {
+        let src = "éx\n";
+        assert_eq!(byte_to_line_col(src, 0), (1, 1));
+        assert_eq!(byte_to_line_col(src, 1), (1, 2));
+        assert_eq!(byte_to_line_col(src, 2), (1, 2));
+        assert_eq!(byte_to_line_col(src, 3), (1, 3));
+    }
+
+    #[test]
+    fn parse_error_formats_with_file_line_col() {
+        let src = "module test\nfn broken( -> String {\n";
+        let err = parse(src)
+            .expect_err("should fail")
+            .into_iter()
+            .next()
+            .unwrap();
+        let rendered = err.format_with_source(std::path::Path::new("sample.dag"), src);
+        assert!(rendered.contains("sample.dag:2:12"));
+    }
+
+    #[test]
+    fn parse_error_converts_to_parse_diagnostic() {
+        use crate::diagnostic::DiagnosticKind;
+        let src = "module test\nfn broken( -> String {\n";
+        let err = parse(src)
+            .expect_err("should fail")
+            .into_iter()
+            .next()
+            .unwrap();
+        let diag = err.to_diagnostic(std::path::Path::new("sample.dag"), src);
+        assert_eq!(diag.kind, DiagnosticKind::Parse);
+        assert_eq!(diag.file.as_ref().and_then(|f| f.to_str()), Some("sample.dag"));
+        assert!(diag.span.is_some());
+        assert_eq!(diag.line, Some(2));
+    }
+
+    #[test]
+    fn parse_with_file_diagnostics_preserves_lex_diagnostic_kind() {
+        use crate::diagnostic::DiagnosticKind;
+        let src = "module test\n$\n";
+        let diagnostics = parse_with_file_diagnostics(std::path::Path::new("s.dag"), src)
+            .expect_err("should fail with lex diagnostic");
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].kind, DiagnosticKind::Lex);
+        assert_eq!(diagnostics[0].line, Some(2));
+        assert_eq!(diagnostics[0].column, Some(1));
+    }
+
+    #[test]
+    fn parse_with_file_diagnostics_preserves_parse_diagnostic_kind() {
+        use crate::diagnostic::DiagnosticKind;
+        let src = "module test\nfn broken( -> String {\n";
+        let diagnostics = parse_with_file_diagnostics(std::path::Path::new("s.dag"), src)
+            .expect_err("should fail with parse diagnostic");
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].kind, DiagnosticKind::Parse);
+        assert_eq!(diagnostics[0].line, Some(2));
+        assert_eq!(diagnostics[0].column, Some(12));
+    }
+
+    #[test]
+    fn parse_with_file_diagnostics_aggregates_multiple_lex_diagnostics() {
+        use crate::diagnostic::DiagnosticKind;
+        let src = "module test\n$\n&\n";
+        let diagnostics = parse_with_file_diagnostics(std::path::Path::new("s.dag"), src)
+            .expect_err("should fail with lex diagnostics");
+        assert_eq!(diagnostics.len(), 2);
+        assert!(diagnostics.iter().all(|d| d.kind == DiagnosticKind::Lex));
+        assert_eq!(diagnostics[0].line, Some(2));
+        assert_eq!(diagnostics[1].line, Some(3));
+    }
+
+    #[test]
+    fn parse_with_file_diagnostics_reports_utf8_adjacent_lex_column() {
+        use crate::diagnostic::DiagnosticKind;
+        let src = "é$\n";
+        let diagnostics = parse_with_file_diagnostics(std::path::Path::new("s.dag"), src)
+            .expect_err("should fail with lex diagnostic");
+        assert!(diagnostics.iter().all(|d| d.kind == DiagnosticKind::Lex));
+        let dollar = diagnostics
+            .iter()
+            .find(|d| d.message.contains("unexpected character '$'"))
+            .expect("expected diagnostic for '$'");
+        assert_eq!(dollar.line, Some(1));
+        assert_eq!(dollar.column, Some(2));
+    }
+
+    // ── Failure paths (was tests/failure_paths.rs) ─────────────────────
+
+    #[test]
+    fn malformed_inputs_return_errors_without_panicking() {
+        for source in [
+            "module bad\nfn",
+            "module bad\nimport",
+            "module bad\ntype",
+            "module bad\n@",
+        ] {
+            let result = std::panic::catch_unwind(|| parse(source));
+            assert!(result.is_ok(), "parser panicked on: {source:?}");
+            assert!(result.unwrap().is_err(), "should return error for: {source:?}");
+        }
+    }
+
+    #[test]
+    fn lexer_unknown_character_surfaces_as_parser_diagnostic() {
+        let errors = parse("module bad\n$").expect_err("should fail");
+        assert!(
+            errors.iter().any(|e| e.message.contains("unexpected character '$'")),
+            "lex diagnostic should surface through parser: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn parser_recovers_to_next_top_level_item_and_reports_multiple_errors() {
+        let errors = parse("module bad\nimport\nfn broken(\ntype Broken =\n")
+            .expect_err("should produce parse errors");
+        assert!(
+            errors.len() >= 2,
+            "expected multiple diagnostics via recovery, got: {errors:?}"
+        );
+    }
+
+    // ── Item variant coverage (was tests/item_coverage.rs + representative_ast.rs) ──
+
+    #[test]
+    fn parser_handles_all_core_item_variants() {
+        let source = r#"
+            module test.coverage
+
+            type MyRecord { field: String }
+            type MySum = A | B { value: Int }
+            type MyAlias = String
+
+            data entries: List<String> = ["a", "b"]
+
+            fn pure_fn(x: Int) -> Int { x }
+
+            func effectful_fn(name: String) -> { ok: Bool }
+              uses net: Network
+            {
+              result = svc.Op(name: name)
+              return { ok: true }
+            }
+
+            pattern my_pattern(x: String) -> { done: Bool } {
+              return { done: true }
+            }
+
+            service svc.Example {
+              config { endpoint: "https://example.com" }
+              operation Op {
+                input { name: String }
+                output { id: String }
+                transport rest { method: POST, path: "/op" }
+              }
+            }
+
+            resource MyResource {
+              kind: Capability
+              mode: ReadWrite
+              acquire {}
+              release {}
+            }
+        "#;
+        let ast = parse_or_panic(source);
+
+        let has = |pred: fn(&Item) -> bool| ast.items.iter().any(|i| pred(&i.node));
+        assert!(has(|i| matches!(i, Item::TypeDef(d) if matches!(d.body, TypeBody::Record(_)))));
+        assert!(has(|i| matches!(i, Item::TypeDef(d) if matches!(d.body, TypeBody::Sum(_)))));
+        assert!(has(|i| matches!(i, Item::TypeDef(d) if matches!(d.body, TypeBody::Alias(_)))));
+        assert!(has(|i| matches!(i, Item::DataDef(_))));
+        assert!(has(|i| matches!(i, Item::FnDef(_))));
+        assert!(has(|i| matches!(i, Item::FuncDef(_))));
+        assert!(has(|i| matches!(i, Item::PatternDef(_))));
+        assert!(has(|i| matches!(i, Item::ServiceDef(_))));
+        assert!(has(|i| matches!(i, Item::ResourceDef(_))));
+    }
 }
