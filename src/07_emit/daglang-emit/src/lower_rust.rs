@@ -340,28 +340,10 @@ fn lower_expr(expr: &Expr, in_fallible_fn: bool, config: &RustConfig) -> Expr {
 /// Rewrite abstract transport function names to concrete Rust runtime functions.
 fn rewrite_transport_call(name: &str, config: &RustConfig) -> Option<String> {
     if !config.use_exec_runtime {
-        return None; // Standalone mode: keep abstract names.
+        return None;
     }
-
-    match name {
-        "prepare_file_read" => Some("FileRequest::read".to_string()),
-        "execute_file_read" => Some("execute_transport".to_string()),
-        "parse_file_read_response" => Some("parse_file_response".to_string()),
-        "prepare_file_write" => Some("FileRequest::write".to_string()),
-        "execute_file_write" => Some("execute_transport".to_string()),
-        "parse_file_write_response" => Some("parse_file_response".to_string()),
-        "prepare_file_exists" => Some("FileRequest::exists".to_string()),
-        "execute_file_exists" => Some("execute_transport".to_string()),
-        "prepare_shell_exec" => Some("ShellRequest::new".to_string()),
-        "execute_shell_exec" => Some("execute_transport".to_string()),
-        "parse_shell_exec_response" => Some("parse_shell_response".to_string()),
-        "prepare_http_request" => Some("RestRequest::new".to_string()),
-        "execute_http_request" => Some("execute_transport".to_string()),
-        "prepare_directory_list" => Some("FileRequest::list_dir".to_string()),
-        "execute_directory_list" => Some("execute_transport".to_string()),
-        "acquire_resource" => Some("acquire_resource_handle".to_string()),
-        _ => None,
-    }
+    crate::language_model::resolve_transport(name, &crate::language_model::RUST_MODEL)
+        .map(|s| s.to_string())
 }
 
 /// Lower transport call arguments for Rust runtime conventions.

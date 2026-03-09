@@ -684,23 +684,8 @@ fn rewrite_transport_call_c(name: &str, config: &CConfig) -> Option<String> {
     if !config.use_exec_runtime {
         return None;
     }
-
-    match name {
-        "prepare_file_read" => Some("gunbc_file_read_request".to_string()),
-        "execute_file_read" => Some("gunbc_transport_execute".to_string()),
-        "prepare_file_write" => Some("gunbc_file_write_request".to_string()),
-        "execute_file_write" => Some("gunbc_transport_execute".to_string()),
-        "prepare_file_exists" => Some("gunbc_file_exists_request".to_string()),
-        "execute_file_exists" => Some("gunbc_transport_execute".to_string()),
-        "prepare_shell_exec" => Some("gunbc_shell_request".to_string()),
-        "execute_shell_exec" => Some("gunbc_transport_execute".to_string()),
-        "prepare_http_request" => Some("gunbc_http_request".to_string()),
-        "execute_http_request" => Some("gunbc_transport_execute".to_string()),
-        "prepare_directory_list" => Some("gunbc_dir_list_request".to_string()),
-        "execute_directory_list" => Some("gunbc_transport_execute".to_string()),
-        "acquire_resource" => Some("gunbc_acquire_resource".to_string()),
-        _ => None,
-    }
+    crate::language_model::resolve_transport(name, &crate::language_model::C_MODEL)
+        .map(|s| s.to_string())
 }
 
 // ===========================================================================

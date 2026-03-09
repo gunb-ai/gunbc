@@ -48,6 +48,13 @@ pub enum ContainerKind {
     Map,
 }
 
+/// A transport operation mapping: abstract name → backend-specific function.
+#[derive(Debug, Clone)]
+pub struct TransportEntry {
+    pub abstract_name: &'static str,
+    pub native_call: &'static str,
+}
+
 /// A complete language model for one compilation target.
 #[derive(Debug, Clone)]
 pub struct LanguageModel {
@@ -55,6 +62,7 @@ pub struct LanguageModel {
     pub scalars: &'static [ScalarEntry],
     pub named: &'static [NamedEntry],
     pub containers: &'static [ContainerEntry],
+    pub transport: &'static [TransportEntry],
     pub unit_syntax: &'static str,
     pub opaque_fallback: &'static str,
 }
@@ -128,11 +136,31 @@ static RUST_CONTAINERS: &[ContainerEntry] = &[
     ContainerEntry { kind: ContainerKind::Map, syntax_template: "HashMap<{K}, {V}>" },
 ];
 
+static RUST_TRANSPORT: &[TransportEntry] = &[
+    TransportEntry { abstract_name: "prepare_file_read", native_call: "FileRequest::read" },
+    TransportEntry { abstract_name: "execute_file_read", native_call: "execute_transport" },
+    TransportEntry { abstract_name: "parse_file_read_response", native_call: "parse_file_response" },
+    TransportEntry { abstract_name: "prepare_file_write", native_call: "FileRequest::write" },
+    TransportEntry { abstract_name: "execute_file_write", native_call: "execute_transport" },
+    TransportEntry { abstract_name: "parse_file_write_response", native_call: "parse_file_response" },
+    TransportEntry { abstract_name: "prepare_file_exists", native_call: "FileRequest::exists" },
+    TransportEntry { abstract_name: "execute_file_exists", native_call: "execute_transport" },
+    TransportEntry { abstract_name: "prepare_shell_exec", native_call: "ShellRequest::new" },
+    TransportEntry { abstract_name: "execute_shell_exec", native_call: "execute_transport" },
+    TransportEntry { abstract_name: "parse_shell_exec_response", native_call: "parse_shell_response" },
+    TransportEntry { abstract_name: "prepare_http_request", native_call: "RestRequest::new" },
+    TransportEntry { abstract_name: "execute_http_request", native_call: "execute_transport" },
+    TransportEntry { abstract_name: "prepare_directory_list", native_call: "FileRequest::list_dir" },
+    TransportEntry { abstract_name: "execute_directory_list", native_call: "execute_transport" },
+    TransportEntry { abstract_name: "acquire_resource", native_call: "acquire_resource_handle" },
+];
+
 pub static RUST_MODEL: LanguageModel = LanguageModel {
     name: "Rust",
     scalars: RUST_SCALARS,
     named: RUST_NAMED,
     containers: RUST_CONTAINERS,
+    transport: RUST_TRANSPORT,
     unit_syntax: "()",
     opaque_fallback: "serde_json::Value",
 };
@@ -176,11 +204,31 @@ static GO_CONTAINERS: &[ContainerEntry] = &[
     ContainerEntry { kind: ContainerKind::Map, syntax_template: "map[{K}]{V}" },
 ];
 
+static GO_TRANSPORT: &[TransportEntry] = &[
+    TransportEntry { abstract_name: "prepare_file_read", native_call: "transport.NewFileReadRequest" },
+    TransportEntry { abstract_name: "execute_file_read", native_call: "transport.Execute" },
+    TransportEntry { abstract_name: "parse_file_read_response", native_call: "transport.ParseFileResponse" },
+    TransportEntry { abstract_name: "prepare_file_write", native_call: "transport.NewFileWriteRequest" },
+    TransportEntry { abstract_name: "execute_file_write", native_call: "transport.Execute" },
+    TransportEntry { abstract_name: "parse_file_write_response", native_call: "transport.ParseFileResponse" },
+    TransportEntry { abstract_name: "prepare_file_exists", native_call: "transport.NewFileExistsRequest" },
+    TransportEntry { abstract_name: "execute_file_exists", native_call: "transport.Execute" },
+    TransportEntry { abstract_name: "prepare_shell_exec", native_call: "transport.NewShellRequest" },
+    TransportEntry { abstract_name: "execute_shell_exec", native_call: "transport.Execute" },
+    TransportEntry { abstract_name: "parse_shell_exec_response", native_call: "transport.ParseShellResponse" },
+    TransportEntry { abstract_name: "prepare_http_request", native_call: "transport.NewHTTPRequest" },
+    TransportEntry { abstract_name: "execute_http_request", native_call: "transport.Execute" },
+    TransportEntry { abstract_name: "prepare_directory_list", native_call: "transport.NewDirListRequest" },
+    TransportEntry { abstract_name: "execute_directory_list", native_call: "transport.Execute" },
+    TransportEntry { abstract_name: "acquire_resource", native_call: "resource.Acquire" },
+];
+
 pub static GO_MODEL: LanguageModel = LanguageModel {
     name: "Go",
     scalars: GO_SCALARS,
     named: GO_NAMED,
     containers: GO_CONTAINERS,
+    transport: GO_TRANSPORT,
     unit_syntax: "struct{}",
     opaque_fallback: "interface{}",
 };
@@ -223,11 +271,28 @@ static C_CONTAINERS: &[ContainerEntry] = &[
     ContainerEntry { kind: ContainerKind::Map, syntax_template: "{V}*" },
 ];
 
+static C_TRANSPORT: &[TransportEntry] = &[
+    TransportEntry { abstract_name: "prepare_file_read", native_call: "gunbc_file_read_request" },
+    TransportEntry { abstract_name: "execute_file_read", native_call: "gunbc_transport_execute" },
+    TransportEntry { abstract_name: "prepare_file_write", native_call: "gunbc_file_write_request" },
+    TransportEntry { abstract_name: "execute_file_write", native_call: "gunbc_transport_execute" },
+    TransportEntry { abstract_name: "prepare_file_exists", native_call: "gunbc_file_exists_request" },
+    TransportEntry { abstract_name: "execute_file_exists", native_call: "gunbc_transport_execute" },
+    TransportEntry { abstract_name: "prepare_shell_exec", native_call: "gunbc_shell_request" },
+    TransportEntry { abstract_name: "execute_shell_exec", native_call: "gunbc_transport_execute" },
+    TransportEntry { abstract_name: "prepare_http_request", native_call: "gunbc_http_request" },
+    TransportEntry { abstract_name: "execute_http_request", native_call: "gunbc_transport_execute" },
+    TransportEntry { abstract_name: "prepare_directory_list", native_call: "gunbc_dir_list_request" },
+    TransportEntry { abstract_name: "execute_directory_list", native_call: "gunbc_transport_execute" },
+    TransportEntry { abstract_name: "acquire_resource", native_call: "gunbc_acquire_resource" },
+];
+
 pub static C_MODEL: LanguageModel = LanguageModel {
     name: "C",
     scalars: C_SCALARS,
     named: C_NAMED,
     containers: C_CONTAINERS,
+    transport: C_TRANSPORT,
     unit_syntax: "void",
     opaque_fallback: "void*",
 };
@@ -307,6 +372,16 @@ pub fn resolve_container(
                 result
             };
             return Some(result);
+        }
+    }
+    None
+}
+
+/// Resolve a transport operation name through the language model.
+pub fn resolve_transport(name: &str, model: &LanguageModel) -> Option<&'static str> {
+    for entry in model.transport {
+        if entry.abstract_name == name {
+            return Some(entry.native_call);
         }
     }
     None
