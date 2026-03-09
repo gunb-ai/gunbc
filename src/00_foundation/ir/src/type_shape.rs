@@ -111,7 +111,13 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
         if let NodeBody::Opaque(TypeOp::Coproduct(variants)) = &node.body {
             let shaped_variants: Vec<(String, TypeShape)> = variants
                 .iter()
-                .map(|(name, type_id)| (name.clone(), TypeShape::Opaque(type_id.0.clone())))
+                .map(|name| {
+                    let child_id = format!("variant_{name}");
+                    let inner = named_subdag(dag, &child_id)
+                        .map(type_shape)
+                        .unwrap_or_else(|| TypeShape::Opaque(name.clone()));
+                    (name.clone(), inner)
+                })
                 .collect();
             return TypeShape::Coproduct(shaped_variants);
         }
@@ -122,7 +128,13 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
         if let NodeBody::Opaque(TypeOp::Product(fields)) = &node.body {
             let shaped_fields: Vec<(String, TypeShape)> = fields
                 .iter()
-                .map(|(name, type_id)| (name.clone(), TypeShape::Opaque(type_id.0.clone())))
+                .map(|name| {
+                    let child_id = format!("field_{name}");
+                    let inner = named_subdag(dag, &child_id)
+                        .map(type_shape)
+                        .unwrap_or_else(|| TypeShape::Opaque(name.clone()));
+                    (name.clone(), inner)
+                })
                 .collect();
             return TypeShape::Product(shaped_fields);
         }
@@ -130,7 +142,7 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
 
     // Priority 4: Look for Brand node.
     for node in &dag.nodes {
-        if let NodeBody::Opaque(TypeOp::Brand(name, _type_id)) = &node.body {
+        if let NodeBody::Opaque(TypeOp::Brand(name)) = &node.body {
             // Recurse into the SubDag if present to get the inner shape.
             let inner_shape = inner_subdag(dag)
                 .map(type_shape)
@@ -185,6 +197,18 @@ fn inner_subdag(dag: &Dag<TypeOp>) -> Option<&Dag<TypeOp>> {
         } else {
             None
         }
+    })
+}
+
+/// Find a SubDag child by node ID name.
+fn named_subdag<'a>(dag: &'a Dag<TypeOp>, name: &str) -> Option<&'a Dag<TypeOp>> {
+    dag.nodes.iter().find_map(|node| {
+        if node.id.0 == name {
+            if let NodeBody::SubDag(subdag, _) = &node.body {
+                return Some(subdag);
+            }
+        }
+        None
     })
 }
 

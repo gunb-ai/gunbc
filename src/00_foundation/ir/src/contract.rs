@@ -484,7 +484,7 @@ impl TypeLayer {
         let mut coproduct_arms = Vec::new();
         for node in &type_dag.nodes {
             if let NodeBody::Opaque(TypeOp::Coproduct(variants)) = &node.body {
-                for (name, _type_id) in variants {
+                for name in variants {
                     // Each variant gets a scalar layer with its name as base type
                     coproduct_arms.push(TypeLayer {
                         cardinality: Cardinality::ONE,
@@ -503,7 +503,7 @@ impl TypeLayer {
         let mut product_fields = Vec::new();
         for node in &type_dag.nodes {
             if let NodeBody::Opaque(TypeOp::Product(fields)) = &node.body {
-                for (name, _type_id) in fields {
+                for name in fields {
                     product_fields.push((
                         name.clone(),
                         TypeLayer {

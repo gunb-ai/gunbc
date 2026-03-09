@@ -26,7 +26,6 @@
 //! // optional_url output port has ZeroOrOne cardinality
 //! ```
 
-use crate::types::TypeId;
 use serde::{Deserialize, Serialize};
 
 /// Operations in a type DAG.
@@ -59,17 +58,20 @@ pub enum TypeOp {
     /// Unwrap operation — extracts value from a container type.
     Unwrap(WrapperKind),
 
-    /// Product type — a record with named typed fields.
+    /// Product type — a record with named fields.
+    /// Field types are embedded as SubDag children (naming: `field_{name}`).
     /// e.g., `{ path: FilePath, encoding: ContentEncoding }`
-    Product(Vec<(String, TypeId)>),
+    Product(Vec<String>),
 
-    /// Coproduct type — a tagged union of named typed variants.
+    /// Coproduct type — a tagged union of named variants.
+    /// Variant types are embedded as SubDag children (naming: `variant_{name}`).
     /// e.g., `UTF8 | ASCII | Latin1 | Binary`
-    Coproduct(Vec<(String, TypeId)>),
+    Coproduct(Vec<String>),
 
-    /// Brand (nominal) type — a named wrapper around an inner type with refinement.
+    /// Brand (nominal) type — a named wrapper.
+    /// Inner type is embedded as a SubDag child.
     /// e.g., `TextFilePath = FilePath @content(Text)`
-    Brand(String, TypeId),
+    Brand(String),
 }
 
 /// Machine representation contract for platform-primitive types.
@@ -459,19 +461,19 @@ mod tests {
     #[test]
     fn test_type_op_product_coproduct_brand() {
         let product = TypeOp::Product(vec![
-            ("path".to_string(), TypeId::from("FilePath")),
-            ("encoding".to_string(), TypeId::from("ContentEncoding")),
+            "path".to_string(),
+            "encoding".to_string(),
         ]);
         assert!(matches!(product, TypeOp::Product(ref fields) if fields.len() == 2));
 
         let coproduct = TypeOp::Coproduct(vec![
-            ("UTF8".to_string(), TypeId::from("String")),
-            ("Binary".to_string(), TypeId::from("Bytes")),
+            "UTF8".to_string(),
+            "Binary".to_string(),
         ]);
         assert!(matches!(coproduct, TypeOp::Coproduct(ref variants) if variants.len() == 2));
 
-        let brand = TypeOp::Brand("TextFilePath".to_string(), TypeId::from("FilePath"));
-        assert!(matches!(brand, TypeOp::Brand(ref name, _) if name == "TextFilePath"));
+        let brand = TypeOp::Brand("TextFilePath".to_string());
+        assert!(matches!(brand, TypeOp::Brand(ref name) if name == "TextFilePath"));
     }
 
     #[test]

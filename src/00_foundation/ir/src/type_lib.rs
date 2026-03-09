@@ -25,7 +25,7 @@
 use crate::dag::{Dag, Edge, Port};
 use crate::node::Node;
 use crate::type_op::{ContentEncoding, Predicate, TypeOp, WrapperKind};
-use crate::types::{Cardinality, TypeId};
+use crate::types::Cardinality;
 
 /// URL pattern regex.
 pub const URL_PATTERN: &str = r"^https?://[^\s/$.?#].[^\s]*$";
@@ -102,6 +102,7 @@ pub fn secret() -> Dag<TypeOp> {
 ///
 /// The brand ensures nominal distinctness: `TextFilePath` is not `FilePath`
 /// even though structurally identical, unless the brand allows coercion.
+/// The inner type is embedded as a SubDag child.
 pub fn branded(name: &str, inner_type: Dag<TypeOp>) -> Dag<TypeOp> {
     let mut dag = Dag::new();
 
@@ -109,7 +110,7 @@ pub fn branded(name: &str, inner_type: Dag<TypeOp>) -> Dag<TypeOp> {
         "brand",
         vec![Port::scalar("in", name)],
         vec![Port::scalar("out", name)],
-        TypeOp::Brand(name.to_string(), TypeId::from(name)),
+        TypeOp::Brand(name.to_string()),
     ));
 
     dag.add_node(Node::subdag("inner_type", inner_type));
@@ -121,42 +122,52 @@ pub fn branded(name: &str, inner_type: Dag<TypeOp>) -> Dag<TypeOp> {
 
 /// Product type — a record with named typed fields.
 ///
+/// Field types are embedded as SubDag children named `field_{name}`.
 /// e.g., `product("FileInfo", vec![("path", "FilePath"), ("encoding", "ContentEncoding")])`
 pub fn product(name: &str, fields: Vec<(&str, &str)>) -> Dag<TypeOp> {
     let mut dag = Dag::new();
 
-    let field_types: Vec<(String, TypeId)> = fields
-        .iter()
-        .map(|(n, t)| (n.to_string(), TypeId::from(*t)))
-        .collect();
+    let field_names: Vec<String> = fields.iter().map(|(n, _)| n.to_string()).collect();
 
     dag.add_node(Node::opaque(
         "product",
         vec![Port::scalar("in", name)],
         vec![Port::scalar("out", name)],
-        TypeOp::Product(field_types),
+        TypeOp::Product(field_names),
     ));
+
+    // Each field type becomes a SubDag child
+    for (field_name, field_type) in &fields {
+        let child_id = format!("field_{field_name}");
+        dag.add_node(Node::subdag(child_id.as_str(), identity(field_type)));
+        dag.add_edge(Edge::new("product", "out", child_id.as_str(), "in"));
+    }
 
     dag
 }
 
 /// Coproduct type — a tagged union of named typed variants.
 ///
+/// Variant types are embedded as SubDag children named `variant_{name}`.
 /// e.g., `coproduct("ContentEncoding", vec![("UTF8", "String"), ("Binary", "Bytes")])`
 pub fn coproduct(name: &str, variants: Vec<(&str, &str)>) -> Dag<TypeOp> {
     let mut dag = Dag::new();
 
-    let variant_types: Vec<(String, TypeId)> = variants
-        .iter()
-        .map(|(n, t)| (n.to_string(), TypeId::from(*t)))
-        .collect();
+    let variant_names: Vec<String> = variants.iter().map(|(n, _)| n.to_string()).collect();
 
     dag.add_node(Node::opaque(
         "coproduct",
         vec![Port::scalar("in", name)],
         vec![Port::scalar("out", name)],
-        TypeOp::Coproduct(variant_types),
+        TypeOp::Coproduct(variant_names),
     ));
+
+    // Each variant type becomes a SubDag child
+    for (variant_name, variant_type) in &variants {
+        let child_id = format!("variant_{variant_name}");
+        dag.add_node(Node::subdag(child_id.as_str(), identity(variant_type)));
+        dag.add_edge(Edge::new("coproduct", "out", child_id.as_str(), "in"));
+    }
 
     dag
 }
