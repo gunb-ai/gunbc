@@ -73,26 +73,57 @@ fn try_refined_to_rust(_inner: &TypeExpr, refinements: &[Refinement]) -> Option<
 
 /// Convert a DSL `TypeExpr` to a Rust type string.
 fn type_expr_to_rust(expr: &TypeExpr) -> String {
+    type_expr_to_rust_with_registry(expr, None)
+}
+
+/// Convert a DSL `TypeExpr` to a Rust type string, using the registry when
+/// available for structural type resolution.
+///
+/// When a registry is provided, named types and refined types are resolved
+/// through the structural path (`resolve_and_emit`) instead of the legacy
+/// string-based `map_primitive`/`try_refined_to_rust` functions.
+pub fn type_expr_to_rust_with_registry(
+    expr: &TypeExpr,
+    registry: Option<&gunbc_ir::TypeRegistry>,
+) -> String {
     match expr {
-        TypeExpr::Named(name) => map_primitive(name),
+        TypeExpr::Named(name) => {
+            if let Some(reg) = registry {
+                return crate::type_mapping::resolve_and_emit(
+                    name,
+                    Some(reg),
+                    crate::type_mapping::Backend::Rust,
+                );
+            }
+            map_primitive(name)
+        }
         TypeExpr::Generic(name, args) => {
             let mapped = map_primitive(name);
-            let arg_strs: Vec<String> = args.iter().map(type_expr_to_rust).collect();
+            let arg_strs: Vec<String> = args
+                .iter()
+                .map(|a| type_expr_to_rust_with_registry(a, registry))
+                .collect();
             format!("{}<{}>", mapped, arg_strs.join(", "))
         }
         TypeExpr::Optional(inner) => {
-            format!("Option<{}>", type_expr_to_rust(inner))
+            format!("Option<{}>", type_expr_to_rust_with_registry(inner, registry))
         }
         TypeExpr::Refined(inner, refinements) => {
             if let Some(ty) = try_refined_to_rust(inner, refinements) {
                 return ty;
             }
-            type_expr_to_rust(inner)
+            type_expr_to_rust_with_registry(inner, registry)
         }
         TypeExpr::Record(fields) => {
             let field_strs: Vec<String> = fields
                 .iter()
-                .map(|f| format!("{}: {}", f.name, type_expr_to_rust(&f.ty)))
+                .map(|f| {
+                    format!(
+                        "{}: {}",
+                        f.name,
+                        type_expr_to_rust_with_registry(&f.ty, registry)
+                    )
+                })
                 .collect();
             format!("{{ {} }}", field_strs.join(", "))
         }

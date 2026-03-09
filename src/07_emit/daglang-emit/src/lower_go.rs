@@ -911,7 +911,7 @@ mod tests {
         assert_eq!(map_to_go_type("List<String>"), "[]string");
         assert_eq!(map_to_go_type("Optional<Int>"), "*int64");
         assert_eq!(map_to_go_type("Map<String, Int>"), "map[string]int64");
-        assert_eq!(map_to_go_type("UnknownType"), "interface{}");
+        assert_eq!(map_to_go_type("UnknownType"), "UnknownType");
     }
 
     #[test]

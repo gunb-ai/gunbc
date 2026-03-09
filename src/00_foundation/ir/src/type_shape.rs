@@ -40,12 +40,18 @@ pub enum TypeShape {
     /// Each variant has a name and a recursive `TypeShape` for its payload.
     /// A coproduct where all variants have `TypeShape::Opaque("Unit")` is
     /// an all-unit enum (e.g., Bool, HttpMethod).
-    Coproduct(Vec<(String, TypeShape)>),
+    ///
+    /// The optional `String` is the declared type name (e.g., `"ContentEncoding"`).
+    /// `None` for anonymous coproducts.
+    Coproduct(Option<String>, Vec<(String, TypeShape)>),
 
     /// Product (record) with named fields.
     ///
     /// Each field has a name and a recursive `TypeShape` for its type.
-    Product(Vec<(String, TypeShape)>),
+    ///
+    /// The optional `String` is the declared type name (e.g., `"CliResult"`).
+    /// `None` for anonymous records.
+    Product(Option<String>, Vec<(String, TypeShape)>),
 
     /// Branded wrapper around an inner type.
     ///
@@ -120,6 +126,11 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
     // type itself as a platform primitive.
     for node in &dag.nodes {
         if let NodeBody::Opaque(TypeOp::Coproduct(variants)) = &node.body {
+            // Extract the type name from the node's output port type_id.
+            let type_name = node
+                .outputs
+                .first()
+                .map(|p| p.type_id.0.clone());
             let shaped_variants: Vec<(String, TypeShape)> = variants
                 .iter()
                 .map(|name| {
@@ -130,13 +141,18 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
                     (name.clone(), inner)
                 })
                 .collect();
-            return TypeShape::Coproduct(shaped_variants);
+            return TypeShape::Coproduct(type_name, shaped_variants);
         }
     }
 
     // Priority 2: Look for Product node.
     for node in &dag.nodes {
         if let NodeBody::Opaque(TypeOp::Product(fields)) = &node.body {
+            // Extract the type name from the node's output port type_id.
+            let type_name = node
+                .outputs
+                .first()
+                .map(|p| p.type_id.0.clone());
             let shaped_fields: Vec<(String, TypeShape)> = fields
                 .iter()
                 .map(|name| {
@@ -147,7 +163,7 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
                     (name.clone(), inner)
                 })
                 .collect();
-            return TypeShape::Product(shaped_fields);
+            return TypeShape::Product(type_name, shaped_fields);
         }
     }
 
@@ -324,7 +340,8 @@ mod tests {
         );
         let shape = type_shape(&encoding_dag);
         match &shape {
-            TypeShape::Coproduct(variants) => {
+            TypeShape::Coproduct(type_name, variants) => {
+                assert_eq!(type_name.as_deref(), Some("ContentEncoding"));
                 assert_eq!(variants.len(), 3);
                 assert_eq!(variants[0].0, "UTF8");
                 assert_eq!(variants[0].1, TypeShape::Opaque("String".to_string()));
@@ -341,7 +358,8 @@ mod tests {
         let bool_dag = type_lib::coproduct("Bool", vec![("True", "Unit"), ("False", "Unit")]);
         let shape = type_shape(&bool_dag);
         match &shape {
-            TypeShape::Coproduct(variants) => {
+            TypeShape::Coproduct(type_name, variants) => {
+                assert_eq!(type_name.as_deref(), Some("Bool"));
                 assert_eq!(variants.len(), 2);
                 assert_eq!(
                     variants[0],
@@ -368,7 +386,8 @@ mod tests {
         );
         let shape = type_shape(&cli_result_dag);
         match &shape {
-            TypeShape::Product(fields) => {
+            TypeShape::Product(type_name, fields) => {
+                assert_eq!(type_name.as_deref(), Some("CliResult"));
                 assert_eq!(fields.len(), 3);
                 assert_eq!(fields[0].0, "stdout");
                 assert_eq!(fields[0].1, TypeShape::Opaque("String".to_string()));
@@ -633,7 +652,8 @@ mod tests {
         );
         let shape = type_shape(&product_dag);
         match &shape {
-            TypeShape::Product(fields) => {
+            TypeShape::Product(type_name, fields) => {
+                assert_eq!(type_name.as_deref(), Some("CliResult"));
                 assert_eq!(fields.len(), 2);
                 assert_eq!(fields[0].0, "stdout");
                 assert_eq!(fields[0].1, TypeShape::Opaque("String".to_string()));

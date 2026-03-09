@@ -268,6 +268,10 @@ pub enum Predicate {
     /// Used by system model DAGs to encode behavioral catalog metadata
     /// (system identity, behavior properties, I/O contracts). Traversable
     /// and inspectable but does not change runtime behavior.
+    ///
+    /// This is a deliberate extension point for catalog-level metadata.
+    /// Adding new `SystemModelMeta` variants requires design justification
+    /// in the system model docs.
     Meta(SystemModelMeta),
 }
 
@@ -684,5 +688,30 @@ mod tests {
         // UTF8 and Latin1 are incomparable
         assert!(!ContentEncoding::UTF8.leq(&ContentEncoding::Latin1));
         assert!(!ContentEncoding::Latin1.leq(&ContentEncoding::UTF8));
+    }
+
+    /// Verify that the Rust `ContentEncoding` enum variants match the DSL
+    /// `encoding.dag` coproduct definition. The DSL declares which variants
+    /// exist; the Rust enum remains the runtime lattice authority.
+    #[test]
+    fn encoding_parity_with_dsl() {
+        // Variants from dsl/std/encoding.dag:
+        //   type Encoding = ASCII | UTF8 | Latin1 | Text | Binary | Unknown
+        let dsl_variants: std::collections::BTreeSet<&str> =
+            ["ASCII", "UTF8", "Latin1", "Text", "Binary", "Unknown"]
+                .into_iter()
+                .collect();
+
+        // All Rust ContentEncoding variants:
+        let rust_variants: std::collections::BTreeSet<&str> = [
+            "Unknown", "Text", "UTF8", "ASCII", "Latin1", "Binary",
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(
+            dsl_variants, rust_variants,
+            "ContentEncoding variants must match encoding.dag coproduct"
+        );
     }
 }

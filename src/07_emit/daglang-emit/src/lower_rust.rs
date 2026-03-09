@@ -987,7 +987,7 @@ mod tests {
         assert_eq!(map_to_rust_type("FilesystemHandle"), "PathBuf");
         assert_eq!(map_to_rust_type("ToolRegistry"), "serde_json::Value");
         assert_eq!(map_to_rust_type("List<String>"), "Vec<String>");
-        assert_eq!(map_to_rust_type("UnknownType"), "serde_json::Value");
+        assert_eq!(map_to_rust_type("UnknownType"), "UnknownType");
     }
 
     #[test]

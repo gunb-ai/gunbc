@@ -596,6 +596,37 @@ impl TypeRegistry {
         self.register(name, type_lib::product_resolved(name, resolved));
     }
 
+    /// Register a product type, returning unresolved field type names instead of
+    /// silently falling back to identity wrappers.
+    pub fn register_product_checked(
+        &mut self,
+        name: &str,
+        fields: Vec<(&str, &str)>,
+    ) -> Result<(), Vec<String>> {
+        let mut unresolved = Vec::new();
+        let resolved: Vec<(&str, Dag<TypeOp>)> = fields
+            .into_iter()
+            .map(|(field_name, type_name)| {
+                let type_id = TypeId::from(type_name);
+                let dag = self
+                    .types
+                    .get(&type_id)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        unresolved.push(format!("{name}.{field_name}: {type_name}"));
+                        type_lib::identity(type_name)
+                    });
+                (field_name, dag)
+            })
+            .collect();
+        self.register(name, type_lib::product_resolved(name, resolved));
+        if unresolved.is_empty() {
+            Ok(())
+        } else {
+            Err(unresolved)
+        }
+    }
+
     /// Register a coproduct type with variant types resolved through the registry.
     ///
     /// For each variant, if the variant's type name is already registered, the
@@ -615,6 +646,37 @@ impl TypeRegistry {
             })
             .collect();
         self.register(name, type_lib::coproduct_resolved(name, resolved));
+    }
+
+    /// Register a coproduct type, returning unresolved variant type names instead of
+    /// silently falling back to identity wrappers.
+    pub fn register_coproduct_checked(
+        &mut self,
+        name: &str,
+        variants: Vec<(&str, &str)>,
+    ) -> Result<(), Vec<String>> {
+        let mut unresolved = Vec::new();
+        let resolved: Vec<(&str, Dag<TypeOp>)> = variants
+            .into_iter()
+            .map(|(variant_name, type_name)| {
+                let type_id = TypeId::from(type_name);
+                let dag = self
+                    .types
+                    .get(&type_id)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        unresolved.push(format!("{name}::{variant_name}: {type_name}"));
+                        type_lib::identity(type_name)
+                    });
+                (variant_name, dag)
+            })
+            .collect();
+        self.register(name, type_lib::coproduct_resolved(name, resolved));
+        if unresolved.is_empty() {
+            Ok(())
+        } else {
+            Err(unresolved)
+        }
     }
 
     /// Register an explicit coercion edge between named types.
@@ -722,6 +784,31 @@ impl TypeRegistry {
     /// Check if the registry is empty.
     pub fn is_empty(&self) -> bool {
         self.types.is_empty()
+    }
+
+    /// Return all registered type names.
+    pub fn type_names(&self) -> Vec<&TypeId> {
+        self.types.keys().collect()
+    }
+
+    /// Audit identity types: returns TypeIds whose registered DAG is a pure
+    /// identity (single Identity node, no Validate/Product/Coproduct/Brand/Wrap).
+    ///
+    /// A pure identity DAG is a diagnostic signal — it means the type has no
+    /// structural definition and will be emitted as Opaque. The goal is to
+    /// ratchet this count downward over time.
+    pub fn audit_identity_types(&self) -> Vec<TypeId> {
+        use crate::node::NodeBody;
+        let mut identities = Vec::new();
+        for (type_id, dag) in &self.types {
+            let is_pure_identity = dag.nodes.len() == 1
+                && matches!(dag.nodes[0].body, NodeBody::Opaque(TypeOp::Identity));
+            if is_pure_identity {
+                identities.push(type_id.clone());
+            }
+        }
+        identities.sort_by(|a, b| a.0.cmp(&b.0));
+        identities
     }
 
     /// Infer cardinality from a registered type or wrapper expression.
@@ -1871,5 +1958,57 @@ mod tests {
             registry.semantic_carrier_kind(&TypeId::from("TransportRequest")),
             SemanticCarrierKind::TransportRequest
         );
+    }
+
+    #[test]
+    fn test_audit_identity_types_detects_pure_identity() {
+        let mut registry = TypeRegistry::new();
+        registry.register("Foo", type_lib::identity("Foo"));
+        registry.register("Url", type_lib::url()); // refined, not identity
+        registry.register("Bool", type_lib::bool()); // identity
+
+        let identities = registry.audit_identity_types();
+        assert!(identities.contains(&TypeId::from("Foo")));
+        assert!(identities.contains(&TypeId::from("Bool")));
+        assert!(
+            !identities.contains(&TypeId::from("Url")),
+            "refined types should not be counted as identity"
+        );
+    }
+
+    #[test]
+    fn test_register_product_checked_reports_unresolved() {
+        let mut registry = TypeRegistry::with_primitives();
+        let result = registry.register_product_checked(
+            "TestRecord",
+            vec![("name", "String"), ("age", "UnknownType")],
+        );
+        assert!(result.is_err());
+        let unresolved = result.unwrap_err();
+        assert_eq!(unresolved.len(), 1);
+        assert!(unresolved[0].contains("UnknownType"));
+    }
+
+    #[test]
+    fn test_register_product_checked_ok_when_all_resolved() {
+        let mut registry = TypeRegistry::with_primitives();
+        let result = registry.register_product_checked(
+            "TestRecord",
+            vec![("name", "String"), ("flag", "Bool")],
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_register_coproduct_checked_reports_unresolved() {
+        let mut registry = TypeRegistry::with_primitives();
+        let result = registry.register_coproduct_checked(
+            "TestEnum",
+            vec![("A", "String"), ("B", "MissingType")],
+        );
+        assert!(result.is_err());
+        let unresolved = result.unwrap_err();
+        assert_eq!(unresolved.len(), 1);
+        assert!(unresolved[0].contains("MissingType"));
     }
 }

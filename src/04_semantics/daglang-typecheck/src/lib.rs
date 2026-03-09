@@ -986,71 +986,177 @@ fn collect_pipeline_params(modules: &[ResolvedModule]) -> Vec<PipelineParam> {
 
 fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> TypeRegistry {
     let mut registry = TypeRegistry::new();
+
+    // Collect all type definitions across modules for two-pass registration.
+    let mut all_type_defs: Vec<&daglang_syntax::ast::TypeDef> = Vec::new();
     for module in modules {
         for item in &module.ast.items {
             if let Item::TypeDef(def) = &item.node {
-                match &def.body {
-                    TypeBody::Sum(variants) => {
-                        let variant_pairs: Vec<(&str, &str)> = variants
-                            .iter()
-                            .map(|variant| (variant.name.as_str(), "String"))
-                            .collect();
-                        registry.register_coproduct(def.name.as_str(), variant_pairs);
-                    }
-                    TypeBody::Record(fields) => {
-                        let resolved_fields: Vec<(&str, gunbc_ir::Dag<gunbc_ir::type_op::TypeOp>)> =
-                            fields
-                                .iter()
-                                .map(|field| {
-                                    let dag =
-                                        resolve_field_type_dag(&field.ty, &registry);
-                                    (field.name.as_str(), dag)
-                                })
-                                .collect();
-                        registry.register(
-                            def.name.as_str(),
-                            gunbc_ir::type_lib::product_resolved(
-                                def.name.as_str(),
-                                resolved_fields,
-                            ),
-                        );
-                    }
-                    TypeBody::Alias(type_expr) => {
-                        let base_name = type_expr_to_string(type_expr);
-                        let predicates = collect_predicates_from_type_expr(type_expr);
-                        let brand_name = collect_brand_from_type_expr(type_expr);
-                        let base_dag_opt = registry.get_by_name(&base_name).cloned();
-
-                        // Build the inner DAG — embed base if available so
-                        // structural predicates (width, domain, etc.) are inherited.
-                        let inner_dag = if predicates.is_empty() {
-                            match base_dag_opt {
-                                Some(dag) => dag,
-                                None => gunbc_ir::type_lib::identity(&base_name),
-                            }
-                        } else {
-                            match base_dag_opt {
-                                Some(dag) => gunbc_ir::type_lib::refined_with_base(
-                                    &base_name, dag, predicates,
-                                ),
-                                None => gunbc_ir::type_lib::refined(&base_name, predicates),
-                            }
-                        };
-
-                        // Wrap in a Brand node if the alias carries a brand refinement
-                        let final_dag = if let Some(bname) = brand_name {
-                            gunbc_ir::type_lib::branded(&bname, inner_dag)
-                        } else {
-                            inner_dag
-                        };
-
-                        registry.register(def.name.as_str(), final_dag);
-                    }
-                }
+                all_type_defs.push(def);
             }
         }
     }
+
+    // Pass 1: Register every type name with an identity placeholder.
+    // This ensures forward references resolve to a known type instead of
+    // triggering the fallback code path.
+    for def in &all_type_defs {
+        registry.register(
+            def.name.as_str(),
+            gunbc_ir::type_lib::identity(&def.name),
+        );
+    }
+
+    // Build a dependency graph for topological ordering (Pass 2).
+    // Alias types depend on their base type; Record types depend on their
+    // field types. Sorting ensures base types register before derived types.
+    let type_names: std::collections::HashSet<&str> =
+        all_type_defs.iter().map(|d| d.name.as_str()).collect();
+    let mut deps: std::collections::HashMap<&str, Vec<&str>> = std::collections::HashMap::new();
+    for def in &all_type_defs {
+        let mut my_deps = Vec::new();
+        match &def.body {
+            TypeBody::Alias(type_expr) => {
+                let base = type_expr_to_string(type_expr);
+                if type_names.contains(base.as_str()) {
+                    my_deps.push(*type_names.get(base.as_str()).unwrap());
+                }
+            }
+            TypeBody::Record(fields) => {
+                for field in fields {
+                    let field_type = type_expr_to_string(&field.ty);
+                    if type_names.contains(field_type.as_str()) {
+                        my_deps.push(*type_names.get(field_type.as_str()).unwrap());
+                    }
+                }
+            }
+            TypeBody::Sum(_) => {} // no deps — variants are unit/string
+        }
+        deps.insert(def.name.as_str(), my_deps);
+    }
+    let ordered = topological_sort_types(&all_type_defs, &deps);
+
+    // Pass 2: Re-register with resolved structural DAGs in topological order.
+    for def in ordered {
+        register_type_def(def, &mut registry);
+    }
+
     registry
+}
+
+/// Topological sort of type definitions. Falls back to original order for cycles.
+fn topological_sort_types<'a>(
+    defs: &[&'a daglang_syntax::ast::TypeDef],
+    deps: &std::collections::HashMap<&str, Vec<&str>>,
+) -> Vec<&'a daglang_syntax::ast::TypeDef> {
+    let name_to_def: std::collections::HashMap<&str, &'a daglang_syntax::ast::TypeDef> =
+        defs.iter().map(|d| (d.name.as_str(), *d)).collect();
+    let mut visited = std::collections::HashSet::new();
+    let mut in_stack = std::collections::HashSet::new();
+    let mut result = Vec::new();
+
+    fn visit<'a>(
+        name: &str,
+        name_to_def: &std::collections::HashMap<&str, &'a daglang_syntax::ast::TypeDef>,
+        deps: &std::collections::HashMap<&str, Vec<&str>>,
+        visited: &mut std::collections::HashSet<String>,
+        in_stack: &mut std::collections::HashSet<String>,
+        result: &mut Vec<&'a daglang_syntax::ast::TypeDef>,
+    ) {
+        if visited.contains(name) {
+            return;
+        }
+        if in_stack.contains(name) {
+            return; // cycle — skip to break infinite recursion
+        }
+        in_stack.insert(name.to_string());
+        if let Some(dep_list) = deps.get(name) {
+            for dep in dep_list {
+                visit(dep, name_to_def, deps, visited, in_stack, result);
+            }
+        }
+        in_stack.remove(name);
+        visited.insert(name.to_string());
+        if let Some(def) = name_to_def.get(name) {
+            result.push(*def);
+        }
+    }
+
+    for def in defs {
+        visit(
+            def.name.as_str(),
+            &name_to_def,
+            deps,
+            &mut visited,
+            &mut in_stack,
+            &mut result,
+        );
+    }
+    result
+}
+
+/// Register a single type definition into the registry (Pass 2 worker).
+fn register_type_def(
+    def: &daglang_syntax::ast::TypeDef,
+    registry: &mut TypeRegistry,
+) {
+    match &def.body {
+        TypeBody::Sum(variants) => {
+            let variant_pairs: Vec<(&str, &str)> = variants
+                .iter()
+                .map(|variant| (variant.name.as_str(), "String"))
+                .collect();
+            registry.register_coproduct(def.name.as_str(), variant_pairs);
+        }
+        TypeBody::Record(fields) => {
+            let resolved_fields: Vec<(&str, gunbc_ir::Dag<gunbc_ir::type_op::TypeOp>)> =
+                fields
+                    .iter()
+                    .map(|field| {
+                        let dag = resolve_field_type_dag(&field.ty, registry);
+                        (field.name.as_str(), dag)
+                    })
+                    .collect();
+            registry.register(
+                def.name.as_str(),
+                gunbc_ir::type_lib::product_resolved(
+                    def.name.as_str(),
+                    resolved_fields,
+                ),
+            );
+        }
+        TypeBody::Alias(type_expr) => {
+            let base_name = type_expr_to_string(type_expr);
+            let predicates = collect_predicates_from_type_expr(type_expr);
+            let brand_name = collect_brand_from_type_expr(type_expr);
+            let base_dag_opt = registry.get_by_name(&base_name).cloned();
+
+            // Build the inner DAG — embed base if available so
+            // structural predicates (width, domain, etc.) are inherited.
+            let inner_dag = if predicates.is_empty() {
+                match base_dag_opt {
+                    Some(dag) => dag,
+                    None => gunbc_ir::type_lib::identity(&base_name),
+                }
+            } else {
+                match base_dag_opt {
+                    Some(dag) => gunbc_ir::type_lib::refined_with_base(
+                        &base_name, dag, predicates,
+                    ),
+                    None => gunbc_ir::type_lib::refined(&base_name, predicates),
+                }
+            };
+
+            // Wrap in a Brand node if the alias carries a brand refinement
+            let final_dag = if let Some(bname) = brand_name {
+                gunbc_ir::type_lib::branded(&bname, inner_dag)
+            } else {
+                inner_dag
+            };
+
+            registry.register(def.name.as_str(), final_dag);
+        }
+    }
 }
 
 /// Build a type DAG for a field's TypeExpr, preserving refinement predicates.

@@ -3429,34 +3429,29 @@ fn lower_callable(
             .outputs
             .iter()
             .map(|binding| {
-                let mut port = Port::scalar(binding.name.as_str(), binding.ty.as_str());
-                // Derive cardinality from type DAG when registry is available.
-                // A port typed `List<Bool>` gets ZERO_OR_MORE cardinality, but
-                // stays Singular multiplicity (one list value on one edge).
-                if let Some(registry) = type_registry {
-                    if let Some(inferred) =
-                        registry.infer_cardinality(&gunbc_ir::TypeId::from(binding.ty.as_str()))
-                    {
-                        port.cardinality = inferred;
-                    }
+                // Use Port::typed when registry is available — derives
+                // cardinality at construction instead of post-mutation.
+                match type_registry {
+                    Some(registry) => Port::typed(
+                        binding.name.as_str(),
+                        binding.ty.as_str(),
+                        registry,
+                    ),
+                    None => Port::scalar(binding.name.as_str(), binding.ty.as_str()),
                 }
-                port
             })
             .collect()
     };
     let mut inputs = callable
         .params
         .iter()
-        .map(|binding| {
-            let mut port = Port::scalar(binding.name.as_str(), binding.ty.as_str());
-            if let Some(registry) = type_registry {
-                if let Some(inferred) =
-                    registry.infer_cardinality(&gunbc_ir::TypeId::from(binding.ty.as_str()))
-                {
-                    port.cardinality = inferred;
-                }
-            }
-            port
+        .map(|binding| match type_registry {
+            Some(registry) => Port::typed(
+                binding.name.as_str(),
+                binding.ty.as_str(),
+                registry,
+            ),
+            None => Port::scalar(binding.name.as_str(), binding.ty.as_str()),
         })
         .collect::<Vec<_>>();
     for output in &outputs {

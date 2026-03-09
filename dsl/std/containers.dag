@@ -1,12 +1,9 @@
 // std/containers.dag -- Generic container type vocabulary.
 //
 // These are structural definitions of the standard container types.
-// The actual generic resolution is handled by the compiler's type
-// registry; these definitions document the intended structure.
-//
-// NOTE: The DSL does not yet support generic type parameters in
-// type bodies. These definitions serve as documentation and will
-// be consumed when generic structural types are implemented.
+// The compiler's type registry handles List<T>, Optional<T>, etc.
+// via wrapper expression parsing. This file documents the vocabulary;
+// the registry provides the structural behavior.
 
 module std.containers
 

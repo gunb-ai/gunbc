@@ -2,7 +2,8 @@
 //!
 //! Types are emitted by walking their `Dag<TypeOp>` structure via `TypeShape`.
 //! Identity types (String, Bool, etc.) that lack structural predicates are
-//! handled by `emit_opaque_fallback`, a simple name-based match.
+//! handled by `emit_identity_type`, a closed name-based match that warns on
+//! unrecognized names instead of silently falling back.
 
 // =========================================================================
 // Structural type DAG emission (syllogistic types)
@@ -34,7 +35,7 @@ pub fn derive_platform_properties(dag: &gunbc_ir::dag::Dag<gunbc_ir::type_op::Ty
 ///
 /// Classifies the type DAG via `type_shape` and pattern-matches on the
 /// structural form: Platform, Container, Brand, Product/Coproduct, or Opaque.
-/// Only Opaque types fall back to name-based lookup.
+/// Only Opaque types use identity-type name-based mapping.
 pub fn emit_type(dag: &gunbc_ir::dag::Dag<gunbc_ir::type_op::TypeOp>, backend: Backend) -> String {
     let shape = gunbc_ir::type_shape(dag);
     emit_shape(&shape, backend)
@@ -42,8 +43,8 @@ pub fn emit_type(dag: &gunbc_ir::dag::Dag<gunbc_ir::type_op::TypeOp>, backend: B
 
 /// Emit a native type string from a `TypeShape` for the given backend.
 ///
-/// Handles all structural forms recursively. Only `Opaque` names fall through
-/// to the per-backend primitive lookup table.
+/// Handles all structural forms recursively. Only `Opaque` names use the
+/// identity-type name-based mapping.
 pub fn emit_shape(shape: &gunbc_ir::TypeShape, backend: Backend) -> String {
     use gunbc_ir::{ContainerShape, TypeShape};
 
@@ -85,12 +86,11 @@ pub fn emit_shape(shape: &gunbc_ir::TypeShape, backend: Backend) -> String {
             }
         },
         TypeShape::Brand(_, inner) => emit_shape(inner, backend),
-        TypeShape::Product(_) | TypeShape::Coproduct(_) => {
-            // Product/coproduct types emit as their name, extracted from
-            // the DAG. Callers that need the name should use the TypeId.
-            emit_opaque_fallback("Record", backend)
-        }
-        TypeShape::Opaque(name) => emit_opaque_fallback(name, backend),
+        TypeShape::Product(Some(name), _) => name.clone(),
+        TypeShape::Product(None, _) => emit_identity_type("Record", backend),
+        TypeShape::Coproduct(Some(name), _) => name.clone(),
+        TypeShape::Coproduct(None, _) => emit_identity_type("Record", backend),
+        TypeShape::Opaque(name) => emit_identity_type(name, backend),
     }
 }
 
@@ -149,16 +149,19 @@ fn emit_platform_type(props: &gunbc_ir::StructuralProperties, backend: Backend) 
         };
     }
 
-    // Platform with only signedness or domain — fall back to default int/string
-    emit_opaque_fallback("Int", backend)
+    // Platform with only signedness or domain but no width — default to language int
+    emit_identity_type("Int", backend)
 }
 
-/// Emit a native type for an opaque/unresolved type name.
+/// Emit a native type for an identity type name.
 ///
-/// Handles identity types (String, Bool, Json, etc.) that have no structural
-/// predicates. This is a simple match — the elaborate DslTypeMapping tables
-/// have been replaced by the structural emit path.
-fn emit_opaque_fallback(name: &str, backend: Backend) -> String {
+/// Maps well-known identity types (String, Bool, Json, etc.) to their
+/// target-language representation. These types have no structural predicates
+/// in their DAGs, so they rely on name-based mapping.
+///
+/// Unknown names emit a warning and return the name verbatim — the caller
+/// is responsible for ensuring all types are registered before reaching here.
+fn emit_identity_type(name: &str, backend: Backend) -> String {
     match backend {
         Backend::Rust => match name {
             "String" | "Path" | "NonEmptyStr" | "Url" | "GistId" | "ProjectId"
@@ -173,7 +176,11 @@ fn emit_opaque_fallback(name: &str, backend: Backend) -> String {
             "TransportResponse" => "TransportResponse",
             "FilesystemHandle" => "PathBuf",
             "Unit" => "()",
-            _ => "serde_json::Value",
+            "Record" => "serde_json::Value",
+            unknown => {
+                eprintln!("warning: unknown type '{unknown}' defaulting to ValueBacking::Json");
+                return unknown.to_string();
+            }
         },
         Backend::Go => match name {
             "String" | "Path" | "NonEmptyStr" | "Url" | "GistId" | "ProjectId"
@@ -187,22 +194,28 @@ fn emit_opaque_fallback(name: &str, backend: Backend) -> String {
             "TransportRequest" => "transport.Request",
             "TransportResponse" => "transport.Response",
             "Unit" => "struct{}",
-            _ => "interface{}",
+            "Record" => "interface{}",
+            unknown => {
+                eprintln!("warning: unknown type '{unknown}' defaulting to ValueBacking::Json");
+                return unknown.to_string();
+            }
         },
         Backend::C => match name {
             "String" | "Path" | "NonEmptyStr" | "Url" | "GistId" | "ProjectId"
-            | "ServiceAccountEmail" | "FilePath" | "Secret" => "String",
+            | "ServiceAccountEmail" | "FilePath" | "Secret" | "FilesystemHandle" => "const char*",
             "Bool" | "bool" => "bool",
-            "Int" | "i64" | "I64" => "i64",
-            "Float" | "f64" => "f64",
+            "Int" | "i64" | "I64" => "int64_t",
+            "Float" | "f64" => "double",
             "Char" => "char",
-            "Bytes" => "Vec<u8>",
-            "Json" | "ToolRegistry" => "serde_json::Value",
+            "Bytes" => "uint8_t*",
+            "Json" | "ToolRegistry" | "Record" => "void*",
             "TransportRequest" => "TransportRequest",
             "TransportResponse" => "TransportResponse",
-            "FilesystemHandle" => "PathBuf",
-            "Unit" => "()",
-            _ => "serde_json::Value",
+            "Unit" => "void",
+            unknown => {
+                eprintln!("warning: unknown type '{unknown}' defaulting to void*");
+                return unknown.to_string();
+            }
         },
     }
     .to_string()
@@ -213,7 +226,8 @@ fn emit_opaque_fallback(name: &str, backend: Backend) -> String {
 /// This is the single entry point that all backends should use. The type name
 /// is resolved through the registry to a `Dag<TypeOp>`, which is then emitted
 /// via [`emit_type`] (fully structural path). If the type is not in the
-/// registry, falls back to `emit_opaque_fallback` for identity types.
+/// registry, falls through to identity-type mapping with a warning for
+/// unrecognized names.
 pub fn resolve_and_emit(
     type_name: &str,
     registry: Option<&gunbc_ir::TypeRegistry>,
@@ -225,7 +239,7 @@ pub fn resolve_and_emit(
             return emit_type(&dag, backend);
         }
     }
-    emit_opaque_fallback(type_name, backend)
+    emit_identity_type(type_name, backend)
 }
 
 // =========================================================================
@@ -237,30 +251,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn opaque_fallback_rust_primitives() {
-        assert_eq!(emit_opaque_fallback("String", Backend::Rust), "String");
-        assert_eq!(emit_opaque_fallback("Path", Backend::Rust), "String");
-        assert_eq!(emit_opaque_fallback("Bool", Backend::Rust), "bool");
-        assert_eq!(emit_opaque_fallback("Int", Backend::Rust), "i64");
-        assert_eq!(emit_opaque_fallback("i64", Backend::Rust), "i64");
-        assert_eq!(emit_opaque_fallback("Float", Backend::Rust), "f64");
-        assert_eq!(emit_opaque_fallback("ToolRegistry", Backend::Rust), "serde_json::Value");
-        assert_eq!(emit_opaque_fallback("FilesystemHandle", Backend::Rust), "PathBuf");
+    fn identity_type_rust_primitives() {
+        assert_eq!(emit_identity_type("String", Backend::Rust), "String");
+        assert_eq!(emit_identity_type("Path", Backend::Rust), "String");
+        assert_eq!(emit_identity_type("Bool", Backend::Rust), "bool");
+        assert_eq!(emit_identity_type("Int", Backend::Rust), "i64");
+        assert_eq!(emit_identity_type("i64", Backend::Rust), "i64");
+        assert_eq!(emit_identity_type("Float", Backend::Rust), "f64");
+        assert_eq!(emit_identity_type("ToolRegistry", Backend::Rust), "serde_json::Value");
+        assert_eq!(emit_identity_type("FilesystemHandle", Backend::Rust), "PathBuf");
     }
 
     #[test]
-    fn opaque_fallback_go_primitives() {
-        assert_eq!(emit_opaque_fallback("String", Backend::Go), "string");
-        assert_eq!(emit_opaque_fallback("Bool", Backend::Go), "bool");
-        assert_eq!(emit_opaque_fallback("Int", Backend::Go), "int64");
-        assert_eq!(emit_opaque_fallback("Float", Backend::Go), "float64");
-        assert_eq!(emit_opaque_fallback("ToolRegistry", Backend::Go), "interface{}");
+    fn identity_type_go_primitives() {
+        assert_eq!(emit_identity_type("String", Backend::Go), "string");
+        assert_eq!(emit_identity_type("Bool", Backend::Go), "bool");
+        assert_eq!(emit_identity_type("Int", Backend::Go), "int64");
+        assert_eq!(emit_identity_type("Float", Backend::Go), "float64");
+        assert_eq!(emit_identity_type("ToolRegistry", Backend::Go), "interface{}");
     }
 
     #[test]
-    fn opaque_fallback_unknown_type() {
-        assert_eq!(emit_opaque_fallback("FooBar", Backend::Rust), "serde_json::Value");
-        assert_eq!(emit_opaque_fallback("FooBar", Backend::Go), "interface{}");
+    fn identity_type_unknown_emits_name_verbatim() {
+        assert_eq!(emit_identity_type("FooBar", Backend::Rust), "FooBar");
+        assert_eq!(emit_identity_type("FooBar", Backend::Go), "FooBar");
     }
 
     // ── Structural emit tests ──────────────────────────────────────
@@ -361,11 +375,11 @@ mod tests {
     }
 
     #[test]
-    fn resolve_and_emit_unknown_type_falls_back() {
+    fn resolve_and_emit_unknown_type_emits_name_verbatim() {
         let registry = gunbc_ir::TypeRegistry::with_primitives();
         assert_eq!(
             resolve_and_emit("UnknownType", Some(&registry), Backend::Rust),
-            "serde_json::Value"
+            "UnknownType"
         );
     }
 
@@ -405,15 +419,56 @@ mod tests {
     }
 
     #[test]
-    fn resolve_and_emit_structural_matches_opaque_for_known_types() {
+    fn resolve_and_emit_structural_matches_identity_for_known_types() {
         let registry = gunbc_ir::TypeRegistry::with_core_types();
         assert_eq!(
             resolve_and_emit("String", Some(&registry), Backend::Rust),
-            emit_opaque_fallback("String", Backend::Rust)
+            emit_identity_type("String", Backend::Rust)
         );
         assert_eq!(
             resolve_and_emit("Bool", Some(&registry), Backend::Rust),
-            emit_opaque_fallback("Bool", Backend::Rust)
+            emit_identity_type("Bool", Backend::Rust)
         );
+    }
+
+    // ── C backend emits C types, not Rust types ─────────────────────
+
+    #[test]
+    fn c_backend_emits_correct_native_types() {
+        assert_eq!(emit_identity_type("String", Backend::C), "const char*");
+        assert_eq!(emit_identity_type("Int", Backend::C), "int64_t");
+        assert_eq!(emit_identity_type("Float", Backend::C), "double");
+        assert_eq!(emit_identity_type("Bytes", Backend::C), "uint8_t*");
+        assert_eq!(emit_identity_type("Json", Backend::C), "void*");
+        assert_eq!(emit_identity_type("FilesystemHandle", Backend::C), "const char*");
+        assert_eq!(emit_identity_type("Unit", Backend::C), "void");
+        assert_eq!(emit_identity_type("Bool", Backend::C), "bool");
+    }
+
+    // ── Product/Coproduct emit uses type name ───────────────────────
+
+    #[test]
+    fn emit_product_uses_type_name() {
+        let dag = gunbc_ir::type_lib::product_resolved(
+            "CliResult",
+            vec![
+                ("stdout", gunbc_ir::type_lib::string()),
+                ("stderr", gunbc_ir::type_lib::string()),
+            ],
+        );
+        assert_eq!(emit_type(&dag, Backend::Rust), "CliResult");
+        assert_eq!(emit_type(&dag, Backend::Go), "CliResult");
+        assert_eq!(emit_type(&dag, Backend::C), "CliResult");
+    }
+
+    #[test]
+    fn emit_coproduct_uses_type_name() {
+        let dag = gunbc_ir::type_lib::coproduct(
+            "ContentEncoding",
+            vec![("UTF8", "String"), ("Binary", "Bytes")],
+        );
+        assert_eq!(emit_type(&dag, Backend::Rust), "ContentEncoding");
+        assert_eq!(emit_type(&dag, Backend::Go), "ContentEncoding");
+        assert_eq!(emit_type(&dag, Backend::C), "ContentEncoding");
     }
 }
