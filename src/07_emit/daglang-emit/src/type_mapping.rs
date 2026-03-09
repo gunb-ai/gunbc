@@ -135,13 +135,71 @@ pub fn derive_platform_properties(dag: &gunbc_ir::dag::Dag<gunbc_ir::type_op::Ty
 
 /// Emit a native type string from a type DAG for the given backend.
 ///
-/// Uses structural properties (width, signedness, domain) to determine
-/// the native type. Falls back to string-based `map_abstract_type` for
-/// types that don't carry structural predicates.
+/// Classifies the type DAG via `type_shape` and pattern-matches on the
+/// structural form: Platform, Container, Brand, Product/Coproduct, or Opaque.
+/// Only Opaque types fall back to name-based lookup.
 pub fn emit_type(dag: &gunbc_ir::dag::Dag<gunbc_ir::type_op::TypeOp>, backend: Backend) -> String {
-    let props = derive_platform_properties(dag);
+    let shape = gunbc_ir::type_shape(dag);
+    emit_shape(&shape, backend)
+}
 
-    // If we have structural width+signedness, emit a platform-native type
+/// Emit a native type string from a `TypeShape` for the given backend.
+///
+/// Handles all structural forms recursively. Only `Opaque` names fall through
+/// to the per-backend primitive lookup table.
+pub fn emit_shape(shape: &gunbc_ir::TypeShape, backend: Backend) -> String {
+    use gunbc_ir::{ContainerShape, TypeShape};
+
+    match shape {
+        TypeShape::Platform(props) => emit_platform_type(props, backend),
+        TypeShape::Container(container) => match container {
+            ContainerShape::Optional(inner) => {
+                let inner_str = emit_shape(inner, backend);
+                match backend {
+                    Backend::Rust => format!("Option<{inner_str}>"),
+                    Backend::Go => format!("*{inner_str}"),
+                    Backend::C => format!("{inner_str}*"),
+                }
+            }
+            ContainerShape::List(inner) => {
+                let inner_str = emit_shape(inner, backend);
+                match backend {
+                    Backend::Rust => format!("Vec<{inner_str}>"),
+                    Backend::Go => format!("[]{inner_str}"),
+                    Backend::C => format!("{inner_str}*"),
+                }
+            }
+            ContainerShape::Set(inner) => {
+                let inner_str = emit_shape(inner, backend);
+                match backend {
+                    Backend::Rust => format!("HashSet<{inner_str}>"),
+                    Backend::Go => format!("map[{inner_str}]struct{{}}"),
+                    Backend::C => format!("{inner_str}*"),
+                }
+            }
+            ContainerShape::Map(key, value) => {
+                let key_str = emit_shape(key, backend);
+                let val_str = emit_shape(value, backend);
+                match backend {
+                    Backend::Rust => format!("HashMap<{key_str}, {val_str}>"),
+                    Backend::Go => format!("map[{key_str}]{val_str}"),
+                    Backend::C => format!("{val_str}*"),
+                }
+            }
+        },
+        TypeShape::Brand(_, inner) => emit_shape(inner, backend),
+        TypeShape::Product(_) | TypeShape::Coproduct(_) => {
+            // Product/coproduct types emit as their name, extracted from
+            // the DAG. Callers that need the name should use the TypeId.
+            emit_opaque_fallback("Record", backend)
+        }
+        TypeShape::Opaque(name) => emit_opaque_fallback(name, backend),
+    }
+}
+
+/// Emit a platform-native type from structural properties.
+fn emit_platform_type(props: &gunbc_ir::StructuralProperties, backend: Backend) -> String {
+    // Float types (ieee754 domain)
     if props.arithmetic {
         if let Some(domain) = &props.domain {
             if domain.starts_with("ieee754") {
@@ -175,26 +233,52 @@ pub fn emit_type(dag: &gunbc_ir::dag::Dag<gunbc_ir::type_op::TypeOp>, backend: B
         }
     }
 
-    // Fall back to the base type name from the DAG
-    let base = gunbc_ir::contract::base_type(dag);
+    // Width-only without arithmetic (e.g., Byte = Width(8) + Unsigned)
+    if let Some(width) = props.width {
+        let signed = props.signed.unwrap_or(true);
+        return match backend {
+            Backend::Rust => {
+                let prefix = if signed { "i" } else { "u" };
+                format!("{prefix}{width}")
+            }
+            Backend::Go => {
+                let prefix = if signed { "int" } else { "uint" };
+                format!("{prefix}{width}")
+            }
+            Backend::C => {
+                let prefix = if signed { "int" } else { "uint" };
+                format!("{prefix}{width}_t")
+            }
+        };
+    }
+
+    // Platform with only signedness or domain — fall back to default int/string
+    emit_opaque_fallback("Int", backend)
+}
+
+/// Emit a native type for an opaque/unresolved type name.
+///
+/// This is the only remaining name-based path. It handles identity types
+/// (String, Bool, Json, etc.) that have no structural predicates.
+fn emit_opaque_fallback(name: &str, backend: Backend) -> String {
     let mapping = match backend {
         Backend::Rust => &RUST_TYPE_MAPPING,
         Backend::Go => &GO_TYPE_MAPPING,
-        Backend::C => &RUST_TYPE_MAPPING, // C reuses Rust mapping as default
+        Backend::C => &RUST_TYPE_MAPPING,
     };
-    if let Some(base_name) = base {
-        map_abstract_type(mapping, &base_name)
-    } else {
-        mapping.fallback.to_string()
+    if let Some(target) = lookup_primitive(mapping, name) {
+        return target.to_string();
     }
+    mapping.fallback.to_string()
 }
 
 /// Resolve a type name structurally via the registry, then emit for the backend.
 ///
 /// This is the single entry point that all backends should use. When a registry
 /// is provided and contains a structural definition for `type_name`, the type
-/// DAG is resolved and emitted via [`emit_type`]. Otherwise, falls back to
-/// the string-based [`map_abstract_type`] path.
+/// DAG is resolved and emitted via [`emit_type`] (fully structural path).
+/// Without a registry, falls back to `map_abstract_type` for backward
+/// compatibility with string-based generic syntax.
 pub fn resolve_and_emit(
     type_name: &str,
     registry: Option<&gunbc_ir::TypeRegistry>,
@@ -206,11 +290,12 @@ pub fn resolve_and_emit(
             return emit_type(&dag, backend);
         }
     }
-    // Fall back to string-based mapping
+    // No registry or type not found — use string-based mapping for
+    // backward compatibility with generic syntax (List<T>, Optional<T>, etc.)
     let mapping = match backend {
         Backend::Rust => &RUST_TYPE_MAPPING,
         Backend::Go => &GO_TYPE_MAPPING,
-        Backend::C => &RUST_TYPE_MAPPING, // C reuses Rust mapping as default
+        Backend::C => &RUST_TYPE_MAPPING,
     };
     map_abstract_type(mapping, type_name)
 }
