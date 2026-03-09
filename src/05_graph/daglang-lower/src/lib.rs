@@ -8080,7 +8080,19 @@ fn add_service_call_edges(
                 ..fn_ctx
             };
             wire_for_loop_iterables(builder, &loop_ctx, stmts, target);
-            wire_callable_return_outputs(builder, &fn_ctx, stmts, target, body_lossy);
+            // Skip return wiring for fn items with non-lossy fn_body:
+            // FnBodyCallableOp evaluates the body directly. Enabling
+            // passthrough wiring for these items would be unsafe because
+            // callable endpoints are shared and argument wiring is
+            // first-write-only — multiple call sites could make a function
+            // return values from an unrelated invocation.
+            let is_fn_with_body = matches!(
+                &item.node,
+                Item::FnDef(def) if !def.body.lossy
+            );
+            if !is_fn_with_body {
+                wire_callable_return_outputs(builder, &fn_ctx, stmts, target, body_lossy);
+            }
         }
     }
     for module in project.modules() {
@@ -8262,6 +8274,10 @@ fn wire_service_call_arg_to_port(
         return true;
     }
 
+    eprintln!(
+        "warning: cannot wire service call argument '{}' on {}.{} (no structural source found)",
+        dest_port, ctx.module_name, ctx.item_name
+    );
     false
 }
 
@@ -9970,7 +9986,7 @@ fn wire_fn_call_arguments(builder: &mut DagBuilder, ctx: &LoweringContext<'_>, s
                 }
                 if let Some(let_expr) = ctx.local_let_bindings.get(arg_ident) {
                     let output_port = Port::with_cardinality(param_name, "Any", Cardinality::ONE);
-                    if let Ok((src_node, src_port)) = lower_expr(
+                    match lower_expr(
                         builder,
                         ctx,
                         let_expr,
@@ -9978,6 +9994,7 @@ fn wire_fn_call_arguments(builder: &mut DagBuilder, ctx: &LoweringContext<'_>, s
                         param_name,
                         &format!("arg_{index}"),
                     ) {
+                        Ok((src_node, src_port)) => {
                         builder.add_edge(
                             src_node.as_str(),
                             src_port.as_str(),
@@ -9985,6 +10002,13 @@ fn wire_fn_call_arguments(builder: &mut DagBuilder, ctx: &LoweringContext<'_>, s
                             param_name,
                         );
                         continue;
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "warning: cannot wire fn call argument '{}' in {}.{}: {e}",
+                                param_name, ctx.module_name, ctx.item_name
+                            );
+                        }
                     }
                 }
             }
@@ -11825,7 +11849,12 @@ fn wire_callable_return_outputs(
             &format!("return_{index}"),
         ) {
             Ok(result) => result,
-            Err(_e) => {
+            Err(e) => {
+                eprintln!(
+                    "warning: wire_callable_return_outputs: `{}` output `{}` \
+                     cannot be wired: {e}",
+                    target.node_id, output_name
+                );
                 continue;
             }
         };

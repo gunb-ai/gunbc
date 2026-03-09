@@ -2377,11 +2377,13 @@ fn env_var_read_real_mode() {
         }
     }
 
-    // Arrange: set the env var for this test
+    // Serialize env-mutating tests to prevent process-global races.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = ENV_LOCK.lock().unwrap();
+
     let var_name = "GUNBC_TEST_CREDENTIAL_T11";
     let secret_value = "test-secret-value-t11";
-    // SAFETY: This test is not run concurrently with other tests that
-    // depend on this same variable.
+    // SAFETY: Serialized by ENV_LOCK above. No other test uses this variable.
     unsafe {
         std::env::set_var(var_name, secret_value);
     }
@@ -2463,8 +2465,12 @@ fn real_mode_executes_resource_environment_node() {
         }
     }
 
+    static ENV_LOCK2: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = ENV_LOCK2.lock().unwrap();
+
     let var_name = "GUNBC_TEST_CRED_RESOURCE_T11";
     let secret_value = "real-credential-from-env";
+    // SAFETY: Serialized by ENV_LOCK2 above. No other test uses this variable.
     unsafe {
         std::env::set_var(var_name, secret_value);
     }

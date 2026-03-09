@@ -1491,17 +1491,24 @@ impl Executable for FilesystemExecuteOp {
         if inputs
             .get("skip")
             .is_some_and(|v| matches!(v, Value::Bool(true)))
+            || inputs.values().any(|v| matches!(v, Value::Skipped))
         {
-            return OutputMap::new()
-                .value("classification", Value::Skipped)
-                .value("content", Value::Skipped)
-                .ok();
-        }
-        if inputs.values().any(|v| matches!(v, Value::Skipped)) {
-            return OutputMap::new()
-                .value("classification", Value::Skipped)
-                .value("content", Value::Skipped)
-                .ok();
+            let mut out = HashMap::new();
+            match self.capability.as_str() {
+                "probe" => {
+                    out.insert("classification".to_string(), Value::Skipped);
+                }
+                "read" | "read_bytes" => {
+                    out.insert("content".to_string(), Value::Skipped);
+                }
+                "write" => {
+                    out.insert("written".to_string(), Value::Skipped);
+                }
+                _ => {
+                    out.insert("result".to_string(), Value::Skipped);
+                }
+            }
+            return Ok(out);
         }
 
         let path = Self::extract_path(&inputs)?;
@@ -1524,15 +1531,18 @@ impl Executable for FilesystemExecuteOp {
                     req.inputs
                         .get("content")
                         .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string()
+                        .map(|s| s.to_string())
                 } else {
                     inputs
                         .get("content")
                         .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string()
+                        .map(|s| s.to_string())
                 };
+                let content = content.ok_or_else(|| {
+                    ExecError::new(format!(
+                        "Filesystem.write: missing or non-string 'content' for '{path}'"
+                    ))
+                })?;
                 std::fs::write(&path, &content).map_err(|e| {
                     ExecError::new(format!("Filesystem.write failed for '{path}': {e}"))
                 })?;
