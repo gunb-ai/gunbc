@@ -26,8 +26,9 @@ use daglang_syntax::ast::{
     RateLimitUnit, ServiceDef, Stmt, TransportBinding, TypeBody,
 };
 use daglang_syntax::ast_utils::{
-    canonical_resource_type_name, is_type_expr_optional, resource_type_name,
-    service_call_lookup_keys, type_expr_to_string, walk_stmts,
+    canonical_resource_type_name, is_bool_type, is_list_type, is_map_string_string,
+    is_secret_type, is_type_expr_optional, resource_type_name, service_call_lookup_keys,
+    type_expr_to_string, walk_stmts,
 };
 use daglang_syntax::span::Span as SyntaxSpan;
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
@@ -2184,6 +2185,8 @@ pub struct LoweringConfig<'a> {
     pub entry_module: Option<&'a str>,
     /// Permit data-only lowering to produce an empty DAG plus metadata.
     pub allow_empty_dag: bool,
+    /// Type registry for cardinality inference on callable ports.
+    pub type_registry: Option<&'a gunbc_ir::TypeRegistry>,
 }
 
 /// Bundled lower-stage outputs for callers that need more than the DAG itself.
@@ -2215,6 +2218,7 @@ pub fn lower_to_output_with_config(
         config.active_profile,
         config.entry_module,
         config.allow_empty_dag,
+        config.type_registry,
     )
 }
 
@@ -2365,6 +2369,7 @@ fn lower_typed_project_impl(
     active_profile: Option<&str>,
     entry_module: Option<&str>,
     allow_empty_dag: bool,
+    type_registry: Option<&gunbc_ir::TypeRegistry>,
 ) -> Result<LowerOutput, LowerError> {
     let mut builder = DagBuilder::new();
     let mut endpoints_by_full = HashMap::<(String, String), LoweredEndpoint>::new();
@@ -2432,6 +2437,7 @@ fn lower_typed_project_impl(
                             .unwrap_or(&false),
                         body,
                         origin,
+                        type_registry,
                     );
                     register_endpoint(
                         &mut endpoints_by_full,
@@ -2467,6 +2473,7 @@ fn lower_typed_project_impl(
                             .unwrap_or(&false),
                         None,
                         origin,
+                        type_registry,
                     );
                     register_endpoint(
                         &mut endpoints_by_full,
@@ -2500,6 +2507,7 @@ fn lower_typed_project_impl(
                         false,
                         None,
                         origin,
+                        type_registry,
                     );
                     register_endpoint(
                         &mut endpoints_by_full,
@@ -3487,7 +3495,12 @@ fn lower_callable(
     is_interactive: bool,
     fn_body: Option<Box<LoweredFnBody>>,
     origin: NodeOrigin,
+    _type_registry: Option<&gunbc_ir::TypeRegistry>,
 ) -> (Node<LoweredOp>, LoweredEndpoint) {
+    // Note: type_registry is threaded here for future use. Callable ports
+    // always use Cardinality::ONE because each port carries a single value
+    // (even if that value is a List or Optional). Port cardinality represents
+    // how many values flow through the port, not the type's internal structure.
     let node_id = lowered_node_id(module_name, &callable.name);
     let outputs = if callable.outputs.is_empty() {
         vec![Port::with_cardinality("return", "Unit", Cardinality::ONE)]
@@ -6299,7 +6312,7 @@ fn extract_env_from_inputs(
     data_registry: &DataRegistry<'_>,
 ) -> Vec<(String, String)> {
     for field in inputs {
-        if field.name == "env" && type_expr_to_string(&field.ty) == "Map<String, String>" {
+        if field.name == "env" && is_map_string_string(&field.ty) {
             if let Some(default_expr) = &field.default {
                 return resolve_const_map(default_expr, data_registry);
             }
@@ -6311,7 +6324,7 @@ fn extract_env_from_inputs(
 /// Returns true if this field is the `env: Map<String, String>` input that
 /// gets consumed by the lowering layer (projected to `spec.env`).
 fn is_env_map_field(field: &daglang_syntax::ast::Field) -> bool {
-    field.name == "env" && type_expr_to_string(&field.ty) == "Map<String, String>"
+    field.name == "env" && is_map_string_string(&field.ty)
 }
 
 fn is_noncanonical_dot_output_path(path: &str) -> bool {
@@ -6772,9 +6785,9 @@ fn derive_file_spec(operation: &OperationDef) -> Result<FileOperationSpec, Lower
             let is_path_param = path_template.contains(&format!("{{{}}}", field.name));
             FieldSpec {
                 name: field.name.clone(),
-                type_id: type_id.clone(),
+                type_id,
                 default: field.default.as_ref().map(expr_to_default_string),
-                is_secret: type_id == "Secret",
+                is_secret: is_secret_type(&field.ty),
                 is_path_param,
             }
         })
@@ -6873,9 +6886,9 @@ fn derive_input_fields(
             let is_path_param = path_template.contains(&format!("{{{}}}", field.name));
             FieldSpec {
                 name: field.name.clone(),
-                type_id: type_id.clone(),
+                type_id,
                 default: field.default.as_ref().map(expr_to_default_string),
-                is_secret: type_id == "Secret",
+                is_secret: is_secret_type(&field.ty),
                 is_path_param,
             }
         })
@@ -6950,9 +6963,9 @@ fn derive_input_fields_for_shell(
             let type_id = type_expr_to_string(&field.ty);
             FieldSpec {
                 name: field.name.clone(),
-                type_id: type_id.clone(),
+                type_id,
                 default: field.default.as_ref().map(expr_to_default_string),
-                is_secret: type_id == "Secret",
+                is_secret: is_secret_type(&field.ty),
                 is_path_param: argv_refs.contains(field.name.as_str()),
             }
         })
@@ -6974,9 +6987,9 @@ fn derive_output_fields(outputs: &[daglang_syntax::ast::Field]) -> Vec<OutputFie
             let is_raw_body = false;
             OutputFieldSpec {
                 name: field.name.clone(),
-                type_id: base_type_id.clone(),
+                type_id: base_type_id,
                 json_path,
-                is_secret: base_type_id == "Secret",
+                is_secret: is_secret_type(&field.ty),
                 is_raw_body,
                 is_optional: is_type_expr_optional(&field.ty),
             }
@@ -6996,19 +7009,13 @@ fn infer_shell_output_parsing(outputs: &[daglang_syntax::ast::Field]) -> ShellOu
     }
 
     // Single Bool output (e.g., "needed", "exists") → ExitCodeBool
-    if outputs.len() == 1 {
-        let ty = type_expr_to_string(&outputs[0].ty);
-        if ty == "Bool" {
-            return ShellOutputParsing::ExitCodeBool;
-        }
+    if outputs.len() == 1 && is_bool_type(&outputs[0].ty) {
+        return ShellOutputParsing::ExitCodeBool;
     }
 
     // Check if any output is a List type → SplitLines
-    for field in outputs {
-        let ty = type_expr_to_string(&field.ty);
-        if ty.starts_with("List<") || ty.starts_with("List ") {
-            return ShellOutputParsing::SplitLines;
-        }
+    if outputs.iter().any(|field| is_list_type(&field.ty)) {
+        return ShellOutputParsing::SplitLines;
     }
 
     // Default: trim stdout
@@ -7426,8 +7433,8 @@ fn derive_service_transport_triplets(
                                 });
                             }
                             Some(field) => {
-                                let field_type = type_expr_to_string(&field.ty);
-                                if field_type != "Secret" {
+                                if !is_secret_type(&field.ty) {
+                                    let field_type = type_expr_to_string(&field.ty);
                                     return Err(LowerError::InvalidAuthInput {
                                         service: service.name.clone(),
                                         operation: operation.name.clone(),

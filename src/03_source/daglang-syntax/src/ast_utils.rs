@@ -9,6 +9,65 @@ pub fn is_type_expr_optional(expr: &TypeExpr) -> bool {
     }
 }
 
+/// Returns true if the inner (unwrapped) type has the given name.
+/// Sees through `Refined` and `Optional` wrappers.
+pub fn is_named_type(expr: &TypeExpr, name: &str) -> bool {
+    match expr {
+        TypeExpr::Named(n) => n == name,
+        TypeExpr::Refined(inner, _) | TypeExpr::Optional(inner) => is_named_type(inner, name),
+        _ => false,
+    }
+}
+
+/// Returns true if the type is `Secret` (possibly refined/optional).
+pub fn is_secret_type(expr: &TypeExpr) -> bool {
+    is_named_type(expr, "Secret")
+}
+
+/// Returns true if the type is `Bool` or `bool` (possibly refined/optional).
+pub fn is_bool_type(expr: &TypeExpr) -> bool {
+    match expr {
+        TypeExpr::Named(n) => n == "Bool" || n == "bool",
+        TypeExpr::Refined(inner, _) | TypeExpr::Optional(inner) => is_bool_type(inner),
+        _ => false,
+    }
+}
+
+/// Returns true if the type is `List<...>` (possibly refined/optional).
+pub fn is_list_type(expr: &TypeExpr) -> bool {
+    match expr {
+        TypeExpr::Generic(name, _) => name == "List",
+        TypeExpr::Refined(inner, _) | TypeExpr::Optional(inner) => is_list_type(inner),
+        _ => false,
+    }
+}
+
+/// Returns true if the type is `Map<String, String>` (possibly refined/optional).
+pub fn is_map_string_string(expr: &TypeExpr) -> bool {
+    match expr {
+        TypeExpr::Generic(name, args) => {
+            name == "Map"
+                && args.len() == 2
+                && matches!(&args[0], TypeExpr::Named(a) if a == "String")
+                && matches!(&args[1], TypeExpr::Named(b) if b == "String")
+        }
+        TypeExpr::Refined(inner, _) | TypeExpr::Optional(inner) => is_map_string_string(inner),
+        _ => false,
+    }
+}
+
+/// Returns true if the type is a function type `fn(...)` (possibly refined/optional).
+pub fn is_function_type(expr: &TypeExpr) -> bool {
+    match expr {
+        TypeExpr::Named(n) => {
+            let compact: String = n.chars().filter(|ch| !ch.is_whitespace()).collect();
+            compact.starts_with("fn(")
+        }
+        TypeExpr::Refined(inner, _) | TypeExpr::Optional(inner) => is_function_type(inner),
+        _ => false,
+    }
+}
+
 pub fn type_expr_to_string(expr: &TypeExpr) -> String {
     match expr {
         TypeExpr::Named(name) => name.clone(),

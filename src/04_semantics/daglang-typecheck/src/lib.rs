@@ -29,7 +29,8 @@ use daglang_syntax::ast::{
     Refinement, Stmt, TypeBody, TypeExpr, UsesClause,
 };
 use daglang_syntax::ast_utils::{
-    resource_type_name, service_call_lookup_keys, type_expr_to_string, walk_stmts,
+    is_function_type, resource_type_name, service_call_lookup_keys, type_expr_to_string,
+    walk_stmts,
 };
 use gunbc_ir::TypeRegistry;
 
@@ -2506,14 +2507,11 @@ fn collect_param_callable_contracts(params: &[Param]) -> HashMap<String, Callabl
 }
 
 fn parse_function_type_callable_contract(ty: &TypeExpr) -> Option<CallableContract> {
-    let raw = type_expr_to_string(ty);
-    let compact = raw
-        .chars()
-        .filter(|ch| !ch.is_whitespace())
-        .collect::<String>();
-    if !compact.starts_with("fn(") {
+    if !is_function_type(ty) {
         return None;
     }
+    let raw = type_expr_to_string(ty);
+    let compact: String = raw.chars().filter(|ch| !ch.is_whitespace()).collect();
     let close_paren = find_matching_paren(&compact, 2)?;
     let args = &compact[3..close_paren];
     let output = compact

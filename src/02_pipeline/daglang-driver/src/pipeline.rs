@@ -32,6 +32,7 @@ pub fn run_compile_pipeline(
         CompileError::Diagnostics(typecheck_diagnostics_located(errors, &module_graph))
     })?;
     let extern_assets = collect_extern_assets(&typed);
+    let dsl_registry = typed.dsl_type_registry();
     let lower_output = lower_to_output_with_config(
         &typed,
         &LoweringConfig {
@@ -39,6 +40,7 @@ pub fn run_compile_pipeline(
             emit_collection_nodes: options.emit_collection_nodes,
             active_profile: options.profile.as_deref(),
             entry_module: entry_module_name.as_deref(),
+            type_registry: Some(dsl_registry),
             ..Default::default()
         },
     )
