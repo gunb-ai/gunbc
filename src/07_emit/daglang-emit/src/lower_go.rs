@@ -42,6 +42,15 @@ impl Default for GoConfig {
 
 /// Lower an AbstractIR `SourceFile` to a Go-specific `SourceFile`.
 pub fn lower_to_go(source: &SourceFile, config: &GoConfig) -> Result<SourceFile, LowerError> {
+    lower_to_go_with_registry(source, config, None)
+}
+
+/// Lower to Go with an optional type registry for structural emission.
+pub fn lower_to_go_with_registry(
+    source: &SourceFile,
+    config: &GoConfig,
+    registry: Option<&gunbc_ir::TypeRegistry>,
+) -> Result<SourceFile, LowerError> {
     let imports = collect_go_imports(source, config);
     let mut items: Vec<Item> = Vec::new();
 
@@ -58,7 +67,7 @@ pub fn lower_to_go(source: &SourceFile, config: &GoConfig) -> Result<SourceFile,
 
     // Lower each item.
     for item in &source.items {
-        items.push(lower_item(item, config)?);
+        items.push(lower_item(item, config, registry)?);
     }
 
     Ok(SourceFile {
@@ -71,9 +80,13 @@ pub fn lower_to_go(source: &SourceFile, config: &GoConfig) -> Result<SourceFile,
 // Item lowering
 // ===========================================================================
 
-fn lower_item(item: &Item, config: &GoConfig) -> Result<Item, LowerError> {
+fn lower_item(
+    item: &Item,
+    config: &GoConfig,
+    registry: Option<&gunbc_ir::TypeRegistry>,
+) -> Result<Item, LowerError> {
     match item {
-        Item::Fn(f) => Ok(Item::Fn(lower_fn_def(f, config)?)),
+        Item::Fn(f) => Ok(Item::Fn(lower_fn_def(f, config, registry)?)),
         Item::Struct(s) => {
             // Go structs: no derives, map types.
             let mut lowered = s.clone();
@@ -87,7 +100,7 @@ fn lower_item(item: &Item, config: &GoConfig) -> Result<Item, LowerError> {
                     } else {
                         name.clone()
                     };
-                    (go_name, map_to_go_type(ty), *is_pub)
+                    (go_name, map_to_go_type_with_registry(ty, registry), *is_pub)
                 })
                 .collect();
             lowered.name = to_pascal_case(&lowered.name);
@@ -125,14 +138,18 @@ fn lower_item(item: &Item, config: &GoConfig) -> Result<Item, LowerError> {
 // B3.2: Function lowering with multi-return error handling
 // ===========================================================================
 
-fn lower_fn_def(f: &FnDef, config: &GoConfig) -> Result<FnDef, LowerError> {
+fn lower_fn_def(
+    f: &FnDef,
+    config: &GoConfig,
+    registry: Option<&gunbc_ir::TypeRegistry>,
+) -> Result<FnDef, LowerError> {
     let has_transport = body_has_transport_calls(&f.body);
 
     // B3.2: If the function contains transport calls, add error return.
     let return_type = if has_transport {
         Some("error".to_string())
     } else {
-        f.return_type.as_ref().map(|t| map_to_go_type(t))
+        f.return_type.as_ref().map(|t| map_to_go_type_with_registry(t, registry))
     };
 
     // Lower body statements, inserting error checks after transport calls.
@@ -147,7 +164,7 @@ fn lower_fn_def(f: &FnDef, config: &GoConfig) -> Result<FnDef, LowerError> {
     Ok(FnDef {
         name: to_go_func_name(&f.name, f.is_pub),
         is_pub: f.is_pub, // Go renderer maps this to uppercase first letter.
-        params: lower_params(&f.params),
+        params: lower_params(&f.params, registry),
         return_type,
         body: final_body,
         doc: f.doc.clone(),
@@ -156,10 +173,13 @@ fn lower_fn_def(f: &FnDef, config: &GoConfig) -> Result<FnDef, LowerError> {
 }
 
 /// Lower function parameters — map abstract types to Go types.
-fn lower_params(params: &[(String, String)]) -> Vec<(String, String)> {
+fn lower_params(
+    params: &[(String, String)],
+    registry: Option<&gunbc_ir::TypeRegistry>,
+) -> Vec<(String, String)> {
     params
         .iter()
-        .map(|(name, ty)| (to_camel_case(name), map_to_go_type(ty)))
+        .map(|(name, ty)| (to_camel_case(name), map_to_go_type_with_registry(ty, registry)))
         .collect()
 }
 
@@ -267,7 +287,7 @@ fn lower_stmt_into(out: &mut Vec<Stmt>, stmt: &Stmt, in_fallible_fn: bool, confi
                 body: lower_body(body, in_fallible_fn, config),
             });
         }
-        Stmt::Item(item) => match lower_item(item, config) {
+        Stmt::Item(item) => match lower_item(item, config, None) {
             Ok(lowered) => out.push(Stmt::Item(lowered)),
             Err(_) => out.push(stmt.clone()),
         },
@@ -520,9 +540,20 @@ fn expr_uses_json(expr: &Expr) -> bool {
 // ===========================================================================
 
 /// Map an abstract type name to its Go equivalent.
-fn map_to_go_type(abstract_type: &str) -> String {
-    crate::type_mapping::map_abstract_type(&crate::type_mapping::GO_TYPE_MAPPING, abstract_type)
+///
+/// When a `TypeRegistry` is available, delegates to `resolve_and_emit` for
+/// structural type resolution. Falls back to the static mapping table.
+fn map_to_go_type_with_registry(
+    abstract_type: &str,
+    registry: Option<&gunbc_ir::TypeRegistry>,
+) -> String {
+    crate::type_mapping::resolve_and_emit(
+        abstract_type,
+        registry,
+        crate::type_mapping::Backend::Go,
+    )
 }
+
 
 // ===========================================================================
 // Naming conventions
@@ -579,6 +610,11 @@ mod tests {
     use super::*;
     use gunbc_ir::code_ir::{EnumDef, StructDef};
     use gunbc_ir::ValueExpr;
+
+    fn map_to_go_type(abstract_type: &str) -> String {
+        let registry = gunbc_ir::TypeRegistry::with_primitives();
+        map_to_go_type_with_registry(abstract_type, Some(&registry))
+    }
 
     fn make_abstract_main(stmts: Vec<Stmt>) -> SourceFile {
         SourceFile {
@@ -875,7 +911,24 @@ mod tests {
         assert_eq!(map_to_go_type("List<String>"), "[]string");
         assert_eq!(map_to_go_type("Optional<Int>"), "*int64");
         assert_eq!(map_to_go_type("Map<String, Int>"), "map[string]int64");
-        assert_eq!(map_to_go_type("UnknownType"), "interface{}");
+        assert_eq!(map_to_go_type("UnknownType"), "UnknownType");
+    }
+
+    #[test]
+    fn map_to_go_type_with_registry_structural_emit() {
+        use gunbc_ir::type_op::Predicate;
+        let mut registry = gunbc_ir::TypeRegistry::with_primitives();
+        registry.register(
+            "UInt32",
+            gunbc_ir::type_lib::refined("Int", vec![
+                Predicate::Width(32),
+                Predicate::Unsigned,
+                Predicate::Arithmetic,
+            ]),
+        );
+        assert_eq!(map_to_go_type_with_registry("UInt32", Some(&registry)), "uint32");
+        // Fallback still works
+        assert_eq!(map_to_go_type_with_registry("String", Some(&registry)), "string");
     }
 
     // -- B3.4: FormatStr lowering --

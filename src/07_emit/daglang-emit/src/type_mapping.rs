@@ -1,247 +1,246 @@
-//! Shared DSL-to-language type mapping tables.
+//! Structural type emission for the syllogistic type system.
 //!
-//! Each emit backend (Rust, Go, C) maps the same set of abstract DSL type
-//! names to language-specific representations.  This module centralises the
-//! primitive lookup table so that adding a new DSL type requires exactly one
-//! change per backend, in one place.
+//! Types are emitted by walking their `Dag<TypeOp>` structure via `TypeShape`.
+//! Identity types (String, Bool, etc.) that lack structural predicates are
+//! handled by `emit_identity_type`, a closed name-based match that warns on
+//! unrecognized names instead of silently falling back.
 
-/// A single primitive mapping entry: DSL names → target language type string.
-///
-/// `dsl_names` lists *all* recognised spellings of the same concept (e.g.
-/// `["Int", "i64", "I64"]`).  `target` is the target-language representation.
-pub struct PrimitiveMapping {
-    pub dsl_names: &'static [&'static str],
-    pub target: &'static str,
+// =========================================================================
+// Structural type DAG emission (syllogistic types)
+// =========================================================================
+
+/// Target backend for structural type emission.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Backend {
+    Rust,
+    Go,
+    C,
 }
 
-/// Language-specific type mapping configuration.
+/// Platform properties derived from a type DAG's structural predicates.
 ///
-/// Backends construct a `&'static DslTypeMapping` with their tables and pass
-/// it to [`map_abstract_type`] to resolve an abstract type string.
-pub struct DslTypeMapping {
-    /// Primitive type mappings (checked in order; first match wins).
-    pub primitives: &'static [PrimitiveMapping],
-    /// Format wrapper for `List<T>` — receives the mapped inner type.
-    /// Example: `"Vec<{}>"` (Rust), `"[]{}"` (Go).
-    pub list_fmt: &'static str,
-    /// Format wrapper for `Optional<T>`.
-    /// Example: `"Option<{}>"` (Rust), `"*{}"` (Go).  `None` means no
-    /// explicit wrapper (C backend).
-    pub optional_fmt: Option<&'static str>,
-    /// Format wrapper for `Map<K,V>`.
-    /// Example: `"HashMap<{}, {}>"` (Rust), `"map[{}]{}"` (Go).  `None`
-    /// means fall through to `fallback`.
-    pub map_fmt: Option<&'static str>,
-    /// The default type when no mapping matches (e.g. `"serde_json::Value"`,
-    /// `"interface{}"`, or a sentinel the caller interprets).
-    pub fallback: &'static str,
+/// This is a re-export of `gunbc_ir::StructuralProperties` for backward
+/// compatibility within the emit crate.
+pub type PlatformProperties = gunbc_ir::StructuralProperties;
+
+/// Derive platform properties from a type DAG by walking its predicate nodes.
+///
+/// Delegates to the canonical `gunbc_ir::derive_structural_properties`, which
+/// recursively walks SubDag children and inherits missing properties.
+pub fn derive_platform_properties(dag: &gunbc_ir::dag::Dag<gunbc_ir::type_op::TypeOp>) -> PlatformProperties {
+    gunbc_ir::derive_structural_properties(dag)
 }
 
-/// Look up a primitive type name in the mapping table.
+/// Emit a native type string from a type DAG for the given backend.
 ///
-/// Returns the mapped target name, or `None` if not found. Unlike
-/// [`map_abstract_type`], this does NOT handle generics or fallback — callers
-/// that handle generic structure themselves (e.g., `type_expr_to_rust`) should
-/// use this to avoid double-wrapping.
-pub fn lookup_primitive(mapping: &DslTypeMapping, name: &str) -> Option<&'static str> {
-    for entry in mapping.primitives {
-        if entry.dsl_names.contains(&name) {
-            return Some(entry.target);
-        }
-    }
-    None
+/// Classifies the type DAG via `type_shape` and pattern-matches on the
+/// structural form: Platform, Container, Brand, Product/Coproduct, or Opaque.
+/// Only Opaque types use identity-type name-based mapping.
+pub fn emit_type(dag: &gunbc_ir::dag::Dag<gunbc_ir::type_op::TypeOp>, backend: Backend) -> String {
+    let shape = gunbc_ir::type_shape(dag);
+    emit_shape(&shape, backend)
 }
 
-/// Resolve an abstract type string using the given mapping table.
+/// Emit a native type string from a `TypeShape` for the given backend.
 ///
-/// Handles primitives, `List<T>`, `Optional<T>`, and `Map<K,V>` generics
-/// recursively.  Falls back to [`DslTypeMapping::fallback`] for unknown types.
-pub fn map_abstract_type(mapping: &DslTypeMapping, abstract_type: &str) -> String {
-    // 1. Check primitives.
-    for entry in mapping.primitives {
-        if entry.dsl_names.contains(&abstract_type) {
-            return entry.target.to_string();
-        }
-    }
+/// Handles all structural forms recursively. Only `Opaque` names use the
+/// identity-type name-based mapping.
+pub fn emit_shape(shape: &gunbc_ir::TypeShape, backend: Backend) -> String {
+    use gunbc_ir::{ContainerShape, TypeShape};
 
-    // 2. List<T>.
-    if let Some(inner) = abstract_type
-        .strip_prefix("List<")
-        .and_then(|rest| rest.strip_suffix('>'))
-    {
-        let mapped_inner = map_abstract_type(mapping, inner);
-        return mapping.list_fmt.replace("{}", &mapped_inner);
+    match shape {
+        TypeShape::Platform(props) => emit_platform_type(props, backend),
+        TypeShape::Container(container) => match container {
+            ContainerShape::Optional(inner) => {
+                let inner_str = emit_shape(inner, backend);
+                match backend {
+                    Backend::Rust => format!("Option<{inner_str}>"),
+                    Backend::Go => format!("*{inner_str}"),
+                    Backend::C => format!("{inner_str}*"),
+                }
+            }
+            ContainerShape::List(inner) => {
+                let inner_str = emit_shape(inner, backend);
+                match backend {
+                    Backend::Rust => format!("Vec<{inner_str}>"),
+                    Backend::Go => format!("[]{inner_str}"),
+                    Backend::C => format!("{inner_str}*"),
+                }
+            }
+            ContainerShape::Set(inner) => {
+                let inner_str = emit_shape(inner, backend);
+                match backend {
+                    Backend::Rust => format!("HashSet<{inner_str}>"),
+                    Backend::Go => format!("map[{inner_str}]struct{{}}"),
+                    Backend::C => format!("{inner_str}*"),
+                }
+            }
+            ContainerShape::Map(key, value) => {
+                let key_str = emit_shape(key, backend);
+                let val_str = emit_shape(value, backend);
+                match backend {
+                    Backend::Rust => format!("HashMap<{key_str}, {val_str}>"),
+                    Backend::Go => format!("map[{key_str}]{val_str}"),
+                    Backend::C => format!("{val_str}*"),
+                }
+            }
+        },
+        TypeShape::Brand(_, inner) => emit_shape(inner, backend),
+        TypeShape::Product(Some(name), _) => emit_identity_type(name, backend),
+        TypeShape::Product(None, _) => emit_identity_type("Record", backend),
+        TypeShape::Coproduct(Some(name), _) => emit_identity_type(name, backend),
+        TypeShape::Coproduct(None, _) => emit_identity_type("Record", backend),
+        TypeShape::Opaque(name) => emit_identity_type(name, backend),
     }
+}
 
-    // 3. Optional<T>.
-    if let Some(fmt) = mapping.optional_fmt {
-        if let Some(inner) = abstract_type
-            .strip_prefix("Optional<")
-            .and_then(|rest| rest.strip_suffix('>'))
-        {
-            let mapped_inner = map_abstract_type(mapping, inner);
-            return fmt.replace("{}", &mapped_inner);
-        }
-    }
-
-    // 4. Map<K,V>.
-    if let Some(fmt) = mapping.map_fmt {
-        if let Some(inner) = abstract_type
-            .strip_prefix("Map<")
-            .and_then(|rest| rest.strip_suffix('>'))
-        {
-            if let Some(comma_pos) = inner.find(',') {
-                let key = inner[..comma_pos].trim();
-                let val = inner[comma_pos + 1..].trim();
-                let mapped_key = map_abstract_type(mapping, key);
-                let mapped_val = map_abstract_type(mapping, val);
-                // fmt must contain exactly two `{}` placeholders.
-                return fmt
-                    .replacen("{}", &mapped_key, 1)
-                    .replacen("{}", &mapped_val, 1);
+/// Emit a platform-native type from structural properties.
+fn emit_platform_type(props: &gunbc_ir::StructuralProperties, backend: Backend) -> String {
+    // Float types (ieee754 domain)
+    if props.arithmetic {
+        if let Some(domain) = &props.domain {
+            if domain.starts_with("ieee754") {
+                return match (backend, props.width) {
+                    (Backend::Rust, Some(32)) => "f32".to_string(),
+                    (Backend::Rust, _) => "f64".to_string(),
+                    (Backend::Go, Some(32)) => "float32".to_string(),
+                    (Backend::Go, _) => "float64".to_string(),
+                    (Backend::C, Some(32)) => "float".to_string(),
+                    (Backend::C, _) => "double".to_string(),
+                };
             }
         }
+
+        if let Some(width) = props.width {
+            let signed = props.signed.unwrap_or(true);
+            return match backend {
+                Backend::Rust => {
+                    let prefix = if signed { "i" } else { "u" };
+                    format!("{prefix}{width}")
+                }
+                Backend::Go => {
+                    let prefix = if signed { "int" } else { "uint" };
+                    format!("{prefix}{width}")
+                }
+                Backend::C => {
+                    let prefix = if signed { "int" } else { "uint" };
+                    format!("{prefix}{width}_t")
+                }
+            };
+        }
     }
 
-    // 5. Fallback.
-    mapping.fallback.to_string()
+    // Width-only without arithmetic (e.g., Byte = Width(8) + Unsigned)
+    if let Some(width) = props.width {
+        let signed = props.signed.unwrap_or(true);
+        return match backend {
+            Backend::Rust => {
+                let prefix = if signed { "i" } else { "u" };
+                format!("{prefix}{width}")
+            }
+            Backend::Go => {
+                let prefix = if signed { "int" } else { "uint" };
+                format!("{prefix}{width}")
+            }
+            Backend::C => {
+                let prefix = if signed { "int" } else { "uint" };
+                format!("{prefix}{width}_t")
+            }
+        };
+    }
+
+    // Platform with only signedness or domain but no width — default to language int
+    emit_identity_type("Int", backend)
 }
 
-// =========================================================================
-// Per-backend static tables
-// =========================================================================
+/// Emit a native type for an identity type name.
+///
+/// Maps well-known identity types (String, Bool, Json, etc.) to their
+/// target-language representation. These types have no structural predicates
+/// in their DAGs, so they rely on name-based mapping.
+///
+/// Unknown names emit a warning and return the name verbatim — the caller
+/// is responsible for ensuring all types are registered before reaching here.
+fn emit_identity_type(name: &str, backend: Backend) -> String {
+    match backend {
+        Backend::Rust => match name {
+            "String" | "Path" | "NonEmptyStr" | "Url" | "GistId" | "ProjectId"
+            | "ServiceAccountEmail" | "FilePath" | "Secret" => "String",
+            "Bool" | "bool" => "bool",
+            "Int" | "i64" | "I64" => "i64",
+            "Float" | "f64" => "f64",
+            "Char" => "char",
+            "Bytes" => "Vec<u8>",
+            "Json" | "ToolRegistry" => "serde_json::Value",
+            "TransportRequest" => "TransportRequest",
+            "TransportResponse" => "TransportResponse",
+            "FilesystemHandle" => "PathBuf",
+            "Unit" => "()",
+            "Record" => "serde_json::Value",
+            unknown => {
+                eprintln!("warning: unknown type '{unknown}' defaulting to ValueBacking::Json");
+                return unknown.to_string();
+            }
+        },
+        Backend::Go => match name {
+            "String" | "Path" | "NonEmptyStr" | "Url" | "GistId" | "ProjectId"
+            | "ServiceAccountEmail" | "FilePath" | "Secret" | "FilesystemHandle" => "string",
+            "Bool" | "bool" => "bool",
+            "Int" | "i64" | "I64" => "int64",
+            "Float" | "f64" => "float64",
+            "Char" => "rune",
+            "Bytes" => "[]byte",
+            "Json" | "ToolRegistry" => "interface{}",
+            "TransportRequest" => "transport.Request",
+            "TransportResponse" => "transport.Response",
+            "Unit" => "struct{}",
+            "Record" => "interface{}",
+            unknown => {
+                eprintln!("warning: unknown type '{unknown}' defaulting to ValueBacking::Json");
+                return unknown.to_string();
+            }
+        },
+        Backend::C => match name {
+            "String" | "Path" | "NonEmptyStr" | "Url" | "GistId" | "ProjectId"
+            | "ServiceAccountEmail" | "FilePath" | "Secret" | "FilesystemHandle" => "const char*",
+            "Bool" | "bool" => "bool",
+            "Int" | "i64" | "I64" => "int64_t",
+            "Float" | "f64" => "double",
+            "Char" => "char",
+            "Bytes" => "uint8_t*",
+            "Json" | "ToolRegistry" | "Record" => "void*",
+            "TransportRequest" => "TransportRequest",
+            "TransportResponse" => "TransportResponse",
+            "Unit" => "void",
+            unknown => {
+                eprintln!("warning: unknown type '{unknown}' defaulting to void*");
+                return unknown.to_string();
+            }
+        },
+    }
+    .to_string()
+}
 
-/// Rust backend type mapping table.
-pub static RUST_TYPE_MAPPING: DslTypeMapping = DslTypeMapping {
-    primitives: &[
-        PrimitiveMapping {
-            dsl_names: &[
-                "String",
-                "Path",
-                "NonEmptyStr",
-                "Url",
-                "GistId",
-                "ProjectId",
-                "ServiceAccountEmail",
-            ],
-            target: "String",
-        },
-        PrimitiveMapping {
-            dsl_names: &["Bool", "bool"],
-            target: "bool",
-        },
-        PrimitiveMapping {
-            dsl_names: &["Int", "i64", "I64"],
-            target: "i64",
-        },
-        PrimitiveMapping {
-            dsl_names: &["Float", "f64"],
-            target: "f64",
-        },
-        PrimitiveMapping {
-            dsl_names: &["Char"],
-            target: "char",
-        },
-        PrimitiveMapping {
-            dsl_names: &["Secret"],
-            target: "String",
-        },
-        PrimitiveMapping {
-            dsl_names: &["Bytes"],
-            target: "Vec<u8>",
-        },
-        PrimitiveMapping {
-            dsl_names: &["Json"],
-            target: "serde_json::Value",
-        },
-        PrimitiveMapping {
-            dsl_names: &["ToolRegistry"],
-            target: "serde_json::Value",
-        },
-        PrimitiveMapping {
-            dsl_names: &["TransportRequest"],
-            target: "TransportRequest",
-        },
-        PrimitiveMapping {
-            dsl_names: &["TransportResponse"],
-            target: "TransportResponse",
-        },
-        PrimitiveMapping {
-            dsl_names: &["FilesystemHandle"],
-            target: "PathBuf",
-        },
-    ],
-    list_fmt: "Vec<{}>",
-    optional_fmt: Some("Option<{}>"),
-    map_fmt: Some("HashMap<{}, {}>"),
-    fallback: "serde_json::Value",
-};
-
-/// Go backend type mapping table.
-pub static GO_TYPE_MAPPING: DslTypeMapping = DslTypeMapping {
-    primitives: &[
-        PrimitiveMapping {
-            dsl_names: &[
-                "String",
-                "Path",
-                "NonEmptyStr",
-                "Url",
-                "GistId",
-                "ProjectId",
-                "ServiceAccountEmail",
-            ],
-            target: "string",
-        },
-        PrimitiveMapping {
-            dsl_names: &["Bool", "bool"],
-            target: "bool",
-        },
-        PrimitiveMapping {
-            dsl_names: &["Int", "i64", "I64"],
-            target: "int64",
-        },
-        PrimitiveMapping {
-            dsl_names: &["Float", "f64"],
-            target: "float64",
-        },
-        PrimitiveMapping {
-            dsl_names: &["Char"],
-            target: "rune",
-        },
-        PrimitiveMapping {
-            dsl_names: &["Secret"],
-            target: "string",
-        },
-        PrimitiveMapping {
-            dsl_names: &["Bytes"],
-            target: "[]byte",
-        },
-        PrimitiveMapping {
-            dsl_names: &["Json"],
-            target: "interface{}",
-        },
-        PrimitiveMapping {
-            dsl_names: &["ToolRegistry"],
-            target: "interface{}",
-        },
-        PrimitiveMapping {
-            dsl_names: &["TransportRequest"],
-            target: "transport.Request",
-        },
-        PrimitiveMapping {
-            dsl_names: &["TransportResponse"],
-            target: "transport.Response",
-        },
-        PrimitiveMapping {
-            dsl_names: &["FilesystemHandle"],
-            target: "string",
-        },
-    ],
-    list_fmt: "[]{}",
-    optional_fmt: Some("*{}"),
-    map_fmt: Some("map[{}]{}"),
-    fallback: "interface{}",
-};
+/// Resolve a type name structurally via the registry, then emit for the backend.
+///
+/// This is the single entry point that all backends should use. The type name
+/// is resolved through the registry to a `Dag<TypeOp>`, which is then emitted
+/// via [`emit_type`] (fully structural path). If the type is not in the
+/// registry, falls through to identity-type mapping with a warning for
+/// unrecognized names.
+pub fn resolve_and_emit(
+    type_name: &str,
+    registry: Option<&gunbc_ir::TypeRegistry>,
+    backend: Backend,
+) -> String {
+    if let Some(reg) = registry {
+        let type_id = gunbc_ir::TypeId::new(type_name);
+        if let Some(dag) = reg.resolve_type(&type_id) {
+            return emit_type(&dag, backend);
+        }
+    }
+    emit_identity_type(type_name, backend)
+}
 
 // =========================================================================
 // Tests
@@ -252,94 +251,224 @@ mod tests {
     use super::*;
 
     #[test]
-    fn rust_primitives() {
-        assert_eq!(map_abstract_type(&RUST_TYPE_MAPPING, "String"), "String");
-        assert_eq!(map_abstract_type(&RUST_TYPE_MAPPING, "Path"), "String");
-        assert_eq!(map_abstract_type(&RUST_TYPE_MAPPING, "Bool"), "bool");
-        assert_eq!(map_abstract_type(&RUST_TYPE_MAPPING, "Int"), "i64");
-        assert_eq!(map_abstract_type(&RUST_TYPE_MAPPING, "i64"), "i64");
-        assert_eq!(map_abstract_type(&RUST_TYPE_MAPPING, "Float"), "f64");
-        assert_eq!(
-            map_abstract_type(&RUST_TYPE_MAPPING, "ToolRegistry"),
-            "serde_json::Value"
+    fn identity_type_rust_primitives() {
+        assert_eq!(emit_identity_type("String", Backend::Rust), "String");
+        assert_eq!(emit_identity_type("Path", Backend::Rust), "String");
+        assert_eq!(emit_identity_type("Bool", Backend::Rust), "bool");
+        assert_eq!(emit_identity_type("Int", Backend::Rust), "i64");
+        assert_eq!(emit_identity_type("i64", Backend::Rust), "i64");
+        assert_eq!(emit_identity_type("Float", Backend::Rust), "f64");
+        assert_eq!(emit_identity_type("ToolRegistry", Backend::Rust), "serde_json::Value");
+        assert_eq!(emit_identity_type("FilesystemHandle", Backend::Rust), "PathBuf");
+    }
+
+    #[test]
+    fn identity_type_go_primitives() {
+        assert_eq!(emit_identity_type("String", Backend::Go), "string");
+        assert_eq!(emit_identity_type("Bool", Backend::Go), "bool");
+        assert_eq!(emit_identity_type("Int", Backend::Go), "int64");
+        assert_eq!(emit_identity_type("Float", Backend::Go), "float64");
+        assert_eq!(emit_identity_type("ToolRegistry", Backend::Go), "interface{}");
+    }
+
+    #[test]
+    fn identity_type_unknown_emits_name_verbatim() {
+        assert_eq!(emit_identity_type("FooBar", Backend::Rust), "FooBar");
+        assert_eq!(emit_identity_type("FooBar", Backend::Go), "FooBar");
+    }
+
+    // ── Structural emit tests ──────────────────────────────────────
+
+    #[test]
+    fn derive_platform_properties_empty_dag() {
+        let dag = gunbc_ir::dag::Dag::new();
+        let props = derive_platform_properties(&dag);
+        assert!(props.width.is_none());
+        assert!(props.signed.is_none());
+        assert!(!props.arithmetic);
+    }
+
+    #[test]
+    fn derive_platform_properties_from_predicates() {
+        use gunbc_ir::type_op::Predicate;
+        let dag = gunbc_ir::type_lib::refined("Byte", vec![
+            Predicate::Width(8),
+            Predicate::Unsigned,
+            Predicate::Arithmetic,
+        ]);
+        let props = derive_platform_properties(&dag);
+        assert_eq!(props.width, Some(8));
+        assert_eq!(props.signed, Some(false));
+        assert!(props.arithmetic);
+    }
+
+    #[test]
+    fn emit_type_unsigned_8bit() {
+        use gunbc_ir::type_op::Predicate;
+        let dag = gunbc_ir::type_lib::refined("Byte", vec![
+            Predicate::Width(8),
+            Predicate::Unsigned,
+            Predicate::Arithmetic,
+        ]);
+        assert_eq!(emit_type(&dag, Backend::Rust), "u8");
+        assert_eq!(emit_type(&dag, Backend::Go), "uint8");
+        assert_eq!(emit_type(&dag, Backend::C), "uint8_t");
+    }
+
+    #[test]
+    fn emit_type_signed_64bit() {
+        use gunbc_ir::type_op::Predicate;
+        let dag = gunbc_ir::type_lib::refined("Word64", vec![
+            Predicate::Width(64),
+            Predicate::Signed(None),
+            Predicate::Arithmetic,
+        ]);
+        assert_eq!(emit_type(&dag, Backend::Rust), "i64");
+        assert_eq!(emit_type(&dag, Backend::Go), "int64");
+        assert_eq!(emit_type(&dag, Backend::C), "int64_t");
+    }
+
+    #[test]
+    fn emit_type_float64() {
+        use gunbc_ir::type_op::Predicate;
+        let dag = gunbc_ir::type_lib::refined("Word64", vec![
+            Predicate::Width(64),
+            Predicate::Domain("ieee754_binary64".to_string()),
+            Predicate::Arithmetic,
+        ]);
+        assert_eq!(emit_type(&dag, Backend::Rust), "f64");
+        assert_eq!(emit_type(&dag, Backend::Go), "float64");
+        assert_eq!(emit_type(&dag, Backend::C), "double");
+    }
+
+    #[test]
+    fn emit_type_fallback_to_string_mapping() {
+        let dag = gunbc_ir::type_lib::string();
+        assert_eq!(emit_type(&dag, Backend::Rust), "String");
+        assert_eq!(emit_type(&dag, Backend::Go), "string");
+    }
+
+    // ── resolve_and_emit tests ────────────────────────────────────
+
+    #[test]
+    fn resolve_and_emit_without_registry_falls_back() {
+        assert_eq!(resolve_and_emit("String", None, Backend::Rust), "String");
+        assert_eq!(resolve_and_emit("Int", None, Backend::Go), "int64");
+        assert_eq!(resolve_and_emit("Bool", None, Backend::C), "bool");
+    }
+
+    #[test]
+    fn resolve_and_emit_with_registry_uses_structural() {
+        use gunbc_ir::type_op::Predicate;
+        let mut registry = gunbc_ir::TypeRegistry::with_primitives();
+        registry.register(
+            "Int64",
+            gunbc_ir::type_lib::refined("Int", vec![
+                Predicate::Width(64),
+                Predicate::Signed(None),
+                Predicate::Arithmetic,
+            ]),
         );
+        assert_eq!(resolve_and_emit("Int64", Some(&registry), Backend::Rust), "i64");
+        assert_eq!(resolve_and_emit("Int64", Some(&registry), Backend::Go), "int64");
+        assert_eq!(resolve_and_emit("Int64", Some(&registry), Backend::C), "int64_t");
+    }
+
+    #[test]
+    fn resolve_and_emit_unknown_type_emits_name_verbatim() {
+        let registry = gunbc_ir::TypeRegistry::with_primitives();
         assert_eq!(
-            map_abstract_type(&RUST_TYPE_MAPPING, "FilesystemHandle"),
-            "PathBuf"
+            resolve_and_emit("UnknownType", Some(&registry), Backend::Rust),
+            "UnknownType"
         );
     }
 
     #[test]
-    fn go_primitives() {
-        assert_eq!(map_abstract_type(&GO_TYPE_MAPPING, "String"), "string");
-        assert_eq!(map_abstract_type(&GO_TYPE_MAPPING, "Bool"), "bool");
-        assert_eq!(map_abstract_type(&GO_TYPE_MAPPING, "Int"), "int64");
-        assert_eq!(map_abstract_type(&GO_TYPE_MAPPING, "Float"), "float64");
-        assert_eq!(
-            map_abstract_type(&GO_TYPE_MAPPING, "ToolRegistry"),
-            "interface{}"
+    fn derive_platform_properties_inherits_from_base_dag() {
+        use gunbc_ir::type_op::Predicate;
+        let word32 = gunbc_ir::type_lib::refined("Word32", vec![Predicate::Width(32)]);
+        let float32 = gunbc_ir::type_lib::refined_with_base(
+            "Word32",
+            word32,
+            vec![
+                Predicate::Domain("ieee754_binary32".to_string()),
+                Predicate::Arithmetic,
+            ],
         );
+        let props = derive_platform_properties(&float32);
+        assert_eq!(props.width, Some(32));
+        assert_eq!(props.domain.as_deref(), Some("ieee754_binary32"));
+        assert!(props.arithmetic);
+        assert_eq!(emit_type(&float32, Backend::Rust), "f32");
+        assert_eq!(emit_type(&float32, Backend::Go), "float32");
+        assert_eq!(emit_type(&float32, Backend::C), "float");
     }
 
     #[test]
-    fn rust_list() {
-        assert_eq!(
-            map_abstract_type(&RUST_TYPE_MAPPING, "List<String>"),
-            "Vec<String>"
+    fn emit_type_refined_with_base_signed_integer() {
+        use gunbc_ir::type_op::Predicate;
+        let byte = gunbc_ir::type_lib::refined("Byte", vec![Predicate::Width(8)]);
+        let int8 = gunbc_ir::type_lib::refined_with_base(
+            "Byte",
+            byte,
+            vec![Predicate::Signed(None), Predicate::Arithmetic],
         );
-        assert_eq!(
-            map_abstract_type(&RUST_TYPE_MAPPING, "List<Int>"),
-            "Vec<i64>"
-        );
+        assert_eq!(emit_type(&int8, Backend::Rust), "i8");
+        assert_eq!(emit_type(&int8, Backend::Go), "int8");
+        assert_eq!(emit_type(&int8, Backend::C), "int8_t");
     }
 
     #[test]
-    fn go_list() {
+    fn resolve_and_emit_structural_matches_identity_for_known_types() {
+        let registry = gunbc_ir::TypeRegistry::with_core_types();
         assert_eq!(
-            map_abstract_type(&GO_TYPE_MAPPING, "List<String>"),
-            "[]string"
+            resolve_and_emit("String", Some(&registry), Backend::Rust),
+            emit_identity_type("String", Backend::Rust)
         );
-        assert_eq!(map_abstract_type(&GO_TYPE_MAPPING, "List<Int>"), "[]int64");
-    }
-
-    #[test]
-    fn go_optional() {
         assert_eq!(
-            map_abstract_type(&GO_TYPE_MAPPING, "Optional<String>"),
-            "*string"
+            resolve_and_emit("Bool", Some(&registry), Backend::Rust),
+            emit_identity_type("Bool", Backend::Rust)
         );
     }
 
+    // ── C backend emits C types, not Rust types ─────────────────────
+
     #[test]
-    fn rust_optional() {
-        assert_eq!(
-            map_abstract_type(&RUST_TYPE_MAPPING, "Optional<Bool>"),
-            "Option<bool>"
+    fn c_backend_emits_correct_native_types() {
+        assert_eq!(emit_identity_type("String", Backend::C), "const char*");
+        assert_eq!(emit_identity_type("Int", Backend::C), "int64_t");
+        assert_eq!(emit_identity_type("Float", Backend::C), "double");
+        assert_eq!(emit_identity_type("Bytes", Backend::C), "uint8_t*");
+        assert_eq!(emit_identity_type("Json", Backend::C), "void*");
+        assert_eq!(emit_identity_type("FilesystemHandle", Backend::C), "const char*");
+        assert_eq!(emit_identity_type("Unit", Backend::C), "void");
+        assert_eq!(emit_identity_type("Bool", Backend::C), "bool");
+    }
+
+    // ── Product/Coproduct emit uses type name ───────────────────────
+
+    #[test]
+    fn emit_product_uses_type_name() {
+        let dag = gunbc_ir::type_lib::product_resolved(
+            "CliResult",
+            vec![
+                ("stdout", gunbc_ir::type_lib::string()),
+                ("stderr", gunbc_ir::type_lib::string()),
+            ],
         );
+        assert_eq!(emit_type(&dag, Backend::Rust), "CliResult");
+        assert_eq!(emit_type(&dag, Backend::Go), "CliResult");
+        assert_eq!(emit_type(&dag, Backend::C), "CliResult");
     }
 
     #[test]
-    fn go_map() {
-        assert_eq!(
-            map_abstract_type(&GO_TYPE_MAPPING, "Map<String, Int>"),
-            "map[string]int64"
+    fn emit_coproduct_uses_type_name() {
+        let dag = gunbc_ir::type_lib::coproduct(
+            "ContentEncoding",
+            vec![("UTF8", "String"), ("Binary", "Bytes")],
         );
-    }
-
-    #[test]
-    fn rust_map() {
-        assert_eq!(
-            map_abstract_type(&RUST_TYPE_MAPPING, "Map<String, Int>"),
-            "HashMap<String, i64>"
-        );
-    }
-
-    #[test]
-    fn unknown_falls_back() {
-        assert_eq!(
-            map_abstract_type(&RUST_TYPE_MAPPING, "FooBar"),
-            "serde_json::Value"
-        );
-        assert_eq!(map_abstract_type(&GO_TYPE_MAPPING, "FooBar"), "interface{}");
+        assert_eq!(emit_type(&dag, Backend::Rust), "ContentEncoding");
+        assert_eq!(emit_type(&dag, Backend::Go), "ContentEncoding");
+        assert_eq!(emit_type(&dag, Backend::C), "ContentEncoding");
     }
 }

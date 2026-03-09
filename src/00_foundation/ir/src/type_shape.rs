@@ -15,15 +15,12 @@
 //! a `TypeShape`, and every backend pattern-matches on the shape instead
 //! of the name.
 //!
-//! # Phase 0 Scope
-//!
-//! This module adds the data structures and the `type_shape()` extractor.
-//! It does **not** modify any emit backends or type_lib functions yet.
-//! Those changes come in later phases (see `docs/design/modeling/structural-primitives-codegen.md`).
+//! Platform primitives are detected by walking the type DAG for structural
+//! predicates (Width, Signed, Domain, etc.) from Validate nodes.
 
 use crate::dag::Dag;
 use crate::node::NodeBody;
-use crate::type_op::{MetadataPayload, PlatformRepr, TypeOp, WrapperKind};
+use crate::type_op::{Predicate, TypeOp, WrapperKind};
 
 /// Structural classification derived from a type DAG.
 ///
@@ -31,24 +28,30 @@ use crate::type_op::{MetadataPayload, PlatformRepr, TypeOp, WrapperKind};
 /// pattern-match on to derive their native representation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeShape {
-    /// Platform primitive with machine representation contract.
+    /// Platform primitive with structural properties derived from DAG predicates.
     ///
-    /// The `PlatformRepr` carries the bit width, signedness, and
-    /// float/discrete flags. Backends derive their native integer/float
-    /// type from these properties.
-    Platform(PlatformRepr),
+    /// Carries width, signedness, domain, and other properties extracted from
+    /// `Validate(Width/Signed/Domain/...)` nodes in the type DAG. Backends
+    /// derive their native integer/float type from these properties.
+    Platform(StructuralProperties),
 
     /// Coproduct (tagged union) with named variants.
     ///
     /// Each variant has a name and a recursive `TypeShape` for its payload.
     /// A coproduct where all variants have `TypeShape::Opaque("Unit")` is
     /// an all-unit enum (e.g., Bool, HttpMethod).
-    Coproduct(Vec<(String, TypeShape)>),
+    ///
+    /// The optional `String` is the declared type name (e.g., `"ContentEncoding"`).
+    /// `None` for anonymous coproducts.
+    Coproduct(Option<String>, Vec<(String, TypeShape)>),
 
     /// Product (record) with named fields.
     ///
     /// Each field has a name and a recursive `TypeShape` for its type.
-    Product(Vec<(String, TypeShape)>),
+    ///
+    /// The optional `String` is the declared type name (e.g., `"CliResult"`).
+    /// `None` for anonymous records.
+    Product(Option<String>, Vec<(String, TypeShape)>),
 
     /// Branded wrapper around an inner type.
     ///
@@ -84,14 +87,32 @@ pub enum ContainerShape {
     Map(Box<TypeShape>, Box<TypeShape>),
 }
 
+/// Structural platform properties derived from type DAG predicates.
+///
+/// Extracted from `Validate(Width/Signed/Domain/...)` nodes in the type DAG.
+/// Backends use these to derive their native integer/float/byte types.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StructuralProperties {
+    /// Bit width of the type (from `Width` predicate).
+    pub width: Option<u16>,
+    /// Signedness (from `Signed`/`Unsigned` predicates).
+    pub signed: Option<bool>,
+    /// Domain hint (from `Domain` predicate, e.g. "ieee754_binary32").
+    pub domain: Option<String>,
+    /// Whether arithmetic operations are valid (from `Arithmetic` predicate).
+    pub arithmetic: bool,
+    /// Collection length (from `Length` predicate).
+    pub length: Option<u64>,
+}
+
 /// Extract the structural shape from a type DAG.
 ///
 /// Walks the `Dag<TypeOp>`, classifying by root node's `TypeOp` variant:
 ///
-/// - `TypeOp::Meta(MetadataPayload::PlatformRepr(repr))` => `TypeShape::Platform(repr)`
+/// - Structural predicates (Width/Signed/Domain) => `TypeShape::Platform(StructuralProperties)`
 /// - `TypeOp::Coproduct(variants)` => `TypeShape::Coproduct(...)`
 /// - `TypeOp::Product(fields)` => `TypeShape::Product(...)`
-/// - `TypeOp::Brand(name, inner_type_id)` => `TypeShape::Brand(name, inner_shape)`
+/// - `TypeOp::Brand(name)` => `TypeShape::Brand(name, inner_shape)`
 /// - `TypeOp::Wrap(kind)` with inner SubDag => `TypeShape::Container(...)`
 /// - `TypeOp::Identity` for simple identity types => `TypeShape::Opaque(type_name)`
 ///
@@ -99,38 +120,64 @@ pub enum ContainerShape {
 /// Each variant's inner type is classified as `Opaque(type_id)` unless
 /// the type DAG itself carries structural information (e.g., a SubDag).
 pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
-    // Priority 1: Look for PlatformRepr metadata node.
-    for node in &dag.nodes {
-        if let NodeBody::Opaque(TypeOp::Meta(MetadataPayload::PlatformRepr(repr))) = &node.body {
-            return TypeShape::Platform(repr.clone());
-        }
-    }
-
-    // Priority 2: Look for Coproduct node.
+    // Priority 1: Look for Coproduct node. Products and coproducts take
+    // priority over platform detection because their field SubDags may
+    // contain structural predicates that shouldn't classify the compound
+    // type itself as a platform primitive.
     for node in &dag.nodes {
         if let NodeBody::Opaque(TypeOp::Coproduct(variants)) = &node.body {
+            // Extract the type name from the node's output port type_id.
+            let type_name = node
+                .outputs
+                .first()
+                .map(|p| p.type_id.0.clone());
             let shaped_variants: Vec<(String, TypeShape)> = variants
                 .iter()
-                .map(|(name, type_id)| (name.clone(), TypeShape::Opaque(type_id.0.clone())))
+                .map(|name| {
+                    let child_id = format!("variant_{name}");
+                    let inner = named_subdag(dag, &child_id)
+                        .map(type_shape)
+                        .unwrap_or_else(|| TypeShape::Opaque(name.clone()));
+                    (name.clone(), inner)
+                })
                 .collect();
-            return TypeShape::Coproduct(shaped_variants);
+            return TypeShape::Coproduct(type_name, shaped_variants);
         }
     }
 
-    // Priority 3: Look for Product node.
+    // Priority 2: Look for Product node.
     for node in &dag.nodes {
         if let NodeBody::Opaque(TypeOp::Product(fields)) = &node.body {
+            // Extract the type name from the node's output port type_id.
+            let type_name = node
+                .outputs
+                .first()
+                .map(|p| p.type_id.0.clone());
             let shaped_fields: Vec<(String, TypeShape)> = fields
                 .iter()
-                .map(|(name, type_id)| (name.clone(), TypeShape::Opaque(type_id.0.clone())))
+                .map(|name| {
+                    let child_id = format!("field_{name}");
+                    let inner = named_subdag(dag, &child_id)
+                        .map(type_shape)
+                        .unwrap_or_else(|| TypeShape::Opaque(name.clone()));
+                    (name.clone(), inner)
+                })
                 .collect();
-            return TypeShape::Product(shaped_fields);
+            return TypeShape::Product(type_name, shaped_fields);
         }
+    }
+
+    // Priority 3: Look for structural predicates (Width, Signed, Domain, etc.)
+    // that indicate a platform primitive type. Checked after Product/Coproduct
+    // because their field SubDags may contain predicates.
+    let props = derive_structural_properties(dag);
+    if props.width.is_some() || props.signed.is_some() || props.domain.is_some() {
+        return TypeShape::Platform(props);
     }
 
     // Priority 4: Look for Brand node.
     for node in &dag.nodes {
-        if let NodeBody::Opaque(TypeOp::Brand(name, _type_id)) = &node.body {
+        if let NodeBody::Opaque(TypeOp::Brand(name)) = &node.body {
             // Recurse into the SubDag if present to get the inner shape.
             let inner_shape = inner_subdag(dag)
                 .map(type_shape)
@@ -139,7 +186,7 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
         }
     }
 
-    // Priority 5: Look for Wrap (container) node.
+    // Priority 5: Look for Wrap (Container) node.
     for node in &dag.nodes {
         if let NodeBody::Opaque(TypeOp::Wrap(kind)) = &node.body {
             let inner_shape = inner_subdag(dag)
@@ -177,6 +224,114 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
     TypeShape::Opaque("Unknown".to_string())
 }
 
+/// Walk a type DAG and extract structural properties from Validate predicates.
+///
+/// Recurses into SubDag children, inheriting properties from inner type DAGs
+/// when the current level doesn't specify them. This ensures that refined
+/// aliases (e.g., `Float32 = Word32 + Domain(ieee754)`) correctly inherit
+/// base properties like width and signedness.
+pub fn derive_structural_properties(dag: &Dag<TypeOp>) -> StructuralProperties {
+    let mut props = StructuralProperties::default();
+    for node in &dag.nodes {
+        if let NodeBody::Opaque(TypeOp::Validate(pred)) = &node.body {
+            collect_predicate(&mut props, pred);
+        }
+        // Recurse into SubDags — inherit missing properties from children.
+        if let NodeBody::SubDag(subdag, _) = &node.body {
+            let inner = derive_structural_properties(subdag);
+            if props.width.is_none() {
+                props.width = inner.width;
+            }
+            if props.signed.is_none() {
+                props.signed = inner.signed;
+            }
+            if !props.arithmetic {
+                props.arithmetic = inner.arithmetic;
+            }
+            if props.domain.is_none() {
+                props.domain = inner.domain;
+            }
+            if props.length.is_none() {
+                props.length = inner.length;
+            }
+        }
+    }
+
+    // Compositional width derivation: if this is a Product with exactly one
+    // field that is a List container with a Length(N) predicate, and the list
+    // element has known width W, then this type has width N * W.
+    // This enables Byte(8×1=8), Word32(4×8=32), etc.
+    if props.width.is_none() {
+        if let Some(width) = derive_compositional_width(dag) {
+            props.width = Some(width);
+        }
+    }
+
+    props
+}
+
+/// Derive width compositionally from Product→List→element structure.
+///
+/// Walks Product nodes with exactly one field. If that field's SubDag is a
+/// List container with a `Length(N)` predicate, and the list element has
+/// known width `W`, the composed width is `N * W`.
+fn derive_compositional_width(dag: &Dag<TypeOp>) -> Option<u16> {
+    // Find a Product node with exactly one field.
+    for node in &dag.nodes {
+        if let NodeBody::Opaque(TypeOp::Product(fields)) = &node.body {
+            if fields.len() != 1 {
+                continue;
+            }
+            let field_name = &fields[0];
+            let child_id = format!("field_{field_name}");
+            let field_dag = named_subdag(dag, &child_id)?;
+
+            // Check if the field is a List container.
+            let mut is_list = false;
+            let mut list_length: Option<u64> = None;
+            for fnode in &field_dag.nodes {
+                if let NodeBody::Opaque(TypeOp::Wrap(WrapperKind::List)) = &fnode.body {
+                    is_list = true;
+                }
+                if let NodeBody::Opaque(TypeOp::Validate(Predicate::Length(l))) = &fnode.body {
+                    list_length = Some(*l);
+                }
+            }
+
+            if !is_list {
+                continue;
+            }
+            let length = list_length?;
+
+            // Get the element type's width from the list's inner SubDag.
+            let element_dag = inner_subdag(field_dag)?;
+            let elem_props = derive_structural_properties(element_dag);
+            let elem_width = elem_props.width?;
+
+            return Some((length as u16) * elem_width);
+        }
+    }
+    None
+}
+
+/// Collect a single predicate into structural properties.
+fn collect_predicate(props: &mut StructuralProperties, pred: &Predicate) {
+    match pred {
+        Predicate::Width(w) => props.width = Some(*w),
+        Predicate::Signed(_) => props.signed = Some(true),
+        Predicate::Unsigned => props.signed = Some(false),
+        Predicate::Domain(d) => props.domain = Some(d.clone()),
+        Predicate::Arithmetic => props.arithmetic = true,
+        Predicate::Length(l) => props.length = Some(*l),
+        Predicate::And(preds) => {
+            for p in preds {
+                collect_predicate(props, p);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Find the first SubDag node in a type DAG and return a reference to its inner DAG.
 fn inner_subdag(dag: &Dag<TypeOp>) -> Option<&Dag<TypeOp>> {
     dag.nodes.iter().find_map(|node| {
@@ -188,58 +343,24 @@ fn inner_subdag(dag: &Dag<TypeOp>) -> Option<&Dag<TypeOp>> {
     })
 }
 
+/// Find a SubDag child by node ID name.
+fn named_subdag<'a>(dag: &'a Dag<TypeOp>, name: &str) -> Option<&'a Dag<TypeOp>> {
+    dag.nodes.iter().find_map(|node| {
+        if node.id.0 == name {
+            if let NodeBody::SubDag(subdag, _) = &node.body {
+                return Some(subdag);
+            }
+        }
+        None
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dag::{Edge, Port};
+    use crate::dag::Port;
     use crate::node::Node;
     use crate::type_lib;
-    use crate::type_op::PlatformRepr;
-
-    // =========================================================================
-    // PlatformRepr construction and serialization
-    // =========================================================================
-
-    #[test]
-    fn platform_repr_construction() {
-        let repr = PlatformRepr {
-            bits: 64,
-            signed: true,
-            float: false,
-            discrete: true,
-        };
-        assert_eq!(repr.bits, 64);
-        assert!(repr.signed);
-        assert!(!repr.float);
-        assert!(repr.discrete);
-    }
-
-    #[test]
-    fn platform_repr_serialization_roundtrip() {
-        let repr = PlatformRepr {
-            bits: 64,
-            signed: true,
-            float: true,
-            discrete: false,
-        };
-        let json = serde_json::to_string(&repr).expect("serialize PlatformRepr");
-        let parsed: PlatformRepr = serde_json::from_str(&json).expect("deserialize PlatformRepr");
-        assert_eq!(repr, parsed);
-    }
-
-    #[test]
-    fn metadata_payload_platform_repr_serialization() {
-        let payload = MetadataPayload::PlatformRepr(PlatformRepr {
-            bits: 32,
-            signed: false,
-            float: false,
-            discrete: true,
-        });
-        let json = serde_json::to_string(&payload).expect("serialize MetadataPayload");
-        let parsed: MetadataPayload =
-            serde_json::from_str(&json).expect("deserialize MetadataPayload");
-        assert_eq!(payload, parsed);
-    }
 
     // =========================================================================
     // TypeShape extraction from type DAGs built by type_lib
@@ -274,7 +395,8 @@ mod tests {
         );
         let shape = type_shape(&encoding_dag);
         match &shape {
-            TypeShape::Coproduct(variants) => {
+            TypeShape::Coproduct(type_name, variants) => {
+                assert_eq!(type_name.as_deref(), Some("ContentEncoding"));
                 assert_eq!(variants.len(), 3);
                 assert_eq!(variants[0].0, "UTF8");
                 assert_eq!(variants[0].1, TypeShape::Opaque("String".to_string()));
@@ -291,7 +413,8 @@ mod tests {
         let bool_dag = type_lib::coproduct("Bool", vec![("True", "Unit"), ("False", "Unit")]);
         let shape = type_shape(&bool_dag);
         match &shape {
-            TypeShape::Coproduct(variants) => {
+            TypeShape::Coproduct(type_name, variants) => {
+                assert_eq!(type_name.as_deref(), Some("Bool"));
                 assert_eq!(variants.len(), 2);
                 assert_eq!(
                     variants[0],
@@ -318,7 +441,8 @@ mod tests {
         );
         let shape = type_shape(&cli_result_dag);
         match &shape {
-            TypeShape::Product(fields) => {
+            TypeShape::Product(type_name, fields) => {
+                assert_eq!(type_name.as_deref(), Some("CliResult"));
                 assert_eq!(fields.len(), 3);
                 assert_eq!(fields[0].0, "stdout");
                 assert_eq!(fields[0].1, TypeShape::Opaque("String".to_string()));
@@ -406,124 +530,96 @@ mod tests {
     }
 
     // =========================================================================
-    // PlatformRepr-annotated type DAGs
+    // Structural predicate-based platform type DAGs
     // =========================================================================
 
-    /// Build a type DAG with a PlatformRepr metadata node (as the design
-    /// envisions for Phase 2). This tests that type_shape() correctly
-    /// classifies such DAGs as TypeShape::Platform.
-    fn build_platform_dag(type_name: &str, repr: PlatformRepr) -> Dag<TypeOp> {
+    /// Build a type DAG with structural predicates for platform type detection.
+    fn build_predicate_platform_dag(type_name: &str, predicates: Vec<Predicate>) -> Dag<TypeOp> {
         let mut dag = Dag::new();
         dag.add_node(Node::opaque(
-            "repr",
+            "identity",
             vec![Port::scalar("in", type_name)],
             vec![Port::scalar("out", type_name)],
-            TypeOp::Meta(MetadataPayload::PlatformRepr(repr)),
+            TypeOp::Identity,
         ));
+        for (i, pred) in predicates.into_iter().enumerate() {
+            let id = format!("validate_{i}");
+            dag.add_node(Node::opaque(
+                id.as_str(),
+                vec![Port::scalar("in", type_name)],
+                vec![Port::scalar("out", type_name)],
+                TypeOp::Validate(pred),
+            ));
+        }
         dag
     }
 
     #[test]
-    fn shape_of_platform_int64() {
-        let dag = build_platform_dag(
+    fn shape_of_platform_int64_from_predicates() {
+        let dag = build_predicate_platform_dag(
             "Int64",
-            PlatformRepr {
-                bits: 64,
-                signed: true,
-                float: false,
-                discrete: true,
-            },
+            vec![Predicate::Width(64), Predicate::Signed(None)],
         );
         let shape = type_shape(&dag);
         match &shape {
-            TypeShape::Platform(repr) => {
-                assert_eq!(repr.bits, 64);
-                assert!(repr.signed);
-                assert!(!repr.float);
-                assert!(repr.discrete);
+            TypeShape::Platform(props) => {
+                assert_eq!(props.width, Some(64));
+                assert_eq!(props.signed, Some(true));
+                assert_eq!(props.domain, None);
             }
             other => panic!("expected Platform, got {:?}", other),
         }
     }
 
     #[test]
-    fn shape_of_platform_float64() {
-        let dag = build_platform_dag(
+    fn shape_of_platform_float64_from_predicates() {
+        let dag = build_predicate_platform_dag(
             "Float64",
-            PlatformRepr {
-                bits: 64,
-                signed: true,
-                float: true,
-                discrete: false,
-            },
+            vec![
+                Predicate::Width(64),
+                Predicate::Signed(None),
+                Predicate::Domain("ieee754_binary64".to_string()),
+            ],
         );
         let shape = type_shape(&dag);
         match &shape {
-            TypeShape::Platform(repr) => {
-                assert_eq!(repr.bits, 64);
-                assert!(repr.signed);
-                assert!(repr.float);
-                assert!(!repr.discrete);
+            TypeShape::Platform(props) => {
+                assert_eq!(props.width, Some(64));
+                assert_eq!(props.signed, Some(true));
+                assert_eq!(props.domain, Some("ieee754_binary64".to_string()));
             }
             other => panic!("expected Platform, got {:?}", other),
         }
     }
 
     #[test]
-    fn shape_of_platform_uint8() {
-        let dag = build_platform_dag(
+    fn shape_of_platform_uint8_from_predicates() {
+        let dag = build_predicate_platform_dag(
             "UInt8",
-            PlatformRepr {
-                bits: 8,
-                signed: false,
-                float: false,
-                discrete: true,
-            },
+            vec![Predicate::Width(8), Predicate::Unsigned],
         );
         let shape = type_shape(&dag);
         match &shape {
-            TypeShape::Platform(repr) => {
-                assert_eq!(repr.bits, 8);
-                assert!(!repr.signed);
-                assert!(!repr.float);
-                assert!(repr.discrete);
+            TypeShape::Platform(props) => {
+                assert_eq!(props.width, Some(8));
+                assert_eq!(props.signed, Some(false));
             }
             other => panic!("expected Platform, got {:?}", other),
         }
     }
 
-    // =========================================================================
-    // PlatformRepr takes priority over Identity
-    // =========================================================================
-
     #[test]
-    fn platform_repr_takes_priority_over_identity() {
-        // A DAG with both an Identity node and a PlatformRepr Meta node
+    fn structural_predicates_take_priority_over_identity() {
+        // A DAG with both an Identity node and Validate(Width) node
         // should classify as Platform, not Opaque.
-        let mut dag = Dag::new();
-        dag.add_node(Node::opaque(
-            "identity",
-            vec![Port::scalar("in", "Int64")],
-            vec![Port::scalar("out", "Int64")],
-            TypeOp::Identity,
-        ));
-        dag.add_node(Node::opaque(
-            "repr",
-            vec![Port::scalar("in", "Int64")],
-            vec![Port::scalar("out", "Int64")],
-            TypeOp::Meta(MetadataPayload::PlatformRepr(PlatformRepr {
-                bits: 64,
-                signed: true,
-                float: false,
-                discrete: true,
-            })),
-        ));
-        dag.add_edge(Edge::new("identity", "out", "repr", "in"));
-
+        let dag = build_predicate_platform_dag(
+            "Int64",
+            vec![Predicate::Width(64), Predicate::Signed(None)],
+        );
         let shape = type_shape(&dag);
         assert!(
             matches!(shape, TypeShape::Platform(_)),
-            "PlatformRepr metadata should take priority over Identity"
+            "Structural predicates should take priority over Identity"
         );
     }
 
@@ -570,5 +666,108 @@ mod tests {
             },
             other => panic!("expected Optional, got {:?}", other),
         }
+    }
+
+    // =========================================================================
+    // Resolved product/coproduct — structural recursion through fields
+    // =========================================================================
+
+    #[test]
+    fn resolved_product_fields_carry_structural_shape() {
+        // A product with resolved field DAGs should expose field shapes,
+        // not Opaque wrappers.
+        let int64_dag = {
+            let mut dag = Dag::new();
+            dag.add_node(Node::opaque(
+                "identity",
+                vec![Port::scalar("in", "Int64")],
+                vec![Port::scalar("out", "Int64")],
+                TypeOp::Identity,
+            ));
+            dag.add_node(Node::opaque(
+                "validate_0",
+                vec![Port::scalar("in", "Int64")],
+                vec![Port::scalar("out", "Int64")],
+                TypeOp::Validate(Predicate::Width(64)),
+            ));
+            dag.add_node(Node::opaque(
+                "validate_1",
+                vec![Port::scalar("in", "Int64")],
+                vec![Port::scalar("out", "Int64")],
+                TypeOp::Validate(Predicate::Signed(None)),
+            ));
+            dag
+        };
+        let product_dag = type_lib::product_resolved(
+            "CliResult",
+            vec![
+                ("stdout", type_lib::string()),
+                ("exit_code", int64_dag),
+            ],
+        );
+        let shape = type_shape(&product_dag);
+        match &shape {
+            TypeShape::Product(type_name, fields) => {
+                assert_eq!(type_name.as_deref(), Some("CliResult"));
+                assert_eq!(fields.len(), 2);
+                assert_eq!(fields[0].0, "stdout");
+                assert_eq!(fields[0].1, TypeShape::Opaque("String".to_string()));
+                assert_eq!(fields[1].0, "exit_code");
+                // With resolved DAGs, the field carries structural info.
+                match &fields[1].1 {
+                    TypeShape::Platform(props) => {
+                        assert_eq!(props.width, Some(64));
+                        assert_eq!(props.signed, Some(true));
+                    }
+                    other => panic!("expected Platform for exit_code, got {:?}", other),
+                }
+            }
+            other => panic!("expected Product, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn derive_structural_properties_recurses_into_subdags() {
+        // Build a refined type with base SubDag: Int + Width(32) + Signed
+        let base_dag = {
+            let mut dag = Dag::new();
+            dag.add_node(Node::opaque(
+                "identity",
+                vec![Port::scalar("in", "Int")],
+                vec![Port::scalar("out", "Int")],
+                TypeOp::Identity,
+            ));
+            dag.add_node(Node::opaque(
+                "validate_0",
+                vec![Port::scalar("in", "Int")],
+                vec![Port::scalar("out", "Int")],
+                TypeOp::Validate(Predicate::Width(32)),
+            ));
+            dag.add_node(Node::opaque(
+                "validate_1",
+                vec![Port::scalar("in", "Int")],
+                vec![Port::scalar("out", "Int")],
+                TypeOp::Validate(Predicate::Signed(None)),
+            ));
+            dag.add_node(Node::opaque(
+                "validate_2",
+                vec![Port::scalar("in", "Int")],
+                vec![Port::scalar("out", "Int")],
+                TypeOp::Validate(Predicate::Arithmetic),
+            ));
+            dag
+        };
+        // Outer DAG wraps base in a SubDag with additional Domain predicate
+        let outer = type_lib::refined_with_base(
+            "Float32",
+            base_dag,
+            vec![Predicate::Domain("ieee754_binary32".to_string())],
+        );
+        let props = derive_structural_properties(&outer);
+        // Width and Signed should be inherited from the SubDag
+        assert_eq!(props.width, Some(32));
+        assert_eq!(props.signed, Some(true));
+        assert!(props.arithmetic);
+        assert_eq!(props.domain.as_deref(), Some("ieee754_binary32"));
     }
 }

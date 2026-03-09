@@ -12,11 +12,15 @@ mod generated_tests_extdeps_gitignore_render;
 #[cfg(test)]
 mod generated_tests_shared_dag_util;
 #[cfg(test)]
+mod generated_tests_std_credentials;
+#[cfg(test)]
 mod generated_tests_std_fermi;
 #[cfg(test)]
 mod generated_tests_std_fidelity;
 #[cfg(test)]
 mod generated_tests_std_filesystem;
+#[cfg(test)]
+mod generated_tests_std_logic;
 #[cfg(test)]
 mod generated_tests_std_patterns;
 #[cfg(test)]

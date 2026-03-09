@@ -1,7 +1,8 @@
 //! Node types for the DAG.
 
 use crate::boundary::detect_boundaries;
-use crate::dag::{Dag, Guard, Port};
+use crate::dag::{Dag, Port};
+use crate::type_op::Predicate;
 use crate::entrypoint::detect_entrypoints;
 use crate::log_detail::LogDetailLevel;
 use crate::types::{Cardinality, NodeId, OperationKey, PortName, StaticFingerprint};
@@ -271,6 +272,8 @@ impl<T> Node<T> {
                         // Preserve resource_access so SubDag auto-inference
                         // doesn't lose Write/Exclusive mode information.
                         inferred.resource_access = port.resource_access;
+                        // Preserve multiplicity (fan-in ports stay fan-in).
+                        inferred.multiplicity = port.multiplicity;
                         inputs.push(inferred);
                     }
                 }
@@ -290,6 +293,7 @@ impl<T> Node<T> {
                             port.cardinality,
                         );
                         inferred.resource_access = port.resource_access;
+                        inferred.multiplicity = port.multiplicity;
                         outputs.push(inferred);
                     }
                 }
@@ -415,7 +419,7 @@ impl<T> Node<T> {
     /// # Panics
     ///
     /// Panics if no input port with the given name exists.
-    pub fn with_input_guard(mut self, port: &str, guard: Guard) -> Self {
+    pub fn with_input_guard(mut self, port: &str, guard: Predicate) -> Self {
         let port_name: PortName = port.into();
         let p = self
             .inputs

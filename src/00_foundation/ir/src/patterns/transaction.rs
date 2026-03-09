@@ -20,11 +20,11 @@
 //! └──────────────────────────────────────────────────┘
 //! ```
 
-use crate::dag::{Dag, Edge, Guard, Port};
+use crate::dag::{Dag, Edge, Port};
+use crate::type_op::{Predicate, PredicateValue};
 use crate::node::Node;
 use crate::patterns::{validate_resource_inputs, ResourceInput};
 use crate::types::Cardinality;
-use crate::value::Value;
 
 /// Builder for the transaction pattern.
 ///
@@ -169,7 +169,7 @@ impl<T: Clone> TransactionBuilder<T> {
                     "success",
                     "Bool",
                     Cardinality::ONE,
-                    Guard::Eq(Value::Bool(true)),
+                    Predicate::Equals(PredicateValue::Bool(true)),
                 ),
             ],
             vec![Port::scalar("committed", "Bool")],
@@ -185,7 +185,7 @@ impl<T: Clone> TransactionBuilder<T> {
                     "success",
                     "Bool",
                     Cardinality::ONE,
-                    Guard::Eq(Value::Bool(false)),
+                    Predicate::Equals(PredicateValue::Bool(false)),
                 ),
             ],
             vec![Port::scalar("rolled_back", "Bool")],

@@ -619,8 +619,10 @@ fn render_port_literal(name: &str, ty: &str, cardinality: Cardinality) -> String
             Some(value) => format!("Some({value})"),
             None => "None".to_string(),
         };
+        // Custom cardinality: create scalar port then override cardinality.
+        // This avoids depending on the pub(crate) `with_cardinality` constructor.
         format!(
-            r#"Port::with_cardinality("{name}", "{ty}", gunbc_ir::Cardinality::new({}, {max_expr}))"#,
+            r#"{{ let mut p = Port::scalar("{name}", "{ty}"); p.cardinality = gunbc_ir::Cardinality::new({}, {max_expr}); p }}"#,
             cardinality.min
         )
     }

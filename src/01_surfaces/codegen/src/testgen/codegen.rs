@@ -43,7 +43,7 @@ use gunbc_ir::language::NamingCase;
 use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
 use gunbc_ir::{
-    contract, parse_map_type_id, semantic_carrier_class_for_type_id, value_compatible_with_type_id,
+    contract, parse_map_type_id, value_compatible_with_type_id,
     value_kind_name, Cardinality, Dag, NodeId, NodeKind, Os, PortName, SecretString,
     SeedPlaceholderPolicy, SemanticCarrierClass, TypeRegistry, Value, ValueExpr,
 };
@@ -92,7 +92,8 @@ fn seed_matrix_for_context(context: SeedContext) -> SeedMatrix {
 }
 
 fn seed_class_for_type(type_id: &str) -> SeedClass {
-    semantic_carrier_class_for_type_id(type_id)
+    let reg = TypeRegistry::with_core_types();
+    reg.semantic_carrier_class(&gunbc_ir::TypeId::new(type_id))
 }
 
 fn seed_policy_for_type(type_id: &str) -> SeedPolicy {
@@ -7020,7 +7021,7 @@ fn try_mock_element_value(type_id: &str, index: Option<u32>) -> Option<Value> {
         "Map" => Value::Map(BTreeMap::new()),
         "CloudSecretConfig" => Value::Json(mock_cloud_secret_config_json()),
         "Secret" => Value::Secret(SecretString::new("<MOCK_SECRET>")),
-        "Any" => Value::Json(JsonValue::Null),
+        "Any" | "Record" => Value::Json(JsonValue::Null),
         "S" => Value::Str("<MOCK>".to_string()),
         "Path" | "FilePath" => Value::Str("/tmp/mock".to_string()),
         "SourceIR" => Value::Str("<SOURCE_IR>".to_string()),
@@ -7302,7 +7303,7 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
         }
         "Map" => ValueExpr::Map(vec![]),
         "Secret" => ValueExpr::Secret("<MOCK_SECRET>".to_string()),
-        "Any" => ValueExpr::Json(JsonValue::Null),
+        "Any" | "Record" => ValueExpr::Json(JsonValue::Null),
         "S" => ValueExpr::Str("<MOCK>".to_string()),
         "Path" | "FilePath" => ValueExpr::Str("/tmp/mock".to_string()),
         "SourceIR" => ValueExpr::Str("<SOURCE_IR>".to_string()),
@@ -7366,10 +7367,20 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
             "invalid type_id '{}' for mock value; use element type + cardinality instead",
             type_id
         ),
-        _ => panic!(
-            "no mock value for type_id '{}'; add a MockSpec boundary value or extend mock_element_expr",
-            type_id
-        ),
+        ty if ty.starts_with("List<") || ty.starts_with("Optional<") || ty.starts_with("Set<") => {
+            let inner = ty.split_once('<').unwrap().1.strip_suffix('>').unwrap();
+            mock_element_expr(inner, index)
+        }
+        // DSL-defined product/coproduct types without explicit mock entries
+        // default to a JSON null mock. This avoids panics when new DSL types
+        // appear in port signatures after DSL module changes.
+        _ => {
+            eprintln!(
+                "warning: no explicit mock for type_id '{}'; using Json(Null) default",
+                type_id
+            );
+            ValueExpr::Json(JsonValue::Null)
+        }
     }
 }
 
@@ -8603,9 +8614,10 @@ mod tests {
             SeedPolicy::Generated
         );
         assert_eq!(seed_policy_for_type("StringList"), SeedPolicy::Generated);
+        // Map containers are structurally generatable (structural type system).
         assert_eq!(
             seed_policy_for_type("Map<String,Credential>"),
-            SeedPolicy::ExplicitSeedRequired
+            SeedPolicy::Generated
         );
 
         // Fail-closed: unknown/new types default to ExplicitSeedRequired.

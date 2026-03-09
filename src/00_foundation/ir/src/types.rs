@@ -5,6 +5,27 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 
+/// Port multiplicity: how many upstream edges feed this port.
+///
+/// This is orthogonal to type cardinality (whether the value itself is a list).
+/// A `List<Bool>` port with `Singular` multiplicity receives one list value on
+/// one edge. A `__deps` port with `FanIn` multiplicity merges values from N
+/// upstream edges into a list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub enum PortMultiplicity {
+    /// Exactly one upstream edge delivers one value.
+    #[default]
+    Singular,
+    /// Zero or more upstream edges; values are fan-in merged into a list.
+    FanIn,
+}
+
+/// Returns true if the multiplicity is the default (Singular).
+/// Used by serde `skip_serializing_if`.
+pub fn multiplicity_is_default(m: &PortMultiplicity) -> bool {
+    *m == PortMultiplicity::Singular
+}
+
 /// Set-theoretic cardinality for port values, modeled as a closed interval
 /// `[min, max]` on ℕ ∪ {∞}.
 ///
@@ -876,22 +897,15 @@ pub enum SemanticCarrierKind {
     UnknownSemantic,
 }
 
-/// Structural category of a type identifier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TypeCategory {
-    /// Primitive scalar: Bool, String, Int, Float, Unit, Bytes, Secret, Json.
-    Primitive,
-    /// Generic container: List<T>, Map<K,V>, Option<T>.
-    Container,
-    /// Domain/user-defined type.
-    Domain,
-    /// Unrecognized (e.g., empty string).
-    Unknown,
-}
 
 impl TypeId {
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
+    }
+
+    /// Get the underlying string representation.
+    pub fn as_str(&self) -> &str {
+        &self.0
     }
 
     // ── Typed constructors (CP-17) ──────────────────────────────────
@@ -939,45 +953,6 @@ impl TypeId {
         Self(name.into())
     }
 
-    // ── Category classification ─────────────────────────────────────
-
-    /// Classify this type into a structural category.
-    pub fn category(&self) -> TypeCategory {
-        match self.0.as_str() {
-            "Bool" | "String" | "Int" | "Float" | "Unit" | "Bytes" | "Secret" | "Json" => {
-                TypeCategory::Primitive
-            }
-            s if s.starts_with("List<")
-                || s.starts_with("Map<")
-                || s.starts_with("Option<")
-                || s.starts_with("Optional<") =>
-            {
-                TypeCategory::Container
-            }
-            "" => TypeCategory::Unknown,
-            _ => TypeCategory::Domain,
-        }
-    }
-
-    // ── Existing methods ────────────────────────────────────────────
-
-    /// Classify placeholder seed policy for this type.
-    ///
-    /// This is fail-closed: unknown/new types default to
-    /// `ExplicitSeedRequired`.
-    pub fn seed_placeholder_policy(&self) -> SeedPlaceholderPolicy {
-        seed_placeholder_policy_for_type_id(&self.0)
-    }
-
-    /// Classify this type into structural vs semantic-carrier seed class.
-    pub fn semantic_carrier_class(&self) -> SemanticCarrierClass {
-        semantic_carrier_class_for_type_id(&self.0)
-    }
-
-    /// Classify this type into a refined semantic-carrier kind.
-    pub fn semantic_carrier_kind(&self) -> SemanticCarrierKind {
-        semantic_carrier_kind_for_type_id(&self.0)
-    }
 }
 
 /// Parse a parametric map type-id of the form `Map<K,V>`.
@@ -1031,82 +1006,24 @@ pub(crate) fn optional_inner_type_id(type_id: &str) -> Option<&str> {
     }
 }
 
-fn parse_container_alias_inner<'a>(type_id: &'a str, suffix: &str) -> Option<&'a str> {
-    let inner = type_id.strip_suffix(suffix)?;
-    if inner.is_empty() {
-        None
-    } else {
-        Some(inner)
-    }
-}
-
-/// Classify placeholder seed policy for a raw type ID.
-pub fn seed_placeholder_policy_for_type_id(type_id: &str) -> SeedPlaceholderPolicy {
-    match semantic_carrier_class_for_type_id(type_id) {
-        SemanticCarrierClass::StructuralGeneratable => SeedPlaceholderPolicy::Generated,
-        SemanticCarrierClass::SemanticCarrier => SeedPlaceholderPolicy::ExplicitSeedRequired,
-    }
-}
-
-/// Classify semantic-carrier class for a raw type ID.
-pub fn semantic_carrier_class_for_type_id(type_id: &str) -> SemanticCarrierClass {
-    match semantic_carrier_kind_for_type_id(type_id) {
-        SemanticCarrierKind::Structural => SemanticCarrierClass::StructuralGeneratable,
-        _ => SemanticCarrierClass::SemanticCarrier,
-    }
-}
-
-/// Refined semantic carrier kind for a raw type ID.
-pub fn semantic_carrier_kind_for_type_id(type_id: &str) -> SemanticCarrierKind {
-    if let Some((key_type, value_type)) = parse_map_type_id(type_id) {
-        if key_type == "String"
-            && semantic_carrier_kind_for_type_id(&value_type) == SemanticCarrierKind::Structural
-        {
-            return SemanticCarrierKind::Structural;
-        }
-        return SemanticCarrierKind::UnknownSemantic;
-    }
-
-    if let Some(inner) = optional_inner_type_id(type_id) {
-        return semantic_carrier_kind_for_type_id(inner);
-    }
-
-    if let Some(inner) = parse_unary_generic_type_id(type_id, "List")
-        .or_else(|| parse_unary_generic_type_id(type_id, "Set"))
-    {
-        return semantic_carrier_kind_for_type_id(inner);
-    }
-
-    if let Some(inner) = parse_container_alias_inner(type_id, "List")
-        .or_else(|| parse_container_alias_inner(type_id, "Set"))
-    {
-        return semantic_carrier_kind_for_type_id(inner);
-    }
-
-    match type_id {
-        // Primitives.
+/// Classify a type name into a semantic carrier kind.
+///
+/// Recognizes primitives and known carrier kinds by name. Unknown names
+/// return `UnknownSemantic` (fail-closed). The caller (typically
+/// `TypeRegistry::semantic_carrier_kind`) handles container unwrapping
+/// and DAG-based resolution before reaching here.
+pub(crate) fn semantic_carrier_kind_for_type_name(type_name: &str) -> SemanticCarrierKind {
+    match type_name {
         "String" | "Bool" | "Int" | "Float" | "Bytes" | "Unit" | "Json" | "Void" | "Any"
-        | "Error"
-        // Refined primitives.
-        | "NonEmptyString" | "SecretName" | "Url" | "FilePath" | "Path" | "Email"
-        | "PositiveInt" | "NonNegativeInt"
-        // Refined GCP identity/resource aliases.
-        | "OidcAudience" | "WifAudience"
-        | "GcpProjectId" | "GcpSecretId" | "GcpSecretVersion"
-        | "GcpServiceAccountEmail" | "GcpSubjectToken" | "OidcSubjectToken"
-        // Common wrappers/container aliases.
-        | "OptionalString" | "OptionalInt" | "OptionalBool" | "OptionalJson"
-        | "OptionalUrl"
-        | "StringList" | "IntList" | "BoolList" | "JsonList"
-        | "UrlList" | "FilePathList"
-        | "NonEmptyStringList" | "NonEmptyFilePathList"
-        => SemanticCarrierKind::Structural,
-        // Transport envelopes.
+        | "Error" | "NonEmptyString" | "NonEmptyStr" | "SecretName" | "Url" | "FilePath"
+        | "Path" | "Email" | "PositiveInt" | "NonNegativeInt" | "OidcAudience" | "WifAudience"
+        | "GcpProjectId" | "GcpSecretId" | "GcpSecretVersion" | "GcpServiceAccountEmail"
+        | "GcpSubjectToken" | "OidcSubjectToken" | "LanguageId" | "ProjectId"
+        | "ServiceAccountEmail" | "Char" | "Record" => SemanticCarrierKind::Structural,
         "TransportRequest" | "FileRequest" | "ShellRequest" | "RestRequest" | "HttpRequest"
         | "TcpRequest" => SemanticCarrierKind::TransportRequest,
-        "TransportResponse" | "FileResponse" | "ShellResponse" | "RestResponse" | "HttpResponse"
-        | "TcpResponse" => SemanticCarrierKind::TransportResponse,
-        // Capability + secret carriers.
+        "TransportResponse" | "FileResponse" | "ShellResponse" | "RestResponse"
+        | "HttpResponse" | "TcpResponse" => SemanticCarrierKind::TransportResponse,
         "Credential" => SemanticCarrierKind::Credential,
         "Secret" | "SecretString" => SemanticCarrierKind::Secret,
         "FilesystemHandle" => SemanticCarrierKind::FilesystemHandle,
@@ -1118,21 +1035,16 @@ pub fn semantic_carrier_kind_for_type_id(type_id: &str) -> SemanticCarrierKind {
     }
 }
 
-/// Strict semantic carrier compatibility.
-///
-/// This is intentionally stricter than structural compatibility:
-/// - structural ↔ structural is allowed
-/// - known semantic carrier kinds must match exactly
-/// - unknown semantic kinds fail closed
-pub fn semantic_carrier_compatible(from: &TypeId, to: &TypeId) -> bool {
+/// Strict semantic carrier compatibility (by name only, no registry).
+#[cfg(test)]
+fn semantic_carrier_compatible(from: &TypeId, to: &TypeId) -> bool {
     use SemanticCarrierKind as Kind;
 
-    let from_kind = semantic_carrier_kind_for_type_id(&from.0);
-    let to_kind = semantic_carrier_kind_for_type_id(&to.0);
+    let from_kind = semantic_carrier_kind_for_type_name(&from.0);
+    let to_kind = semantic_carrier_kind_for_type_name(&to.0);
 
     match (from_kind, to_kind) {
         (Kind::Structural, Kind::Structural) => true,
-        // Allow matching unknown semantics when both ports share the same type ID.
         (Kind::UnknownSemantic, Kind::UnknownSemantic) if from.0 == to.0 => true,
         (Kind::UnknownSemantic, _) | (_, Kind::UnknownSemantic) => false,
         (lhs, rhs) => lhs == rhs,
@@ -1245,8 +1157,27 @@ pub fn value_compatible_with_type_id(type_id: &str, value: &crate::value::Value)
         return false;
     }
 
-    // Platform has dual backing (String or Map)
-    if type_id == "Platform" && (kind == ValueKind::String || kind == ValueKind::Map) {
+    // Platform accepts coproduct variant strings (PascalCase or lowercase tokens)
+    if type_id == "Platform" && kind == ValueKind::String {
+        if let crate::value::Value::Str(s) = value {
+            return matches!(
+                s.as_str(),
+                "Linux" | "Macos" | "Windows" | "linux" | "macos" | "windows"
+            );
+        }
+    }
+
+    // Bool accepts coproduct variant strings "True"/"False" (not arbitrary strings)
+    if type_id == "Bool" && kind == ValueKind::String {
+        if let crate::value::Value::Str(s) = value {
+            return s == "True" || s == "False";
+        }
+    }
+
+    // Handle types accept Map backing (serialized as maps at runtime)
+    if (type_id == "FilesystemHandle" || type_id == "NetworkHandle" || type_id == "ToolHandle")
+        && kind == ValueKind::Map
+    {
         return true;
     }
 
@@ -1257,6 +1188,12 @@ pub fn value_compatible_with_type_id(type_id: &str, value: &crate::value::Value)
 impl From<&str> for TypeId {
     fn from(s: &str) -> Self {
         Self(s.to_string())
+    }
+}
+
+impl From<String> for TypeId {
+    fn from(s: String) -> Self {
+        Self(s)
     }
 }
 
@@ -1273,6 +1210,20 @@ impl std::fmt::Display for TypeId {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn seed_placeholder_policy_for_type_id(type_id: &str) -> SeedPlaceholderPolicy {
+        match semantic_carrier_class_for_type_id(type_id) {
+            SemanticCarrierClass::StructuralGeneratable => SeedPlaceholderPolicy::Generated,
+            SemanticCarrierClass::SemanticCarrier => SeedPlaceholderPolicy::ExplicitSeedRequired,
+        }
+    }
+
+    fn semantic_carrier_class_for_type_id(type_id: &str) -> SemanticCarrierClass {
+        match semantic_carrier_kind_for_type_name(type_id) {
+            SemanticCarrierKind::Structural => SemanticCarrierClass::StructuralGeneratable,
+            _ => SemanticCarrierClass::SemanticCarrier,
+        }
+    }
 
     // --- Query tests ---
 
@@ -1416,7 +1367,7 @@ mod tests {
             SeedPlaceholderPolicy::Generated
         );
         assert_eq!(
-            seed_placeholder_policy_for_type_id("OptionalString"),
+            seed_placeholder_policy_for_type_id("Int"),
             SeedPlaceholderPolicy::Generated
         );
         assert_eq!(
@@ -1432,7 +1383,7 @@ mod tests {
             SemanticCarrierClass::StructuralGeneratable
         );
         assert_eq!(
-            semantic_carrier_class_for_type_id("OptionalString"),
+            semantic_carrier_class_for_type_id("Bool"),
             SemanticCarrierClass::StructuralGeneratable
         );
         assert_eq!(
@@ -1440,72 +1391,40 @@ mod tests {
             SemanticCarrierClass::SemanticCarrier
         );
         assert_eq!(
-            TypeId::from("ToolHandle").semantic_carrier_class(),
-            SemanticCarrierClass::SemanticCarrier
-        );
-        assert_eq!(
-            TypeId::from("Map<String,String>").semantic_carrier_class(),
-            SemanticCarrierClass::StructuralGeneratable
-        );
-        assert_eq!(
-            TypeId::from("Map<String,Credential>").semantic_carrier_class(),
+            semantic_carrier_class_for_type_id("ToolHandle"),
             SemanticCarrierClass::SemanticCarrier
         );
     }
 
     #[test]
-    fn test_semantic_carrier_class_parametric_wrappers() {
+    fn test_semantic_carrier_kind_by_name() {
         assert_eq!(
-            semantic_carrier_class_for_type_id("Optional<String>"),
-            SemanticCarrierClass::StructuralGeneratable
-        );
-        assert_eq!(
-            semantic_carrier_class_for_type_id("List<Map<String,Int>>"),
-            SemanticCarrierClass::StructuralGeneratable
-        );
-        assert_eq!(
-            semantic_carrier_class_for_type_id("Set<Credential>"),
-            SemanticCarrierClass::SemanticCarrier
-        );
-        assert_eq!(
-            semantic_carrier_class_for_type_id("CredentialList"),
-            SemanticCarrierClass::SemanticCarrier
-        );
-    }
-
-    #[test]
-    fn test_semantic_carrier_kind_known_types() {
-        assert_eq!(
-            semantic_carrier_kind_for_type_id("String"),
+            semantic_carrier_kind_for_type_name("String"),
             SemanticCarrierKind::Structural
         );
         assert_eq!(
-            semantic_carrier_kind_for_type_id("GcpProjectId"),
+            semantic_carrier_kind_for_type_name("GcpProjectId"),
             SemanticCarrierKind::Structural
         );
         assert_eq!(
-            semantic_carrier_kind_for_type_id("GcpServiceAccountEmail"),
-            SemanticCarrierKind::Structural
-        );
-        assert_eq!(
-            semantic_carrier_kind_for_type_id("SecretName"),
-            SemanticCarrierKind::Structural
-        );
-        assert_eq!(
-            semantic_carrier_kind_for_type_id("TransportRequest"),
+            semantic_carrier_kind_for_type_name("TransportRequest"),
             SemanticCarrierKind::TransportRequest
         );
         assert_eq!(
-            semantic_carrier_kind_for_type_id("RestResponse"),
+            semantic_carrier_kind_for_type_name("RestResponse"),
             SemanticCarrierKind::TransportResponse
         );
         assert_eq!(
-            semantic_carrier_kind_for_type_id("Credential"),
+            semantic_carrier_kind_for_type_name("Credential"),
             SemanticCarrierKind::Credential
         );
         assert_eq!(
-            semantic_carrier_kind_for_type_id("Map<String,Credential>"),
-            SemanticCarrierKind::UnknownSemantic
+            semantic_carrier_kind_for_type_name("Secret"),
+            SemanticCarrierKind::Secret
+        );
+        assert_eq!(
+            semantic_carrier_kind_for_type_name("FilesystemHandle"),
+            SemanticCarrierKind::FilesystemHandle
         );
     }
 
@@ -1521,7 +1440,7 @@ mod tests {
         ));
         assert!(!semantic_carrier_compatible(
             &TypeId::from("Credential"),
-            &TypeId::from("Any")
+            &TypeId::from("String")
         ));
         assert!(!semantic_carrier_compatible(
             &TypeId::from("Credential"),
@@ -1603,6 +1522,26 @@ mod tests {
             &Value::Str("linux".into())
         ));
         assert!(value_compatible_with_type_id(
+            "Platform",
+            &Value::Str("Linux".into())
+        ));
+        assert!(
+            !value_compatible_with_type_id("Platform", &Value::Str("ubuntu".into())),
+            "Platform should only accept canonical variant names"
+        );
+        assert!(value_compatible_with_type_id(
+            "Bool",
+            &Value::Str("True".into())
+        ));
+        assert!(value_compatible_with_type_id(
+            "Bool",
+            &Value::Str("False".into())
+        ));
+        assert!(
+            !value_compatible_with_type_id("Bool", &Value::Str("yes".into())),
+            "Bool should only accept True/False variant strings"
+        );
+        assert!(value_compatible_with_type_id(
             "Credential",
             &Value::Map(BTreeMap::from([(
                 "token".to_string(),
@@ -1621,7 +1560,7 @@ mod tests {
             SeedPlaceholderPolicy::ExplicitSeedRequired
         );
         assert_eq!(
-            TypeId::from("SomeNewCarrierType").seed_placeholder_policy(),
+            seed_placeholder_policy_for_type_id("SomeNewCarrierType"),
             SeedPlaceholderPolicy::ExplicitSeedRequired
         );
     }
@@ -1903,53 +1842,6 @@ mod type_id_tests {
     #[test]
     fn domain_constructor() {
         assert_eq!(TypeId::domain("MyCustomType").0, "MyCustomType");
-    }
-
-    #[test]
-    fn category_primitives() {
-        assert_eq!(TypeId::bool().category(), TypeCategory::Primitive);
-        assert_eq!(TypeId::string().category(), TypeCategory::Primitive);
-        assert_eq!(TypeId::int().category(), TypeCategory::Primitive);
-        assert_eq!(TypeId::float().category(), TypeCategory::Primitive);
-        assert_eq!(TypeId::unit().category(), TypeCategory::Primitive);
-        assert_eq!(TypeId::bytes().category(), TypeCategory::Primitive);
-        assert_eq!(TypeId::secret().category(), TypeCategory::Primitive);
-        assert_eq!(TypeId::json().category(), TypeCategory::Primitive);
-    }
-
-    #[test]
-    fn category_containers() {
-        assert_eq!(
-            TypeId::list(&TypeId::string()).category(),
-            TypeCategory::Container
-        );
-        assert_eq!(
-            TypeId::map(&TypeId::string(), &TypeId::int()).category(),
-            TypeCategory::Container
-        );
-        assert_eq!(
-            TypeId::option(&TypeId::bool()).category(),
-            TypeCategory::Container
-        );
-        assert_eq!(
-            TypeId::new("Optional<String>").category(),
-            TypeCategory::Container
-        );
-    }
-
-    #[test]
-    fn category_domain() {
-        assert_eq!(TypeId::transport_request().category(), TypeCategory::Domain);
-        assert_eq!(
-            TypeId::transport_response().category(),
-            TypeCategory::Domain
-        );
-        assert_eq!(TypeId::domain("MyType").category(), TypeCategory::Domain);
-    }
-
-    #[test]
-    fn category_unknown() {
-        assert_eq!(TypeId::new("").category(), TypeCategory::Unknown);
     }
 
     #[test]

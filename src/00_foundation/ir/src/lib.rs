@@ -110,9 +110,8 @@ pub use code_ir::{
 };
 pub use codegen_bridge::{BridgeEnum, BridgeField, BridgeFunction, BridgeModule, BridgeStruct};
 pub use coerce::{
-    audit_cardinality_drift, classify_coercion, detect_coercions, validate_coercions,
-    AppliedCoercion, CardinalityCoercion, CardinalityDrift, CoercionError, CoercionKind,
-    CoercionReport,
+    classify_coercion, detect_coercions, validate_coercions, AppliedCoercion,
+    CardinalityCoercion, CoercionError, CoercionKind, CoercionReport,
 };
 pub use contract::{
     cross_product_witnesses, generate_compliance_test_suite, generate_contract_test_body,
@@ -120,11 +119,11 @@ pub use contract::{
     validate_provider_compliance, validate_response_contract_coverage, variant_witness_for,
     variant_witnesses, BoundaryWitness, CodegenPlatformRepr, CodegenTypeShape, Platform,
     ProtocolLayer, ProtocolLayerKind, ProtocolStack, ProtocolStackError, ProviderBinding,
-    ProviderResponseContract, ScalarKind, StatusSemantic, TypeContract, TypeLayer,
+    ProviderResponseContract, ScalarKind, StatusSemantic, TypeLayer,
 };
 pub use dag::{
-    build, canonical_edge_order, edges_to_port, Dag, DagEdgePorts, DagInputPort, DagOutputPort,
-    Edge, EdgeKind, Guard, Port, ReachableDag,
+    build, canonical_edge_order, edges_to_port, evaluate_guard_predicate, value_to_predicate_value,
+    Dag, DagEdgePorts, DagInputPort, DagOutputPort, Edge, EdgeKind, Port, ReachableDag,
 };
 pub use dag_topology::{DagTopology, EdgeTopology, NodeTopology, PortTopology};
 pub use entrypoint::{detect_entrypoints, EntrypointInfo};
@@ -189,11 +188,13 @@ pub use transport::{
     TransportKind, TransportMiddlewareConfig, TransportRequest, TransportResponse,
 };
 pub use type_op::{
-    BaseType, Coercion, ContentEncoding, MetadataPayload, PlatformRepr, Predicate, PredicateValue,
-    TypeOp, WrapperKind,
+    ContentEncoding, Predicate, PredicateValue, SystemModelMeta, TypeOp,
+    WrapperKind,
 };
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
-pub use type_shape::{type_shape, ContainerShape, TypeShape};
+pub use type_shape::{
+    derive_structural_properties, type_shape, ContainerShape, StructuralProperties, TypeShape,
+};
 pub use typed_io::{
     typed_input, typed_output, typed_port, AnyTag, CredentialTag, FilePathTag, FilesystemHandleTag,
     ListTag, NetworkHandleTag, NonEmptyListTag, OptionalTag, PlatformTag, PortTypeTag, SecretTag,
@@ -201,12 +202,11 @@ pub use typed_io::{
     TypedOutput, TypedPort, UrlTag,
 };
 pub use types::{
-    boundary_label, parse_map_type_id, seed_placeholder_policy_for_type_id,
-    semantic_carrier_class_for_type_id, semantic_carrier_compatible,
-    semantic_carrier_kind_for_type_id, value_backing_for_type_id, value_compatible_with_type_id,
+    boundary_label, parse_map_type_id, value_backing_for_type_id, value_compatible_with_type_id,
     value_kind_name, Cardinality, CardinalityMismatch, CardinalitySamplingStrategy,
-    InputProvenance, NodeId, OperationKey, PortCategory, PortName, SeedPlaceholderPolicy,
-    SemanticCarrierClass, SemanticCarrierKind, StaticFingerprint, TypeId, ValueBacking,
+    InputProvenance, NodeId, OperationKey, PortCategory, PortMultiplicity, PortName,
+    SeedPlaceholderPolicy, SemanticCarrierClass, SemanticCarrierKind, StaticFingerprint, TypeId,
+    ValueBacking,
 };
 pub use validate::{
     validate_fingerprint_uniqueness, validate_required_inputs, validate_resource_wiring,

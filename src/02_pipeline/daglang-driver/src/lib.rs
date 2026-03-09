@@ -69,6 +69,18 @@ pub struct CompileOutput {
 }
 
 impl CompileOutput {
+    /// Build a merged type registry: kernel → core types → DSL merge.
+    ///
+    /// Core types (CliResult, ContentEncoding, etc.) are registered FIRST
+    /// as Rust-side fallbacks, then DSL types override them. This ensures
+    /// DSL-defined structural types take precedence over Rust approximations.
+    pub fn merged_type_registry(&self) -> TypeRegistry {
+        let mut registry = TypeRegistry::with_primitives();
+        registry.register_core_types();
+        registry.merge_dsl_types(&self.dsl_type_registry);
+        registry
+    }
+
     /// Emit a data-only `.dag` artifact containing compilation metadata.
     ///
     /// Produces a file with:

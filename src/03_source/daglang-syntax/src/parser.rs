@@ -1724,6 +1724,50 @@ impl Parser {
                 Ok(Refinement::Format(fmt))
             }
             "raw_body" => Ok(Refinement::RawBody),
+            "width" => {
+                self.expect(&TokenKind::LParen)?;
+                let val = self.parse_expr(0)?;
+                self.expect(&TokenKind::RParen)?;
+                Ok(Refinement::Width(val))
+            }
+            "length" => {
+                self.expect(&TokenKind::LParen)?;
+                let val = self.parse_expr(0)?;
+                self.expect(&TokenKind::RParen)?;
+                Ok(Refinement::Length(val))
+            }
+            "signed" => {
+                if self.check(&TokenKind::LParen) {
+                    self.advance();
+                    let repr = match &self.peek().kind {
+                        TokenKind::Str(v) => {
+                            let r = v.clone();
+                            self.advance();
+                            r
+                        }
+                        _ => return Err(self.err("expected string for signed representation".into())),
+                    };
+                    self.expect(&TokenKind::RParen)?;
+                    Ok(Refinement::Signed(Some(repr)))
+                } else {
+                    Ok(Refinement::Signed(None))
+                }
+            }
+            "unsigned" => Ok(Refinement::Unsigned),
+            "arithmetic" => Ok(Refinement::Arithmetic),
+            "domain" => {
+                self.expect(&TokenKind::LParen)?;
+                let dom = match &self.peek().kind {
+                    TokenKind::Str(v) => {
+                        let r = v.clone();
+                        self.advance();
+                        r
+                    }
+                    _ => return Err(self.err("expected string for domain".into())),
+                };
+                self.expect(&TokenKind::RParen)?;
+                Ok(Refinement::Domain(dom))
+            }
             "retry" => Err(self.err(
                 "@retry is not supported — retry policy should be modeled via \
                  transport middleware (see Lane 5: TL-3)"

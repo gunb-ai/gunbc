@@ -1,0 +1,34 @@
+// std/bit.dag -- Bit-level structural types.
+//
+// Machine-width types built from Classical truth values.
+// Width constraints encode the exact number of bits.
+
+module std.bit
+
+import std.logic { Classical }
+
+type Bit = Classical where width(1)
+
+type Nibble {
+    bits: List<Bit> where length(4)
+}
+
+type Byte {
+    bits: List<Bit> where length(8)
+}
+
+type Word16 {
+    bytes: List<Byte> where length(2)
+}
+
+type Word32 {
+    bytes: List<Byte> where length(4)
+}
+
+type Word64 {
+    bytes: List<Byte> where length(8)
+}
+
+type Word128 {
+    bytes: List<Byte> where length(16)
+}

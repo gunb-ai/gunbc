@@ -26,7 +26,6 @@
 //! // optional_url output port has ZeroOrOne cardinality
 //! ```
 
-use crate::types::TypeId;
 use serde::{Deserialize, Serialize};
 
 /// Operations in a type DAG.
@@ -43,14 +42,11 @@ pub enum TypeOp {
     /// If validation fails, the type DAG produces an error.
     Validate(Predicate),
 
-    /// Inert metadata payload (non-semantic, non-failing).
-    ///
-    /// `Meta` is traversable/inspectable but must not change runtime behavior.
-    Meta(MetadataPayload),
 
-    /// Transformation — coerces value from one base type to another.
+    /// Transformation — coerces value from one type to another.
     /// Used for type conversions (e.g., String → Int parsing).
-    Transform(Coercion),
+    /// Carries (from_type_name, to_type_name).
+    Transform(String, String),
 
     /// Wrapper operation — wraps a value in a container type.
     /// Used for Optional<T>, List<T>, etc.
@@ -59,45 +55,29 @@ pub enum TypeOp {
     /// Unwrap operation — extracts value from a container type.
     Unwrap(WrapperKind),
 
-    /// Product type — a record with named typed fields.
+    /// Product type — a record with named fields.
+    /// Field types are embedded as SubDag children (naming: `field_{name}`).
     /// e.g., `{ path: FilePath, encoding: ContentEncoding }`
-    Product(Vec<(String, TypeId)>),
+    Product(Vec<String>),
 
-    /// Coproduct type — a tagged union of named typed variants.
+    /// Coproduct type — a tagged union of named variants.
+    /// Variant types are embedded as SubDag children (naming: `variant_{name}`).
     /// e.g., `UTF8 | ASCII | Latin1 | Binary`
-    Coproduct(Vec<(String, TypeId)>),
+    Coproduct(Vec<String>),
 
-    /// Brand (nominal) type — a named wrapper around an inner type with refinement.
+    /// Brand (nominal) type — a named wrapper.
+    /// Inner type is embedded as a SubDag child.
     /// e.g., `TextFilePath = FilePath @content(Text)`
-    Brand(String, TypeId),
+    Brand(String),
 }
 
-/// Machine representation contract for platform-primitive types.
+/// System model metadata for behavioral catalog DAGs.
 ///
-/// Tells backends: "this type maps to a well-known machine primitive
-/// with these properties." Backends derive their native type from
-/// the hint, not from the type name string.
-///
-/// Examples:
-/// - `PlatformRepr { bits: 64, signed: true, float: false, discrete: true }` → `i64` / `int64` / `int64_t`
-/// - `PlatformRepr { bits: 64, signed: true, float: true, discrete: false }` → `f64` / `float64` / `double`
-/// - `PlatformRepr { bits: 8, signed: false, float: false, discrete: true }` → `u8` / `byte` / `uint8_t`
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PlatformRepr {
-    /// Minimum bit width required to represent all values.
-    pub bits: u16,
-    /// Signedness.
-    pub signed: bool,
-    /// IEEE 754 floating-point (changes representation rules).
-    pub float: bool,
-    /// Whether the type has exactly 2^bits distinct values (integers)
-    /// or a continuous range (floats).
-    pub discrete: bool,
-}
-
-/// Typed inert metadata payload carried by [`TypeOp::Meta`].
+/// These are inert metadata payloads used by system model DAGs to encode
+/// system identity, behavior properties, and I/O contracts. They are
+/// traversable/inspectable but do not change runtime behavior.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum MetadataPayload {
+pub enum SystemModelMeta {
     SystemId(String),
     SystemKind(String),
     BehaviorId(String),
@@ -112,13 +92,8 @@ pub enum MetadataPayload {
         name: String,
         type_id: String,
     },
-    /// Platform-level representation hint for code generation.
-    ///
-    /// Tells backends: "this type maps to a well-known machine primitive
-    /// with these properties." Backends derive their native type from
-    /// the hint, not from the type name string.
-    PlatformRepr(PlatformRepr),
 }
+
 
 /// Content encoding lattice for file content classification.
 ///
@@ -265,6 +240,39 @@ pub enum Predicate {
     /// Content encoding constraint from `@content` annotations.
     /// e.g., `@content(UTF8)` → `Predicate::Content(ContentEncoding::UTF8)`
     Content(ContentEncoding),
+
+    /// Bit-width constraint.
+    /// e.g., `width(8)` means the type occupies exactly 8 bits.
+    Width(u16),
+
+    /// Collection/string length constraint.
+    /// e.g., `length(4)` means exactly 4 elements/bytes.
+    Length(u64),
+
+    /// Domain constraint — names the mathematical/encoding domain.
+    /// e.g., `domain("ieee754_binary32")` for IEEE 754 float representation.
+    Domain(String),
+
+    /// Signed integer constraint. Optional string names the representation
+    /// (e.g., `"twos_complement"`). `None` means signed with default representation.
+    Signed(Option<String>),
+
+    /// Unsigned integer constraint — value is non-negative.
+    Unsigned,
+
+    /// Arithmetic constraint — type supports arithmetic operations.
+    Arithmetic,
+
+    /// Inert system model metadata (non-semantic, non-failing).
+    ///
+    /// Used by system model DAGs to encode behavioral catalog metadata
+    /// (system identity, behavior properties, I/O contracts). Traversable
+    /// and inspectable but does not change runtime behavior.
+    ///
+    /// This is a deliberate extension point for catalog-level metadata.
+    /// Adding new `SystemModelMeta` variants requires design justification
+    /// in the system model docs.
+    Meta(SystemModelMeta),
 }
 
 /// Simple values that can appear in predicates.
@@ -273,6 +281,8 @@ pub enum PredicateValue {
     Bool(bool),
     Int(i64),
     Str(String),
+    /// Represents the `Value::Skipped` sentinel in guard predicates.
+    Skipped,
 }
 
 impl Predicate {
@@ -311,77 +321,26 @@ impl Predicate {
             // Content encoding subtyping: Content(ASCII).entails(Content(UTF8)) = true
             (Predicate::Content(a), Predicate::Content(b)) => a.is_subtype_of(b),
 
+            // Width: exact match only (already handled by self == other above)
+            (Predicate::Width(_), Predicate::Width(_)) => false,
+
+            // Length: exact match only
+            (Predicate::Length(_), Predicate::Length(_)) => false,
+
+            // Domain: exact match only
+            (Predicate::Domain(_), Predicate::Domain(_)) => false,
+
+            // Signed entails Signed (regardless of representation detail)
+            (Predicate::Signed(_), Predicate::Signed(_)) => true,
+
+            // Unsigned is atomic — exact match handled above
+            // Arithmetic is atomic — exact match handled above
+
             _ => false,
         }
     }
 }
 
-/// Coercion between base types.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Coercion {
-    /// Source base type.
-    pub from: BaseType,
-    /// Target base type.
-    pub to: BaseType,
-}
-
-impl Coercion {
-    /// Create a new coercion.
-    pub fn new(from: BaseType, to: BaseType) -> Self {
-        Self { from, to }
-    }
-}
-
-/// Base types — the fundamental shapes of data.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum BaseType {
-    /// Unit type (no data).
-    Unit,
-    /// Boolean.
-    Bool,
-    /// Integer.
-    Int,
-    /// Floating point.
-    Float,
-    /// String.
-    String,
-    /// Raw bytes.
-    Bytes,
-    /// JSON value (dynamic).
-    Json,
-    /// Secret (redacted string).
-    Secret,
-    /// List of elements.
-    List(Box<BaseType>),
-    /// Optional value (may be absent).
-    Option(Box<BaseType>),
-    /// Map from keys to values.
-    Map(Box<BaseType>, Box<BaseType>),
-    /// Named/opaque type (user-defined or external).
-    Named(String),
-}
-
-impl BaseType {
-    /// Create a list type.
-    pub fn list(element: BaseType) -> Self {
-        BaseType::List(Box::new(element))
-    }
-
-    /// Create an optional type.
-    pub fn option(inner: BaseType) -> Self {
-        BaseType::Option(Box::new(inner))
-    }
-
-    /// Create a map type.
-    pub fn map(key: BaseType, value: BaseType) -> Self {
-        BaseType::Map(Box::new(key), Box::new(value))
-    }
-
-    /// Create a named type.
-    pub fn named(name: impl Into<String>) -> Self {
-        BaseType::Named(name.into())
-    }
-}
 
 /// Wrapper kinds for container types.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -408,33 +367,38 @@ mod tests {
     fn test_type_op_variants() {
         let identity = TypeOp::Identity;
         let validate = TypeOp::Validate(Predicate::NonEmpty);
-        let meta = TypeOp::Meta(MetadataPayload::SystemId("gcp".to_string()));
-        let transform = TypeOp::Transform(Coercion::new(BaseType::String, BaseType::Int));
+        let meta = TypeOp::Validate(Predicate::Meta(SystemModelMeta::SystemId(
+            "gcp".to_string(),
+        )));
+        let transform = TypeOp::Transform("String".to_string(), "Int".to_string());
         let wrap = TypeOp::Wrap(WrapperKind::Optional);
 
         assert_eq!(identity, TypeOp::Identity);
         assert!(matches!(validate, TypeOp::Validate(Predicate::NonEmpty)));
-        assert!(matches!(meta, TypeOp::Meta(MetadataPayload::SystemId(_))));
-        assert!(matches!(transform, TypeOp::Transform(_)));
+        assert!(matches!(
+            meta,
+            TypeOp::Validate(Predicate::Meta(SystemModelMeta::SystemId(_)))
+        ));
+        assert!(matches!(transform, TypeOp::Transform(_, _)));
         assert!(matches!(wrap, TypeOp::Wrap(WrapperKind::Optional)));
     }
 
     #[test]
     fn test_type_op_product_coproduct_brand() {
         let product = TypeOp::Product(vec![
-            ("path".to_string(), TypeId::from("FilePath")),
-            ("encoding".to_string(), TypeId::from("ContentEncoding")),
+            "path".to_string(),
+            "encoding".to_string(),
         ]);
         assert!(matches!(product, TypeOp::Product(ref fields) if fields.len() == 2));
 
         let coproduct = TypeOp::Coproduct(vec![
-            ("UTF8".to_string(), TypeId::from("String")),
-            ("Binary".to_string(), TypeId::from("Bytes")),
+            "UTF8".to_string(),
+            "Binary".to_string(),
         ]);
         assert!(matches!(coproduct, TypeOp::Coproduct(ref variants) if variants.len() == 2));
 
-        let brand = TypeOp::Brand("TextFilePath".to_string(), TypeId::from("FilePath"));
-        assert!(matches!(brand, TypeOp::Brand(ref name, _) if name == "TextFilePath"));
+        let brand = TypeOp::Brand("TextFilePath".to_string());
+        assert!(matches!(brand, TypeOp::Brand(ref name) if name == "TextFilePath"));
     }
 
     #[test]
@@ -519,31 +483,6 @@ mod tests {
         // Everything ⊆ Unknown
         assert!(ContentEncoding::Binary.is_subtype_of(&ContentEncoding::Unknown));
         assert!(ContentEncoding::Text.is_subtype_of(&ContentEncoding::Unknown));
-    }
-
-    #[test]
-    fn test_base_type_construction() {
-        let string_type = BaseType::String;
-        let list_of_strings = BaseType::list(BaseType::String);
-        let optional_int = BaseType::option(BaseType::Int);
-        let map_type = BaseType::map(BaseType::String, BaseType::Json);
-
-        assert_eq!(string_type, BaseType::String);
-        assert!(matches!(list_of_strings, BaseType::List(_)));
-        assert!(matches!(optional_int, BaseType::Option(_)));
-        assert!(matches!(map_type, BaseType::Map(_, _)));
-
-        // New base types
-        assert_eq!(BaseType::Float, BaseType::Float);
-        assert_eq!(BaseType::Bytes, BaseType::Bytes);
-        assert_eq!(BaseType::Secret, BaseType::Secret);
-    }
-
-    #[test]
-    fn test_coercion() {
-        let string_to_int = Coercion::new(BaseType::String, BaseType::Int);
-        assert_eq!(string_to_int.from, BaseType::String);
-        assert_eq!(string_to_int.to, BaseType::Int);
     }
 
     // --- ContentEncoding lattice tests ---
@@ -669,5 +608,110 @@ mod tests {
         // a.meet(a.join(b)) == Some(a)
         let j = a.join(b);
         assert_eq!(a.meet(j), Some(a));
+    }
+
+    /// Verify that the Rust `ContentEncoding` variants match the DSL
+    /// `encoding.dag` declaration: `type Encoding = ASCII | UTF8 | Latin1 | Text | Binary | Unknown`.
+    ///
+    /// This test catches any divergence between the Rust enum and the DSL
+    /// definition. When the behavior system (Phases 8-10) arrives, the lattice
+    /// ordering itself will be DSL-driven.
+    #[test]
+    fn test_content_encoding_matches_dsl_encoding_dag() {
+        let dsl_variants: std::collections::HashSet<&str> =
+            ["ASCII", "UTF8", "Latin1", "Text", "Binary", "Unknown"]
+                .iter()
+                .copied()
+                .collect();
+
+        let rust_variants: std::collections::HashSet<&str> = [
+            variant_name(ContentEncoding::ASCII),
+            variant_name(ContentEncoding::UTF8),
+            variant_name(ContentEncoding::Latin1),
+            variant_name(ContentEncoding::Text),
+            variant_name(ContentEncoding::Binary),
+            variant_name(ContentEncoding::Unknown),
+        ]
+        .iter()
+        .copied()
+        .collect();
+
+        assert_eq!(
+            dsl_variants, rust_variants,
+            "Rust ContentEncoding variants must match dsl/std/encoding.dag"
+        );
+        assert_eq!(
+            rust_variants.len(),
+            6,
+            "encoding.dag declares exactly 6 variants"
+        );
+    }
+
+    fn variant_name(enc: ContentEncoding) -> &'static str {
+        match enc {
+            ContentEncoding::ASCII => "ASCII",
+            ContentEncoding::UTF8 => "UTF8",
+            ContentEncoding::Latin1 => "Latin1",
+            ContentEncoding::Text => "Text",
+            ContentEncoding::Binary => "Binary",
+            ContentEncoding::Unknown => "Unknown",
+        }
+    }
+
+    /// Verify the lattice ordering from encoding.dag:
+    /// ASCII ⊆ UTF8 ⊆ Text ⊆ Unknown
+    /// Latin1 ⊆ Text ⊆ Unknown
+    /// Binary ⊆ Unknown
+    /// Text and Binary are incomparable.
+    #[test]
+    fn test_content_encoding_lattice_matches_dsl_ordering() {
+        use crate::algebra::PartialOrder;
+
+        // ASCII ⊆ UTF8 ⊆ Text ⊆ Unknown
+        assert!(ContentEncoding::ASCII.leq(&ContentEncoding::UTF8));
+        assert!(ContentEncoding::UTF8.leq(&ContentEncoding::Text));
+        assert!(ContentEncoding::Text.leq(&ContentEncoding::Unknown));
+        assert!(ContentEncoding::ASCII.leq(&ContentEncoding::Unknown));
+
+        // Latin1 ⊆ Text ⊆ Unknown
+        assert!(ContentEncoding::Latin1.leq(&ContentEncoding::Text));
+        assert!(ContentEncoding::Latin1.leq(&ContentEncoding::Unknown));
+
+        // Binary ⊆ Unknown only
+        assert!(ContentEncoding::Binary.leq(&ContentEncoding::Unknown));
+        assert!(!ContentEncoding::Binary.leq(&ContentEncoding::Text));
+
+        // Text and Binary are incomparable
+        assert!(!ContentEncoding::Text.leq(&ContentEncoding::Binary));
+        assert!(!ContentEncoding::Binary.leq(&ContentEncoding::Text));
+
+        // UTF8 and Latin1 are incomparable
+        assert!(!ContentEncoding::UTF8.leq(&ContentEncoding::Latin1));
+        assert!(!ContentEncoding::Latin1.leq(&ContentEncoding::UTF8));
+    }
+
+    /// Verify that the Rust `ContentEncoding` enum variants match the DSL
+    /// `encoding.dag` coproduct definition. The DSL declares which variants
+    /// exist; the Rust enum remains the runtime lattice authority.
+    #[test]
+    fn encoding_parity_with_dsl() {
+        // Variants from dsl/std/encoding.dag:
+        //   type Encoding = ASCII | UTF8 | Latin1 | Text | Binary | Unknown
+        let dsl_variants: std::collections::BTreeSet<&str> =
+            ["ASCII", "UTF8", "Latin1", "Text", "Binary", "Unknown"]
+                .into_iter()
+                .collect();
+
+        // All Rust ContentEncoding variants:
+        let rust_variants: std::collections::BTreeSet<&str> = [
+            "Unknown", "Text", "UTF8", "ASCII", "Latin1", "Binary",
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(
+            dsl_variants, rust_variants,
+            "ContentEncoding variants must match encoding.dag coproduct"
+        );
     }
 }

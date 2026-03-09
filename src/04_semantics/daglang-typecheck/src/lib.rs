@@ -29,7 +29,8 @@ use daglang_syntax::ast::{
     Refinement, Stmt, TypeBody, TypeExpr, UsesClause,
 };
 use daglang_syntax::ast_utils::{
-    resource_type_name, service_call_lookup_keys, type_expr_to_string, walk_stmts,
+    is_function_type, resource_type_name, service_call_lookup_keys, type_expr_to_string,
+    walk_stmts,
 };
 use gunbc_ir::TypeRegistry;
 
@@ -177,7 +178,7 @@ pub struct TypedCallableSignature {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypedBinding {
     pub name: String,
-    pub ty: String,
+    pub ty: gunbc_ir::types::TypeId,
 }
 
 /// Errors during type checking.
@@ -985,40 +986,309 @@ fn collect_pipeline_params(modules: &[ResolvedModule]) -> Vec<PipelineParam> {
 
 fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> TypeRegistry {
     let mut registry = TypeRegistry::new();
+
+    // Collect all type definitions across modules for two-pass registration.
+    let mut all_type_defs: Vec<&daglang_syntax::ast::TypeDef> = Vec::new();
     for module in modules {
         for item in &module.ast.items {
             if let Item::TypeDef(def) = &item.node {
-                match &def.body {
-                    TypeBody::Sum(variants) => {
-                        let variant_pairs: Vec<(&str, &str)> = variants
-                            .iter()
-                            .map(|variant| (variant.name.as_str(), "String"))
-                            .collect();
-                        registry.register(
-                            def.name.as_str(),
-                            gunbc_ir::type_lib::coproduct(def.name.as_str(), variant_pairs),
-                        );
-                    }
-                    TypeBody::Record(fields) => {
-                        let field_type_strings: Vec<(String, String)> = fields
-                            .iter()
-                            .map(|field| (field.name.clone(), type_expr_to_string(&field.ty)))
-                            .collect();
-                        let field_pairs: Vec<(&str, &str)> = field_type_strings
-                            .iter()
-                            .map(|(name, ty)| (name.as_str(), ty.as_str()))
-                            .collect();
-                        registry.register(
-                            def.name.as_str(),
-                            gunbc_ir::type_lib::product(def.name.as_str(), field_pairs),
-                        );
-                    }
-                    TypeBody::Alias(_) => {}
-                }
+                all_type_defs.push(def);
             }
         }
     }
+
+    // Pass 1: Register every type name with an identity placeholder.
+    // This ensures forward references resolve to a known type instead of
+    // triggering the fallback code path.
+    for def in &all_type_defs {
+        registry.register(
+            def.name.as_str(),
+            gunbc_ir::type_lib::identity(&def.name),
+        );
+    }
+
+    // Build a dependency graph for topological ordering (Pass 2).
+    // Alias types depend on their base type; Record types depend on their
+    // field types. Sorting ensures base types register before derived types.
+    let type_names: std::collections::HashSet<&str> =
+        all_type_defs.iter().map(|d| d.name.as_str()).collect();
+    let mut deps: std::collections::HashMap<&str, Vec<&str>> = std::collections::HashMap::new();
+    for def in &all_type_defs {
+        let mut my_deps = Vec::new();
+        match &def.body {
+            TypeBody::Alias(type_expr) => {
+                collect_type_deps_from_expr(type_expr, &type_names, &mut my_deps);
+            }
+            TypeBody::Record(fields) => {
+                for field in fields {
+                    collect_type_deps_from_expr(&field.ty, &type_names, &mut my_deps);
+                }
+            }
+            TypeBody::Sum(variants) => {
+                for variant in variants {
+                    for field in &variant.fields {
+                        collect_type_deps_from_expr(&field.ty, &type_names, &mut my_deps);
+                    }
+                }
+            }
+        }
+        deps.insert(def.name.as_str(), my_deps);
+    }
+    let ordered = topological_sort_types(&all_type_defs, &deps);
+
+    // Pass 2: Re-register with resolved structural DAGs in topological order.
+    for def in ordered {
+        register_type_def(def, &mut registry);
+    }
+
     registry
+}
+
+/// Recursively extract dependency type names from a TypeExpr.
+///
+/// Descends into Generic args, Optional inners, and Refined bases to find
+/// all referenced type names that exist in `type_names`. This ensures
+/// dependencies like `List<Bit>` correctly extract `Bit` instead of the
+/// stringified `"List<Bit>"`.
+fn collect_type_deps_from_expr<'a>(
+    expr: &TypeExpr,
+    type_names: &std::collections::HashSet<&'a str>,
+    deps: &mut Vec<&'a str>,
+) {
+    match expr {
+        TypeExpr::Named(name) => {
+            if let Some(&dep) = type_names.get(name.as_str()) {
+                deps.push(dep);
+            }
+        }
+        TypeExpr::Generic(_, args) => {
+            for arg in args {
+                collect_type_deps_from_expr(arg, type_names, deps);
+            }
+        }
+        TypeExpr::Optional(inner) => {
+            collect_type_deps_from_expr(inner, type_names, deps);
+        }
+        TypeExpr::Refined(inner, _) => {
+            collect_type_deps_from_expr(inner, type_names, deps);
+        }
+        TypeExpr::Record(fields) => {
+            for field in fields {
+                collect_type_deps_from_expr(&field.ty, type_names, deps);
+            }
+        }
+    }
+}
+
+/// Topological sort of type definitions. Falls back to original order for cycles.
+fn topological_sort_types<'a>(
+    defs: &[&'a daglang_syntax::ast::TypeDef],
+    deps: &std::collections::HashMap<&str, Vec<&str>>,
+) -> Vec<&'a daglang_syntax::ast::TypeDef> {
+    let name_to_def: std::collections::HashMap<&str, &'a daglang_syntax::ast::TypeDef> =
+        defs.iter().map(|d| (d.name.as_str(), *d)).collect();
+    let mut visited = std::collections::HashSet::new();
+    let mut in_stack = std::collections::HashSet::new();
+    let mut result = Vec::new();
+
+    fn visit<'a>(
+        name: &str,
+        name_to_def: &std::collections::HashMap<&str, &'a daglang_syntax::ast::TypeDef>,
+        deps: &std::collections::HashMap<&str, Vec<&str>>,
+        visited: &mut std::collections::HashSet<String>,
+        in_stack: &mut std::collections::HashSet<String>,
+        result: &mut Vec<&'a daglang_syntax::ast::TypeDef>,
+    ) {
+        if visited.contains(name) {
+            return;
+        }
+        if in_stack.contains(name) {
+            return; // cycle — skip to break infinite recursion
+        }
+        in_stack.insert(name.to_string());
+        if let Some(dep_list) = deps.get(name) {
+            for dep in dep_list {
+                visit(dep, name_to_def, deps, visited, in_stack, result);
+            }
+        }
+        in_stack.remove(name);
+        visited.insert(name.to_string());
+        if let Some(def) = name_to_def.get(name) {
+            result.push(*def);
+        }
+    }
+
+    for def in defs {
+        visit(
+            def.name.as_str(),
+            &name_to_def,
+            deps,
+            &mut visited,
+            &mut in_stack,
+            &mut result,
+        );
+    }
+    result
+}
+
+/// Register a single type definition into the registry (Pass 2 worker).
+fn register_type_def(
+    def: &daglang_syntax::ast::TypeDef,
+    registry: &mut TypeRegistry,
+) {
+    match &def.body {
+        TypeBody::Sum(variants) => {
+            // Unit variants get "Unit" type, payload variants get resolved field DAGs.
+            let resolved_variants: Vec<(&str, gunbc_ir::Dag<gunbc_ir::type_op::TypeOp>)> =
+                variants
+                    .iter()
+                    .map(|variant| {
+                        let dag = if variant.fields.is_empty() {
+                            gunbc_ir::type_lib::unit()
+                        } else if variant.fields.len() == 1 {
+                            resolve_field_type_dag(&variant.fields[0].ty, registry)
+                        } else {
+                            // Multi-field payload variant: wrap fields as an anonymous product.
+                            let resolved_fields: Vec<(
+                                &str,
+                                gunbc_ir::Dag<gunbc_ir::type_op::TypeOp>,
+                            )> = variant
+                                .fields
+                                .iter()
+                                .map(|f| {
+                                    (f.name.as_str(), resolve_field_type_dag(&f.ty, registry))
+                                })
+                                .collect();
+                            gunbc_ir::type_lib::product_resolved(
+                                &variant.name,
+                                resolved_fields,
+                            )
+                        };
+                        (variant.name.as_str(), dag)
+                    })
+                    .collect();
+            registry.register(
+                def.name.as_str(),
+                gunbc_ir::type_lib::coproduct_resolved(
+                    def.name.as_str(),
+                    resolved_variants,
+                ),
+            );
+        }
+        TypeBody::Record(fields) => {
+            let resolved_fields: Vec<(&str, gunbc_ir::Dag<gunbc_ir::type_op::TypeOp>)> =
+                fields
+                    .iter()
+                    .map(|field| {
+                        let dag = resolve_field_type_dag(&field.ty, registry);
+                        (field.name.as_str(), dag)
+                    })
+                    .collect();
+            registry.register(
+                def.name.as_str(),
+                gunbc_ir::type_lib::product_resolved(
+                    def.name.as_str(),
+                    resolved_fields,
+                ),
+            );
+        }
+        TypeBody::Alias(type_expr) => {
+            let base_name = type_expr_to_string(type_expr);
+            let predicates = collect_predicates_from_type_expr(type_expr);
+            let brand_name = collect_brand_from_type_expr(type_expr);
+            let base_dag_opt = registry.get_by_name(&base_name).cloned();
+
+            // Build the inner DAG — embed base if available so
+            // structural predicates (width, domain, etc.) are inherited.
+            let inner_dag = if predicates.is_empty() {
+                match base_dag_opt {
+                    Some(dag) => dag,
+                    None => gunbc_ir::type_lib::identity(&base_name),
+                }
+            } else {
+                match base_dag_opt {
+                    Some(dag) => gunbc_ir::type_lib::refined_with_base(
+                        &base_name, dag, predicates,
+                    ),
+                    None => gunbc_ir::type_lib::refined(&base_name, predicates),
+                }
+            };
+
+            // Wrap in a Brand node if the alias carries a brand refinement
+            let final_dag = if let Some(bname) = brand_name {
+                gunbc_ir::type_lib::branded(&bname, inner_dag)
+            } else {
+                inner_dag
+            };
+
+            registry.register(def.name.as_str(), final_dag);
+        }
+    }
+}
+
+/// Build a type DAG for a field's TypeExpr, preserving refinement predicates.
+///
+/// Handles structural containers (List, Optional, Set, Map) by recursing into
+/// their type arguments and building structural DAGs instead of flattening to
+/// identity strings. Non-refined named types fall back to registry lookup or
+/// an identity DAG.
+fn resolve_field_type_dag(
+    ty: &TypeExpr,
+    registry: &TypeRegistry,
+) -> gunbc_ir::Dag<gunbc_ir::type_op::TypeOp> {
+    match ty {
+        TypeExpr::Generic(name, args) => {
+            match (name.as_str(), args.len()) {
+                ("List", 1) => {
+                    let elem = resolve_field_type_dag(&args[0], registry);
+                    return gunbc_ir::type_lib::list(elem);
+                }
+                ("Option" | "Optional", 1) => {
+                    let inner = resolve_field_type_dag(&args[0], registry);
+                    return gunbc_ir::type_lib::optional(inner);
+                }
+                ("Set", 1) => {
+                    let elem = resolve_field_type_dag(&args[0], registry);
+                    return gunbc_ir::type_lib::set(elem);
+                }
+                ("Map", 2) => {
+                    let val = resolve_field_type_dag(&args[1], registry);
+                    return gunbc_ir::type_lib::map(val);
+                }
+                _ => { /* fall through to string-based path */ }
+            }
+        }
+        TypeExpr::Optional(inner) => {
+            let inner_dag = resolve_field_type_dag(inner, registry);
+            return gunbc_ir::type_lib::optional(inner_dag);
+        }
+        TypeExpr::Refined(inner, _) => {
+            let base_dag = resolve_field_type_dag(inner, registry);
+            let predicates = collect_predicates_from_type_expr(ty);
+            if predicates.is_empty() {
+                return base_dag;
+            } else {
+                let base_name = type_expr_to_string(inner);
+                return gunbc_ir::type_lib::refined_with_base(&base_name, base_dag, predicates);
+            }
+        }
+        _ => { /* Named, Record — fall through */ }
+    }
+
+    // String-based fallback for Named types and unmatched Generic.
+    let base_name = type_expr_to_string(ty);
+    let predicates = collect_predicates_from_type_expr(ty);
+    let base_dag_opt = registry.get_by_name(&base_name).cloned();
+    if predicates.is_empty() {
+        base_dag_opt.unwrap_or_else(|| gunbc_ir::type_lib::identity(&base_name))
+    } else {
+        match base_dag_opt {
+            Some(dag) => {
+                gunbc_ir::type_lib::refined_with_base(&base_name, dag, predicates)
+            }
+            None => gunbc_ir::type_lib::refined(&base_name, predicates),
+        }
+    }
 }
 
 fn collect_available_profiles(modules: &[ResolvedModule]) -> Vec<String> {
@@ -1162,7 +1432,7 @@ fn collect_signatures(
                                 .iter()
                                 .map(|f| TypedBinding {
                                     name: f.name.clone(),
-                                    ty: type_expr_to_string(&f.ty),
+                                    ty: gunbc_ir::types::TypeId::from(type_expr_to_string(&f.ty)),
                                 })
                                 .collect(),
                         )
@@ -1178,7 +1448,7 @@ fn collect_signatures(
                             ReturnContract::single(type_expr_to_string(&def.return_type)),
                             vec![TypedBinding {
                                 name: "return".to_string(),
-                                ty: type_expr_to_string(&def.return_type),
+                                ty: gunbc_ir::types::TypeId::from(type_expr_to_string(&def.return_type)),
                             }],
                         )
                     }
@@ -1200,7 +1470,7 @@ fn collect_signatures(
                         .iter()
                         .map(|param| TypedBinding {
                             name: param.name.clone(),
-                            ty: type_expr_to_string(&param.ty),
+                            ty: gunbc_ir::types::TypeId::from(type_expr_to_string(&param.ty)),
                         })
                         .collect(),
                     outputs,
@@ -1259,7 +1529,7 @@ fn collect_signatures(
                         .iter()
                         .map(|param| TypedBinding {
                             name: param.name.clone(),
-                            ty: type_expr_to_string(&param.ty),
+                            ty: gunbc_ir::types::TypeId::from(type_expr_to_string(&param.ty)),
                         })
                         .collect(),
                     outputs: def
@@ -1267,7 +1537,7 @@ fn collect_signatures(
                         .iter()
                         .map(|field| TypedBinding {
                             name: field.name.clone(),
-                            ty: type_expr_to_string(&field.ty),
+                            ty: gunbc_ir::types::TypeId::from(type_expr_to_string(&field.ty)),
                         })
                         .collect(),
                 }));
@@ -1314,7 +1584,7 @@ fn collect_signatures(
                         .iter()
                         .map(|param| TypedBinding {
                             name: param.name.clone(),
-                            ty: type_expr_to_string(&param.ty),
+                            ty: gunbc_ir::types::TypeId::from(type_expr_to_string(&param.ty)),
                         })
                         .collect(),
                     outputs: def
@@ -1322,7 +1592,7 @@ fn collect_signatures(
                         .iter()
                         .map(|field| TypedBinding {
                             name: field.name.clone(),
-                            ty: type_expr_to_string(&field.ty),
+                            ty: gunbc_ir::types::TypeId::from(type_expr_to_string(&field.ty)),
                         })
                         .collect(),
                 }));
@@ -2482,14 +2752,11 @@ fn collect_param_callable_contracts(params: &[Param]) -> HashMap<String, Callabl
 }
 
 fn parse_function_type_callable_contract(ty: &TypeExpr) -> Option<CallableContract> {
-    let raw = type_expr_to_string(ty);
-    let compact = raw
-        .chars()
-        .filter(|ch| !ch.is_whitespace())
-        .collect::<String>();
-    if !compact.starts_with("fn(") {
+    if !is_function_type(ty) {
         return None;
     }
+    let raw = type_expr_to_string(ty);
+    let compact: String = raw.chars().filter(|ch| !ch.is_whitespace()).collect();
     let close_paren = find_matching_paren(&compact, 2)?;
     let args = &compact[3..close_paren];
     let output = compact
@@ -3853,11 +4120,39 @@ fn validate_type_expr(
                             });
                         }
                     }
+                    Refinement::Width(expr) => {
+                        if let Some(v) = extract_int_literal(expr) {
+                            if v < 1 || v > u16::MAX as i64 {
+                                errors.push(TypeError::UnsatisfiableRefinement {
+                                    ty: type_expr_to_string(inner),
+                                    constraint: format!(
+                                        "width({v}) out of range — must be 1..{}", u16::MAX
+                                    ),
+                                });
+                            }
+                        }
+                    }
+                    Refinement::Length(expr) => {
+                        if let Some(v) = extract_int_literal(expr) {
+                            if v < 0 {
+                                errors.push(TypeError::UnsatisfiableRefinement {
+                                    ty: type_expr_to_string(inner),
+                                    constraint: format!(
+                                        "length({v}) must be non-negative"
+                                    ),
+                                });
+                            }
+                        }
+                    }
                     Refinement::NonEmpty
                     | Refinement::Format(_)
                     | Refinement::Predicate(_)
                     | Refinement::RawBody
-                    | Refinement::FileTypes(_) => {}
+                    | Refinement::FileTypes(_)
+                    | Refinement::Signed(_)
+                    | Refinement::Unsigned
+                    | Refinement::Arithmetic
+                    | Refinement::Domain(_) => {}
                 }
             }
         }
@@ -3900,10 +4195,102 @@ fn canonical_content_encoding(raw: &str) -> Option<String> {
     }
 }
 
+fn str_to_content_encoding(raw: &str) -> Option<gunbc_ir::type_op::ContentEncoding> {
+    use gunbc_ir::type_op::ContentEncoding;
+    match raw {
+        "Text" => Some(ContentEncoding::Text),
+        "UTF8" => Some(ContentEncoding::UTF8),
+        "ASCII" => Some(ContentEncoding::ASCII),
+        "Latin1" => Some(ContentEncoding::Latin1),
+        "Binary" => Some(ContentEncoding::Binary),
+        "Unknown" => Some(ContentEncoding::Unknown),
+        _ => None,
+    }
+}
+
 fn extract_int_literal(expr: &Expr) -> Option<i64> {
     match expr {
         Expr::Literal(Literal::Int(value)) => Some(*value),
         _ => None,
+    }
+}
+
+/// Extract IR predicates from a type expression's refinements.
+///
+/// Walks through `Refined(inner, refinements)` wrappers and converts
+/// each `Refinement` variant to its corresponding `Predicate`.
+fn collect_predicates_from_type_expr(type_expr: &TypeExpr) -> Vec<gunbc_ir::type_op::Predicate> {
+    let mut predicates = Vec::new();
+    collect_predicates_recursive(type_expr, &mut predicates);
+    predicates
+}
+
+fn collect_predicates_recursive(
+    type_expr: &TypeExpr,
+    predicates: &mut Vec<gunbc_ir::type_op::Predicate>,
+) {
+    if let TypeExpr::Refined(inner, refinements) = type_expr {
+        collect_predicates_recursive(inner, predicates);
+        for refinement in refinements {
+            if let Some(pred) = refinement_to_predicate(refinement) {
+                predicates.push(pred);
+            }
+        }
+    }
+}
+
+/// Extract the brand name from a type expression's refinements (if any).
+fn collect_brand_from_type_expr(type_expr: &TypeExpr) -> Option<String> {
+    match type_expr {
+        TypeExpr::Refined(inner, refinements) => {
+            // Check current level first
+            for r in refinements {
+                if let Refinement::Brand(name) = r {
+                    return Some(name.clone());
+                }
+            }
+            // Recurse into inner
+            collect_brand_from_type_expr(inner)
+        }
+        _ => None,
+    }
+}
+
+fn refinement_to_predicate(refinement: &Refinement) -> Option<gunbc_ir::type_op::Predicate> {
+    use gunbc_ir::type_op::Predicate;
+    match refinement {
+        Refinement::Pattern(regex) => Some(Predicate::Matches(regex.clone())),
+        Refinement::Range { min, max } => {
+            let min_val = min.as_ref().and_then(extract_int_literal).unwrap_or(i64::MIN);
+            let max_val = max.as_ref().and_then(extract_int_literal).unwrap_or(i64::MAX);
+            Some(Predicate::InRange {
+                min: min_val,
+                max: max_val,
+            })
+        }
+        Refinement::NonEmpty => Some(Predicate::NonEmpty),
+        Refinement::Content(enc) => {
+            str_to_content_encoding(enc).map(Predicate::Content)
+        }
+        Refinement::Width(expr) => {
+            extract_int_literal(expr).and_then(|v| {
+                u16::try_from(v).ok().filter(|&w| w > 0).map(Predicate::Width)
+            })
+        }
+        Refinement::Length(expr) => {
+            extract_int_literal(expr).map(|v| Predicate::Length(v as u64))
+        }
+        Refinement::Signed(repr) => Some(Predicate::Signed(repr.clone())),
+        Refinement::Unsigned => Some(Predicate::Unsigned),
+        Refinement::Arithmetic => Some(Predicate::Arithmetic),
+        Refinement::Domain(dom) => Some(Predicate::Domain(dom.clone())),
+        // Brand is handled structurally (not as a predicate)
+        Refinement::Brand(_) => None,
+        // These are surface-level annotations, not type predicates
+        Refinement::Format(_)
+        | Refinement::Predicate(_)
+        | Refinement::RawBody
+        | Refinement::FileTypes(_) => None,
     }
 }
 

@@ -43,12 +43,21 @@ impl Default for CConfig {
 
 /// Lower an AbstractIR `SourceFile` to a `CSourceFile`.
 pub fn lower_to_c(source: &SourceFile, config: &CConfig) -> Result<CSourceFile, LowerError> {
+    lower_to_c_with_registry(source, config, None)
+}
+
+/// Lower to C with an optional type registry for structural emission.
+pub fn lower_to_c_with_registry(
+    source: &SourceFile,
+    config: &CConfig,
+    registry: Option<&gunbc_ir::TypeRegistry>,
+) -> Result<CSourceFile, LowerError> {
     let includes = collect_c_includes(source, config);
     let mut items: Vec<CItem> = Vec::new();
 
     // Lower each item.
     for item in &source.items {
-        lower_item_into(&mut items, item, config)?;
+        lower_item_into(&mut items, item, config, registry)?;
     }
 
     Ok(CSourceFile { includes, items })
@@ -98,16 +107,17 @@ fn lower_item_into(
     items: &mut Vec<CItem>,
     item: &Item,
     config: &CConfig,
+    registry: Option<&gunbc_ir::TypeRegistry>,
 ) -> Result<(), LowerError> {
     match item {
         Item::Fn(f) => {
-            items.push(CItem::FnDef(lower_fn_def(f, config)?));
+            items.push(CItem::FnDef(lower_fn_def(f, config, registry)?));
         }
         Item::Struct(s) => {
             let fields: Vec<(String, CType)> = s
                 .fields
                 .iter()
-                .map(|(name, ty, _)| (name.clone(), map_to_c_type(ty)))
+                .map(|(name, ty, _)| (name.clone(), map_to_c_type_with_registry(ty, registry)))
                 .collect();
             items.push(CItem::StructDef {
                 name: s.name.clone(),
@@ -132,7 +142,7 @@ fn lower_item_into(
             // C doesn't have impl blocks — emit each method as a free function
             // with the type name prefixed.
             for func in &impl_block.items {
-                let mut c_func = lower_fn_def(func, config)?;
+                let mut c_func = lower_fn_def(func, config, registry)?;
                 c_func.name = format!("{}_{}", impl_block.type_name, c_func.name);
                 items.push(CItem::FnDef(c_func));
             }
@@ -148,7 +158,11 @@ fn lower_item_into(
 // B4.5: Function lowering with error code return
 // ===========================================================================
 
-fn lower_fn_def(f: &FnDef, config: &CConfig) -> Result<CFnDef, LowerError> {
+fn lower_fn_def(
+    f: &FnDef,
+    config: &CConfig,
+    registry: Option<&gunbc_ir::TypeRegistry>,
+) -> Result<CFnDef, LowerError> {
     let has_transport = body_has_transport_calls(&f.body);
 
     // B4.5: Functions with transport calls return int (0 = ok, -1 = error).
@@ -157,14 +171,14 @@ fn lower_fn_def(f: &FnDef, config: &CConfig) -> Result<CFnDef, LowerError> {
     } else {
         f.return_type
             .as_ref()
-            .map(|t| map_to_c_type(t))
+            .map(|t| map_to_c_type_with_registry(t, registry))
             .unwrap_or(CType::Void)
     };
 
     let params: Vec<(String, CType)> = f
         .params
         .iter()
-        .map(|(name, ty)| (name.clone(), map_to_c_type(ty)))
+        .map(|(name, ty)| (name.clone(), map_to_c_type_with_registry(ty, registry)))
         .collect();
 
     let mut body = lower_body(&f.body, has_transport, config);
@@ -370,7 +384,7 @@ fn lower_stmt_into(out: &mut Vec<CStmt>, stmt: &Stmt, in_fallible_fn: bool, conf
         Stmt::Item(item) => {
             // Nested items are unusual in C but possible.
             let mut inner_items = Vec::new();
-            let _ = lower_item_into(&mut inner_items, item, config);
+            let _ = lower_item_into(&mut inner_items, item, config, None);
             for ci in inner_items {
                 if let CItem::FnDef(f) = ci {
                     for s in f.body {
@@ -582,26 +596,70 @@ fn lower_value_expr(v: &gunbc_ir::ValueExpr) -> CExpr {
 // ===========================================================================
 
 /// Map an abstract type name to its C equivalent.
-fn map_to_c_type(abstract_type: &str) -> CType {
-    match abstract_type {
-        "String" | "Path" => CType::Ptr(Box::new(CType::Const(Box::new(CType::Char)))),
-        "Bool" | "bool" => CType::Int(CIntKind::Int), // C uses int for bool.
-        "Int" | "i64" | "I64" => CType::Int(CIntKind::Fixed(64)),
-        "Float" | "f64" => CType::Float(CFloatKind::Double),
-        "ToolRegistry" => CType::Ptr(Box::new(CType::Void)),
-        "FilesystemHandle" => CType::Ptr(Box::new(CType::Const(Box::new(CType::Char)))),
+///
+/// Delegates to `resolve_and_emit()` for unified type resolution, then parses
+/// the emitted string back into a `CType`. When a `TypeRegistry` is available,
+/// structural resolution provides precise width/signedness/domain information.
+fn map_to_c_type_with_registry(
+    abstract_type: &str,
+    registry: Option<&gunbc_ir::TypeRegistry>,
+) -> CType {
+    let emitted = crate::type_mapping::resolve_and_emit(
+        abstract_type,
+        registry,
+        crate::type_mapping::Backend::C,
+    );
+    c_type_from_emitted(&emitted)
+}
+
+/// Parse a C type string (as emitted by resolve_and_emit) into a CType.
+fn c_type_from_emitted(s: &str) -> CType {
+    match s {
+        "const char*" => CType::Ptr(Box::new(CType::Const(Box::new(CType::Char)))),
+        "bool" => CType::Int(CIntKind::Int),
+        "void" => CType::Void,
+        "void*" => CType::Ptr(Box::new(CType::Void)),
+        "uint8_t*" => CType::Ptr(Box::new(CType::Int(CIntKind::UFixed(8)))),
+        "char" => CType::Char,
+        "float" => CType::Float(CFloatKind::Float),
+        "double" => CType::Float(CFloatKind::Double),
         other => {
+            // intN_t / uintN_t patterns
+            if let Some(rest) = other.strip_suffix("_t") {
+                if let Some(width_str) = rest.strip_prefix("int") {
+                    if let Ok(w) = width_str.parse::<u8>() {
+                        return CType::Int(CIntKind::Fixed(w));
+                    }
+                }
+                if let Some(width_str) = rest.strip_prefix("uint") {
+                    if let Ok(w) = width_str.parse::<u8>() {
+                        return CType::Int(CIntKind::UFixed(w));
+                    }
+                }
+            }
+            // Generic container: List<T> → T*
             if let Some(inner) = other
                 .strip_prefix("List<")
                 .and_then(|rest| rest.strip_suffix('>'))
             {
-                return CType::Ptr(Box::new(map_to_c_type(inner)));
+                return CType::Ptr(Box::new(c_type_from_emitted(
+                    &crate::type_mapping::resolve_and_emit(
+                        inner,
+                        None,
+                        crate::type_mapping::Backend::C,
+                    ),
+                )));
             }
-            // Default: void pointer.
+            // Pointer suffix
+            if let Some(inner) = other.strip_suffix('*') {
+                return CType::Ptr(Box::new(c_type_from_emitted(inner.trim())));
+            }
+            // Unknown — void pointer
             CType::Ptr(Box::new(CType::Void))
         }
     }
 }
+
 
 /// Infer C type from an abstract expression (best effort).
 fn infer_c_type(expr: &Expr) -> CType {
@@ -654,6 +712,10 @@ mod tests {
     use super::*;
     use gunbc_ir::code_ir::{EnumDef, StructDef};
     use gunbc_ir::ValueExpr;
+
+    fn map_to_c_type(abstract_type: &str) -> CType {
+        map_to_c_type_with_registry(abstract_type, None)
+    }
 
     fn make_abstract_main(stmts: Vec<Stmt>) -> SourceFile {
         SourceFile {
@@ -769,6 +831,29 @@ mod tests {
         assert!(matches!(
             map_to_c_type("List<String>"),
             CType::Ptr(inner) if matches!(inner.as_ref(), CType::Ptr(_))
+        ));
+    }
+
+    #[test]
+    fn map_to_c_type_with_registry_structural_emit() {
+        use gunbc_ir::type_op::Predicate;
+        let mut registry = gunbc_ir::TypeRegistry::with_primitives();
+        registry.register(
+            "UInt8",
+            gunbc_ir::type_lib::refined("Int", vec![
+                Predicate::Width(8),
+                Predicate::Unsigned,
+                Predicate::Arithmetic,
+            ]),
+        );
+        assert!(matches!(
+            map_to_c_type_with_registry("UInt8", Some(&registry)),
+            CType::Int(CIntKind::UFixed(8))
+        ));
+        // Fallback still works
+        assert!(matches!(
+            map_to_c_type_with_registry("Bool", Some(&registry)),
+            CType::Int(CIntKind::Int)
         ));
     }
 

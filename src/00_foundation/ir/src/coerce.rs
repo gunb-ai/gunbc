@@ -22,10 +22,9 @@
 //! // Reports: parse_response.output [1,1] → merge.outputs [0,∞) = WrapScalar
 //! ```
 
-use crate::contract::{CoercionResult, TypeContract};
 use crate::dag::Dag;
 use crate::type_registry::TypeRegistry;
-use crate::types::{Cardinality, NodeId, PortName, TypeId};
+use crate::types::{Cardinality, NodeId, PortName};
 
 /// Describes an implicit cardinality coercion at a specific edge.
 #[derive(Debug, Clone)]
@@ -178,16 +177,6 @@ pub struct CoercionError {
     pub reason: String,
 }
 
-/// Cardinality drift between declared port cardinality and type-derived cardinality.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CardinalityDrift {
-    pub node_id: NodeId,
-    pub port_name: PortName,
-    pub is_input: bool,
-    pub type_id: TypeId,
-    pub declared: Cardinality,
-    pub inferred: Cardinality,
-}
 
 impl std::fmt::Display for CoercionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -241,42 +230,8 @@ pub fn validate_coercions_with_registry<T>(
             None => tp.cardinality,
         };
 
-        if let Some(reg) = registry {
-            if let (Some(from_dag), Some(to_dag)) =
-                (reg.resolve_type(&fp.type_id), reg.resolve_type(&tp.type_id))
-            {
-                let mut from_contract = TypeContract::from_type_dag(&from_dag);
-                let mut to_contract = TypeContract::from_type_dag(&to_dag);
-                // Registry-provided wrappers override port cardinality.
-                from_contract.cardinality = from_card;
-                to_contract.cardinality = to_card;
-
-                match from_contract.can_safely_coerce_to_with(&to_contract, |from, to| {
-                    reg.base_type_upcasts_to(from, to)
-                }) {
-                    CoercionResult::Ok => {}
-                    CoercionResult::Err(reason) => {
-                        let reason = if let Some(strategy) =
-                            reg.coercion_strategy(&fp.type_id, &tp.type_id)
-                        {
-                            format!("{reason}. Explicit transform: {strategy}")
-                        } else {
-                            reason
-                        };
-                        errors.push(CoercionError {
-                            from_node: edge.from_node.clone(),
-                            from_port: edge.from_port.clone(),
-                            to_node: edge.to_node.clone(),
-                            to_port: edge.to_port.clone(),
-                            from_cardinality: from_card,
-                            to_cardinality: to_card,
-                            reason,
-                        });
-                        continue;
-                    }
-                }
-            }
-        }
+        // Type compatibility is checked by the builder at edge creation time.
+        // The coercion pass focuses on cardinality analysis only.
 
         if from_card == to_card {
             // Identical — no coercion needed
@@ -314,45 +269,6 @@ pub fn validate_coercions_with_registry<T>(
     CoercionReport { coercions, errors }
 }
 
-/// Audit a DAG for ports whose declared cardinality disagrees with the type DAG.
-///
-/// Only ports whose `type_id` is resolvable in the registry are considered.
-pub fn audit_cardinality_drift<T>(dag: &Dag<T>, registry: &TypeRegistry) -> Vec<CardinalityDrift> {
-    let mut drifts = Vec::new();
-
-    for node in &dag.nodes {
-        for port in &node.inputs {
-            if let Some(inferred) = registry.infer_cardinality(&port.type_id) {
-                if inferred != port.cardinality {
-                    drifts.push(CardinalityDrift {
-                        node_id: node.id.clone(),
-                        port_name: port.name.clone(),
-                        is_input: true,
-                        type_id: port.type_id.clone(),
-                        declared: port.cardinality,
-                        inferred,
-                    });
-                }
-            }
-        }
-        for port in &node.outputs {
-            if let Some(inferred) = registry.infer_cardinality(&port.type_id) {
-                if inferred != port.cardinality {
-                    drifts.push(CardinalityDrift {
-                        node_id: node.id.clone(),
-                        port_name: port.name.clone(),
-                        is_input: false,
-                        type_id: port.type_id.clone(),
-                        declared: port.cardinality,
-                        inferred,
-                    });
-                }
-            }
-        }
-    }
-
-    drifts
-}
 
 #[cfg(test)]
 mod tests {
@@ -576,38 +492,4 @@ mod tests {
         assert!(display.contains("WrapScalar"));
     }
 
-    #[test]
-    fn audit_cardinality_drift_reports_ports_with_type_cardinality_mismatch() {
-        let mut dag = Dag::new();
-        dag.add_node(Node::opaque(
-            "producer",
-            vec![],
-            vec![port("out", "OptionalString")], // declared [1,1], inferred [0,1]
-            TestOp,
-        ));
-
-        let registry = crate::type_registry::TypeRegistry::with_core_types();
-        let drift = audit_cardinality_drift(&dag, &registry);
-        assert_eq!(drift.len(), 1);
-        assert_eq!(drift[0].node_id.0, "producer");
-        assert_eq!(drift[0].port_name.0, "out");
-        assert!(!drift[0].is_input);
-        assert_eq!(drift[0].declared, Cardinality::ONE);
-        assert_eq!(drift[0].inferred, Cardinality::ZERO_OR_ONE);
-    }
-
-    #[test]
-    fn audit_cardinality_drift_ignores_ports_matching_type_cardinality() {
-        let mut dag = Dag::new();
-        dag.add_node(Node::opaque(
-            "producer",
-            vec![],
-            vec![Port::optional("out", "OptionalString")],
-            TestOp,
-        ));
-
-        let registry = crate::type_registry::TypeRegistry::with_core_types();
-        let drift = audit_cardinality_drift(&dag, &registry);
-        assert!(drift.is_empty());
-    }
 }

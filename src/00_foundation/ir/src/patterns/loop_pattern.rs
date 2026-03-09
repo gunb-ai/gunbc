@@ -135,7 +135,8 @@ impl<T: Clone> LoopBuilder<T> {
 
         let mut dag = Dag::new();
 
-        // Unpack node: receives the list, provides iteration control
+        // Unpack node: receives the list, provides iteration control.
+        // Input cardinality is propagated; element output is scalar (one per iteration).
         dag.add_node(Node::opaque(
             "unpack",
             vec![Port::with_cardinality(
@@ -144,10 +145,9 @@ impl<T: Clone> LoopBuilder<T> {
                 self.input_cardinality,
             )],
             vec![
-                Port::with_cardinality(
+                Port::scalar(
                     self.element_port_name.as_str(),
                     self.element_port_type.as_str(),
-                    self.input_cardinality,
                 ),
                 Port::scalar("count", "Int"),
             ],
@@ -171,15 +171,12 @@ impl<T: Clone> LoopBuilder<T> {
         }
         dag.add_node(body_node);
 
-        // Pack node: collects results back into a list
+        // Pack node: collects results back into a list.
+        // Result input is scalar (one per iteration); output cardinality propagated.
         dag.add_node(Node::opaque(
             "pack",
             vec![
-                Port::with_cardinality(
-                    "result",
-                    self.element_port_type.as_str(),
-                    self.input_cardinality,
-                ),
+                Port::scalar("result", self.element_port_type.as_str()),
                 Port::scalar("count", "Int"),
             ],
             vec![Port::with_cardinality(

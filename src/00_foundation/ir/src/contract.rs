@@ -356,6 +356,7 @@ fn refine_witness(witness: Value, pred: &Predicate, base: &str) -> Value {
             crate::type_op::PredicateValue::Bool(b) => Value::Bool(*b),
             crate::type_op::PredicateValue::Int(i) => Value::Int(*i),
             crate::type_op::PredicateValue::Str(s) => Value::Str(s.clone()),
+            crate::type_op::PredicateValue::Skipped => Value::Skipped,
         },
         Predicate::Matches(pattern) => {
             // For well-known patterns, generate a matching example
@@ -411,14 +412,6 @@ fn has_predicates(type_dag: &Dag<TypeOp>) -> bool {
         .any(|n| matches!(&n.body, NodeBody::Opaque(TypeOp::Validate(_))))
 }
 
-/// Check if a type is a container type (Optional, List, NonEmptyList, Set, NonEmptySet).
-fn is_container(type_dag: &Dag<TypeOp>) -> bool {
-    type_dag
-        .nodes
-        .iter()
-        .any(|n| matches!(&n.body, NodeBody::Opaque(TypeOp::Wrap(_))))
-}
-
 /// Get the wrapper kind if this is a container type.
 pub fn wrapper_kind(type_dag: &Dag<TypeOp>) -> Option<WrapperKind> {
     for node in &type_dag.nodes {
@@ -437,13 +430,6 @@ fn inner_type_dag(type_dag: &Dag<TypeOp>) -> Option<&Dag<TypeOp>> {
             None
         }
     })
-}
-
-fn wrap_predicate_for_container(pred: Predicate) -> Predicate {
-    match pred {
-        Predicate::All(_) | Predicate::Any(_) => pred,
-        other => Predicate::All(Box::new(other)),
-    }
 }
 
 // =============================================================================
@@ -484,7 +470,7 @@ impl TypeLayer {
         let mut coproduct_arms = Vec::new();
         for node in &type_dag.nodes {
             if let NodeBody::Opaque(TypeOp::Coproduct(variants)) = &node.body {
-                for (name, _type_id) in variants {
+                for name in variants {
                     // Each variant gets a scalar layer with its name as base type
                     coproduct_arms.push(TypeLayer {
                         cardinality: Cardinality::ONE,
@@ -503,7 +489,7 @@ impl TypeLayer {
         let mut product_fields = Vec::new();
         for node in &type_dag.nodes {
             if let NodeBody::Opaque(TypeOp::Product(fields)) = &node.body {
-                for (name, _type_id) in fields {
+                for name in fields {
                     product_fields.push((
                         name.clone(),
                         TypeLayer {
@@ -1686,314 +1672,6 @@ impl ProtocolStack {
     }
 }
 
-/// Full contract summary for a type.
-#[derive(Debug, Clone, PartialEq)]
-pub struct TypeContract {
-    /// L1: Cardinality
-    pub cardinality: Cardinality,
-    /// L2: Base type name
-    pub base_type: Option<String>,
-    /// L3: Predicates
-    pub predicates: Vec<Predicate>,
-    /// Whether this is a container type
-    pub is_container: bool,
-    /// Wrapper kind (if container)
-    pub wrapper_kind: Option<WrapperKind>,
-}
-
-impl TypeContract {
-    /// Extract full contract from a type DAG.
-    pub fn from_type_dag(type_dag: &Dag<TypeOp>) -> Self {
-        let wrapper = wrapper_kind(type_dag);
-        let is_container = is_container(type_dag);
-        let mut base = base_type(type_dag);
-        let mut preds = predicates(type_dag);
-
-        if wrapper.is_some() {
-            if let Some(inner) = inner_type_dag(type_dag) {
-                let inner_contract = TypeContract::from_type_dag(inner);
-                base = inner_contract.base_type;
-                preds.extend(
-                    inner_contract
-                        .predicates
-                        .into_iter()
-                        .map(wrap_predicate_for_container),
-                );
-            }
-        }
-
-        // For Brand nodes, recurse into the SubDag to pick up inner predicates.
-        let has_brand = type_dag
-            .nodes
-            .iter()
-            .any(|n| matches!(&n.body, NodeBody::Opaque(TypeOp::Brand(..))));
-        if has_brand {
-            if let Some(inner) = inner_type_dag(type_dag) {
-                let inner_contract = TypeContract::from_type_dag(inner);
-                // Use inner base type if ours is absent
-                if base.is_none() {
-                    base = inner_contract.base_type;
-                }
-                preds.extend(inner_contract.predicates);
-            }
-        }
-
-        Self {
-            cardinality: cardinality(type_dag),
-            base_type: base,
-            predicates: preds,
-            is_container,
-            wrapper_kind: wrapper,
-        }
-    }
-
-    /// Check whether this contract can safely coerce to a target contract.
-    ///
-    /// A coercion is safe only if it is a widening on all three levels:
-    /// - L1: Cardinality containment
-    /// - L2: Base type upcast
-    /// - L3: Predicate entailment (source predicates cover target predicates)
-    pub fn can_safely_coerce_to(&self, target: &TypeContract) -> CoercionResult {
-        self.can_safely_coerce_to_with(target, base_type_upcasts_to)
-    }
-
-    /// Check whether this contract can safely coerce to a target contract,
-    /// using a caller-provided base type lattice.
-    pub fn can_safely_coerce_to_with<F>(
-        &self,
-        target: &TypeContract,
-        base_upcasts_to: F,
-    ) -> CoercionResult
-    where
-        F: Fn(&str, &str) -> bool,
-    {
-        if let Err(mismatch) = self.cardinality.check_satisfies(target.cardinality) {
-            return CoercionResult::err(format!(
-                "cardinality {} does not satisfy {} ({})",
-                mismatch.output, mismatch.input, mismatch.reason
-            ));
-        }
-
-        match (&self.base_type, &target.base_type) {
-            (Some(from), Some(to)) if !base_upcasts_to(from, to) => {
-                return CoercionResult::err(format!(
-                    "base type '{}' cannot upcast to '{}'",
-                    from, to
-                ));
-            }
-            (None, Some(to)) => {
-                return CoercionResult::err(format!(
-                    "unknown source base type cannot prove compatibility with '{}'",
-                    to
-                ));
-            }
-            _ => {}
-        }
-
-        for tp in &target.predicates {
-            if !self.predicates.iter().any(|sp| sp.entails(tp)) {
-                return CoercionResult::err(format!(
-                    "source predicates do not entail target predicate {:?}",
-                    tp
-                ));
-            }
-        }
-
-        CoercionResult::Ok
-    }
-}
-
-/// Result of a coercion check between two contracts.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CoercionResult {
-    /// Coercion is safe — values flow directly or via a deducible upcast.
-    Ok,
-    /// Coercion is not possible.
-    Err(String),
-}
-
-impl CoercionResult {
-    pub fn err(msg: impl Into<String>) -> Self {
-        CoercionResult::Err(msg.into())
-    }
-
-    pub fn is_ok(&self) -> bool {
-        matches!(self, CoercionResult::Ok)
-    }
-}
-
-/// Can `from` safely upcast to `to` in the base type lattice?
-fn base_type_upcasts_to(from: &str, to: &str) -> bool {
-    if from == to {
-        return true;
-    }
-
-    match (from, to) {
-        // Everything upcasts to Json (top of lattice)
-        (_, "Json") => true,
-        // Url is a refinement of String (when represented as base types)
-        ("Url", "String") => true,
-        _ => false,
-    }
-}
-
-/// Find the common supertype of two base types in the base type lattice.
-/// Returns the least upper bound (join) in the base type order.
-fn base_type_join(a: &str, b: &str) -> String {
-    if a == b {
-        return a.to_string();
-    }
-    // If either upcasts to the other, the other is the join
-    if base_type_upcasts_to(a, b) {
-        return b.to_string();
-    }
-    if base_type_upcasts_to(b, a) {
-        return a.to_string();
-    }
-    // Otherwise, Json is the top of the lattice
-    "Json".to_string()
-}
-
-/// Find the common subtype (meet) of two base types.
-/// Returns None if the types are incomparable (no common subtype).
-fn base_type_meet(a: &str, b: &str) -> Option<String> {
-    if a == b {
-        return Some(a.to_string());
-    }
-    // If either upcasts to the other, the source is the meet
-    if base_type_upcasts_to(a, b) {
-        return Some(a.to_string());
-    }
-    if base_type_upcasts_to(b, a) {
-        return Some(b.to_string());
-    }
-    // Incomparable — no common subtype
-    None
-}
-
-// =============================================================================
-// Lattice trait implementations for TypeContract
-// =============================================================================
-
-impl crate::algebra::PartialOrder for TypeContract {
-    /// `self ≤ other` iff self's values are a subset of other's values:
-    /// - Cardinality is contained
-    /// - Base type can upcast
-    /// - All of other's predicates are entailed by self's predicates
-    fn leq(&self, other: &Self) -> bool {
-        // L1: Cardinality containment
-        if !crate::algebra::PartialOrder::leq(&self.cardinality, &other.cardinality) {
-            return false;
-        }
-        // L2: Base type coercibility
-        match (&self.base_type, &other.base_type) {
-            (Some(from), Some(to)) => {
-                if !base_type_upcasts_to(from, to) {
-                    return false;
-                }
-            }
-            (Some(_), None) => {}            // known ≤ unknown (wildcard)
-            (None, Some(_)) => return false, // unknown cannot prove ≤ known
-            (None, None) => {}
-        }
-        // L3: Predicate entailment — every target predicate must be covered
-        for tp in &other.predicates {
-            if !self.predicates.iter().any(|sp| sp.entails(tp)) {
-                return false;
-            }
-        }
-        true
-    }
-}
-
-impl crate::algebra::JoinSemilattice for TypeContract {
-    /// Least upper bound (widening): union of value spaces.
-    /// - Cardinality: join (union of intervals)
-    /// - Base type: common supertype
-    /// - Predicates: intersection (only predicates entailed by both)
-    fn join(self, other: Self) -> Self {
-        use crate::algebra::JoinSemilattice as JS;
-
-        let cardinality = JS::join(self.cardinality, other.cardinality);
-
-        let base_type = match (&self.base_type, &other.base_type) {
-            (Some(a), Some(b)) => Some(base_type_join(a, b)),
-            _ => None, // if either is unknown, join is unknown
-        };
-
-        // Intersection: keep predicates entailed by both sides
-        let predicates = self
-            .predicates
-            .iter()
-            .filter(|p| other.predicates.iter().any(|op| op.entails(p)))
-            .cloned()
-            .collect();
-
-        // Join of container properties
-        let is_container = self.is_container || other.is_container;
-        let wrapper_kind = match (&self.wrapper_kind, &other.wrapper_kind) {
-            (Some(a), Some(b)) if a == b => Some(a.clone()),
-            _ => None, // different wrappers → no wrapper in join
-        };
-
-        TypeContract {
-            cardinality,
-            base_type,
-            predicates,
-            is_container,
-            wrapper_kind,
-        }
-    }
-}
-
-impl crate::algebra::MeetSemilattice for TypeContract {
-    /// Greatest lower bound (narrowing): intersection of value spaces.
-    /// - Cardinality: meet (intersection of intervals)
-    /// - Base type: common subtype
-    /// - Predicates: union (all predicates from both)
-    fn meet(self, other: Self) -> Option<Self> {
-        use crate::algebra::MeetSemilattice as MS;
-
-        let cardinality = MS::meet(self.cardinality, other.cardinality)?;
-
-        let base_type = match (&self.base_type, &other.base_type) {
-            (Some(a), Some(b)) => {
-                base_type_meet(a, b)?; // None → incomparable → no meet
-                Some(base_type_meet(a, b).unwrap())
-            }
-            (Some(a), None) => Some(a.clone()),
-            (None, Some(b)) => Some(b.clone()),
-            (None, None) => None,
-        };
-
-        // Union: collect all predicates (deduplicated)
-        let mut predicates = self.predicates.clone();
-        for p in &other.predicates {
-            if !predicates.contains(p) {
-                predicates.push(p.clone());
-            }
-        }
-
-        let is_container = self.is_container && other.is_container;
-        let wrapper_kind = match (&self.wrapper_kind, &other.wrapper_kind) {
-            (Some(a), Some(b)) if a == b => Some(a.clone()),
-            (Some(_), Some(_)) => return None, // incompatible wrappers
-            (Some(a), None) => Some(a.clone()),
-            (None, Some(b)) => Some(b.clone()),
-            (None, None) => None,
-        };
-
-        Some(TypeContract {
-            cardinality,
-            base_type,
-            predicates,
-            is_container,
-            wrapper_kind,
-        })
-    }
-}
-
-impl crate::algebra::Lattice for TypeContract {}
 
 // ============================================================================
 // M21: Structural primitives for codegen — CodegenTypeShape + CodegenPlatformRepr
@@ -2114,10 +1792,8 @@ pub enum Platform {
 ///
 /// # Naming
 ///
-/// Prefixed `Codegen` to distinguish from [`crate::type_op::PlatformRepr`],
-/// which describes machine-level properties (bit width, signedness, float).
-/// `CodegenPlatformRepr` describes the language-level name and shape;
-/// `PlatformRepr` describes the hardware-level contract.
+/// Describes the language-level platform representation for codegen.
+/// Backends use this to decide which native primitive type to emit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodegenPlatformRepr {
     /// The target platform.
@@ -2179,17 +1855,6 @@ mod tests {
     }
 
     #[test]
-    fn test_is_container() {
-        let string_type = type_lib::string();
-        let optional_type = type_lib::optional(type_lib::string());
-        let list_type = type_lib::list(type_lib::string());
-
-        assert!(!is_container(&string_type));
-        assert!(is_container(&optional_type));
-        assert!(is_container(&list_type));
-    }
-
-    #[test]
     fn test_wrapper_kind() {
         let string_type = type_lib::string();
         let optional_type = type_lib::optional(type_lib::string());
@@ -2203,48 +1868,6 @@ mod tests {
             wrapper_kind(&non_empty_type),
             Some(WrapperKind::NonEmptyList)
         );
-    }
-
-    #[test]
-    fn test_type_contract() {
-        let url_type = type_lib::url();
-        let contract = TypeContract::from_type_dag(&url_type);
-
-        assert_eq!(contract.cardinality, Cardinality::ONE);
-        assert_eq!(contract.base_type, Some("String".to_string()));
-        assert!(!contract.predicates.is_empty());
-        assert!(!contract.is_container);
-        assert_eq!(contract.wrapper_kind, None);
-    }
-
-    #[test]
-    fn test_contract_coercion() {
-        let url_type = type_lib::url();
-        let string_type = type_lib::string();
-        let int_type = type_lib::int();
-        let json_type = type_lib::json();
-
-        let url_contract = TypeContract::from_type_dag(&url_type);
-        let string_contract = TypeContract::from_type_dag(&string_type);
-        let int_contract = TypeContract::from_type_dag(&int_type);
-        let json_contract = TypeContract::from_type_dag(&json_type);
-
-        assert!(url_contract.can_safely_coerce_to(&string_contract).is_ok());
-        assert!(!string_contract.can_safely_coerce_to(&url_contract).is_ok());
-        assert!(int_contract.can_safely_coerce_to(&json_contract).is_ok());
-    }
-
-    #[test]
-    fn test_type_contract_container_inner_predicates() {
-        let url_list = type_lib::list(type_lib::url());
-        let contract = TypeContract::from_type_dag(&url_list);
-
-        assert_eq!(contract.cardinality, Cardinality::ZERO_OR_MORE);
-        assert_eq!(contract.base_type, Some("String".to_string()));
-        assert!(contract
-            .predicates
-            .iter()
-            .any(|p| matches!(p, Predicate::All(_))));
     }
 
     // --- Witness generation tests ---
@@ -2516,112 +2139,6 @@ mod tests {
 
         // All witnesses for a string type should be strings
         assert!(w.iter().all(|bw| matches!(&bw.value, Value::Str(_))));
-    }
-
-    // --- TypeContract lattice tests ---
-
-    #[test]
-    fn test_type_contract_partial_order() {
-        use crate::algebra::PartialOrder;
-
-        let url_contract = TypeContract::from_type_dag(&type_lib::url());
-        let string_contract = TypeContract::from_type_dag(&type_lib::string());
-        let int_contract = TypeContract::from_type_dag(&type_lib::int());
-
-        // URL ≤ String (url is a refined string)
-        assert!(url_contract.leq(&string_contract));
-        // String ≰ URL (string doesn't satisfy url predicates)
-        assert!(!string_contract.leq(&url_contract));
-        // Int ≰ String (different base types)
-        assert!(!int_contract.leq(&string_contract));
-        // Reflexive
-        assert!(string_contract.leq(&string_contract));
-    }
-
-    #[test]
-    fn test_type_contract_partial_order_containers() {
-        use crate::algebra::PartialOrder;
-
-        let list_str = TypeContract::from_type_dag(&type_lib::list(type_lib::string()));
-        let opt_str = TypeContract::from_type_dag(&type_lib::optional(type_lib::string()));
-
-        // list [0,∞) ≤ itself
-        assert!(list_str.leq(&list_str));
-        // optional [0,1] ≤ list [0,∞)
-        assert!(opt_str.leq(&list_str));
-        // list [0,∞) ≰ optional [0,1]
-        assert!(!list_str.leq(&opt_str));
-    }
-
-    #[test]
-    fn test_type_contract_join() {
-        use crate::algebra::JoinSemilattice;
-
-        let url_contract = TypeContract::from_type_dag(&type_lib::url());
-        let string_contract = TypeContract::from_type_dag(&type_lib::string());
-
-        // Join(URL, String) should be String-like (widened)
-        let joined = JoinSemilattice::join(url_contract.clone(), string_contract.clone());
-        assert_eq!(joined.base_type, Some("String".to_string()));
-        assert_eq!(joined.cardinality, Cardinality::ONE);
-        // String has no predicates, so intersection with URL predicates = empty
-        assert!(joined.predicates.is_empty());
-    }
-
-    #[test]
-    fn test_type_contract_join_different_base() {
-        use crate::algebra::JoinSemilattice;
-
-        let string_contract = TypeContract::from_type_dag(&type_lib::string());
-        let int_contract = TypeContract::from_type_dag(&type_lib::int());
-
-        // Join(String, Int) = Json (top of base type lattice)
-        let joined = JoinSemilattice::join(string_contract, int_contract);
-        assert_eq!(joined.base_type, Some("Json".to_string()));
-    }
-
-    #[test]
-    fn test_type_contract_meet() {
-        use crate::algebra::MeetSemilattice;
-
-        let url_contract = TypeContract::from_type_dag(&type_lib::url());
-        let string_contract = TypeContract::from_type_dag(&type_lib::string());
-
-        // Meet(URL, String) should be URL-like (narrowed)
-        let met = MeetSemilattice::meet(url_contract.clone(), string_contract);
-        assert!(met.is_some());
-        let met = met.unwrap();
-        assert_eq!(met.base_type, Some("String".to_string()));
-        // Union of predicates — should have URL's predicates
-        assert!(!met.predicates.is_empty());
-    }
-
-    #[test]
-    fn test_type_contract_meet_incompatible() {
-        use crate::algebra::MeetSemilattice;
-
-        let string_contract = TypeContract::from_type_dag(&type_lib::string());
-        let int_contract = TypeContract::from_type_dag(&type_lib::int());
-
-        // Meet(String, Int) = None (incomparable base types)
-        let met = MeetSemilattice::meet(string_contract, int_contract);
-        assert!(met.is_none());
-    }
-
-    #[test]
-    fn test_type_contract_lattice_absorption() {
-        use crate::algebra::{JoinSemilattice, MeetSemilattice, PartialOrder};
-
-        let url_contract = TypeContract::from_type_dag(&type_lib::url());
-        let string_contract = TypeContract::from_type_dag(&type_lib::string());
-
-        // a.join(a.meet(b)) == a (when meet exists)
-        if let Some(met) = MeetSemilattice::meet(url_contract.clone(), string_contract.clone()) {
-            let absorbed = JoinSemilattice::join(url_contract.clone(), met);
-            // The absorbed result should be equivalent to url_contract
-            assert!(absorbed.leq(&url_contract));
-            assert!(url_contract.leq(&absorbed));
-        }
     }
 
     // ============ M12: ShapeContract tests ============

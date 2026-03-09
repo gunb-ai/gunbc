@@ -19,13 +19,13 @@
 //! let url_type = registry.get("Url").unwrap();
 //! ```
 
-use crate::contract::{self, TypeContract};
+use crate::contract;
 use crate::dag::Dag;
 use crate::type_lib;
-use crate::type_op::{BaseType, Coercion, Predicate, TypeOp, WrapperKind};
+use crate::type_op::{Predicate, TypeOp, WrapperKind};
 use crate::types::{Cardinality, TypeId};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -239,31 +239,6 @@ fn parse_type_expr(raw: &str) -> Result<TypeExpr, TypeExprError> {
 pub struct TypeRegistry {
     /// Map from type name to type DAG.
     types: HashMap<TypeId, Dag<TypeOp>>,
-    /// Explicit coercion edges keyed by source type.
-    coercion_edges: HashMap<TypeId, Vec<CoercionEdge>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct CoercionEdge {
-    to: TypeId,
-    transform: TypeOp,
-}
-
-/// Suggested explicit transformation strategy for an unsafe coercion.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CoercionStrategy {
-    /// Run the target type's validation/transform DAG explicitly.
-    ValidateTo(TypeId),
-}
-
-impl fmt::Display for CoercionStrategy {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            CoercionStrategy::ValidateTo(target) => {
-                write!(f, "validate to '{}'", target.0)
-            }
-        }
-    }
 }
 
 impl TypeRegistry {
@@ -271,27 +246,66 @@ impl TypeRegistry {
     pub fn new() -> Self {
         Self {
             types: HashMap::new(),
-            coercion_edges: HashMap::new(),
         }
     }
 
-    /// Create a type registry with common primitive types pre-registered.
+    /// Create a type registry with kernel type placeholders pre-registered.
+    ///
+    /// Registers Identity DAG placeholders for all primitive type names.
+    /// These are sufficient for tests and contexts that don't need full
+    /// structural definitions from the DSL.
     pub fn with_primitives() -> Self {
         let mut registry = Self::new();
-        registry.register_primitives();
+        registry.register_kernel_types();
         registry
     }
 
-    /// Register primitive types (String, Bool, Int, Float, Bytes, Unit, Json, Secret).
-    pub fn register_primitives(&mut self) {
-        self.register("String", type_lib::string());
-        self.register("Bool", type_lib::bool());
-        self.register("Int", type_lib::int());
-        self.register("Float", type_lib::float());
-        self.register("Bytes", type_lib::bytes());
+    /// Register the minimal kernel types needed to bootstrap DSL typecheck.
+    ///
+    /// Kernel types are Identity DAG placeholders that the compiler needs
+    /// before any `.dag` files are processed. The DSL files reference these
+    /// names in type positions (field types, alias bases, refinement targets).
+    /// After typecheck, `merge_dsl_types()` overwrites the placeholders with
+    /// structural definitions from the compiled `.dag` files.
+    pub fn register_kernel_types(&mut self) {
         self.register("Unit", type_lib::unit());
         self.register("Json", type_lib::json());
-        self.register("Secret", type_lib::secret());
+        self.register("Any", type_lib::identity("Any"));
+        self.register("Record", type_lib::identity("Record"));
+
+        // Structural kernel types — these serve as bootstrap definitions that
+        // the DSL merge can override with richer structural DAGs. Bool and
+        // Secret are defined here because no DSL file defines them.
+        self.register(
+            "Bool",
+            type_lib::coproduct_resolved(
+                "Bool",
+                vec![("True", type_lib::unit()), ("False", type_lib::unit())],
+            ),
+        );
+        self.register("Bytes", type_lib::list(type_lib::identity("Byte")));
+        self.register(
+            "Secret",
+            type_lib::branded("Secret", type_lib::identity("String")),
+        );
+
+        // String, Int, Float are identity placeholders here — the DSL files
+        // (string_type.dag, integer.dag, float.dag) provide structural
+        // definitions that override these via merge_dsl_types().
+        for name in ["String", "Int", "Float"] {
+            self.register(name, type_lib::identity(name));
+        }
+    }
+
+    /// Merge types from a DSL typecheck pass into this registry.
+    ///
+    /// Types resolved from `.dag` files are merged in, overriding any
+    /// matching kernel/primitive registrations. This enables the two-phase
+    /// bootstrap: kernel types first, then DSL-defined structural types.
+    pub fn merge_dsl_types(&mut self, other: &TypeRegistry) {
+        for (type_id, type_dag) in &other.types {
+            self.types.insert(type_id.clone(), type_dag.clone());
+        }
     }
 
     /// Register common refined/core types used across the repo.
@@ -334,172 +348,139 @@ impl TypeRegistry {
         self.register("BinaryFilePath", type_lib::binary_file_path());
 
         // ContentEncoding variants as a coproduct type.
-        self.register(
+        self.register_coproduct(
             "ContentEncoding",
-            type_lib::coproduct(
-                "ContentEncoding",
-                vec![
-                    ("Unknown", "String"),
-                    ("Text", "String"),
-                    ("UTF8", "String"),
-                    ("ASCII", "String"),
-                    ("Latin1", "String"),
-                    ("Binary", "Bytes"),
-                ],
-            ),
+            vec![
+                ("Unknown", "Unit"),
+                ("Text", "Unit"),
+                ("UTF8", "Unit"),
+                ("ASCII", "Unit"),
+                ("Latin1", "Unit"),
+                ("Binary", "Unit"),
+            ],
         );
-        self.register(
+        self.register_coproduct(
             "WarningPolicy",
-            type_lib::coproduct(
-                "WarningPolicy",
-                vec![("DenyAll", "String"), ("Default", "String")],
-            ),
+            vec![("DenyAll", "Unit"), ("Default", "Unit")],
         );
-        self.register(
+        self.register_coproduct(
             "CloudRuntime",
-            type_lib::coproduct(
-                "CloudRuntime",
-                vec![
-                    ("GitHubActions", "String"),
-                    ("Metadata", "String"),
-                    ("LocalDev", "String"),
-                ],
-            ),
+            vec![
+                ("GitHubActions", "Unit"),
+                ("Metadata", "Unit"),
+                ("LocalDev", "Unit"),
+            ],
         );
-        self.register(
+        self.register_coproduct(
             "AuthScheme",
-            type_lib::coproduct(
-                "AuthScheme",
-                vec![
-                    ("Bearer", "String"),
-                    ("Header", "String"),
-                    ("Basic", "String"),
-                ],
-            ),
+            vec![
+                ("Bearer", "Unit"),
+                ("Header", "Unit"),
+                ("Basic", "Unit"),
+            ],
         );
-        self.register(
+        self.register_coproduct(
             "FermiDepth",
-            type_lib::coproduct(
-                "FermiDepth",
-                vec![
-                    ("Xs", "String"),
-                    ("S", "String"),
-                    ("M", "String"),
-                    ("L", "String"),
-                    ("Xl", "String"),
-                ],
-            ),
+            vec![
+                ("Xs", "Unit"),
+                ("S", "Unit"),
+                ("M", "Unit"),
+                ("L", "Unit"),
+                ("Xl", "Unit"),
+            ],
         );
-        self.register(
+        self.register_coproduct(
             "TransportClass",
-            type_lib::coproduct(
-                "TransportClass",
-                vec![
-                    ("LocalDirect", "String"),
-                    ("ShellLocal", "String"),
-                    ("FileBoundary", "String"),
-                    ("RestNetwork", "String"),
-                    ("InterfaceStub", "String"),
-                    ("Unknown", "String"),
-                ],
-            ),
+            vec![
+                ("LocalDirect", "Unit"),
+                ("ShellLocal", "Unit"),
+                ("FileBoundary", "Unit"),
+                ("RestNetwork", "Unit"),
+                ("InterfaceStub", "Unit"),
+                ("Unknown", "Unit"),
+            ],
         );
-        self.register(
+        self.register_coproduct(
             "TestClass",
-            type_lib::coproduct(
-                "TestClass",
-                vec![
-                    ("Unit", "String"),
-                    ("Hermetic", "String"),
-                    ("Integration", "String"),
-                ],
-            ),
+            vec![
+                ("Unit", "Unit"),
+                ("Hermetic", "Unit"),
+                ("Integration", "Unit"),
+            ],
         );
-        self.register(
+        self.register_coproduct(
             "DisplayWidth",
-            type_lib::coproduct(
-                "DisplayWidth",
-                vec![
-                    ("ZeroWidth", "String"),
-                    ("Narrow", "String"),
-                    ("Wide", "String"),
-                ],
-            ),
+            vec![
+                ("ZeroWidth", "Unit"),
+                ("Narrow", "Unit"),
+                ("Wide", "Unit"),
+            ],
         );
-        self.register(
+        self.register_coproduct(
             "SemanticColor",
-            type_lib::coproduct(
-                "SemanticColor",
-                vec![
-                    ("Default", "String"),
-                    ("Success", "String"),
-                    ("Warning", "String"),
-                    ("Error", "String"),
-                    ("Info", "String"),
-                    ("Dim", "String"),
-                    ("Active", "String"),
-                    ("Accent", "String"),
-                ],
-            ),
+            vec![
+                ("Default", "Unit"),
+                ("Success", "Unit"),
+                ("Warning", "Unit"),
+                ("Error", "Unit"),
+                ("Info", "Unit"),
+                ("Dim", "Unit"),
+                ("Active", "Unit"),
+                ("Accent", "Unit"),
+            ],
         );
-        self.register(
+        self.register_coproduct(
             "Tier",
-            type_lib::coproduct(
-                "Tier",
-                vec![
-                    ("Emoji", "String"),
-                    ("Unicode", "String"),
-                    ("Ascii", "String"),
-                ],
-            ),
+            vec![
+                ("Emoji", "Unit"),
+                ("Unicode", "Unit"),
+                ("Ascii", "Unit"),
+            ],
         );
-        self.register(
+        self.register_coproduct(
             "SymbolId",
-            type_lib::coproduct(
-                "SymbolId",
-                vec![
-                    ("NodePending", "String"),
-                    ("NodeRunning", "String"),
-                    ("NodeCompleted", "String"),
-                    ("NodeFailed", "String"),
-                    ("NodeSkipped", "String"),
-                    ("NodeIntercepted", "String"),
-                    ("EdgeIdle", "String"),
-                    ("EdgeFlowing", "String"),
-                    ("EdgeDone", "String"),
-                    ("EdgeDead", "String"),
-                    ("DagNotStarted", "String"),
-                    ("DagRunning", "String"),
-                    ("DagCompleted", "String"),
-                    ("DagFailed", "String"),
-                    ("BoundaryMarker", "String"),
-                    ("Spinner0", "String"),
-                    ("Spinner1", "String"),
-                    ("Spinner2", "String"),
-                    ("Spinner3", "String"),
-                    ("Spinner4", "String"),
-                    ("Spinner5", "String"),
-                    ("Spinner6", "String"),
-                    ("Spinner7", "String"),
-                    ("Spinner8", "String"),
-                    ("Spinner9", "String"),
-                    ("Success", "String"),
-                    ("Failure", "String"),
-                    ("Warning", "String"),
-                    ("Info", "String"),
-                    ("DataList", "String"),
-                    ("DataMap", "String"),
-                    ("DataSecret", "String"),
-                    ("DataUrl", "String"),
-                    ("DataTimer", "String"),
-                    ("ConnectorHorizontal", "String"),
-                    ("ConnectorVertical", "String"),
-                    ("ConnectorTeeDown", "String"),
-                    ("ConnectorTeeUp", "String"),
-                    ("ConnectorCornerBottomLeft", "String"),
-                    ("ConnectorCornerTopLeft", "String"),
-                ],
-            ),
+            vec![
+                ("NodePending", "Unit"),
+                ("NodeRunning", "Unit"),
+                ("NodeCompleted", "Unit"),
+                ("NodeFailed", "Unit"),
+                ("NodeSkipped", "Unit"),
+                ("NodeIntercepted", "Unit"),
+                ("EdgeIdle", "Unit"),
+                ("EdgeFlowing", "Unit"),
+                ("EdgeDone", "Unit"),
+                ("EdgeDead", "Unit"),
+                ("DagNotStarted", "Unit"),
+                ("DagRunning", "Unit"),
+                ("DagCompleted", "Unit"),
+                ("DagFailed", "Unit"),
+                ("BoundaryMarker", "Unit"),
+                ("Spinner0", "Unit"),
+                ("Spinner1", "Unit"),
+                ("Spinner2", "Unit"),
+                ("Spinner3", "Unit"),
+                ("Spinner4", "Unit"),
+                ("Spinner5", "Unit"),
+                ("Spinner6", "Unit"),
+                ("Spinner7", "Unit"),
+                ("Spinner8", "Unit"),
+                ("Spinner9", "Unit"),
+                ("Success", "Unit"),
+                ("Failure", "Unit"),
+                ("Warning", "Unit"),
+                ("Info", "Unit"),
+                ("DataList", "Unit"),
+                ("DataMap", "Unit"),
+                ("DataSecret", "Unit"),
+                ("DataUrl", "Unit"),
+                ("DataTimer", "Unit"),
+                ("ConnectorHorizontal", "Unit"),
+                ("ConnectorVertical", "Unit"),
+                ("ConnectorTeeDown", "Unit"),
+                ("ConnectorTeeUp", "Unit"),
+                ("ConnectorCornerBottomLeft", "Unit"),
+                ("ConnectorCornerTopLeft", "Unit"),
+            ],
         );
 
         // Domain types for transport/infrastructure.
@@ -507,28 +488,63 @@ impl TypeRegistry {
         self.register("TransportResponse", type_lib::identity("TransportResponse"));
         self.register("Credential", type_lib::identity("Credential"));
         self.register("FilesystemHandle", type_lib::identity("FilesystemHandle"));
-        self.register("NetworkHandle", type_lib::identity("NetworkHandle"));
-        self.register(
+        self.register("NetworkHandle", type_lib::unit());
+        self.register_product(
             "CliResult",
-            type_lib::product(
-                "CliResult",
-                vec![
-                    ("stdout", "String"),
-                    ("stderr", "String"),
-                    ("exit_code", "Int"),
-                ],
-            ),
+            vec![
+                ("stdout", "String"),
+                ("stderr", "String"),
+                ("exit_code", "Int"),
+            ],
         );
         self.register("ToolHandle", type_lib::identity("ToolHandle"));
-        self.register("Platform", type_lib::identity("Platform"));
-        self.register("Timestamp", type_lib::identity("Timestamp"));
+        self.register_coproduct(
+            "Platform",
+            vec![
+                ("Linux", "Unit"),
+                ("Macos", "Unit"),
+                ("Windows", "Unit"),
+            ],
+        );
+        self.register(
+            "Timestamp",
+            type_lib::refined("Int", vec![Predicate::NonEmpty]),
+        );
         self.register("Record", type_lib::identity("Record"));
 
-        // Transport response subtypes (json-backed).
-        self.register("FileResponse", type_lib::identity("FileResponse"));
-        self.register("ShellResponse", type_lib::identity("ShellResponse"));
-        self.register("RestResponse", type_lib::identity("RestResponse"));
-        self.register("HttpResponse", type_lib::identity("HttpResponse"));
+        // Transport response subtypes (structural products).
+        self.register_product(
+            "FileResponse",
+            vec![
+                ("path", "String"),
+                ("success", "Bool"),
+                ("content", "String"),
+            ],
+        );
+        self.register_product(
+            "ShellResponse",
+            vec![
+                ("exit_code", "Int"),
+                ("stdout", "String"),
+                ("stderr", "String"),
+            ],
+        );
+        self.register_product(
+            "RestResponse",
+            vec![
+                ("status", "Int"),
+                ("headers", "Json"),
+                ("body", "Json"),
+            ],
+        );
+        self.register_product(
+            "HttpResponse",
+            vec![
+                ("status", "Int"),
+                ("headers", "Json"),
+                ("body", "String"),
+            ],
+        );
 
         // GCP/OIDC identity types (string-backed refinements).
         self.register("OidcAudience", type_lib::non_empty_string());
@@ -559,11 +575,6 @@ impl TypeRegistry {
         self.register("UrlList", type_lib::url_list());
         self.register("FilePathList", type_lib::file_path_list());
         self.register("NonEmptyFilePathList", type_lib::non_empty_file_path_list());
-
-        // Coercion edges: TextFilePath → FilePath → String
-        self.register_coercion_edge("TextFilePath", "FilePath");
-        self.register_coercion_edge("BinaryFilePath", "FilePath");
-        self.register_coercion_edge("FilePath", "String");
     }
 
     /// Create a type registry with primitives + common refined/core types.
@@ -573,27 +584,126 @@ impl TypeRegistry {
         registry
     }
 
+    /// Create a type registry with all default types, ready for DSL merge.
+    ///
+    /// Registers kernel types and core types. After construction,
+    /// call [`merge_dsl_types`] to override with structural definitions from
+    /// compiled `.dag` files.
+    pub fn with_defaults() -> Self {
+        let mut registry = Self::new();
+        registry.register_kernel_types();
+        registry.register_core_types();
+        registry
+    }
+
     /// Register a type DAG with a name.
     pub fn register(&mut self, name: impl Into<TypeId>, type_dag: Dag<TypeOp>) {
         self.types.insert(name.into(), type_dag);
     }
 
-    /// Register an explicit coercion edge between named types.
+    /// Register a product type with field types resolved through the registry.
     ///
-    /// This records a `TypeOp::Transform(Coercion)` edge in the registry-level
-    /// coercion graph so discovery can find paths that are not implied by base
-    /// ancestry alone.
-    pub fn register_coercion_edge(&mut self, from: impl Into<TypeId>, to: impl Into<TypeId>) {
-        let from = from.into();
-        let to = to.into();
-        let edge = CoercionEdge {
-            to: to.clone(),
-            transform: TypeOp::Transform(Coercion::new(
-                BaseType::named(from.0.clone()),
-                BaseType::named(to.0.clone()),
-            )),
-        };
-        self.coercion_edges.entry(from).or_default().push(edge);
+    /// For each field, if the field's type name is already registered, the
+    /// resolved type DAG is embedded directly. Otherwise, falls back to an
+    /// identity wrapper. This enables structural recursion through record
+    /// boundaries.
+    pub fn register_product(&mut self, name: &str, fields: Vec<(&str, &str)>) {
+        let resolved: Vec<(&str, Dag<TypeOp>)> = fields
+            .into_iter()
+            .map(|(field_name, type_name)| {
+                let type_id = TypeId::from(type_name);
+                let dag = self
+                    .types
+                    .get(&type_id)
+                    .cloned()
+                    .unwrap_or_else(|| type_lib::identity(type_name));
+                (field_name, dag)
+            })
+            .collect();
+        self.register(name, type_lib::product_resolved(name, resolved));
+    }
+
+    /// Register a product type, returning unresolved field type names instead of
+    /// silently falling back to identity wrappers.
+    pub fn register_product_checked(
+        &mut self,
+        name: &str,
+        fields: Vec<(&str, &str)>,
+    ) -> Result<(), Vec<String>> {
+        let mut unresolved = Vec::new();
+        let resolved: Vec<(&str, Dag<TypeOp>)> = fields
+            .into_iter()
+            .map(|(field_name, type_name)| {
+                let type_id = TypeId::from(type_name);
+                let dag = self
+                    .types
+                    .get(&type_id)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        unresolved.push(format!("{name}.{field_name}: {type_name}"));
+                        type_lib::identity(type_name)
+                    });
+                (field_name, dag)
+            })
+            .collect();
+        self.register(name, type_lib::product_resolved(name, resolved));
+        if unresolved.is_empty() {
+            Ok(())
+        } else {
+            Err(unresolved)
+        }
+    }
+
+    /// Register a coproduct type with variant types resolved through the registry.
+    ///
+    /// For each variant, if the variant's type name is already registered, the
+    /// resolved type DAG is embedded directly. Otherwise, falls back to an
+    /// identity wrapper.
+    pub fn register_coproduct(&mut self, name: &str, variants: Vec<(&str, &str)>) {
+        let resolved: Vec<(&str, Dag<TypeOp>)> = variants
+            .into_iter()
+            .map(|(variant_name, type_name)| {
+                let type_id = TypeId::from(type_name);
+                let dag = self
+                    .types
+                    .get(&type_id)
+                    .cloned()
+                    .unwrap_or_else(|| type_lib::identity(type_name));
+                (variant_name, dag)
+            })
+            .collect();
+        self.register(name, type_lib::coproduct_resolved(name, resolved));
+    }
+
+    /// Register a coproduct type, returning unresolved variant type names instead of
+    /// silently falling back to identity wrappers.
+    pub fn register_coproduct_checked(
+        &mut self,
+        name: &str,
+        variants: Vec<(&str, &str)>,
+    ) -> Result<(), Vec<String>> {
+        let mut unresolved = Vec::new();
+        let resolved: Vec<(&str, Dag<TypeOp>)> = variants
+            .into_iter()
+            .map(|(variant_name, type_name)| {
+                let type_id = TypeId::from(type_name);
+                let dag = self
+                    .types
+                    .get(&type_id)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        unresolved.push(format!("{name}::{variant_name}: {type_name}"));
+                        type_lib::identity(type_name)
+                    });
+                (variant_name, dag)
+            })
+            .collect();
+        self.register(name, type_lib::coproduct_resolved(name, resolved));
+        if unresolved.is_empty() {
+            Ok(())
+        } else {
+            Err(unresolved)
+        }
     }
 
     /// Merge another registry into this one without overwriting existing types.
@@ -688,6 +798,31 @@ impl TypeRegistry {
         self.types.is_empty()
     }
 
+    /// Return all registered type names.
+    pub fn type_names(&self) -> Vec<&TypeId> {
+        self.types.keys().collect()
+    }
+
+    /// Audit identity types: returns TypeIds whose registered DAG is a pure
+    /// identity (single Identity node, no Validate/Product/Coproduct/Brand/Wrap).
+    ///
+    /// A pure identity DAG is a diagnostic signal — it means the type has no
+    /// structural definition and will be emitted as Opaque. The goal is to
+    /// ratchet this count downward over time.
+    pub fn audit_identity_types(&self) -> Vec<TypeId> {
+        use crate::node::NodeBody;
+        let mut identities = Vec::new();
+        for (type_id, dag) in &self.types {
+            let is_pure_identity = dag.nodes.len() == 1
+                && matches!(dag.nodes[0].body, NodeBody::Opaque(TypeOp::Identity));
+            if is_pure_identity {
+                identities.push(type_id.clone());
+            }
+        }
+        identities.sort_by(|a, b| a.0.cmp(&b.0));
+        identities
+    }
+
     /// Infer cardinality from a registered type or wrapper expression.
     ///
     /// Returns `None` if the type is not registered or does not encode cardinality.
@@ -699,19 +834,22 @@ impl TypeRegistry {
 
     /// Get the base type name from a registered type or wrapper expression.
     ///
+    /// Recurses through containers, brands, and SubDags to find the innermost
+    /// base type name.
+    ///
     /// Returns `None` if the type is not registered.
     pub fn base_type_name(&self, type_id: &TypeId) -> Option<String> {
-        self.resolve_type(type_id)
-            .and_then(|dag| TypeContract::from_type_dag(&dag).base_type)
+        let dag = self.resolve_type(type_id)?;
+        base_type_recursive(&dag)
     }
 
     /// Check if type A is compatible with type B.
     ///
-    /// Compatibility is determined by:
+    /// Compatibility is determined by structural DAG analysis:
     /// 1. Same type name (exact match)
     /// 2. Target is "Any" (accepts anything)
-    /// 3. Structural refinement: A's contract entails B's contract
-    /// 4. Coercion path: there exists a widening path from A to B in the registry
+    /// 3. Structural shape compatibility (DAG-derived, no nominal fallbacks)
+    /// 4. Predicate entailment: source predicates cover target predicates
     pub fn is_compatible(&self, from: &TypeId, to: &TypeId) -> bool {
         // Same type is always compatible.
         if from == to {
@@ -728,26 +866,96 @@ impl TypeRegistry {
             return false;
         }
 
-        // Look up both types; if not registered, fall back to name equality (handled above).
+        // Look up both types; if not registered, fall back to Json top.
         let (Some(from_dag), Some(to_dag)) = (self.resolve_type(from), self.resolve_type(to))
         else {
-            // If types aren't registered, check if there's a coercion path.
-            return self.coercion_path(from, to).is_some();
+            // Unregistered types: only compatible if target is Json (top type).
+            return to.0 == "Json";
         };
 
-        let from_contract = TypeContract::from_type_dag(&from_dag);
-        let to_contract = TypeContract::from_type_dag(&to_dag);
-
-        if from_contract
-            .can_safely_coerce_to_with(&to_contract, |from, to| self.base_type_upcasts_to(from, to))
-            .is_ok()
-        {
+        // Structural shape compatibility: walk the type DAGs directly.
+        let from_shape = crate::type_shape::type_shape(&from_dag);
+        let to_shape = crate::type_shape::type_shape(&to_dag);
+        if structural_shapes_compatible(&from_shape, &to_shape) {
             return true;
         }
 
-        // Fall back to coercion path check — branded/nominal types may have
-        // implicit predicate inheritance that the contract comparison misses.
-        self.coercion_path(from, to).is_some()
+        // Container wrapping: scalar → List/Optional/Set of compatible type.
+        // This enables fan-in edges (scalar output → list input).
+        // Uses element-level type name comparison (not structural_shapes_compatible)
+        // to handle Opaque types correctly.
+        if let crate::type_shape::TypeShape::Container(container) = &to_shape {
+            let inner = match container {
+                crate::type_shape::ContainerShape::List(inner)
+                | crate::type_shape::ContainerShape::Optional(inner)
+                | crate::type_shape::ContainerShape::Set(inner) => inner.as_ref(),
+                crate::type_shape::ContainerShape::Map(_, _) => return false,
+            };
+            // Same-name Opaque wrapping (e.g., String → List<String>)
+            if let (crate::type_shape::TypeShape::Opaque(a), crate::type_shape::TypeShape::Opaque(b)) = (&from_shape, inner) {
+                if a == b {
+                    return true;
+                }
+            }
+            if structural_shapes_compatible(&from_shape, inner) {
+                return true;
+            }
+        }
+
+        // Predicate entailment: check if source predicates cover target.
+        let from_preds = contract::predicates(&from_dag);
+        let to_preds = contract::predicates(&to_dag);
+        let from_base = contract::base_type(&from_dag);
+        let to_base = contract::base_type(&to_dag);
+
+        // Same base type (or target is Json top) + predicates entailed → compatible.
+        let base_ok = match (&from_base, &to_base) {
+            (Some(a), Some(b)) => {
+                a == b
+                    || b == "Json"
+                    // Refinement chain: from's base type is itself a refinement of to's base.
+                    // Guard against infinite recursion: only recurse if at least one base
+                    // differs from the original type names.
+                    || (!(a.as_str() == from.0.as_str() && b.as_str() == to.0.as_str())
+                        && self.is_compatible(&TypeId::from(a.as_str()), &TypeId::from(b.as_str())))
+            }
+            (None, None) => true,
+            _ => false,
+        };
+
+        // If both types are Brands with different names, they're incompatible
+        // regardless of base types or predicates. Brand enforces nominal distinctness.
+        let from_shape = crate::type_shape::type_shape(&from_dag);
+        let to_shape = crate::type_shape::type_shape(&to_dag);
+        if let (
+            crate::type_shape::TypeShape::Brand(fn_, _),
+            crate::type_shape::TypeShape::Brand(tn, _),
+        ) = (&from_shape, &to_shape)
+        {
+            if fn_ != tn {
+                return false;
+            }
+        }
+
+        if base_ok && to_preds.iter().all(|tp| from_preds.iter().any(|sp| sp.entails(tp))) {
+            return true;
+        }
+
+        false
+    }
+
+    /// Strict semantic carrier compatibility.
+    ///
+    /// Uses registry-based classification for both types. Structural types
+    /// are mutually compatible; non-structural carrier kinds must match exactly.
+    pub fn is_type_compatible(&self, from: &TypeId, to: &TypeId) -> bool {
+        use crate::types::SemanticCarrierKind as Kind;
+        let from_kind = self.semantic_carrier_kind(from);
+        let to_kind = self.semantic_carrier_kind(to);
+        match (from_kind, to_kind) {
+            (Kind::Structural, Kind::Structural) => true,
+            (lhs, rhs) => lhs == rhs,
+        }
     }
 
     /// Check structural + strict semantic-carrier compatibility.
@@ -757,122 +965,9 @@ impl TypeRegistry {
     /// - semantic carrier kinds must be compatible (no semantic→structural fallback)
     /// - unknown semantic carriers are rejected (fail-closed)
     pub fn is_compatible_strict_semantic(&self, from: &TypeId, to: &TypeId) -> bool {
-        self.is_compatible(from, to) && crate::types::semantic_carrier_compatible(from, to)
+        self.is_compatible(from, to) && self.is_type_compatible(from, to)
     }
 
-    /// Check whether `from` is a structural refinement of `to`.
-    ///
-    /// A refinement can safely coerce to its base type (widening).
-    fn is_refinement_of(&self, from: &TypeId, to: &TypeId) -> bool {
-        self.is_compatible(from, to)
-    }
-
-    /// Suggest an explicit coercion strategy when a safe upcast is not possible.
-    pub fn coercion_strategy(&self, from: &TypeId, to: &TypeId) -> Option<CoercionStrategy> {
-        if from == to {
-            return None;
-        }
-
-        if self.is_compatible(from, to) {
-            return None;
-        }
-
-        if self.is_refinement_of(to, from) {
-            return Some(CoercionStrategy::ValidateTo(to.clone()));
-        }
-
-        None
-    }
-
-    /// Discover a widening coercion path between two named types.
-    ///
-    /// Returns the shortest known upcast chain as type IDs, including source
-    /// and target, when `from` can safely widen into `to`.
-    pub fn coercion_path(&self, from: &TypeId, to: &TypeId) -> Option<Vec<TypeId>> {
-        let mut queue: VecDeque<Vec<TypeId>> = VecDeque::new();
-        let mut visited = std::collections::HashSet::new();
-        queue.push_back(vec![from.clone()]);
-
-        while let Some(path) = queue.pop_front() {
-            let current = path.last().cloned()?;
-            if current == *to {
-                return Some(path);
-            }
-            if !visited.insert(current.clone()) {
-                continue;
-            }
-
-            for next in self.coercion_neighbors(&current) {
-                if path.iter().any(|step| step == &next) {
-                    continue;
-                }
-                let mut next_path = path.clone();
-                next_path.push(next);
-                queue.push_back(next_path);
-            }
-        }
-
-        None
-    }
-
-    fn coercion_neighbors(&self, current: &TypeId) -> Vec<TypeId> {
-        let mut neighbors = Vec::new();
-        let mut has_structural_parent = false;
-
-        // Explicit registry edges via TypeOp::Transform(Coercion).
-        if let Some(edges) = self.coercion_edges.get(current) {
-            neighbors.extend(edges.iter().filter_map(|edge| match &edge.transform {
-                TypeOp::Transform(_) => Some(edge.to.clone()),
-                _ => None,
-            }));
-        }
-
-        // Structural ancestry from type DAGs / generic expressions.
-        if let Some(parent) = self.expression_parent_type_id(current) {
-            has_structural_parent = true;
-            neighbors.push(parent);
-        }
-
-        // Json is the widening top type once no stronger ancestry edge remains.
-        if current.0 != "Json" && !has_structural_parent {
-            neighbors.push(TypeId::from("Json"));
-        }
-
-        neighbors
-    }
-
-    fn expression_parent_type_id(&self, type_id: &TypeId) -> Option<TypeId> {
-        let expr = parse_type_expr(&type_id.0).ok()?;
-        let parent_expr = self.expression_parent_expr(&expr)?;
-        Some(TypeId(render_type_expr(&parent_expr)))
-    }
-
-    fn expression_parent_expr(&self, expr: &TypeExpr) -> Option<TypeExpr> {
-        match expr {
-            TypeExpr::Named(name) => self.named_parent(name).map(TypeExpr::Named),
-            TypeExpr::Wrapper(kind, inner) => self
-                .expression_parent_expr(inner)
-                .map(|parent| TypeExpr::Wrapper(kind.clone(), Box::new(parent))),
-            TypeExpr::Map(key, value) => self
-                .expression_parent_expr(value)
-                .map(|parent| TypeExpr::Map(key.clone(), Box::new(parent))),
-        }
-    }
-
-    fn named_parent(&self, name: &str) -> Option<String> {
-        let dag = self.get_by_name(name)?;
-        let parent = crate::contract::base_type(dag)?;
-        if parent == name {
-            return None;
-        }
-        self.get_by_name(&parent)?;
-        Some(parent)
-    }
-
-    pub(crate) fn base_type_upcasts_to(&self, from: &str, to: &str) -> bool {
-        self.coercion_path(&TypeId::from(from), &TypeId::from(to))
-            .is_some()
-    }
 
     /// Determine the runtime `ValueBacking` for a type using registry knowledge.
     ///
@@ -918,7 +1013,7 @@ impl TypeRegistry {
             _ => {}
         }
 
-        // Registry-driven: find the nearest primitive ancestor via coercion path.
+        // Registry-driven: find the nearest primitive ancestor via structural compatibility.
         static PRIMITIVE_BACKINGS: &[(&str, ValueBacking)] = &[
             ("String", ValueBacking::String),
             ("Int", ValueBacking::Int),
@@ -928,15 +1023,15 @@ impl TypeRegistry {
             ("Secret", ValueBacking::Secret),
         ];
         for &(prim, backing) in PRIMITIVE_BACKINGS {
-            if self.coercion_path(type_id, &TypeId::from(prim)).is_some() {
+            if self.is_compatible(type_id, &TypeId::from(prim)) {
                 return backing;
             }
         }
 
         // Identity types (no coercion path to primitives): use semantic carrier
         // classification to determine backing.
-        use crate::types::{semantic_carrier_kind_for_type_id, SemanticCarrierKind};
-        match semantic_carrier_kind_for_type_id(raw) {
+        use crate::types::SemanticCarrierKind;
+        match self.semantic_carrier_kind(type_id) {
             SemanticCarrierKind::Structural => {} // fall through to suffix check
             SemanticCarrierKind::Platform => return ValueBacking::String,
             SemanticCarrierKind::Timestamp => return ValueBacking::Int,
@@ -961,6 +1056,178 @@ impl TypeRegistry {
         // Fallback: Json accepts anything.
         eprintln!("warning: unknown type '{}' defaulting to ValueBacking::Json", type_id.0);
         ValueBacking::Json
+    }
+
+    /// Classify a type's semantic carrier kind using registry knowledge.
+    ///
+    /// Checks the type name first (handles branded types like Secret that
+    /// structurally wrap String but carry semantic meaning), then falls back
+    /// to base type extraction from the DAG.
+    pub fn semantic_carrier_kind(
+        &self,
+        type_id: &TypeId,
+    ) -> crate::types::SemanticCarrierKind {
+        // Check the outer type name first — branded types like Secret
+        // have semantic meaning that shouldn't be lost by resolving to
+        // their structural base (String).
+        let outer_kind = crate::types::semantic_carrier_kind_for_type_name(&type_id.0);
+        if outer_kind != crate::types::SemanticCarrierKind::UnknownSemantic {
+            return outer_kind;
+        }
+
+        if let Some(dag) = self.resolve_type(type_id) {
+            if let Some(base) = contract::base_type(&dag) {
+                let kind = crate::types::semantic_carrier_kind_for_type_name(&base);
+                if kind != crate::types::SemanticCarrierKind::UnknownSemantic {
+                    return kind;
+                }
+            }
+            return crate::types::SemanticCarrierKind::Structural;
+        }
+        outer_kind
+    }
+
+    /// Classify a type's semantic carrier class using registry knowledge.
+    pub fn semantic_carrier_class(
+        &self,
+        type_id: &TypeId,
+    ) -> crate::types::SemanticCarrierClass {
+        match self.semantic_carrier_kind(type_id) {
+            crate::types::SemanticCarrierKind::Structural => {
+                crate::types::SemanticCarrierClass::StructuralGeneratable
+            }
+            _ => crate::types::SemanticCarrierClass::SemanticCarrier,
+        }
+    }
+
+    /// Classify placeholder seed policy using registry knowledge.
+    pub fn seed_placeholder_policy(
+        &self,
+        type_id: &TypeId,
+    ) -> crate::types::SeedPlaceholderPolicy {
+        match self.semantic_carrier_class(type_id) {
+            crate::types::SemanticCarrierClass::StructuralGeneratable => {
+                crate::types::SeedPlaceholderPolicy::Generated
+            }
+            crate::types::SemanticCarrierClass::SemanticCarrier => {
+                crate::types::SeedPlaceholderPolicy::ExplicitSeedRequired
+            }
+        }
+    }
+}
+
+/// Recursively extract the innermost base type from a type DAG.
+fn base_type_recursive(dag: &Dag<TypeOp>) -> Option<String> {
+    if let Some(base) = contract::base_type(dag) {
+        return Some(base);
+    }
+    for node in &dag.nodes {
+        if let crate::node::NodeBody::SubDag(inner, _) = &node.body {
+            if let Some(base) = base_type_recursive(inner) {
+                return Some(base);
+            }
+        }
+    }
+    None
+}
+
+/// Structural shape compatibility check.
+///
+/// Two type shapes are compatible if the source shape's values can safely
+/// inhabit the target shape. This is the structural (DAG-derived) alternative
+/// to nominal type equality.
+///
+/// Rules:
+/// - Refinement: if both are Platform, source must have at least the target's
+///   constraints (width, signedness, domain)
+/// - Container: covariant element compatibility (List<A> → List<B> if A → B)
+/// - Coproduct: variant subset (A|B → A|B|C)
+/// - Brand: strip for structural comparison
+/// - Opaque: same name only
+fn structural_shapes_compatible(
+    from: &crate::type_shape::TypeShape,
+    to: &crate::type_shape::TypeShape,
+) -> bool {
+    use crate::type_shape::{ContainerShape, TypeShape};
+
+    match (from, to) {
+        // Opaque types: defer to predicate entailment check in is_compatible.
+        // Same-name Opaque types may have different predicates (e.g., String vs Url).
+        (TypeShape::Opaque(_), _) | (_, TypeShape::Opaque(_)) => false,
+
+        // Identical structural shapes.
+        (a, b) if a == b => true,
+
+        // Platform: source must satisfy target's constraints.
+        (TypeShape::Platform(from_props), TypeShape::Platform(to_props)) => {
+            // If target requires specific width, source must match.
+            if let Some(tw) = to_props.width {
+                if from_props.width != Some(tw) {
+                    return false;
+                }
+            }
+            // If target requires specific signedness, source must match.
+            if let Some(ts) = to_props.signed {
+                if from_props.signed != Some(ts) {
+                    return false;
+                }
+            }
+            // If target requires specific domain, source must match.
+            if let Some(td) = &to_props.domain {
+                if from_props.domain.as_ref() != Some(td) {
+                    return false;
+                }
+            }
+            true
+        }
+
+        // Container covariance: List<A> → List<B> if A → B.
+        (TypeShape::Container(from_c), TypeShape::Container(to_c)) => match (from_c, to_c) {
+            (ContainerShape::List(a), ContainerShape::List(b))
+            | (ContainerShape::Optional(a), ContainerShape::Optional(b))
+            | (ContainerShape::Set(a), ContainerShape::Set(b)) => {
+                structural_shapes_compatible(a, b)
+            }
+            (ContainerShape::Map(ak, av), ContainerShape::Map(bk, bv)) => {
+                structural_shapes_compatible(ak, bk)
+                    && structural_shapes_compatible(av, bv)
+            }
+            _ => false,
+        },
+
+        // Coproduct subset: A|B coerces to A|B|C.
+        (
+            TypeShape::Coproduct(_, from_variants),
+            TypeShape::Coproduct(_, to_variants),
+        ) => from_variants.iter().all(|(name, shape)| {
+            to_variants
+                .iter()
+                .any(|(tn, ts)| tn == name && structural_shapes_compatible(shape, ts))
+        }),
+
+        // Product: same fields, each field compatible.
+        (TypeShape::Product(_, from_fields), TypeShape::Product(_, to_fields)) => {
+            from_fields.len() == to_fields.len()
+                && from_fields
+                    .iter()
+                    .zip(to_fields.iter())
+                    .all(|((fn_, fs), (tn, ts))| {
+                        fn_ == tn && structural_shapes_compatible(fs, ts)
+                    })
+        }
+
+        // Brand: a branded source can coerce to its unwrapped structural
+        // target, but not vice versa (brands enforce nominal distinctness).
+        // Two brands with different names are incompatible.
+        (TypeShape::Brand(from_name, from_inner), TypeShape::Brand(to_name, to_inner)) => {
+            from_name == to_name && structural_shapes_compatible(from_inner, to_inner)
+        }
+        // Branded → non-branded: strip brand and compare.
+        (TypeShape::Brand(_, inner), other) => {
+            structural_shapes_compatible(inner, other)
+        }
+
+        _ => false,
     }
 }
 
@@ -1012,7 +1279,9 @@ mod tests {
         assert!(registry.contains(&TypeId::from("Unit")));
         assert!(registry.contains(&TypeId::from("Json")));
         assert!(registry.contains(&TypeId::from("Secret")));
-        assert_eq!(registry.len(), 8);
+        assert!(registry.contains(&TypeId::from("Any")));
+        assert!(registry.contains(&TypeId::from("Record")));
+        assert_eq!(registry.len(), 10);
     }
 
     #[test]
@@ -1082,298 +1351,6 @@ mod tests {
     }
 
     #[test]
-    fn test_coercion_strategy_for_refinement() {
-        let mut registry = TypeRegistry::with_primitives();
-        registry.register("Url", type_lib::url());
-
-        let strategy = registry.coercion_strategy(&TypeId::from("String"), &TypeId::from("Url"));
-        assert_eq!(
-            strategy,
-            Some(CoercionStrategy::ValidateTo(TypeId::from("Url")))
-        );
-
-        // Safe upcast returns no strategy.
-        let strategy = registry.coercion_strategy(&TypeId::from("Url"), &TypeId::from("String"));
-        assert!(strategy.is_none());
-    }
-
-    #[test]
-    fn test_coercion_path_finds_refinement_upcast_chain() {
-        let mut registry = TypeRegistry::with_primitives();
-        registry.register("Url", type_lib::url());
-        let path = registry
-            .coercion_path(&TypeId::from("Url"), &TypeId::from("String"))
-            .expect("Url should widen to String");
-        assert_eq!(path, vec![TypeId::from("Url"), TypeId::from("String")]);
-    }
-
-    #[test]
-    fn test_coercion_path_finds_json_top_widening() {
-        let registry = TypeRegistry::with_primitives();
-        let int_path = registry
-            .coercion_path(&TypeId::from("Int"), &TypeId::from("Json"))
-            .expect("Int should widen to Json");
-        assert_eq!(int_path, vec![TypeId::from("Int"), TypeId::from("Json")]);
-
-        let string_path = registry
-            .coercion_path(&TypeId::from("String"), &TypeId::from("Json"))
-            .expect("String should widen to Json");
-        assert_eq!(
-            string_path,
-            vec![TypeId::from("String"), TypeId::from("Json")]
-        );
-    }
-
-    #[test]
-    fn test_coercion_path_rejects_narrowing_chain() {
-        let mut registry = TypeRegistry::with_primitives();
-        registry.register("Url", type_lib::url());
-        assert!(
-            registry
-                .coercion_path(&TypeId::from("String"), &TypeId::from("Url"))
-                .is_none(),
-            "String -> Url is narrowing and must not be discovered as safe path"
-        );
-    }
-
-    #[test]
-    fn test_explicit_coercion_edge_registers_transform_and_is_discoverable() {
-        let mut registry = TypeRegistry::with_primitives();
-        registry.register_coercion_edge("String", "Url");
-
-        let path = registry
-            .coercion_path(&TypeId::from("String"), &TypeId::from("Url"))
-            .expect("explicit String->Url transform edge should be discoverable");
-        assert_eq!(path, vec![TypeId::from("String"), TypeId::from("Url")]);
-
-        let edges = registry
-            .coercion_edges
-            .get(&TypeId::from("String"))
-            .expect("coercion edge should be stored");
-        assert!(edges.iter().any(|edge| {
-            edge.to == TypeId::from("Url") && matches!(edge.transform, TypeOp::Transform(_))
-        }));
-    }
-
-    #[test]
-    fn test_coercion_path_supports_multi_step_widening_chain() {
-        let mut registry = TypeRegistry::with_primitives();
-        registry.register("Url", type_lib::url());
-        registry.register(
-            "NonEmptyUrl",
-            type_lib::refined("Url", vec![crate::type_op::Predicate::NonEmpty]),
-        );
-
-        let path = registry
-            .coercion_path(&TypeId::from("NonEmptyUrl"), &TypeId::from("Json"))
-            .expect("multi-step widening path should be discoverable");
-        assert_eq!(
-            path,
-            vec![
-                TypeId::from("NonEmptyUrl"),
-                TypeId::from("Url"),
-                TypeId::from("String"),
-                TypeId::from("Json")
-            ]
-        );
-    }
-
-    #[test]
-    fn test_coercion_path_supports_list_covariance() {
-        let mut registry = TypeRegistry::with_primitives();
-        registry.register("Url", type_lib::url());
-
-        let path = registry
-            .coercion_path(&TypeId::from("List<Url>"), &TypeId::from("List<String>"))
-            .expect("List<Url> should widen to List<String>");
-        assert_eq!(
-            path,
-            vec![TypeId::from("List<Url>"), TypeId::from("List<String>")]
-        );
-    }
-
-    #[test]
-    fn test_coercion_path_supports_map_value_covariance() {
-        let mut registry = TypeRegistry::with_primitives();
-        registry.register("Url", type_lib::url());
-
-        let path = registry
-            .coercion_path(
-                &TypeId::from("Map<String,Url>"),
-                &TypeId::from("Map<String,String>"),
-            )
-            .expect("Map<String, Url> should widen to Map<String, String>");
-        assert_eq!(
-            path,
-            vec![
-                TypeId::from("Map<String,Url>"),
-                TypeId::from("Map<String,String>")
-            ]
-        );
-    }
-
-    #[test]
-    fn test_coercion_path_optional_unwrap_requires_explicit_transform() {
-        let mut registry = TypeRegistry::with_primitives();
-        let optional_string = TypeId::from("Optional<String>");
-        let string = TypeId::from("String");
-
-        assert!(
-            registry.coercion_path(&optional_string, &string).is_none(),
-            "Optional<String> -> String is narrowing and must require explicit transform"
-        );
-
-        registry.register_coercion_edge("Optional<String>", "String");
-        let path = registry
-            .coercion_path(&optional_string, &string)
-            .expect("explicit optional unwrap transform should be discoverable");
-        assert_eq!(path, vec![optional_string, string]);
-    }
-
-    #[test]
-    fn test_coercion_path_cross_provider_secret_payloads_widen_to_string_only() {
-        let mut registry = TypeRegistry::with_primitives();
-        registry.register(
-            "GcpSecretPayload",
-            type_lib::refined(
-                "String",
-                vec![crate::type_op::Predicate::Matches("^gcp:.*$".to_string())],
-            ),
-        );
-        registry.register(
-            "AwsSecretValue",
-            type_lib::refined(
-                "String",
-                vec![crate::type_op::Predicate::Matches("^aws:.*$".to_string())],
-            ),
-        );
-
-        assert_eq!(
-            registry.coercion_path(&TypeId::from("GcpSecretPayload"), &TypeId::from("String")),
-            Some(vec![
-                TypeId::from("GcpSecretPayload"),
-                TypeId::from("String")
-            ])
-        );
-        assert_eq!(
-            registry.coercion_path(&TypeId::from("AwsSecretValue"), &TypeId::from("String")),
-            Some(vec![TypeId::from("AwsSecretValue"), TypeId::from("String")])
-        );
-        assert!(
-            registry
-                .coercion_path(
-                    &TypeId::from("GcpSecretPayload"),
-                    &TypeId::from("AwsSecretValue")
-                )
-                .is_none(),
-            "provider payload types should not coerce directly to each other"
-        );
-    }
-
-    #[test]
-    fn test_coercion_dag_walk_cross_provider_secret_payloads_are_isolated() {
-        let mut registry = TypeRegistry::with_primitives();
-        registry.register(
-            "GcpSecretPayload",
-            type_lib::refined(
-                "String",
-                vec![crate::type_op::Predicate::Matches("^gcp:.*$".to_string())],
-            ),
-        );
-        registry.register(
-            "AwsSecretValue",
-            type_lib::refined(
-                "String",
-                vec![crate::type_op::Predicate::Matches("^aws:.*$".to_string())],
-            ),
-        );
-
-        // DAG-walk widening paths should each terminate at String.
-        let gcp_walk = registry
-            .coercion_path(&TypeId::from("GcpSecretPayload"), &TypeId::from("String"))
-            .expect("gcp payload should widen to String");
-        assert_eq!(
-            gcp_walk,
-            vec![TypeId::from("GcpSecretPayload"), TypeId::from("String")]
-        );
-        let aws_walk = registry
-            .coercion_path(&TypeId::from("AwsSecretValue"), &TypeId::from("String"))
-            .expect("aws value should widen to String");
-        assert_eq!(
-            aws_walk,
-            vec![TypeId::from("AwsSecretValue"), TypeId::from("String")]
-        );
-
-        // Cross-provider coercion must remain impossible in both directions.
-        assert!(registry
-            .coercion_path(
-                &TypeId::from("GcpSecretPayload"),
-                &TypeId::from("AwsSecretValue")
-            )
-            .is_none());
-        assert!(registry
-            .coercion_path(
-                &TypeId::from("AwsSecretValue"),
-                &TypeId::from("GcpSecretPayload")
-            )
-            .is_none());
-    }
-
-    #[test]
-    fn test_coercion_path_cross_provider_tokens_widen_to_credential_base_only() {
-        let mut registry = TypeRegistry::with_primitives();
-        registry.register(
-            "Credential",
-            type_lib::refined("String", vec![crate::type_op::Predicate::NonEmpty]),
-        );
-        registry.register(
-            "GcpAccessToken",
-            type_lib::refined(
-                "Credential",
-                vec![crate::type_op::Predicate::Matches(
-                    "^ya29\\..+$".to_string(),
-                )],
-            ),
-        );
-        registry.register(
-            "AwsSessionToken",
-            type_lib::refined(
-                "Credential",
-                vec![crate::type_op::Predicate::Matches(
-                    "^ASIA[0-9A-Z]+$".to_string(),
-                )],
-            ),
-        );
-
-        assert_eq!(
-            registry.coercion_path(&TypeId::from("GcpAccessToken"), &TypeId::from("Credential")),
-            Some(vec![
-                TypeId::from("GcpAccessToken"),
-                TypeId::from("Credential")
-            ])
-        );
-        assert_eq!(
-            registry.coercion_path(
-                &TypeId::from("AwsSessionToken"),
-                &TypeId::from("Credential")
-            ),
-            Some(vec![
-                TypeId::from("AwsSessionToken"),
-                TypeId::from("Credential")
-            ])
-        );
-        assert!(
-            registry
-                .coercion_path(
-                    &TypeId::from("AwsSessionToken"),
-                    &TypeId::from("GcpAccessToken")
-                )
-                .is_none(),
-            "provider token types should not coerce directly to each other"
-        );
-    }
-
-    #[test]
     fn test_base_type_name() {
         let mut registry = TypeRegistry::with_primitives();
         registry.register("Url", type_lib::url());
@@ -1390,30 +1367,14 @@ mod tests {
     }
 
     #[test]
-    fn test_text_file_path_coercion_chain() {
+    fn test_text_file_path_compatibility() {
         let registry = TypeRegistry::with_core_types();
 
-        // TextFilePath → FilePath is safe (widening via coercion edge)
-        assert!(registry.is_compatible(&TypeId::from("TextFilePath"), &TypeId::from("FilePath")));
+        // TextFilePath → String is safe (refinement widening)
+        assert!(registry.is_compatible(&TypeId::from("TextFilePath"), &TypeId::from("String")));
 
         // FilePath → TextFilePath is NOT safe (narrowing)
         assert!(!registry.is_compatible(&TypeId::from("FilePath"), &TypeId::from("TextFilePath")));
-
-        // TextFilePath → String is safe (multi-step widening)
-        let path = registry
-            .coercion_path(&TypeId::from("TextFilePath"), &TypeId::from("String"))
-            .expect("TextFilePath should widen to String");
-        assert_eq!(
-            path,
-            vec![
-                TypeId::from("TextFilePath"),
-                TypeId::from("FilePath"),
-                TypeId::from("String"),
-            ]
-        );
-
-        // BinaryFilePath → FilePath is safe
-        assert!(registry.is_compatible(&TypeId::from("BinaryFilePath"), &TypeId::from("FilePath")));
 
         // BinaryFilePath → TextFilePath is NOT safe (different brands)
         assert!(!registry.is_compatible(
@@ -1704,5 +1665,152 @@ mod tests {
             r.value_backing(&TypeId::from("CompletelyUnknownType")),
             ValueBacking::Json
         );
+    }
+
+    #[test]
+    fn test_with_defaults_contains_kernel_and_primitives() {
+        let registry = TypeRegistry::with_defaults();
+        // Kernel types
+        assert!(registry.contains(&TypeId::from("Unit")));
+        assert!(registry.contains(&TypeId::from("Json")));
+        assert!(registry.contains(&TypeId::from("Any")));
+        assert!(registry.contains(&TypeId::from("Record")));
+        // Primitives
+        assert!(registry.contains(&TypeId::from("String")));
+        assert!(registry.contains(&TypeId::from("Bool")));
+        assert!(registry.contains(&TypeId::from("Int")));
+        assert!(registry.contains(&TypeId::from("Float")));
+        // Core types
+        assert!(registry.contains(&TypeId::from("Url")));
+        assert!(registry.contains(&TypeId::from("FilePath")));
+    }
+
+    #[test]
+    fn test_merge_dsl_types_overrides() {
+        let mut registry = TypeRegistry::with_defaults();
+        let mut dsl_registry = TypeRegistry::new();
+        // Register a structural Int64 type from DSL
+        dsl_registry.register(
+            "Int64",
+            type_lib::refined("Int", vec![
+                Predicate::Width(64),
+                Predicate::Signed(None),
+                Predicate::Arithmetic,
+            ]),
+        );
+        registry.merge_dsl_types(&dsl_registry);
+        assert!(registry.contains(&TypeId::from("Int64")));
+        let dag = registry.resolve_type(&TypeId::from("Int64")).unwrap();
+        // Verify the resolved DAG has Width(64) and Signed predicates
+        use crate::node::NodeBody;
+        use crate::type_op::TypeOp;
+        let has_width_64 = dag.nodes.iter().any(|n| {
+            matches!(
+                &n.body,
+                NodeBody::Opaque(TypeOp::Validate(Predicate::Width(64)))
+            )
+        });
+        assert!(has_width_64, "Int64 should have Width(64) predicate");
+    }
+
+    #[test]
+    fn test_semantic_carrier_kind_on_registry() {
+        use crate::types::SemanticCarrierKind;
+        let registry = TypeRegistry::with_core_types();
+        assert_eq!(
+            registry.semantic_carrier_kind(&TypeId::from("String")),
+            SemanticCarrierKind::Structural
+        );
+        assert_eq!(
+            registry.semantic_carrier_kind(&TypeId::from("Secret")),
+            SemanticCarrierKind::Secret
+        );
+        assert_eq!(
+            registry.semantic_carrier_kind(&TypeId::from("TransportRequest")),
+            SemanticCarrierKind::TransportRequest
+        );
+    }
+
+    #[test]
+    fn test_audit_identity_types_detects_pure_identity() {
+        let mut registry = TypeRegistry::new();
+        registry.register("Foo", type_lib::identity("Foo"));
+        registry.register("Url", type_lib::url()); // refined, not identity
+        registry.register("Bool", type_lib::bool()); // identity
+
+        let identities = registry.audit_identity_types();
+        assert!(identities.contains(&TypeId::from("Foo")));
+        assert!(identities.contains(&TypeId::from("Bool")));
+        assert!(
+            !identities.contains(&TypeId::from("Url")),
+            "refined types should not be counted as identity"
+        );
+    }
+
+    #[test]
+    fn test_register_product_checked_reports_unresolved() {
+        let mut registry = TypeRegistry::with_primitives();
+        let result = registry.register_product_checked(
+            "TestRecord",
+            vec![("name", "String"), ("age", "UnknownType")],
+        );
+        assert!(result.is_err());
+        let unresolved = result.unwrap_err();
+        assert_eq!(unresolved.len(), 1);
+        assert!(unresolved[0].contains("UnknownType"));
+    }
+
+    #[test]
+    fn test_register_product_checked_ok_when_all_resolved() {
+        let mut registry = TypeRegistry::with_primitives();
+        let result = registry.register_product_checked(
+            "TestRecord",
+            vec![("name", "String"), ("flag", "Bool")],
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn ratchet_identity_types_in_core_registry() {
+        let registry = TypeRegistry::with_core_types();
+        let identities = registry.audit_identity_types();
+        let allowed: std::collections::BTreeSet<&str> = [
+            "Any",
+            "Json",
+            "NetworkHandle",
+            "Record",
+            "String",
+            "Int",
+            "Float",
+            "Unit",
+            "TransportRequest",
+            "TransportResponse",
+            "Credential",
+            "FilesystemHandle",
+            "ToolHandle",
+        ]
+        .into_iter()
+        .collect();
+        let actual: std::collections::BTreeSet<&str> =
+            identities.iter().map(|t| t.0.as_str()).collect();
+        let unexpected: Vec<_> = actual.difference(&allowed).collect();
+        assert!(
+            unexpected.is_empty(),
+            "unexpected identity types (add structural DAG or update allowlist): {:?}",
+            unexpected
+        );
+    }
+
+    #[test]
+    fn test_register_coproduct_checked_reports_unresolved() {
+        let mut registry = TypeRegistry::with_primitives();
+        let result = registry.register_coproduct_checked(
+            "TestEnum",
+            vec![("A", "String"), ("B", "MissingType")],
+        );
+        assert!(result.is_err());
+        let unresolved = result.unwrap_err();
+        assert_eq!(unresolved.len(), 1);
+        assert!(unresolved[0].contains("MissingType"));
     }
 }

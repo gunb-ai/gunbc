@@ -5,9 +5,9 @@ use std::fmt::Write;
 use crate::log_detail::LogDetailLevel;
 use crate::node::Node;
 use crate::resource::{normalize_resource_id, AccessMode};
-use crate::type_op::TypeOp;
+use crate::type_op::{Predicate, PredicateValue, TypeOp};
 use crate::type_registry::TypeRegistry;
-use crate::types::{Cardinality, NodeId, PortName, PresenceMode, TypeId};
+use crate::types::{Cardinality, NodeId, PortMultiplicity, PortName, PresenceMode, TypeId};
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
 
@@ -490,9 +490,17 @@ pub struct Port {
     pub type_id: TypeId,
     /// Set-theoretic cardinality (how many values)
     pub cardinality: Cardinality,
+    /// Port multiplicity: how many upstream edges feed this port.
+    ///
+    /// `Singular` (default) = one edge delivers one value.
+    /// `FanIn` = zero or more edges; values are merged into a list.
+    /// Orthogonal to cardinality — a `List<Bool>` port is `Singular` (one list value),
+    /// while `__deps` is `FanIn` (multiple scalar values merged).
+    #[serde(default, skip_serializing_if = "crate::types::multiplicity_is_default")]
+    pub multiplicity: PortMultiplicity,
     /// Internal routing guard (used by patterns, not public API)
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) guard: Option<Guard>,
+    pub(crate) guard: Option<Predicate>,
     /// Resource access mode for `res:*` ports (used by resource accounting)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resource_access: Option<AccessMode>,
@@ -538,6 +546,7 @@ impl Port {
             name,
             type_id,
             cardinality: Cardinality::ONE,
+            multiplicity: PortMultiplicity::Singular,
             guard: None,
             resource_access: None,
             type_optional,
@@ -547,7 +556,12 @@ impl Port {
     }
 
     /// Create a port with explicit cardinality.
-    pub fn with_cardinality(
+    ///
+    /// Prefer `Port::scalar`, `Port::optional`, `Port::list`, `Port::non_empty_list`,
+    /// or `Port::fan_in` for well-known cardinalities. This constructor is for
+    /// internal use when propagating a runtime cardinality value (e.g., loop patterns,
+    /// SubDag inference).
+    pub(crate) fn with_cardinality(
         name: impl Into<PortName>,
         type_id: impl Into<TypeId>,
         cardinality: Cardinality,
@@ -570,6 +584,7 @@ impl Port {
             name,
             type_id,
             cardinality,
+            multiplicity: PortMultiplicity::Singular,
             guard: None,
             resource_access: None,
             type_optional,
@@ -628,12 +643,24 @@ impl Port {
             name: full_name.into(),
             type_id,
             cardinality: Cardinality::ONE,
+            multiplicity: PortMultiplicity::Singular,
             guard: None,
             resource_access: Some(mode),
             type_optional,
             presence,
             log_detail: None,
         }
+    }
+
+    /// Create a fan-in port: zero or more upstream edges merge into a list.
+    ///
+    /// Use for ports like `__deps` where multiple upstream nodes each deliver
+    /// a scalar value that gets merged into a single list.
+    pub fn fan_in(name: impl Into<PortName>, type_id: impl Into<TypeId>) -> Self {
+        let mut port = Self::new(name, type_id);
+        port.multiplicity = PortMultiplicity::FanIn;
+        port.cardinality = Cardinality::ZERO_OR_MORE;
+        port
     }
 
     /// Create a scalar port (exactly one value, required).
@@ -666,6 +693,27 @@ impl Port {
         Self::with_cardinality(name, "Unit", Cardinality::ZERO)
     }
 
+    /// Create a port with cardinality derived from the type registry.
+    ///
+    /// This is the preferred constructor when a registry is available.
+    /// The type_id is resolved through the registry to infer cardinality:
+    /// - Container types (OptionalString, StringList, List<Int>) → derived cardinality
+    /// - Non-container types (String, Int) → ONE (scalar)
+    ///
+    /// Callers without registry access should continue using the explicit
+    /// constructors (`scalar`, `optional`, `list`, etc.).
+    pub fn typed(
+        name: impl Into<PortName>,
+        type_id: impl Into<TypeId>,
+        registry: &crate::type_registry::TypeRegistry,
+    ) -> Self {
+        let type_id = type_id.into();
+        let cardinality = registry
+            .infer_cardinality(&type_id)
+            .unwrap_or(Cardinality::ONE);
+        Self::with_cardinality(name, type_id, cardinality)
+    }
+
     /// Set an execution log detail override for this port.
     pub fn with_log_detail(mut self, log_detail: LogDetailLevel) -> Self {
         self.log_detail = Some(log_detail);
@@ -693,7 +741,8 @@ impl Port {
             name: name.into(),
             type_id,
             cardinality: Cardinality::ONE,
-            guard: Some(Guard::Eq(expected)),
+            multiplicity: PortMultiplicity::Singular,
+            guard: Some(Predicate::Equals(value_to_predicate_value(&expected))),
             resource_access: None,
             type_optional,
             presence,
@@ -709,7 +758,7 @@ impl Port {
         name: impl Into<PortName>,
         type_id: impl Into<TypeId>,
         cardinality: Cardinality,
-        guard: Guard,
+        guard: Predicate,
     ) -> Self {
         let type_id = type_id.into();
         let type_optional = type_id.0.ends_with('?');
@@ -722,6 +771,7 @@ impl Port {
             name: name.into(),
             type_id,
             cardinality,
+            multiplicity: PortMultiplicity::Singular,
             guard: Some(guard),
             resource_access: None,
             type_optional,
@@ -739,7 +789,7 @@ impl Port {
     /// Returns `false` if the port has a guard that evaluates to false.
     pub fn check_guard(&self, value: &Value) -> bool {
         match &self.guard {
-            Some(guard) => guard.evaluate(value),
+            Some(pred) => evaluate_guard_predicate(pred, value),
             None => true,
         }
     }
@@ -776,27 +826,47 @@ impl Port {
     }
 }
 
-/// Guard predicate for conditional routing.
+/// Convert a `Value` to its `PredicateValue` equivalent for guard construction.
 ///
-/// Guards are used by Branch/If patterns and by the lowering pass to
-/// control conditional execution.  The execution engine skips any node
-/// whose guarded input fails the predicate, setting all outputs to
-/// `Value::Skipped`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Guard {
-    /// Value must equal expected
-    Eq(Value),
-    /// Value must not equal expected
-    NotEq(Value),
+/// Supports the value variants used in guard predicates: Bool, Int, Str, and
+/// Skipped. Panics for unsupported value types.
+pub fn value_to_predicate_value(v: &Value) -> PredicateValue {
+    match v {
+        Value::Bool(b) => PredicateValue::Bool(*b),
+        Value::Int(n) => PredicateValue::Int(*n),
+        Value::Str(s) => PredicateValue::Str(s.clone()),
+        Value::Skipped => PredicateValue::Skipped,
+        other => panic!(
+            "cannot convert {:?} to PredicateValue — only Bool, Int, Str, and Skipped are supported",
+            other
+        ),
+    }
 }
 
-impl Guard {
-    /// Evaluate the guard against an actual value.
-    pub fn evaluate(&self, actual: &Value) -> bool {
-        match self {
-            Guard::Eq(expected) => actual == expected,
-            Guard::NotEq(expected) => actual != expected,
+/// Evaluate a `Predicate` against an actual `Value` for guard routing.
+///
+/// This handles the subset of `Predicate` used by edge guards:
+/// - `Equals(PredicateValue)` — equality check
+/// - `Not(box pred)` — logical negation
+pub fn evaluate_guard_predicate(pred: &Predicate, actual: &Value) -> bool {
+    match pred {
+        Predicate::Equals(pv) => predicate_value_matches(pv, actual),
+        Predicate::Not(inner) => !evaluate_guard_predicate(inner, actual),
+        _ => {
+            // Other predicate variants are not used for edge guards
+            false
         }
+    }
+}
+
+/// Check whether a `PredicateValue` matches an actual `Value`.
+fn predicate_value_matches(pv: &PredicateValue, actual: &Value) -> bool {
+    match (pv, actual) {
+        (PredicateValue::Bool(expected), Value::Bool(actual_val)) => expected == actual_val,
+        (PredicateValue::Str(expected), Value::Str(actual_val)) => expected == actual_val,
+        (PredicateValue::Int(expected), Value::Int(actual_val)) => expected == actual_val,
+        (PredicateValue::Skipped, Value::Skipped) => true,
+        _ => false,
     }
 }
 
@@ -831,6 +901,11 @@ pub mod build {
         Port::non_empty_list(name, type_id)
     }
 
+    /// Create a fan-in port (zero or more upstream edges merge into a list).
+    pub fn fan_in(name: &str, type_id: &str) -> Port {
+        Port::fan_in(name, type_id)
+    }
+
     /// Create a void port (zero values, signal only).
     pub fn void(name: &str) -> Port {
         Port::void(name)
@@ -852,7 +927,7 @@ pub mod build {
         Edge::with_index(from_node, from_port, to_node, to_port, index)
     }
 
-    /// Create a guarded port (guard = Eq(expected)).
+    /// Create a guarded port (guard = Equals(expected)).
     ///
     /// The executor skips the node when `check_guard(value)` returns false.
     /// Useful for testing guard/skip branch coverage.
@@ -868,7 +943,8 @@ pub mod build {
             name: name.into(),
             type_id,
             cardinality: Cardinality::ONE,
-            guard: Some(Guard::Eq(expected)),
+            multiplicity: PortMultiplicity::Singular,
+            guard: Some(Predicate::Equals(value_to_predicate_value(&expected))),
             resource_access: None,
             type_optional,
             presence,
@@ -1059,6 +1135,31 @@ mod tests {
         // Port with unregistered type - should fall back to declared cardinality
         let port5 = Port::optional("p5", "Unknown");
         assert_eq!(port5.infer_cardinality(&registry), Cardinality::ZERO_OR_ONE);
+    }
+
+    #[test]
+    fn test_port_typed_derives_cardinality() {
+        use crate::type_lib;
+        use crate::type_registry::TypeRegistry;
+
+        let mut registry = TypeRegistry::with_primitives();
+        registry.register("MaybeValue", type_lib::optional(type_lib::string()));
+        registry.register("ValueCollection", type_lib::list(type_lib::string()));
+
+        let scalar = Port::typed("p1", "String", &registry);
+        assert_eq!(scalar.cardinality, Cardinality::ONE);
+
+        let optional = Port::typed("p2", "MaybeValue", &registry);
+        assert_eq!(optional.cardinality, Cardinality::ZERO_OR_ONE);
+
+        let list = Port::typed("p3", "ValueCollection", &registry);
+        assert_eq!(list.cardinality, Cardinality::ZERO_OR_MORE);
+
+        let generic_list = Port::typed("p4", "List<String>", &registry);
+        assert_eq!(generic_list.cardinality, Cardinality::ZERO_OR_MORE);
+
+        let unknown = Port::typed("p5", "UnknownType", &registry);
+        assert_eq!(unknown.cardinality, Cardinality::ONE);
     }
 
     #[test]

@@ -1,0 +1,14 @@
+// std/float.dag -- Syllogistic floating-point type hierarchy.
+//
+// IEEE 754 floating-point types structurally defined from bit-level
+// types with domain predicates.
+
+module std.float
+
+import std.bit { Word32, Word64 }
+
+type Float32 = Word32 where domain("ieee754_binary32"), arithmetic
+type Float64 = Word64 where domain("ieee754_binary64"), arithmetic
+
+// Default alias
+type Float = Float64

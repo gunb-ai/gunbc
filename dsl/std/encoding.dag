@@ -1,0 +1,9 @@
+// std/encoding.dag -- Character encoding vocabulary.
+//
+// Encoding lattice for classifying byte-sequence interpretation.
+// This is a type-level vocabulary; the lattice structure
+// (subtyping, join, meet) is defined in the Rust ContentEncoding enum.
+
+module std.encoding
+
+type Encoding = ASCII | UTF8 | Latin1 | Text | Binary | Unknown

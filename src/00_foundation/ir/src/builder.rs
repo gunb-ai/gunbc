@@ -608,11 +608,11 @@ impl<T> DagBuilder<T> {
                 from_node: from.node_id.clone(),
                 from_port: from.port.clone(),
                 from_type: Box::new(from_port.type_id.clone()),
-                from_kind: from_port.type_id.semantic_carrier_kind(),
+                from_kind: self.type_registry.semantic_carrier_kind(&from_port.type_id),
                 to_node: to.node_id.clone(),
                 to_port: to.port.clone(),
                 to_type: Box::new(to_port.type_id.clone()),
-                to_kind: to_port.type_id.semantic_carrier_kind(),
+                to_kind: self.type_registry.semantic_carrier_kind(&to_port.type_id),
             });
         }
 
@@ -1401,7 +1401,7 @@ mod tests {
 
     #[test]
     fn test_builder_with_guards() {
-        use crate::dag::Guard;
+        use crate::type_op::{Predicate, PredicateValue};
         use crate::value::Value;
 
         let mut builder: DagBuilder<String> = DagBuilder::new();
@@ -1432,8 +1432,8 @@ mod tests {
         assert!(input_port.guard.is_some());
 
         match &input_port.guard {
-            Some(Guard::Eq(Value::Str(s))) => assert_eq!(s, "expected"),
-            _ => panic!("Expected Eq guard with string value"),
+            Some(Predicate::Equals(PredicateValue::Str(s))) => assert_eq!(s, "expected"),
+            _ => panic!("Expected Equals predicate with string value"),
         }
     }
 

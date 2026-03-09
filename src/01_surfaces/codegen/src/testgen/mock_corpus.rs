@@ -331,7 +331,7 @@ pub fn enrich_corpus_with_type_witnesses<T>(
             let type_id_str = &port.type_id.0;
 
             // Skip redacted types
-            if is_redacted_type(type_id_str) {
+            if is_redacted_type(type_id_str, registry) {
                 continue;
             }
 

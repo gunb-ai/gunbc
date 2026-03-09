@@ -23,11 +23,11 @@
 //! Unlike upsert, the atomic pattern is more general and doesn't assume
 //! check-then-create semantics.
 
-use crate::dag::{Dag, Edge, Guard, Port};
+use crate::dag::{Dag, Edge, Port};
+use crate::type_op::{Predicate, PredicateValue};
 use crate::node::Node;
 use crate::patterns::{validate_resource_inputs, ResourceInput};
 use crate::types::Cardinality;
-use crate::value::Value;
 
 /// Builder for the atomic operation pattern.
 ///
@@ -151,7 +151,7 @@ impl<T: Clone> AtomicBuilder<T> {
                     "pre_ok",
                     "Bool",
                     Cardinality::ONE,
-                    Guard::Eq(Value::Bool(true)),
+                    Predicate::Equals(PredicateValue::Bool(true)),
                 ),
             ]
         } else {

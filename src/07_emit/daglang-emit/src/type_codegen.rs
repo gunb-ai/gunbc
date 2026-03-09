@@ -15,7 +15,9 @@
 //! ## Fn mapping
 //!   - `fn name(params) -> Ret`     → `pub fn name(params) -> Ret` signature
 
-use daglang_syntax::ast::{DataDef, Expr, FnDef, Literal, TypeBody, TypeDef, TypeExpr, Variant};
+use daglang_syntax::ast::{
+    DataDef, Expr, FnDef, Literal, Refinement, TypeBody, TypeDef, TypeExpr, Variant,
+};
 use daglang_syntax::span::Spanned;
 use gunbc_ir::code_ir::{self, EnumDef, SourceFile, StructDef};
 
@@ -26,43 +28,95 @@ const DEFAULT_DERIVES: &[&str] = &["Debug", "Clone", "PartialEq", "Eq"];
 
 /// Convert a DSL `TypeExpr` to a Rust type string.
 fn type_expr_to_rust(expr: &TypeExpr) -> String {
+    type_expr_to_rust_with_registry(expr, None)
+}
+
+/// Convert a DSL `TypeExpr` to a Rust type string, using the registry when
+/// available for structural type resolution.
+///
+/// All named types are resolved through `resolve_and_emit` which uses the
+/// structural path when a registry is available, falling back to identity-type
+/// name-based mapping for opaque types.
+pub fn type_expr_to_rust_with_registry(
+    expr: &TypeExpr,
+    registry: Option<&gunbc_ir::TypeRegistry>,
+) -> String {
     match expr {
-        TypeExpr::Named(name) => map_primitive(name),
+        TypeExpr::Named(name) => crate::type_mapping::resolve_and_emit(
+            name,
+            registry,
+            crate::type_mapping::Backend::Rust,
+        ),
         TypeExpr::Generic(name, args) => {
-            let mapped = map_primitive(name);
-            let arg_strs: Vec<String> = args.iter().map(type_expr_to_rust).collect();
+            // Container wrapper names need direct mapping (not in registry).
+            let mapped = match name.as_str() {
+                "List" => "Vec".to_string(),
+                "Map" => "std::collections::HashMap".to_string(),
+                "Set" => "std::collections::HashSet".to_string(),
+                other => crate::type_mapping::resolve_and_emit(
+                    other,
+                    registry,
+                    crate::type_mapping::Backend::Rust,
+                ),
+            };
+            let arg_strs: Vec<String> = args
+                .iter()
+                .map(|a| type_expr_to_rust_with_registry(a, registry))
+                .collect();
             format!("{}<{}>", mapped, arg_strs.join(", "))
         }
         TypeExpr::Optional(inner) => {
-            format!("Option<{}>", type_expr_to_rust(inner))
+            format!("Option<{}>", type_expr_to_rust_with_registry(inner, registry))
         }
-        TypeExpr::Refined(inner, _) => type_expr_to_rust(inner),
+        TypeExpr::Refined(inner, refinements) => {
+            // Try structural resolution via the refinement predicates.
+            if let Some(ty) = try_refined_to_rust_structural(inner, refinements) {
+                return ty;
+            }
+            type_expr_to_rust_with_registry(inner, registry)
+        }
         TypeExpr::Record(fields) => {
             let field_strs: Vec<String> = fields
                 .iter()
-                .map(|f| format!("{}: {}", f.name, type_expr_to_rust(&f.ty)))
+                .map(|f| {
+                    format!(
+                        "{}: {}",
+                        f.name,
+                        type_expr_to_rust_with_registry(&f.ty, registry)
+                    )
+                })
                 .collect();
             format!("{{ {} }}", field_strs.join(", "))
         }
     }
 }
 
-/// Map DSL primitive type names to Rust equivalents.
+/// Try to derive a concrete Rust type from a refined type expression's predicates.
 ///
-/// Uses the canonical `RUST_TYPE_MAPPING` table for primitive lookups,
-/// with additional entries for generic container base names (List, Map)
-/// which are not in the table (they're handled by `list_fmt`/`map_fmt`
-/// in the full `map_abstract_type` path).
-fn map_primitive(name: &str) -> String {
-    // Generic container base names (not in the primitive table).
-    match name {
-        "List" => return "Vec".to_string(),
-        "Map" => return "std::collections::HashMap".to_string(),
-        _ => {}
+/// Extracts width, signedness, and domain from refinements and delegates to
+/// the structural emit path. Returns `None` if no platform predicates found.
+fn try_refined_to_rust_structural(_inner: &TypeExpr, refinements: &[Refinement]) -> Option<String> {
+    let mut props = gunbc_ir::StructuralProperties::default();
+
+    for r in refinements {
+        match r {
+            Refinement::Width(Expr::Literal(Literal::Int(w))) => props.width = Some(*w as u16),
+            Refinement::Signed(_) => props.signed = Some(true),
+            Refinement::Unsigned => props.signed = Some(false),
+            Refinement::Arithmetic => props.arithmetic = true,
+            Refinement::Domain(d) => props.domain = Some(d.clone()),
+            _ => {}
+        }
     }
-    crate::type_mapping::lookup_primitive(&crate::type_mapping::RUST_TYPE_MAPPING, name)
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| name.to_string())
+
+    if props.width.is_none() && props.signed.is_none() && props.domain.is_none() && !props.arithmetic {
+        return None;
+    }
+
+    Some(crate::type_mapping::emit_shape(
+        &gunbc_ir::TypeShape::Platform(props),
+        crate::type_mapping::Backend::Rust,
+    ))
 }
 
 /// Check whether all variants of a sum type are simple (no fields).
@@ -163,11 +217,24 @@ fn type_expr_to_static_rust(expr: &TypeExpr) -> String {
             if name == "String" {
                 "&'static str".to_string()
             } else {
-                map_primitive(name)
+                crate::type_mapping::resolve_and_emit(
+                    name,
+                    None,
+                    crate::type_mapping::Backend::Rust,
+                )
             }
         }
         TypeExpr::Generic(name, args) => {
-            let mapped = map_primitive(name);
+            let mapped = match name.as_str() {
+                "List" => "Vec".to_string(),
+                "Map" => "std::collections::HashMap".to_string(),
+                "Set" => "std::collections::HashSet".to_string(),
+                other => crate::type_mapping::resolve_and_emit(
+                    other,
+                    None,
+                    crate::type_mapping::Backend::Rust,
+                ),
+            };
             let arg_strs: Vec<String> = args.iter().map(type_expr_to_static_rust).collect();
             format!("{}<{}>", mapped, arg_strs.join(", "))
         }
@@ -1428,5 +1495,54 @@ mod tests {
         assert_eq!(escape_rust_string("hello"), "hello");
         assert_eq!(escape_rust_string("a\"b"), "a\\\"b");
         assert_eq!(escape_rust_string("a\nb"), "a\\nb");
+    }
+
+    #[test]
+    fn refined_type_with_width_signed_produces_i64() {
+        let expr = TypeExpr::Refined(
+            Box::new(TypeExpr::Named("Int".to_string())),
+            vec![
+                Refinement::Width(Expr::Literal(Literal::Int(64))),
+                Refinement::Signed(None),
+                Refinement::Arithmetic,
+            ],
+        );
+        assert_eq!(type_expr_to_rust(&expr), "i64");
+    }
+
+    #[test]
+    fn refined_type_with_width_unsigned_produces_u8() {
+        let expr = TypeExpr::Refined(
+            Box::new(TypeExpr::Named("Int".to_string())),
+            vec![
+                Refinement::Width(Expr::Literal(Literal::Int(8))),
+                Refinement::Unsigned,
+                Refinement::Arithmetic,
+            ],
+        );
+        assert_eq!(type_expr_to_rust(&expr), "u8");
+    }
+
+    #[test]
+    fn refined_type_with_ieee754_produces_f32() {
+        let expr = TypeExpr::Refined(
+            Box::new(TypeExpr::Named("Float".to_string())),
+            vec![
+                Refinement::Width(Expr::Literal(Literal::Int(32))),
+                Refinement::Domain("ieee754_binary32".to_string()),
+                Refinement::Arithmetic,
+            ],
+        );
+        assert_eq!(type_expr_to_rust(&expr), "f32");
+    }
+
+    #[test]
+    fn refined_type_without_structural_predicates_strips() {
+        let expr = TypeExpr::Refined(
+            Box::new(TypeExpr::Named("String".to_string())),
+            vec![Refinement::NonEmpty],
+        );
+        // Should fall through to stripping refinements
+        assert_eq!(type_expr_to_rust(&expr), "String");
     }
 }

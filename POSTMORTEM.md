@@ -243,3 +243,101 @@ dependency chains.
 The gap is specifically in `func` body lowering, where `Expr::Guarded`
 wrapping service calls (and local fn calls) is silently stripped by the
 lowerer without creating the corresponding If-pattern SubDag.
+
+---
+
+# Invariant Review Findings
+
+## Previously fixed (README.md invariant tracking)
+
+- Fixed: invariant 1 layout wording no longer points at `src/daglang/`; the root README now describes the numbered pipeline folders.
+- Fixed: invariant 2 no longer names the nonexistent `src/lib/transport/`; it now points at `src/08_materialize/transport/`.
+- Fixed: invariant 4 compile receipts are seeded from the already-loaded `ModuleGraph` source text instead of rereading files during receipt generation.
+- Fixed: invariant 4 exec-runtime workspace path discovery moved out of `daglang-emit` and into `daglang-driver` preparation, so the emit stage is render-only.
+- Fixed: invariant 6 no longer points at the nonexistent `src/gunbc-app/`; the README now describes `src/08_materialize/` as the runtime wiring layer.
+
+---
+
+## Open — identified 2026-03-09
+
+### P1 — Lowerer silently drops wiring failures via `eprintln!` + `continue`
+
+**Invariants**: #4 (phases are pure), "no hacks or fallbacks"
+
+Three sites in `src/05_graph/daglang-lower/src/lib.rs` where a `lower_expr` error is caught, printed to stderr, and silently skipped — producing a structurally incomplete DAG instead of failing the compilation.
+
+| Site | Function | Behavior |
+|------|----------|----------|
+| ~L8196 | `wire_service_call_argument` | Prints warning, returns `false` (caller ignores) |
+| ~L9922 | `wire_fn_call_arguments` | Catches `Err`, prints, `continue`s — arg not wired |
+| ~L11712 | `wire_callable_return_outputs` | Catches `Err`, prints, `continue`s — output not wired |
+
+**Impact**: DAGs missing edges. Downstream execution may produce wrong results or silently skip nodes that should have run.
+
+**Fix direction**: Accumulate errors into a diagnostics vec, propagate as `Err` from the lowering phase.
+
+---
+
+### P2 — Emit phase falls back on unknown types
+
+**Invariants**: #8 (correctness by construction), "no hacks or fallbacks"
+
+`src/07_emit/daglang-emit/src/type_mapping.rs` — `emit_identity_type` (L164–222) handles unknown type names by printing a warning and returning the name verbatim:
+
+```rust
+unknown => {
+    eprintln!("warning: unknown type '{unknown}' defaulting to ValueBacking::Json");
+    return unknown.to_string();
+}
+```
+
+All three backends (Rust, Go, C) have this fallback. The test `identity_type_unknown_emits_name_verbatim` explicitly validates it, so it's intentional — but it contradicts Invariant 8.
+
+**Fix direction**: Return `Result<String, EmitError>` or require the caller to register all types before emission.
+
+---
+
+### P3 — `Value::Skipped` → fabricated default values
+
+**Invariant**: "no hacks or fallbacks" — explicitly names `Value::Skipped`
+
+`src/08_materialize/resolve/src/service_ops/service_ops_impl.rs`:
+
+- `GenericRestPrepareOp::execute` (L38–51): Returns `Value::Skipped` when inputs are skipped or required inputs missing.
+- `GenericRestParseOp::execute` (L280–287): On skipped response, produces defaults via `default_output_value()`.
+- `GenericShellPrepareOp::execute` (L530–548): Same skip propagation.
+- `GenericShellParseOp::execute` (L714–747): On skipped response, returns `false` / empty strings / empty lists.
+
+`default_output_value` (L500–514) produces: `Int → 0`, `Bool → false`, `String → ""`. These are valid-looking but semantically wrong.
+
+**Status**: Partially acknowledged — `src/00_foundation/ir/src/value.rs` L183–189 documents `ControlFlow` as the replacement enum, but migration is incomplete.
+
+**Fix direction**: Complete `ControlFlow` migration; skipped branches should produce `ControlFlow::Skipped`, not fabricated values.
+
+---
+
+### P4 — `writeln!().ok()` swallows I/O errors
+
+**Invariant**: "no hacks or fallbacks" — `.ok()` on fallible operations
+
+`src/09_execute/exec/src/ci_context.rs` L146:
+
+```rust
+writeln!(self.writer, "{}", formatted).ok();
+```
+
+Silently swallows any I/O error when emitting CI workflow commands.
+
+**Severity**: Low — CI output is arguably best-effort, and crashing on a write failure during execution would be worse. But it does technically violate the coding standard.
+
+**Fix direction**: If CI output is genuinely best-effort, document that exception explicitly (like the caching exception in `src/README.md`).
+
+---
+
+## What passed (2026-03-09 review)
+
+- **Invariant 7**: `lower_expr` in `lib.rs` L10053–10449 — exhaustive match, no wildcard, returns `Result`. Same for `expr.rs` L268–442.
+- **`extern func`**: Properly rejected at parse time (`src/03_source/daglang-syntax/src/parser.rs` L1465).
+- **Phases 02–04, 06**: No `eprintln!`, no I/O side effects — clean pure functions.
+- **I/O boundary** (Invariant 2): Only `08_materialize/transport/` performs direct I/O.
+- **No backdoors**: Compiler provides metadata through output types, not callbacks.

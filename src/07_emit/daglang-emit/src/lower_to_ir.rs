@@ -522,19 +522,11 @@ fn transport_kind_name(kind: TransportKind) -> &'static str {
 }
 
 fn map_abstract_type(abstract_type: &str) -> String {
-    if let Some(inner) = abstract_type
-        .strip_prefix("List<")
-        .and_then(|rest| rest.strip_suffix('>'))
-    {
-        return format!("Vec<{}>", map_abstract_type(inner));
-    }
-
-    match abstract_type {
-        "String" | "Path" => "String".to_string(),
-        "Bool" | "bool" => "bool".to_string(),
-        "Int" | "i64" | "I64" => "i64".to_string(),
-        _ => "serde_json::Value".to_string(),
-    }
+    crate::type_mapping::resolve_and_emit(
+        abstract_type,
+        None,
+        crate::type_mapping::Backend::Rust,
+    )
 }
 
 fn sanitize_identifier(value: &str) -> String {
