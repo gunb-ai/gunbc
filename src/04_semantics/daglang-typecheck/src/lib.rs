@@ -1041,6 +1041,17 @@ fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> TypeRegistry {
         register_type_def(def, &mut registry);
     }
 
+    // Post-Pass-2 audit: check for DSL types still stuck as identity placeholders.
+    let identities = registry.audit_identity_types();
+    if !identities.is_empty() {
+        let names: Vec<&str> = identities.iter().map(|t| t.0.as_str()).collect();
+        eprintln!(
+            "warning: {} DSL type(s) still identity after structural resolution: {:?}",
+            identities.len(),
+            names
+        );
+    }
+
     registry
 }
 
@@ -1203,7 +1214,10 @@ fn register_type_def(
             let inner_dag = if predicates.is_empty() {
                 match base_dag_opt {
                     Some(dag) => dag,
-                    None => gunbc_ir::type_lib::identity(&base_name),
+                    None => {
+                        eprintln!("warning: unresolved type alias base '{base_name}' in type '{}', producing identity placeholder", def.name);
+                        gunbc_ir::type_lib::identity(&base_name)
+                    }
                 }
             } else {
                 match base_dag_opt {
@@ -1289,7 +1303,10 @@ fn resolve_field_type_dag(
     let predicates = collect_predicates_from_type_expr(ty);
     let base_dag_opt = registry.get_by_name(&base_name).cloned();
     if predicates.is_empty() {
-        base_dag_opt.unwrap_or_else(|| gunbc_ir::type_lib::identity(&base_name))
+        base_dag_opt.unwrap_or_else(|| {
+            eprintln!("warning: unresolved type '{base_name}', producing identity placeholder");
+            gunbc_ir::type_lib::identity(&base_name)
+        })
     } else {
         match base_dag_opt {
             Some(dag) => {

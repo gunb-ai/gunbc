@@ -91,10 +91,32 @@ pub fn emit_shape(shape: &gunbc_ir::TypeShape, backend: Backend) -> String {
                 emit_shape(inner, backend)
             }
         }
-        TypeShape::Product(Some(name), _) => emit_identity_type(name, backend),
-        TypeShape::Product(None, _) => emit_identity_type("Record", backend),
-        TypeShape::Coproduct(Some(name), _) => emit_identity_type(name, backend),
-        TypeShape::Coproduct(None, _) => emit_identity_type("Record", backend),
+        TypeShape::Product(name, fields) => {
+            let model = crate::language_model::model_for_backend(backend);
+            if let Some(n) = name {
+                if let Some(syntax) = crate::language_model::resolve_named(n, model) {
+                    return syntax.to_string();
+                }
+            }
+            let typed_fields: Vec<(String, String)> = fields
+                .iter()
+                .map(|(n, s)| (n.clone(), emit_shape(s, backend)))
+                .collect();
+            (model.composite.format_product)(name.as_deref(), &typed_fields)
+        }
+        TypeShape::Coproduct(name, variants) => {
+            let model = crate::language_model::model_for_backend(backend);
+            if let Some(n) = name {
+                if let Some(syntax) = crate::language_model::resolve_named(n, model) {
+                    return syntax.to_string();
+                }
+            }
+            let typed_variants: Vec<(String, String)> = variants
+                .iter()
+                .map(|(n, s)| (n.clone(), emit_shape(s, backend)))
+                .collect();
+            (model.composite.format_coproduct)(name.as_deref(), &typed_variants)
+        }
         TypeShape::Opaque(name) => emit_identity_type(name, backend),
     }
 }
@@ -355,10 +377,10 @@ mod tests {
         assert_eq!(emit_identity_type("Bool", Backend::C), "bool");
     }
 
-    // ── Product/Coproduct emit uses type name ───────────────────────
+    // ── Product/Coproduct structural emission ─────────────────────
 
     #[test]
-    fn emit_product_uses_type_name() {
+    fn emit_product_structurally() {
         let dag = gunbc_ir::type_lib::product_resolved(
             "CliResult",
             vec![
@@ -366,19 +388,35 @@ mod tests {
                 ("stderr", gunbc_ir::type_lib::string()),
             ],
         );
-        assert_eq!(emit_type(&dag, Backend::Rust), "CliResult");
-        assert_eq!(emit_type(&dag, Backend::Go), "CliResult");
-        assert_eq!(emit_type(&dag, Backend::C), "CliResult");
+        // CliResult is not in the named entries, so it emits structurally.
+        assert!(emit_type(&dag, Backend::Rust).contains("stdout"));
+        assert!(emit_type(&dag, Backend::Go).contains("stdout"));
+        assert!(emit_type(&dag, Backend::C).contains("stdout"));
     }
 
     #[test]
-    fn emit_coproduct_uses_type_name() {
+    fn emit_named_product_uses_language_model() {
+        // String IS in the named entries — should resolve to the backend name.
+        let dag = gunbc_ir::type_lib::product_resolved(
+            "String",
+            vec![
+                ("bytes", gunbc_ir::type_lib::identity("Bytes")),
+                ("encoding", gunbc_ir::type_lib::identity("Encoding")),
+            ],
+        );
+        assert_eq!(emit_type(&dag, Backend::Rust), "String");
+        assert_eq!(emit_type(&dag, Backend::Go), "string");
+        assert_eq!(emit_type(&dag, Backend::C), "const char*");
+    }
+
+    #[test]
+    fn emit_coproduct_structurally() {
         let dag = gunbc_ir::type_lib::coproduct(
             "ContentEncoding",
             vec![("UTF8", "String"), ("Binary", "Bytes")],
         );
-        assert_eq!(emit_type(&dag, Backend::Rust), "ContentEncoding");
-        assert_eq!(emit_type(&dag, Backend::Go), "ContentEncoding");
-        assert_eq!(emit_type(&dag, Backend::C), "ContentEncoding");
+        // ContentEncoding is not in the named entries, emits as enum structure.
+        assert!(emit_type(&dag, Backend::Rust).contains("UTF8"));
+        assert!(emit_type(&dag, Backend::Go).contains("ContentEncoding"));
     }
 }

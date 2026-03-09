@@ -48,22 +48,31 @@ pub fn type_expr_to_rust_with_registry(
             crate::type_mapping::Backend::Rust,
         ),
         TypeExpr::Generic(name, args) => {
-            // Container wrapper names need direct mapping (not in registry).
-            let mapped = match name.as_str() {
-                "List" => "Vec".to_string(),
-                "Map" => "std::collections::HashMap".to_string(),
-                "Set" => "std::collections::HashSet".to_string(),
-                other => crate::type_mapping::resolve_and_emit(
-                    other,
-                    registry,
-                    crate::type_mapping::Backend::Rust,
-                ),
-            };
+            use crate::language_model::{self, ContainerKind};
+            let model = language_model::model_for_backend(crate::type_mapping::Backend::Rust);
             let arg_strs: Vec<String> = args
                 .iter()
                 .map(|a| type_expr_to_rust_with_registry(a, registry))
                 .collect();
-            format!("{}<{}>", mapped, arg_strs.join(", "))
+            let container_kind = match name.as_str() {
+                "List" => Some(ContainerKind::List),
+                "Set" => Some(ContainerKind::Set),
+                "Map" => Some(ContainerKind::Map),
+                _ => None,
+            };
+            if let Some(kind) = container_kind {
+                let inner = arg_strs.last().cloned().unwrap_or_default();
+                let key = if arg_strs.len() > 1 { Some(arg_strs[0].as_str()) } else { None };
+                language_model::resolve_container(kind, &inner, key, model)
+                    .unwrap_or_else(|| format!("{}<{}>", name, arg_strs.join(", ")))
+            } else {
+                let mapped = crate::type_mapping::resolve_and_emit(
+                    name,
+                    registry,
+                    crate::type_mapping::Backend::Rust,
+                );
+                format!("{}<{}>", mapped, arg_strs.join(", "))
+            }
         }
         TypeExpr::Optional(inner) => {
             format!("Option<{}>", type_expr_to_rust_with_registry(inner, registry))

@@ -61,6 +61,16 @@ pub struct TransportEntry {
     pub native_call: &'static str,
 }
 
+/// Function signature for composite type formatting.
+type FormatFn = fn(name: Option<&str>, entries: &[(String, String)]) -> String;
+
+/// Composite type formatting functions for a backend.
+#[derive(Debug, Clone, Copy)]
+pub struct CompositeFormat {
+    pub format_product: FormatFn,
+    pub format_coproduct: FormatFn,
+}
+
 /// A complete language model for one compilation target.
 #[derive(Debug, Clone)]
 pub struct LanguageModel {
@@ -69,6 +79,7 @@ pub struct LanguageModel {
     pub named: &'static [NamedEntry],
     pub containers: &'static [ContainerEntry],
     pub transport: &'static [TransportEntry],
+    pub composite: CompositeFormat,
     pub unit_syntax: &'static str,
     pub opaque_fallback: &'static str,
 }
@@ -100,6 +111,60 @@ macro_rules! float_entry {
             syntax: $syntax,
         }
     };
+}
+
+// =========================================================================
+// Composite formatting functions
+// =========================================================================
+
+fn rust_format_product(name: Option<&str>, fields: &[(String, String)]) -> String {
+    let fields_str: Vec<String> = fields.iter().map(|(n, t)| format!("{n}: {t}")).collect();
+    match name {
+        Some(n) => format!("struct {n} {{ {} }}", fields_str.join(", ")),
+        None => format!("{{ {} }}", fields_str.join(", ")),
+    }
+}
+
+fn rust_format_coproduct(name: Option<&str>, variants: &[(String, String)]) -> String {
+    let variant_strs: Vec<String> = variants
+        .iter()
+        .map(|(n, t)| if t == "()" { n.clone() } else { format!("{n}({t})") })
+        .collect();
+    match name {
+        Some(n) => format!("enum {n} {{ {} }}", variant_strs.join(", ")),
+        None => format!("enum {{ {} }}", variant_strs.join(", ")),
+    }
+}
+
+fn go_format_product(name: Option<&str>, fields: &[(String, String)]) -> String {
+    let fields_str: Vec<String> = fields.iter().map(|(n, t)| format!("{n} {t}")).collect();
+    match name {
+        Some(n) => format!("type {n} struct {{ {} }}", fields_str.join("; ")),
+        None => format!("struct {{ {} }}", fields_str.join("; ")),
+    }
+}
+
+fn go_format_coproduct(name: Option<&str>, _variants: &[(String, String)]) -> String {
+    match name {
+        Some(n) => format!("type {n} interface{{}}"),
+        None => "interface{}".to_string(),
+    }
+}
+
+fn c_format_product(name: Option<&str>, fields: &[(String, String)]) -> String {
+    let fields_str: Vec<String> = fields.iter().map(|(n, t)| format!("{t} {n}")).collect();
+    match name {
+        Some(n) => format!("struct {n} {{ {}; }}", fields_str.join("; ")),
+        None => format!("struct {{ {}; }}", fields_str.join("; ")),
+    }
+}
+
+fn c_format_coproduct(name: Option<&str>, variants: &[(String, String)]) -> String {
+    let variant_strs: Vec<String> = variants.iter().map(|(n, _)| n.clone()).collect();
+    match name {
+        Some(n) => format!("enum {n} {{ {} }}", variant_strs.join(", ")),
+        None => format!("enum {{ {} }}", variant_strs.join(", ")),
+    }
 }
 
 // =========================================================================
@@ -167,6 +232,7 @@ pub static RUST_MODEL: LanguageModel = LanguageModel {
     named: RUST_NAMED,
     containers: RUST_CONTAINERS,
     transport: RUST_TRANSPORT,
+    composite: CompositeFormat { format_product: rust_format_product, format_coproduct: rust_format_coproduct },
     unit_syntax: "()",
     opaque_fallback: "serde_json::Value",
 };
@@ -235,6 +301,7 @@ pub static GO_MODEL: LanguageModel = LanguageModel {
     named: GO_NAMED,
     containers: GO_CONTAINERS,
     transport: GO_TRANSPORT,
+    composite: CompositeFormat { format_product: go_format_product, format_coproduct: go_format_coproduct },
     unit_syntax: "struct{}",
     opaque_fallback: "interface{}",
 };
@@ -299,6 +366,7 @@ pub static C_MODEL: LanguageModel = LanguageModel {
     named: C_NAMED,
     containers: C_CONTAINERS,
     transport: C_TRANSPORT,
+    composite: CompositeFormat { format_product: c_format_product, format_coproduct: c_format_coproduct },
     unit_syntax: "void",
     opaque_fallback: "void*",
 };

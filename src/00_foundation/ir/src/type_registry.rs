@@ -527,7 +527,10 @@ impl TypeRegistry {
             "FilesystemHandle",
             type_lib::branded("FilesystemHandle", type_lib::file_path()),
         );
-        self.register("NetworkHandle", type_lib::unit());
+        self.register(
+            "NetworkHandle",
+            type_lib::branded("NetworkHandle", type_lib::unit()),
+        );
         self.register_product(
             "CliResult",
             vec![
@@ -1849,7 +1852,6 @@ mod tests {
         let allowed: std::collections::BTreeSet<&str> = [
             "Any",
             "Json",
-            "NetworkHandle",
             "Record",
             "Unit",
         ]
