@@ -653,12 +653,27 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
                                 bucket.push((edge.index, elements));
                             }
                         } else if scalar_sources.contains_key(&edge.to_port.0) {
-                            // Multiple upstream edges to a scalar port.
+                            // Conditional merge: multiple upstream edges to a scalar port.
                             // In conditional branches, only one branch produces
                             // a real value; others produce Skipped. Take the
                             // first non-Skipped value.
                             if !matches!(val, Value::Skipped) {
+                                if let Some(existing) = inputs.get(&edge.to_port.0) {
+                                    if !matches!(existing, Value::Skipped) {
+                                        return Err(ExecError::new(format!(
+                                            "conditional merge error at node '{}' port '{}': \
+                                             multiple non-Skipped values (from '{}' and previous source '{}')",
+                                            node_id.0, edge.to_port.0,
+                                            edge.from_node.0,
+                                            scalar_sources.get(&edge.to_port.0).map(|s| s.as_str()).unwrap_or("unknown"),
+                                        )));
+                                    }
+                                }
                                 inputs.insert(edge.to_port.0.clone(), val.clone());
+                                scalar_sources.insert(
+                                    edge.to_port.0.clone(),
+                                    format!("{}.{}", edge.from_node.0, edge.from_port.0),
+                                );
                             }
                         } else {
                             scalar_sources.insert(
@@ -1250,12 +1265,27 @@ fn build_node_inputs<T>(
                             bucket.push((edge.index, elements));
                         }
                     } else if scalar_sources.contains_key(&edge.to_port.0) {
-                        // Multiple upstream edges to a scalar port.
+                        // Conditional merge: multiple upstream edges to a scalar port.
                         // In conditional branches, only one branch produces
                         // a real value; others produce Skipped. Take the
                         // first non-Skipped value.
                         if !matches!(val, Value::Skipped) {
+                            if let Some(existing) = inputs.get(&edge.to_port.0) {
+                                if !matches!(existing, Value::Skipped) {
+                                    return Err(ExecError::new(format!(
+                                        "conditional merge error at node '{}' port '{}': \
+                                         multiple non-Skipped values (from '{}' and previous source '{}')",
+                                        node_id.0, edge.to_port.0,
+                                        edge.from_node.0,
+                                        scalar_sources.get(&edge.to_port.0).map(|s| s.as_str()).unwrap_or("unknown"),
+                                    )));
+                                }
+                            }
                             inputs.insert(edge.to_port.0.clone(), val.clone());
+                            scalar_sources.insert(
+                                edge.to_port.0.clone(),
+                                format!("{}.{}", edge.from_node.0, edge.from_port.0),
+                            );
                         }
                     } else {
                         scalar_sources.insert(

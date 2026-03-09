@@ -917,8 +917,45 @@ fn test_scalar_port_takes_single_value() {
 
 #[test]
 fn test_scalar_port_fan_in_takes_last_non_skipped() {
-    // A scalar port with multiple incoming edges takes the last non-Skipped value.
-    // This supports conditional branches where only one branch produces a real value.
+    // A scalar port with one Skipped edge and one real edge should take the
+    // non-Skipped value (conditional merge: only one branch fires).
+    let mut dag: Dag<TestOp> = Dag::new();
+    dag.add_node(Node::opaque(
+        "A",
+        vec![],
+        vec![port("out", "String")],
+        TestOp::produce("out", Value::Skipped),
+    ));
+    dag.add_node(Node::opaque(
+        "B",
+        vec![],
+        vec![port("out", "String")],
+        TestOp::produce("out", Value::Str("beta".to_string())),
+    ));
+    dag.add_node(Node::opaque(
+        "C",
+        vec![port("data", "String")],
+        vec![port("data", "String")],
+        TestOp::echo(),
+    ));
+    dag.add_edge(edge("A", "out", "C", "data"));
+    dag.add_edge(edge("B", "out", "C", "data"));
+
+    let log = execute_dag(&dag, ExecuteConfig::default()).expect("scalar fan-in should succeed");
+    let c_entry = log.get("C").expect("C should have executed");
+    let data = c_entry.outputs.get("data").expect("C should produce data");
+    assert_eq!(
+        data,
+        &Value::Str("beta".to_string()),
+        "expected the non-Skipped value 'beta', got {:?}",
+        data
+    );
+}
+
+#[test]
+fn test_scalar_port_fan_in_rejects_multiple_non_skipped() {
+    // Two non-Skipped values arriving at a scalar port means two conditional
+    // branches both fired, which is a structural error.
     let mut dag: Dag<TestOp> = Dag::new();
     dag.add_node(Node::opaque(
         "A",
@@ -941,14 +978,12 @@ fn test_scalar_port_fan_in_takes_last_non_skipped() {
     dag.add_edge(edge("A", "out", "C", "data"));
     dag.add_edge(edge("B", "out", "C", "data"));
 
-    let log = execute_dag(&dag, ExecuteConfig::default()).expect("scalar fan-in should succeed");
-    let c_entry = log.get("C").expect("C should have executed");
-    // One of the two values wins (implementation-defined order)
-    let data = c_entry.outputs.get("data").expect("C should produce data");
+    let err = execute_dag(&dag, ExecuteConfig::default())
+        .expect_err("should reject multiple non-Skipped values at scalar port");
+    let msg = err.to_string();
     assert!(
-        data == &Value::Str("alpha".to_string()) || data == &Value::Str("beta".to_string()),
-        "expected alpha or beta, got {:?}",
-        data
+        msg.contains("conditional merge error"),
+        "expected conditional merge error, got: {msg}"
     );
 }
 
