@@ -8277,10 +8277,10 @@ fn wire_service_call_arg_to_port(
         return Ok(());
     }
 
-    return Err(LowerError::ExprLower(format!(
+    Err(LowerError::ExprLower(format!(
         "cannot wire service call argument '{}' on {}.{} (no structural source found)",
         dest_port, ctx.module_name, ctx.item_name
-    )));
+    )))
 }
 
 #[derive(Debug, Clone)]
