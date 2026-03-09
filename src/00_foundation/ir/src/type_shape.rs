@@ -167,18 +167,9 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
         }
     }
 
-    // Priority 3: Look for structural predicates (Width, Signed, Domain, etc.)
-    // that indicate a platform primitive type. Checked after Product/Coproduct
-    // because their field SubDags may contain predicates.
-    let props = derive_structural_properties(dag);
-    if props.width.is_some() || props.signed.is_some() || props.domain.is_some() {
-        return TypeShape::Platform(props);
-    }
-
-    // Priority 4: Look for Brand node.
+    // Priority 3: Look for Brand node.
     for node in &dag.nodes {
         if let NodeBody::Opaque(TypeOp::Brand(name)) = &node.body {
-            // Recurse into the SubDag if present to get the inner shape.
             let inner_shape = inner_subdag(dag)
                 .map(type_shape)
                 .unwrap_or_else(|| TypeShape::Opaque(name.clone()));
@@ -186,7 +177,10 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
         }
     }
 
-    // Priority 5: Look for Wrap (Container) node.
+    // Priority 4: Look for Wrap (Container) node. Checked before Platform
+    // because container SubDags may contain structural predicates (e.g.,
+    // Optional<Int> has Width/Signed from the Int element) that shouldn't
+    // classify the container itself as a platform primitive.
     for node in &dag.nodes {
         if let NodeBody::Opaque(TypeOp::Wrap(kind)) = &node.body {
             let inner_shape = inner_subdag(dag)
@@ -216,6 +210,15 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
                 }
             };
         }
+    }
+
+    // Priority 5: Look for structural predicates (Width, Signed, Domain, etc.)
+    // that indicate a platform primitive type. Checked after Product/Coproduct,
+    // Brand, and Container because their SubDags may contain predicates that
+    // shouldn't classify the compound type as a platform primitive.
+    let props = derive_structural_properties(dag);
+    if props.width.is_some() || props.signed.is_some() || props.domain.is_some() {
+        return TypeShape::Platform(props);
     }
 
     // Priority 6: Identity node => Opaque with the type name from the port.

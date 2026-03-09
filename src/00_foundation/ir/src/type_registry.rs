@@ -282,12 +282,38 @@ impl TypeRegistry {
             type_lib::branded("Secret", type_lib::identity("String")),
         );
 
-        // String, Int, Float are identity placeholders here — the DSL files
-        // (string_type.dag, integer.dag, float.dag) provide structural
-        // definitions that override these via merge_dsl_types().
-        for name in ["String", "Int", "Float"] {
-            self.register(name, type_lib::identity(name));
-        }
+        // String: remains identity in the kernel because making it a Product
+        // changes its TypeShape from Opaque to Product, which breaks structural
+        // compatibility checks (e.g., String → StringList fan-in coercion).
+        // The DSL merge overrides this with the structural definition from
+        // string_type.dag.
+        self.register("String", type_lib::identity("String"));
+
+        // Int, Float: structural kernel definitions matching the DSL files
+        // (integer.dag, float.dag). These produce Platform shapes via
+        // Width/Signed/Domain predicates, which the emit layer handles.
+        self.register(
+            "Int",
+            type_lib::refined(
+                "Int",
+                vec![
+                    Predicate::Width(64),
+                    Predicate::Signed(None),
+                    Predicate::Arithmetic,
+                ],
+            ),
+        );
+        self.register(
+            "Float",
+            type_lib::refined(
+                "Float",
+                vec![
+                    Predicate::Width(64),
+                    Predicate::Domain("ieee754_binary64".to_string()),
+                    Predicate::Arithmetic,
+                ],
+            ),
+        );
     }
 
     /// Merge types from a DSL typecheck pass into this registry.
@@ -1814,8 +1840,6 @@ mod tests {
             "NetworkHandle",
             "Record",
             "String",
-            "Int",
-            "Float",
             "Unit",
         ]
         .into_iter()
