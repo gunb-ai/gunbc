@@ -1157,14 +1157,21 @@ pub fn value_compatible_with_type_id(type_id: &str, value: &crate::value::Value)
         return false;
     }
 
-    // Platform has dual backing (String or Map)
-    if type_id == "Platform" && (kind == ValueKind::String || kind == ValueKind::Map) {
-        return true;
+    // Platform accepts coproduct variant strings (PascalCase or lowercase tokens)
+    if type_id == "Platform" && kind == ValueKind::String {
+        if let crate::value::Value::Str(s) = value {
+            return matches!(
+                s.as_str(),
+                "Linux" | "Macos" | "Windows" | "linux" | "macos" | "windows"
+            );
+        }
     }
 
-    // Bool accepts both Bool values and coproduct variant strings ("True"/"False")
+    // Bool accepts coproduct variant strings "True"/"False" (not arbitrary strings)
     if type_id == "Bool" && kind == ValueKind::String {
-        return true;
+        if let crate::value::Value::Str(s) = value {
+            return s == "True" || s == "False";
+        }
     }
 
     // Handle types accept Map backing (serialized as maps at runtime)
@@ -1514,6 +1521,26 @@ mod tests {
             "Platform",
             &Value::Str("linux".into())
         ));
+        assert!(value_compatible_with_type_id(
+            "Platform",
+            &Value::Str("Linux".into())
+        ));
+        assert!(
+            !value_compatible_with_type_id("Platform", &Value::Str("ubuntu".into())),
+            "Platform should only accept canonical variant names"
+        );
+        assert!(value_compatible_with_type_id(
+            "Bool",
+            &Value::Str("True".into())
+        ));
+        assert!(value_compatible_with_type_id(
+            "Bool",
+            &Value::Str("False".into())
+        ));
+        assert!(
+            !value_compatible_with_type_id("Bool", &Value::Str("yes".into())),
+            "Bool should only accept True/False variant strings"
+        );
         assert!(value_compatible_with_type_id(
             "Credential",
             &Value::Map(BTreeMap::from([(
