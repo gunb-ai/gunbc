@@ -3857,7 +3857,13 @@ fn validate_type_expr(
                     | Refinement::Format(_)
                     | Refinement::Predicate(_)
                     | Refinement::RawBody
-                    | Refinement::FileTypes(_) => {}
+                    | Refinement::FileTypes(_)
+                    | Refinement::Width(_)
+                    | Refinement::Length(_)
+                    | Refinement::Signed(_)
+                    | Refinement::Unsigned
+                    | Refinement::Arithmetic
+                    | Refinement::Domain(_) => {}
                 }
             }
         }

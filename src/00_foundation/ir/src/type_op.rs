@@ -265,6 +265,28 @@ pub enum Predicate {
     /// Content encoding constraint from `@content` annotations.
     /// e.g., `@content(UTF8)` → `Predicate::Content(ContentEncoding::UTF8)`
     Content(ContentEncoding),
+
+    /// Bit-width constraint.
+    /// e.g., `width(8)` means the type occupies exactly 8 bits.
+    Width(u16),
+
+    /// Collection/string length constraint.
+    /// e.g., `length(4)` means exactly 4 elements/bytes.
+    Length(u64),
+
+    /// Domain constraint — names the mathematical/encoding domain.
+    /// e.g., `domain("ieee754_binary32")` for IEEE 754 float representation.
+    Domain(String),
+
+    /// Signed integer constraint. Optional string names the representation
+    /// (e.g., `"twos_complement"`). `None` means signed with default representation.
+    Signed(Option<String>),
+
+    /// Unsigned integer constraint — value is non-negative.
+    Unsigned,
+
+    /// Arithmetic constraint — type supports arithmetic operations.
+    Arithmetic,
 }
 
 /// Simple values that can appear in predicates.
@@ -310,6 +332,21 @@ impl Predicate {
 
             // Content encoding subtyping: Content(ASCII).entails(Content(UTF8)) = true
             (Predicate::Content(a), Predicate::Content(b)) => a.is_subtype_of(b),
+
+            // Width: exact match only (already handled by self == other above)
+            (Predicate::Width(_), Predicate::Width(_)) => false,
+
+            // Length: exact match only
+            (Predicate::Length(_), Predicate::Length(_)) => false,
+
+            // Domain: exact match only
+            (Predicate::Domain(_), Predicate::Domain(_)) => false,
+
+            // Signed entails Signed (regardless of representation detail)
+            (Predicate::Signed(_), Predicate::Signed(_)) => true,
+
+            // Unsigned is atomic — exact match handled above
+            // Arithmetic is atomic — exact match handled above
 
             _ => false,
         }

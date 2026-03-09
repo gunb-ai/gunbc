@@ -1218,6 +1218,18 @@ pub mod ast {
         Predicate(String),
         FileTypes(Vec<String>),
         RawBody,
+        /// Bit-width constraint: `width(8)`, `width(16)`, etc.
+        Width(Expr),
+        /// Collection/string length constraint: `length(4)`, `length(8)`, etc.
+        Length(Expr),
+        /// Signed integer: `signed` or `signed("twos_complement")`.
+        Signed(Option<String>),
+        /// Unsigned integer: `unsigned`.
+        Unsigned,
+        /// Arithmetic type: `arithmetic`.
+        Arithmetic,
+        /// Domain constraint: `domain("ieee754_binary32")`.
+        Domain(String),
     }
 
     #[derive(Debug, Clone)]
