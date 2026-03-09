@@ -275,36 +275,32 @@ impl TypeRegistry {
         }
     }
 
-    /// Create a type registry with common primitive types pre-registered.
+    /// Create a type registry with kernel type placeholders pre-registered.
+    ///
+    /// Registers Identity DAG placeholders for all primitive type names.
+    /// These are sufficient for tests and contexts that don't need full
+    /// structural definitions from the DSL.
     pub fn with_primitives() -> Self {
         let mut registry = Self::new();
-        registry.register_primitives();
+        registry.register_kernel_types();
         registry
     }
 
     /// Register the minimal kernel types needed to bootstrap DSL typecheck.
     ///
-    /// These are structural types that the compiler needs before any `.dag`
-    /// files are processed: Unit (bottom), Json (top), Any, Record.
-    /// Primitives (String, Int, etc.) are also included because the DSL
-    /// files reference them in type positions.
+    /// Kernel types are Identity DAG placeholders that the compiler needs
+    /// before any `.dag` files are processed. The DSL files reference these
+    /// names in type positions (field types, alias bases, refinement targets).
+    /// After typecheck, `merge_dsl_types()` overwrites the placeholders with
+    /// structural definitions from the compiled `.dag` files.
     pub fn register_kernel_types(&mut self) {
         self.register("Unit", type_lib::unit());
         self.register("Json", type_lib::json());
         self.register("Any", type_lib::identity("Any"));
         self.register("Record", type_lib::identity("Record"));
-    }
-
-    /// Register primitive types (String, Bool, Int, Float, Bytes, Unit, Json, Secret).
-    pub fn register_primitives(&mut self) {
-        self.register("String", type_lib::string());
-        self.register("Bool", type_lib::bool());
-        self.register("Int", type_lib::int());
-        self.register("Float", type_lib::float());
-        self.register("Bytes", type_lib::bytes());
-        self.register("Unit", type_lib::unit());
-        self.register("Json", type_lib::json());
-        self.register("Secret", type_lib::secret());
+        for name in ["String", "Bool", "Int", "Float", "Bytes", "Secret"] {
+            self.register(name, type_lib::identity(name));
+        }
     }
 
     /// Merge types from a DSL typecheck pass into this registry.
@@ -563,13 +559,12 @@ impl TypeRegistry {
 
     /// Create a type registry with all default types, ready for DSL merge.
     ///
-    /// Registers kernel types, primitives, and core types. After construction,
+    /// Registers kernel types and core types. After construction,
     /// call [`merge_dsl_types`] to override with structural definitions from
     /// compiled `.dag` files.
     pub fn with_defaults() -> Self {
         let mut registry = Self::new();
         registry.register_kernel_types();
-        registry.register_primitives();
         registry.register_core_types();
         registry
     }
@@ -1110,7 +1105,9 @@ mod tests {
         assert!(registry.contains(&TypeId::from("Unit")));
         assert!(registry.contains(&TypeId::from("Json")));
         assert!(registry.contains(&TypeId::from("Secret")));
-        assert_eq!(registry.len(), 8);
+        assert!(registry.contains(&TypeId::from("Any")));
+        assert!(registry.contains(&TypeId::from("Record")));
+        assert_eq!(registry.len(), 10);
     }
 
     #[test]

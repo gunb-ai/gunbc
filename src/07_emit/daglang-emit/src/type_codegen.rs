@@ -100,21 +100,24 @@ fn type_expr_to_rust(expr: &TypeExpr) -> String {
 }
 
 /// Map DSL primitive type names to Rust equivalents.
-///
-/// Uses the canonical `RUST_TYPE_MAPPING` table for primitive lookups,
-/// with additional entries for generic container base names (List, Map)
-/// which are not in the table (they're handled by `list_fmt`/`map_fmt`
-/// in the full `map_abstract_type` path).
 fn map_primitive(name: &str) -> String {
-    // Generic container base names (not in the primitive table).
     match name {
-        "List" => return "Vec".to_string(),
-        "Map" => return "std::collections::HashMap".to_string(),
-        _ => {}
+        "List" => "Vec".to_string(),
+        "Map" => "std::collections::HashMap".to_string(),
+        "String" | "Path" | "NonEmptyStr" | "Url" | "GistId" | "ProjectId"
+        | "ServiceAccountEmail" | "FilePath" | "Secret" => "String".to_string(),
+        "Bool" | "bool" => "bool".to_string(),
+        "Int" | "i64" | "I64" => "i64".to_string(),
+        "Float" | "f64" => "f64".to_string(),
+        "Char" => "char".to_string(),
+        "Bytes" => "Vec<u8>".to_string(),
+        "Json" | "ToolRegistry" => "serde_json::Value".to_string(),
+        "TransportRequest" => "TransportRequest".to_string(),
+        "TransportResponse" => "TransportResponse".to_string(),
+        "FilesystemHandle" => "PathBuf".to_string(),
+        "Unit" => "()".to_string(),
+        _ => name.to_string(),
     }
-    crate::type_mapping::lookup_primitive(&crate::type_mapping::RUST_TYPE_MAPPING, name)
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| name.to_string())
 }
 
 /// Check whether all variants of a sum type are simple (no fields).

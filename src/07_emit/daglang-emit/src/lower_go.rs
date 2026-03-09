@@ -612,7 +612,8 @@ mod tests {
     use gunbc_ir::ValueExpr;
 
     fn map_to_go_type(abstract_type: &str) -> String {
-        map_to_go_type_with_registry(abstract_type, None)
+        let registry = gunbc_ir::TypeRegistry::with_primitives();
+        map_to_go_type_with_registry(abstract_type, Some(&registry))
     }
 
     fn make_abstract_main(stmts: Vec<Stmt>) -> SourceFile {
