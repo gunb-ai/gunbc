@@ -1,0 +1,23 @@
+// std/containers.dag -- Generic container type vocabulary.
+//
+// These are structural definitions of the standard container types.
+// The actual generic resolution is handled by the compiler's type
+// registry; these definitions document the intended structure.
+//
+// NOTE: The DSL does not yet support generic type parameters in
+// type bodies. These definitions serve as documentation and will
+// be consumed when generic structural types are implemented.
+
+module std.containers
+
+// List<T> wraps a collection of elements of type T.
+// Structurally: { elements: Collection<T> }
+
+// Option<T> wraps a possibly-absent value of type T.
+// Structurally: { value: Optional<T> }
+
+// Map<K, V> wraps a collection of key-value pairs.
+// Structurally: { entries: List<{ key: K, value: V }> }
+
+// Set<T> wraps a collection of unique elements.
+// Structurally: { elements: List<T> where unique }

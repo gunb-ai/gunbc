@@ -1,0 +1,25 @@
+// std/integer.dag -- Syllogistic integer type hierarchy.
+//
+// Integers are structurally defined from bit-level types with
+// signedness and width predicates. Int and UInt are aliases for
+// their 64-bit variants (matching Rust's i64/u64 defaults).
+
+module std.integer
+
+import std.bit { Byte, Word16, Word32, Word64 }
+
+// Unsigned integers
+type UInt8 = Byte where unsigned, arithmetic
+type UInt16 = Word16 where unsigned, arithmetic
+type UInt32 = Word32 where unsigned, arithmetic
+type UInt64 = Word64 where unsigned, arithmetic
+
+// Signed integers
+type Int8 = Byte where signed, arithmetic
+type Int16 = Word16 where signed, arithmetic
+type Int32 = Word32 where signed, arithmetic
+type Int64 = Word64 where signed, arithmetic
+
+// Default aliases
+type Int = Int64
+type UInt = UInt64

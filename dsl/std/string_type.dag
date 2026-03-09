@@ -1,0 +1,16 @@
+// std/string_type.dag -- Syllogistic string type.
+//
+// A string is structurally a sequence of bytes with an encoding.
+// Char is an integer in the Unicode scalar value range.
+
+module std.string_type
+
+import std.bit { Byte }
+import std.encoding { Encoding }
+
+type String {
+    bytes: List<Byte>
+    encoding: Encoding
+}
+
+type Char = Int where range(min: 0, max: 1114111), brand("Char")
