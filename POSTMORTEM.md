@@ -1040,3 +1040,1177 @@ silently accepted — not just builtins.
 files rather than hardcoded in Rust. This would make the typecheck registry
 fully derived from source, but requires that `extern func` doesn't introduce
 heuristic-based resolution.
+
+---
+
+# Architectural analysis: representation convergence and the interpreter/compiler fork
+
+**Date:** 2026-03-09
+**Status:** Analysis only — no code changes.
+
+## Unifying diagnosis
+
+Every item in this postmortem is an instance of the same architectural
+violation: **a semantic concept has multiple independent representations, and
+no structural mechanism enforces that all representations agree.**
+
+| Postmortem item | Concept with multiple representations |
+|-----------------|--------------------------------------|
+| Registry disconnect | Builtins defined independently in typecheck, emit, eval |
+| Silent `eprintln` fallbacks | "What to do with unknown types" answered independently by type_registry, type_shape, auto_mock, emit |
+| `[when]` guard dropping | Guard syntax handled by fn-body path, pattern expansion path, but not func-body service call path |
+| Data decls invisible to evaluator | Data declarations flow through DAG wiring but not eval scope |
+| Shared fn nodes / wrong data flow | One fn node representation shared by multiple callers with no per-caller isolation |
+| Cache staleness | "Is this cached artifact valid?" answered by source digest but not compiler semantics |
+| Builtin callable contracts | Same function name handled independently in typecheck, emit, eval with no shared binding |
+
+The fix is not "add more tests" or "add more lints." It is **representation
+convergence**: each concept gets exactly one authoritative representation
+early in the pipeline, and all downstream consumers are structurally forced
+to handle all cases (via exhaustive enum match, trait implementation, or
+pipeline derivation).
+
+---
+
+## The builtins are not special
+
+The 4 remaining builtins (`eq`, `chars`, `code_point`, `build_token`) are
+not intrinsically host-bound. They are trivially expressible in the DSL as
+it exists today:
+
+| Builtin | DSL equivalent | Why it was Rust |
+|---------|---------------|-----------------|
+| `eq(a, b)` | `a == b` (DSL has `==` operator) | Predates DSL operator support |
+| `chars(s)` | `s \|> chars()` (already a pipe method) | Standalone call form predates pipe method |
+| `code_point(c)` | Identity — `Char` is `Int where brand("Char")` | Predates refined type definitions |
+| `build_token(...)` | Record constructor `{ token: payload, scheme: scheme, expires_at: None }` | Predates DSL record literals |
+
+These are **workarounds that outlived the conditions that created them.** The
+DSL grew past them, but the Rust implementations persisted. The three-layer
+registry disconnect is scar tissue from that temporal gap, not an inherent
+architectural need.
+
+This pattern — temporary Rust bypass that persists after the DSL becomes
+capable — recurs across the postmortem. The `eprintln` fallbacks, the
+`ExprCompute` bindings (since deleted), and the resolver ops are all
+instances.
+
+---
+
+## The compiler and the interpreter are different things
+
+The compiler pipeline (stages 03–07) produces `VerifiedDag<LoweredOp>`.
+That is its product. The compiler's job is done.
+
+Running that product is a separate concern — an **interpreter**. The
+relationship is the same as `rustc` producing a binary and the OS executing
+it. The compiler produces an artifact; the interpreter consumes it.
+
+Today the codebase does not make this separation. The interpreter is
+smeared across three places, none of which are called "the interpreter":
+
+```
+Compiler (stages 03–07):
+  .dag → parse → resolve imports → typecheck → lower → VerifiedDag<LoweredOp>
+                                                              ↓
+                                                        [THE ARTIFACT]
+                                                              ↓
+Interpreter (currently: stages 08–09, entangled):
+  eval.rs (in daglang-lower)     — actual interpretation logic
+  gunbc-resolve                  — rewraps eval.rs + reimplements half of it
+  gunbc-primitives               — third implementation of same operations
+  gunbc-exec                     — DAG scheduler (calls Executable::execute)
+  gunbc-lib-transport            — I/O (shell, HTTP, filesystem)
+```
+
+The interpreter needs exactly two capabilities:
+1. **Evaluate pure operations** — field access, binary ops, string
+   interpolation, fn bodies, pattern matching, collection ops. This is
+   what `eval.rs` does.
+2. **Execute transport** — shell commands, HTTP requests, file I/O. This
+   is what `gunbc-lib-transport` does.
+
+Everything else is translation glue that exists because the interpreter
+was never designed as a coherent unit.
+
+---
+
+## Three dissonances from the missing interpreter boundary
+
+### 1. The evaluator lives inside the compiler
+
+`eval.rs` is inside `daglang-lower` (stage 05, "Graph Lowering"). It is
+not a lowerer — it is the interpreter's core. It serves two callers:
+
+- **Compile-time:** `build_data_values()` evaluates `data` declarations
+  during lowering. This is constant folding — a legitimate compiler concern.
+- **Runtime:** `FnBodyCallableOp` in the resolver calls
+  `evaluate_fn_body_with_data()` during DAG execution. This is
+  interpretation.
+
+The lowerer depends on the evaluator for constant folding. Fine — the
+compiler can call the interpreter as a library (like `rustc` calling MIRI
+for const eval). But the evaluator should be its own crate that both the
+compiler and the interpreter depend on, not something trapped inside the
+compiler.
+
+### 2. The resolver reimplements the evaluator
+
+The resolver wraps each `LoweredOp::Primitive` variant in a separate Rust
+struct implementing `Executable`. Most of these structs either delegate to
+the evaluator or reimplement the same logic independently:
+
+| Resolver op | What it does | Evaluator equivalent |
+|---|---|---|
+| `GetFieldOp` | Extract field from map | `eval_expr(FieldAccess)` |
+| `StringInterpolateOp` | Concat strings | `eval_expr(StringInterpolation)` |
+| `BinaryOpNode` | `a + b`, `a == b`, etc. | `eval_expr(BinaryOp)` |
+| `ConditionalOp` | if/else | `eval_expr(IfElse)` |
+| `MatchDispatchOp` | pattern match | Delegates to `eval_match()` |
+| `RecordConstructOp` | build a map | `eval_expr(Record)` |
+| `ListConstructOp` | build a list | `eval_expr(List)` |
+| `FnBodyCallableOp` | fn body eval | Delegates to `evaluate_fn_body_with_data()` |
+
+The resolver exists because the executor expects `DynOp` (trait objects)
+and the compiler produces `LoweredOp` (data enums). Someone had to bridge
+the gap. Instead of building a clean interpreter, the bridge reimplemented
+half the evaluator. Two implementations of the same semantics, neither
+aware of the other.
+
+### 3. `gunbc-primitives` is a third implementation
+
+`PrimitiveOp` in `gunbc-primitives` defines Map, Filter, Fold, Parse,
+Extract, Format, etc. The evaluator in `eval.rs` implements
+`eval_pipe_method()` with Map, Filter, Fold, etc. The resolver implements
+`CollectionOp` variants. Three places where "map over a list" is defined.
+
+---
+
+## Root cause: the interpreter was never designed
+
+The compiler pipeline (stages 03–07) was designed intentionally. Each stage
+has a clear purpose: parse, resolve imports, typecheck, lower to IR, derive
+metadata, emit code. Clean, well-scoped.
+
+The interpreter was not designed. It accreted:
+
+- The evaluator went into the lowerer (because it needed `LoweredExpr`
+  types, which live there).
+- The resolver wrapped each lowered op in an `Executable` trait impl
+  (because the executor expected trait objects, not data enums).
+- `gunbc-primitives` predated both and was never reconciled.
+
+Each was a reasonable local decision. Together they created a system where
+the same semantics are implemented three times with no structural binding —
+the exact pattern that produces every other item in this postmortem.
+
+---
+
+## The interpreter as a first-class concept
+
+The interpreter should be a crate (or small group of crates) that:
+
+1. Takes `VerifiedDag<LoweredOp>` as input — the compiler's artifact.
+2. Walks nodes in topological order (the scheduler).
+3. For each node, dispatches to exactly one of:
+   - The evaluator (pure operations) — one implementation, no duplication.
+   - The transport layer (I/O operations) — shell, HTTP, filesystem.
+4. Returns execution results.
+
+No resolver. No `LoweredOp → DynOp` translation. No 30 separate op structs
+wrapping evaluator calls. The lowered IR IS the executable representation.
+The interpreter reads it directly.
+
+```
+Target architecture:
+
+Compiler:                         Interpreter:
+  daglang-syntax                    daglang-eval (pure evaluation)
+  daglang-resolve                       ↓
+  daglang-typecheck                 gunbc-interp (scheduler + dispatch)
+  daglang-lower ←(const eval)→          ↓
+  daglang-derive                    gunbc-lib-transport (I/O)
+  daglang-emit (Branch A only)
+       ↓
+  daglang-driver (orchestrator)
+       ↓
+  VerifiedDag<LoweredOp> ────────→ gunbc-interp
+```
+
+The compiler and interpreter share two things:
+- `gunbc-ir` — the DAG/Node/Port/Edge/Value types (the artifact format).
+- `daglang-eval` — the evaluator (compiler uses it for const folding,
+  interpreter uses it for runtime evaluation).
+
+They share nothing else. The compiler doesn't know about transport. The
+interpreter doesn't know about parsing or typechecking.
+
+---
+
+## How this resolves postmortem items
+
+- **Registry disconnect:** Eliminated. No builtins — everything is DSL `fn`
+  evaluated by one evaluator in `daglang-eval`. The three-layer disconnect
+  (typecheck / emit / eval) collapses to: typecheck derives from AST,
+  evaluator interprets the lowered body.
+
+- **Silent fallbacks:** The type_registry / type_shape / auto_mock / emit
+  fallbacks exist because each layer independently handles unknown types.
+  One evaluator with one type understanding = unknown is a hard error at the
+  first gate.
+
+- **`[when]` guard dropping:** The resolver's service ops don't handle
+  guards because they operate independently of the evaluator. One evaluation
+  path in the interpreter = guards always evaluated.
+
+- **Data declarations invisible to evaluator:** The evaluator IS the
+  execution path, so data declarations are always in scope.
+
+- **Shared fn nodes:** The resolver clones fn nodes because it reifies them
+  as separate `Executable` instances. In the interpreter, fn evaluation is
+  a function call to `daglang-eval` — no node cloning needed.
+
+- **Cache staleness:** Fewer moving parts = fewer cache invalidation
+  concerns. The interpreter evaluates `LoweredOp` directly, so the cache
+  key only needs to cover source + lowerer version.
+
+---
+
+# Refactor plan: pipeline convergence
+
+**Date:** 2026-03-09
+**Status:** Plan only — no code changes.
+**Goal:** Separate the compiler from the interpreter. Eliminate the
+three-way semantic duplication (evaluator / resolver / primitives).
+
+---
+
+## Before and after
+
+### BEFORE — current pipeline
+
+```
+COMPILER (stages 03–07):
+  03  daglang-syntax         parse .dag → AST
+  03  daglang-resolve        discover imports → ModuleGraph
+  04  daglang-typecheck      validate types → TypedProject
+  05  daglang-lower          lower to graph IR → VerifiedDag<LoweredOp>
+                             (ALSO contains eval.rs — the interpreter core)
+  06  daglang-derive         extract metadata → DerivedArtifacts
+  07  daglang-emit           generate Rust/Go/C → EmissionBundle
+  02  daglang-driver         orchestrate all of the above → CompileOutput
+
+INTERPRETER (stages 08–09, entangled with compiler):
+  08  gunbc-primitives       PrimitiveOp enum — reimplements eval ops
+  08  gunbc-resolve          LoweredOp→DynOp — reimplements eval ops AGAIN
+  08  gunbc-lib-transport    shell/HTTP/filesystem I/O
+  08  gunbc-lib-blob         blob content acquisition
+  09  gunbc-exec             DAG scheduler — calls Executable::execute()
+
+TEST:
+  10  gunbc-test             mock synthesis, Mockable trait
+  10  gunbc-testgen-registry target registry
+  10  gunbc-tests            auto-generated tests
+```
+
+**Problems:**
+
+1. `eval.rs` (the interpreter's brain) is inside the compiler
+   (`daglang-lower`). The compiler is being used as a runtime library.
+
+2. `gunbc-resolve` reimplements pure operations that `eval.rs` already
+   handles. 10 separate op structs that duplicate evaluator logic. Exists
+   solely to bridge `LoweredOp` (data) to `DynOp` (trait objects).
+
+3. `gunbc-primitives` is a third implementation of the same operations.
+   Map, Filter, Fold, etc. defined independently from both eval.rs and
+   the resolver.
+
+4. `gunbc-resolve` has 9 workspace deps — more than any other crate.
+   It depends on the compiler driver, the lowerer, the deriver, transport,
+   primitives, blob, exec, infra, and ir. This is the coupling symptom of
+   a missing architectural boundary.
+
+5. The compiler and interpreter share concerns they shouldn't. The
+   compiler produces `VerifiedDag<LoweredOp>`. That's its product. But
+   because `eval.rs` lives inside the compiler, the interpreter depends
+   on compiler internals. And because the resolver depends on the driver,
+   the interpreter transitively depends on the emitter — which it never
+   uses.
+
+### AFTER — separated pipeline
+
+```
+SHARED FOUNDATION:
+  00  gunbc-infra            hashing, resource IDs, manifests
+  00  gunbc-ir               Dag, Node, Port, Edge, Value, types
+  00  daglang-contract       Verdict, Diagnostic, spans
+
+COMPILER (produces the artifact):
+  03  daglang-syntax         parse .dag → AST
+  03  daglang-resolve        discover imports → ModuleGraph
+  04  daglang-typecheck      validate types → TypedProject
+  05  daglang-expr           LoweredExpr, LoweredFnBody types (IR for exprs)
+  05  daglang-lower          lower to graph IR → VerifiedDag<LoweredOp>
+                             (calls daglang-eval for const folding only)
+  06  daglang-derive         extract metadata → DerivedArtifacts
+  07  daglang-emit           generate Rust/Go/C → EmissionBundle
+  02  daglang-driver         orchestrate all of the above → CompileOutput
+
+EVALUATOR (shared by compiler + interpreter):
+  05  daglang-eval           evaluate LoweredExpr — one implementation
+                             deps: gunbc-ir, daglang-expr
+
+INTERPRETER (consumes the artifact):
+  08  gunbc-interp           scheduler + dispatch on LoweredOp
+                             pure ops → daglang-eval
+                             I/O ops → gunbc-lib-transport
+                             deps: gunbc-ir, daglang-eval, transport
+  08  gunbc-lib-transport    shell/HTTP/filesystem I/O (unchanged)
+  08  gunbc-lib-blob         blob content acquisition (unchanged)
+
+TEST:
+  10  gunbc-test             mock synthesis (no primitives dep)
+  10  gunbc-testgen-registry target registry
+  10  gunbc-tests            auto-generated tests
+```
+
+**Deleted crates:**
+- `gunbc-primitives` — operations consolidated into `daglang-eval`.
+- `gunbc-resolve` — resolution layer eliminated. Transport spec wiring
+  folded into `gunbc-interp` or `gunbc-lib-transport`.
+
+**New crates (from moved code, not new logic):**
+- `daglang-expr` — expression IR types extracted from `daglang-lower`.
+- `daglang-eval` — evaluator extracted from `daglang-lower`.
+- `gunbc-interp` — clean interpreter, replaces `gunbc-resolve` + the
+  scheduling role of `gunbc-exec`.
+
+**What each change buys:**
+
+| Change | What it eliminates | What it enables |
+|--------|-------------------|-----------------|
+| Extract `daglang-eval` | eval.rs trapped in compiler; resolver reimplements it | One implementation of every pure operation; compiler calls eval for const folding without being the eval host |
+| Extract `daglang-expr` | Expression types coupled to lowerer crate | Evaluator has its own leaf types; no dependency on compiler internals |
+| Create `gunbc-interp` | Resolver's 30 op structs wrapping evaluator calls; `LoweredOp→DynOp` translation | Direct dispatch on `LoweredOp`: pure→eval, transport→I/O; no type-erasure overhead |
+| Delete `gunbc-primitives` | Third implementation of Map/Filter/Fold/etc. | One implementation of collection ops in `daglang-eval` |
+| Delete `gunbc-resolve` | 9 workspace deps, reimplemented evaluator, `FnBodyCallableOp` delegation | Clean interpreter with ~4 deps (ir, eval, transport, blob) |
+| Rename/slim `gunbc-exec` | Executor coupled to `DynOp` trait objects | Scheduler is generic; `gunbc-interp` provides the `LoweredOp` dispatch |
+
+**Dependency graph comparison:**
+
+```
+BEFORE (gunbc-resolve):              AFTER (gunbc-interp):
+  daglang-derive                       gunbc-ir
+  daglang-driver                       daglang-eval
+  daglang-lower                        gunbc-lib-transport
+  gunbc-exec                           gunbc-lib-blob
+  gunbc-infra
+  gunbc-ir
+  gunbc-lib-blob
+  gunbc-lib-transport
+  gunbc-primitives
+  ─────────────────                    ─────────────────
+  9 workspace deps                     4 workspace deps
+```
+
+The interpreter no longer depends on the compiler. The compiler no longer
+hosts the interpreter's core logic. Each can evolve independently.
+
+---
+
+## Guiding constraints
+
+1. **Every phase compiles and passes `cargo test --workspace`.** No phase
+   leaves the codebase in a broken state.
+2. **No phase changes more than one boundary at a time.** Crate splits,
+   crate deletions, and semantic changes happen in separate phases.
+3. **Deletion requires proof.** Before deleting code, a previous phase must
+   have made it unreachable or redundant and verified that with tests.
+4. **The interpreter stays thin.** Its job is dispatch: pure → eval,
+   transport → I/O. No business logic in the interpreter itself.
+
+---
+
+## Current dependency graph (relevant subset)
+
+```
+daglang-syntax          (leaf)
+daglang-contract        (leaf)
+gunbc-infra             (leaf)
+    ↓
+gunbc-ir                (infra, contract, delegate-macros)
+    ↓
+gunbc-exec              (ir)
+    ↓
+gunbc-primitives        (infra, ir, exec)
+gunbc-lib-transport     (ir, exec)
+    ↓
+daglang-lower           (contract, syntax, typecheck, ir)
+    ↓
+daglang-derive          (lower, contract, ir)
+daglang-emit            (derive, lower, syntax, typecheck, ir)
+    ↓
+daglang-driver          (contract, syntax, resolve, typecheck, lower, derive, emit, ir)
+    ↓
+gunbc-resolve           (derive, driver, lower, exec, infra, ir, blob, transport, primitives)
+    ↓
+gunbc-codegen           (resolve, + nearly everything)
+gunbc-test              (ir, exec, primitives)
+```
+
+Key observations:
+- `gunbc-resolve` is the heaviest internal consumer (9 workspace deps).
+- `gunbc-exec` is clean (1 dep: `gunbc-ir`).
+- `daglang-lower` contains the evaluator but does not depend on exec,
+  transport, or primitives — only on syntax, typecheck, contract, ir.
+- `gunbc-test` depends on `gunbc-primitives`. This dependency must be
+  removed before primitives can be deleted.
+
+---
+
+## Phase 0 — Builtins to DSL
+
+**What:** Replace the 4 hardcoded builtins (`eq`, `chars`, `code_point`,
+`build_token`) with DSL `fn` items. Proves the principle that the DSL can
+replace Rust implementations. No crate restructuring.
+
+**Add:**
+
+```dag
+// dsl/std/logic.dag
+fn eq(a: String, b: String) -> Bool {
+  a == b
+}
+```
+
+```dag
+// dsl/std/unicode.dag  (already has char_width, char_display_width)
+fn code_point(c: Char) -> Int {
+  c   // Char is Int where brand("Char") — identity
+}
+```
+
+```dag
+// dsl/gunbc/auth/patterns.dag  (already has the call site)
+fn build_token(
+  payload: Secret,
+  scheme: AuthScheme,
+  header_name: String,
+  source_id: String,
+  required_scopes: List<String>
+) -> AccessToken {
+  { token: payload, scheme: scheme, expires_at: None }
+}
+```
+
+`chars` is already a pipe method — the standalone function form is
+redundant. Its 2 call sites (`width.dag`, `unicode.dag`) use
+`chars(s: text)` syntax. Replace with `text |> chars()`.
+
+**Delete:**
+
+| File | What to delete |
+|------|---------------|
+| `daglang-typecheck/src/lib.rs` | 4 manual entries in `builtin_callable_contracts()` |
+| `daglang-emit/src/fn_codegen.rs` | `"code_point"` and `"chars"` match arms in `compile_call()` (~30 lines) |
+| `daglang-lower/src/eval.rs` | `"code_point"` and `"chars"` match arms in `eval_call()` (~25 lines) |
+
+After this, `builtin_callable_contracts()` returns only pipe-method-derived
+contracts (the auto-derived part from `PIPE_METHOD_REGISTRY`). Zero manual
+standalone entries.
+
+**Verify:**
+- `cargo test --workspace --exclude gunbc-dag-tests`
+- `cargo clippy --all-targets -- -D warnings`
+- Grep for `builtin_callable_contracts` — confirm zero standalone entries.
+- Grep for `"code_point"\|"build_token"\|"chars"` in Rust — confirm no
+  match arms remain (pipe method `PipeMethod::Chars` is separate and stays).
+
+**Risk:** Low. Each function has 1–2 call sites in `.dag` files. The DSL
+equivalents are trivial.
+
+---
+
+## Phase 1 — Consolidate resolver pure ops into one dispatch function
+
+**What:** Replace the 10 individual pure-value op structs in the resolver
+with a single `execute_pure_primitive()` function. This eliminates the
+semantic duplication between the resolver and the evaluator without changing
+crate boundaries.
+
+**Current state:** 10 separate structs, each implementing `Executable`:
+
+| Struct | Lines (approx) | What it does |
+|--------|----------------|-------------|
+| `GetFieldOp` | ~30 | `map.get(field_name)` |
+| `StringInterpolateOp` | ~25 | Concatenate parts with `value_to_string()` |
+| `BinaryOpOp` | ~50 | Dispatch on op kind, call `eval_binop()` |
+| `UnaryOpOp` | ~20 | `Not` → `!value_truthy()`, `Neg` → negate |
+| `ConditionalOp` | ~20 | `if value_truthy(cond) { then } else { else }` |
+| `MatchDispatchOp` | ~30 | Delegate to `eval_match()` |
+| `RecordConstructOp` | ~15 | Collect named inputs into `Value::Map` |
+| `NullCoalesceOp` | ~15 | `value ?? default` |
+| `VariantConstructOp` | ~20 | Build `Value::Map` with `_variant` tag |
+| `ListConstructOp` | ~15 | Collect numbered inputs into `Value::List` |
+
+**Replace with:**
+
+```rust
+// resolve.rs
+fn execute_pure_primitive(
+    kind: &PrimitiveOpKind,
+    inputs: &HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    match kind {
+        PrimitiveOpKind::GetField => { ... }
+        PrimitiveOpKind::StringInterpolate => { ... }
+        PrimitiveOpKind::BinaryOp(op) => { ... }
+        // etc.
+    }
+}
+```
+
+The match body for each arm is the same logic currently in each struct's
+`execute()` method — but now in one function, dispatching on the enum
+variant. Where the structs already delegate to `eval.rs` (BinaryOp →
+`eval_binop()`, MatchDispatch → `eval_match()`), the new function does the
+same. Where the structs have independent implementations, the new function
+consolidates them.
+
+A single wrapper struct `PurePrimitiveOp { kind: PrimitiveOpKind }` implements
+`Executable` by calling `execute_pure_primitive()`. The resolver instantiates
+this instead of 10 different structs.
+
+**Delete:**
+- `GetFieldOp`, `StringInterpolateOp`, `BinaryOpOp`, `UnaryOpOp`,
+  `ConditionalOp`, `MatchDispatchOp`, `RecordConstructOp`,
+  `NullCoalesceOp`, `VariantConstructOp`, `ListConstructOp`
+  — 10 struct definitions + 10 `impl Executable` blocks (~240 lines).
+
+**Keep:**
+- `FnBodyCallableOp` — has special `__out:` port passthrough logic and data
+  values threading. Consolidate later (Phase 4).
+- `DeclaredOutputCallableOp` — port name remapping, not pure computation.
+- `CallParamSourceOp`, `LiteralSourceOp` — trivial passthrough, could fold
+  into the dispatch but low priority.
+- `ResourceAcquireOp`, `ResourceReleaseOp`, `DslFsEnvOp` — infrastructure.
+- All service ops — Phase 3.
+
+**Verify:**
+- `cargo test --workspace --exclude gunbc-dag-tests`
+- `cargo test -p gunbc-dag-tests` — generated tests exercise every
+  primitive through the resolver. All must pass unchanged.
+- Diff the op dispatch function against eval.rs equivalents to confirm
+  semantic agreement. Any disagreement is a latent bug being fixed.
+
+**Risk:** Medium. The 10 ops have been tested in production. The new dispatch
+function must produce identical outputs for identical inputs. The generated
+DAG tests are the verification gate — they exercise every primitive kind.
+
+---
+
+## Phase 2 — Migrate eval.rs functions into the dispatch
+
+**What:** Where Phase 1 kept independent implementations in the dispatch
+function, this phase replaces them with calls to `eval.rs` functions. After
+this, the dispatch function is a thin adapter between port-based inputs and
+the evaluator's API.
+
+The adapter's job: extract values from the `inputs` HashMap by port name,
+call the corresponding `eval.rs` function, and package the result into an
+`outputs` HashMap.
+
+**Specifically:**
+
+| Dispatch arm | Replace with |
+|---|---|
+| `GetField` | `eval_field_access(object, field_name)` (new pub fn in eval.rs) |
+| `StringInterpolate` | `eval_string_interpolation(parts)` (new pub fn) |
+| `BinaryOp` | `eval_binop(lhs, op, rhs)` (already public) |
+| `UnaryOp` | `eval_unary(op, val)` (new pub fn) |
+| `Conditional` | `value_truthy(cond)` + select (already public) |
+| `MatchDispatch` | `eval_match(scrutinee, arms, ...)` (already public) |
+| `RecordConstruct` | `eval_record(fields)` (new pub fn) |
+| `NullCoalesce` | `eval_null_coalesce(a, b)` (new pub fn) |
+| `VariantConstruct` | `eval_variant(tag, fields)` (new pub fn) |
+| `ListConstruct` | `eval_list(items)` (new pub fn) |
+
+Some of these are already public in eval.rs. Others need small public
+wrappers around internal logic. Each new wrapper is ≤5 lines.
+
+**Delete:** The independent implementations in the dispatch function from
+Phase 1 (~150 lines). Replaced by evaluator calls.
+
+**Verify:**
+- Same test gates as Phase 1.
+- After this phase, every pure primitive's semantics are defined exactly
+  once: in `eval.rs`. The dispatch function is purely mechanical (port name
+  extraction + evaluator call + output packaging).
+
+**Risk:** Low, given Phase 1 already verified the dispatch structure.
+
+---
+
+## Phase 3 — Consolidate service prepare/parse ops
+
+**What:** The 4 prepare ops and 4 parse ops are structurally identical —
+they differ only in which transport kind (REST, Shell, File, Local) they
+target. Each reads a spec and mechanically formats inputs into a request or
+extracts outputs from a response.
+
+Replace with 2 parameterized ops:
+
+```rust
+struct GenericPrepareOp {
+    transport_kind: TransportKind,  // Rest | Shell | File | Local
+    spec: OperationSpec,
+}
+
+struct GenericParseOp {
+    transport_kind: TransportKind,
+    spec: OperationSpec,
+}
+```
+
+The `execute()` method dispatches on `transport_kind` for the few places
+where behavior differs (URL interpolation for REST, argv construction for
+Shell, etc.).
+
+**Delete:**
+- `GenericRestPrepareOp`, `GenericShellPrepareOp`, `GenericFilePrepareOp`,
+  `GenericLocalPrepareOp` — 4 structs (~400 lines total in
+  `service_ops_impl.rs`)
+- `GenericRestParseOp`, `GenericShellParseOp`, `GenericFileParseOp`,
+  `GenericLocalParseOp` — 4 structs (~350 lines total)
+- Replaced by 2 parameterized structs (~300 lines total)
+
+**Also consolidate:**
+- `InterfaceStubPrepareOp`, `InterfaceStubExecuteOp`,
+  `InterfaceStubParseOp` — 3 structs into 1 `InterfaceStubOp` with
+  internal phase dispatch.
+
+**Keep:**
+- `FilesystemExecuteOp` — direct I/O, not transport-mediated. Stays.
+
+**Verify:**
+- `cargo test --workspace`
+- Service op tests in `gunbc-resolve` and generated tests that exercise
+  transport triplets.
+
+**Risk:** Medium. Service ops have protocol-specific edge cases (REST auth
+headers, Shell env vars, File path normalization). Parameterization must
+preserve all edge cases. Review each transport kind's `execute()` body
+carefully during consolidation.
+
+---
+
+## Phase 4 — Collapse FnBodyCallableOp into the dispatch
+
+**What:** `FnBodyCallableOp` is currently separate from the pure primitive
+dispatch because it has extra concerns:
+- `__out:` port passthrough logic (forwarding ports that bypass fn evaluation)
+- `data_values` threading into `evaluate_fn_body_with_data()`
+- Optional `fn_body` (some callables have no body — they're just port maps)
+
+After Phases 1–2, the pure dispatch function already handles the common
+case. Extend it to handle `LoweredOp::Callable` with `fn_body: Some(...)`:
+
+```rust
+fn execute_lowered_op(
+    op: &LoweredOp,
+    inputs: &HashMap<String, Value>,
+    data_values: &HashMap<String, serde_json::Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    match op {
+        LoweredOp::Primitive(kind) => execute_pure_primitive(kind, inputs),
+        LoweredOp::Callable { fn_body: Some(body), .. } => {
+            let mut outputs = evaluate_fn_body_with_data(body, inputs, ..., data_values)?;
+            // handle __out: passthrough ports
+            for (k, v) in inputs {
+                if k.starts_with("__out:") { outputs.insert(k.clone(), v.clone()); }
+            }
+            Ok(outputs)
+        }
+        LoweredOp::Callable { fn_body: None, .. } => {
+            // DeclaredOutputCallableOp: port forwarding
+            ...
+        }
+        ...
+    }
+}
+```
+
+**Delete:**
+- `FnBodyCallableOp` struct + `impl Executable` (~60 lines)
+- `DeclaredOutputCallableOp` struct + `impl Executable` (~40 lines)
+
+**What remains in the resolver after this phase:**
+- `execute_lowered_op()` — single dispatch function for all pure ops + callables
+- `PurePrimitiveOp` wrapper struct (implements `Executable`, calls dispatch)
+- `GenericPrepareOp`, `GenericParseOp` — transport formatting (Phase 3)
+- `InterfaceStubOp` — interface capability stubs
+- `ResourceAcquireOp`, `ResourceReleaseOp`, `DslFsEnvOp` — infrastructure
+- `FilesystemExecuteOp` — direct file I/O
+- `CallParamSourceOp`, `LiteralSourceOp` — trivial passthrough
+
+The resolver is now a thin translation layer: `LoweredOp` → one of ~6 op
+types (down from ~30).
+
+**Verify:**
+- `cargo test --workspace`
+- Specifically verify `gist.dag` multi-entrypoint scenarios (the shared fn
+  node fix from this postmortem) — fn body evaluation must still work
+  correctly per-entrypoint.
+
+**Risk:** Medium. The `__out:` passthrough logic and `data_values` threading
+are subtle. Verify with generated tests that exercise fn bodies with data
+declarations.
+
+---
+
+## Phase 5 — Delete `gunbc-primitives`
+
+**What:** After Phases 1–4, the evaluator handles all pure operations. The
+`PrimitiveOp` enum in `gunbc-primitives` is a parallel definition of the
+same operations, used by the old code path.
+
+Audit remaining consumers:
+- `gunbc-resolve` — uses `PrimitiveOp` variants during resolution. After
+  Phases 1–4, the resolver dispatches on `PrimitiveOpKind` (from
+  `daglang-lower`) instead. Remove `gunbc-primitives` dependency.
+- `gunbc-test` — uses `PrimitiveOp` for mock construction and transport
+  pattern matching. Must be migrated to use `LoweredOp` or transport-level
+  abstractions from `gunbc-ir`.
+- `gunbc-codegen` — uses `PrimitiveOp` for test generation. Must be
+  migrated similarly.
+
+**Migrate `gunbc-test`:**
+The test crate uses `PrimitiveOp` in `Mockable` trait implementations and
+`MockOp` construction. The migration path:
+- `MockOp` and `Mockable` should dispatch on `LoweredOp` variants or on a
+  trait bound, not on `PrimitiveOp` enum variants.
+- Transport-related test concerns (dry-run interception, mock transport
+  responses) already use `TransportOps` from `gunbc-lib-transport`, not
+  `PrimitiveOp`.
+
+**Delete:**
+- `src/08_materialize/primitives/` — entire crate
+- `gunbc-primitives` from workspace `Cargo.toml`
+- All `use gunbc_primitives::` statements (resolve, test, codegen)
+
+**Keep (relocated):**
+- I/O prepare op logic (PrepareFileRead, PrepareFileWrite, PrepareShell) —
+  these are transport request builders. Move to `gunbc-lib-transport` where
+  they conceptually belong (building requests for the transport layer).
+
+**Verify:**
+- `cargo test --workspace`
+- Confirm no remaining references to `gunbc_primitives` in any crate.
+
+**Risk:** High. `gunbc-test` is load-bearing for the test infrastructure.
+The `Mockable` trait migration must be done carefully. Plan a sub-phase
+where `gunbc-test` is updated first, then `gunbc-primitives` is deleted.
+
+**Sub-phasing:**
+- 5a: Remove `gunbc-primitives` dependency from `gunbc-resolve` (should be
+  straightforward after Phases 1–4).
+- 5b: Migrate `gunbc-test` from `PrimitiveOp` to `LoweredOp`-based
+  dispatch. Add `daglang-lower` as a dependency of `gunbc-test` (or move
+  the needed types to `gunbc-ir`).
+- 5c: Migrate `gunbc-codegen` similarly.
+- 5d: Delete `gunbc-primitives` crate.
+
+---
+
+## Phase 6 — Extract the evaluator
+
+**What:** After Phases 1–5, `eval.rs` in `daglang-lower` is the single
+implementation of all pure operation semantics. It is consumed by:
+- `daglang-lower` itself (compile-time: `build_data_values()`)
+- `gunbc-resolve` (runtime: dispatch function from Phase 4)
+- `gunbc-codegen` (compile-time: `fidelity.rs` stdlib evaluation)
+
+The evaluator's own dependencies are minimal: `gunbc-ir` (for `Value`,
+node types) and `daglang-syntax` (for `PipeMethod`, `BinOp` enums used in
+`LoweredExpr` variants).
+
+**Problem:** `LoweredExpr`, `LoweredFnBody`, `LoweredBinOp`,
+`LoweredMatchArm` are defined in `daglang-lower::expr`. The evaluator
+interprets these types. Extracting the evaluator requires that these types
+be accessible from outside `daglang-lower`.
+
+**Option A — Move expression types to `gunbc-ir`:**
+These are IR types (intermediate representation of expressions). They
+belong in the IR crate. However, they reference `PipeMethod` and `BinOp`
+from `daglang-syntax`, which would make `gunbc-ir` depend on
+`daglang-syntax`. Currently `gunbc-ir` has no dependency on syntax. This
+is a significant change.
+
+**Option B — Create `daglang-expr` leaf crate:**
+A small crate (~500 lines) containing just the expression types. Both
+`daglang-lower` and the new evaluator crate depend on it. No new dependency
+for `gunbc-ir`.
+
+**Option C — Re-derive expression enums from `gunbc-ir` primitives:**
+Define `BinOp`, `UnaryOp`, etc. in `gunbc-ir` independently of
+`daglang-syntax`. The lowerer maps from syntax-level enums to IR-level
+enums during lowering. The evaluator works with IR-level enums only. This
+duplicates the enum variants but removes the cross-layer dependency.
+
+**Recommended: Option B.** Smallest blast radius, no new deps on existing
+crates, clean separation.
+
+**New crate: `daglang-expr`** (in `src/05_graph/daglang-expr/`):
+
+Dependencies: `gunbc-ir`, `daglang-syntax` (for PipeMethod, BinOp reuse).
+
+Contents (moved from `daglang-lower/src/expr.rs`):
+- `LoweredExpr` enum
+- `LoweredFnBody` struct
+- `LoweredBinOp`, `LoweredUnaryOp`
+- `LoweredPattern`, `LoweredMatchArm`
+- `LoweredLiteral`
+- `LoweredStringPart`
+
+**New crate: `daglang-eval`** (in `src/05_graph/daglang-eval/`):
+
+Dependencies: `gunbc-ir`, `daglang-expr`.
+
+Contents (moved from `daglang-lower/src/eval.rs`):
+- `evaluate_fn_body()`, `evaluate_fn_body_with_data()`
+- `eval_expr()`, `eval_binop()`, `eval_match()`, `eval_pipe_method()`
+- `value_truthy()`, `value_to_string()`, `sort_key()`
+- `EvalError`
+- Internal `Env` struct
+
+**Update consumers:**
+- `daglang-lower`: depends on `daglang-expr` + `daglang-eval`. Uses
+  `daglang-eval::evaluate_fn_body()` in `build_data_values()`. Constructs
+  `LoweredExpr` from `daglang-expr` types.
+- `gunbc-resolve`: depends on `daglang-eval` instead of `daglang-lower`
+  for evaluation. **Drops `daglang-lower` dependency entirely** if no other
+  lowerer exports are used (verify).
+- `gunbc-codegen` (`fidelity.rs`): depends on `daglang-eval` instead of
+  `daglang-lower` for `evaluate_fn_body()`.
+
+**Delete:**
+- `daglang-lower/src/eval.rs` — moved to `daglang-eval`.
+- `daglang-lower/src/expr.rs` — moved to `daglang-expr`. `daglang-lower`
+  re-exports from `daglang-expr` for backwards compat during transition,
+  then remove re-exports once all consumers are updated.
+
+**Resulting dependency graph (relevant subset):**
+
+```
+daglang-syntax          (leaf)
+gunbc-ir                (infra, contract, delegate-macros)
+    ↓
+daglang-expr            (ir, syntax)    ← NEW
+    ↓
+daglang-eval            (ir, expr)      ← NEW
+    ↓
+daglang-lower           (contract, syntax, typecheck, ir, expr, eval)
+    ↓
+gunbc-resolve           (eval, ir, transport, blob)  ← SLIMMED
+    ↓
+gunbc-exec              (ir)            ← UNCHANGED
+```
+
+Key improvement: `gunbc-resolve` no longer depends on `daglang-lower`,
+`daglang-driver`, `daglang-derive`, or `gunbc-primitives`. Its dependency
+set shrinks from 9 workspace deps to ~5.
+
+**Verify:**
+- `cargo test --workspace`
+- Confirm `gunbc-resolve` no longer depends on `daglang-lower`.
+- Confirm `daglang-lower` re-export removal doesn't break any consumer.
+
+**Risk:** Medium. Type moves across crate boundaries require updating every
+import path. Use re-exports during transition to avoid a single massive
+commit.
+
+---
+
+## Phase 7 — Create `gunbc-interp` (the interpreter crate)
+
+**What:** After Phase 6, the resolver is a thin layer that wraps
+`execute_lowered_op()` (a single dispatch function) in `Executable` trait
+impls, plus service op transport wiring. This is the interpreter — make it
+explicit.
+
+**New crate: `gunbc-interp`** (in `src/08_materialize/interp/`):
+
+This crate IS the interpreter. Its job: take `VerifiedDag<LoweredOp>` and
+run it. It combines:
+
+- The `execute_lowered_op()` dispatch function (from Phases 1–4, currently
+  in `gunbc-resolve`)
+- Service op transport wiring (GenericPrepareOp, GenericParseOp,
+  InterfaceStubOp, FilesystemExecuteOp — from Phase 3, currently in
+  `gunbc-resolve/service_ops/`)
+- DAG scheduling logic (topological walk, dry-run interception — currently
+  in `gunbc-exec`)
+- `builder.rs` (DSL graph compilation + dagbin cache — currently in
+  `gunbc-resolve`)
+- `fs_env.rs`, `dry_run.rs` (currently in `gunbc-resolve`)
+
+Dependencies:
+- `gunbc-ir` — DAG/Node/Port/Edge/Value types
+- `daglang-eval` — pure operation evaluation
+- `daglang-expr` — expression IR types (transitive via eval)
+- `gunbc-lib-transport` — I/O execution
+- `gunbc-lib-blob` — blob content acquisition
+
+Public API:
+
+```rust
+/// Run a compiled DAG directly. No resolution step.
+pub fn interpret(
+    dag: &VerifiedDag<LoweredOp>,
+    config: InterpretConfig,
+) -> Result<InterpretResult, InterpretError>
+```
+
+The interpreter dispatches each node to one of:
+- **Pure operation** → `daglang-eval` (field access, binary ops, fn bodies,
+  collection ops, pattern matching, conditionals, etc.)
+- **Transport prepare/parse** → service op wiring (spec-driven request/
+  response formatting)
+- **Transport execute** → `gunbc-lib-transport` (shell, HTTP, filesystem)
+- **Infrastructure** → resource acquire/release, fs env, param source,
+  literal source
+
+**What this enables:**
+- `VerifiedDag<LoweredOp>` is directly interpretable. No resolution step.
+- The full path becomes: parse → resolve imports → typecheck → lower →
+  interpret. No "materialize" phase.
+- The interpreter and compiler are structurally separate — they share
+  `gunbc-ir` and `daglang-eval`, nothing else.
+
+**Delete:**
+- `gunbc-resolve` — entire crate. All content either moved to
+  `gunbc-interp` (service ops, builder, fs_env, dry_run) or deleted
+  (resolve.rs op wrappers, already emptied by Phases 1–4).
+- `gunbc-exec` scheduling logic absorbed into `gunbc-interp`. If
+  `gunbc-exec` still has value as the generic `Executable` trait + `DynOp`
+  type for test mocks, keep it as a slim trait crate. Otherwise fold into
+  `gunbc-ir`.
+
+**`gunbc-exec` disposition:**
+`gunbc-exec` currently provides:
+- `Executable` trait
+- `execute_dag()` function (topological scheduler)
+- `ExecutionMode` (DryRun/Live)
+- `BoundaryMock` / interception
+- Progress tracking, display, CI context
+
+Options:
+- **Keep `gunbc-exec` as the generic scheduler.** `gunbc-interp` depends on
+  it and provides the `LoweredOp`-specific dispatch. `gunbc-exec` remains
+  type-generic — it schedules any `Dag<T: Executable>`.
+- **Fold scheduler into `gunbc-interp`.** If nothing else needs the generic
+  scheduler, it's unnecessary abstraction.
+
+Recommended: **Keep `gunbc-exec` as generic scheduler.** It's already clean
+(1 dep), and the test infrastructure uses `DynOp` + `MockOp` through it.
+`gunbc-interp` implements `Executable for LoweredOp` and calls
+`gunbc-exec::execute_dag()`.
+
+**Resulting dependency graph:**
+
+```
+COMPILER:                          INTERPRETER:
+  daglang-syntax                     daglang-eval (ir, expr)
+  daglang-resolve                         ↓
+  daglang-typecheck                  gunbc-interp (ir, eval, exec, transport, blob)
+  daglang-expr (ir, syntax)               ↓
+  daglang-lower (ir, expr, eval)     gunbc-exec (ir)  ← generic scheduler
+  daglang-derive (ir, lower)         gunbc-lib-transport (ir, exec)
+  daglang-emit (ir, lower, ...)
+  daglang-driver (orchestrator)
+```
+
+The interpreter depends on 5 workspace crates (ir, eval, exec, transport,
+blob). The resolver had 9. The interpreter does not depend on any compiler
+crate (syntax, typecheck, lower, derive, emit, driver).
+
+**Verify:**
+- `cargo test --workspace`
+- Confirm `gunbc-interp` has no dependency on any `daglang-*` compiler
+  crate except `daglang-eval` and `daglang-expr`.
+- Confirm all existing integration tests pass through the new interpreter
+  path.
+- Benchmark: DAG execution should be slightly faster (one fewer indirection
+  layer, no type-erasure overhead for pure ops).
+
+**Risk:** High. This is the structural culmination of Phases 1–6. All
+prior phases must be stable. The migration path: implement `gunbc-interp`
+alongside `gunbc-resolve`, migrate consumers one at a time, delete
+`gunbc-resolve` once no consumers remain.
+
+---
+
+## Phase 8 — Structured diagnostics and `eprintln` ban
+
+**What:** Independent of Phases 1–7 but enabled by them. With a single
+evaluation path, diagnostic handling can be unified.
+
+**Add to `clippy.toml` (root):**
+
+```toml
+[[disallowed-macros]]
+path = "std::eprintln"
+reason = "Use Diagnostic enum. See POSTMORTEM.md structured diagnostics section."
+```
+
+**Migrate all `eprintln!("warning: ...")` sites:**
+
+Each site (identified in the postmortem invariant review) must become one
+of:
+- `Diagnostic::Error` → propagate as `Err`, stop the pipeline phase.
+- Informational output → use a structured logging channel, not stderr.
+- Removed entirely — if the condition can no longer occur after Phases 1–7
+  (e.g., unknown type fallbacks in the resolver, which no longer exists).
+
+**Sites to migrate (from postmortem inventory):**
+
+| Site | Current behavior | After migration |
+|------|-----------------|-----------------|
+| `daglang-lower` ~L8196 (wire_service_call_argument) | `eprintln` + return false | `Err(LowerError::UnwiredArgument)` |
+| `daglang-lower` ~L9922 (wire_fn_call_arguments) | `eprintln` + continue | `Err(LowerError::UnwiredArgument)` |
+| `daglang-lower` ~L11712 (wire_callable_return_outputs) | `eprintln` + continue | `Err(LowerError::UnwiredOutput)` |
+| `daglang-emit` type_mapping.rs (unknown type) | `eprintln` + return verbatim | `Err(EmitError::UnknownType)` |
+| `ir` type_registry.rs (unknown type) | `eprintln` + `ValueBacking::Json` | `Err(TypeError::UnknownType)` |
+| `ir` type_shape.rs (unknown type) | `eprintln` + `TypeShape::Opaque` | `Err(TypeError::UnknownType)` |
+| `codegen` testgen (unknown mock type) | `eprintln` + `Json(Null)` | `Err(MockGenError::UnknownType)` |
+| `exec` ci_context.rs (write error) | `writeln!().ok()` | Document as intentional best-effort |
+
+**Delete:**
+- The test `identity_type_unknown_emits_name_verbatim` — it validates a
+  fallback that should be an error.
+- The `AutoTestgenResult::Skipped` variant and placeholder rendering path.
+
+**Verify:**
+- `cargo clippy --all-targets -- -D warnings` — confirms no `eprintln!` in
+  library crates.
+- `cargo test --workspace` — confirms no test depends on fallback behavior.
+
+**Risk:** Medium. Some fallback paths may be exercised by existing tests
+that expect graceful degradation. Those tests need to be updated to either
+provide valid inputs or expect errors.
+
+---
+
+## Phase 9 — Clean up scaffolding and residual debt
+
+**What:** Delete temporary scaffolding identified in the postmortem that
+should now be unnecessary.
+
+| Scaffolding | Removal condition | Phase that enables it |
+|---|---|---|
+| Synthesized `expr_value_*` fallback nodes in lowerer | Structural lowering handles complex pure args | Phase 2 (evaluator handles all pure ops) |
+| `AutoTestgenResult::Skipped` + placeholder rendering | Fail-closed testgen | Phase 8 (structured diagnostics) |
+| `gunbc-tests` glob-include `src/generated/*.rs` scaffold | Stable testgen output model | Phase 5 (clean test infrastructure) |
+| Manual dagbin cache epoch bumps | Compiler version in cache key | Phase 7 (evaluator-based execution) |
+| `allow_unresolved_imports` flag in TypecheckOptions | All callables derived from AST | Phase 0 (builtins → DSL) |
+
+**Verify:**
+- `cargo test --workspace`
+- `make test-all` (if applicable after generated test restructuring)
+
+---
+
+## Summary: what gets deleted, moved, and created
+
+| Phase | What happens | Crates affected |
+|-------|-------------|-----------------|
+| 0 | Delete ~55 lines Rust (builtins), add ~10 lines DSL | typecheck, emit, lower |
+| 1 | Delete ~240 lines (10 op structs → 1 dispatch fn) | resolve |
+| 2 | Delete ~150 lines (independent impls → eval.rs calls) | resolve, lower (+~30) |
+| 3 | Delete ~450 lines (8 service structs → 2 parameterized) | resolve/service_ops |
+| 4 | Delete ~100 lines (FnBodyCallableOp → dispatch) | resolve |
+| 5 | Delete ~800 lines (entire crate) | primitives (deleted), test, codegen |
+| 6 | Move ~1,300 lines (eval.rs + expr.rs → new crates) | lower, new: expr + eval |
+| 7 | Delete ~400 lines (resolve → interp), create gunbc-interp | resolve (deleted), new: interp |
+| 8 | Delete ~100 lines (fallback paths) | lower, emit, ir, codegen |
+| 9 | Delete ~50 lines (scaffolding) | lower, codegen, tests |
+
+**Net result:**
+
+| | Before | After |
+|---|---|---|
+| Crates hosting interpreter logic | 3 (lower, resolve, primitives) | 1 (interp) |
+| Implementations of "map a list" | 3 (eval.rs, resolver, primitives) | 1 (eval) |
+| Resolver workspace deps | 9 | N/A (deleted) |
+| Interpreter workspace deps | N/A | 5 (ir, eval, exec, transport, blob) |
+| Manual builtin entries | 4 | 0 |
+| `eprintln` fallback sites | ~8 | 0 |
+
+**Crates deleted:** `gunbc-primitives` (Phase 5), `gunbc-resolve` (Phase 7).
+
+**Crates created (from moved code, not new logic):**
+- `daglang-expr` (~500 lines, expression IR types from lower) — Phase 6
+- `daglang-eval` (~800 lines, evaluator from lower) — Phase 6
+- `gunbc-interp` (~300 lines new + ~500 moved from resolve) — Phase 7
+
+---
+
+## Sequencing and dependencies between phases
+
+```
+Phase 0 (builtins → DSL)           — independent, do first
+    ↓
+Phase 1 (consolidate pure ops)     — depends on nothing
+    ↓
+Phase 2 (evaluator delegation)     — depends on Phase 1
+    ↓
+Phase 3 (service op consolidation) — independent of 1–2, can parallel
+    ↓
+Phase 4 (FnBodyCallableOp)         — depends on Phase 2
+    ↓
+Phase 5 (delete primitives)        — depends on Phase 4
+    ↓
+Phase 6 (extract evaluator)        — depends on Phase 5
+    ↓
+Phase 7 (create gunbc-interp)      — depends on Phase 6
+    ↓
+Phase 8 (structured diagnostics)   — independent, can start after Phase 0
+    ↓
+Phase 9 (scaffolding cleanup)      — depends on Phase 8
+```
+
+Phases 0, 1, 3, and 8 can proceed in parallel. The critical path is
+0 → 1 → 2 → 4 → 5 → 6 → 7.
+
+---
+
+## Invariant: "Can you describe what this stage does in one sentence?"
+
+Every stage in the pipeline should pass this test. If you can't describe
+what a crate does without saying "and also," it's doing too much.
+
+**After this refactor:**
+
+| Crate | One sentence |
+|-------|-------------|
+| `daglang-syntax` | Parses `.dag` source into an AST. |
+| `daglang-resolve` | Discovers `.dag` files and builds the import graph. |
+| `daglang-typecheck` | Validates types and produces a typed project. |
+| `daglang-expr` | Defines the expression IR types (`LoweredExpr`, `LoweredFnBody`). |
+| `daglang-eval` | Evaluates expression IR to produce values. |
+| `daglang-lower` | Lowers typed AST to graph IR (`VerifiedDag<LoweredOp>`). |
+| `daglang-derive` | Extracts metadata (manifest, obligations) from graph IR. |
+| `daglang-emit` | Generates target-language code from graph IR. |
+| `daglang-driver` | Orchestrates the compiler pipeline. |
+| `gunbc-interp` | Interprets graph IR: pure ops via eval, I/O via transport. |
+| `gunbc-exec` | Schedules DAG nodes in topological order. |
+| `gunbc-lib-transport` | Executes shell commands, HTTP requests, and file I/O. |
+
+**Stages that fail this test today:**
+
+| Crate | Problem |
+|-------|---------|
+| `daglang-lower` | Lowers typed AST to graph IR **and also** contains the runtime expression evaluator **and also** evaluates compile-time data declarations. |
+| `gunbc-resolve` | Resolves `LoweredOp` to `DynOp` **and also** reimplements pure operations **and also** wires transport specs **and also** builds DSL graphs **and also** manages the dagbin cache. |
+| `gunbc-primitives` | Defines primitive operations **and also** reimplements collection operations that the evaluator handles. |
