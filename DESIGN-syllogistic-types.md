@@ -2101,171 +2101,276 @@ The critical path, in order of dependency:
 That is the line between "we have a structural type system in
 principle" and "the compiler actually lives on it."
 
-#### Phase A: Structural Containers (Gap 8) — PARTIALLY DONE
+#### Phase A: Structural Containers (Gap 8)
 
-**A1. DONE.** `resolve_field_type_dag()` handles
-`TypeExpr::Generic(name, params)`:
-- `List<T>` → `type_lib::list(resolve_field_type_dag(T, registry))`
-- `Option<T>` → `type_lib::optional(resolve_field_type_dag(T, registry))`
-- `Map<K,V>` → `type_lib::map(resolve(V))` (**key erased — A1a**)
-- `Set<T>` → `type_lib::set(resolve_field_type_dag(T, registry))`
+Status: `resolve_field_type_dag()` handles `List<T>`, `Option<T>`,
+`Set<T>`, `Map<K,V>` generics. Map key is erased. Container
+refinement predicates chain correctly via `refined_with_base()` in
+the `TypeExpr::Refined` arm. `containers.dag` is comments-only.
 
-**A1a. DEFERRED.** Map key type erasure. `type_lib::map()` only
-accepts a value DAG. Fix requires extending to `map(key_dag, val_dag)`
-and updating `ContainerShape::Map`, `TypeShape`, structural
-compatibility, and all downstream consumers.
+**A1. Map key type support.**
 
-**A2. DEFERRED.** Refinement predicates on containers.
-`List<Bit> where length(8)` → list DAG without Length(8) constraint.
-Needed for compositional width derivation (Phase B).
+| File | Change |
+|------|--------|
+| `ir/src/type_lib.rs` L512-529 | Change `map(value_type)` → `map(key_type, value_type)`. Add second SubDag node `"key_type"` alongside `"value_type"`. |
+| `typecheck/src/lib.rs` L1257 | Map arm: resolve both args. `("Map", 2) => { let key = resolve_field_type_dag(&args[0], registry); let val = resolve_field_type_dag(&args[1], registry); return type_lib::map(key, val); }` |
+| `ir/src/type_shape.rs` | `type_shape()` Wrap(Map) extraction: resolve key SubDag shape. Currently `ContainerShape::Map` already has `(Box<TypeShape>, Box<TypeShape>)` — wire the key from the SubDag named `"key_type"`. |
+| `ir/src/type_registry.rs` | Update all `type_lib::map(val)` callers to `type_lib::map(key, val)`. |
+| `type_mapping.rs` | `emit_shape` Map arm already handles `(key, value)` — no change needed. |
 
-**A3. DEFERRED.** Replace `containers.dag` documentation-only comments
-with structural definitions.
+**A2. Verify container refinement predicates propagate.**
 
-**A4. DEFERRED.** Verify `Byte.bits` resolves to structural
-`List(element: Bit(width(1))) where Length(8)` — blocked on A2.
+The `TypeExpr::Refined` arm in `resolve_field_type_dag()` already
+chains predicates via `refined_with_base()`. Verify with a test:
+`resolve_field_type_dag` on `List<Bit> where length(8)` should
+produce a DAG with `Wrap(List)` → `Validate(Length(8))` chain, and
+`derive_structural_properties()` should find `length: Some(8)`.
+
+| File | Change |
+|------|--------|
+| `ir/src/type_shape.rs` | Add test: `derive_structural_properties` on `refined_with_base("Byte.bits", list(bit_dag), vec![Predicate::Length(8)])` returns `length: Some(8)`. |
+| `ir/src/type_registry.rs` | Add test: merged registry's `Byte` resolves to a product whose `bits` field's SubDag has `Length(8)` predicate. |
+
+**A3. Real `containers.dag` definitions.**
+
+Replace documentation-only comments with parseable type definitions.
+`containers.dag` currently has no parseable types. At minimum:
+
+```dag
+module std.containers
+type List<T> { elements: Collection<T> }
+type Option<T> { value: Optional<T> }
+type Map<K, V> { entries: List<{ key: K, value: V }> }
+type Set<T> { elements: List<T> where unique }
+```
+
+This may require parser support for generic type parameters in type
+definitions (`type List<T>`). If parser changes are too invasive for
+this phase, defer to Phase F and document the gap.
 
 #### Phase B: Compositional Width Derivation (Gap 9)
 
-Make `derive_structural_properties()` compose width from structure.
+Status: `derive_structural_properties()` reads explicit `Width`,
+`Signed`, `Domain` predicates from Validate nodes and recurses into
+SubDags. It does NOT compose width from `Length × element_width`.
 
-**B1.** Width from fixed-length homogeneous containers:
-- Product with single field `List<T> where length(N)` where T has
-  width W → derived width = N × W
-- This gives `Byte` width 8, `Word32` width 32, etc.
+**B1. Compose width from fixed-length containers.**
 
-**B2.** Width inheritance through aliases:
-- `UInt8 = Byte where unsigned, arithmetic` → inherit Byte's width 8
-- `Float32 = Word32 where domain(...)` → inherit Word32's width 32
+| File | Change |
+|------|--------|
+| `ir/src/type_shape.rs` `derive_structural_properties()` | After collecting explicit predicates and recursing into SubDags, add composition logic: if the DAG contains `Wrap(List)` with a SubDag element type that has derived `width: Some(W)`, AND a `Validate(Length(N))` node in the chain, then `derived_width = N × W`. |
 
-**B3.** Recursive width resolution:
-- `derive_structural_properties()` already recurses into SubDags
-- After Phase A, SubDags contain structural container DAGs
-- Width derivation follows: `Word32` → field `bytes: List<Byte>
-  where length(4)` → element `Byte` → field `bits: List<Bit> where
-  length(8)` → element `Bit` → width(1) → Byte width = 8 × 1 = 8
-  → Word32 width = 4 × 8 = 32
+Algorithm sketch:
+```
+1. If props.width.is_none() && props.length.is_some():
+   a. Find Wrap(List) node in the DAG
+   b. Recurse into element_type SubDag → get element_props
+   c. If element_props.width.is_some():
+      props.width = Some(props.length.unwrap() * element_props.width.unwrap())
+```
 
-**B4.** Verify: `derive_structural_properties()` on the merged
-registry's `UInt8` returns `width: Some(8), signed: Some(false),
-arithmetic: true`. Same for `Float32` → `width: Some(32)`.
+**B2. Inherit width through aliases.**
 
-#### Phase C: Structural Kernel Types (Gap 1) — PARTIALLY DONE
+`refined_with_base()` already embeds the base DAG as a SubDag.
+`derive_structural_properties()` already recurses into SubDags.
+After B1, `Byte` will have derived `width: 8`. Then `UInt8 = Byte
+where unsigned, arithmetic` recurses into `Byte`'s SubDag and
+inherits `width: 8`.
 
-**C1. PARTIAL.** `register_kernel_types()` has structural DAGs for:
-- `Bool` → Coproduct(True: Unit, False: Unit)
-- `Bytes` → List\<Byte\>
-- `Secret` → Branded\<String\>
+Verify this works transitively: `Word32` → field SubDag → `Byte`
+→ width 8 → `Word32` derives width 4×8=32 → `UInt32 = Word32
+where unsigned` inherits width 32.
 
-`String`, `Int`, `Float` remain identity in kernel but are overridden
-by DSL merge (`string_type.dag`, `integer.dag`, `float.dag`).
+**B3. Compose width through products.**
 
-**C2. DONE.** `ratchet_identity_types_in_core_registry` test documents
-the baseline: 13 allowed identity types in `with_core_types()`. The
-merged registry has fewer (DSL overrides String, Int, Float, Credential).
+Products with a single fixed-length list field (like `Byte { bits:
+List<Bit> where length(8) }`) should derive width from that field.
 
-**C3. DONE.** `register_core_types()` identity placeholders reduced:
-Platform → coproduct, Timestamp → refined Int, NetworkHandle → Unit,
-ShellResponse/FileResponse/RestResponse/HttpResponse → products.
+| File | Change |
+|------|--------|
+| `ir/src/type_shape.rs` | After Product detection in `derive_structural_properties()`: if a product has exactly one field and that field's SubDag has a composed width, inherit it. This makes `Byte.width = 8` because its only field `bits` has composed width `8 × 1 = 8`. |
 
-#### Phase D: Backend Language Models + Registry Wiring (Gaps 2-3)
+**B4. Tests.**
 
-**D1.** Thread `CompileOutput::merged_type_registry()` through the
-codegen pipeline so production callers use
-`lower_to_*_with_registry(Some(reg))`.
+| Test | Expected |
+|------|----------|
+| `derive_structural_properties` on merged registry `Bit` | `width: Some(1)` (explicit predicate) |
+| `derive_structural_properties` on merged registry `Byte` | `width: Some(8)` (composed: 8 × 1) |
+| `derive_structural_properties` on merged registry `Word32` | `width: Some(32)` (composed: 4 × 8) |
+| `derive_structural_properties` on merged registry `UInt8` | `width: Some(8), signed: Some(false), arithmetic: true` |
+| `derive_structural_properties` on merged registry `Float32` | `width: Some(32), domain: Some("ieee754_binary32")` |
+| `derive_structural_properties` on merged registry `Int64` | `width: Some(64), signed: Some(true), arithmetic: true` |
 
-**D2.** Construct language models as `Dag<TypeOp>` instances using
-`type_lib` helpers. Each language model is a collection of type DAGs
-whose predicates describe the target language's representational
-capabilities. No separate `LanguageModel` struct — the IR is the
-model. See "Bootstrap: Language Models as IR" in the Backend
-Language Models section.
+#### Phase C: Eliminate Remaining Identity Types
 
-Hierarchy (following compilation target chains — each node is a
-citable spec):
-- ISA layer: `Dag<TypeOp>` with Width/Signed/Domain predicates
-  (Ref: x86-64 SDM, ARM ARM, RISC-V spec)
-- C / Verilog: extend ISA with language-specific type constructs
-  (Ref: ISO/IEC 9899:2018, IEEE 1364-2005)
-- Rust / Go / C++: extend C or ISA with higher-level constructs
-  (Ref: The Rust Reference, Go Language Spec, ISO/IEC 14882:2020)
+Status: ratchet test allows 13 identity types in `with_core_types()`.
+5 are infrastructure types that need structural definitions. 4 are
+intentionally opaque (`Any`, `Json`, `Unit`, `Record`). 3 are
+overridden by DSL merge (`String`, `Int`, `Float`).
 
-**D3.** Populate language models for Rust, Go, C by mechanical
-extraction from the existing match tables in `emit_identity_type()`,
-`emit_platform_type()`, and container mapping. Each entry becomes a
-`Dag<TypeOp>` with:
-- Predicate nodes (Width, Signed, Domain, Arithmetic) defining what
-  the target type represents
-- A Brand or Identity node carrying the syntax string
-- SubDag composition for containers and composite patterns
+**C1. Structural definitions for infrastructure types.**
 
-**D4.** Implement structural resolution:
-`resolve(source_dag: &Dag<TypeOp>, model: &[Dag<TypeOp>]) -> String`.
-The resolver structurally matches the source type's predicates
-against each language model entry's predicates, finds the most
-specific match, and returns the syntax string. Recursive
-decomposition: if no match at the current structural level, peel
-one level from the source type and retry.
+| Type | Current | Structural replacement |
+|------|---------|----------------------|
+| `TransportRequest` | `identity("TransportRequest")` | `product_resolved("TransportRequest", [("method", string()), ("url", url()), ("headers", json()), ("body", optional(json()))])` |
+| `TransportResponse` | `identity("TransportResponse")` | `product_resolved("TransportResponse", [("status", int()), ("headers", json()), ("body", string())])` |
+| `Credential` | `identity("Credential")` | `branded("Credential", string())` — or a product if it has multiple fields |
+| `FilesystemHandle` | `identity("FilesystemHandle")` | `branded("FilesystemHandle", file_path())` |
+| `ToolHandle` | `identity("ToolHandle")` | `branded("ToolHandle", string())` |
 
-**D5.** Replace `emit_platform_type()` and `emit_identity_type()`
-with calls to the structural resolver.
+| File | Change |
+|------|--------|
+| `ir/src/type_registry.rs` L487-500 | Replace `identity()` calls with structural DAGs per table above. |
+| `ir/src/type_registry.rs` ratchet test | Reduce allowed identity set from 13 to 8: `Any`, `Json`, `Unit`, `Record`, `String`, `Int`, `Float`, `NetworkHandle`. |
 
-**D6.** Delete `emit_identity_type()`, `map_primitive()`,
-`try_refined_to_rust()`, `map_to_c_type_static()`.
+**C2. Kernel identity placeholders.**
 
-**D7.** Serialize language models as JSON IR (`backend/rust.ir.json`,
-etc.) so they can be loaded as data rather than constructed in Rust
-code. This moves the source of truth from Rust to data files.
+`String`, `Int`, `Float` are identity in kernel-only contexts but
+overridden by DSL merge. To make the kernel self-sufficient:
 
-#### Phase E: Structural Coercion (replaces legacy coercion model)
+| File | Change |
+|------|--------|
+| `ir/src/type_registry.rs` `register_kernel_types()` | Replace `identity("String")` with `product_resolved("String", [("bytes", list(identity("Byte"))), ("encoding", identity("Encoding"))])` — matching `string_type.dag`. |
+| Same | Replace `identity("Int")` with `refined_with_base("Int", identity("Word64"), vec![Predicate::Signed, Predicate::Arithmetic])` — matching `integer.dag`. |
+| Same | Replace `identity("Float")` with `refined_with_base("Float", identity("Word64"), vec![Predicate::Domain("ieee754_binary64"), Predicate::Arithmetic])` — matching `float.dag`. |
+| Ratchet test | Reduce allowed identity set further. Target: `Any`, `Json`, `Unit`, `Record` only (4 intentionally opaque types). |
 
-**Open design decisions (deferred to next PR):**
+Note: `Any`, `Json`, `Unit`, `Record` may stay identity permanently —
+they are infrastructure/dynamic types whose internal structure is
+opaque by design. `NetworkHandle` can become `unit()` if not already.
 
-1. **Derivation ≠ coercion.** A derivation path (Bit → Byte) does not
-   imply a free cast. `Bit → Byte` is composition (8 bits), not
-   supertype. `Int32 → Float32` needs conversion semantics (same width,
-   different interpretation). The coercion search space is the derivation
-   graph, but each edge needs an explicit structural translation rule.
+#### Phase D: Registry Wiring + Language Models (Gaps 2-3)
 
-2. **Brand semantics.** `structural_shapes_compatible()` currently
-   strips brands when comparing `Brand(_, inner) → other`. This makes
-   `Secret → String` structurally compatible, which may be wrong for
-   sensitive types. Options: (a) brands are one-way refinements
-   (current), (b) brands are strict nominal barriers, (c) per-brand
-   policy. Decision needed before implementing coercion.
+Status: `CompileOutput::merged_type_registry()` exists but is never
+called in the production emit path. All 3 backends call
+`lower_to_*_with_registry(None)`. The structural emit path
+(`emit_shape` → `emit_platform_type`) works but is only reachable
+when a registry is provided.
 
-3. **Post-hoc validation.** Legacy coercion edges are gone. The new
-   `is_compatible()` uses structural shape comparison + predicate
-   entailment. If any graph construction path bypasses the builder
-   (deserialization, manual DAG construction, test fixtures), there
-   is no post-hoc coercion safety net. Audit needed.
+**D1. Thread the merged registry to emit.**
+
+| File | Change |
+|------|--------|
+| `daglang-cli/src/pipeline.rs` | After `compile()`, call `output.merged_type_registry()` and pass it to the emit phase. |
+| `daglang-emit/src/lower_rust.rs` L44 | Change `lower_to_rust()` to call `lower_to_rust_with_registry(source, config, Some(&registry))`. |
+| `daglang-emit/src/lower_go.rs` L44 | Same pattern: pass `Some(&registry)`. |
+| `daglang-emit/src/lower_c.rs` L45 | Same pattern: pass `Some(&registry)`. |
+| `daglang-emit/src/lower_to_ir.rs` L525-529 | Change `resolve_and_emit(abstract_type, None, ...)` to pass registry. |
+| `daglang-emit/src/type_codegen.rs` L31,220,232 | Change `None` to pass registry through from callers. |
+
+After D1, the structural path is live in production. Named
+Products/Coproducts still fall through to `emit_identity_type()`
+in `emit_shape()` — that's expected until D2-D5 replace it.
+
+**D2. Language model: ISA layer.**
+
+| File | Change |
+|------|--------|
+| `daglang-emit/src/language_model.rs` (new) | Define `LanguageModelEntry { predicates: StructuralProperties, syntax: String }` and `LanguageModel { entries: Vec<LanguageModelEntry>, containers: Vec<ContainerEntry>, composites: Vec<CompositeEntry> }`. These are Rust structs that mirror `Dag<TypeOp>` structure — Stage 1 bootstrap. |
+| Same | ISA-level entries: `{ width: 8, signed: true } → "i8"` etc. for widths 8/16/32/64 × signed/unsigned, plus IEEE 754 floats. These entries are shared by all backends. |
+
+**D3. Language models: Rust, Go, C.**
+
+| File | Change |
+|------|--------|
+| `daglang-emit/src/language_model.rs` | Populate per-backend models by mechanical extraction from `emit_identity_type()` (L164-222) and `emit_platform_type()` (L97-154). Each entry in the match table becomes a `LanguageModelEntry`. |
+| Same | Container entries: `{ kind: List, template: "Vec<{T}>" }` etc., extracted from `emit_shape()` container arms (L52-86). |
+| Same | Composite pattern entries: `{ Product(bytes: List<u8>, encoding: _) → "String" }` etc. for types currently handled by name match in `emit_identity_type()`. |
+
+**D4. Structural resolver.**
+
+| File | Change |
+|------|--------|
+| `daglang-emit/src/language_model.rs` | `resolve(shape: &TypeShape, model: &LanguageModel) -> String`. Walk entries, find best predicate match. For containers: match container kind, recurse on element. For composites: match product/coproduct patterns. Fallback: recursive decomposition — peel one structural level and retry. |
+| `daglang-emit/src/type_mapping.rs` | `resolve_and_emit()`: if registry is Some, resolve type DAG → TypeShape → `resolve(shape, model)` instead of `emit_shape()`. Preserve `emit_shape()` as intermediate step until fully replaced. |
+
+**D5. Replace emit functions.**
+
+| File | Change |
+|------|--------|
+| `type_mapping.rs` | `emit_shape()`: replace `Product(Some(name), _) → emit_identity_type(name)` with `resolve(shape, model)`. Same for `Coproduct(Some(name), _)` and `Opaque(name)`. |
+| `type_codegen.rs` L52-54 | Remove hardcoded `"List" → "Vec"`, `"Map" → "HashMap"`, `"Set" → "HashSet"` — these become language model container entries. |
+| `lower_c.rs` `c_type_from_emitted()` L616-661 | Gradually eliminate as the resolver produces `CType` directly instead of parsing strings. |
+
+**D6. Delete nominal emit infrastructure.**
+
+Delete `emit_identity_type()` (L164-222 in `type_mapping.rs`).
+Delete `try_refined_to_rust_structural()` (type_codegen.rs).
+Update ratchet/regression tests.
+
+**D7. Serialize language models as JSON IR.**
+
+Move language model data from Rust code to `backend/rust.ir.json`,
+`backend/go.ir.json`, `backend/c.ir.json`. Load at startup.
+Source of truth moves to data files.
+
+#### Phase E: Structural Coercion
+
+Status: the legacy coercion infrastructure (`CoercionEdge`,
+`TypeContract`, `base_type_upcasts_to`, `coercion_path` BFS) does
+**not exist** in the codebase. It was already deleted. The current
+system uses `is_compatible()` with structural shape comparison +
+predicate entailment. `coerce.rs` handles cardinality coercion only
+(WrapScalar, OptionalToList, Widen).
+
+The remaining coercion work is about strengthening what already
+exists, not replacing a legacy system.
+
+**Open design decisions:**
+
+1. **Derivation ≠ coercion.** A derivation path (Bit → Byte) does
+   not imply a free cast. Each coercion edge needs an explicit
+   structural translation rule.
+
+2. **Brand semantics.** `structural_shapes_compatible()` strips
+   brands: `Secret → String` is structurally compatible. Decision
+   needed: (a) one-way refinements (current), (b) strict nominal
+   barriers, (c) per-brand policy.
+
+3. **Cross-type coercion paths.** `is_compatible()` checks direct
+   structural compatibility. It does not walk derivation chains to
+   find multi-step coercion paths (e.g., `UInt8 → Int32` via
+   width widening). This is a new capability, not a migration of
+   existing infrastructure.
 
 **E1.** Implement `structural_coercion_path(from_dag, to_dag)` using
-explicit translation rules over structure, not automatic derivation
-path casts.
+explicit translation rules over structure.
 
-**E2.** Replace `is_compatible()` with structural coercion check.
+**E2.** Strengthen `is_compatible()` to support derivation-chain
+walking for safe upcasts (same derivation chain, same or weaker
+predicates).
 
 **E3.** Add `.dag` syntax for downcast acknowledgment.
 
-**E4.** Delete remaining legacy coercion infrastructure.
+#### Phase F: Cleanup + Fail-Loud (Gaps 7, 10)
 
-#### Phase F: Fail-Loud + Cleanup (Gaps 4-7, 10)
+**F1. Fail-loud on the structural path.**
 
-**F1.** Replace silent identity fallbacks with `Result` returns on
-the structural path. Keep silent fallbacks only in kernel bootstrap.
+| File | Change |
+|------|--------|
+| `typecheck/src/lib.rs` `resolve_field_type_dag()` L1287-1292 | Replace `identity(&base_name)` fallback with `Result::Err` for unresolved types. Keep identity fallback only in Pass 1 (forward-reference placeholders). |
+| `ir/src/type_registry.rs` | `register_product` / `register_coproduct`: use `_checked` variants in structural paths, returning errors for unresolved child types. |
+| `typecheck/src/lib.rs` topo-sort | Surface cycles as structural errors instead of silently breaking. |
 
-**F2.** Eliminate remaining `Guard` references in executor.
+**F2. Transport rewrite tables as data.**
 
-**F3.** Derive port cardinality from type DAGs; restrict
-`Port.cardinality` to `pub(crate)`.
+The 3 `rewrite_transport_call` functions (Rust L341-365, Go L407-431,
+C L683-704) have 14 identical entries each with backend-specific
+syntax. Extract to a data structure: `HashMap<&str, TransportOp>`
+per backend, or a language-model transport vocabulary.
 
-**F4.** Replace `register_core_types()` coproduct lists with
-DSL-sourced registration via `merge_dsl_types()`.
+**F3. Generic type parameter support in parser.**
 
-**F5.** Surface topological sort cycles as structural errors.
+If A3 (real `containers.dag`) requires `type List<T>` syntax, add
+parser support for generic type parameters in type definitions.
+This enables `containers.dag` to carry real structural definitions
+instead of comments.
 
-**F6.** Model transport rewrite tables as data.
+**F4. Derive port cardinality from type DAGs.**
+
+`Port.cardinality` is currently stored directly. It should be
+derivable from the port's type DAG (a `List<T>` port has ZeroOrMore,
+an `Optional<T>` port has ZeroOrOne, etc.).
 
 #### Future: Behavior Declarations (not this PR)
 
