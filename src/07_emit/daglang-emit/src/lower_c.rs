@@ -43,7 +43,8 @@ impl Default for CConfig {
 
 /// Lower an AbstractIR `SourceFile` to a `CSourceFile`.
 pub fn lower_to_c(source: &SourceFile, config: &CConfig) -> Result<CSourceFile, LowerError> {
-    lower_to_c_with_registry(source, config, None)
+    let registry = gunbc_ir::TypeRegistry::with_core_types();
+    lower_to_c_with_registry(source, config, Some(&registry))
 }
 
 /// Lower to C with an optional type registry for structural emission.
@@ -597,19 +598,85 @@ fn lower_value_expr(v: &gunbc_ir::ValueExpr) -> CExpr {
 
 /// Map an abstract type name to its C equivalent.
 ///
-/// Delegates to `resolve_and_emit()` for unified type resolution, then parses
-/// the emitted string back into a `CType`. When a `TypeRegistry` is available,
-/// structural resolution provides precise width/signedness/domain information.
+/// Convert an abstract type name to CType, using structural resolution when
+/// a registry is available.
 fn map_to_c_type_with_registry(
     abstract_type: &str,
     registry: Option<&gunbc_ir::TypeRegistry>,
 ) -> CType {
-    let emitted = crate::type_mapping::resolve_and_emit(
+    if let Some(reg) = registry {
+        let type_id = gunbc_ir::TypeId::new(abstract_type);
+        if let Some(dag) = reg.resolve_type(&type_id) {
+            let shape = gunbc_ir::type_shape(&dag);
+            return c_type_from_shape(&shape);
+        }
+    }
+    c_type_from_emitted(&crate::type_mapping::resolve_and_emit(
         abstract_type,
-        registry,
+        None,
         crate::type_mapping::Backend::C,
-    );
-    c_type_from_emitted(&emitted)
+    ))
+}
+
+/// Build CType directly from a TypeShape, avoiding the string roundtrip.
+fn c_type_from_shape(shape: &gunbc_ir::TypeShape) -> CType {
+    use gunbc_ir::{ContainerShape, TypeShape};
+    let model = &crate::language_model::C_MODEL;
+
+    match shape {
+        TypeShape::Platform(props) => {
+            if let Some(domain) = &props.domain {
+                if domain.contains("ieee754") {
+                    return match props.width {
+                        Some(32) => CType::Float(CFloatKind::Float),
+                        _ => CType::Float(CFloatKind::Double),
+                    };
+                }
+            }
+            if let Some(width) = props.width {
+                let w = width as u8;
+                return if props.signed == Some(false) {
+                    CType::Int(CIntKind::UFixed(w))
+                } else {
+                    CType::Int(CIntKind::Fixed(w))
+                };
+            }
+            CType::Ptr(Box::new(CType::Void))
+        }
+        TypeShape::Container(container) => match container {
+            ContainerShape::Optional(inner) | ContainerShape::List(inner)
+            | ContainerShape::Set(inner) => {
+                CType::Ptr(Box::new(c_type_from_shape(inner)))
+            }
+            ContainerShape::Map(_, value) => {
+                CType::Ptr(Box::new(c_type_from_shape(value)))
+            }
+        },
+        TypeShape::Brand(name, inner) => {
+            if let Some(syntax) = crate::language_model::resolve_named(name, model) {
+                c_type_from_emitted(syntax)
+            } else {
+                c_type_from_shape(inner)
+            }
+        }
+        TypeShape::Product(Some(name), _) | TypeShape::Coproduct(Some(name), _) => {
+            if let Some(syntax) = crate::language_model::resolve_named(name, model) {
+                c_type_from_emitted(syntax)
+            } else {
+                CType::Ptr(Box::new(CType::Void))
+            }
+        }
+        TypeShape::Product(None, _) | TypeShape::Coproduct(None, _) => {
+            CType::Ptr(Box::new(CType::Void))
+        }
+        TypeShape::Opaque(name) => {
+            if let Some(syntax) = crate::language_model::resolve_named(name, model) {
+                c_type_from_emitted(syntax)
+            } else {
+                CType::Ptr(Box::new(CType::Void))
+            }
+        }
+    }
 }
 
 /// Parse a C type string (as emitted by resolve_and_emit) into a CType.
@@ -683,23 +750,8 @@ fn rewrite_transport_call_c(name: &str, config: &CConfig) -> Option<String> {
     if !config.use_exec_runtime {
         return None;
     }
-
-    match name {
-        "prepare_file_read" => Some("gunbc_file_read_request".to_string()),
-        "execute_file_read" => Some("gunbc_transport_execute".to_string()),
-        "prepare_file_write" => Some("gunbc_file_write_request".to_string()),
-        "execute_file_write" => Some("gunbc_transport_execute".to_string()),
-        "prepare_file_exists" => Some("gunbc_file_exists_request".to_string()),
-        "execute_file_exists" => Some("gunbc_transport_execute".to_string()),
-        "prepare_shell_exec" => Some("gunbc_shell_request".to_string()),
-        "execute_shell_exec" => Some("gunbc_transport_execute".to_string()),
-        "prepare_http_request" => Some("gunbc_http_request".to_string()),
-        "execute_http_request" => Some("gunbc_transport_execute".to_string()),
-        "prepare_directory_list" => Some("gunbc_dir_list_request".to_string()),
-        "execute_directory_list" => Some("gunbc_transport_execute".to_string()),
-        "acquire_resource" => Some("gunbc_acquire_resource".to_string()),
-        _ => None,
-    }
+    crate::language_model::resolve_transport(name, &crate::language_model::C_MODEL)
+        .map(|s| s.to_string())
 }
 
 // ===========================================================================
