@@ -600,10 +600,10 @@ impl CliToolOp {
 // Fractal DAG Builder
 // ============================================================================
 
-use crate::dag::{Dag, Edge, Guard, Port};
+use crate::dag::{Dag, Edge, Port};
+use crate::type_op::{Predicate, PredicateValue};
 use crate::node::Node;
 use crate::types::Cardinality;
-use crate::value::Value;
 
 /// Build a CLI tool upsert sub-DAG node.
 ///
@@ -749,7 +749,7 @@ fn build_cli_tool_subdag(
             "exists",
             "Bool",
             Cardinality::ONE,
-            Guard::Eq(Value::Bool(false)),
+            Predicate::Equals(PredicateValue::Bool(false)),
         )],
         vec![Port::scalar("request", "TransportRequest")],
         CliToolOp::prepare_install(tool),

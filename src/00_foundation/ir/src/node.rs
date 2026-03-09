@@ -1,7 +1,8 @@
 //! Node types for the DAG.
 
 use crate::boundary::detect_boundaries;
-use crate::dag::{Dag, Guard, Port};
+use crate::dag::{Dag, Port};
+use crate::type_op::Predicate;
 use crate::entrypoint::detect_entrypoints;
 use crate::log_detail::LogDetailLevel;
 use crate::types::{Cardinality, NodeId, OperationKey, PortName, StaticFingerprint};
@@ -415,7 +416,7 @@ impl<T> Node<T> {
     /// # Panics
     ///
     /// Panics if no input port with the given name exists.
-    pub fn with_input_guard(mut self, port: &str, guard: Guard) -> Self {
+    pub fn with_input_guard(mut self, port: &str, guard: Predicate) -> Self {
         let port_name: PortName = port.into();
         let p = self
             .inputs

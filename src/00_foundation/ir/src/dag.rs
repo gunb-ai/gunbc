@@ -5,7 +5,7 @@ use std::fmt::Write;
 use crate::log_detail::LogDetailLevel;
 use crate::node::Node;
 use crate::resource::{normalize_resource_id, AccessMode};
-use crate::type_op::TypeOp;
+use crate::type_op::{Predicate, PredicateValue, TypeOp};
 use crate::type_registry::TypeRegistry;
 use crate::types::{Cardinality, NodeId, PortName, PresenceMode, TypeId};
 use crate::value::Value;
@@ -492,7 +492,7 @@ pub struct Port {
     pub cardinality: Cardinality,
     /// Internal routing guard (used by patterns, not public API)
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) guard: Option<Guard>,
+    pub(crate) guard: Option<Predicate>,
     /// Resource access mode for `res:*` ports (used by resource accounting)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resource_access: Option<AccessMode>,
@@ -693,7 +693,7 @@ impl Port {
             name: name.into(),
             type_id,
             cardinality: Cardinality::ONE,
-            guard: Some(Guard::Eq(expected)),
+            guard: Some(Predicate::Equals(value_to_predicate_value(&expected))),
             resource_access: None,
             type_optional,
             presence,
@@ -709,7 +709,7 @@ impl Port {
         name: impl Into<PortName>,
         type_id: impl Into<TypeId>,
         cardinality: Cardinality,
-        guard: Guard,
+        guard: Predicate,
     ) -> Self {
         let type_id = type_id.into();
         let type_optional = type_id.0.ends_with('?');
@@ -739,7 +739,7 @@ impl Port {
     /// Returns `false` if the port has a guard that evaluates to false.
     pub fn check_guard(&self, value: &Value) -> bool {
         match &self.guard {
-            Some(guard) => guard.evaluate(value),
+            Some(pred) => evaluate_guard_predicate(pred, value),
             None => true,
         }
     }
@@ -776,27 +776,46 @@ impl Port {
     }
 }
 
-/// Guard predicate for conditional routing.
+/// Convert a `Value` to its `PredicateValue` equivalent for guard construction.
 ///
-/// Guards are used by Branch/If patterns and by the lowering pass to
-/// control conditional execution.  The execution engine skips any node
-/// whose guarded input fails the predicate, setting all outputs to
-/// `Value::Skipped`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Guard {
-    /// Value must equal expected
-    Eq(Value),
-    /// Value must not equal expected
-    NotEq(Value),
+/// Supports the value variants used in guard predicates: Bool, Str, and Skipped.
+/// Panics for unsupported value types — guards only operate on these three.
+pub fn value_to_predicate_value(v: &Value) -> PredicateValue {
+    match v {
+        Value::Bool(b) => PredicateValue::Bool(*b),
+        Value::Str(s) => PredicateValue::Str(s.clone()),
+        Value::Skipped => PredicateValue::Skipped,
+        other => panic!(
+            "cannot convert {:?} to PredicateValue — only Bool, Str, and Skipped are supported",
+            other
+        ),
+    }
 }
 
-impl Guard {
-    /// Evaluate the guard against an actual value.
-    pub fn evaluate(&self, actual: &Value) -> bool {
-        match self {
-            Guard::Eq(expected) => actual == expected,
-            Guard::NotEq(expected) => actual != expected,
+/// Evaluate a `Predicate` against an actual `Value` for guard routing.
+///
+/// This handles the subset of `Predicate` used by edge guards:
+/// - `Equals(PredicateValue)` — equality check
+/// - `Not(box pred)` — logical negation
+pub fn evaluate_guard_predicate(pred: &Predicate, actual: &Value) -> bool {
+    match pred {
+        Predicate::Equals(pv) => predicate_value_matches(pv, actual),
+        Predicate::Not(inner) => !evaluate_guard_predicate(inner, actual),
+        _ => {
+            // Other predicate variants are not used for edge guards
+            false
         }
+    }
+}
+
+/// Check whether a `PredicateValue` matches an actual `Value`.
+fn predicate_value_matches(pv: &PredicateValue, actual: &Value) -> bool {
+    match (pv, actual) {
+        (PredicateValue::Bool(expected), Value::Bool(actual_val)) => expected == actual_val,
+        (PredicateValue::Str(expected), Value::Str(actual_val)) => expected == actual_val,
+        (PredicateValue::Int(expected), Value::Int(actual_val)) => expected == actual_val,
+        (PredicateValue::Skipped, Value::Skipped) => true,
+        _ => false,
     }
 }
 
@@ -852,7 +871,7 @@ pub mod build {
         Edge::with_index(from_node, from_port, to_node, to_port, index)
     }
 
-    /// Create a guarded port (guard = Eq(expected)).
+    /// Create a guarded port (guard = Equals(expected)).
     ///
     /// The executor skips the node when `check_guard(value)` returns false.
     /// Useful for testing guard/skip branch coverage.
@@ -868,7 +887,7 @@ pub mod build {
             name: name.into(),
             type_id,
             cardinality: Cardinality::ONE,
-            guard: Some(Guard::Eq(expected)),
+            guard: Some(Predicate::Equals(value_to_predicate_value(&expected))),
             resource_access: None,
             type_optional,
             presence,

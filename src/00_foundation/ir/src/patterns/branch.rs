@@ -24,12 +24,12 @@
 //!
 //! Only one branch executes based on the condition value.
 
-use crate::dag::{Dag, Edge, Guard, Port};
+use crate::dag::{Dag, Edge, Port};
+use crate::type_op::{Predicate, PredicateValue};
 use crate::node::Node;
 use crate::patterns::PatternOp;
 use crate::patterns::{validate_resource_inputs, ResourceInput};
 use crate::types::Cardinality;
-use crate::value::Value;
 
 /// Builder for the branch pattern.
 ///
@@ -143,13 +143,13 @@ impl<T: Clone> BranchBuilder<T> {
         // True branch: guarded by condition == true
         dag.add_node(Node::subdag("true_branch", true_dag).with_input_guard(
             self.condition_port_name.as_str(),
-            Guard::Eq(Value::Bool(true)),
+            Predicate::Equals(PredicateValue::Bool(true)),
         ));
 
         // False branch: guarded by condition == false
         dag.add_node(Node::subdag("false_branch", false_dag).with_input_guard(
             self.condition_port_name.as_str(),
-            Guard::Eq(Value::Bool(false)),
+            Predicate::Equals(PredicateValue::Bool(false)),
         ));
 
         // Merge node: collects result from whichever branch executed
@@ -251,7 +251,7 @@ impl<T: Clone> IfBuilder<T> {
         // Then branch: guarded by condition == true
         dag.add_node(Node::subdag("then_branch", then_dag).with_input_guard(
             self.condition_port_name.as_str(),
-            Guard::Eq(Value::Bool(true)),
+            Predicate::Equals(PredicateValue::Bool(true)),
         ));
 
         // Create outer node — output is optional because condition may be false

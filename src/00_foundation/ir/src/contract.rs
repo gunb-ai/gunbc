@@ -356,6 +356,7 @@ fn refine_witness(witness: Value, pred: &Predicate, base: &str) -> Value {
             crate::type_op::PredicateValue::Bool(b) => Value::Bool(*b),
             crate::type_op::PredicateValue::Int(i) => Value::Int(*i),
             crate::type_op::PredicateValue::Str(s) => Value::Str(s.clone()),
+            crate::type_op::PredicateValue::Skipped => Value::Skipped,
         },
         Predicate::Matches(pattern) => {
             // For well-known patterns, generate a matching example

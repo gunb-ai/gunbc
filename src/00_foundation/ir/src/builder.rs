@@ -1401,7 +1401,7 @@ mod tests {
 
     #[test]
     fn test_builder_with_guards() {
-        use crate::dag::Guard;
+        use crate::type_op::{Predicate, PredicateValue};
         use crate::value::Value;
 
         let mut builder: DagBuilder<String> = DagBuilder::new();
@@ -1432,8 +1432,8 @@ mod tests {
         assert!(input_port.guard.is_some());
 
         match &input_port.guard {
-            Some(Guard::Eq(Value::Str(s))) => assert_eq!(s, "expected"),
-            _ => panic!("Expected Eq guard with string value"),
+            Some(Predicate::Equals(PredicateValue::Str(s))) => assert_eq!(s, "expected"),
+            _ => panic!("Expected Equals predicate with string value"),
         }
     }
 

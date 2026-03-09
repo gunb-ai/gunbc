@@ -122,8 +122,8 @@ pub use contract::{
     ProviderResponseContract, ScalarKind, StatusSemantic, TypeContract, TypeLayer,
 };
 pub use dag::{
-    build, canonical_edge_order, edges_to_port, Dag, DagEdgePorts, DagInputPort, DagOutputPort,
-    Edge, EdgeKind, Guard, Port, ReachableDag,
+    build, canonical_edge_order, edges_to_port, evaluate_guard_predicate, value_to_predicate_value,
+    Dag, DagEdgePorts, DagInputPort, DagOutputPort, Edge, EdgeKind, Port, ReachableDag,
 };
 pub use dag_topology::{DagTopology, EdgeTopology, NodeTopology, PortTopology};
 pub use entrypoint::{detect_entrypoints, EntrypointInfo};
@@ -188,7 +188,8 @@ pub use transport::{
     TransportKind, TransportMiddlewareConfig, TransportRequest, TransportResponse,
 };
 pub use type_op::{
-    ContentEncoding, MetadataPayload, Predicate, PredicateValue, TypeOp, WrapperKind,
+    ContentEncoding, MetadataPayload, Predicate, PredicateValue, SystemModelMeta, TypeOp,
+    WrapperKind,
 };
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
 pub use type_shape::{type_shape, ContainerShape, StructuralProperties, TypeShape};

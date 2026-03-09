@@ -45,7 +45,8 @@ pub enum TypeOp {
     /// Inert metadata payload (non-semantic, non-failing).
     ///
     /// `Meta` is traversable/inspectable but must not change runtime behavior.
-    Meta(MetadataPayload),
+    /// Used exclusively by system model DAGs for behavioral catalog metadata.
+    Meta(SystemModelMeta),
 
     /// Transformation — coerces value from one type to another.
     /// Used for type conversions (e.g., String → Int parsing).
@@ -75,9 +76,13 @@ pub enum TypeOp {
     Brand(String),
 }
 
-/// Typed inert metadata payload carried by [`TypeOp::Meta`].
+/// System model metadata for behavioral catalog DAGs.
+///
+/// These are inert metadata payloads used by system model DAGs to encode
+/// system identity, behavior properties, and I/O contracts. They are
+/// traversable/inspectable but do not change runtime behavior.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum MetadataPayload {
+pub enum SystemModelMeta {
     SystemId(String),
     SystemKind(String),
     BehaviorId(String),
@@ -93,6 +98,9 @@ pub enum MetadataPayload {
         type_id: String,
     },
 }
+
+/// Backwards-compatible alias for [`SystemModelMeta`].
+pub type MetadataPayload = SystemModelMeta;
 
 /// Content encoding lattice for file content classification.
 ///
@@ -269,6 +277,8 @@ pub enum PredicateValue {
     Bool(bool),
     Int(i64),
     Str(String),
+    /// Represents the `Value::Skipped` sentinel in guard predicates.
+    Skipped,
 }
 
 impl Predicate {

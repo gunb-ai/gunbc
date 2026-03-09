@@ -38,8 +38,8 @@ use gunbc_ir::transport::middleware::{
     RetryConfig, TransportMiddlewareConfig,
 };
 use gunbc_ir::{
-    Cardinality, Dag, DagTopology, Edge, EdgeKind, Guard, InputProvenance, Node, NodeId, NodeKind,
-    NodeOrigin, OperationKey, Port, PortName, StaticFingerprint, Value,
+    Cardinality, Dag, DagTopology, Edge, EdgeKind, InputProvenance, Node, NodeId, NodeKind,
+    NodeOrigin, OperationKey, Port, PortName, Predicate, PredicateValue, StaticFingerprint,
 };
 use serde::{Deserialize, Serialize};
 
@@ -1408,7 +1408,7 @@ fn derive_interface_stub_transport_triplets(
                         fn_body: None,
                     },
                 )
-                .with_input_guard("request", Guard::NotEq(Value::Skipped))
+                .with_input_guard("request", Predicate::Not(Box::new(Predicate::Equals(PredicateValue::Skipped))))
                 .with_operation_key(OperationKey::new(&interface.name, &capability.name))
                 .with_origin(origin.clone());
                 manifest.add_node(execute_node);
@@ -4406,7 +4406,7 @@ fn make_loop_body_dag(
                     fn_body: None,
                 },
             )
-            .with_input_guard("request", Guard::NotEq(Value::Skipped));
+            .with_input_guard("request", Predicate::Not(Box::new(Predicate::Equals(PredicateValue::Skipped))));
             dag.add_node(execute_node);
             dag.add_node(Node::opaque(
                 parse_id.clone(),
@@ -4573,7 +4573,7 @@ fn make_branch_body_dag(
                     fn_body: None,
                 },
             )
-            .with_input_guard("request", Guard::NotEq(Value::Skipped));
+            .with_input_guard("request", Predicate::Not(Box::new(Predicate::Equals(PredicateValue::Skipped))));
             dag.add_node(execute_node);
             dag.add_node(Node::opaque(
                 parse_id.clone(),
@@ -7513,7 +7513,7 @@ fn derive_service_transport_triplets(
                         fn_body: None,
                     },
                 )
-                .with_input_guard("request", Guard::NotEq(Value::Skipped))
+                .with_input_guard("request", Predicate::Not(Box::new(Predicate::Equals(PredicateValue::Skipped))))
                 .with_operation_key(OperationKey::new(&service.name, &operation.name))
                 .with_origin(origin.clone());
                 manifest.add_node(execute_node);

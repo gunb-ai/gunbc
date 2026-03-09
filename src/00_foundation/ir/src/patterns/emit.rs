@@ -25,10 +25,10 @@
 //!
 //! The Write node has a guard that only executes if Compare returns `changed=true`.
 
-use crate::dag::{Dag, Edge, Guard, Port};
+use crate::dag::{Dag, Edge, Port};
+use crate::type_op::{Predicate, PredicateValue};
 use crate::node::Node;
 use crate::types::Cardinality;
-use crate::value::Value;
 
 /// Builder for the emit pattern.
 ///
@@ -206,7 +206,7 @@ impl<T: Clone> EmitBuilder<T> {
                     "changed",
                     "Bool",
                     Cardinality::ONE,
-                    Guard::Eq(Value::Bool(true)),
+                    Predicate::Equals(PredicateValue::Bool(true)),
                 ),
             ],
             vec![],
