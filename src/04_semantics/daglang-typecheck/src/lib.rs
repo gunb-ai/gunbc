@@ -998,15 +998,22 @@ fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> TypeRegistry {
                         registry.register_coproduct(def.name.as_str(), variant_pairs);
                     }
                     TypeBody::Record(fields) => {
-                        let field_type_strings: Vec<(String, String)> = fields
-                            .iter()
-                            .map(|field| (field.name.clone(), type_expr_to_string(&field.ty)))
-                            .collect();
-                        let field_pairs: Vec<(&str, &str)> = field_type_strings
-                            .iter()
-                            .map(|(name, ty)| (name.as_str(), ty.as_str()))
-                            .collect();
-                        registry.register_product(def.name.as_str(), field_pairs);
+                        let resolved_fields: Vec<(&str, gunbc_ir::Dag<gunbc_ir::type_op::TypeOp>)> =
+                            fields
+                                .iter()
+                                .map(|field| {
+                                    let dag =
+                                        resolve_field_type_dag(&field.ty, &registry);
+                                    (field.name.as_str(), dag)
+                                })
+                                .collect();
+                        registry.register(
+                            def.name.as_str(),
+                            gunbc_ir::type_lib::product_resolved(
+                                def.name.as_str(),
+                                resolved_fields,
+                            ),
+                        );
                     }
                     TypeBody::Alias(type_expr) => {
                         let base_name = type_expr_to_string(type_expr);
@@ -1044,6 +1051,30 @@ fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> TypeRegistry {
         }
     }
     registry
+}
+
+/// Build a type DAG for a field's TypeExpr, preserving refinement predicates.
+///
+/// If the type is `Refined(inner, refinements)`, the predicates are embedded
+/// in the DAG alongside the resolved base type. Non-refined types fall back
+/// to registry lookup or an identity DAG.
+fn resolve_field_type_dag(
+    ty: &TypeExpr,
+    registry: &TypeRegistry,
+) -> gunbc_ir::Dag<gunbc_ir::type_op::TypeOp> {
+    let base_name = type_expr_to_string(ty);
+    let predicates = collect_predicates_from_type_expr(ty);
+    let base_dag_opt = registry.get_by_name(&base_name).cloned();
+    if predicates.is_empty() {
+        base_dag_opt.unwrap_or_else(|| gunbc_ir::type_lib::identity(&base_name))
+    } else {
+        match base_dag_opt {
+            Some(dag) => {
+                gunbc_ir::type_lib::refined_with_base(&base_name, dag, predicates)
+            }
+            None => gunbc_ir::type_lib::refined(&base_name, predicates),
+        }
+    }
 }
 
 fn collect_available_profiles(modules: &[ResolvedModule]) -> Vec<String> {
