@@ -605,4 +605,84 @@ mod tests {
         let j = a.join(b);
         assert_eq!(a.meet(j), Some(a));
     }
+
+    /// Verify that the Rust `ContentEncoding` variants match the DSL
+    /// `encoding.dag` declaration: `type Encoding = ASCII | UTF8 | Latin1 | Text | Binary | Unknown`.
+    ///
+    /// This test catches any divergence between the Rust enum and the DSL
+    /// definition. When the behavior system (Phases 8-10) arrives, the lattice
+    /// ordering itself will be DSL-driven.
+    #[test]
+    fn test_content_encoding_matches_dsl_encoding_dag() {
+        let dsl_variants: std::collections::HashSet<&str> =
+            ["ASCII", "UTF8", "Latin1", "Text", "Binary", "Unknown"]
+                .iter()
+                .copied()
+                .collect();
+
+        let rust_variants: std::collections::HashSet<&str> = [
+            variant_name(ContentEncoding::ASCII),
+            variant_name(ContentEncoding::UTF8),
+            variant_name(ContentEncoding::Latin1),
+            variant_name(ContentEncoding::Text),
+            variant_name(ContentEncoding::Binary),
+            variant_name(ContentEncoding::Unknown),
+        ]
+        .iter()
+        .copied()
+        .collect();
+
+        assert_eq!(
+            dsl_variants, rust_variants,
+            "Rust ContentEncoding variants must match dsl/std/encoding.dag"
+        );
+        assert_eq!(
+            rust_variants.len(),
+            6,
+            "encoding.dag declares exactly 6 variants"
+        );
+    }
+
+    fn variant_name(enc: ContentEncoding) -> &'static str {
+        match enc {
+            ContentEncoding::ASCII => "ASCII",
+            ContentEncoding::UTF8 => "UTF8",
+            ContentEncoding::Latin1 => "Latin1",
+            ContentEncoding::Text => "Text",
+            ContentEncoding::Binary => "Binary",
+            ContentEncoding::Unknown => "Unknown",
+        }
+    }
+
+    /// Verify the lattice ordering from encoding.dag:
+    /// ASCII ⊆ UTF8 ⊆ Text ⊆ Unknown
+    /// Latin1 ⊆ Text ⊆ Unknown
+    /// Binary ⊆ Unknown
+    /// Text and Binary are incomparable.
+    #[test]
+    fn test_content_encoding_lattice_matches_dsl_ordering() {
+        use crate::algebra::PartialOrder;
+
+        // ASCII ⊆ UTF8 ⊆ Text ⊆ Unknown
+        assert!(ContentEncoding::ASCII.leq(&ContentEncoding::UTF8));
+        assert!(ContentEncoding::UTF8.leq(&ContentEncoding::Text));
+        assert!(ContentEncoding::Text.leq(&ContentEncoding::Unknown));
+        assert!(ContentEncoding::ASCII.leq(&ContentEncoding::Unknown));
+
+        // Latin1 ⊆ Text ⊆ Unknown
+        assert!(ContentEncoding::Latin1.leq(&ContentEncoding::Text));
+        assert!(ContentEncoding::Latin1.leq(&ContentEncoding::Unknown));
+
+        // Binary ⊆ Unknown only
+        assert!(ContentEncoding::Binary.leq(&ContentEncoding::Unknown));
+        assert!(!ContentEncoding::Binary.leq(&ContentEncoding::Text));
+
+        // Text and Binary are incomparable
+        assert!(!ContentEncoding::Text.leq(&ContentEncoding::Binary));
+        assert!(!ContentEncoding::Binary.leq(&ContentEncoding::Text));
+
+        // UTF8 and Latin1 are incomparable
+        assert!(!ContentEncoding::UTF8.leq(&ContentEncoding::Latin1));
+        assert!(!ContentEncoding::Latin1.leq(&ContentEncoding::UTF8));
+    }
 }
