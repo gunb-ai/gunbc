@@ -1,12 +1,12 @@
 // extdeps/github/auth.dag -- GitHub credential acquisition.
 //
-// Delegates to std.credentials.env_credential for materialization.
-// Service-specific knowledge (which env var, which scopes) stays here;
-// materialization mechanics are in std.credentials.
+// Delegates to gunbc.auth.credentials for concrete materialization.
+// Service-specific knowledge (which secret, which scopes) stays here;
+// materialization mechanics live in gunbc.auth.
 
 module extdeps.github.auth
 
-import std.credentials { env_credential }
+import gunbc.auth.credentials { gcp_secret_credential }
 import std.resources { Network }
 import std.types { NonEmptyStr }
 
@@ -16,6 +16,9 @@ func github_token(
 ) -> { token: Secret }
   uses net: Network
 {
-  cred = env_credential(env_var: "GITHUB_TOKEN")
+  cred = gcp_secret_credential(
+    project_id: project_id,
+    secret_name: secret_name
+  )
   return { token: cred.token }
 }

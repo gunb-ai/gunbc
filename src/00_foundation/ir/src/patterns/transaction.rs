@@ -21,9 +21,9 @@
 //! ```
 
 use crate::dag::{Dag, Edge, Port};
-use crate::type_op::{Predicate, PredicateValue};
 use crate::node::Node;
 use crate::patterns::{validate_resource_inputs, ResourceInput};
+use crate::type_op::{Predicate, PredicateValue};
 use crate::types::Cardinality;
 
 /// Builder for the transaction pattern.

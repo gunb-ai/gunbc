@@ -11,7 +11,7 @@
 //! 1. **Infrastructure** (cross-module): Typed lowered primitive nodes
 //!    (`LoweredOp::Primitive`) map to shared primitive/transport ops.
 //!
-//! 2. **Domain** (per-module): Module-specific callables (e.g., `tools.gist`
+//! 2. **Domain** (per-module): Module-specific callables (e.g., `gunbc.tools.gist`
 //!    / `build_snapshot_content`) map to their domain op variants.
 //!
 //! # Adding a new module
@@ -258,9 +258,7 @@ impl Executable for FnBodyCallableOp {
                 //
                 // Value::Unit IS a real input (the unit type, explicitly
                 // provided). Only Value::Skipped indicates "no value wired."
-                let has_real_inputs = eval_inputs
-                    .values()
-                    .any(|v| !matches!(v, Value::Skipped));
+                let has_real_inputs = eval_inputs.values().any(|v| !matches!(v, Value::Skipped));
                 if has_real_inputs {
                     return Err(ExecError::new(format!(
                         "FnBody evaluation failed with real inputs present: {eval_err}"

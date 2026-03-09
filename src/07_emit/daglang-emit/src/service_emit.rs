@@ -519,11 +519,7 @@ fn go_type_for_field_with_registry(
     type_id: &str,
     registry: Option<&gunbc_ir::TypeRegistry>,
 ) -> String {
-    crate::type_mapping::resolve_and_emit(
-        type_id,
-        registry,
-        crate::type_mapping::Backend::Go,
-    )
+    crate::type_mapping::resolve_and_emit(type_id, registry, crate::type_mapping::Backend::Go)
 }
 
 fn go_type_for_field(type_id: &str) -> String {

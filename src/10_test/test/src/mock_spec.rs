@@ -9,7 +9,7 @@
 //! # File Convention
 //!
 //! ```text
-//! lib/tools/gist/src/
+//! lib/gunbc/tools/gist/src/
 //! ├── graph.rs       # DAG definition
 //! ├── graph_mock.rs  # Mock specifications (this file)
 //! └── lib.rs

@@ -124,10 +124,7 @@ fn collect_dag_files(
 }
 
 #[allow(clippy::disallowed_methods)]
-fn analyze_compilable_module(
-    base: &Path,
-    path: &Path,
-) -> Result<Option<CompilableModule>, String> {
+fn analyze_compilable_module(base: &Path, path: &Path) -> Result<Option<CompilableModule>, String> {
     if path.extension().and_then(|e| e.to_str()) != Some("dag") {
         return Ok(None);
     }
@@ -648,8 +645,8 @@ mod tests {
             .or_else(|_| gunbc_ir::WorkspaceLayout::from_cargo_metadata())
             .expect("workspace layout");
         let dsl_root = layout.workspace_root.join("dsl");
-        let modules = discover_compilable_modules(&dsl_root)
-            .expect("module discovery should succeed");
+        let modules =
+            discover_compilable_modules(&dsl_root).expect("module discovery should succeed");
 
         // Should find at least the 6 tool modules + some std/extdeps with fn items
         assert!(
@@ -690,7 +687,7 @@ mod tests {
             callable_count: 1,
             has_test_blocks: true,
         };
-        let output_dir = std::path::Path::new("src/10_test/generated-tests/src");
+        let output_dir = std::path::Path::new("src/10_test/generated-tests/src/generated");
         let result = auto_testgen_for_module(&module, output_dir);
         match result {
             AutoTestgenResult::Generated { test_code, .. } => {
@@ -717,7 +714,7 @@ mod tests {
             callable_count: 1,
             has_test_blocks: true,
         };
-        let output_dir = std::path::Path::new("src/10_test/generated-tests/src");
+        let output_dir = std::path::Path::new("src/10_test/generated-tests/src/generated");
         let result = auto_testgen_for_module(&module, output_dir);
         match result {
             AutoTestgenResult::Generated { test_code, .. } => {
@@ -752,7 +749,7 @@ mod tests {
             callable_count: 1,
             has_test_blocks: false,
         };
-        let output_dir = std::path::Path::new("src/10_test/generated-tests/src");
+        let output_dir = std::path::Path::new("src/10_test/generated-tests/src/generated");
         let result = auto_testgen_for_module(&module, output_dir);
         assert!(
             matches!(result, AutoTestgenResult::Skipped { .. }),

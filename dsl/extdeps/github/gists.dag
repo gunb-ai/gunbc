@@ -5,7 +5,7 @@
 //
 // Consumers:
 //   shared/gist_modes.dag     — gist operations
-//   tools/gist.dag           — gist creation workflow
+//   gunbc/tools/gist.dag  — gist creation workflow
 
 module extdeps.github.gists
 

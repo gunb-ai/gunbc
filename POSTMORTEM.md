@@ -297,6 +297,85 @@ All three backends (Rust, Go, C) have this fallback. The test `identity_type_unk
 
 ---
 
+### P2 — Type registry and type-shape inference fall back on unknown types
+
+**Invariants**: #8 (correctness by construction), "no hacks or fallbacks"
+
+Two earlier compiler layers still degrade unknown type information into lossy
+stand-ins instead of failing the compile:
+
+| Site | Function | Behavior |
+|------|----------|----------|
+| `src/00_foundation/ir/src/type_registry.rs` ~L1025 | `TypeRegistry::value_backing_for_type` | Prints warning and returns `ValueBacking::Json` |
+| `src/00_foundation/ir/src/type_shape.rs` ~L216 | `infer_type_shape` | Prints warning and returns `TypeShape::Opaque("Unknown")` |
+
+These are distinct from emit-time fallback. They change the compiler's own
+internal understanding of the type before codegen or testgen even starts.
+
+**Impact**: New or drifted DSL types silently collapse to generic JSON/opaque
+shapes, which then propagates into testgen, emission, and runtime defaults.
+
+**Fix direction**: Make unknown type registrations a hard diagnostic, or gate
+these fallbacks behind an explicit compatibility mode that is off by default.
+
+---
+
+### P2 — Testgen fabricates `Json(Null)` mocks for unknown types
+
+**Invariants**: #8 (correctness by construction), "no hacks or fallbacks"
+
+`src/01_surfaces/codegen/src/testgen/codegen.rs` ~L7415 defaults any
+DSL-defined product/coproduct type without an explicit mock entry to
+`ValueExpr::Json(JsonValue::Null)`:
+
+```rust
+eprintln!(
+    "warning: no explicit mock for type_id '{}'; using Json(Null) default",
+    type_id
+);
+ValueExpr::Json(JsonValue::Null)
+```
+
+**Impact**: Generated tests continue with semantically invalid placeholder
+inputs, so failures show up later as noisy runtime mismatches rather than as an
+immediate unsupported-type error in test generation.
+
+**Fix direction**: Make mock generation return `Result<ValueExpr, MockGenError>`
+and require either an explicit mock or a structurally derived mock for every
+reachable type.
+
+---
+
+### P1 — Auto-testgen degrades compile failures into placeholder source files
+
+**Invariants**: #8 (correctness by construction), "no hacks or fallbacks"
+
+`src/01_surfaces/codegen/src/testgen_dag/dag_test_discovery.rs` currently
+models compile failure as `AutoTestgenResult::Skipped { reason }`, and
+`render_auto_testgen_for_module` converts that into a commented placeholder
+Rust file instead of failing:
+
+```rust
+RenderedTestgenModule {
+    content: format!(
+        "// Auto-testgen skipped for '{}':\n{commented_reason}\n",
+        module.module_name,
+    ),
+    path: output_path_for_module(output_dir, module),
+}
+```
+
+The `gunbc-testgen` binary was fixed to fail closed instead of writing these
+placeholders, but the helper remains and still encodes the fail-open behavior.
+
+**Impact**: A caller can still treat an uncompilable module as a successful
+testgen render, which masks the real compiler error and weakens test coverage.
+
+**Fix direction**: Remove placeholder rendering entirely and make skipped
+results unrepresentable at the rendering API boundary.
+
+---
+
 ### P3 — `Value::Skipped` → fabricated default values
 
 **Invariant**: "no hacks or fallbacks" — explicitly names `Value::Skipped`
@@ -341,3 +420,180 @@ Silently swallows any I/O error when emitting CI workflow commands.
 - **Phases 02–04, 06**: No `eprintln!`, no I/O side effects — clean pure functions.
 - **I/O boundary** (Invariant 2): Only `08_materialize/transport/` performs direct I/O.
 - **No backdoors**: Compiler provides metadata through output types, not callbacks.
+
+---
+
+## Scenario backlog
+
+### P2 — `gist_recent` modeled a time cutoff as a git ref
+
+**Date:** 2026-03-09
+**Status:** Fixed in the DSL model; kept here as a preventable case.
+
+`gunbc.tools.gist::gist_recent` accepted `since: "3.days.ago"` but called a
+DSL extdep op named `git.Core.RevListBase`. In the DSL model, that op was
+wired to:
+
+```dag
+transport shell { argv: ["git", "merge-base", "HEAD", "{since}"] }
+```
+
+At runtime, `3.days.ago` was treated as an object name instead of a time
+expression, producing:
+
+```text
+fatal: Not a valid object name 3.days.ago
+```
+
+What made this preventable:
+
+- The lower Rust git transport already had the correct concept,
+  `RevListBefore(before)` using `git rev-list -1 --before=... HEAD`, with
+  tests.
+- The DSL extdep model drifted from that transport model and nothing enforced
+  parity.
+- A hermetic temp-repo execution test for `gunbc.tools.gist::gist_recent`
+  would have exercised the real git command before manual use.
+
+Inspiration only:
+
+- Add parity checks between DSL extdep service definitions and lower transport
+  models.
+- Generate hermetic git-backed integration tests for DAG tools that consume
+  date/ref inputs.
+- Strengthen git-facing types so time expressions and refs cannot flow through
+  the same `String` slot unnoticed.
+
+### P1 — bootstrap swallowed a callable-arg lowering failure and crashed later
+
+**Date:** 2026-03-09
+**Status:** Fixed in lowering; temporary lowering fallback remains.
+
+`tools.bootstrap` called `render_gitignore_file(file: gitignore_file, ...)`,
+where `gitignore_file` was a local record binding with a pipe-based field
+expression. The lowerer hit:
+
+```text
+warning: cannot wire fn call argument 'file' in tools.bootstrap.bootstrap: ...
+```
+
+and continued lowering. That produced a DAG where the pure fn callable
+executed without its `file` input wired. Runtime then failed later in
+bootstrap with:
+
+```text
+FnBody evaluation failed with real inputs present: eval error: unbound variable: file
+```
+
+What made this preventable:
+
+- The compiler already knew the `file` arg wiring had failed.
+- The warning came from a swallowed lowering error, not from an unknown runtime
+  condition.
+- The expression itself was still evaluable by the fn-body evaluator; only the
+  structural lowering path had a gap.
+
+Temporary containment added in this PR:
+
+- Fail closed when callable arg wiring fails instead of logging and continuing.
+- Fall back to a synthesized helper fn-body expression node for complex pure
+  arg expressions when structural lowering is incomplete.
+
+Removal trigger:
+
+- Delete the helper-expression fallback once structural lowering can directly
+  lower the relevant local/imported record-with-pipe arg shapes.
+
+### P1 — dagbin cache reused stale lowered graphs across compiler changes
+
+**Date:** 2026-03-09
+**Status:** Fixed by bumping the cache epoch; kept here as a preventable case.
+
+After lowering semantics changed, source-digest dagbin cache hits were still
+treated as valid and reused previously lowered DAG shapes. That let an old,
+structurally incomplete graph survive even after the compiler bug had been
+fixed.
+
+What made this preventable:
+
+- The cache key only reflected source content, not compiler semantics.
+- The failure showed up on a cache hit, which made the lowering fix appear
+  ineffective until the cache epoch was bumped.
+- The compiler had no invariant asserting that cached DAG shape/version matched
+  the currently running lowerer.
+
+Inspiration only:
+
+- Treat compiler-semantics changes as cache-format changes by default.
+- Add a targeted regression that exercises a changed lowering path through a
+  warm cache and expects a rebuild.
+
+### P1 — omitted repeatable CLI params collapsed to "missing" instead of `[]`
+
+**Date:** 2026-03-09
+**Status:** Fixed in CLI parsing; kept here as a preventable case.
+
+`parse_generated_cli_args` omitted repeatable params entirely when the user
+passed no values, instead of materializing the declared empty list. For
+bootstrap, that meant `gitignore_categories` was absent rather than `[]`, which
+changed downstream pure-fn behavior and contributed to the runtime failure.
+
+What made this preventable:
+
+- Repeatable params have a clear neutral element: the empty list.
+- Generated CLI behavior and inline-evaluator behavior diverged on the same
+  schema.
+- The failure happened at the argument-materialization boundary, not in
+  business logic.
+
+Inspiration only:
+
+- Treat repeatable params as present-with-empty-list even when omitted.
+- Add cross-checks so generated CLI materialization and in-process execution
+  share the same cardinality semantics.
+
+### P2 — no structured artifact-hygiene pass let stale outputs accumulate
+
+**Date:** 2026-03-09
+**Status:** Open process gap.
+
+We found multiple out-of-place generated or snapshot artifacts during cleanup:
+
+- duplicate generated-test trees (`src/generated-tests/` and
+  `src/10_test/generated-tests/...`)
+- checked-in generated test sources that should have been ignored
+- a tracked local snapshot artifact at `.dag-snapshots/workspace.json`
+
+Small process change to add:
+
+1. Inventory tracked generated/snapshot/temp paths with a scripted audit.
+2. Classify each path as source-of-truth vs reproducible artifact.
+3. For reproducible artifacts, add ignore rules before changing generator
+   output paths.
+4. Verify a fresh checkout still builds or regenerates cleanly after removals.
+5. Add a CI check that fails when non-allowlisted generated/snapshot files are
+   tracked.
+
+### P2 — temporary scaffolding added during generated-test cleanup should be removed
+
+**Date:** 2026-03-09
+**Status:** Open removal list.
+
+This cleanup PR introduced a few tactical compatibility/scaffolding changes.
+They were reasonable for containment, but they should be explicitly removed
+once the underlying paths are made principled:
+
+- `daglang-lower`: synthesized `expr_value_*` fallback nodes for complex pure
+  fn-call arguments. Remove once structural lowering handles those expressions
+  directly.
+- `gunbc-testgen`: binary-level fail-closed aggregation around
+  `AutoTestgenResult::Skipped`. Remove the underlying placeholder-render path
+  too; the rendering API should not encode "skipped but emit a file".
+- `gunbc-tests`: tracked `src/lib.rs` + `build.rs` auto-discovery scaffold so
+  the crate compiles without checked-in generated sources. Revisit once
+  generated tests have a stable non-hacky home and inclusion model. In
+  particular, stop glob-including every `src/generated/*.rs` file; the module
+  index must be derived from the current testgen discovery set or the generator
+  must remove stale outputs on rename/delete.
+- dagbin cache: manual cache-epoch bump to flush stale lowered graphs after the
+  lowering fix. Replace with a more principled cache key/versioning strategy.

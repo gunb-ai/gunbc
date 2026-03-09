@@ -149,7 +149,9 @@ fn lower_fn_def(
     let return_type = if has_transport {
         Some("error".to_string())
     } else {
-        f.return_type.as_ref().map(|t| map_to_go_type_with_registry(t, registry))
+        f.return_type
+            .as_ref()
+            .map(|t| map_to_go_type_with_registry(t, registry))
     };
 
     // Lower body statements, inserting error checks after transport calls.
@@ -179,7 +181,12 @@ fn lower_params(
 ) -> Vec<(String, String)> {
     params
         .iter()
-        .map(|(name, ty)| (to_camel_case(name), map_to_go_type_with_registry(ty, registry)))
+        .map(|(name, ty)| {
+            (
+                to_camel_case(name),
+                map_to_go_type_with_registry(ty, registry),
+            )
+        })
         .collect()
 }
 
@@ -547,13 +554,8 @@ fn map_to_go_type_with_registry(
     abstract_type: &str,
     registry: Option<&gunbc_ir::TypeRegistry>,
 ) -> String {
-    crate::type_mapping::resolve_and_emit(
-        abstract_type,
-        registry,
-        crate::type_mapping::Backend::Go,
-    )
+    crate::type_mapping::resolve_and_emit(abstract_type, registry, crate::type_mapping::Backend::Go)
 }
-
 
 // ===========================================================================
 // Naming conventions
@@ -920,15 +922,24 @@ mod tests {
         let mut registry = gunbc_ir::TypeRegistry::with_primitives();
         registry.register(
             "UInt32",
-            gunbc_ir::type_lib::refined("Int", vec![
-                Predicate::Width(32),
-                Predicate::Unsigned,
-                Predicate::Arithmetic,
-            ]),
+            gunbc_ir::type_lib::refined(
+                "Int",
+                vec![
+                    Predicate::Width(32),
+                    Predicate::Unsigned,
+                    Predicate::Arithmetic,
+                ],
+            ),
         );
-        assert_eq!(map_to_go_type_with_registry("UInt32", Some(&registry)), "uint32");
+        assert_eq!(
+            map_to_go_type_with_registry("UInt32", Some(&registry)),
+            "uint32"
+        );
         // Fallback still works
-        assert_eq!(map_to_go_type_with_registry("String", Some(&registry)), "string");
+        assert_eq!(
+            map_to_go_type_with_registry("String", Some(&registry)),
+            "string"
+        );
     }
 
     // -- B3.4: FormatStr lowering --

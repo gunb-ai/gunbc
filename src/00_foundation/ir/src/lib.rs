@@ -110,8 +110,8 @@ pub use code_ir::{
 };
 pub use codegen_bridge::{BridgeEnum, BridgeField, BridgeFunction, BridgeModule, BridgeStruct};
 pub use coerce::{
-    classify_coercion, detect_coercions, validate_coercions, AppliedCoercion,
-    CardinalityCoercion, CoercionError, CoercionKind, CoercionReport,
+    classify_coercion, detect_coercions, validate_coercions, AppliedCoercion, CardinalityCoercion,
+    CoercionError, CoercionKind, CoercionReport,
 };
 pub use contract::{
     cross_product_witnesses, generate_compliance_test_suite, generate_contract_test_body,
@@ -188,8 +188,7 @@ pub use transport::{
     TransportKind, TransportMiddlewareConfig, TransportRequest, TransportResponse,
 };
 pub use type_op::{
-    ContentEncoding, Predicate, PredicateValue, SystemModelMeta, TypeOp,
-    WrapperKind,
+    ContentEncoding, Predicate, PredicateValue, SystemModelMeta, TypeOp, WrapperKind,
 };
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
 pub use type_shape::{

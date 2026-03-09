@@ -27,7 +27,9 @@ pub type PlatformProperties = gunbc_ir::StructuralProperties;
 ///
 /// Delegates to the canonical `gunbc_ir::derive_structural_properties`, which
 /// recursively walks SubDag children and inherits missing properties.
-pub fn derive_platform_properties(dag: &gunbc_ir::dag::Dag<gunbc_ir::type_op::TypeOp>) -> PlatformProperties {
+pub fn derive_platform_properties(
+    dag: &gunbc_ir::dag::Dag<gunbc_ir::type_op::TypeOp>,
+) -> PlatformProperties {
     gunbc_ir::derive_structural_properties(dag)
 }
 
@@ -164,8 +166,15 @@ fn emit_platform_type(props: &gunbc_ir::StructuralProperties, backend: Backend) 
 fn emit_identity_type(name: &str, backend: Backend) -> String {
     match backend {
         Backend::Rust => match name {
-            "String" | "Path" | "NonEmptyStr" | "Url" | "GistId" | "ProjectId"
-            | "ServiceAccountEmail" | "FilePath" | "Secret" => "String",
+            "String"
+            | "Path"
+            | "NonEmptyStr"
+            | "Url"
+            | "GistId"
+            | "ProjectId"
+            | "ServiceAccountEmail"
+            | "FilePath"
+            | "Secret" => "String",
             "Bool" | "bool" => "bool",
             "Int" | "i64" | "I64" => "i64",
             "Float" | "f64" => "f64",
@@ -183,8 +192,16 @@ fn emit_identity_type(name: &str, backend: Backend) -> String {
             }
         },
         Backend::Go => match name {
-            "String" | "Path" | "NonEmptyStr" | "Url" | "GistId" | "ProjectId"
-            | "ServiceAccountEmail" | "FilePath" | "Secret" | "FilesystemHandle" => "string",
+            "String"
+            | "Path"
+            | "NonEmptyStr"
+            | "Url"
+            | "GistId"
+            | "ProjectId"
+            | "ServiceAccountEmail"
+            | "FilePath"
+            | "Secret"
+            | "FilesystemHandle" => "string",
             "Bool" | "bool" => "bool",
             "Int" | "i64" | "I64" => "int64",
             "Float" | "f64" => "float64",
@@ -201,8 +218,16 @@ fn emit_identity_type(name: &str, backend: Backend) -> String {
             }
         },
         Backend::C => match name {
-            "String" | "Path" | "NonEmptyStr" | "Url" | "GistId" | "ProjectId"
-            | "ServiceAccountEmail" | "FilePath" | "Secret" | "FilesystemHandle" => "const char*",
+            "String"
+            | "Path"
+            | "NonEmptyStr"
+            | "Url"
+            | "GistId"
+            | "ProjectId"
+            | "ServiceAccountEmail"
+            | "FilePath"
+            | "Secret"
+            | "FilesystemHandle" => "const char*",
             "Bool" | "bool" => "bool",
             "Int" | "i64" | "I64" => "int64_t",
             "Float" | "f64" => "double",
@@ -258,8 +283,14 @@ mod tests {
         assert_eq!(emit_identity_type("Int", Backend::Rust), "i64");
         assert_eq!(emit_identity_type("i64", Backend::Rust), "i64");
         assert_eq!(emit_identity_type("Float", Backend::Rust), "f64");
-        assert_eq!(emit_identity_type("ToolRegistry", Backend::Rust), "serde_json::Value");
-        assert_eq!(emit_identity_type("FilesystemHandle", Backend::Rust), "PathBuf");
+        assert_eq!(
+            emit_identity_type("ToolRegistry", Backend::Rust),
+            "serde_json::Value"
+        );
+        assert_eq!(
+            emit_identity_type("FilesystemHandle", Backend::Rust),
+            "PathBuf"
+        );
     }
 
     #[test]
@@ -268,7 +299,10 @@ mod tests {
         assert_eq!(emit_identity_type("Bool", Backend::Go), "bool");
         assert_eq!(emit_identity_type("Int", Backend::Go), "int64");
         assert_eq!(emit_identity_type("Float", Backend::Go), "float64");
-        assert_eq!(emit_identity_type("ToolRegistry", Backend::Go), "interface{}");
+        assert_eq!(
+            emit_identity_type("ToolRegistry", Backend::Go),
+            "interface{}"
+        );
     }
 
     #[test]
@@ -291,11 +325,14 @@ mod tests {
     #[test]
     fn derive_platform_properties_from_predicates() {
         use gunbc_ir::type_op::Predicate;
-        let dag = gunbc_ir::type_lib::refined("Byte", vec![
-            Predicate::Width(8),
-            Predicate::Unsigned,
-            Predicate::Arithmetic,
-        ]);
+        let dag = gunbc_ir::type_lib::refined(
+            "Byte",
+            vec![
+                Predicate::Width(8),
+                Predicate::Unsigned,
+                Predicate::Arithmetic,
+            ],
+        );
         let props = derive_platform_properties(&dag);
         assert_eq!(props.width, Some(8));
         assert_eq!(props.signed, Some(false));
@@ -305,11 +342,14 @@ mod tests {
     #[test]
     fn emit_type_unsigned_8bit() {
         use gunbc_ir::type_op::Predicate;
-        let dag = gunbc_ir::type_lib::refined("Byte", vec![
-            Predicate::Width(8),
-            Predicate::Unsigned,
-            Predicate::Arithmetic,
-        ]);
+        let dag = gunbc_ir::type_lib::refined(
+            "Byte",
+            vec![
+                Predicate::Width(8),
+                Predicate::Unsigned,
+                Predicate::Arithmetic,
+            ],
+        );
         assert_eq!(emit_type(&dag, Backend::Rust), "u8");
         assert_eq!(emit_type(&dag, Backend::Go), "uint8");
         assert_eq!(emit_type(&dag, Backend::C), "uint8_t");
@@ -318,11 +358,14 @@ mod tests {
     #[test]
     fn emit_type_signed_64bit() {
         use gunbc_ir::type_op::Predicate;
-        let dag = gunbc_ir::type_lib::refined("Word64", vec![
-            Predicate::Width(64),
-            Predicate::Signed(None),
-            Predicate::Arithmetic,
-        ]);
+        let dag = gunbc_ir::type_lib::refined(
+            "Word64",
+            vec![
+                Predicate::Width(64),
+                Predicate::Signed(None),
+                Predicate::Arithmetic,
+            ],
+        );
         assert_eq!(emit_type(&dag, Backend::Rust), "i64");
         assert_eq!(emit_type(&dag, Backend::Go), "int64");
         assert_eq!(emit_type(&dag, Backend::C), "int64_t");
@@ -331,11 +374,14 @@ mod tests {
     #[test]
     fn emit_type_float64() {
         use gunbc_ir::type_op::Predicate;
-        let dag = gunbc_ir::type_lib::refined("Word64", vec![
-            Predicate::Width(64),
-            Predicate::Domain("ieee754_binary64".to_string()),
-            Predicate::Arithmetic,
-        ]);
+        let dag = gunbc_ir::type_lib::refined(
+            "Word64",
+            vec![
+                Predicate::Width(64),
+                Predicate::Domain("ieee754_binary64".to_string()),
+                Predicate::Arithmetic,
+            ],
+        );
         assert_eq!(emit_type(&dag, Backend::Rust), "f64");
         assert_eq!(emit_type(&dag, Backend::Go), "float64");
         assert_eq!(emit_type(&dag, Backend::C), "double");
@@ -363,15 +409,27 @@ mod tests {
         let mut registry = gunbc_ir::TypeRegistry::with_primitives();
         registry.register(
             "Int64",
-            gunbc_ir::type_lib::refined("Int", vec![
-                Predicate::Width(64),
-                Predicate::Signed(None),
-                Predicate::Arithmetic,
-            ]),
+            gunbc_ir::type_lib::refined(
+                "Int",
+                vec![
+                    Predicate::Width(64),
+                    Predicate::Signed(None),
+                    Predicate::Arithmetic,
+                ],
+            ),
         );
-        assert_eq!(resolve_and_emit("Int64", Some(&registry), Backend::Rust), "i64");
-        assert_eq!(resolve_and_emit("Int64", Some(&registry), Backend::Go), "int64");
-        assert_eq!(resolve_and_emit("Int64", Some(&registry), Backend::C), "int64_t");
+        assert_eq!(
+            resolve_and_emit("Int64", Some(&registry), Backend::Rust),
+            "i64"
+        );
+        assert_eq!(
+            resolve_and_emit("Int64", Some(&registry), Backend::Go),
+            "int64"
+        );
+        assert_eq!(
+            resolve_and_emit("Int64", Some(&registry), Backend::C),
+            "int64_t"
+        );
     }
 
     #[test]
@@ -440,7 +498,10 @@ mod tests {
         assert_eq!(emit_identity_type("Float", Backend::C), "double");
         assert_eq!(emit_identity_type("Bytes", Backend::C), "uint8_t*");
         assert_eq!(emit_identity_type("Json", Backend::C), "void*");
-        assert_eq!(emit_identity_type("FilesystemHandle", Backend::C), "const char*");
+        assert_eq!(
+            emit_identity_type("FilesystemHandle", Backend::C),
+            "const char*"
+        );
         assert_eq!(emit_identity_type("Unit", Backend::C), "void");
         assert_eq!(emit_identity_type("Bool", Backend::C), "bool");
     }

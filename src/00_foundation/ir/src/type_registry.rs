@@ -373,11 +373,7 @@ impl TypeRegistry {
         );
         self.register_coproduct(
             "AuthScheme",
-            vec![
-                ("Bearer", "Unit"),
-                ("Header", "Unit"),
-                ("Basic", "Unit"),
-            ],
+            vec![("Bearer", "Unit"), ("Header", "Unit"), ("Basic", "Unit")],
         );
         self.register_coproduct(
             "FermiDepth",
@@ -410,11 +406,7 @@ impl TypeRegistry {
         );
         self.register_coproduct(
             "DisplayWidth",
-            vec![
-                ("ZeroWidth", "Unit"),
-                ("Narrow", "Unit"),
-                ("Wide", "Unit"),
-            ],
+            vec![("ZeroWidth", "Unit"), ("Narrow", "Unit"), ("Wide", "Unit")],
         );
         self.register_coproduct(
             "SemanticColor",
@@ -431,11 +423,7 @@ impl TypeRegistry {
         );
         self.register_coproduct(
             "Tier",
-            vec![
-                ("Emoji", "Unit"),
-                ("Unicode", "Unit"),
-                ("Ascii", "Unit"),
-            ],
+            vec![("Emoji", "Unit"), ("Unicode", "Unit"), ("Ascii", "Unit")],
         );
         self.register_coproduct(
             "SymbolId",
@@ -500,11 +488,7 @@ impl TypeRegistry {
         self.register("ToolHandle", type_lib::identity("ToolHandle"));
         self.register_coproduct(
             "Platform",
-            vec![
-                ("Linux", "Unit"),
-                ("Macos", "Unit"),
-                ("Windows", "Unit"),
-            ],
+            vec![("Linux", "Unit"), ("Macos", "Unit"), ("Windows", "Unit")],
         );
         self.register(
             "Timestamp",
@@ -531,19 +515,11 @@ impl TypeRegistry {
         );
         self.register_product(
             "RestResponse",
-            vec![
-                ("status", "Int"),
-                ("headers", "Json"),
-                ("body", "Json"),
-            ],
+            vec![("status", "Int"), ("headers", "Json"), ("body", "Json")],
         );
         self.register_product(
             "HttpResponse",
-            vec![
-                ("status", "Int"),
-                ("headers", "Json"),
-                ("body", "String"),
-            ],
+            vec![("status", "Int"), ("headers", "Json"), ("body", "String")],
         );
 
         // GCP/OIDC identity types (string-backed refinements).
@@ -635,14 +611,10 @@ impl TypeRegistry {
             .into_iter()
             .map(|(field_name, type_name)| {
                 let type_id = TypeId::from(type_name);
-                let dag = self
-                    .types
-                    .get(&type_id)
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        unresolved.push(format!("{name}.{field_name}: {type_name}"));
-                        type_lib::identity(type_name)
-                    });
+                let dag = self.types.get(&type_id).cloned().unwrap_or_else(|| {
+                    unresolved.push(format!("{name}.{field_name}: {type_name}"));
+                    type_lib::identity(type_name)
+                });
                 (field_name, dag)
             })
             .collect();
@@ -687,14 +659,10 @@ impl TypeRegistry {
             .into_iter()
             .map(|(variant_name, type_name)| {
                 let type_id = TypeId::from(type_name);
-                let dag = self
-                    .types
-                    .get(&type_id)
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        unresolved.push(format!("{name}::{variant_name}: {type_name}"));
-                        type_lib::identity(type_name)
-                    });
+                let dag = self.types.get(&type_id).cloned().unwrap_or_else(|| {
+                    unresolved.push(format!("{name}::{variant_name}: {type_name}"));
+                    type_lib::identity(type_name)
+                });
                 (variant_name, dag)
             })
             .collect();
@@ -892,7 +860,11 @@ impl TypeRegistry {
                 crate::type_shape::ContainerShape::Map(_, _) => return false,
             };
             // Same-name Opaque wrapping (e.g., String → List<String>)
-            if let (crate::type_shape::TypeShape::Opaque(a), crate::type_shape::TypeShape::Opaque(b)) = (&from_shape, inner) {
+            if let (
+                crate::type_shape::TypeShape::Opaque(a),
+                crate::type_shape::TypeShape::Opaque(b),
+            ) = (&from_shape, inner)
+            {
                 if a == b {
                     return true;
                 }
@@ -937,7 +909,11 @@ impl TypeRegistry {
             }
         }
 
-        if base_ok && to_preds.iter().all(|tp| from_preds.iter().any(|sp| sp.entails(tp))) {
+        if base_ok
+            && to_preds
+                .iter()
+                .all(|tp| from_preds.iter().any(|sp| sp.entails(tp)))
+        {
             return true;
         }
 
@@ -967,7 +943,6 @@ impl TypeRegistry {
     pub fn is_compatible_strict_semantic(&self, from: &TypeId, to: &TypeId) -> bool {
         self.is_compatible(from, to) && self.is_type_compatible(from, to)
     }
-
 
     /// Determine the runtime `ValueBacking` for a type using registry knowledge.
     ///
@@ -1054,7 +1029,10 @@ impl TypeRegistry {
         }
 
         // Fallback: Json accepts anything.
-        eprintln!("warning: unknown type '{}' defaulting to ValueBacking::Json", type_id.0);
+        eprintln!(
+            "warning: unknown type '{}' defaulting to ValueBacking::Json",
+            type_id.0
+        );
         ValueBacking::Json
     }
 
@@ -1063,10 +1041,7 @@ impl TypeRegistry {
     /// Checks the type name first (handles branded types like Secret that
     /// structurally wrap String but carry semantic meaning), then falls back
     /// to base type extraction from the DAG.
-    pub fn semantic_carrier_kind(
-        &self,
-        type_id: &TypeId,
-    ) -> crate::types::SemanticCarrierKind {
+    pub fn semantic_carrier_kind(&self, type_id: &TypeId) -> crate::types::SemanticCarrierKind {
         // Check the outer type name first — branded types like Secret
         // have semantic meaning that shouldn't be lost by resolving to
         // their structural base (String).
@@ -1088,10 +1063,7 @@ impl TypeRegistry {
     }
 
     /// Classify a type's semantic carrier class using registry knowledge.
-    pub fn semantic_carrier_class(
-        &self,
-        type_id: &TypeId,
-    ) -> crate::types::SemanticCarrierClass {
+    pub fn semantic_carrier_class(&self, type_id: &TypeId) -> crate::types::SemanticCarrierClass {
         match self.semantic_carrier_kind(type_id) {
             crate::types::SemanticCarrierKind::Structural => {
                 crate::types::SemanticCarrierClass::StructuralGeneratable
@@ -1101,10 +1073,7 @@ impl TypeRegistry {
     }
 
     /// Classify placeholder seed policy using registry knowledge.
-    pub fn seed_placeholder_policy(
-        &self,
-        type_id: &TypeId,
-    ) -> crate::types::SeedPlaceholderPolicy {
+    pub fn seed_placeholder_policy(&self, type_id: &TypeId) -> crate::types::SeedPlaceholderPolicy {
         match self.semantic_carrier_class(type_id) {
             crate::types::SemanticCarrierClass::StructuralGeneratable => {
                 crate::types::SeedPlaceholderPolicy::Generated
@@ -1189,21 +1158,19 @@ fn structural_shapes_compatible(
                 structural_shapes_compatible(a, b)
             }
             (ContainerShape::Map(ak, av), ContainerShape::Map(bk, bv)) => {
-                structural_shapes_compatible(ak, bk)
-                    && structural_shapes_compatible(av, bv)
+                structural_shapes_compatible(ak, bk) && structural_shapes_compatible(av, bv)
             }
             _ => false,
         },
 
         // Coproduct subset: A|B coerces to A|B|C.
-        (
-            TypeShape::Coproduct(_, from_variants),
-            TypeShape::Coproduct(_, to_variants),
-        ) => from_variants.iter().all(|(name, shape)| {
-            to_variants
-                .iter()
-                .any(|(tn, ts)| tn == name && structural_shapes_compatible(shape, ts))
-        }),
+        (TypeShape::Coproduct(_, from_variants), TypeShape::Coproduct(_, to_variants)) => {
+            from_variants.iter().all(|(name, shape)| {
+                to_variants
+                    .iter()
+                    .any(|(tn, ts)| tn == name && structural_shapes_compatible(shape, ts))
+            })
+        }
 
         // Product: same fields, each field compatible.
         (TypeShape::Product(_, from_fields), TypeShape::Product(_, to_fields)) => {
@@ -1211,9 +1178,7 @@ fn structural_shapes_compatible(
                 && from_fields
                     .iter()
                     .zip(to_fields.iter())
-                    .all(|((fn_, fs), (tn, ts))| {
-                        fn_ == tn && structural_shapes_compatible(fs, ts)
-                    })
+                    .all(|((fn_, fs), (tn, ts))| fn_ == tn && structural_shapes_compatible(fs, ts))
         }
 
         // Brand: a branded source can coerce to its unwrapped structural
@@ -1223,9 +1188,7 @@ fn structural_shapes_compatible(
             from_name == to_name && structural_shapes_compatible(from_inner, to_inner)
         }
         // Branded → non-branded: strip brand and compare.
-        (TypeShape::Brand(_, inner), other) => {
-            structural_shapes_compatible(inner, other)
-        }
+        (TypeShape::Brand(_, inner), other) => structural_shapes_compatible(inner, other),
 
         _ => false,
     }
@@ -1692,11 +1655,14 @@ mod tests {
         // Register a structural Int64 type from DSL
         dsl_registry.register(
             "Int64",
-            type_lib::refined("Int", vec![
-                Predicate::Width(64),
-                Predicate::Signed(None),
-                Predicate::Arithmetic,
-            ]),
+            type_lib::refined(
+                "Int",
+                vec![
+                    Predicate::Width(64),
+                    Predicate::Signed(None),
+                    Predicate::Arithmetic,
+                ],
+            ),
         );
         registry.merge_dsl_types(&dsl_registry);
         assert!(registry.contains(&TypeId::from("Int64")));
@@ -1763,10 +1729,8 @@ mod tests {
     #[test]
     fn test_register_product_checked_ok_when_all_resolved() {
         let mut registry = TypeRegistry::with_primitives();
-        let result = registry.register_product_checked(
-            "TestRecord",
-            vec![("name", "String"), ("flag", "Bool")],
-        );
+        let result = registry
+            .register_product_checked("TestRecord", vec![("name", "String"), ("flag", "Bool")]);
         assert!(result.is_ok());
     }
 
@@ -1804,10 +1768,8 @@ mod tests {
     #[test]
     fn test_register_coproduct_checked_reports_unresolved() {
         let mut registry = TypeRegistry::with_primitives();
-        let result = registry.register_coproduct_checked(
-            "TestEnum",
-            vec![("A", "String"), ("B", "MissingType")],
-        );
+        let result = registry
+            .register_coproduct_checked("TestEnum", vec![("A", "String"), ("B", "MissingType")]);
         assert!(result.is_err());
         let unresolved = result.unwrap_err();
         assert_eq!(unresolved.len(), 1);

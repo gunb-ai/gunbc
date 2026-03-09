@@ -1,11 +1,11 @@
-// tools/gist.dag -- Gist creation tool (snapshot/diff/recent modes).
+// gunbc/tools/gist.dag -- Gist creation tool (snapshot/diff/recent modes).
 //
 // Three entrypoints: gist, gist_diff, gist_recent (structurally inferred).
 // Pure DSL -- no extern funcs. Snapshot content is built with map/join/fold.
 //
 // Replaces the previous version that used extern func build_snapshot_content.
 
-module tools.gist
+module gunbc.tools.gist
 
 import extdeps.git
 import extdeps.github.auth { github_token }
@@ -13,7 +13,7 @@ import extdeps.github.gists
 import std.resources { Network }
 import std.types { CommitSha, Url }
 
-// ── Content rendering (pure DSL) ────────────────────────────────────
+// -- Content rendering (pure DSL) -----------------------------------
 
 // Guess a language tag from a file extension for code block syntax highlighting.
 fn lang_for_path(path: String) -> String {
@@ -72,7 +72,7 @@ fn render_diff_markdown(diff: String, branch: String, base_ref: CommitSha) -> St
   "# Diff: {branch} vs {base_ref}\n\n```diff\n{diff}\n```"
 }
 
-// ── Entrypoints ─────────────────────────────────────────────────────
+// -- Entrypoints ----------------------------------------------------
 
 func gist(public: Bool = false) -> { url: Url }
   uses net: Network
@@ -124,7 +124,7 @@ func gist_recent(since: String = "3.days.ago", public: Bool = false) -> { url: U
   uses net: Network
 {
   current = git.Core.CurrentBranch()
-  base = git.Core.RevListBase(since: since)
+  base = git.Core.RevListBefore(before: since)
   changes = git.Core.Diff(base: base.base_ref)
   markdown = render_diff_markdown(
     diff: changes.diff,

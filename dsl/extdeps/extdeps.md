@@ -255,12 +255,12 @@ Tool modules compose Layer 3/4 services into workflows. They never define
 types that belong in lower layers.
 
 ```
-tools/gist.dag       Composes github/gists + github/auth + git + shell
+gunbc/tools/gist.dag  Composes github/gists + github/auth + git + shell
 tools/bootstrap.dag  Composes gitignore + make + shell
 ```
 
 ```dag
-module tools.gist
+module gunbc.tools.gist
 
 import extdeps.github.gists { Gist, GistFile }
 import extdeps.github.auth { github_token }
@@ -278,7 +278,7 @@ func gist(branch: String?, public: Bool?) -> { url: String }
 ### The Layer Diagram
 
 ```
-Layer 5  tools/gist.dag ─────────── "Do the thing"
+Layer 5  gunbc/tools/gist.dag ─── "Do the thing"
            │  imports
 Layer 4  secrets/secrets.dag ────────── "What is a secret?" (universal)
            │  imports

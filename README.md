@@ -25,7 +25,7 @@ Rust provides the engine. The DSL provides the domain.
 ```
 dsl/std/errors.dag              "What is an HTTP error shape?"
 dsl/extdeps/cloud/gcp/gcp.dag   "What is GCP?" — real OAuth2 scopes, real endpoints
-dsl/tools/gist.dag               "How do we upload a gist?" — composes services
+dsl/gunbc/tools/gist.dag      "How do we upload a gist?" — composes services
 ```
 
 The compiler pipeline (`src/02_pipeline/` through `src/07_emit/`) transforms
@@ -72,7 +72,7 @@ Layer 1  extdeps/cloud/cloud.dag    "What is a cloud provider?"
 Layer 2  extdeps/cloud/gcp/gcp.dag  "What is GCP?"
 Layer 3  extdeps/cloud/gcp/secret_manager.dag  "What is GCP Secret Manager?"
 Layer 4  extdeps/secrets/secrets.dag  "What is a secret?" (universal)
-Layer 5  tools/gist.dag             "Upload a gist" (composes everything)
+Layer 5  gunbc/tools/gist.dag    "Upload a gist" (composes everything)
 ```
 
 Each layer only knows about layers below it. Adding a new external

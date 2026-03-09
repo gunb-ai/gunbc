@@ -2747,9 +2747,7 @@ mod tests {
             .iter_mut()
             .find(|node| node.id.0 == NODE_PARSE)
             .expect("parse node should exist");
-        parse_node
-            .inputs
-            .push(Port::scalar("extra", "Debug"));
+        parse_node.inputs.push(Port::scalar("extra", "Debug"));
 
         let err = validate_pipeline_semantics(&dag)
             .expect_err("non-entrypoint with unconnected input should fail");

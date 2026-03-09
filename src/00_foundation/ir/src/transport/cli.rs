@@ -601,8 +601,8 @@ impl CliToolOp {
 // ============================================================================
 
 use crate::dag::{Dag, Edge, Port};
-use crate::type_op::{Predicate, PredicateValue};
 use crate::node::Node;
+use crate::type_op::{Predicate, PredicateValue};
 use crate::types::Cardinality;
 
 /// Build a CLI tool upsert sub-DAG node.
