@@ -27,14 +27,11 @@ use crate::node::Node;
 use crate::type_op::{ContentEncoding, Predicate, TypeOp, WrapperKind};
 use crate::types::Cardinality;
 
-/// URL pattern regex.
-pub const URL_PATTERN: &str = r"^https?://[^\s/$.?#].[^\s]*$";
+const URL_PATTERN: &str = r"^https?://[^\s/$.?#].[^\s]*$";
 
-/// File path pattern regex (Unix or Windows style).
-pub const FILE_PATH_PATTERN: &str = r"^([/~].*|[a-zA-Z]:.*)$";
+const FILE_PATH_PATTERN: &str = r"^([/~].*|[a-zA-Z]:.*)$";
 
-/// Email pattern regex (simplified).
-pub const EMAIL_PATTERN: &str = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$";
+const EMAIL_PATTERN: &str = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$";
 
 // =============================================================================
 // Primitive Types
@@ -175,7 +172,7 @@ pub fn coproduct(name: &str, variants: Vec<(&str, &str)>) -> Dag<TypeOp> {
 /// Content-refined type — a type with a `@content` encoding predicate.
 ///
 /// e.g., `content_refined("String", ContentEncoding::UTF8)` → String @content(UTF8)
-pub fn content_refined(type_name: &str, encoding: ContentEncoding) -> Dag<TypeOp> {
+fn content_refined(type_name: &str, encoding: ContentEncoding) -> Dag<TypeOp> {
     refined(type_name, vec![Predicate::Content(encoding)])
 }
 
