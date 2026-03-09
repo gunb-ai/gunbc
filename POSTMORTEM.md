@@ -346,6 +346,37 @@ reachable type.
 
 ---
 
+### P2 — Additional invariant violation sites in mock/type pipeline
+
+**Invariant**: "no hacks or fallbacks"
+
+Sites not covered by the entries above:
+
+| Site | Behavior |
+|------|----------|
+| `codegen/src/testgen/codegen.rs` ~L4916 | Port type lookup failure → defaults to `String` |
+| `codegen/src/testgen/codegen.rs` ~L4823 | Lowering failure during testgen → silently uses unlowered analysis |
+| `codegen/src/testgen/codegen.rs` ~L5721 | Effectful node with ExactOutputs → falls back to DryRun mode |
+| `ir/src/type_shape.rs` ~L137,156,169,182,196 | Field/variant sub-DAG not found → `TypeShape::Opaque(...)` |
+
+---
+
+### P2 — Generated DAG test failure themes (1,019 failures observed 2026-03-09)
+
+**Invariants**: "no hacks or fallbacks" — downstream consequence of the
+type-registry, auto-mock, and type-shape fallbacks documented above.
+
+The fallback chain `unknown type → ValueBacking::Json → Value::Json({"mock": true})`
+produces structurally invalid mocks that crash at execution time. Five themes:
+
+- **GetField on mock objects** (~530): `GetField 'comment'/'indent'/'spans'/'text'` on `{"mock": true}` — record-typed ports receive a mock without the expected fields
+- **Unknown function in FnBody/MatchDispatch** (~132): `code_point`, `llm.Anthropic.Messages` — fn-body evaluator missing builtins or service op references
+- **Field access on wrong value shape** (~55): fn bodies try `value.name` on mock values that lack the field
+- **WrapScalar coercion** (~16): resource acquire nodes produce `{"mock": true}` instead of a list-coercible handle
+- **Wrong output type** (~8): variant tests expect `Bool` but get a different shape from mock-driven execution
+
+---
+
 ### P1 — Auto-testgen degrades compile failures into placeholder source files
 
 **Invariants**: #8 (correctness by construction), "no hacks or fallbacks"
@@ -413,16 +444,6 @@ Silently swallows any I/O error when emitting CI workflow commands.
 
 ---
 
-## What passed (2026-03-09 review)
-
-- **Invariant 7**: `lower_expr` in `lib.rs` L10053–10449 — exhaustive match, no wildcard, returns `Result`. Same for `expr.rs` L268–442.
-- **`extern func`**: Properly rejected at parse time (`src/03_source/daglang-syntax/src/parser.rs` L1465).
-- **Phases 02–04, 06**: No `eprintln!`, no I/O side effects — clean pure functions.
-- **I/O boundary** (Invariant 2): Only `08_materialize/transport/` performs direct I/O.
-- **No backdoors**: Compiler provides metadata through output types, not callbacks.
-
----
-
 ### P2 — `std/patterns.dag` breaks `make test-all` via testgen compile failure
 
 **Invariants**: #8 (correctness by construction)
@@ -446,6 +467,84 @@ expressing patterns that require future compiler work (FC-CF5, If-SubDag for
 **Fix direction**: Exclude `std/patterns.dag` from auto-testgen until the
 lowerer supports the required features, or gate testgen discovery to skip
 modules whose compilation produces diagnostics.
+
+---
+
+## What passed (2026-03-09 review)
+
+- **Invariant 7**: `lower_expr` in `lib.rs` L10053–10449 — exhaustive match, no wildcard, returns `Result`. Same for `expr.rs` L268–442.
+- **`extern func`**: Properly rejected at parse time (`src/03_source/daglang-syntax/src/parser.rs` L1465).
+- **Phases 02–04, 06**: No `eprintln!`, no I/O side effects — clean pure functions.
+- **I/O boundary** (Invariant 2): Only `08_materialize/transport/` performs direct I/O.
+- **No backdoors**: Compiler provides metadata through output types, not callbacks.
+
+---
+
+## Structural prevention: `eprintln!` fallbacks are unenforceable
+
+### Why this wasn't caught
+
+Every fallback site uses `eprintln!("warning: ...")` followed by a default
+value. This pattern is invisible to every enforcement mechanism in the repo:
+
+- **`RUSTFLAGS="-D warnings"`** catches *compiler* warnings (unused vars,
+  clippy). It has zero effect on runtime `eprintln!` output.
+- **`cargo clippy`** cannot detect that an `eprintln!` inside a match arm
+  represents a policy violation.
+- **No test captures stderr.** Warnings flow to the terminal and disappear.
+- **Generated tests don't validate mock preconditions.** They assert DAG
+  execution results. If the mock is structurally wrong, the test crashes
+  downstream in the executor — not at the point of the fallback.
+- **One test validates the fallback as correct**: `identity_type_unknown_emits_
+  name_verbatim` asserts the fallback behavior, treating it as intentional.
+
+The gap: the invariant says "no hacks or fallbacks" but enforcement is zero.
+
+### Fix: structured diagnostics that fail closed
+
+Replace `eprintln!("warning: ...")` + default-value with a structured
+diagnostic channel that tests and CI can assert against.
+
+1. **`Diagnostics` accumulator.** A `Vec<Diagnostic>` threaded through
+   compilation, lowering, mock generation, and emission. Each fallback site
+   pushes a typed diagnostic (severity, code, message, source location)
+   instead of printing to stderr.
+
+2. **Severity-gated failure.** After each pipeline phase, check the
+   accumulator. If any diagnostic exceeds the configured severity threshold
+   (e.g., `Warning` in CI, `Error` in production), fail the phase. The
+   threshold is explicit — not buried in `match` arm defaults.
+
+3. **Test assertion.** `auto_mock_spec` (and callers) return
+   `(MockSpec, Vec<Diagnostic>)`. Tests assert `diagnostics.is_empty()` for
+   modules that should compile cleanly. Existing tests that exercise unknown
+   types assert the *specific* diagnostic code — not silent success.
+
+4. **`eprintln!("warning: ...")` lint.** Add a clippy disallowed-methods
+   entry (or a grep-based CI check) that bans `eprintln!` containing
+   `"warning"` in `src/`. Fallback behavior must go through the diagnostic
+   channel, not stderr.
+
+This converts the current "print and pray" pattern into a testable,
+assertable contract. The 1,019 generated test failures would have shown up
+immediately as diagnostic-count assertions at mock generation time, rather
+than as downstream executor crashes.
+
+### Root cause: `auto_mock_spec` doesn't receive the DSL type registry
+
+The DSL type registry (`CompileOutput.dsl_type_registry`) contains every
+type defined in `.dag` files — Format, Line, Span, FileEntry, FermiDepth,
+etc. It is available at every call site that invokes `auto_mock_spec`.
+
+But `auto_mock_spec` constructs its own static `TypeRegistry::with_core_
+types()` singleton (auto_mock.rs:34), which only contains kernel + core
+types. DSL-defined types are invisible to it.
+
+The information exists and is compiled correctly. It just isn't passed to the
+mock generator. A single parameter change (`auto_mock_spec(&dag, &name,
+&registry)`) would give mock generation access to all structural type
+information, enabling it to produce records with the correct fields instead
+of `{"mock": true}`.
 
 ---
 

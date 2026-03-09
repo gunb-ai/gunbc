@@ -89,6 +89,8 @@ pub struct Diagnostic {
     pub help: Option<String>,
     /// Secondary source locations (e.g. "first defined here").
     pub related: Vec<RelatedSpan>,
+    /// Pre-rendered source snippet for rich display (populated when source is available).
+    pub snippet: Option<String>,
 }
 
 impl Diagnostic {
@@ -106,6 +108,7 @@ impl Diagnostic {
             context: DiagnosticContext::Note(String::new()),
             help: None,
             related: Vec::new(),
+            snippet: None,
         }
     }
 
@@ -124,6 +127,7 @@ impl Diagnostic {
             context: DiagnosticContext::Note(String::new()),
             help: None,
             related: Vec::new(),
+            snippet: None,
         }
     }
 
@@ -158,23 +162,58 @@ impl Diagnostic {
         self.related = related;
         self
     }
+
+    pub fn with_snippet(mut self, snippet: String) -> Self {
+        self.snippet = Some(snippet);
+        self
+    }
+
+    /// Populate line/col from source text and pre-render a source snippet.
+    ///
+    /// Call this when source text is available to enrich the diagnostic with
+    /// a rustc-style source snippet (file location, line content, underline).
+    pub fn resolve_source(&mut self, source: &str) {
+        let span = match &self.span {
+            Some(s) if !s.is_empty() => *s,
+            _ => return,
+        };
+        let (line, col) = byte_to_line_col(source, span.start);
+        self.line = Some(line);
+        self.column = Some(col);
+        self.snippet = Some(render_source_snippet(
+            source,
+            span,
+            self.file.as_ref().map(|p| p.display().to_string()),
+            line,
+            col,
+        ));
+    }
 }
 
 impl std::fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // [CODE] file:line:col: message
-        write!(f, "[{}]", self.code)?;
-        if let Some(file) = &self.file {
-            write!(f, " {}", file.display())?;
-            if let (Some(line), Some(col)) = (self.line, self.column) {
-                write!(f, ":{line}:{col}")?;
-            } else if let Some(span) = &self.span {
-                write!(f, ":{}", span.start)?;
+        if let Some(snippet) = &self.snippet {
+            // Rich display: error header + source snippet + help
+            write!(f, "{ERR}error[{}]{RESET}: {}", self.code, self.message)?;
+            write!(f, "\n{snippet}")?;
+            if let Some(help) = &self.help {
+                write!(f, "\n   {ACCENT}={RESET} {SUCCESS}help{RESET}: {help}")?;
             }
-        }
-        write!(f, ": {}", self.message)?;
-        if let Some(help) = &self.help {
-            write!(f, "\n  help: {help}")?;
+        } else {
+            // Compact fallback: [CODE] file:line:col: message
+            write!(f, "[{}]", self.code)?;
+            if let Some(file) = &self.file {
+                write!(f, " {}", file.display())?;
+                if let (Some(line), Some(col)) = (self.line, self.column) {
+                    write!(f, ":{line}:{col}")?;
+                } else if let Some(span) = &self.span {
+                    write!(f, ":{}", span.start)?;
+                }
+            }
+            write!(f, ": {}", self.message)?;
+            if let Some(help) = &self.help {
+                write!(f, "\n  help: {help}")?;
+            }
         }
         Ok(())
     }
@@ -442,6 +481,80 @@ pub struct TestObligations {
     pub interface_contract_verification_targets: usize,
 }
 
+// ── ANSI styling (matches project SemanticColor codes) ────────────────
+
+/// Error color (red 256-color).
+const ERR: &str = "\x1b[38;5;196m";
+/// Success color (green 256-color).
+const SUCCESS: &str = "\x1b[38;5;34m";
+/// Accent color (cyan 256-color) — used for box-drawing chrome.
+const ACCENT: &str = "\x1b[38;5;75m";
+/// Bold.
+const BOLD: &str = "\x1b[1m";
+/// Reset all attributes.
+const RESET: &str = "\x1b[0m";
+
+/// Render a source snippet in the project's diagnostic style.
+///
+/// Produces output like:
+/// ```text
+///   ┌─ dsl/std/patterns.dag:42:5
+///   │
+/// 42│     actual_content: read_result.content,
+///   │     ^^^^^^^^^^^^^^
+///   └─
+/// ```
+fn render_source_snippet(
+    source: &str,
+    span: Span,
+    file_display: Option<String>,
+    line: usize,
+    col: usize,
+) -> String {
+    let mut out = String::new();
+
+    // Header: file location
+    let location = match file_display {
+        Some(f) => format!("{f}:{line}:{col}"),
+        None => format!("{line}:{col}"),
+    };
+    out.push_str(&format!("  {ACCENT}┌─{RESET} {BOLD}{location}{RESET}\n"));
+    out.push_str(&format!("  {ACCENT}│{RESET}\n"));
+
+    // Extract the source line(s) at the span
+    let lines: Vec<&str> = source.lines().collect();
+    let line_idx = line.saturating_sub(1);
+    if let Some(source_line) = lines.get(line_idx) {
+        let line_num = format!("{line}");
+        let gutter_width = line_num.len();
+        out.push_str(&format!(
+            "{ACCENT}{line_num:>gutter_width$}{ACCENT}│{RESET} {source_line}\n",
+        ));
+
+        // Underline: point at the span within this line.
+        // For multi-line spans (e.g., whole func items), only underline the
+        // content portion of the first line rather than an absurdly long bar.
+        let underline_start = col.saturating_sub(1);
+        let content_end = source_line.trim_end().len();
+        let line_remaining = content_end.saturating_sub(underline_start);
+        let span_len = span.end.saturating_sub(span.start);
+        let underline_len = if span_len > 0 {
+            span_len.min(line_remaining).max(1)
+        } else {
+            1
+        };
+        let padding = " ".repeat(underline_start);
+        let arrows = "^".repeat(underline_len);
+        out.push_str(&format!(
+            "{ACCENT}{:>gutter_width$}│{RESET} {padding}{ERR}{arrows}{RESET}\n",
+            ""
+        ));
+    }
+
+    out.push_str(&format!("  {ACCENT}└─{RESET}"));
+    out
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -552,5 +665,46 @@ mod tests {
         assert!(s.is_empty());
         assert_eq!(s.start, 0);
         assert_eq!(s.end, 0);
+    }
+
+    #[test]
+    fn diagnostic_rich_display_with_snippet() {
+        let source = "func clippy_lint() {\n    actual_content: read_result.content,\n}\n";
+        let mut d = Diagnostic::new("VER004", "unwired required input: node 'compare' port 'actual_content'")
+            .with_file(PathBuf::from("dsl/std/patterns.dag"))
+            .with_span(Span::new(25, 39)) // "actual_content" on line 2
+            .with_help("wire a producer into `compare`.`actual_content`");
+        d.resolve_source(source);
+        let output = d.to_string();
+        // Verify rich format is used (contains box drawing)
+        assert!(output.contains("┌─"), "should have box-drawing header: {output}");
+        assert!(output.contains("└─"), "should have box-drawing footer: {output}");
+        assert!(output.contains("actual_content"), "should show source line: {output}");
+        assert!(output.contains("^^^^"), "should have underline arrows: {output}");
+        assert!(output.contains("help"), "should have help text: {output}");
+        assert!(output.contains("dsl/std/patterns.dag"), "should have file path: {output}");
+    }
+
+    #[test]
+    fn diagnostic_compact_display_without_snippet() {
+        let d = Diagnostic::new("VER004", "unwired required input")
+            .with_file(PathBuf::from("test.dag"))
+            .with_help("fix it");
+        let output = d.to_string();
+        // Compact format — no box drawing
+        assert!(output.contains("[VER004]"), "should have code: {output}");
+        assert!(output.contains("test.dag"), "should have file: {output}");
+        assert!(!output.contains("┌─"), "should NOT have box drawing: {output}");
+    }
+
+    #[test]
+    fn resolve_source_populates_line_col() {
+        let source = "line one\nline two\nline three\n";
+        let mut d = Diagnostic::new("E001", "test")
+            .with_span(Span::new(9, 17)); // "line two"
+        d.resolve_source(source);
+        assert_eq!(d.line, Some(2));
+        assert_eq!(d.column, Some(1));
+        assert!(d.snippet.is_some());
     }
 }

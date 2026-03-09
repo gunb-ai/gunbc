@@ -318,6 +318,35 @@ fn verification_diagnostics(errors: Vec<gunbc_ir::VerifyError>) -> Diagnostics {
     }
 }
 
+/// Like `verification_diagnostics`, but resolves source locations and renders
+/// rich snippets when the module graph has matching source text.
+fn verification_diagnostics_with_sources(
+    errors: Vec<gunbc_ir::VerifyError>,
+    graph: &ModuleGraph,
+) -> Diagnostics {
+    Diagnostics {
+        errors: errors
+            .into_iter()
+            .map(|error| {
+                let mut diag = error.to_diagnostic();
+                // Look up source text by file path to resolve line:col + snippet
+                if let Some(diag_file) = &diag.file {
+                    let diag_file_str = diag_file.display().to_string();
+                    if let Some(source) = graph
+                        .modules
+                        .iter()
+                        .find(|m| m.path.display().to_string() == diag_file_str)
+                        .map(|m| m.source.as_str())
+                    {
+                        diag.resolve_source(source);
+                    }
+                }
+                diag
+            })
+            .collect(),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CheckOutput {
     pub parsed_files: usize,

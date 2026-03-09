@@ -648,6 +648,16 @@ impl VerifyError {
         if let Some(help) = self.help() {
             diagnostic = diagnostic.with_help(help);
         }
+        // Attach source location from NodeOrigin when available.
+        if let VerifyError::UnwiredInput(error) = self {
+            if let Some(file) = error.origin.file() {
+                diagnostic = diagnostic.with_file(std::path::PathBuf::from(file));
+            }
+            if let (Some(start), Some(end)) = (error.origin.span_start(), error.origin.span_end())
+            {
+                diagnostic = diagnostic.with_span(daglang_contract::Span::new(start, end));
+            }
+        }
         diagnostic
     }
 
@@ -676,6 +686,8 @@ pub struct UnwiredInputError {
     pub node_id: String,
     pub node_name: String,
     pub port_name: String,
+    /// Source origin for the node, if tracked.
+    pub origin: crate::node::NodeOrigin,
 }
 
 impl fmt::Display for UnwiredInputError {
@@ -780,6 +792,7 @@ pub fn validate_required_inputs<T>(dag: &Dag<T>) -> Vec<UnwiredInputError> {
                     node_id: node.id.0.clone(),
                     node_name: node.id.0.clone(),
                     port_name: port.name.0.clone(),
+                    origin: node.origin.clone(),
                 });
             }
         }
