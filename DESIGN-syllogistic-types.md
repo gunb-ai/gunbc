@@ -2342,31 +2342,126 @@ predicates).
 
 **E3.** Add `.dag` syntax for downcast acknowledgment.
 
-#### Phase F: Cleanup + Fail-Loud (Gaps 7, 10)
+#### Phase F: Structural String + Fail-Loud
 
-**F1. Fail-loud on the structural path.**
+**F1. Make kernel String structural (currently blocked).**
+
+Status: String remains identity in the kernel because making it a
+Product breaks scalar→list fan-in coercion (`String → StringList`).
+
+Root cause (audited): `is_compatible()` in `type_registry.rs` has a
+container-wrapping fallback (L930-946) that allows `Opaque("X")` →
+`Container(List(Opaque("X")))` by comparing the Opaque names. When
+String becomes `Product(Some("String"), fields...)`, the from-shape
+is no longer Opaque, so the name comparison `if let (Opaque(a),
+Opaque(b))` fails to match. `structural_shapes_compatible` also
+returns false because one side is Opaque and the other is Product.
+
+The container's inner element stays `Opaque("String")` because
+`StringList = type_lib::list(type_lib::string())` is registered in
+`register_core_types()` using `type_lib::string()` which returns
+`identity("String")`.
+
+Fix: Extend the container-wrapping fallback in `is_compatible()` to
+extract declared type names from structural shapes, not just Opaque.
 
 | File | Change |
 |------|--------|
-| `typecheck/src/lib.rs` `resolve_field_type_dag()` L1287-1292 | Replace `identity(&base_name)` fallback with `Result::Err` for unresolved types. Keep identity fallback only in Pass 1 (forward-reference placeholders). |
-| `ir/src/type_registry.rs` | `register_product` / `register_coproduct`: use `_checked` variants in structural paths, returning errors for unresolved child types. |
-| `typecheck/src/lib.rs` topo-sort | Surface cycles as structural errors instead of silently breaking. |
+| `ir/src/type_registry.rs` L930-946 | Add name extraction from Product/Coproduct shapes: `Product(Some(name), _)` and `Coproduct(Some(name), _)` yield the declared name, same as `Opaque(name)`. Compare extracted names between source and container element. |
 
-**F2. Transport rewrite tables as data.**
+Pseudocode for the fix:
+```rust
+// In is_compatible(), container-wrapping fallback:
+let from_name = match &from_shape {
+    TypeShape::Opaque(n) => Some(n.as_str()),
+    TypeShape::Product(Some(n), _) => Some(n.as_str()),
+    TypeShape::Coproduct(Some(n), _) => Some(n.as_str()),
+    _ => None,
+};
+let inner_name = match inner {
+    TypeShape::Opaque(n) => Some(n.as_str()),
+    TypeShape::Product(Some(n), _) => Some(n.as_str()),
+    TypeShape::Coproduct(Some(n), _) => Some(n.as_str()),
+    _ => None,
+};
+if let (Some(a), Some(b)) = (from_name, inner_name) {
+    if a == b { return true; }
+}
+```
 
-The 3 `rewrite_transport_call` functions (Rust L341-365, Go L407-431,
-C L683-704) have 14 identical entries each with backend-specific
-syntax. Extract to a data structure: `HashMap<&str, TransportOp>`
-per backend, or a language-model transport vocabulary.
+After this fix:
+- `Product(Some("String"), ...)` → `Container(List(Opaque("String")))`
+  extracts names `"String"` and `"String"` → match → compatible
+- Then update `register_kernel_types()` to make String a structural
+  Product matching `string_type.dag`
+- Tighten ratchet test from 6 → 5 identity types
 
-**F3. Generic type parameter support in parser.**
+**F2. Fail-loud on unresolved types.**
+
+Status: Two silent-swallow points in `resolve_field_type_dag` and
+`register_type_def` produce `identity(name)` when a type is not in
+the registry.
+
+The two-pass registration in `collect_dsl_type_registry()` works as:
+- Pass 1 (L1000-1008): registers every DSL type as `identity(name)`
+- Pass 2 (L1035-1044): re-registers with structural DAGs in topo order
+- `resolve_field_type_dag` runs during Pass 2, so the registry
+  contains both Pass 1 identity placeholders and kernel types
+
+The silent-swallow sites:
+
+| Site | Line | Condition | Behavior |
+|------|------|-----------|----------|
+| `resolve_field_type_dag` | L1284 | `registry.get_by_name(name)` is `None` and no predicates | Returns `identity(name)` |
+| `register_type_def` alias | L1206 | `registry.get_by_name(base_name)` is `None` and no predicates | Returns `identity(base_name)` |
+
+In both cases, `None` means the type is not in the DSL (Pass 1
+would have registered it) AND not in the kernel. This IS genuinely
+missing — the identity fallback silently swallows the error.
+
+Fix (two stages):
+
+**Stage 1 (warning + audit):** Replace silent identity fallback with
+`eprintln!("warning: unresolved type '{name}'")` plus identity
+fallback. Add a post-Pass-2 audit function:
+
+| File | Change |
+|------|--------|
+| `typecheck/src/lib.rs` L1284 | Add `eprintln!` before identity fallback |
+| `typecheck/src/lib.rs` L1206 | Same |
+| `typecheck/src/lib.rs` after L1044 | Add `audit_unresolved_identities(&registry)` that checks how many DSL-registered types are still identity after Pass 2. Warn on any. |
+
+**Stage 2 (Result-returning):** Make `resolve_field_type_dag` return
+`Result<Dag<TypeOp>, UnresolvedTypeError>`. This propagates through
+`register_type_def` and `collect_dsl_type_registry`, surfacing
+compile errors for genuinely missing types. The Pass 1 placeholders
+remain intentional identity registrations (not errors).
+
+| File | Change |
+|------|--------|
+| `typecheck/src/lib.rs` `resolve_field_type_dag` | Return type `Result<Dag<TypeOp>, String>`. `None` from registry → `Err(format!("unresolved type '{name}'"))`. |
+| `typecheck/src/lib.rs` `register_type_def` | Propagate `Result` from `resolve_field_type_dag`. Collect errors per type def. |
+| `typecheck/src/lib.rs` `collect_dsl_type_registry` | Collect all errors from Pass 2. Return `Result<TypeRegistry, Vec<String>>`. |
+| Callers of `collect_dsl_type_registry` | Handle the Result, surfacing errors as compile diagnostics. |
+
+Stage 2 is a larger refactor because every call to
+`resolve_field_type_dag` needs error handling. Stage 1 is safe to
+land immediately and provides visibility into the problem.
+
+**F3. DONE. Transport rewrite tables as data.**
+
+The 3 `rewrite_transport_call` match tables are now
+`TransportEntry` arrays in the language model, resolved via
+`language_model::resolve_transport()`.
+
+**F4. Generic type parameter support in parser.**
 
 If A3 (real `containers.dag`) requires `type List<T>` syntax, add
 parser support for generic type parameters in type definitions.
 This enables `containers.dag` to carry real structural definitions
 instead of comments.
 
-**F4. Derive port cardinality from type DAGs.**
+**F5. Derive port cardinality from type DAGs.**
 
 `Port.cardinality` is currently stored directly. It should be
 derivable from the port's type DAG (a `List<T>` port has ZeroOrMore,
