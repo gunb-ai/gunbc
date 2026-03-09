@@ -477,10 +477,31 @@ impl TypeRegistry {
         );
 
         // Domain types for transport/infrastructure.
-        self.register("TransportRequest", type_lib::identity("TransportRequest"));
-        self.register("TransportResponse", type_lib::identity("TransportResponse"));
-        self.register("Credential", type_lib::identity("Credential"));
-        self.register("FilesystemHandle", type_lib::identity("FilesystemHandle"));
+        self.register_product(
+            "TransportRequest",
+            vec![
+                ("method", "String"),
+                ("url", "String"),
+                ("headers", "Json"),
+                ("body", "String"),
+            ],
+        );
+        self.register_product(
+            "TransportResponse",
+            vec![
+                ("status", "Int"),
+                ("headers", "Json"),
+                ("body", "String"),
+            ],
+        );
+        self.register(
+            "Credential",
+            type_lib::branded("Credential", type_lib::string()),
+        );
+        self.register(
+            "FilesystemHandle",
+            type_lib::branded("FilesystemHandle", type_lib::file_path()),
+        );
         self.register("NetworkHandle", type_lib::unit());
         self.register_product(
             "CliResult",
@@ -490,7 +511,10 @@ impl TypeRegistry {
                 ("exit_code", "Int"),
             ],
         );
-        self.register("ToolHandle", type_lib::identity("ToolHandle"));
+        self.register(
+            "ToolHandle",
+            type_lib::branded("ToolHandle", type_lib::string()),
+        );
         self.register_coproduct(
             "Platform",
             vec![
@@ -993,7 +1017,7 @@ impl TypeRegistry {
             return self.value_backing(&TypeId::from(inner));
         }
 
-        // Primitives (direct match).
+        // Primitives and infrastructure types (direct match).
         match raw.as_str() {
             "String" => return ValueBacking::String,
             "Bool" => return ValueBacking::Bool,
@@ -1003,6 +1027,8 @@ impl TypeRegistry {
             "Json" => return ValueBacking::Json,
             "Unit" => return ValueBacking::Unit,
             "Secret" => return ValueBacking::Secret,
+            "TransportRequest" | "TransportResponse" | "FilesystemHandle" | "NetworkHandle"
+            | "ToolHandle" => return ValueBacking::Json,
             _ => {}
         }
 
@@ -1791,11 +1817,6 @@ mod tests {
             "Int",
             "Float",
             "Unit",
-            "TransportRequest",
-            "TransportResponse",
-            "Credential",
-            "FilesystemHandle",
-            "ToolHandle",
         ]
         .into_iter()
         .collect();
