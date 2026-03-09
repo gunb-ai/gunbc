@@ -1886,7 +1886,6 @@ impl Parser {
         } else {
             FnBody {
                 stmts: Vec::new(),
-                lossy: false,
             }
         };
         Ok(FnDef {
@@ -2937,14 +2936,12 @@ impl Parser {
     fn parse_fn_body(&mut self) -> Result<FnBody, ParseError> {
         Ok(FnBody {
             stmts: self.parse_stmts()?,
-            lossy: false,
         })
     }
 
     fn parse_func_body(&mut self) -> Result<FuncBody, ParseError> {
         Ok(FuncBody {
             stmts: self.parse_stmts()?,
-            lossy: false,
         })
     }
 
@@ -3888,7 +3885,6 @@ fn provider_of(config: CloudConfig) -> CloudProvider {
         );
         match &sf.items[2].node {
             Item::FnDef(f) => {
-                assert!(!f.body.lossy);
                 assert!(matches!(
                     f.body.stmts.first(),
                     Some(Stmt::Expr(Expr::Match(_, arms))) if arms.len() == 2
@@ -3899,7 +3895,7 @@ fn provider_of(config: CloudConfig) -> CloudProvider {
     }
 
     #[test]
-    fn parse_if_expression_in_fn_body_is_not_lossy() {
+    fn parse_if_expression_in_fn_body() {
         let sf = parse_or_panic(
             r#"module test
 fn choose(gate: Bool) -> Int {
@@ -3909,7 +3905,6 @@ fn choose(gate: Bool) -> Int {
         );
         match &sf.items[0].node {
             Item::FnDef(def) => {
-                assert!(!def.body.lossy);
                 assert!(matches!(
                     def.body.stmts.first(),
                     Some(Stmt::Let(_, Expr::If(_, _, Some(_))))
@@ -3920,7 +3915,7 @@ fn choose(gate: Bool) -> Int {
     }
 
     #[test]
-    fn parse_match_expression_in_fn_body_is_not_lossy() {
+    fn parse_match_expression_in_fn_body() {
         let sf = parse_or_panic(
             r#"module test
 fn choose(mode: String) -> Int {
@@ -3933,7 +3928,6 @@ fn choose(mode: String) -> Int {
         );
         match &sf.items[0].node {
             Item::FnDef(def) => {
-                assert!(!def.body.lossy);
                 assert!(matches!(
                     def.body.stmts.first(),
                     Some(Stmt::Let(_, Expr::Match(_, _)))
@@ -3944,7 +3938,7 @@ fn choose(mode: String) -> Int {
     }
 
     #[test]
-    fn parse_fold_pipe_in_fn_body_is_not_lossy() {
+    fn parse_fold_pipe_in_fn_body() {
         let sf = parse_or_panic(
             r#"module test
 type FermiDepth = Xs | S | M | L | Xl
@@ -3961,19 +3955,14 @@ fn fermi_max_of(depths: List<FermiDepth>) -> FermiDepth {
             .iter()
             .find(|item| matches!(&item.node, Item::FnDef(def) if def.name == "fermi_max_of"))
             .expect("fermi_max_of fn should exist");
-        match &fn_item.node {
-            Item::FnDef(def) => {
-                assert!(
-                    !def.body.lossy,
-                    "fold pipe expression in fn body should NOT be lossy"
-                );
-            }
-            other => panic!("expected FnDef, got {other:?}"),
-        }
+        assert!(
+            matches!(&fn_item.node, Item::FnDef(def) if !def.body.stmts.is_empty()),
+            "fermi_max_of fn body should have statements"
+        );
     }
 
     #[test]
-    fn parse_classify_transports_body_is_not_lossy() {
+    fn parse_classify_transports_body() {
         let sf = parse_or_panic(
             r#"module test
 type FermiDepth = Xs | S | M | L | Xl
@@ -4016,15 +4005,10 @@ fn classify_transports(transports: List<TransportClass>) -> DerivedClassificatio
                 |item| matches!(&item.node, Item::FnDef(def) if def.name == "classify_transports"),
             )
             .expect("classify_transports fn should exist");
-        match &fn_item.node {
-            Item::FnDef(def) => {
-                assert!(
-                    !def.body.lossy,
-                    "classify_transports fn body should NOT be lossy"
-                );
-            }
-            other => panic!("expected FnDef, got {other:?}"),
-        }
+        assert!(
+            matches!(&fn_item.node, Item::FnDef(def) if !def.body.stmts.is_empty()),
+            "classify_transports fn body should have statements"
+        );
     }
 
     #[test]

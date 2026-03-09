@@ -19,7 +19,6 @@ pub struct PreparedCompileContext {
     pub(crate) callable_scope: Option<HashSet<String>>,
     pub(crate) entry_module_name: Option<String>,
     pub(crate) target_module_name: Option<String>,
-    pub(crate) lossy_fn_bodies: Vec<String>,
     pub(crate) source_digest: Option<String>,
     pub(crate) exec_runtime_emit_config: ExecRuntimeEmitConfig,
 }
@@ -54,7 +53,6 @@ pub fn prepare_compile_context(
     Ok(PreparedCompileContext {
         source_digest: Some(compute_source_digest_from_module_graph(&module_graph)),
         target_module_name: target_module_name_for_context(context, &module_graph)?,
-        lossy_fn_bodies: collect_lossy_fn_bodies(&module_graph),
         exec_runtime_emit_config: prepare_exec_runtime_emit_config(options)?,
         module_graph,
         callable_scope,

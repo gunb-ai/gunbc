@@ -10,7 +10,6 @@ pub trait CallableItemExt {
     fn name(&self) -> &str;
     fn params(&self) -> &[Param];
     fn body_stmts(&self) -> &[Stmt];
-    fn body_lossy(&self) -> bool;
     fn uses_clauses(&self) -> &[UsesClause];
     fn provides_clauses(&self) -> &[ProvidesClause];
 }
@@ -24,9 +23,6 @@ impl CallableItemExt for FnDef {
     }
     fn body_stmts(&self) -> &[Stmt] {
         &self.body.stmts
-    }
-    fn body_lossy(&self) -> bool {
-        self.body.lossy
     }
     fn uses_clauses(&self) -> &[UsesClause] {
         &[]
@@ -46,9 +42,6 @@ impl CallableItemExt for FuncDef {
     fn body_stmts(&self) -> &[Stmt] {
         &self.body.stmts
     }
-    fn body_lossy(&self) -> bool {
-        self.body.lossy
-    }
     fn uses_clauses(&self) -> &[UsesClause] {
         &self.uses
     }
@@ -66,9 +59,6 @@ impl CallableItemExt for PatternDef {
     }
     fn body_stmts(&self) -> &[Stmt] {
         &self.body.stmts
-    }
-    fn body_lossy(&self) -> bool {
-        self.body.lossy
     }
     fn uses_clauses(&self) -> &[UsesClause] {
         &self.uses

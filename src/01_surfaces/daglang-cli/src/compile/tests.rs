@@ -444,8 +444,8 @@ func run() -> { report: String } {
     );
 
     let output = compile_from_context(&context).expect("compile should succeed");
-    // fn items with non-lossy fn_body are evaluated via FnBodyCallableOp,
-    // which handles control flow directly — no SubDag pattern nodes needed.
+    // fn items with fn_body are evaluated via FnBodyCallableOp, which
+    // handles control flow directly — no SubDag pattern nodes needed.
     assert!(
         !output
             .lowered_dag
@@ -1427,9 +1427,9 @@ fn env() -> Environment {
 }
 
 #[test]
-fn compile_directory_lossy_match_fn_body_does_not_fail_missing_tail_mismatch() {
+fn compile_directory_match_trailing_expr_satisfies_return_type() {
     let (context, root) = temp_dag_context(
-        "lossy_match_body_dir",
+        "match_return_dir",
         r#"module sample.main
 type CloudConfig
   = GcpConfig { project: String }

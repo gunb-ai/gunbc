@@ -494,7 +494,7 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
         name: "todo".to_string(),
         args: vec![code_ir::Expr::Str("generated from DSL".to_string())],
     })];
-    let body = if fd.body.stmts.is_empty() || fd.body.lossy {
+    let body = if fd.body.stmts.is_empty() {
         if rename_todo_params {
             for (name, _) in &mut params {
                 if !name.starts_with('_') {
@@ -1228,7 +1228,6 @@ mod tests {
             return_type: TypeExpr::Named("String".into()),
             body: FnBody {
                 stmts: vec![],
-                lossy: false,
             },
         };
         let ctx = fn_codegen::CompileContext::new();
@@ -1268,7 +1267,6 @@ mod tests {
                     daglang_syntax::ast::BinOp::Add,
                     Box::new(Expr::Literal(Literal::Int(1))),
                 ))],
-                lossy: false,
             },
         };
         let ctx = fn_codegen::CompileContext::new();

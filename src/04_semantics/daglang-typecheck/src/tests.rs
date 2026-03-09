@@ -718,10 +718,10 @@ fn env() -> Environment {
 }
 
 #[test]
-fn strict_mode_skips_missing_tail_mismatch_for_lossy_fn_body() {
+fn match_trailing_expr_infers_return_type() {
     let graph = module_graph_from_sources(&[(
-        "sample/lossy_match.dag",
-        r#"module sample.lossy
+        "sample/match_return.dag",
+        r#"module sample.match_return
 type CloudConfig
   = GcpConfig { project: String }
   | AwsConfig { account: String }
@@ -740,7 +740,7 @@ AwsConfig { ... } => Aws
             allow_unresolved_imports: false,
         },
     )
-    .expect("lossy fn bodies should not emit missing-tail unit mismatch diagnostics");
+    .expect("match as trailing expression should satisfy return type");
     assert_eq!(typed.module_count(), 1);
 }
 
