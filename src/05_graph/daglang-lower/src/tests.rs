@@ -3259,11 +3259,9 @@ pattern acquire_subject_token(runtime: String, audience: String) -> { token: Str
 }
 
 pattern optional_impersonation(subject_token: String, service_account: String, audience: String) -> { token: String } {
+  impersonated = gcp.IAM.GenerateAccessToken(audience: audience) [when service_account != "none"]
   result = match service_account {
-    "impersonate" => {
-      response = gcp.IAM.GenerateAccessToken(audience: audience)
-      { token: response.access_token }
-    }
+    "impersonate" => { token: impersonated.access_token }
     _ => { token: subject_token }
   }
   return { token: result.token }
@@ -3408,27 +3406,26 @@ fn scope_optional_impersonation_match_arm_body_is_lossy() {
     let stmts = find_pattern_stmts(&source, "optional_impersonation");
     let body = ScopedBody::from_stmts(&stmts);
 
-    // optional_impersonation has a match with a multi-statement block body:
-    //   Some(sa) => {
-    //     response = gcp.IAM.GenerateAccessToken(...)
-    //     { token: response.access_token }
+    // optional_impersonation hoists the service call out of the match arm
+    // with a [when] guard:
+    //   impersonated = gcp.IAM.GenerateAccessToken(...) [when service_account != "none"]
+    //   result = match service_account {
+    //     "impersonate" => { token: impersonated.access_token }
+    //     _ => { token: subject_token }
     //   }
     //
-    // The parser currently drops the assignment+service call inside the match
-    // arm block body, resulting in Record(None, []). This is a known parser
-    // limitation: block bodies inside match arms aren't fully captured.
-    //
-    // The ScopedBody correctly handles whatever the parser produces — it sees
-    // the match arm bodies as empty records (no service calls), so it classifies
-    // the match as Other (no nested service calls to scope).
-    //
-    // Once the parser supports block bodies in match arms, this test should
-    // be updated to verify that the service call is nested inside the match.
+    // The guarded service call is at top level, so it appears as a direct
+    // service call. The match arms now contain only record literals.
     assert!(!body.items.is_empty(), "body should have items");
     assert_eq!(
         body.direct_service_calls().len(),
-        0,
-        "no direct service calls (match arm bodies are lossy)"
+        1,
+        "hoisted service call is a direct service call"
+    );
+    assert!(
+        body.direct_service_calls()[0].path.join(".").contains("GenerateAccessToken"),
+        "should be GenerateAccessToken, got: {:?}",
+        body.direct_service_calls()[0].path
     );
 }
 
