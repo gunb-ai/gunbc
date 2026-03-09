@@ -7021,7 +7021,7 @@ fn try_mock_element_value(type_id: &str, index: Option<u32>) -> Option<Value> {
         "Map" => Value::Map(BTreeMap::new()),
         "CloudSecretConfig" => Value::Json(mock_cloud_secret_config_json()),
         "Secret" => Value::Secret(SecretString::new("<MOCK_SECRET>")),
-        "Any" => Value::Json(JsonValue::Null),
+        "Any" | "Record" => Value::Json(JsonValue::Null),
         "S" => Value::Str("<MOCK>".to_string()),
         "Path" | "FilePath" => Value::Str("/tmp/mock".to_string()),
         "SourceIR" => Value::Str("<SOURCE_IR>".to_string()),
@@ -7303,7 +7303,7 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
         }
         "Map" => ValueExpr::Map(vec![]),
         "Secret" => ValueExpr::Secret("<MOCK_SECRET>".to_string()),
-        "Any" => ValueExpr::Json(JsonValue::Null),
+        "Any" | "Record" => ValueExpr::Json(JsonValue::Null),
         "S" => ValueExpr::Str("<MOCK>".to_string()),
         "Path" | "FilePath" => ValueExpr::Str("/tmp/mock".to_string()),
         "SourceIR" => ValueExpr::Str("<SOURCE_IR>".to_string()),
@@ -7367,10 +7367,20 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
             "invalid type_id '{}' for mock value; use element type + cardinality instead",
             type_id
         ),
-        _ => panic!(
-            "no mock value for type_id '{}'; add a MockSpec boundary value or extend mock_element_expr",
-            type_id
-        ),
+        ty if ty.starts_with("List<") || ty.starts_with("Optional<") || ty.starts_with("Set<") => {
+            let inner = ty.split_once('<').unwrap().1.strip_suffix('>').unwrap();
+            mock_element_expr(inner, index)
+        }
+        // DSL-defined product/coproduct types without explicit mock entries
+        // default to a JSON null mock. This avoids panics when new DSL types
+        // appear in port signatures after DSL module changes.
+        _ => {
+            eprintln!(
+                "warning: no explicit mock for type_id '{}'; using Json(Null) default",
+                type_id
+            );
+            ValueExpr::Json(JsonValue::Null)
+        }
     }
 }
 
