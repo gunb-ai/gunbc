@@ -42,7 +42,8 @@ impl Default for RustConfig {
 /// If `registry` is provided, structural type emission is used (via `resolve_and_emit`).
 /// Otherwise, falls back to the static type mapping tables.
 pub fn lower_to_rust(source: &SourceFile, config: &RustConfig) -> Result<SourceFile, LowerError> {
-    lower_to_rust_with_registry(source, config, None)
+    let registry = gunbc_ir::TypeRegistry::with_core_types();
+    lower_to_rust_with_registry(source, config, Some(&registry))
 }
 
 /// Lower to Rust with an optional type registry for structural emission.

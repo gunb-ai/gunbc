@@ -42,7 +42,8 @@ impl Default for GoConfig {
 
 /// Lower an AbstractIR `SourceFile` to a Go-specific `SourceFile`.
 pub fn lower_to_go(source: &SourceFile, config: &GoConfig) -> Result<SourceFile, LowerError> {
-    lower_to_go_with_registry(source, config, None)
+    let registry = gunbc_ir::TypeRegistry::with_core_types();
+    lower_to_go_with_registry(source, config, Some(&registry))
 }
 
 /// Lower to Go with an optional type registry for structural emission.

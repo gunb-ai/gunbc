@@ -80,7 +80,17 @@ pub fn emit_shape(shape: &gunbc_ir::TypeShape, backend: Backend) -> String {
                 }
             }
         }
-        TypeShape::Brand(_, inner) => emit_shape(inner, backend),
+        TypeShape::Brand(name, inner) => {
+            // Try the brand name in the language model first — brands like
+            // FilesystemHandle, ToolHandle, Credential may have backend-
+            // specific representations distinct from their inner type.
+            let model = crate::language_model::model_for_backend(backend);
+            if let Some(syntax) = crate::language_model::resolve_named(name, model) {
+                syntax.to_string()
+            } else {
+                emit_shape(inner, backend)
+            }
+        }
         TypeShape::Product(Some(name), _) => emit_identity_type(name, backend),
         TypeShape::Product(None, _) => emit_identity_type("Record", backend),
         TypeShape::Coproduct(Some(name), _) => emit_identity_type(name, backend),

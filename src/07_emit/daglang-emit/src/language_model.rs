@@ -329,28 +329,40 @@ pub fn resolve_named(name: &str, model: &LanguageModel) -> Option<&'static str> 
 /// Resolve structural properties against the language model's scalar entries.
 ///
 /// Matching rules (in priority order):
-/// 1. Domain + width: exact match on domain string and width (for floats)
-/// 2. Width + signedness: exact match (for integers)
+/// 1. Domain + width + arithmetic: exact match on domain string, width, and
+///    arithmetic flag (for IEEE 754 floats)
+/// 2. Width + signedness + arithmetic: exact match (for integers)
+///
+/// Non-arithmetic scalars (e.g., raw `Bit` with width(1) but no arithmetic
+/// flag) will NOT match integer/float entries. This prevents silent mis-
+/// emission of structural types that don't map to language-level primitives.
 ///
 /// Returns `None` if no entry matches — callers must handle the failure
 /// explicitly rather than silently falling back to a default type.
 pub fn resolve_scalar(props: &gunbc_ir::StructuralProperties, model: &LanguageModel) -> Option<&'static str> {
-    // Domain types (floats): exact domain + width match
+    // Domain types (floats): exact domain + width + arithmetic match
     if let Some(domain) = &props.domain {
         for entry in model.scalars {
             if let Some(ed) = entry.domain {
-                if domain == ed && entry.width == props.width {
+                if domain == ed
+                    && entry.width == props.width
+                    && entry.arithmetic == props.arithmetic
+                {
                     return Some(entry.syntax);
                 }
             }
         }
     }
 
-    // Integer types: exact width + signedness match
+    // Integer types: exact width + signedness + arithmetic match
     if let Some(width) = props.width {
         let signed = props.signed.unwrap_or(true);
         for entry in model.scalars {
-            if entry.domain.is_none() && entry.width == Some(width) && entry.signed == Some(signed) {
+            if entry.domain.is_none()
+                && entry.width == Some(width)
+                && entry.signed == Some(signed)
+                && entry.arithmetic == props.arithmetic
+            {
                 return Some(entry.syntax);
             }
         }

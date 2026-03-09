@@ -43,7 +43,8 @@ impl Default for CConfig {
 
 /// Lower an AbstractIR `SourceFile` to a `CSourceFile`.
 pub fn lower_to_c(source: &SourceFile, config: &CConfig) -> Result<CSourceFile, LowerError> {
-    lower_to_c_with_registry(source, config, None)
+    let registry = gunbc_ir::TypeRegistry::with_core_types();
+    lower_to_c_with_registry(source, config, Some(&registry))
 }
 
 /// Lower to C with an optional type registry for structural emission.
