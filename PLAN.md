@@ -1,5 +1,7 @@
 # Plan: Compiler Structural Integrity
 
+**Status: Implemented.** All four phases complete.
+
 **Goal:** Eliminate all interpreter fallback, redundant optionality, and
 incomplete models from the compiler. When complete, every expression lowers
 to structural DAG nodes or fails with a diagnostic. The compiler's Rust
