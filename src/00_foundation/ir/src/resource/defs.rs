@@ -8,12 +8,19 @@ use crate::{ResourceId, WorkspaceLayout};
 use std::sync::OnceLock;
 
 /// Fallback input globs used when workspace layout discovery is unavailable.
+///
+/// These mirror the paths that [`WorkspaceLayout::source_globs`] would derive
+/// for `gunbc-codegen` and `gunbc-ir`.  Keep in sync if crate locations move.
+// TODO(T14): derive these from a shared workspace-convention constant so
+// they cannot drift from the actual crate locations.
 pub const CODEGEN_INPUT_GLOBS: &[&str] = &[
     "src/01_surfaces/codegen/src/**/*.rs",
     "src/00_foundation/ir/src/**/*.rs",
 ];
 
 /// Fallback individual files used when workspace layout discovery is unavailable.
+///
+/// Companion to [`CODEGEN_INPUT_GLOBS`]; same caveats apply.
 pub const CODEGEN_INPUT_FILES: &[&str] = &[
     "src/01_surfaces/codegen/Cargo.toml",
     "src/00_foundation/ir/Cargo.toml",

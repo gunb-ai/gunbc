@@ -25,6 +25,20 @@ use crate::EmittedFile;
 // Public API
 // ===========================================================================
 
+/// Default relative path from a generated crate to `gunbc-ir`.
+///
+/// Assumes the generated crate lives two directories below the layer root
+/// (e.g. `target/codegen/bin/<crate>/`).
+// TODO(T14): derive from WorkspaceLayout::relative_path at emit time so the
+// path is correct regardless of where the generated crate is placed.
+const DEFAULT_DEP_IR: &str = "../../0_foundation/ir";
+
+/// Default relative path from a generated crate to `gunbc-exec`.
+const DEFAULT_DEP_EXEC: &str = "../../9_execute/exec";
+
+/// Default relative path from a generated crate to `gunbc-lib-transport`.
+const DEFAULT_DEP_TRANSPORT: &str = "../../8_materialize/transport";
+
 /// Configuration for exec-runtime code generation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DependencyPaths {
@@ -36,9 +50,9 @@ pub struct DependencyPaths {
 impl DependencyPaths {
     pub fn conventional_defaults() -> Self {
         Self {
-            gunbc_ir: "../../0_foundation/ir".to_string(),
-            gunbc_exec: "../../9_execute/exec".to_string(),
-            gunbc_lib_transport: "../../8_materialize/transport".to_string(),
+            gunbc_ir: DEFAULT_DEP_IR.to_string(),
+            gunbc_exec: DEFAULT_DEP_EXEC.to_string(),
+            gunbc_lib_transport: DEFAULT_DEP_TRANSPORT.to_string(),
         }
     }
 }
