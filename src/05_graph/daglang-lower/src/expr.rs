@@ -553,7 +553,6 @@ mod tests {
     fn lower_empty_fn_body() {
         let body = ast::FnBody {
             stmts: vec![],
-            lossy: false,
         };
         let lowered = lower_fn_body(&body, &HashSet::new());
         assert!(lowered.stmts.is_empty());
@@ -569,7 +568,6 @@ mod tests {
                     ast::StringPart::Expr(ast::Expr::Ident("name".to_string())),
                 ]),
             )],
-            lossy: false,
         };
         let lowered = lower_fn_body(&body, &HashSet::new());
         assert_eq!(lowered.stmts.len(), 1);
@@ -593,7 +591,6 @@ mod tests {
                     "no".to_string(),
                 )))),
             ))],
-            lossy: false,
         };
         let lowered = lower_fn_body(&body, &HashSet::new());
         match &lowered.stmts[0] {

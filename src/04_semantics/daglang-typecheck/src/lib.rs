@@ -1190,7 +1190,6 @@ fn collect_signatures(
                     &[],
                     CallableBodyRef {
                         stmts: &def.body.stmts,
-                        is_lossy: def.body.lossy,
                     },
                     &body_context,
                 ));
@@ -1250,7 +1249,6 @@ fn collect_signatures(
                     &def.uses,
                     CallableBodyRef {
                         stmts: &def.body.stmts,
-                        is_lossy: def.body.lossy,
                     },
                     &body_context,
                 ));
@@ -1306,7 +1304,6 @@ fn collect_signatures(
                     &def.uses,
                     CallableBodyRef {
                         stmts: &def.body.stmts,
-                        is_lossy: def.body.lossy,
                     },
                     &body_context,
                 ));
@@ -2148,7 +2145,6 @@ struct ExprInferenceContext<'a> {
 
 struct CallableBodyRef<'a> {
     stmts: &'a [Stmt],
-    is_lossy: bool,
 }
 
 fn collect_interfaces(modules: &[ResolvedModule]) -> InterfaceRegistry {
@@ -2761,7 +2757,7 @@ fn validate_callable_body(
             }
         }
     }
-    if !body.is_lossy && !saw_explicit_return {
+    if !saw_explicit_return {
         if let ReturnContract::Single { ty } = &return_contract {
             let inferred = match trailing_expr {
                 Some(expr) => {

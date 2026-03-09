@@ -1477,7 +1477,6 @@ mod tests {
                 Stmt::Let("x".into(), Expr::Literal(Literal::Int(1))),
                 Stmt::Expr(Expr::Ident("x".into())),
             ],
-            lossy: false,
         };
         let ir = compile_fn_body(&body, &empty_ctx());
         assert_eq!(ir.len(), 2);
@@ -1719,7 +1718,6 @@ mod tests {
         reset_tmp_counter();
         let body = FnBody {
             stmts: vec![Stmt::Expr(Expr::ServiceCall(vec!["svc".into()], vec![]))],
-            lossy: false,
         };
         let ir = compile_fn_body(&body, &empty_ctx());
         match &ir[0] {
@@ -1740,7 +1738,6 @@ mod tests {
         reset_tmp_counter();
         let body_map = FnBody {
             stmts: vec![Stmt::Expr(Expr::Map(vec![]))],
-            lossy: false,
         };
         let ir_map = compile_fn_body(&body_map, &empty_ctx());
         match &ir_map[0] {

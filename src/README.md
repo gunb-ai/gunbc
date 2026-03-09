@@ -42,7 +42,10 @@ Adapted from Google C++ style for Rust:
 
 - **Hermetic unit tests only.** Tests must not touch the filesystem, network,
   or environment. All external dependencies are injected or mocked. A test
-  that passes on one machine must pass on every machine.
+  that passes on one machine must pass on every machine. Corpus/integration
+  tests (e.g., `daglang-syntax/tests/item_coverage.rs`) that walk the `dsl/`
+  source tree are a recognized exception — they live in `tests/` directories
+  and are clearly labeled as non-hermetic.
 
 - **No tautological tests.** A test that mirrors the implementation — restating
   the production code in test form — proves nothing. Tests must encode an

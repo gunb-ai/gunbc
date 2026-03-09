@@ -166,8 +166,11 @@ impl Executable for DeclaredOutputCallableOp {
 /// can handle if/else, for-loops, match, pipes, records, and all other pure
 /// expression forms — producing the return value directly from the fn's logic.
 ///
-/// Falls back to passthrough behavior when fn body evaluation fails (e.g.,
-/// the fn body references DAG-only constructs that the evaluator can't handle).
+/// When the fn is a helper called only via `evaluate_fn_body` from sibling
+/// fns, the DAG executor may run it standalone with no real inputs. In that
+/// case (all user-facing inputs are absent or Skipped), evaluation failure is
+/// expected and Skipped outputs are produced. If real inputs are present and
+/// evaluation still fails, the error propagates.
 #[derive(Clone)]
 struct FnBodyCallableOp {
     fn_body: daglang_lower::LoweredFnBody,
@@ -245,13 +248,24 @@ impl Executable for FnBodyCallableOp {
                 }
                 Ok(outputs)
             }
-            Err(_) => {
+            Err(eval_err) => {
                 // Helper fn items are called via evaluate_fn_body from sibling
                 // fn bodies, not through DAG edge wiring. When the DAG executor
-                // runs them standalone, some or all parameter inputs may be
-                // missing/Skipped, causing evaluation to fail. Produce Skipped
-                // outputs — the fn IS invoked correctly through the
-                // evaluate_fn_body call path where full inputs are available.
+                // runs them standalone, parameter inputs are absent or Skipped.
+                // Only suppress the error in that case; if real inputs were
+                // provided and evaluation still failed, propagate the error
+                // (README: "no silent degradation").
+                //
+                // Value::Unit IS a real input (the unit type, explicitly
+                // provided). Only Value::Skipped indicates "no value wired."
+                let has_real_inputs = eval_inputs
+                    .values()
+                    .any(|v| !matches!(v, Value::Skipped));
+                if has_real_inputs {
+                    return Err(ExecError::new(format!(
+                        "FnBody evaluation failed with real inputs present: {eval_err}"
+                    )));
+                }
                 let mut outputs = HashMap::new();
                 for (port_name, _) in &self.output_ports {
                     outputs.insert(port_name.clone(), Value::Skipped);
@@ -1296,16 +1310,24 @@ fn resolve_domain(
             sibling_fns: sibling_fns.clone(),
         }));
     }
-    // 5b. Pattern and Func callables without fn_body: their bodies are either
-    //     expanded inline (patterns) or lossy-parsed (func items with complex
-    //     control flow the parser can't handle). In both cases, __out:
-    //     passthrough ports may not be wired. Make all outputs optional to
-    //     produce Skipped instead of hard-erroring.
-    if _kind == CallableKind::Pattern || _kind == CallableKind::Func {
+    // 5b. Pattern callables without fn_body: patterns are expanded inline as
+    //     separate DAG nodes. The callable node is a structural marker whose
+    //     __out: passthrough ports may not be wired (the expanded nodes
+    //     produce values directly). All outputs are optional here.
+    if _kind == CallableKind::Pattern {
         let optional_ports: Vec<(String, bool)> =
             outputs.iter().map(|p| (p.name.0.clone(), true)).collect();
         return Ok(DynOp::new(DeclaredOutputCallableOp {
             output_ports: optional_ports,
+        }));
+    }
+    // 5c. Func callables without fn_body: the body is expressed as transport
+    //     nodes (prepare/execute/parse) which wire __out: passthrough ports.
+    //     Preserve declared port optionality — if a required output is
+    //     unwired, that's a lowering bug that should surface, not be masked.
+    if _kind == CallableKind::Func {
+        return Ok(DynOp::new(DeclaredOutputCallableOp {
+            output_ports: declared_output_ports(outputs),
         }));
     }
     // 6. Default: identity callable for compiler-validated callables.

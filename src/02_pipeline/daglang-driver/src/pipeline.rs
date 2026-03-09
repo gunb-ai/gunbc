@@ -18,10 +18,10 @@ pub fn run_compile_pipeline(
         callable_scope,
         entry_module_name,
         target_module_name,
-        lossy_fn_bodies,
         source_digest,
         exec_runtime_emit_config,
     } = prepared;
+
     let typed = typecheck_module_graph_located(
         &module_graph,
         TypecheckOptions {
@@ -86,7 +86,6 @@ pub fn run_compile_pipeline(
         dsl_type_registry: typed.dsl_type_registry().clone(),
         receipt,
         data_values,
-        lossy_fn_bodies,
     })
 }
 

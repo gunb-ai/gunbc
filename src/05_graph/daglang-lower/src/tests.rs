@@ -472,10 +472,10 @@ fn run(values: List<String>) -> String {
 
 #[test]
 fn lower_typed_project_skips_control_flow_nodes_for_fn_with_body() {
-    // fn items with non-lossy fn_body are evaluated via FnBodyCallableOp,
-    // which handles control flow (match/if/for) directly. Creating SubDag
-    // pattern nodes is redundant and causes failures because inner op nodes
-    // lack __out:result passthrough wiring across nested SubDag boundaries.
+    // fn items with fn_body are evaluated via FnBodyCallableOp, which
+    // handles control flow (match/if/for) directly. Creating SubDag pattern
+    // nodes is redundant and causes failures because inner op nodes lack
+    // __out:result passthrough wiring across nested SubDag boundaries.
     let typed = typed_project_from_sources(&[(
         "sample.control",
         r#"
@@ -507,10 +507,6 @@ _ => 0
         Item::FnDef(def) => &def.body,
         _ => panic!("sample source should contain a fn body"),
     };
-    assert!(
-        !fn_body.lossy,
-        "expected non-lossy parsed function body for control-flow fixture"
-    );
     assert!(
         !fn_body.stmts.is_empty(),
         "expected control-flow fixture to retain parsed statements"
@@ -3286,17 +3282,9 @@ fn find_func_stmts(source: &daglang_syntax::ast::SourceFile, func_name: &str) ->
     for item in &source.items {
         match &item.node {
             Item::FnDef(def) if def.name == func_name => {
-                assert!(
-                    !def.body.lossy,
-                    "{func_name} body is lossy — parser didn't capture stmts"
-                );
                 return def.body.stmts.clone();
             }
             Item::FuncDef(def) if def.name == func_name => {
-                assert!(
-                    !def.body.lossy,
-                    "{func_name} body is lossy — parser didn't capture stmts"
-                );
                 return def.body.stmts.clone();
             }
             _ => {}
@@ -3310,10 +3298,6 @@ fn find_pattern_stmts(source: &daglang_syntax::ast::SourceFile, pattern_name: &s
     for item in &source.items {
         if let Item::PatternDef(def) = &item.node {
             if def.name == pattern_name {
-                assert!(
-                    !def.body.lossy,
-                    "{pattern_name} body is lossy — parser didn't capture stmts"
-                );
                 return def.body.stmts.clone();
             }
         }
@@ -3399,7 +3383,7 @@ fn scope_metadata_oidc_has_direct_service_call() {
 }
 
 #[test]
-fn scope_optional_impersonation_match_arm_body_is_lossy() {
+fn scope_optional_impersonation_hoists_service_call() {
     use super::scope::ScopedBody;
 
     let source = parse_scope_fixture();

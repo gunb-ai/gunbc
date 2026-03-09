@@ -61,14 +61,6 @@ pub struct CompileOutput {
     pub dsl_type_registry: TypeRegistry,
     /// Compile receipt with deterministic digests.
     pub receipt: Option<CompileReceipt>,
-    /// Pure `fn` items whose bodies were lossy-parsed (parser recovery).
-    ///
-    /// These functions had bodies the parser could not fully capture, so
-    /// the lowerer treats them as identity passthroughs. This list makes
-    /// the certainty gap explicit: callers can inspect it to know which
-    /// functions were not fully compiled. An empty list means all `fn`
-    /// bodies were successfully parsed.
-    pub lossy_fn_bodies: Vec<String>,
     /// Data declaration values evaluated at compile time.
     ///
     /// Keys are both qualified (`module.name`) and unqualified (`name`).
@@ -387,9 +379,9 @@ pub fn compile_from_context(context: &DriverContext) -> Result<CompileOutput, Co
 /// and fn bodies. No filesystem access.
 ///
 /// **This is a utility path, not mainline compilation.** It uses permissive
-/// typechecking and does not validate lossy bodies. It returns
-/// `EmbeddedCompileOutput` (not `CompileOutput`/`VerifiedDag`) and cannot
-/// masquerade as a successful full compilation.
+/// typechecking. It returns `EmbeddedCompileOutput` (not
+/// `CompileOutput`/`VerifiedDag`) and cannot masquerade as a successful
+/// full compilation.
 ///
 /// Used by build-time generators that embed `.dag` sources via `include_str!`.
 pub fn compile_data_from_sources_permissive(
@@ -491,9 +483,9 @@ pub fn compile_data_from_sources_permissive(
 /// data values and fn bodies.
 ///
 /// **This is a utility path, not mainline compilation.** It uses permissive
-/// typechecking and does not validate lossy bodies. It returns
-/// `EmbeddedCompileOutput` (not `CompileOutput`/`VerifiedDag`) and cannot
-/// masquerade as a successful full compilation.
+/// typechecking. It returns `EmbeddedCompileOutput` (not
+/// `CompileOutput`/`VerifiedDag`) and cannot masquerade as a successful
+/// full compilation.
 ///
 /// # Arguments
 /// * `dsl_root` — Root of the DSL source tree (e.g., `workspace_root.join("dsl")`)
@@ -1690,35 +1682,6 @@ fn module_has_callable_items(module: &ResolvedModule) -> bool {
         .items
         .iter()
         .any(|item| item.node.as_callable().is_some() || matches!(item.node, Item::PipelineDef(_)))
-}
-
-/// Collect `fn` items whose body was lossy-parsed (parser recovery).
-///
-/// A lossy `fn` body means the parser could not parse the pure function
-/// body and fell back to an empty body. The lowerer produces a
-/// DeclaredOutputCallableOp (identity passthrough) instead of evaluating
-/// the function's actual logic.
-///
-/// `func` and `pattern` items with lossy bodies are NOT collected because
-/// the lowerer handles them correctly via service-call wiring — the body
-/// is expressed as transport nodes, not fn body evaluation.
-///
-/// Returns a list of `"module::name"` strings for all affected `fn` items.
-/// The caller can embed this in `CompileOutput` to make the certainty gap
-/// explicit and prevent the compilation from masquerading as fully successful.
-fn collect_lossy_fn_bodies(graph: &ModuleGraph) -> Vec<String> {
-    let mut lossy_items = Vec::new();
-    for module in &graph.modules {
-        let module_name = module.module_path.as_dotted();
-        for item in &module.ast.items {
-            if let Item::FnDef(def) = &item.node {
-                if def.body.lossy {
-                    lossy_items.push(format!("{}::{}", module_name, def.name));
-                }
-            }
-        }
-    }
-    lossy_items
 }
 
 /// Merge two sorted path lists into one sorted, deduplicated list.

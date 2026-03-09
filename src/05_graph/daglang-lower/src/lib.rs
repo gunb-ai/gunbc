@@ -2398,7 +2398,7 @@ fn lower_typed_project_impl(
             .items
             .iter()
             .filter_map(|item| match &item.node {
-                Item::FnDef(def) if !def.body.lossy => Some((
+                Item::FnDef(def) => Some((
                     def.name.as_str(),
                     expr::lower_fn_body(&def.body, &variant_names),
                 )),
@@ -3673,10 +3673,7 @@ fn add_dependency_edges(
             // creating redundant SubDag pattern nodes causes failures because
             // their inner op nodes lack __out:result passthrough wiring (which
             // can't be threaded through nested SubDag boundaries).
-            let has_fn_body = matches!(
-                &item.node,
-                Item::FnDef(def) if !def.body.lossy
-            );
+            let has_fn_body = matches!(&item.node, Item::FnDef(_));
             if !has_fn_body {
                 let uses_binding_types = item_uses_binding_types(&item.node);
                 let empty_fn_bodies = std::collections::BTreeMap::new();
@@ -4260,7 +4257,6 @@ fn make_loop_body_dag_from_stmts(
         &return_ctx,
         site.body_stmts.as_slice(),
         &body_target,
-        false,
     ) {
         eprintln!("error: loop body return wiring failed: {e}");
         return None;
@@ -7781,7 +7777,6 @@ fn add_service_call_edges(
             let item_name = callable.name();
             let params = callable.params();
             let stmts = callable.body_stmts();
-            let body_lossy = callable.body_lossy();
             let uses_binding_types: HashMap<String, String> = callable
                 .uses_clauses()
                 .iter()
@@ -8087,18 +8082,13 @@ fn add_service_call_edges(
                 ..fn_ctx
             };
             wire_for_loop_iterables(builder, &loop_ctx, stmts, target);
-            // Skip return wiring for fn items with non-lossy fn_body:
-            // FnBodyCallableOp evaluates the body directly. Enabling
-            // passthrough wiring for these items would be unsafe because
-            // callable endpoints are shared and argument wiring is
-            // first-write-only — multiple call sites could make a function
-            // return values from an unrelated invocation.
-            let is_fn_with_body = matches!(
-                &item.node,
-                Item::FnDef(def) if !def.body.lossy
-            );
-            if !is_fn_with_body {
-                if let Err(e) = wire_callable_return_outputs(builder, &fn_ctx, stmts, target, body_lossy) {
+            // Skip return wiring for fn items: FnBodyCallableOp evaluates
+            // the body directly. Enabling passthrough wiring for these items
+            // would be unsafe because callable endpoints are shared and
+            // argument wiring is first-write-only — multiple call sites could
+            // make a function return values from an unrelated invocation.
+            if !matches!(&item.node, Item::FnDef(_)) {
+                if let Err(e) = wire_callable_return_outputs(builder, &fn_ctx, stmts, target) {
                     eprintln!(
                         "error: {source_file}: callable `{item_name}` return output lowering failed: {e}"
                     );
@@ -10072,7 +10062,6 @@ fn wire_fn_call_arguments(builder: &mut DagBuilder, ctx: &LoweringContext<'_>, s
 fn collect_return_bindings(
     stmts: &[Stmt],
     output_ports: &[Port],
-    body_lossy: bool,
 ) -> Vec<(String, Expr)> {
     if output_ports.is_empty() {
         return Vec::new();
@@ -10108,7 +10097,7 @@ fn collect_return_bindings(
             .collect();
     }
 
-    if output_names.len() == 1 && !body_lossy {
+    if output_names.len() == 1 {
         let mut trailing_expr = None;
         for stmt in stmts {
             match stmt {
@@ -11827,13 +11816,12 @@ fn wire_callable_return_outputs(
     ctx: &LoweringContext<'_>,
     stmts: &[Stmt],
     target: &LoweredEndpoint,
-    body_lossy: bool,
 ) -> Result<(), LowerError> {
     let outputs = match builder.dag.get_node(&NodeId::new(target.node_id.clone())) {
         Some(node) => node.outputs.clone(),
         None => return Ok(()),
     };
-    let output_bindings = collect_return_bindings(stmts, &outputs, body_lossy);
+    let output_bindings = collect_return_bindings(stmts, &outputs);
     if output_bindings.is_empty() {
         return Ok(());
     }
