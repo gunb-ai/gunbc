@@ -50,41 +50,33 @@ pub fn emit_shape(shape: &gunbc_ir::TypeShape, backend: Backend) -> String {
 
     match shape {
         TypeShape::Platform(props) => emit_platform_type(props, backend),
-        TypeShape::Container(container) => match container {
-            ContainerShape::Optional(inner) => {
-                let inner_str = emit_shape(inner, backend);
-                match backend {
-                    Backend::Rust => format!("Option<{inner_str}>"),
-                    Backend::Go => format!("*{inner_str}"),
-                    Backend::C => format!("{inner_str}*"),
+        TypeShape::Container(container) => {
+            use crate::language_model::{self, ContainerKind};
+            let model = language_model::model_for_backend(backend);
+            match container {
+                ContainerShape::Optional(inner) => {
+                    let inner_str = emit_shape(inner, backend);
+                    language_model::resolve_container(ContainerKind::Optional, &inner_str, None, model)
+                        .unwrap_or_else(|| format!("Optional<{inner_str}>"))
+                }
+                ContainerShape::List(inner) => {
+                    let inner_str = emit_shape(inner, backend);
+                    language_model::resolve_container(ContainerKind::List, &inner_str, None, model)
+                        .unwrap_or_else(|| format!("List<{inner_str}>"))
+                }
+                ContainerShape::Set(inner) => {
+                    let inner_str = emit_shape(inner, backend);
+                    language_model::resolve_container(ContainerKind::Set, &inner_str, None, model)
+                        .unwrap_or_else(|| format!("Set<{inner_str}>"))
+                }
+                ContainerShape::Map(key, value) => {
+                    let key_str = emit_shape(key, backend);
+                    let val_str = emit_shape(value, backend);
+                    language_model::resolve_container(ContainerKind::Map, &val_str, Some(&key_str), model)
+                        .unwrap_or_else(|| format!("Map<{key_str}, {val_str}>"))
                 }
             }
-            ContainerShape::List(inner) => {
-                let inner_str = emit_shape(inner, backend);
-                match backend {
-                    Backend::Rust => format!("Vec<{inner_str}>"),
-                    Backend::Go => format!("[]{inner_str}"),
-                    Backend::C => format!("{inner_str}*"),
-                }
-            }
-            ContainerShape::Set(inner) => {
-                let inner_str = emit_shape(inner, backend);
-                match backend {
-                    Backend::Rust => format!("HashSet<{inner_str}>"),
-                    Backend::Go => format!("map[{inner_str}]struct{{}}"),
-                    Backend::C => format!("{inner_str}*"),
-                }
-            }
-            ContainerShape::Map(key, value) => {
-                let key_str = emit_shape(key, backend);
-                let val_str = emit_shape(value, backend);
-                match backend {
-                    Backend::Rust => format!("HashMap<{key_str}, {val_str}>"),
-                    Backend::Go => format!("map[{key_str}]{val_str}"),
-                    Backend::C => format!("{val_str}*"),
-                }
-            }
-        },
+        }
         TypeShape::Brand(_, inner) => emit_shape(inner, backend),
         TypeShape::Product(Some(name), _) => emit_identity_type(name, backend),
         TypeShape::Product(None, _) => emit_identity_type("Record", backend),
@@ -95,130 +87,31 @@ pub fn emit_shape(shape: &gunbc_ir::TypeShape, backend: Backend) -> String {
 }
 
 /// Emit a platform-native type from structural properties.
+///
+/// Delegates to the language model's scalar resolver. The model entries
+/// replace the per-backend match arms that were here previously.
 fn emit_platform_type(props: &gunbc_ir::StructuralProperties, backend: Backend) -> String {
-    // Float types (ieee754 domain)
-    if props.arithmetic {
-        if let Some(domain) = &props.domain {
-            if domain.starts_with("ieee754") {
-                return match (backend, props.width) {
-                    (Backend::Rust, Some(32)) => "f32".to_string(),
-                    (Backend::Rust, _) => "f64".to_string(),
-                    (Backend::Go, Some(32)) => "float32".to_string(),
-                    (Backend::Go, _) => "float64".to_string(),
-                    (Backend::C, Some(32)) => "float".to_string(),
-                    (Backend::C, _) => "double".to_string(),
-                };
-            }
-        }
-
-        if let Some(width) = props.width {
-            let signed = props.signed.unwrap_or(true);
-            return match backend {
-                Backend::Rust => {
-                    let prefix = if signed { "i" } else { "u" };
-                    format!("{prefix}{width}")
-                }
-                Backend::Go => {
-                    let prefix = if signed { "int" } else { "uint" };
-                    format!("{prefix}{width}")
-                }
-                Backend::C => {
-                    let prefix = if signed { "int" } else { "uint" };
-                    format!("{prefix}{width}_t")
-                }
-            };
-        }
+    let model = crate::language_model::model_for_backend(backend);
+    if let Some(syntax) = crate::language_model::resolve_scalar(props, model) {
+        return syntax.to_string();
     }
-
-    // Width-only without arithmetic (e.g., Byte = Width(8) + Unsigned)
-    if let Some(width) = props.width {
-        let signed = props.signed.unwrap_or(true);
-        return match backend {
-            Backend::Rust => {
-                let prefix = if signed { "i" } else { "u" };
-                format!("{prefix}{width}")
-            }
-            Backend::Go => {
-                let prefix = if signed { "int" } else { "uint" };
-                format!("{prefix}{width}")
-            }
-            Backend::C => {
-                let prefix = if signed { "int" } else { "uint" };
-                format!("{prefix}{width}_t")
-            }
-        };
-    }
-
-    // Platform with only signedness or domain but no width — default to language int
     emit_identity_type("Int", backend)
 }
 
-/// Emit a native type for an identity type name.
+/// Emit a native type for an identity/named type.
 ///
-/// Maps well-known identity types (String, Bool, Json, etc.) to their
-/// target-language representation. These types have no structural predicates
-/// in their DAGs, so they rely on name-based mapping.
-///
-/// Unknown names emit a warning and return the name verbatim — the caller
-/// is responsible for ensuring all types are registered before reaching here.
+/// Delegates to the language model's named entry resolver. Unknown names
+/// return the name verbatim with a warning.
 fn emit_identity_type(name: &str, backend: Backend) -> String {
-    match backend {
-        Backend::Rust => match name {
-            "String" | "Path" | "NonEmptyStr" | "Url" | "GistId" | "ProjectId"
-            | "ServiceAccountEmail" | "FilePath" | "Secret" => "String",
-            "Bool" | "bool" => "bool",
-            "Int" | "i64" | "I64" => "i64",
-            "Float" | "f64" => "f64",
-            "Char" => "char",
-            "Bytes" => "Vec<u8>",
-            "Json" | "ToolRegistry" => "serde_json::Value",
-            "TransportRequest" => "TransportRequest",
-            "TransportResponse" => "TransportResponse",
-            "FilesystemHandle" => "PathBuf",
-            "Unit" => "()",
-            "Record" => "serde_json::Value",
-            unknown => {
-                eprintln!("warning: unknown type '{unknown}' defaulting to ValueBacking::Json");
-                return unknown.to_string();
-            }
-        },
-        Backend::Go => match name {
-            "String" | "Path" | "NonEmptyStr" | "Url" | "GistId" | "ProjectId"
-            | "ServiceAccountEmail" | "FilePath" | "Secret" | "FilesystemHandle" => "string",
-            "Bool" | "bool" => "bool",
-            "Int" | "i64" | "I64" => "int64",
-            "Float" | "f64" => "float64",
-            "Char" => "rune",
-            "Bytes" => "[]byte",
-            "Json" | "ToolRegistry" => "interface{}",
-            "TransportRequest" => "transport.Request",
-            "TransportResponse" => "transport.Response",
-            "Unit" => "struct{}",
-            "Record" => "interface{}",
-            unknown => {
-                eprintln!("warning: unknown type '{unknown}' defaulting to ValueBacking::Json");
-                return unknown.to_string();
-            }
-        },
-        Backend::C => match name {
-            "String" | "Path" | "NonEmptyStr" | "Url" | "GistId" | "ProjectId"
-            | "ServiceAccountEmail" | "FilePath" | "Secret" | "FilesystemHandle" => "const char*",
-            "Bool" | "bool" => "bool",
-            "Int" | "i64" | "I64" => "int64_t",
-            "Float" | "f64" => "double",
-            "Char" => "char",
-            "Bytes" => "uint8_t*",
-            "Json" | "ToolRegistry" | "Record" => "void*",
-            "TransportRequest" => "TransportRequest",
-            "TransportResponse" => "TransportResponse",
-            "Unit" => "void",
-            unknown => {
-                eprintln!("warning: unknown type '{unknown}' defaulting to void*");
-                return unknown.to_string();
-            }
-        },
+    let model = crate::language_model::model_for_backend(backend);
+    if name == "Unit" {
+        return model.unit_syntax.to_string();
     }
-    .to_string()
+    if let Some(syntax) = crate::language_model::resolve_named(name, model) {
+        return syntax.to_string();
+    }
+    eprintln!("warning: unknown type '{name}' for backend {}, returning verbatim", model.name);
+    name.to_string()
 }
 
 /// Resolve a type name structurally via the registry, then emit for the backend.
