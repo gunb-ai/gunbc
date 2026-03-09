@@ -423,6 +423,32 @@ Silently swallows any I/O error when emitting CI workflow commands.
 
 ---
 
+### P2 — `std/patterns.dag` breaks `make test-all` via testgen compile failure
+
+**Invariants**: #8 (correctness by construction)
+
+`std/patterns.dag` uses DSL features the lowerer does not yet support:
+
+- Service calls inside `for` loops (`classify_files`, `read_text_files`, `read_binary_files`)
+- Higher-order function parameters (`ensure`: `fn(T) -> Bool`)
+- Generic type parameters used as values (`upsert`: `Resolve: -> R`, `transaction`: `Begin: -> R`)
+- Associated output types (`Check.Output`)
+- Pipe/for not yet structuralized in return expressions
+
+The lowerer hits the P1 `eprintln!` + `continue` sites (line ~263 above),
+producing a structurally incomplete DAG. Testgen then correctly fails closed
+with `compile diagnostics: [VER004]: unwired required input`.
+
+**Impact**: `make test-all` fails on main. The module is a design-spec file
+expressing patterns that require future compiler work (FC-CF5, If-SubDag for
+`[when]` on service calls, etc.).
+
+**Fix direction**: Exclude `std/patterns.dag` from auto-testgen until the
+lowerer supports the required features, or gate testgen discovery to skip
+modules whose compilation produces diagnostics.
+
+---
+
 ## Scenario backlog
 
 ### P2 — `gist_recent` modeled a time cutoff as a git ref
