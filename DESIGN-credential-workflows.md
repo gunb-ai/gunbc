@@ -63,6 +63,11 @@ yet joined into one workflow-owned credential lifecycle.
   secret namespace,
   and allowed acquisition methods
 - no same-invocation repair flow for local interactive auth
+- no first-class terminal progress interrupt for:
+  pause animated progress,
+  show "Action Required",
+  run the interactive repair step,
+  then continue in the same invocation
 - no clean guardrail preventing local/dev acquisition behavior from running in
   prod-like contexts
 
@@ -136,6 +141,11 @@ instruction. We want it modeled as a first-class acquisition workflow.
   acquisition pipeline.
 - The same model should work for dev/user workflows now and CI/agent workflows
   later.
+- Interactive repair should have an explicit terminal UX:
+  pause progress,
+  render an attention/info box,
+  run the repair,
+  then resume or complete with clear status.
 
 ## Non-Goals
 
@@ -428,6 +438,23 @@ resource LocalGcpAuthState {
 The exact type can change, but the important point is that local auth becomes a
 managed resource with read/repair semantics, not a hidden ambient assumption.
 
+### E. Treat Interactive Auth Repair as a Progress Interrupt
+
+`gunbc` already has the Rust-side progress renderer and box primitives, but the
+credential workflow should make the interactive seam explicit rather than
+surfacing a generic error that tells the user to rerun manually.
+
+The target behavior is closer to the old `gunb.ai` flow:
+
+- run normal preflight/acquisition work under progress
+- if interactive repair is needed, pause the animated progress display
+- render a clear boxed prompt such as `Action Required`
+- run the login/upsert step from the program
+- resume or complete the workflow in the same invocation
+
+This is important enough to treat as part of the feature contract, not as
+optional polish.
+
 ## Proposed Local Dev Flow
 
 ### `gist` in interactive local CLI
@@ -519,8 +546,26 @@ This gives us a useful real workflow without prematurely generalizing prod.
   allows it
 - retry acquisition inside the same invocation
 - route `extdeps.github.auth::github_token()` through that resolver path
+- add an explicit progress-display interrupt/prompt/resume path for interactive
+  repair, rather than erroring and asking the user to rerun
 
 This phase can remain GCP/Secret-Manager-specific.
+
+### Phase 1 Test Requirements
+
+- hermetic integration test:
+  missing local auth triggers the interactive repair path and the overall
+  command succeeds in one invocation
+- progress UX test:
+  the display pauses and emits an explicit action-required/info box for the
+  interactive step
+- policy test:
+  the same workflow in non-interactive mode fails closed and does not launch
+  interactive login
+- environment test:
+  local/dev behavior cannot silently run when the workflow context is `Prod`
+
+These should be treated as feature gates, not follow-up cleanup.
 
 ### Phase 2: Make Intent + Context First-Class
 
