@@ -5,11 +5,11 @@
 //! (scalars, named types, containers, transport ops) that was previously
 //! duplicated across per-backend match arms.
 //!
-//! Current state: the models are static Rust data that `emit_identity_type`
-//! and `emit_platform_type` delegate to. Named Products/Coproducts still
-//! route through name-based lookup. The end-state is full structural
-//! resolution (`resolve(shape, model)`) with composite pattern matching
-//! and recursive decomposition — see DESIGN-syllogistic-types.md.
+//! All emit paths delegate to these models: `emit_platform_type` resolves
+//! scalars, `emit_shape` resolves containers/brands/composites via named
+//! entries and structural field emission. `emit_identity_type` has been
+//! deleted — all resolution flows through `resolve_and_emit` and the
+//! language model.
 //!
 //! Hierarchy (following compilation target chains):
 //! - ISA layer: scalar widths, signedness, IEEE 754 domains
