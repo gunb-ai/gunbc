@@ -2201,7 +2201,6 @@ pub struct LowerOutput {
     pub dag: Dag<LoweredOp>,
     pub output_paths: Vec<String>,
     pub inferred_entrypoints: Vec<InferredEntrypoint>,
-    pub data_values: HashMap<String, serde_json::Value>,
 }
 
 /// Lower a typed project with the given configuration.
@@ -2649,6 +2648,11 @@ fn lower_typed_project_impl(
         return Err(LowerError::NoLowerableItems);
     }
 
+    // Embed data declaration values as CallLiteralSource nodes in the DAG.
+    // The resolver extracts these at resolution time, eliminating the need
+    // to thread data_values through CompileOutput / CachedCompileData.
+    embed_data_declaration_nodes(&mut builder, &data_values);
+
     wire_param_source_inputs(&mut builder);
 
     let mut dag = builder.into_dag();
@@ -2660,7 +2664,6 @@ fn lower_typed_project_impl(
         dag,
         output_paths,
         inferred_entrypoints,
-        data_values,
     })
 }
 
@@ -9905,6 +9908,59 @@ pub fn build_data_values(project: &TypedProject) -> HashMap<String, serde_json::
         }
     }
     values
+}
+
+/// Prefix for data declaration node IDs embedded in the DAG.
+///
+/// The resolver scans for nodes with this prefix to reconstruct data_values
+/// without requiring a sidecar through the compilation pipeline.
+pub const DATA_DECL_NODE_PREFIX: &str = "__data_decl::";
+
+/// Embed data declaration values as `CallLiteralSource` nodes in the DAG.
+///
+/// Each data declaration becomes a standalone source node with ID
+/// `__data_decl::{name}` and a `PrimitiveLiteral::Json` payload. The resolver
+/// extracts these at resolution time via [`extract_data_values_from_dag`].
+fn embed_data_declaration_nodes(
+    builder: &mut DagBuilder,
+    data_values: &HashMap<String, serde_json::Value>,
+) {
+    for (name, json_val) in data_values {
+        let node_id = format!("{DATA_DECL_NODE_PREFIX}{name}");
+        builder.add_node(Node::opaque(
+            node_id,
+            vec![],
+            vec![Port::scalar(name, "Json")],
+            LoweredOp::Primitive {
+                module: "__data".to_string(),
+                name: format!("data_decl::{name}"),
+                kind: PrimitiveOpKind::CallLiteralSource {
+                    literal: PrimitiveLiteral::Json(json_val.clone()),
+                },
+            },
+        ));
+    }
+}
+
+/// Extract data declaration values from embedded DAG nodes.
+///
+/// Scans for nodes with IDs prefixed by [`DATA_DECL_NODE_PREFIX`] and extracts
+/// their `PrimitiveLiteral::Json` payloads. Returns the same `HashMap<String, serde_json::Value>`
+/// that `build_data_values` produced at lowering time.
+pub fn extract_data_values_from_dag(dag: &Dag<LoweredOp>) -> HashMap<String, serde_json::Value> {
+    let mut data_values = HashMap::new();
+    for node in &dag.nodes {
+        if let Some(name) = node.id.0.strip_prefix(DATA_DECL_NODE_PREFIX) {
+            if let gunbc_ir::NodeBody::Opaque(LoweredOp::Primitive {
+                kind: PrimitiveOpKind::CallLiteralSource { literal: PrimitiveLiteral::Json(json) },
+                ..
+            }) = &node.body
+            {
+                data_values.insert(name.to_string(), json.clone());
+            }
+        }
+    }
+    data_values
 }
 
 /// Collect default expressions for callable parameters across all modules.

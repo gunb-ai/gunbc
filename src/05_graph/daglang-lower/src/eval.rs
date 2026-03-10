@@ -1419,6 +1419,152 @@ pub fn value_truthy(value: &Value) -> bool {
     }
 }
 
+// ── Primitive op helpers (called from resolve.rs PurePrimitiveOp) ────────────
+
+/// Extract a field from a Map or Json object.
+///
+/// Unlike the private `field_access`, this returns detailed error messages
+/// listing available fields — suitable for DAG executor diagnostics.
+pub fn eval_get_field(value: &Value, field: &str) -> Result<Value, EvalError> {
+    match value {
+        Value::Map(fields) => fields.get(field).cloned().ok_or_else(|| {
+            let mut available: Vec<&String> = fields.keys().collect();
+            available.sort();
+            EvalError::new(format!(
+                "GetField `{field}`: field not found in Map. Available fields: {available:?}"
+            ))
+        }),
+        Value::Json(serde_json::Value::Object(map)) => {
+            map.get(field).map(|v| Value::Json(v.clone())).ok_or_else(|| {
+                let mut available: Vec<&String> = map.keys().collect();
+                available.sort();
+                EvalError::new(format!(
+                    "GetField `{field}`: field not found in Json object. Available fields: {available:?}"
+                ))
+            })
+        }
+        Value::Skipped => Err(EvalError::new(format!(
+            "GetField `{field}`: input is Skipped (unwired or missing upstream)"
+        ))),
+        other => Err(EvalError::new(format!(
+            "GetField `{field}`: expected Map or Json object, got {other:?}"
+        ))),
+    }
+}
+
+/// Interpolate a string from static parts and dynamic values.
+///
+/// `parts[i]` is static text, `values[i]` is the interpolated expression value
+/// between `parts[i]` and `parts[i+1]`. If any value is `Skipped`, returns `Skipped`.
+pub fn eval_string_interpolate(parts: &[String], values: &[Value]) -> Result<Value, EvalError> {
+    for v in values {
+        if matches!(v, Value::Skipped) {
+            return Ok(Value::Skipped);
+        }
+    }
+    let mut result = String::new();
+    for (i, part) in parts.iter().enumerate() {
+        result.push_str(part);
+        if i < values.len() {
+            result.push_str(&value_to_string(&values[i]));
+        }
+    }
+    Ok(Value::Str(result))
+}
+
+/// Evaluate a unary operation (Not, Neg).
+pub fn eval_unary_op(op: LoweredUnaryOp, value: &Value) -> Result<Value, EvalError> {
+    if matches!(value, Value::Skipped) {
+        return Ok(Value::Skipped);
+    }
+    match op {
+        LoweredUnaryOp::Not => Ok(Value::Bool(!value_truthy(value))),
+        LoweredUnaryOp::Neg => match value {
+            Value::Int(i) => Ok(Value::Int(-i)),
+            Value::Float(f) => Ok(Value::Float(-f)),
+            other => Err(EvalError::new(format!("UnaryOp Neg: cannot negate {other:?}"))),
+        },
+    }
+}
+
+/// Evaluate a conditional (if/else).
+///
+/// Returns `then_val` if condition is truthy, `else_val` if present and condition
+/// is falsy, or `Skipped` if no else branch.
+pub fn eval_conditional(
+    condition: &Value,
+    then_val: &Value,
+    else_val: Option<&Value>,
+) -> Value {
+    if matches!(condition, Value::Skipped) {
+        return Value::Skipped;
+    }
+    if value_truthy(condition) {
+        then_val.clone()
+    } else if let Some(else_v) = else_val {
+        else_v.clone()
+    } else {
+        Value::Skipped
+    }
+}
+
+/// Construct a record from named fields.
+///
+/// Returns `Skipped` if any field value is `Skipped`.
+pub fn eval_record_construct(fields: &[(String, Value)]) -> Result<Value, EvalError> {
+    let mut map = BTreeMap::new();
+    for (name, value) in fields {
+        if matches!(value, Value::Skipped) {
+            return Ok(Value::Skipped);
+        }
+        map.insert(name.clone(), value.clone());
+    }
+    Ok(Value::Map(map))
+}
+
+/// Null-coalesce: return `value` if non-Unit/non-Skipped, else `default`.
+pub fn eval_null_coalesce(value: &Value, default: &Value) -> Value {
+    if matches!(value, Value::Unit | Value::Skipped) {
+        default.clone()
+    } else {
+        value.clone()
+    }
+}
+
+/// Construct a variant value.
+///
+/// Unit variants (no fields) → `Value::Enum`. Payload variants → `Value::Map`
+/// with `_variant` tag. Returns `Skipped` if any payload field is `Skipped`.
+pub fn eval_variant_construct(tag: &str, fields: &[(String, Value)]) -> Result<Value, EvalError> {
+    if fields.is_empty() {
+        return Ok(Value::Enum {
+            ty: String::new(),
+            variant: tag.to_string(),
+        });
+    }
+    let mut map = BTreeMap::new();
+    map.insert("_variant".to_string(), Value::Str(tag.to_string()));
+    for (name, value) in fields {
+        if matches!(value, Value::Skipped) {
+            return Ok(Value::Skipped);
+        }
+        map.insert(name.clone(), value.clone());
+    }
+    Ok(Value::Map(map))
+}
+
+/// Construct a list from elements.
+///
+/// Returns `Skipped` if any element is `Skipped`.
+pub fn eval_list_construct(elements: Vec<Value>) -> Result<Value, EvalError> {
+    for elem in &elements {
+        if matches!(elem, Value::Skipped) {
+            return Ok(Value::Skipped);
+        }
+    }
+    Ok(Value::List(elements))
+}
+
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

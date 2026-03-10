@@ -74,7 +74,7 @@ pub fn build_dsl_graph(
         result.dag
     };
 
-    let dag = crate::resolve::resolve_lowered_dag_with_data(&lowered, &result.data_values).map_err(|error| {
+    let dag = crate::resolve::resolve_lowered_dag_with(&lowered).map_err(|error| {
         let ctx = match (opts.profile, opts.entry_func) {
             (Some(p), Some(e)) => format!(" (profile={p}, entry={e})"),
             (Some(p), None) => format!(" (profile={p})"),
@@ -125,8 +125,6 @@ struct CachedCompileData {
     dsl_type_registry: gunbc_ir::TypeRegistry,
     inferred_entrypoints: Vec<InferredEntrypoint>,
     callable_properties: BTreeMap<String, CallableProperties>,
-    #[serde(default)]
-    data_values: std::collections::HashMap<String, serde_json::Value>,
 }
 
 // ============================================================================
@@ -148,7 +146,6 @@ struct CompileLoweredResult {
     dsl_type_registry: gunbc_ir::TypeRegistry,
     inferred_entrypoints: Vec<InferredEntrypoint>,
     callable_properties: BTreeMap<String, CallableProperties>,
-    data_values: std::collections::HashMap<String, serde_json::Value>,
 }
 
 fn compile_lowered(
@@ -195,7 +192,6 @@ fn compile_lowered(
         dsl_type_registry: output.dsl_type_registry,
         inferred_entrypoints: output.inferred_entrypoints,
         callable_properties: output.derived.callable_properties,
-        data_values: output.data_values,
     };
 
     // Store to cache (non-profiled only). Failures are silently ignored --
@@ -244,7 +240,6 @@ fn try_load_from_cache(
         dsl_type_registry: cached.dsl_type_registry,
         inferred_entrypoints: cached.inferred_entrypoints,
         callable_properties: cached.callable_properties,
-        data_values: cached.data_values,
     }))
 }
 
@@ -267,7 +262,6 @@ fn try_store_to_cache(
         dsl_type_registry: result.dsl_type_registry.clone(),
         inferred_entrypoints: result.inferred_entrypoints.clone(),
         callable_properties: result.callable_properties.clone(),
-        data_values: result.data_values.clone(),
     };
 
     let bytes = serde_json::to_vec(&cached).map_err(|e| {
@@ -343,6 +337,13 @@ fn slice_dag_from_entry_preserving_fn_bodies(
     // Preserve all fn_body nodes (used by evaluate_fn_body as sibling fns).
     include.extend(fn_body_node_ids);
 
+    // Preserve data declaration embed nodes (used by resolver to extract data_values).
+    for node in &dag.nodes {
+        if node.id.0.starts_with(daglang_lower::DATA_DECL_NODE_PREFIX) {
+            include.insert(node.id.0.clone());
+        }
+    }
+
     dag.nodes.retain(|node| include.contains(&node.id.0));
     dag.edges
         .retain(|edge| include.contains(&edge.from_node.0) && include.contains(&edge.to_node.0));
@@ -401,7 +402,6 @@ mod tests {
             dsl_type_registry: output.dsl_type_registry,
             inferred_entrypoints: output.inferred_entrypoints,
             callable_properties: output.derived.callable_properties,
-            data_values: output.data_values,
         };
 
         // Serialize to CachedCompileData
@@ -411,7 +411,6 @@ mod tests {
             dsl_type_registry: original_result.dsl_type_registry.clone(),
             inferred_entrypoints: original_result.inferred_entrypoints.clone(),
             callable_properties: original_result.callable_properties.clone(),
-            data_values: original_result.data_values.clone(),
         };
         let bytes = serde_json::to_vec(&cached).expect("serialize should succeed");
         assert!(bytes.len() > 100, "serialized data should be non-trivial");
@@ -470,7 +469,6 @@ mod tests {
             dsl_type_registry: output.dsl_type_registry,
             inferred_entrypoints: output.inferred_entrypoints,
             callable_properties: output.derived.callable_properties,
-            data_values: output.data_values,
         };
 
         // Compute source digest
@@ -484,7 +482,6 @@ mod tests {
             dsl_type_registry: result.dsl_type_registry.clone(),
             inferred_entrypoints: result.inferred_entrypoints.clone(),
             callable_properties: result.callable_properties.clone(),
-            data_values: result.data_values.clone(),
         };
         let bytes = serde_json::to_vec(&cached).expect("serialize should succeed");
 
@@ -530,7 +527,6 @@ mod tests {
             dsl_type_registry: gunbc_ir::TypeRegistry::default(),
             inferred_entrypoints: Vec::new(),
             callable_properties: BTreeMap::new(),
-            data_values: std::collections::HashMap::new(),
         };
         let bytes = serde_json::to_vec(&stale).expect("serialize should succeed");
 

@@ -61,14 +61,18 @@ pub struct CompileOutput {
     pub dsl_type_registry: TypeRegistry,
     /// Compile receipt with deterministic digests.
     pub receipt: Option<CompileReceipt>,
-    /// Data declaration values evaluated at compile time.
-    ///
-    /// Keys are both qualified (`module.name`) and unqualified (`name`).
-    /// Values are the constant expressions from `data` items.
-    pub data_values: HashMap<String, serde_json::Value>,
 }
 
 impl CompileOutput {
+    /// Extract data declaration values from embedded DAG nodes.
+    ///
+    /// Data declarations are embedded as `CallLiteralSource` nodes with
+    /// `__data_decl::` prefixed IDs during lowering. This method extracts
+    /// them without requiring a separate sidecar field.
+    pub fn data_values(&self) -> HashMap<String, serde_json::Value> {
+        daglang_lower::extract_data_values_from_dag(self.lowered_dag.inner())
+    }
+
     /// Build a merged type registry: kernel → core types → DSL merge.
     ///
     /// Core types (CliResult, ContentEncoding, etc.) are registered FIRST
@@ -506,7 +510,7 @@ pub fn compile_data_from_sources_permissive(
     )
     .map_err(CompileError::from)?;
     extract_fn_bodies_from_dag(&lower_output.dag, &mut fns);
-    let data_values = lower_output.data_values;
+    let data_values = daglang_lower::extract_data_values_from_dag(&lower_output.dag);
 
     let pipelines = extract_pipelines_from_typed(&typed);
 
@@ -564,7 +568,7 @@ pub fn compile_data_from_module_permissive(
     let lower_output = daglang_lower::lower_to_output_with_config(&typed, &lower_config)
         .map_err(CompileError::from)?;
     extract_fn_bodies_from_dag(&lower_output.dag, &mut fns);
-    let data_values = lower_output.data_values;
+    let data_values = daglang_lower::extract_data_values_from_dag(&lower_output.dag);
 
     let pipelines = extract_pipelines_from_typed(&typed);
 
