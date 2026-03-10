@@ -2398,7 +2398,10 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                         NamingCase::SnakeCase.apply(variant_name),
                     );
 
-                    let mock_value = ValueExpr::Str(variant_name.clone());
+                    let mock_value = ValueExpr::Enum {
+                        ty: type_id.0.clone(),
+                        variant: variant_name.clone(),
+                    };
                     let mocks_expr = self.dryrun_mocks_expr(analysis, "variant coverage tests");
 
                     let exec = Expr::call(
@@ -7263,22 +7266,23 @@ fn mock_value_expr_for_count(
 /// Generate a mock ValueExpr for a single element of a type.
 ///
 /// When `index` is provided, string/int/bool values are varied for readability.
-fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
-    match type_id {
-        "String" | "OptionalString" | "StringList" | "NonEmptyStringList" => match index {
+/// Returns `None` for unknown types instead of fabricating `Json(Null)`.
+fn mock_element_expr(type_id: &str, index: Option<u32>) -> Option<ValueExpr> {
+    let value = match type_id {
+        "String" | "Optional<String>" | "List<String>" | "NonEmptyList<String>" => match index {
             Some(1) | None => ValueExpr::Str("<MOCK>".to_string()),
             Some(i) => ValueExpr::Str(format!("<MOCK_{}>", i)),
         },
-        "Bool" | "OptionalBool" | "BoolList" => match index {
+        "Bool" | "Optional<Bool>" | "List<Bool>" => match index {
             Some(i) => ValueExpr::Bool(i % 2 == 1),
             None => ValueExpr::Bool(true),
         },
-        "Int" | "i64" | "i32" | "OptionalInt" | "IntList" => match index {
+        "Int" | "i64" | "i32" | "Optional<Int>" | "List<Int>" => match index {
             Some(i) => ValueExpr::Int(i as i64),
             None => ValueExpr::Int(0),
         },
         "Unit" => ValueExpr::Unit,
-        "Json" | "OptionalJson" | "JsonList" => ValueExpr::Json(JsonValue::Null),
+        "Json" | "Optional<Json>" | "List<Json>" => ValueExpr::Json(JsonValue::Null),
         "CloudSecretConfig" => ValueExpr::Json(mock_cloud_secret_config_json()),
         ty if parse_map_type_id(ty).is_some() => {
             let (key_type, value_type) = parse_map_type_id(ty).expect("already checked");
@@ -7429,14 +7433,14 @@ fn platform_mock_token(index: Option<u32>) -> String {
 fn mock_wrong_type_expr(type_id: &str) -> Option<ValueExpr> {
     match type_id {
         // String-like types → use Int
-        "String" | "OptionalString" | "StringList" | "NonEmptyStringList" | "Path" | "FilePath"
+        "String" | "Optional<String>" | "List<String>" | "NonEmptyList<String>" | "Path" | "FilePath"
         | "SourceIR" | "Platform" | "Error" | "Tier" | "ToolId" | "S" => Some(ValueExpr::Int(1)),
         // Int-like types → use String
-        "Int" | "i64" | "i32" | "Timestamp" | "OptionalInt" | "IntList" => {
+        "Int" | "i64" | "i32" | "Timestamp" | "Optional<Int>" | "List<Int>" => {
             Some(ValueExpr::Str("<WRONG>".to_string()))
         }
         // Bool → use String
-        "Bool" | "OptionalBool" | "BoolList" => Some(ValueExpr::Str("<WRONG>".to_string())),
+        "Bool" | "Optional<Bool>" | "List<Bool>" => Some(ValueExpr::Str("<WRONG>".to_string())),
         // Secret → use String
         "Secret" => Some(ValueExpr::Str("<WRONG>".to_string())),
         // Map → use Bool
@@ -7445,7 +7449,7 @@ fn mock_wrong_type_expr(type_id: &str) -> Option<ValueExpr> {
         "CliResult" | "ToolHandle" | "Credential" | "FilesystemHandle" | "NetworkHandle"
         | "TransportRequest" | "TransportResponse" => Some(ValueExpr::Str("<WRONG>".to_string())),
         // Unknown/Any/Json/Unit are too permissive or ambiguous
-        "Json" | "OptionalJson" | "JsonList" | "Any" | "Unknown" | "Unit" => None,
+        "Json" | "Optional<Json>" | "List<Json>" | "Any" | "Unknown" | "Unit" => None,
         _ => None,
     }
 }
@@ -8557,7 +8561,7 @@ mod tests {
             "parse",
             vec![
                 port("response", "TransportResponse"),
-                optional("fallback", "OptionalString"),
+                optional("fallback", "Optional<String>"),
             ],
             vec![port("result", "String")],
             (),
@@ -8628,10 +8632,10 @@ mod tests {
             SeedPolicy::Generated
         );
         assert_eq!(
-            seed_policy_for_type("OptionalString"),
+            seed_policy_for_type("Optional<String>"),
             SeedPolicy::Generated
         );
-        assert_eq!(seed_policy_for_type("StringList"), SeedPolicy::Generated);
+        assert_eq!(seed_policy_for_type("List<String>"), SeedPolicy::Generated);
         // Map containers are structurally generatable (structural type system).
         assert_eq!(
             seed_policy_for_type("Map<String,Credential>"),
@@ -8672,7 +8676,7 @@ mod tests {
         );
         assert!(requires_explicit_seed("Credential", SeedContext::Scenario));
         assert!(!requires_explicit_seed(
-            "OptionalString",
+            "Optional<String>",
             SeedContext::Scenario
         ));
     }
@@ -8688,7 +8692,7 @@ mod tests {
             SeedPolicy::Generated
         );
         assert!(requires_explicit_seed("Secret", SeedContext::LiveFlow));
-        assert!(!requires_explicit_seed("StringList", SeedContext::LiveFlow));
+        assert!(!requires_explicit_seed("List<String>", SeedContext::LiveFlow));
     }
 
     #[test]
@@ -8743,7 +8747,7 @@ mod tests {
             "parse",
             vec![
                 port("response", "TransportResponse"),
-                optional("fallback", "OptionalString"),
+                optional("fallback", "Optional<String>"),
             ],
             vec![port("result", "String")],
             (),
@@ -8776,7 +8780,7 @@ mod tests {
             "resolver",
             vec![
                 port("config", "TransportResponse"),
-                optional("name", "OptionalString"),
+                optional("name", "Optional<String>"),
             ],
             vec![port("result", "String")],
             (),

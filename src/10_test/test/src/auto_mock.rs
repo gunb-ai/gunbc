@@ -127,7 +127,12 @@ fn typed_witness_value_depth(type_id: &str, registry: &TypeRegistry, depth: u8) 
         return Some(value);
     }
 
-    let type_dag = registry.resolve_type(&TypeId::from(type_id))?;
+    // Use get_by_name for direct lookup — resolve_type goes through the type
+    // expression parser which rejects inline record names containing commas.
+    let type_dag = registry
+        .get_by_name(type_id)
+        .cloned()
+        .or_else(|| registry.resolve_type(&TypeId::from(type_id)))?;
 
     // Try standard witness generation first.
     let standard = gunbc_ir::contract::witnesses_checked(&type_dag)
@@ -970,20 +975,22 @@ mod tests {
     }
 
     #[test]
-    fn default_value_for_cloud_runtime_uses_variant_witness() {
+    fn default_value_for_coproduct_uses_variant_witness() {
         let registry = TypeRegistry::with_core_types();
+        // Platform is still registered in Rust; CloudRuntime/FermiDepth
+        // are now DSL-only (available after merge_dsl_types).
         assert_eq!(
-            default_value_for_type("CloudRuntime", &registry),
-            Value::Str("GitHubActions".to_string())
+            default_value_for_type("Platform", &registry),
+            Value::Enum { ty: "Platform".to_string(), variant: "Linux".to_string() }
         );
     }
 
     #[test]
-    fn default_value_for_list_of_fermi_depth_uses_variant_elements() {
+    fn default_value_for_list_of_coproduct_uses_variant_elements() {
         let registry = TypeRegistry::with_core_types();
         assert_eq!(
-            default_value_for_type("List<FermiDepth>", &registry),
-            Value::List(vec![Value::Str("Xs".to_string())])
+            default_value_for_type("List<Platform>", &registry),
+            Value::List(vec![Value::Enum { ty: "Platform".to_string(), variant: "Linux".to_string() }])
         );
     }
 
@@ -992,7 +999,7 @@ mod tests {
         let registry = TypeRegistry::with_core_types();
         assert_eq!(
             default_value_for_type("Platform", &registry),
-            Value::Str("Linux".to_string())
+            Value::Enum { ty: "Platform".to_string(), variant: "Linux".to_string() }
         );
     }
 

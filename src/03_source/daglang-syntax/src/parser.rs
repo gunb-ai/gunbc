@@ -1597,11 +1597,9 @@ impl Parser {
 
     fn parse_type_expr(&mut self) -> Result<TypeExpr, ParseError> {
         if self.eat(&TokenKind::LBrace) {
-            while !self.check(&TokenKind::RBrace) && !self.at_eof() {
-                self.advance();
-            }
+            let fields = self.parse_field_list_until_rbrace()?;
             self.expect(&TokenKind::RBrace)?;
-            return Ok(TypeExpr::Named("Record".into()));
+            return Ok(TypeExpr::Record(fields));
         }
         let name = self.parse_dotted_ident()?;
         self.finish_type_expr(name)

@@ -45,7 +45,7 @@ pub fn build_markdown_subdag() -> Node<LanguageOp> {
         vec![
             Port::scalar("id", "String"),
             Port::scalar("name", "String"),
-            Port::list("extensions", "StringList"),
+            Port::list("extensions", "List<String>"),
             Port::scalar("comment_open", "String"),
             Port::scalar("comment_close", "String"),
             Port::scalar("code_fence", "String"),
@@ -58,7 +58,7 @@ pub fn build_markdown_subdag() -> Node<LanguageOp> {
         "render_code_block",
         vec![
             Port::scalar("code", "String"),
-            Port::optional("language", "OptionalString"),
+            Port::optional("language", "Optional<String>"),
         ],
         vec![Port::scalar("block", "String")],
         LanguageOp::MarkdownRenderCodeBlock,

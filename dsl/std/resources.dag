@@ -13,6 +13,15 @@ module std.resources
 
 import std.types { Timestamp, FilePath, TextFilePath }
 
+// Opaque proof of resource acquisition. Only the compiler's acquire
+// nodes can mint these — user code cannot construct handles directly.
+// The `cap` field is a per-process secret that prevents forgery.
+type ResourceHandle {
+  resource_id: String
+  key: String
+  cap: Secret
+}
+
 // --- Filesystem -------------------------------------------------------
 
 resource Filesystem {

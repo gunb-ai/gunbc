@@ -3151,7 +3151,7 @@ mod parity {
                 vec![
                     Port::scalar("secret", "String"),
                     Port::scalar("scheme", "String"),
-                    Port::optional("header_name", "OptionalString"),
+                    Port::optional("header_name", "Optional<String>"),
                     Port::scalar("source_id", "String"),
                     Port::fan_in("required_scopes", "String"),
                 ],
@@ -3166,8 +3166,8 @@ mod parity {
                 "prepare_github_oidc",
                 vec![
                     Port::scalar("audience", "String"),
-                    Port::optional("request_token", "OptionalString"),
-                    Port::optional("request_url", "OptionalString"),
+                    Port::optional("request_token", "Optional<String>"),
+                    Port::optional("request_url", "Optional<String>"),
                 ],
                 vec![
                     Port::scalar("request", "TransportRequest"),
@@ -3226,8 +3226,8 @@ mod parity {
                 vec![
                     Port::scalar("access_token", "String"),
                     Port::scalar("service_account", "String"),
-                    Port::optional("lifetime_seconds", "OptionalInt"),
-                    Port::optional("should_impersonate", "OptionalBool"),
+                    Port::optional("lifetime_seconds", "Optional<Int>"),
+                    Port::optional("should_impersonate", "Optional<Bool>"),
                 ],
                 vec![
                     Port::scalar("request", "TransportRequest"),
@@ -3247,7 +3247,7 @@ mod parity {
                 "parse_impersonate",
                 vec![
                     Port::scalar("response", "TransportResponse"),
-                    Port::optional("base_access_token", "OptionalString"),
+                    Port::optional("base_access_token", "Optional<String>"),
                 ],
                 vec![Port::scalar("access_token", "String")],
             ),
@@ -3257,7 +3257,7 @@ mod parity {
                     Port::scalar("access_token", "String"),
                     Port::scalar("project", "String"),
                     Port::scalar("secret", "String"),
-                    Port::optional("version", "OptionalString"),
+                    Port::optional("version", "Optional<String>"),
                 ],
                 vec![
                     Port::scalar("request", "TransportRequest"),

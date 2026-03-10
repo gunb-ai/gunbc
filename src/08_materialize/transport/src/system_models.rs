@@ -108,10 +108,10 @@ pub fn build_transport_shell_model() -> SystemModel {
     )
     .with_inputs(vec![
         BehaviorInput::required("command", ty("String")),
-        BehaviorInput::optional("args", ty("StringList")),
-        BehaviorInput::optional("cwd", ty("OptionalString")),
+        BehaviorInput::optional("args", ty("List<String>")),
+        BehaviorInput::optional("cwd", ty("Optional<String>")),
         BehaviorInput::optional("env", ty("Json")),
-        BehaviorInput::optional("timeout_ms", ty("OptionalInt")),
+        BehaviorInput::optional("timeout_ms", ty("Optional<Int>")),
     ])
     .with_outputs(vec![BehaviorOutput::new(
         "response",

@@ -1319,8 +1319,8 @@ mod tests {
         let mut builder: DagBuilder<String> = DagBuilder::new();
         let node = Node::opaque(
             "typed_node",
-            vec![Port::scalar("in", "OptionalString")],
-            vec![Port::scalar("out", "OptionalString")],
+            vec![Port::scalar("in", "Optional<String>")],
+            vec![Port::scalar("out", "Optional<String>")],
             "op".to_string(),
         );
 
@@ -1448,7 +1448,7 @@ mod tests {
         let node_b = test_node("b", vec![], vec![("out", "String")]);
         let node_c = Node::opaque(
             "c",
-            vec![Port::list("in", "StringList")], // List to accept fan-in
+            vec![Port::list("in", "List<String>")], // List to accept fan-in
             vec![],
             "op_c".to_string(),
         );
@@ -1602,7 +1602,7 @@ mod tests {
         let node_c = test_node("c", vec![], vec![("out", "String")]);
         let node_d = Node::opaque(
             "d",
-            vec![Port::list("in", "StringList")],
+            vec![Port::list("in", "List<String>")],
             vec![],
             "op_d".to_string(),
         );

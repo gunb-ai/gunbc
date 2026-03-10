@@ -223,7 +223,7 @@ pub fn add_skippable_transport_triplet_typed<T>(
             vec![
                 optional("request", port_types.request),
                 port("skip", "Bool"),
-                optional("skip_reason", "OptionalString"),
+                optional("skip_reason", "Optional<String>"),
             ],
             prepare_op,
         )
@@ -242,7 +242,7 @@ pub fn add_skippable_transport_triplet_typed<T>(
             vec![
                 optional("response", port_types.response),
                 port("skip", "Bool"),
-                optional("skip_reason", "OptionalString"),
+                optional("skip_reason", "Optional<String>"),
             ],
             transport_op,
         )
@@ -255,7 +255,7 @@ pub fn add_skippable_transport_triplet_typed<T>(
             vec![
                 optional("response", port_types.response),
                 port("skip", "Bool"),
-                optional("skip_reason", "OptionalString"),
+                optional("skip_reason", "Optional<String>"),
             ],
             parse_outputs,
             parse_op,

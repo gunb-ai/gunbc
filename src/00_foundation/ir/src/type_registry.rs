@@ -326,14 +326,19 @@ impl TypeRegistry {
         }
     }
 
-    /// Register common refined/core types used across the repo.
+    /// Register types needed by Rust infrastructure code.
     ///
-    /// These are structural refinements over primitives (e.g., Url is a refined String).
+    /// Many of these also have `.dag` definitions (the source of truth).
+    /// The Rust registrations are kept because unit tests call
+    /// `with_core_types()` without compiling DSL modules. As DSL-only
+    /// compilation contexts expand, these can be removed.
+    ///
+    /// Types that are ONLY in `.dag` (no Rust reference): deleted.
+    /// Types in `.dag` AND referenced by Rust tests/infra: kept here.
     pub fn register_core_types(&mut self) {
+        // Refined primitives — referenced by Rust infra.
         self.register("NonEmptyString", type_lib::non_empty_string());
-        self.register("NonEmptyStr", type_lib::non_empty_string());
         self.register("SecretName", type_lib::non_empty_string());
-        self.register("LanguageId", type_lib::non_empty_string());
         self.register("Url", type_lib::url());
         self.register("FilePath", type_lib::file_path());
         self.register("Path", type_lib::file_path());
@@ -341,155 +346,18 @@ impl TypeRegistry {
         self.register("PositiveInt", type_lib::positive_int());
         self.register("NonNegativeInt", type_lib::non_negative_int());
         self.register("GitRef", type_lib::non_empty_string());
-        self.register(
-            "ProjectId",
-            type_lib::refined(
-                "String",
-                vec![
-                    Predicate::NonEmpty,
-                    Predicate::Matches("^[a-z][a-z0-9-]{4,28}[a-z0-9]$".to_string()),
-                ],
-            ),
-        );
-        self.register(
-            "ServiceAccountEmail",
-            type_lib::refined(
-                "String",
-                vec![Predicate::Matches(
-                    "^[a-z][a-z0-9-]*@[a-z0-9-]+\\.iam\\.gserviceaccount\\.com$".to_string(),
-                )],
-            ),
-        );
 
-        // Content-encoded file path types (set-theoretic type system).
+        // Content-encoded file paths — referenced by type_registry tests.
         self.register("TextFilePath", type_lib::text_file_path());
         self.register("BinaryFilePath", type_lib::binary_file_path());
 
-        // ContentEncoding variants as a coproduct type.
+        // Platform — referenced by testgen/codegen.
         self.register_coproduct(
-            "ContentEncoding",
-            vec![
-                ("Unknown", "Unit"),
-                ("Text", "Unit"),
-                ("UTF8", "Unit"),
-                ("ASCII", "Unit"),
-                ("Latin1", "Unit"),
-                ("Binary", "Unit"),
-            ],
-        );
-        self.register_coproduct(
-            "WarningPolicy",
-            vec![("DenyAll", "Unit"), ("Default", "Unit")],
-        );
-        self.register_coproduct(
-            "CloudRuntime",
-            vec![
-                ("GitHubActions", "Unit"),
-                ("Metadata", "Unit"),
-                ("LocalDev", "Unit"),
-            ],
-        );
-        self.register_coproduct(
-            "AuthScheme",
-            vec![("Bearer", "Unit"), ("Header", "Unit"), ("Basic", "Unit")],
-        );
-        self.register_coproduct(
-            "FermiDepth",
-            vec![
-                ("Xs", "Unit"),
-                ("S", "Unit"),
-                ("M", "Unit"),
-                ("L", "Unit"),
-                ("Xl", "Unit"),
-            ],
-        );
-        self.register_coproduct(
-            "TransportClass",
-            vec![
-                ("LocalDirect", "Unit"),
-                ("ShellLocal", "Unit"),
-                ("FileBoundary", "Unit"),
-                ("RestNetwork", "Unit"),
-                ("InterfaceStub", "Unit"),
-                ("Unknown", "Unit"),
-            ],
-        );
-        self.register_coproduct(
-            "TestClass",
-            vec![
-                ("Unit", "Unit"),
-                ("Hermetic", "Unit"),
-                ("Integration", "Unit"),
-            ],
-        );
-        self.register_coproduct(
-            "DisplayWidth",
-            vec![("ZeroWidth", "Unit"), ("Narrow", "Unit"), ("Wide", "Unit")],
-        );
-        self.register_coproduct(
-            "SemanticColor",
-            vec![
-                ("Default", "Unit"),
-                ("Success", "Unit"),
-                ("Warning", "Unit"),
-                ("Error", "Unit"),
-                ("Info", "Unit"),
-                ("Dim", "Unit"),
-                ("Active", "Unit"),
-                ("Accent", "Unit"),
-            ],
-        );
-        self.register_coproduct(
-            "Tier",
-            vec![("Emoji", "Unit"), ("Unicode", "Unit"), ("Ascii", "Unit")],
-        );
-        self.register_coproduct(
-            "SymbolId",
-            vec![
-                ("NodePending", "Unit"),
-                ("NodeRunning", "Unit"),
-                ("NodeCompleted", "Unit"),
-                ("NodeFailed", "Unit"),
-                ("NodeSkipped", "Unit"),
-                ("NodeIntercepted", "Unit"),
-                ("EdgeIdle", "Unit"),
-                ("EdgeFlowing", "Unit"),
-                ("EdgeDone", "Unit"),
-                ("EdgeDead", "Unit"),
-                ("DagNotStarted", "Unit"),
-                ("DagRunning", "Unit"),
-                ("DagCompleted", "Unit"),
-                ("DagFailed", "Unit"),
-                ("BoundaryMarker", "Unit"),
-                ("Spinner0", "Unit"),
-                ("Spinner1", "Unit"),
-                ("Spinner2", "Unit"),
-                ("Spinner3", "Unit"),
-                ("Spinner4", "Unit"),
-                ("Spinner5", "Unit"),
-                ("Spinner6", "Unit"),
-                ("Spinner7", "Unit"),
-                ("Spinner8", "Unit"),
-                ("Spinner9", "Unit"),
-                ("Success", "Unit"),
-                ("Failure", "Unit"),
-                ("Warning", "Unit"),
-                ("Info", "Unit"),
-                ("DataList", "Unit"),
-                ("DataMap", "Unit"),
-                ("DataSecret", "Unit"),
-                ("DataUrl", "Unit"),
-                ("DataTimer", "Unit"),
-                ("ConnectorHorizontal", "Unit"),
-                ("ConnectorVertical", "Unit"),
-                ("ConnectorTeeDown", "Unit"),
-                ("ConnectorTeeUp", "Unit"),
-                ("ConnectorCornerBottomLeft", "Unit"),
-                ("ConnectorCornerTopLeft", "Unit"),
-            ],
+            "Platform",
+            vec![("Linux", "Unit"), ("Macos", "Unit"), ("Windows", "Unit")],
         );
 
-        // Domain types for transport/infrastructure.
+        // Transport infrastructure (no .dag definition yet).
         self.register_product(
             "TransportRequest",
             vec![
@@ -507,41 +375,6 @@ impl TypeRegistry {
                 ("body", "String"),
             ],
         );
-        self.register(
-            "Credential",
-            type_lib::branded("Credential", type_lib::string()),
-        );
-        self.register(
-            "FilesystemHandle",
-            type_lib::branded("FilesystemHandle", type_lib::file_path()),
-        );
-        self.register(
-            "NetworkHandle",
-            type_lib::branded("NetworkHandle", type_lib::unit()),
-        );
-        self.register_product(
-            "CliResult",
-            vec![
-                ("stdout", "String"),
-                ("stderr", "String"),
-                ("exit_code", "Int"),
-            ],
-        );
-        self.register(
-            "ToolHandle",
-            type_lib::branded("ToolHandle", type_lib::string()),
-        );
-        self.register_coproduct(
-            "Platform",
-            vec![("Linux", "Unit"), ("Macos", "Unit"), ("Windows", "Unit")],
-        );
-        self.register(
-            "Timestamp",
-            type_lib::refined("Int", vec![Predicate::NonEmpty]),
-        );
-        self.register("Record", type_lib::identity("Record"));
-
-        // Transport response subtypes (structural products).
         self.register_product(
             "FileResponse",
             vec![
@@ -566,8 +399,37 @@ impl TypeRegistry {
             "HttpResponse",
             vec![("status", "Int"), ("headers", "Json"), ("body", "String")],
         );
+        self.register_product(
+            "CliResult",
+            vec![
+                ("stdout", "String"),
+                ("stderr", "String"),
+                ("exit_code", "Int"),
+            ],
+        );
 
-        // GCP/OIDC identity types (string-backed refinements).
+        // Resource/handle types (no .dag definition yet).
+        self.register(
+            "Credential",
+            type_lib::branded("Credential", type_lib::string()),
+        );
+        self.register(
+            "FilesystemHandle",
+            type_lib::branded("FilesystemHandle", type_lib::file_path()),
+        );
+        self.register(
+            "NetworkHandle",
+            type_lib::branded("NetworkHandle", type_lib::unit()),
+        );
+        self.register(
+            "ToolHandle",
+            type_lib::branded("ToolHandle", type_lib::string()),
+        );
+
+        // Identity/opaque types.
+        self.register("Record", type_lib::identity("Record"));
+
+        // GCP/OIDC identity types (no .dag definition yet).
         self.register("OidcAudience", type_lib::non_empty_string());
         self.register("WifAudience", type_lib::non_empty_string());
         self.register("GcpProjectId", type_lib::non_empty_string());
@@ -577,25 +439,6 @@ impl TypeRegistry {
         self.register("GcpSubjectToken", type_lib::non_empty_string());
         self.register("OidcSubjectToken", type_lib::non_empty_string());
 
-        // Container aliases (cardinality encoded in the type DAG).
-        self.register("OptionalString", type_lib::optional(type_lib::string()));
-        self.register("OptionalInt", type_lib::optional(type_lib::int()));
-        self.register("OptionalBool", type_lib::optional(type_lib::bool()));
-        self.register("OptionalJson", type_lib::optional(type_lib::json()));
-        self.register("StringList", type_lib::list(type_lib::string()));
-        self.register(
-            "NonEmptyStringList",
-            type_lib::non_empty_list(type_lib::string()),
-        );
-        self.register("IntList", type_lib::list(type_lib::int()));
-        self.register("BoolList", type_lib::list(type_lib::bool()));
-        self.register("JsonList", type_lib::list(type_lib::json()));
-
-        // Legacy/container aliases (cardinality encoded in the type DAG).
-        self.register("OptionalUrl", type_lib::optional_url());
-        self.register("UrlList", type_lib::url_list());
-        self.register("FilePathList", type_lib::file_path_list());
-        self.register("NonEmptyFilePathList", type_lib::non_empty_file_path_list());
     }
 
     /// Create a type registry with primitives + common refined/core types.
@@ -738,10 +581,17 @@ impl TypeRegistry {
     /// Resolve a type DAG, returning a diagnostic if the expression is invalid.
     ///
     /// Returns `Ok(None)` when the type is syntactically valid but not registered.
+    /// Tries direct name lookup first so that inline record types (containing
+    /// commas/braces) are reachable without going through `parse_type_expr`.
     pub fn resolve_type_checked(
         &self,
         type_id: &TypeId,
     ) -> Result<Option<Dag<TypeOp>>, TypeExprError> {
+        // Direct lookup first — handles names that parse_type_expr rejects
+        // (e.g. inline record types like `{key: String, value: String}`).
+        if let Some(dag) = self.get_by_name(&type_id.0) {
+            return Ok(Some(dag.clone()));
+        }
         let expr = parse_type_expr(&type_id.0)?;
         Ok(self.resolve_expr(&expr, ResolveMode::Root))
     }
@@ -1424,33 +1274,27 @@ mod tests {
     fn test_domain_types_registered() {
         let registry = TypeRegistry::with_core_types();
 
+        // Types still registered in Rust (infrastructure / no .dag yet).
         assert!(registry.contains(&TypeId::from("TextFilePath")));
         assert!(registry.contains(&TypeId::from("BinaryFilePath")));
-        assert!(registry.contains(&TypeId::from("ContentEncoding")));
-        assert!(registry.contains(&TypeId::from("NonEmptyStr")));
-        assert!(registry.contains(&TypeId::from("LanguageId")));
         assert!(registry.contains(&TypeId::from("GitRef")));
-        assert!(registry.contains(&TypeId::from("ProjectId")));
-        assert!(registry.contains(&TypeId::from("ServiceAccountEmail")));
-        assert!(registry.contains(&TypeId::from("WarningPolicy")));
-        assert!(registry.contains(&TypeId::from("CloudRuntime")));
-        assert!(registry.contains(&TypeId::from("AuthScheme")));
-        assert!(registry.contains(&TypeId::from("FermiDepth")));
-        assert!(registry.contains(&TypeId::from("TransportClass")));
-        assert!(registry.contains(&TypeId::from("TestClass")));
-        assert!(registry.contains(&TypeId::from("DisplayWidth")));
-        assert!(registry.contains(&TypeId::from("SemanticColor")));
-        assert!(registry.contains(&TypeId::from("Tier")));
-        assert!(registry.contains(&TypeId::from("SymbolId")));
+        assert!(registry.contains(&TypeId::from("Platform")));
         assert!(registry.contains(&TypeId::from("TransportRequest")));
         assert!(registry.contains(&TypeId::from("TransportResponse")));
+
+        // These types are now defined in .dag files and only available
+        // after DSL compilation (via merge_dsl_types). They are NOT in
+        // with_core_types() anymore:
+        // ContentEncoding, NonEmptyStr, LanguageId, ProjectId,
+        // ServiceAccountEmail, WarningPolicy, CloudRuntime, AuthScheme,
+        // FermiDepth, TransportClass, TestClass, DisplayWidth,
+        // SemanticColor, Tier, SymbolId
         assert!(registry.contains(&TypeId::from("Credential")));
         assert!(registry.contains(&TypeId::from("FilesystemHandle")));
         assert!(registry.contains(&TypeId::from("NetworkHandle")));
         assert!(registry.contains(&TypeId::from("CliResult")));
         assert!(registry.contains(&TypeId::from("ToolHandle")));
-        assert!(registry.contains(&TypeId::from("Platform")));
-        assert!(registry.contains(&TypeId::from("Timestamp")));
+        // Timestamp now defined in dsl/std/types.dag
         assert!(registry.contains(&TypeId::from("Record")));
         assert!(registry.contains(&TypeId::from("FileResponse")));
         assert!(registry.contains(&TypeId::from("ShellResponse")));
@@ -1556,13 +1400,13 @@ mod tests {
             "Map<String,Int>",
             "Optional<String>",
             "Optional<Int>",
-            // Legacy aliases
-            "StringList",
-            "UrlList",
+            "List<Int>",
+            "List<Bool>",
         ];
 
         for type_name in &cases {
-            let expected = value_backing_for_type_id(type_name);
+            let expected = value_backing_for_type_id(type_name)
+                .unwrap_or(ValueBacking::Json);
             let actual = registry
                 .value_backing(&TypeId::from(*type_name))
                 .unwrap_or(ValueBacking::Json);

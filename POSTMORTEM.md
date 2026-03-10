@@ -1279,9 +1279,34 @@ interpreter doesn't know about parsing or typechecking.
 # Refactor plan: pipeline convergence
 
 **Date:** 2026-03-09
-**Status:** Plan only — no code changes.
+**Status:** COMPLETE. All 8 phases executed (2026-03-09 to 2026-03-10).
 **Goal:** Separate the compiler from the interpreter. Eliminate the
 three-way semantic duplication (evaluator / resolver / primitives).
+
+**Execution log:**
+
+| Phase | Commit | Summary |
+|-------|--------|---------|
+| 0a | `6e237e8f` | 4 hardcoded builtin callables → DSL fn items |
+| 0b | `5bc3ed78` | Pipe methods use string dispatch (PIPE_METHOD_REGISTRY) |
+| 1 | `617b28b9` | 10 pure-value op structs → single PurePrimitiveOp dispatch |
+| 2 | `2e660ff3` | Evaluator delegation + data declaration embed in DAG |
+| 3 | `bed0762e` | 8 transport-specific service op structs → 2 parameterized |
+| 4 | `29826fc3` | Collapse FnBodyCallableOp + DeclaredOutputCallableOp → CallableOp |
+| 5 | `10893eb1` | Delete gunbc-primitives crate |
+| 6 | `9473fc79` | Extract evaluator to daglang-eval crate |
+| 7 | `db536a0e` | Create gunbc-interp crate |
+| 8 | `4b3296c6` | Delete PipeMethod enum, simplify pipe registry |
+| — | `797390f4` | Delete pipe operator (`\|>`) from compiler and DSL |
+| — | `7b5713aa` | Fix pipe→call evaluation, lint, make test-all |
+
+**Follow-on (2026-03-10):** Mock type fix + type registry cleanup reduced
+generated test failures from 529 → 115 (see §7 in fail-closed gaps above).
+Deleted `tools.design` (dead SDLC code, 89 pre-existing failures).
+Deleted 39 redundant Rust type registrations (source of truth is .dag).
+Deleted 13 container alias type registrations (migrated port type IDs to
+parametric forms). Fixed inline record parsing, registration, and lookup.
+Fixed `Value::Enum` consistency in variant witnesses.
 
 **Target architecture:** See `src/ARCHITECTURE.md` for the full target
 state, stage contracts, and rationale.
@@ -2287,53 +2312,194 @@ what a crate does without saying "and also," it's doing too much.
 
 ---
 
-## Remaining fail-closed gaps (2026-03-09)
+## Remaining fail-closed gaps (updated 2026-03-10)
 
 Tracked here for the next cleanup pass. Each item is a place where the
 compiler silently fabricates values or accepts degraded input instead of
 failing with a structured diagnostic.
 
-### 1. Callable return wiring silently discarded
+All 6 items share one root pattern: **something fails → the stage
+fabricates `Unknown`/`Json`/`identity(...)`/verbatim-name/empty-output →
+the compiler keeps moving.** Fixing them means every stage either
+succeeds with correct data or fails with a structured diagnostic.
 
-`add_service_call_edges()` in `daglang-lower/src/lib.rs` does
+### FC-1. Callable return wiring silently discarded
+
+**Severity:** P1 — direct postmortem invariant violation ("fail closed")
+
+`daglang-lower/src/lib.rs:8137` does
 `let _ = wire_callable_return_outputs(...)` for non-fn callable items.
-The failure is legitimate (service call result bindings can't be traced
-as simple idents), but the silent discard masks real wiring bugs.
+The comment explicitly says: "TODO: make this a hard error once the
+lowerer can trace through service call result bindings."
 
-**Fix:** Make the lowerer trace through service call result bindings so
-return wiring can succeed, then convert `let _` to `?`.
+The other call site (line 4200, loop body construction) correctly checks
+`.is_err()` and returns `None`, proving the pattern is solvable.
 
-### 2. Type system / emit fallbacks
+The failure is legitimate today — service call result bindings can't be
+traced as simple idents — but the silent discard masks real wiring bugs.
+Service call arg wiring (`wire_service_call_argument`) already uses
+`LowerError::WiringFailure` to fail hard, so this is an inconsistency
+within the same file.
 
-These locations turn structured errors back into defaults:
+**Prerequisite:** Lowerer must trace through service call result
+bindings (let-bound service call outputs referenced in return
+expressions).
 
-- `emit_type()` turns `type_shape` failure → `Opaque("Unknown")`
-- `emit_platform_type()` falls back to model's opaque fallback
-- `resolve_and_emit()` returns raw type name verbatim if unresolved
-- `value_backing_for_type_id()` does `unwrap_or(ValueBacking::Json)`
-- `register_type_def()` produces identity placeholders for unresolved aliases
+**Fix:** Once the prerequisite is met, convert `let _` to `?` and
+propagate `LowerError::WiringFailure`.
 
-**Fix:** Propagate `Result` to callers; let compilation fail when types
-can't be resolved rather than producing degraded output.
+### FC-2. Type system / emit fallbacks
 
-### 3. Testgen silent defaults
+**Severity:** P2 — degraded output rather than hard failure
 
-- `gunbc_exec::lower(self.dag).ok()` discards lowering failures
-- Missing port type lookup defaults to `("String", Cardinality::ONE)`
-- Unknown DSL types in `mock_element_expr()` default to `Json(Null)`
+Five sites turn structured errors back into defaults:
 
-**Fix:** Return diagnostics from testgen or use explicit opt-in fallbacks.
+| # | Site | File:Line | Behavior |
+|---|------|-----------|----------|
+| a | `emit_type()` | `daglang-emit/src/type_mapping.rs:46` | `type_shape()` failure → `Opaque("Unknown")` |
+| b | `emit_platform_type()` | `daglang-emit/src/type_mapping.rs:153` | No scalar match → `model.opaque_fallback` |
+| c | `resolve_and_emit()` | `daglang-emit/src/type_mapping.rs:180` | Unresolved type → raw name verbatim |
+| d | `value_backing_for_type_id()` | `ir/src/types.rs:1129` | Unknown type → `.unwrap_or(ValueBacking::Json)` |
+| e | `register_type_def()` | `daglang-typecheck/src/lib.rs:1001,1191,1274` | Unresolved alias/field → `identity(...)` placeholder |
 
-### 4. gunbc-interp not production-wired
+Additionally, `auto_mock.rs:226,680` uses `unwrap_or(ValueBacking::Json)`
+for mock value generation, propagating the same default downstream.
 
-`gunbc-interp` exists with correct passthrough behavior (fixed 2026-03-09)
-but is not wired into the production execution path. `gunbc-resolve`
-still owns `builder.rs`, `fs_env.rs`, `dry_run.rs`, `service_ops`, and
-the main `resolve_lowered_dag_with(...)` materialization path.
+**Fix direction:** Convert each to `Result` propagation, working from
+the most downstream site (d: `value_backing_for_type_id`) upward to (a:
+`emit_type`). Each conversion makes the next one easier because callers
+are already forced to handle errors.
 
-**Decision needed:** Either wire `gunbc-interp` as the production path
-and thin `gunbc-resolve` to a compatibility wrapper, or defer and stop
-half-maintaining `gunbc-interp`.
+### FC-3. `TypeRegistry::is_compatible()` too permissive
+
+**Severity:** P2 — hides real inference / lowering mistakes
+
+`ir/src/type_registry.rs:877-880`:
+
+```rust
+// Source Any/Unknown: inferred types that couldn't be resolved
+// (e.g. fold's generic return). Compatible with any target until
+// the type system supports generics.
+if from.0 == "Any" || from.0 == "Unknown" {
+    return true;
+}
+```
+
+And lines 888-890: when `type_shape()` fails for either type,
+compatibility falls back to `to == "Json"` or `base_ok`. These are
+escape hatches added to keep the compiler moving, but they can hide real
+type mismatches.
+
+**Impact:** A lowering bug that produces `Unknown` instead of a concrete
+type won't be caught by compatibility checks — it will silently pass
+through and surface as a confusing runtime error.
+
+**Dependency:** Should be tightened *after* FC-2 is resolved, because
+fixing type fallbacks will surface the real types that `Any`/`Unknown`
+was hiding. Then an audit can determine which callers genuinely need the
+escape hatch (e.g., `fold`'s generic return) vs. which were masking bugs.
+
+### FC-4. `Map<K,V>` type/runtime incoherence
+
+**Severity:** P2 — invariant violation across stages
+
+The type system accepts `Map<K,V>` with non-String keys:
+
+```rust
+// daglang-typecheck/src/lib.rs:1238-1241
+// Note: non-String key types are accepted structurally but
+// runtime Value::Map is string-keyed. Type checking does not
+// reject this — it will surface as a runtime mismatch.
+```
+
+But the runtime representation is hardcoded to string keys:
+
+```rust
+// ir/src/value.rs:163
+Map(BTreeMap<String, Value>),
+```
+
+And `value_compatible_with_type_id()` in `ir/src/types.rs:1175-1185`
+explicitly rejects non-String keys at runtime validation time. So the
+type system says yes, the runtime says no, and the mismatch surfaces
+late as a confusing runtime error.
+
+**Fix (simplest):** Reject non-String map keys in typecheck. Add a
+single guard in `resolve_field_type_dag` that emits a diagnostic when
+the key type of `Map<K,V>` is not `String`. Zero downstream impact —
+no current DSL module uses non-String map keys.
+
+**Fix (complete, future):** Make `Value::Map` generic over key types.
+This is a large change touching every `BTreeMap<String, Value>` site.
+Not warranted until there's a real use case for non-String keys.
+
+### FC-5. `gunbc-interp` placeholder behavior, not production-wired
+
+**Severity:** P2 — half-maintained crate with passthrough escape hatch
+
+`gunbc-interp` (created 2026-03-09, 202 lines) is architecturally
+correct: 5 deps (ir, eval, lower, exec, transport), no compiler deps,
+clean `execute_lowered_op()` dispatch on all `LoweredOp` variants.
+
+But it still has `_ => Ok(inputs)` passthrough at line 141-143 for
+all transport/I/O `PrimitiveOpKind` variants. And `gunbc-resolve`
+still owns the entire production materialization path: `builder.rs`,
+`fs_env.rs`, `dry_run.rs`, `service_ops`, `resolve_lowered_dag_with()`.
+
+So the boundary is cleaner, but not authoritative. The postmortem's
+own crate table says `gunbc-interp` "interprets graph IR" but it
+doesn't actually own interpretation in production.
+
+**Decision needed:** Either:
+- (a) Wire `gunbc-interp` as the production interpreter, moving
+  transport dispatch from `gunbc-resolve` service_ops into it, or
+- (b) Defer and mark it explicitly as "test/prototype only" so it
+  doesn't accumulate half-maintained divergence.
+
+Option (a) benefits from FC-1 through FC-4 being resolved first.
+
+### FC-6. Duplicated builtin/intrinsic registries
+
+**Severity:** P3 — maintenance hazard, not a correctness bug today
+
+Two independent lists define builtin operations:
+
+| Registry | Location | Entries | Purpose |
+|----------|----------|---------|---------|
+| `builtin_callable_contracts()` | `daglang-typecheck/src/lib.rs:2109-2250` | 30 | Typecheck contract validation |
+| `INTRINSIC_CALLS` | `daglang-eval/src/eval.rs:182-187` | 22 | Runtime dispatch markers |
+
+The 8-entry delta (typecheck has `max_by`, `replace_section`, `to_bytes`,
+`to_json`, `hash`, and render helpers that eval lacks) is intentional —
+those operations are implemented elsewhere. But there is no compile-time
+check that the two lists stay in sync, and adding a new intrinsic
+requires updating both.
+
+Deleting `|>` and `PIPE_METHOD_REGISTRY` (2026-03-09) removed one
+duplicated registry, but this pair remains.
+
+**Fix:** Extract a shared `BuiltinDef` enum or const array in a common
+location (e.g., `daglang-eval`, since typecheck already depends on it
+transitively). Both crates consume the single source of truth. Each
+entry specifies arity, parameter names, and whether it has an eval
+implementation — typecheck builds `CallableContract` from it, eval
+builds its dispatch table from it.
+
+### Testgen fallback workarounds (related to FC-2)
+
+These are downstream consequences of the type/emit fallbacks above,
+tracked separately because they're in testgen rather than the compiler:
+
+| Site | File:Line | Behavior |
+|------|-----------|----------|
+| Soft lower | `codegen/src/testgen/codegen.rs:4826` | `gunbc_exec::lower(self.dag).ok()` — discards lowering failures, uses unlowered analysis |
+| Port type default | `codegen/src/testgen/codegen.rs:4916` | Missing port type → `("String", Cardinality::ONE)` |
+| Mock default | `codegen/src/testgen/codegen.rs:7309,7404` | Unknown type / unmatched type → `Json(Null)` |
+| Skip modules | `codegen/src/bin/testgen_cli.rs:22` | `TESTGEN_SKIP_MODULES: &[&str] = &["std.patterns", "gunbc.auth.patterns"]` |
+
+These are "quietly keep going" paths that prevent testgen from surfacing
+real gaps. They should be converted to structured diagnostics as FC-2 is
+resolved, since many of the unknown types will become properly resolved.
 
 ### 5. Generated binary `#![allow(clippy::disallowed_macros)]`
 
@@ -2350,3 +2516,159 @@ direct stderr writes.
 infrastructure deleted. 52 `.dag` usages rewritten to imperative
 let+call style. `for` loops kept (they're loop executor constructs
 for service call fan-out, not map sugar).
+
+### 7. Mock type generation — fabrication audit (2026-03-10)
+
+After deleting `|>` and converting to `call()` syntax, 529 of 2186
+generated tests failed. All 529 (and the remaining 115 after fixes)
+are instances of the **same fabrication pattern** described in the
+FC taxonomy above: a construction function encounters input it can't
+handle and fabricates something plausible instead of failing.
+
+#### What was fixed (529 → 115)
+
+Each fix below is a local patch that compensates for an upstream
+fabrication. The patches are correct but they treat symptoms. The
+systematic fix is the FC Phase A→D pass that eliminates the upstream
+fabrications entirely.
+
+| Fix | Compensates for | Upstream fabrication (FC ref) |
+|-----|----------------|------------------------------|
+| Use merged registry in `default_value_for_type` | Core-only OnceLock registry | FC-2d: `value_backing_for_type_id` → `Json` |
+| `product_witness` container re-wrapping | `base_type()` strips wrappers | FC-2e: `identity(...)` placeholder for unresolved types |
+| `eval_call` dotted-name passthrough | Evaluator can't execute service calls | FC-5: interp not production-wired |
+| `Env.data_values` propagation | Sibling fns lose data declarations | Missing threading, not a fabrication |
+| `collect_local_let_bindings` Node branch | Intrinsic calls excluded from bindings | Inconsistency, not a fabrication |
+| Filter placeholder witnesses in codegen | `scalar_witness_for_base` → `Str("<Type>")` | FC-2e: fabricated placeholder |
+| `CallableOp` unbound variable fallback | Missing optional input → hard error | Testgen fabrication (skip module gap) |
+| `variant_witnesses` → `Value::Enum` | `Value::Str("Variant")` stale convention | Representation inconsistency |
+| Inline record parser fix | `parse_type_expr` → `Named("Record")` | FC-2e: parser discards structure |
+| `get_by_name` before `resolve_type` | Type expr parser rejects valid names | **Invariant violation** (see below) |
+| `ResourceHandle` → `std/resources.dag` | Rust-only type, no DSL definition | Types should be .dag (principle) |
+| 39 redundant Rust type registrations deleted | Dual source of truth | Types should be .dag (principle) |
+| 13 container aliases → parametric forms | `StringList` vs `List<String>` | Naming inconsistency |
+
+#### Two invariant violations discovered
+
+**IV-1: `register()` accepts names that `resolve_type()` rejects.**
+The type registry has two lookup paths: `get_by_name()` (direct HashMap
+lookup, always works) and `resolve_type()` (parses the name as a type
+expression first). The expression parser rejects names containing commas
+or braces — exactly the names inline record types produce (e.g.,
+`{key: String, value: String}`). This means you can register a type but
+not resolve it. Every callsite of `resolve_type` silently fails for these
+types and falls back to fabrication.
+
+**IV-2: Branded types hide their structural base.**
+`Char = Int where brand("Char")` creates a type DAG where `base_type()`
+returns `"Char"` (the brand name) instead of `"Int"` (the structural
+base). Since brand is a compile-time annotation — `Char` IS `Int` at
+runtime — any function asking "what's the backing type?" gets the wrong
+answer. `scalar_witness_for_base` produces `Str("<Char>")` instead of
+`Int(42)`.
+
+Both are instances of the FC pattern: a construction function encounters
+input it can't handle (unresolvable name / unknown base type) and
+fabricates something plausible (`None` / `Str("<Char>")`).
+
+#### Remaining 115 failures — catalogue
+
+All 115 are downstream consequences of IV-1, IV-2, and FC-2.
+
+**Group A: Char type backing (39 tests)** — consequence of IV-2
+
+| Tests | Error | Node | DSL fn |
+|-------|-------|------|--------|
+| 26 | `cannot compare Str("e0") with Int(768)` | `std.render::span_width`, `std.unicode::string_display_width`, `std.width::truncate_text` | Call `code_point(c)` → compare with block ranges |
+| 13 | `no match arm matched value: Map({"value": Enum})` | `std.unicode::char_width` | `char_display_width` returns `DisplayWidth` variant, `char_width` matches on it |
+
+Root cause: `Char = Int where brand("Char")`. Mock generates `Str` instead
+of `Int`. Fn body does `code_point(c)` → Int, then `>=` comparison fails.
+The 13 no-match errors are downstream: `char_display_width` produces a
+variant wrapped in `Some(value)` Map, match patterns don't match that form.
+
+**Group B: ResourceHandle WrapScalar coercion (34 tests)**
+
+| Tests | Error | Pattern |
+|-------|-------|---------|
+| 34 | `WrapScalar should deliver list; got Map({cap, key, resource_id})` | `acquire_resource_*` → `release_resource_*` across 7 modules |
+
+Root cause: ResourceHandle product witness produces `Map({cap, key,
+resource_id})`. The WrapScalar coercion should wrap it into a List but
+doesn't. Likely because the product witness omits the `type` field
+(the real ResourceHandle includes `type: "resource_handle"` marker)
+or because the coercion type check rejects the new Map shape.
+
+**Group C: List-where-scalar-expected (21 tests)**
+
+| Tests | Error | Node |
+|-------|-------|------|
+| 11 | `field 'name' on List([Map({name, description})])` | `tools.readme::render_readme` |
+| 4 | `field 'text' on List([Map({style, text})])` | `std.render::truncate_spans` |
+| 3 | `field 'success' on List([Map({name, success, ...})])` | `shared.dag_util::aggregate_results`, `format_report` |
+| 2 | `field 'kind' on List([Map(...)])` | misc |
+| 1 | `field 'when_build_system' on List` | `extdeps.gitignore_render` |
+
+Root cause: The mock value is a List containing correct Maps, but the
+fn body accesses `.field` on the List itself. The mock wrapping is wrong
+— the port type says `List<ProductType>` but the fn parameter expects
+a scalar `ProductType`. Cardinality inference may be misattributing.
+
+**Group D: Nested product field resolution (21 tests)**
+
+| Tests | Error | Node |
+|-------|-------|------|
+| 8 | `field 'indent' on Str("mock")` | `std.render::constrain_frame` |
+| 5 | `field 'source' on Str("mock")` | `extdeps.gitignore_render::render_gitignore_file` |
+| 4 | `field 'is_blank' on Str("mock")` | `shared.dag_util::render_document_section` |
+| 4 | `field 'has_title' on Str("mock")` | `shared.dag_util::render_document_section` |
+
+Root cause: Product types containing fields that are themselves product
+types (e.g., `Frame.lines: List<Line>` where `Line.indent: Int`). The
+outer product witness generates correct values for scalar fields, but
+nested product fields get `Str("mock")`. This is IV-1 again: the
+recursive `typed_witness_value_depth` call for inner types uses
+`resolve_type` which may fail for certain type names, falling back
+to the placeholder.
+
+#### Relationship to FC phases
+
+The 115 failures map directly to the FC phase plan:
+
+- **Phase A** (tighten construction): Fix IV-1 (`resolve_type` must handle
+  all registered names) and IV-2 (`base_type` must see through brands).
+  This eliminates Groups A and D (60 tests) by making the type system
+  return correct data instead of fabricated placeholders.
+
+- **Phase B** (convert fabrications to errors): Make `scalar_witness_for_base`
+  return `Err` for unknown bases instead of `Str("<Type>")`. Make
+  `value_backing_for_type_id` return `Err` instead of `Json`. This surfaces
+  the remaining issues as compile-time errors instead of silent mock
+  degradation.
+
+- **Phase C** (remove escape hatches): Delete `is_placeholder_witness` filter,
+  `CallableOp` unbound-variable fallback, and `get_by_name` before
+  `resolve_type` workaround. Once upstream fabrications are gone, these
+  compensating patches become dead code.
+
+- **Phase D** (wire clean path): With correct types flowing through, Group B
+  (ResourceHandle coercion) and Group C (cardinality) either resolve
+  naturally or surface as clear, actionable errors.
+
+### 8. Match-arm service call branch isolation (compiler bug)
+
+The DSL lowerer (`daglang-lower/src/lib.rs:4725-4729`) does not isolate
+service calls within match arms into their respective branches. When a
+`match` expression routes to different services (e.g., OpenAI vs Anthropic),
+all arms' transport triplets end up in BOTH branches. In tests (where all
+transports are mocked), both branches execute and produce real values,
+causing the merge node to reject duplicate scalar values.
+
+**Impact:** Any `match` with service calls in multiple arms fails in
+dry-run/test execution. The deleted `tools.design` module was the only
+consumer. No current DSL module uses this pattern.
+
+**Fix:** Route the match condition into the BranchBuilder's condition port
+so only the matching arm's transports execute. The infrastructure exists
+(`BranchBuilder::condition`), but the match-to-branch lowering path doesn't
+wire it.

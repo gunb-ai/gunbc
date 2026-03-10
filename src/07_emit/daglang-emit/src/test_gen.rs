@@ -158,16 +158,16 @@ fn typed_mock_for_response(response_type: &str) -> &'static str {
         "FileResponse" => r#"{"path":"/tmp/test.txt","success":true,"operation":"read"}"#,
         "RestResponse" => r#"{"status":200,"body":{"ok":true}}"#,
         "ShellResponse" => r#"{"exit_code":0,"stdout":"output"}"#,
-        "StringList" | "NonEmptyStringList" | "List<String>" => r#"["mock-item"]"#,
-        "IntList" | "List<Int>" => r#"[1]"#,
-        "BoolList" | "List<Bool>" => r#"[true]"#,
-        "JsonList" | "List<Json>" => r#"[{"mock":true}]"#,
+        "List<String>" | "NonEmptyList<String>" => r#"["mock-item"]"#,
+        "List<Int>" => r#"[1]"#,
+        "List<Bool>" => r#"[true]"#,
+        "List<Json>" => r#"[{"mock":true}]"#,
         _ => mock_for_backing_type(response_type),
     }
 }
 
 fn mock_for_backing_type(type_id: &str) -> &'static str {
-    match value_backing_for_type_id(type_id) {
+    match value_backing_for_type_id(type_id).unwrap_or(ValueBacking::Json) {
         ValueBacking::String | ValueBacking::Secret => "mock-response",
         ValueBacking::Bool => "true",
         ValueBacking::Int | ValueBacking::Float => "1",
@@ -203,7 +203,7 @@ pub fn witness_mock_responses(response_type: &str) -> Vec<String> {
         ],
         _ => {
             let one = typed_mock_for_response(response_type).to_string();
-            let alternate = match value_backing_for_type_id(response_type) {
+            let alternate = match value_backing_for_type_id(response_type).unwrap_or(ValueBacking::Json) {
                 ValueBacking::String | ValueBacking::Secret => "alt-mock-response".to_string(),
                 ValueBacking::Bool => "false".to_string(),
                 ValueBacking::Int | ValueBacking::Float => "2".to_string(),
@@ -670,7 +670,7 @@ mod tests {
 
     #[test]
     fn typed_mock_for_response_emits_list_shape_for_string_list() {
-        assert_eq!(typed_mock_for_response("StringList"), r#"["mock-item"]"#);
+        assert_eq!(typed_mock_for_response("List<String>"), r#"["mock-item"]"#);
         assert_eq!(typed_mock_for_response("List<String>"), r#"["mock-item"]"#);
     }
 

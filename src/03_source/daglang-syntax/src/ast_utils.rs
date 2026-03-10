@@ -80,7 +80,13 @@ pub fn type_expr_to_string(expr: &TypeExpr) -> String {
         ),
         TypeExpr::Optional(inner) => format!("{}?", type_expr_to_string(inner)),
         TypeExpr::Refined(inner, _) => type_expr_to_string(inner),
-        TypeExpr::Record(_) => "Record".to_string(),
+        TypeExpr::Record(fields) => {
+            let field_strs: Vec<String> = fields
+                .iter()
+                .map(|f| format!("{}: {}", f.name, type_expr_to_string(&f.ty)))
+                .collect();
+            format!("{{{}}}", field_strs.join(", "))
+        }
     }
 }
 

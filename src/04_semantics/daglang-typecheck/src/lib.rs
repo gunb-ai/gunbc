@@ -1037,10 +1037,44 @@ fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> TypeRegistry {
         register_type_def(def, &mut registry);
     }
 
-    // Post-Pass-2 audit: identity types remaining after structural resolution
-    // are expected for externally-defined types. No action needed.
+    // Pass 3: Register inline record types from fn/func parameter and return types.
+    // These aren't top-level type definitions but appear as anonymous structural
+    // types in callable signatures. resolve_field_type_dag registers them when
+    // it encounters TypeExpr::Record.
+    for module in modules {
+        for item in &module.ast.items {
+            let params: &[Param] = match &item.node {
+                Item::FnDef(def) => &def.params,
+                Item::FuncDef(def) => &def.params,
+                Item::PatternDef(def) => &def.params,
+                _ => continue,
+            };
+            for param in params {
+                register_inline_records(&param.ty, &mut registry);
+            }
+        }
+    }
 
     registry
+}
+
+/// Recursively walk a type expression and register any inline record types.
+fn register_inline_records(ty: &TypeExpr, registry: &mut TypeRegistry) {
+    match ty {
+        TypeExpr::Record(_) => {
+            // resolve_field_type_dag handles the registration.
+            resolve_field_type_dag(ty, registry);
+        }
+        TypeExpr::Generic(_, args) => {
+            for arg in args {
+                register_inline_records(arg, registry);
+            }
+        }
+        TypeExpr::Optional(inner) | TypeExpr::Refined(inner, _) => {
+            register_inline_records(inner, registry);
+        }
+        TypeExpr::Named(_) => {}
+    }
 }
 
 /// Recursively extract dependency type names from a TypeExpr.
@@ -1217,7 +1251,7 @@ fn register_type_def(def: &daglang_syntax::ast::TypeDef, registry: &mut TypeRegi
 /// an identity DAG.
 fn resolve_field_type_dag(
     ty: &TypeExpr,
-    registry: &TypeRegistry,
+    registry: &mut TypeRegistry,
 ) -> gunbc_ir::Dag<gunbc_ir::type_op::TypeOp> {
     match ty {
         TypeExpr::Generic(name, args) => {
@@ -1259,7 +1293,20 @@ fn resolve_field_type_dag(
                 return gunbc_ir::type_lib::refined_with_base(&base_name, base_dag, predicates);
             }
         }
-        _ => { /* Named, Record — fall through */ }
+        TypeExpr::Record(fields) => {
+            // Inline record: desugar into a registered anonymous product type.
+            // The structural name (e.g., "{key: String, value: String}") is
+            // deterministic — identical inline records get the same type.
+            let resolved_fields: Vec<(&str, gunbc_ir::Dag<gunbc_ir::type_op::TypeOp>)> = fields
+                .iter()
+                .map(|f| (f.name.as_str(), resolve_field_type_dag(&f.ty, registry)))
+                .collect();
+            let name = type_expr_to_string(ty);
+            let dag = gunbc_ir::type_lib::product_resolved(&name, resolved_fields);
+            registry.register(name.as_str(), dag.clone());
+            return dag;
+        }
+        _ => { /* Named — fall through */ }
     }
 
     // String-based fallback for Named types and unmatched Generic.

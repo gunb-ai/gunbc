@@ -987,7 +987,8 @@ fn rust_type_for_type_id(type_id: &TypeId) -> String {
     }
 
     // Use ValueBacking for structural mapping.
-    match crate::types::value_backing_for_type_id(raw) {
+    // Unknown types fall back to serde_json::Value.
+    match crate::types::value_backing_for_type_id(raw).unwrap_or(ValueBacking::Json) {
         ValueBacking::String => "String".to_string(),
         ValueBacking::Secret => "String".to_string(),
         ValueBacking::Bool => "bool".to_string(),

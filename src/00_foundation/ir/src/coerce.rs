@@ -349,7 +349,7 @@ mod tests {
 
         dag.add_node(Node::opaque(
             "consumer",
-            vec![list("input", "JsonList")], // list [0,∞)
+            vec![list("input", "List<Json>")], // list [0,∞)
             vec![port("result", "Json")],
             TestOp,
         ));
@@ -423,7 +423,7 @@ mod tests {
         dag.add_node(Node::opaque(
             "list_producer",
             vec![],
-            vec![Port::list("out", "JsonList")],
+            vec![Port::list("out", "List<Json>")],
             TestOp,
         ));
 
@@ -459,7 +459,7 @@ mod tests {
 
         dag.add_node(Node::opaque(
             "merger",
-            vec![list("in", "JsonList")],
+            vec![list("in", "List<Json>")],
             vec![],
             TestOp,
         ));

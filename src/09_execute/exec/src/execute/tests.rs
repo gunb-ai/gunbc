@@ -776,7 +776,7 @@ fn test_fan_in_to_list_port_collects_values() {
     dag.add_node(Node::opaque(
         "C",
         vec![fan_in("items", "String")], // fan-in port: multiple edges merge into list
-        vec![list("items", "StringList")], // echo: passes inputs through as outputs
+        vec![list("items", "List<String>")], // echo: passes inputs through as outputs
         TestOp::echo(),
     ));
     // Two edges to the same fan-in port, with explicit indices for ordering
@@ -809,7 +809,7 @@ fn test_coercion_trace_exposes_coerced_input_value() {
     dag.add_node(Node::opaque(
         "B",
         vec![fan_in("items", "String")],
-        vec![list("items", "StringList")],
+        vec![list("items", "List<String>")],
         TestOp::echo(),
     ));
     dag.add_edge(Edge::new("A", "out", "B", "items"));
@@ -833,7 +833,7 @@ fn test_list_output_to_list_input_passes_through() {
     dag.add_node(Node::opaque(
         "A",
         vec![],
-        vec![list("items", "StringList")],
+        vec![list("items", "List<String>")],
         TestOp::produce(
             "items",
             Value::List(vec![
@@ -844,8 +844,8 @@ fn test_list_output_to_list_input_passes_through() {
     ));
     dag.add_node(Node::opaque(
         "B",
-        vec![list("items", "StringList")],
-        vec![list("items", "StringList")],
+        vec![list("items", "List<String>")],
+        vec![list("items", "List<String>")],
         TestOp::echo(),
     ));
     dag.add_edge(edge("A", "items", "B", "items"));
@@ -975,7 +975,7 @@ fn test_list_port_zero_edges_defaults_to_empty_list() {
     dag.add_node(Node::opaque(
         "A",
         vec![fan_in("items", "String")],
-        vec![list("items", "StringList")],
+        vec![list("items", "List<String>")],
         TestOp::echo(),
     ));
 
@@ -996,13 +996,13 @@ fn test_optional_to_list_skips_unit() {
     dag.add_node(Node::opaque(
         "A",
         vec![],
-        vec![optional("item", "OptionalString")],
+        vec![optional("item", "Optional<String>")],
         TestOp::produce("item", Value::Unit),
     ));
     dag.add_node(Node::opaque(
         "B",
         vec![fan_in("items", "String")],
-        vec![list("items", "StringList")],
+        vec![list("items", "List<String>")],
         TestOp::echo(),
     ));
     dag.add_edge(edge("A", "item", "B", "items"));
@@ -1023,13 +1023,13 @@ fn test_optional_to_list_skips_skipped() {
     dag.add_node(Node::opaque(
         "A",
         vec![],
-        vec![optional("item", "OptionalString")],
+        vec![optional("item", "Optional<String>")],
         TestOp::produce("item", Value::Skipped),
     ));
     dag.add_node(Node::opaque(
         "B",
         vec![fan_in("items", "String")],
-        vec![list("items", "StringList")],
+        vec![list("items", "List<String>")],
         TestOp::echo(),
     ));
     dag.add_edge(edge("A", "item", "B", "items"));
@@ -1339,7 +1339,7 @@ fn test_loop_body_executes_per_element() {
     dag.add_node(Node::opaque(
         "source",
         vec![],
-        vec![list("items", "StringList")],
+        vec![list("items", "List<String>")],
         TestLoopOp::Pattern(PatternOp::LoopUnpack {
             // Repurpose as a producer that outputs a list
             input_port: "unused".to_string(),
@@ -2075,7 +2075,7 @@ fn test_coercion_tracking_wrap_scalar() {
     dag.add_node(Node::opaque(
         "consumer",
         vec![fan_in("items", "String")],
-        vec![list("items", "StringList")],
+        vec![list("items", "List<String>")],
         TestOp::echo(),
     ));
     dag.add_edge(edge("producer", "value", "consumer", "items"));
@@ -2145,13 +2145,13 @@ fn test_coercion_tracking_optional_to_list() {
     dag.add_node(Node::opaque(
         "A",
         vec![],
-        vec![optional("item", "OptionalString")],
+        vec![optional("item", "Optional<String>")],
         TestOp::produce("item", Value::Str("present".into())),
     ));
     dag.add_node(Node::opaque(
         "B",
         vec![fan_in("items", "String")],
-        vec![list("items", "StringList")],
+        vec![list("items", "List<String>")],
         TestOp::echo(),
     ));
     dag.add_edge(edge("A", "item", "B", "items"));
