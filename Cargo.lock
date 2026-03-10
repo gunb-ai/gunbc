@@ -202,10 +202,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "daglang-eval"
+version = "0.1.0"
+dependencies = [
+ "gunbc-ir",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "daglang-lower"
 version = "0.1.0"
 dependencies = [
  "daglang-contract",
+ "daglang-eval",
  "daglang-resolve",
  "daglang-syntax",
  "daglang-typecheck",
