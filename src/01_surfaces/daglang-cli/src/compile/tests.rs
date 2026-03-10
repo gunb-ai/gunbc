@@ -1460,6 +1460,8 @@ fn compile_directory_std_helper_intrinsics_typecheck_in_strict_mode() {
         root.join("sample/main.dag"),
         r#"module sample.main
 
+type DocgenSources { path: String }
+
 fn run(sources: DocgenSources) -> String {
   let a = "template" |> replace_section("section", "value")
   let b = render_test_listings(sources: sources)

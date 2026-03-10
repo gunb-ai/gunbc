@@ -452,6 +452,8 @@ fn strict_mode_accepts_std_helper_intrinsic_call_targets() {
         "sample/helpers.dag",
         r#"module sample.helpers
 
+type DocgenSources { path: String }
+
 fn run(sources: DocgenSources) -> String {
   let a = "template" |> replace_section("section", "value")
   let b = render_test_listings(sources: sources)
