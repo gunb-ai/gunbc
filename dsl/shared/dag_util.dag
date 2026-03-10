@@ -22,30 +22,29 @@ import std.types {
 // --- Result aggregation -----------------------------------------------
 
 fn aggregate_results(stages: List<StageResult>) -> Summary {
-  let passed = stages |> filter(s => s.success) |> count()
-  let failed = stages |> filter(s => !s.success && !s.skipped) |> count()
-  { total: stages |> count(), passed: passed, failed: failed }
+  let passed_list = filter(stages, s => s.success)
+  let failed_list = filter(stages, s => !s.success && !s.skipped)
+  { total: count(stages), passed: count(passed_list), failed: count(failed_list) }
 }
 
 fn all_succeeded(stages: List<StageResult>) -> Bool {
-  stages |> all(s => s.success || s.skipped)
+  all(stages, s => s.success || s.skipped)
 }
 
 // --- Report formatting ------------------------------------------------
 
 fn format_report(summary: Summary, stages: List<StageResult>) -> String {
   let summary_line = "Total: {summary.total}, Passed: {summary.passed}, Failed: {summary.failed}"
-  let detail_lines = stages
-    |> map(s => if s.success {
-      "[PASS] {s.name}"
+  let detail_items = map(stages, s => if s.success {
+    "[PASS] {s.name}"
+  } else {
+    if s.skipped {
+      "[SKIP] {s.name}"
     } else {
-      if s.skipped {
-        "[SKIP] {s.name}"
-      } else {
-        "[FAIL] {s.name} :: {s.stderr}"
-      }
-    })
-    |> join("\n")
+      "[FAIL] {s.name} :: {s.stderr}"
+    }
+  })
+  let detail_lines = join(detail_items, "\n")
   "# Report\n{summary_line}\n\n{detail_lines}\n"
 }
 
@@ -132,9 +131,8 @@ fn render_document_section(section: DocumentSection, comment_prefix: String) -> 
   } else {
     ""
   }
-  let lines = section.lines
-    |> map(line => render_document_line(line: line, comment_prefix: comment_prefix))
-    |> join("\n")
+  let rendered_lines = map(section.lines, line => render_document_line(line: line, comment_prefix: comment_prefix))
+  let lines = join(rendered_lines, "\n")
   if section.has_title {
     "{title_line}\n{lines}"
   } else {
@@ -143,9 +141,8 @@ fn render_document_section(section: DocumentSection, comment_prefix: String) -> 
 }
 
 fn render_document(document: Document) -> String {
-  let sections = document.sections
-    |> map(section => render_document_section(section: section, comment_prefix: document.comment_prefix))
-    |> join("\n\n")
+  let rendered_sections = map(document.sections, section => render_document_section(section: section, comment_prefix: document.comment_prefix))
+  let sections = join(rendered_sections, "\n\n")
   let with_header = if document.has_header {
     "{document.header}\n\n{sections}"
   } else {
