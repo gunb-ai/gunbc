@@ -42,9 +42,7 @@ use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv};
 
 use crate::service_ops::{
-    FilesystemExecuteOp, GenericFileParseOp, GenericFilePrepareOp, GenericLocalParseOp,
-    GenericLocalPrepareOp, GenericRestParseOp, GenericRestPrepareOp, GenericShellParseOp,
-    GenericShellPrepareOp, InterfaceStubExecuteOp, InterfaceStubParseOp, InterfaceStubPrepareOp,
+    FilesystemExecuteOp, GenericParseOp, GenericPrepareOp, InterfaceStubExecuteOp,
 };
 
 // ============================================================================
@@ -1304,81 +1302,29 @@ fn resolve_service_transport(
     // Generic dispatch: use the spec from service_metadata to select interpreter.
     if let Some(metadata) = service_metadata {
         if let Some(spec) = &metadata.spec {
-            match (spec, role) {
-                (ServiceOperationSpec::Rest(rest_spec), Some(TransportRole::Prepare)) => {
-                    return Ok(DynOp::new(GenericRestPrepareOp {
-                        spec: (**rest_spec).clone(),
+            match role {
+                Some(TransportRole::Prepare) => {
+                    return Ok(DynOp::new(GenericPrepareOp {
+                        spec: spec.clone(),
                     }));
                 }
-                (ServiceOperationSpec::Rest(rest_spec), Some(TransportRole::Parse)) => {
-                    return Ok(DynOp::new(GenericRestParseOp {
-                        spec: (**rest_spec).clone(),
-                        service_name: metadata.service.clone(),
-                        operation_name: metadata.operation.clone(),
-                        auth_scheme: rest_spec
+                Some(TransportRole::Parse) => {
+                    let auth_scheme = match spec {
+                        ServiceOperationSpec::Rest(rest_spec) => rest_spec
                             .auth_scheme
                             .clone()
                             .unwrap_or_else(|| "none".to_string()),
-                    }));
-                }
-                (ServiceOperationSpec::Shell(shell_spec), Some(TransportRole::Prepare)) => {
-                    return Ok(DynOp::new(GenericShellPrepareOp {
-                        spec: shell_spec.clone(),
-                    }));
-                }
-                (ServiceOperationSpec::Shell(shell_spec), Some(TransportRole::Parse)) => {
-                    return Ok(DynOp::new(GenericShellParseOp {
-                        spec: shell_spec.clone(),
+                        _ => String::new(),
+                    };
+                    return Ok(DynOp::new(GenericParseOp {
+                        spec: spec.clone(),
                         service_name: metadata.service.clone(),
                         operation_name: metadata.operation.clone(),
+                        auth_scheme,
                     }));
                 }
-                (ServiceOperationSpec::File(file_spec), Some(TransportRole::Prepare)) => {
-                    return Ok(DynOp::new(GenericFilePrepareOp {
-                        spec: file_spec.clone(),
-                    }));
-                }
-                (ServiceOperationSpec::File(file_spec), Some(TransportRole::Parse)) => {
-                    return Ok(DynOp::new(GenericFileParseOp {
-                        spec: file_spec.clone(),
-                    }));
-                }
-                (ServiceOperationSpec::Local(local_spec), Some(TransportRole::Prepare)) => {
-                    return Ok(DynOp::new(GenericLocalPrepareOp {
-                        spec: local_spec.clone(),
-                    }));
-                }
-                (ServiceOperationSpec::Local(local_spec), Some(TransportRole::Parse)) => {
-                    return Ok(DynOp::new(GenericLocalParseOp {
-                        spec: local_spec.clone(),
-                    }));
-                }
-                // IS-6: InterfaceStub ops for interface capabilities without profile.
-                (
-                    ServiceOperationSpec::InterfaceStub {
-                        interface,
-                        capability,
-                    },
-                    Some(TransportRole::Prepare),
-                ) => {
-                    return Ok(DynOp::new(InterfaceStubPrepareOp {
-                        interface: interface.clone(),
-                        capability: capability.clone(),
-                    }));
-                }
-                (
-                    ServiceOperationSpec::InterfaceStub {
-                        interface,
-                        capability,
-                    },
-                    Some(TransportRole::Parse),
-                ) => {
-                    return Ok(DynOp::new(InterfaceStubParseOp {
-                        interface: interface.clone(),
-                        capability: capability.clone(),
-                    }));
-                }
-                _ => {}
+                // Execute role is handled by the early return above.
+                Some(TransportRole::Execute) | None => {}
             }
         }
         // Fail-closed: metadata present but no matching operation spec.
@@ -1740,22 +1686,22 @@ mod tests {
             (
                 "service_transport::prepare::shell.Codegen::Check",
                 codegen_check_metadata(),
-                "GenericShellPrepareOp",
+                "GenericPrepareOp",
             ),
             (
                 "service_transport::parse::shell.Codegen::Check",
                 codegen_check_metadata(),
-                "GenericShellParseOp",
+                "GenericParseOp",
             ),
             (
                 "service_transport::prepare::shell.Codegen::Run",
                 codegen_run_metadata(),
-                "GenericShellPrepareOp",
+                "GenericPrepareOp",
             ),
             (
                 "service_transport::parse::shell.Codegen::Run",
                 codegen_run_metadata(),
-                "GenericShellParseOp",
+                "GenericParseOp",
             ),
         ];
 
@@ -2042,25 +1988,25 @@ mod tests {
                 "extdeps.cloud.gcp.sts",
                 "service_transport::prepare::gcp.STS::Exchange",
                 sts_exchange_metadata(),
-                "GenericRestPrepareOp",
+                "GenericPrepareOp",
             ),
             (
                 "extdeps.cloud.gcp.sts",
                 "service_transport::parse::gcp.STS::Exchange",
                 sts_exchange_metadata(),
-                "GenericRestParseOp",
+                "GenericParseOp",
             ),
             (
                 "extdeps.cloud.gcp.secret_manager",
                 "service_transport::prepare::gcp.SecretManager::AccessVersion",
                 secret_manager_metadata(),
-                "GenericRestPrepareOp",
+                "GenericPrepareOp",
             ),
             (
                 "extdeps.cloud.gcp.secret_manager",
                 "service_transport::parse::gcp.SecretManager::AccessVersion",
                 secret_manager_metadata(),
-                "GenericRestParseOp",
+                "GenericParseOp",
             ),
         ];
         for (module, name, metadata, expected_debug) in cases {
