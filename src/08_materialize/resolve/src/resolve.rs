@@ -66,6 +66,13 @@ impl std::fmt::Display for ResolveError {
 
 impl std::error::Error for ResolveError {}
 
+fn default_output_port(outputs: &[Port]) -> String {
+    outputs
+        .first()
+        .map(|p| p.name.0.clone())
+        .unwrap_or_else(|| "result".to_string())
+}
+
 fn declared_output_ports(outputs: &[Port]) -> Vec<(String, bool)> {
     outputs
         .iter()
@@ -377,365 +384,282 @@ impl Executable for LiteralSourceOp {
     }
 }
 
-/// C24: Extract a named field from a Map/Record/JSON input.
-/// Pure structural projection — no runtime interpreter needed.
-/// Fail-closed: missing field, missing input port, or non-Map/Json input → ExecError.
-#[derive(Debug, Clone)]
-struct GetFieldOp {
-    input_port: String,
-    field: String,
+/// C24: Consolidated pure-value primitive op.
+///
+/// Replaces 10 separate structs (GetFieldOp, StringInterpolateOp, BinaryOpOp,
+/// UnaryOpOp, ConditionalOp, MatchDispatchOp, RecordConstructOp, NullCoalesceOp,
+/// VariantConstructOp, ListConstructOp) with a single struct that dispatches
+/// via `execute_pure_primitive()`.
+#[derive(Clone)]
+struct PurePrimitiveOp {
+    kind: PrimitiveOpKind,
     output_port: String,
-}
-
-impl Executable for GetFieldOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let value = match inputs.get(&self.input_port) {
-            Some(value) => value.clone(),
-            None => {
-                return Err(ExecError::new(format!(
-                    "GetField `{}`: missing input port `{}` in inputs map (resolver/runtime bug)",
-                    self.field, self.input_port
-                )));
-            }
-        };
-        let extracted = match &value {
-            Value::Map(fields) => fields.get(&self.field).cloned().ok_or_else(|| {
-                let mut available: Vec<&String> = fields.keys().collect();
-                available.sort();
-                ExecError::new(format!(
-                    "GetField `{}`: field not found in Map on port `{}`. Available fields: {:?}",
-                    self.field, self.input_port, available
-                ))
-            })?,
-            Value::Json(serde_json::Value::Object(map)) => {
-                map.get(&self.field).map(|v| Value::Json(v.clone())).ok_or_else(|| {
-                    let mut available: Vec<&String> = map.keys().collect();
-                    available.sort();
-                    ExecError::new(format!(
-                        "GetField `{}`: field not found in Json object on port `{}`. Available fields: {:?}",
-                        self.field, self.input_port, available
-                    ))
-                })?
-            }
-            Value::Skipped => {
-                return Err(ExecError::new(format!(
-                    "GetField `{}`: input port `{}` is Skipped (unwired or missing upstream)",
-                    self.field, self.input_port
-                )));
-            }
-            other => {
-                return Err(ExecError::new(format!(
-                    "GetField `{}`: expected Map or Json object on port `{}`, got {:?}",
-                    self.field, self.input_port, other
-                )));
-            }
-        };
-        OutputMap::new()
-            .value(self.output_port.as_str(), extracted)
-            .ok()
-    }
-}
-
-/// C24: String interpolation — concatenate static parts with dynamic values.
-/// Inputs: one port per interpolated expression. Output: concatenated string.
-#[derive(Debug, Clone)]
-struct StringInterpolateOp {
-    parts: Vec<String>,
-    input_ports: Vec<String>,
-    output_port: String,
-}
-
-impl Executable for StringInterpolateOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        // If any interpolated input is Skipped, propagate Skipped.
-        for port in &self.input_ports {
-            if matches!(
-                require_input_port(&inputs, port, "StringInterpolate")?,
-                Value::Skipped
-            ) {
-                return OutputMap::new()
-                    .value(&self.output_port, Value::Skipped)
-                    .ok();
-            }
-        }
-        let mut result = String::new();
-        for (i, part) in self.parts.iter().enumerate() {
-            result.push_str(part);
-            if i < self.input_ports.len() {
-                let value =
-                    require_input_port(&inputs, &self.input_ports[i], "StringInterpolate")?.clone();
-                result.push_str(&daglang_lower::eval::value_to_string(&value));
-            }
-        }
-        OutputMap::new()
-            .value(&self.output_port, Value::Str(result))
-            .ok()
-    }
-}
-
-/// C24: Binary operation — applies an operator to two input values.
-/// Inputs: `left`, `right`. Output: result of the operation.
-#[derive(Debug, Clone)]
-struct BinaryOpOp {
-    op: daglang_lower::expr::LoweredBinOp,
-    output_port: String,
-}
-
-impl Executable for BinaryOpOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let left = require_input_port(&inputs, "left", "BinaryOp")?.clone();
-        let right = require_input_port(&inputs, "right", "BinaryOp")?.clone();
-        // Handle short-circuit semantics for logical/null-coalesce ops
-        let result = match self.op {
-            daglang_lower::expr::LoweredBinOp::And => {
-                if matches!(left, Value::Skipped) {
-                    Value::Skipped
-                } else if !daglang_lower::eval::value_truthy(&left) {
-                    Value::Bool(false)
-                } else if matches!(right, Value::Skipped) {
-                    Value::Skipped
-                } else {
-                    Value::Bool(daglang_lower::eval::value_truthy(&right))
-                }
-            }
-            daglang_lower::expr::LoweredBinOp::Or => {
-                if matches!(left, Value::Skipped) {
-                    Value::Skipped
-                } else if daglang_lower::eval::value_truthy(&left) {
-                    Value::Bool(true)
-                } else if matches!(right, Value::Skipped) {
-                    Value::Skipped
-                } else {
-                    Value::Bool(daglang_lower::eval::value_truthy(&right))
-                }
-            }
-            daglang_lower::expr::LoweredBinOp::NullCoalesce => {
-                if !matches!(left, Value::Unit | Value::Skipped) {
-                    left
-                } else {
-                    right
-                }
-            }
-            op => {
-                if matches!(left, Value::Skipped) || matches!(right, Value::Skipped) {
-                    Value::Skipped
-                } else {
-                    daglang_lower::eval::eval_binop(&left, op, &right)
-                        .map_err(|e| ExecError::new(format!("BinaryOp {:?}: {}", self.op, e)))?
-                }
-            }
-        };
-        OutputMap::new().value(&self.output_port, result).ok()
-    }
-}
-
-/// C24: Unary operation — `!x` or `-x`.
-/// Input: `operand`. Output: result.
-#[derive(Debug, Clone)]
-struct UnaryOpOp {
-    op: daglang_lower::expr::LoweredUnaryOp,
-    output_port: String,
-}
-
-impl Executable for UnaryOpOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let val = require_input_port(&inputs, "operand", "UnaryOp")?.clone();
-        if matches!(val, Value::Skipped) {
-            return OutputMap::new()
-                .value(&self.output_port, Value::Skipped)
-                .ok();
-        }
-        let result = match self.op {
-            daglang_lower::expr::LoweredUnaryOp::Not => {
-                Value::Bool(!daglang_lower::eval::value_truthy(&val))
-            }
-            daglang_lower::expr::LoweredUnaryOp::Neg => match val {
-                Value::Int(i) => Value::Int(-i),
-                Value::Float(f) => Value::Float(-f),
-                other => {
-                    return Err(ExecError::new(format!(
-                        "UnaryOp Neg: cannot negate {:?}",
-                        other
-                    )));
-                }
-            },
-        };
-        OutputMap::new().value(&self.output_port, result).ok()
-    }
-}
-
-/// C24: Conditional — selects between `then` and `else` based on `condition`.
-/// Inputs: `condition`, `then`, `else`. Output: selected branch.
-#[derive(Debug, Clone)]
-struct ConditionalOp {
-    output_port: String,
+    /// Only used for GetField variant — the input port name to read from.
+    get_field_input_port: String,
+    /// Only used for Conditional variant — whether an `else` branch exists.
     has_else: bool,
 }
 
-impl Executable for ConditionalOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let condition = require_input_port(&inputs, "condition", "Conditional")?.clone();
-        if matches!(condition, Value::Skipped) {
-            return OutputMap::new()
-                .value(&self.output_port, Value::Skipped)
-                .ok();
-        }
-        let result = if daglang_lower::eval::value_truthy(&condition) {
-            require_input_port(&inputs, "then", "Conditional")?.clone()
-        } else if self.has_else {
-            require_input_port(&inputs, "else", "Conditional")?.clone()
-        } else {
-            Value::Skipped
-        };
-        OutputMap::new().value(&self.output_port, result).ok()
-    }
-}
-
-/// C24: Match dispatch — evaluates match arms against a scrutinee value.
-/// Input: `scrutinee` (plus any captured env values by name). Output: matched body result.
-#[derive(Clone)]
-struct MatchDispatchOp {
-    arms: Vec<daglang_lower::expr::LoweredMatchArm>,
-    sibling_fns: HashMap<String, daglang_lower::LoweredFnBody>,
-    output_port: String,
-}
-
-impl std::fmt::Debug for MatchDispatchOp {
+impl std::fmt::Debug for PurePrimitiveOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("MatchDispatchOp")
-            .field("arms", &self.arms.len())
-            .field("sibling_fns", &self.sibling_fns.len())
+        f.debug_struct("PurePrimitiveOp")
+            .field("kind", &std::mem::discriminant(&self.kind))
             .field("output_port", &self.output_port)
             .finish()
     }
 }
 
-impl Executable for MatchDispatchOp {
+impl Executable for PurePrimitiveOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let scrutinee = require_input_port(&inputs, "scrutinee", "MatchDispatch")?.clone();
-        if matches!(scrutinee, Value::Skipped) {
-            return OutputMap::new()
-                .value(&self.output_port, Value::Skipped)
-                .ok();
-        }
-        // Build an env from all non-scrutinee inputs for arm body evaluation
-        let env: HashMap<String, Value> = inputs
-            .iter()
-            .filter(|(k, _)| k.as_str() != "scrutinee")
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-        let result =
-            daglang_lower::eval::eval_match(&scrutinee, &self.arms, &env, &self.sibling_fns)
-                .map_err(|e| ExecError::new(format!("MatchDispatch: {e}")))?;
-        OutputMap::new().value(&self.output_port, result).ok()
-    }
-}
-
-/// C24: Record construction — assembles named fields into a Value::Map.
-/// Inputs: one port per field name. Output: Value::Map with all fields.
-#[derive(Debug, Clone)]
-struct RecordConstructOp {
-    fields: Vec<String>,
-    output_port: String,
-}
-
-impl Executable for RecordConstructOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let mut map = std::collections::BTreeMap::new();
-        for field in &self.fields {
-            let value = require_input_port(&inputs, field, "RecordConstruct")?.clone();
-            if matches!(value, Value::Skipped) {
-                return OutputMap::new()
-                    .value(&self.output_port, Value::Skipped)
-                    .ok();
+        match &self.kind {
+            PrimitiveOpKind::GetField { field } => {
+                let value = match inputs.get(&self.get_field_input_port) {
+                    Some(value) => value.clone(),
+                    None => {
+                        return Err(ExecError::new(format!(
+                            "GetField `{}`: missing input port `{}` in inputs map (resolver/runtime bug)",
+                            field, self.get_field_input_port
+                        )));
+                    }
+                };
+                let extracted = match &value {
+                    Value::Map(fields) => fields.get(field).cloned().ok_or_else(|| {
+                        let mut available: Vec<&String> = fields.keys().collect();
+                        available.sort();
+                        ExecError::new(format!(
+                            "GetField `{}`: field not found in Map on port `{}`. Available fields: {:?}",
+                            field, self.get_field_input_port, available
+                        ))
+                    })?,
+                    Value::Json(serde_json::Value::Object(map)) => {
+                        map.get(field).map(|v| Value::Json(v.clone())).ok_or_else(|| {
+                            let mut available: Vec<&String> = map.keys().collect();
+                            available.sort();
+                            ExecError::new(format!(
+                                "GetField `{}`: field not found in Json object on port `{}`. Available fields: {:?}",
+                                field, self.get_field_input_port, available
+                            ))
+                        })?
+                    }
+                    Value::Skipped => {
+                        return Err(ExecError::new(format!(
+                            "GetField `{}`: input port `{}` is Skipped (unwired or missing upstream)",
+                            field, self.get_field_input_port
+                        )));
+                    }
+                    other => {
+                        return Err(ExecError::new(format!(
+                            "GetField `{}`: expected Map or Json object on port `{}`, got {:?}",
+                            field, self.get_field_input_port, other
+                        )));
+                    }
+                };
+                OutputMap::new()
+                    .value(self.output_port.as_str(), extracted)
+                    .ok()
             }
-            map.insert(field.clone(), value);
-        }
-        OutputMap::new()
-            .value(&self.output_port, Value::Map(map))
-            .ok()
-    }
-}
-
-/// C24: Null coalesce — `a ?? b`. Returns `value` if non-null, else `default`.
-/// Inputs: `value`, `default`. Output: coalesced result.
-#[derive(Debug, Clone)]
-struct NullCoalesceOp {
-    output_port: String,
-}
-
-impl Executable for NullCoalesceOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let value = require_input_port(&inputs, "value", "NullCoalesce")?.clone();
-        let default_value = require_input_port(&inputs, "default", "NullCoalesce")?.clone();
-        let result = if matches!(value, Value::Unit | Value::Skipped) {
-            default_value
-        } else {
-            value
-        };
-        OutputMap::new().value(&self.output_port, result).ok()
-    }
-}
-
-/// C24: Variant construction — produces tagged sum-type values.
-/// Unit variants → Value::Str(tag). Payload variants → Value::Map with `_variant` tag.
-#[derive(Debug, Clone)]
-struct VariantConstructOp {
-    tag: String,
-    fields: Vec<String>,
-    output_port: String,
-}
-
-impl Executable for VariantConstructOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let result = if self.fields.is_empty() {
-            // Unit variant
-            Value::Enum {
-                ty: String::new(),
-                variant: self.tag.clone(),
+            PrimitiveOpKind::StringInterpolate { parts, input_ports } => {
+                // If any interpolated input is Skipped, propagate Skipped.
+                for port in input_ports {
+                    if matches!(
+                        require_input_port(&inputs, port, "StringInterpolate")?,
+                        Value::Skipped
+                    ) {
+                        return OutputMap::new()
+                            .value(&self.output_port, Value::Skipped)
+                            .ok();
+                    }
+                }
+                let mut result = String::new();
+                for (i, part) in parts.iter().enumerate() {
+                    result.push_str(part);
+                    if i < input_ports.len() {
+                        let value =
+                            require_input_port(&inputs, &input_ports[i], "StringInterpolate")?.clone();
+                        result.push_str(&daglang_lower::eval::value_to_string(&value));
+                    }
+                }
+                OutputMap::new()
+                    .value(&self.output_port, Value::Str(result))
+                    .ok()
             }
-        } else {
-            // Payload variant — if any field is Skipped, propagate Skipped.
-            let mut map = std::collections::BTreeMap::new();
-            map.insert("_variant".to_string(), Value::Str(self.tag.clone()));
-            for field in &self.fields {
-                let value = require_input_port(&inputs, field, "VariantConstruct")?.clone();
-                if matches!(value, Value::Skipped) {
+            PrimitiveOpKind::BinaryOp { op: bin_op } => {
+                let left = require_input_port(&inputs, "left", "BinaryOp")?.clone();
+                let right = require_input_port(&inputs, "right", "BinaryOp")?.clone();
+                // Handle short-circuit semantics for logical/null-coalesce ops
+                let result = match bin_op {
+                    daglang_lower::expr::LoweredBinOp::And => {
+                        if matches!(left, Value::Skipped) {
+                            Value::Skipped
+                        } else if !daglang_lower::eval::value_truthy(&left) {
+                            Value::Bool(false)
+                        } else if matches!(right, Value::Skipped) {
+                            Value::Skipped
+                        } else {
+                            Value::Bool(daglang_lower::eval::value_truthy(&right))
+                        }
+                    }
+                    daglang_lower::expr::LoweredBinOp::Or => {
+                        if matches!(left, Value::Skipped) {
+                            Value::Skipped
+                        } else if daglang_lower::eval::value_truthy(&left) {
+                            Value::Bool(true)
+                        } else if matches!(right, Value::Skipped) {
+                            Value::Skipped
+                        } else {
+                            Value::Bool(daglang_lower::eval::value_truthy(&right))
+                        }
+                    }
+                    daglang_lower::expr::LoweredBinOp::NullCoalesce => {
+                        if !matches!(left, Value::Unit | Value::Skipped) {
+                            left
+                        } else {
+                            right
+                        }
+                    }
+                    _ => {
+                        if matches!(left, Value::Skipped) || matches!(right, Value::Skipped) {
+                            Value::Skipped
+                        } else {
+                            daglang_lower::eval::eval_binop(&left, *bin_op, &right)
+                                .map_err(|e| ExecError::new(format!("BinaryOp {:?}: {}", bin_op, e)))?
+                        }
+                    }
+                };
+                OutputMap::new().value(&self.output_port, result).ok()
+            }
+            PrimitiveOpKind::UnaryOp { op: unary_op } => {
+                let val = require_input_port(&inputs, "operand", "UnaryOp")?.clone();
+                if matches!(val, Value::Skipped) {
                     return OutputMap::new()
                         .value(&self.output_port, Value::Skipped)
                         .ok();
                 }
-                map.insert(field.clone(), value);
+                let result = match unary_op {
+                    daglang_lower::expr::LoweredUnaryOp::Not => {
+                        Value::Bool(!daglang_lower::eval::value_truthy(&val))
+                    }
+                    daglang_lower::expr::LoweredUnaryOp::Neg => match val {
+                        Value::Int(i) => Value::Int(-i),
+                        Value::Float(f) => Value::Float(-f),
+                        other => {
+                            return Err(ExecError::new(format!(
+                                "UnaryOp Neg: cannot negate {:?}",
+                                other
+                            )));
+                        }
+                    },
+                };
+                OutputMap::new().value(&self.output_port, result).ok()
             }
-            Value::Map(map)
-        };
-        OutputMap::new().value(&self.output_port, result).ok()
-    }
-}
-
-/// C24: List construction — collects `elem_0`, `elem_1`, ... input ports into Value::List.
-#[derive(Debug, Clone)]
-struct ListConstructOp {
-    count: usize,
-    output_port: String,
-}
-
-impl Executable for ListConstructOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let mut elements = Vec::with_capacity(self.count);
-        for i in 0..self.count {
-            let port = format!("elem_{i}");
-            let value = require_input_port(&inputs, &port, "ListConstruct")?.clone();
-            if matches!(value, Value::Skipped) {
-                return OutputMap::new()
-                    .value(&self.output_port, Value::Skipped)
-                    .ok();
+            PrimitiveOpKind::Conditional => {
+                let condition = require_input_port(&inputs, "condition", "Conditional")?.clone();
+                if matches!(condition, Value::Skipped) {
+                    return OutputMap::new()
+                        .value(&self.output_port, Value::Skipped)
+                        .ok();
+                }
+                let result = if daglang_lower::eval::value_truthy(&condition) {
+                    require_input_port(&inputs, "then", "Conditional")?.clone()
+                } else if self.has_else {
+                    require_input_port(&inputs, "else", "Conditional")?.clone()
+                } else {
+                    Value::Skipped
+                };
+                OutputMap::new().value(&self.output_port, result).ok()
             }
-            elements.push(value);
+            PrimitiveOpKind::MatchDispatch { arms, sibling_fns } => {
+                let scrutinee = require_input_port(&inputs, "scrutinee", "MatchDispatch")?.clone();
+                if matches!(scrutinee, Value::Skipped) {
+                    return OutputMap::new()
+                        .value(&self.output_port, Value::Skipped)
+                        .ok();
+                }
+                // Build an env from all non-scrutinee inputs for arm body evaluation
+                let env: HashMap<String, Value> = inputs
+                    .iter()
+                    .filter(|(k, _)| k.as_str() != "scrutinee")
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                // Convert BTreeMap to HashMap for eval_match
+                let sibling_fns_map: HashMap<String, daglang_lower::LoweredFnBody> =
+                    sibling_fns.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                let result =
+                    daglang_lower::eval::eval_match(&scrutinee, arms, &env, &sibling_fns_map)
+                        .map_err(|e| ExecError::new(format!("MatchDispatch: {e}")))?;
+                OutputMap::new().value(&self.output_port, result).ok()
+            }
+            PrimitiveOpKind::RecordConstruct { fields } => {
+                let mut map = std::collections::BTreeMap::new();
+                for field in fields {
+                    let value = require_input_port(&inputs, field, "RecordConstruct")?.clone();
+                    if matches!(value, Value::Skipped) {
+                        return OutputMap::new()
+                            .value(&self.output_port, Value::Skipped)
+                            .ok();
+                    }
+                    map.insert(field.clone(), value);
+                }
+                OutputMap::new()
+                    .value(&self.output_port, Value::Map(map))
+                    .ok()
+            }
+            PrimitiveOpKind::NullCoalesce => {
+                let value = require_input_port(&inputs, "value", "NullCoalesce")?.clone();
+                let default_value = require_input_port(&inputs, "default", "NullCoalesce")?.clone();
+                let result = if matches!(value, Value::Unit | Value::Skipped) {
+                    default_value
+                } else {
+                    value
+                };
+                OutputMap::new().value(&self.output_port, result).ok()
+            }
+            PrimitiveOpKind::VariantConstruct { tag, fields } => {
+                let result = if fields.is_empty() {
+                    // Unit variant
+                    Value::Enum {
+                        ty: String::new(),
+                        variant: tag.clone(),
+                    }
+                } else {
+                    // Payload variant — if any field is Skipped, propagate Skipped.
+                    let mut map = std::collections::BTreeMap::new();
+                    map.insert("_variant".to_string(), Value::Str(tag.clone()));
+                    for field in fields {
+                        let value = require_input_port(&inputs, field, "VariantConstruct")?.clone();
+                        if matches!(value, Value::Skipped) {
+                            return OutputMap::new()
+                                .value(&self.output_port, Value::Skipped)
+                                .ok();
+                        }
+                        map.insert(field.clone(), value);
+                    }
+                    Value::Map(map)
+                };
+                OutputMap::new().value(&self.output_port, result).ok()
+            }
+            PrimitiveOpKind::ListConstruct { count } => {
+                let mut elements = Vec::with_capacity(*count);
+                for i in 0..*count {
+                    let port = format!("elem_{i}");
+                    let value = require_input_port(&inputs, &port, "ListConstruct")?.clone();
+                    if matches!(value, Value::Skipped) {
+                        return OutputMap::new()
+                            .value(&self.output_port, Value::Skipped)
+                            .ok();
+                    }
+                    elements.push(value);
+                }
+                OutputMap::new()
+                    .value(&self.output_port, Value::List(elements))
+                    .ok()
+            }
+            // Non-pure-value variants should never reach PurePrimitiveOp
+            _ => unreachable!(
+                "PurePrimitiveOp received non-pure-value PrimitiveOpKind: {:?}",
+                std::mem::discriminant(&self.kind)
+            ),
         }
-        OutputMap::new()
-            .value(&self.output_port, Value::List(elements))
-            .ok()
     }
 }
 
@@ -1158,104 +1082,36 @@ fn resolve_primitive(
                             "GetField `{field}`: node has no output port (compiler bug)"
                         ),
                     })?;
-            Ok(DynOp::new(GetFieldOp {
-                input_port,
-                field: field.clone(),
+            Ok(DynOp::new(PurePrimitiveOp {
+                kind: kind.clone(),
                 output_port,
-            }))
-        }
-        PrimitiveOpKind::StringInterpolate { parts, input_ports } => {
-            let output_port = outputs
-                .first()
-                .map(|p| p.name.0.clone())
-                .unwrap_or_else(|| "result".to_string());
-            Ok(DynOp::new(StringInterpolateOp {
-                parts: parts.clone(),
-                input_ports: input_ports.clone(),
-                output_port,
-            }))
-        }
-        PrimitiveOpKind::BinaryOp { op } => {
-            let output_port = outputs
-                .first()
-                .map(|p| p.name.0.clone())
-                .unwrap_or_else(|| "result".to_string());
-            Ok(DynOp::new(BinaryOpOp {
-                op: *op,
-                output_port,
-            }))
-        }
-        PrimitiveOpKind::UnaryOp { op } => {
-            let output_port = outputs
-                .first()
-                .map(|p| p.name.0.clone())
-                .unwrap_or_else(|| "result".to_string());
-            Ok(DynOp::new(UnaryOpOp {
-                op: *op,
-                output_port,
+                get_field_input_port: input_port,
+                has_else: false,
             }))
         }
         PrimitiveOpKind::Conditional => {
-            let output_port = outputs
-                .first()
-                .map(|p| p.name.0.clone())
-                .unwrap_or_else(|| "result".to_string());
+            let output_port = default_output_port(outputs);
             let has_else = inputs.iter().any(|port| port.name.0 == "else");
-            Ok(DynOp::new(ConditionalOp {
+            Ok(DynOp::new(PurePrimitiveOp {
+                kind: kind.clone(),
                 output_port,
+                get_field_input_port: String::new(),
                 has_else,
             }))
         }
-        PrimitiveOpKind::MatchDispatch { arms, sibling_fns } => {
-            let output_port = outputs
-                .first()
-                .map(|p| p.name.0.clone())
-                .unwrap_or_else(|| "result".to_string());
-            Ok(DynOp::new(MatchDispatchOp {
-                arms: arms.clone(),
-                sibling_fns: sibling_fns
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect(),
-                output_port,
-            }))
-        }
-        PrimitiveOpKind::RecordConstruct { fields } => {
-            let output_port = outputs
-                .first()
-                .map(|p| p.name.0.clone())
-                .unwrap_or_else(|| "result".to_string());
-            Ok(DynOp::new(RecordConstructOp {
-                fields: fields.clone(),
-                output_port,
-            }))
-        }
-        PrimitiveOpKind::NullCoalesce => {
-            let output_port = outputs
-                .first()
-                .map(|p| p.name.0.clone())
-                .unwrap_or_else(|| "result".to_string());
-            Ok(DynOp::new(NullCoalesceOp { output_port }))
-        }
-        PrimitiveOpKind::VariantConstruct { tag, fields } => {
-            let output_port = outputs
-                .first()
-                .map(|p| p.name.0.clone())
-                .unwrap_or_else(|| "result".to_string());
-            Ok(DynOp::new(VariantConstructOp {
-                tag: tag.clone(),
-                fields: fields.clone(),
-                output_port,
-            }))
-        }
-        PrimitiveOpKind::ListConstruct { count } => {
-            let output_port = outputs
-                .first()
-                .map(|p| p.name.0.clone())
-                .unwrap_or_else(|| "result".to_string());
-            Ok(DynOp::new(ListConstructOp {
-                count: *count,
-                output_port,
+        PrimitiveOpKind::StringInterpolate { .. }
+        | PrimitiveOpKind::BinaryOp { .. }
+        | PrimitiveOpKind::UnaryOp { .. }
+        | PrimitiveOpKind::MatchDispatch { .. }
+        | PrimitiveOpKind::RecordConstruct { .. }
+        | PrimitiveOpKind::NullCoalesce
+        | PrimitiveOpKind::VariantConstruct { .. }
+        | PrimitiveOpKind::ListConstruct { .. } => {
+            Ok(DynOp::new(PurePrimitiveOp {
+                kind: kind.clone(),
+                output_port: default_output_port(outputs),
+                get_field_input_port: String::new(),
+                has_else: false,
             }))
         }
     }
@@ -2906,8 +2762,10 @@ mod tests {
 
     #[test]
     fn conditional_op_without_else_returns_skipped() {
-        let op = ConditionalOp {
+        let op = PurePrimitiveOp {
+            kind: PrimitiveOpKind::Conditional,
             output_port: "result".to_string(),
+            get_field_input_port: String::new(),
             has_else: false,
         };
         let mut inputs = HashMap::new();
@@ -2923,8 +2781,10 @@ mod tests {
 
     #[test]
     fn conditional_op_missing_condition_errors() {
-        let op = ConditionalOp {
+        let op = PurePrimitiveOp {
+            kind: PrimitiveOpKind::Conditional,
             output_port: "result".to_string(),
+            get_field_input_port: String::new(),
             has_else: true,
         };
         let mut inputs = HashMap::new();
@@ -2942,9 +2802,13 @@ mod tests {
 
     #[test]
     fn binary_op_missing_right_errors() {
-        let op = BinaryOpOp {
-            op: daglang_lower::expr::LoweredBinOp::Add,
+        let op = PurePrimitiveOp {
+            kind: PrimitiveOpKind::BinaryOp {
+                op: daglang_lower::expr::LoweredBinOp::Add,
+            },
             output_port: "result".to_string(),
+            get_field_input_port: String::new(),
+            has_else: false,
         };
         let mut inputs = HashMap::new();
         inputs.insert("left".to_string(), Value::Int(1));
@@ -2960,9 +2824,13 @@ mod tests {
 
     #[test]
     fn record_construct_missing_field_errors() {
-        let op = RecordConstructOp {
-            fields: vec!["x".to_string(), "y".to_string()],
+        let op = PurePrimitiveOp {
+            kind: PrimitiveOpKind::RecordConstruct {
+                fields: vec!["x".to_string(), "y".to_string()],
+            },
             output_port: "result".to_string(),
+            get_field_input_port: String::new(),
+            has_else: false,
         };
         let mut inputs = HashMap::new();
         inputs.insert("x".to_string(), Value::Int(1));
