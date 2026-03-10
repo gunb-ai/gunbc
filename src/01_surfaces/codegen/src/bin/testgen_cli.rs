@@ -1,3 +1,6 @@
+// Binary entrypoint — eprintln is used for user-facing CLI diagnostics.
+#![allow(clippy::disallowed_macros)]
+
 //! Pure Rust testgen binary.
 //!
 //! Discovers all compilable `.dag` modules, renders auto-generated tests,

@@ -1,3 +1,6 @@
+// LogMetricsSink intentionally writes telemetry to stderr.
+#![allow(clippy::disallowed_macros)]
+
 //! Transport metrics hooks.
 //!
 //! Provides observability for transport operations: request counts, timing,

@@ -1,3 +1,7 @@
+// This module writes user-facing progress and diagnostic output to stderr,
+// which is the intended use of eprintln in binary-level display code.
+#![allow(clippy::disallowed_macros)]
+
 //! Shared execute-and-display logic for all CLI tools.
 //!
 //! Encapsulates the two display paths in a single generic function. All CLI

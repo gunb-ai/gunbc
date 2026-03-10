@@ -607,8 +607,9 @@ fn map_to_c_type_with_registry(
     if let Some(reg) = registry {
         let type_id = gunbc_ir::TypeId::new(abstract_type);
         if let Some(dag) = reg.resolve_type(&type_id) {
-            let shape = gunbc_ir::type_shape(&dag);
-            return c_type_from_shape(&shape);
+            if let Ok(shape) = gunbc_ir::type_shape(&dag) {
+                return c_type_from_shape(&shape);
+            }
         }
     }
     c_type_from_emitted(&crate::type_mapping::resolve_and_emit(

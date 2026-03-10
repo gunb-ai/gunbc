@@ -1,3 +1,6 @@
+// Binary entrypoint — eprintln is used for user-facing CLI diagnostics.
+#![allow(clippy::disallowed_macros)]
+
 //! daglang CLI: dag viz, dag expand, dag progress, dag topology, dag modules.
 //!
 //! The development tool for the DSL compiler. Provides visualization

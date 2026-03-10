@@ -1,3 +1,6 @@
+// Binary command dispatch — eprintln is used for user-facing CLI diagnostics.
+#![allow(clippy::disallowed_macros)]
+
 use super::*;
 
 pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {

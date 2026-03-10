@@ -887,8 +887,12 @@ impl TypeRegistry {
         };
 
         // Structural shape compatibility: walk the type DAGs directly.
-        let from_shape = crate::type_shape::type_shape(&from_dag);
-        let to_shape = crate::type_shape::type_shape(&to_dag);
+        let Ok(from_shape) = crate::type_shape::type_shape(&from_dag) else {
+            return to.0 == "Json";
+        };
+        let Ok(to_shape) = crate::type_shape::type_shape(&to_dag) else {
+            return to.0 == "Json";
+        };
         if structural_shapes_compatible(&from_shape, &to_shape) {
             return true;
         }
@@ -944,8 +948,12 @@ impl TypeRegistry {
 
         // If both types are Brands with different names, they're incompatible
         // regardless of base types or predicates. Brand enforces nominal distinctness.
-        let from_shape = crate::type_shape::type_shape(&from_dag);
-        let to_shape = crate::type_shape::type_shape(&to_dag);
+        let Ok(from_shape) = crate::type_shape::type_shape(&from_dag) else {
+            return base_ok;
+        };
+        let Ok(to_shape) = crate::type_shape::type_shape(&to_dag) else {
+            return base_ok;
+        };
         if let (
             crate::type_shape::TypeShape::Brand(fn_, _),
             crate::type_shape::TypeShape::Brand(tn, _),
@@ -996,7 +1004,7 @@ impl TypeRegistry {
     /// This replaces the free function `value_backing_for_type_id()` by using
     /// the registry's type DAGs and coercion paths instead of the hardcoded
     /// `PortType` enum.
-    pub fn value_backing(&self, type_id: &TypeId) -> crate::types::ValueBacking {
+    pub fn value_backing(&self, type_id: &TypeId) -> Result<crate::types::ValueBacking, String> {
         use crate::types::{
             optional_inner_type_id, parse_map_type_id, parse_unary_generic_type_id, ValueBacking,
         };
@@ -1005,18 +1013,18 @@ impl TypeRegistry {
 
         // Credential is a structured map payload at runtime.
         if raw == "Credential" {
-            return ValueBacking::Map;
+            return Ok(ValueBacking::Map);
         }
 
         // Parametric containers.
         if parse_map_type_id(raw).is_some() {
-            return ValueBacking::Map;
+            return Ok(ValueBacking::Map);
         }
         if parse_unary_generic_type_id(raw, "Set").is_some() {
-            return ValueBacking::Set;
+            return Ok(ValueBacking::Set);
         }
         if parse_unary_generic_type_id(raw, "List").is_some() {
-            return ValueBacking::List;
+            return Ok(ValueBacking::List);
         }
         if let Some(inner) = optional_inner_type_id(raw) {
             return self.value_backing(&TypeId::from(inner));
@@ -1024,14 +1032,14 @@ impl TypeRegistry {
 
         // Primitives (direct match on well-known type names).
         match raw.as_str() {
-            "String" => return ValueBacking::String,
-            "Bool" => return ValueBacking::Bool,
-            "Int" => return ValueBacking::Int,
-            "Float" => return ValueBacking::Float,
-            "Bytes" => return ValueBacking::Bytes,
-            "Json" => return ValueBacking::Json,
-            "Unit" => return ValueBacking::Unit,
-            "Secret" => return ValueBacking::Secret,
+            "String" => return Ok(ValueBacking::String),
+            "Bool" => return Ok(ValueBacking::Bool),
+            "Int" => return Ok(ValueBacking::Int),
+            "Float" => return Ok(ValueBacking::Float),
+            "Bytes" => return Ok(ValueBacking::Bytes),
+            "Json" => return Ok(ValueBacking::Json),
+            "Unit" => return Ok(ValueBacking::Unit),
+            "Secret" => return Ok(ValueBacking::Secret),
             _ => {}
         }
 
@@ -1046,7 +1054,7 @@ impl TypeRegistry {
         ];
         for &(prim, backing) in PRIMITIVE_BACKINGS {
             if self.is_compatible(type_id, &TypeId::from(prim)) {
-                return backing;
+                return Ok(backing);
             }
         }
 
@@ -1054,33 +1062,29 @@ impl TypeRegistry {
         // classification to determine backing.
         use crate::types::SemanticCarrierKind;
         match self.semantic_carrier_kind(type_id) {
-            SemanticCarrierKind::Structural => {} // fall through to suffix check
-            SemanticCarrierKind::Platform => return ValueBacking::String,
-            SemanticCarrierKind::Timestamp => return ValueBacking::Int,
+            SemanticCarrierKind::Structural
+            | SemanticCarrierKind::UnknownSemantic => {} // fall through to suffix/error path
+            SemanticCarrierKind::Platform => return Ok(ValueBacking::String),
+            SemanticCarrierKind::Timestamp => return Ok(ValueBacking::Int),
             SemanticCarrierKind::TransportRequest
             | SemanticCarrierKind::TransportResponse
             | SemanticCarrierKind::FilesystemHandle
             | SemanticCarrierKind::NetworkHandle
-            | SemanticCarrierKind::ToolHandle => return ValueBacking::Json,
-            SemanticCarrierKind::Credential => return ValueBacking::Map,
-            SemanticCarrierKind::Secret => return ValueBacking::Secret,
-            SemanticCarrierKind::UnknownSemantic => return ValueBacking::Json,
+            | SemanticCarrierKind::ToolHandle => return Ok(ValueBacking::Json),
+            SemanticCarrierKind::Credential => return Ok(ValueBacking::Map),
+            SemanticCarrierKind::Secret => return Ok(ValueBacking::Secret),
         }
 
         // Legacy suffix-based aliases.
         if raw.ends_with("List") {
-            return ValueBacking::List;
+            return Ok(ValueBacking::List);
         }
         if raw.ends_with("Set") {
-            return ValueBacking::Set;
+            return Ok(ValueBacking::Set);
         }
 
-        // Fallback: Json accepts anything.
-        eprintln!(
-            "warning: unknown type '{}' defaulting to ValueBacking::Json",
-            type_id.0
-        );
-        ValueBacking::Json
+        // Fallback: unknown type — return an error.
+        Err(format!("unknown type '{}' has no known ValueBacking", type_id.0))
     }
 
     /// Classify a type's semantic carrier kind using registry knowledge.
@@ -1519,7 +1523,7 @@ mod tests {
 
     #[test]
     fn test_value_backing_matches_free_function() {
-        use crate::types::value_backing_for_type_id;
+        use crate::types::{value_backing_for_type_id, ValueBacking};
 
         let registry = TypeRegistry::with_core_types();
 
@@ -1557,7 +1561,9 @@ mod tests {
 
         for type_name in &cases {
             let expected = value_backing_for_type_id(type_name);
-            let actual = registry.value_backing(&TypeId::from(*type_name));
+            let actual = registry
+                .value_backing(&TypeId::from(*type_name))
+                .unwrap_or(ValueBacking::Json);
             assert_eq!(
                 expected, actual,
                 "value_backing mismatch for '{}': expected {:?}, got {:?}",
@@ -1571,7 +1577,7 @@ mod tests {
         use crate::types::ValueBacking;
         let r = TypeRegistry::with_core_types();
         assert_eq!(
-            r.value_backing(&TypeId::from("Credential")),
+            r.value_backing(&TypeId::from("Credential")).unwrap(),
             ValueBacking::Map
         );
     }
@@ -1582,7 +1588,7 @@ mod tests {
         let r = TypeRegistry::with_core_types();
         // ToolHandle is branded("ToolHandle", String) — structurally a String.
         assert_eq!(
-            r.value_backing(&TypeId::from("ToolHandle")),
+            r.value_backing(&TypeId::from("ToolHandle")).unwrap(),
             ValueBacking::String
         );
     }
@@ -1592,7 +1598,7 @@ mod tests {
         use crate::types::ValueBacking;
         let r = TypeRegistry::with_core_types();
         assert_eq!(
-            r.value_backing(&TypeId::from("Platform")),
+            r.value_backing(&TypeId::from("Platform")).unwrap(),
             ValueBacking::String
         );
     }
@@ -1602,7 +1608,7 @@ mod tests {
         use crate::types::ValueBacking;
         let r = TypeRegistry::with_core_types();
         assert_eq!(
-            r.value_backing(&TypeId::from("Timestamp")),
+            r.value_backing(&TypeId::from("Timestamp")).unwrap(),
             ValueBacking::Int
         );
     }
@@ -1612,23 +1618,23 @@ mod tests {
         use crate::types::ValueBacking;
         let r = TypeRegistry::with_core_types();
         assert_eq!(
-            r.value_backing(&TypeId::from("List<String>")),
+            r.value_backing(&TypeId::from("List<String>")).unwrap(),
             ValueBacking::List
         );
         assert_eq!(
-            r.value_backing(&TypeId::from("Set<Int>")),
+            r.value_backing(&TypeId::from("Set<Int>")).unwrap(),
             ValueBacking::Set
         );
         assert_eq!(
-            r.value_backing(&TypeId::from("Map<String,Bool>")),
+            r.value_backing(&TypeId::from("Map<String,Bool>")).unwrap(),
             ValueBacking::Map
         );
         assert_eq!(
-            r.value_backing(&TypeId::from("Optional<Float>")),
+            r.value_backing(&TypeId::from("Optional<Float>")).unwrap(),
             ValueBacking::Float
         );
         assert_eq!(
-            r.value_backing(&TypeId::from("Optional<Credential>")),
+            r.value_backing(&TypeId::from("Optional<Credential>")).unwrap(),
             ValueBacking::Map
         );
     }
@@ -1640,22 +1646,22 @@ mod tests {
         // TransportRequest/Response are Products — no primitive match,
         // fall through to semantic carrier → Json.
         assert_eq!(
-            r.value_backing(&TypeId::from("TransportRequest")),
+            r.value_backing(&TypeId::from("TransportRequest")).unwrap(),
             ValueBacking::Json
         );
         assert_eq!(
-            r.value_backing(&TypeId::from("TransportResponse")),
+            r.value_backing(&TypeId::from("TransportResponse")).unwrap(),
             ValueBacking::Json
         );
         // FilesystemHandle is branded(FilePath) which is refined(String) —
         // structurally compatible with String.
         assert_eq!(
-            r.value_backing(&TypeId::from("FilesystemHandle")),
+            r.value_backing(&TypeId::from("FilesystemHandle")).unwrap(),
             ValueBacking::String
         );
         // NetworkHandle is unit().
         assert_eq!(
-            r.value_backing(&TypeId::from("NetworkHandle")),
+            r.value_backing(&TypeId::from("NetworkHandle")).unwrap(),
             ValueBacking::Json
         );
     }
@@ -1666,16 +1672,19 @@ mod tests {
         let r = TypeRegistry::with_core_types();
         // FilePath coerces to String via identity chain
         assert_eq!(
-            r.value_backing(&TypeId::from("FilePath")),
-            ValueBacking::String
-        );
-        assert_eq!(r.value_backing(&TypeId::from("Url")), ValueBacking::String);
-        assert_eq!(
-            r.value_backing(&TypeId::from("Email")),
+            r.value_backing(&TypeId::from("FilePath")).unwrap(),
             ValueBacking::String
         );
         assert_eq!(
-            r.value_backing(&TypeId::from("NonEmptyString")),
+            r.value_backing(&TypeId::from("Url")).unwrap(),
+            ValueBacking::String
+        );
+        assert_eq!(
+            r.value_backing(&TypeId::from("Email")).unwrap(),
+            ValueBacking::String
+        );
+        assert_eq!(
+            r.value_backing(&TypeId::from("NonEmptyString")).unwrap(),
             ValueBacking::String
         );
     }
@@ -1685,20 +1694,18 @@ mod tests {
         use crate::types::ValueBacking;
         let r = TypeRegistry::with_core_types();
         assert_eq!(
-            r.value_backing(&TypeId::from("Secret")),
+            r.value_backing(&TypeId::from("Secret")).unwrap(),
             ValueBacking::Secret
         );
     }
 
     #[test]
     fn test_value_backing_regression_unknown_type() {
-        use crate::types::ValueBacking;
         let r = TypeRegistry::with_core_types();
-        // Unknown types fall back to Json
-        assert_eq!(
-            r.value_backing(&TypeId::from("CompletelyUnknownType")),
-            ValueBacking::Json
-        );
+        // Unknown types return an error.
+        assert!(r
+            .value_backing(&TypeId::from("CompletelyUnknownType"))
+            .is_err());
     }
 
     #[test]

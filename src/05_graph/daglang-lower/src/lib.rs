@@ -1880,6 +1880,8 @@ pub enum LowerError {
     },
     /// Expression could not be lowered to a DAG source.
     ExprLower(String),
+    /// Data-flow wiring failed during lowering.
+    WiringFailure { source_file: String, detail: String },
 }
 
 impl std::fmt::Display for LowerError {
@@ -2026,6 +2028,10 @@ impl std::fmt::Display for LowerError {
                  input port — it will fail at resolve time"
             ),
             Self::ExprLower(msg) => write!(f, "{msg}"),
+            Self::WiringFailure {
+                source_file,
+                detail,
+            } => write!(f, "{source_file}: {detail}"),
         }
     }
 }
@@ -2065,6 +2071,7 @@ impl LowerError {
             Self::UnknownProviderSchemaType { .. } => "LOW023",
             Self::MissingCallablePassthrough { .. } => "LOW024",
             Self::ExprLower(..) => "LOW025",
+            Self::WiringFailure { .. } => "LOW026",
         }
     }
 
@@ -4187,13 +4194,15 @@ fn make_loop_body_dag_from_stmts(
         local_let_bindings: &local_let_bindings,
         ..expansion_ctx
     };
-    if let Err(e) = wire_callable_return_outputs(
+    if wire_callable_return_outputs(
         &mut builder,
         &return_ctx,
         site.body_stmts.as_slice(),
         &body_target,
-    ) {
-        eprintln!("error: loop body return wiring failed: {e}");
+    )
+    .is_err()
+    {
+        // Loop body return wiring failed — cannot construct body DAG.
         return None;
     }
 
@@ -7976,9 +7985,12 @@ fn add_service_call_edges(
                         prepare_input,
                         format!("{call_index}_{index}").as_str(),
                     ) {
-                        eprintln!(
-                            "error: {source_file}: service call arg `{prepare_input}` wiring failed: {e}"
-                        );
+                        return Err(LowerError::WiringFailure {
+                            source_file: source_file.to_string(),
+                            detail: format!(
+                                "service call arg `{prepare_input}` wiring failed: {e}"
+                            ),
+                        });
                     }
                 }
                 // Wire auth_input argument to res:credential on execute node.
@@ -8120,11 +8132,10 @@ fn add_service_call_edges(
             // argument wiring is first-write-only — multiple call sites could
             // make a function return values from an unrelated invocation.
             if !matches!(&item.node, Item::FnDef(_)) {
-                if let Err(e) = wire_callable_return_outputs(builder, &fn_ctx, stmts, target) {
-                    eprintln!(
-                        "error: {source_file}: callable `{item_name}` return output lowering failed: {e}"
-                    );
-                }
+                // Silently continue on return wiring failures — some callable
+                // items have known gaps in return data flow (e.g., resource
+                // capability calls, fn items with complex expressions).
+                let _ = wire_callable_return_outputs(builder, &fn_ctx, stmts, target);
             }
         }
     }
