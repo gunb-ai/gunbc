@@ -39,6 +39,8 @@ pub fn evaluate_fn_body_with_data(
     data_values: &HashMap<String, serde_json::Value>,
 ) -> Result<HashMap<String, Value>, EvalError> {
     let mut env = Env::from_inputs(inputs);
+    // Store data_values so sibling fn calls can access them.
+    env.data_values = data_values.clone();
     // Seed data declarations into the environment (lower priority than inputs).
     for (name, json_val) in data_values {
         if !env.bindings.contains_key(name) {
@@ -525,12 +527,16 @@ impl std::fmt::Display for EvalError {
 
 struct Env {
     bindings: HashMap<String, Value>,
+    /// Data declaration values carried through so sibling fn calls can
+    /// reference module-level `data` items without re-threading them.
+    data_values: HashMap<String, serde_json::Value>,
 }
 
 impl Env {
     fn from_inputs(inputs: &HashMap<String, Value>) -> Self {
         Self {
             bindings: inputs.clone(),
+            data_values: HashMap::new(),
         }
     }
 
@@ -545,6 +551,7 @@ impl Env {
     fn child(&self) -> Self {
         Self {
             bindings: self.bindings.clone(),
+            data_values: self.data_values.clone(),
         }
     }
 }
@@ -940,7 +947,7 @@ fn eval_call(
                 fn_inputs.insert(name.clone(), value);
             }
         }
-        let outputs = evaluate_fn_body(fn_body, &fn_inputs, sibling_fns)?;
+        let outputs = evaluate_fn_body_with_data(fn_body, &fn_inputs, sibling_fns, &env.data_values)?;
         return sibling_fn_value(name, outputs);
     }
 
@@ -1004,6 +1011,10 @@ fn eval_call(
             }
             Ok(Value::Map(map))
         }
+        // Dotted names are service calls (e.g., llm.Anthropic.Messages) handled
+        // by DAG transport nodes, not the expression evaluator. Return a neutral
+        // placeholder so fn body evaluation doesn't fail during mock probing.
+        _ if name.contains('.') => Ok(Value::Unit),
         _ => Err(EvalError::new(format!("unknown function: {name}"))),
     }
 }

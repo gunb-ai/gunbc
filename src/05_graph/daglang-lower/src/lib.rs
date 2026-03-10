@@ -12211,9 +12211,16 @@ fn collect_local_let_bindings<'a>(
             }
             Stmt::Node(node_stmt) => {
                 let inner = unwrap_guarded_expr(&node_stmt.expr);
-                if !bound_callable_sources.contains_key(&node_stmt.name)
-                    && !matches!(inner, Expr::Call(_, _) | Expr::ServiceCall(_, _))
-                {
+                let is_dag_level_call = match inner {
+                    Expr::Call(callee, _) => {
+                        // Mirror the Stmt::Let logic: intrinsic collection
+                        // functions are evaluable and should be included.
+                        !daglang_eval::eval::is_intrinsic_call(callee)
+                    }
+                    Expr::ServiceCall(_, _) => true,
+                    _ => false,
+                };
+                if !bound_callable_sources.contains_key(&node_stmt.name) && !is_dag_level_call {
                     bindings.insert(node_stmt.name.clone(), &node_stmt.expr as &Expr);
                 }
             }

@@ -11,7 +11,7 @@ use gunbc_ir::transport::{
     TransportResponse,
 };
 use gunbc_ir::{
-    detect_boundaries, detect_entrypoints, parse_map_type_id, value_backing_for_type_id,
+    detect_boundaries, detect_entrypoints, parse_map_type_id,
     variant_witnesses, Cardinality, Dag, NodeBody, NodeId, PortName, TypeId, TypeOp, TypeRegistry,
     Value, ValueBacking,
 };
@@ -77,7 +77,12 @@ fn is_placeholder_witness(value: &Value) -> bool {
     matches!(value, Value::Str(s) if s.starts_with('<') && s.ends_with('>'))
 }
 
-fn typed_witness_value(type_id: &str, registry: &TypeRegistry) -> Option<Value> {
+/// Generate a structurally correct witness value for a type using the registry.
+///
+/// Returns `Some` if the type can be resolved to a concrete value shape
+/// (product types → Map, sum types → first variant, containers → wrapped inner).
+/// Returns `None` for primitives that should use simpler fallback logic.
+pub fn typed_witness_value(type_id: &str, registry: &TypeRegistry) -> Option<Value> {
     typed_witness_value_depth(type_id, registry, 0)
 }
 
@@ -175,10 +180,28 @@ fn product_witness(
         let value = if let Some(fdag) = field_dag {
             // Extract the base type from the field's type DAG and recurse.
             let field_base = gunbc_ir::contract::base_type(fdag);
-            field_base
+            let inner = field_base
                 .as_deref()
                 .and_then(|ft| typed_witness_value_depth(ft, registry, depth + 1))
-                .unwrap_or_else(|| Value::Str("mock".to_string()))
+                .unwrap_or_else(|| Value::Str("mock".to_string()));
+            // base_type strips container wrappers — re-wrap if the field
+            // has a List/Set/Optional wrapper so the mock matches the
+            // expected runtime shape.
+            match gunbc_ir::contract::wrapper_kind(fdag) {
+                Some(gunbc_ir::WrapperKind::List | gunbc_ir::WrapperKind::NonEmptyList) => {
+                    Value::List(vec![inner])
+                }
+                Some(gunbc_ir::WrapperKind::Set | gunbc_ir::WrapperKind::NonEmptySet) => {
+                    Value::Set(vec![inner])
+                }
+                Some(gunbc_ir::WrapperKind::Optional) => Value::Unit,
+                Some(gunbc_ir::WrapperKind::Map) => {
+                    let mut m = BTreeMap::new();
+                    m.insert("mock_key".to_string(), inner);
+                    Value::Map(m)
+                }
+                None => inner,
+            }
         } else {
             Value::Str("mock".to_string())
         };
@@ -198,7 +221,9 @@ fn default_value_for_type(type_id: &str, registry: &TypeRegistry) -> Value {
             if let Some(value) = typed_witness_value(type_id, registry) {
                 return value;
             }
-            match value_backing_for_type_id(type_id) {
+            // Use the passed-in registry (which includes DSL types) instead
+            // of the static core-only registry from value_backing_for_type_id().
+            match registry.value_backing(&gunbc_ir::TypeId::from(type_id)).unwrap_or(ValueBacking::Json) {
                 ValueBacking::String => Value::Str("mock".to_string()),
                 ValueBacking::Secret => Value::Secret(gunbc_ir::SecretString::new("mock")),
                 ValueBacking::Bool => Value::Bool(true),
@@ -590,9 +615,6 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(
             if output_names.contains(input_port.name.0.as_str()) {
                 continue;
             }
-            if input_port.cardinality.allows_empty() {
-                continue;
-            }
             if input_port.type_id.0 == "TransportResponse" {
                 deferred_response_ports.push(input_port.name.0.as_str());
                 continue;
@@ -655,7 +677,7 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(
             let matcher = if use_fallback {
                 OutputMatcher::NonEmpty
             } else {
-                match value_backing_for_type_id(port.type_id.0.as_str()) {
+                match registry.value_backing(&port.type_id).unwrap_or(ValueBacking::Json) {
                     ValueBacking::Bool => OutputMatcher::IsBool,
                     ValueBacking::Int | ValueBacking::Float => OutputMatcher::IsInt,
                     ValueBacking::String => OutputMatcher::IsString,
