@@ -151,8 +151,17 @@ fn execute_callable(
     data_values: &HashMap<String, serde_json::Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let Some(body) = fn_body else {
-        // No fn body — identity passthrough.
-        return Ok(inputs.clone());
+        // No fn body — passthrough. Map __out: prefixed inputs to outputs,
+        // filtering internal ports (__deps, _freshness).
+        let mut outputs = HashMap::new();
+        for (key, value) in inputs {
+            if let Some(output_name) = key.strip_prefix("__out:") {
+                outputs.insert(output_name.to_string(), value.clone());
+            } else if key != "__deps" && key != "_freshness" && !key.starts_with("res:") {
+                outputs.insert(key.clone(), value.clone());
+            }
+        }
+        return Ok(outputs);
     };
 
     let eval_inputs: HashMap<String, Value> = inputs

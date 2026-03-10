@@ -8129,9 +8129,11 @@ fn add_service_call_edges(
             // argument wiring is first-write-only — multiple call sites could
             // make a function return values from an unrelated invocation.
             if !matches!(&item.node, Item::FnDef(_)) {
-                // Silently continue on return wiring failures — some callable
-                // items have known gaps in return data flow (e.g., resource
-                // capability calls, fn items with complex expressions).
+                // Callable return wiring may fail for patterns that reference
+                // service call results or other DAG-wired values that aren't
+                // visible as simple idents. FnBodyCallableOp handles these via
+                // direct evaluation. TODO: make this a hard error once the
+                // lowerer can trace through service call result bindings.
                 let _ = wire_callable_return_outputs(builder, &fn_ctx, stmts, target);
             }
         }
