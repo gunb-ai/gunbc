@@ -430,9 +430,11 @@ type Stage {
   name: String
 }
 fn summarize(stages: List<Stage>) -> Int {
-  let passed = stages |> filter(s => s.success) |> count()
-  let labels = stages |> map(s => s.name) |> join(",")
-  let done = labels |> ends_with("ok")
+  let filtered = filter(stages, s => s.success)
+  let passed = count(filtered)
+  let names = map(stages, s => s.name)
+  let labels = join(names, ",")
+  let done = ends_with(labels, "ok")
   passed
 }"#,
     )]);
@@ -455,7 +457,7 @@ fn strict_mode_accepts_std_helper_intrinsic_call_targets() {
 type DocgenSources { path: String }
 
 fn run(sources: DocgenSources) -> String {
-  let a = "template" |> replace_section("section", "value")
+  let a = replace_section("template", "section", "value")
   let b = render_test_listings(sources: sources)
   let c = render_graph_structure(sources: sources)
   let d = render_source_artifacts(sources: sources)

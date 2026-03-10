@@ -3976,7 +3976,7 @@ fn fermi_max(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
   lhs
 }
 fn fermi_max_of(depths: List<FermiDepth>) -> FermiDepth {
-  depths |> fold(init: Xs, f: (acc, d) => fermi_max(lhs: acc, rhs: d))
+  fold(depths, Xs, (acc, d) => fermi_max(lhs: acc, rhs: d))
 }"#,
         );
         // fermi_max_of should be the third item (after module, type, fermi_max)
@@ -4015,13 +4015,13 @@ fn fermi_max(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
   if fermi_gt(lhs: lhs, rhs: rhs) { lhs } else { rhs }
 }
 fn fermi_max_of(depths: List<FermiDepth>) -> FermiDepth {
-  depths |> fold(init: Xs, f: (acc, d) => fermi_max(lhs: acc, rhs: d))
+  fold(depths, Xs, (acc, d) => fermi_max(lhs: acc, rhs: d))
 }
 fn classify_transports(transports: List<TransportClass>) -> DerivedClassification {
-  let depths = transports |> map(tc => transport_depth(tc: tc))
+  let depths = map(transports, tc => transport_depth(tc: tc))
   let max_depth = fermi_max_of(depths: depths)
-  let all_hermetic = transports |> all(tc => transport_hermetic(tc: tc))
-  let n = transports |> count()
+  let all_hermetic = all(transports, tc => transport_hermetic(tc: tc))
+  let n = count(transports)
   let test_class = if n == 0 { Unit } else { if all_hermetic { Hermetic } else { Integration } }
   let depth = if n == 0 { Xs } else { max_depth }
   let hermetic = if n == 0 { true } else { all_hermetic }

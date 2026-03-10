@@ -9603,7 +9603,8 @@ fn collect_collection_ops_from_stmts(stmts: &[Stmt], sites: &mut Vec<CollectionO
 fn derive_collection_node_specs(callable_node_id: &str, stmts: &[Stmt]) -> Vec<CollectionNodeSpec> {
     let mut sites = Vec::new();
     collect_collection_ops_from_stmts(stmts, &mut sites);
-    sites.reverse();
+    // With standalone call syntax (no pipes), walker visits in statement order
+    // which is already the correct pipeline order. No reversal needed.
     sites
         .into_iter()
         .enumerate()

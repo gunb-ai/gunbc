@@ -2107,10 +2107,59 @@ fn register_callable_contract(
 }
 
 fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
-    // Builtin callable contracts (standalone functions, render helpers, etc.).
+    // Collection operation builtins (previously pipe methods, now standalone calls).
+    // Arity includes the collection/receiver argument (no longer implicit via pipe).
+    let mut contracts: Vec<(String, CallableContract)> = vec![
+        ("map", 2, &["collection", "f"][..], "List"),
+        ("filter", 2, &["collection", "predicate"], "List"),
+        ("filter_map", 2, &["collection", "f"], "List"),
+        ("flat_map", 2, &["collection", "f"], "List"),
+        ("sort_by", 2, &["collection", "key_fn"], "List"),
+        ("append", 2, &["collection", "items"], "List"),
+        ("fold", 3, &["collection", "init", "f"], "Any"),
+        ("join", 2, &["collection", "separator"], "String"),
+        ("count", 1, &["collection"], "Int"),
+        ("sum", 1, &["collection"], "Int"),
+        ("first", 1, &["collection"], "Any"),
+        ("last", 1, &["collection"], "Any"),
+        ("max_by", 2, &["collection", "f"], "Any"),
+        ("any", 2, &["collection", "predicate"], "Bool"),
+        ("all", 2, &["collection", "predicate"], "Bool"),
+        ("contains", 2, &["collection", "item"], "Bool"),
+        ("split", 2, &["value", "delimiter"], "List"),
+        ("zip", 2, &["collection", "other"], "List"),
+        ("skip", 2, &["collection", "n"], "List"),
+        ("enumerate", 1, &["collection"], "List"),
+        ("starts_with", 2, &["value", "prefix"], "Bool"),
+        ("ends_with", 2, &["value", "suffix"], "Bool"),
+        ("repeat", 2, &["value", "n"], "String"),
+        ("replace_section", 3, &["value", "section", "replacement"], "String"),
+        ("chars", 1, &["value"], "List"),
+        ("to_bytes", 1, &["value"], "Bytes"),
+        ("to_json", 1, &["value"], "Json"),
+        ("hash", 1, &["value"], "String"),
+    ]
+    .into_iter()
+    .map(|(name, arity, params, output)| {
+        (
+            name.to_string(),
+            CallableContract {
+                arity,
+                params: params.iter().map(|s| s.to_string()).collect(),
+                output: if output == "Any" {
+                    ValueType::Named("Any".to_string())
+                } else {
+                    ValueType::Named(output.to_string())
+                },
+            },
+        )
+    })
+    .collect();
+
+    // Non-collection builtins (standalone functions, render helpers, etc.).
     // eq, chars, code_point, and build_token are now DSL fn items
     // (std/patterns.dag, std/unicode.dag, gunbc/auth/patterns.dag).
-    let contracts = vec![
+    contracts.extend([
         (
             "render_cytoscape_html".to_string(),
             CallableContract {
@@ -2195,7 +2244,7 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
                 output: ValueType::Named("CloudRuntime".to_string()),
             },
         ),
-    ];
+    ]);
 
     contracts
 }
