@@ -1,2 +1,6 @@
 # BuilderError is intentionally large (144 bytes) to contain diagnostic info.
 large-error-threshold = 256
+
+[[disallowed-macros]]
+path = "std::eprintln"
+reason = "Use structured error returns in library crates. Binary entrypoints may #[allow(clippy::disallowed_macros)]."

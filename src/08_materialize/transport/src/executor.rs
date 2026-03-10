@@ -591,6 +591,7 @@ mod tests {
         )
     }
 
+    #[allow(clippy::disallowed_macros)]
     fn bind_loopback_listener(test_name: &str) -> Option<TcpListener> {
         match TcpListener::bind("127.0.0.1:0") {
             Ok(listener) => Some(listener),

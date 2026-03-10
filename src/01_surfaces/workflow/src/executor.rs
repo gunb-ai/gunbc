@@ -200,6 +200,7 @@ enum CommandExecutionOutcome {
     Failure,
 }
 
+#[allow(clippy::disallowed_macros)]
 fn run_unit_command(cmd: &UnitCommand) -> CommandExecutionOutcome {
     let result = Command::new(&cmd.program)
         .args(&cmd.args)

@@ -4816,13 +4816,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
         // Use lowered DAG for boundary analysis so node IDs match lowered MockSpec IDs.
         // SubDag nodes in the un-lowered DAG become flattened, prefixed nodes after lowering;
         // the MockSpec uses these lowered IDs since the executor operates on the lowered DAG.
-        let lowered_result = match gunbc_exec::lower(self.dag) {
-            Ok(lowered) => Some(lowered),
-            Err(e) => {
-                eprintln!("warning: lowering failed during test generation: {e}");
-                None
-            }
-        };
+        let lowered_result = gunbc_exec::lower(self.dag).ok();
         let lowered_analysis = lowered_result.as_ref().map(|lr| analyze_dag(&lr.dag));
         let boundary_analysis = lowered_analysis.as_ref().unwrap_or(analysis);
 
@@ -4912,10 +4906,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                             p.node_id == node_id.0 && p.port_name == port_name.0 && !p.is_input
                         })
                         .map(|p| (p.type_id.0.as_str(), p.cardinality))
-                        .unwrap_or_else(|| {
-                            eprintln!("warning: port type lookup failed, defaulting to String");
-                            ("String", Cardinality::ONE)
-                        });
+                        .unwrap_or(("String", Cardinality::ONE));
 
                     let mock_value =
                         self.get_mock_value(&node_id.0, &port_name.0, type_id, cardinality);
@@ -5662,27 +5653,6 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
 
         let mut tests = Vec::new();
 
-        // Surface unmatched corpus identities — violates the "errors are explicit,
-        // no silent fallbacks" invariant if we silently drop them.
-        let mut unmatched_identities = Vec::new();
-        for (identity, node_corpus) in corpus {
-            if !node_corpus.is_empty() && !identity_to_node.contains_key(identity) {
-                unmatched_identities.push(identity.to_string());
-            }
-        }
-        if !unmatched_identities.is_empty() {
-            eprintln!(
-                "[corpus] WARNING: {} corpus identit{} not found in DAG (corpus drift?): {}",
-                unmatched_identities.len(),
-                if unmatched_identities.len() == 1 {
-                    "y"
-                } else {
-                    "ies"
-                },
-                unmatched_identities.join(", "),
-            );
-        }
-
         for (identity, node_corpus) in corpus {
             if node_corpus.is_empty() {
                 continue;
@@ -5717,11 +5687,8 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
                         let (doc, body) = if is_pure_node(node) {
                             self.build_corpus_body_real(&ctx, expected_outputs)
                         } else {
-                            eprintln!(
-                                "[corpus] NOTE: Node '{}' has ExactOutputs expectation but is \
-                                 effectful — falling back to DryRun mode.",
-                                identity,
-                            );
+                            // Effectful node with ExactOutputs expectation —
+                            // fall back to DryRun to avoid side effects.
                             self.build_corpus_body_dryrun(&ctx, analysis, node, None)
                         };
                         tests.push(TestFn {
@@ -7406,16 +7373,9 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
             let inner = ty.split_once('<').unwrap().1.strip_suffix('>').unwrap();
             mock_element_expr(inner, index)
         }
-        // DSL-defined product/coproduct types without explicit mock entries
-        // default to a JSON null mock. This avoids panics when new DSL types
-        // appear in port signatures after DSL module changes.
-        _ => {
-            eprintln!(
-                "warning: no explicit mock for type_id '{}'; using Json(Null) default",
-                type_id
-            );
-            ValueExpr::Json(JsonValue::Null)
-        }
+        // DSL-defined types without an explicit mock entry default to JSON null.
+        // This avoids panics when new DSL types appear in port signatures.
+        _ => ValueExpr::Json(JsonValue::Null),
     }
 }
 

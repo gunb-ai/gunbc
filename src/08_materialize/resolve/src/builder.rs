@@ -214,7 +214,7 @@ fn compile_lowered(
 fn try_load_from_cache(
     layout: &WorkspaceLayout,
     context: &DriverContext,
-    relative_module: &str,
+    _relative_module: &str,
 ) -> Result<Option<CompileLoweredResult>, BuilderError> {
     let source_digest = match compute_source_digest_for_context(context) {
         Ok(d) => d,
@@ -238,11 +238,6 @@ fn try_load_from_cache(
     if cached.cache_version != DAGBIN_CACHE_VERSION {
         return Ok(None);
     }
-
-    eprintln!(
-        "dagbin cache hit: {relative_module} (digest {}...)",
-        &source_digest[..12.min(source_digest.len())]
-    );
 
     Ok(Some(CompileLoweredResult {
         dag: cached.dag,

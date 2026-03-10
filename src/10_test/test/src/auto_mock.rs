@@ -700,6 +700,7 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(
 /// Probe order: provider-specific REST → generic REST → Shell → File.
 /// REST is tried first because the majority of service operations are
 /// REST-based (GitHub, OpenAI, Anthropic, GCP).
+#[allow(clippy::disallowed_macros)]
 fn probe_best_response<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     node_id: &str,

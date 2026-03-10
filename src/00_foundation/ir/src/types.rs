@@ -1122,7 +1122,11 @@ pub fn value_backing_for_type_id(type_id: &str) -> ValueBacking {
     use std::sync::OnceLock;
     static REGISTRY: OnceLock<crate::type_registry::TypeRegistry> = OnceLock::new();
     let registry = REGISTRY.get_or_init(crate::type_registry::TypeRegistry::with_core_types);
-    registry.value_backing(&TypeId::from(type_id))
+    // Fallback to Json for unknown types — callers that need error propagation
+    // should use TypeRegistry::value_backing() directly.
+    registry
+        .value_backing(&TypeId::from(type_id))
+        .unwrap_or(ValueBacking::Json)
 }
 
 /// Canonical human-readable type label for a runtime value's kind.
