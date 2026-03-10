@@ -465,9 +465,10 @@ impl Executable for PurePrimitiveOp {
             }
             PrimitiveOpKind::Conditional => {
                 let condition = require_input_port(&inputs, "condition", "Conditional")?;
-                let then_val = require_input_port(&inputs, "then", "Conditional")?;
+                let skipped = Value::Skipped;
+                let then_val = inputs.get("then").unwrap_or(&skipped);
                 let else_val = if self.has_else {
-                    Some(require_input_port(&inputs, "else", "Conditional")?)
+                    Some(inputs.get("else").unwrap_or(&skipped) as &Value)
                 } else {
                     None
                 };

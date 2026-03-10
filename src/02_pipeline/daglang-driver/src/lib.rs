@@ -70,7 +70,7 @@ impl CompileOutput {
     /// `__data_decl::` prefixed IDs during lowering. This method extracts
     /// them without requiring a separate sidecar field.
     pub fn data_values(&self) -> HashMap<String, serde_json::Value> {
-        daglang_lower::extract_data_values_from_dag(self.lowered_dag.inner())
+        daglang_lower::extract_data_values_from_dag(self.lowered_dag.as_dag())
     }
 
     /// Build a merged type registry: kernel → core types → DSL merge.

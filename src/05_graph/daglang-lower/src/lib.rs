@@ -9930,7 +9930,7 @@ fn embed_data_declaration_nodes(
         builder.add_node(Node::opaque(
             node_id,
             vec![],
-            vec![Port::scalar(name, "Json")],
+            vec![Port::scalar(name.as_str(), "Json")],
             LoweredOp::Primitive {
                 module: "__data".to_string(),
                 name: format!("data_decl::{name}"),

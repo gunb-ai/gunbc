@@ -112,7 +112,7 @@ pub fn build_dsl_graph_dag(
 /// discarded on load.
 // Bump when lowering/resolution semantics change so source-digest cache hits
 // do not reuse stale DAG shapes compiled by older compiler code.
-const DAGBIN_CACHE_VERSION: u32 = 4;
+const DAGBIN_CACHE_VERSION: u32 = 5;
 
 /// Serializable bundle of compilation artifacts stored in the dagbin cache.
 ///
