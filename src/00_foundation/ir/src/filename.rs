@@ -28,7 +28,7 @@
 //! # Example
 //!
 //! ```
-//! use gunbc_primitives::filename::{sanitize, CROSS_PLATFORM, EXT4, NTFS, APFS};
+//! use gunbc_ir::filename::{sanitize, CROSS_PLATFORM, EXT4, NTFS, APFS};
 //!
 //! // Single filesystem — only `/` replaced on ext4
 //! let safe = sanitize("claude/branch:name", &[&EXT4], '-');
@@ -39,11 +39,11 @@
 //! assert_eq!(safe, "claude-branch-name");
 //! ```
 
-use gunbc_ir::resource::{
+use crate::resource::{
     capability_marker, ensure_capability_marker, AccessMode, DagResource, Resource, ResourceId,
     ResourceKind,
 };
-use gunbc_ir::Value;
+use crate::Value;
 use std::collections::BTreeMap;
 
 // ============================================================================
@@ -458,7 +458,7 @@ impl Scope {
 /// Three ways to acquire a handle:
 ///
 /// ```
-/// use gunbc_primitives::filename::{FilesystemHandle, Scope, EXT4, NTFS, APFS};
+/// use gunbc_ir::filename::{FilesystemHandle, Scope, EXT4, NTFS, APFS};
 ///
 /// // 1. Cross-platform — safest for shared/uploaded files
 /// let fs = FilesystemHandle::cross_platform(Scope::Write);
@@ -473,7 +473,7 @@ impl Scope {
 /// # Operations
 ///
 /// ```
-/// use gunbc_primitives::filename::{FilesystemHandle, Scope, WritePolicy};
+/// use gunbc_ir::filename::{FilesystemHandle, Scope, WritePolicy};
 ///
 /// let fs = FilesystemHandle::cross_platform(Scope::Write);
 ///
@@ -862,7 +862,7 @@ impl std::fmt::Display for Violation {
 /// # Example
 ///
 /// ```
-/// use gunbc_primitives::filename::{validate, CROSS_PLATFORM, Violation};
+/// use gunbc_ir::filename::{validate, CROSS_PLATFORM, Violation};
 ///
 /// // Valid everywhere
 /// assert!(validate("readme.md", CROSS_PLATFORM).is_empty());
@@ -1015,7 +1015,7 @@ impl FilenameOutcome {
 /// # Example
 ///
 /// ```
-/// use gunbc_primitives::filename::{prepare_filename, WritePolicy, FilenameOutcome, CROSS_PLATFORM};
+/// use gunbc_ir::filename::{prepare_filename, WritePolicy, FilenameOutcome, CROSS_PLATFORM};
 ///
 /// // Sanitize mode — auto-fixes
 /// let outcome = prepare_filename("claude/branch", CROSS_PLATFORM, WritePolicy::Sanitize, '-');

@@ -1,7 +1,46 @@
 //! Shared FsEnv graph-builder helpers.
 
 use gunbc_ir::{BuilderError, DagBuilder, InputRef, Node, NodeRef, Port};
-use gunbc_primitives::{filename, FsEnv};
+use gunbc_ir::filename::{self, FilesystemHandle, Scope};
+use gunbc_ir::{FILE_HANDLE_READ_PORT, FILE_HANDLE_WRITE_PORT};
+
+/// Filesystem environment — acquires a FilesystemHandle.
+#[derive(Debug, Clone)]
+pub struct FsEnv {
+    pub scope: Scope,
+}
+
+impl FsEnv {
+    pub const READ_PORT: &'static str = FILE_HANDLE_READ_PORT;
+    pub const WRITE_PORT: &'static str = FILE_HANDLE_WRITE_PORT;
+
+    pub fn new(scope: Scope) -> Self {
+        Self { scope }
+    }
+
+    pub fn output_port(&self) -> &'static str {
+        match self.scope {
+            Scope::Read => Self::READ_PORT,
+            Scope::Write => Self::WRITE_PORT,
+        }
+    }
+
+    /// Mock outputs for DryRun/testgen.
+    pub fn mock_outputs(&self) -> std::collections::HashMap<String, gunbc_ir::Value> {
+        let fs = FilesystemHandle::cross_platform(self.scope);
+        gunbc_exec::env_single_output(self.output_port(), fs)
+    }
+}
+
+impl gunbc_exec::EnvNode for FsEnv {
+    fn env_outputs(&self) -> Result<std::collections::HashMap<String, gunbc_ir::Value>, gunbc_exec::ExecError> {
+        Ok(self.mock_outputs())
+    }
+
+    fn mock_outputs(&self) -> std::collections::HashMap<String, gunbc_ir::Value> {
+        FsEnv::mock_outputs(self)
+    }
+}
 
 /// Add a canonical `fs_env` root node with `file:write` capability output.
 pub fn add_fs_env_root_node<T, F>(

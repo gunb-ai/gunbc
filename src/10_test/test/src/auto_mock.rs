@@ -15,7 +15,7 @@ use gunbc_ir::{
     variant_witnesses, Cardinality, Dag, NodeBody, NodeId, PortName, TypeId, TypeOp, TypeRegistry,
     Value, ValueBacking,
 };
-use gunbc_primitives::filename;
+use gunbc_ir::filename;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::{

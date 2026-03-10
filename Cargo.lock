@@ -353,7 +353,6 @@ dependencies = [
  "gunbc-ir",
  "gunbc-lib-blob",
  "gunbc-lib-transport",
- "gunbc-primitives",
  "gunbc-resolve",
  "gunbc-test",
  "serde",
@@ -435,19 +434,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gunbc-primitives"
-version = "0.1.0"
-dependencies = [
- "gunbc-exec",
- "gunbc-infra",
- "gunbc-ir",
- "serde",
- "serde_json",
- "tempfile",
- "toml",
-]
-
-[[package]]
 name = "gunbc-resolve"
 version = "0.1.0"
 dependencies = [
@@ -459,7 +445,6 @@ dependencies = [
  "gunbc-ir",
  "gunbc-lib-blob",
  "gunbc-lib-transport",
- "gunbc-primitives",
  "gunbc-test",
  "serde",
  "serde_json",
@@ -471,7 +456,6 @@ version = "0.1.0"
 dependencies = [
  "gunbc-exec",
  "gunbc-ir",
- "gunbc-primitives",
  "serde_json",
 ]
 

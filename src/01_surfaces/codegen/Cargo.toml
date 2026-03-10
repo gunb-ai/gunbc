@@ -12,7 +12,6 @@ gunbc-test = { path = "../../10_test/test" }
 gunbc-exec = { path = "../../09_execute/exec" }
 gunbc-resolve = { path = "../../08_materialize/resolve" }
 gunbc-cli = { path = "../cli" }
-gunbc-primitives = { path = "../../08_materialize/primitives" }
 gunbc-lib-transport = { path = "../../08_materialize/transport" }
 gunbc-lib-blob = { path = "../../08_materialize/blob" }
 daglang-derive = { path = "../../06_artifacts/daglang-derive" }

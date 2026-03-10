@@ -13,7 +13,6 @@ members = [
     "src/06_artifacts/daglang-derive",
     "src/07_emit/daglang-emit",
     "src/08_materialize/resolve",
-    "src/08_materialize/primitives",
     "src/08_materialize/blob",
     "src/08_materialize/transport",
     "src/09_execute/exec",

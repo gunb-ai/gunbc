@@ -39,7 +39,8 @@ use gunbc_ir::types::PortName;
 use gunbc_ir::{Cardinality, Dag, Edge, Node, Port, Value};
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
-use gunbc_primitives::{filename, FsEnv};
+use gunbc_ir::filename;
+use crate::fs_env::FsEnv;
 
 use crate::service_ops::{
     FilesystemExecuteOp, GenericParseOp, GenericPrepareOp, InterfaceStubExecuteOp,

@@ -66,6 +66,7 @@ pub mod contract;
 pub mod dag;
 pub mod dag_topology;
 pub mod entrypoint;
+pub mod filename;
 pub mod git;
 pub mod invocation_contract;
 pub mod language;
