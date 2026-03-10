@@ -3333,11 +3333,7 @@ impl Parser {
             match op {
                 TokenKind::PipeArrow => match &rhs {
                     Expr::Call(name, args) => {
-                        if let Ok(method) = name.parse::<PipeMethod>() {
-                            Expr::PipeCall(Box::new(lhs), method, args.clone())
-                        } else {
-                            Expr::Pipe(Box::new(lhs), Box::new(rhs))
-                        }
+                        Expr::PipeCall(Box::new(lhs), name.clone(), args.clone())
                     }
                     _ => Expr::Pipe(Box::new(lhs), Box::new(rhs)),
                 },
@@ -4193,7 +4189,7 @@ pipeline gist {
     fn expression_pipe_method_lowers_to_pipe_call() {
         let expr = parse_expr_only("items |> map(x => x)");
         match expr {
-            Expr::PipeCall(receiver, PipeMethod::Map, args) => {
+            Expr::PipeCall(receiver, ref method, ref args) if method == "map" => {
                 assert!(matches!(*receiver, Expr::Ident(ref name) if name == "items"));
                 assert_eq!(args.len(), 1);
                 assert!(matches!(args[0].1, Expr::Lambda(_, _)));

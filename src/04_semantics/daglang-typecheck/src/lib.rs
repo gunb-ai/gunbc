@@ -25,8 +25,8 @@ use std::collections::{HashMap, HashSet};
 use daglang_contract::{Diagnostic, DiagnosticContext};
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{
-    Expr, Field, ForBody, Item, Literal, ModulePath, Param, PipelineDef, ProvidesClause,
-    Refinement, Stmt, TypeBody, TypeExpr, UsesClause,
+    pipe_method_def_by_name, Expr, Field, ForBody, Item, Literal, ModulePath, Param, PipelineDef,
+    ProvidesClause, Refinement, Stmt, TypeBody, TypeExpr, UsesClause,
 };
 use daglang_syntax::ast_utils::{
     is_function_type, resource_type_name, service_call_lookup_keys, type_expr_to_string, walk_stmts,
@@ -3419,20 +3419,21 @@ fn infer_expr_type(
             errors.extend(rhs_errors);
             rhs_val
         }
-        Expr::PipeCall(receiver, _method, args) => {
+        Expr::PipeCall(receiver, method_name, args) => {
             let (_, recv_errors) = infer_expr_type(receiver, local_bindings, infer_context);
             errors.extend(recv_errors);
             for (_name, arg) in args {
                 let (_, arg_errors) = infer_expr_type(arg, local_bindings, infer_context);
                 errors.extend(arg_errors);
             }
-            {
-                let def = _method.def();
+            if let Some(def) = pipe_method_def_by_name(method_name) {
                 if def.output_type == "Unknown" {
                     ValueType::Unknown
                 } else {
                     ValueType::Named(def.output_type.to_string())
                 }
+            } else {
+                ValueType::Unknown
             }
         }
         Expr::Lambda(_, body) => {

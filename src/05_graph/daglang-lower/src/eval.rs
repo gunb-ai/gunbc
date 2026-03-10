@@ -8,8 +8,6 @@ use std::collections::{BTreeMap, HashMap};
 
 use gunbc_ir::Value;
 
-use daglang_syntax::ast::PipeMethod;
-
 use crate::expr::{
     LoweredBinOp, LoweredExpr, LoweredFnBody, LoweredLiteral, LoweredMatchArm, LoweredPattern,
     LoweredStmt, LoweredStringPart, LoweredUnaryOp,
@@ -854,10 +852,13 @@ fn eval_pipe(
     sibling_fns: &HashMap<String, LoweredFnBody>,
 ) -> Result<Value, EvalError> {
     match call {
-        LoweredExpr::Call { name, args } => match name.parse::<PipeMethod>() {
-            Ok(method) => eval_pipe_method(method, receiver, args, env, sibling_fns),
-            Err(_) => eval_sibling_fn(name, receiver, args, env, sibling_fns),
-        },
+        LoweredExpr::Call { name, args } => {
+            if is_intrinsic_pipe_method(name) {
+                eval_pipe_method(name, receiver, args, env, sibling_fns)
+            } else {
+                eval_sibling_fn(name, receiver, args, env, sibling_fns)
+            }
+        }
         LoweredExpr::Pipe {
             receiver: nested_call,
             call: final_call,
@@ -903,15 +904,28 @@ fn eval_sibling_fn(
     }
 }
 
+/// Intrinsic pipe methods: these are evaluated directly in the evaluator.
+/// Non-intrinsic pipe methods fall through to sibling fn lookup.
+const INTRINSIC_PIPE_METHODS: &[&str] = &[
+    "join", "map", "filter", "filter_map", "flat_map", "fold", "append",
+    "count", "sum", "first", "last", "any", "all", "contains", "sort_by",
+    "starts_with", "ends_with", "split", "zip", "skip", "enumerate",
+    "repeat", "chars",
+];
+
+fn is_intrinsic_pipe_method(name: &str) -> bool {
+    INTRINSIC_PIPE_METHODS.contains(&name)
+}
+
 fn eval_pipe_method(
-    method: PipeMethod,
+    method: &str,
     receiver: Value,
     args: &[(Option<String>, LoweredExpr)],
     env: &Env,
     sibling_fns: &HashMap<String, LoweredFnBody>,
 ) -> Result<Value, EvalError> {
     match method {
-        PipeMethod::Join => {
+        "join" => {
             let sep = if let Some((_, sep_expr)) = args.first() {
                 match eval_expr(sep_expr, env, sibling_fns)? {
                     Value::Str(s) => s,
@@ -934,7 +948,7 @@ fn eval_pipe_method(
             }
         }
 
-        PipeMethod::Map => {
+        "map" => {
             let lambda = args.first().map(|(_, e)| e);
             match (receiver, lambda) {
                 (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
@@ -958,7 +972,7 @@ fn eval_pipe_method(
             }
         }
 
-        PipeMethod::Filter => {
+        "filter" => {
             let lambda = args.first().map(|(_, e)| e);
             match (receiver, lambda) {
                 (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
@@ -982,7 +996,7 @@ fn eval_pipe_method(
             }
         }
 
-        PipeMethod::FilterMap => {
+        "filter_map" => {
             let lambda = args.first().map(|(_, e)| e);
             match (receiver, lambda) {
                 (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
@@ -1006,7 +1020,7 @@ fn eval_pipe_method(
             }
         }
 
-        PipeMethod::FlatMap => {
+        "flat_map" => {
             let lambda = args.first().map(|(_, e)| e);
             match (receiver, lambda) {
                 (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
@@ -1031,7 +1045,7 @@ fn eval_pipe_method(
             }
         }
 
-        PipeMethod::Fold => {
+        "fold" => {
             let init = args.iter().find(|(k, _)| k.as_deref() == Some("init"));
             let func = args.iter().find(|(k, _)| k.as_deref() == Some("f"));
             match (receiver, init, func) {
@@ -1058,7 +1072,7 @@ fn eval_pipe_method(
             }
         }
 
-        PipeMethod::Append => {
+        "append" => {
             let new_items = args.iter().find(|(k, _)| k.as_deref() == Some("items"));
             match (receiver, new_items) {
                 (Value::List(mut base), Some((_, items_expr))) => {
@@ -1079,13 +1093,13 @@ fn eval_pipe_method(
             }
         }
 
-        PipeMethod::Count => match receiver {
+        "count" => match receiver {
             Value::List(items) => Ok(Value::Int(items.len() as i64)),
             Value::Skipped => Err(EvalError::new("count: receiver is Skipped (unwired input)")),
             _ => Err(EvalError::new("count requires a list")),
         },
 
-        PipeMethod::Sum => match receiver {
+        "sum" => match receiver {
             Value::List(items) => {
                 let total: i64 = items
                     .iter()
@@ -1097,19 +1111,19 @@ fn eval_pipe_method(
             _ => Err(EvalError::new("sum requires a list")),
         },
 
-        PipeMethod::First => match receiver {
+        "first" => match receiver {
             Value::List(items) => Ok(items.into_iter().next().unwrap_or(Value::Unit)),
             Value::Skipped => Err(EvalError::new("first: receiver is Skipped (unwired input)")),
             _ => Err(EvalError::new("first requires a list")),
         },
 
-        PipeMethod::Last => match receiver {
+        "last" => match receiver {
             Value::List(items) => Ok(items.into_iter().last().unwrap_or(Value::Unit)),
             Value::Skipped => Err(EvalError::new("last: receiver is Skipped (unwired input)")),
             _ => Err(EvalError::new("last requires a list")),
         },
 
-        PipeMethod::Any => {
+        "any" => {
             let lambda = args.first().map(|(_, e)| e);
             match (receiver, lambda) {
                 (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
@@ -1130,7 +1144,7 @@ fn eval_pipe_method(
             }
         }
 
-        PipeMethod::All => {
+        "all" => {
             let lambda = args.first().map(|(_, e)| e);
             match (receiver, lambda) {
                 (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
@@ -1151,7 +1165,7 @@ fn eval_pipe_method(
             }
         }
 
-        PipeMethod::Contains => {
+        "contains" => {
             let needle_expr = args
                 .first()
                 .or_else(|| args.iter().find(|(k, _)| k.as_deref() == Some("item")));
@@ -1167,7 +1181,7 @@ fn eval_pipe_method(
             }
         }
 
-        PipeMethod::SortBy => {
+        "sort_by" => {
             let lambda = args.first().map(|(_, e)| e);
             match (receiver, lambda) {
                 (Value::List(mut items), Some(LoweredExpr::Lambda { params, body })) => {
@@ -1193,7 +1207,7 @@ fn eval_pipe_method(
         }
 
         // String methods
-        PipeMethod::StartsWith => {
+        "starts_with" => {
             let prefix = args
                 .iter()
                 .find(|(k, _)| k.as_deref() == Some("prefix"))
@@ -1207,7 +1221,7 @@ fn eval_pipe_method(
             }
         }
 
-        PipeMethod::EndsWith => {
+        "ends_with" => {
             let suffix = args
                 .iter()
                 .find(|(k, _)| k.as_deref() == Some("suffix"))
@@ -1221,7 +1235,7 @@ fn eval_pipe_method(
             }
         }
 
-        PipeMethod::Split => {
+        "split" => {
             let delim = args
                 .iter()
                 .find(|(k, _)| k.as_deref() == Some("delimiter"))
@@ -1248,7 +1262,7 @@ fn eval_pipe_method(
             }
         }
 
-        PipeMethod::Zip => {
+        "zip" => {
             let other_expr = args
                 .iter()
                 .find(|(k, _)| k.as_deref() == Some("other"))
@@ -1277,7 +1291,7 @@ fn eval_pipe_method(
             }
         }
 
-        PipeMethod::Skip => {
+        "skip" => {
             let n_expr = args
                 .iter()
                 .find(|(k, _)| k.as_deref() == Some("n"))
@@ -1298,7 +1312,7 @@ fn eval_pipe_method(
             }
         }
 
-        PipeMethod::Enumerate => match receiver {
+        "enumerate" => match receiver {
             Value::List(items) => {
                 let enumerated = items
                     .into_iter()
@@ -1316,7 +1330,7 @@ fn eval_pipe_method(
             _ => Err(EvalError::new("enumerate requires a list")),
         },
 
-        PipeMethod::Repeat => {
+        "repeat" => {
             let n_expr = args.first();
             match (receiver, n_expr) {
                 (Value::Str(s), Some((_, expr))) => {
@@ -1331,7 +1345,7 @@ fn eval_pipe_method(
         }
 
         // chars: split string into individual characters
-        PipeMethod::Chars => match &receiver {
+        "chars" => match &receiver {
             Value::Str(s) => {
                 let chars: Vec<Value> = s.chars().map(|c| Value::Str(c.to_string())).collect();
                 Ok(Value::List(chars))
@@ -1339,12 +1353,8 @@ fn eval_pipe_method(
             _ => Err(EvalError::new(format!("chars: expected String, got {:?}", receiver))),
         },
 
-        // Variants with no direct eval implementation — delegate to sibling fns.
-        PipeMethod::MaxBy
-        | PipeMethod::ReplaceSection
-        | PipeMethod::ToBytes
-        | PipeMethod::ToJson
-        | PipeMethod::Hash => eval_sibling_fn(method.as_str(), receiver, args, env, sibling_fns),
+        // Unknown intrinsic — shouldn't happen (is_intrinsic_pipe_method guards this).
+        _ => Err(EvalError::new(format!("unknown intrinsic pipe method: {method}"))),
     }
 }
 
@@ -1852,14 +1862,14 @@ mod tests {
             },
         )];
 
-        let methods_with_lambda: &[(PipeMethod, bool)] = &[
-            (PipeMethod::Filter, false),
-            (PipeMethod::FilterMap, false),
-            (PipeMethod::FlatMap, false),
-            (PipeMethod::Map, false),
-            (PipeMethod::SortBy, false),
-            (PipeMethod::Any, true),
-            (PipeMethod::All, true),
+        let methods_with_lambda: &[(&str, bool)] = &[
+            ("filter", false),
+            ("filter_map", false),
+            ("flat_map", false),
+            ("map", false),
+            ("sort_by", false),
+            ("any", true),
+            ("all", true),
         ];
         for (method, use_true) in methods_with_lambda {
             let args = if *use_true {
@@ -1876,10 +1886,10 @@ mod tests {
         }
 
         let no_arg_methods = &[
-            PipeMethod::Count,
-            PipeMethod::Sum,
-            PipeMethod::First,
-            PipeMethod::Last,
+            "count",
+            "sum",
+            "first",
+            "last",
         ];
         for method in no_arg_methods {
             let result = eval_pipe_method(*method, Value::Skipped, &[], &env, &sibling_fns);
@@ -1892,7 +1902,7 @@ mod tests {
             LoweredExpr::Literal(LoweredLiteral::String("x".to_string())),
         )];
         let result = eval_pipe_method(
-            PipeMethod::Contains,
+            "contains",
             Value::Skipped,
             &needle_args,
             &env,
@@ -1906,7 +1916,7 @@ mod tests {
             LoweredExpr::Literal(LoweredLiteral::String(",".to_string())),
         )];
         let result = eval_pipe_method(
-            PipeMethod::Join,
+            "join",
             Value::Skipped,
             &sep_args,
             &env,
@@ -1929,7 +1939,7 @@ mod tests {
             ),
         ];
         let result = eval_pipe_method(
-            PipeMethod::Fold,
+            "fold",
             Value::Skipped,
             &fold_args,
             &env,
@@ -1943,7 +1953,7 @@ mod tests {
             LoweredExpr::Literal(LoweredLiteral::String("x".to_string())),
         )];
         let result = eval_pipe_method(
-            PipeMethod::Append,
+            "append",
             Value::Skipped,
             &append_args,
             &env,
@@ -1966,7 +1976,7 @@ mod tests {
             Some("n".to_string()),
             LoweredExpr::Literal(LoweredLiteral::Int(2)),
         )];
-        let result = eval_pipe_method(PipeMethod::Skip, items, &args, &env, &sibling_fns).unwrap();
+        let result = eval_pipe_method("skip", items, &args, &env, &sibling_fns).unwrap();
         assert_eq!(
             result,
             Value::List(vec![
@@ -1989,7 +1999,7 @@ mod tests {
             LoweredExpr::Literal(LoweredLiteral::Int(0)),
         )];
         let result =
-            eval_pipe_method(PipeMethod::Skip, items.clone(), &args, &env, &sibling_fns).unwrap();
+            eval_pipe_method("skip", items.clone(), &args, &env, &sibling_fns).unwrap();
         assert_eq!(result, items);
     }
 
@@ -2002,7 +2012,7 @@ mod tests {
             Some("n".to_string()),
             LoweredExpr::Literal(LoweredLiteral::Int(10)),
         )];
-        let result = eval_pipe_method(PipeMethod::Skip, items, &args, &env, &sibling_fns).unwrap();
+        let result = eval_pipe_method("skip", items, &args, &env, &sibling_fns).unwrap();
         assert_eq!(result, Value::List(vec![]));
     }
 
@@ -2014,7 +2024,7 @@ mod tests {
             Some("n".to_string()),
             LoweredExpr::Literal(LoweredLiteral::Int(1)),
         )];
-        let result = eval_pipe_method(PipeMethod::Skip, Value::Skipped, &args, &env, &sibling_fns);
+        let result = eval_pipe_method("skip", Value::Skipped, &args, &env, &sibling_fns);
         assert!(result.is_err(), "skip should reject Skipped receiver");
     }
 
@@ -2028,7 +2038,7 @@ mod tests {
             Value::Str("c".to_string()),
         ]);
         let result =
-            eval_pipe_method(PipeMethod::Enumerate, items, &[], &env, &sibling_fns).unwrap();
+            eval_pipe_method("enumerate", items, &[], &env, &sibling_fns).unwrap();
         let expected = Value::List(vec![
             Value::Map({
                 let mut m = BTreeMap::new();
@@ -2058,7 +2068,7 @@ mod tests {
         let sibling_fns = HashMap::new();
         let items = Value::List(vec![]);
         let result =
-            eval_pipe_method(PipeMethod::Enumerate, items, &[], &env, &sibling_fns).unwrap();
+            eval_pipe_method("enumerate", items, &[], &env, &sibling_fns).unwrap();
         assert_eq!(result, Value::List(vec![]));
     }
 
@@ -2067,7 +2077,7 @@ mod tests {
         let env = Env::from_inputs(&HashMap::new());
         let sibling_fns = HashMap::new();
         let result = eval_pipe_method(
-            PipeMethod::Enumerate,
+            "enumerate",
             Value::Skipped,
             &[],
             &env,

@@ -583,8 +583,10 @@ pub mod ast {
         For(String, Box<Expr>, Vec<String>, ForBody),
         /// Pipe: `expr |> fn`
         Pipe(Box<Expr>, Box<Expr>),
-        /// Built-in pipe method call: `expr |> method(args)`
-        PipeCall(Box<Expr>, PipeMethod, Vec<(Option<String>, Expr)>),
+        /// Pipe method call: `expr |> method(args)`.
+        /// Method is resolved by name: intrinsics (fold, join, etc.) in the
+        /// evaluator, DSL fn items via sibling fn lookup.
+        PipeCall(Box<Expr>, String, Vec<(Option<String>, Expr)>),
         /// Lambda (inline only, in |> chains): `x => x.name`
         Lambda(Vec<String>, Box<Expr>),
         /// List literal: `[a, b, c]`
@@ -1026,6 +1028,11 @@ pub mod ast {
             .iter()
             .find(|d| d.name == name)
             .map(|d| d.method)
+    }
+
+    /// Look up a pipe method definition by name.
+    pub fn pipe_method_def_by_name(name: &str) -> Option<&'static PipeMethodDef> {
+        PIPE_METHOD_REGISTRY.iter().find(|d| d.name == name)
     }
 
     #[derive(Debug, Clone)]
