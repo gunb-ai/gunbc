@@ -189,9 +189,9 @@ pub fn auto_testgen_for_module(module: &CompilableModule, output_dir: &Path) -> 
         }
     };
 
-    // 2. Auto-generate MockSpec from types + DAG structure
+    // 2. Auto-generate MockSpec from types + DAG structure (with DSL type registry)
     let safe_name = module.module_name.replace('.', "-");
-    let spec = auto_mock_spec(&result.dag, &safe_name);
+    let spec = auto_mock_spec(&result.dag, &safe_name, Some(&result.dsl_type_registry));
 
     // 2a. Derive failure-variant MockSpecs for error-path test generation (RV-4)
     let failure_variants = auto_mock_failure_variants(&spec);
@@ -213,7 +213,10 @@ pub fn auto_testgen_for_module(module: &CompilableModule, output_dir: &Path) -> 
         "gunbc_resolve::builder::build_dsl_graph_dag(\"{}\", gunbc_resolve::BuildOpts::default()).expect(\"graph should build\")",
         module.dsl_path,
     );
-    let mock_spec_path = format!("gunbc_test::auto_mock_spec(&dag, \"{}\")", safe_name,);
+    let mock_spec_path = format!(
+        "{{ let __r = gunbc_resolve::builder::build_dsl_graph(\"{}\", gunbc_resolve::BuildOpts::default()).expect(\"graph should build\"); gunbc_test::auto_mock_spec(&__r.dag, \"{}\", Some(&__r.dsl_type_registry)) }}",
+        module.dsl_path, safe_name,
+    );
 
     let target_def = TestgenTargetDef {
         name: Cow::Owned(safe_name.clone()),
@@ -385,7 +388,7 @@ pub fn build_mock_spec_from_test<T: gunbc_exec::Executable + Clone + Send>(
     target: &DagTestTarget,
 ) -> MockSpec {
     let test_name = target.test_def.name.replace('_', "-");
-    let mut spec = auto_mock_spec(dag, &test_name);
+    let mut spec = auto_mock_spec(dag, &test_name, None);
     let module_prefix = module_prefix_from_dsl_module(&target.dsl_module);
 
     // Apply fixture mocks
@@ -438,7 +441,7 @@ pub fn build_testgen_target_def(
     // mock_spec_path: use auto_mock_spec as the runtime function.
     // Test-specific overrides are baked into the MockSpec at generation time,
     // but flow tests calling this path will only get auto-mocked values.
-    let mock_spec_path = format!("gunbc_test::auto_mock_spec(&dag, \"{test_name}\")");
+    let mock_spec_path = format!("gunbc_test::auto_mock_spec(&dag, \"{test_name}\", None)");
 
     TestgenTargetDef {
         name: Cow::Owned(test_name),

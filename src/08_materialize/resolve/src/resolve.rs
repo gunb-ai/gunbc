@@ -178,6 +178,8 @@ struct FnBodyCallableOp {
     /// Sibling fn bodies from the same DAG, keyed by callable name.
     /// Used by `evaluate_fn_body` for cross-fn calls within the same module.
     sibling_fns: HashMap<String, daglang_lower::LoweredFnBody>,
+    /// Compile-time `data` declaration values, keyed by declaration name.
+    data_values: HashMap<String, serde_json::Value>,
 }
 
 impl std::fmt::Debug for FnBodyCallableOp {
@@ -204,7 +206,7 @@ impl Executable for FnBodyCallableOp {
         // Try to evaluate the fn body. On success, map the results to declared
         // output ports. Passthrough inputs override fn body results (they come
         // from explicit DAG wiring and are more authoritative).
-        match daglang_lower::eval::evaluate_fn_body(&self.fn_body, &eval_inputs, &self.sibling_fns)
+        match daglang_lower::eval::evaluate_fn_body_with_data(&self.fn_body, &eval_inputs, &self.sibling_fns, &self.data_values)
         {
             Ok(body_results) => {
                 let mut outputs = HashMap::new();
@@ -927,6 +929,14 @@ impl Executable for PrepareFileWriteCompatOp {
 /// Each `LoweredOp` node is replaced with its concrete domain op wrapped
 /// in `DynOp`. Edges and ports are preserved unchanged.
 pub fn resolve_lowered_dag_with(dag: &Dag<LoweredOp>) -> Result<Dag<DynOp>, ResolveError> {
+    resolve_lowered_dag_with_data(dag, &HashMap::new())
+}
+
+/// Resolve a lowered DAG with data declaration values available for fn-body evaluation.
+pub fn resolve_lowered_dag_with_data(
+    dag: &Dag<LoweredOp>,
+    data_values: &HashMap<String, serde_json::Value>,
+) -> Result<Dag<DynOp>, ResolveError> {
     // Collect all fn bodies from callable nodes for cross-fn evaluation.
     // Helper fns call sibling fns via evaluate_fn_body; this map provides
     // them at execution time.
@@ -952,7 +962,7 @@ pub fn resolve_lowered_dag_with(dag: &Dag<LoweredOp>) -> Result<Dag<DynOp>, Reso
             id: node.id.clone(),
             inputs: node.inputs.clone(),
             outputs: node.outputs.clone(),
-            body: resolve_node_body(node, &sibling_fns)?,
+            body: resolve_node_body(node, &sibling_fns, data_values)?,
             examples: node.examples.clone(),
             log_detail: node.log_detail,
             kind: node.kind,
@@ -1022,10 +1032,11 @@ fn normalize_release_resource_inputs(node: &mut Node<DynOp>) {
 #[cfg(test)]
 fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
     let empty_siblings = HashMap::new();
+    let empty_data = HashMap::new();
     let node_id = node.id.0.clone();
     match &node.body {
         NodeBody::Opaque(op) => {
-            resolve_op(&node_id, op, &node.inputs, &node.outputs, &empty_siblings)
+            resolve_op(&node_id, op, &node.inputs, &node.outputs, &empty_siblings, &empty_data)
         }
         NodeBody::SubDag(inner, _kind) => Ok(DynOp::new(SubDagDispatchOp {
             dag: resolve_lowered_dag_with(inner)?,
@@ -1036,6 +1047,7 @@ fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
 fn resolve_node_body(
     node: &Node<LoweredOp>,
     sibling_fns: &HashMap<String, daglang_lower::LoweredFnBody>,
+    data_values: &HashMap<String, serde_json::Value>,
 ) -> Result<NodeBody<DynOp>, ResolveError> {
     match &node.body {
         NodeBody::Opaque(op) => Ok(NodeBody::Opaque(resolve_op(
@@ -1044,9 +1056,10 @@ fn resolve_node_body(
             &node.inputs,
             &node.outputs,
             sibling_fns,
+            data_values,
         )?)),
         NodeBody::SubDag(inner, kind) => Ok(NodeBody::SubDag(
-            resolve_lowered_dag_with(inner)?,
+            resolve_lowered_dag_with_data(inner, data_values)?,
             kind.clone(),
         )),
     }
@@ -1058,6 +1071,7 @@ fn resolve_op(
     inputs: &[Port],
     outputs: &[Port],
     sibling_fns: &HashMap<String, daglang_lower::LoweredFnBody>,
+    data_values: &HashMap<String, serde_json::Value>,
 ) -> Result<DynOp, ResolveError> {
     match op {
         LoweredOp::Collection { kind, .. } => resolve_collection(kind),
@@ -1083,6 +1097,7 @@ fn resolve_op(
             service_metadata.as_deref(),
             fn_body.as_deref(),
             sibling_fns,
+            data_values,
         ),
         LoweredOp::Pattern(pattern_op) => Ok(DynOp::new(pattern_op.clone())),
         LoweredOp::UnsupportedPattern { name } => Err(ResolveError {
@@ -1275,6 +1290,7 @@ fn resolve_domain(
     service_metadata: Option<&ServiceCallMetadata>,
     fn_body: Option<&daglang_lower::LoweredFnBody>,
     sibling_fns: &HashMap<String, daglang_lower::LoweredFnBody>,
+    data_values: &HashMap<String, serde_json::Value>,
 ) -> Result<DynOp, ResolveError> {
     // 1. Modules with custom resolvers — return Some for known callables,
     //    None for unknown (which falls through to passthrough).
@@ -1306,6 +1322,7 @@ fn resolve_domain(
             fn_body: body.clone(),
             output_ports: declared_output_ports(outputs),
             sibling_fns: sibling_fns.clone(),
+            data_values: data_values.clone(),
         }));
     }
     // 5b. Pattern callables without fn_body: patterns are expanded inline as

@@ -11,6 +11,13 @@ use gunbc_ir::WorkspaceLayout;
 use std::path::Path;
 use std::process;
 
+/// Modules excluded from auto-testgen because they use DSL features the
+/// lowerer does not yet support (higher-order fn params, generic type params
+/// as values, service calls in `for` loops, associated output types).
+///
+/// Remove entries as the lowerer catches up. See POSTMORTEM.md §"std/patterns.dag".
+const TESTGEN_SKIP_MODULES: &[&str] = &["std.patterns"];
+
 /// Workspace-relative path to the generated-tests source directory.
 ///
 /// The testgen binary writes auto-generated test modules here, inside the
@@ -33,10 +40,24 @@ fn main() {
     let dsl_root = layout.dsl_root();
     let output_dir = layout.workspace_root.join(GENERATED_TESTS_SRC_REL);
 
-    let modules = discover_compilable_modules(&dsl_root).unwrap_or_else(|e| {
+    let all_modules = discover_compilable_modules(&dsl_root).unwrap_or_else(|e| {
         eprintln!("error: module discovery failed: {e}");
         process::exit(1);
     });
+    let skipped: Vec<_> = all_modules
+        .iter()
+        .filter(|m| TESTGEN_SKIP_MODULES.contains(&m.module_name.as_str()))
+        .collect();
+    for m in &skipped {
+        eprintln!(
+            "testgen: skipping {} (in TESTGEN_SKIP_MODULES — lowerer gaps)",
+            m.module_name
+        );
+    }
+    let modules: Vec<_> = all_modules
+        .into_iter()
+        .filter(|m| !TESTGEN_SKIP_MODULES.contains(&m.module_name.as_str()))
+        .collect();
     let total = modules.len();
 
     let rendered_modules = collect_rendered_modules(&modules, &output_dir).unwrap_or_else(|errs| {

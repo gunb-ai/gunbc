@@ -251,15 +251,7 @@ gist-recent-dry: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-codegen --bin gunbc-gist -q --release -- gist-recent$(if $(SINCE), --since $(SINCE)) --dry-run strict
 
 
-# gunbc-infra entrypoints: environment (String), runtime (String), spec_targets (String), target (String), skip (String)
-infra: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-codegen --bin gunbc-infra -q --release
-
-infra-dry: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-codegen --bin gunbc-infra -q --release -- --dry-run strict
-
-
-# gunbc-readme entrypoints: 
+# gunbc-readme entrypoints:
 readme: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-codegen --bin gunbc-readme -q --release
 
@@ -267,9 +259,3 @@ readme-dry: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-codegen --bin gunbc-readme -q --release -- --dry-run strict
 
 
-# gunbc-workflow entrypoints: 
-workflow: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-codegen --bin gunbc-workflow -q --release
-
-workflow-dry: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-codegen --bin gunbc-workflow -q --release -- --dry-run strict

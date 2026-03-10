@@ -56,7 +56,12 @@ pub fn run_compile_pipeline(
         inferred_entrypoints,
         data_values,
     } = lower_output;
-    let verified_dag = VerifiedDag::verify(lowered_dag).map_err(CompileError::from)?;
+    let verified_dag = VerifiedDag::verify(lowered_dag).map_err(|errors| {
+        CompileError::Diagnostics(super::verification_diagnostics_with_sources(
+            errors,
+            &module_graph,
+        ))
+    })?;
 
     let derived = derive_artifacts(&verified_dag).map_err(CompileError::Derive)?;
 
@@ -140,6 +145,7 @@ fn validate_structural_primitive_input_wiring_recursive(
                                 node_id: node.id.0.clone(),
                                 node_name: node.id.0.clone(),
                                 port_name: port.name.0.clone(),
+                                origin: node.origin.clone(),
                             },
                         ));
                     }

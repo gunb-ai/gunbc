@@ -12,12 +12,11 @@ use gunbc_ir::transport::{
 };
 use gunbc_ir::{
     detect_boundaries, detect_entrypoints, parse_map_type_id, value_backing_for_type_id,
-    variant_witnesses, Cardinality, Dag, NodeId, PortName, TypeId, TypeRegistry, Value,
-    ValueBacking,
+    variant_witnesses, Cardinality, Dag, NodeBody, NodeId, PortName, TypeId, TypeOp, TypeRegistry,
+    Value, ValueBacking,
 };
 use gunbc_primitives::filename;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::OnceLock;
 
 use crate::{
     extract_mock_requirements, MockProvider, MockResponseSynthesis, MockSpec, NodeExample,
@@ -29,9 +28,12 @@ fn default_fs_handle() -> Value {
     fs.into()
 }
 
-fn mock_type_registry() -> &'static TypeRegistry {
-    static REGISTRY: OnceLock<TypeRegistry> = OnceLock::new();
-    REGISTRY.get_or_init(TypeRegistry::with_core_types)
+fn merged_registry(dsl_registry: Option<&TypeRegistry>) -> TypeRegistry {
+    let mut registry = TypeRegistry::with_core_types();
+    if let Some(dsl) = dsl_registry {
+        registry.merge_dsl_types(dsl);
+    }
+    registry
 }
 
 fn parse_unary_generic_type_id<'a>(type_id: &'a str, wrapper: &str) -> Option<&'a str> {
@@ -75,7 +77,19 @@ fn is_placeholder_witness(value: &Value) -> bool {
     matches!(value, Value::Str(s) if s.starts_with('<') && s.ends_with('>'))
 }
 
-fn typed_witness_value(type_id: &str) -> Option<Value> {
+fn typed_witness_value(type_id: &str, registry: &TypeRegistry) -> Option<Value> {
+    typed_witness_value_depth(type_id, registry, 0)
+}
+
+/// Max recursion depth for product field witness generation.
+/// Prevents infinite recursion on recursive types.
+const MAX_WITNESS_DEPTH: u8 = 4;
+
+fn typed_witness_value_depth(type_id: &str, registry: &TypeRegistry, depth: u8) -> Option<Value> {
+    if depth > MAX_WITNESS_DEPTH {
+        return None;
+    }
+
     if let Some(inner) = optional_inner_type_id(type_id) {
         let _ = inner;
         return Some(Value::Unit);
@@ -84,45 +98,104 @@ fn typed_witness_value(type_id: &str) -> Option<Value> {
     if let Some(inner) = parse_unary_generic_type_id(type_id, "List")
         .or_else(|| parse_container_alias_inner(type_id, "List"))
     {
-        return typed_witness_value(inner).map(|value| Value::List(vec![value]));
+        return typed_witness_value_depth(inner, registry, depth + 1)
+            .map(|value| Value::List(vec![value]));
     }
 
     if let Some(inner) = parse_unary_generic_type_id(type_id, "Set")
         .or_else(|| parse_container_alias_inner(type_id, "Set"))
     {
-        return typed_witness_value(inner).map(|value| Value::Set(vec![value]));
+        return typed_witness_value_depth(inner, registry, depth + 1)
+            .map(|value| Value::Set(vec![value]));
     }
 
     if let Some((key_type, value_type)) = parse_map_type_id(type_id) {
         if key_type == "String" {
-            let value = typed_witness_value(&value_type)?;
+            let value = typed_witness_value_depth(&value_type, registry, depth + 1)?;
             let mut map = BTreeMap::new();
             map.insert("mock_key".to_string(), value);
             return Some(Value::Map(map));
         }
     }
 
-    let registry = mock_type_registry();
     if let Some((_, value)) = variant_witnesses(type_id, registry).into_iter().next() {
         return Some(value);
     }
 
     let type_dag = registry.resolve_type(&TypeId::from(type_id))?;
-    gunbc_ir::contract::witnesses_checked(&type_dag)
-        .ok()?
-        .into_iter()
-        .map(|witness| witness.value)
-        .find(|value| !matches!(value, Value::Unit) && !is_placeholder_witness(value))
+
+    // Try standard witness generation first.
+    let standard = gunbc_ir::contract::witnesses_checked(&type_dag)
+        .ok()
+        .and_then(|ws| {
+            ws.into_iter()
+                .map(|w| w.value)
+                .find(|v| !matches!(v, Value::Unit) && !is_placeholder_witness(v))
+        });
+    if standard.is_some() {
+        return standard;
+    }
+
+    // Standard witnesses failed (product types produce placeholder strings).
+    // Check if this is a product type and build a structural Value::Map.
+    product_witness(&type_dag, registry, depth)
 }
 
-fn default_value_for_type(type_id: &str) -> Value {
+/// Build a `Value::Map` witness for a product (record) type DAG.
+///
+/// Walks the type DAG for `Product(field_names)` nodes, extracts each field's
+/// type from the corresponding `field_{name}` SubDag child, and recursively
+/// generates witness values for each field.
+fn product_witness(
+    type_dag: &Dag<TypeOp>,
+    registry: &TypeRegistry,
+    depth: u8,
+) -> Option<Value> {
+    // Find the Product node and extract field names.
+    let field_names: Vec<String> = type_dag.nodes.iter().find_map(|node| {
+        if let NodeBody::Opaque(TypeOp::Product(fields)) = &node.body {
+            Some(fields.clone())
+        } else {
+            None
+        }
+    })?;
+
+    let mut map = BTreeMap::new();
+    for field_name in &field_names {
+        let child_id = format!("field_{field_name}");
+        // Find the SubDag node for this field.
+        let field_dag = type_dag.nodes.iter().find_map(|node| {
+            if node.id.0 == child_id {
+                if let NodeBody::SubDag(dag, _) = &node.body {
+                    return Some(dag);
+                }
+            }
+            None
+        });
+        let value = if let Some(fdag) = field_dag {
+            // Extract the base type from the field's type DAG and recurse.
+            let field_base = gunbc_ir::contract::base_type(fdag);
+            field_base
+                .as_deref()
+                .and_then(|ft| typed_witness_value_depth(ft, registry, depth + 1))
+                .unwrap_or_else(|| Value::Str("mock".to_string()))
+        } else {
+            Value::Str("mock".to_string())
+        };
+        map.insert(field_name.clone(), value);
+    }
+
+    Some(Value::Map(map))
+}
+
+fn default_value_for_type(type_id: &str, registry: &TypeRegistry) -> Value {
     match type_id {
         "TransportResponse" => default_shell_response(),
         "TransportRequest" => Value::Request(TransportRequest::Shell(ShellRequest::new("true"))),
         "Secret" => Value::Secret(gunbc_ir::SecretString::new("mock")),
         "FilesystemHandle" => default_fs_handle(),
         _ => {
-            if let Some(value) = typed_witness_value(type_id) {
+            if let Some(value) = typed_witness_value(type_id, registry) {
                 return value;
             }
             match value_backing_for_type_id(type_id) {
@@ -141,13 +214,13 @@ fn default_value_for_type(type_id: &str) -> Value {
     }
 }
 
-fn default_value_for_port(type_id: &str, cardinality: Cardinality) -> Value {
+fn default_value_for_port(type_id: &str, cardinality: Cardinality, registry: &TypeRegistry) -> Value {
     if type_id == "Any" && cardinality.max != Some(1) {
         let count = cardinality.min.max(1) as usize;
         return Value::List(vec![Value::Str("mock".to_string()); count]);
     }
 
-    let base = default_value_for_type(type_id);
+    let base = default_value_for_type(type_id, registry);
     if cardinality.max == Some(1) {
         return base;
     }
@@ -291,15 +364,16 @@ fn default_value_for_slot<T: Executable + Clone + Send>(
     port_name: &str,
     type_id: &str,
     cardinality: Cardinality,
+    registry: &TypeRegistry,
 ) -> Value {
     if type_id != "TransportResponse" {
-        return default_value_for_port(type_id, cardinality);
+        return default_value_for_port(type_id, cardinality, registry);
     }
 
     // Try provider-specific REST response first (using OperationKey metadata).
     let provider = resolve_mock_provider(dag, node_id);
     let provider_rest = rest_response_for_provider(provider);
-    if response_candidate_satisfies_consumers(dag, node_id, port_name, &provider_rest) {
+    if response_candidate_satisfies_consumers(dag, node_id, port_name, &provider_rest, registry) {
         return provider_rest;
     }
 
@@ -311,7 +385,7 @@ fn default_value_for_slot<T: Executable + Clone + Send>(
         default_file_response(),
     ];
     for candidate in candidates {
-        if response_candidate_satisfies_consumers(dag, node_id, port_name, &candidate) {
+        if response_candidate_satisfies_consumers(dag, node_id, port_name, &candidate, registry) {
             return candidate;
         }
     }
@@ -323,6 +397,7 @@ fn response_candidate_satisfies_consumers<T: Executable + Clone + Send>(
     node_id: &str,
     port_name: &str,
     candidate: &Value,
+    registry: &TypeRegistry,
 ) -> bool {
     let source_node = NodeId::from(node_id);
     let source_port = PortName::from(port_name);
@@ -354,7 +429,7 @@ fn response_candidate_satisfies_consumers<T: Executable + Clone + Send>(
                 continue;
             }
             probe_inputs.entry(input.name.0.clone()).or_insert_with(|| {
-                default_value_for_port(input.type_id.0.as_str(), input.cardinality)
+                default_value_for_port(input.type_id.0.as_str(), input.cardinality, registry)
             });
         }
 
@@ -387,7 +462,15 @@ fn dedupe_boundary_mocks_keep_last(spec: &mut MockSpec) {
 }
 
 /// Build a `MockSpec` by auto-filling required slots with type-compatible defaults.
-pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) -> MockSpec {
+///
+/// When `dsl_registry` is provided, DSL-defined types (records, sum types) get
+/// structurally correct mock values instead of falling back to `{"mock": true}`.
+pub fn auto_mock_spec<T: Executable + Clone + Send>(
+    dag: &Dag<T>,
+    name: &str,
+    dsl_registry: Option<&TypeRegistry>,
+) -> MockSpec {
+    let registry = merged_registry(dsl_registry);
     let mut reqs = extract_mock_requirements(dag, name);
     let lowered =
         gunbc_exec::lower(dag).unwrap_or_else(|error| panic!("failed to lower {name}: {error}"));
@@ -427,6 +510,7 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
                 port.as_str(),
                 type_id.as_str(),
                 cardinality,
+                &registry,
             );
             reqs = reqs
                 .boundary(node.as_str(), port.as_str(), value)
@@ -453,6 +537,7 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
                 port_name.0.as_str(),
                 port.type_id.0.as_str(),
                 port.cardinality,
+                &registry,
             ),
         );
     }
@@ -471,7 +556,7 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
                     .map(|input| input.cardinality)
             })
             .unwrap_or(Cardinality::ONE);
-        let value = default_value_for_port(type_id.0.as_str(), cardinality);
+        let value = default_value_for_port(type_id.0.as_str(), cardinality, &registry);
         spec = spec.input_mock(node_id.0.as_str(), port_name.0.as_str(), value);
     }
 
@@ -515,7 +600,7 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
             let value = if input_port.name.0 == "skip" && input_port.type_id.0 == "Bool" {
                 Value::Bool(false)
             } else {
-                default_value_for_port(input_port.type_id.0.as_str(), input_port.cardinality)
+                default_value_for_port(input_port.type_id.0.as_str(), input_port.cardinality, &registry)
             };
             required_inputs.insert(input_port.name.0.clone(), value);
         }
@@ -588,7 +673,7 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
             let passthrough_value = if output.name.0 == "skip" && output.type_id.0 == "Bool" {
                 Value::Bool(false)
             } else {
-                default_value_for_port(output.type_id.0.as_str(), output.cardinality)
+                default_value_for_port(output.type_id.0.as_str(), output.cardinality, &registry)
             };
             example = example.input(output.name.0.as_str(), passthrough_value);
         }
@@ -863,31 +948,35 @@ mod tests {
 
     #[test]
     fn default_value_for_cloud_runtime_uses_variant_witness() {
+        let registry = TypeRegistry::with_core_types();
         assert_eq!(
-            default_value_for_type("CloudRuntime"),
+            default_value_for_type("CloudRuntime", &registry),
             Value::Str("GitHubActions".to_string())
         );
     }
 
     #[test]
     fn default_value_for_list_of_fermi_depth_uses_variant_elements() {
+        let registry = TypeRegistry::with_core_types();
         assert_eq!(
-            default_value_for_type("List<FermiDepth>"),
+            default_value_for_type("List<FermiDepth>", &registry),
             Value::List(vec![Value::Str("Xs".to_string())])
         );
     }
 
     #[test]
     fn default_value_for_platform_uses_first_variant() {
+        let registry = TypeRegistry::with_core_types();
         assert_eq!(
-            default_value_for_type("Platform"),
+            default_value_for_type("Platform", &registry),
             Value::Str("Linux".to_string())
         );
     }
 
     #[test]
     fn default_value_for_optional_prefers_absent() {
-        assert_eq!(default_value_for_type("Optional<String>"), Value::Unit);
-        assert_eq!(default_value_for_type("String?"), Value::Unit);
+        let registry = TypeRegistry::with_core_types();
+        assert_eq!(default_value_for_type("Optional<String>", &registry), Value::Unit);
+        assert_eq!(default_value_for_type("String?", &registry), Value::Unit);
     }
 }

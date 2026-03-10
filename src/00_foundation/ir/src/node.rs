@@ -149,6 +149,36 @@ pub enum NodeOrigin {
     Unknown,
 }
 
+impl NodeOrigin {
+    /// Source file path, if tracked.
+    pub fn file(&self) -> Option<&str> {
+        match self {
+            NodeOrigin::UserCode { file, .. } | NodeOrigin::PatternExpansion { file, .. } => {
+                Some(file.as_str())
+            }
+            NodeOrigin::Stdlib { .. } | NodeOrigin::Unknown => None,
+        }
+    }
+
+    /// Byte-offset span start, if tracked.
+    pub fn span_start(&self) -> Option<usize> {
+        match self {
+            NodeOrigin::UserCode { span_start, .. }
+            | NodeOrigin::PatternExpansion { span_start, .. } => Some(*span_start),
+            NodeOrigin::Stdlib { .. } | NodeOrigin::Unknown => None,
+        }
+    }
+
+    /// Byte-offset span end, if tracked.
+    pub fn span_end(&self) -> Option<usize> {
+        match self {
+            NodeOrigin::UserCode { span_end, .. }
+            | NodeOrigin::PatternExpansion { span_end, .. } => Some(*span_end),
+            NodeOrigin::Stdlib { .. } | NodeOrigin::Unknown => None,
+        }
+    }
+}
+
 /// A node in the DAG, generic over its operation type.
 ///
 /// Nodes are pure transformations of inputs to outputs.
