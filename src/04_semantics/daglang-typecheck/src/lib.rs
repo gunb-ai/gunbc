@@ -25,7 +25,7 @@ use std::collections::{HashMap, HashSet};
 use daglang_contract::{Diagnostic, DiagnosticContext};
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{
-    pipe_method_def_by_name, Expr, Field, ForBody, Item, Literal, ModulePath, Param, PipelineDef,
+    Expr, Field, ForBody, Item, Literal, ModulePath, Param, PipelineDef,
     ProvidesClause, Refinement, Stmt, TypeBody, TypeExpr, UsesClause,
 };
 use daglang_syntax::ast_utils::{
@@ -2107,32 +2107,10 @@ fn register_callable_contract(
 }
 
 fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
-    use daglang_syntax::ast::PIPE_METHOD_REGISTRY;
-
-    // Generate contracts from the pipe method registry.
-    let mut contracts: Vec<(String, CallableContract)> = PIPE_METHOD_REGISTRY
-        .iter()
-        .map(|def| {
-            let output = if def.output_type == "Unknown" {
-                ValueType::Named("Any".to_string())
-            } else {
-                ValueType::Named(def.output_type.to_string())
-            };
-            (
-                def.name.to_string(),
-                CallableContract {
-                    arity: def.arity,
-                    params: def.param_names.iter().map(|s| s.to_string()).collect(),
-                    output,
-                },
-            )
-        })
-        .collect();
-
-    // Non-pipe-method builtins (standalone functions, render helpers, etc.).
+    // Builtin callable contracts (standalone functions, render helpers, etc.).
     // eq, chars, code_point, and build_token are now DSL fn items
     // (std/patterns.dag, std/unicode.dag, gunbc/auth/patterns.dag).
-    contracts.extend([
+    let contracts = vec![
         (
             "render_cytoscape_html".to_string(),
             CallableContract {
@@ -2217,7 +2195,7 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
                 output: ValueType::Named("CloudRuntime".to_string()),
             },
         ),
-    ]);
+    ];
 
     contracts
 }
@@ -3411,30 +3389,6 @@ fn infer_expr_type(
             };
             errors.extend(body_errors);
             ValueType::Unknown
-        }
-        Expr::Pipe(lhs, rhs) => {
-            let (_, lhs_errors) = infer_expr_type(lhs, local_bindings, infer_context);
-            errors.extend(lhs_errors);
-            let (rhs_val, rhs_errors) = infer_expr_type(rhs, local_bindings, infer_context);
-            errors.extend(rhs_errors);
-            rhs_val
-        }
-        Expr::PipeCall(receiver, method_name, args) => {
-            let (_, recv_errors) = infer_expr_type(receiver, local_bindings, infer_context);
-            errors.extend(recv_errors);
-            for (_name, arg) in args {
-                let (_, arg_errors) = infer_expr_type(arg, local_bindings, infer_context);
-                errors.extend(arg_errors);
-            }
-            if let Some(def) = pipe_method_def_by_name(method_name) {
-                if def.output_type == "Unknown" {
-                    ValueType::Unknown
-                } else {
-                    ValueType::Named(def.output_type.to_string())
-                }
-            } else {
-                ValueType::Unknown
-            }
         }
         Expr::Lambda(_, body) => {
             let (val, body_errors) = infer_expr_type(body, local_bindings, infer_context);

@@ -3297,7 +3297,6 @@ impl Parser {
 
     fn infix_bp(&self) -> Option<(u8, u8)> {
         match &self.peek().kind {
-            TokenKind::PipeArrow => Some((1, 2)),
             TokenKind::NullCoalesce => Some((3, 4)),
             TokenKind::Or => Some((5, 6)),
             TokenKind::And => Some((7, 8)),
@@ -3331,12 +3330,6 @@ impl Parser {
             Expr::BinOp(Box::new(lhs), bop, Box::new(rhs))
         } else {
             match op {
-                TokenKind::PipeArrow => match &rhs {
-                    Expr::Call(name, args) => {
-                        Expr::PipeCall(Box::new(lhs), name.clone(), args.clone())
-                    }
-                    _ => Expr::Pipe(Box::new(lhs), Box::new(rhs)),
-                },
                 TokenKind::NullCoalesce => {
                     Expr::BinOp(Box::new(lhs), BinOp::NullCoalesce, Box::new(rhs))
                 }
@@ -4168,31 +4161,6 @@ pipeline gist {
             Expr::BinOp(lhs, BinOp::Add, rhs) => {
                 assert!(matches!(*lhs, Expr::Ident(ref name) if name == "a"));
                 assert!(matches!(*rhs, Expr::BinOp(_, BinOp::Mul, _)));
-            }
-            other => panic!("unexpected expression tree: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn expression_pipe_is_left_associative() {
-        let expr = parse_expr_only("a |> f |> g");
-        match expr {
-            Expr::Pipe(lhs, rhs) => {
-                assert!(matches!(*rhs, Expr::Ident(ref name) if name == "g"));
-                assert!(matches!(*lhs, Expr::Pipe(_, _)));
-            }
-            other => panic!("unexpected expression tree: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn expression_pipe_method_lowers_to_pipe_call() {
-        let expr = parse_expr_only("items |> map(x => x)");
-        match expr {
-            Expr::PipeCall(receiver, ref method, ref args) if method == "map" => {
-                assert!(matches!(*receiver, Expr::Ident(ref name) if name == "items"));
-                assert_eq!(args.len(), 1);
-                assert!(matches!(args[0].1, Expr::Lambda(_, _)));
             }
             other => panic!("unexpected expression tree: {other:?}"),
         }

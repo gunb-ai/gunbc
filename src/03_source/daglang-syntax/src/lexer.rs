@@ -86,7 +86,6 @@ pub enum TokenKind {
     // Operators
     Lt,
     Gt,
-    PipeArrow,
     FatArrow,
     Arrow,
     Colon,
@@ -200,7 +199,6 @@ impl TokenKind {
             Self::RBracket => "]",
             Self::Lt => "<",
             Self::Gt => ">",
-            Self::PipeArrow => "|>",
             Self::FatArrow => "=>",
             Self::Arrow => "->",
             Self::Colon => ":",
@@ -539,10 +537,7 @@ impl<'a> Lexer<'a> {
             }
             b'|' => {
                 self.advance();
-                if self.peek() == b'>' {
-                    self.advance();
-                    self.tok(TokenKind::PipeArrow, start)
-                } else if self.peek() == b'|' {
+                if self.peek() == b'|' {
                     self.advance();
                     self.tok(TokenKind::Or, start)
                 } else {
@@ -869,9 +864,8 @@ mod tests {
     #[test]
     fn operators() {
         assert_eq!(
-            kinds("|> => -> == != <= >= && || ??"),
+            kinds("=> -> == != <= >= && || ??"),
             vec![
-                TokenKind::PipeArrow,
                 TokenKind::FatArrow,
                 TokenKind::Arrow,
                 TokenKind::EqEq,
@@ -889,10 +883,8 @@ mod tests {
     #[test]
     fn longest_match_operators() {
         assert_eq!(
-            kinds("|>| => = > -> - !="),
+            kinds("=> = > -> - !="),
             vec![
-                TokenKind::PipeArrow,
-                TokenKind::Pipe,
                 TokenKind::FatArrow,
                 TokenKind::Eq,
                 TokenKind::Gt,

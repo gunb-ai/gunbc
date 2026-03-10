@@ -7627,15 +7627,9 @@ fn collect_call_names(expr: &Expr, names: &mut HashSet<String>) {
             }
         }
         Expr::FieldAccess(base, _) => collect_call_names(base, names),
-        Expr::BinOp(l, _, r) | Expr::Pipe(l, r) => {
+        Expr::BinOp(l, _, r) => {
             collect_call_names(l, names);
             collect_call_names(r, names);
-        }
-        Expr::PipeCall(recv, _, args) => {
-            collect_call_names(recv, names);
-            for (_, arg) in args {
-                collect_call_names(arg, names);
-            }
         }
         Expr::UnaryOp(_, inner) | Expr::Lambda(_, inner) | Expr::After(inner, _) => {
             collect_call_names(inner, names);
@@ -9472,15 +9466,9 @@ fn collect_direct_call_names(expr: &Expr, calls: &mut BTreeSet<String>) {
             }
         }
         Expr::FieldAccess(base, _) => collect_direct_call_names(base, calls),
-        Expr::BinOp(left, _, right) | Expr::Pipe(left, right) => {
+        Expr::BinOp(left, _, right) => {
             collect_direct_call_names(left, calls);
             collect_direct_call_names(right, calls);
-        }
-        Expr::PipeCall(recv, _, args) => {
-            collect_direct_call_names(recv, calls);
-            for (_, arg) in args {
-                collect_direct_call_names(arg, calls);
-            }
         }
         Expr::UnaryOp(_, inner) | Expr::After(inner, _) => {
             collect_direct_call_names(inner, calls);
@@ -9588,27 +9576,23 @@ struct CollectionNodeSpec {
 }
 
 fn collection_op_kind(name: &str) -> Option<CollectionOpKind> {
-    // Check pipe method registry first — handles aliases like count→len, sum→fold.
-    if let Some(def) = daglang_syntax::ast::pipe_method_def_by_name(name) {
-        return def.collection_op.and_then(CollectionOpKind::from_name);
+    // Handle aliases: count→len, sum→fold.
+    match name {
+        "count" => return Some(CollectionOpKind::Len),
+        "sum" => return Some(CollectionOpKind::Fold),
+        "filter_map" => return Some(CollectionOpKind::Filter),
+        "flat_map" => return Some(CollectionOpKind::FlatMap),
+        "sort_by" => return Some(CollectionOpKind::Sort),
+        "append" => return Some(CollectionOpKind::Map),
+        _ => {}
     }
-    // Non-pipe-method names with collection semantics (split/zip use Expr::Call syntax).
     CollectionOpKind::from_name(name)
 }
 
 fn collect_collection_ops_from_stmts(stmts: &[Stmt], sites: &mut Vec<CollectionOpSite>) {
     walk_stmts(stmts, &mut |expr| match expr {
-        Expr::Pipe(_, rhs) => {
-            let Expr::Call(name, _) = rhs.as_ref() else {
-                return;
-            };
-            let Some(kind) = collection_op_kind(name) else {
-                return;
-            };
-            sites.push(CollectionOpSite { kind });
-        }
-        Expr::PipeCall(_, method, _) => {
-            if let Some(kind) = collection_op_kind(method.as_str()) {
+        Expr::Call(name, _) => {
+            if let Some(kind) = collection_op_kind(name) {
                 sites.push(CollectionOpSite { kind });
             }
         }
@@ -9728,15 +9712,9 @@ fn collect_direct_fn_calls_with_args(expr: &Expr, calls: &mut Vec<FnCallSite>) {
             }
         }
         Expr::FieldAccess(base, _) => collect_direct_fn_calls_with_args(base, calls),
-        Expr::BinOp(left, _, right) | Expr::Pipe(left, right) => {
+        Expr::BinOp(left, _, right) => {
             collect_direct_fn_calls_with_args(left, calls);
             collect_direct_fn_calls_with_args(right, calls);
-        }
-        Expr::PipeCall(recv, _, args) => {
-            collect_direct_fn_calls_with_args(recv, calls);
-            for (_, arg) in args {
-                collect_direct_fn_calls_with_args(arg, calls);
-            }
         }
         Expr::UnaryOp(_, inner) | Expr::After(inner, _) => {
             collect_direct_fn_calls_with_args(inner, calls);
@@ -10634,12 +10612,8 @@ fn lower_expr(
                 ctx.module_name, ctx.item_name
             ))
         }),
-        Expr::Pipe(..) | Expr::PipeCall(..) => Err(LowerError::from(format!(
-            "unsupported expression in {}.{}: pipe/for not yet structuralized",
-            ctx.module_name, ctx.item_name
-        ))),
         Expr::For(..) => Err(LowerError::from(format!(
-            "unsupported expression in {}.{}: pipe/for not yet structuralized",
+            "unsupported expression in {}.{}: for not yet structuralized",
             ctx.module_name, ctx.item_name
         ))),
         Expr::ServiceCall(_path, _args) => Err(LowerError::from(format!(
@@ -10827,16 +10801,6 @@ fn collect_expr_leaf_refs(
             collect_expr_leaf_refs(then_, ctx, refs, seen, has_local_refs);
             if let Some(e) = else_ {
                 collect_expr_leaf_refs(e, ctx, refs, seen, has_local_refs);
-            }
-        }
-        Expr::Pipe(receiver, call) => {
-            collect_expr_leaf_refs(receiver, ctx, refs, seen, has_local_refs);
-            collect_expr_leaf_refs(call, ctx, refs, seen, has_local_refs);
-        }
-        Expr::PipeCall(receiver, _, args) => {
-            collect_expr_leaf_refs(receiver, ctx, refs, seen, has_local_refs);
-            for (_, arg) in args {
-                collect_expr_leaf_refs(arg, ctx, refs, seen, has_local_refs);
             }
         }
         Expr::Match(scrutinee, arms) => {

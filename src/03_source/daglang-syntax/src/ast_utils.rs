@@ -151,15 +151,9 @@ pub fn walk_expr(expr: &Expr, visitor: &mut impl FnMut(&Expr)) {
             }
         }
         Expr::FieldAccess(base, _) => walk_expr(base, visitor),
-        Expr::BinOp(lhs, _, rhs) | Expr::Pipe(lhs, rhs) => {
+        Expr::BinOp(lhs, _, rhs) => {
             walk_expr(lhs, visitor);
             walk_expr(rhs, visitor);
-        }
-        Expr::PipeCall(receiver, _, args) => {
-            walk_expr(receiver, visitor);
-            for (_, arg) in args {
-                walk_expr(arg, visitor);
-            }
         }
         Expr::UnaryOp(_, inner) | Expr::Lambda(_, inner) | Expr::After(inner, _) => {
             walk_expr(inner, visitor)

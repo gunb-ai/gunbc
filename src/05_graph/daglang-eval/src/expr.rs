@@ -84,11 +84,6 @@ pub enum LoweredExpr {
         name: String,
         args: Vec<(Option<String>, LoweredExpr)>,
     },
-    /// Pipe: `expr |> method(args)`
-    Pipe {
-        receiver: Box<LoweredExpr>,
-        call: Box<LoweredExpr>,
-    },
     /// Lambda: `x => body` or `(x, y) => body`
     Lambda {
         params: Vec<String>,

@@ -213,20 +213,6 @@ fn lower_expr(
                 ),
             }),
         },
-        ast::Expr::Pipe(receiver, call) => LoweredExpr::Pipe {
-            receiver: Box::new(lower_expr(receiver, variant_names, mode)),
-            call: Box::new(lower_expr(call, variant_names, mode)),
-        },
-        ast::Expr::PipeCall(receiver, method, args) => LoweredExpr::Pipe {
-            receiver: Box::new(lower_expr(receiver, variant_names, mode)),
-            call: Box::new(LoweredExpr::Call {
-                name: method.as_str().to_string(),
-                args: args
-                    .iter()
-                    .map(|(k, v)| (k.clone(), lower_expr(v, variant_names, mode)))
-                    .collect(),
-            }),
-        },
         ast::Expr::Lambda(params, body) => LoweredExpr::Lambda {
             params: params.clone(),
             body: Box::new(lower_expr(body, variant_names, mode)),
@@ -429,29 +415,6 @@ mod tests {
                 assert!(else_.is_some());
             }
             other => panic!("expected IfElse, got: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn lower_pipe_chain() {
-        // items |> join("\n")
-        let expr = ast::Expr::Pipe(
-            Box::new(ast::Expr::Ident("items".to_string())),
-            Box::new(ast::Expr::Call(
-                "join".to_string(),
-                vec![(
-                    None,
-                    ast::Expr::Literal(ast::Literal::String("\n".to_string())),
-                )],
-            )),
-        );
-        let lowered = lower_expr(&expr, &HashSet::new(), ExprLowerMode::Standard);
-        match &lowered {
-            LoweredExpr::Pipe { receiver, call } => {
-                assert!(matches!(receiver.as_ref(), LoweredExpr::Ident(n) if n == "items"));
-                assert!(matches!(call.as_ref(), LoweredExpr::Call { name, .. } if name == "join"));
-            }
-            other => panic!("expected Pipe, got: {other:?}"),
         }
     }
 
