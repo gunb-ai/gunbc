@@ -73,10 +73,6 @@ fn parse_container_alias_inner<'a>(type_id: &'a str, suffix: &str) -> Option<&'a
     }
 }
 
-fn is_placeholder_witness(value: &Value) -> bool {
-    matches!(value, Value::Str(s) if s.starts_with('<') && s.ends_with('>'))
-}
-
 /// Generate a structurally correct witness value for a type using the registry.
 ///
 /// Returns `Some` if the type can be resolved to a concrete value shape
@@ -127,12 +123,7 @@ fn typed_witness_value_depth(type_id: &str, registry: &TypeRegistry, depth: u8) 
         return Some(value);
     }
 
-    // Use get_by_name for direct lookup — resolve_type goes through the type
-    // expression parser which rejects inline record names containing commas.
-    let type_dag = registry
-        .get_by_name(type_id)
-        .cloned()
-        .or_else(|| registry.resolve_type(&TypeId::from(type_id)))?;
+    let type_dag = registry.resolve_type(&TypeId::from(type_id))?;
 
     // Try standard witness generation first.
     let standard = gunbc_ir::contract::witnesses_checked(&type_dag)
@@ -140,7 +131,7 @@ fn typed_witness_value_depth(type_id: &str, registry: &TypeRegistry, depth: u8) 
         .and_then(|ws| {
             ws.into_iter()
                 .map(|w| w.value)
-                .find(|v| !matches!(v, Value::Unit) && !is_placeholder_witness(v))
+                .find(|v| !matches!(v, Value::Unit))
         });
     if standard.is_some() {
         return standard;

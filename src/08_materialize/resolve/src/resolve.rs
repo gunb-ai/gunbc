@@ -242,14 +242,6 @@ impl Executable for CallableOp {
                     }
                     return Ok(outputs);
                 }
-                // "unbound variable" errors typically mean an optional input
-                // (List/Set parameter) was not provided. Fall back to
-                // passthrough instead of hard-failing — the missing input
-                // is tested by optional_missing tests.
-                let err_msg = eval_err.to_string();
-                if err_msg.contains("unbound variable") {
-                    return execute_with_declared_output_passthrough(&self.output_ports, inputs);
-                }
                 Err(ExecError::new(format!(
                     "FnBody evaluation failed with real inputs present: {eval_err}"
                 )))

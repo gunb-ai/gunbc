@@ -3432,7 +3432,7 @@ fn lower_callable(
     is_interactive: bool,
     fn_body: Option<Box<LoweredFnBody>>,
     origin: NodeOrigin,
-    type_registry: Option<&gunbc_ir::TypeRegistry>,
+    _type_registry: Option<&gunbc_ir::TypeRegistry>,
 ) -> (Node<LoweredOp>, LoweredEndpoint) {
     let node_id = lowered_node_id(module_name, &callable.name);
     let outputs = if callable.outputs.is_empty() {
@@ -3442,24 +3442,22 @@ fn lower_callable(
             .outputs
             .iter()
             .map(|binding| {
-                // Use Port::typed when registry is available — derives
-                // cardinality at construction instead of post-mutation.
-                match type_registry {
-                    Some(registry) => {
-                        Port::typed(binding.name.as_str(), binding.ty.as_str(), registry)
-                    }
-                    None => Port::scalar(binding.name.as_str(), binding.ty.as_str()),
-                }
+                // Callable outputs are always scalar (ONE cardinality).
+                // List<T> describes the value shape, not the port cardinality.
+                // Port::typed would incorrectly infer ZERO_OR_MORE for List<T>,
+                // causing downstream WrapScalar coercion mismatches.
+                Port::scalar(binding.name.as_str(), binding.ty.as_str())
             })
             .collect()
     };
+    // Callable inputs are always scalar (ONE cardinality).
+    // The fn body evaluator works with single values — List<T> is a single
+    // Value::List, not a multi-value port. Using Port::typed here would
+    // incorrectly infer ZERO_OR_MORE, causing auto_mock to double-wrap lists.
     let mut inputs = callable
         .params
         .iter()
-        .map(|binding| match type_registry {
-            Some(registry) => Port::typed(binding.name.as_str(), binding.ty.as_str(), registry),
-            None => Port::scalar(binding.name.as_str(), binding.ty.as_str()),
-        })
+        .map(|binding| Port::scalar(binding.name.as_str(), binding.ty.as_str()))
         .collect::<Vec<_>>();
     for output in &outputs {
         inputs.push(Port::scalar(

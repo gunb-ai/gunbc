@@ -724,10 +724,10 @@ impl TypeRegistry {
             return true;
         }
 
-        // Source Any/Unknown: inferred types that couldn't be resolved
+        // Source Any: inferred types that couldn't be resolved
         // (e.g. fold's generic return). Compatible with any target until
         // the type system supports generics.
-        if from.0 == "Any" || from.0 == "Unknown" {
+        if from.0 == "Any" {
             return true;
         }
 
