@@ -1461,7 +1461,7 @@ fn compile_directory_std_helper_intrinsics_typecheck_in_strict_mode() {
         r#"module sample.main
 type DocgenSources {}
 
-fn run(sources: DocgenSources, payload: String) -> String {
+fn run(sources: DocgenSources) -> String {
   let a = "template" |> replace_section("section", "value")
   let b = render_test_listings(sources: sources)
   let c = render_graph_structure(sources: sources)
@@ -1471,13 +1471,6 @@ fn run(sources: DocgenSources, payload: String) -> String {
   let g = detect_runtime()
   let h = generate()
   let i = now()
-  let j = build_token(
-    payload: payload,
-    scheme: "Bearer",
-    header_name: "Authorization",
-    source_id: "source",
-    required_scopes: ["gist"]
-  )
   a
 }
 "#,

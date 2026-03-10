@@ -320,35 +320,10 @@ fn compile_call(
     let ir_args: Vec<code_ir::Expr> = args.iter().map(|(_, e)| compile_expr(e, ctx)).collect();
     let rust_name = to_snake_case(name);
 
-    match rust_name.as_str() {
-        // code_point converts a char to its integer code point (u32 → i64).
-        "code_point" => {
-            if let Some(arg) = ir_args.into_iter().next() {
-                code_ir::Expr::Call {
-                    func: Box::new(code_ir::Expr::Var("code_point_i64".to_string())),
-                    args: vec![arg],
-                    obligation: None,
-                }
-            } else {
-                code_ir::Expr::IntLit(0)
-            }
-        }
-        "chars" => {
-            if let Some(arg) = ir_args.into_iter().next() {
-                code_ir::Expr::MethodCall {
-                    receiver: Box::new(arg),
-                    method: "chars".to_string(),
-                    args: vec![],
-                }
-            } else {
-                code_ir::Expr::RawCode("/* chars: missing arg */".to_string())
-            }
-        }
-        _ => code_ir::Expr::Call {
-            func: Box::new(code_ir::Expr::Var(rust_name)),
-            args: ir_args,
-            obligation: None,
-        },
+    code_ir::Expr::Call {
+        func: Box::new(code_ir::Expr::Var(rust_name)),
+        args: ir_args,
+        obligation: None,
     }
 }
 

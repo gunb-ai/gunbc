@@ -83,6 +83,12 @@ data wide_blocks: List<UnicodeBlock> = [
 
 // --- Classification functions ---
 
+// Extract the integer code point from a Char.
+// `+ 0` coerces branded Char to plain Int for the typechecker.
+fn code_point(c: Char) -> Int {
+  c + 0
+}
+
 fn in_block(cp: Int, block: UnicodeBlock) -> Bool {
   cp >= block.start && cp <= block.end_inclusive
 }
@@ -100,5 +106,5 @@ fn char_width(c: Char) -> Int {
 }
 
 fn string_display_width(s: String) -> Int {
-  chars(s: s) |> map(c => char_width(c: c)) |> sum()
+  s |> chars() |> map(c => char_width(c: c)) |> sum()
 }

@@ -2121,10 +2121,8 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
     use daglang_syntax::ast::PIPE_METHOD_REGISTRY;
 
     // Generate contracts from the pipe method registry.
-    // Exclude Chars — it also exists as a standalone function with different arity.
     let mut contracts: Vec<(String, CallableContract)> = PIPE_METHOD_REGISTRY
         .iter()
-        .filter(|def| def.method != daglang_syntax::ast::PipeMethod::Chars)
         .map(|def| {
             let output = if def.output_type == "Unknown" {
                 ValueType::Named("Any".to_string())
@@ -2143,31 +2141,9 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
         .collect();
 
     // Non-pipe-method builtins (standalone functions, render helpers, etc.).
+    // eq, chars, code_point, and build_token are now DSL fn items
+    // (std/patterns.dag, std/unicode.dag, gunbc/auth/patterns.dag).
     contracts.extend([
-        (
-            "eq".to_string(),
-            CallableContract {
-                arity: 2,
-                params: HashSet::from(["a".to_string(), "b".to_string()]),
-                output: ValueType::Named("Bool".to_string()),
-            },
-        ),
-        (
-            "chars".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["s".to_string()]),
-                output: ValueType::Named("List<Char>".to_string()),
-            },
-        ),
-        (
-            "code_point".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["c".to_string()]),
-                output: ValueType::Named("Int".to_string()),
-            },
-        ),
         (
             "render_cytoscape_html".to_string(),
             CallableContract {
@@ -2206,20 +2182,6 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
                 arity: 1,
                 params: HashSet::from(["sources".to_string()]),
                 output: ValueType::Named("String".to_string()),
-            },
-        ),
-        (
-            "build_token".to_string(),
-            CallableContract {
-                arity: 5,
-                params: HashSet::from([
-                    "payload".to_string(),
-                    "scheme".to_string(),
-                    "header_name".to_string(),
-                    "source_id".to_string(),
-                    "required_scopes".to_string(),
-                ]),
-                output: ValueType::Named("AccessToken".to_string()),
             },
         ),
         (

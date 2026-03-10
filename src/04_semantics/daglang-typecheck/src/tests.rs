@@ -453,7 +453,7 @@ fn strict_mode_accepts_std_helper_intrinsic_call_targets() {
         r#"module sample.helpers
 type DocgenSources {}
 
-fn run(sources: DocgenSources, payload: String) -> String {
+fn run(sources: DocgenSources) -> String {
   let a = "template" |> replace_section("section", "value")
   let b = render_test_listings(sources: sources)
   let c = render_graph_structure(sources: sources)
@@ -463,13 +463,6 @@ fn run(sources: DocgenSources, payload: String) -> String {
   let g = detect_runtime()
   let h = generate()
   let i = now()
-  let j = build_token(
-payload: payload,
-scheme: "Bearer",
-header_name: "Authorization",
-source_id: "source",
-required_scopes: ["gist"]
-  )
   a
 }
 "#,

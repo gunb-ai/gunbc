@@ -60,6 +60,10 @@ pattern optional_impersonation(
   return { token: result.token }
 }
 
+fn build_token(payload: Secret, scheme: AuthScheme, header_name: String, source_id: String, required_scopes: List<String>) -> AccessToken {
+  { token: payload, scheme: scheme, expires_at: None }
+}
+
 // OIDC -> STS -> optional impersonation -> secret access -> credential.
 // Composes fundamental auth steps with GCP service calls.
 
