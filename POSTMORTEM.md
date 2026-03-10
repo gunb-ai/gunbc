@@ -1283,6 +1283,9 @@ interpreter doesn't know about parsing or typechecking.
 **Goal:** Separate the compiler from the interpreter. Eliminate the
 three-way semantic duplication (evaluator / resolver / primitives).
 
+**Target architecture:** See `src/ARCHITECTURE.md` for the full target
+state, stage contracts, and rationale.
+
 ---
 
 ## Before and after
@@ -1469,11 +1472,19 @@ Key observations:
 
 ---
 
-## Phase 0 — Builtins to DSL
+## Phase 0 — Eliminate manual registries
 
-**What:** Replace the 4 hardcoded builtins (`eq`, `chars`, `code_point`,
-`build_token`) with DSL `fn` items. Proves the principle that the DSL can
-replace Rust implementations. No crate restructuring.
+**What:** Eliminate all manually maintained callable registries. Two parts:
+standalone builtins (small, do first) and pipe methods (larger, same
+principle).
+
+**Policy decision (must come first):** No new `extern` declarations.
+Operations are either DSL `fn` items (evaluated by the evaluator) or
+type-intrinsic (implemented by the evaluator as part of what the type
+means, like `+` is part of what `Int` means). There is no third category.
+See `src/ARCHITECTURE.md` "Type-intrinsic operations" for rationale.
+
+### 0a — Standalone builtins to DSL fn items
 
 **Add:**
 
@@ -1516,19 +1527,95 @@ redundant. Its 2 call sites (`width.dag`, `unicode.dag`) use
 | `daglang-emit/src/fn_codegen.rs` | `"code_point"` and `"chars"` match arms in `compile_call()` (~30 lines) |
 | `daglang-lower/src/eval.rs` | `"code_point"` and `"chars"` match arms in `eval_call()` (~25 lines) |
 
-After this, `builtin_callable_contracts()` returns only pipe-method-derived
-contracts (the auto-derived part from `PIPE_METHOD_REGISTRY`). Zero manual
-standalone entries.
-
 **Verify:**
 - `cargo test --workspace --exclude gunbc-dag-tests`
 - `cargo clippy --all-targets -- -D warnings`
-- Grep for `builtin_callable_contracts` — confirm zero standalone entries.
-- Grep for `"code_point"\|"build_token"\|"chars"` in Rust — confirm no
-  match arms remain (pipe method `PipeMethod::Chars` is separate and stays).
+- Grep: zero standalone entries in `builtin_callable_contracts`.
 
-**Risk:** Low. Each function has 1–2 call sites in `.dag` files. The DSL
-equivalents are trivial.
+**Risk:** Low. Each function has 1–2 call sites. The DSL equivalents are
+trivial.
+
+### 0b — Pipe methods: DSL fn items + type-intrinsic ops
+
+**Parser change:** Parse `|> name(args)` generically. Remove parse-time
+pipe method classification. Produce `Expr::Pipe(expr, name, args)` where
+`name` is a string, not a `PipeMethod` enum variant.
+
+**Write DSL fn items** for the ~13 methods expressible via `fold`:
+`map`, `filter`, `filter_map`, `flat_map`, `any`, `all`, `contains`,
+`count`, `sum`, `first`, `last`, `max_by`, `enumerate`. Place in
+`dsl/std/collections.dag`.
+
+**Keep as type-intrinsic** the ~8 operations that need host
+implementation: `fold`, `append`, `sort_by` (on List); `chars`, `split`,
+`join`, `starts_with`, `ends_with` (on String); `to_bytes`, `to_json`,
+`hash` (on Any). The evaluator handles these the same way it handles `+`
+— they're part of what the type means.
+
+**Typechecker change:** Resolve pipe method names from AST (DSL `fn`
+definitions) and from a built-in type intrinsic table (derived from the
+built-in type definitions, not a manual registry). The intrinsic table
+is structural: `List` has `fold`, `append`, `sort_by`. `String` has
+`chars`, `split`, etc.
+
+**Delete:**
+- `PIPE_METHOD_REGISTRY` static array (~260 lines)
+- `PipeMethod` enum (~40 lines)
+- `builtin_callable_contracts()` pipe method derivation loop
+- `emit_family`, `collection_op` classification metadata
+- Emit string-name matching in `compile_pipe()` — replace with dispatch
+  on resolved method kind (intrinsic vs DSL fn)
+
+**Verify:**
+- `cargo test --workspace`
+- Grep: zero references to `PIPE_METHOD_REGISTRY` or `PipeMethod`.
+- All existing pipe method usage in `.dag` files works unchanged.
+
+**Risk:** Medium. Parser and typechecker changes affect the entire DSL
+surface. Phase 0b should be its own PR, separate from 0a.
+
+### 0c — Structured diagnostics (fail-closed)
+
+**Rationale for doing this early:** The postmortem shows that many of
+the worst failures came from `eprintln` + continue, unknown-type
+fallback, and placeholder rendering. These are exactly the behaviors
+that will make a large refactor feel haunted — silent degradation
+masking real errors during crate restructuring. Fail-closed must be in
+place before the structural changes in Phases 1–7.
+
+**Add to `clippy.toml` (root):**
+
+```toml
+[[disallowed-macros]]
+path = "std::eprintln"
+reason = "Use Diagnostic enum. See src/README.md."
+```
+
+**Migrate all `eprintln!("warning: ...")` sites:**
+
+| Site | Current behavior | After migration |
+|------|-----------------|-----------------|
+| `daglang-lower` ~L8196 | `eprintln` + return false | `Err(LowerError)` |
+| `daglang-lower` ~L9922 | `eprintln` + continue | `Err(LowerError)` |
+| `daglang-lower` ~L11712 | `eprintln` + continue | `Err(LowerError)` |
+| `daglang-emit` type_mapping.rs | `eprintln` + verbatim | `Err(EmitError)` |
+| `ir` type_registry.rs | `eprintln` + `ValueBacking::Json` | `Err(TypeError)` |
+| `ir` type_shape.rs | `eprintln` + `TypeShape::Opaque` | `Err(TypeError)` |
+| `codegen` testgen | `eprintln` + `Json(Null)` | `Err(MockGenError)` |
+| `exec` ci_context.rs | `writeln!().ok()` | Document as intentional |
+
+**Also delete:**
+- `identity_type_unknown_emits_name_verbatim` test (validates a fallback)
+- `AutoTestgenResult::Skipped` variant + placeholder rendering path
+- `allow_unresolved_imports` flag in `TypecheckOptions` (once 0a/0b
+  make all callables derivable from AST)
+
+**Verify:**
+- `cargo clippy --all-targets -- -D warnings` — no `eprintln!` in libs
+- `cargo test --workspace` — no test depends on fallback behavior
+
+**Risk:** Medium. Some tests may expect graceful degradation. Those
+tests need updating to either provide valid inputs or expect errors.
 
 ---
 
@@ -1650,6 +1737,32 @@ Phase 1 (~150 lines). Replaced by evaluator calls.
 
 **Risk:** Low, given Phase 1 already verified the dispatch structure.
 
+### Also in Phase 2: Embed data values in the DAG
+
+Eliminate the `data_values` sidecar. During lowering, `data` declarations
+should produce literal nodes in the DAG (the lowerer already does this for
+service call arguments via `CallLiteralSource`). Fn bodies that reference
+data declarations get input ports wired to those literal nodes.
+
+**Delete:**
+- `data_values: HashMap<String, serde_json::Value>` from `LowerOutput`,
+  `CompileOutput`, `CompileLoweredResult`, `CachedCompileData`
+- `evaluate_fn_body_with_data()` — replace with `evaluate_fn_body()`.
+  Data values arrive through normal input ports, not a sidecar.
+- `#[serde(default)]` cache compat hack on `data_values`
+- `json_to_eval_value()` conversion function (no longer needed at the
+  eval boundary — values arrive as `Value`, not `serde_json::Value`)
+
+**Verify:**
+- `cargo test --workspace`
+- Grep: zero references to `data_values` as a HashMap sidecar.
+- Data declaration tests still pass (values now flow through edges).
+
+**Risk:** Medium. The lowerer must wire data declaration literal nodes to
+fn body input ports, which requires extending `wire_fn_call_arguments()`
+to handle data idents in fn body contexts the same way it handles them in
+service call contexts.
+
 ---
 
 ## Phase 3 — Consolidate service prepare/parse ops
@@ -1710,22 +1823,21 @@ carefully during consolidation.
 **What:** `FnBodyCallableOp` is currently separate from the pure primitive
 dispatch because it has extra concerns:
 - `__out:` port passthrough logic (forwarding ports that bypass fn evaluation)
-- `data_values` threading into `evaluate_fn_body_with_data()`
 - Optional `fn_body` (some callables have no body — they're just port maps)
 
 After Phases 1–2, the pure dispatch function already handles the common
-case. Extend it to handle `LoweredOp::Callable` with `fn_body: Some(...)`:
+case, and `data_values` has been embedded in the DAG (Phase 2). Extend
+the dispatch to handle `LoweredOp::Callable` with `fn_body: Some(...)`:
 
 ```rust
 fn execute_lowered_op(
     op: &LoweredOp,
     inputs: &HashMap<String, Value>,
-    data_values: &HashMap<String, serde_json::Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     match op {
         LoweredOp::Primitive(kind) => execute_pure_primitive(kind, inputs),
         LoweredOp::Callable { fn_body: Some(body), .. } => {
-            let mut outputs = evaluate_fn_body_with_data(body, inputs, ..., data_values)?;
+            let mut outputs = evaluate_fn_body(body, inputs, ...)?;
             // handle __out: passthrough ports
             for (k, v) in inputs {
                 if k.starts_with("__out:") { outputs.insert(k.clone(), v.clone()); }
@@ -1763,9 +1875,9 @@ types (down from ~30).
   node fix from this postmortem) — fn body evaluation must still work
   correctly per-entrypoint.
 
-**Risk:** Medium. The `__out:` passthrough logic and `data_values` threading
-are subtle. Verify with generated tests that exercise fn bodies with data
-declarations.
+**Risk:** Medium. The `__out:` passthrough logic is subtle. Verify with
+generated tests that exercise fn bodies with data declarations (now
+arriving as normal input ports after Phase 2's data embedding).
 
 ---
 
@@ -1949,11 +2061,17 @@ run it. It combines:
 - Service op transport wiring (GenericPrepareOp, GenericParseOp,
   InterfaceStubOp, FilesystemExecuteOp — from Phase 3, currently in
   `gunbc-resolve/service_ops/`)
-- DAG scheduling logic (topological walk, dry-run interception — currently
-  in `gunbc-exec`)
-- `builder.rs` (DSL graph compilation + dagbin cache — currently in
-  `gunbc-resolve`)
-- `fs_env.rs`, `dry_run.rs` (currently in `gunbc-resolve`)
+- `dry_run.rs` (mock wiring for dry-run execution)
+
+**Explicitly NOT in `gunbc-interp`:**
+- `builder.rs` (DSL graph compilation + dagbin cache) — this is
+  orchestration, not interpretation. Stays in `daglang-driver` or a thin
+  runtime orchestration layer above the interpreter. The interpreter's
+  contract is "consume `VerifiedDag<LoweredOp>` and run it," not "compile
+  and run."
+- `fs_env.rs` (filesystem environment setup) — orchestration concern.
+  The interpreter receives environment configuration, it doesn't discover
+  it.
 
 Dependencies:
 - `gunbc-ir` — DAG/Node/Port/Edge/Value types
@@ -2051,58 +2169,7 @@ alongside `gunbc-resolve`, migrate consumers one at a time, delete
 
 ---
 
-## Phase 8 — Structured diagnostics and `eprintln` ban
-
-**What:** Independent of Phases 1–7 but enabled by them. With a single
-evaluation path, diagnostic handling can be unified.
-
-**Add to `clippy.toml` (root):**
-
-```toml
-[[disallowed-macros]]
-path = "std::eprintln"
-reason = "Use Diagnostic enum. See POSTMORTEM.md structured diagnostics section."
-```
-
-**Migrate all `eprintln!("warning: ...")` sites:**
-
-Each site (identified in the postmortem invariant review) must become one
-of:
-- `Diagnostic::Error` → propagate as `Err`, stop the pipeline phase.
-- Informational output → use a structured logging channel, not stderr.
-- Removed entirely — if the condition can no longer occur after Phases 1–7
-  (e.g., unknown type fallbacks in the resolver, which no longer exists).
-
-**Sites to migrate (from postmortem inventory):**
-
-| Site | Current behavior | After migration |
-|------|-----------------|-----------------|
-| `daglang-lower` ~L8196 (wire_service_call_argument) | `eprintln` + return false | `Err(LowerError::UnwiredArgument)` |
-| `daglang-lower` ~L9922 (wire_fn_call_arguments) | `eprintln` + continue | `Err(LowerError::UnwiredArgument)` |
-| `daglang-lower` ~L11712 (wire_callable_return_outputs) | `eprintln` + continue | `Err(LowerError::UnwiredOutput)` |
-| `daglang-emit` type_mapping.rs (unknown type) | `eprintln` + return verbatim | `Err(EmitError::UnknownType)` |
-| `ir` type_registry.rs (unknown type) | `eprintln` + `ValueBacking::Json` | `Err(TypeError::UnknownType)` |
-| `ir` type_shape.rs (unknown type) | `eprintln` + `TypeShape::Opaque` | `Err(TypeError::UnknownType)` |
-| `codegen` testgen (unknown mock type) | `eprintln` + `Json(Null)` | `Err(MockGenError::UnknownType)` |
-| `exec` ci_context.rs (write error) | `writeln!().ok()` | Document as intentional best-effort |
-
-**Delete:**
-- The test `identity_type_unknown_emits_name_verbatim` — it validates a
-  fallback that should be an error.
-- The `AutoTestgenResult::Skipped` variant and placeholder rendering path.
-
-**Verify:**
-- `cargo clippy --all-targets -- -D warnings` — confirms no `eprintln!` in
-  library crates.
-- `cargo test --workspace` — confirms no test depends on fallback behavior.
-
-**Risk:** Medium. Some fallback paths may be exercised by existing tests
-that expect graceful degradation. Those tests need to be updated to either
-provide valid inputs or expect errors.
-
----
-
-## Phase 9 — Clean up scaffolding and residual debt
+## Phase 8 — Clean up scaffolding and residual debt
 
 **What:** Delete temporary scaffolding identified in the postmortem that
 should now be unnecessary.
@@ -2110,10 +2177,10 @@ should now be unnecessary.
 | Scaffolding | Removal condition | Phase that enables it |
 |---|---|---|
 | Synthesized `expr_value_*` fallback nodes in lowerer | Structural lowering handles complex pure args | Phase 2 (evaluator handles all pure ops) |
-| `AutoTestgenResult::Skipped` + placeholder rendering | Fail-closed testgen | Phase 8 (structured diagnostics) |
+| `AutoTestgenResult::Skipped` + placeholder rendering | Fail-closed testgen | Phase 0c (structured diagnostics) |
 | `gunbc-tests` glob-include `src/generated/*.rs` scaffold | Stable testgen output model | Phase 5 (clean test infrastructure) |
 | Manual dagbin cache epoch bumps | Compiler version in cache key | Phase 7 (evaluator-based execution) |
-| `allow_unresolved_imports` flag in TypecheckOptions | All callables derived from AST | Phase 0 (builtins → DSL) |
+| `allow_unresolved_imports` flag in TypecheckOptions | All callables derived from AST | Phase 0a/0b (builtins + pipe methods → DSL) |
 
 **Verify:**
 - `cargo test --workspace`
@@ -2125,16 +2192,17 @@ should now be unnecessary.
 
 | Phase | What happens | Crates affected |
 |-------|-------------|-----------------|
-| 0 | Delete ~55 lines Rust (builtins), add ~10 lines DSL | typecheck, emit, lower |
+| 0a | Delete ~55 lines Rust (builtins), add ~10 lines DSL | typecheck, emit, lower |
+| 0b | Delete ~300 lines (pipe method registry → DSL fn + intrinsics) | syntax, typecheck, emit, lower, eval |
+| 0c | Delete ~100 lines (fallback paths → hard errors, `eprintln` ban) | lower, emit, ir, codegen |
 | 1 | Delete ~240 lines (10 op structs → 1 dispatch fn) | resolve |
-| 2 | Delete ~150 lines (independent impls → eval.rs calls) | resolve, lower (+~30) |
+| 2 | Delete ~150 lines (independent impls → eval.rs calls) + embed data values | resolve, lower (+~30) |
 | 3 | Delete ~450 lines (8 service structs → 2 parameterized) | resolve/service_ops |
 | 4 | Delete ~100 lines (FnBodyCallableOp → dispatch) | resolve |
 | 5 | Delete ~800 lines (entire crate) | primitives (deleted), test, codegen |
 | 6 | Move ~1,300 lines (eval.rs + expr.rs → new crates) | lower, new: expr + eval |
 | 7 | Delete ~400 lines (resolve → interp), create gunbc-interp | resolve (deleted), new: interp |
-| 8 | Delete ~100 lines (fallback paths) | lower, emit, ir, codegen |
-| 9 | Delete ~50 lines (scaffolding) | lower, codegen, tests |
+| 8 | Delete ~50 lines (scaffolding) | lower, codegen, tests |
 
 **Net result:**
 
@@ -2145,7 +2213,9 @@ should now be unnecessary.
 | Resolver workspace deps | 9 | N/A (deleted) |
 | Interpreter workspace deps | N/A | 5 (ir, eval, exec, transport, blob) |
 | Manual builtin entries | 4 | 0 |
+| Manual pipe method registry entries | 21 | 0 (8 type-intrinsic + 13 DSL fn) |
 | `eprintln` fallback sites | ~8 | 0 |
+| `data_values` sidecar handoff points | ~6 | 0 (embedded in DAG) |
 
 **Crates deleted:** `gunbc-primitives` (Phase 5), `gunbc-resolve` (Phase 7).
 
@@ -2159,11 +2229,13 @@ should now be unnecessary.
 ## Sequencing and dependencies between phases
 
 ```
-Phase 0 (builtins → DSL)           — independent, do first
+Phase 0a (builtins → DSL)          — independent, do first
+Phase 0b (pipe methods → DSL/intrinsic) — independent, do early
+Phase 0c (structured diagnostics)  — independent, do before structural changes
     ↓
-Phase 1 (consolidate pure ops)     — depends on nothing
+Phase 1 (consolidate pure ops)     — after 0c (fail-closed in place)
     ↓
-Phase 2 (evaluator delegation)     — depends on Phase 1
+Phase 2 (evaluator delegation + data embed) — depends on Phase 1
     ↓
 Phase 3 (service op consolidation) — independent of 1–2, can parallel
     ↓
@@ -2175,13 +2247,11 @@ Phase 6 (extract evaluator)        — depends on Phase 5
     ↓
 Phase 7 (create gunbc-interp)      — depends on Phase 6
     ↓
-Phase 8 (structured diagnostics)   — independent, can start after Phase 0
-    ↓
-Phase 9 (scaffolding cleanup)      — depends on Phase 8
+Phase 8 (scaffolding cleanup)      — depends on Phase 7
 ```
 
-Phases 0, 1, 3, and 8 can proceed in parallel. The critical path is
-0 → 1 → 2 → 4 → 5 → 6 → 7.
+Phases 0a, 0b, 0c, and 3 can proceed in parallel. The critical path is
+0c → 1 → 2 → 4 → 5 → 6 → 7 → 8.
 
 ---
 
