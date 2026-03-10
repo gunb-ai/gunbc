@@ -2283,4 +2283,62 @@ what a crate does without saying "and also," it's doing too much.
 |-------|---------|
 | `daglang-lower` | Lowers typed AST to graph IR **and also** contains the runtime expression evaluator **and also** evaluates compile-time data declarations. |
 | `gunbc-resolve` | Resolves `LoweredOp` to `DynOp` **and also** reimplements pure operations **and also** wires transport specs **and also** builds DSL graphs **and also** manages the dagbin cache. |
-| `gunbc-primitives` | Defines primitive operations **and also** reimplements collection operations that the evaluator handles. |
+| `gunbc-primitives` | **DELETED** (2026-03-09). Moved `filename.rs` to `gunbc-ir`, inlined `FsEnv` to `gunbc-resolve`. |
+
+---
+
+## Remaining fail-closed gaps (2026-03-09)
+
+Tracked here for the next cleanup pass. Each item is a place where the
+compiler silently fabricates values or accepts degraded input instead of
+failing with a structured diagnostic.
+
+### 1. Callable return wiring silently discarded
+
+`add_service_call_edges()` in `daglang-lower/src/lib.rs` does
+`let _ = wire_callable_return_outputs(...)` for non-fn callable items.
+The failure is legitimate (service call result bindings can't be traced
+as simple idents), but the silent discard masks real wiring bugs.
+
+**Fix:** Make the lowerer trace through service call result bindings so
+return wiring can succeed, then convert `let _` to `?`.
+
+### 2. Type system / emit fallbacks
+
+These locations turn structured errors back into defaults:
+
+- `emit_type()` turns `type_shape` failure → `Opaque("Unknown")`
+- `emit_platform_type()` falls back to model's opaque fallback
+- `resolve_and_emit()` returns raw type name verbatim if unresolved
+- `value_backing_for_type_id()` does `unwrap_or(ValueBacking::Json)`
+- `register_type_def()` produces identity placeholders for unresolved aliases
+
+**Fix:** Propagate `Result` to callers; let compilation fail when types
+can't be resolved rather than producing degraded output.
+
+### 3. Testgen silent defaults
+
+- `gunbc_exec::lower(self.dag).ok()` discards lowering failures
+- Missing port type lookup defaults to `("String", Cardinality::ONE)`
+- Unknown DSL types in `mock_element_expr()` default to `Json(Null)`
+
+**Fix:** Return diagnostics from testgen or use explicit opt-in fallbacks.
+
+### 4. gunbc-interp not production-wired
+
+`gunbc-interp` exists with correct passthrough behavior (fixed 2026-03-09)
+but is not wired into the production execution path. `gunbc-resolve`
+still owns `builder.rs`, `fs_env.rs`, `dry_run.rs`, `service_ops`, and
+the main `resolve_lowered_dag_with(...)` materialization path.
+
+**Decision needed:** Either wire `gunbc-interp` as the production path
+and thin `gunbc-resolve` to a compatibility wrapper, or defer and stop
+half-maintaining `gunbc-interp`.
+
+### 5. Pipe operator deleted (2026-03-09)
+
+`|>` syntax, `Expr::Pipe`, `Expr::PipeCall`, `PipeMethod` enum,
+`PIPE_METHOD_REGISTRY`, `EmitCollectionFamily`, and all related
+infrastructure deleted. 52 `.dag` usages rewritten to imperative
+let+call style. `for` loops kept (they're loop executor constructs
+for service call fan-out, not map sugar).
