@@ -371,7 +371,7 @@ fn resolve_lowered_dag_unknown_callable_module_fails_closed() {
     assert_eq!(resolved.nodes.len(), 1);
     let debug = format!("{:?}", resolved.nodes[0].body);
     assert!(
-        debug.contains("DeclaredOutputCallableOp"),
+        debug.contains("CallableOp"),
         "unexpected op debug: {debug}"
     );
 }
