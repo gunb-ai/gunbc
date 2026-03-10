@@ -54,3 +54,4 @@ src/10_test/generated-tests/src/generated/
 # --- Workflow runtime state (from workflow) ---
 # Local execution ledger and config; not source-of-truth
 /.gunbc/
+.claude/worktrees
