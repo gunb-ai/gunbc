@@ -120,6 +120,7 @@ fn content_upsert_result_written_uses_per_call_written_node() {
             (
                 "std/patterns.dag",
                 r#"module std.patterns
+fn eq(a: String, b: String) -> Bool { a == b }
 pattern content_upsert(content: String, path: String) -> { written: Bool } {
   fresh = eq(a: content, b: content)
   return { written: !fresh }
@@ -2958,6 +2959,8 @@ resource Filesystem {
                 r#"module std.patterns
 import std.resources { Filesystem }
 
+fn eq(a: String, b: String) -> Bool { a == b }
+
 pattern file_content_matches(path: String, expected: String) -> { matches: Bool }
   uses fs: Filesystem
 {
@@ -3056,6 +3059,8 @@ resource Filesystem {
                 "std/patterns.dag",
                 r#"module std.patterns
 import std.resources { Filesystem }
+
+fn eq(a: String, b: String) -> Bool { a == b }
 
 pattern file_content_matches(path: String, expected: String) -> { matches: Bool }
   uses fs: Filesystem
