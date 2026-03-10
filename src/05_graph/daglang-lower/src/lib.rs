@@ -9589,11 +9589,8 @@ struct CollectionNodeSpec {
 
 fn collection_op_kind(name: &str) -> Option<CollectionOpKind> {
     // Check pipe method registry first — handles aliases like count→len, sum→fold.
-    if let Some(method) = daglang_syntax::ast::pipe_method_by_name(name) {
-        return method
-            .def()
-            .collection_op
-            .and_then(CollectionOpKind::from_name);
+    if let Some(def) = daglang_syntax::ast::pipe_method_def_by_name(name) {
+        return def.collection_op.and_then(CollectionOpKind::from_name);
     }
     // Non-pipe-method names with collection semantics (split/zip use Expr::Call syntax).
     CollectionOpKind::from_name(name)

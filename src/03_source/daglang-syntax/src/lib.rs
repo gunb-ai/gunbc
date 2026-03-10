@@ -607,124 +607,6 @@ pub mod ast {
         Block(Vec<Stmt>),
     }
 
-    /// Built-in pipe methods resolved by parser/typechecker/lowerer as
-    /// first-class syntax, not free-form callable names.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum PipeMethod {
-        // Collection -> Collection
-        Map,
-        Filter,
-        FilterMap,
-        FlatMap,
-        SortBy,
-        Append,
-        // Collection -> Scalar
-        Fold,
-        Join,
-        Count,
-        Sum,
-        First,
-        Last,
-        MaxBy,
-        Any,
-        All,
-        Contains,
-        // Collection -> Collection (continued)
-        Split,
-        Zip,
-        Skip,
-        Enumerate,
-        // String methods
-        StartsWith,
-        EndsWith,
-        Repeat,
-        ReplaceSection,
-        Chars,
-        // Conversion methods
-        ToBytes,
-        ToJson,
-        Hash,
-    }
-
-    impl PipeMethod {
-        pub fn as_str(&self) -> &'static str {
-            match self {
-                Self::Map => "map",
-                Self::Filter => "filter",
-                Self::FilterMap => "filter_map",
-                Self::FlatMap => "flat_map",
-                Self::SortBy => "sort_by",
-                Self::Append => "append",
-                Self::Fold => "fold",
-                Self::Join => "join",
-                Self::Count => "count",
-                Self::Sum => "sum",
-                Self::First => "first",
-                Self::Last => "last",
-                Self::MaxBy => "max_by",
-                Self::Any => "any",
-                Self::All => "all",
-                Self::Contains => "contains",
-                Self::Split => "split",
-                Self::Zip => "zip",
-                Self::Skip => "skip",
-                Self::Enumerate => "enumerate",
-                Self::StartsWith => "starts_with",
-                Self::EndsWith => "ends_with",
-                Self::Repeat => "repeat",
-                Self::ReplaceSection => "replace_section",
-                Self::Chars => "chars",
-                Self::ToBytes => "to_bytes",
-                Self::ToJson => "to_json",
-                Self::Hash => "hash",
-            }
-        }
-    }
-
-    impl std::fmt::Display for PipeMethod {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.write_str(self.as_str())
-        }
-    }
-
-    impl std::str::FromStr for PipeMethod {
-        type Err = ();
-
-        fn from_str(name: &str) -> Result<Self, Self::Err> {
-            match name {
-                "map" => Ok(Self::Map),
-                "filter" => Ok(Self::Filter),
-                "filter_map" => Ok(Self::FilterMap),
-                "flat_map" => Ok(Self::FlatMap),
-                "sort_by" => Ok(Self::SortBy),
-                "append" => Ok(Self::Append),
-                "fold" => Ok(Self::Fold),
-                "join" => Ok(Self::Join),
-                "count" => Ok(Self::Count),
-                "sum" => Ok(Self::Sum),
-                "first" => Ok(Self::First),
-                "last" => Ok(Self::Last),
-                "max_by" => Ok(Self::MaxBy),
-                "any" => Ok(Self::Any),
-                "all" => Ok(Self::All),
-                "contains" => Ok(Self::Contains),
-                "split" => Ok(Self::Split),
-                "zip" => Ok(Self::Zip),
-                "skip" => Ok(Self::Skip),
-                "enumerate" => Ok(Self::Enumerate),
-                "starts_with" => Ok(Self::StartsWith),
-                "ends_with" => Ok(Self::EndsWith),
-                "repeat" => Ok(Self::Repeat),
-                "replace_section" => Ok(Self::ReplaceSection),
-                "chars" => Ok(Self::Chars),
-                "to_bytes" => Ok(Self::ToBytes),
-                "to_json" => Ok(Self::ToJson),
-                "hash" => Ok(Self::Hash),
-                _ => Err(()),
-            }
-        }
-    }
-
     /// Emit-level collection family for code generation classification.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum EmitCollectionFamily {
@@ -736,7 +618,6 @@ pub mod ast {
 
     /// Static metadata for a pipe method, used by all compiler stages.
     pub struct PipeMethodDef {
-        pub method: PipeMethod,
         pub name: &'static str,
         /// Number of required arguments (excluding the receiver).
         pub arity: usize,
@@ -756,7 +637,6 @@ pub mod ast {
     pub static PIPE_METHOD_REGISTRY: &[PipeMethodDef] = &[
         // Collection → Collection
         PipeMethodDef {
-            method: PipeMethod::Map,
             name: "map",
             arity: 1,
             param_names: &["f"],
@@ -765,7 +645,6 @@ pub mod ast {
             emit_family: Some(EmitCollectionFamily::Map),
         },
         PipeMethodDef {
-            method: PipeMethod::Filter,
             name: "filter",
             arity: 1,
             param_names: &["predicate"],
@@ -774,7 +653,6 @@ pub mod ast {
             emit_family: Some(EmitCollectionFamily::Filter),
         },
         PipeMethodDef {
-            method: PipeMethod::FilterMap,
             name: "filter_map",
             arity: 1,
             param_names: &["f"],
@@ -783,7 +661,6 @@ pub mod ast {
             emit_family: Some(EmitCollectionFamily::Filter),
         },
         PipeMethodDef {
-            method: PipeMethod::FlatMap,
             name: "flat_map",
             arity: 1,
             param_names: &["f"],
@@ -792,7 +669,6 @@ pub mod ast {
             emit_family: Some(EmitCollectionFamily::Map),
         },
         PipeMethodDef {
-            method: PipeMethod::SortBy,
             name: "sort_by",
             arity: 1,
             param_names: &["key_fn"],
@@ -801,7 +677,6 @@ pub mod ast {
             emit_family: Some(EmitCollectionFamily::Sort),
         },
         PipeMethodDef {
-            method: PipeMethod::Append,
             name: "append",
             arity: 1,
             param_names: &["items"],
@@ -811,7 +686,6 @@ pub mod ast {
         },
         // Collection → Scalar
         PipeMethodDef {
-            method: PipeMethod::Fold,
             name: "fold",
             arity: 2,
             param_names: &["init", "f"],
@@ -820,7 +694,6 @@ pub mod ast {
             emit_family: Some(EmitCollectionFamily::Fold),
         },
         PipeMethodDef {
-            method: PipeMethod::Join,
             name: "join",
             arity: 1,
             param_names: &["separator"],
@@ -829,7 +702,6 @@ pub mod ast {
             emit_family: Some(EmitCollectionFamily::Map),
         },
         PipeMethodDef {
-            method: PipeMethod::Count,
             name: "count",
             arity: 0,
             param_names: &[],
@@ -838,7 +710,6 @@ pub mod ast {
             emit_family: Some(EmitCollectionFamily::Fold),
         },
         PipeMethodDef {
-            method: PipeMethod::Sum,
             name: "sum",
             arity: 0,
             param_names: &[],
@@ -847,7 +718,6 @@ pub mod ast {
             emit_family: Some(EmitCollectionFamily::Fold),
         },
         PipeMethodDef {
-            method: PipeMethod::First,
             name: "first",
             arity: 0,
             param_names: &[],
@@ -856,7 +726,6 @@ pub mod ast {
             emit_family: Some(EmitCollectionFamily::Filter),
         },
         PipeMethodDef {
-            method: PipeMethod::Last,
             name: "last",
             arity: 0,
             param_names: &[],
@@ -865,7 +734,6 @@ pub mod ast {
             emit_family: Some(EmitCollectionFamily::Filter),
         },
         PipeMethodDef {
-            method: PipeMethod::MaxBy,
             name: "max_by",
             arity: 1,
             param_names: &["f"],
@@ -874,7 +742,6 @@ pub mod ast {
             emit_family: Some(EmitCollectionFamily::Fold),
         },
         PipeMethodDef {
-            method: PipeMethod::Any,
             name: "any",
             arity: 1,
             param_names: &["predicate"],
@@ -883,7 +750,6 @@ pub mod ast {
             emit_family: Some(EmitCollectionFamily::Fold),
         },
         PipeMethodDef {
-            method: PipeMethod::All,
             name: "all",
             arity: 1,
             param_names: &["predicate"],
@@ -892,7 +758,6 @@ pub mod ast {
             emit_family: Some(EmitCollectionFamily::Fold),
         },
         PipeMethodDef {
-            method: PipeMethod::Contains,
             name: "contains",
             arity: 1,
             param_names: &["item"],
@@ -901,7 +766,6 @@ pub mod ast {
             emit_family: Some(EmitCollectionFamily::Filter),
         },
         PipeMethodDef {
-            method: PipeMethod::Split,
             name: "split",
             arity: 1,
             param_names: &["delimiter"],
@@ -910,7 +774,6 @@ pub mod ast {
             emit_family: Some(EmitCollectionFamily::Map),
         },
         PipeMethodDef {
-            method: PipeMethod::Zip,
             name: "zip",
             arity: 1,
             param_names: &["other"],
@@ -919,7 +782,6 @@ pub mod ast {
             emit_family: Some(EmitCollectionFamily::Map),
         },
         PipeMethodDef {
-            method: PipeMethod::Skip,
             name: "skip",
             arity: 1,
             param_names: &["n"],
@@ -928,7 +790,6 @@ pub mod ast {
             emit_family: Some(EmitCollectionFamily::Filter),
         },
         PipeMethodDef {
-            method: PipeMethod::Enumerate,
             name: "enumerate",
             arity: 0,
             param_names: &[],
@@ -938,7 +799,6 @@ pub mod ast {
         },
         // String methods
         PipeMethodDef {
-            method: PipeMethod::StartsWith,
             name: "starts_with",
             arity: 1,
             param_names: &["prefix"],
@@ -947,7 +807,6 @@ pub mod ast {
             emit_family: None,
         },
         PipeMethodDef {
-            method: PipeMethod::EndsWith,
             name: "ends_with",
             arity: 1,
             param_names: &["suffix"],
@@ -956,7 +815,6 @@ pub mod ast {
             emit_family: None,
         },
         PipeMethodDef {
-            method: PipeMethod::Repeat,
             name: "repeat",
             arity: 1,
             param_names: &["n"],
@@ -965,7 +823,6 @@ pub mod ast {
             emit_family: None,
         },
         PipeMethodDef {
-            method: PipeMethod::ReplaceSection,
             name: "replace_section",
             arity: 2,
             param_names: &["section", "replacement"],
@@ -974,7 +831,6 @@ pub mod ast {
             emit_family: None,
         },
         PipeMethodDef {
-            method: PipeMethod::Chars,
             name: "chars",
             arity: 0,
             param_names: &[],
@@ -984,7 +840,6 @@ pub mod ast {
         },
         // Conversion methods
         PipeMethodDef {
-            method: PipeMethod::ToBytes,
             name: "to_bytes",
             arity: 0,
             param_names: &["value"],
@@ -993,7 +848,6 @@ pub mod ast {
             emit_family: None,
         },
         PipeMethodDef {
-            method: PipeMethod::ToJson,
             name: "to_json",
             arity: 0,
             param_names: &["value"],
@@ -1002,7 +856,6 @@ pub mod ast {
             emit_family: None,
         },
         PipeMethodDef {
-            method: PipeMethod::Hash,
             name: "hash",
             arity: 0,
             param_names: &["value"],
@@ -1012,22 +865,9 @@ pub mod ast {
         },
     ];
 
-    impl PipeMethod {
-        /// Look up this method's definition in the registry.
-        pub fn def(&self) -> &'static PipeMethodDef {
-            PIPE_METHOD_REGISTRY
-                .iter()
-                .find(|d| d.method == *self)
-                .expect("all PipeMethod variants have registry entries")
-        }
-    }
-
-    /// Look up a pipe method by name.
-    pub fn pipe_method_by_name(name: &str) -> Option<PipeMethod> {
-        PIPE_METHOD_REGISTRY
-            .iter()
-            .find(|d| d.name == name)
-            .map(|d| d.method)
+    /// Check if a name is a known pipe method.
+    pub fn is_pipe_method(name: &str) -> bool {
+        PIPE_METHOD_REGISTRY.iter().any(|d| d.name == name)
     }
 
     /// Look up a pipe method definition by name.
