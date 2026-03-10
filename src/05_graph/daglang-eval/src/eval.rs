@@ -173,6 +173,333 @@ pub fn evaluate_collection(
     }
 }
 
+/// Collection/intrinsic function names handled by the evaluator.
+///
+/// These functions take a collection (or string) as the first positional
+/// argument and operate on it. They were formerly pipe methods.
+const INTRINSIC_CALLS: &[&str] = &[
+    "map", "filter", "filter_map", "flat_map", "fold", "append",
+    "join", "count", "sum", "first", "last", "any", "all", "contains",
+    "sort_by", "split", "zip", "skip", "enumerate",
+    "starts_with", "ends_with", "repeat", "chars",
+];
+
+/// Check if a function name is an evaluator-handled intrinsic.
+pub fn is_intrinsic_call(name: &str) -> bool {
+    INTRINSIC_CALLS.contains(&name)
+}
+
+/// Evaluate an intrinsic call: `name(receiver, args...)`.
+///
+/// The first positional argument is the receiver (collection or string).
+/// Remaining arguments are forwarded as-is.
+fn eval_intrinsic_call(
+    name: &str,
+    args: &[(Option<String>, LoweredExpr)],
+    env: &Env,
+    sibling_fns: &HashMap<String, LoweredFnBody>,
+) -> Result<Value, EvalError> {
+    // The first positional arg is the receiver.
+    let receiver = if let Some((_, first_arg)) = args.first() {
+        eval_expr(first_arg, env, sibling_fns)?
+    } else {
+        return Err(EvalError::new(format!("{name}: missing receiver argument")));
+    };
+    // Remaining args (skip the first positional one).
+    let rest_args: Vec<(Option<String>, LoweredExpr)> = args[1..].to_vec();
+
+    match name {
+        "join" => {
+            let sep = if let Some((_, sep_expr)) = rest_args.first() {
+                match eval_expr(sep_expr, env, sibling_fns)? {
+                    Value::Str(s) => s,
+                    _ => ",".to_string(),
+                }
+            } else {
+                ",".to_string()
+            };
+            match receiver {
+                Value::List(items) => Ok(Value::Str(
+                    items.iter().map(value_to_string).collect::<Vec<_>>().join(&sep),
+                )),
+                _ => Err(EvalError::new("join requires a list")),
+            }
+        }
+        "map" => {
+            let lambda = rest_args.first().map(|(_, e)| e);
+            match (receiver, lambda) {
+                (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
+                    let param = params.first().cloned().unwrap_or_else(|| "_".to_string());
+                    let mut results = Vec::new();
+                    for item in items {
+                        let mut child_env = env.child();
+                        child_env.bind(param.clone(), item);
+                        results.push(eval_expr(body, &child_env, sibling_fns)?);
+                    }
+                    Ok(Value::List(results))
+                }
+                (Value::List(items), _) => Ok(Value::List(items)),
+                (other, _) => Err(EvalError::new(format!("map requires a list, got {other:?}"))),
+            }
+        }
+        "filter" => {
+            let lambda = rest_args.first().map(|(_, e)| e);
+            match (receiver, lambda) {
+                (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
+                    let param = params.first().cloned().unwrap_or_else(|| "_".to_string());
+                    let mut results = Vec::new();
+                    for item in items {
+                        let mut child_env = env.child();
+                        child_env.bind(param.clone(), item.clone());
+                        if value_truthy(&eval_expr(body, &child_env, sibling_fns)?) {
+                            results.push(item);
+                        }
+                    }
+                    Ok(Value::List(results))
+                }
+                (Value::List(items), _) => Ok(Value::List(items)),
+                _ => Err(EvalError::new("filter requires a list")),
+            }
+        }
+        "filter_map" => {
+            let lambda = rest_args.first().map(|(_, e)| e);
+            match (receiver, lambda) {
+                (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
+                    let param = params.first().cloned().unwrap_or_else(|| "_".to_string());
+                    let mut results = Vec::new();
+                    for item in items {
+                        let mut child_env = env.child();
+                        child_env.bind(param.clone(), item);
+                        let val = eval_expr(body, &child_env, sibling_fns)?;
+                        if !matches!(val, Value::Unit | Value::Skipped) {
+                            results.push(val);
+                        }
+                    }
+                    Ok(Value::List(results))
+                }
+                (Value::List(items), _) => Ok(Value::List(items)),
+                _ => Err(EvalError::new("filter_map requires a list")),
+            }
+        }
+        "flat_map" => {
+            let lambda = rest_args.first().map(|(_, e)| e);
+            match (receiver, lambda) {
+                (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
+                    let param = params.first().cloned().unwrap_or_else(|| "_".to_string());
+                    let mut results = Vec::new();
+                    for item in items {
+                        let mut child_env = env.child();
+                        child_env.bind(param.clone(), item);
+                        match eval_expr(body, &child_env, sibling_fns)? {
+                            Value::List(inner) => results.extend(inner),
+                            other => results.push(other),
+                        }
+                    }
+                    Ok(Value::List(results))
+                }
+                (Value::List(items), _) => Ok(Value::List(items)),
+                _ => Err(EvalError::new("flat_map requires a list")),
+            }
+        }
+        "fold" => {
+            let init = rest_args.iter().find(|(k, _)| k.as_deref() == Some("init"));
+            let func = rest_args.iter().find(|(k, _)| k.as_deref() == Some("f"));
+            match (receiver, init, func) {
+                (Value::List(items), Some((_, init_expr)), Some((_, LoweredExpr::Lambda { params, body }))) => {
+                    let mut acc = eval_expr(init_expr, env, sibling_fns)?;
+                    let acc_param = params.first().cloned().unwrap_or_else(|| "acc".to_string());
+                    let item_param = params.get(1).cloned().unwrap_or_else(|| "item".to_string());
+                    for item in items {
+                        let mut child_env = env.child();
+                        child_env.bind(acc_param.clone(), acc);
+                        child_env.bind(item_param.clone(), item);
+                        acc = eval_expr(body, &child_env, sibling_fns)?;
+                    }
+                    Ok(acc)
+                }
+                _ => Err(EvalError::new("fold requires list, init, and f")),
+            }
+        }
+        "append" => {
+            let new_items = rest_args.iter().find(|(k, _)| k.as_deref() == Some("items"));
+            match (receiver, new_items) {
+                (Value::List(mut base), Some((_, items_expr))) => {
+                    match eval_expr(items_expr, env, sibling_fns)? {
+                        Value::List(more) => base.extend(more),
+                        other => base.push(other),
+                    }
+                    Ok(Value::List(base))
+                }
+                (other, _) => Err(EvalError::new(format!("append requires a list, got {other:?}"))),
+            }
+        }
+        "count" => match receiver {
+            Value::List(items) => Ok(Value::Int(items.len() as i64)),
+            _ => Err(EvalError::new("count requires a list")),
+        },
+        "sum" => match receiver {
+            Value::List(items) => {
+                let total: i64 = items.iter().filter_map(|v| if let Value::Int(i) = v { Some(i) } else { None }).sum();
+                Ok(Value::Int(total))
+            }
+            _ => Err(EvalError::new("sum requires a list")),
+        },
+        "first" => match receiver {
+            Value::List(items) => Ok(items.into_iter().next().unwrap_or(Value::Unit)),
+            _ => Err(EvalError::new("first requires a list")),
+        },
+        "last" => match receiver {
+            Value::List(items) => Ok(items.into_iter().last().unwrap_or(Value::Unit)),
+            _ => Err(EvalError::new("last requires a list")),
+        },
+        "any" => {
+            let lambda = rest_args.first().map(|(_, e)| e);
+            match (receiver, lambda) {
+                (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
+                    let param = params.first().cloned().unwrap_or_else(|| "_".to_string());
+                    for item in items {
+                        let mut child_env = env.child();
+                        child_env.bind(param.clone(), item);
+                        if value_truthy(&eval_expr(body, &child_env, sibling_fns)?) {
+                            return Ok(Value::Bool(true));
+                        }
+                    }
+                    Ok(Value::Bool(false))
+                }
+                _ => Err(EvalError::new("any requires list and predicate")),
+            }
+        }
+        "all" => {
+            let lambda = rest_args.first().map(|(_, e)| e);
+            match (receiver, lambda) {
+                (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
+                    let param = params.first().cloned().unwrap_or_else(|| "_".to_string());
+                    for item in items {
+                        let mut child_env = env.child();
+                        child_env.bind(param.clone(), item);
+                        if !value_truthy(&eval_expr(body, &child_env, sibling_fns)?) {
+                            return Ok(Value::Bool(false));
+                        }
+                    }
+                    Ok(Value::Bool(true))
+                }
+                _ => Err(EvalError::new("all requires list and predicate")),
+            }
+        }
+        "contains" => {
+            let needle_expr = rest_args.first().or_else(|| rest_args.iter().find(|(k, _)| k.as_deref() == Some("item")));
+            match (receiver, needle_expr) {
+                (Value::List(items), Some((_, expr))) => {
+                    let needle = eval_expr(expr, env, sibling_fns)?;
+                    Ok(Value::Bool(items.contains(&needle)))
+                }
+                _ => Err(EvalError::new("contains requires list and item")),
+            }
+        }
+        "sort_by" => {
+            let lambda = rest_args.first().map(|(_, e)| e);
+            match (receiver, lambda) {
+                (Value::List(mut items), Some(LoweredExpr::Lambda { params, body })) => {
+                    let param = params.first().cloned().unwrap_or_else(|| "_".to_string());
+                    let mut keyed: Vec<(String, Value)> = Vec::with_capacity(items.len());
+                    for item in items.drain(..) {
+                        let mut child_env = env.child();
+                        child_env.bind(param.clone(), item.clone());
+                        let key = eval_expr(body, &child_env, sibling_fns).map(|v| value_to_string(&v))?;
+                        keyed.push((key, item));
+                    }
+                    keyed.sort_by(|a, b| a.0.cmp(&b.0));
+                    Ok(Value::List(keyed.into_iter().map(|(_, v)| v).collect()))
+                }
+                (Value::List(items), _) => Ok(Value::List(items)),
+                _ => Err(EvalError::new("sort_by requires a list")),
+            }
+        }
+        "starts_with" => {
+            let prefix = rest_args.iter().find(|(k, _)| k.as_deref() == Some("prefix")).or_else(|| rest_args.first());
+            match (receiver, prefix) {
+                (Value::Str(s), Some((_, expr))) => Ok(Value::Bool(s.starts_with(&value_to_string(&eval_expr(expr, env, sibling_fns)?)))),
+                _ => Err(EvalError::new("starts_with requires string and prefix")),
+            }
+        }
+        "ends_with" => {
+            let suffix = rest_args.iter().find(|(k, _)| k.as_deref() == Some("suffix")).or_else(|| rest_args.first());
+            match (receiver, suffix) {
+                (Value::Str(s), Some((_, expr))) => Ok(Value::Bool(s.ends_with(&value_to_string(&eval_expr(expr, env, sibling_fns)?)))),
+                _ => Err(EvalError::new("ends_with requires string and suffix")),
+            }
+        }
+        "split" => {
+            let delim = rest_args.iter().find(|(k, _)| k.as_deref() == Some("delimiter")).or_else(|| rest_args.first());
+            match (receiver, delim) {
+                (Value::Str(s), Some((_, expr))) => {
+                    let d = value_to_string(&eval_expr(expr, env, sibling_fns)?);
+                    Ok(Value::List(s.split(&d).map(|p| Value::Str(p.to_string())).collect()))
+                }
+                (Value::Str(s), None) => Ok(Value::List(s.split(',').map(|p| Value::Str(p.to_string())).collect())),
+                _ => Err(EvalError::new("split requires a string")),
+            }
+        }
+        "zip" => {
+            let other_expr = rest_args.iter().find(|(k, _)| k.as_deref() == Some("other")).or_else(|| rest_args.first());
+            match (receiver, other_expr) {
+                (Value::List(items), Some((_, expr))) => {
+                    let other = match eval_expr(expr, env, sibling_fns)? {
+                        Value::List(l) => l,
+                        _ => return Err(EvalError::new("zip requires a list for 'other'")),
+                    };
+                    Ok(Value::List(items.into_iter().zip(other).map(|(a, b)| {
+                        let mut map = BTreeMap::new();
+                        map.insert("first".to_string(), a);
+                        map.insert("second".to_string(), b);
+                        Value::Map(map)
+                    }).collect()))
+                }
+                _ => Err(EvalError::new("zip requires a list")),
+            }
+        }
+        "skip" => {
+            let n_expr = rest_args.iter().find(|(k, _)| k.as_deref() == Some("n")).or_else(|| rest_args.first());
+            match (receiver, n_expr) {
+                (Value::List(items), Some((_, expr))) => {
+                    match eval_expr(expr, env, sibling_fns)? {
+                        Value::Int(count) => Ok(Value::List(items.into_iter().skip(count.max(0) as usize).collect())),
+                        _ => Err(EvalError::new("skip requires integer count")),
+                    }
+                }
+                (Value::List(items), None) => Ok(Value::List(items)),
+                _ => Err(EvalError::new("skip requires a list")),
+            }
+        }
+        "enumerate" => match receiver {
+            Value::List(items) => Ok(Value::List(items.into_iter().enumerate().map(|(i, v)| {
+                let mut map = BTreeMap::new();
+                map.insert("index".to_string(), Value::Int(i as i64));
+                map.insert("value".to_string(), v);
+                Value::Map(map)
+            }).collect())),
+            _ => Err(EvalError::new("enumerate requires a list")),
+        },
+        "repeat" => {
+            let n_expr = rest_args.first();
+            match (receiver, n_expr) {
+                (Value::Str(s), Some((_, expr))) => {
+                    match eval_expr(expr, env, sibling_fns)? {
+                        Value::Int(count) => Ok(Value::Str(s.repeat(count.max(0) as usize))),
+                        _ => Err(EvalError::new("repeat requires integer count")),
+                    }
+                }
+                _ => Err(EvalError::new("repeat requires string and count")),
+            }
+        }
+        "chars" => match &receiver {
+            Value::Str(s) => Ok(Value::List(s.chars().map(|c| Value::Str(c.to_string())).collect())),
+            _ => Err(EvalError::new(format!("chars: expected String, got {receiver:?}"))),
+        },
+        _ => Err(EvalError::new(format!("unknown intrinsic call: {name}"))),
+    }
+}
+
 // ── Error type ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -615,6 +942,13 @@ fn eval_call(
         }
         let outputs = evaluate_fn_body(fn_body, &fn_inputs, sibling_fns)?;
         return sibling_fn_value(name, outputs);
+    }
+
+    // Collection / intrinsic functions: map, filter, fold, join, etc.
+    // These were formerly pipe methods (items |> map(f)) and are now
+    // called as regular functions (map(items, f)).
+    if is_intrinsic_call(name) {
+        return eval_intrinsic_call(name, args, env, sibling_fns);
     }
 
     // Built-in functions

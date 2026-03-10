@@ -9592,13 +9592,12 @@ fn collection_op_kind(name: &str) -> Option<CollectionOpKind> {
 }
 
 fn collect_collection_ops_from_stmts(stmts: &[Stmt], sites: &mut Vec<CollectionOpSite>) {
-    walk_stmts(stmts, &mut |expr| match expr {
-        Expr::Call(name, _) => {
+    walk_stmts(stmts, &mut |expr| {
+        if let Expr::Call(name, _) = expr {
             if let Some(kind) = collection_op_kind(name) {
                 sites.push(CollectionOpSite { kind });
             }
         }
-        _ => {}
     });
 }
 
@@ -12196,9 +12195,17 @@ fn collect_local_let_bindings<'a>(
                 // Unwrap Guarded/After wrappers before checking — guarded service
                 // calls like `run = svc.Op() [when cond]` are still service calls.
                 let inner = unwrap_guarded_expr(expr);
-                if !bound_callable_sources.contains_key(name)
-                    && !matches!(inner, Expr::Call(_, _) | Expr::ServiceCall(_, _))
-                {
+                let is_dag_level_call = match inner {
+                    Expr::Call(callee, _) => {
+                        // Intrinsic collection functions (map, filter, fold, etc.)
+                        // are evaluated in the expression evaluator, not as DAG
+                        // callable nodes. Include them in local let bindings.
+                        !daglang_eval::eval::is_intrinsic_call(callee)
+                    }
+                    Expr::ServiceCall(_, _) => true,
+                    _ => false,
+                };
+                if !bound_callable_sources.contains_key(name) && !is_dag_level_call {
                     bindings.insert(name.clone(), expr as &Expr);
                 }
             }

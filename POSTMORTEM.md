@@ -2335,7 +2335,15 @@ the main `resolve_lowered_dag_with(...)` materialization path.
 and thin `gunbc-resolve` to a compatibility wrapper, or defer and stop
 half-maintaining `gunbc-interp`.
 
-### 5. Pipe operator deleted (2026-03-09)
+### 5. Generated binary `#![allow(clippy::disallowed_macros)]`
+
+Generated CLI binaries need `eprintln!` for user-facing error output.
+The codegen renderer adds `#![allow(clippy::disallowed_macros)]` to
+generated `main.rs` files. This is a workaround — ideally generated
+binaries would use a structured error reporting path instead of
+direct stderr writes.
+
+### 6. Pipe operator deleted (2026-03-09)
 
 `|>` syntax, `Expr::Pipe`, `Expr::PipeCall`, `PipeMethod` enum,
 `PIPE_METHOD_REGISTRY`, `EmitCollectionFamily`, and all related

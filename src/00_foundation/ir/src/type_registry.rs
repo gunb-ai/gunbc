@@ -874,9 +874,11 @@ impl TypeRegistry {
             return true;
         }
 
-        // Source Any does not entail specific targets.
-        if from.0 == "Any" {
-            return false;
+        // Source Any/Unknown: inferred types that couldn't be resolved
+        // (e.g. fold's generic return). Compatible with any target until
+        // the type system supports generics.
+        if from.0 == "Any" || from.0 == "Unknown" {
+            return true;
         }
 
         // Look up both types; if not registered, fall back to Json top.
