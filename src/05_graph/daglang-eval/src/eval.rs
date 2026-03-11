@@ -68,6 +68,7 @@ fn eval_fn_body_rc(
         .collect();
 
     let mut current_inputs = inputs.clone();
+    let mut trampoline_iters: usize = 0;
 
     // Trampoline loop: self-recursive tail calls re-enter here instead of
     // growing the native call stack.
@@ -75,6 +76,13 @@ fn eval_fn_body_rc(
         match eval_fn_body_once(body, &current_inputs, sibling_fns, &data_values, &seeds, call_depth, fn_name) {
             Ok(result) => return Ok(result),
             Err(e) if e.tail_call.is_some() => {
+                trampoline_iters += 1;
+                if trampoline_iters > MAX_TRAMPOLINE_ITERS {
+                    return Err(EvalError::new(format!(
+                        "maximum tail-call iterations ({MAX_TRAMPOLINE_ITERS}) exceeded in '{}' — possible infinite loop",
+                        fn_name.unwrap_or("<anonymous>")
+                    )));
+                }
                 // Self-recursive tail call — rebind inputs and loop.
                 current_inputs = e.tail_call.unwrap();
             }
@@ -719,6 +727,12 @@ impl std::fmt::Display for EvalError {
 /// Maximum sibling-fn call depth before the evaluator bails out with a clear
 /// error instead of blowing the native stack.
 const MAX_CALL_DEPTH: usize = 10_000;
+
+/// Maximum trampoline iterations for a single self-recursive function.
+/// Higher than MAX_CALL_DEPTH because trampoline iterations are O(1) stack
+/// (just a loop), not O(N) stack. The risk is infinite loops, not stack
+/// overflow. 1M iterations is ~seconds of CPU, not a memory problem.
+const MAX_TRAMPOLINE_ITERS: usize = 1_000_000;
 
 struct Env {
     /// Variable bindings. Wrapped in Rc for copy-on-write: child scopes
@@ -2597,5 +2611,29 @@ mod tests {
         let result = evaluate_fn_body(&body, &inputs, &sibling_fns).unwrap();
         // sum 1..20000 = 20000 * 20001 / 2 = 200_010_000
         assert_eq!(result["return"], Value::Int(200_010_000));
+    }
+
+    /// Infinite self-tail-recursion must produce a clean error, not hang.
+    #[test]
+    fn tco_infinite_tail_recursion_is_caught() {
+        // fn spin() { spin() }
+        let body = LoweredFnBody {
+            stmts: vec![LoweredStmt::Expr(LoweredExpr::Call {
+                name: "spin".to_string(),
+                args: vec![],
+            })],
+        };
+
+        let mut sibling_fns = HashMap::new();
+        sibling_fns.insert("spin".to_string(), body.clone());
+
+        let result = evaluate_fn_body(&body, &HashMap::new(), &sibling_fns);
+        assert!(result.is_err(), "infinite tail recursion should error");
+        let msg = result.unwrap_err().message;
+        assert!(
+            msg.contains("tail-call iterations") || msg.contains("call depth"),
+            "error should mention iteration limit, got: {}",
+            msg
+        );
     }
 }
