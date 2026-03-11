@@ -1825,6 +1825,17 @@ fn example(items: List<String>) -> Int {
                 eprintln!("[v2] parsed {} modules", modules.len());
 
                 // Step 2: Resolve imports
+                // Diagnostic: check module shapes before resolve
+                for (i, m) in modules.iter().enumerate() {
+                    if let gunbc_ir::Value::Map(ref map) = m {
+                        let has_imports = map.contains_key("imports");
+                        let imports_kind = map.get("imports").map(|v| format!("{:?}", std::mem::discriminant(v)));
+                        eprintln!("[v2] module {} keys: {:?}, has_imports={}, imports_kind={:?}",
+                            i, map.keys().collect::<Vec<_>>(), has_imports, imports_kind);
+                    } else {
+                        eprintln!("[v2] module {} is NOT a Map: {:?}", i, std::mem::discriminant(m));
+                    }
+                }
                 let mut resolve_inputs = HashMap::new();
                 resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(modules));
                 let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)

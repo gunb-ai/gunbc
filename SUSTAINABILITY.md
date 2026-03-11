@@ -762,6 +762,35 @@ vs `fn` (don't).
 Fix: module-level pass that maps callee names → item kinds + service
 dependencies, consulted by `emit_call` to forward service refs.
 
+**S55: `return self_call()` inside non-tail blocks didn't trampoline.**
+`tokenize_loop` uses `return tokenize_loop(state: ...)` inside `if`
+bodies that are NOT the last statement. The TCO system (S43) only
+trampolined when `allow_tco=true`, which was gated on the *surrounding
+block* being in tail position — not on the `return` itself. Since the
+`if` was mid-function (not the last statement), `allow_tco` was `false`,
+and the `return` evaluated its self-recursive call with `tail_ctx=false`.
+Each newline token (522 in types.dag) added a native stack frame.
+Root cause: `return` is ALWAYS tail position for the enclosing function,
+regardless of block nesting depth. The `allow_tco` guard on
+`LoweredStmt::Return` was wrong — it conflated "block tail position"
+with "function return position".
+Fix: remove `allow_tco &&` from the `Return` handler in `eval_stmts`.
+The `tail_call` signal propagates correctly through `early_return` and
+block scopes to the fn body's trampoline loop (those propagation paths
+already existed from S50).
+Symptom: stack overflow processing types.dag (17KB, 523 lines) at 32MB.
+After fix: same file processes at 16MB with no overflow.
+
+**S56: `resolve_modules` fails with "map requires a list, got Unit".**
+After S55 unblocked tokenize+parse of all 12 gist dependency files,
+`resolve_modules` fails. The error is `"map requires a list, got Unit"`
+inside the resolver's `resolve_module_imports` or its callers. Likely
+a DSL data declaration or intermediate value that evaluates to `Unit`
+instead of the expected `List` — possibly related to S53 (data values
+no longer round-tripping through JSON) or a pre-existing resolver bug
+that was never exercised because the tokenizer previously crashed.
+Status: under investigation.
+
 #### Remaining performance debt (not crash risk):
 
 **`Env::from_inputs` clones inputs on every non-self call.** For the
