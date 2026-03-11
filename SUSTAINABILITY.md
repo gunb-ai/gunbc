@@ -750,6 +750,18 @@ instead of going through JSON. The JSON intermediary exists because
 — changing it to take `&HashMap<String, Value>` would eliminate the
 round-trip entirely.
 
+**S54: Emitter adds service params to signatures but not call sites.**
+`emit_func_def` infers service dependencies via `collect_service_calls()`
+and adds `&GitCore`, `&GithubGist` etc. params to the function signature.
+But `emit_call` emits only explicit DSL args. A `func` calling another
+`func` will produce Rust that fails to compile — the service refs are
+missing from the call site.
+Root cause: emit is item-at-a-time with no module-level resolution.
+The emitter doesn't know which callees are `func` (need service params)
+vs `fn` (don't).
+Fix: module-level pass that maps callee names → item kinds + service
+dependencies, consulted by `emit_call` to forward service refs.
+
 #### Remaining performance debt (not crash risk):
 
 **`Env::from_inputs` clones inputs on every non-self call.** For the

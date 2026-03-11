@@ -590,11 +590,11 @@ fn parse_single_predicate(state: ParserState) -> PR {
         if is_err(pr: r2) { return r2 }
         let r3 = expect(state: r2.state, tag: "RParen")
         if is_err(pr: r3) { return r3 }
-        let regex = match r2.val.expr {
-          Literal { value: LitStr { value: s } } => s
-          _ => ""
+        match r2.val.expr {
+          Literal { value: LitStr { value: s } } =>
+            ok(val: { predicate: Pattern { regex: s } }, state: r3.state)
+          _ => fail(msg: "pattern() requires a string literal argument", state: r3.state)
         }
-        ok(val: { predicate: Pattern { regex: regex } }, state: r3.state)
       }
       "format" => {
         let r2 = expect_ident(state: e.state)
@@ -608,11 +608,11 @@ fn parse_single_predicate(state: ParserState) -> PR {
         if is_err(pr: r2) { return r2 }
         let r3 = expect(state: r2.state, tag: "RParen")
         if is_err(pr: r3) { return r3 }
-        let bname = match r2.val.expr {
-          Literal { value: LitStr { value: s } } => s
-          _ => ""
+        match r2.val.expr {
+          Literal { value: LitStr { value: s } } =>
+            ok(val: { predicate: Brand { name: s } }, state: r3.state)
+          _ => fail(msg: "brand() requires a string literal argument", state: r3.state)
         }
-        ok(val: { predicate: Brand { name: bname } }, state: r3.state)
       }
       "content" => {
         let r2 = expect_ident(state: e.state)

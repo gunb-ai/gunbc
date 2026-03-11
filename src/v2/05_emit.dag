@@ -475,6 +475,13 @@ fn emit_string_literal(s: String) -> String {
 // Call emission
 // =========================================================================
 
+// Known limitation (S54): emit_call does not forward service params to func
+// callees. emit_func_def adds inferred service params to function signatures
+// via collect_service_calls(), but emit_call emits only explicit DSL args.
+// A func calling another func will produce code that fails to compile because
+// the service refs (&GitCore, etc.) are missing from the call site.
+// Fix requires: module-level pass that maps callee names to item kinds
+// (func vs fn) and their service dependencies, so emit_call can forward them.
 fn emit_call(func: String, args: List<NamedArg>) -> String {
   // Handle for-loop desugaring: Call { func: "for", args: [var, collection, body] }
   if func == "for" {
@@ -1365,7 +1372,7 @@ fn has_nested_records(type_expr: TypeExpr) -> Bool {
 fn emit_data_value_json(value: Expr) -> String {
   match value {
     Literal { value: v, span: _ } => match v {
-      LitStr { value: s } => "\"" + s + "\""
+      LitStr { value: s } => "\"" + escape_json_string(s: s) + "\""
       LitInt { value: i } => to_string(value: i)
       LitFloat { value: f } => f
       LitBool { value: b } => if b { "true" } else { "false" }
@@ -1377,13 +1384,21 @@ fn emit_data_value_json(value: Expr) -> String {
     }
     RecordLit { type_name: _, fields: fs, span: _ } => {
       let field_strs = fs |> map(f =>
-        "\"" + f.name + "\": " + emit_data_value_json(value: f.value)
+        "\"" + escape_json_string(s: f.name) + "\": " + emit_data_value_json(value: f.value)
       )
       "{" + field_strs |> join(separator: ", ") + "}"
     }
-    Var { name: n, span: _ } => "\"" + n + "\""
+    Var { name: n, span: _ } => "\"" + escape_json_string(s: n) + "\""
     _ => "null"
   }
+}
+
+// Escape a string for JSON output: backslashes, quotes, newlines, tabs.
+fn escape_json_string(s: String) -> String {
+  s |> split(delimiter: "\\") |> join(separator: "\\\\")
+    |> split(delimiter: "\"") |> join(separator: "\\\"")
+    |> split(delimiter: "\n") |> join(separator: "\\n")
+    |> split(delimiter: "\t") |> join(separator: "\\t")
 }
 
 // =========================================================================
