@@ -1690,4 +1690,50 @@ fn example(items: List<String>) -> Int {
             Err(e) => std::panic::resume_unwind(e),
         }
     }
+
+    /// Diagnostic: measure stack cost per token by tokenizing progressively larger inputs.
+    #[test]
+    fn phase5_debug_stack_overflow_isolation() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let output = std::sync::Arc::new(output);
+
+        let root = workspace_root();
+        let full_source = std::fs::read_to_string(root.join("dsl/std/types.dag")).unwrap();
+        let lines: Vec<&str> = full_source.lines().collect();
+
+        // Try progressively larger prefixes to find the breaking point
+        for &line_count in &[50, 100, 150, 200, 250, 300, 350, 400, 450, 523] {
+            let prefix: String = lines[..line_count.min(lines.len())].join("\n");
+            let byte_count = prefix.len();
+            let output = output.clone();
+            let result = std::thread::Builder::new()
+                .stack_size(128 * 1024 * 1024)
+                .spawn(move || {
+                    let mut tok_inputs = HashMap::new();
+                    tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(prefix));
+                    let tok_result = call_fn(&output, "tokenize", tok_inputs)
+                        .unwrap_or_else(|e| panic!("tokenize failed at {} lines: {}", line_count, e));
+                    let tokens = tok_result.get("return").cloned().unwrap_or(gunbc_ir::Value::Unit);
+                    let token_count = if let gunbc_ir::Value::List(ref l) = tokens { l.len() } else { 0 };
+                    eprintln!(
+                        "[DIAG] {} lines, {} bytes → {} tokens (OK on 128MB stack)",
+                        line_count, byte_count, token_count
+                    );
+                })
+                .unwrap()
+                .join();
+            match result {
+                Ok(()) => {}
+                Err(_) => {
+                    eprintln!(
+                        "[DIAG] OVERFLOW at {} lines ({} bytes) — this is the limit on 128MB stack",
+                        line_count, byte_count
+                    );
+                    // Calculate: 128MB / tokens ≈ bytes per token stack frame
+                    // Previous line count should have succeeded with known token count
+                    break;
+                }
+            }
+        }
+    }
 }
