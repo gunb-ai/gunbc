@@ -781,15 +781,24 @@ already existed from S50).
 Symptom: stack overflow processing types.dag (17KB, 523 lines) at 32MB.
 After fix: same file processes at 16MB with no overflow.
 
-**S56: `resolve_modules` fails with "map requires a list, got Unit".**
-After S55 unblocked tokenize+parse of all 12 gist dependency files,
-`resolve_modules` fails. The error is `"map requires a list, got Unit"`
-inside the resolver's `resolve_module_imports` or its callers. Likely
-a DSL data declaration or intermediate value that evaluates to `Unit`
-instead of the expected `List` — possibly related to S53 (data values
-no longer round-tripping through JSON) or a pre-existing resolver bug
-that was never exercised because the tokenizer previously crashed.
-Status: under investigation.
+**S56: Parse errors laundered as resolve crashes.**
+`v2_tokenize_and_parse` extracted `parse_result.module` without checking
+`parse_result.error`. Since `parse()` returns `{ module: none, error: e }`
+on failure, a parse error caused `none`/Unit to leak into `resolve_modules`
+as a non-Module element. The resolver then called `module.imports |> map()`
+on `Unit` and failed with `"map requires a list, got Unit"`, obscuring
+the real parse error.
+Root cause: missing error check at the test helper boundary. Same pattern
+exists in the `.dag` pipeline itself — `compile_sources` maps
+`parse_results` to `modules = map(parse_results, p => p.module)` without
+filtering parse failures, passing `List<Module?>` to a function expecting
+`List<Module>`.
+Fix: fail on `parse_result.error` before module extraction, and validate
+module shape (must have `name`, `imports`, `items` keys) before passing
+to resolve. The real frontier is now the first file that produces a
+parse error — that is the actual bug to chase.
+Status: parse error check added; awaiting test run to identify which
+gist dependency file(s) fail to parse.
 
 #### Remaining performance debt (not crash risk):
 

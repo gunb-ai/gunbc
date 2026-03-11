@@ -1688,14 +1688,39 @@ fn example(items: List<String>) -> Int {
         let parse_result = call_fn(output, "parse", parse_inputs)
             .expect("parse should succeed");
 
+        // Check for parse errors before extracting module (S56 fix).
+        if let Some(err_val) = parse_result.get("error") {
+            if !matches!(err_val, gunbc_ir::Value::Unit) {
+                let preview = format!("{:?}", err_val);
+                panic!(
+                    "v2 parse error: {}",
+                    &preview[..preview.len().min(500)]
+                );
+            }
+        }
+
         let module_val = parse_result.get("module").expect("should have 'module' key");
         // Unwrap Option wrapping (Some { value: ... })
         if let gunbc_ir::Value::Map(m) = module_val {
             if m.contains_key("value") && !m.contains_key("name") {
-                return m.get("value").unwrap().clone();
+                let module = m.get("value").unwrap().clone();
+                // Validate module shape
+                if let gunbc_ir::Value::Map(ref mm) = module {
+                    assert!(
+                        mm.contains_key("name") && mm.contains_key("imports") && mm.contains_key("items"),
+                        "parsed module missing required fields, got keys: {:?}",
+                        mm.keys().collect::<Vec<_>>()
+                    );
+                } else {
+                    panic!("parsed module is not a Map: {:?}", std::mem::discriminant(&module));
+                }
+                return module;
             }
         }
-        module_val.clone()
+        panic!(
+            "unexpected parse result shape for 'module' field: {:?}",
+            std::mem::discriminant(module_val)
+        );
     }
 
     /// Synthetic 2-module test: types module + function module that imports it.
@@ -1825,17 +1850,6 @@ fn example(items: List<String>) -> Int {
                 eprintln!("[v2] parsed {} modules", modules.len());
 
                 // Step 2: Resolve imports
-                // Diagnostic: check module shapes before resolve
-                for (i, m) in modules.iter().enumerate() {
-                    if let gunbc_ir::Value::Map(ref map) = m {
-                        let has_imports = map.contains_key("imports");
-                        let imports_kind = map.get("imports").map(|v| format!("{:?}", std::mem::discriminant(v)));
-                        eprintln!("[v2] module {} keys: {:?}, has_imports={}, imports_kind={:?}",
-                            i, map.keys().collect::<Vec<_>>(), has_imports, imports_kind);
-                    } else {
-                        eprintln!("[v2] module {} is NOT a Map: {:?}", i, std::mem::discriminant(m));
-                    }
-                }
                 let mut resolve_inputs = HashMap::new();
                 resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(modules));
                 let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
