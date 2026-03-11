@@ -76,12 +76,22 @@ mod tests {
         let errors: Vec<String> = result
             .diagnostics
             .iter()
-            .map(|d| d.message.clone())
+            .map(|d| {
+                let span = d.span;
+                let line = source[..span.start.min(source.len())]
+                    .chars()
+                    .filter(|c| *c == '\n')
+                    .count()
+                    + 1;
+                let span_info = format!(" (line {})", line);
+                format!("{}{}", d.message, span_info)
+            })
             .collect();
         assert!(
             result.is_ok(),
-            "{} had parse errors:\n{}",
+            "{} had {} parse errors:\n{}",
             relative_path,
+            errors.len(),
             errors.join("\n")
         );
     }
@@ -126,6 +136,77 @@ fn foo(items: List<Int>) -> Int {
         assert!(
             result.is_ok(),
             "pipe syntax should parse:\n{}",
+            errors.join("\n")
+        );
+    }
+
+    #[test]
+    fn phase0_multi_stmt_if_body() {
+        let source = r#"module test
+fn foo(x: Int) -> Int {
+  if x > 0 {
+    let y = x + 1
+    return y
+  }
+  x
+}"#;
+        let result = daglang_syntax::parser::parse_to_result(source);
+        let errors: Vec<String> = result
+            .diagnostics
+            .iter()
+            .map(|d| d.message.clone())
+            .collect();
+        assert!(
+            result.is_ok(),
+            "multi-stmt if body should parse:\n{}",
+            errors.join("\n")
+        );
+    }
+
+    #[test]
+    fn phase0_match_with_variant_construct() {
+        let source = r#"module test
+fn foo(ch: String) -> String {
+  match lookup(table, key: ch) {
+    Some { value: kind } => kind
+    None => Unknown { char: ch }
+  }
+}"#;
+        let result = daglang_syntax::parser::parse_to_result(source);
+        let errors: Vec<String> = result
+            .diagnostics
+            .iter()
+            .map(|d| d.message.clone())
+            .collect();
+        assert!(
+            result.is_ok(),
+            "match with variant construct should parse:\n{}",
+            errors.join("\n")
+        );
+    }
+
+    #[test]
+    fn phase0_fold_with_fn_lambda_and_pipe() {
+        let source = r#"module test
+fn drop_last(stack: List<Int>) -> List<Int> {
+  let len = count(stack)
+  fold(enumerate(stack), [], fn(result, pair) {
+    if first(pair) < len - 1 {
+      append(result, items: last(pair))
+    } else {
+      result
+    }
+  })
+}"#;
+        let result = daglang_syntax::parser::parse_to_result(source);
+        let errors: Vec<String> = result
+            .diagnostics
+            .iter()
+            .map(|d| d.message.clone())
+            .collect();
+        assert!(
+            result.is_ok(),
+            "fold with fn lambda should parse:\n{}",
             errors.join("\n")
         );
     }

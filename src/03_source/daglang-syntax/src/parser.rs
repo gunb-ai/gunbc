@@ -3726,9 +3726,13 @@ impl Parser {
                             continue;
                         }
                         let field = self.expect_ident()?;
-                        self.expect(&TokenKind::Colon)?;
-                        let inner = self.parse_pattern()?;
-                        args.push((field, inner));
+                        if self.eat(&TokenKind::Colon) {
+                            let inner = self.parse_pattern()?;
+                            args.push((field, inner));
+                        } else {
+                            // Shorthand: `{ name }` means `{ name: name }`
+                            args.push((field.clone(), Pattern::Ident(field)));
+                        }
                         self.eat(&TokenKind::Comma);
                     }
                     self.expect(&TokenKind::RBrace)?;
