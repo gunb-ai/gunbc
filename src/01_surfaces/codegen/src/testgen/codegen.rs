@@ -7417,29 +7417,54 @@ fn platform_mock_token(index: Option<u32>) -> String {
 
 /// Generate a wrong-typed value for the given type_id.
 ///
-/// Returns None for types that accept any value or where wrong-type
-/// tests would be ambiguous.
+/// Returns a `ValueExpr` that is deliberately incompatible with the given
+/// type, for wrong-type input tests.  Returns `None` for permissive types
+/// (`Json`, `Any`, `Unit`) and unknown types where no meaningful wrong-type
+/// witness exists.
+///
+/// Derived from [`ValueBacking`] so that new types are classified automatically
+/// without hand-maintained match arms (sustainability item S17).
 fn mock_wrong_type_expr(type_id: &str) -> Option<ValueExpr> {
-    match type_id {
-        // String-like types → use Int
-        "String" | "Optional<String>" | "List<String>" | "NonEmptyList<String>" | "Path" | "FilePath"
-        | "SourceIR" | "Platform" | "Error" | "Tier" | "ToolId" | "S" => Some(ValueExpr::Int(1)),
-        // Int-like types → use String
-        "Int" | "i64" | "i32" | "Timestamp" | "Optional<Int>" | "List<Int>" => {
+    // Strip container wrappers to classify the element type.
+    let base = type_id
+        .strip_prefix("Optional<")
+        .and_then(|s| s.strip_suffix('>'))
+        .or_else(|| {
+            type_id
+                .strip_prefix("List<")
+                .and_then(|s| s.strip_suffix('>'))
+        })
+        .or_else(|| {
+            type_id
+                .strip_prefix("NonEmptyList<")
+                .and_then(|s| s.strip_suffix('>'))
+        })
+        .unwrap_or(type_id);
+
+    // Any/Unknown accept everything — no wrong-type witness.
+    if base == "Any" || base == "Unknown" {
+        return None;
+    }
+
+    use gunbc_ir::ValueBacking;
+    let backing = gunbc_ir::value_backing_for_type_id(base).ok()?;
+    match backing {
+        // String-backed → use Int
+        ValueBacking::String | ValueBacking::Secret => Some(ValueExpr::Int(1)),
+        // Numeric-backed → use String
+        ValueBacking::Int | ValueBacking::Float => Some(ValueExpr::Str("<WRONG>".to_string())),
+        // Bool-backed → use String
+        ValueBacking::Bool => Some(ValueExpr::Str("<WRONG>".to_string())),
+        // Map-backed (records, handles) → use Bool
+        ValueBacking::Map => Some(ValueExpr::Bool(true)),
+        // List/Set-backed → use String
+        ValueBacking::List | ValueBacking::Set | ValueBacking::Bytes => {
             Some(ValueExpr::Str("<WRONG>".to_string()))
         }
-        // Bool → use String
-        "Bool" | "Optional<Bool>" | "List<Bool>" => Some(ValueExpr::Str("<WRONG>".to_string())),
-        // Secret → use String
-        "Secret" => Some(ValueExpr::Str("<WRONG>".to_string())),
-        // Map → use Bool
-        "Map" => Some(ValueExpr::Bool(true)),
-        // Structured types → use String
-        "CliResult" | "ToolHandle" | "Credential" | "FilesystemHandle" | "NetworkHandle"
-        | "TransportRequest" | "TransportResponse" => Some(ValueExpr::Str("<WRONG>".to_string())),
-        // Unknown/Any/Json/Unit are too permissive or ambiguous
-        "Json" | "Optional<Json>" | "List<Json>" | "Any" | "Unknown" | "Unit" => None,
-        _ => None,
+        // Json accepts anything — no wrong-type witness
+        ValueBacking::Json => None,
+        // Unit is ambiguous — no wrong-type witness
+        ValueBacking::Unit => None,
     }
 }
 

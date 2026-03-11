@@ -1840,7 +1840,7 @@ fn extend_known_types(base: &HashSet<String>, additional: &[String]) -> HashSet<
 }
 
 fn collect_known_types(modules: &[ResolvedModule]) -> HashSet<String> {
-    let mut known = builtin_type_names();
+    let mut known: HashSet<String> = BUILTIN_TYPES.iter().map(|b| b.name.to_string()).collect();
     for module in modules {
         let module_prefix = module.module_path.as_dotted();
         for item in &module.ast.items {
@@ -1863,9 +1863,9 @@ fn collect_known_types(modules: &[ResolvedModule]) -> HashSet<String> {
 
 fn collect_generic_arities(modules: &[ResolvedModule]) -> GenericArityRegistry {
     let mut registry = GenericArityRegistry::default();
-    for (name, arity) in builtin_type_arities() {
-        registry.full.insert(name.clone(), arity);
-        registry.short.insert(name, Some(arity));
+    for b in BUILTIN_TYPES {
+        registry.full.insert(b.name.to_string(), b.arity);
+        registry.short.insert(b.name.to_string(), Some(b.arity));
     }
 
     for module in modules {
@@ -2568,47 +2568,29 @@ struct CapabilityContract {
     outputs: HashMap<String, String>,
 }
 
-fn builtin_type_names() -> HashSet<String> {
-    HashSet::from([
-        "Any".to_string(),
-        "Unit".to_string(),
-        "Bool".to_string(),
-        "Int".to_string(),
-        "Float".to_string(),
-        "String".to_string(),
-        "Bytes".to_string(),
-        "Secret".to_string(),
-        "Json".to_string(),
-        "Record".to_string(),
-        "List".to_string(),
-        "Map".to_string(),
-        "Option".to_string(),
-        "Result".to_string(),
-        "Queue".to_string(),
-        "Self".to_string(),
-    ])
+struct BuiltinType {
+    name: &'static str,
+    arity: usize,
 }
 
-fn builtin_type_arities() -> HashMap<String, usize> {
-    HashMap::from([
-        ("Any".to_string(), 0),
-        ("Unit".to_string(), 0),
-        ("Bool".to_string(), 0),
-        ("Int".to_string(), 0),
-        ("Float".to_string(), 0),
-        ("String".to_string(), 0),
-        ("Bytes".to_string(), 0),
-        ("Secret".to_string(), 0),
-        ("Json".to_string(), 0),
-        ("Record".to_string(), 0),
-        ("List".to_string(), 1),
-        ("Map".to_string(), 2),
-        ("Option".to_string(), 1),
-        ("Result".to_string(), 2),
-        ("Queue".to_string(), 1),
-        ("Self".to_string(), 0),
-    ])
-}
+const BUILTIN_TYPES: &[BuiltinType] = &[
+    BuiltinType { name: "Any", arity: 0 },
+    BuiltinType { name: "Unit", arity: 0 },
+    BuiltinType { name: "Bool", arity: 0 },
+    BuiltinType { name: "Int", arity: 0 },
+    BuiltinType { name: "Float", arity: 0 },
+    BuiltinType { name: "String", arity: 0 },
+    BuiltinType { name: "Bytes", arity: 0 },
+    BuiltinType { name: "Secret", arity: 0 },
+    BuiltinType { name: "Json", arity: 0 },
+    BuiltinType { name: "Record", arity: 0 },
+    BuiltinType { name: "List", arity: 1 },
+    BuiltinType { name: "Map", arity: 2 },
+    BuiltinType { name: "Option", arity: 1 },
+    BuiltinType { name: "Result", arity: 2 },
+    BuiltinType { name: "Queue", arity: 1 },
+    BuiltinType { name: "Self", arity: 0 },
+];
 
 fn record_duplicate_item_name(
     module_name: &str,
