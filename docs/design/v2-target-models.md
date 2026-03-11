@@ -12,9 +12,19 @@ The extdeps invariant applies inward: **a compiler module implements a
 specification of compiler semantics, not an abstraction of how the Rust
 implementation happens to work.**
 
-Each layer below defines "what X is" without leaking how it's used.
-Higher layers import from lower layers, never the reverse. Algorithm
-scratch state (ParserState, KahnState) stays local and is never exported.
+There are two orthogonal axes of layering in this document:
+
+1. **Pipeline stages** (tokenize → parse → resolve → typecheck → emit)
+   — the linear data flow of compilation. This is already well-shaped.
+
+2. **Concept decomposition** — the types that flow THROUGH those stages
+   should themselves be layered compositionally, from tautologies upward.
+   This is where the model is still centralized and needs work.
+
+**The pipeline stays linear. The model becomes layered.**
+
+Algorithm scratch state (ParserState, KahnState) stays local and is
+never exported.
 
 ---
 
@@ -716,6 +726,211 @@ already return.
 
 ---
 
+## Concept Layering: From Tautologies to Services
+
+The pipeline layers above (Layer 0-5) describe the compiler's stages.
+This section describes a different axis: how the **concepts themselves**
+should be decomposed, independent of which stage uses them.
+
+### The current problem
+
+`v2/std/core.dag` is a big central bundle. It defines token kinds,
+AST nodes, type expressions, service/transport types, operation
+definitions, and compiler output — all in one 333-line module. This
+is pragmatic for bootstrap but it is not a layered explanation of why
+things are the way they are.
+
+A concrete example: `RestBinding { base_url, auth, headers }` is
+typed (good), but it collapses several layers of truth into one record:
+
+- Raw HTTP concerns (methods, headers, status codes)
+- REST-style concerns (path templates, content negotiation)
+- Provider-specific conventions (GitHub's Accept header, API version)
+- Service-specific operation facts (this endpoint, these params)
+
+In extdeps terms, that's like jumping from "TCP exists" straight to
+"GitHub Gists create request" in one hop. It's cleaner than strings,
+but it's not a stack of truths.
+
+### The key rule
+
+**A higher layer may name a concept, but it should not explain it
+from scratch if a lower layer already can.**
+
+- `GitHub` should not redefine what an HTTP header is.
+- `Gists` should not redefine what REST is.
+- `tool.gist` should not redefine what GitHub auth is.
+- `emit_rust` should not redefine what a function or struct is if
+  the type/syntax vocabulary already did.
+
+This is the same invariant as extdeps: model the spec, not an idea
+of the spec; each layer only knows lower layers; higher layers compose
+rather than invent.
+
+### Target concept modules
+
+The direction is to split `v2.std.core` into smaller modules, each
+answering ONE question from tautological definitions upward:
+
+**Concept Layer 0: Universal vocabulary (tautologies)**
+
+These define concepts that are true by construction — no knowledge of
+any specific domain, provider, or language.
+
+```
+v2.std.span          "What is a source location?"
+v2.std.lex           "What are the token categories?"
+v2.std.types         "What is a type? A field? A predicate?"
+v2.std.behavioral    "What is idempotency? Readonly? Purity?"
+v2.std.http          "What is an HTTP method? A header? A status code?"
+```
+
+Analogous to extdeps `std/errors`, `std/behavioral`, `std/rate_limit`.
+
+**Concept Layer 1: Domain styles / protocol families**
+
+These define what *kind of thing* something is — abstract vocabulary,
+still not provider- or backend-specific.
+
+```
+v2.std.rest          "What is a REST operation?" (composes http)
+v2.std.resource      "What is a resource/capability lifecycle?"
+v2.std.service       "What is a generic service/operation?"
+v2.std.backend       "What is a target backend artifact?"
+```
+
+Analogous to extdeps `cloud/cloud.dag` ("What is a cloud provider?").
+
+**Concept Layer 2: Provider / backend facts**
+
+These instantiate Layer 1 vocabulary with real facts.
+
+```
+v2.targets.rust      Rust naming, module/file mapping, ownership, derives
+v2.targets.python    Python emission conventions
+v2.providers.github  Base URL, auth, standard headers, pagination style
+v2.providers.gcp     OAuth/SA conventions, resource naming, error shape
+```
+
+Analogous to extdeps `cloud/gcp/gcp.dag` ("What is GCP?").
+
+**Concept Layer 3: Concrete services / concrete compiler constructs**
+
+These compose Layer 1 vocabulary with Layer 2 facts.
+
+```
+v2.providers.github.gists     "Given REST + GitHub facts + these schemas, this is Gists"
+v2.targets.rust.type_emit     "Given Rust facts + TypeExpr, this is Rust type emission"
+v2.targets.rust.service_emit  "Given Rust facts + REST + service, this is transport code"
+```
+
+Analogous to extdeps `cloud/gcp/secret_manager.dag`.
+
+**Concept Layer 4: Workflows / tools / pipeline**
+
+These only compose, never redefine.
+
+```
+v2.compiler.pipeline    Wires stages together
+v2.tools.codegen        Invokes the compiler
+```
+
+### How concept layers intersect pipeline stages
+
+The concept layers and pipeline stages are orthogonal:
+
+```
+                    concept layer 0   concept layer 1   concept layer 2
+                    (tautologies)     (domain styles)   (provider facts)
+                    ─────────────     ───────────────   ───────────────
+pipeline:tokenize   lex vocabulary      —                  —
+pipeline:parse      syntax, types       —                  —
+pipeline:typecheck  types, behavioral   service, resource  —
+pipeline:emit       types               backend            rust/python facts
+```
+
+Every pipeline stage consumes types from the concept layers it needs.
+The concept layers do not know about pipeline stages. This means you
+can change how the emitter works without changing what REST means,
+and you can add a new provider without changing the typechecker.
+
+### What this does NOT mean
+
+This is **not** "everything is a DAG node again." The v2 direction is
+right that the compiler's primary model is a typed domain model, not
+an executable DAG IR. The extdeps analogy is about **layered truths**,
+not about forcing every truth into one runtime graph representation.
+
+Preserve:
+- Linear compiler stages
+- Typed domain models
+- File-to-file compiler boundary
+
+Import from extdeps only the thing that actually matters:
+**concepts should be layered compositionally from tautologies upward.**
+
+### Concrete example: RestBinding before and after
+
+**Today** (centralized in core.dag):
+
+```dag
+type TransportBinding
+  = RestBinding { base_url: Expr, auth: AuthConfig?, headers: List<HeaderDef> }
+  | ShellBinding { argv: List<Expr>, env: List<EnvDef> }
+  | FileBinding { base_path: Expr }
+  | LocalBinding
+
+type AuthConfig {
+  scheme: String        // soft string — not structural
+  header: String        // soft string — not structural
+  token_expr: Expr
+}
+```
+
+**Direction** (layered):
+
+```dag
+// v2.std.http — tautological HTTP vocabulary
+type HttpMethod = Get | Post | Put | Patch | Delete
+type HeaderName = String where non_empty
+type HeaderDef { name: HeaderName, value: Expr }
+type AuthScheme = BearerToken | BasicAuth | ApiKeyHeader { header: HeaderName }
+
+// v2.std.rest — what a REST operation shape looks like
+type RestRequestShape {
+  method: HttpMethod
+  path_template: String
+  headers: List<HeaderDef>
+  auth: AuthScheme
+}
+
+// v2.providers.github.core — GitHub-specific facts
+data github_defaults = {
+  base_url: "https://api.github.com",
+  auth: BearerToken,
+  headers: [
+    { name: "Accept", value: "application/vnd.github+json" },
+    { name: "X-GitHub-Api-Version", value: "2022-11-28" }
+  ]
+}
+```
+
+The AST-level `TransportBinding` still exists — it records what the
+parser saw. But now `AuthConfig.scheme: String` becomes
+`AuthScheme` (a typed coproduct), and lower-layer vocabulary exists
+for the emitter and typechecker to reference instead of inventing
+ad-hoc representations.
+
+### Migration note
+
+Splitting `core.dag` into 5-8 modules is not Phase 0 work. Phase 0
+is canonical type homes + TypeExpr consolidation + cardinality. The
+concept layering is a longer arc that runs alongside self-hosting,
+not before it. But the direction should inform how we add new types
+— new concepts go in the right layer, not appended to core.dag.
+
+---
+
 ## Cross-Cutting: Relationship to extdeps
 
 ### Same algebra, independent namespaces
@@ -760,6 +975,19 @@ If a shared stable `std/` foundation layer emerges that both the
 compiler and extdeps import from, this compatibility becomes structural
 sharing. Until then, it's convention — enforced by the modeling
 discipline, not the import graph.
+
+### Where we are vs where we're going
+
+**Today**: v2 is structurally typed but semantically centralized.
+`core.dag` is a useful bootstrap aggregate, but one big module
+defining tokens + AST + types + services + output is not a layered
+explanation of compiler concepts.
+
+**Direction**: Structurally typed AND semantically layered. The
+pipeline stays linear. The concepts that flow through the pipeline
+decompose into tautological vocabulary → domain styles → provider/
+backend facts → concrete composition. Each concept is a stack of
+truths, not a flat record with a pile of fields.
 
 ---
 
