@@ -1,14 +1,19 @@
 // v2 core types — the compiler's domain model.
 //
 // Imports shared types from std.types (the same types used by all DSL
-// programs). Defines compiler-specific types (tokens, AST, IR) that
-// only the compiler needs.
+// programs). Defines compiler-specific types (tokens, AST, expressions)
+// that only the compiler needs.
+//
+// This module describes the COMPILER's data model, not a runtime or
+// interpreter. The compiler reads .dag source files and emits target-
+// language source files. There is no executable DAG IR here — the
+// compiler's output is text files, not a graph to be interpreted.
 //
 // Dependency chain:
 //   kernel primitives (String, Int, Bool, List, Map)
-//     ← std.types (FilePath, NonEmptyStr, Span, etc.)
-//       ← v2.std.core (Token, AST, Expr, DAG IR)
-//         ← v2.compiler.* (tokenize, parse, typecheck, lower, emit)
+//     <- std.types (FilePath, NonEmptyStr, SourceSpan)
+//       <- v2.std.core (Token, AST, Expr, CompileResult)
+//         <- v2.compiler.* (tokenize, parse, typecheck, emit)
 
 module v2.std.core
 
@@ -20,15 +25,6 @@ import std.types { FilePath, NonEmptyStr, SourceSpan }
 // A token is an atomic unit of source text with a classification and
 // a source location. The tokenizer produces a flat List<Token> from
 // a source string.
-//
-// Token classifications fall into four categories:
-//   - Keywords: reserved words with fixed meaning (module, type, fn, ...)
-//   - Punctuation: structural delimiters and operators ({, =>, +, ...)
-//   - Literals: values written directly in source (strings, ints)
-//   - Identifiers: user-defined names
-//
-// The keyword table is a data declaration in tokenize.dag, not a match
-// arm list. Adding a keyword means one entry in the table, nothing else.
 // =========================================================================
 
 type Token {
@@ -85,6 +81,9 @@ type TokenKind
 // representation of the source structure with no semantic interpretation.
 // Names are strings, types are TypeExpr values, expressions are Expr
 // values. Nothing is resolved or checked yet.
+//
+// Every node that a diagnostic might blame carries a SourceSpan for
+// precise error locality.
 // =========================================================================
 
 type Module {
@@ -116,28 +115,24 @@ type Item
 // string key into a table. It is the type itself, represented as data.
 //
 // In v1, types were referenced by TypeId (a string) and resolved via
-// TypeRegistry (a HashMap). This created the deep root of all
-// sustainability debt: deferred computation. In v2, TypeExpr is
-// structural. A port holds the TypeExpr directly. No registry, no
-// deferred lookup, no stale copies.
+// TypeRegistry (a HashMap). In v2, TypeExpr is structural. No registry,
+// no deferred lookup, no stale copies.
 //
-// TypeExpr appears in three roles:
-//   1. In type definitions: `type Foo { x: TypeExpr }`
-//   2. In function signatures: `fn bar(x: TypeExpr) -> TypeExpr`
-//   3. In DAG ports: `Port { type_expr: TypeExpr }`
-//
-// The same value flows through all three. No conversion between
-// representations.
+// After typechecking, no unresolved Named references survive — every
+// Named { name } has been resolved to its structural form (Product,
+// Coproduct, Container, Refined). Exception: recursive types may retain
+// a Named reference to break the cycle, but the name is guaranteed to
+// be defined in the module graph.
 // =========================================================================
 
 type TypeExpr
-  = Named { name: String }
-  | Product { name: String?, fields: List<Field> }
-  | Coproduct { name: String?, variants: List<Variant> }
-  | Container { kind: ContainerKind, element: TypeExpr }
-  | Refined { base: TypeExpr, predicates: List<Predicate> }
-  | Optional { inner: TypeExpr }
-  | MapType { key: TypeExpr, value: TypeExpr }
+  = Named { name: String, span: SourceSpan }
+  | Product { name: String?, fields: List<Field>, span: SourceSpan }
+  | Coproduct { name: String?, variants: List<Variant>, span: SourceSpan }
+  | Container { kind: ContainerKind, element: TypeExpr, span: SourceSpan }
+  | Refined { base: TypeExpr, predicates: List<Predicate>, span: SourceSpan }
+  | Optional { inner: TypeExpr, span: SourceSpan }
+  | MapType { key: TypeExpr, value: TypeExpr, span: SourceSpan }
 
 type ContainerKind = List | Set | NonEmptyList | NonEmptySet
 
@@ -151,24 +146,23 @@ type Field {
   type_expr: TypeExpr
   optional: Bool
   default_value: Expr?
+  span: SourceSpan
 }
 
 type Variant {
   name: String
   fields: List<Field>
+  span: SourceSpan
 }
 
 type Param {
   name: String
   type_expr: TypeExpr
+  span: SourceSpan
 }
 
 // =========================================================================
 // Predicates — type refinements
-//
-// Predicates narrow a type's value set without changing its structure.
-// `String where non_empty` is still a String, but the empty string
-// is excluded.
 // =========================================================================
 
 type Predicate
@@ -181,10 +175,6 @@ type Predicate
 
 // =========================================================================
 // Expressions
-//
-// The expression language shared by fn bodies, data declarations,
-// and default values. Expressions are trees that the evaluator
-// reduces to values.
 // =========================================================================
 
 type Expr
@@ -217,6 +207,7 @@ type MatchPattern
 type LiteralValue
   = LitStr { value: String }
   | LitInt { value: Int }
+  | LitFloat { value: String }
   | LitBool { value: Bool }
   | LitNull
 
@@ -234,78 +225,52 @@ type StringPart
 // =========================================================================
 // Service / Transport
 //
-// Services are external systems the program interacts with. Each service
-// has a transport binding (how to reach it) and operations (what it can do).
+// Transport config is typed per transport kind, not a string-keyed bag.
 // =========================================================================
 
-type TransportBinding {
-  kind: TransportKind
-  config: Map<String, Expr>
+type TransportBinding
+  = RestBinding { base_url: Expr, auth: AuthConfig?, headers: List<HeaderDef> }
+  | ShellBinding { command: Expr, env: List<EnvDef> }
+  | FileBinding { base_path: Expr }
+  | LocalBinding
+
+type AuthConfig {
+  scheme: String
+  header: String
+  token_expr: Expr
 }
 
-type TransportKind = Rest | Shell | File | Local
+type HeaderDef { name: String, value: Expr }
+type EnvDef { name: String, value: Expr }
 
 type OperationDef {
   name: String
   inputs: List<Field>
   outputs: List<Field>
   modifiers: List<OperationModifier>
+  span: SourceSpan
 }
 
-type OperationModifier = Idempotent | Readonly
+type OperationModifier = Idempotent | Readonly | Hermetic
 
 type CapabilityDef {
   name: String
   inputs: List<Field>
   outputs: List<Field>
-}
-
-// =========================================================================
-// DAG IR — the graph intermediate representation
-//
-// The lowerer produces a DAG from typed AST. The DAG is the executable
-// form: nodes with typed ports connected by edges. The executor runs
-// nodes in topological order, routing values along edges.
-//
-// Types are TypeExpr values embedded in ports, not string references.
-// Cardinality is derived from the TypeExpr structure (Container → list,
-// Optional → zero-or-one, everything else → scalar). No separate
-// cardinality field, no separate multiplicity field.
-// =========================================================================
-
-type Port {
-  name: String
-  type_expr: TypeExpr
-}
-
-type Node {
-  id: String
-  inputs: List<Port>
-  outputs: List<Port>
-  body: NodeBody
-}
-
-type NodeBody
-  = PureExpr { expr: Expr }
-  | Transport { binding: TransportBinding }
-  | SubGraph { dag: DAG }
-  | TypeNode { body: TypeBody }
-
-type Edge {
-  from_node: String
-  from_port: String
-  to_node: String
-  to_port: String
-}
-
-type DAG {
-  nodes: List<Node>
-  edges: List<Edge>
+  span: SourceSpan
 }
 
 // =========================================================================
 // Compiler output
+//
+// The compiler produces files and diagnostics. No DAG, no IR, no
+// executable artifact. The emitted files ARE the output.
 // =========================================================================
+
+type CompileResult {
+  files: List<TextFile>
+  diagnostics: List<Diagnostic>
+}
 
 type TextFile {
   path: FilePath
@@ -320,9 +285,3 @@ type Diagnostic {
 }
 
 type Severity = Error | Warning | Info
-
-type CompileOutput {
-  dag: DAG
-  output_files: List<TextFile>
-  diagnostics: List<Diagnostic>
-}

@@ -1,13 +1,14 @@
 // v2 tokenizer — pure function from source string to token list.
 //
-// The tokenizer is the first stage of the compiler pipeline.
-// It has no I/O — file reading is handled by the pipeline DAG.
-// It produces a flat list of tokens with source spans.
+// No I/O — file reading is handled by the pipeline.
+// Emits all token kinds declared in core.dag, including Newline tokens
+// (significant for the parser's statement separation).
 
 module v2.compiler.tokenize
 
+import std.types { SourceSpan }
 import v2.std.core {
-  Token, TokenKind, SourceSpan,
+  Token, TokenKind,
   KwModule, KwImport, KwType, KwFn, KwFunc, KwService, KwResource,
   KwData, KwExtern, KwInterface, KwPipeline, KwProfile, KwPattern,
   KwLet, KwReturn, KwMatch, KwIf, KwElse, KwFor, KwIn, KwWhere, KwWith,
@@ -15,51 +16,33 @@ import v2.std.core {
   KwAcquire, KwRelease, KwCapability, KwOperation, KwInput, KwOutput,
   KwIdempotent, KwReadonly, KwHermetic,
   LBrace, RBrace, LParen, RParen, LBracket, RBracket,
-  Lt, Gt, FatArrow, Arrow, Colon, Comma, Dot, Eq,
+  Lt, Gt, Le, Ge, FatArrow, Arrow,
+  Colon, Comma, Dot, Eq, EqEq, Ne,
   Plus, Minus, Star, Slash, Percent, Bang, And, Or,
-  EqEq, Ne, Le, Ge, Question, NullCoalesce,
-  LitStr, LitInt, Ident, Newline, Eof, Unknown
+  Question, NullCoalesce,
+  LitStr, LitInt, LitFloat, Ident,
+  StrBegin, StrMid, StrEnd,
+  Newline, Eof, Unknown
 }
 
 // === Keyword table ===
 //
-// This is a data declaration, not a match arm list.
-// Adding a keyword means adding one entry here. Nothing else.
+// Data declaration, not match arms. Adding a keyword = one entry here.
 
 data keywords: Map<String, TokenKind> = {
-  "module": KwModule,
-  "import": KwImport,
-  "type": KwType,
-  "fn": KwFn,
-  "func": KwFunc,
-  "service": KwService,
-  "resource": KwResource,
-  "data": KwData,
-  "extern": KwExtern,
-  "interface": KwInterface,
-  "pipeline": KwPipeline,
-  "profile": KwProfile,
-  "pattern": KwPattern,
-  "let": KwLet,
-  "return": KwReturn,
-  "match": KwMatch,
-  "if": KwIf,
-  "else": KwElse,
-  "for": KwFor,
-  "in": KwIn,
-  "where": KwWhere,
-  "with": KwWith,
-  "true": KwTrue,
-  "false": KwFalse,
-  "none": KwNone,
-  "acquire": KwAcquire,
-  "release": KwRelease,
-  "capability": KwCapability,
-  "operation": KwOperation,
-  "input": KwInput,
-  "output": KwOutput,
-  "idempotent": KwIdempotent,
-  "readonly": KwReadonly,
+  "module": KwModule, "import": KwImport, "type": KwType,
+  "fn": KwFn, "func": KwFunc, "service": KwService,
+  "resource": KwResource, "data": KwData, "extern": KwExtern,
+  "interface": KwInterface, "pipeline": KwPipeline,
+  "profile": KwProfile, "pattern": KwPattern,
+  "let": KwLet, "return": KwReturn, "match": KwMatch,
+  "if": KwIf, "else": KwElse, "for": KwFor, "in": KwIn,
+  "where": KwWhere, "with": KwWith,
+  "true": KwTrue, "false": KwFalse, "none": KwNone,
+  "acquire": KwAcquire, "release": KwRelease,
+  "capability": KwCapability, "operation": KwOperation,
+  "input": KwInput, "output": KwOutput,
+  "idempotent": KwIdempotent, "readonly": KwReadonly,
   "hermetic": KwHermetic
 }
 
@@ -86,20 +69,27 @@ type TokenizerState {
 fn tokenize(source: String) -> List<Token> {
   let initial = TokenizerState { source: source, pos: 0, tokens: [] }
   let final_state = tokenize_loop(state: initial)
-  final_state.tokens + [Token { kind: Eof, span: SourceSpan { start: final_state.pos, end: final_state.pos } }]
+  let eof_span = SourceSpan { start: final_state.pos, end: final_state.pos }
+  final_state.tokens + [Token { kind: Eof, span: eof_span }]
 }
 
 // === Main loop ===
-//
-// Each iteration consumes one token and advances pos.
-// The loop terminates when pos >= length of source.
 
 fn tokenize_loop(state: TokenizerState) -> TokenizerState {
-  let s = skip_whitespace_and_comments(state: state)
+  let s = skip_spaces_and_comments(state: state)
   if s.pos >= string_length(s: s.source) {
     return s
   }
   let ch = char_at(s: s.source, pos: s.pos)
+
+  // Newlines are significant (statement separation)
+  if ch == "\n" {
+    let tok = Token { kind: Newline, span: SourceSpan { start: s.pos, end: s.pos + 1 } }
+    return tokenize_loop(state: TokenizerState {
+      source: s.source, pos: s.pos + 1, tokens: s.tokens + [tok]
+    })
+  }
+
   let next = scan_token(state: s, ch: ch)
   tokenize_loop(state: next)
 }
@@ -107,53 +97,24 @@ fn tokenize_loop(state: TokenizerState) -> TokenizerState {
 // === Token scanning ===
 
 fn scan_token(state: TokenizerState, ch: String) -> TokenizerState {
-  // String literal
-  if ch == "\"" {
-    return scan_string(state: state)
-  }
+  if ch == "\"" { return scan_string(state: state) }
+  if is_digit(ch: ch) { return scan_number(state: state) }
+  if is_ident_start(ch: ch) { return scan_ident(state: state) }
 
-  // Number literal
-  if is_digit(ch: ch) {
-    return scan_number(state: state)
-  }
-
-  // Identifier or keyword
-  if is_ident_start(ch: ch) {
-    return scan_ident(state: state)
-  }
-
-  // Two-character operators (must check before single-char)
+  // Two-character operators
   let next_ch = char_at(s: state.source, pos: state.pos + 1)
 
-  if ch == "=" && next_ch == ">" {
-    return emit(state: state, kind: FatArrow, len: 2)
-  }
-  if ch == "-" && next_ch == ">" {
-    return emit(state: state, kind: Arrow, len: 2)
-  }
-  if ch == "=" && next_ch == "=" {
-    return emit(state: state, kind: EqEq, len: 2)
-  }
-  if ch == "!" && next_ch == "=" {
-    return emit(state: state, kind: Ne, len: 2)
-  }
-  if ch == "<" && next_ch == "=" {
-    return emit(state: state, kind: Le, len: 2)
-  }
-  if ch == ">" && next_ch == "=" {
-    return emit(state: state, kind: Ge, len: 2)
-  }
-  if ch == "&" && next_ch == "&" {
-    return emit(state: state, kind: And, len: 2)
-  }
-  if ch == "|" && next_ch == "|" {
-    return emit(state: state, kind: Or, len: 2)
-  }
-  if ch == "?" && next_ch == "?" {
-    return emit(state: state, kind: NullCoalesce, len: 2)
-  }
+  if ch == "=" && next_ch == ">" { return emit(state: state, kind: FatArrow, len: 2) }
+  if ch == "-" && next_ch == ">" { return emit(state: state, kind: Arrow, len: 2) }
+  if ch == "=" && next_ch == "=" { return emit(state: state, kind: EqEq, len: 2) }
+  if ch == "!" && next_ch == "=" { return emit(state: state, kind: Ne, len: 2) }
+  if ch == "<" && next_ch == "=" { return emit(state: state, kind: Le, len: 2) }
+  if ch == ">" && next_ch == "=" { return emit(state: state, kind: Ge, len: 2) }
+  if ch == "&" && next_ch == "&" { return emit(state: state, kind: And, len: 2) }
+  if ch == "|" && next_ch == "|" { return emit(state: state, kind: Or, len: 2) }
+  if ch == "?" && next_ch == "?" { return emit(state: state, kind: NullCoalesce, len: 2) }
 
-  // Single-character operators
+  // Single-character operators not in the table
   if ch == "=" { return emit(state: state, kind: Eq, len: 1) }
   if ch == "<" { return emit(state: state, kind: Lt, len: 1) }
   if ch == ">" { return emit(state: state, kind: Gt, len: 1) }
@@ -194,14 +155,24 @@ fn scan_ident(state: TokenizerState) -> TokenizerState {
 }
 
 fn scan_number(state: TokenizerState) -> TokenizerState {
-  let end = scan_while(s: state.source, start: state.pos, pred: is_digit)
-  let text = substring(s: state.source, start: state.pos, end: end)
+  let int_end = scan_while(s: state.source, start: state.pos, pred: is_digit)
+  // Check for decimal point → float
+  if char_at(s: state.source, pos: int_end) == "." && is_digit(ch: char_at(s: state.source, pos: int_end + 1)) {
+    let frac_end = scan_while(s: state.source, start: int_end + 1, pred: is_digit)
+    let text = substring(s: state.source, start: state.pos, end: frac_end)
+    let token = Token {
+      kind: LitFloat { value: text },
+      span: SourceSpan { start: state.pos, end: frac_end }
+    }
+    return TokenizerState { source: state.source, pos: frac_end, tokens: state.tokens + [token] }
+  }
+  let text = substring(s: state.source, start: state.pos, end: int_end)
   let value = parse_int(s: text)
   let token = Token {
     kind: LitInt { value: value },
-    span: SourceSpan { start: state.pos, end: end }
+    span: SourceSpan { start: state.pos, end: int_end }
   }
-  TokenizerState { source: state.source, pos: end, tokens: state.tokens + [token] }
+  TokenizerState { source: state.source, pos: int_end, tokens: state.tokens + [token] }
 }
 
 fn scan_string(state: TokenizerState) -> TokenizerState {
@@ -213,16 +184,16 @@ fn scan_string(state: TokenizerState) -> TokenizerState {
     kind: LitStr { value: text },
     span: SourceSpan { start: state.pos, end: end + 1 }
   }
-  // +1 to skip closing quote
   TokenizerState { source: state.source, pos: end + 1, tokens: state.tokens + [token] }
 }
 
-fn skip_whitespace_and_comments(state: TokenizerState) -> TokenizerState {
-  let pos = skip_ws(s: state.source, start: state.pos)
-  // Check for line comment
+// Skip spaces and tabs (NOT newlines — those are tokens).
+// Also skip line comments (// to end of line).
+fn skip_spaces_and_comments(state: TokenizerState) -> TokenizerState {
+  let pos = skip_horizontal_ws(s: state.source, start: state.pos)
   if char_at(s: state.source, pos: pos) == "/" && char_at(s: state.source, pos: pos + 1) == "/" {
     let eol = scan_to_eol(s: state.source, start: pos)
-    return skip_whitespace_and_comments(state: TokenizerState {
+    return skip_spaces_and_comments(state: TokenizerState {
       source: state.source, pos: eol, tokens: state.tokens
     })
   }

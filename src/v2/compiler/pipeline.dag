@@ -1,59 +1,54 @@
 // v2 compiler pipeline — the full .dag-to-files transform.
 //
-// Each stage is a pure function. The only I/O is reading source
-// files (Filesystem.read) and the output file list. The Rust kernel
-// executes this DAG to compile .dag source into generated files.
+// The compiler reads .dag source files and emits target-language source
+// files. No DAG IR, no interpreter, no executor. Each stage is a pure
+// function. The only I/O is reading source files (Filesystem.read).
 
 module v2.compiler.pipeline
 
+import std.types { FilePath, SourceSpan }
+import std.resources { Filesystem }
 import v2.std.core {
-  Module, DAG, TextFile, CompileOutput, Diagnostic, Severity,
-  TypeExpr, Token
+  Module, Token, TextFile, Diagnostic, CompileResult
 }
 import v2.compiler.tokenize { tokenize }
-// import v2.compiler.parse { parse_tokens }
+// import v2.compiler.parse { parse }
 // import v2.compiler.resolve { resolve_modules }
 // import v2.compiler.typecheck { typecheck }
-// import v2.compiler.lower { lower }
-// import v2.compiler.emit { emit }
+// import v2.compiler.emit { emit_rust, emit_python }
 
-import std.resources { Filesystem }
-
-// === Stage 1: Read and tokenize source files ===
+// === Source reading ===
 
 type SourceFile {
-  path: String
+  path: FilePath
   content: String
 }
 
-type TokenizedFile {
-  path: String
-  tokens: List<Token>
-}
-
-fn read_source(path: String) -> SourceFile {
+fn read_source(path: FilePath) -> SourceFile {
   let content = Filesystem.read(path: path)
   SourceFile { path: path, content: content.content }
 }
 
-fn tokenize_file(source: SourceFile) -> TokenizedFile {
-  TokenizedFile {
-    path: source.path,
-    tokens: tokenize(source: source.content)
-  }
-}
+// === Backend selection ===
 
-// === Full pipeline ===
+type Backend = Rust | Python
+
+// === Public contract ===
 //
+// compile(root, backend) -> CompileResult { files, diagnostics }
+//
+// This is the one entry point. Everything else is internal.
 // Uncommented as each stage is implemented:
 
-// func compile(root: String) -> CompileOutput {
+// func compile(root: FilePath, backend: Backend) -> CompileResult {
 //   let sources = discover_and_read(root: root)
-//   let tokenized = map(sources, s => tokenize_file(source: s))
-//   let parsed = map(tokenized, t => parse_tokens(tokens: t.tokens))
-//   let resolved = resolve_modules(modules: parsed)
-//   let typed = typecheck(graph: resolved)
-//   let dag = lower(typed: typed)
-//   let files = emit(dag: dag)
-//   CompileOutput { dag: dag, output_files: files, diagnostics: [] }
+//   let tokenized = map(sources, s => tokenize(source: s.content))
+//   let parsed = map(tokenized, t => parse(tokens: t))
+//   let graph = resolve_modules(modules: parsed)
+//   let typed = typecheck(graph: graph)
+//   let files = match backend {
+//     Rust => emit_rust(typed: typed)
+//     Python => emit_python(typed: typed)
+//   }
+//   CompileResult { files: files, diagnostics: typed.diagnostics }
 // }

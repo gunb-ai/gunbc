@@ -114,18 +114,28 @@ Five stages, each a pure function. The compiler goes from typed AST
 directly to output files.
 
 The emitter is pluggable — it takes a `TypedGraph` and a `Backend`
-and produces files. Different backends produce different languages:
+and produces files. Different backends produce different languages.
+The public contract is a single function:
 
 ```dag
-type Backend = Rust | Python | JsonIR
+type Backend = Rust | Python
 
-func compile(root: FilePath, backend: Backend) -> List<TextFile> {
-  let sources = read_sources(root: root)
-  let tokens = map(sources, s => tokenize(source: s.content))
-  let modules = map(tokens, t => parse(tokens: t))
-  let graph = resolve_modules(modules: modules)
+func compile(root: FilePath, backend: Backend) -> CompileResult {
+  let sources = discover_and_read(root: root)
+  let tokenized = map(sources, s => tokenize(source: s.content))
+  let parsed = map(tokenized, t => parse(tokens: t))
+  let graph = resolve_modules(modules: parsed)
   let typed = typecheck(graph: graph)
-  emit(typed: typed, backend: backend)
+  let files = match backend {
+    Rust => emit_rust(typed: typed)
+    Python => emit_python(typed: typed)
+  }
+  CompileResult { files: files, diagnostics: typed.diagnostics }
+}
+
+type CompileResult {
+  files: List<TextFile>
+  diagnostics: List<Diagnostic>
 }
 ```
 
@@ -176,9 +186,9 @@ compilation step — the emitted code runs immediately. This makes
 the development loop faster: edit .dag → run compiler → run emitted
 .py → see result.
 
-### JSON IR (optional, for external tooling)
+### JSON (optional, for external tooling)
 
-A structured JSON representation of the typed program. Not
+A structured JSON serialization of the typed AST. Not
 executable by itself — requires a separate runtime. Useful for
 editor tooling, visualization, and language server protocol.
 
@@ -202,12 +212,13 @@ in .dag files.
 |---|---|
 | TypeId is a string → needs registry | Types are TypeExpr values → no registry |
 | Cardinality cached on port | Derived from TypeExpr structure |
-| Parallel fn body evaluator + DAG executor | Compiler emits files, doesn't interpret |
-| `mock_element_expr` enumeration | Test generation walks TypeExpr structure |
+| Parallel fn body evaluator + DAG executor | Compiler emits files, no interpreter |
+| `mock_element_expr` enumeration | Emitter walks TypeExpr structure |
 | `register_core_types()` duplication | Types defined in .dag only |
 | String-based classification | Pattern match on typed AST |
-| No boundary contracts | Each stage is a typed function with TypeExpr contracts |
-| Resolver re-resolves at runtime | All resolution at compile time, in the compiler |
+| No boundary contracts | Each stage is a typed function, CompileResult is files + diagnostics |
+| Transport config as `Map<String, String>` | Typed coproduct per transport kind |
+| Emitted code never tested downstream | Compiler emits tests alongside code |
 
 ## Dependency chain
 
