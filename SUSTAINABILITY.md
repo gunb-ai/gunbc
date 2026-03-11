@@ -338,7 +338,15 @@ Fix: either make it authoritative or delete it.
 in `daglang-eval` are parallel lists of the same operations.
 Fix: single intrinsic registry consumed by both.
 
-**S38: Tests weakened during syntax migration.**
+**S38: Emitted code never compiled or run downstream.**
+Emit tests only check emitted text as strings (`.contains("fn main")`).
+The Go, C, and MIPS emitters could produce broken output and no test
+catches it. Even the Rust emitter's output is only verified by string
+checks, not by `cargo build` or `cargo test` on the emitted code.
+Fix: compiler emits tests alongside code; acceptance = emitted tests
+pass in the target language.
+
+**S39: Tests weakened during syntax migration.**
 Several test fixtures were flattened to constants (`return "done"`,
 `passed = 0`) and assertions reduced from semantic checks to "compiles
 successfully" or "function name appears in output." This lowers

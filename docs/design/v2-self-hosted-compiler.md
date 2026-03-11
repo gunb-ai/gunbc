@@ -110,8 +110,7 @@ copies.
   output files (.rs, .py, .json, ...)
 ```
 
-Five stages, each a pure function. No DAG IR lowering step. No
-resolver stage. No executor. The compiler goes from typed AST
+Five stages, each a pure function. The compiler goes from typed AST
 directly to output files.
 
 The emitter is pluggable — it takes a `TypedGraph` and a `Backend`
@@ -130,13 +129,45 @@ func compile(root: FilePath, backend: Backend) -> List<TextFile> {
 }
 ```
 
+## Testing: the compiler owns its downstream
+
+v1's critical gap: emitted code is text-checked ("does the string
+contain this substring?") but never compiled or run. The Go/C/MIPS
+emitters could produce broken output and no test would catch it.
+
+v2 fixes this by making testing a compiler responsibility. When the
+compiler emits Rust, it also emits Rust tests for that code. The
+tests compile and run in the target language, not in the compiler's
+language. The emitted test verifies the emitted program works.
+
+```
+.dag source → compiler → {program.rs, program_test.rs}
+                              │              │
+                              ▼              ▼
+                          cargo build    cargo test
+                              │              │
+                              ▼              ▼
+                          binary        PASS/FAIL
+```
+
+The test and the code are emitted together, in the same language,
+as one unit. If the compiler produces broken Rust, `cargo test` on
+the emitted tests catches it immediately.
+
+This replaces two v1 concepts:
+- **testgen** (generated tests against the DAG IR) → tests against
+  the emitted code instead
+- **emit string-checking** (assert output contains substrings) →
+  assert emitted code compiles and its tests pass
+
 ## Emit targets
 
 ### Rust (primary)
 
 The v1 compiler already emits Rust. v2 continues this — same output
 format, different (simpler) compiler. The acceptance test is: v2's
-Rust output for gist.dag is functionally equivalent to v1's.
+Rust output for gist.dag compiles with `cargo build` AND its emitted
+tests pass with `cargo test`.
 
 ### Python (bootstrap accelerator)
 

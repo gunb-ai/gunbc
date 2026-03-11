@@ -7,24 +7,29 @@ compiles `gist.dag` and its transitive dependencies (~1100 lines
 across 6 .dag files), emitting Rust source files equivalent to
 v1's output.
 
-**Acceptance test:**
+**Acceptance test (three levels):**
+
 ```bash
-# v1 compiles gist.dag → Rust files
+# Level 1: v2 emits Rust that compiles
+v2-compile gist.dag --backend rust --output /tmp/v2/
+cd /tmp/v2/ && cargo build
+
+# Level 2: v2 emits tests that pass
+cd /tmp/v2/ && cargo test
+
+# Level 3: v2 output matches v1 output
 v1-compile gist.dag --backend rust --output /tmp/v1/
-
-# v2 compiles gist.dag → Rust files (v2 runs on v1 during bootstrap)
-v1-exec src/v2/compiler/pipeline.dag \
-  --entry compile --arg root=dsl/gunbc/tools/gist.dag \
-  --arg backend=Rust --output /tmp/v2/
-
-# Outputs match
 diff -r /tmp/v1/ /tmp/v2/
 ```
 
+Level 1 proves the emitted code is valid Rust. Level 2 proves the
+emitted program behaves correctly (the compiler emits tests alongside
+the code). Level 3 proves v2 is compatible with v1 for bootstrap.
+
 The compiler is a file-to-file transform. It reads .dag source and
-writes target-language source. There is no interpreter in the
-compiler. Interpretation is downstream — a consumer of the emitted
-files, not part of the compiler.
+writes target-language source files AND target-language test files.
+There is no interpreter in the compiler. Interpretation and testing
+are downstream — consumers of the emitted files.
 
 ---
 
@@ -170,21 +175,27 @@ C5 starts as soon as C4 is done
 #### C6: Rust emitter (`v2/compiler/emit.dag`)
 Pure function: `TypedGraph → List<TextFile>`.
 
-Emits Rust source files from the typed AST. For bootstrap, only
-needs to handle the constructs used by gist.dag:
-- Function definitions → Rust functions
-- Service operations → transport call scaffolding
-- Type definitions → Rust structs/enums
-- Data declarations → Rust constants
+Emits BOTH Rust source files AND Rust test files from the typed
+AST. The compiler owns its downstream — if it emits Rust, it also
+emits the tests that prove the Rust works.
+
+For bootstrap, needs to handle the constructs used by gist.dag:
+- Function definitions → Rust functions + unit tests
+- Service operations → transport call scaffolding + mock tests
+- Type definitions → Rust structs/enums + construction tests
+- Data declarations → Rust constants + value tests
 - Expressions → Rust expression syntax
 
 **Acceptance:**
 - Emit Rust for gist.dag
-- Emitted files compile with `cargo check`
+- Emitted files compile with `cargo build`
+- Emitted tests pass with `cargo test`
 - Emitted files are functionally equivalent to v1's output
   (diff, ignoring formatting)
+- **Invariant test:** no emitted file contains `unwrap()` without
+  a clear error message, no `todo!()`, no `unimplemented!()`
 
-**Effort:** Large (~2000 lines)
+**Effort:** Large (~2500 lines — code emit + test emit)
 **Depends on:** C5
 
 ---
@@ -234,7 +245,7 @@ Two test types per task:
 | C3 | AST matches v1 (JSON diff) | No raw-string TypeExprs in AST |
 | C4 | Module graph matches v1 | Cycle detection works on synthetic input |
 | C5 | Resolved types match v1 | No `Named` TypeExpr survives (all structural) |
-| C6 | Emitted Rust compiles and matches v1 | No `unwrap_or`, no string-typed metadata |
+| C6 | Emitted Rust compiles, emitted tests pass, matches v1 | No `unwrap_or`, no string-typed metadata, no `todo!()` |
 | I1 | Full pipeline output matches v1 | All invariants hold end-to-end |
 
 Equivalence tests ensure bootstrap correctness. Invariant tests
