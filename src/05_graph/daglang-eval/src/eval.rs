@@ -108,7 +108,7 @@ fn eval_fn_body_once(
     let last_stmt = body.stmts.last();
 
     for stmt in &body.stmts {
-        let is_last = last_stmt.map_or(false, |l| std::ptr::eq(stmt, l));
+        let is_last = last_stmt.is_some_and(|l| std::ptr::eq(stmt, l));
         match stmt {
             LoweredStmt::Let(name, expr) => {
                 let value = match eval_expr(expr, &env, sibling_fns) {

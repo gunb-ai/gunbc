@@ -12059,7 +12059,7 @@ fn synthesize_get_field_on_resolved(
     Some((node_id, result_port_name.to_string()))
 }
 
-#[must_use]
+#[must_use = "ignoring wiring errors can silently drop return bindings"]
 fn wire_callable_return_outputs(
     builder: &mut DagBuilder,
     ctx: &LoweringContext<'_>,
