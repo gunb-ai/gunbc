@@ -1693,6 +1693,7 @@ fn example(items: List<String>) -> Int {
 
     /// Diagnostic: measure stack cost per token by tokenizing progressively larger inputs.
     #[test]
+    #[allow(clippy::disallowed_macros)]
     fn phase5_debug_stack_overflow_isolation() {
         let output = compile_all_modules().expect("compilation should succeed");
         let output = std::sync::Arc::new(output);
