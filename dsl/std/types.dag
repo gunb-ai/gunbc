@@ -111,6 +111,13 @@ type Path          = String where non_empty
 //   ⟦Duration⟧  ⊂ ⟦Int⟧
 //   ⟦EpochMs⟧   ⊂ ⟦Int⟧
 
+// --- Source locations (Level 1: Positional refinements) -------------------
+
+type SourceSpan {
+  start: Int
+  end: Int
+}
+
 type Timestamp    = String where pattern("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}")
 type EpochMs       = Int where range(min: 0)
 type Duration      = Int where range(min: 0)

@@ -1,0 +1,328 @@
+// v2 core types — the compiler's domain model.
+//
+// Imports shared types from std.types (the same types used by all DSL
+// programs). Defines compiler-specific types (tokens, AST, IR) that
+// only the compiler needs.
+//
+// Dependency chain:
+//   kernel primitives (String, Int, Bool, List, Map)
+//     ← std.types (FilePath, NonEmptyStr, Span, etc.)
+//       ← v2.std.core (Token, AST, Expr, DAG IR)
+//         ← v2.compiler.* (tokenize, parse, typecheck, lower, emit)
+
+module v2.std.core
+
+import std.types { FilePath, NonEmptyStr, SourceSpan }
+
+// =========================================================================
+// Tokens
+//
+// A token is an atomic unit of source text with a classification and
+// a source location. The tokenizer produces a flat List<Token> from
+// a source string.
+//
+// Token classifications fall into four categories:
+//   - Keywords: reserved words with fixed meaning (module, type, fn, ...)
+//   - Punctuation: structural delimiters and operators ({, =>, +, ...)
+//   - Literals: values written directly in source (strings, ints)
+//   - Identifiers: user-defined names
+//
+// The keyword table is a data declaration in tokenize.dag, not a match
+// arm list. Adding a keyword means one entry in the table, nothing else.
+// =========================================================================
+
+type Token {
+  kind: TokenKind
+  span: SourceSpan
+}
+
+type TokenKind
+  // Declaration keywords
+  = KwModule | KwImport | KwType | KwFn | KwFunc
+  | KwService | KwResource | KwData | KwExtern
+  | KwInterface | KwPipeline | KwProfile | KwPattern
+  // Control flow keywords
+  | KwLet | KwReturn | KwMatch | KwIf | KwElse
+  | KwFor | KwIn | KwWhere | KwWith
+  // Literal keywords
+  | KwTrue | KwFalse | KwNone
+  // Resource lifecycle keywords
+  | KwAcquire | KwRelease | KwCapability
+  | KwOperation | KwInput | KwOutput
+  // Modifier keywords
+  | KwIdempotent | KwReadonly | KwHermetic
+  // Paired delimiters
+  | LBrace | RBrace | LParen | RParen | LBracket | RBracket
+  // Relational / arrow
+  | Lt | Gt | Le | Ge | FatArrow | Arrow
+  // Separators
+  | Colon | Comma | Dot
+  // Assignment / equality
+  | Eq | EqEq | Ne
+  // Arithmetic
+  | Plus | Minus | Star | Slash | Percent
+  // Logic
+  | Bang | And | Or
+  // Optionality
+  | Question | NullCoalesce
+  // Values
+  | LitStr { value: String }
+  | LitInt { value: Int }
+  | LitFloat { value: String }
+  | Ident { name: String }
+  // String interpolation parts
+  | StrBegin { value: String }
+  | StrMid { value: String }
+  | StrEnd { value: String }
+  // Structure
+  | Newline | Eof
+  | Unknown { char: String }
+
+// =========================================================================
+// AST — Abstract Syntax Tree
+//
+// The parser produces an AST from a token list. The AST is a faithful
+// representation of the source structure with no semantic interpretation.
+// Names are strings, types are TypeExpr values, expressions are Expr
+// values. Nothing is resolved or checked yet.
+// =========================================================================
+
+type Module {
+  name: String
+  imports: List<Import>
+  items: List<Item>
+  span: SourceSpan
+}
+
+type Import {
+  module_path: String
+  names: List<String>
+  span: SourceSpan
+}
+
+type Item
+  = TypeDef { name: String, body: TypeBody, span: Span }
+  | FuncDef { name: String, params: List<Param>, return_type: TypeExpr?, body: Expr, span: Span }
+  | FnDef { name: String, params: List<Param>, return_type: TypeExpr?, body: Expr, span: Span }
+  | ServiceDef { name: String, transport: TransportBinding, operations: List<OperationDef>, span: Span }
+  | ResourceDef { name: String, capabilities: List<CapabilityDef>, span: Span }
+  | DataDef { name: String, type_expr: TypeExpr, value: Expr, span: Span }
+  | ExternFuncDecl { name: String, params: List<Param>, return_type: TypeExpr, span: Span }
+
+// =========================================================================
+// Type expressions
+//
+// A TypeExpr is a VALUE that describes a type's structure. It is not a
+// string key into a table. It is the type itself, represented as data.
+//
+// In v1, types were referenced by TypeId (a string) and resolved via
+// TypeRegistry (a HashMap). This created the deep root of all
+// sustainability debt: deferred computation. In v2, TypeExpr is
+// structural. A port holds the TypeExpr directly. No registry, no
+// deferred lookup, no stale copies.
+//
+// TypeExpr appears in three roles:
+//   1. In type definitions: `type Foo { x: TypeExpr }`
+//   2. In function signatures: `fn bar(x: TypeExpr) -> TypeExpr`
+//   3. In DAG ports: `Port { type_expr: TypeExpr }`
+//
+// The same value flows through all three. No conversion between
+// representations.
+// =========================================================================
+
+type TypeExpr
+  = Named { name: String }
+  | Product { name: String?, fields: List<Field> }
+  | Coproduct { name: String?, variants: List<Variant> }
+  | Container { kind: ContainerKind, element: TypeExpr }
+  | Refined { base: TypeExpr, predicates: List<Predicate> }
+  | Optional { inner: TypeExpr }
+  | MapType { key: TypeExpr, value: TypeExpr }
+
+type ContainerKind = List | Set | NonEmptyList | NonEmptySet
+
+type TypeBody
+  = Record { fields: List<Field> }
+  | Sum { variants: List<Variant> }
+  | Alias { base: TypeExpr }
+
+type Field {
+  name: String
+  type_expr: TypeExpr
+  optional: Bool
+  default_value: Expr?
+}
+
+type Variant {
+  name: String
+  fields: List<Field>
+}
+
+type Param {
+  name: String
+  type_expr: TypeExpr
+}
+
+// =========================================================================
+// Predicates — type refinements
+//
+// Predicates narrow a type's value set without changing its structure.
+// `String where non_empty` is still a String, but the empty string
+// is excluded.
+// =========================================================================
+
+type Predicate
+  = NonEmpty
+  | Pattern { regex: String }
+  | Range { min: Int?, max: Int? }
+  | Brand { name: String }
+  | ContentEncoding { encoding: String }
+  | Format { name: String }
+
+// =========================================================================
+// Expressions
+//
+// The expression language shared by fn bodies, data declarations,
+// and default values. Expressions are trees that the evaluator
+// reduces to values.
+// =========================================================================
+
+type Expr
+  = Literal { value: LiteralValue, span: Span }
+  | Var { name: String, span: Span }
+  | FieldAccess { base: Expr, field: String, span: Span }
+  | Call { func: String, args: List<NamedArg>, span: Span }
+  | MethodCall { receiver: Expr, method: String, args: List<NamedArg>, span: Span }
+  | Match { scrutinee: Expr, arms: List<MatchArm>, span: Span }
+  | If { condition: Expr, then_branch: Expr, else_branch: Expr?, span: Span }
+  | Let { name: String, value: Expr, body: Expr?, span: Span }
+  | RecordLit { fields: List<FieldInit>, span: Span }
+  | ListLit { elements: List<Expr>, span: Span }
+  | BinOp { op: BinOpKind, left: Expr, right: Expr, span: Span }
+  | UnaryOp { op: UnaryOpKind, operand: Expr, span: Span }
+  | Lambda { params: List<String>, body: Expr, span: Span }
+  | StringInterp { parts: List<StringPart>, span: Span }
+  | Block { stmts: List<Expr>, span: Span }
+
+type NamedArg { name: String?, value: Expr }
+type MatchArm { pattern: MatchPattern, guard: Expr?, body: Expr }
+type FieldInit { name: String, value: Expr }
+
+type MatchPattern
+  = Bind { name: String }
+  | LitPattern { value: LiteralValue }
+  | VariantPattern { name: String, bindings: List<String> }
+  | Wildcard
+
+type LiteralValue
+  = LitStr { value: String }
+  | LitInt { value: Int }
+  | LitBool { value: Bool }
+  | LitNull
+
+type BinOpKind
+  = Add | Sub | Mul | Div | Mod
+  | BinEq | BinNe | BinLt | BinGt | BinLe | BinGe
+  | BinAnd | BinOr | Concat
+
+type UnaryOpKind = Not | Neg
+
+type StringPart
+  = Text { value: String }
+  | Interpolation { expr: Expr }
+
+// =========================================================================
+// Service / Transport
+//
+// Services are external systems the program interacts with. Each service
+// has a transport binding (how to reach it) and operations (what it can do).
+// =========================================================================
+
+type TransportBinding {
+  kind: TransportKind
+  config: Map<String, Expr>
+}
+
+type TransportKind = Rest | Shell | File | Local
+
+type OperationDef {
+  name: String
+  inputs: List<Field>
+  outputs: List<Field>
+  modifiers: List<OperationModifier>
+}
+
+type OperationModifier = Idempotent | Readonly
+
+type CapabilityDef {
+  name: String
+  inputs: List<Field>
+  outputs: List<Field>
+}
+
+// =========================================================================
+// DAG IR — the graph intermediate representation
+//
+// The lowerer produces a DAG from typed AST. The DAG is the executable
+// form: nodes with typed ports connected by edges. The executor runs
+// nodes in topological order, routing values along edges.
+//
+// Types are TypeExpr values embedded in ports, not string references.
+// Cardinality is derived from the TypeExpr structure (Container → list,
+// Optional → zero-or-one, everything else → scalar). No separate
+// cardinality field, no separate multiplicity field.
+// =========================================================================
+
+type Port {
+  name: String
+  type_expr: TypeExpr
+}
+
+type Node {
+  id: String
+  inputs: List<Port>
+  outputs: List<Port>
+  body: NodeBody
+}
+
+type NodeBody
+  = PureExpr { expr: Expr }
+  | Transport { binding: TransportBinding }
+  | SubGraph { dag: DAG }
+  | TypeNode { body: TypeBody }
+
+type Edge {
+  from_node: String
+  from_port: String
+  to_node: String
+  to_port: String
+}
+
+type DAG {
+  nodes: List<Node>
+  edges: List<Edge>
+}
+
+// =========================================================================
+// Compiler output
+// =========================================================================
+
+type TextFile {
+  path: FilePath
+  content: String
+}
+
+type Diagnostic {
+  severity: Severity
+  message: String
+  span: SourceSpan?
+  module_name: String?
+}
+
+type Severity = Error | Warning | Info
+
+type CompileOutput {
+  dag: DAG
+  output_files: List<TextFile>
+  diagnostics: List<Diagnostic>
+}

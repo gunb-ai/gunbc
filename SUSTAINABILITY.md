@@ -144,6 +144,22 @@ Fix: derive from DSL resource definitions.
 `mock_wrong_type_expr()` — 20 match arms.
 Fix: derive from `ValueBacking` (3 rules replace 20 arms).
 
+**S21: Workflow claim handle type derived from claim-name prefix.**
+`workflow/src/process_registry.rs:159-170` maps `"file:"`, `"tool:"`,
+`"ledger:"`, `"network:"` to handle type strings in
+`claim_handle_type_id()`.
+Cost: 1 prefix arm + tests per new claim namespace / handle type.
+Fix: derive handle type from the claim/resource definition, not the
+claim ID prefix.
+
+**S22: Service transport resolution classified by module/name prefixes.**
+`resolve.rs:1025-1037` routes modules by `"services."` / `"workspace."`
+/ `"extdeps."`, and `resolve.rs:1111-1116` parses transport role from
+`"service_transport::{prepare,execute,parse}::"` name prefixes.
+Cost: new service namespace or transport role requires resolver edits.
+Fix: lower transport role/service-ness into explicit metadata or enum
+tags and dispatch on that.
+
 ---
 
 ### Branch 4: DSL/Rust boundary duplication
@@ -198,6 +214,86 @@ A `[1,∞)` port with zero incoming edges silently gets `[]` at
 execution time. (Fixed in this PR with `allows_empty()` guard, but
 no test existed to catch the regression.)
 
+**S23: `value_compatible_with_type_id()` fails open for unknown types.**
+`ir/src/types.rs:1188-1192` converts an unknown `TypeId` into
+`ValueBacking::Json`, so compatibility checks accept any value instead
+of failing.
+Cost: generated tests and mock validation can silently bless
+unregistered or misspelled types.
+Fix: return `Err` / fail closed when `value_backing_for_type_id()`
+misses.
+
+**S24: Testgen boundary analysis swallows lowering failure.**
+`codegen/src/testgen/codegen.rs:4829-4831` does
+`gunbc_exec::lower(self.dag).ok()` and falls back to the unlowered
+analysis when lowering fails.
+Cost: boundary-mockability tests can be generated against the wrong
+graph shape, hiding lowering regressions instead of surfacing them.
+Fix: propagate the lower error and fail generation.
+
+**S25: Virtual backend transport classification defaults unknown nodes
+to REST.**
+`codegen/src/testgen/registry_gen.rs:42-59` classifies by request /
+response type strings, and `registry_gen.rs:57-58,160-165` defaults
+missing/unknown cases to `Rest`.
+Cost: new transport classes silently get REST stubs and partial test
+coverage instead of a compile-time error.
+Fix: require stamped `transport_class` metadata or return `Err` for
+unknown transport executors.
+
+**S30: Testgen re-derives type info by parsing TypeId strings.**
+`auto_mock.rs:39-120` has `parse_unary_generic_type_id()`,
+`optional_inner_type_id()`, `parse_container_alias_inner()` — all
+parsing `<` and `>` in TypeId strings to extract container/element
+types. This information is already structurally encoded in the type DAG.
+Fix: query the type DAG structure (wrapper kind, inner SubDag) instead
+of parsing the string name.
+
+**S31: Lowerer doesn't stamp OperationKey on all transport nodes.**
+`auto_mock.rs:285-326` falls back from `node.operation_key` to
+`infer_provider_from_node_id()` which string-matches node IDs for
+"github", "gcp", "anthropic", etc. The lowerer should stamp every
+transport node with typed `OperationKey` metadata, eliminating the
+string heuristic.
+
+**S32: Executor auto-mocks missing resource/env inputs in lenient mode.**
+`execute/mod.rs:46-51` documents that missing inputs get default mocks
+in lenient mode instead of failing. The lowerer should validate all
+required inputs have incoming data edges; execution should not
+auto-fabricate values.
+
+**S33: Coercion exists because lowerer doesn't validate cardinality
+compatibility.**
+The entire coercion module (`coerce.rs`) exists because the executor
+must wrap/unwrap values to match cardinality mismatches (WrapScalar,
+OptionalToList) at runtime. The lowerer should validate cardinality
+compatibility at compile time and insert explicit coercion nodes where
+needed, rather than having the executor compensate silently.
+
+---
+
+### Branch 6: Split metadata authorities
+
+Metadata families are still encoded as multiple hand-maintained Rust
+entrypoints instead of one authoritative registry. Adding a provider or
+metadata variant means editing every projection of the same fact.
+
+**Terminal state:** Each metadata family has one authoritative registry.
+Lookup, listing, scope helpers, and codegen derive from that source.
+
+#### Symptoms:
+
+**S26: LLM provider metadata split across constructors, lookup, and
+helper lists.**
+`ir/src/transport/llm/provider.rs:59-102` defines provider factories,
+`provider_by_id()`, and `builtin_provider_ids()` as separate copies of
+the built-in provider set, while `ir/src/transport/llm/mod.rs:97-105`
+duplicates the same IDs in `LlmScopeContract::{openai, anthropic}`.
+Cost: 4 edits per built-in provider, with drift possible between lookup,
+listing, and scope-contract helpers.
+Fix: single static provider registry; derive lookup, built-in IDs, and
+scope helpers from it.
+
 ---
 
 ### Standalone items
@@ -214,6 +310,71 @@ Intentional but undocumented. Fix: document.
 **S9: Opaque kernel types lack documented rationale.**
 `Any`, `Json`, `Record`, `Unit` — correct decision, undocumented.
 Fix: document.
+
+### Review-identified items (2026-03-10)
+
+These came from PR review and represent concrete next-fix priorities:
+
+**S34: Lowerer fails open on callable return wiring.**
+`let _ = wire_callable_return_outputs(...)` with a TODO about making
+it hard-fail later. Real wiring bugs in patterns/transport-backed
+callables disappear silently.
+Fix: return `LowerError::WiringFailure` (same as argument wiring
+already does). This is the sharp next lowerer fix.
+
+**S35: `value_compatible_with_type_id` erases unknown types to Json.**
+`ir/src/types.rs` still converts unknown-type errors into
+`ValueBacking::Json` "for backwards compat," meaning compatibility
+checks accept any value for unregistered types instead of failing.
+Fix: fail closed — unknown types are incompatible with everything.
+
+**S36: gunbc-interp not authoritative in production.**
+The interpreter exists but isn't the production execution path yet.
+This is a parallel implementation (Branch 2) that will drift.
+Fix: either make it authoritative or delete it.
+
+**S37: Builtin/intrinsic metadata duplicated across typecheck and eval.**
+`builtin_method_sigs` in typecheck and the intrinsic dispatch table
+in `daglang-eval` are parallel lists of the same operations.
+Fix: single intrinsic registry consumed by both.
+
+**S38: Tests weakened during syntax migration.**
+Several test fixtures were flattened to constants (`return "done"`,
+`passed = 0`) and assertions reduced from semantic checks to "compiles
+successfully" or "function name appears in output." This lowers
+confidence that the refactor preserved behavior, not just buildability.
+Fix: restore semantic assertions (collection/manifest checks, output
+value verification).
+
+---
+
+## Prioritized sequence
+
+Based on review feedback, ordered by signal value (which fix
+prevents the most silent regressions):
+
+1. **Constrain fn-body-eval passthrough (S3).** Remove or sharply
+   scope the catch-all. Option C (structured eval contract) is
+   preferred: evaluator declares capabilities, unsupported forms
+   are compile-time opaque. Eval errors from supported forms are
+   real failures.
+
+2. **Fail-closed callable return wiring (S34).** Turn
+   `let _ = wire_callable_return_outputs(...)` into structured
+   failure once the lowerer can trace service result bindings.
+
+3. **Finish fail-closed type cleanup (S23, S35).** Make
+   `value_compatible_with_type_id` and `value_backing_for_type_id`
+   fail closed for unknown types. No more Json-as-top-type escape.
+
+4. **Restore test semantic strength (S38).** Re-add collection/
+   manifest/output-value assertions that were flattened during
+   the syntax migration.
+
+5. **Map<K,V> typecheck diagnostic (S19).** Emit an actual
+   diagnostic for non-String map keys instead of silently falling
+   through. (Partially addressed — typecheck now rejects, but no
+   diagnostic message is emitted to the user.)
 
 ---
 

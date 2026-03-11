@@ -1,0 +1,59 @@
+// v2 compiler pipeline — the full .dag-to-files transform.
+//
+// Each stage is a pure function. The only I/O is reading source
+// files (Filesystem.read) and the output file list. The Rust kernel
+// executes this DAG to compile .dag source into generated files.
+
+module v2.compiler.pipeline
+
+import v2.std.core {
+  Module, DAG, TextFile, CompileOutput, Diagnostic, Severity,
+  TypeExpr, Token
+}
+import v2.compiler.tokenize { tokenize }
+// import v2.compiler.parse { parse_tokens }
+// import v2.compiler.resolve { resolve_modules }
+// import v2.compiler.typecheck { typecheck }
+// import v2.compiler.lower { lower }
+// import v2.compiler.emit { emit }
+
+import std.resources { Filesystem }
+
+// === Stage 1: Read and tokenize source files ===
+
+type SourceFile {
+  path: String
+  content: String
+}
+
+type TokenizedFile {
+  path: String
+  tokens: List<Token>
+}
+
+fn read_source(path: String) -> SourceFile {
+  let content = Filesystem.read(path: path)
+  SourceFile { path: path, content: content.content }
+}
+
+fn tokenize_file(source: SourceFile) -> TokenizedFile {
+  TokenizedFile {
+    path: source.path,
+    tokens: tokenize(source: source.content)
+  }
+}
+
+// === Full pipeline ===
+//
+// Uncommented as each stage is implemented:
+
+// func compile(root: String) -> CompileOutput {
+//   let sources = discover_and_read(root: root)
+//   let tokenized = map(sources, s => tokenize_file(source: s))
+//   let parsed = map(tokenized, t => parse_tokens(tokens: t.tokens))
+//   let resolved = resolve_modules(modules: parsed)
+//   let typed = typecheck(graph: resolved)
+//   let dag = lower(typed: typed)
+//   let files = emit(dag: dag)
+//   CompileOutput { dag: dag, output_files: files, diagnostics: [] }
+// }
