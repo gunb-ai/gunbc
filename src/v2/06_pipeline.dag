@@ -110,18 +110,21 @@ fn compile_sources(sources: List<SourceFile>, backend: Backend) -> CompileResult
   // Stage 2: Parse each token stream into a module
   let parse_results = map(tokenized, t => parse(tokens: t))
 
-  // Collect modules and check for parse errors
-  let modules = map(parse_results, p => p.module)
+  // Check for parse errors BEFORE extracting modules.
+  // parse() returns { module: none } on failure, so extracting p.module
+  // before this check would produce List<Module?> — a type violation
+  // that the evaluator cannot catch at runtime (S56).
   let parse_diagnostics = collect_diagnostics(parse_results: parse_results)
   let has_errors = any(parse_results, p => p.error != None)
 
-  // If any parse errors, return early with diagnostics
   if has_errors {
     CompileResult {
       files: [],
       diagnostics: parse_diagnostics
     }
   } else {
+    // Safe to extract: all parses succeeded, so every p.module is Some.
+    let modules = map(parse_results, p => p.module)
     // Stage 3: Resolve imports and build module graph
     let graph = resolve_modules(modules: modules)
 

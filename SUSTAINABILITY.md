@@ -806,6 +806,33 @@ Revealed real frontier: `dsl/std/types.dag` fails to parse at byte 2461
 with `"unknown where predicate 'range'"` — the v2 parser doesn't
 support `where range(...)` predicates yet.
 
+**S57: No runtime type enforcement at DSL function boundaries.**
+`resolve_modules(modules: List<Module>)` declares it expects
+`List<Module>`, but the evaluator dispatches on `Value` with no
+runtime type check at call boundaries. `Value::Unit` flows where
+`Value::Map` (a Module) is expected with no error until a downstream
+field access or `|> map()` fails with an unrelated message.
+This is the deeper cause behind S56: the DSL has type annotations, but
+they are checked only by the typechecker (stage 4) on user modules —
+the compiler's own pipeline stages are evaluated by the v1 evaluator
+which has no type enforcement. The type system should prevent
+`Module?` from flowing into `List<Module>`, either:
+(a) statically, by running the v2 typechecker on the pipeline itself, or
+(b) at runtime, by validating function inputs against declared param types.
+Until one of these exists, any pipeline stage boundary can silently
+accept wrong-shaped data and fail with a misleading error downstream.
+Fix for (a): self-host — compile the v2 compiler with itself. The
+typechecker would then catch `p.module` (type `Module?`) being inserted
+into a `List<Module>` context.
+Fix for (b): add `assert_type(value, expected_type)` checks at stage
+boundaries in the test helper, and optionally in the evaluator's
+function dispatch.
+Interim mitigation: moved `modules` extraction inside `else` branch
+of `compile_sources` so `List<Module?>` is never constructed. Added
+error checks + shape validation in the Rust test helper. Added
+regression test that a parse error surfaces as a parse diagnostic,
+not a resolve crash.
+
 #### Remaining performance debt (not crash risk):
 
 **`Env::from_inputs` clones inputs on every non-self call.** For the
