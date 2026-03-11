@@ -33,7 +33,7 @@ use gunbc_ir::transport::{FileOp, TransportResponse};
 use gunbc_ir::{
     canonical_edge_order, detect_boundaries, detect_entrypoints, normalize_resource_id, AccessMode,
     AppliedCoercion, BoundaryInfo, Cardinality, Dag, LogDetailLevel, Node, NodeBody, NodeId,
-    NodeKind, PortMultiplicity, PortName, Value, RESOURCE_FILE, RESOURCE_FILE_PREFIX,
+    NodeKind, PortName, Value, RESOURCE_FILE, RESOURCE_FILE_PREFIX,
 };
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -609,16 +609,20 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
             .get(node_id.0.as_str())
             .ok_or_else(|| ExecError::new(format!("node '{}' not found", node_id.0)))?;
 
-        // Gather inputs from upstream edges (cardinality-aware).
+        // Gather inputs from upstream edges.
+        //
+        // The merge strategy is determined by the TARGET port's cardinality:
+        // - List cardinality (`is_list()`): collect values from all edges into a list
+        // - Scalar cardinality: take one value (conditional merge for branches)
         let mut inputs: HashMap<String, Value> = HashMap::new();
-        let mut fan_in: HashMap<String, Vec<(usize, Vec<Value>)>> = HashMap::new();
+        let mut list_buckets: HashMap<String, Vec<(usize, Vec<Value>)>> = HashMap::new();
         let mut scalar_sources: HashMap<String, String> = HashMap::new();
         let applied_coercions: Vec<AppliedCoercion> = Vec::new();
 
-        let fan_in_ports: HashSet<&str> = node
+        let list_ports: HashSet<&str> = node
             .inputs
             .iter()
-            .filter(|p| p.multiplicity == PortMultiplicity::FanIn)
+            .filter(|p| p.cardinality.is_list())
             .map(|p| p.name.0.as_str())
             .collect();
 
@@ -629,7 +633,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
                 }
                 if let Some(upstream) = node_outputs.get(&edge.from_node.0) {
                     if let Some(val) = upstream.get(&edge.from_port.0) {
-                        if fan_in_ports.contains(edge.to_port.0.as_str()) {
+                        if list_ports.contains(edge.to_port.0.as_str()) {
                             let from_cardinality = dag
                                 .get_node(&edge.from_node)
                                 .and_then(|n| n.outputs.iter().find(|p| p.name == edge.from_port))
@@ -637,7 +641,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
                                 .unwrap_or(Cardinality::ONE);
 
                             if let Some(elements) = collect_fan_in(val, from_cardinality) {
-                                let bucket = fan_in.entry(edge.to_port.0.clone()).or_default();
+                                let bucket = list_buckets.entry(edge.to_port.0.clone()).or_default();
                                 bucket.push((edge.index, elements));
                             }
                         } else if scalar_sources.contains_key(&edge.to_port.0) {
@@ -675,8 +679,8 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
             }
         }
 
-        // Wrap collected fan-in values as Value::List, sorted by edge index
-        for (port_name, mut groups) in fan_in {
+        // Merge collected list-port values as Value::List, sorted by edge index
+        for (port_name, mut groups) in list_buckets {
             groups.sort_by_key(|(idx, _)| *idx);
             let values: Vec<Value> = groups.into_iter().flat_map(|(_, elems)| elems).collect();
             inputs.insert(port_name, Value::List(values));
@@ -712,10 +716,10 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
             }
         }
 
-        // Default fan-in inputs to empty when still missing.
-        // FanIn ports always allow empty (zero upstream edges is valid).
+        // Default list-cardinality inputs to empty when still missing.
+        // List ports allow zero elements (zero upstream edges is valid).
         for port in &node.inputs {
-            if port.multiplicity == PortMultiplicity::FanIn && !inputs.contains_key(&port.name.0) {
+            if port.cardinality.is_list() && !inputs.contains_key(&port.name.0) {
                 inputs.insert(port.name.0.clone(), Value::List(vec![]));
             }
         }
@@ -1209,16 +1213,17 @@ fn build_node_inputs<T>(
     mode: &ExecutionMode,
     input_mocks: Option<&BoundaryMocks>,
 ) -> Result<(HashMap<String, Value>, Vec<AppliedCoercion>), ExecError> {
-    // Gather inputs from upstream edges (cardinality-aware).
+    // Gather inputs from upstream edges.
+    // Merge strategy determined by target port cardinality (see main execute loop).
     let mut inputs: HashMap<String, Value> = HashMap::new();
-    let mut fan_in: HashMap<String, Vec<(usize, Vec<Value>)>> = HashMap::new();
+    let mut list_buckets: HashMap<String, Vec<(usize, Vec<Value>)>> = HashMap::new();
     let mut scalar_sources: HashMap<String, String> = HashMap::new();
     let applied_coercions: Vec<AppliedCoercion> = Vec::new();
 
-    let fan_in_ports: HashSet<&str> = node
+    let list_ports: HashSet<&str> = node
         .inputs
         .iter()
-        .filter(|p| p.multiplicity == PortMultiplicity::FanIn)
+        .filter(|p| p.cardinality.is_list())
         .map(|p| p.name.0.as_str())
         .collect();
 
@@ -1229,7 +1234,7 @@ fn build_node_inputs<T>(
             }
             if let Some(upstream) = node_outputs.get(&edge.from_node.0) {
                 if let Some(val) = upstream.get(&edge.from_port.0) {
-                    if fan_in_ports.contains(edge.to_port.0.as_str()) {
+                    if list_ports.contains(edge.to_port.0.as_str()) {
                         let from_cardinality = dag
                             .get_node(&edge.from_node)
                             .and_then(|n| n.outputs.iter().find(|p| p.name == edge.from_port))
@@ -1237,14 +1242,10 @@ fn build_node_inputs<T>(
                             .unwrap_or(Cardinality::ONE);
 
                         if let Some(elements) = collect_fan_in(val, from_cardinality) {
-                            let bucket = fan_in.entry(edge.to_port.0.clone()).or_default();
+                            let bucket = list_buckets.entry(edge.to_port.0.clone()).or_default();
                             bucket.push((edge.index, elements));
                         }
                     } else if scalar_sources.contains_key(&edge.to_port.0) {
-                        // Conditional merge: multiple upstream edges to a scalar port.
-                        // In conditional branches, only one branch produces
-                        // a real value; others produce Skipped. Take the
-                        // first non-Skipped value.
                         if !matches!(val, Value::Skipped) {
                             if let Some(existing) = inputs.get(&edge.to_port.0) {
                                 if !matches!(existing, Value::Skipped) {
@@ -1275,8 +1276,7 @@ fn build_node_inputs<T>(
         }
     }
 
-    // Wrap collected fan-in values as Value::List, sorted by edge index
-    for (port_name, mut groups) in fan_in {
+    for (port_name, mut groups) in list_buckets {
         groups.sort_by_key(|(idx, _)| *idx);
         let values: Vec<Value> = groups.into_iter().flat_map(|(_, elems)| elems).collect();
         inputs.insert(port_name, Value::List(values));
@@ -1310,7 +1310,7 @@ fn build_node_inputs<T>(
     }
 
     for port in &node.inputs {
-        if port.multiplicity == PortMultiplicity::FanIn && !inputs.contains_key(&port.name.0) {
+        if port.cardinality.is_list() && !inputs.contains_key(&port.name.0) {
             inputs.insert(port.name.0.clone(), Value::List(vec![]));
         }
     }

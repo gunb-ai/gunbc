@@ -3153,7 +3153,7 @@ mod parity {
                     Port::scalar("scheme", "String"),
                     Port::optional("header_name", "Optional<String>"),
                     Port::scalar("source_id", "String"),
-                    Port::fan_in("required_scopes", "String"),
+                    Port::list("required_scopes", "String"),
                 ],
                 vec![Port::scalar("credential", "Credential")],
             ),
@@ -3465,7 +3465,7 @@ fn lower_callable(
             output.type_id.0.as_str(),
         ));
     }
-    inputs.push(Port::fan_in(PortName::DEPS, "Any"));
+    inputs.push(Port::list(PortName::DEPS, "Any"));
     let obligation = infer_fn_obligation(&callable.name, kind, &outputs);
     let primary_output = outputs
         .first()
@@ -4029,7 +4029,7 @@ fn make_loop_body_dag_from_stmts(
         body_inputs.push(Port::scalar(passthrough.as_str(), "Any"));
     }
     body_inputs.push(Port::scalar(output_passthrough_input_name("result"), "Any"));
-    body_inputs.push(Port::fan_in(PortName::DEPS, "Any"));
+    body_inputs.push(Port::list(PortName::DEPS, "Any"));
 
     let body_target = LoweredEndpoint {
         node_id: "body_op".to_string(),
@@ -9633,7 +9633,7 @@ fn build_collection_lowering_plan(
             spec.node_id.clone(),
             vec![
                 Port::scalar("items", "Any"),
-                Port::fan_in(PortName::DEPS, "Any"),
+                Port::list(PortName::DEPS, "Any"),
             ],
             vec![Port::scalar("items", "Any")],
             LoweredOp::Collection {

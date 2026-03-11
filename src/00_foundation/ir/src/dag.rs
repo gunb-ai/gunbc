@@ -7,7 +7,7 @@ use crate::node::Node;
 use crate::resource::{normalize_resource_id, AccessMode};
 use crate::type_op::{Predicate, PredicateValue, TypeOp};
 use crate::type_registry::TypeRegistry;
-use crate::types::{Cardinality, NodeId, PortMultiplicity, PortName, PresenceMode, TypeId};
+use crate::types::{Cardinality, NodeId, PortName, PresenceMode, TypeId};
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
 
@@ -488,16 +488,16 @@ pub struct Port {
     pub name: PortName,
     /// Type of data flowing through this port
     pub type_id: TypeId,
-    /// Set-theoretic cardinality (how many values)
-    pub cardinality: Cardinality,
-    /// Port multiplicity: how many upstream edges feed this port.
+    /// Set-theoretic cardinality (how many values).
     ///
-    /// `Singular` (default) = one edge delivers one value.
-    /// `FanIn` = zero or more edges; values are merged into a list.
-    /// Orthogonal to cardinality — a `List<Bool>` port is `Singular` (one list value),
-    /// while `__deps` is `FanIn` (multiple scalar values merged).
-    #[serde(default, skip_serializing_if = "crate::types::multiplicity_is_default")]
-    pub multiplicity: PortMultiplicity,
+    /// Determines both the type contract AND the executor's merge strategy:
+    /// - Scalar (`[1,1]`): one edge delivers one value
+    /// - List (`[0,∞)` / `[1,∞)`): values from N edges are collected into a list
+    /// - Optional (`[0,1]`): zero or one value
+    ///
+    /// The executor uses `cardinality.is_list()` to decide whether to fan-in
+    /// merge values from multiple edges. No separate multiplicity flag is needed.
+    pub cardinality: Cardinality,
     /// Internal routing guard (used by patterns, not public API)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) guard: Option<Predicate>,
@@ -546,7 +546,7 @@ impl Port {
             name,
             type_id,
             cardinality: Cardinality::ONE,
-            multiplicity: PortMultiplicity::Singular,
+
             guard: None,
             resource_access: None,
             type_optional,
@@ -557,8 +557,8 @@ impl Port {
 
     /// Create a port with explicit cardinality.
     ///
-    /// Prefer `Port::scalar`, `Port::optional`, `Port::list`, `Port::non_empty_list`,
-    /// or `Port::fan_in` for well-known cardinalities. This constructor is for
+    /// Prefer `Port::scalar`, `Port::optional`, `Port::list`, or `Port::non_empty_list`
+    /// for well-known cardinalities. This constructor is for
     /// internal use when propagating a runtime cardinality value (e.g., loop patterns,
     /// SubDag inference).
     pub(crate) fn with_cardinality(
@@ -584,7 +584,7 @@ impl Port {
             name,
             type_id,
             cardinality,
-            multiplicity: PortMultiplicity::Singular,
+
             guard: None,
             resource_access: None,
             type_optional,
@@ -643,24 +643,13 @@ impl Port {
             name: full_name.into(),
             type_id,
             cardinality: Cardinality::ONE,
-            multiplicity: PortMultiplicity::Singular,
+
             guard: None,
             resource_access: Some(mode),
             type_optional,
             presence,
             log_detail: None,
         }
-    }
-
-    /// Create a fan-in port: zero or more upstream edges merge into a list.
-    ///
-    /// Use for ports like `__deps` where multiple upstream nodes each deliver
-    /// a scalar value that gets merged into a single list.
-    pub fn fan_in(name: impl Into<PortName>, type_id: impl Into<TypeId>) -> Self {
-        let mut port = Self::new(name, type_id);
-        port.multiplicity = PortMultiplicity::FanIn;
-        port.cardinality = Cardinality::ZERO_OR_MORE;
-        port
     }
 
     /// Create a scalar port (exactly one value, required).
@@ -741,7 +730,7 @@ impl Port {
             name: name.into(),
             type_id,
             cardinality: Cardinality::ONE,
-            multiplicity: PortMultiplicity::Singular,
+
             guard: Some(Predicate::Equals(value_to_predicate_value(&expected))),
             resource_access: None,
             type_optional,
@@ -771,7 +760,7 @@ impl Port {
             name: name.into(),
             type_id,
             cardinality,
-            multiplicity: PortMultiplicity::Singular,
+
             guard: Some(guard),
             resource_access: None,
             type_optional,
@@ -901,11 +890,6 @@ pub mod build {
         Port::non_empty_list(name, type_id)
     }
 
-    /// Create a fan-in port (zero or more upstream edges merge into a list).
-    pub fn fan_in(name: &str, type_id: &str) -> Port {
-        Port::fan_in(name, type_id)
-    }
-
     /// Create a void port (zero values, signal only).
     pub fn void(name: &str) -> Port {
         Port::void(name)
@@ -943,7 +927,7 @@ pub mod build {
             name: name.into(),
             type_id,
             cardinality: Cardinality::ONE,
-            multiplicity: PortMultiplicity::Singular,
+
             guard: Some(Predicate::Equals(value_to_predicate_value(&expected))),
             resource_access: None,
             type_optional,

@@ -176,10 +176,10 @@ fn product_witness(
         let value = if let Some(fdag) = field_dag {
             // Extract the base type from the field's type DAG and recurse.
             let field_base = gunbc_ir::contract::base_type(fdag);
-            let inner = field_base
+            let resolved = field_base
                 .as_deref()
-                .and_then(|ft| typed_witness_value_depth(ft, registry, depth + 1))
-                .unwrap_or_else(|| Value::Str("mock".to_string()));
+                .and_then(|ft| typed_witness_value_depth(ft, registry, depth + 1));
+            let inner = resolved.unwrap_or_else(|| Value::Str("mock".to_string()));
             // base_type strips container wrappers — re-wrap if the field
             // has a List/Set/Optional wrapper so the mock matches the
             // expected runtime shape.
@@ -1000,4 +1000,5 @@ mod tests {
         assert_eq!(default_value_for_type("Optional<String>", &registry), Value::Unit);
         assert_eq!(default_value_for_type("String?", &registry), Value::Unit);
     }
+
 }

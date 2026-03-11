@@ -5,27 +5,6 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 
-/// Port multiplicity: how many upstream edges feed this port.
-///
-/// This is orthogonal to type cardinality (whether the value itself is a list).
-/// A `List<Bool>` port with `Singular` multiplicity receives one list value on
-/// one edge. A `__deps` port with `FanIn` multiplicity merges values from N
-/// upstream edges into a list.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
-pub enum PortMultiplicity {
-    /// Exactly one upstream edge delivers one value.
-    #[default]
-    Singular,
-    /// Zero or more upstream edges; values are fan-in merged into a list.
-    FanIn,
-}
-
-/// Returns true if the multiplicity is the default (Singular).
-/// Used by serde `skip_serializing_if`.
-pub fn multiplicity_is_default(m: &PortMultiplicity) -> bool {
-    *m == PortMultiplicity::Singular
-}
-
 /// Set-theoretic cardinality for port values, modeled as a closed interval
 /// `[min, max]` on ℕ ∪ {∞}.
 ///

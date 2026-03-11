@@ -775,7 +775,7 @@ fn test_fan_in_to_list_port_collects_values() {
     ));
     dag.add_node(Node::opaque(
         "C",
-        vec![fan_in("items", "String")], // fan-in port: multiple edges merge into list
+        vec![list("items", "String")], // fan-in port: multiple edges merge into list
         vec![list("items", "List<String>")], // echo: passes inputs through as outputs
         TestOp::echo(),
     ));
@@ -808,7 +808,7 @@ fn test_coercion_trace_exposes_coerced_input_value() {
     ));
     dag.add_node(Node::opaque(
         "B",
-        vec![fan_in("items", "String")],
+        vec![list("items", "String")],
         vec![list("items", "List<String>")],
         TestOp::echo(),
     ));
@@ -974,7 +974,7 @@ fn test_list_port_zero_edges_defaults_to_empty_list() {
     let mut dag: Dag<TestOp> = Dag::new();
     dag.add_node(Node::opaque(
         "A",
-        vec![fan_in("items", "String")],
+        vec![list("items", "String")],
         vec![list("items", "List<String>")],
         TestOp::echo(),
     ));
@@ -1001,7 +1001,7 @@ fn test_optional_to_list_skips_unit() {
     ));
     dag.add_node(Node::opaque(
         "B",
-        vec![fan_in("items", "String")],
+        vec![list("items", "String")],
         vec![list("items", "List<String>")],
         TestOp::echo(),
     ));
@@ -1028,7 +1028,7 @@ fn test_optional_to_list_skips_skipped() {
     ));
     dag.add_node(Node::opaque(
         "B",
-        vec![fan_in("items", "String")],
+        vec![list("items", "String")],
         vec![list("items", "List<String>")],
         TestOp::echo(),
     ));
@@ -2074,7 +2074,7 @@ fn test_coercion_tracking_wrap_scalar() {
     ));
     dag.add_node(Node::opaque(
         "consumer",
-        vec![fan_in("items", "String")],
+        vec![list("items", "String")],
         vec![list("items", "List<String>")],
         TestOp::echo(),
     ));
@@ -2150,7 +2150,7 @@ fn test_coercion_tracking_optional_to_list() {
     ));
     dag.add_node(Node::opaque(
         "B",
-        vec![fan_in("items", "String")],
+        vec![list("items", "String")],
         vec![list("items", "List<String>")],
         TestOp::echo(),
     ));

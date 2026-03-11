@@ -204,7 +204,7 @@ pub use typed_io::{
 pub use types::{
     boundary_label, parse_map_type_id, value_backing_for_type_id, value_compatible_with_type_id,
     value_kind_name, Cardinality, CardinalityMismatch, CardinalitySamplingStrategy,
-    InputProvenance, NodeId, OperationKey, PortCategory, PortMultiplicity, PortName,
+    InputProvenance, NodeId, OperationKey, PortCategory, PortName,
     SeedPlaceholderPolicy, SemanticCarrierClass, SemanticCarrierKind, StaticFingerprint, TypeId,
     ValueBacking,
 };

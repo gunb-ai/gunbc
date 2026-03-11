@@ -59,22 +59,31 @@ pub fn cardinality(type_dag: &Dag<TypeOp>) -> Cardinality {
 
 /// L2: Extract base type name from a type DAG.
 ///
-/// The base type is found by recursing through Brand nodes into their SubDags
-/// first, then checking Identity/Product/Coproduct nodes for the output type.
+/// Peels through wrapper layers (Brand, Wrap) to find the structural core type.
+/// The priority order ensures we see through wrappers before accepting a name:
 ///
-/// Brand nodes are checked first because the Identity node in a branded type
-/// has the brand name (e.g. "Char") as its output type, not the structural
-/// base (e.g. "Int"). By recursing into the brand's inner SubDag first, we
-/// get the correct structural base type.
+/// 1. **Brand** — recurse into inner SubDag (brand name ≠ structural base)
+/// 2. **Wrap** (List/Optional/Set/Map) — recurse into inner SubDag (element type)
+/// 3. **Identity** — return the output type name
+/// 4. **Product/Coproduct** — return the output type name
 pub fn base_type(type_dag: &Dag<TypeOp>) -> Option<String> {
     // Brand nodes first — recurse to find the structural base type.
-    // Without this priority, Identity returns the brand name (e.g. "Char")
-    // instead of the base type (e.g. "Int"), causing scalar_witness_for_base
-    // to hit the unknown fallback.
     for node in &type_dag.nodes {
         if let NodeBody::Opaque(TypeOp::Brand(..)) = &node.body {
             if let Some(inner) = inner_type_dag(type_dag) {
                 return base_type(inner);
+            }
+        }
+    }
+    // Wrap nodes (List, Optional, Set) — recurse into element type.
+    // Map is excluded because it has two SubDags (key + value) and
+    // inner_type_dag() would return the wrong one.
+    for node in &type_dag.nodes {
+        if let NodeBody::Opaque(TypeOp::Wrap(kind)) = &node.body {
+            if !matches!(kind, WrapperKind::Map) {
+                if let Some(inner) = inner_type_dag(type_dag) {
+                    return base_type(inner);
+                }
             }
         }
     }

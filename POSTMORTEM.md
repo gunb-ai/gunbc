@@ -2672,3 +2672,85 @@ consumer. No current DSL module uses this pattern.
 so only the matching arm's transports execute. The infrastructure exists
 (`BranchBuilder::condition`), but the match-to-branch lowering path doesn't
 wire it.
+
+---
+
+## FC-7: PortMultiplicity was a degenerate abstraction (2026-03-10)
+
+### The problem
+
+The `Port` struct had three fields encoding related concerns:
+
+| Field | Purpose | Example |
+|-------|---------|---------|
+| `type_id` | What type of value (`"String"`, `"List<String>"`) | — |
+| `cardinality` | How many elements (`[1,1]`, `[0,∞)`) | — |
+| `multiplicity` | How many edges (`Singular`, `FanIn`) | — |
+
+`cardinality` was already derived from `type_id` by the builder (via
+`TypeRegistry::infer_cardinality`). `multiplicity` was a separate boolean
+that told the executor whether to merge values from multiple edges into
+a list.
+
+The `FanIn` variant was used by exactly 4 ports in the entire system:
+`__deps` (×3) and `required_scopes` (×1). All infrastructure, none
+user-visible. But its existence created a class of bugs where cardinality
+was set correctly but multiplicity was not (or vice versa), producing
+silent behavioral differences.
+
+### The symptom
+
+Resource release nodes had `cardinality = ZERO_OR_MORE` on their
+`resource_handle` input (correctly — multiple acquire nodes can feed
+handles), but `multiplicity = Singular` (the default). The executor
+treated the port as scalar, not fan-in, so WrapScalar coercion tests
+failed: the value arrived as a raw `Map` instead of `List([Map])`.
+
+### The analysis
+
+Tracing the executor's input-gathering algorithm revealed the
+multiplicity check was doing exactly what `cardinality.is_list()` would
+do. The two concepts collapsed:
+
+- `cardinality.is_list()` → collect values from N edges into a list
+- `!cardinality.is_list()` → take one value (conditional merge for branches)
+
+The `multiplicity` field was encoding the same information as cardinality
+at a different level of abstraction — it was literally "cardinality of
+cardinality." The `window.rs` test harness had already independently
+discovered this: it used `port.cardinality.is_list()` instead of
+`port.multiplicity == FanIn`, and worked correctly.
+
+### The fix
+
+Deleted `PortMultiplicity` entirely. The executor now uses
+`port.cardinality.is_list()` to determine merge strategy:
+
+```rust
+// Before: two fields, easy to get out of sync
+let fan_in_ports: HashSet<&str> = node.inputs.iter()
+    .filter(|p| p.multiplicity == PortMultiplicity::FanIn)  // ← separate flag
+    .map(|p| p.name.0.as_str()).collect();
+
+// After: one field, derived from type
+let list_ports: HashSet<&str> = node.inputs.iter()
+    .filter(|p| p.cardinality.is_list())  // ← same information, no duplication
+    .map(|p| p.name.0.as_str()).collect();
+```
+
+`Port::fan_in()` was replaced by `Port::list()` (which already existed).
+All 4 callsites updated. Zero behavioral change — the algorithm is
+identical, just driven by one field instead of two.
+
+### The lesson
+
+When a second field exists only to tell the runtime "actually, pay
+attention to the first field," the two fields encode the same dimension.
+The right response is to delete the second field and make the first one
+authoritative.
+
+More broadly: if you need N concepts to express a behavior, and N-1 of
+them can be derived from the remaining one, you have N-1 too many
+concepts. The complexity budget should go toward making the one
+authoritative concept clear, not toward keeping multiple representations
+in sync.
