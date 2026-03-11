@@ -37,7 +37,7 @@ pub fn evaluate_fn_body_with_data(
     body: &LoweredFnBody,
     inputs: &HashMap<String, Value>,
     sibling_fns: &HashMap<String, LoweredFnBody>,
-    data_values: &HashMap<String, serde_json::Value>,
+    data_values: &HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, EvalError> {
     eval_fn_body_rc(body, inputs, sibling_fns, Rc::new(data_values.clone()), 0, None)
 }
@@ -51,7 +51,7 @@ fn eval_fn_body_rc(
     body: &LoweredFnBody,
     inputs: &HashMap<String, Value>,
     sibling_fns: &HashMap<String, LoweredFnBody>,
-    data_values: Rc<HashMap<String, serde_json::Value>>,
+    data_values: Rc<HashMap<String, Value>>,
     call_depth: usize,
     fn_name: Option<&str>,
 ) -> Result<HashMap<String, Value>, EvalError> {
@@ -64,7 +64,7 @@ fn eval_fn_body_rc(
     // Pre-compute data seeds once (shared across trampoline iterations).
     let seeds: Vec<_> = data_values
         .iter()
-        .map(|(name, json_val)| (name.clone(), json_to_eval_value(json_val)))
+        .map(|(name, val)| (name.clone(), val.clone()))
         .collect();
 
     let mut current_inputs = inputs.clone();
@@ -96,7 +96,7 @@ fn eval_fn_body_once(
     body: &LoweredFnBody,
     inputs: &HashMap<String, Value>,
     sibling_fns: &HashMap<String, LoweredFnBody>,
-    data_values: &Rc<HashMap<String, serde_json::Value>>,
+    data_values: &Rc<HashMap<String, Value>>,
     seeds: &[(String, Value)],
     call_depth: usize,
     fn_name: Option<&str>,
@@ -195,8 +195,12 @@ fn eval_stmts(
                 }
             }
             LoweredStmt::Return(fields) => {
-                // Return stmt is always in tail position of the function.
-                if allow_tco && fields.len() == 1 {
+                // Return is ALWAYS in tail position for the enclosing function,
+                // regardless of block nesting depth. A `return self_call()`
+                // inside a non-tail `if` must still trampoline — the tail_call
+                // signal propagates through early_return/block scopes to the
+                // fn body's trampoline loop.
+                if fields.len() == 1 {
                     let (name, expr) = &fields[0];
                     let value = eval_expr_tc(expr, env, sibling_fns, true)?;
                     if is_fn_body {
@@ -742,7 +746,7 @@ struct Env {
     /// Data declaration values carried through so sibling fn calls can
     /// reference module-level `data` items without re-threading them.
     /// Wrapped in Rc to avoid deep-cloning on every recursive call.
-    data_values: Rc<HashMap<String, serde_json::Value>>,
+    data_values: Rc<HashMap<String, Value>>,
     /// Current sibling-fn call depth (incremented in eval_fn_body_rc).
     call_depth: usize,
     /// Name of the currently-executing function (for tail-call detection).
@@ -940,67 +944,96 @@ fn eval_expr_tc(
             Ok(Value::List(values?))
         }
 
-        LoweredExpr::Block(stmts) => {
-            let mut child_env = env.child();
-            let outputs = eval_stmts(stmts, &mut child_env, sibling_fns, tail_ctx, false)?;
-            if outputs.len() == 1 {
-                if let Some(value) = outputs.get("return") {
-                    return Ok(value.clone());
-                }
-            }
-            Ok(Value::Map(outputs.into_iter().collect()))
-        }
+        LoweredExpr::Block(stmts) => eval_block_expr(stmts, env, sibling_fns, tail_ctx),
 
-        LoweredExpr::Record { fields, .. } => {
-            let mut map = BTreeMap::new();
-            for (key, value_expr) in fields {
-                let value = eval_expr(value_expr, env, sibling_fns)?;
-                map.insert(key.clone(), value);
-            }
-            Ok(Value::Map(map))
-        }
+        LoweredExpr::Record { fields, .. } => eval_record_expr(fields, env, sibling_fns),
 
         LoweredExpr::For {
             binding,
             iterable,
             body,
-        } => {
-            let items = eval_expr(iterable, env, sibling_fns)?;
-            let list = match items {
-                Value::List(items) => items,
-                other => vec![other],
-            };
-            let mut results = Vec::new();
-            for item in list {
-                let mut child_env = env.child();
-                child_env.bind(binding.clone(), item);
-                results.push(eval_expr(body, &child_env, sibling_fns)?);
-            }
-            Ok(Value::List(results))
-        }
+        } => eval_for_expr(binding, iterable, body, env, sibling_fns),
 
-        LoweredExpr::Return(fields) => {
-            // Return expressions are always in tail position — if a self-call
-            // appears here, it should be trampolined.
-            if fields.len() == 1 {
-                let (key, value_expr) = &fields[0];
-                // Evaluate in tail context: if value_expr is a self-call, we get
-                // a tail_call signal that propagates straight through.
-                let value = eval_expr_tc(value_expr, env, sibling_fns, true)?;
-                let mut map = HashMap::new();
-                map.insert(key.clone(), value);
-                return Err(EvalError::early_return(map));
-            }
-            let mut map = HashMap::new();
-            for (key, value_expr) in fields {
-                let value = eval_expr(value_expr, env, sibling_fns)?;
-                map.insert(key.clone(), value);
-            }
-            // Signal early return via a special error.
-            // The fn body executor catches this and uses the return values.
-            Err(EvalError::early_return(map))
+        LoweredExpr::Return(fields) => eval_return_expr(fields, env, sibling_fns),
+    }
+}
+
+/// Extracted from eval_expr_tc to reduce stack frame size.
+#[inline(never)]
+fn eval_block_expr(
+    stmts: &[LoweredStmt],
+    env: &Env,
+    sibling_fns: &HashMap<String, LoweredFnBody>,
+    tail_ctx: bool,
+) -> Result<Value, EvalError> {
+    let mut child_env = env.child();
+    let outputs = eval_stmts(stmts, &mut child_env, sibling_fns, tail_ctx, false)?;
+    if outputs.len() == 1 {
+        if let Some(value) = outputs.get("return") {
+            return Ok(value.clone());
         }
     }
+    Ok(Value::Map(outputs.into_iter().collect()))
+}
+
+/// Extracted from eval_expr_tc to reduce stack frame size.
+#[inline(never)]
+fn eval_record_expr(
+    fields: &[(String, LoweredExpr)],
+    env: &Env,
+    sibling_fns: &HashMap<String, LoweredFnBody>,
+) -> Result<Value, EvalError> {
+    let mut map = BTreeMap::new();
+    for (key, value_expr) in fields {
+        let value = eval_expr(value_expr, env, sibling_fns)?;
+        map.insert(key.clone(), value);
+    }
+    Ok(Value::Map(map))
+}
+
+/// Extracted from eval_expr_tc to reduce stack frame size.
+#[inline(never)]
+fn eval_for_expr(
+    binding: &str,
+    iterable: &LoweredExpr,
+    body: &LoweredExpr,
+    env: &Env,
+    sibling_fns: &HashMap<String, LoweredFnBody>,
+) -> Result<Value, EvalError> {
+    let items = eval_expr(iterable, env, sibling_fns)?;
+    let list = match items {
+        Value::List(items) => items,
+        other => vec![other],
+    };
+    let mut results = Vec::new();
+    for item in list {
+        let mut child_env = env.child();
+        child_env.bind(binding.to_string(), item);
+        results.push(eval_expr(body, &child_env, sibling_fns)?);
+    }
+    Ok(Value::List(results))
+}
+
+/// Extracted from eval_expr_tc to reduce stack frame size.
+#[inline(never)]
+fn eval_return_expr(
+    fields: &[(String, LoweredExpr)],
+    env: &Env,
+    sibling_fns: &HashMap<String, LoweredFnBody>,
+) -> Result<Value, EvalError> {
+    if fields.len() == 1 {
+        let (key, value_expr) = &fields[0];
+        let value = eval_expr_tc(value_expr, env, sibling_fns, true)?;
+        let mut map = HashMap::new();
+        map.insert(key.clone(), value);
+        return Err(EvalError::early_return(map));
+    }
+    let mut map = HashMap::new();
+    for (key, value_expr) in fields {
+        let value = eval_expr(value_expr, env, sibling_fns)?;
+        map.insert(key.clone(), value);
+    }
+    Err(EvalError::early_return(map))
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -1490,34 +1523,6 @@ fn get_arg_expr<'a>(
     }
     // Fall back to positional
     args.get(index).map(|(_, expr)| expr)
-}
-
-/// Convert a `serde_json::Value` to a `Value` for the evaluator environment.
-/// Recursively converts objects to `Value::Map` and arrays to `Value::List`
-/// so that field access and collection operations work on data declarations.
-fn json_to_eval_value(json: &serde_json::Value) -> Value {
-    match json {
-        serde_json::Value::Null => Value::Unit,
-        serde_json::Value::Bool(b) => Value::Bool(*b),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Value::Int(i)
-            } else if let Some(f) = n.as_f64() {
-                Value::Float(f)
-            } else {
-                Value::Str(n.to_string())
-            }
-        }
-        serde_json::Value::String(s) => Value::Str(s.clone()),
-        serde_json::Value::Array(arr) => {
-            Value::List(arr.iter().map(json_to_eval_value).collect())
-        }
-        serde_json::Value::Object(map) => {
-            let btree: BTreeMap<String, Value> =
-                map.iter().map(|(k, v)| (k.clone(), json_to_eval_value(v))).collect();
-            Value::Map(btree)
-        }
-    }
 }
 
 fn record_update(base: &Value, updates: &Value) -> Result<Value, EvalError> {

@@ -598,7 +598,7 @@ fn emit_method_call(receiver: Expr, method: String, args: List<NamedArg>, regist
       recv_str + ".chars().map(|c| c.to_string()).collect::<Vec<_>>()"
     } else {
       // Generic method call
-      let arg_strs = args |> map(a => emit_call_arg(arg: a))
+      let arg_strs = args |> map(a => emit_call_arg(arg: a, registry: registry))
       let args_str = arg_strs |> join(separator: ", ")
       recv_str + "." + rust_ident(name: method) + "(" + args_str + ")"
     }
@@ -606,9 +606,9 @@ fn emit_method_call(receiver: Expr, method: String, args: List<NamedArg>, regist
 }
 
 // Extract and emit the first argument from a named arg list, or empty string if no args.
-fn emit_first_arg(args: List<NamedArg>) -> String {
+fn emit_first_arg(args: List<NamedArg>, registry: List<ItemInfo>) -> String {
   match args |> first {
-    Some { value: a } => emit_call_arg(arg: a)
+    Some { value: a } => emit_call_arg(arg: a, registry: registry)
     None => "\"\""
   }
 }
@@ -617,20 +617,20 @@ fn emit_first_arg(args: List<NamedArg>) -> String {
 // Match emission
 // =========================================================================
 
-fn emit_match(scrutinee: Expr, arms: List<MatchArm>) -> String {
-  let scrut_str = emit_expr(expr: scrutinee)
-  let arm_strs = arms |> map(arm => emit_match_arm(arm: arm))
+fn emit_match(scrutinee: Expr, arms: List<MatchArm>, registry: List<ItemInfo>) -> String {
+  let scrut_str = emit_expr(expr: scrutinee, registry: registry)
+  let arm_strs = arms |> map(arm => emit_match_arm(arm: arm, registry: registry))
   let arms_str = arm_strs |> join(separator: "\n")
   "match " + scrut_str + " {\n" + arms_str + "\n}"
 }
 
-fn emit_match_arm(arm: MatchArm) -> String {
+fn emit_match_arm(arm: MatchArm, registry: List<ItemInfo>) -> String {
   let pat_str = emit_pattern(pattern: arm.pattern)
   let guard_str = match arm.guard {
-    Some { value: g } => " if " + emit_expr(expr: g)
+    Some { value: g } => " if " + emit_expr(expr: g, registry: registry)
     None => ""
   }
-  let body_str = emit_expr(expr: arm.body)
+  let body_str = emit_expr(expr: arm.body, registry: registry)
   "    " + pat_str + guard_str + " => " + body_str + ","
 }
 
@@ -661,12 +661,12 @@ fn emit_variant_pattern(name: String, field_bindings: List<FieldBinding>) -> Str
 // If/else emission
 // =========================================================================
 
-fn emit_if(condition: Expr, then_branch: Expr, else_branch: Expr?) -> String {
-  let cond_str = emit_expr(expr: condition)
-  let then_str = emit_expr(expr: then_branch)
+fn emit_if(condition: Expr, then_branch: Expr, else_branch: Expr?, registry: List<ItemInfo>) -> String {
+  let cond_str = emit_expr(expr: condition, registry: registry)
+  let then_str = emit_expr(expr: then_branch, registry: registry)
   match else_branch {
     Some { value: eb } => {
-      let else_str = emit_expr(expr: eb)
+      let else_str = emit_expr(expr: eb, registry: registry)
       "if " + cond_str + " {\n"
         + indent(text: then_str, level: 1) + "\n} else {\n"
         + indent(text: else_str, level: 1) + "\n}"
@@ -681,12 +681,12 @@ fn emit_if(condition: Expr, then_branch: Expr, else_branch: Expr?) -> String {
 // Let binding emission
 // =========================================================================
 
-fn emit_let(name: String, value: Expr, body: Expr?) -> String {
-  let val_str = emit_expr(expr: value)
+fn emit_let(name: String, value: Expr, body: Expr?, registry: List<ItemInfo>) -> String {
+  let val_str = emit_expr(expr: value, registry: registry)
   let let_line = "let " + rust_ident(name: name) + " = " + val_str + ";"
   match body {
     Some { value: bd } =>
-      let_line + "\n" + emit_expr(expr: bd)
+      let_line + "\n" + emit_expr(expr: bd, registry: registry)
     None => let_line
   }
 }
@@ -695,7 +695,7 @@ fn emit_let(name: String, value: Expr, body: Expr?) -> String {
 // Record literal emission
 // =========================================================================
 
-fn emit_record_lit(type_name: String?, fields: List<FieldInit>) -> String {
+fn emit_record_lit(type_name: String?, fields: List<FieldInit>, registry: List<ItemInfo>) -> String {
   let prefix = match type_name {
     Some { value: tn } => tn + " "
     None => ""
@@ -704,7 +704,7 @@ fn emit_record_lit(type_name: String?, fields: List<FieldInit>) -> String {
     prefix + "{}"
   } else {
     let field_strs = fields |> map(f =>
-      "    " + rust_ident(name: f.name) + ": " + emit_expr(expr: f.value) + ","
+      "    " + rust_ident(name: f.name) + ": " + emit_expr(expr: f.value, registry: registry) + ","
     )
     let fields_str = field_strs |> join(separator: "\n")
     prefix + "{\n" + fields_str + "\n}"
@@ -715,11 +715,11 @@ fn emit_record_lit(type_name: String?, fields: List<FieldInit>) -> String {
 // List literal emission
 // =========================================================================
 
-fn emit_list_lit(elements: List<Expr>) -> String {
+fn emit_list_lit(elements: List<Expr>, registry: List<ItemInfo>) -> String {
   if elements |> count == 0 {
     "vec![]"
   } else {
-    let el_strs = elements |> map(e => emit_expr(expr: e))
+    let el_strs = elements |> map(e => emit_expr(expr: e, registry: registry))
     let els_str = el_strs |> join(separator: ", ")
     "vec![" + els_str + "]"
   }
@@ -729,9 +729,9 @@ fn emit_list_lit(elements: List<Expr>) -> String {
 // Binary operator emission
 // =========================================================================
 
-fn emit_bin_op(op: BinOpKind, left: Expr, right: Expr) -> String {
-  let l_str = emit_expr(expr: left)
-  let r_str = emit_expr(expr: right)
+fn emit_bin_op(op: BinOpKind, left: Expr, right: Expr, registry: List<ItemInfo>) -> String {
+  let l_str = emit_expr(expr: left, registry: registry)
+  let r_str = emit_expr(expr: right, registry: registry)
   if is_null_coalesce_op(op: op) {
     // x ?? y  →  x.unwrap_or_else(|| y)
     l_str + ".unwrap_or_else(|| " + r_str + ")"
@@ -782,8 +782,8 @@ fn is_null_coalesce_op(op: BinOpKind) -> Bool {
 // Unary operator emission
 // =========================================================================
 
-fn emit_unary_op(op: UnaryOpKind, operand: Expr) -> String {
-  let expr_str = emit_expr(expr: operand)
+fn emit_unary_op(op: UnaryOpKind, operand: Expr, registry: List<ItemInfo>) -> String {
+  let expr_str = emit_expr(expr: operand, registry: registry)
   match op {
     Not => "!" + expr_str
     Neg => "-" + expr_str
@@ -794,10 +794,10 @@ fn emit_unary_op(op: UnaryOpKind, operand: Expr) -> String {
 // Lambda emission
 // =========================================================================
 
-fn emit_lambda(params: List<String>, body: Expr) -> String {
+fn emit_lambda(params: List<String>, body: Expr, registry: List<ItemInfo>) -> String {
   let param_strs = params |> map(p => rust_ident(name: p))
   let params_str = param_strs |> join(separator: ", ")
-  let body_str = emit_expr(expr: body)
+  let body_str = emit_expr(expr: body, registry: registry)
   "|" + params_str + "| " + body_str
 }
 
@@ -805,8 +805,8 @@ fn emit_lambda(params: List<String>, body: Expr) -> String {
 // String interpolation emission
 // =========================================================================
 
-fn emit_string_interp(parts: List<StringPart>) -> String {
-  let fmt_parts = parts |> map(p => interp_format_part(part: p))
+fn emit_string_interp(parts: List<StringPart>, registry: List<ItemInfo>) -> String {
+  let fmt_parts = parts |> map(p => interp_format_part(part: p, registry: registry))
   let fmt_str = fmt_parts |> map(p => p.format_segment) |> join(separator: "")
   let args = fmt_parts
     |> map(p => p.arg_expr)
@@ -825,7 +825,7 @@ type InterpPart {
   arg_expr: String
 }
 
-fn interp_format_part(part: StringPart) -> InterpPart {
+fn interp_format_part(part: StringPart, registry: List<ItemInfo>) -> InterpPart {
   match part {
     Text { value: v } =>
       // Escape braces in format strings
@@ -835,7 +835,7 @@ fn interp_format_part(part: StringPart) -> InterpPart {
         |> split(delimiter: "}") |> join(separator: "}}")
       InterpPart { format_segment: escaped2, arg_expr: "" }
     Interpolation { expr: e } =>
-      InterpPart { format_segment: "{}", arg_expr: emit_expr(expr: e) }
+      InterpPart { format_segment: "{}", arg_expr: emit_expr(expr: e, registry: registry) }
   }
 }
 
@@ -843,8 +843,8 @@ fn interp_format_part(part: StringPart) -> InterpPart {
 // Block emission
 // =========================================================================
 
-fn emit_block(stmts: List<Expr>) -> String {
-  let stmt_strs = stmts |> map(s => emit_expr(expr: s))
+fn emit_block(stmts: List<Expr>, registry: List<ItemInfo>) -> String {
+  let stmt_strs = stmts |> map(s => emit_expr(expr: s, registry: registry))
   let body = stmt_strs |> join(separator: "\n")
   "{\n" + indent(text: body, level: 1) + "\n}"
 }
@@ -853,8 +853,8 @@ fn emit_block(stmts: List<Expr>) -> String {
 // Cast emission
 // =========================================================================
 
-fn emit_cast(expr: Expr, target: TypeExpr) -> String {
-  let expr_str = emit_expr(expr: expr)
+fn emit_cast(expr: Expr, target: TypeExpr, registry: List<ItemInfo>) -> String {
+  let expr_str = emit_expr(expr: expr, registry: registry)
   let ty_str = emit_type_expr(type_expr: target)
   expr_str + " as " + ty_str
 }
@@ -872,11 +872,12 @@ fn emit_service_def(
   name: String,
   transport: TransportBinding,
   config: ServiceConfig?,
-  operations: List<OperationDef>
+  operations: List<OperationDef>,
+  registry: List<ItemInfo>
 ) -> String {
   let safe_name = sanitize_service_name(name: name)
   let struct_def = emit_service_struct(name: safe_name, transport: transport, config: config)
-  let impl_block = emit_service_impl(name: safe_name, transport: transport, operations: operations)
+  let impl_block = emit_service_impl(name: safe_name, transport: transport, operations: operations, registry: registry)
   struct_def + "\n\n" + impl_block
 }
 
@@ -905,15 +906,15 @@ fn emit_service_config_fields(transport: TransportBinding, config: ServiceConfig
   }
 }
 
-fn emit_service_impl(name: String, transport: TransportBinding, operations: List<OperationDef>) -> String {
+fn emit_service_impl(name: String, transport: TransportBinding, operations: List<OperationDef>, registry: List<ItemInfo>) -> String {
   let method_strs = operations |> map(op =>
-    emit_operation_method(service_name: name, transport: transport, operation: op)
+    emit_operation_method(service_name: name, transport: transport, operation: op, registry: registry)
   )
   let methods_str = method_strs |> join(separator: "\n\n")
   "impl " + name + " {\n" + indent(text: methods_str, level: 1) + "\n}"
 }
 
-fn emit_operation_method(service_name: String, transport: TransportBinding, operation: OperationDef) -> String {
+fn emit_operation_method(service_name: String, transport: TransportBinding, operation: OperationDef, registry: List<ItemInfo>) -> String {
   let input_params = operation.inputs |> map(f =>
     rust_ident(name: f.name) + ": " + emit_field_type(field: f)
   )
@@ -924,7 +925,7 @@ fn emit_operation_method(service_name: String, transport: TransportBinding, oper
     "&self, " + params_str
   }
   let ret_type = emit_operation_return_type(outputs: operation.outputs)
-  let body = emit_transport_call(transport: transport, operation: operation)
+  let body = emit_transport_call(transport: transport, operation: operation, registry: registry)
   "pub async fn " + rust_ident(name: operation.name)
     + "(" + all_params + ") -> Result<" + ret_type + ", Box<dyn std::error::Error>> {\n"
     + indent(text: body, level: 1) + "\n}"
@@ -946,12 +947,12 @@ fn emit_operation_return_type(outputs: List<Field>) -> String {
   }
 }
 
-fn emit_transport_call(transport: TransportBinding, operation: OperationDef) -> String {
+fn emit_transport_call(transport: TransportBinding, operation: OperationDef, registry: List<ItemInfo>) -> String {
   match transport {
     RestBinding { base_url: _, auth: a, headers: hs } =>
-      emit_rest_call(operation: operation, auth: a, headers: hs)
+      emit_rest_call(operation: operation, auth: a, headers: hs, registry: registry)
     ShellBinding { argv: _, env: envs } =>
-      emit_shell_call(operation: operation, env: envs)
+      emit_shell_call(operation: operation, env: envs, registry: registry)
     FileBinding { base_path: _ } =>
       emit_file_call(operation: operation)
     LocalBinding =>
@@ -959,7 +960,7 @@ fn emit_transport_call(transport: TransportBinding, operation: OperationDef) -> 
   }
 }
 
-fn emit_rest_call(operation: OperationDef, auth: AuthConfig?, headers: List<HeaderDef>) -> String {
+fn emit_rest_call(operation: OperationDef, auth: AuthConfig?, headers: List<HeaderDef>, registry: List<ItemInfo>) -> String {
   let client_init = "let client = reqwest::Client::new();"
   let url_line = "let url = format!(\"{}/{}\", self.base_url, \""
     + rust_ident(name: operation.name) + "\");"
@@ -972,7 +973,7 @@ fn emit_rest_call(operation: OperationDef, auth: AuthConfig?, headers: List<Head
   }
   let header_lines = headers |> map(h =>
     "let request = request.header(\"" + h.name + "\", "
-      + emit_expr(expr: h.value) + ");"
+      + emit_expr(expr: h.value, registry: registry) + ");"
   )
   let send_line = "let response = request.send().await?;"
   let parse_line = "let result = response.json().await?;"
@@ -982,11 +983,11 @@ fn emit_rest_call(operation: OperationDef, auth: AuthConfig?, headers: List<Head
   all_lines |> join(separator: "\n")
 }
 
-fn emit_shell_call(operation: OperationDef, env: List<EnvDef>) -> String {
+fn emit_shell_call(operation: OperationDef, env: List<EnvDef>, registry: List<ItemInfo>) -> String {
   let cmd_line = "let output = std::process::Command::new(\""
     + rust_ident(name: operation.name) + "\")"
   let env_lines = env |> map(e =>
-    "    .env(\"" + e.name + "\", " + emit_expr(expr: e.value) + ")"
+    "    .env(\"" + e.name + "\", " + emit_expr(expr: e.value, registry: registry) + ")"
   )
   let wd_line = "    .current_dir(self.working_dir.as_deref().unwrap_or(\".\"))"
   let output_line = "    .output()?;"
@@ -1059,11 +1060,11 @@ fn emit_capability_return_type(outputs: List<Field>) -> String {
 // lazy_static or a function that returns the value.
 // =========================================================================
 
-fn emit_data_def(name: String, type_expr: TypeExpr, value: Expr) -> String {
+fn emit_data_def(name: String, type_expr: TypeExpr, value: Expr, registry: List<ItemInfo>) -> String {
   let ty_str = emit_type_expr(type_expr: type_expr)
   let upper_name = to_screaming_snake(name: name)
   if is_simple_type(type_expr: type_expr) {
-    let val_str = emit_expr(expr: value)
+    let val_str = emit_expr(expr: value, registry: registry)
     "pub const " + upper_name + ": " + ty_str + " = " + val_str + ";"
   } else if has_nested_records(type_expr: type_expr) {
     // Complex data with nested anonymous records → serde deserialization
@@ -1074,7 +1075,7 @@ fn emit_data_def(name: String, type_expr: TypeExpr, value: Expr) -> String {
       + "}"
   } else {
     // Complex types use lazy_static for heap-allocated values
-    let val_str = emit_expr(expr: value)
+    let val_str = emit_expr(expr: value, registry: registry)
     "lazy_static::lazy_static! {\n"
       + "    pub static ref " + upper_name + ": " + ty_str + " = " + val_str + ";\n"
       + "}"
@@ -1103,7 +1104,7 @@ fn emit_test_file(typed_module: TypedModule) -> TextFile {
   let m = typed_module.module
   let service_items = m.items |> filter(item => is_service_item(item: item))
   let test_fns = service_items
-    |> map(item => emit_service_tests(item: item))
+    |> map(item => emit_service_tests(item: item, registry: []))
     |> fold(init: [], f: fn(acc, tests) { acc + tests })
   if test_fns |> count == 0 {
     TextFile { path: "", content: "" }
@@ -1127,22 +1128,22 @@ fn is_service_item(item: Item) -> Bool {
   }
 }
 
-fn emit_service_tests(item: Item) -> List<String> {
+fn emit_service_tests(item: Item, registry: List<ItemInfo>) -> List<String> {
   match item {
     ServiceDef { name: sn, transport: _, config: _, operations: ops, span: _ } => {
       let safe_name = sanitize_service_name(name: sn)
       ops
         |> filter(op => op.mock_response |> count > 0)
-        |> map(op => emit_operation_test(service_name: safe_name, operation: op))
+        |> map(op => emit_operation_test(service_name: safe_name, operation: op, registry: registry))
     }
     _ => []
   }
 }
 
-fn emit_operation_test(service_name: String, operation: OperationDef) -> String {
+fn emit_operation_test(service_name: String, operation: OperationDef, registry: List<ItemInfo>) -> String {
   let test_name = "test_" + to_snake(name: service_name) + "_" + to_snake(name: operation.name)
   let mock_setup = operation.mock_response |> map(mr =>
-    emit_mock_response_setup(mock: mr)
+    emit_mock_response_setup(mock: mr, registry: registry)
   )
   let mock_str = mock_setup |> join(separator: "\n")
   "#[tokio::test]\nasync fn " + test_name + "() {\n"
@@ -1151,9 +1152,9 @@ fn emit_operation_test(service_name: String, operation: OperationDef) -> String 
     + "}"
 }
 
-fn emit_mock_response_setup(mock: MockResponseDef) -> String {
-  let status_str = emit_expr(expr: mock.status)
-  let body_str = emit_expr(expr: mock.body)
+fn emit_mock_response_setup(mock: MockResponseDef, registry: List<ItemInfo>) -> String {
+  let status_str = emit_expr(expr: mock.status, registry: registry)
+  let body_str = emit_expr(expr: mock.body, registry: registry)
   let desc = match mock.description {
     Some { value: d } => "// " + d + "\n"
     None => ""

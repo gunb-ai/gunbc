@@ -168,7 +168,7 @@ mod tests {
                             &HashMap::new(),
                         ) {
                             if let Some(val) = result.get("return") {
-                                data_values.insert(dd.name.clone(), value_to_json(val));
+                                data_values.insert(dd.name.clone(), val.clone());
                             }
                         }
                     }
@@ -511,12 +511,11 @@ fn foo(item: String) -> String {
                         fns.insert(fndef.name.clone(), lowered);
                     }
                     daglang_syntax::ast::Item::DataDef(dd) => {
-                        // Lower data declarations to JSON values
+                        // Lower data declarations to Value directly (no JSON round-trip)
                         {
                             let expr = &dd.value;
                             let lowered_expr =
                                 daglang_lower::expr::lower_expr_remap(expr, &variant_names);
-                            // Evaluate the data expression to get a serde_json::Value
                             let body = daglang_eval::LoweredFnBody {
                                 stmts: vec![daglang_eval::LoweredStmt::Return(vec![(
                                     "return".to_string(),
@@ -532,7 +531,7 @@ fn foo(item: String) -> String {
                                     if let Some(val) = result.get("return") {
                                         data_values.insert(
                                             dd.name.clone(),
-                                            value_to_json(val),
+                                            val.clone(),
                                         );
                                     }
                                 }
@@ -623,14 +622,14 @@ fn foo(item: String) -> String {
     fn phase1_keywords_data_shape() {
         let output = compile_tokenizer_module().expect("compilation should succeed");
         let kw = output.data_values.get("keywords").expect("keywords should exist");
-        let kw_str = serde_json::to_string_pretty(kw).unwrap();
-        eprintln!("[diag] keywords JSON ({} chars):\n{}", kw_str.len(), &kw_str[..kw_str.len().min(500)]);
+        let kw_str = format!("{:?}", kw);
+        eprintln!("[diag] keywords ({} chars):\n{}", kw_str.len(), &kw_str[..kw_str.len().min(500)]);
 
         let sp = output.data_values.get("single_punct");
         eprintln!("[diag] single_punct present: {}", sp.is_some());
         if let Some(sp_val) = sp {
-            let sp_str = serde_json::to_string_pretty(sp_val).unwrap();
-            eprintln!("[diag] single_punct JSON:\n{}", &sp_str[..sp_str.len().min(500)]);
+            let sp_str = format!("{:?}", sp_val);
+            eprintln!("[diag] single_punct:\n{}", &sp_str[..sp_str.len().min(500)]);
         }
     }
 

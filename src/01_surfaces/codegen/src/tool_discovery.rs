@@ -361,18 +361,18 @@ fn dsl_params_to_cached(
 }
 
 fn declared_output_paths(
-    data_values: &std::collections::HashMap<String, serde_json::Value>,
+    data_values: &std::collections::HashMap<String, gunbc_ir::Value>,
 ) -> Result<Vec<String>, String> {
     let Some(value) = data_values.get("output_paths") else {
         return Ok(Vec::new());
     };
-    let serde_json::Value::Array(items) = value else {
+    let gunbc_ir::Value::List(items) = value else {
         return Err("data output_paths must be a List<String>".to_string());
     };
     let mut output_paths = Vec::with_capacity(items.len());
     for item in items {
         match item {
-            serde_json::Value::String(path) => output_paths.push(path.clone()),
+            gunbc_ir::Value::Str(path) => output_paths.push(path.clone()),
             _ => return Err("data output_paths must contain only strings".to_string()),
         }
     }

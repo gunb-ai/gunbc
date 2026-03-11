@@ -69,7 +69,7 @@ impl CompileOutput {
     /// Data declarations are embedded as `CallLiteralSource` nodes with
     /// `__data_decl::` prefixed IDs during lowering. This method extracts
     /// them without requiring a separate sidecar field.
-    pub fn data_values(&self) -> HashMap<String, serde_json::Value> {
+    pub fn data_values(&self) -> HashMap<String, gunbc_ir::Value> {
         daglang_lower::extract_data_values_from_dag(self.lowered_dag.as_dag())
     }
 
@@ -688,7 +688,7 @@ pub struct PipelineStageInfo {
 /// Output from compiling embedded DSL sources.
 #[derive(Debug)]
 pub struct EmbeddedCompileOutput {
-    pub data_values: HashMap<String, serde_json::Value>,
+    pub data_values: HashMap<String, gunbc_ir::Value>,
     pub fns: HashMap<String, daglang_lower::LoweredFnBody>,
     /// Pipeline definitions extracted from parsed AST, keyed by pipeline name.
     pub pipelines: HashMap<String, Vec<PipelineStageInfo>>,
