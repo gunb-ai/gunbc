@@ -105,13 +105,30 @@ fn eval_fn_body_once(
         }
     }
 
-    let last_stmt = body.stmts.last();
+    eval_stmts(&body.stmts, &mut env, sibling_fns, true)
+}
 
-    for stmt in &body.stmts {
+/// Shared statement evaluation loop used by both fn body execution and
+/// block expression evaluation. Single implementation — no parallel copies.
+///
+/// `allow_tco`: when true, the last Expr stmt and Return stmts evaluate
+/// their expressions in tail context (enabling self-recursive trampolining).
+/// Block scopes pass `true` so that tail calls inside blocks propagate
+/// correctly to the enclosing function's trampoline.
+fn eval_stmts(
+    stmts: &[LoweredStmt],
+    env: &mut Env,
+    sibling_fns: &HashMap<String, LoweredFnBody>,
+    allow_tco: bool,
+) -> Result<HashMap<String, Value>, EvalError> {
+    let last_stmt = stmts.last();
+
+    for stmt in stmts {
         let is_last = last_stmt.is_some_and(|l| std::ptr::eq(stmt, l));
+        let tail_ctx = allow_tco && is_last;
         match stmt {
             LoweredStmt::Let(name, expr) => {
-                let value = match eval_expr(expr, &env, sibling_fns) {
+                let value = match eval_expr(expr, env, sibling_fns) {
                     Ok(v) => v,
                     Err(e) if e.early_return.is_some() => {
                         return Ok(e.early_return.unwrap());
@@ -143,7 +160,7 @@ fn eval_fn_body_once(
             }
             LoweredStmt::Expr(expr) => {
                 // Last expression stmt is in tail position.
-                match eval_expr_tc(expr, &env, sibling_fns, is_last) {
+                match eval_expr_tc(expr, env, sibling_fns, tail_ctx) {
                     Ok(value) => {
                         // If this is the last statement and produces a value, capture as "return"
                         if is_last {
@@ -167,14 +184,14 @@ fn eval_fn_body_once(
             }
             LoweredStmt::Return(fields) => {
                 // Return stmt is always in tail position.
-                if fields.len() == 1 {
+                if allow_tco && fields.len() == 1 {
                     let (name, expr) = &fields[0];
-                    let value = eval_expr_tc(expr, &env, sibling_fns, true)?;
+                    let value = eval_expr_tc(expr, env, sibling_fns, true)?;
                     return Ok([(name.clone(), value)].into_iter().collect());
                 }
                 let mut result = HashMap::new();
                 for (name, expr) in fields {
-                    let value = eval_expr(expr, &env, sibling_fns)?;
+                    let value = eval_expr(expr, env, sibling_fns)?;
                     result.insert(name.clone(), value);
                 }
                 return Ok(result);
@@ -895,10 +912,8 @@ fn eval_expr_tc(
         }
 
         LoweredExpr::Block(stmts) => {
-            let body = LoweredFnBody {
-                stmts: stmts.clone(),
-            };
-            let outputs = evaluate_block_body(&body, env, sibling_fns)?;
+            let mut child_env = env.child();
+            let outputs = eval_stmts(stmts, &mut child_env, sibling_fns, tail_ctx)?;
             if outputs.len() == 1 {
                 if let Some(value) = outputs.get("return") {
                     return Ok(value.clone());
@@ -960,72 +975,6 @@ fn eval_expr_tc(
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
-
-fn evaluate_block_body(
-    body: &LoweredFnBody,
-    env: &Env,
-    sibling_fns: &HashMap<String, LoweredFnBody>,
-) -> Result<HashMap<String, Value>, EvalError> {
-    let mut child_env = env.child();
-
-    for stmt in &body.stmts {
-        match stmt {
-            LoweredStmt::Let(name, expr) => {
-                let value = match eval_expr(expr, &child_env, sibling_fns) {
-                    Ok(v) => v,
-                    Err(e) if e.early_return.is_some() => return Err(e),
-                    Err(e) => return Err(e),
-                };
-                match &value {
-                    Value::Map(fields) => {
-                        for (field_name, field_value) in fields {
-                            child_env.bind(format!("{name}__{field_name}"), field_value.clone());
-                        }
-                    }
-                    Value::Json(serde_json::Value::Object(map)) => {
-                        for (field_name, field_value) in map {
-                            child_env.bind(
-                                format!("{name}__{field_name}"),
-                                Value::Json(field_value.clone()),
-                            );
-                        }
-                    }
-                    _ => {}
-                }
-                child_env.bind(name.clone(), value);
-            }
-            LoweredStmt::Expr(expr) => {
-                match eval_expr(expr, &child_env, sibling_fns) {
-                    Ok(value) => {
-                        if std::ptr::eq(stmt, body.stmts.last().unwrap()) {
-                            if let Value::Map(map) = &value {
-                                let mut result = HashMap::new();
-                                for (k, v) in map {
-                                    result.insert(k.clone(), v.clone());
-                                }
-                                return Ok(result);
-                            }
-                            return Ok([("return".to_string(), value)].into_iter().collect());
-                        }
-                    }
-                    Err(e) if e.early_return.is_some() => return Err(e),
-                    Err(e) => return Err(e),
-                }
-            }
-            LoweredStmt::Return(fields) => {
-                let mut result = HashMap::new();
-                for (name, expr) in fields {
-                    let value = eval_expr(expr, &child_env, sibling_fns)?;
-                    result.insert(name.clone(), value);
-                }
-                // Propagate as early return so enclosing fn body exits
-                return Err(EvalError::early_return(result));
-            }
-        }
-    }
-
-    Ok([("return".to_string(), Value::Unit)].into_iter().collect())
-}
 
 fn eval_literal(lit: &LoweredLiteral) -> Value {
     match lit {
