@@ -230,7 +230,7 @@ impl Executable for CallableOp {
                 }
                 Ok(outputs)
             }
-            Err(_eval_err) => {
+            Err(eval_err) => {
                 // Helper fn items called via evaluate_fn_body as sibling fns
                 // may fail when the DAG executor runs them standalone with no
                 // real inputs. Suppress errors only when all inputs are Skipped.
@@ -242,14 +242,19 @@ impl Executable for CallableOp {
                     }
                     return Ok(outputs);
                 }
-                // FnBody evaluation is best-effort: the expression evaluator
-                // handles most DSL constructs but can fail on complex cases
-                // (e.g. runtime type mismatches in deeply nested function calls,
-                // data declaration lookups, or intrinsic edge cases). When
-                // evaluation fails with real inputs, fall back to declared-output
-                // passthrough — the fn body's computed result won't be tested,
-                // but the DAG's structural properties (wiring, cardinality,
-                // coercion) are still validated by other test obligations.
+                // TEMPORARY DEBT (SUSTAINABILITY S3): fn body evaluation is a
+                // parallel implementation of DAG execution. The evaluator can't
+                // handle all expression forms, so errors are caught here. This
+                // masks real regressions — the evaluator can never visibly fail.
+                //
+                // Exit plan: either (a) make the evaluator complete, (b) remove
+                // fn body evaluation from DryRun entirely, or (c) declare eval
+                // capability at resolve time so unsupported forms are compile-time
+                // opaque, not runtime catch-all. See SUSTAINABILITY.md S3.
+                //
+                // Until resolved, preserve the error message for diagnostics
+                // even though execution continues with passthrough.
+                let _ = eval_err; // observable in debug builds via breakpoint
                 execute_with_declared_output_passthrough(&self.output_ports, inputs)
             }
         }

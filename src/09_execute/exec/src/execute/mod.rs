@@ -716,10 +716,14 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
             }
         }
 
-        // Default list-cardinality inputs to empty when still missing.
-        // List ports allow zero elements (zero upstream edges is valid).
+        // Default list-cardinality inputs to empty when still missing,
+        // but only if the cardinality allows empty (min == 0).
+        // Non-empty list ports ([1,∞)) must not silently receive [].
         for port in &node.inputs {
-            if port.cardinality.is_list() && !inputs.contains_key(&port.name.0) {
+            if port.cardinality.is_list()
+                && port.cardinality.allows_empty()
+                && !inputs.contains_key(&port.name.0)
+            {
                 inputs.insert(port.name.0.clone(), Value::List(vec![]));
             }
         }
@@ -1310,7 +1314,10 @@ fn build_node_inputs<T>(
     }
 
     for port in &node.inputs {
-        if port.cardinality.is_list() && !inputs.contains_key(&port.name.0) {
+        if port.cardinality.is_list()
+            && port.cardinality.allows_empty()
+            && !inputs.contains_key(&port.name.0)
+        {
             inputs.insert(port.name.0.clone(), Value::List(vec![]));
         }
     }

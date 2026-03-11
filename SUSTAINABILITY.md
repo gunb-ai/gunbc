@@ -6,17 +6,40 @@ many files need editing? The sustainable compiler is one where that
 number is 1.
 
 Fixing individual symptoms is itself unsustainable if they share a root
-cause. This ledger is organized as **causal trees**: root causes at the
-top, symptoms underneath. Fixing a root cause eliminates its entire
-subtree. Fixing a symptom without its root cause means new symptoms will
-keep appearing.
+cause. This ledger is organized as a **causal tree**: deeper roots
+subsume shallower ones. Fixing a root eliminates its entire subtree.
 
 See `src/README.md` for the invariants and `POSTMORTEM.md` FC-7 for
 the history.
 
 ---
 
-## Root cause 1: TypeId is deferred computation
+## Deep root: Incomplete compile-time resolution
+
+The compiler doesn't fully resolve information at compile time. Types
+are referenced by string names (`TypeId`) instead of embedded structure.
+Classification uses string matching instead of structural queries.
+Rust code redeclares facts the DSL already defines because it can't
+read compiled DSL output.
+
+Every "root cause" below is a facet of this:
+- **TypeId** = type information not resolved into structure
+- **String enumeration** = type/operation properties not resolved into structure
+- **DSL/Rust duplication** = DSL compilation output not accessible to Rust code
+
+And the reason these persist: **no boundary contracts** between pipeline
+stages catch the unresolved information, so fabrication fallbacks mask
+it indefinitely.
+
+**Terminal state:** The compiler fully resolves all references at
+compile time. Ports embed type structure, not string names.
+Classification derives from structure, not name patterns. Rust code
+reads from DSL-compiled artifacts, not parallel declarations. Each
+pipeline boundary validates that its output is fully resolved.
+
+---
+
+### Branch 1: TypeId is deferred computation
 
 `Port.type_id` is a string (`TypeId("ResourceHandle")`) that requires
 a `TypeRegistry` lookup to resolve into structural information. The
@@ -32,7 +55,7 @@ SubDag or DAG-internal node reference). The compiler resolves all type
 references at compile time. No registry at runtime. TypeId becomes
 unnecessary. (TypeId appears in 19 files today.)
 
-### Symptoms:
+#### Symptoms:
 
 **S1: `register_core_types()` duplicates .dag definitions.**
 Cost: 2 places per type. Already diverged (Credential).
@@ -59,7 +82,7 @@ Cost: 1 match arm per semantic type, 50+ arms.
 
 ---
 
-## Root cause 2: Parallel implementations of the same computation
+### Branch 2: Parallel implementations
 
 When the same computation exists in two forms, they diverge as the
 language evolves. The one that lags gets masked by a fallback.
@@ -67,7 +90,7 @@ language evolves. The one that lags gets masked by a fallback.
 **Terminal state:** Each computation has exactly one implementation.
 Fn body evaluation either works completely or doesn't exist for DryRun.
 
-### Symptoms:
+#### Symptoms:
 
 **S3: FnBodyEvalCallableOp catch-all passthrough.**
 The fn body evaluator and the DAG executor are parallel implementations.
@@ -86,7 +109,7 @@ Fix: transport trait with `prepare()` and `parse()` methods.
 
 ---
 
-## Root cause 3: Open-set enumeration by string
+### Branch 3: Open-set enumeration by string
 
 When behavior varies by type/variant/category, code uses match arms
 on string names instead of structural walks. Every new case requires
@@ -96,7 +119,7 @@ updating every match, and the compiler can't tell you which you missed.
 annotations. String matching only for closed sets (compiler-enforced
 enum variants).
 
-### Symptoms:
+#### Symptoms:
 
 **S11: Collection operations require 5 edits each.**
 `builtin_method_sigs` + `collection_op_kind()` + `CollectionKind::from_name()`
@@ -123,7 +146,7 @@ Fix: derive from `ValueBacking` (3 rules replace 20 arms).
 
 ---
 
-## Root cause 4: DSL/Rust boundary duplication
+### Branch 4: DSL/Rust boundary duplication
 
 When a concept is defined in both the DSL and Rust, the two
 representations diverge. The DSL definition should be authoritative
@@ -132,7 +155,7 @@ for all type-level facts.
 **Terminal state:** Rust code reads from DSL-compiled artifacts.
 No parallel Rust definitions of facts the DSL already encodes.
 
-### Symptoms:
+#### Symptoms:
 
 **S6: ResourceHandle shape in DSL vs Rust `Into<Value>`.**
 Cost: 2 places per field change. Already diverged (missing `type` field).
@@ -145,7 +168,39 @@ Fix: DSL-definable containers with generic substitution (large).
 
 ---
 
-## Standalone items
+### Branch 5: No boundary contracts (enables all other branches)
+
+Each stage (parse → typecheck → lower → resolve → execute) passes
+complex IR types but the receiving stage's preconditions are implicit.
+When a precondition is violated, the receiving stage compensates with
+a fabrication fallback instead of failing. Every fallback in FC-7
+traces to this: the producing stage didn't guarantee the invariant,
+and no boundary validation caught it.
+
+**Terminal state:** Each boundary has a validation function that
+checks stage N's output against stage N+1's preconditions. Violations
+are compile errors, not runtime degradation.
+
+#### Symptoms:
+
+**S18: No validation that port TypeIds resolve after lowering.**
+A port can reference a type string that no registry contains. The
+executor hits this at runtime and fabricates (Json fallback, mock
+fallback, etc.) instead of the lowerer catching it.
+
+**S19: No validation that Map key types are String after typecheck.**
+Non-String map keys are accepted structurally but fail at runtime
+because `Value::Map` is string-keyed. (Fixed in this PR for typecheck,
+but no cross-boundary test existed to catch it.)
+
+**S20: No validation that non-empty list ports have edges after resolve.**
+A `[1,∞)` port with zero incoming edges silently gets `[]` at
+execution time. (Fixed in this PR with `allows_empty()` guard, but
+no test existed to catch the regression.)
+
+---
+
+### Standalone items
 
 These don't share a root cause with others:
 
@@ -162,7 +217,7 @@ Fix: document.
 
 ---
 
-## Future capabilities (sustainability-motivated)
+## Capabilities that would eliminate branches
 
 Each eliminates a class of liability:
 

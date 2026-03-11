@@ -128,16 +128,15 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> Result<TypeShape, String> {
         if let NodeBody::Opaque(TypeOp::Coproduct(variants)) = &node.body {
             // Extract the type name from the node's output port type_id.
             let type_name = node.outputs.first().map(|p| p.type_id.0.clone());
-            let shaped_variants: Vec<(String, TypeShape)> = variants
-                .iter()
-                .map(|name| {
-                    let child_id = format!("variant_{name}");
-                    let inner = named_subdag(dag, &child_id)
-                        .and_then(|d| type_shape(d).ok())
-                        .unwrap_or_else(|| TypeShape::Opaque(name.clone()));
-                    (name.clone(), inner)
-                })
-                .collect();
+            let mut shaped_variants = Vec::new();
+            for name in variants {
+                let child_id = format!("variant_{name}");
+                let inner = match named_subdag(dag, &child_id) {
+                    Some(d) => type_shape(d)?,
+                    None => TypeShape::Opaque(name.clone()),
+                };
+                shaped_variants.push((name.clone(), inner));
+            }
             return Ok(TypeShape::Coproduct(type_name, shaped_variants));
         }
     }
@@ -147,16 +146,15 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> Result<TypeShape, String> {
         if let NodeBody::Opaque(TypeOp::Product(fields)) = &node.body {
             // Extract the type name from the node's output port type_id.
             let type_name = node.outputs.first().map(|p| p.type_id.0.clone());
-            let shaped_fields: Vec<(String, TypeShape)> = fields
-                .iter()
-                .map(|name| {
-                    let child_id = format!("field_{name}");
-                    let inner = named_subdag(dag, &child_id)
-                        .and_then(|d| type_shape(d).ok())
-                        .unwrap_or_else(|| TypeShape::Opaque(name.clone()));
-                    (name.clone(), inner)
-                })
-                .collect();
+            let mut shaped_fields = Vec::new();
+            for name in fields {
+                let child_id = format!("field_{name}");
+                let inner = match named_subdag(dag, &child_id) {
+                    Some(d) => type_shape(d)?,
+                    None => TypeShape::Opaque(name.clone()),
+                };
+                shaped_fields.push((name.clone(), inner));
+            }
             return Ok(TypeShape::Product(type_name, shaped_fields));
         }
     }
@@ -164,9 +162,10 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> Result<TypeShape, String> {
     // Priority 3: Look for Brand node.
     for node in &dag.nodes {
         if let NodeBody::Opaque(TypeOp::Brand(name)) = &node.body {
-            let inner_shape = inner_subdag(dag)
-                .and_then(|d| type_shape(d).ok())
-                .unwrap_or_else(|| TypeShape::Opaque(name.clone()));
+            let inner_shape = match inner_subdag(dag) {
+                Some(d) => type_shape(d)?,
+                None => TypeShape::Opaque(name.clone()),
+            };
             return Ok(TypeShape::Brand(name.clone(), Box::new(inner_shape)));
         }
     }
@@ -177,9 +176,10 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> Result<TypeShape, String> {
     // classify the container itself as a platform primitive.
     for node in &dag.nodes {
         if let NodeBody::Opaque(TypeOp::Wrap(kind)) = &node.body {
-            let inner_shape = inner_subdag(dag)
-                .and_then(|d| type_shape(d).ok())
-                .unwrap_or(TypeShape::Opaque("Any".to_string()));
+            let inner_shape = match inner_subdag(dag) {
+                Some(d) => type_shape(d)?,
+                None => TypeShape::Opaque("Any".to_string()),
+            };
             return Ok(match kind {
                 WrapperKind::Optional => {
                     TypeShape::Container(ContainerShape::Optional(Box::new(inner_shape)))
@@ -191,12 +191,14 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> Result<TypeShape, String> {
                     TypeShape::Container(ContainerShape::Set(Box::new(inner_shape)))
                 }
                 WrapperKind::Map => {
-                    let key_shape = named_subdag(dag, "key_type")
-                        .and_then(|d| type_shape(d).ok())
-                        .unwrap_or_else(|| TypeShape::Opaque("String".to_string()));
-                    let value_shape = named_subdag(dag, "value_type")
-                        .and_then(|d| type_shape(d).ok())
-                        .unwrap_or(inner_shape);
+                    let key_shape = match named_subdag(dag, "key_type") {
+                        Some(d) => type_shape(d)?,
+                        None => TypeShape::Opaque("String".to_string()),
+                    };
+                    let value_shape = match named_subdag(dag, "value_type") {
+                        Some(d) => type_shape(d)?,
+                        None => inner_shape,
+                    };
                     TypeShape::Container(ContainerShape::Map(
                         Box::new(key_shape),
                         Box::new(value_shape),

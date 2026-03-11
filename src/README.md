@@ -68,6 +68,27 @@ lags will be masked by a fallback (see above).
 **The test:** if a code path exists only to provide a result that
 another code path also produces, one of them should be deleted.
 
+### Explicit boundary contracts
+
+Each stage of the pipeline (parse → typecheck → lower → resolve →
+execute) passes a complex IR type to the next stage. The receiving
+stage's preconditions must be explicit and enforced, not implicit
+expectations that silently degrade when violated.
+
+**The test:** for each boundary, there should be a validation function
+that checks the output of stage N against the preconditions of stage
+N+1. Examples:
+- After typecheck: every type reference resolves, Map keys are String
+- After lower: every port TypeId is registered, no unresolved placeholders
+- After resolve: every DynOp implements Executable, no list ports have
+  cardinality `[1,∞)` with zero incoming edges
+
+Without boundary enforcement, violations propagate silently across
+stages and surface as confusing runtime errors far from their origin.
+Every fabrication fallback in FC-7 existed because a contract was
+implicit — the producing stage didn't guarantee it, and the consuming
+stage compensated with a fallback instead of failing.
+
 ### Single-authority metadata
 
 The compiler should provide all metadata (tool definitions, output

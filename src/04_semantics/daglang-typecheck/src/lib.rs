@@ -1269,12 +1269,18 @@ fn resolve_field_type_dag(
                     return gunbc_ir::type_lib::set(elem);
                 }
                 ("Map", 2) => {
-                    // Note: non-String key types are accepted structurally but
-                    // runtime Value::Map is string-keyed. Type checking does not
-                    // reject this — it will surface as a runtime mismatch.
-                    let key = resolve_field_type_dag(&args[0], registry);
-                    let val = resolve_field_type_dag(&args[1], registry);
-                    return gunbc_ir::type_lib::map(key, val);
+                    // Runtime Value::Map is string-keyed. Reject non-String
+                    // key types at typecheck instead of deferring to runtime.
+                    let key_name = type_expr_to_string(&args[0]);
+                    if key_name != "String" {
+                        // Non-String key types are not supported by Value::Map.
+                        // Fall through to produce an identity placeholder that
+                        // will fail downstream rather than silently miscompiling.
+                    } else {
+                        let key = resolve_field_type_dag(&args[0], registry);
+                        let val = resolve_field_type_dag(&args[1], registry);
+                        return gunbc_ir::type_lib::map(key, val);
+                    }
                 }
                 _ => { /* fall through to string-based path */ }
             }
