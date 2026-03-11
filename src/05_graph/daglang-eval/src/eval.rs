@@ -105,7 +105,7 @@ fn eval_fn_body_once(
         }
     }
 
-    eval_stmts(&body.stmts, &mut env, sibling_fns, true)
+    eval_stmts(&body.stmts, &mut env, sibling_fns, true, true)
 }
 
 /// Shared statement evaluation loop used by both fn body execution and
@@ -113,13 +113,17 @@ fn eval_fn_body_once(
 ///
 /// `allow_tco`: when true, the last Expr stmt and Return stmts evaluate
 /// their expressions in tail context (enabling self-recursive trampolining).
-/// Block scopes pass `true` so that tail calls inside blocks propagate
-/// correctly to the enclosing function's trampoline.
+///
+/// `is_fn_body`: when true, `return` stmts produce `Ok(result)` (we are
+/// the function, and this is our return value). When false, `return` stmts
+/// produce `Err(early_return)` to propagate up through block/if scopes
+/// to the enclosing function body.
 fn eval_stmts(
     stmts: &[LoweredStmt],
     env: &mut Env,
     sibling_fns: &HashMap<String, LoweredFnBody>,
     allow_tco: bool,
+    is_fn_body: bool,
 ) -> Result<HashMap<String, Value>, EvalError> {
     let last_stmt = stmts.last();
 
@@ -183,18 +187,26 @@ fn eval_stmts(
                 }
             }
             LoweredStmt::Return(fields) => {
-                // Return stmt is always in tail position.
+                // Return stmt is always in tail position of the function.
                 if allow_tco && fields.len() == 1 {
                     let (name, expr) = &fields[0];
                     let value = eval_expr_tc(expr, env, sibling_fns, true)?;
-                    return Ok([(name.clone(), value)].into_iter().collect());
+                    if is_fn_body {
+                        return Ok([(name.clone(), value)].into_iter().collect());
+                    }
+                    return Err(EvalError::early_return(
+                        [(name.clone(), value)].into_iter().collect(),
+                    ));
                 }
                 let mut result = HashMap::new();
                 for (name, expr) in fields {
                     let value = eval_expr(expr, env, sibling_fns)?;
                     result.insert(name.clone(), value);
                 }
-                return Ok(result);
+                if is_fn_body {
+                    return Ok(result);
+                }
+                return Err(EvalError::early_return(result));
             }
         }
     }
@@ -916,7 +928,7 @@ fn eval_expr_tc(
 
         LoweredExpr::Block(stmts) => {
             let mut child_env = env.child();
-            let outputs = eval_stmts(stmts, &mut child_env, sibling_fns, tail_ctx)?;
+            let outputs = eval_stmts(stmts, &mut child_env, sibling_fns, tail_ctx, false)?;
             if outputs.len() == 1 {
                 if let Some(value) = outputs.get("return") {
                     return Ok(value.clone());
