@@ -1590,92 +1590,96 @@ fn example(items: List<String>) -> Int {
     /// Compiles v2 compiler via v1, then calls v2's tokenize+parse on each file.
     #[test]
     fn phase5_gist_transitive_closure_v2_parse() {
-        let output = compile_all_modules().expect("compilation should succeed");
-        let root = workspace_root();
-        let files = [
-            "dsl/std/types.dag",
-            "dsl/std/behavioral.dag",
-            "dsl/std/errors.dag",
-            "dsl/std/resources.dag",
-            "dsl/extdeps/cloud/cloud.dag",
-            "dsl/extdeps/cloud/gcp/gcp.dag",
-            "dsl/extdeps/github/github.dag",
-            "dsl/extdeps/github/auth.dag",
-            "dsl/extdeps/github/gists.dag",
-            "dsl/extdeps/git.dag",
-            "dsl/gunbc/auth/credentials.dag",
-            "dsl/gunbc/tools/gist.dag",
-        ];
-        for rel_path in &files {
-            let path = root.join(rel_path);
-            let source = std::fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
+        with_parser_stack(|| {
+            let output = compile_all_modules().expect("compilation should succeed");
+            let root = workspace_root();
+            let files = [
+                "dsl/std/types.dag",
+                "dsl/std/behavioral.dag",
+                "dsl/std/errors.dag",
+                "dsl/std/resources.dag",
+                "dsl/extdeps/cloud/cloud.dag",
+                "dsl/extdeps/cloud/gcp/gcp.dag",
+                "dsl/extdeps/github/github.dag",
+                "dsl/extdeps/github/auth.dag",
+                "dsl/extdeps/github/gists.dag",
+                "dsl/extdeps/git.dag",
+                "dsl/gunbc/auth/credentials.dag",
+                "dsl/gunbc/tools/gist.dag",
+            ];
+            for rel_path in &files {
+                let path = root.join(rel_path);
+                let source = std::fs::read_to_string(&path)
+                    .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
 
-            // Tokenize via v2
-            let mut tok_inputs = HashMap::new();
-            tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source));
-            let tok_result = call_fn(&output, "tokenize", tok_inputs)
-                .unwrap_or_else(|e| panic!("{}: tokenize failed: {}", rel_path, e));
-            let tokens = tok_result.get("return").cloned().unwrap_or_else(|| {
-                gunbc_ir::Value::List(
-                    tok_result.values().next().cloned()
-                        .map(|v| if let gunbc_ir::Value::List(l) = v { l } else { vec![v] })
-                        .unwrap_or_default(),
-                )
-            });
+                // Tokenize via v2
+                let mut tok_inputs = HashMap::new();
+                tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source));
+                let tok_result = call_fn(&output, "tokenize", tok_inputs)
+                    .unwrap_or_else(|e| panic!("{}: tokenize failed: {}", rel_path, e));
+                let tokens = tok_result.get("return").cloned().unwrap_or_else(|| {
+                    gunbc_ir::Value::List(
+                        tok_result.values().next().cloned()
+                            .map(|v| if let gunbc_ir::Value::List(l) = v { l } else { vec![v] })
+                            .unwrap_or_default(),
+                    )
+                });
 
-            // Parse via v2
-            let mut parse_inputs = HashMap::new();
-            parse_inputs.insert("tokens".to_string(), tokens);
-            let parse_result = call_fn(&output, "parse", parse_inputs)
-                .unwrap_or_else(|e| panic!("{}: parse failed: {}", rel_path, e));
+                // Parse via v2
+                let mut parse_inputs = HashMap::new();
+                parse_inputs.insert("tokens".to_string(), tokens);
+                let parse_result = call_fn(&output, "parse", parse_inputs)
+                    .unwrap_or_else(|e| panic!("{}: parse failed: {}", rel_path, e));
 
-            // Check for parse errors
-            let error = parse_result.get("error");
-            let has_error = match error {
-                Some(gunbc_ir::Value::Unit) => false,
-                Some(gunbc_ir::Value::Map(m)) if m.contains_key("value") => {
-                    !matches!(m.get("value"), Some(gunbc_ir::Value::Unit))
+                // Check for parse errors
+                let error = parse_result.get("error");
+                let has_error = match error {
+                    Some(gunbc_ir::Value::Unit) => false,
+                    Some(gunbc_ir::Value::Map(m)) if m.contains_key("value") => {
+                        !matches!(m.get("value"), Some(gunbc_ir::Value::Unit))
+                    }
+                    None => false,
+                    _ => false,
+                };
+                if has_error {
+                    let err_json = value_to_json(error.unwrap());
+                    panic!(
+                        "{}: v2 parse error: {}",
+                        rel_path,
+                        err_json
+                    );
                 }
-                None => false,
-                _ => false,
-            };
-            if has_error {
-                let err_json = value_to_json(error.unwrap());
-                panic!(
-                    "{}: v2 parse error: {}",
-                    rel_path,
-                    err_json
-                );
             }
-        }
+        });
     }
 
     /// Diagnostic: measure stack cost per token by tokenizing progressively larger inputs.
     #[test]
     #[allow(clippy::disallowed_macros)]
     fn phase5_debug_stack_overflow_isolation() {
-        let output = compile_all_modules().expect("compilation should succeed");
+        with_parser_stack(|| {
+            let output = compile_all_modules().expect("compilation should succeed");
 
-        let root = workspace_root();
-        let full_source = std::fs::read_to_string(root.join("dsl/std/types.dag")).unwrap();
-        let lines: Vec<&str> = full_source.lines().collect();
+            let root = workspace_root();
+            let full_source = std::fs::read_to_string(root.join("dsl/std/types.dag")).unwrap();
+            let lines: Vec<&str> = full_source.lines().collect();
 
-        // Try progressively larger prefixes to find the breaking point
-        for &line_count in &[50, 100, 150, 200, 250, 300, 350, 400, 450, 523] {
-            let prefix: String = lines[..line_count.min(lines.len())].join("\n");
-            let byte_count = prefix.len();
-            let mut tok_inputs = HashMap::new();
-            tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(prefix));
-            let tok_result = call_fn(&output, "tokenize", tok_inputs)
-                .unwrap_or_else(|e| panic!("tokenize failed at {} lines: {}", line_count, e));
-            let tokens = tok_result.get("return").cloned().unwrap_or(gunbc_ir::Value::Unit);
-            let token_count = if let gunbc_ir::Value::List(ref l) = tokens { l.len() } else { 0 };
-            eprintln!(
-                "[DIAG] {} lines, {} bytes → {} tokens (OK)",
-                line_count, byte_count, token_count
-            );
-        }
+            // Try progressively larger prefixes to find the breaking point
+            for &line_count in &[50, 100, 150, 200, 250, 300, 350, 400, 450, 523] {
+                let prefix: String = lines[..line_count.min(lines.len())].join("\n");
+                let byte_count = prefix.len();
+                let mut tok_inputs = HashMap::new();
+                tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(prefix));
+                let tok_result = call_fn(&output, "tokenize", tok_inputs)
+                    .unwrap_or_else(|e| panic!("tokenize failed at {} lines: {}", line_count, e));
+                let tokens = tok_result.get("return").cloned().unwrap_or(gunbc_ir::Value::Unit);
+                let token_count = if let gunbc_ir::Value::List(ref l) = tokens { l.len() } else { 0 };
+                eprintln!(
+                    "[DIAG] {} lines, {} bytes → {} tokens (OK)",
+                    line_count, byte_count, token_count
+                );
+            }
+        });
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -1721,88 +1725,78 @@ fn example(items: List<String>) -> Int {
     /// in debug mode. 6 levels × ~500 bytes × many tokens = >8MB default.
     #[test]
     fn phase6_multi_module_synthetic() {
-        let result = std::thread::Builder::new()
-            .stack_size(16 * 1024 * 1024)
-            .spawn(phase6_multi_module_synthetic_impl)
-            .unwrap()
-            .join();
-        match result {
-            Ok(()) => {}
-            Err(e) => std::panic::resume_unwind(e),
-        }
-    }
+        with_parser_stack(|| {
+            let output = compile_all_modules().expect("compilation should succeed");
 
-    fn phase6_multi_module_synthetic_impl() {
-        let output = compile_all_modules().expect("compilation should succeed");
+            // Start with the simplest possible multi-module case.
+            let types_src = "module mylib.types\ntype Point { x: Int, y: Int }\n";
+            let funcs_src = "module mylib.funcs\nimport mylib.types { Point }\n";
 
-        // Start with the simplest possible multi-module case.
-        let types_src = "module mylib.types\ntype Point { x: Int, y: Int }\n";
-        let funcs_src = "module mylib.funcs\nimport mylib.types { Point }\n";
+            eprintln!("[test] tokenizing types_src ({} bytes)...", types_src.len());
+            let mod_types = v2_tokenize_and_parse(&output, types_src);
+            eprintln!("[test] tokenizing funcs_src ({} bytes)...", funcs_src.len());
+            let mod_funcs = v2_tokenize_and_parse(&output, funcs_src);
 
-        eprintln!("[test] tokenizing types_src ({} bytes)...", types_src.len());
-        let mod_types = v2_tokenize_and_parse(&output, types_src);
-        eprintln!("[test] tokenizing funcs_src ({} bytes)...", funcs_src.len());
-        let mod_funcs = v2_tokenize_and_parse(&output, funcs_src);
-
-        // Resolve
-        let mut resolve_inputs = HashMap::new();
-        resolve_inputs.insert(
-            "modules".to_string(),
-            gunbc_ir::Value::List(vec![mod_types, mod_funcs]),
-        );
-        let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
-            .expect("resolve_modules should succeed");
-        let graph = if let Some(ret) = resolve_result.get("return") {
-            ret.clone()
-        } else {
-            gunbc_ir::Value::Map(resolve_result.into_iter().collect())
-        };
-
-        // Check no resolve errors
-        if let gunbc_ir::Value::Map(ref m) = graph {
-            if let Some(gunbc_ir::Value::List(diags)) = m.get("diagnostics") {
-                let errors: Vec<_> = diags.iter().filter(|d| {
-                    if let gunbc_ir::Value::Map(dm) = d {
-                        dm.get("severity").and_then(|s| match s {
-                            gunbc_ir::Value::Str(s) => Some(s.as_str()),
-                            gunbc_ir::Value::Enum { variant, .. } => Some(variant.as_str()),
-                            _ => None,
-                        }) == Some("Error")
-                    } else { false }
-                }).collect();
-                assert!(
-                    errors.is_empty(),
-                    "resolve_modules produced errors: {:?}",
-                    errors
-                );
-            }
-        }
-
-        // Typecheck
-        let mut tc_inputs = HashMap::new();
-        tc_inputs.insert("graph".to_string(), graph);
-        let tc_result = call_fn(&output, "typecheck", tc_inputs)
-            .expect("typecheck should succeed");
-        let typed_graph = if let Some(ret) = tc_result.get("return") {
-            ret.clone()
-        } else {
-            gunbc_ir::Value::Map(tc_result.into_iter().collect())
-        };
-
-        // Verify we have typed modules
-        if let gunbc_ir::Value::Map(ref m) = typed_graph {
-            if let Some(gunbc_ir::Value::List(modules)) = m.get("modules") {
-                assert_eq!(
-                    modules.len(), 2,
-                    "should have 2 typed modules, got {}",
-                    modules.len()
-                );
+            // Resolve
+            let mut resolve_inputs = HashMap::new();
+            resolve_inputs.insert(
+                "modules".to_string(),
+                gunbc_ir::Value::List(vec![mod_types, mod_funcs]),
+            );
+            let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
+                .expect("resolve_modules should succeed");
+            let graph = if let Some(ret) = resolve_result.get("return") {
+                ret.clone()
             } else {
-                panic!("TypedGraph.modules not a list");
+                gunbc_ir::Value::Map(resolve_result.into_iter().collect())
+            };
+
+            // Check no resolve errors
+            if let gunbc_ir::Value::Map(ref m) = graph {
+                if let Some(gunbc_ir::Value::List(diags)) = m.get("diagnostics") {
+                    let errors: Vec<_> = diags.iter().filter(|d| {
+                        if let gunbc_ir::Value::Map(dm) = d {
+                            dm.get("severity").and_then(|s| match s {
+                                gunbc_ir::Value::Str(s) => Some(s.as_str()),
+                                gunbc_ir::Value::Enum { variant, .. } => Some(variant.as_str()),
+                                _ => None,
+                            }) == Some("Error")
+                        } else { false }
+                    }).collect();
+                    assert!(
+                        errors.is_empty(),
+                        "resolve_modules produced errors: {:?}",
+                        errors
+                    );
+                }
             }
-        } else {
-            panic!("typed_graph not a Map");
-        }
+
+            // Typecheck
+            let mut tc_inputs = HashMap::new();
+            tc_inputs.insert("graph".to_string(), graph);
+            let tc_result = call_fn(&output, "typecheck", tc_inputs)
+                .expect("typecheck should succeed");
+            let typed_graph = if let Some(ret) = tc_result.get("return") {
+                ret.clone()
+            } else {
+                gunbc_ir::Value::Map(tc_result.into_iter().collect())
+            };
+
+            // Verify we have typed modules
+            if let gunbc_ir::Value::Map(ref m) = typed_graph {
+                if let Some(gunbc_ir::Value::List(modules)) = m.get("modules") {
+                    assert_eq!(
+                        modules.len(), 2,
+                        "should have 2 typed modules, got {}",
+                        modules.len()
+                    );
+                } else {
+                    panic!("TypedGraph.modules not a list");
+                }
+            } else {
+                panic!("typed_graph not a Map");
+            }
+        });
     }
 
     /// Feed gist.dag's full transitive dependency chain through the v2
@@ -1816,139 +1810,137 @@ fn example(items: List<String>) -> Int {
     fn phase6_gist_full_pipeline() {
         let result = std::thread::Builder::new()
             .stack_size(32 * 1024 * 1024)
-            .spawn(phase6_gist_full_pipeline_impl)
+            .spawn(|| {
+                let output = compile_all_modules().expect("compilation should succeed");
+                let root = workspace_root();
+
+                // Gist's full transitive dependency chain (topological order: leaves first).
+                let dag_files = vec![
+                    "dsl/std/types.dag",
+                    "dsl/std/resources.dag",
+                    "dsl/std/behavioral.dag",
+                    "dsl/std/errors.dag",
+                    "dsl/extdeps/cloud/cloud.dag",
+                    "dsl/extdeps/cloud/gcp/gcp.dag",
+                    "dsl/extdeps/github/github.dag",
+                    "dsl/gunbc/auth/credentials.dag",
+                    "dsl/extdeps/git.dag",
+                    "dsl/extdeps/github/auth.dag",
+                    "dsl/extdeps/github/gists.dag",
+                    "dsl/gunbc/tools/gist.dag",
+                ];
+
+                // Step 1: Tokenize + parse each file
+                let mut modules = Vec::new();
+                for path in &dag_files {
+                    let full_path = root.join(path);
+                    let source = std::fs::read_to_string(&full_path)
+                        .unwrap_or_else(|e| panic!("failed to read {}: {}", path, e));
+                    eprintln!("[v2] tokenize+parse {} ({} bytes)...", path, source.len());
+                    let module = v2_tokenize_and_parse(&output, &source);
+                    modules.push(module);
+                }
+                eprintln!("[v2] parsed {} modules", modules.len());
+
+                // Step 2: Resolve imports
+                let mut resolve_inputs = HashMap::new();
+                resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(modules));
+                let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
+                    .expect("resolve_modules should succeed");
+                let graph = if let Some(ret) = resolve_result.get("return") {
+                    ret.clone()
+                } else {
+                    gunbc_ir::Value::Map(resolve_result.into_iter().collect())
+                };
+                eprintln!("[v2] resolve complete");
+
+                // Step 3: Typecheck
+                let mut tc_inputs = HashMap::new();
+                tc_inputs.insert("graph".to_string(), graph.clone());
+                let tc_result = call_fn(&output, "typecheck", tc_inputs)
+                    .expect("typecheck should succeed");
+                let typed_graph = if let Some(ret) = tc_result.get("return") {
+                    ret.clone()
+                } else {
+                    gunbc_ir::Value::Map(tc_result.into_iter().collect())
+                };
+
+                // Report diagnostics
+                if let gunbc_ir::Value::Map(ref m) = typed_graph {
+                    if let Some(gunbc_ir::Value::List(diags)) = m.get("diagnostics") {
+                        for d in diags {
+                            if let gunbc_ir::Value::Map(dm) = d {
+                                let sev = dm.get("severity").map(|s| format!("{:?}", s)).unwrap_or_default();
+                                let msg = dm.get("message").map(|s| format!("{:?}", s)).unwrap_or_default();
+                                eprintln!("[v2] diagnostic: {} {}", sev, msg);
+                            }
+                        }
+                    }
+                }
+                eprintln!("[v2] typecheck complete");
+
+                // Step 4: Emit Rust for each typed module
+                let typed_modules = if let gunbc_ir::Value::Map(ref m) = typed_graph {
+                    if let Some(gunbc_ir::Value::List(mods)) = m.get("modules") {
+                        mods.clone()
+                    } else { panic!("no modules in typed graph"); }
+                } else { panic!("typed graph not a map"); };
+
+                assert_eq!(
+                    typed_modules.len(), dag_files.len(),
+                    "should have {} typed modules, got {}",
+                    dag_files.len(), typed_modules.len()
+                );
+
+                let mut emitted_files = Vec::new();
+                for (i, typed_module) in typed_modules.iter().enumerate() {
+                    let mut emit_inputs = HashMap::new();
+                    emit_inputs.insert("typed_module".to_string(), typed_module.clone());
+                    match call_fn(&output, "emit_module", emit_inputs) {
+                        Ok(result) => {
+                            let text_file = if let Some(ret) = result.get("return") {
+                                ret.clone()
+                            } else {
+                                gunbc_ir::Value::Map(result.into_iter().collect())
+                            };
+                            if let gunbc_ir::Value::Map(ref m) = text_file {
+                                let path = m.get("path").map(|v| format!("{:?}", v)).unwrap_or_default();
+                                let content_len = m.get("content")
+                                    .and_then(|v| if let gunbc_ir::Value::Str(s) = v { Some(s.len()) } else { None })
+                                    .unwrap_or(0);
+                                eprintln!("[v2] emitted {} → {} bytes", path, content_len);
+                                emitted_files.push(text_file);
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("[v2] emit_module failed for module {}: {}", dag_files[i], e);
+                        }
+                    }
+                }
+
+                // At minimum, gist.dag should produce emitted output
+                assert!(
+                    !emitted_files.is_empty(),
+                    "should have emitted at least one file"
+                );
+
+                // Check that gist module's emission contains func signatures
+                if let Some(gist_file) = emitted_files.last() {
+                    if let gunbc_ir::Value::Map(ref m) = gist_file {
+                        if let Some(gunbc_ir::Value::Str(content)) = m.get("content") {
+                            eprintln!("[v2] gist.dag emitted {} bytes of Rust", content.len());
+                            // Print first 500 chars for inspection
+                            let preview = &content[..content.len().min(500)];
+                            eprintln!("[v2] preview:\n{}", preview);
+                        }
+                    }
+                }
+            })
             .unwrap()
             .join();
         match result {
             Ok(()) => {}
             Err(e) => std::panic::resume_unwind(e),
-        }
-    }
-
-    fn phase6_gist_full_pipeline_impl() {
-        let output = compile_all_modules().expect("compilation should succeed");
-        let root = workspace_root();
-
-        // Gist's full transitive dependency chain (topological order: leaves first).
-        let dag_files = vec![
-            "dsl/std/types.dag",
-            "dsl/std/resources.dag",
-            "dsl/std/behavioral.dag",
-            "dsl/std/errors.dag",
-            "dsl/extdeps/cloud/cloud.dag",
-            "dsl/extdeps/cloud/gcp/gcp.dag",
-            "dsl/extdeps/github/github.dag",
-            "dsl/gunbc/auth/credentials.dag",
-            "dsl/extdeps/git.dag",
-            "dsl/extdeps/github/auth.dag",
-            "dsl/extdeps/github/gists.dag",
-            "dsl/gunbc/tools/gist.dag",
-        ];
-
-        // Step 1: Tokenize + parse each file
-        let mut modules = Vec::new();
-        for path in &dag_files {
-            let full_path = root.join(path);
-            let source = std::fs::read_to_string(&full_path)
-                .unwrap_or_else(|e| panic!("failed to read {}: {}", path, e));
-            eprintln!("[v2] tokenize+parse {} ({} bytes)...", path, source.len());
-            let module = v2_tokenize_and_parse(&output, &source);
-            modules.push(module);
-        }
-        eprintln!("[v2] parsed {} modules", modules.len());
-
-        // Step 2: Resolve imports
-        let mut resolve_inputs = HashMap::new();
-        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(modules));
-        let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
-            .expect("resolve_modules should succeed");
-        let graph = if let Some(ret) = resolve_result.get("return") {
-            ret.clone()
-        } else {
-            gunbc_ir::Value::Map(resolve_result.into_iter().collect())
-        };
-        eprintln!("[v2] resolve complete");
-
-        // Step 3: Typecheck
-        let mut tc_inputs = HashMap::new();
-        tc_inputs.insert("graph".to_string(), graph.clone());
-        let tc_result = call_fn(&output, "typecheck", tc_inputs)
-            .expect("typecheck should succeed");
-        let typed_graph = if let Some(ret) = tc_result.get("return") {
-            ret.clone()
-        } else {
-            gunbc_ir::Value::Map(tc_result.into_iter().collect())
-        };
-
-        // Report diagnostics
-        if let gunbc_ir::Value::Map(ref m) = typed_graph {
-            if let Some(gunbc_ir::Value::List(diags)) = m.get("diagnostics") {
-                for d in diags {
-                    if let gunbc_ir::Value::Map(dm) = d {
-                        let sev = dm.get("severity").map(|s| format!("{:?}", s)).unwrap_or_default();
-                        let msg = dm.get("message").map(|s| format!("{:?}", s)).unwrap_or_default();
-                        eprintln!("[v2] diagnostic: {} {}", sev, msg);
-                    }
-                }
-            }
-        }
-        eprintln!("[v2] typecheck complete");
-
-        // Step 4: Emit Rust for each typed module
-        let typed_modules = if let gunbc_ir::Value::Map(ref m) = typed_graph {
-            if let Some(gunbc_ir::Value::List(mods)) = m.get("modules") {
-                mods.clone()
-            } else { panic!("no modules in typed graph"); }
-        } else { panic!("typed graph not a map"); };
-
-        assert_eq!(
-            typed_modules.len(), dag_files.len(),
-            "should have {} typed modules, got {}",
-            dag_files.len(), typed_modules.len()
-        );
-
-        let mut emitted_files = Vec::new();
-        for (i, typed_module) in typed_modules.iter().enumerate() {
-            let mut emit_inputs = HashMap::new();
-            emit_inputs.insert("typed_module".to_string(), typed_module.clone());
-            match call_fn(&output, "emit_module", emit_inputs) {
-                Ok(result) => {
-                    let text_file = if let Some(ret) = result.get("return") {
-                        ret.clone()
-                    } else {
-                        gunbc_ir::Value::Map(result.into_iter().collect())
-                    };
-                    if let gunbc_ir::Value::Map(ref m) = text_file {
-                        let path = m.get("path").map(|v| format!("{:?}", v)).unwrap_or_default();
-                        let content_len = m.get("content")
-                            .and_then(|v| if let gunbc_ir::Value::Str(s) = v { Some(s.len()) } else { None })
-                            .unwrap_or(0);
-                        eprintln!("[v2] emitted {} → {} bytes", path, content_len);
-                        emitted_files.push(text_file);
-                    }
-                }
-                Err(e) => {
-                    eprintln!("[v2] emit_module failed for module {}: {}", dag_files[i], e);
-                }
-            }
-        }
-
-        // At minimum, gist.dag should produce emitted output
-        assert!(
-            !emitted_files.is_empty(),
-            "should have emitted at least one file"
-        );
-
-        // Check that gist module's emission contains func signatures
-        if let Some(gist_file) = emitted_files.last() {
-            if let gunbc_ir::Value::Map(ref m) = gist_file {
-                if let Some(gunbc_ir::Value::Str(content)) = m.get("content") {
-                    eprintln!("[v2] gist.dag emitted {} bytes of Rust", content.len());
-                    // Print first 500 chars for inspection
-                    let preview = &content[..content.len().min(500)];
-                    eprintln!("[v2] preview:\n{}", preview);
-                }
-            }
         }
     }
 }
