@@ -386,9 +386,33 @@ prevents the most silent regressions):
 
 ---
 
+## v2 self-hosted compiler: impact on ledger
+
+v2 (see `docs/design/v2-self-hosted-compiler.md`) eliminates the deep
+root by design: types are TypeExpr values, not strings. No TypeRegistry.
+No deferred resolution. No parallel interpreter.
+
+**Eliminated by v2 design (no v1 fix needed):**
+S1, S2, S3, S4, S5, S13, S36, S37 — and all of Branch 1.
+
+**Inherited by v2 (re-implement correctly):**
+S34 (callable wiring) — v2 lowerer writes fail-closed from scratch.
+S38 (emitted code untested) — v2 emits tests alongside code.
+
+**Already fixed in v1:**
+S19 (Map keys), S20 (non-empty list default), S38 (partial — smoke tests).
+
+**Remains as v1 maintenance only:**
+S39 (weakened tests) — v1 tests, v2 writes its own.
+S3 prioritized sequence items — all moot once v2 is primary.
+
+---
+
 ## Capabilities that would eliminate branches
 
-Each eliminates a class of liability:
+**v2 self-hosted compiler** — eliminates Branches 1, 2, 4 entirely.
+Reduces Branch 3 (string enumeration moves to .dag data declarations).
+See `docs/design/v2-project-plan.md`.
 
 **Language model serialization to JSON IR** — eliminates Rust-code-edit
 for backend type mappings (data, not logic).

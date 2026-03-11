@@ -160,7 +160,13 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
         ast::Expr::FieldAccess(receiver, field) => {
             code_ir::Expr::Field(Box::new(compile_expr(receiver, ctx)), field.clone())
         }
-        ast::Expr::Call(name, args) => compile_call(name, args, ctx),
+        ast::Expr::Call(name, args) => {
+            if let Some(intrinsic) = compile_intrinsic_call(name, args, ctx) {
+                intrinsic
+            } else {
+                compile_call(name, args, ctx)
+            }
+        }
         ast::Expr::BinOp(left, op, right) => {
             if matches!(op, ast::BinOp::Add) && contains_string_literal(expr) {
                 compile_string_concat(expr, ctx)
@@ -306,6 +312,145 @@ fn to_screaming_snake(name: &str) -> String {
 // ---------------------------------------------------------------------------
 // Function calls
 // ---------------------------------------------------------------------------
+
+/// Intercept collection intrinsic calls that were formerly pipe methods.
+///
+/// These cannot be emitted as global function calls because the target
+/// languages (Rust, Go, C) don't have global `map`, `filter`, `fold`,
+/// `join`, `chars` functions with the right signatures. They need to be
+/// emitted as method calls on the collection receiver.
+///
+/// Returns `None` for non-intrinsic calls.
+fn compile_intrinsic_call(
+    name: &str,
+    args: &[(Option<String>, ast::Expr)],
+    ctx: &CompileContext,
+) -> Option<code_ir::Expr> {
+    match name {
+        // map(items, f) → items.into_iter().map(f).collect()
+        "map" if args.len() == 2 => {
+            let items = compile_expr(&args[0].1, ctx);
+            let func = compile_expr(&args[1].1, ctx);
+            Some(method_chain(items, &[
+                ("into_iter", vec![]),
+                ("map", vec![func]),
+                ("collect::<Vec<_>>", vec![]),
+            ]))
+        }
+        // filter(items, f) → items.into_iter().filter(f).collect()
+        "filter" if args.len() == 2 => {
+            let items = compile_expr(&args[0].1, ctx);
+            let func = compile_expr(&args[1].1, ctx);
+            Some(method_chain(items, &[
+                ("into_iter", vec![]),
+                ("filter", vec![func]),
+                ("collect::<Vec<_>>", vec![]),
+            ]))
+        }
+        // fold(items, init: v, f: acc) → items.into_iter().fold(v, acc)
+        "fold" if args.len() >= 2 => {
+            let items = compile_expr(&args[0].1, ctx);
+            let init = named_arg_or_positional("init", args, 1, ctx);
+            let func = named_arg_or_positional("f", args, 2, ctx);
+            Some(method_chain(items, &[
+                ("into_iter", vec![]),
+                ("fold", vec![init, func]),
+            ]))
+        }
+        // join(items, sep) → items.join(sep)
+        "join" if args.len() == 2 => {
+            let items = compile_expr(&args[0].1, ctx);
+            let sep = compile_expr(&args[1].1, ctx);
+            Some(code_ir::Expr::MethodCall {
+                receiver: Box::new(items),
+                method: "join".to_string(),
+                args: vec![sep],
+            })
+        }
+        // chars(s) → s.chars().map(|c| c.to_string()).collect()
+        "chars" if args.len() == 1 => {
+            let s = compile_expr(&args[0].1, ctx);
+            Some(method_chain(s, &[
+                ("chars", vec![]),
+                ("map", vec![code_ir::Expr::Var("|c| c.to_string()".to_string())]),
+                ("collect::<Vec<_>>", vec![]),
+            ]))
+        }
+        // contains(items, item) → items.contains(&item)
+        "contains" if args.len() == 2 => {
+            let items = compile_expr(&args[0].1, ctx);
+            let item = compile_expr(&args[1].1, ctx);
+            Some(code_ir::Expr::MethodCall {
+                receiver: Box::new(items),
+                method: "contains".to_string(),
+                args: vec![code_ir::Expr::Ref(Box::new(item))],
+            })
+        }
+        // any(items, pred) → items.iter().any(pred)
+        "any" if args.len() == 2 => {
+            let items = compile_expr(&args[0].1, ctx);
+            let pred = compile_expr(&args[1].1, ctx);
+            Some(method_chain(items, &[
+                ("iter", vec![]),
+                ("any", vec![pred]),
+            ]))
+        }
+        // sum(items) → items.into_iter().sum()
+        "sum" if args.len() == 1 => {
+            let items = compile_expr(&args[0].1, ctx);
+            Some(method_chain(items, &[
+                ("into_iter", vec![]),
+                ("sum::<i64>", vec![]),
+            ]))
+        }
+        // last(items) → items.last().cloned()
+        "last" if args.len() == 1 => {
+            let items = compile_expr(&args[0].1, ctx);
+            Some(method_chain(items, &[
+                ("last", vec![]),
+                ("cloned", vec![]),
+            ]))
+        }
+        // split(s, delim) → s.split(delim).map(|s| s.to_string()).collect()
+        "split" if args.len() == 2 => {
+            let s = compile_expr(&args[0].1, ctx);
+            let delim = compile_expr(&args[1].1, ctx);
+            Some(method_chain(s, &[
+                ("split", vec![delim]),
+                ("map", vec![code_ir::Expr::Var("|s| s.to_string()".to_string())]),
+                ("collect::<Vec<_>>", vec![]),
+            ]))
+        }
+        _ => None,
+    }
+}
+
+/// Build a chained method call: receiver.m1(a1).m2(a2).m3(a3)
+fn method_chain(receiver: code_ir::Expr, calls: &[(&str, Vec<code_ir::Expr>)]) -> code_ir::Expr {
+    let mut expr = receiver;
+    for (method, args) in calls {
+        expr = code_ir::Expr::MethodCall {
+            receiver: Box::new(expr),
+            method: method.to_string(),
+            args: args.clone(),
+        };
+    }
+    expr
+}
+
+/// Find a named argument or fall back to positional.
+fn named_arg_or_positional(
+    name: &str,
+    args: &[(Option<String>, ast::Expr)],
+    pos: usize,
+    ctx: &CompileContext,
+) -> code_ir::Expr {
+    args.iter()
+        .find(|(n, _)| n.as_deref() == Some(name))
+        .or_else(|| args.get(pos))
+        .map(|(_, e)| compile_expr(e, ctx))
+        .unwrap_or(code_ir::Expr::Var(format!("todo_{name}")))
+}
 
 fn compile_call(
     name: &str,

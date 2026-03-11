@@ -247,3 +247,115 @@ program.
    works. Compiling itself proves it's complete. The gap between
    these depends on how many language features the compiler's own
    .dag source uses beyond what gist.dag exercises.
+
+## Review comments and resolutions (2026-03-11)
+
+### 1. Bootstrap target larger than the v2 model
+
+**Issue:** gist.dag depends on features not yet in core.dag: default
+parameters (`public: Bool = false`), `uses` clauses, `as` casts,
+and richer service blocks (`config`, `response`, `mock_response`).
+
+**Resolution:** The AST model needs expansion. The following are
+required for the gist.dag corpus:
+
+- `Param.default_value: Expr?` — already present in Field, add to Param
+- `uses` clause in func/service bodies — add `uses: List<ResourceUse>`
+  to FuncDef/ServiceDef
+- `as` cast expression — add `Cast { expr: Expr, target: TypeExpr }`
+  to Expr
+- Service `config` block — add `ServiceConfig` type to ServiceDef
+- `response` / `mock_response` in operations — add to OperationDef
+- Default parameter values in service operations (`Bool = false`) —
+  Field already has `default_value: Expr?`
+
+These will be added to core.dag as part of C3 (parser) work, since
+the parser needs to understand them to parse the corpus.
+
+### 2. Pure/effectful split in compile contract
+
+**Issue:** `compile(root, backend)` mixes pure compilation with
+filesystem discovery.
+
+**Resolution:** The pipeline should split into:
+- **Driver** (effectful): `discover_files(root) → List<SourceFile>`
+  using `Filesystem.read` with `TextFilePath`
+- **Compiler** (pure): `compile_sources(sources, backend) → CompileResult`
+  taking already-read source text
+
+The public entry point is the driver. The compiler core is pure and
+testable without I/O. `pipeline.dag` should reflect this split.
+
+### 3. Builtin type representation after typecheck
+
+**Issue:** The invariant "no Named TypeExpr survives" is too strong.
+Primitives (String, Int, Bool) have no structural form to resolve to.
+
+**Resolution:** Add a `Primitive` variant to TypeExpr for kernel types:
+```
+type TypeExpr
+  = Named { ... }           // unresolved reference (pre-typecheck)
+  | Primitive { name: String }  // kernel type (String, Int, Bool, etc.)
+  | Product { ... }         // resolved record
+  | ...
+```
+
+After typecheck, the invariant is: **no `Named` references remain.
+Every name has been resolved to either `Primitive` (kernel types),
+a structural form (Product, Coproduct, etc.), or a cycle-breaking
+`Named` reference to a type that IS defined in the module graph.**
+
+### 4. Emitted test hermeticity
+
+**Issue:** gist.dag is networked/authenticated. What do emitted tests
+test?
+
+**Resolution:** Emitted tests are hermetic by default. They use
+`mock_response` data from the DSL source as test fixtures — no
+network, no credentials. This matches v1's DryRun tier. Live
+network tests are out of scope for bootstrap.
+
+The emitter consumes `mock_response` blocks in the DSL source and
+emits them as test fixtures in the target language:
+```rust
+// Emitted test (Rust)
+#[test]
+fn test_gist_create_dry_run() {
+    let mock = json!({"id": "gist-abc123", ...}); // from mock_response
+    let result = gist_create(mock_transport(201, mock));
+    assert!(result.url.starts_with("https://"));
+}
+```
+
+### 5. AST error recovery
+
+**Issue:** The AST has no Error variants for partial parse results.
+LSP tooling needs partial ASTs.
+
+**Resolution:** Error recovery is deferred past bootstrap. The v2
+parser fails on first error for bootstrap (sufficient for a batch
+compiler). Error recovery nodes (`ErrorItem`, `ErrorExpr`) will be
+added when LSP support is prioritized — they're additive to the AST
+model, not a redesign.
+
+### 6. Self-hosting gap and intermediate milestones
+
+**Issue:** The gap between "compiles gist.dag" and "compiles itself"
+is large. The compiler uses deep pattern matching, recursive data
+structures, and stdlib dependencies.
+
+**Resolution:** The project plan (v2-project-plan.md) already defines
+per-stage milestones (C2 tokenizer → C3 parser → C4 resolver → C5
+typechecker → C6 emitter). Self-hosting adds intermediate milestones
+within Phase 5:
+
+1. v2 compiles gist.dag (Phase 4 deliverable)
+2. v2 compiles tokenize.dag (simpler — no service blocks, no resources)
+3. v2 compiles core.dag (type definitions only — no fn bodies)
+4. v2 compiles pipeline.dag (full compiler source)
+5. v2 output matches v1 output for all of the above (fixed point)
+
+Each milestone exercises progressively more language features.
+The gap between 1 and 2 is small (tokenize.dag is simpler than
+gist.dag). The gap between 2 and 4 is where the real complexity
+lives (recursive TypeExpr, pattern matching in the parser).

@@ -990,17 +990,7 @@ fn eval_call(
                 _ => Err(EvalError::new(format!("code_point: expected Char, got {:?}", val))),
             }
         }
-        // chars(s: String) -> List<Char>: split string into individual characters
-        "chars" => {
-            let val = eval_named_arg("s", args, env, sibling_fns)?;
-            match &val {
-                Value::Str(s) => {
-                    let chars: Vec<Value> = s.chars().map(|c| Value::Str(c.to_string())).collect();
-                    Ok(Value::List(chars))
-                }
-                _ => Err(EvalError::new(format!("chars: expected String, got {:?}", val))),
-            }
-        }
+        // chars is handled by eval_intrinsic_call via INTRINSIC_CALLS.
         _ if name.chars().next().unwrap_or('a').is_uppercase() => {
             // Generic variant constructor (e.g. `Ok { value: "x" }`, `Closed`)
             let mut map = BTreeMap::new();
