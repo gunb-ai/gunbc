@@ -61,6 +61,8 @@ type TokenKind
   | Bang | And | Or
   // Optionality
   | Question | NullCoalesce
+  // Sum type separator
+  | Pipe
   // Values
   | LitStr { value: String }
   | LitInt { value: Int }
@@ -101,7 +103,9 @@ type Import {
 
 type Item
   = TypeDef { name: String, body: TypeBody, span: SourceSpan }
+  // func: workflow function (may use resources, services, transport)
   | FuncDef { name: String, params: List<Param>, return_type: TypeExpr?, body: Expr, span: SourceSpan }
+  // fn: pure function (expression body, no side effects)
   | FnDef { name: String, params: List<Param>, return_type: TypeExpr?, body: Expr, span: SourceSpan }
   | ServiceDef { name: String, transport: TransportBinding, operations: List<OperationDef>, span: SourceSpan }
   | ResourceDef { name: String, capabilities: List<CapabilityDef>, span: SourceSpan }
@@ -132,6 +136,8 @@ type TypeExpr
   | Container { kind: ContainerKind, element: TypeExpr, span: SourceSpan }
   | Refined { base: TypeExpr, predicates: List<Predicate>, span: SourceSpan }
   | Optional { inner: TypeExpr, span: SourceSpan }
+  // MapType allows arbitrary key types in the AST (pre-typecheck).
+  // The typechecker enforces String-key constraint (S19).
   | MapType { key: TypeExpr, value: TypeExpr, span: SourceSpan }
 
 type ContainerKind = List | Set | NonEmptyList | NonEmptySet

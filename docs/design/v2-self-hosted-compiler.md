@@ -113,6 +113,19 @@ copies.
 Five stages, each a pure function. The compiler goes from typed AST
 directly to output files.
 
+### Bootstrap subset vs full language
+
+The v2 prototype targets the **gist.dag bootstrap subset**: the 8
+Item variants actually used by gist.dag and its transitive
+dependencies (`module`, `import`, `type`, `fn`, `func`, `service`,
+`resource`, `data`). The current v1 language has 20 Item variants.
+The remaining 12 are added incrementally after bootstrap proves the
+architecture works.
+
+This is an explicit scope boundary: the prototype does NOT claim to
+be a full-language replacement. It is a bootstrap compiler for a
+well-defined subset, designed to grow into a full compiler.
+
 The emitter is pluggable — it takes a `TypedGraph` and a `Backend`
 and produces files. Different backends produce different languages.
 The public contract is a single function:
@@ -247,6 +260,108 @@ program.
    works. Compiling itself proves it's complete. The gap between
    these depends on how many language features the compiler's own
    .dag source uses beyond what gist.dag exercises.
+
+## Decisions (resolved from review feedback)
+
+### Error recovery: first-error-halt for bootstrap
+
+The parser halts on first error for bootstrap. Multi-error recovery
+requires a synchronization-token strategy designed into the grammar
+rules from the start, which adds significant complexity. The
+bootstrap compiler is a batch compiler — first-error-halt is
+sufficient. Error recovery nodes (`ErrorItem`, `ErrorExpr`) will be
+added later for LSP tooling.
+
+### Python backend: deferred
+
+Python emission is deferred until Rust self-hosting is proven. Adding
+a second backend before the first works recreates the parallel
+implementation problem (S36, Branch 2). One backend, fully tested.
+
+### fn vs func
+
+`fn` is a pure function (expression body, no side effects).
+`func` is a workflow function (may use resources, services, transport).
+The distinction maps to v1's `fn` (evaluated by expression evaluator)
+vs `func` (compiled to DAG with transport nodes). Both appear in the
+AST because the parser needs to distinguish them; the emitter uses
+the distinction to decide whether to emit a pure function or a
+service-wired workflow.
+
+### Diagnostics are first-class in every stage
+
+Every stage returns `StageResult<T> { value: T, diagnostics: List<Diagnostic> }`,
+not raw values. This prevents diagnostic loss across stage boundaries.
+The pipeline threads diagnostics:
+
+```dag
+type StageResult<T> { value: T, diagnostics: List<Diagnostic> }
+
+func compile_sources(sources: List<SourceFile>, backend: Backend) -> CompileResult {
+  let tokenized = map(sources, s => tokenize(source: s.content))
+  let parsed = collect_results(map(tokenized, t => parse(tokens: t.value)))
+  let resolved = resolve_modules(modules: parsed.value)
+  let typed = typecheck(graph: resolved.value)
+  let files = match backend { Rust => emit_rust(typed: typed.value) }
+  CompileResult {
+    files: files,
+    diagnostics: parsed.diagnostics
+      + resolved.diagnostics
+      + typed.diagnostics
+  }
+}
+```
+
+### Acceptance test levels clarified
+
+Level 3 (diff v1 vs v2) compares only the primary output files,
+excluding emitted test files (which are v2-only). The comparison
+is normalized: sorted keys, stripped formatting whitespace.
+
+### Bootstrap circularity risk
+
+v1's known fail-open behaviors (S3 fn-body passthrough, S23/S35
+unknown-type-to-Json) could silently pass through expressions that
+should fail during v2's bootstrap compilation. Mitigation: v2's
+invariant tests (the spec-level column in the test matrix) explicitly
+check for these — e.g., "no unresolved Named after typecheck" catches
+cases where v1's type resolution silently fabricated.
+
+### Nominal identity in the typed graph
+
+Full structural substitution (replacing every `Named` with its
+structural expansion) loses nominal identity, alias boundaries,
+and generic instantiation information. The typed graph should
+retain a **resolved nominal anchor**: the original type name plus
+any type arguments, alongside the structural expansion.
+
+After typecheck, a type reference like `List<Span>` becomes:
+```
+Container {
+  kind: List,
+  element: Product {
+    name: Some("Span"),  // nominal anchor preserved
+    fields: [...]         // structural expansion present
+  }
+}
+```
+
+The `name: Some("Span")` is NOT a lookup key — the structural
+fields are authoritative. The name is metadata for diagnostics,
+emission (generating `struct Span` instead of an anonymous type),
+and equality (two structurally identical types with different names
+ARE different types in the nominal sense).
+
+This is different from v1's `TypeId("Span")` which was ONLY a name
+with no structural information. In v2, the name is supplementary
+to the structure, not a replacement for it.
+
+### MapType key constraint
+
+`MapType { key: TypeExpr, value: TypeExpr }` allows arbitrary key
+types in the AST (pre-typecheck). The typechecker enforces String-key
+constraint (S19). This is correct — the AST represents what the
+programmer wrote; the typechecker rejects what's invalid.
 
 ## Review comments and resolutions (2026-03-11)
 

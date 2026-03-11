@@ -323,6 +323,7 @@ Fix: return `LowerError::WiringFailure` (same as argument wiring
 already does). This is the sharp next lowerer fix.
 
 **S35: `value_compatible_with_type_id` erases unknown types to Json.**
+(Same underlying issue as S23, surfaced from a different entry point.)
 `ir/src/types.rs` still converts unknown-type errors into
 `ValueBacking::Json` "for backwards compat," meaning compatibility
 checks accept any value for unregistered types instead of failing.

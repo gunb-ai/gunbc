@@ -56,17 +56,27 @@ behaviors).
 ### Phase 1: Foundation (independent tasks)
 
 #### C1: Core types (`v2/std/core.dag`)
-The compiler's domain model: Token, Module, Expr, TypeExpr.
+The compiler's domain model for the **bootstrap subset**: Token,
+Module, Expr, TypeExpr. Covers the 8 Item variants used by
+gist.dag and its transitive dependencies: `module`, `import`,
+`type`, `fn`, `func`, `service`, `resource`, `data`.
 
-Key design decisions baked in:
+Does NOT cover v1-only Item variants that gist.dag doesn't use:
+`PatternDef`, `InterfaceDef`, `PipelineDef`, `ProfileDef`,
+`TestDef`, `FixtureDef`, `ProjectDef`, `FeatureDef`, `TaskDef`,
+`DesignDef`, `ComponentDef`, `EnvironmentDef`, `ParamDecl`,
+`ExternAssetDecl`. These are added incrementally as the bootstrap
+target expands beyond gist.dag.
+
+Key design decisions:
 - `TypeExpr` is a structural value, not a string reference
-- Ports hold `type_expr: TypeExpr` directly
-- No `NodeRef`, no `metadata: Map<String, String>` bags
-- `SourceSpan` used consistently (from `std.types`)
+- No `metadata: Map<String, String>` bags
+- `SourceSpan` on every blameable node
 
 **Acceptance:**
 - v1 compiler parses core.dag without errors
-- Every v1 AST concept has a v2 equivalent
+- Every Item variant used by gist.dag's transitive deps has a
+  v2 equivalent
 - No string-typed fields where structural types exist
 
 **Effort:** Small (mostly done, needs cleanup)

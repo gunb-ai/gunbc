@@ -315,10 +315,9 @@ fn to_screaming_snake(name: &str) -> String {
 
 /// Intercept collection intrinsic calls that were formerly pipe methods.
 ///
-/// These cannot be emitted as global function calls because the target
-/// languages (Rust, Go, C) don't have global `map`, `filter`, `fold`,
-/// `join`, `chars` functions with the right signatures. They need to be
-/// emitted as method calls on the collection receiver.
+/// These are compiled to For loops for cross-target compatibility — the
+/// code_ir `For` / `Block` / `If` constructs are understood by all backend
+/// renderers (Rust, Go, C), unlike language-specific iterator chains.
 ///
 /// Returns `None` for non-intrinsic calls.
 fn compile_intrinsic_call(
@@ -326,130 +325,425 @@ fn compile_intrinsic_call(
     args: &[(Option<String>, ast::Expr)],
     ctx: &CompileContext,
 ) -> Option<code_ir::Expr> {
+    // First arg is always the collection/receiver
+    let collection = || compile_expr(&args[0].1, ctx);
+
     match name {
-        // map(items, f) → items.into_iter().map(f).collect()
         "map" if args.len() == 2 => {
-            let items = compile_expr(&args[0].1, ctx);
-            let func = compile_expr(&args[1].1, ctx);
-            Some(method_chain(items, &[
-                ("into_iter", vec![]),
-                ("map", vec![func]),
-                ("collect::<Vec<_>>", vec![]),
-            ]))
+            Some(compile_map_intrinsic(&collection(), args.get(1).map(|(_, e)| e), ctx))
         }
-        // filter(items, f) → items.into_iter().filter(f).collect()
         "filter" if args.len() == 2 => {
-            let items = compile_expr(&args[0].1, ctx);
-            let func = compile_expr(&args[1].1, ctx);
-            Some(method_chain(items, &[
-                ("into_iter", vec![]),
-                ("filter", vec![func]),
-                ("collect::<Vec<_>>", vec![]),
-            ]))
+            Some(compile_filter_intrinsic(&collection(), args.get(1).map(|(_, e)| e), ctx))
         }
-        // fold(items, init: v, f: acc) → items.into_iter().fold(v, acc)
         "fold" if args.len() >= 2 => {
-            let items = compile_expr(&args[0].1, ctx);
-            let init = named_arg_or_positional("init", args, 1, ctx);
-            let func = named_arg_or_positional("f", args, 2, ctx);
-            Some(method_chain(items, &[
-                ("into_iter", vec![]),
-                ("fold", vec![init, func]),
-            ]))
+            let init = args.iter().find(|(n, _)| n.as_deref() == Some("init"))
+                .or_else(|| args.get(1)).map(|(_, e)| e);
+            let func = args.iter().find(|(n, _)| n.as_deref() == Some("f"))
+                .or_else(|| args.get(2)).map(|(_, e)| e);
+            Some(compile_fold_intrinsic(&collection(), init, func, ctx))
         }
-        // join(items, sep) → items.join(sep)
-        "join" if args.len() == 2 => {
-            let items = compile_expr(&args[0].1, ctx);
-            let sep = compile_expr(&args[1].1, ctx);
-            Some(code_ir::Expr::MethodCall {
-                receiver: Box::new(items),
-                method: "join".to_string(),
-                args: vec![sep],
-            })
-        }
-        // chars(s) → s.chars().map(|c| c.to_string()).collect()
-        "chars" if args.len() == 1 => {
-            let s = compile_expr(&args[0].1, ctx);
-            Some(method_chain(s, &[
-                ("chars", vec![]),
-                ("map", vec![code_ir::Expr::Var("|c| c.to_string()".to_string())]),
-                ("collect::<Vec<_>>", vec![]),
-            ]))
-        }
-        // contains(items, item) → items.contains(&item)
-        "contains" if args.len() == 2 => {
-            let items = compile_expr(&args[0].1, ctx);
-            let item = compile_expr(&args[1].1, ctx);
-            Some(code_ir::Expr::MethodCall {
-                receiver: Box::new(items),
-                method: "contains".to_string(),
-                args: vec![code_ir::Expr::Ref(Box::new(item))],
-            })
-        }
-        // any(items, pred) → items.iter().any(pred)
         "any" if args.len() == 2 => {
-            let items = compile_expr(&args[0].1, ctx);
-            let pred = compile_expr(&args[1].1, ctx);
-            Some(method_chain(items, &[
-                ("iter", vec![]),
-                ("any", vec![pred]),
+            let pred = args.iter().find(|(n, _)| n.as_deref() == Some("predicate"))
+                .or_else(|| args.get(1)).map(|(_, e)| e);
+            Some(compile_any_intrinsic(&collection(), pred, ctx))
+        }
+        "contains" if args.len() == 2 => {
+            let target = compile_expr(&args[1].1, ctx);
+            let result = fresh("contains");
+            let elem = fresh("elem");
+            Some(code_ir::Expr::Block(vec![
+                code_ir::Stmt::let_mut(&result, code_ir::Expr::BoolLit(false)),
+                code_ir::Stmt::For {
+                    binding: elem.clone(),
+                    iter: make_owned_iter(collection()),
+                    body: vec![code_ir::Stmt::Expr(code_ir::Expr::If {
+                        cond: Box::new(code_ir::Expr::BinOp {
+                            left: Box::new(code_ir::Expr::Var(elem)),
+                            op: "==".to_string(),
+                            right: Box::new(target),
+                        }),
+                        then_body: vec![
+                            code_ir::Stmt::Assign {
+                                dest: code_ir::Expr::Var(result.clone()),
+                                value: code_ir::Expr::BoolLit(true),
+                            },
+                            code_ir::Stmt::Expr(code_ir::Expr::RawCode("break".to_string())),
+                        ],
+                        else_body: None,
+                    })],
+                },
+                code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
             ]))
         }
-        // sum(items) → items.into_iter().sum()
         "sum" if args.len() == 1 => {
-            let items = compile_expr(&args[0].1, ctx);
-            Some(method_chain(items, &[
-                ("into_iter", vec![]),
-                ("sum::<i64>", vec![]),
+            let result = fresh("sum");
+            let elem = fresh("elem");
+            Some(code_ir::Expr::Block(vec![
+                code_ir::Stmt::let_mut(&result, code_ir::Expr::IntLit(0)),
+                code_ir::Stmt::For {
+                    binding: elem.clone(),
+                    iter: make_owned_iter(collection()),
+                    body: vec![code_ir::Stmt::Assign {
+                        dest: code_ir::Expr::Var(result.clone()),
+                        value: code_ir::Expr::BinOp {
+                            left: Box::new(code_ir::Expr::Var(result.clone())),
+                            op: "+".to_string(),
+                            right: Box::new(code_ir::Expr::Var(elem)),
+                        },
+                    }],
+                },
+                code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
             ]))
         }
-        // last(items) → items.last().cloned()
+        "join" if args.len() == 2 => {
+            let sep = compile_expr(&args[1].1, ctx);
+            let result = fresh("joined");
+            let elem = fresh("elem");
+            let first = fresh("first");
+            Some(code_ir::Expr::Block(vec![
+                code_ir::Stmt::let_mut(&result, code_ir::Expr::Str(String::new())),
+                code_ir::Stmt::let_mut(&first, code_ir::Expr::BoolLit(true)),
+                code_ir::Stmt::For {
+                    binding: elem.clone(),
+                    iter: make_owned_iter(collection()),
+                    body: vec![
+                        code_ir::Stmt::Expr(code_ir::Expr::If {
+                            cond: Box::new(code_ir::Expr::UnaryOp {
+                                op: "!".to_string(),
+                                expr: Box::new(code_ir::Expr::Var(first.clone())),
+                            }),
+                            then_body: vec![code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
+                                receiver: Box::new(code_ir::Expr::Var(result.clone())),
+                                method: "push_str".to_string(),
+                                args: vec![code_ir::Expr::MethodCall {
+                                    receiver: Box::new(sep.clone()),
+                                    method: "as_str".to_string(),
+                                    args: vec![],
+                                }],
+                            })],
+                            else_body: None,
+                        }),
+                        code_ir::Stmt::Assign {
+                            dest: code_ir::Expr::Var(first.clone()),
+                            value: code_ir::Expr::BoolLit(false),
+                        },
+                        code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
+                            receiver: Box::new(code_ir::Expr::Var(result.clone())),
+                            method: "push_str".to_string(),
+                            args: vec![code_ir::Expr::MethodCall {
+                                receiver: Box::new(code_ir::Expr::Var(elem)),
+                                method: "as_str".to_string(),
+                                args: vec![],
+                            }],
+                        }),
+                    ],
+                },
+                code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
+            ]))
+        }
         "last" if args.len() == 1 => {
-            let items = compile_expr(&args[0].1, ctx);
-            Some(method_chain(items, &[
-                ("last", vec![]),
-                ("cloned", vec![]),
+            Some(code_ir::Expr::MethodCall {
+                receiver: Box::new(code_ir::Expr::MethodCall {
+                    receiver: Box::new(collection()),
+                    method: "last".to_string(),
+                    args: vec![],
+                }),
+                method: "cloned".to_string(),
+                args: vec![],
+            })
+        }
+        "split" if args.len() == 2 => {
+            let delim = compile_expr(&args[1].1, ctx);
+            let result = fresh("split_parts");
+            let elem = fresh("part");
+            Some(code_ir::Expr::Block(vec![
+                code_ir::Stmt::let_mut(&result, code_ir::Expr::Array(vec![])),
+                code_ir::Stmt::For {
+                    binding: elem.clone(),
+                    iter: code_ir::Expr::MethodCall {
+                        receiver: Box::new(code_ir::Expr::MethodCall {
+                            receiver: Box::new(collection()),
+                            method: "split".to_string(),
+                            args: vec![code_ir::Expr::MethodCall {
+                                receiver: Box::new(delim),
+                                method: "as_str".to_string(),
+                                args: vec![],
+                            }],
+                        }),
+                        method: "map".to_string(),
+                        args: vec![code_ir::Expr::Path(vec![
+                            "String".to_string(),
+                            "from".to_string(),
+                        ])],
+                    },
+                    body: vec![code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
+                        receiver: Box::new(code_ir::Expr::Var(result.clone())),
+                        method: "push".to_string(),
+                        args: vec![code_ir::Expr::Var(elem)],
+                    })],
+                },
+                code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
             ]))
         }
-        // split(s, delim) → s.split(delim).map(|s| s.to_string()).collect()
-        "split" if args.len() == 2 => {
-            let s = compile_expr(&args[0].1, ctx);
-            let delim = compile_expr(&args[1].1, ctx);
-            Some(method_chain(s, &[
-                ("split", vec![delim]),
-                ("map", vec![code_ir::Expr::Var("|s| s.to_string()".to_string())]),
-                ("collect::<Vec<_>>", vec![]),
+        "chars" if args.len() == 1 => {
+            let result = fresh("chars");
+            let ch = fresh("ch");
+            Some(code_ir::Expr::Block(vec![
+                code_ir::Stmt::let_mut(&result, code_ir::Expr::Array(vec![])),
+                code_ir::Stmt::For {
+                    binding: ch.clone(),
+                    iter: code_ir::Expr::MethodCall {
+                        receiver: Box::new(collection()),
+                        method: "chars".to_string(),
+                        args: vec![],
+                    },
+                    body: vec![code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
+                        receiver: Box::new(code_ir::Expr::Var(result.clone())),
+                        method: "push".to_string(),
+                        args: vec![code_ir::Expr::MethodCall {
+                            receiver: Box::new(code_ir::Expr::Var(ch)),
+                            method: "to_string".to_string(),
+                            args: vec![],
+                        }],
+                    })],
+                },
+                code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
             ]))
         }
         _ => None,
     }
 }
 
-/// Build a chained method call: receiver.m1(a1).m2(a2).m3(a3)
-fn method_chain(receiver: code_ir::Expr, calls: &[(&str, Vec<code_ir::Expr>)]) -> code_ir::Expr {
-    let mut expr = receiver;
-    for (method, args) in calls {
-        expr = code_ir::Expr::MethodCall {
-            receiver: Box::new(expr),
-            method: method.to_string(),
-            args: args.clone(),
-        };
-    }
-    expr
-}
+// ---------------------------------------------------------------------------
+// Intrinsic helpers — For-loop unrollings for cross-target compatibility
+// ---------------------------------------------------------------------------
 
-/// Find a named argument or fall back to positional.
-fn named_arg_or_positional(
-    name: &str,
-    args: &[(Option<String>, ast::Expr)],
-    pos: usize,
+fn compile_map_intrinsic(
+    collection: &code_ir::Expr,
+    mapper: Option<&ast::Expr>,
     ctx: &CompileContext,
 ) -> code_ir::Expr {
-    args.iter()
-        .find(|(n, _)| n.as_deref() == Some(name))
-        .or_else(|| args.get(pos))
-        .map(|(_, e)| compile_expr(e, ctx))
-        .unwrap_or(code_ir::Expr::Var(format!("todo_{name}")))
+    let result = fresh("mapped");
+    let elem = fresh("elem");
+    let mapped_value = match mapper {
+        Some(ast::Expr::Lambda(params, body)) => {
+            let compiled = compile_expr(body, ctx);
+            params.first()
+                .map(|p| substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone())))
+                .unwrap_or(compiled)
+        }
+        Some(other) => code_ir::Expr::Call {
+            func: Box::new(compile_expr(other, ctx)),
+            args: vec![code_ir::Expr::Var(elem.clone())],
+            obligation: None,
+        },
+        None => code_ir::Expr::Var(elem.clone()),
+    };
+    code_ir::Expr::Block(vec![
+        code_ir::Stmt::let_mut(&result, code_ir::Expr::MacroCall { name: "vec".to_string(), args: vec![] }),
+        code_ir::Stmt::For {
+            binding: elem,
+            iter: make_owned_iter(collection.clone()),
+            body: vec![code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
+                receiver: Box::new(code_ir::Expr::Var(result.clone())),
+                method: "push".to_string(),
+                args: vec![mapped_value],
+            })],
+        },
+        code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
+    ])
+}
+
+fn compile_filter_intrinsic(
+    collection: &code_ir::Expr,
+    predicate: Option<&ast::Expr>,
+    ctx: &CompileContext,
+) -> code_ir::Expr {
+    let result = fresh("filtered");
+    let elem = fresh("elem");
+    let cond = match predicate {
+        Some(ast::Expr::Lambda(params, body)) => {
+            let compiled = compile_expr(body, ctx);
+            params.first()
+                .map(|p| substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone())))
+                .unwrap_or(compiled)
+        }
+        Some(other) => code_ir::Expr::Call {
+            func: Box::new(compile_expr(other, ctx)),
+            args: vec![code_ir::Expr::Var(elem.clone())],
+            obligation: None,
+        },
+        None => code_ir::Expr::BoolLit(true),
+    };
+    code_ir::Expr::Block(vec![
+        code_ir::Stmt::let_mut(&result, code_ir::Expr::MacroCall { name: "vec".to_string(), args: vec![] }),
+        code_ir::Stmt::For {
+            binding: elem.clone(),
+            iter: make_owned_iter(collection.clone()),
+            body: vec![code_ir::Stmt::Expr(code_ir::Expr::If {
+                cond: Box::new(cond),
+                then_body: vec![code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
+                    receiver: Box::new(code_ir::Expr::Var(result.clone())),
+                    method: "push".to_string(),
+                    args: vec![code_ir::Expr::Var(elem)],
+                })],
+                else_body: None,
+            })],
+        },
+        code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
+    ])
+}
+
+fn compile_fold_intrinsic(
+    collection: &code_ir::Expr,
+    init: Option<&ast::Expr>,
+    func: Option<&ast::Expr>,
+    ctx: &CompileContext,
+) -> code_ir::Expr {
+    let acc = fresh("acc");
+    let elem = fresh("elem");
+    let init_expr = init.map(|e| compile_expr(e, ctx)).unwrap_or(code_ir::Expr::IntLit(0));
+    let body_expr = match func {
+        Some(ast::Expr::Lambda(params, body)) => {
+            let mut compiled = compile_expr(body, ctx);
+            if let Some(p) = params.first() {
+                compiled = substitute_var(&compiled, p, &code_ir::Expr::Var(acc.clone()));
+            }
+            if let Some(p) = params.get(1) {
+                compiled = substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone()));
+            }
+            compiled
+        }
+        Some(other) => code_ir::Expr::Call {
+            func: Box::new(compile_expr(other, ctx)),
+            args: vec![code_ir::Expr::Var(acc.clone()), code_ir::Expr::Var(elem.clone())],
+            obligation: None,
+        },
+        None => code_ir::Expr::Var(acc.clone()),
+    };
+    code_ir::Expr::Block(vec![
+        code_ir::Stmt::let_mut(&acc, init_expr),
+        code_ir::Stmt::For {
+            binding: elem,
+            iter: make_owned_iter(collection.clone()),
+            body: vec![code_ir::Stmt::Assign {
+                dest: code_ir::Expr::Var(acc.clone()),
+                value: body_expr,
+            }],
+        },
+        code_ir::Stmt::TailExpr(code_ir::Expr::Var(acc)),
+    ])
+}
+
+fn compile_any_intrinsic(
+    collection: &code_ir::Expr,
+    predicate: Option<&ast::Expr>,
+    ctx: &CompileContext,
+) -> code_ir::Expr {
+    let result = fresh("any");
+    let elem = fresh("elem");
+    let cond = match predicate {
+        Some(ast::Expr::Lambda(params, body)) => {
+            let compiled = compile_expr(body, ctx);
+            params.first()
+                .map(|p| substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone())))
+                .unwrap_or(compiled)
+        }
+        Some(other) => code_ir::Expr::Call {
+            func: Box::new(compile_expr(other, ctx)),
+            args: vec![code_ir::Expr::Var(elem.clone())],
+            obligation: None,
+        },
+        None => code_ir::Expr::BoolLit(false),
+    };
+    code_ir::Expr::Block(vec![
+        code_ir::Stmt::let_mut(&result, code_ir::Expr::BoolLit(false)),
+        code_ir::Stmt::For {
+            binding: elem,
+            iter: make_owned_iter(collection.clone()),
+            body: vec![code_ir::Stmt::Expr(code_ir::Expr::If {
+                cond: Box::new(cond),
+                then_body: vec![
+                    code_ir::Stmt::Assign {
+                        dest: code_ir::Expr::Var(result.clone()),
+                        value: code_ir::Expr::BoolLit(true),
+                    },
+                    code_ir::Stmt::Expr(code_ir::Expr::RawCode("break".to_string())),
+                ],
+                else_body: None,
+            })],
+        },
+        code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
+    ])
+}
+
+/// Substitute a variable name in a code_ir expression tree.
+fn substitute_var(expr: &code_ir::Expr, from: &str, to: &code_ir::Expr) -> code_ir::Expr {
+    match expr {
+        code_ir::Expr::Var(name) if name == from => to.clone(),
+        code_ir::Expr::Var(_)
+        | code_ir::Expr::Str(_)
+        | code_ir::Expr::IntLit(_)
+        | code_ir::Expr::BoolLit(_)
+        | code_ir::Expr::RawCode(_)
+        | code_ir::Expr::Value(_)
+        | code_ir::Expr::Path(_) => expr.clone(),
+        code_ir::Expr::Field(receiver, field) => {
+            code_ir::Expr::Field(Box::new(substitute_var(receiver, from, to)), field.clone())
+        }
+        code_ir::Expr::Call { func, args, obligation } => code_ir::Expr::Call {
+            func: Box::new(substitute_var(func, from, to)),
+            args: args.iter().map(|a| substitute_var(a, from, to)).collect(),
+            obligation: *obligation,
+        },
+        code_ir::Expr::MethodCall { receiver, method, args } => code_ir::Expr::MethodCall {
+            receiver: Box::new(substitute_var(receiver, from, to)),
+            method: method.clone(),
+            args: args.iter().map(|a| substitute_var(a, from, to)).collect(),
+        },
+        code_ir::Expr::BinOp { left, op, right } => code_ir::Expr::BinOp {
+            left: Box::new(substitute_var(left, from, to)),
+            op: op.clone(),
+            right: Box::new(substitute_var(right, from, to)),
+        },
+        code_ir::Expr::UnaryOp { op, expr: inner } => code_ir::Expr::UnaryOp {
+            op: op.clone(),
+            expr: Box::new(substitute_var(inner, from, to)),
+        },
+        code_ir::Expr::If { cond, then_body, else_body } => code_ir::Expr::If {
+            cond: Box::new(substitute_var(cond, from, to)),
+            then_body: then_body.iter().map(|s| substitute_var_in_stmt(s, from, to)).collect(),
+            else_body: else_body.as_ref().map(|stmts| stmts.iter().map(|s| substitute_var_in_stmt(s, from, to)).collect()),
+        },
+        code_ir::Expr::Block(stmts) => {
+            code_ir::Expr::Block(stmts.iter().map(|s| substitute_var_in_stmt(s, from, to)).collect())
+        }
+        code_ir::Expr::Ref(inner) => code_ir::Expr::Ref(Box::new(substitute_var(inner, from, to))),
+        // For other variants, return as-is (they don't contain variable references)
+        other => other.clone(),
+    }
+}
+
+fn substitute_var_in_stmt(stmt: &code_ir::Stmt, from: &str, to: &code_ir::Expr) -> code_ir::Stmt {
+    match stmt {
+        code_ir::Stmt::Let { name, expr, mutable } => code_ir::Stmt::Let {
+            name: name.clone(),
+            expr: substitute_var(expr, from, to),
+            mutable: *mutable,
+        },
+        code_ir::Stmt::Assign { dest, value } => code_ir::Stmt::Assign {
+            dest: substitute_var(dest, from, to),
+            value: substitute_var(value, from, to),
+        },
+        code_ir::Stmt::Expr(expr) => code_ir::Stmt::Expr(substitute_var(expr, from, to)),
+        code_ir::Stmt::TailExpr(expr) => code_ir::Stmt::TailExpr(substitute_var(expr, from, to)),
+        code_ir::Stmt::For { binding, iter, body } => code_ir::Stmt::For {
+            binding: binding.clone(),
+            iter: substitute_var(iter, from, to),
+            body: body.iter().map(|s| substitute_var_in_stmt(s, from, to)).collect(),
+        },
+        other => other.clone(),
+    }
 }
 
 fn compile_call(
