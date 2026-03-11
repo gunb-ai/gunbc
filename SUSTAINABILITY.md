@@ -602,6 +602,29 @@ S39 (weakened tests) — v1 tests, v2 writes its own.
 S3 prioritized sequence items — all moot once v2 is primary.
 S48, S49 (test class parsing, output matchers) — v1 testgen-only concerns.
 
+## v1 health guards
+
+Minimum-investment ratchets that freeze known debt so it can't silently
+worsen while v2 is in progress. These don't fix symptoms — they prevent
+regression.
+
+| Guard | Symptom | Test / mechanism | What it catches |
+|-------|---------|------------------|-----------------|
+| `#[must_use]` on `wire_callable_return_outputs()` | S34 | `-D warnings` in CI | New call sites that ignore the `Result` |
+| `ratchet_fail_open_types` | S23, S35 | `ir/src/types.rs` | New DSL types appearing on ports without `ValueBacking` |
+| `ratchet_identity_types_in_core_registry` | (pre-existing) | `ir/src/type_registry.rs` | New identity/opaque types sneaking into the registry |
+| fidelity classification tests | S3 | `fidelity.rs` tests | `evaluate_fn_body()` regressions for supported expression forms |
+
+**How the fidelity tests guard S3:** `classify_callable` calls `eval_fn()`
+which calls `evaluate_fn_body()` and unwraps. If the evaluator regresses
+for any expression form used by `test_policy.dag`, the fidelity tests fail.
+No explicit S3 ratchet needed.
+
+**Ratchet direction:** all ratchets are one-way. The fail-open type list
+can only shrink (types become resolvable). The identity type list can only
+shrink (types get structural DAGs). If either test fails because a type
+was *removed* from the registry, that's a real regression worth investigating.
+
 ---
 
 ## Capabilities that would eliminate branches
