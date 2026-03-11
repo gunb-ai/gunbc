@@ -8,3 +8,6 @@ pub mod expr;
 
 pub use eval::*;
 pub use expr::*;
+
+#[cfg(test)]
+mod v2_tests;

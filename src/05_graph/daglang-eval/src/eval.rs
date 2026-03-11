@@ -990,6 +990,152 @@ fn eval_call(
                 _ => Err(EvalError::new(format!("code_point: expected Char, got {:?}", val))),
             }
         }
+        // ── v2 kernel intrinsics ───────────────────────────────────────
+        "char_at" => {
+            let s = eval_positional_or_named("s", 0, args, env, sibling_fns)?;
+            let pos = eval_positional_or_named("pos", 1, args, env, sibling_fns)?;
+            match (s, pos) {
+                (Value::Str(s), Value::Int(i)) => {
+                    match s.chars().nth(i as usize) {
+                        Some(c) => Ok(Value::Str(c.to_string())),
+                        None => Ok(Value::Unit),
+                    }
+                }
+                _ => Err(EvalError::new("char_at requires (String, Int)")),
+            }
+        }
+        "substring" => {
+            let s = eval_positional_or_named("s", 0, args, env, sibling_fns)?;
+            let start = eval_positional_or_named("start", 1, args, env, sibling_fns)?;
+            let end = eval_positional_or_named("end", 2, args, env, sibling_fns)?;
+            match (s, start, end) {
+                (Value::Str(s), Value::Int(start), Value::Int(end)) => {
+                    let chars: Vec<char> = s.chars().collect();
+                    let len = chars.len() as i64;
+                    let start = (start.max(0) as usize).min(len as usize);
+                    let end = (end.max(0) as usize).min(len as usize);
+                    let slice: String = chars[start..end].iter().collect();
+                    Ok(Value::Str(slice))
+                }
+                _ => Err(EvalError::new("substring requires (String, Int, Int)")),
+            }
+        }
+        "string_length" => {
+            let s = eval_positional_or_named("s", 0, args, env, sibling_fns)?;
+            match s {
+                Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
+                _ => Err(EvalError::new("string_length requires a String")),
+            }
+        }
+        "parse_int" => {
+            let s = eval_positional_or_named("s", 0, args, env, sibling_fns)?;
+            match s {
+                Value::Str(s) => {
+                    let n = s.trim().parse::<i64>().map_err(|e| {
+                        EvalError::new(format!("parse_int: cannot parse '{s}': {e}"))
+                    })?;
+                    Ok(Value::Int(n))
+                }
+                _ => Err(EvalError::new("parse_int requires a String")),
+            }
+        }
+        "scan_while" => {
+            let s = eval_positional_or_named("s", 0, args, env, sibling_fns)?;
+            let start = eval_positional_or_named("start", 1, args, env, sibling_fns)?;
+            // The pred argument is a lambda — get it unevaluated.
+            let pred_expr = get_arg_expr("pred", 2, args);
+            match (s, start, pred_expr) {
+                (Value::Str(s), Value::Int(start), Some(LoweredExpr::Lambda { params, body })) => {
+                    let param = params.first().cloned().unwrap_or_else(|| "_".to_string());
+                    let chars: Vec<char> = s.chars().collect();
+                    let mut pos = start.max(0) as usize;
+                    while pos < chars.len() {
+                        let mut child_env = env.child();
+                        child_env.bind(param.clone(), Value::Str(chars[pos].to_string()));
+                        let result = eval_expr(body, &child_env, sibling_fns)?;
+                        if !value_truthy(&result) {
+                            break;
+                        }
+                        pos += 1;
+                    }
+                    Ok(Value::Int(pos as i64))
+                }
+                _ => Err(EvalError::new("scan_while requires (String, Int, Lambda)")),
+            }
+        }
+        "scan_string_end" => {
+            let s = eval_positional_or_named("s", 0, args, env, sibling_fns)?;
+            let start = eval_positional_or_named("start", 1, args, env, sibling_fns)?;
+            match (s, start) {
+                (Value::Str(s), Value::Int(start)) => {
+                    let chars: Vec<char> = s.chars().collect();
+                    let mut pos = start.max(0) as usize;
+                    while pos < chars.len() {
+                        if chars[pos] == '\\' {
+                            pos += 2; // skip escaped char
+                        } else if chars[pos] == '"' {
+                            return Ok(Value::Int((pos + 1) as i64));
+                        } else {
+                            pos += 1;
+                        }
+                    }
+                    // No closing quote found — return end of string
+                    Ok(Value::Int(chars.len() as i64))
+                }
+                _ => Err(EvalError::new("scan_string_end requires (String, Int)")),
+            }
+        }
+        "scan_to_eol" => {
+            let s = eval_positional_or_named("s", 0, args, env, sibling_fns)?;
+            let start = eval_positional_or_named("start", 1, args, env, sibling_fns)?;
+            match (s, start) {
+                (Value::Str(s), Value::Int(start)) => {
+                    let chars: Vec<char> = s.chars().collect();
+                    let start = start.max(0) as usize;
+                    for (i, &ch) in chars.iter().enumerate().skip(start) {
+                        if ch == '\n' {
+                            return Ok(Value::Int(i as i64));
+                        }
+                    }
+                    Ok(Value::Int(chars.len() as i64))
+                }
+                _ => Err(EvalError::new("scan_to_eol requires (String, Int)")),
+            }
+        }
+        "skip_horizontal_ws" => {
+            let s = eval_positional_or_named("s", 0, args, env, sibling_fns)?;
+            let start = eval_positional_or_named("start", 1, args, env, sibling_fns)?;
+            match (s, start) {
+                (Value::Str(s), Value::Int(start)) => {
+                    let chars: Vec<char> = s.chars().collect();
+                    let mut pos = start.max(0) as usize;
+                    while pos < chars.len() && (chars[pos] == ' ' || chars[pos] == '\t') {
+                        pos += 1;
+                    }
+                    Ok(Value::Int(pos as i64))
+                }
+                _ => Err(EvalError::new("skip_horizontal_ws requires (String, Int)")),
+            }
+        }
+        "lookup" => {
+            let map_val = eval_positional_or_named("map", 0, args, env, sibling_fns)?;
+            let key = eval_positional_or_named("key", 1, args, env, sibling_fns)?;
+            match (map_val, key) {
+                (Value::Map(map), Value::Str(key)) => {
+                    if let Some(value) = map.get(&key) {
+                        let mut result = BTreeMap::new();
+                        result.insert("_variant".to_string(), Value::Str("Some".to_string()));
+                        result.insert("value".to_string(), value.clone());
+                        Ok(Value::Map(result))
+                    } else {
+                        let mut result = BTreeMap::new();
+                        result.insert("_variant".to_string(), Value::Str("None".to_string()));
+                        Ok(Value::Map(result))
+                    }
+                }
+                _ => Err(EvalError::new("lookup requires (Map, String)")),
+            }
+        }
         // chars is handled by eval_intrinsic_call via INTRINSIC_CALLS.
         _ if name.chars().next().unwrap_or('a').is_uppercase() => {
             // Generic variant constructor (e.g. `Ok { value: "x" }`, `Closed`)
@@ -1026,6 +1172,47 @@ fn eval_named_arg(
         return eval_expr(expr, env, sibling_fns);
     }
     Err(EvalError::new(format!("missing argument '{param}'")))
+}
+
+/// Evaluate an argument by name or positional index.
+///
+/// Tries named lookup first, then falls back to positional index.
+fn eval_positional_or_named(
+    param: &str,
+    index: usize,
+    args: &[(Option<String>, LoweredExpr)],
+    env: &Env,
+    sibling_fns: &HashMap<String, LoweredFnBody>,
+) -> Result<Value, EvalError> {
+    // Try named first
+    for (name, expr) in args {
+        if name.as_deref() == Some(param) {
+            return eval_expr(expr, env, sibling_fns);
+        }
+    }
+    // Fall back to positional
+    if let Some((_, expr)) = args.get(index) {
+        return eval_expr(expr, env, sibling_fns);
+    }
+    Err(EvalError::new(format!("missing argument '{param}'")))
+}
+
+/// Get an argument expression by name or positional index without evaluating it.
+///
+/// Used for lambda arguments that must remain as `LoweredExpr::Lambda`.
+fn get_arg_expr<'a>(
+    param: &str,
+    index: usize,
+    args: &'a [(Option<String>, LoweredExpr)],
+) -> Option<&'a LoweredExpr> {
+    // Try named first
+    for (name, expr) in args {
+        if name.as_deref() == Some(param) {
+            return Some(expr);
+        }
+    }
+    // Fall back to positional
+    args.get(index).map(|(_, expr)| expr)
 }
 
 /// Convert a `serde_json::Value` to a `Value` for the evaluator environment.
@@ -1621,6 +1808,383 @@ mod tests {
                 m
             }),
         ]);
+        assert_eq!(result, expected);
+    }
+
+    // ── v2 kernel intrinsic tests ─────────────────────────────────────
+
+    /// Helper: evaluate a call expression and return the result.
+    fn eval_call_expr(
+        name: &str,
+        args: Vec<(Option<String>, LoweredExpr)>,
+        inputs: &HashMap<String, Value>,
+    ) -> Result<Value, EvalError> {
+        let body = LoweredFnBody {
+            stmts: vec![LoweredStmt::Return(vec![(
+                "return".to_string(),
+                LoweredExpr::Call {
+                    name: name.to_string(),
+                    args,
+                },
+            )])],
+        };
+        let result = evaluate_fn_body(&body, inputs, &empty_siblings())?;
+        Ok(result.get("return").cloned().unwrap_or(Value::Unit))
+    }
+
+    #[test]
+    fn test_char_at() {
+        let result = eval_call_expr(
+            "char_at",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("hello".to_string()))),
+                (Some("pos".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(1))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Str("e".to_string()));
+    }
+
+    #[test]
+    fn test_char_at_out_of_bounds() {
+        let result = eval_call_expr(
+            "char_at",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("hi".to_string()))),
+                (Some("pos".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(5))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Unit);
+    }
+
+    #[test]
+    fn test_char_at_unicode() {
+        // Multi-byte characters: char_at uses chars() so it works on codepoints
+        let result = eval_call_expr(
+            "char_at",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("\u{00e9}bc".to_string()))),
+                (Some("pos".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Str("\u{00e9}".to_string()));
+    }
+
+    #[test]
+    fn test_substring() {
+        let result = eval_call_expr(
+            "substring",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("hello world".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+                (Some("end".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(5))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Str("hello".to_string()));
+    }
+
+    #[test]
+    fn test_substring_clamped() {
+        // End beyond string length should clamp
+        let result = eval_call_expr(
+            "substring",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("hi".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+                (Some("end".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(100))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Str("hi".to_string()));
+    }
+
+    #[test]
+    fn test_substring_empty() {
+        let result = eval_call_expr(
+            "substring",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("hello".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(3))),
+                (Some("end".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(3))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Str(String::new()));
+    }
+
+    #[test]
+    fn test_string_length() {
+        let result = eval_call_expr(
+            "string_length",
+            vec![(Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("hello".to_string())))],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(5));
+    }
+
+    #[test]
+    fn test_string_length_empty() {
+        let result = eval_call_expr(
+            "string_length",
+            vec![(Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String(String::new())))],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(0));
+    }
+
+    #[test]
+    fn test_parse_int() {
+        let result = eval_call_expr(
+            "parse_int",
+            vec![(Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("42".to_string())))],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(42));
+    }
+
+    #[test]
+    fn test_parse_int_with_whitespace() {
+        let result = eval_call_expr(
+            "parse_int",
+            vec![(Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("  -7  ".to_string())))],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(-7));
+    }
+
+    #[test]
+    fn test_parse_int_invalid() {
+        let result = eval_call_expr(
+            "parse_int",
+            vec![(Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("abc".to_string())))],
+            &HashMap::new(),
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_scan_while() {
+        // Scan digits from position 0 in "123abc"
+        let result = eval_call_expr(
+            "scan_while",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("123abc".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+                (Some("pred".to_string()), LoweredExpr::Lambda {
+                    params: vec!["c".to_string()],
+                    body: Box::new(LoweredExpr::BinOp {
+                        left: Box::new(LoweredExpr::BinOp {
+                            left: Box::new(LoweredExpr::Call {
+                                name: "code_point".to_string(),
+                                args: vec![(Some("c".to_string()), LoweredExpr::Ident("c".to_string()))],
+                            }),
+                            op: LoweredBinOp::Ge,
+                            right: Box::new(LoweredExpr::Call {
+                                name: "code_point".to_string(),
+                                args: vec![(Some("c".to_string()), LoweredExpr::Literal(LoweredLiteral::String("0".to_string())))],
+                            }),
+                        }),
+                        op: LoweredBinOp::And,
+                        right: Box::new(LoweredExpr::BinOp {
+                            left: Box::new(LoweredExpr::Call {
+                                name: "code_point".to_string(),
+                                args: vec![(Some("c".to_string()), LoweredExpr::Ident("c".to_string()))],
+                            }),
+                            op: LoweredBinOp::Le,
+                            right: Box::new(LoweredExpr::Call {
+                                name: "code_point".to_string(),
+                                args: vec![(Some("c".to_string()), LoweredExpr::Literal(LoweredLiteral::String("9".to_string())))],
+                            }),
+                        }),
+                    }),
+                }),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(3));
+    }
+
+    #[test]
+    fn test_scan_while_all_match() {
+        // All characters match predicate
+        let result = eval_call_expr(
+            "scan_while",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("aaa".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+                (Some("pred".to_string()), LoweredExpr::Lambda {
+                    params: vec!["c".to_string()],
+                    body: Box::new(LoweredExpr::Literal(LoweredLiteral::Bool(true))),
+                }),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(3));
+    }
+
+    #[test]
+    fn test_scan_string_end() {
+        // Input: hello" (start right after the opening quote)
+        let result = eval_call_expr(
+            "scan_string_end",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("hello\"rest".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(6)); // position after the closing "
+    }
+
+    #[test]
+    fn test_scan_string_end_with_escape() {
+        // Input: he\"llo" — escaped quote should be skipped
+        let result = eval_call_expr(
+            "scan_string_end",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("he\\\"llo\"rest".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(8)); // skip he\", then llo", position after closing "
+    }
+
+    #[test]
+    fn test_scan_string_end_no_closing() {
+        // No closing quote — return string length
+        let result = eval_call_expr(
+            "scan_string_end",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("hello".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(5));
+    }
+
+    #[test]
+    fn test_scan_to_eol() {
+        let result = eval_call_expr(
+            "scan_to_eol",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("hello\nworld".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(5));
+    }
+
+    #[test]
+    fn test_scan_to_eol_no_newline() {
+        let result = eval_call_expr(
+            "scan_to_eol",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("hello".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(5));
+    }
+
+    #[test]
+    fn test_scan_to_eol_from_offset() {
+        let result = eval_call_expr(
+            "scan_to_eol",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("ab\ncd\nef".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(3))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(5));
+    }
+
+    #[test]
+    fn test_skip_horizontal_ws() {
+        let result = eval_call_expr(
+            "skip_horizontal_ws",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("   \thello".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(4));
+    }
+
+    #[test]
+    fn test_skip_horizontal_ws_no_ws() {
+        let result = eval_call_expr(
+            "skip_horizontal_ws",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("hello".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(0));
+    }
+
+    #[test]
+    fn test_skip_horizontal_ws_ignores_newline() {
+        // Newlines are NOT horizontal whitespace
+        let result = eval_call_expr(
+            "skip_horizontal_ws",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("  \nhello".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(2));
+    }
+
+    #[test]
+    fn test_lookup_found() {
+        let mut map = BTreeMap::new();
+        map.insert("x".to_string(), Value::Int(42));
+        let inputs: HashMap<String, Value> = [("m".to_string(), Value::Map(map))].into_iter().collect();
+        let result = eval_call_expr(
+            "lookup",
+            vec![
+                (Some("map".to_string()), LoweredExpr::Ident("m".to_string())),
+                (Some("key".to_string()), LoweredExpr::Literal(LoweredLiteral::String("x".to_string()))),
+            ],
+            &inputs,
+        ).unwrap();
+        let expected = Value::Map({
+            let mut m = BTreeMap::new();
+            m.insert("_variant".to_string(), Value::Str("Some".to_string()));
+            m.insert("value".to_string(), Value::Int(42));
+            m
+        });
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_lookup_not_found() {
+        let map = BTreeMap::new();
+        let inputs: HashMap<String, Value> = [("m".to_string(), Value::Map(map))].into_iter().collect();
+        let result = eval_call_expr(
+            "lookup",
+            vec![
+                (Some("map".to_string()), LoweredExpr::Ident("m".to_string())),
+                (Some("key".to_string()), LoweredExpr::Literal(LoweredLiteral::String("missing".to_string()))),
+            ],
+            &inputs,
+        ).unwrap();
+        let expected = Value::Map({
+            let mut m = BTreeMap::new();
+            m.insert("_variant".to_string(), Value::Str("None".to_string()));
+            m
+        });
         assert_eq!(result, expected);
     }
 }

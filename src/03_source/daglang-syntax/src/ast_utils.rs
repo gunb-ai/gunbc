@@ -214,6 +214,7 @@ pub fn walk_expr(expr: &Expr, visitor: &mut impl FnMut(&Expr)) {
             walk_expr(inner, visitor);
             walk_expr(guard, visitor);
         }
+        Expr::Block(stmts) => walk_stmts(stmts, visitor),
         Expr::Literal(_) | Expr::Ident(_) => {}
     }
 }

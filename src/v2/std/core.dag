@@ -104,10 +104,10 @@ type Import {
 type Item
   = TypeDef { name: String, body: TypeBody, span: SourceSpan }
   // func: workflow function (may use resources, services, transport)
-  | FuncDef { name: String, params: List<Param>, return_type: TypeExpr?, body: Expr, span: SourceSpan }
+  | FuncDef { name: String, params: List<Param>, return_type: TypeExpr?, uses: List<ResourceUse>, body: Expr, span: SourceSpan }
   // fn: pure function (expression body, no side effects)
   | FnDef { name: String, params: List<Param>, return_type: TypeExpr?, body: Expr, span: SourceSpan }
-  | ServiceDef { name: String, transport: TransportBinding, operations: List<OperationDef>, span: SourceSpan }
+  | ServiceDef { name: String, transport: TransportBinding, config: ServiceConfig?, operations: List<OperationDef>, span: SourceSpan }
   | ResourceDef { name: String, capabilities: List<CapabilityDef>, span: SourceSpan }
   | DataDef { name: String, type_expr: TypeExpr, value: Expr, span: SourceSpan }
   | ExternFuncDecl { name: String, params: List<Param>, return_type: TypeExpr, span: SourceSpan }
@@ -139,6 +139,9 @@ type TypeExpr
   // MapType allows arbitrary key types in the AST (pre-typecheck).
   // The typechecker enforces String-key constraint (S19).
   | MapType { key: TypeExpr, value: TypeExpr, span: SourceSpan }
+  // Kernel types (String, Int, Bool, Float, Secret, Json, Unit, Bytes)
+  // that have no structural expansion.
+  | Primitive { name: String, span: SourceSpan }
 
 type ContainerKind = List | Set | NonEmptyList | NonEmptySet
 
@@ -164,6 +167,13 @@ type Variant {
 type Param {
   name: String
   type_expr: TypeExpr
+  default_value: Expr?
+  span: SourceSpan
+}
+
+type ResourceUse {
+  name: String
+  resource: TypeExpr
   span: SourceSpan
 }
 
@@ -199,6 +209,7 @@ type Expr
   | Lambda { params: List<String>, body: Expr, span: SourceSpan }
   | StringInterp { parts: List<StringPart>, span: SourceSpan }
   | Block { stmts: List<Expr>, span: SourceSpan }
+  | Cast { expr: Expr, target: TypeExpr, span: SourceSpan }
 
 type NamedArg { name: String?, value: Expr }
 type MatchArm { pattern: MatchPattern, guard: Expr?, body: Expr }
@@ -236,9 +247,27 @@ type StringPart
 
 type TransportBinding
   = RestBinding { base_url: Expr, auth: AuthConfig?, headers: List<HeaderDef> }
-  | ShellBinding { command: Expr, env: List<EnvDef> }
+  | ShellBinding { argv: List<Expr>, env: List<EnvDef> }
   | FileBinding { base_path: Expr }
   | LocalBinding
+
+type ServiceConfig {
+  endpoint: Expr
+  auth: Expr?
+  rate_limit: Expr?
+  retry: Expr?
+}
+
+type ResponseMapping {
+  status: Expr
+  type_expr: TypeExpr
+}
+
+type MockResponseDef {
+  status: Expr
+  body: Expr
+  description: String?
+}
 
 type AuthConfig {
   scheme: String
@@ -253,6 +282,8 @@ type OperationDef {
   name: String
   inputs: List<Field>
   outputs: List<Field>
+  response: List<ResponseMapping>
+  mock_response: List<MockResponseDef>
   modifiers: List<OperationModifier>
   span: SourceSpan
 }

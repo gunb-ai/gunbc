@@ -1051,6 +1051,11 @@ fn collect_covered_stages_from_expr(
                 collect_covered_stages_from_expr(value, producer_by_binding, covered);
             }
         }
+        Expr::Block(stmts) => {
+            for stmt in stmts {
+                collect_covered_stages_from_stmt(stmt, producer_by_binding, covered);
+            }
+        }
     }
 }
 
@@ -1146,6 +1151,26 @@ fn collect_root_identifiers(expr: &Expr, roots: &mut std::collections::BTreeSet<
             collect_root_identifiers(guard, roots);
         }
         Expr::After(inner, _) => collect_root_identifiers(inner, roots),
+        Expr::Block(stmts) => {
+            for stmt in stmts {
+                match stmt {
+                    Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => {
+                        collect_root_identifiers(expr, roots);
+                    }
+                    Stmt::Node(node_stmt) => {
+                        collect_root_identifiers(&node_stmt.expr, roots);
+                        if let Some(guard) = &node_stmt.when_guard {
+                            collect_root_identifiers(guard, roots);
+                        }
+                    }
+                    Stmt::Return(fields) => {
+                        for (_, expr) in fields {
+                            collect_root_identifiers(expr, roots);
+                        }
+                    }
+                }
+            }
+        }
         Expr::Literal(_) => {}
     }
 }

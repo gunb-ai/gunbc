@@ -3206,6 +3206,34 @@ impl Parser {
                 lhs = Expr::Call("as".into(), vec![(None, lhs), (None, Expr::Ident(tn))]);
                 continue;
             }
+            // Pipe chain: `a |> f(args)` desugars to `f(a, args)`,
+            // `a |> f` desugars to `f(a)`.
+            if self.check(&TokenKind::Pipe) && self.peek2().kind == TokenKind::Gt {
+                let pipe_bp: u8 = 1;
+                if pipe_bp < min_bp {
+                    break;
+                }
+                self.advance(); // consume |
+                self.advance(); // consume >
+                // RHS: expect ident optionally followed by (args)
+                let rhs = self.parse_expr(pipe_bp + 1)?;
+                lhs = match rhs {
+                    // `a |> f(b, c)` → `f(a, b, c)`
+                    Expr::Call(name, mut args) => {
+                        args.insert(0, (None, lhs));
+                        Expr::Call(name, args)
+                    }
+                    // `a |> f` → `f(a)`
+                    Expr::Ident(name) => Expr::Call(name, vec![(None, lhs)]),
+                    other => {
+                        return Err(self.err(format!(
+                            "expected function call or identifier after |>, got {:?}",
+                            other
+                        )));
+                    }
+                };
+                continue;
+            }
             if let Some((l_bp, r_bp)) = self.infix_bp() {
                 if l_bp < min_bp {
                     break;
@@ -3465,6 +3493,25 @@ impl Parser {
             TokenKind::Match => self.parse_match_expr(),
             TokenKind::If => self.parse_if_expr(),
             TokenKind::For => self.parse_for_expr(),
+            // fn(params) { body } lambda syntax
+            TokenKind::Fn if self.peek2().kind == TokenKind::LParen => {
+                self.advance(); // consume fn
+                self.expect(&TokenKind::LParen)?;
+                let mut params = Vec::new();
+                while !self.check(&TokenKind::RParen) && !self.at_eof() {
+                    params.push(self.expect_ident()?);
+                    self.eat(&TokenKind::Comma);
+                }
+                self.expect(&TokenKind::RParen)?;
+                self.expect(&TokenKind::LBrace)?;
+                let body = if self.starts_brace_block_expr() {
+                    Expr::Block(self.parse_stmts()?)
+                } else {
+                    self.parse_expr(0)?
+                };
+                self.expect(&TokenKind::RBrace)?;
+                return Ok(Expr::Lambda(params, Box::new(body)));
+            }
             TokenKind::Return => {
                 self.advance();
                 if self.eat(&TokenKind::LBrace) {
@@ -3718,17 +3765,33 @@ impl Parser {
         self.expect(&TokenKind::If)?;
         let cond = self.parse_for_iterable_expr()?;
         self.expect(&TokenKind::LBrace)?;
-        let then_b = self.parse_expr(0)?;
+        let then_b = self.parse_if_branch_body()?;
         self.expect(&TokenKind::RBrace)?;
         let else_b = if self.eat(&TokenKind::Else) {
-            self.expect(&TokenKind::LBrace)?;
-            let e = self.parse_expr(0)?;
-            self.expect(&TokenKind::RBrace)?;
-            Some(Box::new(e))
+            if self.check(&TokenKind::If) {
+                // else if chain → recurse
+                Some(Box::new(self.parse_if_expr()?))
+            } else {
+                self.expect(&TokenKind::LBrace)?;
+                let e = self.parse_if_branch_body()?;
+                self.expect(&TokenKind::RBrace)?;
+                Some(Box::new(e))
+            }
         } else {
             None
         };
         Ok(Expr::If(Box::new(cond), Box::new(then_b), else_b))
+    }
+
+    /// Parse the body of an if/else branch: either a single expression or a
+    /// multi-statement block (like `for` bodies).
+    fn parse_if_branch_body(&mut self) -> Result<Expr, ParseError> {
+        if self.starts_brace_block_expr() {
+            let stmts = self.parse_stmts()?;
+            Ok(Expr::Block(stmts))
+        } else {
+            self.parse_expr(0)
+        }
     }
 
     fn parse_for_expr(&mut self) -> Result<Expr, ParseError> {

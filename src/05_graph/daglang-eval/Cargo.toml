@@ -9,3 +9,6 @@ description = "Pure expression evaluator for lowered DAG IR"
 gunbc-ir = { path = "../../00_foundation/ir" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+daglang-syntax = { path = "../../03_source/daglang-syntax" }

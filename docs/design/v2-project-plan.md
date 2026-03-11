@@ -1,274 +1,265 @@
 # v2 Self-Hosted Compiler: Project Plan
 
-## Final deliverable
+## Scope
 
-The v2 compiler (written in .dag, run by v1 during bootstrap)
-compiles `gist.dag` and its transitive dependencies (~1100 lines
-across 6 .dag files), emitting Rust source files equivalent to
-v1's output.
+Bootstrap subset only: compile `gist.dag` and its 5 transitive
+dependencies (~1100 lines across 6 .dag files) to Rust source files.
 
-**Acceptance test (three levels):**
+This exercises: `module`, `import`, `type` (record, sum, alias with
+refinements), `fn`, `func` (with `uses` clause), `service` (with
+`config`, `operation`, `transport`, `response`, `mock_response`),
+`resource` (with `capability`), `data`, expressions (let, match,
+if/else, field access, call, lambda, string interpolation, binary
+ops, record/list literals, `as` cast).
+
+Does NOT exercise: `pattern`, `interface`, `pipeline`, `profile`,
+`test`, `fixture`, `project`, `feature`, `task`, `design`,
+`component`, `environment`, `param`, `extern asset`.
+
+## Acceptance
 
 ```bash
 # Level 1: v2 emits Rust that compiles
 v2-compile gist.dag --backend rust --output /tmp/v2/
 cd /tmp/v2/ && cargo build
 
-# Level 2: v2 emits tests that pass
+# Level 2: v2 emits tests that pass (hermetic, mock-based)
 cd /tmp/v2/ && cargo test
 
-# Level 3: v2 output matches v1 output
+# Level 3: v2 primary output matches v1 (excludes v2-only test files)
 v1-compile gist.dag --backend rust --output /tmp/v1/
-diff -r /tmp/v1/ /tmp/v2/
+diff <(find /tmp/v1 -name "*.rs" | sort | xargs cat) \
+     <(find /tmp/v2 -name "main.rs" | sort | xargs cat)
 ```
 
-Level 1 proves the emitted code is valid Rust. Level 2 proves the
-emitted program behaves correctly (the compiler emits tests alongside
-the code). Level 3 proves v2 is compatible with v1 for bootstrap.
+---
 
-The compiler is a file-to-file transform. It reads .dag source and
-writes target-language source files AND target-language test files.
-There is no interpreter in the compiler. Interpretation and testing
-are downstream — consumers of the emitted files.
+## Task graph
+
+```
+C1 ──→ C2 ──→ C3 ──→ C4 ──→ C5 ──→ C6 ──→ I1
+
+T1 (independent) ─────────────────────────────┘
+```
+
+C1–C6 are sequential (each consumes the previous stage's output
+type). T1 runs in parallel with everything.
 
 ---
 
-## Workstreams
+## C1: Core types
 
-Two independent workstreams that merge at integration.
+**File:** `src/v2/std/core.dag`
+**Status:** 32 types defined, ~80% complete for bootstrap subset.
 
-### Stream C: Compiler stages (in .dag)
+**Remaining gaps to close:**
 
-The compiler itself: tokenizer, parser, module resolver, typechecker,
-emitter. Each stage is a pure function testable independently.
+1. Add `Primitive` variant to `TypeExpr`:
+   ```dag
+   | Primitive { name: String, span: SourceSpan }
+   ```
+   For kernel types (String, Int, Bool, Secret, Json, Unit) that
+   have no structural expansion. After typecheck, `Named("String")`
+   becomes `Primitive("String")`.
 
-### Stream T: Testing harness
+2. Add `uses` clause to FuncDef:
+   ```dag
+   | FuncDef { ..., uses: List<ResourceUse>, ... }
+   type ResourceUse { name: String, resource: TypeExpr, span: SourceSpan }
+   ```
 
-Per-stage comparison infrastructure. Both v1-equivalence tests
-(bootstrap correctness) AND spec-level invariant tests
-(sustainability correctness — v2 must not reproduce v1's fail-open
-behaviors).
+3. Add `Cast` variant to Expr:
+   ```dag
+   | Cast { expr: Expr, target: TypeExpr, span: SourceSpan }
+   ```
 
----
+4. Expand ServiceDef with config/response/mock_response:
+   ```dag
+   type ServiceConfig {
+     endpoint: Expr
+     auth: Expr?
+     rate_limit: Expr?
+     retry: Expr?
+   }
+   ```
+   Add `config: ServiceConfig?` to ServiceDef.
+   Add `response: List<ResponseMapping>` and
+   `mock_response: List<MockResponseDef>` to OperationDef.
 
-## Phases
+5. Add default values to Param:
+   ```dag
+   type Param { name: String, type_expr: TypeExpr, default_value: Expr?, span: SourceSpan }
+   ```
 
-### Phase 1: Foundation (independent tasks)
-
-#### C1: Core types (`v2/std/core.dag`)
-The compiler's domain model for the **bootstrap subset**: Token,
-Module, Expr, TypeExpr. Covers the 8 Item variants used by
-gist.dag and its transitive dependencies: `module`, `import`,
-`type`, `fn`, `func`, `service`, `resource`, `data`.
-
-Does NOT cover v1-only Item variants that gist.dag doesn't use:
-`PatternDef`, `InterfaceDef`, `PipelineDef`, `ProfileDef`,
-`TestDef`, `FixtureDef`, `ProjectDef`, `FeatureDef`, `TaskDef`,
-`DesignDef`, `ComponentDef`, `EnvironmentDef`, `ParamDecl`,
-`ExternAssetDecl`. These are added incrementally as the bootstrap
-target expands beyond gist.dag.
-
-Key design decisions:
-- `TypeExpr` is a structural value, not a string reference
-- No `metadata: Map<String, String>` bags
-- `SourceSpan` on every blameable node
+6. Expand service transport to include shell transport:
+   ```dag
+   | ShellBinding { argv: List<Expr>, env: List<EnvDef> }
+   ```
+   (Already partially done — needs `argv` for git commands.)
 
 **Acceptance:**
 - v1 compiler parses core.dag without errors
-- Every Item variant used by gist.dag's transitive deps has a
-  v2 equivalent
+- Every construct used in gist.dag's 6 transitive deps has a
+  v2 type representation
 - No string-typed fields where structural types exist
 
-**Effort:** Small (mostly done, needs cleanup)
-**Depends on:** Nothing
-
-#### T1: Test infrastructure
-Two test types:
-1. **Equivalence tests:** compile with v1, compile with v2, diff
-2. **Invariant tests:** v2 output has no unresolved type references,
-   no string-typed metadata bags, no fabrication fallbacks
-
-**Acceptance:** Framework runs on a trivial 1-function .dag file
-**Effort:** Small
 **Depends on:** Nothing
 
 ---
 
-### Phase 2: Tokenizer + Parser
+## T1: Test infrastructure
 
-#### C2: Tokenizer (`v2/compiler/tokenize.dag`)
-Pure function: `String → List<Token>`.
+**Deliverable:** Script that compiles a .dag file with v1, serializes
+the AST/output, and compares against v2's output.
 
-Keywords and punctuation as data tables. Must emit all token
-kinds declared in core.dag, including:
-- String interpolation parts (StrBegin/StrMid/StrEnd)
-- Float literals
-- Newline tokens (significant for the parser)
+Two test types:
+- **Equivalence:** v1 output == v2 output (bootstrap correctness)
+- **Invariant:** v2 output satisfies spec properties that v1 may
+  violate (no unresolved Named after typecheck, no fabrication, etc.)
+
+Also: a small set of hand-authored semantic fixtures where v2 is
+explicitly allowed to disagree with v1 (fail-open cases that v2
+correctly rejects).
+
+**Acceptance:** Framework runs on a trivial 1-function .dag file
+**Depends on:** Nothing
+
+---
+
+## C2: Tokenizer
+
+**File:** `src/v2/compiler/tokenize.dag`
+**Status:** 11 functions, handles keywords/idents/ints/strings/
+punctuation/operators/newlines/floats/comments/pipe. Missing:
+string interpolation, escape sequences.
+
+**Remaining gaps:**
+
+1. String interpolation: `"hello {name}"` → `StrBegin("hello ")`,
+   then the expression tokens, then `StrEnd("")`. Requires a
+   depth stack to track nested `{`/`}` inside interpolations.
+
+2. Escape sequences: `\"`, `\\`, `\n`, `\t` inside string literals.
+
+3. Undefined primitives: `scan_while`, `scan_string_end`,
+   `scan_to_eol`, `skip_horizontal_ws`, `char_at`, `substring`,
+   `string_length`, `parse_int` — these are kernel-provided
+   intrinsics that need to exist in the v1 evaluator.
 
 **Acceptance:**
 - Tokenize all 6 gist-dependency .dag files
-- Token stream (kinds + spans) matches v1 tokenizer output
-- Every TokenKind variant in core.dag is either emitted or
-  explicitly documented as unused by the test corpus
+- Token stream matches v1 tokenizer output (kinds + spans)
+- `StrBegin`/`StrMid`/`StrEnd` emitted for interpolated strings
 
-**Effort:** Small-Medium
-**Depends on:** C1
-
-#### C3: Parser (`v2/compiler/parse.dag`)
-Pure function: `List<Token> → Module`.
-
-Recursive descent. Must handle all Item variants:
-- `module`, `import`
-- `type` (record, sum, alias with refinement predicates)
-- `fn`, `func`
-- `service` with `operation`
-- `resource` with `capability`
-- `data` declarations
-- All Expr variants used by gist.dag and its dependencies
-
-**Acceptance:**
-- Parse all 6 gist-dependency .dag files
-- AST structure matches v1 parser (serialized JSON comparison)
-- **Invariant test:** every TypeExpr in the parsed AST is
-  structural (Named/Product/Coproduct/Container), never a raw
-  string
-
-**Effort:** Large (~2000 lines, biggest single task)
-**Depends on:** C2
+**Depends on:** C1 (Token/TokenKind types)
 
 ---
 
-### Phase 3: Resolution + Typechecking (splittable)
+## C3: Parser
 
-#### C4: Module resolver (`v2/compiler/resolve.dag`)
-Pure function: `List<Module> → ModuleGraph`.
+**File:** `src/v2/compiler/parse.dag` (not yet created)
+**Status:** Not started.
 
-Resolves import references, builds dependency order, detects
-cycles.
+Recursive descent, first-error-halt. Must parse:
+- `module`, `import` (with structured bindings)
+- `type` (Record, Sum, Alias with refinement predicates)
+- `fn` (pure), `func` (with `uses` clause)
+- `service` (with `config`, `operation`, `transport`, `response`,
+  `mock_response`)
+- `resource` (with `capability`)
+- `data` declarations
+- All Expr variants: let, match, if/else, field access, call,
+  lambda, string interpolation, binary ops, record/list literals,
+  `as` cast
+
+**Acceptance:**
+- Parse all 6 gist-dependency .dag files
+- AST structure matches v1 parser (serialized JSON diff)
+- **Invariant:** every TypeExpr is structural (Named/Product/etc),
+  never a raw string
+
+**Depends on:** C2 (token stream)
+
+---
+
+## C4: Module resolver
+
+**File:** `src/v2/compiler/resolve.dag` (not yet created)
+**Status:** Not started.
+
+Resolves import references, builds dependency order, detects cycles.
 
 **Acceptance:**
 - Resolve gist.dag + 5 dependencies
 - Import references resolve to correct modules
-- Cycle detection catches circular imports (spec test with
-  synthetic cycle)
+- Cycle detection works on synthetic circular import
 
-**Effort:** Small
-**Depends on:** C3
+**Depends on:** C3 (parsed modules)
 
-#### C5: Type resolver (`v2/compiler/typecheck.dag`)
-Pure function: `ModuleGraph → TypedGraph`.
+---
 
-Resolves every `Named { name }` TypeExpr to its structural form.
-After this stage, no TypeExpr in the graph is `Named` — everything
-is `Product`, `Coproduct`, `Container`, `Refined`, etc.
+## C5: Type resolver
 
-No TypeRegistry. Resolution walks the module graph's type
-definitions and substitutes structurally.
+**File:** `src/v2/compiler/typecheck.dag` (not yet created)
+**Status:** Not started.
+
+Resolves every `Named` TypeExpr to its structural form. Retains
+nominal anchor (`name: Some("Span")`) alongside structure for
+diagnostics and emission. Kernel primitives become
+`Primitive { name: "String" }`.
+
+**Invariant:** After typecheck, no unresolved `Named` references
+remain. Every name is either `Primitive` (kernel types), a resolved
+structural form, or a cycle-breaking `Named` that IS defined in
+the module graph.
 
 **Acceptance:**
 - Resolve all types in gist.dag dependencies
-- `ResourceHandle` resolves to Product with 4 fields
-- `CommitSha` resolves to Refined { base: String, predicates: [Pattern] }
-- Service operation types resolve to products
-- **Invariant test:** no `Named` TypeExpr survives typecheck
-  (all resolved to structural form)
+- `ResourceHandle` → Product with 4 fields
+- `CommitSha` → Refined { base: Primitive("String"), ... }
+- No unresolved `Named` survives
 
-**Effort:** Medium
-**Depends on:** C4
-**Parallelizable with:** C4 can be done by a different person,
-C5 starts as soon as C4 is done
+**Depends on:** C4 (module graph with all type definitions visible)
 
 ---
 
-### Phase 4: Emission
+## C6: Rust emitter
 
-#### C6: Rust emitter (`v2/compiler/emit.dag`)
-Pure function: `TypedGraph → List<TextFile>`.
+**File:** `src/v2/compiler/emit.dag` (not yet created)
+**Status:** Not started.
 
-Emits BOTH Rust source files AND Rust test files from the typed
-AST. The compiler owns its downstream — if it emits Rust, it also
-emits the tests that prove the Rust works.
-
-For bootstrap, needs to handle the constructs used by gist.dag:
-- Function definitions → Rust functions + unit tests
-- Service operations → transport call scaffolding + mock tests
-- Type definitions → Rust structs/enums + construction tests
-- Data declarations → Rust constants + value tests
+Emits Rust source files AND Rust test files from the typed graph.
+Scoped to gist.dag constructs:
+- fn → Rust function
+- func → workflow function with service call scaffolding
+- type → Rust struct/enum
+- data → Rust constant
+- service operation → transport call code
 - Expressions → Rust expression syntax
+
+Emitted tests are hermetic: use `mock_response` from DSL source
+as test fixtures. No network, no credentials.
 
 **Acceptance:**
 - Emit Rust for gist.dag
-- Emitted files compile with `cargo build`
-- Emitted tests pass with `cargo test`
-- Emitted files are functionally equivalent to v1's output
-  (diff, ignoring formatting)
-- **Invariant test:** no emitted file contains `unwrap()` without
-  a clear error message, no `todo!()`, no `unimplemented!()`
+- `cargo build` succeeds on emitted output
+- `cargo test` passes on emitted tests
+- Primary output functionally equivalent to v1
 
-**Effort:** Large (~2500 lines — code emit + test emit)
-**Depends on:** C5
+**Depends on:** C5 (typed graph)
 
 ---
 
-### Phase 5: Integration
+## I1: Pipeline integration
 
-#### I1: Pipeline wiring (`v2/compiler/pipeline.dag`)
-Wire C2–C6 into the full pipeline: read files → tokenize → parse →
-resolve → typecheck → emit.
+**File:** `src/v2/compiler/pipeline.dag`
+**Status:** Skeleton with commented-out stages.
 
-**Acceptance:** The final deliverable acceptance test passes:
-v2 compiles gist.dag and emitted files match v1's output
+Wire C2–C6 with effectful driver split:
+- **Driver** (effectful): `discover_files(root) → List<SourceFile>`
+- **Compiler** (pure): `compile_sources(sources, backend) → CompileResult`
 
-**Effort:** Small (plumbing)
-**Depends on:** C6
+Every stage returns `StageResult<T> { value, diagnostics }`.
 
----
-
-## Parallelism map
-
-```
-         Person A              Person B
-Week 1:  C1 (types)            T1 (test harness)
-Week 1:  C2 (tokenizer)        T1 continued
-Week 2:  C3 (parser)           (parser is large — both can pair)
-Week 3:  C4 (resolver)         C5 (typechecker — can start from C4 types)
-Week 3:  C6 (emitter)          C5 continued
-Week 4:  I1 (integration)      invariant tests
-```
-
-**Critical path:** C1 → C2 → C3 → C4 → C5 → C6 → I1
-
-**Parallelizable:** T1 runs independently. C4 and C5 overlap
-partially (different concerns, same input shape).
-
-**Estimated effort:** ~3 weeks for 1 person, ~2 weeks for 2.
-
----
-
-## Per-task test strategy
-
-Two test types per task:
-
-| Task | Equivalence test (v1 = oracle) | Invariant test (spec) |
-|------|------|------|
-| C2 | Token stream matches v1 | All TokenKind variants covered or documented |
-| C3 | AST matches v1 (JSON diff) | No raw-string TypeExprs in AST |
-| C4 | Module graph matches v1 | Cycle detection works on synthetic input |
-| C5 | Resolved types match v1 | No `Named` TypeExpr survives (all structural) |
-| C6 | Emitted Rust compiles, emitted tests pass, matches v1 | No `unwrap_or`, no string-typed metadata, no `todo!()` |
-| I1 | Full pipeline output matches v1 | All invariants hold end-to-end |
-
-Equivalence tests ensure bootstrap correctness. Invariant tests
-ensure v2 doesn't reproduce v1's sustainability problems.
-
----
-
-## Risk register
-
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| Parser too complex for .dag | Blocks C3 | Prototype string interpolation + operator precedence early |
-| v1 missing intrinsics that v2 compiler needs | Blocks execution | Inventory builtins used by C2-C6; add to v1 eval if missing |
-| v1/v2 output comparison too strict | False test failures | Normalize before comparison (sort keys, strip formatting) |
-| Recursive types in AST (Expr contains Expr) | Design complexity | v1 handles this; same recursive descent in .dag |
-| Emitter scope creep (too many Rust constructs) | Delays C6 | Scope to gist.dag's constructs only; add others incrementally |
+**Acceptance:** Full acceptance test passes (all 3 levels).
+**Depends on:** C6, T1

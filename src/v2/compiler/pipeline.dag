@@ -3,6 +3,9 @@
 // The compiler reads .dag source files and emits target-language source
 // files. No DAG IR, no interpreter, no executor. Each stage is a pure
 // function. The only I/O is reading source files (Filesystem.read).
+//
+// Pipeline: tokenize -> parse -> resolve -> typecheck -> emit
+// Each stage is a pure function. The pipeline wires them together.
 
 module v2.compiler.pipeline
 
@@ -12,43 +15,125 @@ import v2.std.core {
   Module, Token, TextFile, Diagnostic, CompileResult
 }
 import v2.compiler.tokenize { tokenize }
-// import v2.compiler.parse { parse }
-// import v2.compiler.resolve { resolve_modules }
-// import v2.compiler.typecheck { typecheck }
-// import v2.compiler.emit { emit_rust, emit_python }
+import v2.compiler.parse { parse, ParseResult }
+import v2.compiler.resolve { resolve_modules, ModuleGraph }
+import v2.compiler.typecheck { typecheck, TypedGraph }
+import v2.compiler.emit { emit_rust }
 
-// === Source reading ===
+// =========================================================================
+// Types
+// =========================================================================
 
 type SourceFile {
-  path: FilePath
+  path: String
   content: String
 }
+
+type Backend = Rust | Python
+
+type StageResult {
+  value: List<Module>
+  diagnostics: List<Diagnostic>
+}
+
+type TokenizeResult {
+  tokens: List<Token>
+  diagnostics: List<Diagnostic>
+}
+
+type ParseStageResult {
+  modules: List<Module>
+  diagnostics: List<Diagnostic>
+}
+
+// =========================================================================
+// Source reading (effectful)
+// =========================================================================
 
 fn read_source(path: FilePath) -> SourceFile {
   let content = Filesystem.read(path: path)
   SourceFile { path: path, content: content.content }
 }
 
-// === Backend selection ===
+// =========================================================================
+// Diagnostic collection
+// =========================================================================
 
-type Backend = Rust | Python
+// Gather all diagnostics from a list of parse results.
+fn collect_diagnostics(parse_results: List<ParseResult>) -> List<Diagnostic> {
+  fold(parse_results, [], acc, pr =>
+    if pr.error != None {
+      acc + [Diagnostic {
+        severity: Error,
+        message: pr.error,
+        span: None,
+        module_name: None
+      }]
+    } else {
+      acc
+    }
+  )
+}
 
-// === Public contract ===
-//
-// compile(root, backend) -> CompileResult { files, diagnostics }
-//
-// This is the one entry point. Everything else is internal.
-// Uncommented as each stage is implemented:
+// =========================================================================
+// Single-file convenience wrapper
+// =========================================================================
 
-// func compile(root: FilePath, backend: Backend) -> CompileResult {
-//   let sources = discover_and_read(root: root)
-//   let tokenized = map(sources, s => tokenize(source: s.content))
-//   let parsed = map(tokenized, t => parse(tokens: t))
-//   let graph = resolve_modules(modules: parsed)
-//   let typed = typecheck(graph: graph)
-//   let files = match backend {
-//     Rust => emit_rust(typed: typed)
-//     Python => emit_python(typed: typed)
-//   }
-//   CompileResult { files: files, diagnostics: typed.diagnostics }
-// }
+// Compile a single source file through all stages.
+// Returns the parsed module (if successful) and any diagnostics.
+fn compile_file(source: SourceFile) -> { module: Module?, diagnostics: List<Diagnostic> } {
+  let tokens = tokenize(source: source.content)
+  let result = parse(tokens: tokens)
+  if result.error != None {
+    let diag = Diagnostic {
+      severity: Error,
+      message: result.error,
+      span: None,
+      module_name: None
+    }
+    { module: None, diagnostics: [diag] }
+  } else {
+    { module: result.module, diagnostics: [] }
+  }
+}
+
+// =========================================================================
+// Full pipeline
+// =========================================================================
+
+// Pure compiler pipeline: sources in, compiled files out.
+// Wires tokenize -> parse -> resolve -> typecheck -> emit.
+fn compile_sources(sources: List<SourceFile>, backend: Backend) -> CompileResult {
+  // Stage 1: Tokenize each source file
+  let tokenized = map(sources, s => tokenize(source: s.content))
+
+  // Stage 2: Parse each token stream into a module
+  let parse_results = map(tokenized, t => parse(tokens: t))
+
+  // Collect modules and check for parse errors
+  let modules = map(parse_results, p => p.module)
+  let parse_diagnostics = collect_diagnostics(parse_results: parse_results)
+  let has_errors = any(parse_results, p => p.error != None)
+
+  // If any parse errors, return early with diagnostics
+  if has_errors {
+    CompileResult {
+      files: [],
+      diagnostics: parse_diagnostics
+    }
+  } else {
+    // Stage 3: Resolve imports and build module graph
+    let graph = resolve_modules(modules: modules)
+
+    // Stage 4: Type-check the module graph
+    let typed = typecheck(graph: graph)
+
+    // Stage 5: Emit target-language files
+    let files = emit_rust(typed: typed)
+
+    CompileResult {
+      files: files,
+      diagnostics: typed.diagnostics + parse_diagnostics
+    }
+  }
+}

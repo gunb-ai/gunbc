@@ -205,6 +205,7 @@ dependencies = [
 name = "daglang-eval"
 version = "0.1.0"
 dependencies = [
+ "daglang-syntax",
  "gunbc-ir",
  "serde",
  "serde_json",
@@ -1100,6 +1101,17 @@ dependencies = [
  "form_urlencoded",
  "idna",
  "percent-encoding",
+]
+
+[[package]]
+name = "v2-compiler-tests"
+version = "0.1.0"
+dependencies = [
+ "daglang-driver",
+ "daglang-eval",
+ "daglang-syntax",
+ "gunbc-ir",
+ "serde_json",
 ]
 
 [[package]]

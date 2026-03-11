@@ -1,0 +1,465 @@
+// v2 module resolver — pure function from parsed modules to dependency-ordered graph.
+//
+// No I/O — file discovery and parsing are handled by the pipeline.
+// Takes a list of parsed Module values and:
+//   1. Validates there are no duplicate module declarations
+//   2. Resolves each import to its target module
+//   3. Validates imported names exist in target modules
+//   4. Detects circular dependencies
+//   5. Topologically sorts modules (leaves first = dep_order 0)
+//
+// The resolver is the bridge between "a bag of parsed files" and
+// "an ordered graph the typechecker can walk front-to-back".
+
+module v2.compiler.resolve
+
+import v2.std.core { Module, Import, Item, Diagnostic, Severity, SourceSpan }
+
+// =========================================================================
+// Output types
+// =========================================================================
+
+type ModuleGraph {
+  modules: List<ResolvedModule>
+  diagnostics: List<Diagnostic>
+}
+
+type ResolvedModule {
+  module: Module
+  resolved_imports: List<ResolvedImport>
+  dep_order: Int
+}
+
+type ResolvedImport {
+  module_path: String
+  names: List<String>
+  target_module: Module?
+}
+
+// =========================================================================
+// Internal types — used by the topological sort and cycle detection
+// =========================================================================
+
+// An edge in the import graph: from_module imports to_module.
+type DepEdge {
+  from_module: String
+  to_module: String
+}
+
+// State threaded through Kahn's algorithm.
+type KahnState {
+  // Modules that have been placed in sorted order so far.
+  sorted: List<String>
+  // Current in-degree for each module (parallel with module_names).
+  in_degrees: List<Int>
+  // Module names list (index-aligned with in_degrees).
+  module_names: List<String>
+  // Adjacency: list of edges (dep -> dependant).
+  edges: List<DepEdge>
+}
+
+// Result of a single Kahn iteration step.
+type KahnStepResult {
+  state: KahnState
+  progress: Bool
+}
+
+// =========================================================================
+// Entry point
+// =========================================================================
+
+fn resolve_modules(modules: List<Module>) -> ModuleGraph {
+  // Phase 1: check for duplicate module declarations
+  let dup_diags = check_duplicate_modules(modules: modules)
+
+  // Phase 2: resolve each module's imports
+  let resolve_results = modules |> map(m =>
+    resolve_module_imports(module: m, all_modules: modules)
+  )
+  let resolved_imports_list = resolve_results |> map(r => r.resolved_imports)
+  let import_diags = resolve_results |> map(r => r.diagnostics)
+    |> fold([], acc, diags => acc + diags)
+
+  // Phase 3: topological sort
+  let topo_result = topological_sort(modules: modules)
+  let topo_diags = match topo_result.cycle_error {
+    Some { value: diag } => [diag]
+    None => []
+  }
+
+  // Phase 4: assign dep_order from the sorted order
+  let sorted_names = topo_result.sorted
+  let resolved_modules = modules |> enumerate |> map(pair =>
+    let idx = pair.first
+    let m = pair.second
+    let dep_order = find_index_in_list(names: sorted_names, target: m.name)
+    ResolvedModule {
+      module: m,
+      resolved_imports: get_at_index(items: resolved_imports_list, index: idx),
+      dep_order: dep_order
+    }
+  )
+
+  // Sort resolved modules by dep_order (leaves first)
+  let sorted_resolved = resolved_modules |> sort_by(m => m.dep_order)
+
+  ModuleGraph {
+    modules: sorted_resolved,
+    diagnostics: dup_diags + import_diags + topo_diags
+  }
+}
+
+// =========================================================================
+// Module lookup
+// =========================================================================
+
+// Find a module by its module declaration path (the `name` field).
+fn find_module(modules: List<Module>, path: String) -> Module? {
+  let matches = modules |> filter(m => m.name == path)
+  match matches |> first {
+    Some { value: m } => Some(m)
+    None => None
+  }
+}
+
+// =========================================================================
+// Import resolution
+// =========================================================================
+
+// Result of resolving one module's imports.
+type ModuleResolveResult {
+  resolved_imports: List<ResolvedImport>
+  diagnostics: List<Diagnostic>
+}
+
+// Resolve all imports for a single module.
+fn resolve_module_imports(module: Module, all_modules: List<Module>) -> ModuleResolveResult {
+  let results = module.imports |> map(imp =>
+    resolve_import(import: imp, modules: all_modules, importing_module: module.name)
+  )
+  let resolved = results |> map(r => r.resolved)
+  let diags = results |> map(r => r.diagnostics)
+    |> fold([], acc, d => acc + d)
+  ModuleResolveResult {
+    resolved_imports: resolved,
+    diagnostics: diags
+  }
+}
+
+// Result of resolving a single import statement.
+type ImportResolveResult {
+  resolved: ResolvedImport
+  diagnostics: List<Diagnostic>
+}
+
+// Resolve a single import: find target module, validate imported names.
+fn resolve_import(
+  import: Import,
+  modules: List<Module>,
+  importing_module: String
+) -> ImportResolveResult {
+  let target = find_module(modules: modules, path: import.module_path)
+  match target {
+    None => {
+      let diag = Diagnostic {
+        severity: Error,
+        message: "unresolved import: module '" + import.module_path + "' not found (imported by '" + importing_module + "')",
+        span: Some(import.span),
+        module_name: Some(importing_module)
+      }
+      ImportResolveResult {
+        resolved: ResolvedImport {
+          module_path: import.module_path,
+          names: import.names,
+          target_module: None
+        },
+        diagnostics: [diag]
+      }
+    }
+    Some { value: target_mod } => {
+      // Validate each imported name exists in the target
+      let exported = get_exported_names(module: target_mod)
+      let name_diags = import.names
+        |> filter(name => exported |> any(e => e == name) == false)
+        |> map(missing_name =>
+          Diagnostic {
+            severity: Error,
+            message: "name '" + missing_name + "' not found in module '" + import.module_path + "' (imported by '" + importing_module + "')",
+            span: Some(import.span),
+            module_name: Some(importing_module)
+          }
+        )
+      ImportResolveResult {
+        resolved: ResolvedImport {
+          module_path: import.module_path,
+          names: import.names,
+          target_module: Some(target_mod)
+        },
+        diagnostics: name_diags
+      }
+    }
+  }
+}
+
+// =========================================================================
+// Exported names
+// =========================================================================
+
+// Extract all item names from a module that can be imported.
+// Every top-level item (type, fn, func, service, resource, data,
+// extern func) contributes its name. Sum-type variants also contribute
+// their names so callers can import variant constructors directly.
+fn get_exported_names(module: Module) -> List<String> {
+  let item_names = module.items |> map(item => get_item_name(item: item))
+  let variant_names = module.items
+    |> map(item => get_variant_names(item: item))
+    |> fold([], acc, names => acc + names)
+  item_names + variant_names
+}
+
+// Extract the primary name from an item.
+fn get_item_name(item: Item) -> String {
+  match item {
+    TypeDef { name: n } => n
+    FuncDef { name: n } => n
+    FnDef { name: n } => n
+    ServiceDef { name: n } => n
+    ResourceDef { name: n } => n
+    DataDef { name: n } => n
+    ExternFuncDecl { name: n } => n
+  }
+}
+
+// Extract variant constructor names from a type definition.
+// For sum types, each variant name is importable. For other items,
+// returns an empty list.
+fn get_variant_names(item: Item) -> List<String> {
+  match item {
+    TypeDef { name: _, body: body } => {
+      match body {
+        Sum { variants: vs } => vs |> map(v => v.name)
+        Record { fields: _ } => []
+        Alias { base: _ } => []
+      }
+    }
+    FuncDef { name: _ } => []
+    FnDef { name: _ } => []
+    ServiceDef { name: _ } => []
+    ResourceDef { name: _ } => []
+    DataDef { name: _ } => []
+    ExternFuncDecl { name: _ } => []
+  }
+}
+
+// =========================================================================
+// Module dependency extraction
+// =========================================================================
+
+// Extract the module paths that a module depends on (from its imports).
+fn get_module_deps(module: Module) -> List<String> {
+  module.imports |> map(imp => imp.module_path)
+}
+
+// =========================================================================
+// Duplicate module detection
+// =========================================================================
+
+// Check for duplicate module declarations (same name appearing twice).
+fn check_duplicate_modules(modules: List<Module>) -> List<Diagnostic> {
+  // For each module, check if any earlier module has the same name.
+  // This produces a diagnostic for each duplicate (the second occurrence).
+  modules |> enumerate |> map(pair =>
+    let idx = pair.first
+    let m = pair.second
+    let earlier = modules |> enumerate
+      |> filter(other => other.first < idx && other.second.name == m.name)
+    match earlier |> first {
+      Some { value: _ } => [Diagnostic {
+        severity: Error,
+        message: "duplicate module declaration: '" + m.name + "'",
+        span: Some(m.span),
+        module_name: Some(m.name)
+      }]
+      None => []
+    }
+  ) |> fold([], acc, diags => acc + diags)
+}
+
+// =========================================================================
+// Topological sort — Kahn's algorithm
+//
+// Iterative approach using fold over a bounded number of steps.
+// Each step finds all zero-in-degree nodes, removes them, and
+// decrements neighbors. Terminates when no progress is made
+// (either all sorted, or a cycle exists).
+// =========================================================================
+
+type TopoResult {
+  sorted: List<String>
+  cycle_error: Diagnostic?
+}
+
+fn topological_sort(modules: List<Module>) -> TopoResult {
+  let module_names = modules |> map(m => m.name)
+  let all_edges = modules
+    |> map(m =>
+      get_module_deps(module: m) |> map(dep =>
+        DepEdge { from_module: dep, to_module: m.name }
+      )
+    )
+    |> fold([], acc, edges => acc + edges)
+
+  // Compute initial in-degrees
+  let initial_in_degrees = module_names |> map(name =>
+    all_edges |> filter(e => e.to_module == name) |> count
+  )
+
+  let initial_state = KahnState {
+    sorted: [],
+    in_degrees: initial_in_degrees,
+    module_names: module_names,
+    edges: all_edges
+  }
+
+  // Run Kahn's algorithm: iterate at most N times (one module emitted per round).
+  let module_count = modules |> count
+  let final_state = kahn_iterate(state: initial_state, remaining: module_count)
+
+  let sorted_count = final_state.sorted |> count
+  if sorted_count == module_count {
+    TopoResult { sorted: final_state.sorted, cycle_error: None }
+  } else {
+    // Modules not in sorted output are part of a cycle
+    let cycle_members = module_names
+      |> filter(name => final_state.sorted |> any(s => s == name) == false)
+    let cycle_desc = cycle_members |> join(separator: " -> ")
+    TopoResult {
+      sorted: final_state.sorted,
+      cycle_error: Some(Diagnostic {
+        severity: Error,
+        message: "circular dependency detected: " + cycle_desc,
+        span: None,
+        module_name: None
+      })
+    }
+  }
+}
+
+// Run up to `remaining` rounds of Kahn's algorithm.
+// Each round collects all zero-in-degree nodes, adds them to sorted,
+// and decrements in-degrees of their dependants.
+fn kahn_iterate(state: KahnState, remaining: Int) -> KahnState {
+  if remaining <= 0 {
+    return state
+  }
+  let step = kahn_step(state: state)
+  if step.progress == false {
+    // No progress — either done or stuck on a cycle
+    return step.state
+  }
+  kahn_iterate(state: step.state, remaining: remaining - 1)
+}
+
+// One step of Kahn's algorithm: find all zero-in-degree nodes,
+// emit them (sorted), and decrement neighbors' in-degrees.
+fn kahn_step(state: KahnState) -> KahnStepResult {
+  // Find all nodes with in-degree 0 that aren't already sorted
+  let zero_nodes = state.module_names |> enumerate
+    |> filter(pair =>
+      let deg = get_at_index_int(items: state.in_degrees, index: pair.first)
+      deg == 0 && (state.sorted |> any(s => s == pair.second) == false)
+    )
+    |> map(pair => pair.second)
+    |> sort_by(name => name)  // deterministic ordering
+
+  if zero_nodes |> count == 0 {
+    return KahnStepResult { state: state, progress: false }
+  }
+
+  // Add zero-degree nodes to sorted output
+  let new_sorted = state.sorted + zero_nodes
+
+  // Decrement in-degrees: for each edge from a zero_node, decrement target
+  let new_in_degrees = state.module_names |> enumerate |> map(pair =>
+    let idx = pair.first
+    let name = pair.second
+    let current_deg = get_at_index_int(items: state.in_degrees, index: idx)
+    // Count how many edges point to this node FROM a zero_node
+    let decrements = state.edges
+      |> filter(e => e.to_module == name && (zero_nodes |> any(z => z == e.from_module)))
+      |> count
+    // Mark zero_nodes themselves as -1 so they aren't picked again
+    if zero_nodes |> any(z => z == name) {
+      -1
+    } else {
+      current_deg - decrements
+    }
+  )
+
+  KahnStepResult {
+    state: KahnState {
+      sorted: new_sorted,
+      in_degrees: new_in_degrees,
+      module_names: state.module_names,
+      edges: state.edges
+    },
+    progress: true
+  }
+}
+
+// =========================================================================
+// Cycle detection
+//
+// Returns the names of modules that form a cycle, or None if acyclic.
+// Delegates to the topological sort — any unsorted modules are in cycles.
+// =========================================================================
+
+fn detect_cycle(modules: List<Module>) -> List<String>? {
+  let topo = topological_sort(modules: modules)
+  let module_names = modules |> map(m => m.name)
+  let sorted_count = topo.sorted |> count
+  let total_count = module_names |> count
+  if sorted_count == total_count {
+    None
+  } else {
+    let cycle_members = module_names
+      |> filter(name => topo.sorted |> any(s => s == name) == false)
+    Some(cycle_members)
+  }
+}
+
+// =========================================================================
+// Utility functions
+//
+// These operate on lists by index since the DSL doesn't have mutable
+// maps or arrays. Indices are computed via enumerate + filter.
+// =========================================================================
+
+// Find the index of a name in a list. Returns -1 if not found.
+fn find_index_in_list(names: List<String>, target: String) -> Int {
+  let matches = names |> enumerate |> filter(pair => pair.second == target)
+  match matches |> first {
+    Some { value: pair } => pair.first
+    None => -1
+  }
+}
+
+// Get element at index from a list of ResolvedImport lists.
+// Returns empty list if index is out of bounds.
+fn get_at_index(items: List<List<ResolvedImport>>, index: Int) -> List<ResolvedImport> {
+  let matches = items |> enumerate |> filter(pair => pair.first == index)
+  match matches |> first {
+    Some { value: pair } => pair.second
+    None => []
+  }
+}
+
+// Get element at index from a list of Ints.
+// Returns 0 if index is out of bounds.
+fn get_at_index_int(items: List<Int>, index: Int) -> Int {
+  let matches = items |> enumerate |> filter(pair => pair.first == index)
+  match matches |> first {
+    Some { value: pair } => pair.second
+    None => 0
+  }
+}

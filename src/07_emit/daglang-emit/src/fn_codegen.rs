@@ -254,6 +254,13 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
         }
         ast::Expr::Return(fields) => compile_return_fields(fields, ctx),
         ast::Expr::Guarded(inner, _) | ast::Expr::After(inner, _) => compile_expr(inner, ctx),
+        ast::Expr::Block(stmts) => code_ir::Expr::Block(
+            stmts
+                .iter()
+                .enumerate()
+                .map(|(index, stmt)| compile_stmt(stmt, index + 1 == stmts.len(), ctx))
+                .collect(),
+        ),
         ast::Expr::ServiceCall(_, _) | ast::Expr::Map(_) => {
             code_ir::Expr::RawCode(
                 "compile_error!(\"unsupported DSL construct: ServiceCall/Map not yet supported in fn codegen\");"

@@ -3538,6 +3538,11 @@ fn infer_expr_type(
                 })
                 .collect(),
         ),
+        Expr::Block(stmts) => {
+            let (val, block_errors) = infer_block_expr_type(stmts, local_bindings, infer_context);
+            errors.extend(block_errors);
+            val
+        }
     };
     (value, errors)
 }
