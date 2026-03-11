@@ -125,7 +125,7 @@ fn advance(state: ParserState) -> Map {
   }
 }
 
-fn make_error(msg: String, span: SourceSpan) -> Diagnostic {
+fn parse_error(msg: String, span: SourceSpan) -> Diagnostic {
   Diagnostic {
     severity: Error,
     message: msg,
