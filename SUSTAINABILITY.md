@@ -696,15 +696,69 @@ returns a `tail_call` signal instead of recursing. `eval_fn_body_rc`
 catches it in a loop and rebinds inputs. Zero stack growth for
 self-recursive tail calls.
 
+#### Discovered during debugging (2026-03-11):
+
+**S50: Block-scope `return` didn't exit enclosing function.**
+`evaluate_block_body` was a parallel implementation of `eval_fn_body`'s
+statement loop. When unified into `eval_stmts`, the `return` stmt
+inside `if cond { return x }` blocks produced `Ok(result)` instead
+of `Err(early_return)`. The enclosing function continued executing past
+the return point.
+Root cause: "no parallel implementations" violation. Two copies of the
+same loop diverged.
+Fix: `is_fn_body: bool` parameter on `eval_stmts`. Fn body context
+produces `Ok` (we ARE the function). Block context produces
+`Err(early_return)` (propagate up to enclosing function).
+
+**S51: `cmp_op` errors on Unit instead of returning false.**
+`char_at` returns `Unit` for out-of-bounds positions. Downstream
+DSL code passes the result to `is_digit(ch)` which does `ch >= "0"`.
+The evaluator's `cmp_op` treated `(Unit, Str)` as a type error
+instead of a false comparison.
+Root cause: no boundary contract between `char_at` (returns
+`String | Unit`) and its callers (assume `String`). The evaluator
+should handle the `Unit` case gracefully since the DSL has no way to
+distinguish `String` and `Unit` at the type level.
+Fix: `cmp_op` returns `Bool(false)` when either side is `Unit`.
+
+**S52: Parser mutual recursion not covered by TCO.**
+The v2 parser has ~80 mutually-recursive functions (`parse_items` →
+`parse_item` → `parse_type_def` → `parse_field_list` → `parse_field`
+→ `parse_type_expr` → ...). These are NOT self-recursive, so TCO
+doesn't apply. Each call adds ~500 bytes to the native stack in debug
+mode. Parsing a module with 10 type definitions reaches ~30 call
+frames deep × ~500 bytes = ~15 KB, and the default 8MB test thread
+stack overflows when combined with the tokenizer and evaluator frames.
+Status: not a correctness issue — tests use `with_parser_stack(16MB)`
+helper. The proper fix is mutual TCO (trampoline across function
+boundaries), which requires tracking tail position across call sites.
+Lower priority because the depth is bounded by AST nesting (not input
+length), and the 10,000 depth limit catches runaway cases.
+
+**S53: Data value round-trip through JSON loses type info.**
+`compile_tokenizer_module()` evaluates data declarations to `Value`,
+converts to `serde_json::Value` via `value_to_json`, stores in
+`EmbeddedCompileOutput.data_values`, then the evaluator converts back
+via `json_to_eval_value`. The round-trip loses `Value::Enum` → becomes
+`Value::Str` (e.g., `KwModule` enum variant → `"KwModule"` string).
+For the tokenizer's keyword table this works (the values are just tags),
+but for data declarations with nested structure, the lossy round-trip
+could cause subtle bugs.
+Fix: store `Value` directly in `EmbeddedCompileOutput.data_values`
+instead of going through JSON. The JSON intermediary exists because
+`evaluate_fn_body_with_data` takes `&HashMap<String, serde_json::Value>`
+— changing it to take `&HashMap<String, Value>` would eliminate the
+round-trip entirely.
+
 #### Remaining performance debt (not crash risk):
 
 **`Env::from_inputs` clones inputs on every non-self call.** For the
 parser, this includes the `ParserState` with its token list. Not a
 crash (heap, not stack), but quadratic in call count × state size.
-Fix would be `Rc`/cow for `Value`, which is a larger refactor.
-
-**`Env::child()` clones bindings on every block scope.** Same —
-performance, not crash. Fix: scoped environment with parent pointer.
+Fix: `Rc`/cow for `Value`. (Partially addressed: `Env.bindings` is
+now `Rc<HashMap>` with copy-on-write, eliminating most clones. The
+`from_inputs` entry point still clones the caller's HashMap into
+a new Rc.)
 
 **Map field flattening clones every field.** `let s = Record {...}`
 creates `s__source`, `s__tokens` etc. by cloning. Fix: lazy flattening
