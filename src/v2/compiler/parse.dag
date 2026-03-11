@@ -566,7 +566,7 @@ fn parse_predicates(state: ParserState) -> PR {
   if is_err(pr: r) { return r }
   let e = eat(state: r.state, tag: "Comma")
   if e.consumed {
-    let rest = parse_predicates(state: e.state)
+    let rest = parse_predicates(state: skip_newlines(state: e.state))
     if is_err(pr: rest) { return rest }
     ok(val: { predicates: [r.val.predicate] + rest.val.predicates }, state: rest.state)
   } else {
@@ -629,19 +629,14 @@ fn parse_single_predicate(state: ParserState) -> PR {
         ok(val: { predicate: Domain { name: r2.val.name } }, state: r3.state)
       }
       _ => {
-        // Unknown predicate with args — skip to RParen
-        let r2 = parse_expr(state: e.state)
-        if is_err(pr: r2) { return r2 }
-        let r3 = expect(state: r2.state, tag: "RParen")
-        if is_err(pr: r3) { return r3 }
-        ok(val: { predicate: NonEmpty }, state: r3.state)
+        fail(msg: "unknown where predicate `" + pred_name + "`", state: e.state)
       }
     }
   } else {
     // No args — handle bare predicate names
     match pred_name {
       "non_empty" => ok(val: { predicate: NonEmpty }, state: s)
-      _ => ok(val: { predicate: NonEmpty }, state: s)
+      _ => fail(msg: "unknown where predicate `" + pred_name + "`", state: s)
     }
   }
 }
