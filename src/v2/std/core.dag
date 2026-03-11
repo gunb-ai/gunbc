@@ -1,0 +1,331 @@
+// v2 core types — the compiler's domain model.
+//
+// Imports shared types from std.types (the same types used by all DSL
+// programs). Defines compiler-specific types (tokens, AST, expressions)
+// that only the compiler needs.
+//
+// This module describes the COMPILER's data model, not a runtime or
+// interpreter. The compiler reads .dag source files and emits target-
+// language source files. There is no executable DAG IR here — the
+// compiler's output is text files, not a graph to be interpreted.
+//
+// Dependency chain:
+//   kernel primitives (String, Int, Bool, List, Map)
+//     <- std.types (FilePath, NonEmptyStr, SourceSpan)
+//       <- v2.std.core (Token, AST, Expr, CompileResult)
+//         <- v2.compiler.* (tokenize, parse, typecheck, emit)
+
+module v2.std.core
+
+import std.types { FilePath, NonEmptyStr, SourceSpan }
+
+// =========================================================================
+// Tokens
+//
+// A token is an atomic unit of source text with a classification and
+// a source location. The tokenizer produces a flat List<Token> from
+// a source string.
+// =========================================================================
+
+type Token {
+  kind: TokenKind
+  span: SourceSpan
+}
+
+type TokenKind
+  // Declaration keywords
+  = KwModule | KwImport | KwType | KwFn | KwFunc
+  | KwService | KwResource | KwData | KwExtern
+  | KwInterface | KwPipeline | KwProfile | KwPattern
+  // Control flow keywords
+  | KwLet | KwReturn | KwMatch | KwIf | KwElse
+  | KwFor | KwIn | KwWhere | KwWith
+  // Literal keywords
+  | KwTrue | KwFalse | KwNone
+  // Resource lifecycle keywords
+  | KwAcquire | KwRelease | KwCapability
+  | KwOperation | KwInput | KwOutput
+  // Modifier keywords
+  | KwIdempotent | KwReadonly | KwHermetic
+  // Paired delimiters
+  | LBrace | RBrace | LParen | RParen | LBracket | RBracket
+  // Relational / arrow
+  | Lt | Gt | Le | Ge | FatArrow | Arrow
+  // Separators
+  | Colon | Comma | Dot
+  // Assignment / equality
+  | Eq | EqEq | Ne
+  // Arithmetic
+  | Plus | Minus | Star | Slash | Percent
+  // Logic
+  | Bang | And | Or
+  // Optionality
+  | Question | NullCoalesce
+  // Sum type separator
+  | Pipe
+  // Values
+  | LitStr { value: String }
+  | LitInt { value: Int }
+  | LitFloat { value: String }
+  | Ident { name: String }
+  // String interpolation parts
+  | StrBegin { value: String }
+  | StrMid { value: String }
+  | StrEnd { value: String }
+  // Structure
+  | Newline | Eof
+  | Unknown { char: String }
+
+// =========================================================================
+// AST — Abstract Syntax Tree
+//
+// The parser produces an AST from a token list. The AST is a faithful
+// representation of the source structure with no semantic interpretation.
+// Names are strings, types are TypeExpr values, expressions are Expr
+// values. Nothing is resolved or checked yet.
+//
+// Every node that a diagnostic might blame carries a SourceSpan for
+// precise error locality.
+// =========================================================================
+
+type Module {
+  name: String
+  imports: List<Import>
+  items: List<Item>
+  span: SourceSpan
+}
+
+type Import {
+  module_path: String
+  names: List<String>
+  span: SourceSpan
+}
+
+type Item
+  = TypeDef { name: String, body: TypeBody, span: SourceSpan }
+  // func: workflow function (may use resources, services, transport)
+  | FuncDef { name: String, params: List<Param>, return_type: TypeExpr?, uses: List<ResourceUse>, body: Expr, span: SourceSpan }
+  // fn: pure function (expression body, no side effects)
+  | FnDef { name: String, params: List<Param>, return_type: TypeExpr?, body: Expr, span: SourceSpan }
+  | ServiceDef { name: String, transport: TransportBinding, config: ServiceConfig?, operations: List<OperationDef>, span: SourceSpan }
+  | ResourceDef { name: String, capabilities: List<CapabilityDef>, span: SourceSpan }
+  | DataDef { name: String, type_expr: TypeExpr, value: Expr, span: SourceSpan }
+  | ExternFuncDecl { name: String, params: List<Param>, return_type: TypeExpr, span: SourceSpan }
+
+// =========================================================================
+// Type expressions
+//
+// A TypeExpr is a VALUE that describes a type's structure. It is not a
+// string key into a table. It is the type itself, represented as data.
+//
+// In v1, types were referenced by TypeId (a string) and resolved via
+// TypeRegistry (a HashMap). In v2, TypeExpr is structural. No registry,
+// no deferred lookup, no stale copies.
+//
+// After typechecking, no unresolved Named references survive — every
+// Named { name } has been resolved to its structural form (Product,
+// Coproduct, Container, Refined). Exception: recursive types may retain
+// a Named reference to break the cycle, but the name is guaranteed to
+// be defined in the module graph.
+// =========================================================================
+
+type TypeExpr
+  = Named { name: String, span: SourceSpan }
+  | Product { name: String?, fields: List<Field>, span: SourceSpan }
+  | Coproduct { name: String?, variants: List<Variant>, span: SourceSpan }
+  | Container { kind: ContainerKind, element: TypeExpr, span: SourceSpan }
+  | Refined { base: TypeExpr, predicates: List<Predicate>, span: SourceSpan }
+  | Optional { inner: TypeExpr, span: SourceSpan }
+  // MapType allows arbitrary key types in the AST (pre-typecheck).
+  // The typechecker enforces String-key constraint (S19).
+  | MapType { key: TypeExpr, value: TypeExpr, span: SourceSpan }
+  // Kernel types (String, Int, Bool, Float, Secret, Json, Unit, Bytes)
+  // that have no structural expansion.
+  | Primitive { name: String, span: SourceSpan }
+  | TypeApp { name: String, args: List<TypeExpr>, span: SourceSpan }
+
+type ContainerKind = List | Set | NonEmptyList | NonEmptySet
+
+type TypeBody
+  = Record { fields: List<Field> }
+  | Sum { variants: List<Variant> }
+  | Alias { base: TypeExpr }
+
+type Field {
+  name: String
+  type_expr: TypeExpr
+  optional: Bool
+  default_value: Expr?
+  span: SourceSpan
+}
+
+type Variant {
+  name: String
+  fields: List<Field>
+  span: SourceSpan
+}
+
+type Param {
+  name: String
+  type_expr: TypeExpr
+  default_value: Expr?
+  span: SourceSpan
+}
+
+type ResourceUse {
+  name: String
+  resource: TypeExpr
+  span: SourceSpan
+}
+
+// =========================================================================
+// Predicates — type refinements
+// =========================================================================
+
+type Predicate
+  = NonEmpty
+  | Pattern { regex: String }
+  | Range { min: Int?, max: Int? }
+  | Brand { name: String }
+  | ContentEncoding { encoding: String }
+  | Format { name: String }
+  | Domain { name: String }
+
+// =========================================================================
+// Expressions
+// =========================================================================
+
+type Expr
+  = Literal { value: LiteralValue, span: SourceSpan }
+  | Var { name: String, span: SourceSpan }
+  | FieldAccess { base: Expr, field: String, span: SourceSpan }
+  | Call { func: String, args: List<NamedArg>, span: SourceSpan }
+  | MethodCall { receiver: Expr, method: String, args: List<NamedArg>, span: SourceSpan }
+  | Match { scrutinee: Expr, arms: List<MatchArm>, span: SourceSpan }
+  | If { condition: Expr, then_branch: Expr, else_branch: Expr?, span: SourceSpan }
+  | Let { name: String, value: Expr, body: Expr?, span: SourceSpan }
+  | RecordLit { type_name: String?, fields: List<FieldInit>, span: SourceSpan }
+  | ListLit { elements: List<Expr>, span: SourceSpan }
+  | BinOp { op: BinOpKind, left: Expr, right: Expr, span: SourceSpan }
+  | UnaryOp { op: UnaryOpKind, operand: Expr, span: SourceSpan }
+  | Lambda { params: List<String>, body: Expr, span: SourceSpan }
+  | StringInterp { parts: List<StringPart>, span: SourceSpan }
+  | Block { stmts: List<Expr>, span: SourceSpan }
+  | Cast { expr: Expr, target: TypeExpr, span: SourceSpan }
+
+type NamedArg { name: String?, value: Expr }
+type MatchArm { pattern: MatchPattern, guard: Expr?, body: Expr }
+type FieldInit { name: String, value: Expr }
+
+type MatchPattern
+  = Bind { name: String }
+  | LitPattern { value: LiteralValue }
+  | VariantPattern { name: String, field_bindings: List<FieldBinding> }
+  | Wildcard
+
+type FieldBinding {
+  field_name: String
+  binding: MatchPattern
+}
+
+type LiteralValue
+  = LitStr { value: String }
+  | LitInt { value: Int }
+  | LitFloat { value: String }
+  | LitBool { value: Bool }
+  | LitNull
+
+type BinOpKind
+  = Add | Sub | Mul | Div | Mod
+  | BinEq | BinNe | BinLt | BinGt | BinLe | BinGe
+  | BinAnd | BinOr | Concat
+
+type UnaryOpKind = Not | Neg
+
+type StringPart
+  = Text { value: String }
+  | Interpolation { expr: Expr }
+
+// =========================================================================
+// Service / Transport
+//
+// Transport config is typed per transport kind, not a string-keyed bag.
+// =========================================================================
+
+type TransportBinding
+  = RestBinding { base_url: Expr, auth: AuthConfig?, headers: List<HeaderDef> }
+  | ShellBinding { argv: List<Expr>, env: List<EnvDef> }
+  | FileBinding { base_path: Expr }
+  | LocalBinding
+
+type ServiceConfig {
+  endpoint: Expr
+  auth: Expr?
+  rate_limit: Expr?
+  retry: Expr?
+}
+
+type ResponseMapping {
+  status: Expr
+  type_expr: TypeExpr
+}
+
+type MockResponseDef {
+  status: Expr
+  body: Expr
+  description: String?
+}
+
+type AuthConfig {
+  scheme: String
+  header: String
+  token_expr: Expr
+}
+
+type HeaderDef { name: String, value: Expr }
+type EnvDef { name: String, value: Expr }
+
+type OperationDef {
+  name: String
+  inputs: List<Field>
+  outputs: List<Field>
+  response: List<ResponseMapping>
+  mock_response: List<MockResponseDef>
+  modifiers: List<OperationModifier>
+  span: SourceSpan
+}
+
+type OperationModifier = Idempotent | Readonly | Hermetic
+
+type CapabilityDef {
+  name: String
+  inputs: List<Field>
+  outputs: List<Field>
+  span: SourceSpan
+}
+
+// =========================================================================
+// Compiler output
+//
+// The compiler produces files and diagnostics. No DAG, no IR, no
+// executable artifact. The emitted files ARE the output.
+// =========================================================================
+
+type CompileResult {
+  files: List<TextFile>
+  diagnostics: List<Diagnostic>
+}
+
+type TextFile {
+  path: FilePath
+  content: String
+}
+
+type Diagnostic {
+  severity: Severity
+  message: String
+  span: SourceSpan?
+  module_name: String?
+}
+
+type Severity = Error | Warning | Info

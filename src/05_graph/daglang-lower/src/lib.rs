@@ -9503,6 +9503,23 @@ fn collect_direct_call_names(expr: &Expr, calls: &mut BTreeSet<String>) {
                 collect_direct_call_names(value, calls);
             }
         }
+        Expr::Block(stmts) => {
+            for stmt in stmts {
+                match stmt {
+                    Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => {
+                        collect_direct_call_names(expr, calls);
+                    }
+                    Stmt::Node(node_stmt) => {
+                        collect_direct_call_names(&node_stmt.expr, calls);
+                    }
+                    Stmt::Return(fields) => {
+                        for (_, expr) in fields {
+                            collect_direct_call_names(expr, calls);
+                        }
+                    }
+                }
+            }
+        }
         Expr::Lambda(_, _) | Expr::Literal(_) | Expr::Ident(_) => {}
     }
 }
@@ -9747,6 +9764,23 @@ fn collect_direct_fn_calls_with_args(expr: &Expr, calls: &mut Vec<FnCallSite>) {
             for (key, value) in entries {
                 collect_direct_fn_calls_with_args(key, calls);
                 collect_direct_fn_calls_with_args(value, calls);
+            }
+        }
+        Expr::Block(stmts) => {
+            for stmt in stmts {
+                match stmt {
+                    Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => {
+                        collect_direct_fn_calls_with_args(expr, calls);
+                    }
+                    Stmt::Node(node_stmt) => {
+                        collect_direct_fn_calls_with_args(&node_stmt.expr, calls);
+                    }
+                    Stmt::Return(fields) => {
+                        for (_, expr) in fields {
+                            collect_direct_fn_calls_with_args(expr, calls);
+                        }
+                    }
+                }
             }
         }
         Expr::Lambda(_, _) | Expr::Literal(_) | Expr::Ident(_) => {}
@@ -10636,6 +10670,10 @@ fn lower_expr(
             "unsupported expression in {}.{}: Return",
             ctx.module_name, ctx.item_name
         ))),
+        Expr::Block(_stmts) => Err(LowerError::from(format!(
+            "unsupported expression in {}.{}: Block",
+            ctx.module_name, ctx.item_name
+        ))),
     }
 }
 
@@ -10913,6 +10951,31 @@ fn collect_expr_leaf_refs(
         Expr::Return(fields) => {
             for (_, field_expr) in fields {
                 collect_expr_leaf_refs(field_expr, ctx, refs, seen, has_local_refs);
+            }
+        }
+        Expr::Block(stmts) => {
+            for stmt in stmts {
+                match stmt {
+                    Stmt::Let(name, expr) | Stmt::Assign(name, expr) => {
+                        collect_expr_leaf_refs(expr, ctx, refs, seen, has_local_refs);
+                        seen.insert(name.clone());
+                    }
+                    Stmt::Expr(expr) => {
+                        collect_expr_leaf_refs(expr, ctx, refs, seen, has_local_refs);
+                    }
+                    Stmt::Node(node_stmt) => {
+                        collect_expr_leaf_refs(&node_stmt.expr, ctx, refs, seen, has_local_refs);
+                        if let Some(guard) = &node_stmt.when_guard {
+                            collect_expr_leaf_refs(guard, ctx, refs, seen, has_local_refs);
+                        }
+                        seen.insert(node_stmt.name.clone());
+                    }
+                    Stmt::Return(fields) => {
+                        for (_, expr) in fields {
+                            collect_expr_leaf_refs(expr, ctx, refs, seen, has_local_refs);
+                        }
+                    }
+                }
             }
         }
         Expr::Literal(_)

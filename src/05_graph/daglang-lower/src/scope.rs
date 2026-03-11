@@ -430,6 +430,13 @@ fn collect_scoped_items_from_expr(expr: &Expr, items: &mut Vec<ScopedItem>) {
             }
         }
 
+        // Block — recurse into statements.
+        Expr::Block(stmts) => {
+            for s in stmts {
+                collect_scoped_items_from_stmt(s, items);
+            }
+        }
+
         // Leaf expressions — no recursion needed.
         Expr::Literal(_) | Expr::Ident(_) => {}
     }

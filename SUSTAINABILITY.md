@@ -144,6 +144,22 @@ Fix: derive from DSL resource definitions.
 `mock_wrong_type_expr()` — 20 match arms.
 Fix: derive from `ValueBacking` (3 rules replace 20 arms).
 
+**S21: Workflow claim handle type derived from claim-name prefix.**
+`workflow/src/process_registry.rs:159-170` maps `"file:"`, `"tool:"`,
+`"ledger:"`, `"network:"` to handle type strings in
+`claim_handle_type_id()`.
+Cost: 1 prefix arm + tests per new claim namespace / handle type.
+Fix: derive handle type from the claim/resource definition, not the
+claim ID prefix.
+
+**S22: Service transport resolution classified by module/name prefixes.**
+`resolve.rs:1025-1037` routes modules by `"services."` / `"workspace."`
+/ `"extdeps."`, and `resolve.rs:1111-1116` parses transport role from
+`"service_transport::{prepare,execute,parse}::"` name prefixes.
+Cost: new service namespace or transport role requires resolver edits.
+Fix: lower transport role/service-ness into explicit metadata or enum
+tags and dispatch on that.
+
 ---
 
 ### Branch 4: DSL/Rust boundary duplication
@@ -198,6 +214,86 @@ A `[1,∞)` port with zero incoming edges silently gets `[]` at
 execution time. (Fixed in this PR with `allows_empty()` guard, but
 no test existed to catch the regression.)
 
+**S23: `value_compatible_with_type_id()` fails open for unknown types.**
+`ir/src/types.rs:1188-1192` converts an unknown `TypeId` into
+`ValueBacking::Json`, so compatibility checks accept any value instead
+of failing.
+Cost: generated tests and mock validation can silently bless
+unregistered or misspelled types.
+Fix: return `Err` / fail closed when `value_backing_for_type_id()`
+misses.
+
+**S24: Testgen boundary analysis swallows lowering failure.**
+`codegen/src/testgen/codegen.rs:4829-4831` does
+`gunbc_exec::lower(self.dag).ok()` and falls back to the unlowered
+analysis when lowering fails.
+Cost: boundary-mockability tests can be generated against the wrong
+graph shape, hiding lowering regressions instead of surfacing them.
+Fix: propagate the lower error and fail generation.
+
+**S25: Virtual backend transport classification defaults unknown nodes
+to REST.**
+`codegen/src/testgen/registry_gen.rs:42-59` classifies by request /
+response type strings, and `registry_gen.rs:57-58,160-165` defaults
+missing/unknown cases to `Rest`.
+Cost: new transport classes silently get REST stubs and partial test
+coverage instead of a compile-time error.
+Fix: require stamped `transport_class` metadata or return `Err` for
+unknown transport executors.
+
+**S30: Testgen re-derives type info by parsing TypeId strings.**
+`auto_mock.rs:39-120` has `parse_unary_generic_type_id()`,
+`optional_inner_type_id()`, `parse_container_alias_inner()` — all
+parsing `<` and `>` in TypeId strings to extract container/element
+types. This information is already structurally encoded in the type DAG.
+Fix: query the type DAG structure (wrapper kind, inner SubDag) instead
+of parsing the string name.
+
+**S31: Lowerer doesn't stamp OperationKey on all transport nodes.**
+`auto_mock.rs:285-326` falls back from `node.operation_key` to
+`infer_provider_from_node_id()` which string-matches node IDs for
+"github", "gcp", "anthropic", etc. The lowerer should stamp every
+transport node with typed `OperationKey` metadata, eliminating the
+string heuristic.
+
+**S32: Executor auto-mocks missing resource/env inputs in lenient mode.**
+`execute/mod.rs:46-51` documents that missing inputs get default mocks
+in lenient mode instead of failing. The lowerer should validate all
+required inputs have incoming data edges; execution should not
+auto-fabricate values.
+
+**S33: Coercion exists because lowerer doesn't validate cardinality
+compatibility.**
+The entire coercion module (`coerce.rs`) exists because the executor
+must wrap/unwrap values to match cardinality mismatches (WrapScalar,
+OptionalToList) at runtime. The lowerer should validate cardinality
+compatibility at compile time and insert explicit coercion nodes where
+needed, rather than having the executor compensate silently.
+
+---
+
+### Branch 6: Split metadata authorities
+
+Metadata families are still encoded as multiple hand-maintained Rust
+entrypoints instead of one authoritative registry. Adding a provider or
+metadata variant means editing every projection of the same fact.
+
+**Terminal state:** Each metadata family has one authoritative registry.
+Lookup, listing, scope helpers, and codegen derive from that source.
+
+#### Symptoms:
+
+**S26: LLM provider metadata split across constructors, lookup, and
+helper lists.**
+`ir/src/transport/llm/provider.rs:59-102` defines provider factories,
+`provider_by_id()`, and `builtin_provider_ids()` as separate copies of
+the built-in provider set, while `ir/src/transport/llm/mod.rs:97-105`
+duplicates the same IDs in `LlmScopeContract::{openai, anthropic}`.
+Cost: 4 edits per built-in provider, with drift possible between lookup,
+listing, and scope-contract helpers.
+Fix: single static provider registry; derive lookup, built-in IDs, and
+scope helpers from it.
+
 ---
 
 ### Standalone items
@@ -215,11 +311,183 @@ Intentional but undocumented. Fix: document.
 `Any`, `Json`, `Record`, `Unit` — correct decision, undocumented.
 Fix: document.
 
+### Review-identified items (2026-03-10)
+
+These came from PR review and represent concrete next-fix priorities:
+
+**S34: Lowerer fails open on callable return wiring.**
+`let _ = wire_callable_return_outputs(...)` with a TODO about making
+it hard-fail later. Real wiring bugs in patterns/transport-backed
+callables disappear silently.
+Fix: return `LowerError::WiringFailure` (same as argument wiring
+already does). This is the sharp next lowerer fix.
+
+**S35: `value_compatible_with_type_id` erases unknown types to Json.**
+(Same underlying issue as S23, surfaced from a different entry point.)
+`ir/src/types.rs` still converts unknown-type errors into
+`ValueBacking::Json` "for backwards compat," meaning compatibility
+checks accept any value for unregistered types instead of failing.
+Fix: fail closed — unknown types are incompatible with everything.
+
+**S36: gunbc-interp not authoritative in production.**
+The interpreter exists but isn't the production execution path yet.
+This is a parallel implementation (Branch 2) that will drift.
+Fix: either make it authoritative or delete it.
+
+**S37: Builtin/intrinsic metadata duplicated across typecheck and eval.**
+`builtin_method_sigs` in typecheck and the intrinsic dispatch table
+in `daglang-eval` are parallel lists of the same operations.
+Fix: single intrinsic registry consumed by both.
+
+**S38: Emitted code never compiled or run downstream.**
+Emit tests only check emitted text as strings (`.contains("fn main")`).
+The Go, C, and MIPS emitters could produce broken output and no test
+catches it. Even the Rust emitter's output is only verified by string
+checks, not by `cargo build` or `cargo test` on the emitted code.
+Fix: compiler emits tests alongside code; acceptance = emitted tests
+pass in the target language.
+
+**S39: Tests weakened during syntax migration.**
+Several test fixtures were flattened to constants (`return "done"`,
+`passed = 0`) and assertions reduced from semantic checks to "compiles
+successfully" or "function name appears in output." This lowers
+confidence that the refactor preserved behavior, not just buildability.
+Fix: restore semantic assertions (collection/manifest checks, output
+value verification).
+
+---
+
+## Prioritized sequence
+
+Based on review feedback, ordered by signal value (which fix
+prevents the most silent regressions):
+
+1. **Constrain fn-body-eval passthrough (S3).** Remove or sharply
+   scope the catch-all. Option C (structured eval contract) is
+   preferred: evaluator declares capabilities, unsupported forms
+   are compile-time opaque. Eval errors from supported forms are
+   real failures.
+
+2. **Fail-closed callable return wiring (S34).** Turn
+   `let _ = wire_callable_return_outputs(...)` into structured
+   failure once the lowerer can trace service result bindings.
+
+3. **Finish fail-closed type cleanup (S23, S35).** Make
+   `value_compatible_with_type_id` and `value_backing_for_type_id`
+   fail closed for unknown types. No more Json-as-top-type escape.
+
+4. **Restore test semantic strength (S38).** Re-add collection/
+   manifest/output-value assertions that were flattened during
+   the syntax migration.
+
+5. **Map<K,V> typecheck diagnostic (S19).** Emit an actual
+   diagnostic for non-String map keys instead of silently falling
+   through. (Partially addressed — typecheck now rejects, but no
+   diagnostic message is emitted to the user.)
+
+---
+
+## Investigation notes (2026-03-11)
+
+### S34: callable return wiring — not a 1-line fix
+
+Attempted to replace `let _ = wire_callable_return_outputs(...)` with `?`
+propagation. Two blockers:
+
+1. **Service call result bindings** (`let resp = fs.read(...);
+   return { body: resp.body }`). The lowerer's `lower_expr` can't
+   resolve `resp` because `collect_local_let_bindings` excludes
+   `Expr::ServiceCall` bindings (line 12267). The ident falls through
+   to "unresolved ident" error. Failing tests:
+   `compile_*_uses_bound_resource_capability_call_succeeds`.
+
+2. **Collection ops in return position** (`return { readable:
+   map(partitioned.readable, e => e.path) }`). `lower_expr` handles
+   `Expr::Call` only for endpoint-registered callables, not intrinsic
+   collection operations. Failing tests: `compile_data_from_module_*`
+   (via `dsl/std/patterns.dag::classify_files`).
+
+**Prerequisite** for hard-fail: expand `lower_expr` to trace service
+call result bindings (through parse transport node outputs) and to
+handle collection intrinsic calls in return position. Both are lowerer
+improvements, not wiring policy changes. The `func`/`pattern` items
+that hit this path don't have `fn_body` — they rely entirely on
+`__out:` passthrough wiring, which is the designed fallback.
+
+Note: a warning-based approach was considered but rejected per
+`src/README.md` "No fallbacks that fabricate" invariant.
+
+### S23/S35: fail-closed types — deeper than expected
+
+Attempted to change `value_compatible_with_type_id` from
+`.unwrap_or(ValueBacking::Json)` to `.unwrap_or(false)` (unknown types
+incompatible with everything). This is correct per the invariant, but
+the blast radius is large:
+
+1. **36 mock type mismatches** in auto-testgen for bootstrap. All are
+   DSL-defined types (`Line`, `Frame`, `Tier`, `SemanticColor`,
+   `Milliseconds`, `Char`, `SymbolId`, `GitignoreCategory`, etc.) not
+   in the core-only `TypeRegistry` used by `value_backing_for_type_id`.
+
+2. **`ResourceHandle`** not registered in core type registry despite
+   being used as a TypeId on 9 port definitions. Quick fix: add to
+   the handle-type check at `types.rs:1182`.
+
+3. **Registry-level gap**: `TypeRegistry::value_backing()` returns
+   `Err` for DSL record types and sum types even when they ARE
+   registered — the registry has their type DAGs but can't determine
+   runtime backing from `TypeOp` structure. Records back to `Map`,
+   sum types back to `String`/`Enum`, branded types (`Milliseconds`,
+   `Char`) back to their wrapped primitive — none of this is derivable
+   from the current type DAG representation.
+
+4. **`Bool?` syntax**: `optional_inner_type_id` handles `Optional<T>`
+   and `OptionalT` but not `T?` — the DSL shorthand isn't normalized
+   before reaching the compatibility check.
+
+**Fix sequence** (each enables the next):
+- (a) Teach `value_backing()` to classify registered-but-unclassifiable
+  types: record → Map, sum → String. Requires either a `TypeKind`
+  discriminant on registry entries or structural inspection of the type
+  DAG.
+- (b) Add `value_compatible_with_registry(type_id, value, &registry)`
+  variant so callers with DSL types (testgen) can use a full registry.
+  Callers without (executor mock validation) continue using core-only
+  and fail closed.
+- (c) Flip `value_compatible_with_type_id` to `.unwrap_or(false)`.
+- (d) Update `test_gen.rs` mock generation to panic on unknown types.
+
+Steps (b)-(d) are mechanical once (a) is done.
+
+---
+
+## v2 self-hosted compiler: impact on ledger
+
+v2 (see `docs/design/v2-self-hosted-compiler.md`) eliminates the deep
+root by design: types are TypeExpr values, not strings. No TypeRegistry.
+No deferred resolution. No parallel interpreter.
+
+**Eliminated by v2 design (no v1 fix needed):**
+S1, S2, S3, S4, S5, S13, S36, S37 — and all of Branch 1.
+
+**Inherited by v2 (re-implement correctly):**
+S34 (callable wiring) — v2 lowerer writes fail-closed from scratch.
+S38 (emitted code untested) — v2 emits tests alongside code.
+
+**Already fixed in v1:**
+S19 (Map keys), S20 (non-empty list default), S38 (partial — smoke tests).
+
+**Remains as v1 maintenance only:**
+S39 (weakened tests) — v1 tests, v2 writes its own.
+S3 prioritized sequence items — all moot once v2 is primary.
+
 ---
 
 ## Capabilities that would eliminate branches
 
-Each eliminates a class of liability:
+**v2 self-hosted compiler** — eliminates Branches 1, 2, 4 entirely.
+Reduces Branch 3 (string enumeration moves to .dag data declarations).
+See `docs/design/v2-project-plan.md`.
 
 **Language model serialization to JSON IR** — eliminates Rust-code-edit
 for backend type mappings (data, not logic).

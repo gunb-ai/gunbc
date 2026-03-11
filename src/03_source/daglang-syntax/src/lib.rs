@@ -593,6 +593,8 @@ pub mod ast {
         After(Box<Expr>, Vec<String>),
         /// Return: `return { field: value }`
         Return(Vec<(String, Expr)>),
+        /// Statement block in expression position: `{ let x = 1\n x + 1 }`
+        Block(Vec<Stmt>),
     }
 
     #[derive(Debug, Clone)]

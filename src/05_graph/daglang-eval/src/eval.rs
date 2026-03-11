@@ -51,7 +51,13 @@ pub fn evaluate_fn_body_with_data(
     for stmt in &body.stmts {
         match stmt {
             LoweredStmt::Let(name, expr) => {
-                let value = eval_expr(expr, &env, sibling_fns)?;
+                let value = match eval_expr(expr, &env, sibling_fns) {
+                    Ok(v) => v,
+                    Err(e) if e.early_return.is_some() => {
+                        return Ok(e.early_return.unwrap());
+                    }
+                    Err(e) => return Err(e),
+                };
                 // Flatten Map/JSON fields into `parent__field` entries so that
                 // the `__` convention works for local let bindings.
                 match &value {
@@ -73,17 +79,24 @@ pub fn evaluate_fn_body_with_data(
                 env.bind(name.clone(), value);
             }
             LoweredStmt::Expr(expr) => {
-                let value = eval_expr(expr, &env, sibling_fns)?;
-                // If this is the last statement and produces a value, capture as "return"
-                if std::ptr::eq(stmt, body.stmts.last().unwrap()) {
-                    if let Value::Map(map) = &value {
-                        let mut result = HashMap::new();
-                        for (k, v) in map {
-                            result.insert(k.clone(), v.clone());
+                match eval_expr(expr, &env, sibling_fns) {
+                    Ok(value) => {
+                        // If this is the last statement and produces a value, capture as "return"
+                        if std::ptr::eq(stmt, body.stmts.last().unwrap()) {
+                            if let Value::Map(map) = &value {
+                                let mut result = HashMap::new();
+                                for (k, v) in map {
+                                    result.insert(k.clone(), v.clone());
+                                }
+                                return Ok(result);
+                            }
+                            return Ok([("return".to_string(), value)].into_iter().collect());
                         }
-                        return Ok(result);
                     }
-                    return Ok([("return".to_string(), value)].into_iter().collect());
+                    Err(e) if e.early_return.is_some() => {
+                        return Ok(e.early_return.unwrap());
+                    }
+                    Err(e) => return Err(e),
                 }
             }
             LoweredStmt::Return(fields) => {
@@ -165,8 +178,8 @@ pub fn evaluate_collection(
                 .enumerate()
                 .map(|(i, v)| {
                     let mut map = std::collections::BTreeMap::new();
-                    map.insert("index".to_string(), Value::Int(i as i64));
-                    map.insert("value".to_string(), v);
+                    map.insert("first".to_string(), Value::Int(i as i64));
+                    map.insert("second".to_string(), v);
                     Value::Map(map)
                 })
                 .collect();
@@ -240,6 +253,21 @@ fn eval_intrinsic_call(
                     }
                     Ok(Value::List(results))
                 }
+                (Value::List(items), Some(LoweredExpr::Ident(fn_name))) if sibling_fns.contains_key(fn_name.as_str()) => {
+                    let fn_name = fn_name.clone();
+                    let param = "_item".to_string();
+                    let body = LoweredExpr::Call {
+                        name: fn_name,
+                        args: vec![(None, LoweredExpr::Ident(param.clone()))],
+                    };
+                    let mut results = Vec::new();
+                    for item in items {
+                        let mut child_env = env.child();
+                        child_env.bind(param.clone(), item);
+                        results.push(eval_expr(&body, &child_env, sibling_fns)?);
+                    }
+                    Ok(Value::List(results))
+                }
                 (Value::List(items), _) => Ok(Value::List(items)),
                 (other, _) => Err(EvalError::new(format!("map requires a list, got {other:?}"))),
             }
@@ -254,6 +282,23 @@ fn eval_intrinsic_call(
                         let mut child_env = env.child();
                         child_env.bind(param.clone(), item.clone());
                         if value_truthy(&eval_expr(body, &child_env, sibling_fns)?) {
+                            results.push(item);
+                        }
+                    }
+                    Ok(Value::List(results))
+                }
+                (Value::List(items), Some(LoweredExpr::Ident(fn_name))) if sibling_fns.contains_key(fn_name.as_str()) => {
+                    let fn_name = fn_name.clone();
+                    let param = "_item".to_string();
+                    let body = LoweredExpr::Call {
+                        name: fn_name,
+                        args: vec![(None, LoweredExpr::Ident(param.clone()))],
+                    };
+                    let mut results = Vec::new();
+                    for item in items {
+                        let mut child_env = env.child();
+                        child_env.bind(param.clone(), item.clone());
+                        if value_truthy(&eval_expr(&body, &child_env, sibling_fns)?) {
                             results.push(item);
                         }
                     }
@@ -347,11 +392,33 @@ fn eval_intrinsic_call(
             _ => Err(EvalError::new("sum requires a list")),
         },
         "first" => match receiver {
-            Value::List(items) => Ok(items.into_iter().next().unwrap_or(Value::Unit)),
+            Value::List(items) => {
+                if let Some(item) = items.into_iter().next() {
+                    let mut map = BTreeMap::new();
+                    map.insert("_variant".to_string(), Value::Str("Some".to_string()));
+                    map.insert("value".to_string(), item);
+                    Ok(Value::Map(map))
+                } else {
+                    let mut map = BTreeMap::new();
+                    map.insert("_variant".to_string(), Value::Str("None".to_string()));
+                    Ok(Value::Map(map))
+                }
+            }
             _ => Err(EvalError::new("first requires a list")),
         },
         "last" => match receiver {
-            Value::List(items) => Ok(items.into_iter().last().unwrap_or(Value::Unit)),
+            Value::List(items) => {
+                if let Some(item) = items.into_iter().last() {
+                    let mut map = BTreeMap::new();
+                    map.insert("_variant".to_string(), Value::Str("Some".to_string()));
+                    map.insert("value".to_string(), item);
+                    Ok(Value::Map(map))
+                } else {
+                    let mut map = BTreeMap::new();
+                    map.insert("_variant".to_string(), Value::Str("None".to_string()));
+                    Ok(Value::Map(map))
+                }
+            }
             _ => Err(EvalError::new("last requires a list")),
         },
         "any" => {
@@ -476,8 +543,8 @@ fn eval_intrinsic_call(
         "enumerate" => match receiver {
             Value::List(items) => Ok(Value::List(items.into_iter().enumerate().map(|(i, v)| {
                 let mut map = BTreeMap::new();
-                map.insert("index".to_string(), Value::Int(i as i64));
-                map.insert("value".to_string(), v);
+                map.insert("first".to_string(), Value::Int(i as i64));
+                map.insert("second".to_string(), v);
                 Value::Map(map)
             }).collect())),
             _ => Err(EvalError::new("enumerate requires a list")),
@@ -507,12 +574,22 @@ fn eval_intrinsic_call(
 #[derive(Debug, Clone)]
 pub struct EvalError {
     pub message: String,
+    /// Early return from a fn body — contains the return values.
+    pub early_return: Option<HashMap<String, Value>>,
 }
 
 impl EvalError {
     pub fn new(msg: impl Into<String>) -> Self {
         Self {
             message: msg.into(),
+            early_return: None,
+        }
+    }
+
+    pub fn early_return(values: HashMap<String, Value>) -> Self {
+        Self {
+            message: "__early_return__".to_string(),
+            early_return: Some(values),
         }
     }
 }
@@ -723,12 +800,14 @@ fn eval_expr(
         }
 
         LoweredExpr::Return(fields) => {
-            let mut map = BTreeMap::new();
+            let mut map = HashMap::new();
             for (key, value_expr) in fields {
                 let value = eval_expr(value_expr, env, sibling_fns)?;
                 map.insert(key.clone(), value);
             }
-            Ok(Value::Map(map))
+            // Signal early return via a special error.
+            // The fn body executor catches this and uses the return values.
+            Err(EvalError::early_return(map))
         }
     }
 }
@@ -745,7 +824,11 @@ fn evaluate_block_body(
     for stmt in &body.stmts {
         match stmt {
             LoweredStmt::Let(name, expr) => {
-                let value = eval_expr(expr, &child_env, sibling_fns)?;
+                let value = match eval_expr(expr, &child_env, sibling_fns) {
+                    Ok(v) => v,
+                    Err(e) if e.early_return.is_some() => return Err(e),
+                    Err(e) => return Err(e),
+                };
                 match &value {
                     Value::Map(fields) => {
                         for (field_name, field_value) in fields {
@@ -765,16 +848,21 @@ fn evaluate_block_body(
                 child_env.bind(name.clone(), value);
             }
             LoweredStmt::Expr(expr) => {
-                let value = eval_expr(expr, &child_env, sibling_fns)?;
-                if std::ptr::eq(stmt, body.stmts.last().unwrap()) {
-                    if let Value::Map(map) = &value {
-                        let mut result = HashMap::new();
-                        for (k, v) in map {
-                            result.insert(k.clone(), v.clone());
+                match eval_expr(expr, &child_env, sibling_fns) {
+                    Ok(value) => {
+                        if std::ptr::eq(stmt, body.stmts.last().unwrap()) {
+                            if let Value::Map(map) = &value {
+                                let mut result = HashMap::new();
+                                for (k, v) in map {
+                                    result.insert(k.clone(), v.clone());
+                                }
+                                return Ok(result);
+                            }
+                            return Ok([("return".to_string(), value)].into_iter().collect());
                         }
-                        return Ok(result);
                     }
-                    return Ok([("return".to_string(), value)].into_iter().collect());
+                    Err(e) if e.early_return.is_some() => return Err(e),
+                    Err(e) => return Err(e),
                 }
             }
             LoweredStmt::Return(fields) => {
@@ -783,7 +871,8 @@ fn evaluate_block_body(
                     let value = eval_expr(expr, &child_env, sibling_fns)?;
                     result.insert(name.clone(), value);
                 }
-                return Ok(result);
+                // Propagate as early return so enclosing fn body exits
+                return Err(EvalError::early_return(result));
             }
         }
     }
@@ -862,6 +951,16 @@ pub fn eval_binop(lhs: &Value, op: LoweredBinOp, rhs: &Value) -> Result<Value, E
                 value_to_string(lhs),
                 value_to_string(rhs)
             )))
+        }
+        // List concatenation
+        LoweredBinOp::Add if matches!(lhs, Value::List(_)) && matches!(rhs, Value::List(_)) => {
+            if let (Value::List(a), Value::List(b)) = (lhs, rhs) {
+                let mut result = a.clone();
+                result.extend(b.iter().cloned());
+                Ok(Value::List(result))
+            } else {
+                unreachable!()
+            }
         }
         // Arithmetic
         LoweredBinOp::Add => int_op(lhs, rhs, |a, b| a + b),
@@ -990,17 +1089,188 @@ fn eval_call(
                 _ => Err(EvalError::new(format!("code_point: expected Char, got {:?}", val))),
             }
         }
-        // chars(s: String) -> List<Char>: split string into individual characters
-        "chars" => {
-            let val = eval_named_arg("s", args, env, sibling_fns)?;
-            match &val {
-                Value::Str(s) => {
-                    let chars: Vec<Value> = s.chars().map(|c| Value::Str(c.to_string())).collect();
-                    Ok(Value::List(chars))
+        // from_code_point(cp: Int) -> String: Unicode scalar value to character
+        "from_code_point" => {
+            let val = eval_positional_or_named("cp", 0, args, env, sibling_fns)?;
+            match val {
+                Value::Int(cp) => {
+                    if let Some(c) = char::from_u32(cp as u32) {
+                        Ok(Value::Str(c.to_string()))
+                    } else {
+                        Err(EvalError::new(format!("from_code_point: invalid code point {cp}")))
+                    }
                 }
-                _ => Err(EvalError::new(format!("chars: expected String, got {:?}", val))),
+                _ => Err(EvalError::new("from_code_point: expected Int")),
             }
         }
+        // to_string(value: Int) -> String: integer to string conversion
+        "to_string" => {
+            let val = eval_positional_or_named("value", 0, args, env, sibling_fns)?;
+            Ok(Value::Str(value_to_string(&val)))
+        }
+        // ── v2 kernel intrinsics ───────────────────────────────────────
+        "char_at" => {
+            let s = eval_positional_or_named("s", 0, args, env, sibling_fns)?;
+            let pos = eval_positional_or_named("pos", 1, args, env, sibling_fns)?;
+            match (s, pos) {
+                (Value::Str(s), Value::Int(i)) => {
+                    match s.chars().nth(i as usize) {
+                        Some(c) => Ok(Value::Str(c.to_string())),
+                        None => Ok(Value::Unit),
+                    }
+                }
+                _ => Err(EvalError::new("char_at requires (String, Int)")),
+            }
+        }
+        "substring" => {
+            let s = eval_positional_or_named("s", 0, args, env, sibling_fns)?;
+            let start = eval_positional_or_named("start", 1, args, env, sibling_fns)?;
+            let end = eval_positional_or_named("end", 2, args, env, sibling_fns)?;
+            match (s, start, end) {
+                (Value::Str(s), Value::Int(start), Value::Int(end)) => {
+                    let chars: Vec<char> = s.chars().collect();
+                    let len = chars.len() as i64;
+                    let start = (start.max(0) as usize).min(len as usize);
+                    let end = (end.max(0) as usize).min(len as usize);
+                    let slice: String = chars[start..end].iter().collect();
+                    Ok(Value::Str(slice))
+                }
+                _ => Err(EvalError::new("substring requires (String, Int, Int)")),
+            }
+        }
+        "string_length" => {
+            let s = eval_positional_or_named("s", 0, args, env, sibling_fns)?;
+            match s {
+                Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
+                _ => Err(EvalError::new("string_length requires a String")),
+            }
+        }
+        "parse_int" => {
+            let s = eval_positional_or_named("s", 0, args, env, sibling_fns)?;
+            match s {
+                Value::Str(s) => {
+                    let n = s.trim().parse::<i64>().map_err(|e| {
+                        EvalError::new(format!("parse_int: cannot parse '{s}': {e}"))
+                    })?;
+                    Ok(Value::Int(n))
+                }
+                _ => Err(EvalError::new("parse_int requires a String")),
+            }
+        }
+        "scan_while" => {
+            let s = eval_positional_or_named("s", 0, args, env, sibling_fns)?;
+            let start = eval_positional_or_named("start", 1, args, env, sibling_fns)?;
+            // The pred argument is a lambda or function reference — get it unevaluated.
+            let pred_expr = get_arg_expr("pred", 2, args);
+            // Handle function references: `pred: is_ident_char` → wrap as Call
+            let resolved_pred = match pred_expr {
+                Some(LoweredExpr::Lambda { params, body }) => {
+                    Some((params.clone(), body.as_ref().clone()))
+                }
+                Some(LoweredExpr::Ident(name)) if sibling_fns.contains_key(name.as_str()) => {
+                    // Function reference → synthetic lambda: ch => fn_name(ch: ch)
+                    let param = "ch".to_string();
+                    let body = LoweredExpr::Call {
+                        name: name.clone(),
+                        args: vec![(Some("ch".to_string()), LoweredExpr::Ident(param.clone()))],
+                    };
+                    Some((vec![param], body))
+                }
+                _ => None,
+            };
+            match (s, start, resolved_pred) {
+                (Value::Str(s), Value::Int(start), Some((params, body))) => {
+                    let param = params.first().cloned().unwrap_or_else(|| "_".to_string());
+                    let chars: Vec<char> = s.chars().collect();
+                    let mut pos = start.max(0) as usize;
+                    while pos < chars.len() {
+                        let mut child_env = env.child();
+                        child_env.bind(param.clone(), Value::Str(chars[pos].to_string()));
+                        let result = eval_expr(&body, &child_env, sibling_fns)?;
+                        if !value_truthy(&result) {
+                            break;
+                        }
+                        pos += 1;
+                    }
+                    Ok(Value::Int(pos as i64))
+                }
+                _ => Err(EvalError::new("scan_while requires (String, Int, Lambda)")),
+            }
+        }
+        "scan_string_end" => {
+            let s = eval_positional_or_named("s", 0, args, env, sibling_fns)?;
+            let start = eval_positional_or_named("start", 1, args, env, sibling_fns)?;
+            match (s, start) {
+                (Value::Str(s), Value::Int(start)) => {
+                    let chars: Vec<char> = s.chars().collect();
+                    let mut pos = start.max(0) as usize;
+                    while pos < chars.len() {
+                        if chars[pos] == '\\' {
+                            pos += 2; // skip escaped char
+                        } else if chars[pos] == '"' {
+                            return Ok(Value::Int((pos + 1) as i64));
+                        } else {
+                            pos += 1;
+                        }
+                    }
+                    // No closing quote found — return end of string
+                    Ok(Value::Int(chars.len() as i64))
+                }
+                _ => Err(EvalError::new("scan_string_end requires (String, Int)")),
+            }
+        }
+        "scan_to_eol" => {
+            let s = eval_positional_or_named("s", 0, args, env, sibling_fns)?;
+            let start = eval_positional_or_named("start", 1, args, env, sibling_fns)?;
+            match (s, start) {
+                (Value::Str(s), Value::Int(start)) => {
+                    let chars: Vec<char> = s.chars().collect();
+                    let start = start.max(0) as usize;
+                    for (i, &ch) in chars.iter().enumerate().skip(start) {
+                        if ch == '\n' {
+                            return Ok(Value::Int(i as i64));
+                        }
+                    }
+                    Ok(Value::Int(chars.len() as i64))
+                }
+                _ => Err(EvalError::new("scan_to_eol requires (String, Int)")),
+            }
+        }
+        "skip_horizontal_ws" => {
+            let s = eval_positional_or_named("s", 0, args, env, sibling_fns)?;
+            let start = eval_positional_or_named("start", 1, args, env, sibling_fns)?;
+            match (s, start) {
+                (Value::Str(s), Value::Int(start)) => {
+                    let chars: Vec<char> = s.chars().collect();
+                    let mut pos = start.max(0) as usize;
+                    while pos < chars.len() && (chars[pos] == ' ' || chars[pos] == '\t') {
+                        pos += 1;
+                    }
+                    Ok(Value::Int(pos as i64))
+                }
+                _ => Err(EvalError::new("skip_horizontal_ws requires (String, Int)")),
+            }
+        }
+        "lookup" => {
+            let map_val = eval_positional_or_named("map", 0, args, env, sibling_fns)?;
+            let key = eval_positional_or_named("key", 1, args, env, sibling_fns)?;
+            match (map_val, key) {
+                (Value::Map(map), Value::Str(key)) => {
+                    if let Some(value) = map.get(&key) {
+                        let mut result = BTreeMap::new();
+                        result.insert("_variant".to_string(), Value::Str("Some".to_string()));
+                        result.insert("value".to_string(), value.clone());
+                        Ok(Value::Map(result))
+                    } else {
+                        let mut result = BTreeMap::new();
+                        result.insert("_variant".to_string(), Value::Str("None".to_string()));
+                        Ok(Value::Map(result))
+                    }
+                }
+                _ => Err(EvalError::new("lookup requires (Map, String)")),
+            }
+        }
+        // chars is handled by eval_intrinsic_call via INTRINSIC_CALLS.
         _ if name.chars().next().unwrap_or('a').is_uppercase() => {
             // Generic variant constructor (e.g. `Ok { value: "x" }`, `Closed`)
             let mut map = BTreeMap::new();
@@ -1036,6 +1306,47 @@ fn eval_named_arg(
         return eval_expr(expr, env, sibling_fns);
     }
     Err(EvalError::new(format!("missing argument '{param}'")))
+}
+
+/// Evaluate an argument by name or positional index.
+///
+/// Tries named lookup first, then falls back to positional index.
+fn eval_positional_or_named(
+    param: &str,
+    index: usize,
+    args: &[(Option<String>, LoweredExpr)],
+    env: &Env,
+    sibling_fns: &HashMap<String, LoweredFnBody>,
+) -> Result<Value, EvalError> {
+    // Try named first
+    for (name, expr) in args {
+        if name.as_deref() == Some(param) {
+            return eval_expr(expr, env, sibling_fns);
+        }
+    }
+    // Fall back to positional
+    if let Some((_, expr)) = args.get(index) {
+        return eval_expr(expr, env, sibling_fns);
+    }
+    Err(EvalError::new(format!("missing argument '{param}'")))
+}
+
+/// Get an argument expression by name or positional index without evaluating it.
+///
+/// Used for lambda arguments that must remain as `LoweredExpr::Lambda`.
+fn get_arg_expr<'a>(
+    param: &str,
+    index: usize,
+    args: &'a [(Option<String>, LoweredExpr)],
+) -> Option<&'a LoweredExpr> {
+    // Try named first
+    for (name, expr) in args {
+        if name.as_deref() == Some(param) {
+            return Some(expr);
+        }
+    }
+    // Fall back to positional
+    args.get(index).map(|(_, expr)| expr)
 }
 
 /// Convert a `serde_json::Value` to a `Value` for the evaluator environment.
@@ -1082,6 +1393,12 @@ fn record_update(base: &Value, updates: &Value) -> Result<Value, EvalError> {
 fn sibling_fn_value(name: &str, outputs: HashMap<String, Value>) -> Result<Value, EvalError> {
     if let Some(value) = outputs.get("return") {
         return Ok(value.clone());
+    }
+    // Single `value` key from `return expr` (which lowers to Return([("value", expr)]))
+    if outputs.len() == 1 {
+        if let Some(value) = outputs.get("value") {
+            return Ok(value.clone());
+        }
     }
     if outputs.is_empty() {
         return Err(EvalError::new(format!("fn {name} produced no output")));
@@ -1134,14 +1451,39 @@ fn match_pattern(pattern: &LoweredPattern, value: &Value) -> Option<Vec<(String,
         LoweredPattern::Literal(lit) => {
             let expected = eval_literal(lit);
             if values_equal(&expected, value) {
-                Some(vec![])
-            } else {
-                None
+                return Some(vec![]);
             }
+            // Also match structural None: Map with _variant: "None"
+            if matches!(lit, LoweredLiteral::None) {
+                if let Value::Map(map) = value {
+                    if let Some(Value::Str(tag)) = map.get("_variant") {
+                        if tag == "None" {
+                            return Some(vec![]);
+                        }
+                    }
+                }
+            }
+            None
         }
         LoweredPattern::Variant(variant_name, fields) => {
-            // Option transparent matching: `Some(v)` matches anything except Unit/Skipped
+            // Option matching: `Some { value: x }` / `None`
             if variant_name == "Some" && fields.len() == 1 {
+                // Structural Option: Map with _variant field matching Some/None
+                if let Value::Map(map) = value {
+                    if let Some(Value::Str(tag)) = map.get("_variant") {
+                        if tag == "Some" {
+                            // Extract inner value and match sub-pattern against it
+                            let inner = map.get("value").cloned().unwrap_or(Value::Unit);
+                            return match_pattern(&fields[0].1, &inner);
+                        }
+                        if tag == "None" {
+                            // Structural None → doesn't match Some
+                            return None;
+                        }
+                        // Other variant tags (e.g., "Ident") → fall through to transparent
+                    }
+                }
+                // Transparent matching for non-structural values
                 if !matches!(value, Value::Unit | Value::Skipped) {
                     return match_pattern(&fields[0].1, value);
                 }
@@ -1620,17 +1962,394 @@ mod tests {
         let expected = Value::List(vec![
             Value::Map({
                 let mut m = BTreeMap::new();
-                m.insert("index".to_string(), Value::Int(0));
-                m.insert("value".to_string(), Value::Str("x".to_string()));
+                m.insert("first".to_string(), Value::Int(0));
+                m.insert("second".to_string(), Value::Str("x".to_string()));
                 m
             }),
             Value::Map({
                 let mut m = BTreeMap::new();
-                m.insert("index".to_string(), Value::Int(1));
-                m.insert("value".to_string(), Value::Str("y".to_string()));
+                m.insert("first".to_string(), Value::Int(1));
+                m.insert("second".to_string(), Value::Str("y".to_string()));
                 m
             }),
         ]);
+        assert_eq!(result, expected);
+    }
+
+    // ── v2 kernel intrinsic tests ─────────────────────────────────────
+
+    /// Helper: evaluate a call expression and return the result.
+    fn eval_call_expr(
+        name: &str,
+        args: Vec<(Option<String>, LoweredExpr)>,
+        inputs: &HashMap<String, Value>,
+    ) -> Result<Value, EvalError> {
+        let body = LoweredFnBody {
+            stmts: vec![LoweredStmt::Return(vec![(
+                "return".to_string(),
+                LoweredExpr::Call {
+                    name: name.to_string(),
+                    args,
+                },
+            )])],
+        };
+        let result = evaluate_fn_body(&body, inputs, &empty_siblings())?;
+        Ok(result.get("return").cloned().unwrap_or(Value::Unit))
+    }
+
+    #[test]
+    fn test_char_at() {
+        let result = eval_call_expr(
+            "char_at",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("hello".to_string()))),
+                (Some("pos".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(1))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Str("e".to_string()));
+    }
+
+    #[test]
+    fn test_char_at_out_of_bounds() {
+        let result = eval_call_expr(
+            "char_at",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("hi".to_string()))),
+                (Some("pos".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(5))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Unit);
+    }
+
+    #[test]
+    fn test_char_at_unicode() {
+        // Multi-byte characters: char_at uses chars() so it works on codepoints
+        let result = eval_call_expr(
+            "char_at",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("\u{00e9}bc".to_string()))),
+                (Some("pos".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Str("\u{00e9}".to_string()));
+    }
+
+    #[test]
+    fn test_substring() {
+        let result = eval_call_expr(
+            "substring",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("hello world".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+                (Some("end".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(5))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Str("hello".to_string()));
+    }
+
+    #[test]
+    fn test_substring_clamped() {
+        // End beyond string length should clamp
+        let result = eval_call_expr(
+            "substring",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("hi".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+                (Some("end".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(100))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Str("hi".to_string()));
+    }
+
+    #[test]
+    fn test_substring_empty() {
+        let result = eval_call_expr(
+            "substring",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("hello".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(3))),
+                (Some("end".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(3))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Str(String::new()));
+    }
+
+    #[test]
+    fn test_string_length() {
+        let result = eval_call_expr(
+            "string_length",
+            vec![(Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("hello".to_string())))],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(5));
+    }
+
+    #[test]
+    fn test_string_length_empty() {
+        let result = eval_call_expr(
+            "string_length",
+            vec![(Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String(String::new())))],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(0));
+    }
+
+    #[test]
+    fn test_parse_int() {
+        let result = eval_call_expr(
+            "parse_int",
+            vec![(Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("42".to_string())))],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(42));
+    }
+
+    #[test]
+    fn test_parse_int_with_whitespace() {
+        let result = eval_call_expr(
+            "parse_int",
+            vec![(Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("  -7  ".to_string())))],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(-7));
+    }
+
+    #[test]
+    fn test_parse_int_invalid() {
+        let result = eval_call_expr(
+            "parse_int",
+            vec![(Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("abc".to_string())))],
+            &HashMap::new(),
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_scan_while() {
+        // Scan digits from position 0 in "123abc"
+        let result = eval_call_expr(
+            "scan_while",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("123abc".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+                (Some("pred".to_string()), LoweredExpr::Lambda {
+                    params: vec!["c".to_string()],
+                    body: Box::new(LoweredExpr::BinOp {
+                        left: Box::new(LoweredExpr::BinOp {
+                            left: Box::new(LoweredExpr::Call {
+                                name: "code_point".to_string(),
+                                args: vec![(Some("c".to_string()), LoweredExpr::Ident("c".to_string()))],
+                            }),
+                            op: LoweredBinOp::Ge,
+                            right: Box::new(LoweredExpr::Call {
+                                name: "code_point".to_string(),
+                                args: vec![(Some("c".to_string()), LoweredExpr::Literal(LoweredLiteral::String("0".to_string())))],
+                            }),
+                        }),
+                        op: LoweredBinOp::And,
+                        right: Box::new(LoweredExpr::BinOp {
+                            left: Box::new(LoweredExpr::Call {
+                                name: "code_point".to_string(),
+                                args: vec![(Some("c".to_string()), LoweredExpr::Ident("c".to_string()))],
+                            }),
+                            op: LoweredBinOp::Le,
+                            right: Box::new(LoweredExpr::Call {
+                                name: "code_point".to_string(),
+                                args: vec![(Some("c".to_string()), LoweredExpr::Literal(LoweredLiteral::String("9".to_string())))],
+                            }),
+                        }),
+                    }),
+                }),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(3));
+    }
+
+    #[test]
+    fn test_scan_while_all_match() {
+        // All characters match predicate
+        let result = eval_call_expr(
+            "scan_while",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("aaa".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+                (Some("pred".to_string()), LoweredExpr::Lambda {
+                    params: vec!["c".to_string()],
+                    body: Box::new(LoweredExpr::Literal(LoweredLiteral::Bool(true))),
+                }),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(3));
+    }
+
+    #[test]
+    fn test_scan_string_end() {
+        // Input: hello" (start right after the opening quote)
+        let result = eval_call_expr(
+            "scan_string_end",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("hello\"rest".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(6)); // position after the closing "
+    }
+
+    #[test]
+    fn test_scan_string_end_with_escape() {
+        // Input: he\"llo" — escaped quote should be skipped
+        let result = eval_call_expr(
+            "scan_string_end",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("he\\\"llo\"rest".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(8)); // skip he\", then llo", position after closing "
+    }
+
+    #[test]
+    fn test_scan_string_end_no_closing() {
+        // No closing quote — return string length
+        let result = eval_call_expr(
+            "scan_string_end",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("hello".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(5));
+    }
+
+    #[test]
+    fn test_scan_to_eol() {
+        let result = eval_call_expr(
+            "scan_to_eol",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("hello\nworld".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(5));
+    }
+
+    #[test]
+    fn test_scan_to_eol_no_newline() {
+        let result = eval_call_expr(
+            "scan_to_eol",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("hello".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(5));
+    }
+
+    #[test]
+    fn test_scan_to_eol_from_offset() {
+        let result = eval_call_expr(
+            "scan_to_eol",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("ab\ncd\nef".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(3))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(5));
+    }
+
+    #[test]
+    fn test_skip_horizontal_ws() {
+        let result = eval_call_expr(
+            "skip_horizontal_ws",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("   \thello".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(4));
+    }
+
+    #[test]
+    fn test_skip_horizontal_ws_no_ws() {
+        let result = eval_call_expr(
+            "skip_horizontal_ws",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("hello".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(0));
+    }
+
+    #[test]
+    fn test_skip_horizontal_ws_ignores_newline() {
+        // Newlines are NOT horizontal whitespace
+        let result = eval_call_expr(
+            "skip_horizontal_ws",
+            vec![
+                (Some("s".to_string()), LoweredExpr::Literal(LoweredLiteral::String("  \nhello".to_string()))),
+                (Some("start".to_string()), LoweredExpr::Literal(LoweredLiteral::Int(0))),
+            ],
+            &HashMap::new(),
+        ).unwrap();
+        assert_eq!(result, Value::Int(2));
+    }
+
+    #[test]
+    fn test_lookup_found() {
+        let mut map = BTreeMap::new();
+        map.insert("x".to_string(), Value::Int(42));
+        let inputs: HashMap<String, Value> = [("m".to_string(), Value::Map(map))].into_iter().collect();
+        let result = eval_call_expr(
+            "lookup",
+            vec![
+                (Some("map".to_string()), LoweredExpr::Ident("m".to_string())),
+                (Some("key".to_string()), LoweredExpr::Literal(LoweredLiteral::String("x".to_string()))),
+            ],
+            &inputs,
+        ).unwrap();
+        let expected = Value::Map({
+            let mut m = BTreeMap::new();
+            m.insert("_variant".to_string(), Value::Str("Some".to_string()));
+            m.insert("value".to_string(), Value::Int(42));
+            m
+        });
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_lookup_not_found() {
+        let map = BTreeMap::new();
+        let inputs: HashMap<String, Value> = [("m".to_string(), Value::Map(map))].into_iter().collect();
+        let result = eval_call_expr(
+            "lookup",
+            vec![
+                (Some("map".to_string()), LoweredExpr::Ident("m".to_string())),
+                (Some("key".to_string()), LoweredExpr::Literal(LoweredLiteral::String("missing".to_string()))),
+            ],
+            &inputs,
+        ).unwrap();
+        let expected = Value::Map({
+            let mut m = BTreeMap::new();
+            m.insert("_variant".to_string(), Value::Str("None".to_string()));
+            m
+        });
         assert_eq!(result, expected);
     }
 }

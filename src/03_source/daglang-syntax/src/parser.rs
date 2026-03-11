@@ -3206,6 +3206,37 @@ impl Parser {
                 lhs = Expr::Call("as".into(), vec![(None, lhs), (None, Expr::Ident(tn))]);
                 continue;
             }
+            // Pipe chain: `a |> f(args)` desugars to `f(a, args)`,
+            // `a |> f` desugars to `f(a)`.
+            // Binding power 17/18: tighter than comparison (9-12) and arithmetic (13-16),
+            // but looser than dot (19-20) and call (21).
+            if self.check(&TokenKind::Pipe) && self.peek2().kind == TokenKind::Gt {
+                let l_bp: u8 = 17;
+                let r_bp: u8 = 18;
+                if l_bp < min_bp {
+                    break;
+                }
+                self.advance(); // consume |
+                self.advance(); // consume >
+                // RHS: parse with high binding power so we get just the function call
+                let rhs = self.parse_expr(r_bp)?;
+                lhs = match rhs {
+                    // `a |> f(b, c)` → `f(a, b, c)`
+                    Expr::Call(name, mut args) => {
+                        args.insert(0, (None, lhs));
+                        Expr::Call(name, args)
+                    }
+                    // `a |> f` → `f(a)`
+                    Expr::Ident(name) => Expr::Call(name, vec![(None, lhs)]),
+                    other => {
+                        return Err(self.err(format!(
+                            "expected function call or identifier after |>, got {:?}",
+                            other
+                        )));
+                    }
+                };
+                continue;
+            }
             if let Some((l_bp, r_bp)) = self.infix_bp() {
                 if l_bp < min_bp {
                     break;
@@ -3398,7 +3429,7 @@ impl Parser {
                 if self.peek2().kind == TokenKind::FatArrow {
                     self.advance();
                     self.advance();
-                    let body = self.parse_expr(0)?;
+                    let body = self.parse_lambda_body()?;
                     return Ok(Expr::Lambda(vec![name], Box::new(body)));
                 }
                 self.advance();
@@ -3416,7 +3447,7 @@ impl Parser {
                 let save_errors = self.errors.len();
                 let params = self.try_parse_lambda_params();
                 if let Some(params) = params {
-                    let body = self.parse_expr(0)?;
+                    let body = self.parse_lambda_body()?;
                     Ok(Expr::Lambda(params, Box::new(body)))
                 } else {
                     // Not a lambda — restore and parse as parenthesized expression
@@ -3443,7 +3474,7 @@ impl Parser {
                     self.advance();
                     return Ok(Expr::Record(None, Vec::new()));
                 }
-                if self.starts_brace_block_expr() {
+                if self.starts_block_content() {
                     return self.consume_brace_block_expr();
                 }
                 if Self::token_kind_as_ident(&self.peek().kind).is_some()
@@ -3465,6 +3496,25 @@ impl Parser {
             TokenKind::Match => self.parse_match_expr(),
             TokenKind::If => self.parse_if_expr(),
             TokenKind::For => self.parse_for_expr(),
+            // fn(params) { body } lambda syntax
+            TokenKind::Fn if self.peek2().kind == TokenKind::LParen => {
+                self.advance(); // consume fn
+                self.expect(&TokenKind::LParen)?;
+                let mut params = Vec::new();
+                while !self.check(&TokenKind::RParen) && !self.at_eof() {
+                    params.push(self.expect_ident()?);
+                    self.eat(&TokenKind::Comma);
+                }
+                self.expect(&TokenKind::RParen)?;
+                self.expect(&TokenKind::LBrace)?;
+                let body = if self.starts_brace_block_expr() {
+                    Expr::Block(self.parse_stmts()?)
+                } else {
+                    self.parse_expr(0)?
+                };
+                self.expect(&TokenKind::RBrace)?;
+                Ok(Expr::Lambda(params, Box::new(body)))
+            }
             TokenKind::Return => {
                 self.advance();
                 if self.eat(&TokenKind::LBrace) {
@@ -3520,13 +3570,107 @@ impl Parser {
             && (self.peek2().kind == TokenKind::Eq || self.peek2().kind == TokenKind::LBracket)
     }
 
-    fn consume_brace_block_expr(&mut self) -> Result<Expr, ParseError> {
-        let expr = self.parse_expr(0)?;
-        if self.check(&TokenKind::RBrace) {
-            return Ok(expr);
+    /// Check if content after `{` looks like a block rather than a record/map.
+    /// Includes expression-starting keywords like match/if/for.
+    fn starts_block_content(&self) -> bool {
+        self.starts_brace_block_expr()
+            || self.check(&TokenKind::Match)
+            || self.check(&TokenKind::If)
+            || self.check(&TokenKind::For)
+    }
+
+    /// Check if the current position looks like the start of a new match arm.
+    /// Used to stop implicit block parsing in match arm bodies.
+    /// Only returns true when we're confident this starts a new arm — requires
+    /// the pattern to be followed by `=>` (possibly after destructuring).
+    fn looks_like_match_arm_start(&self) -> bool {
+        if let Some(name) = Self::token_kind_as_ident(&self.peek().kind) {
+            if name.starts_with(|c: char| c.is_uppercase()) {
+                // `Name =>` → definitely a new arm
+                if self.peek2().kind == TokenKind::FatArrow {
+                    return true;
+                }
+                // `Name { ... } =>` → scan for matching } then =>
+                if self.peek2().kind == TokenKind::LBrace {
+                    return self.scan_for_fat_arrow_after_braces();
+                }
+            }
         }
-        Err(self
-            .err("multi-statement blocks in expression position are not yet supported".to_string()))
+        // `_ =>` wildcard pattern
+        if let TokenKind::Ident(ref s) = self.peek().kind {
+            if s == "_" && self.peek2().kind == TokenKind::FatArrow {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Scan forward from current position to check if `{ ... } =>` follows.
+    /// Used to distinguish match arm patterns from expressions.
+    fn scan_for_fat_arrow_after_braces(&self) -> bool {
+        let mut idx = self.pos + 2; // skip ident and {
+        let mut depth = 1;
+        while idx < self.tokens.len() && depth > 0 {
+            match self.tokens[idx].kind {
+                TokenKind::LBrace => depth += 1,
+                TokenKind::RBrace => depth -= 1,
+                _ => {}
+            }
+            idx += 1;
+        }
+        // After closing }, check for =>
+        idx < self.tokens.len() && self.tokens[idx].kind == TokenKind::FatArrow
+    }
+
+    /// Parse a lambda body: either a single expression or an implicit block
+    /// (multi-statement body delimited by `)` or `}` from enclosing context).
+    fn parse_lambda_body(&mut self) -> Result<Expr, ParseError> {
+        if self.starts_brace_block_expr() {
+            // Multi-statement lambda body: `x => let a = 1\n a + 1`
+            // Statements until `)` or `}`
+            let mut stmts = Vec::new();
+            while !self.check(&TokenKind::RParen) && !self.check(&TokenKind::RBrace) && !self.at_eof() {
+                match self.parse_stmt() {
+                    Ok(s) => stmts.push(s),
+                    Err(e) => {
+                        self.record_err(e);
+                        break;
+                    }
+                }
+            }
+            Ok(Expr::Block(stmts))
+        } else {
+            self.parse_expr(0)
+        }
+    }
+
+    /// Like `starts_brace_block_expr` but checks the token after the opening `{`.
+    /// Used when we've seen `{` and want to decide if the content is a statement
+    /// block vs a record/map literal.
+    fn starts_brace_block_expr_after_lbrace(&self) -> bool {
+        let next = (self.pos + 1).min(self.tokens.len() - 1);
+        let after = (self.pos + 2).min(self.tokens.len() - 1);
+        matches!(
+            self.tokens[next].kind,
+            TokenKind::Let
+                | TokenKind::Return
+                | TokenKind::Node
+                | TokenKind::Parallel
+                | TokenKind::Match
+                | TokenKind::If
+                | TokenKind::For
+        ) || (Self::token_kind_as_ident(&self.tokens[next].kind).is_some()
+            && matches!(
+                self.tokens[after].kind,
+                TokenKind::Eq | TokenKind::LBracket | TokenKind::LParen
+            ))
+    }
+
+
+
+    fn consume_brace_block_expr(&mut self) -> Result<Expr, ParseError> {
+        let stmts = self.parse_stmts()?;
+        Ok(Expr::Block(stmts))
     }
 
     fn brace_contains_top_level_colon(&self) -> bool {
@@ -3635,7 +3779,41 @@ impl Parser {
                 None
             };
             self.expect(&TokenKind::FatArrow)?;
-            let body = self.parse_expr(0)?;
+            let body = if self.check(&TokenKind::LBrace) && self.starts_brace_block_expr_after_lbrace() {
+                // Match arm bodies with { let ... } or { if ... } are parsed as blocks.
+                self.advance(); // consume {
+                let mut stmts = self.parse_stmts()?;
+                self.expect(&TokenKind::RBrace)?;
+                if stmts.len() == 1 {
+                    match stmts.remove(0) {
+                        Stmt::Expr(expr) => expr,
+                        other => Expr::Block(vec![other]),
+                    }
+                } else {
+                    Expr::Block(stmts)
+                }
+            } else if self.starts_brace_block_expr() {
+                // Implicit block: multi-statement body without braces
+                // (e.g., `Text { v } => let x = ...\n expr`)
+                // Parse statements until next pattern or closing }.
+                let mut stmts = Vec::new();
+                while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+                    // Stop if we see what looks like a new match arm
+                    if self.looks_like_match_arm_start() {
+                        break;
+                    }
+                    match self.parse_stmt() {
+                        Ok(s) => stmts.push(s),
+                        Err(e) => {
+                            self.record_err(e);
+                            break;
+                        }
+                    }
+                }
+                Expr::Block(stmts)
+            } else {
+                self.parse_expr(0)?
+            };
             arms.push(MatchArm {
                 pattern,
                 guard,
@@ -3649,7 +3827,7 @@ impl Parser {
 
     fn parse_pattern(&mut self) -> Result<Pattern, ParseError> {
         match self.peek().kind.clone() {
-            TokenKind::Ident(_) => {
+            ref kind if Self::token_kind_as_ident(kind).is_some() => {
                 let name = self.expect_ident()?;
                 if name == "_" {
                     return Ok(Pattern::Wildcard);
@@ -3679,9 +3857,13 @@ impl Parser {
                             continue;
                         }
                         let field = self.expect_ident()?;
-                        self.expect(&TokenKind::Colon)?;
-                        let inner = self.parse_pattern()?;
-                        args.push((field, inner));
+                        if self.eat(&TokenKind::Colon) {
+                            let inner = self.parse_pattern()?;
+                            args.push((field, inner));
+                        } else {
+                            // Shorthand: `{ name }` means `{ name: name }`
+                            args.push((field.clone(), Pattern::Ident(field)));
+                        }
                         self.eat(&TokenKind::Comma);
                     }
                     self.expect(&TokenKind::RBrace)?;
@@ -3718,17 +3900,33 @@ impl Parser {
         self.expect(&TokenKind::If)?;
         let cond = self.parse_for_iterable_expr()?;
         self.expect(&TokenKind::LBrace)?;
-        let then_b = self.parse_expr(0)?;
+        let then_b = self.parse_if_branch_body()?;
         self.expect(&TokenKind::RBrace)?;
         let else_b = if self.eat(&TokenKind::Else) {
-            self.expect(&TokenKind::LBrace)?;
-            let e = self.parse_expr(0)?;
-            self.expect(&TokenKind::RBrace)?;
-            Some(Box::new(e))
+            if self.check(&TokenKind::If) {
+                // else if chain → recurse
+                Some(Box::new(self.parse_if_expr()?))
+            } else {
+                self.expect(&TokenKind::LBrace)?;
+                let e = self.parse_if_branch_body()?;
+                self.expect(&TokenKind::RBrace)?;
+                Some(Box::new(e))
+            }
         } else {
             None
         };
         Ok(Expr::If(Box::new(cond), Box::new(then_b), else_b))
+    }
+
+    /// Parse the body of an if/else branch: either a single expression or a
+    /// multi-statement block (like `for` bodies).
+    fn parse_if_branch_body(&mut self) -> Result<Expr, ParseError> {
+        if self.starts_brace_block_expr() {
+            let stmts = self.parse_stmts()?;
+            Ok(Expr::Block(stmts))
+        } else {
+            self.parse_expr(0)
+        }
     }
 
     fn parse_for_expr(&mut self) -> Result<Expr, ParseError> {

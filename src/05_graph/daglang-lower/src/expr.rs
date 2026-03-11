@@ -217,6 +217,12 @@ fn lower_expr(
             params: params.clone(),
             body: Box::new(lower_expr(body, variant_names, mode)),
         },
+        ast::Expr::Block(stmts) => LoweredExpr::Block(
+            stmts
+                .iter()
+                .map(|stmt| lower_stmt(stmt, variant_names, mode))
+                .collect(),
+        ),
         ast::Expr::List(items) => LoweredExpr::List(
             items
                 .iter()
