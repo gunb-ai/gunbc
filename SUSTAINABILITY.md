@@ -644,20 +644,45 @@ enumeration.
 
 ---
 
-### Branch 7: Evaluator assumes small, non-recursive fn bodies
+### Branch 7: Untyped runtime for a typed compiler
 
 `daglang-eval` was built to evaluate simple DSL fn bodies (a few `let`
-bindings, one return expression). The v2 self-hosted compiler pushes it
-far beyond that: hundreds of mutually-calling functions, deep
-self-recursion (tokenizer per-character, parser per-token), and large
-accumulating data structures threaded through every call.
+bindings, one return expression). The v2 self-hosted compiler uses it as
+a general-purpose interpreter for a full compiler: 80+ mutually-recursive
+functions, deep self-recursion, multi-stage pipeline contracts, and typed
+error propagation.
 
-The evaluator had no concept of "this function will call itself 10,000
-times" because no prior DSL function did.
+The evaluator provides none of the properties a compiler runtime needs:
+- **Type safety**: `Value::Unit` flows where `Value::Map` (Module) is
+  expected with no error until a downstream operation fails (S57).
+- **Stack safety**: recursive DSL functions consume native Rust stack
+  frames, with only partial self-recursive TCO (S55).
+- **Error contracts**: parse failures return `none`, which leaks through
+  untyped stage boundaries into downstream stages (S56).
 
-**Terminal state:** The evaluator handles recursive DSL programs as
-first-class workloads — bounded stack, shared immutable context,
-amortized data structure operations.
+These are not independent bugs — they are all consequences of the same
+gap: the DSL has type annotations, error types, and contracts, but the
+v1 evaluator enforces none of them. The v2 typechecker (stage 4) checks
+*user* modules, not the compiler's own pipeline code.
+
+This is the bootstrap problem. The v2 compiler cannot typecheck itself
+until it achieves self-hosting. Until then, every stage boundary is an
+unguarded type violation surface, every recursive function is a potential
+stack overflow, and every error path is a potential leak.
+
+**Terminal state:** Self-hosting. When v2 compiles itself, static type
+checking prevents S56/S57-class bugs at compile time, compiled code
+eliminates S55-class stack issues, and typed Result/error returns replace
+none-leaking optional fields.
+
+**Interim mitigations (until self-hosting):**
+- Explicit error checks between pipeline stages (S56 fix).
+- Shape validation at stage boundaries in test helpers.
+- Regression tests that verify error contracts (parse error → diagnostic,
+  not resolve crash).
+- TCO for self-recursive tail calls including `return` in non-tail blocks
+  (S55 fix).
+- Module extraction deferred until after error gates in `compile_sources`.
 
 #### Root causes and fixes (2026-03-11):
 

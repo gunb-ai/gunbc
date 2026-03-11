@@ -580,6 +580,7 @@ fn foo(item: String) -> String {
     }
 
     #[test]
+    #[allow(clippy::disallowed_macros)]
     fn phase1_keywords_data_exists() {
         let output = compile_tokenizer_module().expect("compilation should succeed");
         assert!(
@@ -590,6 +591,7 @@ fn foo(item: String) -> String {
     }
 
     #[test]
+    #[allow(clippy::disallowed_macros)]
     fn phase1_data_lookup_works() {
         let output = compile_tokenizer_module().expect("compilation should succeed");
         // Check if "lookup" accidentally exists as a sibling fn
@@ -619,6 +621,7 @@ fn foo(item: String) -> String {
     }
 
     #[test]
+    #[allow(clippy::disallowed_macros)]
     fn phase1_keywords_data_shape() {
         let output = compile_tokenizer_module().expect("compilation should succeed");
         let kw = output.data_values.get("keywords").expect("keywords should exist");
@@ -1731,6 +1734,7 @@ fn example(items: List<String>) -> Int {
     /// self-recursive (so TCO doesn't help). Each call frame is ~500 bytes
     /// in debug mode. 6 levels × ~500 bytes × many tokens = >8MB default.
     #[test]
+    #[allow(clippy::disallowed_macros)]
     fn phase6_multi_module_synthetic() {
         with_parser_stack(|| {
             let output = compile_all_modules().expect("compilation should succeed");
@@ -1860,6 +1864,7 @@ fn example(items: List<String>) -> Int {
     ///
     /// Needs 32MB stack: 12 real .dag files with deep parser mutual recursion.
     #[test]
+    #[allow(clippy::disallowed_macros)]
     fn phase6_gist_full_pipeline() {
         let result = std::thread::Builder::new()
             .stack_size(32 * 1024 * 1024)
@@ -1978,14 +1983,11 @@ fn example(items: List<String>) -> Int {
                 );
 
                 // Check that gist module's emission contains func signatures
-                if let Some(gist_file) = emitted_files.last() {
-                    if let gunbc_ir::Value::Map(ref m) = gist_file {
-                        if let Some(gunbc_ir::Value::Str(content)) = m.get("content") {
-                            eprintln!("[v2] gist.dag emitted {} bytes of Rust", content.len());
-                            // Print first 500 chars for inspection
-                            let preview = &content[..content.len().min(500)];
-                            eprintln!("[v2] preview:\n{}", preview);
-                        }
+                if let Some(gunbc_ir::Value::Map(ref m)) = emitted_files.last() {
+                    if let Some(gunbc_ir::Value::Str(content)) = m.get("content") {
+                        eprintln!("[v2] gist.dag emitted {} bytes of Rust", content.len());
+                        let preview = &content[..content.len().min(500)];
+                        eprintln!("[v2] preview:\n{}", preview);
                     }
                 }
             })

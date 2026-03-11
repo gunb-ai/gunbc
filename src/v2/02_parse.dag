@@ -478,7 +478,7 @@ fn parse_type_def(state: ParserState) -> PR {
   let r = expect_ident(state: r.state)
   if is_err(pr: r) { return r }
   let name = r.val.name
-  let s = r.state
+  let s = skip_newlines(state: r.state)
 
   // Record type: type Name { fields }
   let e = eat(state: s, tag: "LBrace")
@@ -575,11 +575,21 @@ fn parse_predicates(state: ParserState) -> PR {
 }
 
 // parse_single_predicate: pattern("...") | range(min: N, max: N) | non_empty | format(name) | brand("...") | content(name)
+// Note: "pattern" is both a keyword (KwPattern for `pattern` items) and a
+// predicate name in `where pattern(...)`. We accept it as either.
 fn parse_single_predicate(state: ParserState) -> PR {
+  // Try identifier first; fall back to KwPattern which doubles as predicate name.
   let r = expect_ident(state: state)
-  if is_err(pr: r) { return r }
-  let pred_name = r.val.name
-  let s = r.state
+  let pred_name = if is_err(pr: r) {
+    if check(state: state, tag: "KwPattern") {
+      "pattern"
+    } else {
+      return r
+    }
+  } else {
+    r.val.name
+  }
+  let s = if is_err(pr: r) { advance(state: state).state } else { r.state }
 
   // Check for (args)
   let e = eat(state: s, tag: "LParen")
@@ -628,6 +638,14 @@ fn parse_single_predicate(state: ParserState) -> PR {
         if is_err(pr: r3) { return r3 }
         ok(val: { predicate: Domain { name: r2.val.name } }, state: r3.state)
       }
+      "range" => {
+        // range(min: N) | range(max: N) | range(min: N, max: N)
+        let r2 = parse_named_int_args(state: e.state)
+        if is_err(pr: r2) { return r2 }
+        let r3 = expect(state: r2.state, tag: "RParen")
+        if is_err(pr: r3) { return r3 }
+        ok(val: { predicate: Range { min: r2.val.min_val, max: r2.val.max_val } }, state: r3.state)
+      }
       _ => {
         fail(msg: "unknown where predicate `" + pred_name + "`", state: e.state)
       }
@@ -638,6 +656,45 @@ fn parse_single_predicate(state: ParserState) -> PR {
       "non_empty" => ok(val: { predicate: NonEmpty }, state: s)
       _ => fail(msg: "unknown where predicate `" + pred_name + "`", state: s)
     }
+  }
+}
+
+// parse_named_int_args: parse `min: N, max: N` style named integer arguments.
+// Returns { min_val: Int?, max_val: Int? }. Both are optional.
+fn parse_named_int_args(state: ParserState) -> PR {
+  let r = parse_single_named_int(state: state)
+  if is_err(pr: r) { return r }
+  let e = eat(state: r.state, tag: "Comma")
+  if e.consumed {
+    let r2 = parse_single_named_int(state: skip_newlines(state: e.state))
+    if is_err(pr: r2) { return r2 }
+    let min_val = if r.val.arg_name == "min" { Some { value: r.val.arg_value } }
+                  else if r2.val.arg_name == "min" { Some { value: r2.val.arg_value } }
+                  else { None }
+    let max_val = if r.val.arg_name == "max" { Some { value: r.val.arg_value } }
+                  else if r2.val.arg_name == "max" { Some { value: r2.val.arg_value } }
+                  else { None }
+    ok(val: { min_val: min_val, max_val: max_val }, state: r2.state)
+  } else {
+    let min_val = if r.val.arg_name == "min" { Some { value: r.val.arg_value } } else { None }
+    let max_val = if r.val.arg_name == "max" { Some { value: r.val.arg_value } } else { None }
+    ok(val: { min_val: min_val, max_val: max_val }, state: r.state)
+  }
+}
+
+// parse_single_named_int: parse `name: integer_literal`.
+fn parse_single_named_int(state: ParserState) -> PR {
+  let r = expect_ident(state: state)
+  if is_err(pr: r) { return r }
+  let name = r.val.name
+  let r2 = expect(state: r.state, tag: "Colon")
+  if is_err(pr: r2) { return r2 }
+  let r3 = parse_expr(state: r2.state)
+  if is_err(pr: r3) { return r3 }
+  match r3.val.expr {
+    Literal { value: LitInt { value: n } } =>
+      ok(val: { arg_name: name, arg_value: n }, state: r3.state)
+    _ => fail(msg: "range() argument `" + name + "` requires an integer literal", state: r3.state)
   }
 }
 
