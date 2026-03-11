@@ -2849,3 +2849,62 @@ delete the redundant one.
 one, you have N-1 too many concepts.** The complexity budget should go
 toward making the one authoritative concept clear, not toward keeping
 multiple representations in sync.
+
+### Remaining sustainability debt from this change
+
+Honest self-assessment: three things we did are themselves unsustainable.
+
+**1. FnBodyEvalCallableOp catch-all passthrough.** We replaced 4
+string-matching heuristics with a blanket catch-all — structurally
+cleaner, but it violates "no hacks or fallbacks" directly. Every fn
+body eval error is silently swallowed. If a real bug causes evaluation
+to fail, this passthrough masks it. The evaluator can never visibly
+regress.
+
+The root cause: the fn body evaluator is a parallel implementation of
+DAG execution. Two representations of the same computation will always
+diverge. The sustainable fix is to choose one path: either make the
+evaluator complete (expensive, ongoing maintenance) or stop evaluating
+fn bodies during DryRun and test their results only in Tier 2 (Real
+mode). The catch-all is a bridge to that decision, not a destination.
+
+**2. `register_core_types()` still exists alongside .dag definitions.**
+Phase E added .dag definitions but didn't delete the Rust registrations.
+Now every type has two sources. `merge_dsl_types` overrides at compile
+time, but `TypeRegistry::with_core_types()` callers (unit tests, CLI
+tools without DSL compilation) see the Rust version. The two can diverge
+silently — Credential already did (branded String in Rust vs 6-field
+product in DSL).
+
+Sustainable fix: make `with_core_types()` compile the .dag files, or
+delete the Rust registrations and require DSL compilation everywhere.
+Interim: add a test that the Rust and DSL registrations agree on shape.
+
+**3. `mock_element_expr` / `try_mock_element_value` enumeration.** These
+100+ line match arms on type name strings still exist. Phase E added .dag
+definitions so `typed_witness_value` can handle these types structurally,
+but the codegen emitter doesn't have registry access at code-emission
+time. The match arms are the fallback.
+
+Sustainable fix: thread the TypeRegistry through to codegen's mock
+emission path. Then `mock_element_expr` collapses to: look up in
+registry → emit structural witness. The match arms become dead code.
+
+### Design direction: sustainability as the primary metric
+
+The pattern across FC-1 through FC-7 is: **systems that model the same
+information in multiple representations become exponentially harder to
+change.** Every new type, variant, or feature requires updating every
+representation. The representations diverge. Fallbacks mask the
+divergence. The fallbacks become their own maintenance burden.
+
+The sustainable compiler is one where adding a new type means editing
+one .dag file and nothing else. Adding a new expression form means
+editing one evaluator and nothing else. Today, adding a type requires
+edits to: the .dag file, `register_core_types()`, `mock_element_expr`,
+`try_mock_element_value`, and potentially `mock_wrong_type_expr`. That's
+5 representations of one fact.
+
+Each remaining cleanup should be evaluated by: **does this reduce the
+number of places that need changing when the language grows?** If yes,
+do it. If it adds a new representation (even a "cleaner" one), don't.

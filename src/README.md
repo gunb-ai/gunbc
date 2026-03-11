@@ -33,6 +33,66 @@ Adapted from Google C++ style for Rust:
   not an empty value, not `Value::Skipped`, not a quietly truncated result.
   Caching is the sole exception (cache miss on error is acceptable).
 
+- **Single source of truth (no degenerate representations).** Every fact in the
+  system should be encoded in exactly one place. When two structures represent
+  the same information, one inevitably gets updated while the other doesn't —
+  and the stale copy produces silently wrong behavior instead of failing.
+
+  The failure mode is always the same: information is computed or declared in
+  one place, a second representation is derived from it, and then downstream
+  code reads the derived copy instead of the source. When the source changes,
+  the derived copy is stale, and instead of erroring, the system fabricates a
+  plausible result from the stale data.
+
+  Examples from FC-7 (POSTMORTEM.md):
+  - `PortMultiplicity` duplicated what `Cardinality.is_list()` already encoded.
+    When cardinality was set to ZERO_OR_MORE but multiplicity stayed Singular,
+    the executor silently used the wrong merge strategy.
+  - `base_type()` extracted a type name from Identity nodes but didn't recurse
+    through Wrap/Brand nodes. The type DAG encoded the full structure, but
+    `base_type` read a partial view, producing `None` and triggering a
+    `Str("mock")` fabrication fallback.
+  - ResourceHandle had 3 fields in the DSL but 4 in the Rust impl. Mocks were
+    generated from the DSL definition but validated against the Rust shape.
+  - `resolve_type_checked()` routed through a parser that rejected names the
+    registry accepted. The registry was the source of truth, but the parser
+    gate made some registered types unreachable.
+
+  The fix is always the same: delete the derived representation and read from
+  the source. If the source isn't accessible, make it accessible — don't cache
+  a copy that can go stale. When deletion isn't possible (e.g., serialized
+  formats), the derived value must be computed, not declared separately.
+
+- **Structural rules over case enumeration.** When handling varies by type,
+  variant, or category, prefer a single algorithm that walks the structure over
+  a match/list that enumerates known cases. Enumerated lists rot: every new
+  case requires updating every list, and the compiler won't tell you which
+  lists you missed.
+
+  The test: if adding a new type/variant requires editing a match arm somewhere
+  other than the type definition itself, the code has an enumeration that should
+  be replaced with a structural walk.
+
+  Examples from FC-7:
+  - `mock_element_expr` was a 100+ line match on type name strings that had to
+    be manually extended for every new DSL type. Replaced by `typed_witness_value`
+    which walks the type DAG structurally — new types get correct witnesses
+    automatically.
+  - `scalar_witness_for_base` enumerated known primitives and fabricated
+    `Str("<TypeName>")` for everything else. Replaced by returning `None` for
+    unknown bases and letting `product_witness` handle structured types via
+    the registry.
+  - The C3 string-matching heuristic (`err_msg.contains("unbound variable") ||
+    err_msg.contains("cannot access field") || ...`) was a growing list of
+    error patterns. Each new evaluator failure mode required adding another
+    string check. Replaced by a structural rule: fn body evaluation is
+    best-effort, all eval errors fall back to passthrough.
+
+  Not all matches are bad — matching on a closed enum (`WrapperKind::List |
+  Set | Optional | ...`) is fine because adding a variant is a compiler error.
+  The problem is open-ended lists keyed by strings, type names, or error
+  message substrings.
+
 ## Testing Invariants
 
 - **Behavioral only.** Tests assert observable behavior — outputs given inputs,
