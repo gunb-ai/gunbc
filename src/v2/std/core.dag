@@ -101,13 +101,13 @@ type Import {
 }
 
 type Item
-  = TypeDef { name: String, body: TypeBody, span: Span }
-  | FuncDef { name: String, params: List<Param>, return_type: TypeExpr?, body: Expr, span: Span }
-  | FnDef { name: String, params: List<Param>, return_type: TypeExpr?, body: Expr, span: Span }
-  | ServiceDef { name: String, transport: TransportBinding, operations: List<OperationDef>, span: Span }
-  | ResourceDef { name: String, capabilities: List<CapabilityDef>, span: Span }
-  | DataDef { name: String, type_expr: TypeExpr, value: Expr, span: Span }
-  | ExternFuncDecl { name: String, params: List<Param>, return_type: TypeExpr, span: Span }
+  = TypeDef { name: String, body: TypeBody, span: SourceSpan }
+  | FuncDef { name: String, params: List<Param>, return_type: TypeExpr?, body: Expr, span: SourceSpan }
+  | FnDef { name: String, params: List<Param>, return_type: TypeExpr?, body: Expr, span: SourceSpan }
+  | ServiceDef { name: String, transport: TransportBinding, operations: List<OperationDef>, span: SourceSpan }
+  | ResourceDef { name: String, capabilities: List<CapabilityDef>, span: SourceSpan }
+  | DataDef { name: String, type_expr: TypeExpr, value: Expr, span: SourceSpan }
+  | ExternFuncDecl { name: String, params: List<Param>, return_type: TypeExpr, span: SourceSpan }
 
 // =========================================================================
 // Type expressions
@@ -188,21 +188,21 @@ type Predicate
 // =========================================================================
 
 type Expr
-  = Literal { value: LiteralValue, span: Span }
-  | Var { name: String, span: Span }
-  | FieldAccess { base: Expr, field: String, span: Span }
-  | Call { func: String, args: List<NamedArg>, span: Span }
-  | MethodCall { receiver: Expr, method: String, args: List<NamedArg>, span: Span }
-  | Match { scrutinee: Expr, arms: List<MatchArm>, span: Span }
-  | If { condition: Expr, then_branch: Expr, else_branch: Expr?, span: Span }
-  | Let { name: String, value: Expr, body: Expr?, span: Span }
-  | RecordLit { fields: List<FieldInit>, span: Span }
-  | ListLit { elements: List<Expr>, span: Span }
-  | BinOp { op: BinOpKind, left: Expr, right: Expr, span: Span }
-  | UnaryOp { op: UnaryOpKind, operand: Expr, span: Span }
-  | Lambda { params: List<String>, body: Expr, span: Span }
-  | StringInterp { parts: List<StringPart>, span: Span }
-  | Block { stmts: List<Expr>, span: Span }
+  = Literal { value: LiteralValue, span: SourceSpan }
+  | Var { name: String, span: SourceSpan }
+  | FieldAccess { base: Expr, field: String, span: SourceSpan }
+  | Call { func: String, args: List<NamedArg>, span: SourceSpan }
+  | MethodCall { receiver: Expr, method: String, args: List<NamedArg>, span: SourceSpan }
+  | Match { scrutinee: Expr, arms: List<MatchArm>, span: SourceSpan }
+  | If { condition: Expr, then_branch: Expr, else_branch: Expr?, span: SourceSpan }
+  | Let { name: String, value: Expr, body: Expr?, span: SourceSpan }
+  | RecordLit { fields: List<FieldInit>, span: SourceSpan }
+  | ListLit { elements: List<Expr>, span: SourceSpan }
+  | BinOp { op: BinOpKind, left: Expr, right: Expr, span: SourceSpan }
+  | UnaryOp { op: UnaryOpKind, operand: Expr, span: SourceSpan }
+  | Lambda { params: List<String>, body: Expr, span: SourceSpan }
+  | StringInterp { parts: List<StringPart>, span: SourceSpan }
+  | Block { stmts: List<Expr>, span: SourceSpan }
 
 type NamedArg { name: String?, value: Expr }
 type MatchArm { pattern: MatchPattern, guard: Expr?, body: Expr }
