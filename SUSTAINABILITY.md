@@ -1,207 +1,179 @@
 # Sustainability Ledger
 
-Tracks representations that duplicate the same fact, enumeration lists
-that grow with the language, and fallbacks that mask divergence. Each
-entry is a concrete liability — not a wish list, but a measured cost:
-how many files need editing when the language grows by one type, one
-expression form, or one transport.
+The governing metric for this codebase is **cost of change**: when the
+language grows by one type, one expression form, or one transport, how
+many files need editing? The sustainable compiler is one where that
+number is 1.
 
-**Governing principle:** The sustainable compiler is one where adding a
-new concept means editing one place. Every additional place is a
-maintenance multiplier that makes the system exponentially harder to
-change.
+Fixing individual symptoms is itself unsustainable if they share a root
+cause. This ledger is organized as **causal trees**: root causes at the
+top, symptoms underneath. Fixing a root cause eliminates its entire
+subtree. Fixing a symptom without its root cause means new symptoms will
+keep appearing.
 
-See `src/README.md` for the invariants (single source of truth,
-structural rules over case enumeration) and `POSTMORTEM.md` FC-7 for
-the full history of how these were discovered.
+See `src/README.md` for the invariants and `POSTMORTEM.md` FC-7 for
+the history.
 
 ---
 
-## Active liabilities
+## Root cause 1: TypeId is deferred computation
 
-### S1: `register_core_types()` duplicates .dag definitions
+`Port.type_id` is a string (`TypeId("ResourceHandle")`) that requires
+a `TypeRegistry` lookup to resolve into structural information. The
+registry is a symbol table that should have been resolved at compile
+time but persists into execution.
 
-**Cost of adding a type:** 2 places (Rust registration + .dag file).
-**Risk:** Silent divergence. Credential already diverged (branded String
-in Rust vs 6-field product in DSL). `merge_dsl_types` overrides at
-compile time, but `TypeRegistry::with_core_types()` callers see the
-Rust version.
+The type structure exists in the .dag file, gets compiled into a
+`Dag<TypeOp>`, gets stored in the registry under a string key, and
+then ports reference the string key. Three representations of one fact.
 
-| File | Role |
-|------|------|
-| `src/00_foundation/ir/src/type_registry.rs:338` | Rust registration |
-| `dsl/std/types.dag` | DSL definition (authoritative) |
+**Terminal state:** Ports reference type structure directly (embedded
+SubDag or DAG-internal node reference). The compiler resolves all type
+references at compile time. No registry at runtime. TypeId becomes
+unnecessary. (TypeId appears in 19 files today.)
 
-**Fix direction:** Delete Rust registrations. Either make `with_core_types()`
-compile .dag files, or embed a serialized registry built from .dag at
-build time. Interim: add a test that Rust and DSL registrations agree
-on structural shape.
+### Symptoms:
 
-### S2: `mock_element_expr` / `try_mock_element_value` enumerate types by name
+**S1: `register_core_types()` duplicates .dag definitions.**
+Cost: 2 places per type. Already diverged (Credential).
+`type_registry.rs:338` + `dsl/std/types.dag`.
 
-**Cost of adding a type:** 2 places (match arm in each function), on
-top of the .dag definition.
-**Risk:** New DSL type gets no mock entry → `None` → test obligation
-skipped silently.
+**S2: `mock_element_expr` / `try_mock_element_value` enumerate types.**
+Cost: 2 match arms per type, ~240 lines total.
+`codegen.rs:~6971,~7270`. Exists because codegen doesn't have registry
+access — if types were structural, no lookup needed.
 
-| File | Lines | Function |
-|------|-------|----------|
-| `src/01_surfaces/codegen/src/testgen/codegen.rs:~7270` | ~140 | `mock_element_expr` |
-| `src/01_surfaces/codegen/src/testgen/codegen.rs:~6971` | ~100 | `try_mock_element_value` |
+**S4: `port.cardinality` caches type information.**
+Cost: low (builder auto-derives). Exists because cardinality is derived
+from TypeId via registry instead of being intrinsic to the type DAG
+embedded in the port.
 
-**Fix direction:** Thread `TypeRegistry` to the codegen mock emission
-path. Replace match arms with `typed_witness_value(type_id, registry)`
-lookup. The registry is already available at testgen time — it just
-isn't passed to the emitter.
+**S5: Emit pipeline uses core-only registry.**
+Cost: DSL types invisible to emit → raw string fallback.
+`daglang-driver/src/pipeline.rs`, `daglang-emit/src/type_mapping.rs`.
 
-### S3: FnBodyEvalCallableOp catch-all passthrough
+**S13: Semantic carrier classification by string match.**
+Cost: 1 match arm per semantic type, 50+ arms.
+`ir/src/types.rs:~992`. Exists because the classifier reads
+`TypeId` strings instead of structural properties.
 
-**Cost of adding an expression form:** 0 (errors are swallowed), which
-is precisely the problem — the evaluator can't regress visibly.
-**Risk:** Real evaluation bugs masked. Fn body correctness is untested
-in DryRun.
+---
 
-| File | Line | Pattern |
-|------|------|---------|
-| `src/08_materialize/resolve/src/resolve.rs:~245` | catch-all | All eval errors → passthrough |
+## Root cause 2: Parallel implementations of the same computation
 
-**Fix direction:** Architectural decision required.
-- **Option A:** Make the evaluator complete. High ongoing cost — every
-  new DSL feature needs evaluator support.
-- **Option B:** Remove fn body evaluation from DryRun. Test fn body
-  results only in Tier 2 (Real mode). The evaluator becomes dead code
-  for DryRun; callable nodes are always passthrough in DryRun.
-- **Option C:** Structured eval contract. The evaluator declares which
-  expression forms it supports. If a fn body uses an unsupported form,
-  the node is marked as "eval-opaque" at resolve time (not at runtime
-  via catch-all). Errors from supported forms are real failures.
+When the same computation exists in two forms, they diverge as the
+language evolves. The one that lags gets masked by a fallback.
 
-Option C is the sustainable path — it replaces a runtime heuristic
-with a compile-time structural declaration.
+**Terminal state:** Each computation has exactly one implementation.
+Fn body evaluation either works completely or doesn't exist for DryRun.
 
-### S4: `port.cardinality` caches `type_id` information
+### Symptoms:
 
-**Cost:** Low (builder derives it automatically), but it's a second
-representation of type-level information.
-**Risk:** Low in practice — the builder overrides on every `add_node`.
-But code that constructs ports directly (lowerer, tests) can set wrong
-cardinality.
+**S3: FnBodyEvalCallableOp catch-all passthrough.**
+The fn body evaluator and the DAG executor are parallel implementations.
+The evaluator can't handle all expression forms, so eval errors are
+silently caught. Cost: evaluator can never visibly regress.
+`resolve.rs:~245`.
+Fix options: (A) complete evaluator, (B) remove from DryRun,
+(C) structured eval contract — evaluator declares what it supports,
+unsupported forms are compile-time opaque instead of runtime catch-all.
 
-| Source of truth | Cache |
-|-----------------|-------|
-| `TypeId` → `TypeRegistry::infer_cardinality()` | `Port.cardinality` |
+**S16: Service transport dispatch duplicated across prepare/parse.**
+`GenericPrepareOp` and `GenericParseOp` each match on 5 transport
+variants calling parallel per-transport functions.
+Cost: 2 match arms + 2 functions per new transport.
+Fix: transport trait with `prepare()` and `parse()` methods.
 
-**Fix direction:** Evaluate whether consumers can call
-`registry.infer_cardinality()` directly instead of reading the cached
-field. If the registry is available at all consumption points, the
-field can become a derived accessor instead of stored state. Low
-priority — the builder derivation prevents most divergence.
+---
 
-### S5: Emit pipeline uses core-only registry (not project-aware)
+## Root cause 3: Open-set enumeration by string
 
-**Cost:** Emitted code uses `TypeRegistry::with_core_types()` which lacks
-DSL-defined structural types. Adding a DSL type doesn't automatically
-make it available to the emit layer.
-**Risk:** Emit falls back to raw type name strings for unknown types
-(e.g. `resolve_and_emit("FooBar", ...) → "FooBar"`). Should be a
-compile error.
+When behavior varies by type/variant/category, code uses match arms
+on string names instead of structural walks. Every new case requires
+updating every match, and the compiler can't tell you which you missed.
 
-| File | Issue |
-|------|-------|
-| `daglang-driver/src/pipeline.rs` | Constructs `with_core_types()` |
-| `daglang-emit/src/type_mapping.rs` | `resolve_and_emit` fallback |
+**Terminal state:** Classification derived from DAG structure or DSL
+annotations. String matching only for closed sets (compiler-enforced
+enum variants).
 
-**Fix direction:** Thread `CompileOutput::merged_type_registry()` through
-the codegen pipeline. Callers already accept `Option<&TypeRegistry>`.
-Then change the unknown-type fallback from warning to error.
+### Symptoms:
 
-### S6: ResourceHandle shape in DSL vs Rust `Into<Value>` impl
+**S11: Collection operations require 5 edits each.**
+`builtin_method_sigs` + `collection_op_kind()` + `CollectionKind::from_name()`
++ `collection_emit_family()` + emit implementation.
+Fix: single `CollectionOp` registry.
 
-**Cost of adding a field:** 2 places (DSL type definition + Rust
-`Into<Value>` impl in `resource/handle.rs`).
-**Risk:** Silent mock/runtime mismatch (already happened — `type` field
-was missing from DSL).
+**S12: Builtin type metadata split across two functions.**
+`builtin_type_names()` + `builtin_type_arities()` — parallel lists.
+Cost: 2 edits per builtin type.
+Fix: single `BuiltinType` struct.
 
-| File | Role |
-|------|------|
-| `dsl/std/resources.dag:19` | DSL definition |
-| `src/00_foundation/ir/src/resource/handle.rs:~110` | Rust `Into<Value>` |
+**S14: Obligation classification by name prefix.**
+`infer_fn_obligation()` matches on "render_", "load_", "fs_env_".
+Fix: DSL annotations or structural output-type inspection.
 
-**Fix direction:** Generate the `Into<Value>` impl from the DSL type
-definition, or have the Rust impl read the DSL-registered type DAG to
-determine field names. The DSL definition should be the sole source.
+**S15: Filesystem resource hardcoded by type name.**
+"FilesystemHandle" appears ~10 times in `resolve.rs`.
+Cost: duplicate entire wiring function per new resource type.
+Fix: derive from DSL resource definitions.
 
-### S7: `resolve_field_type_dag` swallows errors (warning, not error)
+**S17: Mock wrong-type matrix enumerated by hand.**
+`mock_wrong_type_expr()` — 20 match arms.
+Fix: derive from `ValueBacking` (3 rules replace 20 arms).
 
-**Cost of adding a type dependency:** If a field references an
-unregistered type, `resolve_field_type_dag` produces an identity
-placeholder with a warning instead of a compile error.
-**Risk:** Structural type DAGs contain unresolved placeholders that
-propagate silently through the pipeline.
+---
 
-| File | Issue |
-|------|-------|
-| `daglang-typecheck/src/lib.rs` | `resolve_field_type_dag` returns placeholder |
+## Root cause 4: DSL/Rust boundary duplication
 
-**Fix direction:** Return `Result<Dag<TypeOp>, String>`. Propagate
-through `register_type_def` and `collect_dsl_type_registry`. Missing
-types become compile errors.
+When a concept is defined in both the DSL and Rust, the two
+representations diverge. The DSL definition should be authoritative
+for all type-level facts.
 
-### S8: C backend discards Map key types silently
+**Terminal state:** Rust code reads from DSL-compiled artifacts.
+No parallel Rust definitions of facts the DSL already encodes.
 
-**Cost:** None (no new edits needed), but lossy rendering is
-undocumented. `Map<K,V>` renders as `{V}*` in C, discarding K.
-**Risk:** Low — intentional backend limitation, but undocumented
-means it gets re-investigated periodically.
+### Symptoms:
 
-**Fix direction:** Document as intentional in the language model
-(`language_model.rs` C_CONTAINERS comment). Not a code change.
+**S6: ResourceHandle shape in DSL vs Rust `Into<Value>`.**
+Cost: 2 places per field change. Already diverged (missing `type` field).
+Fix: generate `Into<Value>` from DSL type definition.
 
-### S9: Opaque kernel types lack documented rationale
+**S10: Container types are compiler built-ins.**
+`List<T>`, `Optional<T>` hardcoded in `type_lib` as Rust functions.
+Cost: 4+ places per new container type.
+Fix: DSL-definable containers with generic substitution (large).
 
-4 identity types remain: `Any`, `Json`, `Record`, `Unit`. Decision to
-keep them opaque is correct but undocumented. Each review cycle
-re-examines whether they should be structural.
+---
 
-**Fix direction:** Document the decision. All four represent concepts
-where internal structure is meaningless to backends. `Unit` could
-theoretically be a zero-field product but gains nothing from it.
+## Standalone items
 
-### S10: Container types (`List<T>`, `Optional<T>`) are compiler built-ins
+These don't share a root cause with others:
 
-The parser handles `type List<T>` syntax but `T` is never substituted
-into the body. Containers are hardcoded in `type_lib` as Rust functions,
-not defined in .dag files.
-**Cost of adding a container type:** Rust code changes in `type_lib`,
-parser, typecheck, emit — 4+ places.
+**S7: `resolve_field_type_dag` swallows errors.**
+Returns placeholder instead of compile error for missing types.
+Fix: return `Result`, propagate through typecheck.
 
-**Fix direction:** Make containers DSL-definable with generic
-substitution. This is the end-state of "adding a type requires only
-a .dag definition." Large effort, but it's the terminal form of S1.
+**S8: C backend discards Map key types silently.**
+Intentional but undocumented. Fix: document.
+
+**S9: Opaque kernel types lack documented rationale.**
+`Any`, `Json`, `Record`, `Unit` — correct decision, undocumented.
+Fix: document.
 
 ---
 
 ## Future capabilities (sustainability-motivated)
 
-These aren't features for their own sake — each one would eliminate
-a class of sustainability liability.
+Each eliminates a class of liability:
 
-### Language model serialization to JSON IR
+**Language model serialization to JSON IR** — eliminates Rust-code-edit
+for backend type mappings (data, not logic).
 
-Move language model data from static Rust arrays to JSON files.
-Modifying backend type mappings wouldn't require recompiling the
-compiler. Eliminates a Rust-code-edit for what is essentially data.
+**`behavior` DSL construct** — eliminates hand-written test enumeration
+for algebraic properties.
 
-### `behavior` DSL construct + property-based test generation
-
-Algebraic law declarations (`law antisymmetric: leq(a,b), leq(b,a)
-implies a == b`) would auto-generate property-based tests. Eliminates
-hand-written test enumeration for algebraic properties.
-
-### Structural coercion paths
-
-Multi-step coercion via derivation chain walking. Would eliminate
-manual `is_compatible` case enumeration for complex type relationships.
+**Structural coercion paths** — eliminates manual `is_compatible` case
+enumeration.
 
 ---
 
@@ -209,9 +181,9 @@ manual `is_compatible` case enumeration for complex type relationships.
 
 | ID | Description | Resolution | Date |
 |----|-------------|------------|------|
-| R1 | `PortMultiplicity` duplicated `Cardinality.is_list()` | Deleted `PortMultiplicity` entirely | 2026-03-10 |
-| R2 | `base_type()` partial view of type DAG (no Wrap/Brand recursion) | Structural walk through all wrapper layers | 2026-03-10 |
-| R3 | `resolve_type_checked()` parser gate on registry access | Direct `get_by_name` before parsing | 2026-03-10 |
-| R4 | `scalar_witness_for_base` fabrication for unknown types | Returns `None` (fails explicitly) | 2026-03-10 |
-| R5 | `is_placeholder_witness` / `is_compatible(Unknown)` escape hatches | Deleted (dead after R2+R4) | 2026-03-10 |
-| R6 | Callable port cardinality inferred from type (wrong for fn params) | Callable ports always scalar | 2026-03-10 |
+| R1 | `PortMultiplicity` duplicated `Cardinality.is_list()` | Deleted entirely | 2026-03-10 |
+| R2 | `base_type()` partial view (no Wrap/Brand recursion) | Structural walk | 2026-03-10 |
+| R3 | `resolve_type_checked()` parser gate on registry | Direct lookup first | 2026-03-10 |
+| R4 | `scalar_witness_for_base` fabrication | Returns `None` | 2026-03-10 |
+| R5 | `is_placeholder_witness` / `is_compatible(Unknown)` | Deleted | 2026-03-10 |
+| R6 | Callable port cardinality wrong for fn params | Always scalar | 2026-03-10 |
