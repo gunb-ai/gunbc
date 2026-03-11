@@ -709,7 +709,10 @@ impl std::fmt::Display for EvalError {
 const MAX_CALL_DEPTH: usize = 10_000;
 
 struct Env {
-    bindings: HashMap<String, Value>,
+    /// Variable bindings. Wrapped in Rc for copy-on-write: child scopes
+    /// share the parent's map until they bind a new variable, at which
+    /// point `Rc::make_mut` clones only if the refcount > 1.
+    bindings: Rc<HashMap<String, Value>>,
     /// Data declaration values carried through so sibling fn calls can
     /// reference module-level `data` items without re-threading them.
     /// Wrapped in Rc to avoid deep-cloning on every recursive call.
@@ -723,7 +726,7 @@ struct Env {
 impl Env {
     fn from_inputs(inputs: &HashMap<String, Value>) -> Self {
         Self {
-            bindings: inputs.clone(),
+            bindings: Rc::new(inputs.clone()),
             data_values: Rc::new(HashMap::new()),
             call_depth: 0,
             self_name: None,
@@ -731,7 +734,7 @@ impl Env {
     }
 
     fn bind(&mut self, name: String, value: Value) {
-        self.bindings.insert(name, value);
+        Rc::make_mut(&mut self.bindings).insert(name, value);
     }
 
     fn get(&self, name: &str) -> Option<&Value> {
@@ -740,7 +743,7 @@ impl Env {
 
     fn child(&self) -> Self {
         Self {
-            bindings: self.bindings.clone(),
+            bindings: Rc::clone(&self.bindings),
             data_values: Rc::clone(&self.data_values),
             call_depth: self.call_depth,
             self_name: self.self_name.clone(),
