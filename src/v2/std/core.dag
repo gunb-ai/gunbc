@@ -109,7 +109,7 @@ type Item
   // fn: pure function (expression body, no side effects)
   | FnDef { name: String, params: List<Param>, return_type: TypeExpr?, body: Expr, span: SourceSpan }
   | ServiceDef { name: String, transport: TransportBinding, config: ServiceConfig?, operations: List<OperationDef>, span: SourceSpan }
-  | ResourceDef { name: String, capabilities: List<CapabilityDef>, span: SourceSpan }
+  | ResourceDef { name: String, properties: List<FieldInit>, capabilities: List<CapabilityDef>, span: SourceSpan }
   | DataDef { name: String, type_expr: TypeExpr, value: Expr, span: SourceSpan }
   | ExternFuncDecl { name: String, params: List<Param>, return_type: TypeExpr, span: SourceSpan }
 
@@ -157,6 +157,7 @@ type Field {
   type_expr: TypeExpr
   optional: Bool
   default_value: Expr?
+  from_key: String?
   span: SourceSpan
 }
 
@@ -292,8 +293,16 @@ type OperationDef {
   outputs: List<Field>
   response: List<ResponseMapping>
   mock_response: List<MockResponseDef>
+  exit_mappings: List<ExitMapping>
   modifiers: List<OperationModifier>
+  transport: TransportBinding?
   span: SourceSpan
+}
+
+type ExitMapping {
+  code: Expr
+  type_expr: TypeExpr
+  description: String?
 }
 
 type OperationModifier = Idempotent | Readonly | Hermetic

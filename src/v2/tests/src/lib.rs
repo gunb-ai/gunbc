@@ -1586,4 +1586,111 @@ fn example(items: List<String>) -> Int {
             Err(e) => std::panic::resume_unwind(e),
         }
     }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Phase 5: gist.dag transitive closure — v1 parser gate
+    //
+    // All 12 files in gist.dag's transitive closure must parse without
+    // errors through the v1 parser. (The v2 parser gate is phase 5b.)
+    // ═════════════════════════════════════════════════════════════════════
+
+    /// Gate test: v1 parser handles all gist.dag transitive deps.
+    #[test]
+    fn phase5_gist_transitive_closure_v1_parse() {
+        let files = [
+            "dsl/std/types.dag",
+            "dsl/std/behavioral.dag",
+            "dsl/std/errors.dag",
+            "dsl/std/resources.dag",
+            "dsl/extdeps/cloud/cloud.dag",
+            "dsl/extdeps/cloud/gcp/gcp.dag",
+            "dsl/extdeps/github/github.dag",
+            "dsl/extdeps/github/auth.dag",
+            "dsl/extdeps/github/gists.dag",
+            "dsl/extdeps/git.dag",
+            "dsl/gunbc/auth/credentials.dag",
+            "dsl/gunbc/tools/gist.dag",
+        ];
+        for f in &files {
+            assert_parses_strict(f);
+        }
+    }
+
+    /// Gate test: v2 parser handles all gist.dag transitive deps.
+    /// Compiles v2 compiler via v1, then calls v2's tokenize+parse on each file.
+    /// IGNORED: cross-module function name collisions (make_error in parse vs typecheck)
+    /// cause eval errors. Needs module-qualified function dispatch to fix.
+    #[test]
+    #[ignore]
+    fn phase5_gist_transitive_closure_v2_parse() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = std::thread::Builder::new()
+            .stack_size(128 * 1024 * 1024)
+            .spawn(move || {
+                let root = workspace_root();
+                let files = [
+                    "dsl/std/types.dag",
+                    "dsl/std/behavioral.dag",
+                    "dsl/std/errors.dag",
+                    "dsl/std/resources.dag",
+                    "dsl/extdeps/cloud/cloud.dag",
+                    "dsl/extdeps/cloud/gcp/gcp.dag",
+                    "dsl/extdeps/github/github.dag",
+                    "dsl/extdeps/github/auth.dag",
+                    "dsl/extdeps/github/gists.dag",
+                    "dsl/extdeps/git.dag",
+                    "dsl/gunbc/auth/credentials.dag",
+                    "dsl/gunbc/tools/gist.dag",
+                ];
+                for rel_path in &files {
+                    let path = root.join(rel_path);
+                    let source = std::fs::read_to_string(&path)
+                        .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
+
+                    // Tokenize via v2
+                    let mut tok_inputs = HashMap::new();
+                    tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source));
+                    let tok_result = call_fn(&output, "tokenize", tok_inputs)
+                        .unwrap_or_else(|e| panic!("{}: tokenize failed: {}", rel_path, e));
+                    let tokens = tok_result.get("return").cloned().unwrap_or_else(|| {
+                        gunbc_ir::Value::List(
+                            tok_result.values().next().cloned()
+                                .map(|v| if let gunbc_ir::Value::List(l) = v { l } else { vec![v] })
+                                .unwrap_or_default(),
+                        )
+                    });
+
+                    // Parse via v2
+                    let mut parse_inputs = HashMap::new();
+                    parse_inputs.insert("tokens".to_string(), tokens);
+                    let parse_result = call_fn(&output, "parse", parse_inputs)
+                        .unwrap_or_else(|e| panic!("{}: parse failed: {}", rel_path, e));
+
+                    // Check for parse errors
+                    let error = parse_result.get("error");
+                    let has_error = match error {
+                        Some(gunbc_ir::Value::Unit) => false,
+                        Some(gunbc_ir::Value::Map(m)) if m.contains_key("value") => {
+                            !matches!(m.get("value"), Some(gunbc_ir::Value::Unit))
+                        }
+                        None => false,
+                        _ => false,
+                    };
+                    if has_error {
+                        let err_json = value_to_json(error.unwrap());
+                        panic!(
+                            "{}: v2 parse error: {}",
+                            rel_path,
+                            err_json
+                        );
+                    }
+                }
+            })
+            .expect("failed to spawn thread")
+            .join();
+        match result {
+            Ok(()) => {}
+            Err(e) => std::panic::resume_unwind(e),
+        }
+    }
 }

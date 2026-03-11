@@ -35,7 +35,7 @@ import v2.std.core {
   UnaryOpKind, Not, Neg,
   StringPart, Text, Interpolation,
   TransportBinding, RestBinding, ShellBinding, FileBinding, LocalBinding,
-  ServiceConfig, OperationDef, ResponseMapping, MockResponseDef,
+  ServiceConfig, OperationDef, ResponseMapping, MockResponseDef, ExitMapping,
   AuthConfig, HeaderDef, EnvDef, OperationModifier, Idempotent, Readonly, Hermetic,
   CapabilityDef,
   Token, TokenKind,
@@ -813,7 +813,11 @@ fn parse_field(state: ParserState) -> PR {
   let te = r3.val.type_expr
   let s = r3.state
 
-  // Check for optional marker that was already handled in type_expr
+  // Check for from "key" binding: name: Type from "json_key"
+  let from_r = parse_optional_from_key(state: s)
+  let from_key = from_r.val.from_key
+  let s = from_r.state
+
   // Check for default value: = expr
   let e = eat(state: s, tag: "Eq")
   if e.consumed {
@@ -821,15 +825,37 @@ fn parse_field(state: ParserState) -> PR {
     if is_err(pr: r4) { return r4 }
     let f = Field {
       name: name, type_expr: te, optional: false,
-      default_value: Some { value: r4.val.expr }, span: start_span
+      default_value: Some { value: r4.val.expr }, from_key: from_key, span: start_span
     }
     ok(val: { field: f }, state: r4.state)
   } else {
     let f = Field {
       name: name, type_expr: te, optional: false,
-      default_value: none, span: start_span
+      default_value: none, from_key: from_key, span: start_span
     }
     ok(val: { field: f }, state: s)
+  }
+}
+
+// Parse optional from "json_key" after a field type expression.
+fn parse_optional_from_key(state: ParserState) -> PR {
+  let k = peek_kind(state: state)
+  match k {
+    Some { value: Ident { name: "from" } } => {
+      let adv = advance(state: state)
+      let k2 = peek_kind(state: adv.state)
+      match k2 {
+        Some { value: LitStr { value: key } } => {
+          let adv2 = advance(state: adv.state)
+          ok(val: { from_key: Some { value: key } }, state: adv2.state)
+        }
+        _ => {
+          // "from" without string literal — not a from clause, backtrack
+          ok(val: { from_key: none }, state: state)
+        }
+      }
+    }
+    _ => ok(val: { from_key: none }, state: state)
   }
 }
 
@@ -1215,14 +1241,22 @@ fn parse_operation_def(state: ParserState) -> PR {
   let r = expect_ident(state: r.state)
   if is_err(pr: r) { return r }
   let name = r.val.name
-  let s = r.state
+  let s = skip_newlines(state: r.state)
 
-  // Optional modifiers before parens
-  let mods_r = parse_operation_modifiers(state: s)
+  // Dispatch: LBrace = v1 block style, otherwise = v2 inline style
+  if check(state: s, tag: "LBrace") {
+    parse_operation_v1_body(state: s, name: name, start_span: start_span)
+  } else {
+    parse_operation_v2_inline(state: s, name: name, start_span: start_span)
+  }
+}
+
+// v2 inline: operation Name modifiers? (params) -> RetType response? mock_response?
+fn parse_operation_v2_inline(state: ParserState, name: String, start_span: SourceSpan) -> PR {
+  let mods_r = parse_operation_modifiers(state: state)
   let modifiers = mods_r.val.modifiers
   let s = mods_r.state
 
-  // Input params: (field: Type, ...)
   let r = expect(state: s, tag: "LParen")
   if is_err(pr: r) { return r }
   let r = parse_field_list(state: skip_newlines(state: r.state))
@@ -1232,38 +1266,172 @@ fn parse_operation_def(state: ParserState) -> PR {
   if is_err(pr: r) { return r }
   let s = r.state
 
-  // Optional return type
   let ret = parse_optional_return_type(state: s)
   if is_err(pr: ret) { return ret }
   let s = ret.state
-
-  // Optional body with response/mock_response
   let outputs = match ret.val.return_type {
     Some { value: Product { name: _, fields: fs, span: _ } } => fs
-    Some { value: Named { name: n, span: sp } } => [Field { name: "value", type_expr: Named { name: n, span: sp }, optional: false, default_value: none, span: sp }]
+    Some { value: Named { name: n, span: sp } } => [Field { name: "value", type_expr: Named { name: n, span: sp }, optional: false, default_value: none, from_key: none, span: sp }]
     _ => []
   }
-
   let s = skip_newlines(state: s)
 
-  // Optional response block: response { 200 => Type, ... }
   let resp_r = parse_optional_response_block(state: s)
   if is_err(pr: resp_r) { return resp_r }
-  let response = resp_r.val.responses
   let s = skip_newlines(state: resp_r.state)
-
-  // Optional mock_response block: mock_response { 200 => expr, ... }
   let mock_r = parse_optional_mock_response_block(state: s)
   if is_err(pr: mock_r) { return mock_r }
-  let mock_response = mock_r.val.mocks
   let s = skip_newlines(state: mock_r.state)
 
   let op = OperationDef {
     name: name, inputs: inputs, outputs: outputs,
-    response: response, mock_response: mock_response,
-    modifiers: modifiers, span: start_span
+    response: resp_r.val.responses, mock_response: mock_r.val.mocks,
+    exit_mappings: [], modifiers: modifiers, transport: none, span: start_span
   }
   ok(val: { operation: op }, state: s)
+}
+
+// v1 block: operation Name { input {} output {} modifiers transport exit response mock_response }
+fn parse_operation_v1_body(state: ParserState, name: String, start_span: SourceSpan) -> PR {
+  let r = expect(state: state, tag: "LBrace")
+  if is_err(pr: r) { return r }
+  let s = skip_newlines(state: r.state)
+
+  let r2 = parse_op_body_entries(
+    state: s, inputs: [], outputs: [], modifiers: [],
+    transport: none, exits: [], response: [], mock_response: []
+  )
+  if is_err(pr: r2) { return r2 }
+
+  let r3 = expect(state: skip_newlines(state: r2.state), tag: "RBrace")
+  if is_err(pr: r3) { return r3 }
+
+  let op = OperationDef {
+    name: name, inputs: r2.val.inputs, outputs: r2.val.outputs,
+    response: r2.val.response, mock_response: r2.val.mock_response,
+    exit_mappings: r2.val.exits, modifiers: r2.val.modifiers,
+    transport: r2.val.transport, span: start_span
+  }
+  ok(val: { operation: op }, state: skip_newlines(state: r3.state))
+}
+
+// Parse entries inside a v1 operation body block.
+fn parse_op_body_entries(
+  state: ParserState,
+  inputs: List<Field>, outputs: List<Field>,
+  modifiers: List<OperationModifier>, transport: TransportBinding?,
+  exits: List<ExitMapping>, response: List<ResponseMapping>, mock_response: List<MockResponseDef>
+) -> PR {
+  let s = skip_newlines(state: state)
+  if check(state: s, tag: "RBrace") || at_end(state: s) {
+    ok(val: { inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response }, state: s)
+  } else {
+    let k = peek_kind(state: s)
+    match k {
+      Some { value: KwInput } => {
+        let adv = advance(state: s)
+        let r = expect(state: adv.state, tag: "LBrace")
+        if is_err(pr: r) { return r }
+        let r2 = parse_field_list(state: skip_newlines(state: r.state))
+        if is_err(pr: r2) { return r2 }
+        let r3 = expect(state: skip_newlines(state: r2.state), tag: "RBrace")
+        if is_err(pr: r3) { return r3 }
+        parse_op_body_entries(state: r3.state, inputs: r2.val.fields, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response)
+      }
+      Some { value: KwOutput } => {
+        let adv = advance(state: s)
+        let r = expect(state: adv.state, tag: "LBrace")
+        if is_err(pr: r) { return r }
+        let r2 = parse_field_list(state: skip_newlines(state: r.state))
+        if is_err(pr: r2) { return r2 }
+        let r3 = expect(state: skip_newlines(state: r2.state), tag: "RBrace")
+        if is_err(pr: r3) { return r3 }
+        parse_op_body_entries(state: r3.state, inputs: inputs, outputs: r2.val.fields, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response)
+      }
+      Some { value: KwIdempotent } => {
+        let adv = advance(state: s)
+        parse_op_body_entries(state: adv.state, inputs: inputs, outputs: outputs, modifiers: modifiers + [Idempotent], transport: transport, exits: exits, response: response, mock_response: mock_response)
+      }
+      Some { value: KwReadonly } => {
+        let adv = advance(state: s)
+        parse_op_body_entries(state: adv.state, inputs: inputs, outputs: outputs, modifiers: modifiers + [Readonly], transport: transport, exits: exits, response: response, mock_response: mock_response)
+      }
+      Some { value: KwHermetic } => {
+        let adv = advance(state: s)
+        parse_op_body_entries(state: adv.state, inputs: inputs, outputs: outputs, modifiers: modifiers + [Hermetic], transport: transport, exits: exits, response: response, mock_response: mock_response)
+      }
+      Some { value: Ident { name: id } } => {
+        if id == "transport" {
+          let adv = advance(state: s)
+          let r = parse_transport_binding(state: adv.state)
+          if is_err(pr: r) { return r }
+          parse_op_body_entries(state: r.state, inputs: inputs, outputs: outputs, modifiers: modifiers, transport: Some { value: r.val.transport }, exits: exits, response: response, mock_response: mock_response)
+        } else if id == "exit" {
+          let adv = advance(state: s)
+          let r = expect(state: adv.state, tag: "LBrace")
+          if is_err(pr: r) { return r }
+          let r2 = parse_exit_entries(state: skip_newlines(state: r.state))
+          if is_err(pr: r2) { return r2 }
+          let r3 = expect(state: skip_newlines(state: r2.state), tag: "RBrace")
+          if is_err(pr: r3) { return r3 }
+          parse_op_body_entries(state: r3.state, inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: r2.val.entries, response: response, mock_response: mock_response)
+        } else if id == "response" {
+          let r = parse_optional_response_block(state: s)
+          if is_err(pr: r) { return r }
+          parse_op_body_entries(state: r.state, inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: r.val.responses, mock_response: mock_response)
+        } else if id == "mock_response" {
+          let r = parse_optional_mock_response_block(state: s)
+          if is_err(pr: r) { return r }
+          parse_op_body_entries(state: r.state, inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: r.val.mocks)
+        } else {
+          // Unknown identifier entry — skip it (name: value)
+          if peek_is_colon_after_ident(state: s) {
+            let r = expect_ident(state: s)
+            if is_err(pr: r) { return r }
+            let r2 = expect(state: r.state, tag: "Colon")
+            if is_err(pr: r2) { return r2 }
+            let r3 = parse_expr(state: r2.state)
+            if is_err(pr: r3) { return r3 }
+            parse_op_body_entries(state: skip_newlines(state: r3.state), inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response)
+          } else {
+            fail(msg: "unexpected '{id}' in operation body", state: s)
+          }
+        }
+      }
+      _ => fail(msg: "unexpected token in operation body", state: s)
+    }
+  }
+}
+
+// Parse exit block entries: code => Type optional_description
+fn parse_exit_entries(state: ParserState) -> PR {
+  let s = skip_newlines(state: state)
+  if check(state: s, tag: "RBrace") || at_end(state: s) {
+    ok(val: { entries: [] }, state: s)
+  } else {
+    let r = parse_status_pattern(state: s)
+    if is_err(pr: r) { return r }
+    let code = r.val.expr
+    let r2 = expect(state: r.state, tag: "FatArrow")
+    if is_err(pr: r2) { return r2 }
+    let r3 = parse_type_expr(state: r2.state)
+    if is_err(pr: r3) { return r3 }
+    // Optional description string after type
+    let desc_k = peek_kind(state: r3.state)
+    let desc_r = match desc_k {
+      Some { value: LitStr { value: d } } => {
+        let adv = advance(state: r3.state)
+        { desc: Some { value: d }, state: adv.state }
+      }
+      _ => { desc: none, state: r3.state }
+    }
+    let entry = ExitMapping { code: code, type_expr: r3.val.type_expr, description: desc_r.desc }
+    let e = eat(state: desc_r.state, tag: "Comma")
+    let s2 = skip_newlines(state: if e.consumed { e.state } else { desc_r.state })
+    let rest = parse_exit_entries(state: s2)
+    if is_err(pr: rest) { return rest }
+    ok(val: { entries: [entry] + rest.val.entries }, state: rest.state)
+  }
 }
 
 fn parse_operation_modifiers(state: ParserState) -> PR {
@@ -1292,6 +1460,37 @@ fn parse_operation_modifiers(state: ParserState) -> PR {
 // response/mock_response block helpers
 // =========================================================================
 
+// Parse a status/exit code pattern: integer, Nxx wildcard (5xx), or identifier (nonzero).
+// Nxx: tokenizer produces LitInt(N) + Ident("xx") — combine into LitStr("Nxx").
+fn parse_status_pattern(state: ParserState) -> PR {
+  let k = peek_kind(state: state)
+  match k {
+    Some { value: LitInt { value: n } } => {
+      // Check if next token is Ident("xx") → wildcard like 5xx
+      if state.pos + 1 < count(state.tokens) {
+        let next_tok = first(skip(state.tokens, n: state.pos + 1))
+        match next_tok {
+          Some { value: t } => {
+            match t.kind {
+              Ident { name: "xx" } => {
+                let span = current_span(state: state)
+                let adv = advance(state: state)
+                let adv2 = advance(state: adv.state)
+                ok(val: { expr: Literal { value: LitStr { value: "{n}xx" }, span: span } }, state: adv2.state)
+              }
+              _ => parse_expr(state: state)
+            }
+          }
+          None => parse_expr(state: state)
+        }
+      } else {
+        parse_expr(state: state)
+      }
+    }
+    _ => parse_expr(state: state)
+  }
+}
+
 // Parse optional response { 200 => Type, ... } block.
 fn parse_optional_response_block(state: ParserState) -> PR {
   let k = peek_kind(state: state)
@@ -1315,8 +1514,8 @@ fn parse_response_entries(state: ParserState) -> PR {
   if check(state: s, tag: "RBrace") || at_end(state: s) {
     ok(val: { entries: [] }, state: s)
   } else {
-    // status_code => Type
-    let r = parse_expr(state: s)
+    // status_code => Type (supports Nxx wildcards like 5xx, 4xx)
+    let r = parse_status_pattern(state: s)
     if is_err(pr: r) { return r }
     let status = r.val.expr
     let r2 = expect(state: r.state, tag: "FatArrow")
@@ -1355,8 +1554,8 @@ fn parse_mock_response_entries(state: ParserState) -> PR {
   if check(state: s, tag: "RBrace") || at_end(state: s) {
     ok(val: { entries: [] }, state: s)
   } else {
-    // status_code => body_expr optional_description_string
-    let r = parse_expr(state: s)
+    // status_code => body_expr optional_description_string (supports Nxx wildcards)
+    let r = parse_status_pattern(state: s)
     if is_err(pr: r) { return r }
     let status = r.val.expr
     let r2 = expect(state: r.state, tag: "FatArrow")
@@ -1398,7 +1597,7 @@ fn parse_resource_def(state: ParserState) -> PR {
   let r = expect(state: r.state, tag: "LBrace")
   if is_err(pr: r) { return r }
 
-  let r = parse_capabilities(state: skip_newlines(state: r.state))
+  let r = parse_resource_entries(state: skip_newlines(state: r.state), properties: [], capabilities: [])
   if is_err(pr: r) { return r }
 
   let r2 = expect(state: skip_newlines(state: r.state), tag: "RBrace")
@@ -1406,25 +1605,89 @@ fn parse_resource_def(state: ParserState) -> PR {
 
   let item = ResourceDef {
     name: name,
+    properties: r.val.properties,
     capabilities: r.val.capabilities,
     span: start_span
   }
   ok(val: { item: item }, state: skip_newlines(state: r2.state))
 }
 
-fn parse_capabilities(state: ParserState) -> PR {
+// Parse resource block entries: properties, acquire/release, capabilities.
+fn parse_resource_entries(state: ParserState, properties: List<FieldInit>, capabilities: List<CapabilityDef>) -> PR {
   let s = skip_newlines(state: state)
   if check(state: s, tag: "RBrace") || at_end(state: s) {
-    ok(val: { capabilities: [] }, state: s)
+    ok(val: { properties: properties, capabilities: capabilities }, state: s)
   } else {
-    let r = parse_capability(state: s)
-    if is_err(pr: r) { return r }
-    let rest = parse_capabilities(state: r.state)
-    if is_err(pr: rest) { return rest }
-    ok(val: { capabilities: [r.val.capability] +rest.val.capabilities }, state: rest.state)
+    let k = peek_kind(state: s)
+    match k {
+      Some { value: KwCapability } => {
+        let r = parse_capability(state: s)
+        if is_err(pr: r) { return r }
+        parse_resource_entries(state: r.state, properties: properties, capabilities: capabilities + [r.val.capability])
+      }
+      Some { value: KwAcquire } => {
+        let adv = advance(state: s)
+        let r = expect(state: adv.state, tag: "LBrace")
+        if is_err(pr: r) { return r }
+        let r2 = skip_until_rbrace(state: skip_newlines(state: r.state))
+        let r3 = expect(state: r2.state, tag: "RBrace")
+        if is_err(pr: r3) { return r3 }
+        parse_resource_entries(state: skip_newlines(state: r3.state), properties: properties, capabilities: capabilities)
+      }
+      Some { value: KwRelease } => {
+        let adv = advance(state: s)
+        let r = expect(state: adv.state, tag: "LBrace")
+        if is_err(pr: r) { return r }
+        let r2 = skip_until_rbrace(state: skip_newlines(state: r.state))
+        let r3 = expect(state: r2.state, tag: "RBrace")
+        if is_err(pr: r3) { return r3 }
+        parse_resource_entries(state: skip_newlines(state: r3.state), properties: properties, capabilities: capabilities)
+      }
+      Some { value: Ident { name: _ } } => {
+        // Property field: name: value (e.g., kind: Capability, mode: ReadWrite)
+        if peek_is_colon_after_ident(state: s) {
+          let r = expect_ident(state: s)
+          if is_err(pr: r) { return r }
+          let fname = r.val.name
+          let r2 = expect(state: r.state, tag: "Colon")
+          if is_err(pr: r2) { return r2 }
+          let r3 = parse_expr(state: r2.state)
+          if is_err(pr: r3) { return r3 }
+          let fi = FieldInit { name: fname, value: r3.val.expr }
+          parse_resource_entries(state: skip_newlines(state: r3.state), properties: properties + [fi], capabilities: capabilities)
+        } else {
+          fail(msg: "unexpected token in resource block", state: s)
+        }
+      }
+      _ => fail(msg: "expected capability, acquire, release, or property in resource block", state: s)
+    }
   }
 }
 
+// Skip tokens until matching RBrace (handles nested brace blocks).
+fn skip_until_rbrace(state: ParserState) -> PR {
+  let s = skip_newlines(state: state)
+  if check(state: s, tag: "RBrace") || at_end(state: s) {
+    ok(val: {}, state: s)
+  } else {
+    let k = peek_kind(state: s)
+    match k {
+      Some { value: LBrace } => {
+        let adv = advance(state: s)
+        let inner = skip_until_rbrace(state: adv.state)
+        let r = expect(state: inner.state, tag: "RBrace")
+        if is_err(pr: r) { return r }
+        skip_until_rbrace(state: r.state)
+      }
+      _ => {
+        let adv = advance(state: s)
+        skip_until_rbrace(state: adv.state)
+      }
+    }
+  }
+}
+
+// Parse capability in v1 block or v2 inline form.
 fn parse_capability(state: ParserState) -> PR {
   let start_span = current_span(state: state)
   let r = expect(state: state, tag: "KwCapability")
@@ -1433,28 +1696,82 @@ fn parse_capability(state: ParserState) -> PR {
   let r = expect_ident(state: r.state)
   if is_err(pr: r) { return r }
   let name = r.val.name
+  let s = r.state
 
-  let r = expect(state: r.state, tag: "LParen")
-  if is_err(pr: r) { return r }
-  let r = parse_field_list(state: skip_newlines(state: r.state))
-  if is_err(pr: r) { return r }
-  let inputs = r.val.fields
-  let r = expect(state: skip_newlines(state: r.state), tag: "RParen")
-  if is_err(pr: r) { return r }
-
-  let ret = parse_optional_return_type(state: r.state)
-  if is_err(pr: ret) { return ret }
-  let outputs = match ret.val.return_type {
-    Some { value: Product { name: _, fields: fs, span: _ } } => fs
-    Some { value: Named { name: n, span: sp } } => [Field { name: "value", type_expr: Named { name: n, span: sp }, optional: false, default_value: none, span: sp }]
-    _ => []
+  // Dispatch: LBrace = v1 block, LParen = v2 inline
+  if check(state: s, tag: "LBrace") {
+    // v1: capability name { input { fields } output { fields } }
+    let r2 = expect(state: s, tag: "LBrace")
+    if is_err(pr: r2) { return r2 }
+    let io = parse_input_output_blocks(state: skip_newlines(state: r2.state))
+    if is_err(pr: io) { return io }
+    let r3 = expect(state: skip_newlines(state: io.state), tag: "RBrace")
+    if is_err(pr: r3) { return r3 }
+    let cap = CapabilityDef { name: name, inputs: io.val.inputs, outputs: io.val.outputs, span: start_span }
+    ok(val: { capability: cap }, state: skip_newlines(state: r3.state))
+  } else if check(state: s, tag: "LParen") {
+    // v2: capability name(fields) -> RetType
+    let r2 = expect(state: s, tag: "LParen")
+    if is_err(pr: r2) { return r2 }
+    let r3 = parse_field_list(state: skip_newlines(state: r2.state))
+    if is_err(pr: r3) { return r3 }
+    let inputs = r3.val.fields
+    let r4 = expect(state: skip_newlines(state: r3.state), tag: "RParen")
+    if is_err(pr: r4) { return r4 }
+    let ret = parse_optional_return_type(state: r4.state)
+    if is_err(pr: ret) { return ret }
+    let outputs = match ret.val.return_type {
+      Some { value: Product { name: _, fields: fs, span: _ } } => fs
+      Some { value: Named { name: n, span: sp } } => [Field { name: "value", type_expr: Named { name: n, span: sp }, optional: false, default_value: none, from_key: none, span: sp }]
+      _ => []
+    }
+    let cap = CapabilityDef { name: name, inputs: inputs, outputs: outputs, span: start_span }
+    ok(val: { capability: cap }, state: skip_newlines(state: ret.state))
+  } else {
+    // Unit capability (no inputs/outputs)
+    let cap = CapabilityDef { name: name, inputs: [], outputs: [], span: start_span }
+    ok(val: { capability: cap }, state: skip_newlines(state: s))
   }
-  let s = skip_newlines(state: ret.state)
+}
 
-  let cap = CapabilityDef {
-    name: name, inputs: inputs, outputs: outputs, span: start_span
+// Parse v1 input { fields } output { fields } blocks (used in capabilities and operations).
+fn parse_input_output_blocks(state: ParserState) -> PR {
+  parse_io_blocks_acc(state: state, inputs: [], outputs: [])
+}
+
+fn parse_io_blocks_acc(state: ParserState, inputs: List<Field>, outputs: List<Field>) -> PR {
+  let s = skip_newlines(state: state)
+  if check(state: s, tag: "RBrace") || at_end(state: s) {
+    ok(val: { inputs: inputs, outputs: outputs }, state: s)
+  } else {
+    let k = peek_kind(state: s)
+    match k {
+      Some { value: KwInput } => {
+        let adv = advance(state: s)
+        let r = expect(state: adv.state, tag: "LBrace")
+        if is_err(pr: r) { return r }
+        let r2 = parse_field_list(state: skip_newlines(state: r.state))
+        if is_err(pr: r2) { return r2 }
+        let r3 = expect(state: skip_newlines(state: r2.state), tag: "RBrace")
+        if is_err(pr: r3) { return r3 }
+        parse_io_blocks_acc(state: r3.state, inputs: r2.val.fields, outputs: outputs)
+      }
+      Some { value: KwOutput } => {
+        let adv = advance(state: s)
+        let r = expect(state: adv.state, tag: "LBrace")
+        if is_err(pr: r) { return r }
+        let r2 = parse_field_list(state: skip_newlines(state: r.state))
+        if is_err(pr: r2) { return r2 }
+        let r3 = expect(state: skip_newlines(state: r2.state), tag: "RBrace")
+        if is_err(pr: r3) { return r3 }
+        parse_io_blocks_acc(state: r3.state, inputs: inputs, outputs: r2.val.fields)
+      }
+      _ => {
+        // Not input/output — stop and let caller handle remaining entries
+        ok(val: { inputs: inputs, outputs: outputs }, state: s)
+      }
+    }
   }
-  ok(val: { capability: cap }, state: s)
 }
 
 // =========================================================================
@@ -1663,8 +1980,42 @@ fn parse_stmt(state: ParserState) -> PR {
   match k {
     Some { value: KwLet } => parse_let(state: state)
     Some { value: KwReturn } => parse_return(state: state)
+    Some { value: Ident { name: _ } } => {
+      // Check for bare assignment: ident = expr (without let keyword)
+      if peek_is_eq_after_ident(state: state) {
+        parse_bare_assignment(state: state)
+      } else {
+        parse_expr(state: state)
+      }
+    }
     _ => parse_expr(state: state)
   }
+}
+
+// Peek two tokens: is pos+1 an Eq (=) token? Used for bare assignment detection.
+fn peek_is_eq_after_ident(state: ParserState) -> Bool {
+  if state.pos + 1 < count(state.tokens) {
+    let next_tok = first(skip(state.tokens, n: state.pos + 1))
+    match next_tok {
+      Some { value: t } => kind_tag(kind: t.kind) == "Eq"
+      None => false
+    }
+  } else {
+    false
+  }
+}
+
+// Parse bare assignment: name = expr → desugar to Let { name, value, body: none }
+fn parse_bare_assignment(state: ParserState) -> PR {
+  let span = current_span(state: state)
+  let r = expect_ident(state: state)
+  if is_err(pr: r) { return r }
+  let name = r.val.name
+  let r2 = expect(state: r.state, tag: "Eq")
+  if is_err(pr: r2) { return r2 }
+  let r3 = parse_expr(state: r2.state)
+  if is_err(pr: r3) { return r3 }
+  ok(val: { expr: Let { name: name, value: r3.val.expr, body: none, span: span } }, state: r3.state)
 }
 
 // =========================================================================

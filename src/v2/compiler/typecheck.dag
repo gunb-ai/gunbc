@@ -444,7 +444,9 @@ fn resolve_operation(op: OperationDef, env: TypeEnv, module_name: String) -> Ope
       outputs: resolved_outputs,
       response: op.response,
       mock_response: op.mock_response,
+      exit_mappings: op.exit_mappings,
       modifiers: op.modifiers,
+      transport: op.transport,
       span: op.span
     },
     diagnostics: input_diags + output_diags
@@ -573,13 +575,14 @@ fn resolve_item_types(item: Item, env: TypeEnv, module_name: String) -> ItemResu
         diagnostics: op_diags
       }
 
-    ResourceDef { name: name, capabilities: capabilities, span: span } =>
+    ResourceDef { name: name, properties: props, capabilities: capabilities, span: span } =>
       let cap_results = map(capabilities, c => resolve_capability(cap: c, env: env, module_name: module_name))
       let resolved_caps = map(cap_results, cr => cr.capability)
       let cap_diags = fold(cap_results, init: [], f: (acc, cr) => acc + cr.diagnostics)
       ItemResult {
         item: ResourceDef {
           name: name,
+          properties: props,
           capabilities: resolved_caps,
           span: span
         },
