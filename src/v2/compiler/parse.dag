@@ -140,7 +140,7 @@ fn ok(val: Map, state: ParserState) -> PR {
 
 fn fail(msg: String, state: ParserState) -> PR {
   let span = current_span(state: state)
-  PR { val: {}, state: state, err: Some { value: make_error(msg: msg, span: span) } }
+  PR { val: {}, state: state, err: Some { value: parse_error(msg: msg, span: span) } }
 }
 
 fn is_err(pr: PR) -> Bool {

@@ -1618,10 +1618,7 @@ fn example(items: List<String>) -> Int {
 
     /// Gate test: v2 parser handles all gist.dag transitive deps.
     /// Compiles v2 compiler via v1, then calls v2's tokenize+parse on each file.
-    /// IGNORED: cross-module function name collisions (make_error in parse vs typecheck)
-    /// cause eval errors. Needs module-qualified function dispatch to fix.
     #[test]
-    #[ignore]
     fn phase5_gist_transitive_closure_v2_parse() {
         let output = compile_all_modules().expect("compilation should succeed");
         let result = std::thread::Builder::new()
