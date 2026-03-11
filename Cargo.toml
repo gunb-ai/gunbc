@@ -27,6 +27,7 @@ members = [
     "src/10_test/testgen-registry",
     "src/10_test/testgen-registry-macros",
     "src/v2/tests",
+    "src/v2/bootstrap",
 ]
 
 [workspace.package]

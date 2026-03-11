@@ -942,6 +942,21 @@ pub fn eval_binop(lhs: &Value, op: LoweredBinOp, rhs: &Value) -> Result<Value, E
         return Ok(Value::Skipped);
     }
     match op {
+        // List concatenation — must be checked before string concat
+        // because Value::List should never fall through to string coercion.
+        LoweredBinOp::Add if matches!(lhs, Value::List(_)) || matches!(rhs, Value::List(_)) => {
+            match (lhs, rhs) {
+                (Value::List(a), Value::List(b)) => {
+                    let mut result = a.clone();
+                    result.extend(b.iter().cloned());
+                    Ok(Value::List(result))
+                }
+                _ => Err(EvalError::new(format!(
+                    "list concat requires both sides to be lists: {:?}, {:?}",
+                    lhs, rhs
+                ))),
+            }
+        }
         LoweredBinOp::Add
             if matches!(lhs, Value::Str(_) | Value::Enum { .. })
                 || matches!(rhs, Value::Str(_) | Value::Enum { .. }) =>
@@ -951,16 +966,6 @@ pub fn eval_binop(lhs: &Value, op: LoweredBinOp, rhs: &Value) -> Result<Value, E
                 value_to_string(lhs),
                 value_to_string(rhs)
             )))
-        }
-        // List concatenation
-        LoweredBinOp::Add if matches!(lhs, Value::List(_)) && matches!(rhs, Value::List(_)) => {
-            if let (Value::List(a), Value::List(b)) = (lhs, rhs) {
-                let mut result = a.clone();
-                result.extend(b.iter().cloned());
-                Ok(Value::List(result))
-            } else {
-                unreachable!()
-            }
         }
         // Arithmetic
         LoweredBinOp::Add => int_op(lhs, rhs, |a, b| a + b),

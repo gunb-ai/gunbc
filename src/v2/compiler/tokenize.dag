@@ -25,7 +25,7 @@ import v2.std.core {
   Lt, Gt, Le, Ge, FatArrow, Arrow,
   Colon, Comma, Dot, Eq, EqEq, Ne,
   Plus, Minus, Star, Slash, Percent, Bang, And, Or,
-  Question, NullCoalesce, Pipe,
+  Question, NullCoalesce, Pipe, PipeArrow,
   LitStr, LitInt, LitFloat, Ident,
   StrBegin, StrMid, StrEnd,
   Newline, Eof, Unknown
@@ -151,6 +151,7 @@ fn scan_token(state: TokenizerState, ch: String) -> TokenizerState {
   if ch == ">" && next_ch == "=" { return emit(state: state, kind: Ge, len: 2) }
   if ch == "&" && next_ch == "&" { return emit(state: state, kind: And, len: 2) }
   if ch == "|" && next_ch == "|" { return emit(state: state, kind: Or, len: 2) }
+  if ch == "|" && next_ch == ">" { return emit(state: state, kind: PipeArrow, len: 2) }
   if ch == "|" { return emit(state: state, kind: Pipe, len: 1) }
   if ch == "?" && next_ch == "?" { return emit(state: state, kind: NullCoalesce, len: 2) }
 

@@ -1,5 +1,27 @@
 # v2: Self-hosted compiler design
 
+## Current Status (2026-03-11)
+
+**48/48 v2 compiler tests passing. 0 clippy warnings. Full workspace green.**
+
+Completed work:
+- **Tokenizer**: PipeArrow token added (Unit 1)
+- **Parser**: NullCoalesce infix, PipeArrow desugaring, `as` cast postfix,
+  KwPattern/KwInterface dispatch, `where` refinement clauses,
+  response/mock_response block parsing (Unit 2)
+- **Typechecker**: Mutual recursion cycle detection via `resolving` param (Unit 3)
+- **Emitter**: NullCoalesce (unwrap_or_else), for-loop (into_iter/map/collect),
+  pipe methods (count→len, join, split, last, first, enumerate, chars),
+  Cargo.toml emission, emit_first_arg helper (Unit 4)
+- **Pipeline**: Resolver diagnostic threading verified correct (Unit 5)
+- **Evaluator**: List concat bug fixed in eval_binop (Unit 6)
+- **Bootstrap**: Driver crate at src/v2/bootstrap/ with placeholder modules (Unit 7)
+- **Tests**: 14 new phase4 integration tests (Unit 8)
+- **Core types**: NullCoalesce added to BinOpKind
+
+Deferred: `provides` clause, `from "key"` extraction, Option normalization,
+Phase 1c native bootstrap, Phase 2 self-compilation, Phase 3 fixed point.
+
 ## Premise
 
 The v0/v1 compiler exists to eliminate glue bugs in downstream systems,

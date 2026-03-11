@@ -1,5 +1,19 @@
 # v2 Self-Hosted Compiler: Project Plan
 
+## Current Status (2026-03-11)
+
+**48/48 tests passing. 0 clippy warnings. Full workspace green.**
+
+All core stages (C1-C6, I1) are DONE. Recent batch completed:
+- Units 1-8 covering tokenizer (PipeArrow), parser (NullCoalesce, PipeArrow,
+  `as` cast, KwPattern/KwInterface, `where` clauses, response/mock_response),
+  typechecker (mutual recursion cycle detection), emitter (NullCoalesce,
+  for-loops, pipe methods, Cargo.toml), pipeline verification, eval bugfix
+  (list concat), bootstrap driver crate, and 14 new integration tests.
+
+Remaining: Phase 1c native bootstrap (needs all units merged), Phase 2
+progressive self-compilation (M1-M9), Phase 3 fixed point.
+
 ## Scope
 
 Bootstrap subset only: compile `gist.dag` and its 5 transitive
@@ -103,8 +117,8 @@ Handles all listed constructs. First-error-halt.
 Verified: tokenize → parse chain works E2E (Phase 3 test on
 `"module test"` fixture).
 
-**Remaining work:** response/mock_response blocks not yet parsed
-(OperationDef fields left empty). See Wave 4 in review follow-up.
+**Remaining work:** ~~response/mock_response blocks not yet parsed~~
+DONE (Unit 2) — response/mock_response block parsing implemented.
 
 **Depends on:** C2 (token stream)
 
@@ -143,7 +157,7 @@ constants, test files. Handles type expression emission, pattern
 matching, string interpolation, binary ops, lambdas.
 
 **Remaining work:** emitted tests don't invoke operations or
-assert (Wave 4). No Cargo.toml emission (Wave 8).
+assert (Wave 4). ~~No Cargo.toml emission~~ DONE (Unit 4).
 
 **Depends on:** C5 (typed graph)
 

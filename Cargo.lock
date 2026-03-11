@@ -1104,6 +1104,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "v2-bootstrap"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "v2-compiler-tests"
 version = "0.1.0"
 dependencies = [

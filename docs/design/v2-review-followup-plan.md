@@ -3,7 +3,27 @@
 Triage of review feedback from the v2 grinding phase. Organized into
 waves by dependency order and blast radius.
 
-## Current state (post-grinding-phase)
+## Current Status (2026-03-11)
+
+**48/48 tests passing. 0 clippy warnings. Full workspace green.**
+
+Completed waves/items this batch:
+- **Wave 2** (AST model): DONE — TypeApp, RecordLit type_name, FieldBinding,
+  NullCoalesce in BinOpKind, PipeArrow in TokenKind (Units 1-2)
+- **Wave 3** (typechecker bugs): DONE — mutual recursion cycle detection
+  via `resolving` parameter (Unit 3)
+- **Wave 4** (service/mock_response): PARTIALLY DONE — response/mock_response
+  block parsing implemented (Unit 2). Emitted test invocation still deferred.
+- **Wave 5** (docs): updating now
+- **Wave 8** (pipeline completeness): PARTIALLY DONE — resolver diagnostic
+  threading verified correct (Unit 5), Cargo.toml emission added (Unit 4)
+- **List concat bug**: FIXED (Unit 6)
+- **Bootstrap driver**: created at src/v2/bootstrap/ (Unit 7)
+
+Deferred: `provides` clause, `from "key"` extraction, Wave 7 Option
+normalization (post-merge), Phase 1c native bootstrap, Phase 2/3.
+
+## Previous state (post-grinding-phase)
 
 Working end-to-end chain through the v1 evaluator:
 - Tokenizer: full E2E (22 tests)
@@ -51,7 +71,7 @@ No evaluator or v1 code changes needed.
 
 ---
 
-## Wave 2: Strengthen core.dag AST model
+## Wave 2: Strengthen core.dag AST model — DONE
 
 **Problem:** The v2 core AST can't faithfully represent constructs
 that the v2 compiler sources actually use.
@@ -126,7 +146,7 @@ conflicting changes.
 
 ---
 
-## Wave 3: Fix typechecker internal bugs
+## Wave 3: Fix typechecker internal bugs — DONE
 
 **Problem:** Two correctness issues in typecheck.dag:
 
@@ -144,7 +164,9 @@ conflicting changes.
    accumulate them in the fold.
 2. Track "being resolved" set during type resolution. Named refs
    to types in the being-resolved set are cycle-breakers and should
-   be excluded from validate_no_unresolved.
+   be excluded from validate_no_unresolved. **DONE (Unit 3)** —
+   implemented via `resolving` parameter for mutual recursion cycle
+   detection.
 
 **Risk:** Low — contained within typecheck.dag.
 
@@ -152,7 +174,7 @@ conflicting changes.
 
 ---
 
-## Wave 4: Close parser-to-emitter for service/mock_response
+## Wave 4: Close parser-to-emitter for service/mock_response — PARTIALLY DONE
 
 **Problem:** The design and data model declare mock_response support,
 but `parse_operation_def` leaves response/mock_response lists empty.
@@ -162,8 +184,10 @@ never invokes the operation or asserts.
 **Fix:**
 1. `parse_operation_def`: parse `response { ... }` and
    `mock_response { ... }` blocks, populating the OperationDef fields.
+   **DONE (Unit 2).**
 2. `emit_operation_test`: generate an actual test body that constructs
    mock data, calls the operation, and asserts on the response.
+   Still deferred.
 
 **Risk:** Medium — requires parser extensions and emitter logic.
 
@@ -235,16 +259,17 @@ before the convention is fully enforceable).
 
 ---
 
-## Wave 8: Pipeline completeness
+## Wave 8: Pipeline completeness — PARTIALLY DONE
 
 **Problem:** Several smaller gaps in the pipeline wiring:
 1. `pipeline.dag` ignores `backend` parameter (always emits Rust)
-2. Resolver diagnostics not threaded through pipeline
-3. No `Cargo.toml` or dependency manifest in emitted output
+2. ~~Resolver diagnostics not threaded through pipeline~~ **DONE (Unit 5)**
+   — verified already correct.
+3. ~~No `Cargo.toml` or dependency manifest in emitted output~~ **DONE
+   (Unit 4)** — Cargo.toml emission added.
 4. Emitted integration tests use `use super::*;` (unit-test style)
 
-**Fix:** Address individually. Items 1-2 are straightforward wiring.
-Items 3-4 require emitter additions.
+**Fix:** Address individually. Items 1 and 4 remain.
 
 **Risk:** Low per item.
 

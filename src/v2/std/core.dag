@@ -61,8 +61,9 @@ type TokenKind
   | Bang | And | Or
   // Optionality
   | Question | NullCoalesce
-  // Sum type separator
+  // Sum type separator / pipe arrow
   | Pipe
+  | PipeArrow
   // Values
   | LitStr { value: String }
   | LitInt { value: Int }
@@ -238,7 +239,7 @@ type LiteralValue
 type BinOpKind
   = Add | Sub | Mul | Div | Mod
   | BinEq | BinNe | BinLt | BinGt | BinLe | BinGe
-  | BinAnd | BinOr | Concat
+  | BinAnd | BinOr | Concat | NullCoalesce
 
 type UnaryOpKind = Not | Neg
 

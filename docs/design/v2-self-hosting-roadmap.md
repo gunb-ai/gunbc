@@ -8,12 +8,32 @@ The v2 compiler is a 6,045-line DSL program across 8 .dag files. All 5
 pipeline stages (tokenize → parse → resolve → typecheck → emit) execute
 correctly on trivial input through the v1 evaluator:
 
-- **34 integration tests pass** (15 parse audit + 4 compilation gate +
-  4 tokenizer E2E + 11 stage-by-stage integration)
+- **48 integration tests pass** (15 parse audit + 4 compilation gate +
+  4 tokenizer E2E + 11 stage-by-stage + 14 phase4 integration)
 - Trivial input `"module test\ntype Foo { x: Int }"` → correct Rust:
   `pub struct Foo { pub x: i64 }`
 - All 7 .dag files parse with zero v1 diagnostics
-- Clippy clean across workspace
+- Clippy clean across workspace, full workspace tests passing
+
+### Completed (this batch, 2026-03-11)
+
+- **Unit 1**: PipeArrow token added to core.dag TokenKind and tokenize.dag scanner
+- **Unit 2**: Parser gaps filled — NullCoalesce in infix_bp, PipeArrow
+  desugaring to MethodCall, `as` cast in try_postfix, KwPattern/KwInterface
+  dispatch, `where` clause for refinement types, response/mock_response
+  block parsing
+- **Unit 3**: Typecheck mutual recursion cycle detection via `resolving` parameter
+- **Unit 4**: Emitter completeness — NullCoalesce emission (unwrap_or_else),
+  for-loop emission (into_iter/map/collect), pipe method mapping
+  (count→len, join, split, last, first, enumerate, chars), Cargo.toml
+  emission, emit_first_arg helper
+- **Unit 5**: Pipeline — verified resolver diagnostic threading (already correct)
+- **Unit 6**: v1 list concat bug fixed — moved list concat guard before
+  string concat in eval_binop
+- **Unit 7**: Bootstrap driver crate created at src/v2/bootstrap/ with
+  placeholder modules
+- **Unit 8**: 14 new integration tests (phase4_*) — total 48 tests all passing
+- NullCoalesce added to BinOpKind in core.dag
 
 ### What doesn't work
 
@@ -23,19 +43,27 @@ correctly on trivial input through the v1 evaluator:
    stack on anything beyond ~50 tokens. Self-hosting requires parsing
    parse.dag itself (2,500 lines, ~10,000 tokens).
 
-2. **`emit_rust` list concat fails.** `[lib_file] + module_files +
-   test_files` triggers "arithmetic on non-integers" in the evaluator.
-   The `[x]` list literal produces a Map (not a List) in some evaluator
-   paths. Workaround: call `emit_module` per module individually.
+2. ~~**`emit_rust` list concat fails.**~~ **FIXED (Unit 6).** List concat
+   guard moved before string concat in eval_binop.
 
 3. **No native binary exists.** The v2 compiler only runs interpreted
    inside v1. Self-hosting requires: v2 emits Rust → rustc compiles it
    → native binary can compile v2's own source. The interpreted path
-   can never self-host due to stack depth.
+   can never self-host due to stack depth. Bootstrap driver crate
+   created (Unit 7) but not yet wired to emitted output.
 
 4. **Evaluator limitations surface at scale.** Record field access
    patterns, list operations on large data, and deep match nesting all
    work on toy input but are untested at the scale of real .dag files.
+
+### Deferred
+
+- `provides` clause (only used in auth/patterns.dag, not critical path)
+- `from "key"` field extraction in operations (rare pattern)
+- Option normalization (Wave 7) — post-merge
+- Phase 1c native bootstrap — needs all units merged
+- Phase 2 progressive self-compilation (M1-M9)
+- Phase 3 fixed point
 
 ### Architectural debt (from review)
 
@@ -223,9 +251,9 @@ v2-native becomes default. v1 remains as bootstrap fallback only.
 
 ## Known Evaluator Bugs
 
-### Bug 1: `[x] + y` list concatenation
-`emit_rust`'s `[lib_file] + module_files` fails. Root cause likely in
-lowerer emitting `[x]` as record instead of list literal.
+### Bug 1: `[x] + y` list concatenation — FIXED (Unit 6)
+Root cause: list concat guard was ordered after string concat in
+eval_binop. Fixed by moving the list concat check first.
 
 ### Bug 2: DataDef arity (FIXED)
 typecheck.dag `collect_unresolved_in_item` called `collect_unresolved_in_type_expr`

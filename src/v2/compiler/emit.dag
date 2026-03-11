@@ -19,7 +19,8 @@ import v2.std.core {
   TextFile, Diagnostic, SourceSpan,
   ResourceDef, CapabilityDef, ExternFuncDecl,
   ContainerKind, Predicate, ResourceUse,
-  BinOpKind, UnaryOpKind, StringPart, NamedArg, FieldInit,
+  BinOpKind, NullCoalesce,
+  UnaryOpKind, StringPart, NamedArg, FieldInit,
   ServiceConfig, AuthConfig, HeaderDef, EnvDef,
   ResponseMapping, MockResponseDef, OperationModifier
 }
@@ -76,7 +77,8 @@ fn emit_rust(typed: TypedGraph) -> List<TextFile> {
     |> map(tm => emit_test_file(typed_module: tm))
     |> filter(f => f.content != "")
   let lib_file = emit_lib_rs(modules: typed.modules)
-  [lib_file] + module_files + test_files
+  let cargo = emit_cargo_toml(crate_name: "v2_compiled", has_services: has_service_items(typed: typed))
+  [cargo, lib_file] + module_files + test_files
 }
 
 // =========================================================================
@@ -444,9 +446,53 @@ fn emit_string_literal(s: String) -> String {
 // =========================================================================
 
 fn emit_call(func: String, args: List<NamedArg>) -> String {
-  let arg_strs = args |> map(a => emit_call_arg(arg: a))
-  let args_str = arg_strs |> join(separator: ", ")
-  rust_ident(name: func) + "(" + args_str + ")"
+  // Handle for-loop desugaring: Call { func: "for", args: [var, collection, body] }
+  if func == "for" {
+    emit_for_loop(args: args)
+  } else {
+    let arg_strs = args |> map(a => emit_call_arg(arg: a))
+    let args_str = arg_strs |> join(separator: ", ")
+    rust_ident(name: func) + "(" + args_str + ")"
+  }
+}
+
+// Emit a for-loop from its desugared Call representation.
+// The parser produces: Call { func: "for", args: [var: "name", collection: expr, body: lambda] }
+fn emit_for_loop(args: List<NamedArg>) -> String {
+  // Extract named args
+  let var_arg = args |> filter(a => match a.name {
+    Some { value: "var" } => true
+    _ => false
+  }) |> first
+  let coll_arg = args |> filter(a => match a.name {
+    Some { value: "collection" } => true
+    _ => false
+  }) |> first
+  let body_arg = args |> filter(a => match a.name {
+    Some { value: "body" } => true
+    _ => false
+  }) |> first
+
+  let var_name = match var_arg {
+    Some { value: a } => match a.value {
+      Literal { value: LitStr { value: s } } => s
+      _ => "item"
+    }
+    None => "item"
+  }
+  let coll_str = match coll_arg {
+    Some { value: a } => emit_expr(expr: a.value)
+    None => "vec![]"
+  }
+  let body_str = match body_arg {
+    Some { value: a } => match a.value {
+      Lambda { params: _, body: bd } => emit_expr(expr: bd)
+      _ => emit_expr(expr: a.value)
+    }
+    None => "()"
+  }
+  coll_str + ".into_iter().map(|" + rust_ident(name: var_name) + "| {\n"
+    + indent(text: body_str, level: 1) + "\n}).collect::<Vec<_>>()"
 }
 
 fn emit_call_arg(arg: NamedArg) -> String {
@@ -455,9 +501,36 @@ fn emit_call_arg(arg: NamedArg) -> String {
 
 fn emit_method_call(receiver: Expr, method: String, args: List<NamedArg>) -> String {
   let recv_str = emit_expr(expr: receiver)
-  let arg_strs = args |> map(a => emit_call_arg(arg: a))
-  let args_str = arg_strs |> join(separator: ", ")
-  recv_str + "." + rust_ident(name: method) + "(" + args_str + ")"
+  let first_arg_str = emit_first_arg(args: args)
+  // Map known DSL pipe methods to Rust equivalents
+  if method == "count" {
+    recv_str + ".len()"
+  } else if method == "join" {
+    recv_str + ".join(&" + first_arg_str + ")"
+  } else if method == "split" {
+    recv_str + ".split(&" + first_arg_str + ").map(|s| s.to_string()).collect::<Vec<_>>()"
+  } else if method == "last" {
+    recv_str + ".last().cloned()"
+  } else if method == "first" {
+    recv_str + ".first().cloned()"
+  } else if method == "enumerate" {
+    recv_str + ".iter().enumerate().map(|(i, v)| (i, v.clone())).collect::<Vec<_>>()"
+  } else if method == "chars" {
+    recv_str + ".chars().map(|c| c.to_string()).collect::<Vec<_>>()"
+  } else {
+    // Generic method call
+    let arg_strs = args |> map(a => emit_call_arg(arg: a))
+    let args_str = arg_strs |> join(separator: ", ")
+    recv_str + "." + rust_ident(name: method) + "(" + args_str + ")"
+  }
+}
+
+// Extract and emit the first argument from a named arg list, or empty string if no args.
+fn emit_first_arg(args: List<NamedArg>) -> String {
+  match args |> first {
+    Some { value: a } => emit_call_arg(arg: a)
+    None => "\"\""
+  }
 }
 
 // =========================================================================
@@ -579,11 +652,14 @@ fn emit_list_lit(elements: List<Expr>) -> String {
 fn emit_bin_op(op: BinOpKind, left: Expr, right: Expr) -> String {
   let l_str = emit_expr(expr: left)
   let r_str = emit_expr(expr: right)
-  let op_str = emit_bin_op_symbol(op: op)
-  if is_concat_op(op: op) {
+  if is_null_coalesce_op(op: op) {
+    // x ?? y  →  x.unwrap_or_else(|| y)
+    l_str + ".unwrap_or_else(|| " + r_str + ")"
+  } else if is_concat_op(op: op) {
     // String concatenation → format!
     "format!(\"{}{}\", " + l_str + ", " + r_str + ")"
   } else {
+    let op_str = emit_bin_op_symbol(op: op)
     "(" + l_str + " " + op_str + " " + r_str + ")"
   }
 }
@@ -604,12 +680,20 @@ fn emit_bin_op_symbol(op: BinOpKind) -> String {
     BinAnd => "&&"
     BinOr => "||"
     Concat => "+"
+    NullCoalesce => "??"
   }
 }
 
 fn is_concat_op(op: BinOpKind) -> Bool {
   match op {
     Concat => true
+    _ => false
+  }
+}
+
+fn is_null_coalesce_op(op: BinOpKind) -> Bool {
+  match op {
+    NullCoalesce => true
     _ => false
   }
 }
@@ -1115,4 +1199,29 @@ fn to_string_helper(value: Int, acc: String) -> String {
     }
     to_string_helper(value: rest, acc: ch + acc)
   }
+}
+
+// =========================================================================
+// Cargo.toml emission
+//
+// Generates a minimal Cargo.toml for the emitted crate.
+// =========================================================================
+
+fn emit_cargo_toml(crate_name: String, has_services: Bool) -> TextFile {
+  let header = "[package]\nname = \"" + crate_name + "\"\nversion = \"0.1.0\"\nedition = \"2021\"\n"
+  let deps = "\n[dependencies]\nserde = { version = \"1\", features = [\"derive\"] }\nserde_json = \"1\"\n"
+  let async_deps = if has_services {
+    "tokio = { version = \"1\", features = [\"full\"] }\nreqwest = { version = \"0.12\", features = [\"json\"] }\nasync-trait = \"0.1\"\n"
+  } else {
+    ""
+  }
+  let lazy_dep = "lazy_static = \"1\"\n"
+  TextFile { path: "Cargo.toml", content: header + deps + async_deps + lazy_dep }
+}
+
+// Check if a typed graph has any service definitions (for Cargo.toml generation).
+fn has_service_items(typed: TypedGraph) -> Bool {
+  typed.modules |> any(tm =>
+    tm.module.items |> any(item => is_service_item(item: item))
+  )
 }
