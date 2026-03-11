@@ -27,7 +27,7 @@ import v2.std.core {
   Predicate, NonEmpty, Pattern, Range, Brand, ContentEncoding, Format,
   Expr, Literal, Var, FieldAccess, Call, MethodCall, Match, If, Let,
   RecordLit, ListLit, BinOp, UnaryOp, Lambda, StringInterp, Block, Cast,
-  NamedArg, MatchArm, FieldInit, MatchPattern,
+  NamedArg, MatchArm, FieldInit, MatchPattern, FieldBinding,
   Bind, LitPattern, VariantPattern, Wildcard,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
   BinOpKind, Add, Sub, Mul, Div, Mod,
@@ -2006,17 +2006,17 @@ fn parse_variant_pattern(state: ParserState, name: String) -> PR {
     if is_err(pr: r) { return r }
     let r2 = expect(state: skip_newlines(state: r.state), tag: "RBrace")
     if is_err(pr: r2) { return r2 }
-    ok(val: { pattern: VariantPattern { name: name, bindings: r.val.bindings } }, state: r2.state)
+    ok(val: { pattern: VariantPattern { name: name, field_bindings: r.val.field_bindings } }, state: r2.state)
   } else {
     // Unit variant
-    ok(val: { pattern: VariantPattern { name: name, bindings: [] } }, state: state)
+    ok(val: { pattern: VariantPattern { name: name, field_bindings: [] } }, state: state)
   }
 }
 
 fn parse_variant_bindings_brace(state: ParserState) -> PR {
   let s = skip_newlines(state: state)
   if check(state: s, tag: "RBrace") || at_end(state: s) {
-    ok(val: { bindings: [] }, state: s)
+    ok(val: { field_bindings: [] }, state: s)
   } else {
     let r = expect_ident(state: s)
     if is_err(pr: r) { return r }
@@ -2025,24 +2025,26 @@ fn parse_variant_bindings_brace(state: ParserState) -> PR {
 
     // Check for : binding
     let e = eat(state: s, tag: "Colon")
-    let binding_name = if e.consumed {
+    if e.consumed {
       let r2 = expect_ident(state: e.state)
       if is_err(pr: r2) { return r2 }
+      let binding_name = r2.val.name
       let s2 = r2.state
       let e2 = eat(state: s2, tag: "Comma")
       let s3 = skip_newlines(state: if e2.consumed { e2.state } else { s2 })
       let rest = parse_variant_bindings_brace(state: s3)
       if is_err(pr: rest) { return rest }
-      return ok(val: { bindings: [r2.val.name] +rest.val.bindings }, state: rest.state)
+      let fb = FieldBinding { field_name: field_name, binding: Bind { name: binding_name } }
+      ok(val: { field_bindings: [fb] + rest.val.field_bindings }, state: rest.state)
     } else {
-      field_name
+      // Shorthand: field_name binds to itself
+      let e2 = eat(state: s, tag: "Comma")
+      let s2 = skip_newlines(state: if e2.consumed { e2.state } else { s })
+      let rest = parse_variant_bindings_brace(state: s2)
+      if is_err(pr: rest) { return rest }
+      let fb = FieldBinding { field_name: field_name, binding: Bind { name: field_name } }
+      ok(val: { field_bindings: [fb] + rest.val.field_bindings }, state: rest.state)
     }
-
-    let e2 = eat(state: s, tag: "Comma")
-    let s2 = skip_newlines(state: if e2.consumed { e2.state } else { s })
-    let rest = parse_variant_bindings_brace(state: s2)
-    if is_err(pr: rest) { return rest }
-    ok(val: { bindings: [binding_name] +rest.val.bindings }, state: rest.state)
   }
 }
 
@@ -2175,7 +2177,7 @@ fn parse_record_literal(state: ParserState, name: String, span: SourceSpan) -> P
   let r2 = expect(state: s, tag: "RBrace")
   if is_err(pr: r2) { return r2 }
 
-  ok(val: { expr: RecordLit { fields: r.val.fields, span: span } }, state: r2.state)
+  ok(val: { expr: RecordLit { type_name: Some { value: name }, fields: r.val.fields, span: span } }, state: r2.state)
 }
 
 fn parse_field_init_list(state: ParserState) -> PR {
@@ -2280,7 +2282,7 @@ fn parse_paren_expr(state: ParserState) -> PR {
   // Empty parens
   if check(state: s, tag: "RParen") {
     let adv = advance(state: s)
-    ok(val: { expr: RecordLit { fields: [], span: span } }, state: adv.state)
+    ok(val: { expr: RecordLit { type_name: none, fields: [], span: span } }, state: adv.state)
   } else {
     // Try multi-param lambda: (a, b) => body
     let lambda_r = try_lambda_params(state: s)
@@ -2417,7 +2419,7 @@ fn parse_brace_expr(state: ParserState) -> PR {
   // Empty braces
   if check(state: s, tag: "RBrace") {
     let adv2 = advance(state: s)
-    ok(val: { expr: RecordLit { fields: [], span: span } }, state: adv2.state)
+    ok(val: { expr: RecordLit { type_name: none, fields: [], span: span } }, state: adv2.state)
   } else {
     // Check if this looks like a block (starts with let, return)
     // or a record literal (ident: expr)
@@ -2457,7 +2459,7 @@ fn parse_brace_expr(state: ParserState) -> PR {
           let s2 = skip_newlines(state: r.state)
           let r2 = expect(state: s2, tag: "RBrace")
           if is_err(pr: r2) { return r2 }
-          ok(val: { expr: RecordLit { fields: r.val.fields, span: span } }, state: r2.state)
+          ok(val: { expr: RecordLit { type_name: none, fields: r.val.fields, span: span } }, state: r2.state)
         } else {
           // General block or map literal
           let r = parse_stmts(state: s)

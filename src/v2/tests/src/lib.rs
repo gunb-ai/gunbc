@@ -1025,4 +1025,314 @@ fn foo(item: String) -> String {
             Err(e) => std::panic::resume_unwind(e),
         }
     }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Phase 3b: Full pipeline grinding — progressively deeper stages
+    // ═════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn phase3_parse_real_source() {
+        let result = std::thread::Builder::new()
+            .stack_size(256 * 1024 * 1024)
+            .spawn(|| {
+                let output = compile_all_modules().expect("compilation should succeed");
+                let source = "module types_test\n\
+                    type SourceSpan { start: Int, end: Int }\n\
+                    type Token { kind: TokenKind, span: SourceSpan }\n\
+                    type TokenKind = Ident { name: String } | KwModule | KwFn | Eof\n\
+                    type Param { name: String, type_expr: String }\n\
+                    fn identity(x: Int) -> Int { x }\n\
+                    ".to_string();
+                let mut tok_inputs = HashMap::new();
+                tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source));
+                let tok_result =
+                    call_fn(&output, "tokenize", tok_inputs).expect("tokenize should succeed");
+                let tokens = match &tok_result["return"] {
+                    gunbc_ir::Value::List(t) => t.clone(),
+                    other => panic!("expected token list, got: {:?}", other),
+                };
+                assert!(!tokens.is_empty(), "should produce tokens");
+                let mut parse_inputs = HashMap::new();
+                parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
+                let parse_result = call_fn(&output, "parse", parse_inputs)
+                    .expect("parse should succeed on multi-type source");
+                let module_val = parse_result.get("module").expect("should have 'module' key");
+                let module = if let gunbc_ir::Value::Map(m) = module_val {
+                    if m.contains_key("value") && !m.contains_key("name") {
+                        m.get("value").unwrap()
+                    } else {
+                        module_val
+                    }
+                } else {
+                    module_val
+                };
+                if let gunbc_ir::Value::Map(mod_map) = module {
+                    assert!(mod_map.contains_key("name"), "parsed module should have 'name'");
+                    assert!(mod_map.contains_key("items"), "parsed module should have 'items'");
+                    if let Some(gunbc_ir::Value::List(items)) = mod_map.get("items") {
+                        assert!(!items.is_empty(), "should have at least one item");
+                    }
+                } else {
+                    panic!("module is not a Map: {:?}", module);
+                }
+            })
+            .expect("failed to spawn thread")
+            .join();
+        match result {
+            Ok(()) => {}
+            Err(e) => std::panic::resume_unwind(e),
+        }
+    }
+
+    #[test]
+    fn phase3_resolve_single_module() {
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                let output = compile_all_modules().expect("compilation should succeed");
+                let source = "module test\ntype Foo { x: Int }";
+                let mut tok_inputs = HashMap::new();
+                tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source.into()));
+                let tok_result = call_fn(&output, "tokenize", tok_inputs).expect("tokenize ok");
+                let tokens = match &tok_result["return"] {
+                    gunbc_ir::Value::List(t) => t.clone(),
+                    other => panic!("expected token list, got: {:?}", other),
+                };
+                let mut parse_inputs = HashMap::new();
+                parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
+                let parse_result = call_fn(&output, "parse", parse_inputs).expect("parse ok");
+                let module_val = parse_result.get("module").expect("should have 'module'");
+                let module = if let gunbc_ir::Value::Map(m) = module_val {
+                    if m.contains_key("value") && !m.contains_key("name") {
+                        m.get("value").unwrap().clone()
+                    } else { module_val.clone() }
+                } else { module_val.clone() };
+                let mut resolve_inputs = HashMap::new();
+                resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
+                let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
+                    .expect("resolve_modules ok");
+                let graph = if let Some(ret) = resolve_result.get("return") {
+                    ret.clone()
+                } else {
+                    gunbc_ir::Value::Map(resolve_result.into_iter().collect())
+                };
+                match &graph {
+                    gunbc_ir::Value::Map(m) => {
+                        assert!(m.contains_key("modules"), "ModuleGraph should have 'modules'");
+                    }
+                    other => panic!("unexpected resolve result: {:?}", other),
+                }
+            })
+            .expect("failed to spawn thread")
+            .join();
+        match result {
+            Ok(()) => {}
+            Err(e) => std::panic::resume_unwind(e),
+        }
+    }
+
+    #[test]
+    fn phase3_typecheck_single_module() {
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                let output = compile_all_modules().expect("compilation should succeed");
+                let source = "module test\ntype Foo { x: Int }";
+                let mut tok_inputs = HashMap::new();
+                tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source.into()));
+                let tok_result = call_fn(&output, "tokenize", tok_inputs).expect("tokenize ok");
+                let tokens = match &tok_result["return"] {
+                    gunbc_ir::Value::List(t) => t.clone(),
+                    other => panic!("expected token list, got: {:?}", other),
+                };
+                let mut parse_inputs = HashMap::new();
+                parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
+                let parse_result = call_fn(&output, "parse", parse_inputs).expect("parse ok");
+                let module_val = parse_result.get("module").expect("should have 'module'");
+                let module = if let gunbc_ir::Value::Map(m) = module_val {
+                    if m.contains_key("value") && !m.contains_key("name") {
+                        m.get("value").unwrap().clone()
+                    } else { module_val.clone() }
+                } else { module_val.clone() };
+                let mut resolve_inputs = HashMap::new();
+                resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
+                let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
+                    .expect("resolve ok");
+                let graph = if let Some(ret) = resolve_result.get("return") {
+                    ret.clone()
+                } else {
+                    gunbc_ir::Value::Map(resolve_result.into_iter().collect())
+                };
+                let mut tc_inputs = HashMap::new();
+                tc_inputs.insert("graph".to_string(), graph);
+                let tc_result = call_fn(&output, "typecheck", tc_inputs).expect("typecheck ok");
+                let typed_graph = if let Some(ret) = tc_result.get("return") {
+                    ret.clone()
+                } else {
+                    gunbc_ir::Value::Map(tc_result.into_iter().collect())
+                };
+                if let gunbc_ir::Value::Map(m) = &typed_graph {
+                    assert!(m.contains_key("modules"), "TypedGraph should have 'modules'");
+                    assert!(m.contains_key("diagnostics"), "TypedGraph should have 'diagnostics'");
+                } else {
+                    panic!("TypedGraph is not a Map: {:?}", typed_graph);
+                }
+            })
+            .expect("failed to spawn thread")
+            .join();
+        match result {
+            Ok(()) => {}
+            Err(e) => std::panic::resume_unwind(e),
+        }
+    }
+
+    #[test]
+    fn phase3_emit_single_module() {
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                let output = compile_all_modules().expect("compilation should succeed");
+                let source = "module test\ntype Foo { x: Int }";
+                let mut tok_inputs = HashMap::new();
+                tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source.into()));
+                let tok_result = call_fn(&output, "tokenize", tok_inputs).expect("tokenize ok");
+                let tokens = match &tok_result["return"] {
+                    gunbc_ir::Value::List(t) => t.clone(),
+                    other => panic!("expected token list, got: {:?}", other),
+                };
+                let mut parse_inputs = HashMap::new();
+                parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
+                let parse_result = call_fn(&output, "parse", parse_inputs).expect("parse ok");
+                let module_val = parse_result.get("module").expect("should have 'module'");
+                let module = if let gunbc_ir::Value::Map(m) = module_val {
+                    if m.contains_key("value") && !m.contains_key("name") {
+                        m.get("value").unwrap().clone()
+                    } else { module_val.clone() }
+                } else { module_val.clone() };
+                let mut resolve_inputs = HashMap::new();
+                resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
+                let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
+                    .expect("resolve ok");
+                let graph = if let Some(ret) = resolve_result.get("return") {
+                    ret.clone()
+                } else {
+                    gunbc_ir::Value::Map(resolve_result.into_iter().collect())
+                };
+                let mut tc_inputs = HashMap::new();
+                tc_inputs.insert("graph".to_string(), graph);
+                let tc_result = call_fn(&output, "typecheck", tc_inputs).expect("typecheck ok");
+                let typed_graph = if let Some(ret) = tc_result.get("return") {
+                    ret.clone()
+                } else {
+                    gunbc_ir::Value::Map(tc_result.into_iter().collect())
+                };
+                let typed_modules = if let gunbc_ir::Value::Map(m) = &typed_graph {
+                    if let Some(gunbc_ir::Value::List(mods)) = m.get("modules") {
+                        mods.clone()
+                    } else { panic!("no modules in typed graph"); }
+                } else { panic!("typed graph not a map"); };
+                assert!(!typed_modules.is_empty());
+                let mut emit_inputs = HashMap::new();
+                emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
+                let emit_result = call_fn(&output, "emit_module", emit_inputs)
+                    .expect("emit_module ok");
+                let text_file = if let Some(ret) = emit_result.get("return") {
+                    ret.clone()
+                } else {
+                    gunbc_ir::Value::Map(emit_result.into_iter().collect())
+                };
+                if let gunbc_ir::Value::Map(m) = &text_file {
+                    assert!(m.contains_key("path"), "TextFile should have 'path'");
+                    assert!(m.contains_key("content"), "TextFile should have 'content'");
+                    if let Some(gunbc_ir::Value::Str(content)) = m.get("content") {
+                        assert!(
+                            content.contains("struct") || content.contains("pub"),
+                            "emitted content should contain Rust code"
+                        );
+                    }
+                } else {
+                    panic!("TextFile is not a Map: {:?}", text_file);
+                }
+            })
+            .expect("failed to spawn thread")
+            .join();
+        match result {
+            Ok(()) => {}
+            Err(e) => std::panic::resume_unwind(e),
+        }
+    }
+
+    #[test]
+    fn phase3_full_pipeline() {
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                let output = compile_all_modules().expect("compilation should succeed");
+                let source = "module test\ntype Foo { x: Int }";
+                let mut tok_inputs = HashMap::new();
+                tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source.into()));
+                let tok_result = call_fn(&output, "tokenize", tok_inputs).expect("tokenize ok");
+                let tokens = match &tok_result["return"] {
+                    gunbc_ir::Value::List(t) => t.clone(),
+                    other => panic!("expected token list, got: {:?}", other),
+                };
+                let mut parse_inputs = HashMap::new();
+                parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
+                let parse_result = call_fn(&output, "parse", parse_inputs).expect("parse ok");
+                let module_val = parse_result.get("module").expect("should have 'module'");
+                let module = if let gunbc_ir::Value::Map(m) = module_val {
+                    if m.contains_key("value") && !m.contains_key("name") {
+                        m.get("value").unwrap().clone()
+                    } else { module_val.clone() }
+                } else { module_val.clone() };
+                let mut resolve_inputs = HashMap::new();
+                resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
+                let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
+                    .expect("resolve ok");
+                let graph = if let Some(ret) = resolve_result.get("return") {
+                    ret.clone()
+                } else {
+                    gunbc_ir::Value::Map(resolve_result.into_iter().collect())
+                };
+                let mut tc_inputs = HashMap::new();
+                tc_inputs.insert("graph".to_string(), graph);
+                let tc_result = call_fn(&output, "typecheck", tc_inputs).expect("typecheck ok");
+                let typed_graph = if let Some(ret) = tc_result.get("return") {
+                    ret.clone()
+                } else {
+                    gunbc_ir::Value::Map(tc_result.into_iter().collect())
+                };
+                let typed_modules = if let gunbc_ir::Value::Map(m) = &typed_graph {
+                    if let Some(gunbc_ir::Value::List(mods)) = m.get("modules") {
+                        mods.clone()
+                    } else { panic!("no modules"); }
+                } else { panic!("not a map"); };
+                let mut emit_inputs = HashMap::new();
+                emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
+                let emit_result = call_fn(&output, "emit_module", emit_inputs)
+                    .expect("emit_module ok");
+                let text_file = if let Some(ret) = emit_result.get("return") {
+                    ret.clone()
+                } else {
+                    gunbc_ir::Value::Map(emit_result.into_iter().collect())
+                };
+                if let gunbc_ir::Value::Map(m) = &text_file {
+                    if let Some(gunbc_ir::Value::Str(s)) = m.get("content") {
+                        assert!(
+                            s.contains("struct Foo"),
+                            "emitted Rust should contain 'struct Foo', got: {}",
+                            &s[..s.len().min(300)]
+                        );
+                    }
+                } else {
+                    panic!("not a TextFile map");
+                }
+            })
+            .expect("failed to spawn thread")
+            .join();
+        match result {
+            Ok(()) => {}
+            Err(e) => std::panic::resume_unwind(e),
+        }
+    }
 }

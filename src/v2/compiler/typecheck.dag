@@ -22,7 +22,7 @@ import v2.std.core {
   Module, Item, TypeExpr, TypeBody, Field, Variant, Param,
   Expr, Diagnostic, Severity,
   TypeDef, FuncDef, FnDef, ServiceDef, ResourceDef, DataDef, ExternFuncDecl,
-  Named, Product, Coproduct, Container, Refined, Optional, MapType, Primitive,
+  Named, Product, Coproduct, Container, Refined, Optional, MapType, Primitive, TypeApp,
   Record, Sum, Alias,
   ContainerKind,
   Predicate,
@@ -349,6 +349,15 @@ fn resolve_type_expr(expr: TypeExpr, env: TypeEnv, module_name: String) -> Resol
       ResolveResult {
         resolved: MapType { key: key_result.resolved, value: value_result.resolved, span: span },
         diagnostics: key_result.diagnostics + value_result.diagnostics
+      }
+
+    TypeApp { name: name, args: args, span: span } =>
+      let arg_results = map(args, a => resolve_type_expr(expr: a, env: env, module_name: module_name))
+      let resolved_args = map(arg_results, ar => ar.resolved)
+      let all_diags = fold(arg_results, init: [], f: (acc, ar) => acc + ar.diagnostics)
+      ResolveResult {
+        resolved: TypeApp { name: name, args: resolved_args, span: span },
+        diagnostics: all_diags
       }
   }
 }
@@ -868,13 +877,13 @@ fn collect_unresolved_in_item(item: Item, module_name: String, defined_names: Li
       )
 
     DataDef { name: _, type_expr: type_expr, value: _, span: _ } =>
-      collect_unresolved_in_type_expr(expr: type_expr, module_name: module_name)
+      collect_unresolved_in_type_expr(expr: type_expr, module_name: module_name, defined_names: defined_names)
 
     ExternFuncDecl { name: _, params: params, return_type: return_type, span: _ } =>
       let param_diags = fold(params, init: [], f: (acc, p) =>
         acc + collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names)
       )
-      param_diags + collect_unresolved_in_type_expr(expr: return_type, module_name: module_name)
+      param_diags + collect_unresolved_in_type_expr(expr: return_type, module_name: module_name, defined_names: defined_names)
   }
 }
 
@@ -936,6 +945,11 @@ fn collect_unresolved_in_type_expr(expr: TypeExpr, module_name: String, defined_
     MapType { key: key, value: value, span: _ } =>
       collect_unresolved_in_type_expr(expr: key, module_name: module_name, defined_names: defined_names)
       + collect_unresolved_in_type_expr(expr: value, module_name: module_name, defined_names: defined_names)
+
+    TypeApp { name: _, args: args, span: _ } =>
+      fold(args, init: [], f: (acc, a) =>
+        acc + collect_unresolved_in_type_expr(expr: a, module_name: module_name, defined_names: defined_names)
+      )
   }
 }
 

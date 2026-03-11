@@ -14,8 +14,8 @@ module v2.compiler.emit
 
 import v2.std.core {
   Module, Item, TypeDef, FnDef, FuncDef, ServiceDef, DataDef,
-  TypeExpr, TypeBody, Field, Variant, Param, Expr, MatchArm,
-  MatchPattern, LiteralValue, TransportBinding, OperationDef,
+  TypeExpr, TypeApp, TypeBody, Field, Variant, Param, Expr, MatchArm,
+  MatchPattern, FieldBinding, LiteralValue, TransportBinding, OperationDef,
   TextFile, Diagnostic, SourceSpan,
   ResourceDef, CapabilityDef, ExternFuncDecl,
   ContainerKind, Predicate, ResourceUse,
@@ -226,6 +226,9 @@ fn emit_type_expr(type_expr: TypeExpr) -> String {
     Refined { base: b, predicates: _, span: _ } =>
       // Refinements are erased at the Rust level — just emit the base type
       emit_type_expr(type_expr: b)
+    TypeApp { name: n, args: type_args, span: _ } =>
+      let arg_strs = type_args |> map(a => emit_type_expr(type_expr: a))
+      n + "<" + arg_strs |> join(separator: ", ") + ">"
   }
 }
 
@@ -393,8 +396,8 @@ fn emit_expr(expr: Expr) -> String {
       emit_if(condition: c, then_branch: t, else_branch: e)
     Let { name: n, value: v, body: bd, span: _ } =>
       emit_let(name: n, value: v, body: bd)
-    RecordLit { fields: fs, span: _ } =>
-      emit_record_lit(fields: fs)
+    RecordLit { type_name: tn, fields: fs, span: _ } =>
+      emit_record_lit(type_name: tn, fields: fs)
     ListLit { elements: els, span: _ } =>
       emit_list_lit(elements: els)
     BinOp { op: o, left: l, right: r, span: _ } =>
@@ -482,17 +485,20 @@ fn emit_pattern(pattern: MatchPattern) -> String {
   match pattern {
     Bind { name: n } => rust_ident(name: n)
     LitPattern { value: v } => emit_literal(value: v)
-    VariantPattern { name: n, bindings: bs } =>
-      emit_variant_pattern(name: n, bindings: bs)
+    VariantPattern { name: n, field_bindings: fbs } =>
+      emit_variant_pattern(name: n, field_bindings: fbs)
     Wildcard => "_"
   }
 }
 
-fn emit_variant_pattern(name: String, bindings: List<String>) -> String {
-  if bindings |> count == 0 {
+fn emit_variant_pattern(name: String, field_bindings: List<FieldBinding>) -> String {
+  if field_bindings |> count == 0 {
     name
   } else {
-    let binding_strs = bindings |> map(b => rust_ident(name: b))
+    let binding_strs = field_bindings |> map(fb =>
+      let pat_str = emit_pattern(pattern: fb.binding)
+      rust_ident(name: fb.field_name) + ": " + pat_str
+    )
     let bindings_str = binding_strs |> join(separator: ", ")
     name + " { " + bindings_str + " }"
   }
@@ -536,15 +542,19 @@ fn emit_let(name: String, value: Expr, body: Expr?) -> String {
 // Record literal emission
 // =========================================================================
 
-fn emit_record_lit(fields: List<FieldInit>) -> String {
+fn emit_record_lit(type_name: String?, fields: List<FieldInit>) -> String {
+  let prefix = match type_name {
+    Some { value: tn } => tn + " "
+    None => ""
+  }
   if fields |> count == 0 {
-    "{}"
+    prefix + "{}"
   } else {
     let field_strs = fields |> map(f =>
       "    " + rust_ident(name: f.name) + ": " + emit_expr(expr: f.value) + ","
     )
     let fields_str = field_strs |> join(separator: "\n")
-    "{\n" + fields_str + "\n}"
+    prefix + "{\n" + fields_str + "\n}"
   }
 }
 
