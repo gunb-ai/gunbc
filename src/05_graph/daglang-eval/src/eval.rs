@@ -1121,6 +1121,12 @@ fn cmp_op(
     if matches!(lhs, Value::Skipped) || matches!(rhs, Value::Skipped) {
         return Ok(Value::Skipped);
     }
+    // Unit compared with anything is false (not an error). This handles
+    // cases like `char_at` returning Unit for out-of-bounds positions,
+    // which then flows into `is_digit(ch)` → `ch >= "0"`.
+    if matches!(lhs, Value::Unit) || matches!(rhs, Value::Unit) {
+        return Ok(Value::Bool(false));
+    }
     let ordering = match (lhs, rhs) {
         (Value::Int(a), Value::Int(b)) => a.cmp(b),
         (Value::Str(a), Value::Str(b)) => a.cmp(b),
