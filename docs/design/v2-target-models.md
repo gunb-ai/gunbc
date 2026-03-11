@@ -2,6 +2,13 @@
 
 ## Purpose
 
+**This is a target-model specification, not a description of the
+current implementation.** The v2 compiler code does not yet match
+these models. Where the document says "TypeExpr has 5 variants," the
+current `core.dag` has 9. Where it says "Field.cardinality," the
+current code has `Field.optional: Bool`. Each section notes specific
+gaps between target and current state where they are known.
+
 This document defines the **target** `.dag` type models for the v2
 compiler, designed from first principles using the same compositional
 discipline as the extdeps system. The existing compiler code implements
@@ -25,6 +32,15 @@ There are two orthogonal axes of layering in this document:
 
 Algorithm scratch state (ParserState, KahnState) stays local and is
 never exported.
+
+### Notation
+
+This document uses `T?` as shorthand for "type T with cardinality
+Optional (0..1) on the binding site." The target model has no `?`
+type modifier — the actual representation is `cardinality: Optional`
+on every binding site. The shorthand is used throughout for
+readability, but every `T?` in this document denotes a cardinality
+annotation, not a type constructor.
 
 ---
 
@@ -53,13 +69,12 @@ Every type expressible in `.dag` syntax decomposes into these six forms.
 
 ### Subsumption rules
 
-Application subsumes three current TypeExpr variants:
+Application subsumes two current TypeExpr variants:
 
 ```
 Container { kind: List, element: T }  =  App { name: "List", args: [T] }
 Container { kind: Set, element: T }   =  App { name: "Set", args: [T] }
 MapType { key: K, value: V }          =  App { name: "Map", args: [K, V] }
-Optional { inner: T }                 =  App { name: "Option", args: [T] }
 ```
 
 This is not a modeling choice — it is set-theoretically forced. `List<T>`
@@ -67,16 +82,33 @@ IS the application of the `List` constructor to `T`. Having both `App`
 and `Container` as peers means the same set has two representations,
 which violates canonicality.
 
+`Optional { inner: T }` is handled differently — it is not collapsed
+to `App("Option", [T])` but removed from TypeExpr entirely. Optionality
+is a cardinality constraint on the binding site, not a type constructor.
+See § "Optionality and cardinality" below.
+
 ### The kernel types as atoms
 
-The type universe is a bounded lattice with 8 atoms:
+The type universe has 8 kernel atoms:
 
 ```
-⊤ = Json                  (universal structured value)
-⊥ = Unit = {}             (empty/void)
-
 Atoms = { String, Int, Bool, Float, Secret, Bytes, Unit, Json }
 ```
+
+Lattice bounds:
+
+```
+⊤ = Json                  (universal structured value — all values inhabit ⟦Json⟧)
+⊥ = Never                 (uninhabited type — no values, |⟦Never⟧| = 0)
+```
+
+Note: `Unit` is a singleton type (`|⟦Unit⟧| = 1`), NOT the bottom
+type. `Unit` has exactly one value; `⊥` (the true bottom) has zero
+values. In classical type theory these are fundamentally different:
+`Unit` is the terminal object (every type has a unique map TO it),
+while `⊥` is the initial object (it has a unique map FROM it to every
+type). The language does not currently surface `Never`, but the
+lattice requires it for completeness.
 
 Every atom is a primitive type with no structural expansion. All other
 types are built from atoms by product, coproduct, application, and
@@ -84,21 +116,22 @@ refinement.
 
 ### Optionality and cardinality
 
-In the surface syntax, `T?` is sugar. In the type algebra:
+In the surface syntax, `T?` is sugar. The question is: sugar for what?
 
-```
-⟦T?⟧ = ⟦T⟧ ∪ {none}
-```
+Two possible answers:
 
-The deeper question is whether optionality is a **type constructor**
-(a transformation on ⟦T⟧) or a **cardinality constraint** on a binding
-site (how many values of type T this site holds).
+1. **Type constructor**: `T?` means `Option<T>` — a new type whose
+   value set is `⟦T⟧ ∪ {none}`. Optionality lives in the type algebra.
+2. **Cardinality constraint**: `T?` means "this binding site holds 0
+   or 1 values of type T." The type is still T. The multiplicity is
+   on the binding, not the type.
 
-Currently the model has THREE representations of "might be absent":
+The current implementation conflates both — it has THREE representations
+of "might be absent":
 
 1. `Field.optional: Bool` — cardinality on the binding
 2. `TypeExpr::Optional { inner: T }` — optionality as a type wrapper
-3. `App("Option", [T])` — optionality as type application (proposed)
+3. `App("Option", [T])` — optionality as type application
 
 This proliferation is the problem. The extdeps approach would be:
 define one concept, derive the rest.
@@ -161,12 +194,12 @@ type SourceSpan { start: Int, end: Int }
 type Severity = Error | Warning | Info
 
 // A diagnostic is a located message with severity.
-// ⟦Diagnostic⟧ = ⟦Severity⟧ × ⟦String⟧ × ⟦SourceSpan?⟧ × ⟦String?⟧
+// span and module_name have cardinality Optional (0..1).
 type Diagnostic {
   severity: Severity
   message: String
-  span: SourceSpan?
-  module_name: String?
+  span: SourceSpan?          // shorthand: cardinality Optional
+  module_name: String?       // shorthand: cardinality Optional
 }
 
 // The compiler's final output: files and diagnostics.
@@ -233,13 +266,13 @@ This layer defines the compiler's internal representation of types.
 It imports Layer 0 (SourceSpan) and nothing else. It knows nothing
 about tokens, parsing, services, or code emission.
 
-### Target TypeExpr (5 variants, down from 9)
+### Target TypeExpr (6 variants, down from 9)
 
 ```dag
 // A type expression — the compiler's representation of a type.
 //
 // Set-theoretically: TypeExpr is the free algebra generated by
-// the five constructors below, quotiented by the subsumption rules
+// the six constructors below, quotiented by the subsumption rules
 // in the Foundations section.
 //
 // TypeExpr answers "WHAT set of values?" — never "how many?"
@@ -349,9 +382,9 @@ three structural forms. `Record` and `Sum` map to `Product` and
 ```dag
 type Field {
   name: String
-  type_expr: TypeExpr         // "what" — the set of values
-  cardinality: Cardinality    // "how many" — replaces optional: Bool
-  default_value: Expr?        // see note below
+  type_expr: TypeExpr                               // "what" — the set of values
+  cardinality: Cardinality                           // "how many" — replaces optional: Bool
+  default_value: Expr, cardinality: Optional         // see note below
   span: SourceSpan
 }
 
@@ -364,8 +397,8 @@ type Variant {
 type Param {
   name: String
   type_expr: TypeExpr
-  cardinality: Cardinality    // params can be optional too
-  default_value: Expr?
+  cardinality: Cardinality                           // params can be optional too
+  default_value: Expr, cardinality: Optional
   span: SourceSpan
 }
 ```
@@ -374,23 +407,41 @@ A variant with no fields is a unit variant (tag-only injection into the
 coproduct). A variant with fields is a payload variant (tagged product
 within the coproduct). Variant itself is unchanged.
 
-**Note on `default_value: Expr?`**: This field declaration uses `?`
-(cardinality 0..1) on the Field type itself. Cardinality applies at
-every binding site, recursively — bottoming out at the kernel types.
-The representation of "Expr?" on Field's own definition is an instance
-of the same concept: the default_value binding has type Expr and
-cardinality Optional.
+**Note on meta-notation vs internal representation.** The target model
+eliminates `?` from the type algebra — there is no `TypeExpr::Optional`
+and no `Expr?` type. But the Field type *itself* has fields that may be
+absent (`default_value`). In the target model, this is expressed as
+`default_value: Expr` with `cardinality: Optional` — the same mechanism
+used for user-authored field declarations. The doc uses the inline
+`, cardinality: Optional` notation above to make this explicit rather
+than writing `Expr?`, which would reintroduce the notation the model
+is eliminating.
+
+This is cardinality all the way down. The `cardinality` field on Field
+is itself a Required binding (it must always be present). The
+`default_value` field is an Optional binding (it may be absent). Both
+use the same Cardinality concept. The recursion bottoms out at kernel
+types (String, Int, etc.) which have no internal binding sites.
 
 ---
 
-## Layer 2: Syntactic Model
+## Layer 2: Normalized Core Syntax
 
 *"What is a token? What is an AST node?"*
 
-This layer defines the source-faithful representation of `.dag` programs.
+This layer defines the **normalized** representation of `.dag` programs.
 It imports Layer 0 (SourceSpan, Diagnostic) and Layer 1 (TypeExpr,
 Field, Variant, Param, Predicate). It knows nothing about resolution,
 typechecking, or code emission.
+
+**"Normalized," not "source-faithful."** The parser performs several
+desugarings that mean the AST is not a direct transcript of source
+text. For example, `PipeArrow` (`|>`) is desugared to `MethodCall` in
+the parser, and `pattern`/`interface` keywords currently route through
+`parse_func_def`. These are deliberate normalizations — the AST
+represents the *core syntax*, not every surface spelling. This is a
+different compiler contract from a CST (concrete syntax tree) that
+preserves every token.
 
 ### Tokens (unchanged, already clean)
 
@@ -431,9 +482,10 @@ type Item
                      return_type: TypeExpr, span: SourceSpan }
 ```
 
-This is source-faithful. Item is the coproduct of everything that
-can appear at the top level of a module. Each variant records exactly
-what the parser saw, nothing more.
+Item is the coproduct of everything that can appear at the top level
+of a module. Each variant records the normalized form of what the
+parser recognized — surface sugar has been desugared, but no semantic
+interpretation has been applied.
 
 ### Expressions (unchanged, already clean)
 
@@ -656,7 +708,7 @@ core.dag, emit.dag imports them like every other consumer.
 
 ### Built-in type constructor mapping
 
-The emitter pattern-matches on `App.name` for built-in constructors:
+The emitter pattern-matches on `App.name` for built-in type constructors:
 
 ```dag
 fn emit_type_app(name: String, args: List<TypeExpr>) -> String {
@@ -664,7 +716,6 @@ fn emit_type_app(name: String, args: List<TypeExpr>) -> String {
     "List"         => "Vec<" + emit_type(args[0]) + ">"
     "Set"          => "BTreeSet<" + emit_type(args[0]) + ">"
     "Map"          => "BTreeMap<" + emit_type(args[0]) + ", " + emit_type(args[1]) + ">"
-    "Option"       => "Option<" + emit_type(args[0]) + ">"
     "NonEmptyList" => "Vec<" + emit_type(args[0]) + ">"
     "NonEmptySet"  => "BTreeSet<" + emit_type(args[0]) + ">"
     _              => name + "<" + join(map(args, emit_type), ", ") + ">"
@@ -672,10 +723,16 @@ fn emit_type_app(name: String, args: List<TypeExpr>) -> String {
 }
 ```
 
+Note: "Option" is absent from this table. Optionality is handled via
+cardinality on the binding site, not as a type constructor. The emitter
+handles cardinality separately — an Optional field emits as
+`Option<T>` in Rust, but that is a cardinality-to-target-language
+mapping, not a type-to-type mapping.
+
 This replaces three separate match arms (Container, MapType, Optional)
-with one (App), and the built-in constructor table is explicit and
-exhaustive. A Python backend would have a parallel table:
-`List` → `list[T]`, `Map` → `dict[K, V]`, etc.
+with one (App) plus a cardinality handler, and the built-in constructor
+table is explicit and exhaustive. A Python backend would have a parallel
+table: `List` → `list[T]`, `Map` → `dict[K, V]`, etc.
 
 ---
 
@@ -946,7 +1003,7 @@ other's types, but by speaking the same structural language.
 | `String` | `Atom { name: "String" }` | Field types in all extdeps |
 | `List<T>` | `App { name: "List", args: [T] }` | `List<GcpScope>` etc. |
 | `Map<K,V>` | `App { name: "Map", args: [K,V] }` | `Map<String, String>` etc. |
-| `T?` | Cardinality Optional on binding | Optional fields everywhere |
+| `T?` | Cardinality Optional on binding site | Optional fields everywhere |
 | `Int where range(...)` | `Refine { base: Atom, ... }` | `HttpStatus`, `Port` etc. |
 | `A \| B \| C` | `Coproduct { variants: [...] }` | `CloudAuthScheme` etc. |
 | `{ a: A, b: B }` | `Product { fields: [...] }` | `ServiceEndpoint` etc. |
@@ -1036,9 +1093,9 @@ Add `OperationSemantics` to core.dag. Build it in typecheck from
 
 The deepest risk to this model is not getting it wrong initially — it's
 **forgetting** the primitives later. If Cardinality is the concept but
-someone can still write `optional: Bool` or `TypeExpr::Optional` or
-`App("Option", [T])`, the discipline breaks down through accumulated
-drift. This section addresses that.
+someone can still write `optional: Bool` or `TypeExpr::Optional`, the
+discipline breaks down through accumulated drift. This section
+addresses that.
 
 ### Make the right thing structural, the wrong thing unrepresentable
 
