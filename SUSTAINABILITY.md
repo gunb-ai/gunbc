@@ -387,6 +387,80 @@ prevents the most silent regressions):
 
 ---
 
+## Investigation notes (2026-03-11)
+
+### S34: callable return wiring — not a 1-line fix
+
+Attempted to replace `let _ = wire_callable_return_outputs(...)` with `?`
+propagation. Two blockers:
+
+1. **Service call result bindings** (`let resp = fs.read(...);
+   return { body: resp.body }`). The lowerer's `lower_expr` can't
+   resolve `resp` because `collect_local_let_bindings` excludes
+   `Expr::ServiceCall` bindings (line 12267). The ident falls through
+   to "unresolved ident" error. Failing tests:
+   `compile_*_uses_bound_resource_capability_call_succeeds`.
+
+2. **Collection ops in return position** (`return { readable:
+   map(partitioned.readable, e => e.path) }`). `lower_expr` handles
+   `Expr::Call` only for endpoint-registered callables, not intrinsic
+   collection operations. Failing tests: `compile_data_from_module_*`
+   (via `dsl/std/patterns.dag::classify_files`).
+
+**Prerequisite** for hard-fail: expand `lower_expr` to trace service
+call result bindings (through parse transport node outputs) and to
+handle collection intrinsic calls in return position. Both are lowerer
+improvements, not wiring policy changes. The `func`/`pattern` items
+that hit this path don't have `fn_body` — they rely entirely on
+`__out:` passthrough wiring, which is the designed fallback.
+
+Note: a warning-based approach was considered but rejected per
+`src/README.md` "No fallbacks that fabricate" invariant.
+
+### S23/S35: fail-closed types — deeper than expected
+
+Attempted to change `value_compatible_with_type_id` from
+`.unwrap_or(ValueBacking::Json)` to `.unwrap_or(false)` (unknown types
+incompatible with everything). This is correct per the invariant, but
+the blast radius is large:
+
+1. **36 mock type mismatches** in auto-testgen for bootstrap. All are
+   DSL-defined types (`Line`, `Frame`, `Tier`, `SemanticColor`,
+   `Milliseconds`, `Char`, `SymbolId`, `GitignoreCategory`, etc.) not
+   in the core-only `TypeRegistry` used by `value_backing_for_type_id`.
+
+2. **`ResourceHandle`** not registered in core type registry despite
+   being used as a TypeId on 9 port definitions. Quick fix: add to
+   the handle-type check at `types.rs:1182`.
+
+3. **Registry-level gap**: `TypeRegistry::value_backing()` returns
+   `Err` for DSL record types and sum types even when they ARE
+   registered — the registry has their type DAGs but can't determine
+   runtime backing from `TypeOp` structure. Records back to `Map`,
+   sum types back to `String`/`Enum`, branded types (`Milliseconds`,
+   `Char`) back to their wrapped primitive — none of this is derivable
+   from the current type DAG representation.
+
+4. **`Bool?` syntax**: `optional_inner_type_id` handles `Optional<T>`
+   and `OptionalT` but not `T?` — the DSL shorthand isn't normalized
+   before reaching the compatibility check.
+
+**Fix sequence** (each enables the next):
+- (a) Teach `value_backing()` to classify registered-but-unclassifiable
+  types: record → Map, sum → String. Requires either a `TypeKind`
+  discriminant on registry entries or structural inspection of the type
+  DAG.
+- (b) Add `value_compatible_with_registry(type_id, value, &registry)`
+  variant so callers with DSL types (testgen) can use a full registry.
+  Callers without (executor mock validation) continue using core-only
+  and fail closed.
+- (c) Flip `value_compatible_with_type_id` to `.unwrap_or(false)`.
+- (d) Update `test_gen.rs` mock generation to panic on unknown types.
+
+Steps (b)-(d) are mechanical once (a) is done.
+
+---
+
 ## v2 self-hosted compiler: impact on ledger
 
 v2 (see `docs/design/v2-self-hosted-compiler.md`) eliminates the deep
