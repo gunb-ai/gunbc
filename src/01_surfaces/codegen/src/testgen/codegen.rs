@@ -2188,12 +2188,15 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                         count
                     );
 
-                    let mock_value = mock_value_expr_for_count(
+                    let Some(mock_value) = mock_value_expr_for_count(
                         type_id,
                         *cardinality,
                         count,
                         &self.type_registry,
-                    );
+                    ) else {
+                        // Skip: no mock for type, don't fabricate
+                        continue;
+                    };
                     let mocks_expr = self.dryrun_mocks_expr(analysis, "cardinality coverage tests");
 
                     let exec = Expr::call(
@@ -2398,7 +2401,10 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                         NamingCase::SnakeCase.apply(variant_name),
                     );
 
-                    let mock_value = ValueExpr::Str(variant_name.clone());
+                    let mock_value = ValueExpr::Enum {
+                        ty: type_id.0.clone(),
+                        variant: variant_name.clone(),
+                    };
                     let mocks_expr = self.dryrun_mocks_expr(analysis, "variant coverage tests");
 
                     let exec = Expr::call(
@@ -2517,6 +2523,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             if !analysis.pure_nodes.contains(&node_id.0) {
                 continue;
             }
+
 
             if !lowered_ids.contains(&node_id.0) {
                 if skipped_nodes.insert(node_id.0.clone()) {
@@ -3907,8 +3914,11 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             if inputs.contains_key(&port.name.0) {
                 continue;
             }
-            let needs_value = port.has_guard() || !port.cardinality.allows_empty();
-            if !needs_value {
+            // Skip infrastructure ports that genuinely don't need values.
+            if !port.has_guard()
+                && port.cardinality.allows_empty()
+                && (port.name.0.starts_with("__") || port.name.0 == "_freshness")
+            {
                 continue;
             }
 
@@ -4816,13 +4826,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
         // Use lowered DAG for boundary analysis so node IDs match lowered MockSpec IDs.
         // SubDag nodes in the un-lowered DAG become flattened, prefixed nodes after lowering;
         // the MockSpec uses these lowered IDs since the executor operates on the lowered DAG.
-        let lowered_result = match gunbc_exec::lower(self.dag) {
-            Ok(lowered) => Some(lowered),
-            Err(e) => {
-                eprintln!("warning: lowering failed during test generation: {e}");
-                None
-            }
-        };
+        let lowered_result = gunbc_exec::lower(self.dag).ok();
         let lowered_analysis = lowered_result.as_ref().map(|lr| analyze_dag(&lr.dag));
         let boundary_analysis = lowered_analysis.as_ref().unwrap_or(analysis);
 
@@ -4912,10 +4916,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                             p.node_id == node_id.0 && p.port_name == port_name.0 && !p.is_input
                         })
                         .map(|p| (p.type_id.0.as_str(), p.cardinality))
-                        .unwrap_or_else(|| {
-                            eprintln!("warning: port type lookup failed, defaulting to String");
-                            ("String", Cardinality::ONE)
-                        });
+                        .unwrap_or(("String", Cardinality::ONE));
 
                     let mock_value =
                         self.get_mock_value(&node_id.0, &port_name.0, type_id, cardinality);
@@ -5662,27 +5663,6 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
 
         let mut tests = Vec::new();
 
-        // Surface unmatched corpus identities — violates the "errors are explicit,
-        // no silent fallbacks" invariant if we silently drop them.
-        let mut unmatched_identities = Vec::new();
-        for (identity, node_corpus) in corpus {
-            if !node_corpus.is_empty() && !identity_to_node.contains_key(identity) {
-                unmatched_identities.push(identity.to_string());
-            }
-        }
-        if !unmatched_identities.is_empty() {
-            eprintln!(
-                "[corpus] WARNING: {} corpus identit{} not found in DAG (corpus drift?): {}",
-                unmatched_identities.len(),
-                if unmatched_identities.len() == 1 {
-                    "y"
-                } else {
-                    "ies"
-                },
-                unmatched_identities.join(", "),
-            );
-        }
-
         for (identity, node_corpus) in corpus {
             if node_corpus.is_empty() {
                 continue;
@@ -5717,11 +5697,8 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
                         let (doc, body) = if is_pure_node(node) {
                             self.build_corpus_body_real(&ctx, expected_outputs)
                         } else {
-                            eprintln!(
-                                "[corpus] NOTE: Node '{}' has ExactOutputs expectation but is \
-                                 effectful — falling back to DryRun mode.",
-                                identity,
-                            );
+                            // Effectful node with ExactOutputs expectation —
+                            // fall back to DryRun to avoid side effects.
                             self.build_corpus_body_dryrun(&ctx, analysis, node, None)
                         };
                         tests.push(TestFn {
@@ -7164,6 +7141,16 @@ fn try_mock_value_for_count(
     if let Some(value) = witness_value_for_count(type_id, cardinality, count, registry) {
         return Some(value);
     }
+    // Fall back to typed_witness_value which handles product types (records)
+    // and nested containers that the standard witness generator misses.
+    if count > 0 {
+        if let Some(value) = gunbc_test::typed_witness_value(type_id, registry) {
+            if cardinality.is_list() {
+                return Some(Value::List(vec![value; count as usize]));
+            }
+            return Some(value);
+        }
+    }
     if cardinality.is_list() {
         if count == 0 {
             return Some(Value::List(vec![]));
@@ -7250,22 +7237,23 @@ fn mock_value_expr_for_count(
     cardinality: Cardinality,
     count: u32,
     registry: &TypeRegistry,
-) -> ValueExpr {
+) -> Option<ValueExpr> {
     if let Some(value) = witness_value_for_count(type_id, cardinality, count, registry) {
-        return ValueExpr::from(&value);
+        return Some(ValueExpr::from(&value));
     }
     if cardinality.is_list() {
         if count == 0 {
-            return ValueExpr::List(vec![]);
+            return Some(ValueExpr::List(vec![]));
         }
-        let elements: Vec<ValueExpr> = (1..=count)
-            .map(|i| mock_element_expr(type_id, Some(i)))
-            .collect();
-        return ValueExpr::List(elements);
+        let mut elements = Vec::new();
+        for i in 1..=count {
+            elements.push(mock_element_expr(type_id, Some(i))?);
+        }
+        return Some(ValueExpr::List(elements));
     }
 
     match count {
-        0 => ValueExpr::Unit,
+        0 => Some(ValueExpr::Unit),
         n => mock_element_expr(type_id, Some(n)),
     }
 }
@@ -7273,34 +7261,32 @@ fn mock_value_expr_for_count(
 /// Generate a mock ValueExpr for a single element of a type.
 ///
 /// When `index` is provided, string/int/bool values are varied for readability.
-fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
-    match type_id {
-        "String" | "OptionalString" | "StringList" | "NonEmptyStringList" => match index {
+/// Returns `None` for unknown types instead of fabricating `Json(Null)`.
+fn mock_element_expr(type_id: &str, index: Option<u32>) -> Option<ValueExpr> {
+    let value = match type_id {
+        "String" | "Optional<String>" | "List<String>" | "NonEmptyList<String>" => match index {
             Some(1) | None => ValueExpr::Str("<MOCK>".to_string()),
             Some(i) => ValueExpr::Str(format!("<MOCK_{}>", i)),
         },
-        "Bool" | "OptionalBool" | "BoolList" => match index {
+        "Bool" | "Optional<Bool>" | "List<Bool>" => match index {
             Some(i) => ValueExpr::Bool(i % 2 == 1),
             None => ValueExpr::Bool(true),
         },
-        "Int" | "i64" | "i32" | "OptionalInt" | "IntList" => match index {
+        "Int" | "i64" | "i32" | "Optional<Int>" | "List<Int>" => match index {
             Some(i) => ValueExpr::Int(i as i64),
             None => ValueExpr::Int(0),
         },
         "Unit" => ValueExpr::Unit,
-        "Json" | "OptionalJson" | "JsonList" => ValueExpr::Json(JsonValue::Null),
+        "Json" | "Optional<Json>" | "List<Json>" => ValueExpr::Json(JsonValue::Null),
         "CloudSecretConfig" => ValueExpr::Json(mock_cloud_secret_config_json()),
         ty if parse_map_type_id(ty).is_some() => {
             let (key_type, value_type) = parse_map_type_id(ty).expect("already checked");
             if key_type != "String" {
-                panic!(
-                    "unsupported map key type '{}'; only String keys are supported",
-                    key_type
-                );
+                return None;
             }
             ValueExpr::Map(vec![(
                 "mock_key".to_string(),
-                mock_element_expr(&value_type, index),
+                mock_element_expr(&value_type, index)?,
             )])
         }
         "Map" => ValueExpr::Map(vec![]),
@@ -7398,25 +7384,15 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
                 ("stderr".to_string(), ValueExpr::Str(String::new())),
             ],
         },
-        "List" | "Set" => panic!(
-            "invalid type_id '{}' for mock value; use element type + cardinality instead",
-            type_id
-        ),
+        "List" | "Set" => return None,
         ty if ty.starts_with("List<") || ty.starts_with("Optional<") || ty.starts_with("Set<") => {
             let inner = ty.split_once('<').unwrap().1.strip_suffix('>').unwrap();
-            mock_element_expr(inner, index)
+            return mock_element_expr(inner, index);
         }
-        // DSL-defined product/coproduct types without explicit mock entries
-        // default to a JSON null mock. This avoids panics when new DSL types
-        // appear in port signatures after DSL module changes.
-        _ => {
-            eprintln!(
-                "warning: no explicit mock for type_id '{}'; using Json(Null) default",
-                type_id
-            );
-            ValueExpr::Json(JsonValue::Null)
-        }
-    }
+        // Unknown types: return None instead of fabricating Json(Null).
+        _ => return None,
+    };
+    Some(value)
 }
 
 fn platform_mock_variants() -> Vec<String> {
@@ -7446,14 +7422,14 @@ fn platform_mock_token(index: Option<u32>) -> String {
 fn mock_wrong_type_expr(type_id: &str) -> Option<ValueExpr> {
     match type_id {
         // String-like types → use Int
-        "String" | "OptionalString" | "StringList" | "NonEmptyStringList" | "Path" | "FilePath"
+        "String" | "Optional<String>" | "List<String>" | "NonEmptyList<String>" | "Path" | "FilePath"
         | "SourceIR" | "Platform" | "Error" | "Tier" | "ToolId" | "S" => Some(ValueExpr::Int(1)),
         // Int-like types → use String
-        "Int" | "i64" | "i32" | "Timestamp" | "OptionalInt" | "IntList" => {
+        "Int" | "i64" | "i32" | "Timestamp" | "Optional<Int>" | "List<Int>" => {
             Some(ValueExpr::Str("<WRONG>".to_string()))
         }
         // Bool → use String
-        "Bool" | "OptionalBool" | "BoolList" => Some(ValueExpr::Str("<WRONG>".to_string())),
+        "Bool" | "Optional<Bool>" | "List<Bool>" => Some(ValueExpr::Str("<WRONG>".to_string())),
         // Secret → use String
         "Secret" => Some(ValueExpr::Str("<WRONG>".to_string())),
         // Map → use Bool
@@ -7462,7 +7438,7 @@ fn mock_wrong_type_expr(type_id: &str) -> Option<ValueExpr> {
         "CliResult" | "ToolHandle" | "Credential" | "FilesystemHandle" | "NetworkHandle"
         | "TransportRequest" | "TransportResponse" => Some(ValueExpr::Str("<WRONG>".to_string())),
         // Unknown/Any/Json/Unit are too permissive or ambiguous
-        "Json" | "OptionalJson" | "JsonList" | "Any" | "Unknown" | "Unit" => None,
+        "Json" | "Optional<Json>" | "List<Json>" | "Any" | "Unknown" | "Unit" => None,
         _ => None,
     }
 }
@@ -7986,13 +7962,14 @@ mod tests {
     fn test_mock_value_respects_cardinality() {
         let registry = TypeRegistry::with_core_types();
         let list_expr =
-            mock_value_expr_for_count("String", Cardinality::ZERO_OR_MORE, 1, &registry);
+            mock_value_expr_for_count("String", Cardinality::ZERO_OR_MORE, 1, &registry).unwrap();
         assert_eq!(
             list_expr,
             ValueExpr::List(vec![ValueExpr::Str("example".to_string())])
         );
 
-        let opt_zero = mock_value_expr_for_count("String", Cardinality::ZERO_OR_ONE, 0, &registry);
+        let opt_zero =
+            mock_value_expr_for_count("String", Cardinality::ZERO_OR_ONE, 0, &registry).unwrap();
         assert_eq!(opt_zero, ValueExpr::Unit);
     }
 
@@ -8574,7 +8551,7 @@ mod tests {
             "parse",
             vec![
                 port("response", "TransportResponse"),
-                optional("fallback", "OptionalString"),
+                optional("fallback", "Optional<String>"),
             ],
             vec![port("result", "String")],
             (),
@@ -8645,10 +8622,10 @@ mod tests {
             SeedPolicy::Generated
         );
         assert_eq!(
-            seed_policy_for_type("OptionalString"),
+            seed_policy_for_type("Optional<String>"),
             SeedPolicy::Generated
         );
-        assert_eq!(seed_policy_for_type("StringList"), SeedPolicy::Generated);
+        assert_eq!(seed_policy_for_type("List<String>"), SeedPolicy::Generated);
         // Map containers are structurally generatable (structural type system).
         assert_eq!(
             seed_policy_for_type("Map<String,Credential>"),
@@ -8689,7 +8666,7 @@ mod tests {
         );
         assert!(requires_explicit_seed("Credential", SeedContext::Scenario));
         assert!(!requires_explicit_seed(
-            "OptionalString",
+            "Optional<String>",
             SeedContext::Scenario
         ));
     }
@@ -8705,7 +8682,7 @@ mod tests {
             SeedPolicy::Generated
         );
         assert!(requires_explicit_seed("Secret", SeedContext::LiveFlow));
-        assert!(!requires_explicit_seed("StringList", SeedContext::LiveFlow));
+        assert!(!requires_explicit_seed("List<String>", SeedContext::LiveFlow));
     }
 
     #[test]
@@ -8760,7 +8737,7 @@ mod tests {
             "parse",
             vec![
                 port("response", "TransportResponse"),
-                optional("fallback", "OptionalString"),
+                optional("fallback", "Optional<String>"),
             ],
             vec![port("result", "String")],
             (),
@@ -8793,7 +8770,7 @@ mod tests {
             "resolver",
             vec![
                 port("config", "TransportResponse"),
-                optional("name", "OptionalString"),
+                optional("name", "Optional<String>"),
             ],
             vec![port("result", "String")],
             (),

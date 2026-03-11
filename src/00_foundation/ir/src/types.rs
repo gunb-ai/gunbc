@@ -5,27 +5,6 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 
-/// Port multiplicity: how many upstream edges feed this port.
-///
-/// This is orthogonal to type cardinality (whether the value itself is a list).
-/// A `List<Bool>` port with `Singular` multiplicity receives one list value on
-/// one edge. A `__deps` port with `FanIn` multiplicity merges values from N
-/// upstream edges into a list.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
-pub enum PortMultiplicity {
-    /// Exactly one upstream edge delivers one value.
-    #[default]
-    Singular,
-    /// Zero or more upstream edges; values are fan-in merged into a list.
-    FanIn,
-}
-
-/// Returns true if the multiplicity is the default (Singular).
-/// Used by serde `skip_serializing_if`.
-pub fn multiplicity_is_default(m: &PortMultiplicity) -> bool {
-    *m == PortMultiplicity::Singular
-}
-
 /// Set-theoretic cardinality for port values, modeled as a closed interval
 /// `[min, max]` on ℕ ∪ {∞}.
 ///
@@ -1117,8 +1096,9 @@ impl ValueBacking {
 /// Determine how a `TypeId` string serializes into a `Value` variant.
 ///
 /// Delegates to `TypeRegistry::value_backing()` using a cached core-types
-/// registry.
-pub fn value_backing_for_type_id(type_id: &str) -> ValueBacking {
+/// registry. Returns `Err` for unknown types instead of silently falling
+/// back to `Json`.
+pub fn value_backing_for_type_id(type_id: &str) -> Result<ValueBacking, String> {
     use std::sync::OnceLock;
     static REGISTRY: OnceLock<crate::type_registry::TypeRegistry> = OnceLock::new();
     let registry = REGISTRY.get_or_init(crate::type_registry::TypeRegistry::with_core_types);
@@ -1205,8 +1185,11 @@ pub fn value_compatible_with_type_id(type_id: &str, value: &crate::value::Value)
         return true;
     }
 
-    // Default to structural backing compatibility
-    value_backing_for_type_id(type_id).accepts_value_kind(kind)
+    // Default to structural backing compatibility.
+    // Unknown types fall back to Json (accepts anything) for backwards compat.
+    value_backing_for_type_id(type_id)
+        .unwrap_or(ValueBacking::Json)
+        .accepts_value_kind(kind)
 }
 
 impl From<&str> for TypeId {
@@ -1492,27 +1475,33 @@ mod tests {
     #[test]
     fn test_value_backing_for_parametric_wrappers() {
         assert_eq!(
-            value_backing_for_type_id("List<String>"),
+            value_backing_for_type_id("List<String>").unwrap(),
             ValueBacking::List
         );
-        assert_eq!(value_backing_for_type_id("Set<String>"), ValueBacking::Set);
         assert_eq!(
-            value_backing_for_type_id("Optional<String>"),
+            value_backing_for_type_id("Set<String>").unwrap(),
+            ValueBacking::Set
+        );
+        assert_eq!(
+            value_backing_for_type_id("Optional<String>").unwrap(),
             ValueBacking::String
         );
         assert_eq!(
-            value_backing_for_type_id("GcpProjectId"),
+            value_backing_for_type_id("GcpProjectId").unwrap(),
             ValueBacking::String
         );
         assert_eq!(
-            value_backing_for_type_id("GcpSubjectToken"),
+            value_backing_for_type_id("GcpSubjectToken").unwrap(),
             ValueBacking::String
         );
         assert_eq!(
-            value_backing_for_type_id("SecretName"),
+            value_backing_for_type_id("SecretName").unwrap(),
             ValueBacking::String
         );
-        assert_eq!(value_backing_for_type_id("Credential"), ValueBacking::Map);
+        assert_eq!(
+            value_backing_for_type_id("Credential").unwrap(),
+            ValueBacking::Map
+        );
     }
 
     #[test]

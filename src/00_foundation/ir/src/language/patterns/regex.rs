@@ -47,7 +47,7 @@ pub fn build_regex_subdag() -> Node<LanguageOp> {
             Port::scalar("pattern", "String"),
             Port::scalar("text", "String"),
         ],
-        vec![Port::list("matches", "StringList")],
+        vec![Port::list("matches", "List<String>")],
         LanguageOp::RegexMatch,
     ));
 

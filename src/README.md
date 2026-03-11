@@ -3,55 +3,138 @@
 All Rust crates live here. The DSL compiler pipeline, execution engine,
 IR, and runtime operations.
 
-## Coding Standards
+## Sustainability Invariants
 
-Adapted from Google C++ style for Rust:
+The governing metric for this codebase is **cost of change**: when the
+language grows by one type, one expression form, or one transport, how
+many files need editing? The sustainable compiler is one where that
+number is 1. Every invariant below serves that goal.
 
-- **Clear interfaces.** Every public module should have a small, well-defined
-  API surface. Prefer returning values over mutating shared state.
+Active liabilities and their measured costs are tracked in
+`SUSTAINABILITY.md` at the project root.
 
-- **Pure libraries and helper functions.** Core logic should be pure —
-  deterministic functions from inputs to outputs. Side effects (filesystem,
-  network, process spawning) belong at the edges, not in the middle of
-  computation.
+### No duplicate representations
 
-- **I/O documentation at interface boundaries.** Any function that performs I/O
-  (reads files, spawns processes, makes network calls) must document that fact
-  in its signature or doc comment. Callers should never be surprised by hidden
-  I/O.
+Every fact should be encoded in exactly one place. When two structures
+represent the same information, one gets updated and the other doesn't.
+The stale copy produces silently wrong behavior instead of failing.
 
-- **No backdoors.** The compiler should provide all metadata (tool definitions,
-  output paths, type registries) through its own output types (`CompileOutput`,
-  `InferredEntrypoint`, etc.), not through runtime `extern func` callbacks.
-  The `extern func` feature has been eliminated.
+**The test:** if changing a fact requires editing two files, one of them
+is a derived copy that should be deleted or computed.
 
-- **No hacks or fallbacks.** Every code path either succeeds fully or fails
-  with a clear error. No silent degradation: no lossy recovery that discards
-  input, no `.ok()` that swallows errors on fallible operations, no `continue`
-  that silently drops work, no fallback defaults that produce valid-looking but
-  wrong output. If a function cannot complete its job, it must return `Err` —
-  not an empty value, not `Value::Skipped`, not a quietly truncated result.
-  Caching is the sole exception (cache miss on error is acceptable).
+**The fix:** delete the derived representation and read from the source.
+If the source isn't accessible, make it accessible — don't cache a copy
+that can go stale. (See POSTMORTEM FC-7: `PortMultiplicity` duplicated
+`Cardinality`, ResourceHandle had 3 fields in DSL but 4 in Rust.)
+
+### No case enumeration for open sets
+
+When behavior varies by type, variant, or category, prefer a single
+algorithm that walks the structure over a match/list that enumerates
+known cases. Enumerated lists rot: every new case requires updating
+every list, and the compiler won't tell you which lists you missed.
+
+**The test:** if adding a new type/variant requires editing a match arm
+somewhere other than the type definition itself, the code has an
+enumeration that should be replaced with a structural walk.
+
+Matching on a closed enum (`WrapperKind::List | Set | Optional | ...`)
+is fine — adding a variant is a compiler error. The problem is
+open-ended lists keyed by strings, type names, or error message
+substrings. (See POSTMORTEM FC-7: `mock_element_expr` was a 100+ line
+match on type name strings.)
+
+### No fallbacks that fabricate
+
+Every code path either succeeds fully or fails with a clear error.
+No silent degradation: no `.ok()` that swallows errors, no `continue`
+that silently drops work, no fallback defaults that produce
+valid-looking but wrong output. If a function cannot complete its job,
+it must return `Err`.
+
+Fabrication fallbacks are the mechanism by which duplicate
+representations and missed enumerations become invisible. They convert
+hard failures into silent wrong behavior. (See POSTMORTEM FC-7:
+`scalar_witness_for_base` fabricated `Str("<Type>")` instead of
+returning `None`.)
+
+### No parallel implementations
+
+When the same computation exists in two forms (e.g., an AST interpreter
+AND a resolved DAG op), they will diverge as the language evolves.
+Every new expression form must be implemented in both, and the one that
+lags will be masked by a fallback (see above).
+
+**The test:** if a code path exists only to provide a result that
+another code path also produces, one of them should be deleted.
+
+### Explicit boundary contracts
+
+Each stage of the pipeline (parse → typecheck → lower → resolve →
+execute) passes a complex IR type to the next stage. The receiving
+stage's preconditions must be explicit and enforced, not implicit
+expectations that silently degrade when violated.
+
+**The test:** for each boundary, there should be a validation function
+that checks the output of stage N against the preconditions of stage
+N+1. Examples:
+- After typecheck: every type reference resolves, Map keys are String
+- After lower: every port TypeId is registered, no unresolved placeholders
+- After resolve: every DynOp implements Executable, no list ports have
+  cardinality `[1,∞)` with zero incoming edges
+
+Without boundary enforcement, violations propagate silently across
+stages and surface as confusing runtime errors far from their origin.
+Every fabrication fallback in FC-7 existed because a contract was
+implicit — the producing stage didn't guarantee it, and the consuming
+stage compensated with a fallback instead of failing.
+
+### Single-authority metadata
+
+The compiler should provide all metadata (tool definitions, output
+paths, type registries) through its own output types (`CompileOutput`,
+`InferredEntrypoint`, etc.), not through runtime callbacks, string
+conventions, or hardcoded lists. Each piece of metadata should have
+exactly one producer.
+
+## Engineering Standards
+
+These serve sustainability indirectly by reducing the blast radius of
+changes:
+
+- **Clear interfaces.** Every public module should have a small,
+  well-defined API surface. Prefer returning values over mutating
+  shared state.
+
+- **Pure core logic.** Deterministic functions from inputs to outputs.
+  Side effects (filesystem, network, process spawning) belong at the
+  edges, not in the middle of computation.
+
+- **Documented I/O boundaries.** Any function that performs I/O must
+  document that fact in its signature or doc comment. Callers should
+  never be surprised by hidden I/O.
 
 ## Testing Invariants
 
-- **Behavioral only.** Tests assert observable behavior — outputs given inputs,
-  error messages, public API contracts. Never assert internal implementation
-  details like which private functions were called, what order internal steps
-  execute in, or how many times an internal helper runs.
+- **Behavioral only.** Tests assert observable behavior — outputs given
+  inputs, error messages, public API contracts. Never assert internal
+  implementation details like which private functions were called, what
+  order internal steps execute in, or how many times an internal helper
+  runs.
 
-- **Hermetic unit tests only.** Tests must not touch the filesystem, network,
-  or environment. All external dependencies are injected or mocked. A test
-  that passes on one machine must pass on every machine. Corpus/integration
-  tests (e.g., `daglang-syntax/tests/item_coverage.rs`) that walk the `dsl/`
-  source tree are a recognized exception — they live in `tests/` directories
-  and are clearly labeled as non-hermetic.
+- **Hermetic unit tests only.** Tests must not touch the filesystem,
+  network, or environment. All external dependencies are injected or
+  mocked. A test that passes on one machine must pass on every machine.
+  Corpus/integration tests (e.g., `daglang-syntax/tests/item_coverage.rs`)
+  that walk the `dsl/` source tree are a recognized exception — they
+  live in `tests/` directories and are clearly labeled as non-hermetic.
 
-- **No tautological tests.** A test that mirrors the implementation — restating
-  the production code in test form — proves nothing. Tests must encode an
-  independent specification of *what* the code should do, not *how* it does it.
-  If deleting the test body and replacing it with a copy of the production code
-  would still pass, the test is tautological.
+- **No tautological tests.** A test that mirrors the implementation —
+  restating the production code in test form — proves nothing. Tests
+  must encode an independent specification of *what* the code should do,
+  not *how* it does it. If deleting the test body and replacing it with
+  a copy of the production code would still pass, the test is
+  tautological.
 
 ## Tiered Test Execution (T11)
 

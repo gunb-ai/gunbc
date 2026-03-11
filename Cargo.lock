@@ -202,10 +202,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "daglang-eval"
+version = "0.1.0"
+dependencies = [
+ "gunbc-ir",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "daglang-lower"
 version = "0.1.0"
 dependencies = [
  "daglang-contract",
+ "daglang-eval",
  "daglang-resolve",
  "daglang-syntax",
  "daglang-typecheck",
@@ -353,7 +363,6 @@ dependencies = [
  "gunbc-ir",
  "gunbc-lib-blob",
  "gunbc-lib-transport",
- "gunbc-primitives",
  "gunbc-resolve",
  "gunbc-test",
  "serde",
@@ -392,6 +401,18 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
+]
+
+[[package]]
+name = "gunbc-interp"
+version = "0.1.0"
+dependencies = [
+ "daglang-eval",
+ "daglang-lower",
+ "gunbc-exec",
+ "gunbc-ir",
+ "gunbc-lib-transport",
+ "serde_json",
 ]
 
 [[package]]
@@ -435,19 +456,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gunbc-primitives"
-version = "0.1.0"
-dependencies = [
- "gunbc-exec",
- "gunbc-infra",
- "gunbc-ir",
- "serde",
- "serde_json",
- "tempfile",
- "toml",
-]
-
-[[package]]
 name = "gunbc-resolve"
 version = "0.1.0"
 dependencies = [
@@ -459,7 +467,6 @@ dependencies = [
  "gunbc-ir",
  "gunbc-lib-blob",
  "gunbc-lib-transport",
- "gunbc-primitives",
  "gunbc-test",
  "serde",
  "serde_json",
@@ -471,7 +478,6 @@ version = "0.1.0"
 dependencies = [
  "gunbc-exec",
  "gunbc-ir",
- "gunbc-primitives",
  "serde_json",
 ]
 

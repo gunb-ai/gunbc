@@ -119,7 +119,7 @@ pub struct StructuralProperties {
 /// The extractor does NOT resolve type references through the registry.
 /// Each variant's inner type is classified as `Opaque(type_id)` unless
 /// the type DAG itself carries structural information (e.g., a SubDag).
-pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
+pub fn type_shape(dag: &Dag<TypeOp>) -> Result<TypeShape, String> {
     // Priority 1: Look for Coproduct node. Products and coproducts take
     // priority over platform detection because their field SubDags may
     // contain structural predicates that shouldn't classify the compound
@@ -128,17 +128,16 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
         if let NodeBody::Opaque(TypeOp::Coproduct(variants)) = &node.body {
             // Extract the type name from the node's output port type_id.
             let type_name = node.outputs.first().map(|p| p.type_id.0.clone());
-            let shaped_variants: Vec<(String, TypeShape)> = variants
-                .iter()
-                .map(|name| {
-                    let child_id = format!("variant_{name}");
-                    let inner = named_subdag(dag, &child_id)
-                        .map(type_shape)
-                        .unwrap_or_else(|| TypeShape::Opaque(name.clone()));
-                    (name.clone(), inner)
-                })
-                .collect();
-            return TypeShape::Coproduct(type_name, shaped_variants);
+            let mut shaped_variants = Vec::new();
+            for name in variants {
+                let child_id = format!("variant_{name}");
+                let inner = match named_subdag(dag, &child_id) {
+                    Some(d) => type_shape(d)?,
+                    None => TypeShape::Opaque(name.clone()),
+                };
+                shaped_variants.push((name.clone(), inner));
+            }
+            return Ok(TypeShape::Coproduct(type_name, shaped_variants));
         }
     }
 
@@ -147,27 +146,27 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
         if let NodeBody::Opaque(TypeOp::Product(fields)) = &node.body {
             // Extract the type name from the node's output port type_id.
             let type_name = node.outputs.first().map(|p| p.type_id.0.clone());
-            let shaped_fields: Vec<(String, TypeShape)> = fields
-                .iter()
-                .map(|name| {
-                    let child_id = format!("field_{name}");
-                    let inner = named_subdag(dag, &child_id)
-                        .map(type_shape)
-                        .unwrap_or_else(|| TypeShape::Opaque(name.clone()));
-                    (name.clone(), inner)
-                })
-                .collect();
-            return TypeShape::Product(type_name, shaped_fields);
+            let mut shaped_fields = Vec::new();
+            for name in fields {
+                let child_id = format!("field_{name}");
+                let inner = match named_subdag(dag, &child_id) {
+                    Some(d) => type_shape(d)?,
+                    None => TypeShape::Opaque(name.clone()),
+                };
+                shaped_fields.push((name.clone(), inner));
+            }
+            return Ok(TypeShape::Product(type_name, shaped_fields));
         }
     }
 
     // Priority 3: Look for Brand node.
     for node in &dag.nodes {
         if let NodeBody::Opaque(TypeOp::Brand(name)) = &node.body {
-            let inner_shape = inner_subdag(dag)
-                .map(type_shape)
-                .unwrap_or_else(|| TypeShape::Opaque(name.clone()));
-            return TypeShape::Brand(name.clone(), Box::new(inner_shape));
+            let inner_shape = match inner_subdag(dag) {
+                Some(d) => type_shape(d)?,
+                None => TypeShape::Opaque(name.clone()),
+            };
+            return Ok(TypeShape::Brand(name.clone(), Box::new(inner_shape)));
         }
     }
 
@@ -177,10 +176,11 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
     // classify the container itself as a platform primitive.
     for node in &dag.nodes {
         if let NodeBody::Opaque(TypeOp::Wrap(kind)) = &node.body {
-            let inner_shape = inner_subdag(dag)
-                .map(type_shape)
-                .unwrap_or(TypeShape::Opaque("Any".to_string()));
-            return match kind {
+            let inner_shape = match inner_subdag(dag) {
+                Some(d) => type_shape(d)?,
+                None => TypeShape::Opaque("Any".to_string()),
+            };
+            return Ok(match kind {
                 WrapperKind::Optional => {
                     TypeShape::Container(ContainerShape::Optional(Box::new(inner_shape)))
                 }
@@ -191,18 +191,20 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
                     TypeShape::Container(ContainerShape::Set(Box::new(inner_shape)))
                 }
                 WrapperKind::Map => {
-                    let key_shape = named_subdag(dag, "key_type")
-                        .map(type_shape)
-                        .unwrap_or_else(|| TypeShape::Opaque("String".to_string()));
-                    let value_shape = named_subdag(dag, "value_type")
-                        .map(type_shape)
-                        .unwrap_or(inner_shape);
+                    let key_shape = match named_subdag(dag, "key_type") {
+                        Some(d) => type_shape(d)?,
+                        None => TypeShape::Opaque("String".to_string()),
+                    };
+                    let value_shape = match named_subdag(dag, "value_type") {
+                        Some(d) => type_shape(d)?,
+                        None => inner_shape,
+                    };
                     TypeShape::Container(ContainerShape::Map(
                         Box::new(key_shape),
                         Box::new(value_shape),
                     ))
                 }
-            };
+            });
         }
     }
 
@@ -212,24 +214,24 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> TypeShape {
     // shouldn't classify the compound type as a platform primitive.
     let props = derive_structural_properties(dag);
     if props.width.is_some() || props.signed.is_some() || props.domain.is_some() {
-        return TypeShape::Platform(props);
+        return Ok(TypeShape::Platform(props));
     }
 
     // Priority 6: Identity node => Opaque with the type name from the port.
     for node in &dag.nodes {
         if let NodeBody::Opaque(TypeOp::Identity) = &node.body {
             if let Some(output) = node.outputs.first() {
-                return TypeShape::Opaque(output.type_id.0.clone());
+                return Ok(TypeShape::Opaque(output.type_id.0.clone()));
             }
         }
     }
 
-    // Fallback: completely unknown.
-    eprintln!(
-        "warning: unknown type shape for dag with {} node(s), using Opaque",
+    // Fallback: completely unknown — return an error instead of silently
+    // producing an Opaque placeholder.
+    Err(format!(
+        "unknown type shape for dag with {} node(s)",
         dag.nodes.len()
-    );
-    TypeShape::Opaque("Unknown".to_string())
+    ))
 }
 
 /// Walk a type DAG and extract structural properties from Validate predicates.
@@ -423,21 +425,21 @@ mod tests {
     #[test]
     fn shape_of_identity_is_opaque() {
         let string_dag = type_lib::string();
-        let shape = type_shape(&string_dag);
+        let shape = type_shape(&string_dag).unwrap();
         assert_eq!(shape, TypeShape::Opaque("String".to_string()));
     }
 
     #[test]
     fn shape_of_bool_identity_is_opaque() {
         let bool_dag = type_lib::bool();
-        let shape = type_shape(&bool_dag);
+        let shape = type_shape(&bool_dag).unwrap();
         assert_eq!(shape, TypeShape::Opaque("Bool".to_string()));
     }
 
     #[test]
     fn shape_of_int_identity_is_opaque() {
         let int_dag = type_lib::int();
-        let shape = type_shape(&int_dag);
+        let shape = type_shape(&int_dag).unwrap();
         assert_eq!(shape, TypeShape::Opaque("Int".to_string()));
     }
 
@@ -447,7 +449,7 @@ mod tests {
             "ContentEncoding",
             vec![("UTF8", "String"), ("ASCII", "String"), ("Binary", "Bytes")],
         );
-        let shape = type_shape(&encoding_dag);
+        let shape = type_shape(&encoding_dag).unwrap();
         match &shape {
             TypeShape::Coproduct(type_name, variants) => {
                 assert_eq!(type_name.as_deref(), Some("ContentEncoding"));
@@ -465,7 +467,7 @@ mod tests {
     #[test]
     fn shape_of_unit_coproduct_bool() {
         let bool_dag = type_lib::coproduct("Bool", vec![("True", "Unit"), ("False", "Unit")]);
-        let shape = type_shape(&bool_dag);
+        let shape = type_shape(&bool_dag).unwrap();
         match &shape {
             TypeShape::Coproduct(type_name, variants) => {
                 assert_eq!(type_name.as_deref(), Some("Bool"));
@@ -493,7 +495,7 @@ mod tests {
                 ("exit_code", "Int"),
             ],
         );
-        let shape = type_shape(&cli_result_dag);
+        let shape = type_shape(&cli_result_dag).unwrap();
         match &shape {
             TypeShape::Product(type_name, fields) => {
                 assert_eq!(type_name.as_deref(), Some("CliResult"));
@@ -510,7 +512,7 @@ mod tests {
     #[test]
     fn shape_of_brand() {
         let branded_dag = type_lib::branded("TextFilePath", type_lib::string());
-        let shape = type_shape(&branded_dag);
+        let shape = type_shape(&branded_dag).unwrap();
         match &shape {
             TypeShape::Brand(name, inner) => {
                 assert_eq!(name, "TextFilePath");
@@ -524,7 +526,7 @@ mod tests {
     #[test]
     fn shape_of_optional() {
         let opt_dag = type_lib::optional(type_lib::string());
-        let shape = type_shape(&opt_dag);
+        let shape = type_shape(&opt_dag).unwrap();
         match &shape {
             TypeShape::Container(ContainerShape::Optional(inner)) => {
                 assert_eq!(**inner, TypeShape::Opaque("String".to_string()));
@@ -536,7 +538,7 @@ mod tests {
     #[test]
     fn shape_of_list() {
         let list_dag = type_lib::list(type_lib::int());
-        let shape = type_shape(&list_dag);
+        let shape = type_shape(&list_dag).unwrap();
         match &shape {
             TypeShape::Container(ContainerShape::List(inner)) => {
                 assert_eq!(**inner, TypeShape::Opaque("Int".to_string()));
@@ -548,7 +550,7 @@ mod tests {
     #[test]
     fn shape_of_set() {
         let set_dag = type_lib::set(type_lib::string());
-        let shape = type_shape(&set_dag);
+        let shape = type_shape(&set_dag).unwrap();
         match &shape {
             TypeShape::Container(ContainerShape::Set(inner)) => {
                 assert_eq!(**inner, TypeShape::Opaque("String".to_string()));
@@ -560,7 +562,7 @@ mod tests {
     #[test]
     fn shape_of_map() {
         let map_dag = type_lib::map(type_lib::string(), type_lib::int());
-        let shape = type_shape(&map_dag);
+        let shape = type_shape(&map_dag).unwrap();
         match &shape {
             TypeShape::Container(ContainerShape::Map(key, value)) => {
                 assert_eq!(**key, TypeShape::Opaque("String".to_string()));
@@ -573,7 +575,7 @@ mod tests {
     #[test]
     fn shape_of_non_empty_list() {
         let ne_list_dag = type_lib::non_empty_list(type_lib::string());
-        let shape = type_shape(&ne_list_dag);
+        let shape = type_shape(&ne_list_dag).unwrap();
         // NonEmptyList is structurally a List in TypeShape.
         match &shape {
             TypeShape::Container(ContainerShape::List(inner)) => {
@@ -614,7 +616,7 @@ mod tests {
             "Int64",
             vec![Predicate::Width(64), Predicate::Signed(None)],
         );
-        let shape = type_shape(&dag);
+        let shape = type_shape(&dag).unwrap();
         match &shape {
             TypeShape::Platform(props) => {
                 assert_eq!(props.width, Some(64));
@@ -635,7 +637,7 @@ mod tests {
                 Predicate::Domain("ieee754_binary64".to_string()),
             ],
         );
-        let shape = type_shape(&dag);
+        let shape = type_shape(&dag).unwrap();
         match &shape {
             TypeShape::Platform(props) => {
                 assert_eq!(props.width, Some(64));
@@ -650,7 +652,7 @@ mod tests {
     fn shape_of_platform_uint8_from_predicates() {
         let dag =
             build_predicate_platform_dag("UInt8", vec![Predicate::Width(8), Predicate::Unsigned]);
-        let shape = type_shape(&dag);
+        let shape = type_shape(&dag).unwrap();
         match &shape {
             TypeShape::Platform(props) => {
                 assert_eq!(props.width, Some(8));
@@ -668,7 +670,7 @@ mod tests {
             "Int64",
             vec![Predicate::Width(64), Predicate::Signed(None)],
         );
-        let shape = type_shape(&dag);
+        let shape = type_shape(&dag).unwrap();
         assert!(
             matches!(shape, TypeShape::Platform(_)),
             "Structural predicates should take priority over Identity"
@@ -680,10 +682,9 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn shape_of_empty_dag_is_opaque_unknown() {
+    fn shape_of_empty_dag_is_error() {
         let dag: Dag<TypeOp> = Dag::new();
-        let shape = type_shape(&dag);
-        assert_eq!(shape, TypeShape::Opaque("Unknown".to_string()));
+        assert!(type_shape(&dag).is_err());
     }
 
     // =========================================================================
@@ -697,7 +698,7 @@ mod tests {
         // This is correct for Phase 0 — backends treat them like their
         // base type name.
         let url_dag = type_lib::url();
-        let shape = type_shape(&url_dag);
+        let shape = type_shape(&url_dag).unwrap();
         assert_eq!(shape, TypeShape::Opaque("String".to_string()));
     }
 
@@ -708,7 +709,7 @@ mod tests {
     #[test]
     fn shape_of_optional_list_of_string() {
         let dag = type_lib::optional(type_lib::list(type_lib::string()));
-        let shape = type_shape(&dag);
+        let shape = type_shape(&dag).unwrap();
         match &shape {
             TypeShape::Container(ContainerShape::Optional(inner)) => match inner.as_ref() {
                 TypeShape::Container(ContainerShape::List(elem)) => {
@@ -754,7 +755,7 @@ mod tests {
             "CliResult",
             vec![("stdout", type_lib::string()), ("exit_code", int64_dag)],
         );
-        let shape = type_shape(&product_dag);
+        let shape = type_shape(&product_dag).unwrap();
         match &shape {
             TypeShape::Product(type_name, fields) => {
                 assert_eq!(type_name.as_deref(), Some("CliResult"));

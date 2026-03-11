@@ -69,7 +69,7 @@ pub fn build_rust_subdag() -> Node<LanguageOp> {
         vec![
             Port::scalar("id", "String"),
             Port::scalar("name", "String"),
-            Port::list("extensions", "StringList"),
+            Port::list("extensions", "List<String>"),
             Port::scalar("comment_prefix", "String"),
             Port::scalar("doc_comment_prefix", "String"),
         ],

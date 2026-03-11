@@ -1,16 +1,15 @@
 //! Generic service operation interpreters driven by `ServiceOperationSpec`.
 //!
-//! These interpreters replace per-service adapter structs. A single
-//! `GenericRestPrepareOp` handles *all* REST service operations;
-//! a single `GenericShellPrepareOp` handles *all* shell service operations.
-//! The behaviour is parameterised by the spec extracted from `.dag` annotations.
+//! Two parameterised structs — `GenericPrepareOp` and `GenericParseOp` —
+//! handle *all* transport types (REST, Shell, File, Local, InterfaceStub).
+//! The behaviour is dispatched via the `ServiceOperationSpec` variant.
 
 use std::collections::{BTreeSet, HashMap};
 
 use daglang_lower::{
     ArgvSegment, BodyEntry, FieldSpec, FileOperationSpec, LocalOperationSpec, OutputFieldSpec,
-    ResponseMappingEntry, ResponseStatusPattern, RestOperationSpec, ShellOperationSpec,
-    ShellOutputParsing,
+    ResponseMappingEntry, ResponseStatusPattern, RestOperationSpec, ServiceOperationSpec,
+    ShellOperationSpec, ShellOutputParsing,
 };
 use gunbc_exec::{
     decorate_service_failure, AuthContext, ExecError, Executable, OutputMap, ServiceCallMetadata,
@@ -23,276 +22,1008 @@ use gunbc_ir::transport::{
 use gunbc_ir::{from_bridge_json_typed, SecretString, Value};
 
 // ============================================================================
-// REST
+// Unified prepare op
 // ============================================================================
 
-/// Generic REST prepare: builds a `RestRequest` from a `RestOperationSpec`.
+/// Generic prepare op: builds a `TransportRequest` from a `ServiceOperationSpec`.
+///
+/// Dispatches to per-transport preparation logic based on the spec variant.
+/// Handles skip propagation uniformly for all transport types.
 #[derive(Debug, Clone)]
-pub struct GenericRestPrepareOp {
-    pub spec: RestOperationSpec,
+pub struct GenericPrepareOp {
+    pub spec: ServiceOperationSpec,
 }
 
-impl Executable for GenericRestPrepareOp {
+impl Executable for GenericPrepareOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        // Propagate skip from upstream (e.g., non-selected match branches).
-        if inputs.values().any(|v| matches!(v, Value::Skipped)) {
-            return OutputMap::new().value("request", Value::Skipped).ok();
-        }
-
-        // Skip when required non-config inputs are missing (e.g., param_source
-        // nodes in non-taken match branches whose data edges were never wired).
-        // Config inputs are excluded — missing config is a real user error.
-        let has_missing_required = self.spec.input_fields.iter().any(|field| {
-            field.default.is_none()
-                && !field.name.starts_with("config.")
-                && !inputs.contains_key(&field.name)
-        });
-        if has_missing_required {
-            return OutputMap::new().value("request", Value::Skipped).ok();
-        }
-
-        ensure_required_profile_config_inputs(&self.spec, &inputs)?;
-
-        // 1. Interpolate path parameters.
-        let mut path = self.spec.path_template.clone();
-        for field in &self.spec.input_fields {
-            if field.is_path_param {
-                let placeholder = format!("{{{}}}", field.name);
-                let value = input_as_string(&inputs, &field.name, field.default.as_deref())?;
-                path = path.replace(&placeholder, &value);
+        match &self.spec {
+            ServiceOperationSpec::Rest(rest_spec) => prepare_rest_request(rest_spec, inputs),
+            ServiceOperationSpec::Shell(shell_spec) => prepare_shell_request(shell_spec, inputs),
+            ServiceOperationSpec::File(file_spec) => prepare_file_request(file_spec, inputs),
+            ServiceOperationSpec::Local(local_spec) => prepare_local_request(local_spec, inputs),
+            ServiceOperationSpec::InterfaceStub { .. } => {
+                prepare_interface_stub_request(inputs)
             }
         }
-
-        // 2. Build full URL.
-        let url = if self.spec.endpoint.is_empty() {
-            path
-        } else {
-            format!("{}{}", self.spec.endpoint.trim_end_matches('/'), path)
-        };
-
-        // 3. Create request with correct HTTP method.
-        let mut request = match self.spec.method.as_str() {
-            "GET" => RestRequest::get(&url),
-            "POST" => RestRequest::post(&url),
-            "PUT" => RestRequest::put(&url),
-            "PATCH" => RestRequest::patch(&url),
-            "DELETE" => RestRequest::delete(&url),
-            other => {
-                return Err(ExecError::new(format!(
-                    "unsupported HTTP method '{other}' for {} — expected GET, POST, PUT, PATCH, or DELETE",
-                    self.spec.path_template
-                )));
-            }
-        };
-
-        // 3b. Coerce List<String> → String when the declared field type is "String".
-        // This handles e.g. `content: listing.files` where a List<String> flows into a
-        // service input declared as String — join with newlines for the HTTP body.
-        let coercions: Vec<(String, String)> = self
-            .spec
-            .input_fields
-            .iter()
-            .filter(|f| f.type_id == "String")
-            .filter_map(|f| {
-                if let Some(Value::List(items)) = inputs.get(&f.name) {
-                    let joined = items
-                        .iter()
-                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    Some((f.name.clone(), joined))
-                } else {
-                    None
-                }
-            })
-            .collect();
-        let mut inputs = inputs;
-        for (name, joined) in coercions {
-            inputs.insert(name, Value::Str(joined));
-        }
-
-        // 4. Build JSON body.
-        if self.spec.method != "GET" {
-            let body = if let Some(template) = &self.spec.body_template {
-                // Explicit body template: use literal constants + input refs + nested objects.
-                let map = build_body_from_template(template, &inputs);
-                serde_json::Value::Object(map)
-            } else {
-                // Auto-build body from all non-path, non-header-only input fields.
-                let header_fields: BTreeSet<String> = self
-                    .spec
-                    .headers
-                    .iter()
-                    .flat_map(|(_, v)| collect_template_placeholders(v))
-                    .collect();
-                let mut map = serde_json::Map::new();
-                for field in &self.spec.input_fields {
-                    if field.is_path_param || header_fields.contains(&field.name) {
-                        continue;
-                    }
-                    if let Some(value) = inputs.get(&field.name) {
-                        insert_value_as_json(&mut map, &field.name, value);
-                    } else if let Some(default) = &field.default {
-                        map.insert(
-                            field.name.clone(),
-                            serde_json::Value::String(default.clone()),
-                        );
-                    }
-                }
-                if map.is_empty() {
-                    serde_json::Value::Null
-                } else {
-                    serde_json::Value::Object(map)
-                }
-            };
-
-            if !body.is_null() {
-                request = request.json(body);
-            }
-        }
-
-        // 5. Add custom headers.
-        for (key, value) in &self.spec.headers {
-            let header_value = interpolate_template(value, &inputs, &self.spec.input_fields)?;
-            request = request.header(key, header_value);
-        }
-
-        // 6. Mark request as requiring auth when scheme is declared.
-        // Execute handler will fail-closed if res:credential is missing.
-        if self.spec.auth_scheme.is_some() {
-            request.requires_auth = true;
-        }
-
-        OutputMap::new()
-            .request("request", TransportRequest::Rest(request))
-            .ok()
     }
 }
 
-/// Generic REST parse: extracts output fields from a `RestResponse`.
+// ============================================================================
+// Unified parse op
+// ============================================================================
+
+/// Generic parse op: extracts output fields from a `TransportResponse`.
+///
+/// Dispatches to per-transport parsing logic based on the spec variant.
+/// Carries `service_name`, `operation_name`, and `auth_scheme` for REST
+/// error decoration.
 #[derive(Debug, Clone)]
-pub struct GenericRestParseOp {
-    pub spec: RestOperationSpec,
+pub struct GenericParseOp {
+    pub spec: ServiceOperationSpec,
     pub service_name: String,
     pub operation_name: String,
+    /// REST-only: auth scheme for error decoration. Empty for non-REST.
     pub auth_scheme: String,
 }
 
-impl Executable for GenericRestParseOp {
+impl Executable for GenericParseOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match inputs.get("response") {
-            Some(Value::Response(TransportResponse::Rest(rest))) => {
-                // SL-10: Validate status code against declared response mappings.
-                // This catches undeclared non-2xx status codes early.
-                validate_status_declared(
-                    rest.status,
-                    &self.spec.response_mapping,
-                    &self.spec.method,
-                    &self.spec.path_template,
-                )?;
+        match &self.spec {
+            ServiceOperationSpec::Rest(rest_spec) => parse_rest_response(
+                rest_spec,
+                &self.service_name,
+                &self.operation_name,
+                &self.auth_scheme,
+                inputs,
+            ),
+            ServiceOperationSpec::Shell(shell_spec) => parse_shell_response(
+                shell_spec,
+                &self.service_name,
+                &self.operation_name,
+                inputs,
+            ),
+            ServiceOperationSpec::File(file_spec) => parse_file_response(file_spec, inputs),
+            ServiceOperationSpec::Local(local_spec) => parse_local_response(local_spec, inputs),
+            ServiceOperationSpec::InterfaceStub { .. } => {
+                // Identity passthrough: forward all inputs as outputs.
+                Ok(inputs)
+            }
+        }
+    }
+}
 
-                if !rest.is_success() {
-                    let body_excerpt = match &rest.body {
-                        serde_json::Value::Object(map) => map
-                            .get("message")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string(),
-                        _ => String::new(),
-                    };
-                    let detail = if body_excerpt.is_empty() {
-                        format!(
-                            "{} {} failed (status {})",
-                            self.spec.method, self.spec.path_template, rest.status
-                        )
-                    } else {
-                        format!(
-                            "{} {} failed (status {}): {}",
-                            self.spec.method, self.spec.path_template, rest.status, body_excerpt
-                        )
-                    };
-                    // Determine auth scheme + credential ref.
-                    // Prefer explicit @auth scheme; fall back to inferring from
-                    // @headers Authorization pattern.
-                    let (scheme, cred_ref) = if !self.auth_scheme.is_empty() {
-                        (self.auth_scheme.clone(), None)
-                    } else {
-                        infer_auth_from_headers(&self.spec.headers)
-                    };
-                    // Attach auth context when we have auth metadata OR when
-                    // the HTTP status implies auth failure.
-                    let is_auth_status = rest.status == 401 || rest.status == 403;
-                    let auth = if !scheme.is_empty() || is_auth_status {
-                        Some(AuthContext {
-                            scheme: if scheme.is_empty() {
-                                None
-                            } else {
-                                Some(scheme)
-                            },
-                            credential_ref: cred_ref,
-                            lock_target: rest_lock_target(
-                                &self.spec.method,
-                                &self.spec.endpoint,
-                                &self.spec.path_template,
-                            ),
-                        })
-                    } else {
-                        None
-                    };
+// ============================================================================
+// Skip propagation helpers
+// ============================================================================
 
-                    let err = decorate_service_failure(
-                        ExecError::new(detail),
-                        ServiceCallMetadata {
-                            provider: self.service_name.clone(),
-                            operation: self.operation_name.clone(),
-                        },
-                        TransportContext::Rest {
-                            endpoint: self.spec.endpoint.clone(),
-                            method: self.spec.method.clone(),
-                            status_code: rest.status,
-                            reason: if body_excerpt.is_empty() {
-                                None
-                            } else {
-                                Some(body_excerpt.clone())
-                            },
-                        },
-                        auth,
+/// Check if any input is Skipped. Returns the standard skip output for REST
+/// (request-only) if so.
+fn check_rest_skip(inputs: &HashMap<String, Value>) -> Option<Result<HashMap<String, Value>, ExecError>> {
+    if inputs.values().any(|v| matches!(v, Value::Skipped)) {
+        Some(OutputMap::new().value("request", Value::Skipped).ok())
+    } else {
+        None
+    }
+}
+
+/// Check if any input is Skipped. Returns the standard skip output for
+/// Shell/File/Local (request + skip flag) if so.
+fn check_transport_skip(inputs: &HashMap<String, Value>) -> Option<Result<HashMap<String, Value>, ExecError>> {
+    if inputs.values().any(|v| matches!(v, Value::Skipped)) {
+        Some(
+            OutputMap::new()
+                .value("request", Value::Skipped)
+                .bool("skip", true)
+                .ok(),
+        )
+    } else {
+        None
+    }
+}
+
+// ============================================================================
+// REST prepare/parse
+// ============================================================================
+
+fn prepare_rest_request(
+    spec: &RestOperationSpec,
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    // Propagate skip from upstream (e.g., non-selected match branches).
+    if let Some(result) = check_rest_skip(&inputs) {
+        return result;
+    }
+
+    // Skip when required non-config inputs are missing (e.g., param_source
+    // nodes in non-taken match branches whose data edges were never wired).
+    // Config inputs are excluded — missing config is a real user error.
+    let has_missing_required = spec.input_fields.iter().any(|field| {
+        field.default.is_none()
+            && !field.name.starts_with("config.")
+            && !inputs.contains_key(&field.name)
+    });
+    if has_missing_required {
+        return OutputMap::new().value("request", Value::Skipped).ok();
+    }
+
+    ensure_required_profile_config_inputs(spec, &inputs)?;
+
+    // 1. Interpolate path parameters.
+    let mut path = spec.path_template.clone();
+    for field in &spec.input_fields {
+        if field.is_path_param {
+            let placeholder = format!("{{{}}}", field.name);
+            let value = input_as_string(&inputs, &field.name, field.default.as_deref())?;
+            path = path.replace(&placeholder, &value);
+        }
+    }
+
+    // 2. Build full URL.
+    let url = if spec.endpoint.is_empty() {
+        path
+    } else {
+        format!("{}{}", spec.endpoint.trim_end_matches('/'), path)
+    };
+
+    // 3. Create request with correct HTTP method.
+    let mut request = match spec.method.as_str() {
+        "GET" => RestRequest::get(&url),
+        "POST" => RestRequest::post(&url),
+        "PUT" => RestRequest::put(&url),
+        "PATCH" => RestRequest::patch(&url),
+        "DELETE" => RestRequest::delete(&url),
+        other => {
+            return Err(ExecError::new(format!(
+                "unsupported HTTP method '{other}' for {} — expected GET, POST, PUT, PATCH, or DELETE",
+                spec.path_template
+            )));
+        }
+    };
+
+    // 3b. Coerce List<String> → String when the declared field type is "String".
+    // This handles e.g. `content: listing.files` where a List<String> flows into a
+    // service input declared as String — join with newlines for the HTTP body.
+    let coercions: Vec<(String, String)> = spec
+        .input_fields
+        .iter()
+        .filter(|f| f.type_id == "String")
+        .filter_map(|f| {
+            if let Some(Value::List(items)) = inputs.get(&f.name) {
+                let joined = items
+                    .iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                Some((f.name.clone(), joined))
+            } else {
+                None
+            }
+        })
+        .collect();
+    let mut inputs = inputs;
+    for (name, joined) in coercions {
+        inputs.insert(name, Value::Str(joined));
+    }
+
+    // 4. Build JSON body.
+    if spec.method != "GET" {
+        let body = if let Some(template) = &spec.body_template {
+            // Explicit body template: use literal constants + input refs + nested objects.
+            let map = build_body_from_template(template, &inputs);
+            serde_json::Value::Object(map)
+        } else {
+            // Auto-build body from all non-path, non-header-only input fields.
+            let header_fields: BTreeSet<String> = spec
+                .headers
+                .iter()
+                .flat_map(|(_, v)| collect_template_placeholders(v))
+                .collect();
+            let mut map = serde_json::Map::new();
+            for field in &spec.input_fields {
+                if field.is_path_param || header_fields.contains(&field.name) {
+                    continue;
+                }
+                if let Some(value) = inputs.get(&field.name) {
+                    insert_value_as_json(&mut map, &field.name, value);
+                } else if let Some(default) = &field.default {
+                    map.insert(
+                        field.name.clone(),
+                        serde_json::Value::String(default.clone()),
                     );
-                    return Err(err);
+                }
+            }
+            if map.is_empty() {
+                serde_json::Value::Null
+            } else {
+                serde_json::Value::Object(map)
+            }
+        };
+
+        if !body.is_null() {
+            request = request.json(body);
+        }
+    }
+
+    // 5. Add custom headers.
+    for (key, value) in &spec.headers {
+        let header_value = interpolate_template(value, &inputs, &spec.input_fields)?;
+        request = request.header(key, header_value);
+    }
+
+    // 6. Mark request as requiring auth when scheme is declared.
+    // Execute handler will fail-closed if res:credential is missing.
+    if spec.auth_scheme.is_some() {
+        request.requires_auth = true;
+    }
+
+    OutputMap::new()
+        .request("request", TransportRequest::Rest(request))
+        .ok()
+}
+
+fn parse_rest_response(
+    spec: &RestOperationSpec,
+    service_name: &str,
+    operation_name: &str,
+    auth_scheme: &str,
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    match inputs.get("response") {
+        Some(Value::Response(TransportResponse::Rest(rest))) => {
+            // SL-10: Validate status code against declared response mappings.
+            // This catches undeclared non-2xx status codes early.
+            validate_status_declared(
+                rest.status,
+                &spec.response_mapping,
+                &spec.method,
+                &spec.path_template,
+            )?;
+
+            if !rest.is_success() {
+                let body_excerpt = match &rest.body {
+                    serde_json::Value::Object(map) => map
+                        .get("message")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    _ => String::new(),
+                };
+                let detail = if body_excerpt.is_empty() {
+                    format!(
+                        "{} {} failed (status {})",
+                        spec.method, spec.path_template, rest.status
+                    )
+                } else {
+                    format!(
+                        "{} {} failed (status {}): {}",
+                        spec.method, spec.path_template, rest.status, body_excerpt
+                    )
+                };
+                // Determine auth scheme + credential ref.
+                // Prefer explicit @auth scheme; fall back to inferring from
+                // @headers Authorization pattern.
+                let (scheme, cred_ref) = if !auth_scheme.is_empty() {
+                    (auth_scheme.to_string(), None)
+                } else {
+                    infer_auth_from_headers(&spec.headers)
+                };
+                // Attach auth context when we have auth metadata OR when
+                // the HTTP status implies auth failure.
+                let is_auth_status = rest.status == 401 || rest.status == 403;
+                let auth = if !scheme.is_empty() || is_auth_status {
+                    Some(AuthContext {
+                        scheme: if scheme.is_empty() {
+                            None
+                        } else {
+                            Some(scheme)
+                        },
+                        credential_ref: cred_ref,
+                        lock_target: rest_lock_target(
+                            &spec.method,
+                            &spec.endpoint,
+                            &spec.path_template,
+                        ),
+                    })
+                } else {
+                    None
+                };
+
+                let err = decorate_service_failure(
+                    ExecError::new(detail),
+                    ServiceCallMetadata {
+                        provider: service_name.to_string(),
+                        operation: operation_name.to_string(),
+                    },
+                    TransportContext::Rest {
+                        endpoint: spec.endpoint.clone(),
+                        method: spec.method.clone(),
+                        status_code: rest.status,
+                        reason: if body_excerpt.is_empty() {
+                            None
+                        } else {
+                            Some(body_excerpt.clone())
+                        },
+                    },
+                    auth,
+                );
+                return Err(err);
+            }
+
+            let mut out = OutputMap::new();
+            // C29: Use output_shape for type-aware extraction when available,
+            // fall back to output_fields for backward compatibility.
+            if let Some(shape) = &spec.output_shape {
+                for field in &shape.fields {
+                    let value = extract_shape_field(field, &rest.body)?;
+                    out = out.value(&field.name, value);
+                }
+            } else {
+                for field in &spec.output_fields {
+                    let value = extract_output_field(field, &rest.body)?;
+                    out = out.value(&field.name, value);
+                }
+            }
+            out.ok()
+        }
+        Some(Value::Skipped) | None => {
+            // Produce default/empty values for all output fields.
+            let mut out = OutputMap::new();
+            for field in &spec.output_fields {
+                out = out.value(&field.name, default_output_value(field));
+            }
+            out.ok()
+        }
+        Some(other) => Err(ExecError::new(format!(
+            "expected REST response for {} parse, got {:?}",
+            spec.path_template,
+            std::mem::discriminant(other)
+        ))),
+    }
+}
+
+// ============================================================================
+// Shell prepare/parse
+// ============================================================================
+
+fn prepare_shell_request(
+    spec: &ShellOperationSpec,
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    // Propagate skip from upstream (e.g., non-selected match branches).
+    if let Some(result) = check_transport_skip(&inputs) {
+        return result;
+    }
+
+    // Skip when required inputs are missing (non-taken branch param sources).
+    let has_missing_required = spec
+        .input_fields
+        .iter()
+        .any(|field| field.default.is_none() && !inputs.contains_key(&field.name));
+    if has_missing_required {
+        return OutputMap::new()
+            .value("request", Value::Skipped)
+            .bool("skip", true)
+            .ok();
+    }
+
+    let mut argv: Vec<String> = Vec::new();
+
+    for segment in &spec.argv_template {
+        match segment {
+            ArgvSegment::Literal(s) => {
+                // Handle complex interpolation: e.g., "{base}...{head}"
+                if s.contains('{') {
+                    let interpolated =
+                        interpolate_template(s, &inputs, &spec.input_fields)?;
+                    argv.push(interpolated);
+                } else {
+                    argv.push(s.clone());
+                }
+            }
+            ArgvSegment::InputRef(name) => {
+                let value = input_as_string_for_shell(&inputs, name, &spec.input_fields)?;
+                argv.push(value);
+            }
+        }
+    }
+
+    // Append List<String> input fields not already in argv (e.g., `args` in cargo.Build.Run).
+    for field in &spec.input_fields {
+        if field.is_path_param {
+            continue; // Already handled in argv template.
+        }
+        if field.type_id.starts_with("List<") || field.type_id.starts_with("List ") {
+            if let Some(Value::List(items)) = inputs.get(&field.name) {
+                for item in items {
+                    if let Some(s) = item.as_str() {
+                        argv.push(s.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    if argv.is_empty() {
+        return Err(ExecError::new("shell spec produced empty argv"));
+    }
+
+    let command = argv.remove(0);
+    let mut request = ShellRequest::new(command).args(argv);
+
+    for (key, value) in &spec.env {
+        request = request.env(key, value);
+    }
+
+    OutputMap::new()
+        .request("request", TransportRequest::Shell(request))
+        .bool("skip", false)
+        .ok()
+}
+
+/// Wrap shell stdout as `Value::Secret` or `Value::Str` based on the output field spec.
+fn shell_trim_value(field: Option<&OutputFieldSpec>, text: String) -> Value {
+    let is_secret = field
+        .map(|f| f.type_id == "Secret" || f.is_secret)
+        .unwrap_or(false);
+    if is_secret {
+        Value::Secret(SecretString::new(text))
+    } else {
+        Value::Str(text)
+    }
+}
+
+fn shell_exit_error(
+    service_name: &str,
+    operation_name: &str,
+    shell: &ShellResponse,
+) -> ExecError {
+    let stderr = shell.stderr.trim();
+    let detail = if stderr.is_empty() {
+        String::new()
+    } else {
+        format!(" (stderr: {})", stderr)
+    };
+    ExecError::new(format!(
+        "{}.{}: shell command exited with code {}{}",
+        service_name, operation_name, shell.exit_code, detail
+    ))
+}
+
+fn parse_shell_response(
+    spec: &ShellOperationSpec,
+    service_name: &str,
+    operation_name: &str,
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    match inputs.get("response") {
+        Some(Value::Response(TransportResponse::Shell(shell))) => {
+            match spec.output_parsing {
+                ShellOutputParsing::SuccessStdoutStderr => OutputMap::new()
+                    .bool("success", shell.success())
+                    .str("stdout", shell.stdout.clone())
+                    .str("stderr", shell.stderr.clone())
+                    .ok(),
+
+                ShellOutputParsing::ExitCodeBool => {
+                    // Use the first output field name (e.g., "needed", "exists", "ok").
+                    let field_name = spec
+                        .output_fields
+                        .first()
+                        .map(|f| f.name.as_str())
+                        .unwrap_or("success");
+                    OutputMap::new().bool(field_name, shell.success()).ok()
                 }
 
+                ShellOutputParsing::SplitLines => {
+                    // On non-zero exit, return an empty list.
+                    // SplitLines is used for list-producing operations
+                    // (find, ls-files, etc.) where "nothing found" is a
+                    // valid result, and tools like `find` return exit 1
+                    // when the search path doesn't exist.
+                    if !shell.success() {
+                        let field_name = spec
+                            .output_fields
+                            .first()
+                            .map(|f| f.name.as_str())
+                            .unwrap_or("lines");
+                        return OutputMap::new().str_list(field_name, Vec::new()).ok();
+                    }
+                    let lines: Vec<String> = shell
+                        .stdout
+                        .lines()
+                        .map(str::trim)
+                        .filter(|line| !line.is_empty())
+                        .map(|line| line.to_string())
+                        .collect();
+                    let field_name = spec
+                        .output_fields
+                        .first()
+                        .map(|f| f.name.as_str())
+                        .unwrap_or("lines");
+                    OutputMap::new().str_list(field_name, lines).ok()
+                }
+
+                ShellOutputParsing::TrimStdout => {
+                    let field = spec.output_fields.first();
+                    let field_name = field.map(|f| f.name.as_str()).unwrap_or("output");
+                    // On non-zero exit: if output type is optional (T?),
+                    // return None (the command "didn't find" a value).
+                    // Otherwise fail — empty stdout from a failed command
+                    // must not propagate as a valid result.
+                    if !shell.success() {
+                        let is_optional = field.map(|f| f.is_optional).unwrap_or(false);
+                        if is_optional {
+                            return OutputMap::new().value(field_name, Value::Skipped).ok();
+                        }
+                        return Err(shell_exit_error(service_name, operation_name, shell));
+                    }
+                    let text = shell.stdout.trim().to_string();
+                    OutputMap::new()
+                        .value(field_name, shell_trim_value(field, text))
+                        .ok()
+                }
+            }
+        }
+        Some(Value::Skipped) | None => {
+            // Produce defaults based on parsing mode.
+            match spec.output_parsing {
+                ShellOutputParsing::SuccessStdoutStderr => OutputMap::new()
+                    .bool("success", false)
+                    .str("stdout", String::new())
+                    .str("stderr", String::new())
+                    .ok(),
+                ShellOutputParsing::ExitCodeBool => {
+                    let field_name = spec
+                        .output_fields
+                        .first()
+                        .map(|f| f.name.as_str())
+                        .unwrap_or("success");
+                    OutputMap::new().bool(field_name, false).ok()
+                }
+                ShellOutputParsing::SplitLines => {
+                    let field_name = spec
+                        .output_fields
+                        .first()
+                        .map(|f| f.name.as_str())
+                        .unwrap_or("lines");
+                    OutputMap::new().str_list(field_name, Vec::new()).ok()
+                }
+                ShellOutputParsing::TrimStdout => {
+                    let field = spec.output_fields.first();
+                    let field_name = field.map(|f| f.name.as_str()).unwrap_or("output");
+                    OutputMap::new()
+                        .value(field_name, shell_trim_value(field, String::new()))
+                        .ok()
+                }
+            }
+        }
+        Some(other) => Err(decorate_service_failure(
+            ExecError::new(format!(
+                "expected Shell response for parse, got {:?}",
+                std::mem::discriminant(other)
+            )),
+            ServiceCallMetadata {
+                provider: service_name.to_string(),
+                operation: operation_name.to_string(),
+            },
+            TransportContext::Shell {
+                exit_code: Some(-1),
+                command: spec
+                    .argv_template
+                    .iter()
+                    .filter_map(|s| match s {
+                        ArgvSegment::Literal(l) => Some(l.as_str()),
+                        _ => None,
+                    })
+                    .next()
+                    .unwrap_or("unknown")
+                    .to_string(),
+            },
+            None,
+        )),
+    }
+}
+
+// ============================================================================
+// File prepare/parse
+// ============================================================================
+
+fn prepare_file_request(
+    spec: &FileOperationSpec,
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    if let Some(result) = check_transport_skip(&inputs) {
+        return result;
+    }
+    let path = inputs.get("path").and_then(Value::as_str).ok_or_else(|| {
+        ExecError::new("GenericFilePrepare: missing required `path` input".to_string())
+    })?;
+    let request = match spec.operation {
+        FileOp::Read => FileRequest::read(path),
+        FileOp::ReadBytes => FileRequest::read_bytes(path),
+        FileOp::Write => {
+            let content = inputs
+                .get("content")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            FileRequest::write(path, content)
+        }
+        FileOp::Append => {
+            let content = inputs
+                .get("content")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            FileRequest::append(path, content)
+        }
+        FileOp::Delete => FileRequest::delete(path),
+        FileOp::Exists => FileRequest::exists(path),
+        FileOp::CreateDir => FileRequest::create_dir(path),
+        FileOp::Glob => FileRequest::glob(path),
+        FileOp::Metadata => FileRequest::metadata(path),
+    };
+    OutputMap::new()
+        .request("request", TransportRequest::File(request))
+        .bool("skip", false)
+        .ok()
+}
+
+fn parse_file_response(
+    spec: &FileOperationSpec,
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    match inputs.get("response") {
+        Some(Value::Response(TransportResponse::File(file_resp))) => {
+            if !file_resp.success {
+                let err = file_resp.error.as_deref().unwrap_or("unknown file error");
+                return Err(ExecError::new(format!(
+                    "File operation failed on `{}`: {err}",
+                    file_resp.path
+                )));
+            }
+            let mut out = OutputMap::new();
+            for field in &spec.output_fields {
+                match field.name.as_str() {
+                    "content" => {
+                        let content = file_resp.content.as_deref().unwrap_or_default();
+                        out = out.str("content", content);
+                    }
+                    "written" | "deleted" | "created" => {
+                        out = out.bool(&field.name, file_resp.success);
+                    }
+                    "exists" => {
+                        out = out.bool("exists", file_resp.exists.unwrap_or(false));
+                    }
+                    "paths" => {
+                        // Glob results: newline-separated list → List<String>
+                        let content = file_resp.content.as_deref().unwrap_or_default();
+                        let paths: Vec<Value> = content
+                            .lines()
+                            .filter(|l| !l.is_empty())
+                            .map(|l| Value::Str(l.to_string()))
+                            .collect();
+                        out = out.value("paths", Value::List(paths));
+                    }
+                    other => {
+                        let content = file_resp.content.as_deref().unwrap_or_default();
+                        out = out.str(other, content);
+                    }
+                }
+            }
+            out.ok()
+        }
+        Some(Value::Skipped) | None => {
+            let mut out = OutputMap::new();
+            for field in &spec.output_fields {
+                out = out.value(&field.name, Value::Skipped);
+            }
+            out.ok()
+        }
+        other => Err(ExecError::new(format!(
+            "GenericFileParse: expected File response, got {other:?}"
+        ))),
+    }
+}
+
+// ============================================================================
+// Local prepare/parse
+// ============================================================================
+
+fn prepare_local_request(
+    spec: &LocalOperationSpec,
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    if let Some(result) = check_transport_skip(&inputs) {
+        return result;
+    }
+    let mut body = serde_json::Map::new();
+    for field in &spec.input_fields {
+        if let Some(val) = inputs.get(&field.name) {
+            if let Some(json_val) = value_to_json(val) {
+                body.insert(field.name.clone(), json_val);
+            }
+        }
+    }
+    let request = LocalRequest {
+        inputs: serde_json::Value::Object(body),
+    };
+    OutputMap::new()
+        .request("request", TransportRequest::Local(request))
+        .bool("skip", false)
+        .ok()
+}
+
+fn parse_local_response(
+    spec: &LocalOperationSpec,
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    match inputs.get("response") {
+        Some(Value::Response(TransportResponse::Local(local_resp))) => {
+            let parsed = &local_resp.outputs;
+            let mut out = OutputMap::new();
+            for field in &spec.output_fields {
+                let val = parsed.get(&field.name);
+                out = match val {
+                    Some(serde_json::Value::String(s)) => out.str(&field.name, s.clone()),
+                    Some(serde_json::Value::Bool(b)) => out.bool(&field.name, *b),
+                    Some(other) => out.str(&field.name, other.to_string()),
+                    None => out.value(&field.name, Value::Unit),
+                };
+            }
+            out.ok()
+        }
+        // Backward compat: accept Shell responses from the old echo-based carrier.
+        Some(Value::Response(TransportResponse::Shell(shell))) => {
+            // Empty stdout (common in DryRun mocks): treat as Skipped.
+            if shell.stdout.trim().is_empty() {
                 let mut out = OutputMap::new();
-                // C29: Use output_shape for type-aware extraction when available,
-                // fall back to output_fields for backward compatibility.
-                if let Some(shape) = &self.spec.output_shape {
-                    for field in &shape.fields {
-                        let value = extract_shape_field(field, &rest.body)?;
-                        out = out.value(&field.name, value);
+                for field in &spec.output_fields {
+                    out = out.value(&field.name, Value::Skipped);
+                }
+                return out.ok();
+            }
+            let parsed: serde_json::Value =
+                serde_json::from_str(shell.stdout.trim()).map_err(|e| {
+                    ExecError::new(format!(
+                        "GenericLocalParse: failed to parse shell stdout as JSON: {e}"
+                    ))
+                })?;
+            let mut out = OutputMap::new();
+            for field in &spec.output_fields {
+                let val = parsed.get(&field.name);
+                out = match val {
+                    Some(serde_json::Value::String(s)) => out.str(&field.name, s.clone()),
+                    Some(serde_json::Value::Bool(b)) => out.bool(&field.name, *b),
+                    Some(other) => out.str(&field.name, other.to_string()),
+                    None => out.value(&field.name, Value::Unit),
+                };
+            }
+            out.ok()
+        }
+        Some(Value::Skipped) | None => {
+            let mut out = OutputMap::new();
+            for field in &spec.output_fields {
+                out = out.value(&field.name, Value::Skipped);
+            }
+            out.ok()
+        }
+        Some(other) => Err(ExecError::new(format!(
+            "GenericLocalParse: expected Local or Shell response, got {:?}",
+            std::mem::discriminant(other)
+        ))),
+    }
+}
+
+// ============================================================================
+// InterfaceStub prepare
+// ============================================================================
+
+fn prepare_interface_stub_request(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    if let Some(result) = check_transport_skip(&inputs) {
+        return result;
+    }
+    // Package inputs as a Local request for structural transport detection.
+    // Redact secrets — stub transport should never expose plaintext.
+    let mut body = serde_json::Map::new();
+    for (key, val) in &inputs {
+        if matches!(val, Value::Secret(_)) {
+            body.insert(key.clone(), serde_json::Value::String("***".to_string()));
+        } else if let Some(json_val) = value_to_json(val) {
+            body.insert(key.clone(), json_val);
+        }
+    }
+    let request = gunbc_ir::transport::LocalRequest {
+        inputs: serde_json::Value::Object(body),
+    };
+    OutputMap::new()
+        .request("request", TransportRequest::Local(request))
+        .bool("skip", false)
+        .ok()
+}
+
+// ============================================================================
+// InterfaceStub execute (kept separate — different semantics)
+// ============================================================================
+
+/// Interface stub execute: errors in Real mode when no concrete binding exists,
+/// auto-mocked in DryRun (boundary mocks supply typed outputs).
+#[derive(Debug, Clone)]
+pub struct InterfaceStubExecuteOp {
+    pub interface: String,
+    pub capability: String,
+}
+
+impl Executable for InterfaceStubExecuteOp {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        Err(ExecError::new(format!(
+            "interface stub `{}.{}` has no concrete binding in Real mode \
+             (this call would be auto-mocked in DryRun mode)",
+            self.interface, self.capability
+        )))
+    }
+}
+
+/// Concrete Filesystem transport binding. Handles `probe`, `read`, and `write`
+/// capabilities using `std::fs` operations so that `uses fs: Filesystem(...)`
+/// works in Real mode without an external transport.
+#[derive(Debug, Clone)]
+pub struct FilesystemExecuteOp {
+    pub capability: String,
+}
+
+impl FilesystemExecuteOp {
+    fn extract_path(inputs: &HashMap<String, Value>) -> Result<String, ExecError> {
+        if let Some(Value::Request(TransportRequest::Local(req))) = inputs.get("request") {
+            if let Some(serde_json::Value::String(p)) = req.inputs.get("path") {
+                return Ok(p.clone());
+            }
+        }
+        // Fallback: path passed directly (e.g. from test harnesses).
+        if let Some(Value::Str(p)) = inputs.get("path") {
+            return Ok(p.clone());
+        }
+        Err(ExecError::new(
+            "FilesystemExecuteOp: missing 'path' in request inputs".to_string(),
+        ))
+    }
+
+    fn probe(path: &str) -> HashMap<String, Value> {
+        let metadata = std::fs::symlink_metadata(path);
+        let (kind, size) = match &metadata {
+            Ok(m) if m.is_dir() => ("Directory", m.len() as i64),
+            Ok(m) if m.file_type().is_symlink() => ("Symlink", m.len() as i64),
+            Ok(m) => ("RegularFile", m.len() as i64),
+            Err(_) => ("Missing", 0i64),
+        };
+        let encoding = match kind {
+            "RegularFile" => {
+                let is_text = std::fs::read(path)
+                    .map(|bytes| {
+                        let check_len = bytes.len().min(8192);
+                        !bytes[..check_len].contains(&0)
+                    })
+                    .unwrap_or(false);
+                if is_text {
+                    Value::Enum {
+                        ty: "ContentEncoding".to_string(),
+                        variant: "UTF8".to_string(),
                     }
                 } else {
-                    for field in &self.spec.output_fields {
-                        let value = extract_output_field(field, &rest.body)?;
-                        out = out.value(&field.name, value);
+                    Value::Enum {
+                        ty: "ContentEncoding".to_string(),
+                        variant: "Binary".to_string(),
                     }
                 }
-                out.ok()
             }
-            Some(Value::Skipped) | None => {
-                // Produce default/empty values for all output fields.
-                let mut out = OutputMap::new();
-                for field in &self.spec.output_fields {
-                    out = out.value(&field.name, default_output_value(field));
+            _ => Value::Unit,
+        };
+
+        let mut classification = std::collections::BTreeMap::new();
+        classification.insert("path".to_string(), Value::Str(path.to_string()));
+        classification.insert(
+            "kind".to_string(),
+            Value::Enum {
+                ty: "EntryKind".to_string(),
+                variant: kind.to_string(),
+            },
+        );
+        classification.insert("encoding".to_string(), encoding);
+        classification.insert("symlink_target".to_string(), Value::Unit);
+        classification.insert("size".to_string(), Value::Int(size));
+        classification.insert("mime".to_string(), Value::Unit);
+
+        let mut out = HashMap::new();
+        out.insert("classification".to_string(), Value::Map(classification));
+        out
+    }
+
+    fn read_text(path: &str) -> Result<HashMap<String, Value>, ExecError> {
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| ExecError::new(format!("Filesystem.read failed for '{path}': {e}")))?;
+        let mut out = HashMap::new();
+        out.insert("content".to_string(), Value::Str(content));
+        Ok(out)
+    }
+}
+
+impl Executable for FilesystemExecuteOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        if inputs
+            .get("skip")
+            .is_some_and(|v| matches!(v, Value::Bool(true)))
+            || inputs.values().any(|v| matches!(v, Value::Skipped))
+        {
+            let mut out = HashMap::new();
+            match self.capability.as_str() {
+                "probe" => {
+                    out.insert("classification".to_string(), Value::Skipped);
                 }
-                out.ok()
+                "read" | "read_bytes" => {
+                    out.insert("content".to_string(), Value::Skipped);
+                }
+                "write" => {
+                    out.insert("written".to_string(), Value::Skipped);
+                }
+                _ => {
+                    out.insert("result".to_string(), Value::Skipped);
+                }
             }
-            Some(other) => Err(ExecError::new(format!(
-                "expected REST response for {} parse, got {:?}",
-                self.spec.path_template,
-                std::mem::discriminant(other)
+            return Ok(out);
+        }
+
+        let path = Self::extract_path(&inputs)?;
+
+        match self.capability.as_str() {
+            "probe" => Ok(Self::probe(&path)),
+            "read" => Self::read_text(&path),
+            "read_bytes" => {
+                let bytes = std::fs::read(&path).map_err(|e| {
+                    ExecError::new(format!("Filesystem.read_bytes failed for '{path}': {e}"))
+                })?;
+                let mut out = HashMap::new();
+                out.insert("content".to_string(), Value::Bytes(bytes));
+                Ok(out)
+            }
+            "write" => {
+                let content = if let Some(Value::Request(TransportRequest::Local(req))) =
+                    inputs.get("request")
+                {
+                    req.inputs
+                        .get("content")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                } else {
+                    inputs
+                        .get("content")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                };
+                let content = content.ok_or_else(|| {
+                    ExecError::new(format!(
+                        "Filesystem.write: missing or non-string 'content' for '{path}'"
+                    ))
+                })?;
+                std::fs::write(&path, &content).map_err(|e| {
+                    ExecError::new(format!("Filesystem.write failed for '{path}': {e}"))
+                })?;
+                let mut out = HashMap::new();
+                out.insert("written".to_string(), Value::Bool(true));
+                Ok(out)
+            }
+            other => Err(ExecError::new(format!(
+                "FilesystemExecuteOp: unknown capability '{other}'"
             ))),
         }
     }
 }
+
+// ============================================================================
+// Helpers
+// ============================================================================
 
 /// Check if a status code matches a response mapping entry's pattern.
 fn status_matches_pattern(status: u16, pattern: &ResponseStatusPattern) -> bool {
@@ -513,271 +1244,6 @@ fn default_output_value(field: &OutputFieldSpec) -> Value {
         }
     }
 }
-
-// ============================================================================
-// Shell
-// ============================================================================
-
-/// Generic Shell prepare: builds a `ShellRequest` from a `ShellOperationSpec`.
-#[derive(Debug, Clone)]
-pub struct GenericShellPrepareOp {
-    pub spec: ShellOperationSpec,
-}
-
-impl Executable for GenericShellPrepareOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        // Propagate skip from upstream (e.g., non-selected match branches).
-        if inputs.values().any(|v| matches!(v, Value::Skipped)) {
-            return OutputMap::new()
-                .value("request", Value::Skipped)
-                .bool("skip", true)
-                .ok();
-        }
-
-        // Skip when required inputs are missing (non-taken branch param sources).
-        let has_missing_required = self
-            .spec
-            .input_fields
-            .iter()
-            .any(|field| field.default.is_none() && !inputs.contains_key(&field.name));
-        if has_missing_required {
-            return OutputMap::new()
-                .value("request", Value::Skipped)
-                .bool("skip", true)
-                .ok();
-        }
-
-        let mut argv: Vec<String> = Vec::new();
-
-        for segment in &self.spec.argv_template {
-            match segment {
-                ArgvSegment::Literal(s) => {
-                    // Handle complex interpolation: e.g., "{base}...{head}"
-                    if s.contains('{') {
-                        let interpolated =
-                            interpolate_template(s, &inputs, &self.spec.input_fields)?;
-                        argv.push(interpolated);
-                    } else {
-                        argv.push(s.clone());
-                    }
-                }
-                ArgvSegment::InputRef(name) => {
-                    let value = input_as_string_for_shell(&inputs, name, &self.spec.input_fields)?;
-                    argv.push(value);
-                }
-            }
-        }
-
-        // Append List<String> input fields not already in argv (e.g., `args` in cargo.Build.Run).
-        for field in &self.spec.input_fields {
-            if field.is_path_param {
-                continue; // Already handled in argv template.
-            }
-            if field.type_id.starts_with("List<") || field.type_id.starts_with("List ") {
-                if let Some(Value::List(items)) = inputs.get(&field.name) {
-                    for item in items {
-                        if let Some(s) = item.as_str() {
-                            argv.push(s.to_string());
-                        }
-                    }
-                }
-            }
-        }
-
-        if argv.is_empty() {
-            return Err(ExecError::new("shell spec produced empty argv"));
-        }
-
-        let command = argv.remove(0);
-        let mut request = ShellRequest::new(command).args(argv);
-
-        for (key, value) in &self.spec.env {
-            request = request.env(key, value);
-        }
-
-        OutputMap::new()
-            .request("request", TransportRequest::Shell(request))
-            .bool("skip", false)
-            .ok()
-    }
-}
-
-/// Wrap shell stdout as `Value::Secret` or `Value::Str` based on the output field spec.
-fn shell_trim_value(field: Option<&OutputFieldSpec>, text: String) -> Value {
-    let is_secret = field
-        .map(|f| f.type_id == "Secret" || f.is_secret)
-        .unwrap_or(false);
-    if is_secret {
-        Value::Secret(SecretString::new(text))
-    } else {
-        Value::Str(text)
-    }
-}
-
-/// Generic Shell parse: extracts output fields from a `ShellResponse`.
-#[derive(Debug, Clone)]
-pub struct GenericShellParseOp {
-    pub spec: ShellOperationSpec,
-    pub service_name: String,
-    pub operation_name: String,
-}
-
-impl GenericShellParseOp {
-    fn shell_exit_error(&self, shell: &ShellResponse) -> ExecError {
-        let stderr = shell.stderr.trim();
-        let detail = if stderr.is_empty() {
-            String::new()
-        } else {
-            format!(" (stderr: {})", stderr)
-        };
-        ExecError::new(format!(
-            "{}.{}: shell command exited with code {}{}",
-            self.service_name, self.operation_name, shell.exit_code, detail
-        ))
-    }
-}
-
-impl Executable for GenericShellParseOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match inputs.get("response") {
-            Some(Value::Response(TransportResponse::Shell(shell))) => {
-                match self.spec.output_parsing {
-                    ShellOutputParsing::SuccessStdoutStderr => OutputMap::new()
-                        .bool("success", shell.success())
-                        .str("stdout", shell.stdout.clone())
-                        .str("stderr", shell.stderr.clone())
-                        .ok(),
-
-                    ShellOutputParsing::ExitCodeBool => {
-                        // Use the first output field name (e.g., "needed", "exists", "ok").
-                        let field_name = self
-                            .spec
-                            .output_fields
-                            .first()
-                            .map(|f| f.name.as_str())
-                            .unwrap_or("success");
-                        OutputMap::new().bool(field_name, shell.success()).ok()
-                    }
-
-                    ShellOutputParsing::SplitLines => {
-                        // On non-zero exit, return an empty list.
-                        // SplitLines is used for list-producing operations
-                        // (find, ls-files, etc.) where "nothing found" is a
-                        // valid result, and tools like `find` return exit 1
-                        // when the search path doesn't exist.
-                        if !shell.success() {
-                            let field_name = self
-                                .spec
-                                .output_fields
-                                .first()
-                                .map(|f| f.name.as_str())
-                                .unwrap_or("lines");
-                            return OutputMap::new().str_list(field_name, Vec::new()).ok();
-                        }
-                        let lines: Vec<String> = shell
-                            .stdout
-                            .lines()
-                            .map(str::trim)
-                            .filter(|line| !line.is_empty())
-                            .map(|line| line.to_string())
-                            .collect();
-                        let field_name = self
-                            .spec
-                            .output_fields
-                            .first()
-                            .map(|f| f.name.as_str())
-                            .unwrap_or("lines");
-                        OutputMap::new().str_list(field_name, lines).ok()
-                    }
-
-                    ShellOutputParsing::TrimStdout => {
-                        let field = self.spec.output_fields.first();
-                        let field_name = field.map(|f| f.name.as_str()).unwrap_or("output");
-                        // On non-zero exit: if output type is optional (T?),
-                        // return None (the command "didn't find" a value).
-                        // Otherwise fail — empty stdout from a failed command
-                        // must not propagate as a valid result.
-                        if !shell.success() {
-                            let is_optional = field.map(|f| f.is_optional).unwrap_or(false);
-                            if is_optional {
-                                return OutputMap::new().value(field_name, Value::Skipped).ok();
-                            }
-                            return Err(self.shell_exit_error(shell));
-                        }
-                        let text = shell.stdout.trim().to_string();
-                        OutputMap::new()
-                            .value(field_name, shell_trim_value(field, text))
-                            .ok()
-                    }
-                }
-            }
-            Some(Value::Skipped) | None => {
-                // Produce defaults based on parsing mode.
-                match self.spec.output_parsing {
-                    ShellOutputParsing::SuccessStdoutStderr => OutputMap::new()
-                        .bool("success", false)
-                        .str("stdout", String::new())
-                        .str("stderr", String::new())
-                        .ok(),
-                    ShellOutputParsing::ExitCodeBool => {
-                        let field_name = self
-                            .spec
-                            .output_fields
-                            .first()
-                            .map(|f| f.name.as_str())
-                            .unwrap_or("success");
-                        OutputMap::new().bool(field_name, false).ok()
-                    }
-                    ShellOutputParsing::SplitLines => {
-                        let field_name = self
-                            .spec
-                            .output_fields
-                            .first()
-                            .map(|f| f.name.as_str())
-                            .unwrap_or("lines");
-                        OutputMap::new().str_list(field_name, Vec::new()).ok()
-                    }
-                    ShellOutputParsing::TrimStdout => {
-                        let field = self.spec.output_fields.first();
-                        let field_name = field.map(|f| f.name.as_str()).unwrap_or("output");
-                        OutputMap::new()
-                            .value(field_name, shell_trim_value(field, String::new()))
-                            .ok()
-                    }
-                }
-            }
-            Some(other) => Err(decorate_service_failure(
-                ExecError::new(format!(
-                    "expected Shell response for parse, got {:?}",
-                    std::mem::discriminant(other)
-                )),
-                ServiceCallMetadata {
-                    provider: self.service_name.clone(),
-                    operation: self.operation_name.clone(),
-                },
-                TransportContext::Shell {
-                    exit_code: Some(-1),
-                    command: self
-                        .spec
-                        .argv_template
-                        .iter()
-                        .filter_map(|s| match s {
-                            ArgvSegment::Literal(l) => Some(l.as_str()),
-                            _ => None,
-                        })
-                        .next()
-                        .unwrap_or("unknown")
-                        .to_string(),
-                },
-                None,
-            )),
-        }
-    }
-}
-
-// ============================================================================
-// Helpers
-// ============================================================================
 
 /// Build a stable lock target for REST acquisition diagnostics.
 ///
@@ -1124,453 +1590,6 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
-// ============================================================================
-// FILE
-// ============================================================================
-
-/// Generic file prepare: builds a `FileRequest` from a `FileOperationSpec`.
-#[derive(Debug, Clone)]
-pub struct GenericFilePrepareOp {
-    pub spec: FileOperationSpec,
-}
-
-impl Executable for GenericFilePrepareOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        if inputs.values().any(|v| matches!(v, Value::Skipped)) {
-            return OutputMap::new()
-                .value("request", Value::Skipped)
-                .bool("skip", true)
-                .ok();
-        }
-        let path = inputs.get("path").and_then(Value::as_str).ok_or_else(|| {
-            ExecError::new("GenericFilePrepare: missing required `path` input".to_string())
-        })?;
-        let request = match self.spec.operation {
-            FileOp::Read => FileRequest::read(path),
-            FileOp::ReadBytes => FileRequest::read_bytes(path),
-            FileOp::Write => {
-                let content = inputs
-                    .get("content")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                FileRequest::write(path, content)
-            }
-            FileOp::Append => {
-                let content = inputs
-                    .get("content")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                FileRequest::append(path, content)
-            }
-            FileOp::Delete => FileRequest::delete(path),
-            FileOp::Exists => FileRequest::exists(path),
-            FileOp::CreateDir => FileRequest::create_dir(path),
-            FileOp::Glob => FileRequest::glob(path),
-            FileOp::Metadata => FileRequest::metadata(path),
-        };
-        OutputMap::new()
-            .request("request", TransportRequest::File(request))
-            .bool("skip", false)
-            .ok()
-    }
-}
-
-/// Generic file parse: extracts content from a `FileResponse`.
-#[derive(Debug, Clone)]
-pub struct GenericFileParseOp {
-    pub spec: FileOperationSpec,
-}
-
-impl Executable for GenericFileParseOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match inputs.get("response") {
-            Some(Value::Response(TransportResponse::File(file_resp))) => {
-                if !file_resp.success {
-                    let err = file_resp.error.as_deref().unwrap_or("unknown file error");
-                    return Err(ExecError::new(format!(
-                        "File operation failed on `{}`: {err}",
-                        file_resp.path
-                    )));
-                }
-                let mut out = OutputMap::new();
-                for field in &self.spec.output_fields {
-                    match field.name.as_str() {
-                        "content" => {
-                            let content = file_resp.content.as_deref().unwrap_or_default();
-                            out = out.str("content", content);
-                        }
-                        "written" | "deleted" | "created" => {
-                            out = out.bool(&field.name, file_resp.success);
-                        }
-                        "exists" => {
-                            out = out.bool("exists", file_resp.exists.unwrap_or(false));
-                        }
-                        "paths" => {
-                            // Glob results: newline-separated list → List<String>
-                            let content = file_resp.content.as_deref().unwrap_or_default();
-                            let paths: Vec<Value> = content
-                                .lines()
-                                .filter(|l| !l.is_empty())
-                                .map(|l| Value::Str(l.to_string()))
-                                .collect();
-                            out = out.value("paths", Value::List(paths));
-                        }
-                        other => {
-                            let content = file_resp.content.as_deref().unwrap_or_default();
-                            out = out.str(other, content);
-                        }
-                    }
-                }
-                out.ok()
-            }
-            Some(Value::Skipped) | None => {
-                let mut out = OutputMap::new();
-                for field in &self.spec.output_fields {
-                    out = out.value(&field.name, Value::Skipped);
-                }
-                out.ok()
-            }
-            other => Err(ExecError::new(format!(
-                "GenericFileParse: expected File response, got {other:?}"
-            ))),
-        }
-    }
-}
-
-// ============================================================================
-// Local (pure computation, no I/O)
-// ============================================================================
-
-/// Generic local prepare: packages inputs as a JSON body in a ShellRequest.
-/// In DryRun mode, the execute node returns mock data; in real mode, a local
-/// computation executor would interpret the request.
-#[derive(Debug, Clone)]
-pub struct GenericLocalPrepareOp {
-    pub spec: LocalOperationSpec,
-}
-
-impl Executable for GenericLocalPrepareOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        if inputs.values().any(|v| matches!(v, Value::Skipped)) {
-            return OutputMap::new()
-                .value("request", Value::Skipped)
-                .bool("skip", true)
-                .ok();
-        }
-        let mut body = serde_json::Map::new();
-        for field in &self.spec.input_fields {
-            if let Some(val) = inputs.get(&field.name) {
-                if let Some(json_val) = value_to_json(val) {
-                    body.insert(field.name.clone(), json_val);
-                }
-            }
-        }
-        let request = LocalRequest {
-            inputs: serde_json::Value::Object(body),
-        };
-        OutputMap::new()
-            .request("request", TransportRequest::Local(request))
-            .bool("skip", false)
-            .ok()
-    }
-}
-
-/// Generic local parse: extracts output fields from a ShellResponse JSON body.
-#[derive(Debug, Clone)]
-pub struct GenericLocalParseOp {
-    pub spec: LocalOperationSpec,
-}
-
-impl Executable for GenericLocalParseOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match inputs.get("response") {
-            Some(Value::Response(TransportResponse::Local(local_resp))) => {
-                let parsed = &local_resp.outputs;
-                let mut out = OutputMap::new();
-                for field in &self.spec.output_fields {
-                    let val = parsed.get(&field.name);
-                    out = match val {
-                        Some(serde_json::Value::String(s)) => out.str(&field.name, s.clone()),
-                        Some(serde_json::Value::Bool(b)) => out.bool(&field.name, *b),
-                        Some(other) => out.str(&field.name, other.to_string()),
-                        None => out.value(&field.name, Value::Unit),
-                    };
-                }
-                out.ok()
-            }
-            // Backward compat: accept Shell responses from the old echo-based carrier.
-            Some(Value::Response(TransportResponse::Shell(shell))) => {
-                // Empty stdout (common in DryRun mocks): treat as Skipped.
-                if shell.stdout.trim().is_empty() {
-                    let mut out = OutputMap::new();
-                    for field in &self.spec.output_fields {
-                        out = out.value(&field.name, Value::Skipped);
-                    }
-                    return out.ok();
-                }
-                let parsed: serde_json::Value =
-                    serde_json::from_str(shell.stdout.trim()).map_err(|e| {
-                        ExecError::new(format!(
-                            "GenericLocalParse: failed to parse shell stdout as JSON: {e}"
-                        ))
-                    })?;
-                let mut out = OutputMap::new();
-                for field in &self.spec.output_fields {
-                    let val = parsed.get(&field.name);
-                    out = match val {
-                        Some(serde_json::Value::String(s)) => out.str(&field.name, s.clone()),
-                        Some(serde_json::Value::Bool(b)) => out.bool(&field.name, *b),
-                        Some(other) => out.str(&field.name, other.to_string()),
-                        None => out.value(&field.name, Value::Unit),
-                    };
-                }
-                out.ok()
-            }
-            Some(Value::Skipped) | None => {
-                let mut out = OutputMap::new();
-                for field in &self.spec.output_fields {
-                    out = out.value(&field.name, Value::Skipped);
-                }
-                out.ok()
-            }
-            Some(other) => Err(ExecError::new(format!(
-                "GenericLocalParse: expected Local or Shell response, got {:?}",
-                std::mem::discriminant(other)
-            ))),
-        }
-    }
-}
-
-// ============================================================================
-// InterfaceStub (IS-6): stub ops for interface capabilities without profile
-// ============================================================================
-
-/// Interface stub prepare: packages inputs into a `TransportRequest` for
-/// structural transport detection (DryRun boundary interception).
-#[derive(Debug, Clone)]
-pub struct InterfaceStubPrepareOp {
-    pub interface: String,
-    pub capability: String,
-}
-
-impl Executable for InterfaceStubPrepareOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        if inputs.values().any(|v| matches!(v, Value::Skipped)) {
-            return OutputMap::new()
-                .value("request", Value::Skipped)
-                .bool("skip", true)
-                .ok();
-        }
-        // Package inputs as a Local request for structural transport detection.
-        // Redact secrets — stub transport should never expose plaintext.
-        let mut body = serde_json::Map::new();
-        for (key, val) in &inputs {
-            if matches!(val, Value::Secret(_)) {
-                body.insert(key.clone(), serde_json::Value::String("***".to_string()));
-            } else if let Some(json_val) = value_to_json(val) {
-                body.insert(key.clone(), json_val);
-            }
-        }
-        let request = gunbc_ir::transport::LocalRequest {
-            inputs: serde_json::Value::Object(body),
-        };
-        OutputMap::new()
-            .request("request", TransportRequest::Local(request))
-            .bool("skip", false)
-            .ok()
-    }
-}
-
-/// Interface stub execute: errors in Real mode when no concrete binding exists,
-/// auto-mocked in DryRun (boundary mocks supply typed outputs).
-#[derive(Debug, Clone)]
-pub struct InterfaceStubExecuteOp {
-    pub interface: String,
-    pub capability: String,
-}
-
-impl Executable for InterfaceStubExecuteOp {
-    fn execute(
-        &self,
-        _inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
-        Err(ExecError::new(format!(
-            "interface stub `{}.{}` has no concrete binding in Real mode \
-             (this call would be auto-mocked in DryRun mode)",
-            self.interface, self.capability
-        )))
-    }
-}
-
-/// Concrete Filesystem transport binding. Handles `probe`, `read`, and `write`
-/// capabilities using `std::fs` operations so that `uses fs: Filesystem(...)`
-/// works in Real mode without an external transport.
-#[derive(Debug, Clone)]
-pub struct FilesystemExecuteOp {
-    pub capability: String,
-}
-
-impl FilesystemExecuteOp {
-    fn extract_path(inputs: &HashMap<String, Value>) -> Result<String, ExecError> {
-        if let Some(Value::Request(TransportRequest::Local(req))) = inputs.get("request") {
-            if let Some(serde_json::Value::String(p)) = req.inputs.get("path") {
-                return Ok(p.clone());
-            }
-        }
-        // Fallback: path passed directly (e.g. from test harnesses).
-        if let Some(Value::Str(p)) = inputs.get("path") {
-            return Ok(p.clone());
-        }
-        Err(ExecError::new(
-            "FilesystemExecuteOp: missing 'path' in request inputs".to_string(),
-        ))
-    }
-
-    fn probe(path: &str) -> HashMap<String, Value> {
-        let metadata = std::fs::symlink_metadata(path);
-        let (kind, size) = match &metadata {
-            Ok(m) if m.is_dir() => ("Directory", m.len() as i64),
-            Ok(m) if m.file_type().is_symlink() => ("Symlink", m.len() as i64),
-            Ok(m) => ("RegularFile", m.len() as i64),
-            Err(_) => ("Missing", 0i64),
-        };
-        let encoding = match kind {
-            "RegularFile" => {
-                let is_text = std::fs::read(path)
-                    .map(|bytes| {
-                        let check_len = bytes.len().min(8192);
-                        !bytes[..check_len].contains(&0)
-                    })
-                    .unwrap_or(false);
-                if is_text {
-                    Value::Enum {
-                        ty: "ContentEncoding".to_string(),
-                        variant: "UTF8".to_string(),
-                    }
-                } else {
-                    Value::Enum {
-                        ty: "ContentEncoding".to_string(),
-                        variant: "Binary".to_string(),
-                    }
-                }
-            }
-            _ => Value::Unit,
-        };
-
-        let mut classification = std::collections::BTreeMap::new();
-        classification.insert("path".to_string(), Value::Str(path.to_string()));
-        classification.insert(
-            "kind".to_string(),
-            Value::Enum {
-                ty: "EntryKind".to_string(),
-                variant: kind.to_string(),
-            },
-        );
-        classification.insert("encoding".to_string(), encoding);
-        classification.insert("symlink_target".to_string(), Value::Unit);
-        classification.insert("size".to_string(), Value::Int(size));
-        classification.insert("mime".to_string(), Value::Unit);
-
-        let mut out = HashMap::new();
-        out.insert("classification".to_string(), Value::Map(classification));
-        out
-    }
-
-    fn read_text(path: &str) -> Result<HashMap<String, Value>, ExecError> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| ExecError::new(format!("Filesystem.read failed for '{path}': {e}")))?;
-        let mut out = HashMap::new();
-        out.insert("content".to_string(), Value::Str(content));
-        Ok(out)
-    }
-}
-
-impl Executable for FilesystemExecuteOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        if inputs
-            .get("skip")
-            .is_some_and(|v| matches!(v, Value::Bool(true)))
-            || inputs.values().any(|v| matches!(v, Value::Skipped))
-        {
-            let mut out = HashMap::new();
-            match self.capability.as_str() {
-                "probe" => {
-                    out.insert("classification".to_string(), Value::Skipped);
-                }
-                "read" | "read_bytes" => {
-                    out.insert("content".to_string(), Value::Skipped);
-                }
-                "write" => {
-                    out.insert("written".to_string(), Value::Skipped);
-                }
-                _ => {
-                    out.insert("result".to_string(), Value::Skipped);
-                }
-            }
-            return Ok(out);
-        }
-
-        let path = Self::extract_path(&inputs)?;
-
-        match self.capability.as_str() {
-            "probe" => Ok(Self::probe(&path)),
-            "read" => Self::read_text(&path),
-            "read_bytes" => {
-                let bytes = std::fs::read(&path).map_err(|e| {
-                    ExecError::new(format!("Filesystem.read_bytes failed for '{path}': {e}"))
-                })?;
-                let mut out = HashMap::new();
-                out.insert("content".to_string(), Value::Bytes(bytes));
-                Ok(out)
-            }
-            "write" => {
-                let content = if let Some(Value::Request(TransportRequest::Local(req))) =
-                    inputs.get("request")
-                {
-                    req.inputs
-                        .get("content")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string())
-                } else {
-                    inputs
-                        .get("content")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string())
-                };
-                let content = content.ok_or_else(|| {
-                    ExecError::new(format!(
-                        "Filesystem.write: missing or non-string 'content' for '{path}'"
-                    ))
-                })?;
-                std::fs::write(&path, &content).map_err(|e| {
-                    ExecError::new(format!("Filesystem.write failed for '{path}': {e}"))
-                })?;
-                let mut out = HashMap::new();
-                out.insert("written".to_string(), Value::Bool(true));
-                Ok(out)
-            }
-            other => Err(ExecError::new(format!(
-                "FilesystemExecuteOp: unknown capability '{other}'"
-            ))),
-        }
-    }
-}
-
-/// Interface stub parse: identity passthrough. Forwards typed capability
-/// outputs from execute (or from DryRun mocks) unchanged.
-#[derive(Debug, Clone)]
-pub struct InterfaceStubParseOp {
-    pub interface: String,
-    pub capability: String,
-}
-
-impl Executable for InterfaceStubParseOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        // Identity passthrough: forward all inputs as outputs.
-        Ok(inputs)
-    }
-}
-
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)] // Tests: secret inspection is inherent to testing service resolution
 mod tests {
@@ -1711,11 +1730,43 @@ mod tests {
         }
     }
 
+    /// Helper to construct a `GenericPrepareOp` from a `RestOperationSpec`.
+    fn rest_prepare_op(spec: RestOperationSpec) -> GenericPrepareOp {
+        GenericPrepareOp {
+            spec: ServiceOperationSpec::Rest(Box::new(spec)),
+        }
+    }
+
+    /// Helper to construct a `GenericParseOp` from a `RestOperationSpec`.
+    fn rest_parse_op(spec: RestOperationSpec) -> GenericParseOp {
+        GenericParseOp {
+            spec: ServiceOperationSpec::Rest(Box::new(spec)),
+            service_name: String::new(),
+            operation_name: String::new(),
+            auth_scheme: String::new(),
+        }
+    }
+
+    /// Helper to construct a `GenericPrepareOp` from a `ShellOperationSpec`.
+    fn shell_prepare_op(spec: ShellOperationSpec) -> GenericPrepareOp {
+        GenericPrepareOp {
+            spec: ServiceOperationSpec::Shell(spec),
+        }
+    }
+
+    /// Helper to construct a `GenericParseOp` from a `ShellOperationSpec`.
+    fn shell_parse_op(spec: ShellOperationSpec) -> GenericParseOp {
+        GenericParseOp {
+            spec: ServiceOperationSpec::Shell(spec),
+            service_name: String::new(),
+            operation_name: String::new(),
+            auth_scheme: String::new(),
+        }
+    }
+
     #[test]
     fn rest_prepare_simple_post() {
-        let op = GenericRestPrepareOp {
-            spec: rest_spec_simple(),
-        };
+        let op = rest_prepare_op(rest_spec_simple());
         let mut inputs = HashMap::new();
         inputs.insert("name".to_string(), Value::Str("hello".to_string()));
 
@@ -1734,9 +1785,7 @@ mod tests {
 
     #[test]
     fn rest_prepare_path_interpolation() {
-        let op = GenericRestPrepareOp {
-            spec: rest_spec_with_path_params(),
-        };
+        let op = rest_prepare_op(rest_spec_with_path_params());
         let mut inputs = HashMap::new();
         inputs.insert("project".to_string(), Value::Str("my-project".to_string()));
         inputs.insert("secret".to_string(), Value::Str("my-secret".to_string()));
@@ -1777,7 +1826,7 @@ mod tests {
             output_shape: None,
             mock_responses: vec![],
         };
-        let op = GenericRestPrepareOp { spec };
+        let op = rest_prepare_op(spec);
         let error = op
             .execute(HashMap::new())
             .expect_err("missing config placeholder input should fail closed");
@@ -1791,12 +1840,7 @@ mod tests {
 
     #[test]
     fn rest_parse_extracts_fields() {
-        let op = GenericRestParseOp {
-            spec: rest_spec_simple(),
-            service_name: String::new(),
-            operation_name: String::new(),
-            auth_scheme: String::new(),
-        };
+        let op = rest_parse_op(rest_spec_simple());
         let response = RestResponse::ok(serde_json::json!({ "id": "abc-123" }));
         let mut inputs = HashMap::new();
         inputs.insert(
@@ -1842,12 +1886,7 @@ mod tests {
             output_shape: None,
             mock_responses: vec![],
         };
-        let op = GenericRestParseOp {
-            spec,
-            service_name: String::new(),
-            operation_name: String::new(),
-            auth_scheme: String::new(),
-        };
+        let op = rest_parse_op(spec);
         let response = RestResponse::ok(serde_json::json!({
             "access_token": "ya29.secret-token",
             "expires_in": 3600,
@@ -1870,12 +1909,7 @@ mod tests {
 
     #[test]
     fn rest_parse_bytes_base64() {
-        let op = GenericRestParseOp {
-            spec: rest_spec_with_path_params(),
-            service_name: String::new(),
-            operation_name: String::new(),
-            auth_scheme: String::new(),
-        };
+        let op = rest_parse_op(rest_spec_with_path_params());
         let response = RestResponse::ok(serde_json::json!({
             "name": "projects/p/secrets/s/versions/1",
             "payload": { "data": "SGVsbG8=" },  // "Hello" in base64
@@ -1898,9 +1932,7 @@ mod tests {
 
     #[test]
     fn shell_prepare_simple() {
-        let op = GenericShellPrepareOp {
-            spec: shell_spec_simple(),
-        };
+        let op = shell_prepare_op(shell_spec_simple());
 
         let outputs = op.execute(HashMap::new()).unwrap();
         let req = outputs.get("request").unwrap();
@@ -1915,19 +1947,17 @@ mod tests {
 
     #[test]
     fn shell_prepare_injects_env_from_spec() {
-        let op = GenericShellPrepareOp {
-            spec: ShellOperationSpec {
-                argv_template: vec![
-                    ArgvSegment::Literal("cargo".to_string()),
-                    ArgvSegment::Literal("build".to_string()),
-                ],
-                input_fields: vec![],
-                output_fields: vec![],
-                output_parsing: ShellOutputParsing::SuccessStdoutStderr,
-                env: vec![("RUSTFLAGS".to_string(), "-D warnings".to_string())],
-                exit_mapping: vec![],
-            },
-        };
+        let op = shell_prepare_op(ShellOperationSpec {
+            argv_template: vec![
+                ArgvSegment::Literal("cargo".to_string()),
+                ArgvSegment::Literal("build".to_string()),
+            ],
+            input_fields: vec![],
+            output_fields: vec![],
+            output_parsing: ShellOutputParsing::SuccessStdoutStderr,
+            env: vec![("RUSTFLAGS".to_string(), "-D warnings".to_string())],
+            exit_mapping: vec![],
+        });
 
         let outputs = op.execute(HashMap::new()).unwrap();
         match outputs.get("request").unwrap() {
@@ -1946,9 +1976,7 @@ mod tests {
 
     #[test]
     fn shell_prepare_empty_env_by_default() {
-        let op = GenericShellPrepareOp {
-            spec: shell_spec_simple(),
-        };
+        let op = shell_prepare_op(shell_spec_simple());
 
         let outputs = op.execute(HashMap::new()).unwrap();
         match outputs.get("request").unwrap() {
@@ -1964,11 +1992,7 @@ mod tests {
 
     #[test]
     fn shell_parse_trim_stdout() {
-        let op = GenericShellParseOp {
-            spec: shell_spec_simple(),
-            service_name: String::new(),
-            operation_name: String::new(),
-        };
+        let op = shell_parse_op(shell_spec_simple());
         let response = ShellResponse::ok("  main  \n");
         let mut inputs = HashMap::new();
         inputs.insert(
@@ -1982,11 +2006,7 @@ mod tests {
 
     #[test]
     fn shell_parse_exit_code_bool() {
-        let op = GenericShellParseOp {
-            spec: shell_spec_exit_code(),
-            service_name: String::new(),
-            operation_name: String::new(),
-        };
+        let op = shell_parse_op(shell_spec_exit_code());
         let response = ShellResponse::ok("");
         let mut inputs = HashMap::new();
         inputs.insert(
@@ -2019,11 +2039,7 @@ mod tests {
             env: vec![],
             exit_mapping: vec![],
         };
-        let op = GenericShellParseOp {
-            spec,
-            service_name: String::new(),
-            operation_name: String::new(),
-        };
+        let op = shell_parse_op(spec);
         let response = ShellResponse::ok("origin/main\norigin/dev\n\n");
         let mut inputs = HashMap::new();
         inputs.insert(
@@ -2079,11 +2095,7 @@ mod tests {
             env: vec![],
             exit_mapping: vec![],
         };
-        let op = GenericShellParseOp {
-            spec,
-            service_name: String::new(),
-            operation_name: String::new(),
-        };
+        let op = shell_parse_op(spec);
         let mut response = ShellResponse::ok("compiled ok");
         response.stderr = "warning: unused var".to_string();
         let mut inputs = HashMap::new();
@@ -2144,7 +2156,7 @@ mod tests {
             mock_responses: vec![],
         };
 
-        let op = GenericRestPrepareOp { spec };
+        let op = rest_prepare_op(spec);
         let mut inputs = HashMap::new();
         inputs.insert(
             "audience".to_string(),
@@ -2173,9 +2185,7 @@ mod tests {
 
     #[test]
     fn rest_prepare_propagates_skip() {
-        let op = GenericRestPrepareOp {
-            spec: rest_spec_simple(),
-        };
+        let op = rest_prepare_op(rest_spec_simple());
         let mut inputs = HashMap::new();
         inputs.insert("name".to_string(), Value::Skipped);
 
@@ -2185,9 +2195,7 @@ mod tests {
 
     #[test]
     fn shell_prepare_propagates_skip() {
-        let op = GenericShellPrepareOp {
-            spec: shell_spec_simple(),
-        };
+        let op = shell_prepare_op(shell_spec_simple());
         let mut inputs = HashMap::new();
         inputs.insert("some_input".to_string(), Value::Skipped);
 
@@ -2196,7 +2204,7 @@ mod tests {
         assert_eq!(outputs.get("skip"), Some(&Value::Bool(true)));
     }
 
-    // ── File ops ─────────────────────────────────────────────────────
+    // -- File ops --
 
     fn file_read_spec() -> FileOperationSpec {
         FileOperationSpec {
@@ -2220,11 +2228,24 @@ mod tests {
         }
     }
 
+    fn file_prepare_op(spec: FileOperationSpec) -> GenericPrepareOp {
+        GenericPrepareOp {
+            spec: ServiceOperationSpec::File(spec),
+        }
+    }
+
+    fn file_parse_op(spec: FileOperationSpec) -> GenericParseOp {
+        GenericParseOp {
+            spec: ServiceOperationSpec::File(spec),
+            service_name: String::new(),
+            operation_name: String::new(),
+            auth_scheme: String::new(),
+        }
+    }
+
     #[test]
     fn file_prepare_builds_read_request() {
-        let op = GenericFilePrepareOp {
-            spec: file_read_spec(),
-        };
+        let op = file_prepare_op(file_read_spec());
         let mut inputs = HashMap::new();
         inputs.insert("path".to_string(), Value::Str("/tmp/test.txt".to_string()));
 
@@ -2242,9 +2263,7 @@ mod tests {
 
     #[test]
     fn file_prepare_propagates_skip() {
-        let op = GenericFilePrepareOp {
-            spec: file_read_spec(),
-        };
+        let op = file_prepare_op(file_read_spec());
         let mut inputs = HashMap::new();
         inputs.insert("path".to_string(), Value::Skipped);
 
@@ -2256,9 +2275,7 @@ mod tests {
     #[test]
     fn file_parse_extracts_content() {
         use gunbc_ir::transport::file::FileResponse;
-        let op = GenericFileParseOp {
-            spec: file_read_spec(),
-        };
+        let op = file_parse_op(file_read_spec());
         let resp = FileResponse::read_ok("/tmp/test.txt", "hello world");
         let mut inputs = HashMap::new();
         inputs.insert(
@@ -2275,9 +2292,7 @@ mod tests {
 
     #[test]
     fn file_parse_propagates_skip() {
-        let op = GenericFileParseOp {
-            spec: file_read_spec(),
-        };
+        let op = file_parse_op(file_read_spec());
         let mut inputs = HashMap::new();
         inputs.insert("response".to_string(), Value::Skipped);
 
@@ -2285,13 +2300,15 @@ mod tests {
         assert_eq!(outputs.get("content"), Some(&Value::Skipped));
     }
 
-    // ── InterfaceStub ops (IS-6 / IS-8) ──────────────────────────────
+    // -- InterfaceStub ops (IS-6 / IS-8) --
 
     #[test]
     fn interface_stub_prepare_packages_inputs_as_local_request() {
-        let op = InterfaceStubPrepareOp {
-            interface: "IssueProvider".to_string(),
-            capability: "list_issues".to_string(),
+        let op = GenericPrepareOp {
+            spec: ServiceOperationSpec::InterfaceStub {
+                interface: "IssueProvider".to_string(),
+                capability: "list_issues".to_string(),
+            },
         };
         let mut inputs = HashMap::new();
         inputs.insert("project".to_string(), Value::Str("my-project".to_string()));
@@ -2307,9 +2324,11 @@ mod tests {
 
     #[test]
     fn interface_stub_prepare_propagates_skip() {
-        let op = InterfaceStubPrepareOp {
-            interface: "IssueProvider".to_string(),
-            capability: "list_issues".to_string(),
+        let op = GenericPrepareOp {
+            spec: ServiceOperationSpec::InterfaceStub {
+                interface: "IssueProvider".to_string(),
+                capability: "list_issues".to_string(),
+            },
         };
         let mut inputs = HashMap::new();
         inputs.insert("project".to_string(), Value::Skipped);
@@ -2340,9 +2359,14 @@ mod tests {
 
     #[test]
     fn interface_stub_parse_is_identity_passthrough() {
-        let op = InterfaceStubParseOp {
-            interface: "IssueProvider".to_string(),
-            capability: "list_issues".to_string(),
+        let op = GenericParseOp {
+            spec: ServiceOperationSpec::InterfaceStub {
+                interface: "IssueProvider".to_string(),
+                capability: "list_issues".to_string(),
+            },
+            service_name: String::new(),
+            operation_name: String::new(),
+            auth_scheme: String::new(),
         };
         let mut inputs = HashMap::new();
         inputs.insert("issues".to_string(), Value::Str("issue-1".to_string()));
@@ -2357,9 +2381,11 @@ mod tests {
 
     #[test]
     fn interface_stub_prepare_redacts_secrets() {
-        let op = InterfaceStubPrepareOp {
-            interface: "CredentialProvider".to_string(),
-            capability: "get_token".to_string(),
+        let op = GenericPrepareOp {
+            spec: ServiceOperationSpec::InterfaceStub {
+                interface: "CredentialProvider".to_string(),
+                capability: "get_token".to_string(),
+            },
         };
         let mut inputs = HashMap::new();
         inputs.insert(
@@ -2410,11 +2436,7 @@ mod tests {
 
     #[test]
     fn shell_parse_trim_stdout_secret() {
-        let op = GenericShellParseOp {
-            spec: shell_spec_secret_output(),
-            service_name: String::new(),
-            operation_name: String::new(),
-        };
+        let op = shell_parse_op(shell_spec_secret_output());
         let response = ShellResponse::ok("  ya29.secret-token  \n");
         let mut inputs = HashMap::new();
         inputs.insert(
@@ -2433,12 +2455,8 @@ mod tests {
 
     #[test]
     fn shell_parse_trim_stdout_secret_skipped() {
-        let op = GenericShellParseOp {
-            spec: shell_spec_secret_output(),
-            service_name: String::new(),
-            operation_name: String::new(),
-        };
-        // No response → Skipped/None path
+        let op = shell_parse_op(shell_spec_secret_output());
+        // No response -> Skipped/None path
         let mut inputs = HashMap::new();
         inputs.insert("response".to_string(), Value::Skipped);
 
@@ -2453,11 +2471,7 @@ mod tests {
 
     #[test]
     fn shell_parse_trim_stdout_empty_secret() {
-        let op = GenericShellParseOp {
-            spec: shell_spec_secret_output(),
-            service_name: String::new(),
-            operation_name: String::new(),
-        };
+        let op = shell_parse_op(shell_spec_secret_output());
         let response = ShellResponse::ok("");
         let mut inputs = HashMap::new();
         inputs.insert(

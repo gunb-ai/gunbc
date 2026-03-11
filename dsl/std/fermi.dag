@@ -48,7 +48,7 @@ fn fermi_max(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
 // --- Composition: max over a list (transitive dominance) ------------
 
 fn fermi_max_of(depths: List<FermiDepth>) -> FermiDepth {
-  depths |> fold(init: Xs, f: (acc, d) => fermi_max(lhs: acc, rhs: d))
+  fold(depths, init: Xs, f: (acc, d) => fermi_max(lhs: acc, rhs: d))
 }
 
 // --- Guard: is depth within budget? ---------------------------------

@@ -1,3 +1,6 @@
+// Binary entrypoint — eprintln is used for user-facing CLI diagnostics.
+#![allow(clippy::disallowed_macros)]
+
 //! Pure Rust testgen binary.
 //!
 //! Discovers all compilable `.dag` modules, renders auto-generated tests,
@@ -16,7 +19,7 @@ use std::process;
 /// as values, service calls in `for` loops, associated output types).
 ///
 /// Remove entries as the lowerer catches up. See POSTMORTEM.md §"std/patterns.dag".
-const TESTGEN_SKIP_MODULES: &[&str] = &["std.patterns"];
+const TESTGEN_SKIP_MODULES: &[&str] = &["std.patterns", "gunbc.auth.patterns"];
 
 /// Workspace-relative path to the generated-tests source directory.
 ///

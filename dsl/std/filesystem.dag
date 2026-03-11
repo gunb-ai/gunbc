@@ -63,8 +63,8 @@ fn is_text_readable(entry: FileEntry) -> Bool {
 
 // "Split entries into readable text files vs everything else."
 fn partition_entries(entries: List<FileEntry>) -> { readable: List<FileEntry>, skipped: List<FileEntry> } {
-  readable = entries |> filter(e => is_text_readable(entry: e))
-  skipped  = entries |> filter(e => !is_text_readable(entry: e))
+  readable = filter(entries, e => is_text_readable(entry: e))
+  skipped  = filter(entries, e => !is_text_readable(entry: e))
   return { readable: readable, skipped: skipped }
 }
 

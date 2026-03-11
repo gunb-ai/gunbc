@@ -1,3 +1,6 @@
+// Test guard functions intentionally log skip reasons to stderr.
+#![allow(clippy::disallowed_macros)]
+
 //! Test classification + cost gating helpers.
 //!
 //! This module provides a lightweight model for test class (unit/hermetic/integration)

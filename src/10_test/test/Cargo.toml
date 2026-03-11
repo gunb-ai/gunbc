@@ -8,5 +8,4 @@ description = "Test infrastructure for gunbc: boundary mocks and composition tes
 [dependencies]
 gunbc-ir = { path = "../../00_foundation/ir" }
 gunbc-exec = { path = "../../09_execute/exec" }
-gunbc-primitives = { path = "../../08_materialize/primitives" }
 serde_json = "1"

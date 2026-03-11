@@ -1,3 +1,6 @@
+// Binary entrypoint — eprintln is used for user-facing CLI diagnostics.
+#![allow(clippy::disallowed_macros)]
+
 //! CLI and DAG generator - generates main.rs, graph.rs, and config files.
 //!
 //! This is a transaction-based code generator:

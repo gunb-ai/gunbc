@@ -531,7 +531,7 @@ mod window_helper_tests {
         dag.add_node(Node::opaque("b", vec![], vec![port("out", "Int")], ()));
         dag.add_node(Node::opaque(
             "z",
-            vec![list("items", "IntList")],
+            vec![list("items", "List<Int>")],
             vec![port("out", "Int")],
             (),
         ));
@@ -562,12 +562,12 @@ mod window_helper_tests {
         dag.add_node(Node::opaque(
             "a",
             vec![],
-            vec![list("items", "IntList")],
+            vec![list("items", "List<Int>")],
             (),
         ));
         dag.add_node(Node::opaque(
             "b",
-            vec![list("items", "IntList")],
+            vec![list("items", "List<Int>")],
             vec![port("out", "Int")],
             (),
         ));

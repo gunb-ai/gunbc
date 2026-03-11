@@ -39,8 +39,9 @@ data gitignore_output_format: OutputFormat = {
 // ── Category filtering ───────────────────────────────────────────────
 
 fn filter_categories(categories: List<GitignoreCategory>, build_system: String) -> List<GitignoreCategory> {
-  categories |> filter(c => match c.when_build_system {
+  let by_build = filter(categories, c => match c.when_build_system {
     None => true
     _ => c.when_build_system == build_system
-  }) |> filter(c => c.items |> count() > 0)
+  })
+  filter(by_build, c => count(c.items) > 0)
 }

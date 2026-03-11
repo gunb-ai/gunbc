@@ -18,6 +18,10 @@ import std.resources { Filesystem }
 import std.types { FilePath, Milliseconds }
 import std.filesystem { partition_entries, is_text_readable }
 
+fn eq(a: String, b: String) -> Bool {
+  a == b
+}
+
 // =====================================================================
 // Fundamental Steps
 // =====================================================================
@@ -55,8 +59,8 @@ pattern classify_files(paths: List<FilePath>) -> { readable: List<FilePath>, ski
   }
   partitioned = partition_entries(entries: entries)
   return {
-    readable: partitioned.readable |> map(e => e.path),
-    skipped: partitioned.skipped |> map(e => e.path)
+    readable: map(partitioned.readable, e => e.path),
+    skipped: map(partitioned.skipped, e => e.path)
   }
 }
 

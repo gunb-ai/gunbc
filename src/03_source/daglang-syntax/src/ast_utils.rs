@@ -80,7 +80,13 @@ pub fn type_expr_to_string(expr: &TypeExpr) -> String {
         ),
         TypeExpr::Optional(inner) => format!("{}?", type_expr_to_string(inner)),
         TypeExpr::Refined(inner, _) => type_expr_to_string(inner),
-        TypeExpr::Record(_) => "Record".to_string(),
+        TypeExpr::Record(fields) => {
+            let field_strs: Vec<String> = fields
+                .iter()
+                .map(|f| format!("{}: {}", f.name, type_expr_to_string(&f.ty)))
+                .collect();
+            format!("{{{}}}", field_strs.join(", "))
+        }
     }
 }
 
@@ -151,15 +157,9 @@ pub fn walk_expr(expr: &Expr, visitor: &mut impl FnMut(&Expr)) {
             }
         }
         Expr::FieldAccess(base, _) => walk_expr(base, visitor),
-        Expr::BinOp(lhs, _, rhs) | Expr::Pipe(lhs, rhs) => {
+        Expr::BinOp(lhs, _, rhs) => {
             walk_expr(lhs, visitor);
             walk_expr(rhs, visitor);
-        }
-        Expr::PipeCall(receiver, _, args) => {
-            walk_expr(receiver, visitor);
-            for (_, arg) in args {
-                walk_expr(arg, visitor);
-            }
         }
         Expr::UnaryOp(_, inner) | Expr::Lambda(_, inner) | Expr::After(inner, _) => {
             walk_expr(inner, visitor)

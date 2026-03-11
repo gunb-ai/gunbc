@@ -83,15 +83,21 @@ data wide_blocks: List<UnicodeBlock> = [
 
 // --- Classification functions ---
 
+// Extract the integer code point from a Char.
+// `+ 0` coerces branded Char to plain Int for the typechecker.
+fn code_point(c: Char) -> Int {
+  c + 0
+}
+
 fn in_block(cp: Int, block: UnicodeBlock) -> Bool {
   cp >= block.start && cp <= block.end_inclusive
 }
 
 fn char_display_width(c: Char) -> DisplayWidth {
   let cp = code_point(c: c)
-  if zero_width_codepoints |> contains(item: cp) { return ZeroWidth }
-  if zero_width_blocks |> any(predicate: b => in_block(cp: cp, block: b)) { return ZeroWidth }
-  if wide_blocks |> any(predicate: b => in_block(cp: cp, block: b)) { return Wide }
+  if contains(zero_width_codepoints, item: cp) { return ZeroWidth }
+  if any(zero_width_blocks, predicate: b => in_block(cp: cp, block: b)) { return ZeroWidth }
+  if any(wide_blocks, predicate: b => in_block(cp: cp, block: b)) { return Wide }
   return Narrow
 }
 
@@ -100,5 +106,7 @@ fn char_width(c: Char) -> Int {
 }
 
 fn string_display_width(s: String) -> Int {
-  chars(s: s) |> map(c => char_width(c: c)) |> sum()
+  let char_list = chars(s)
+  let widths = map(char_list, c => char_width(c: c))
+  sum(widths)
 }

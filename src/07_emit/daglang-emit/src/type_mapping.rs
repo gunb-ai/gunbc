@@ -41,7 +41,10 @@ pub fn derive_platform_properties(
 /// structural form: Platform, Container, Brand, Product/Coproduct, or Opaque.
 /// Only Opaque types use identity-type name-based mapping.
 pub fn emit_type(dag: &gunbc_ir::dag::Dag<gunbc_ir::type_op::TypeOp>, backend: Backend) -> String {
-    let shape = gunbc_ir::type_shape(dag);
+    let shape = match gunbc_ir::type_shape(dag) {
+        Ok(s) => s,
+        Err(_) => gunbc_ir::TypeShape::Opaque("Unknown".to_string()),
+    };
     emit_shape(&shape, backend)
 }
 
@@ -126,7 +129,10 @@ pub fn emit_shape(shape: &gunbc_ir::TypeShape, backend: Backend) -> String {
             if let Some(syntax) = crate::language_model::resolve_named(name, model) {
                 syntax.to_string()
             } else {
-                eprintln!("warning: unknown opaque type '{}' for {}", name, model.name);
+                // Unknown opaque type — return the name verbatim as a
+                // best-effort fallback. The type was already classified as
+                // Opaque by type_shape, so this is the expected path for
+                // user-defined types without a language model entry.
                 name.to_string()
             }
         }
@@ -142,10 +148,8 @@ fn emit_platform_type(props: &gunbc_ir::StructuralProperties, backend: Backend) 
     if let Some(syntax) = crate::language_model::resolve_scalar(props, model) {
         return syntax.to_string();
     }
-    eprintln!(
-        "warning: no {} scalar entry for width={:?} signed={:?} domain={:?} arithmetic={}",
-        model.name, props.width, props.signed, props.domain, props.arithmetic
-    );
+    // No scalar entry matched — return the model's opaque fallback. This
+    // can happen for platform types with unusual predicate combinations.
     model.opaque_fallback.to_string()
 }
 
@@ -172,7 +176,7 @@ pub fn resolve_and_emit(
     if let Some(syntax) = crate::language_model::resolve_named(type_name, model) {
         return syntax.to_string();
     }
-    eprintln!("warning: unresolved type '{type_name}' for {}, returning verbatim", model.name);
+    // Unresolved type — return verbatim as a best-effort fallback.
     type_name.to_string()
 }
 

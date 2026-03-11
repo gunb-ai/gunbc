@@ -72,7 +72,7 @@ fn span_width(span: Span, tier: Tier) -> Int {
 }
 
 fn truncate_spans(spans: List<Span>, budget: Int, tier: Tier) -> List<Span> {
-  let state = spans |> fold(
+  let state = fold(spans,
     init: { kept: [], remaining: budget },
     f: (acc, span) => if acc.remaining <= 0 {
       acc
@@ -100,7 +100,7 @@ fn constrain_line(line: Line, max_width: Int, tier: Tier) -> Line {
 
 fn constrain_frame(frame: Frame, viewport: Viewport, tier: Tier) -> Frame {
   Frame {
-    lines: frame.lines |> map(line => constrain_line(line: line, max_width: viewport.width, tier: tier)),
+    lines: map(frame.lines, line => constrain_line(line: line, max_width: viewport.width, tier: tier)),
     cursor_action: frame.cursor_action
   }
 }
@@ -152,7 +152,7 @@ fn format_comment(syntax: CommentSyntax, text: String) -> String {
 
 fn format_section_header(syntax: CommentSyntax, title: String) -> String {
   let prefix = comment_prefix_for(syntax: syntax)
-  let separator = "=" |> repeat(76)
+  let separator = repeat("=", 76)
   "{prefix} {separator}\n{prefix} {title}\n{prefix} {separator}"
 }
 
@@ -168,7 +168,7 @@ fn format_section_header(syntax: CommentSyntax, title: String) -> String {
 // ── Indentation ────────────────────────────────────────────────────
 
 fn indent_text(level: Int, unit: String, text: String) -> String {
-  let pad = unit |> repeat(level)
+  let pad = repeat(unit, level)
   "{pad}{text}"
 }
 
@@ -195,10 +195,9 @@ fn indented_list_item(level: Int, unit: String, prefix: String, value: String) -
 // ── Blocks ─────────────────────────────────────────────────────────
 
 fn text_block(header: String, level: Int, unit: String, items: List<String>) -> String {
-  let lines = items
-    |> map(item => indent_text(level: level, unit: unit, text: item))
-    |> join("\n")
-  if items |> count() > 0 {
+  let indented = map(items, item => indent_text(level: level, unit: unit, text: item))
+  let lines = join(indented, "\n")
+  if count(items) > 0 {
     "{header}\n{lines}"
   } else {
     header
@@ -206,10 +205,9 @@ fn text_block(header: String, level: Int, unit: String, items: List<String>) -> 
 }
 
 fn list_block(header: String, level: Int, unit: String, prefix: String, items: List<String>) -> String {
-  let lines = items
-    |> map(item => indented_list_item(level: level, unit: unit, prefix: prefix, value: item))
-    |> join("\n")
-  if items |> count() > 0 {
+  let indented = map(items, item => indented_list_item(level: level, unit: unit, prefix: prefix, value: item))
+  let lines = join(indented, "\n")
+  if count(items) > 0 {
     "{header}\n{lines}"
   } else {
     header
@@ -217,9 +215,8 @@ fn list_block(header: String, level: Int, unit: String, prefix: String, items: L
 }
 
 fn kv_block(level: Int, unit: String, sep: String, entries: List<{ key: String, value: String }>) -> String {
-  entries
-    |> map(e => indented_kv(level: level, unit: unit, key: e.key, sep: sep, value: e.value))
-    |> join("\n")
+  let indented = map(entries, e => indented_kv(level: level, unit: unit, key: e.key, sep: sep, value: e.value))
+  join(indented, "\n")
 }
 
 // ═══════════════════════════════════════════════════════════════════

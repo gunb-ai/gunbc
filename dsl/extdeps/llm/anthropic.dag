@@ -6,11 +6,6 @@
 // Complements extdeps/llm/pricing.dag (model specs and pricing)
 // and extdeps/llm/core.dag (universal protocol types).
 //
-// Consumers:
-//   tools/design.dag          — design generation
-//   funcs/review_pipeline.dag — code review
-//   tools/design.dag          — design generation
-
 module extdeps.llm.anthropic
 
 import extdeps.llm.llm { Role, StopReason, TokenUsage }

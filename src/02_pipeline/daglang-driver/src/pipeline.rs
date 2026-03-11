@@ -54,7 +54,6 @@ pub fn run_compile_pipeline(
         dag: lowered_dag,
         output_paths,
         inferred_entrypoints,
-        data_values,
     } = lower_output;
     let verified_dag = VerifiedDag::verify(lowered_dag).map_err(|errors| {
         CompileError::Diagnostics(super::verification_diagnostics_with_sources(
@@ -92,7 +91,6 @@ pub fn run_compile_pipeline(
         inferred_entrypoints,
         dsl_type_registry: typed.dsl_type_registry().clone(),
         receipt,
-        data_values,
     })
 }
 

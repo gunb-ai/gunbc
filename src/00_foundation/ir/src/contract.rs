@@ -59,10 +59,35 @@ pub fn cardinality(type_dag: &Dag<TypeOp>) -> Cardinality {
 
 /// L2: Extract base type name from a type DAG.
 ///
-/// The base type is found by looking at the first Identity node's output type,
-/// or by recursing through Brand/Product/Coproduct nodes into their SubDags.
+/// Peels through wrapper layers (Brand, Wrap) to find the structural core type.
+/// The priority order ensures we see through wrappers before accepting a name:
+///
+/// 1. **Brand** — recurse into inner SubDag (brand name ≠ structural base)
+/// 2. **Wrap** (List/Optional/Set/Map) — recurse into inner SubDag (element type)
+/// 3. **Identity** — return the output type name
+/// 4. **Product/Coproduct** — return the output type name
 pub fn base_type(type_dag: &Dag<TypeOp>) -> Option<String> {
-    // Find the first Identity node and get its output type
+    // Brand nodes first — recurse to find the structural base type.
+    for node in &type_dag.nodes {
+        if let NodeBody::Opaque(TypeOp::Brand(..)) = &node.body {
+            if let Some(inner) = inner_type_dag(type_dag) {
+                return base_type(inner);
+            }
+        }
+    }
+    // Wrap nodes (List, Optional, Set) — recurse into element type.
+    // Map is excluded because it has two SubDags (key + value) and
+    // inner_type_dag() would return the wrong one.
+    for node in &type_dag.nodes {
+        if let NodeBody::Opaque(TypeOp::Wrap(kind)) = &node.body {
+            if !matches!(kind, WrapperKind::Map) {
+                if let Some(inner) = inner_type_dag(type_dag) {
+                    return base_type(inner);
+                }
+            }
+        }
+    }
+    // Then Identity nodes
     for node in &type_dag.nodes {
         if let NodeBody::Opaque(TypeOp::Identity) = &node.body {
             if let Some(output) = node.outputs.first() {
@@ -70,14 +95,9 @@ pub fn base_type(type_dag: &Dag<TypeOp>) -> Option<String> {
             }
         }
     }
-    // For Brand nodes, recurse into the inner SubDag
+    // Then Product/Coproduct nodes
     for node in &type_dag.nodes {
         match &node.body {
-            NodeBody::Opaque(TypeOp::Brand(..)) => {
-                if let Some(inner) = inner_type_dag(type_dag) {
-                    return base_type(inner);
-                }
-            }
             NodeBody::Opaque(TypeOp::Product(_)) => {
                 if let Some(output) = node.outputs.first() {
                     return Some(output.type_id.0.clone());
@@ -119,6 +139,11 @@ pub enum WitnessError {
         wrapper: Option<WrapperKind>,
         count: u32,
     },
+    /// The base type is not a known primitive (String, Int, Bool, Unit, Json).
+    /// Product/coproduct types should use `typed_witness_value` instead.
+    UnknownBaseType {
+        base: String,
+    },
 }
 
 impl fmt::Display for WitnessError {
@@ -133,6 +158,9 @@ impl fmt::Display for WitnessError {
                 "invalid witness count {} for base {:?} with wrapper {:?}",
                 count, base, wrapper
             ),
+            WitnessError::UnknownBaseType { base } => {
+                write!(f, "unknown base type '{}' for witness generation", base)
+            }
         }
     }
 }
@@ -152,7 +180,11 @@ impl std::error::Error for WitnessError {}
 /// For a `List<String>` (cardinality `[0,∞)`), this produces witnesses
 /// at counts 0 and 1 (the in-range boundary values).
 pub fn witnesses(type_dag: &Dag<TypeOp>) -> Vec<BoundaryWitness> {
-    witnesses_checked(type_dag).unwrap_or_else(|err| panic!("invalid witness generation: {}", err))
+    match witnesses_checked(type_dag) {
+        Ok(ws) => ws,
+        Err(WitnessError::UnknownBaseType { .. }) => vec![],
+        Err(err) => panic!("invalid witness generation: {}", err),
+    }
 }
 
 /// Like [`witnesses`] but returns an error instead of panicking on invalid
@@ -163,7 +195,14 @@ pub fn witnesses_checked(type_dag: &Dag<TypeOp>) -> Result<Vec<BoundaryWitness>,
     let preds = predicates(type_dag);
     let wrapper = wrapper_kind(type_dag);
 
-    let scalar_witness = scalar_witness_for_base(&base, &preds);
+    let scalar_witness = match scalar_witness_for_base(&base, &preds) {
+        Some(w) => w,
+        None => {
+            return Err(WitnessError::UnknownBaseType {
+                base: base.unwrap_or_else(|| "<none>".to_string()),
+            });
+        }
+    };
 
     let mut result = Vec::new();
     for count in card.test_cases_for_tests() {
@@ -276,7 +315,11 @@ pub struct BoundaryWitness {
 }
 
 /// Generate a scalar witness for a base type, refined by predicates.
-fn scalar_witness_for_base(base: &Option<String>, preds: &[Predicate]) -> Value {
+///
+/// Returns `None` for unknown base types (e.g. product/coproduct type names)
+/// instead of fabricating a placeholder `Str("<TypeName>")`. Callers should
+/// use `typed_witness_value` for structured types.
+fn scalar_witness_for_base(base: &Option<String>, preds: &[Predicate]) -> Option<Value> {
     let base_str = base.as_deref().unwrap_or("String");
 
     let mut witness = match base_str {
@@ -285,7 +328,7 @@ fn scalar_witness_for_base(base: &Option<String>, preds: &[Predicate]) -> Value 
         "Bool" => Value::Bool(true),
         "Unit" => Value::Unit,
         "Json" => Value::Json(serde_json::json!({"key": "value"})),
-        _ => Value::Str(format!("<{}>", base_str)),
+        _ => return None,
     };
 
     // Refine witness based on predicates
@@ -293,14 +336,14 @@ fn scalar_witness_for_base(base: &Option<String>, preds: &[Predicate]) -> Value 
         witness = refine_witness(witness, pred, base_str);
     }
 
-    witness
+    Some(witness)
 }
 
 /// Generate one witness value per variant of a coproduct type.
 ///
 /// Looks up the type in the registry and extracts coproduct arms. For each variant:
-/// - Unit variant (no fields): `Value::Str("VariantName")` — bare string matching
-///   the mock interpreter convention.
+/// - Unit variant (no fields): `Value::Enum { ty, variant }` — matching the
+///   evaluator's `VariantConstruct` output format.
 /// - Payload variant (has fields): `Value::Json({"type": "VariantName", ...})` with
 ///   recursive field witnesses (depth limit 2).
 ///
@@ -313,12 +356,23 @@ pub fn variant_witnesses(type_id: &str, registry: &TypeRegistry) -> Vec<(String,
     if layer.coproduct_arms.is_empty() {
         return Vec::new();
     }
+    // Bool is structurally a coproduct (True|False) but its runtime
+    // representation is Value::Bool, not Value::Enum.
+    if type_id == "Bool" {
+        return vec![
+            ("True".to_string(), Value::Bool(true)),
+            ("False".to_string(), Value::Bool(false)),
+        ];
+    }
     layer
         .coproduct_arms
         .iter()
         .filter_map(|arm| {
             let variant_name = arm.base_type.as_ref()?;
-            let value = Value::Str(variant_name.clone());
+            let value = Value::Enum {
+                ty: type_id.to_string(),
+                variant: variant_name.clone(),
+            };
             Some((variant_name.clone(), value))
         })
         .collect()
@@ -543,22 +597,28 @@ pub fn cross_product_witnesses(type_dag: &Dag<TypeOp>, depth_limit: usize) -> Ve
 /// Generate witnesses for a single layer, recursing into inner layers.
 fn layer_witnesses(layer: &TypeLayer, depth_limit: usize, current_depth: usize) -> Vec<Value> {
     if current_depth >= depth_limit {
-        // At depth limit, generate a single scalar witness
-        return vec![scalar_witness_for_base(&layer.base_type, &layer.predicates)];
+        // At depth limit, generate a single scalar witness (skip unknown types)
+        return scalar_witness_for_base(&layer.base_type, &layer.predicates)
+            .into_iter()
+            .collect();
     }
 
     // Generate inner witnesses (for the element type)
     let inner_witnesses = if let Some(inner) = &layer.inner {
         layer_witnesses(inner, depth_limit, current_depth + 1)
     } else {
-        // Scalar layer — generate base witnesses
-        let mut witnesses = vec![scalar_witness_for_base(&layer.base_type, &layer.predicates)];
+        // Scalar layer — generate base witnesses (skip unknown types)
+        let mut witnesses: Vec<Value> =
+            scalar_witness_for_base(&layer.base_type, &layer.predicates)
+                .into_iter()
+                .collect();
 
         // For coproducts, add one witness per variant arm
         for arm in &layer.coproduct_arms {
-            let arm_witness = scalar_witness_for_base(&arm.base_type, &arm.predicates);
-            if !witnesses.contains(&arm_witness) {
-                witnesses.push(arm_witness);
+            if let Some(arm_witness) = scalar_witness_for_base(&arm.base_type, &arm.predicates) {
+                if !witnesses.contains(&arm_witness) {
+                    witnesses.push(arm_witness);
+                }
             }
         }
 

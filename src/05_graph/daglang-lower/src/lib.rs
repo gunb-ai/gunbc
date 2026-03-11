@@ -1880,6 +1880,8 @@ pub enum LowerError {
     },
     /// Expression could not be lowered to a DAG source.
     ExprLower(String),
+    /// Data-flow wiring failed during lowering.
+    WiringFailure { source_file: String, detail: String },
 }
 
 impl std::fmt::Display for LowerError {
@@ -2026,6 +2028,10 @@ impl std::fmt::Display for LowerError {
                  input port — it will fail at resolve time"
             ),
             Self::ExprLower(msg) => write!(f, "{msg}"),
+            Self::WiringFailure {
+                source_file,
+                detail,
+            } => write!(f, "{source_file}: {detail}"),
         }
     }
 }
@@ -2065,6 +2071,7 @@ impl LowerError {
             Self::UnknownProviderSchemaType { .. } => "LOW023",
             Self::MissingCallablePassthrough { .. } => "LOW024",
             Self::ExprLower(..) => "LOW025",
+            Self::WiringFailure { .. } => "LOW026",
         }
     }
 
@@ -2194,7 +2201,6 @@ pub struct LowerOutput {
     pub dag: Dag<LoweredOp>,
     pub output_paths: Vec<String>,
     pub inferred_entrypoints: Vec<InferredEntrypoint>,
-    pub data_values: HashMap<String, serde_json::Value>,
 }
 
 /// Lower a typed project with the given configuration.
@@ -2642,6 +2648,11 @@ fn lower_typed_project_impl(
         return Err(LowerError::NoLowerableItems);
     }
 
+    // Embed data declaration values as CallLiteralSource nodes in the DAG.
+    // The resolver extracts these at resolution time, eliminating the need
+    // to thread data_values through CompileOutput / CachedCompileData.
+    embed_data_declaration_nodes(&mut builder, &data_values);
+
     wire_param_source_inputs(&mut builder);
 
     let mut dag = builder.into_dag();
@@ -2653,7 +2664,6 @@ fn lower_typed_project_impl(
         dag,
         output_paths,
         inferred_entrypoints,
-        data_values,
     })
 }
 
@@ -3141,9 +3151,9 @@ mod parity {
                 vec![
                     Port::scalar("secret", "String"),
                     Port::scalar("scheme", "String"),
-                    Port::optional("header_name", "OptionalString"),
+                    Port::optional("header_name", "Optional<String>"),
                     Port::scalar("source_id", "String"),
-                    Port::fan_in("required_scopes", "String"),
+                    Port::list("required_scopes", "String"),
                 ],
                 vec![Port::scalar("credential", "Credential")],
             ),
@@ -3156,8 +3166,8 @@ mod parity {
                 "prepare_github_oidc",
                 vec![
                     Port::scalar("audience", "String"),
-                    Port::optional("request_token", "OptionalString"),
-                    Port::optional("request_url", "OptionalString"),
+                    Port::optional("request_token", "Optional<String>"),
+                    Port::optional("request_url", "Optional<String>"),
                 ],
                 vec![
                     Port::scalar("request", "TransportRequest"),
@@ -3216,8 +3226,8 @@ mod parity {
                 vec![
                     Port::scalar("access_token", "String"),
                     Port::scalar("service_account", "String"),
-                    Port::optional("lifetime_seconds", "OptionalInt"),
-                    Port::optional("should_impersonate", "OptionalBool"),
+                    Port::optional("lifetime_seconds", "Optional<Int>"),
+                    Port::optional("should_impersonate", "Optional<Bool>"),
                 ],
                 vec![
                     Port::scalar("request", "TransportRequest"),
@@ -3237,7 +3247,7 @@ mod parity {
                 "parse_impersonate",
                 vec![
                     Port::scalar("response", "TransportResponse"),
-                    Port::optional("base_access_token", "OptionalString"),
+                    Port::optional("base_access_token", "Optional<String>"),
                 ],
                 vec![Port::scalar("access_token", "String")],
             ),
@@ -3247,7 +3257,7 @@ mod parity {
                     Port::scalar("access_token", "String"),
                     Port::scalar("project", "String"),
                     Port::scalar("secret", "String"),
-                    Port::optional("version", "OptionalString"),
+                    Port::optional("version", "Optional<String>"),
                 ],
                 vec![
                     Port::scalar("request", "TransportRequest"),
@@ -3422,7 +3432,7 @@ fn lower_callable(
     is_interactive: bool,
     fn_body: Option<Box<LoweredFnBody>>,
     origin: NodeOrigin,
-    type_registry: Option<&gunbc_ir::TypeRegistry>,
+    _type_registry: Option<&gunbc_ir::TypeRegistry>,
 ) -> (Node<LoweredOp>, LoweredEndpoint) {
     let node_id = lowered_node_id(module_name, &callable.name);
     let outputs = if callable.outputs.is_empty() {
@@ -3432,24 +3442,22 @@ fn lower_callable(
             .outputs
             .iter()
             .map(|binding| {
-                // Use Port::typed when registry is available — derives
-                // cardinality at construction instead of post-mutation.
-                match type_registry {
-                    Some(registry) => {
-                        Port::typed(binding.name.as_str(), binding.ty.as_str(), registry)
-                    }
-                    None => Port::scalar(binding.name.as_str(), binding.ty.as_str()),
-                }
+                // Callable outputs are always scalar (ONE cardinality).
+                // List<T> describes the value shape, not the port cardinality.
+                // Port::typed would incorrectly infer ZERO_OR_MORE for List<T>,
+                // causing downstream WrapScalar coercion mismatches.
+                Port::scalar(binding.name.as_str(), binding.ty.as_str())
             })
             .collect()
     };
+    // Callable inputs are always scalar (ONE cardinality).
+    // The fn body evaluator works with single values — List<T> is a single
+    // Value::List, not a multi-value port. Using Port::typed here would
+    // incorrectly infer ZERO_OR_MORE, causing auto_mock to double-wrap lists.
     let mut inputs = callable
         .params
         .iter()
-        .map(|binding| match type_registry {
-            Some(registry) => Port::typed(binding.name.as_str(), binding.ty.as_str(), registry),
-            None => Port::scalar(binding.name.as_str(), binding.ty.as_str()),
-        })
+        .map(|binding| Port::scalar(binding.name.as_str(), binding.ty.as_str()))
         .collect::<Vec<_>>();
     for output in &outputs {
         inputs.push(Port::scalar(
@@ -3457,7 +3465,7 @@ fn lower_callable(
             output.type_id.0.as_str(),
         ));
     }
-    inputs.push(Port::fan_in(PortName::DEPS, "Any"));
+    inputs.push(Port::list(PortName::DEPS, "Any"));
     let obligation = infer_fn_obligation(&callable.name, kind, &outputs);
     let primary_output = outputs
         .first()
@@ -4021,7 +4029,7 @@ fn make_loop_body_dag_from_stmts(
         body_inputs.push(Port::scalar(passthrough.as_str(), "Any"));
     }
     body_inputs.push(Port::scalar(output_passthrough_input_name("result"), "Any"));
-    body_inputs.push(Port::fan_in(PortName::DEPS, "Any"));
+    body_inputs.push(Port::list(PortName::DEPS, "Any"));
 
     let body_target = LoweredEndpoint {
         node_id: "body_op".to_string(),
@@ -4187,13 +4195,15 @@ fn make_loop_body_dag_from_stmts(
         local_let_bindings: &local_let_bindings,
         ..expansion_ctx
     };
-    if let Err(e) = wire_callable_return_outputs(
+    if wire_callable_return_outputs(
         &mut builder,
         &return_ctx,
         site.body_stmts.as_slice(),
         &body_target,
-    ) {
-        eprintln!("error: loop body return wiring failed: {e}");
+    )
+    .is_err()
+    {
+        // Loop body return wiring failed — cannot construct body DAG.
         return None;
     }
 
@@ -7615,15 +7625,9 @@ fn collect_call_names(expr: &Expr, names: &mut HashSet<String>) {
             }
         }
         Expr::FieldAccess(base, _) => collect_call_names(base, names),
-        Expr::BinOp(l, _, r) | Expr::Pipe(l, r) => {
+        Expr::BinOp(l, _, r) => {
             collect_call_names(l, names);
             collect_call_names(r, names);
-        }
-        Expr::PipeCall(recv, _, args) => {
-            collect_call_names(recv, names);
-            for (_, arg) in args {
-                collect_call_names(arg, names);
-            }
         }
         Expr::UnaryOp(_, inner) | Expr::Lambda(_, inner) | Expr::After(inner, _) => {
             collect_call_names(inner, names);
@@ -7976,9 +7980,12 @@ fn add_service_call_edges(
                         prepare_input,
                         format!("{call_index}_{index}").as_str(),
                     ) {
-                        eprintln!(
-                            "error: {source_file}: service call arg `{prepare_input}` wiring failed: {e}"
-                        );
+                        return Err(LowerError::WiringFailure {
+                            source_file: source_file.to_string(),
+                            detail: format!(
+                                "service call arg `{prepare_input}` wiring failed: {e}"
+                            ),
+                        });
                     }
                 }
                 // Wire auth_input argument to res:credential on execute node.
@@ -8120,11 +8127,12 @@ fn add_service_call_edges(
             // argument wiring is first-write-only — multiple call sites could
             // make a function return values from an unrelated invocation.
             if !matches!(&item.node, Item::FnDef(_)) {
-                if let Err(e) = wire_callable_return_outputs(builder, &fn_ctx, stmts, target) {
-                    eprintln!(
-                        "error: {source_file}: callable `{item_name}` return output lowering failed: {e}"
-                    );
-                }
+                // Callable return wiring may fail for patterns that reference
+                // service call results or other DAG-wired values that aren't
+                // visible as simple idents. FnBodyCallableOp handles these via
+                // direct evaluation. TODO: make this a hard error once the
+                // lowerer can trace through service call result bindings.
+                let _ = wire_callable_return_outputs(builder, &fn_ctx, stmts, target);
             }
         }
     }
@@ -9458,15 +9466,9 @@ fn collect_direct_call_names(expr: &Expr, calls: &mut BTreeSet<String>) {
             }
         }
         Expr::FieldAccess(base, _) => collect_direct_call_names(base, calls),
-        Expr::BinOp(left, _, right) | Expr::Pipe(left, right) => {
+        Expr::BinOp(left, _, right) => {
             collect_direct_call_names(left, calls);
             collect_direct_call_names(right, calls);
-        }
-        Expr::PipeCall(recv, _, args) => {
-            collect_direct_call_names(recv, calls);
-            for (_, arg) in args {
-                collect_direct_call_names(arg, calls);
-            }
         }
         Expr::UnaryOp(_, inner) | Expr::After(inner, _) => {
             collect_direct_call_names(inner, calls);
@@ -9574,41 +9576,34 @@ struct CollectionNodeSpec {
 }
 
 fn collection_op_kind(name: &str) -> Option<CollectionOpKind> {
-    // Check pipe method registry first — handles aliases like count→len, sum→fold.
-    if let Some(method) = daglang_syntax::ast::pipe_method_by_name(name) {
-        return method
-            .def()
-            .collection_op
-            .and_then(CollectionOpKind::from_name);
+    // Handle aliases: count→len, sum→fold.
+    match name {
+        "count" => return Some(CollectionOpKind::Len),
+        "sum" => return Some(CollectionOpKind::Fold),
+        "filter_map" => return Some(CollectionOpKind::Filter),
+        "flat_map" => return Some(CollectionOpKind::FlatMap),
+        "sort_by" => return Some(CollectionOpKind::Sort),
+        "append" => return Some(CollectionOpKind::Map),
+        _ => {}
     }
-    // Non-pipe-method names with collection semantics (split/zip use Expr::Call syntax).
     CollectionOpKind::from_name(name)
 }
 
 fn collect_collection_ops_from_stmts(stmts: &[Stmt], sites: &mut Vec<CollectionOpSite>) {
-    walk_stmts(stmts, &mut |expr| match expr {
-        Expr::Pipe(_, rhs) => {
-            let Expr::Call(name, _) = rhs.as_ref() else {
-                return;
-            };
-            let Some(kind) = collection_op_kind(name) else {
-                return;
-            };
-            sites.push(CollectionOpSite { kind });
-        }
-        Expr::PipeCall(_, method, _) => {
-            if let Some(kind) = collection_op_kind(method.as_str()) {
+    walk_stmts(stmts, &mut |expr| {
+        if let Expr::Call(name, _) = expr {
+            if let Some(kind) = collection_op_kind(name) {
                 sites.push(CollectionOpSite { kind });
             }
         }
-        _ => {}
     });
 }
 
 fn derive_collection_node_specs(callable_node_id: &str, stmts: &[Stmt]) -> Vec<CollectionNodeSpec> {
     let mut sites = Vec::new();
     collect_collection_ops_from_stmts(stmts, &mut sites);
-    sites.reverse();
+    // With standalone call syntax (no pipes), walker visits in statement order
+    // which is already the correct pipeline order. No reversal needed.
     sites
         .into_iter()
         .enumerate()
@@ -9638,7 +9633,7 @@ fn build_collection_lowering_plan(
             spec.node_id.clone(),
             vec![
                 Port::scalar("items", "Any"),
-                Port::fan_in(PortName::DEPS, "Any"),
+                Port::list(PortName::DEPS, "Any"),
             ],
             vec![Port::scalar("items", "Any")],
             LoweredOp::Collection {
@@ -9717,15 +9712,9 @@ fn collect_direct_fn_calls_with_args(expr: &Expr, calls: &mut Vec<FnCallSite>) {
             }
         }
         Expr::FieldAccess(base, _) => collect_direct_fn_calls_with_args(base, calls),
-        Expr::BinOp(left, _, right) | Expr::Pipe(left, right) => {
+        Expr::BinOp(left, _, right) => {
             collect_direct_fn_calls_with_args(left, calls);
             collect_direct_fn_calls_with_args(right, calls);
-        }
-        Expr::PipeCall(recv, _, args) => {
-            collect_direct_fn_calls_with_args(recv, calls);
-            for (_, arg) in args {
-                collect_direct_fn_calls_with_args(arg, calls);
-            }
         }
         Expr::UnaryOp(_, inner) | Expr::After(inner, _) => {
             collect_direct_fn_calls_with_args(inner, calls);
@@ -9894,6 +9883,59 @@ pub fn build_data_values(project: &TypedProject) -> HashMap<String, serde_json::
         }
     }
     values
+}
+
+/// Prefix for data declaration node IDs embedded in the DAG.
+///
+/// The resolver scans for nodes with this prefix to reconstruct data_values
+/// without requiring a sidecar through the compilation pipeline.
+pub const DATA_DECL_NODE_PREFIX: &str = "__data_decl::";
+
+/// Embed data declaration values as `CallLiteralSource` nodes in the DAG.
+///
+/// Each data declaration becomes a standalone source node with ID
+/// `__data_decl::{name}` and a `PrimitiveLiteral::Json` payload. The resolver
+/// extracts these at resolution time via [`extract_data_values_from_dag`].
+fn embed_data_declaration_nodes(
+    builder: &mut DagBuilder,
+    data_values: &HashMap<String, serde_json::Value>,
+) {
+    for (name, json_val) in data_values {
+        let node_id = format!("{DATA_DECL_NODE_PREFIX}{name}");
+        builder.add_node(Node::opaque(
+            node_id,
+            vec![],
+            vec![Port::scalar(name.as_str(), "Json")],
+            LoweredOp::Primitive {
+                module: "__data".to_string(),
+                name: format!("data_decl::{name}"),
+                kind: PrimitiveOpKind::CallLiteralSource {
+                    literal: PrimitiveLiteral::Json(json_val.clone()),
+                },
+            },
+        ));
+    }
+}
+
+/// Extract data declaration values from embedded DAG nodes.
+///
+/// Scans for nodes with IDs prefixed by [`DATA_DECL_NODE_PREFIX`] and extracts
+/// their `PrimitiveLiteral::Json` payloads. Returns the same `HashMap<String, serde_json::Value>`
+/// that `build_data_values` produced at lowering time.
+pub fn extract_data_values_from_dag(dag: &Dag<LoweredOp>) -> HashMap<String, serde_json::Value> {
+    let mut data_values = HashMap::new();
+    for node in &dag.nodes {
+        if let Some(name) = node.id.0.strip_prefix(DATA_DECL_NODE_PREFIX) {
+            if let gunbc_ir::NodeBody::Opaque(LoweredOp::Primitive {
+                kind: PrimitiveOpKind::CallLiteralSource { literal: PrimitiveLiteral::Json(json) },
+                ..
+            }) = &node.body
+            {
+                data_values.insert(name.to_string(), json.clone());
+            }
+        }
+    }
+    data_values
 }
 
 /// Collect default expressions for callable parameters across all modules.
@@ -10570,12 +10612,8 @@ fn lower_expr(
                 ctx.module_name, ctx.item_name
             ))
         }),
-        Expr::Pipe(..) | Expr::PipeCall(..) => Err(LowerError::from(format!(
-            "unsupported expression in {}.{}: pipe/for not yet structuralized",
-            ctx.module_name, ctx.item_name
-        ))),
         Expr::For(..) => Err(LowerError::from(format!(
-            "unsupported expression in {}.{}: pipe/for not yet structuralized",
+            "unsupported expression in {}.{}: for not yet structuralized",
             ctx.module_name, ctx.item_name
         ))),
         Expr::ServiceCall(_path, _args) => Err(LowerError::from(format!(
@@ -10763,16 +10801,6 @@ fn collect_expr_leaf_refs(
             collect_expr_leaf_refs(then_, ctx, refs, seen, has_local_refs);
             if let Some(e) = else_ {
                 collect_expr_leaf_refs(e, ctx, refs, seen, has_local_refs);
-            }
-        }
-        Expr::Pipe(receiver, call) => {
-            collect_expr_leaf_refs(receiver, ctx, refs, seen, has_local_refs);
-            collect_expr_leaf_refs(call, ctx, refs, seen, has_local_refs);
-        }
-        Expr::PipeCall(receiver, _, args) => {
-            collect_expr_leaf_refs(receiver, ctx, refs, seen, has_local_refs);
-            for (_, arg) in args {
-                collect_expr_leaf_refs(arg, ctx, refs, seen, has_local_refs);
             }
         }
         Expr::Match(scrutinee, arms) => {
@@ -12165,17 +12193,32 @@ fn collect_local_let_bindings<'a>(
                 // Unwrap Guarded/After wrappers before checking — guarded service
                 // calls like `run = svc.Op() [when cond]` are still service calls.
                 let inner = unwrap_guarded_expr(expr);
-                if !bound_callable_sources.contains_key(name)
-                    && !matches!(inner, Expr::Call(_, _) | Expr::ServiceCall(_, _))
-                {
+                let is_dag_level_call = match inner {
+                    Expr::Call(callee, _) => {
+                        // Intrinsic collection functions (map, filter, fold, etc.)
+                        // are evaluated in the expression evaluator, not as DAG
+                        // callable nodes. Include them in local let bindings.
+                        !daglang_eval::eval::is_intrinsic_call(callee)
+                    }
+                    Expr::ServiceCall(_, _) => true,
+                    _ => false,
+                };
+                if !bound_callable_sources.contains_key(name) && !is_dag_level_call {
                     bindings.insert(name.clone(), expr as &Expr);
                 }
             }
             Stmt::Node(node_stmt) => {
                 let inner = unwrap_guarded_expr(&node_stmt.expr);
-                if !bound_callable_sources.contains_key(&node_stmt.name)
-                    && !matches!(inner, Expr::Call(_, _) | Expr::ServiceCall(_, _))
-                {
+                let is_dag_level_call = match inner {
+                    Expr::Call(callee, _) => {
+                        // Mirror the Stmt::Let logic: intrinsic collection
+                        // functions are evaluable and should be included.
+                        !daglang_eval::eval::is_intrinsic_call(callee)
+                    }
+                    Expr::ServiceCall(_, _) => true,
+                    _ => false,
+                };
+                if !bound_callable_sources.contains_key(&node_stmt.name) && !is_dag_level_call {
                     bindings.insert(node_stmt.name.clone(), &node_stmt.expr as &Expr);
                 }
             }

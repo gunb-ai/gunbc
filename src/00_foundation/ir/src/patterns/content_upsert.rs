@@ -115,7 +115,7 @@ pub fn add_content_upsert_chain<T: Clone>(
             vec![
                 port("response", "TransportResponse"),
                 port("expected_content", "String"),
-                optional("check_mode", "OptionalBool"),
+                optional("check_mode", "Optional<Bool>"),
             ],
             vec![
                 port("fresh", "Bool"),
@@ -148,17 +148,17 @@ pub fn add_content_upsert_chain<T: Clone>(
                 let mut inputs = vec![
                     port("request", "TransportRequest"),
                     port("skip", "Bool"),
-                    optional("skip_reason", "OptionalString"),
+                    optional("skip_reason", "Optional<String>"),
                 ];
                 inputs.extend(write_resource_inputs);
                 inputs
             },
             vec![
                 optional(response_port.as_str(), "TransportResponse"),
-                optional(path_port.as_str(), "OptionalString"),
-                optional(content_out_port.as_str(), "OptionalString"),
+                optional(path_port.as_str(), "Optional<String>"),
+                optional(content_out_port.as_str(), "Optional<String>"),
                 port("skip", "Bool"),
-                optional("skip_reason", "OptionalString"),
+                optional("skip_reason", "Optional<String>"),
             ],
             transport_op,
         )

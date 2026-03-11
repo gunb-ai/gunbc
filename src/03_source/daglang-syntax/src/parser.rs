@@ -1597,11 +1597,9 @@ impl Parser {
 
     fn parse_type_expr(&mut self) -> Result<TypeExpr, ParseError> {
         if self.eat(&TokenKind::LBrace) {
-            while !self.check(&TokenKind::RBrace) && !self.at_eof() {
-                self.advance();
-            }
+            let fields = self.parse_field_list_until_rbrace()?;
             self.expect(&TokenKind::RBrace)?;
-            return Ok(TypeExpr::Named("Record".into()));
+            return Ok(TypeExpr::Record(fields));
         }
         let name = self.parse_dotted_ident()?;
         self.finish_type_expr(name)
@@ -3297,7 +3295,6 @@ impl Parser {
 
     fn infix_bp(&self) -> Option<(u8, u8)> {
         match &self.peek().kind {
-            TokenKind::PipeArrow => Some((1, 2)),
             TokenKind::NullCoalesce => Some((3, 4)),
             TokenKind::Or => Some((5, 6)),
             TokenKind::And => Some((7, 8)),
@@ -3331,16 +3328,6 @@ impl Parser {
             Expr::BinOp(Box::new(lhs), bop, Box::new(rhs))
         } else {
             match op {
-                TokenKind::PipeArrow => match &rhs {
-                    Expr::Call(name, args) => {
-                        if let Ok(method) = name.parse::<PipeMethod>() {
-                            Expr::PipeCall(Box::new(lhs), method, args.clone())
-                        } else {
-                            Expr::Pipe(Box::new(lhs), Box::new(rhs))
-                        }
-                    }
-                    _ => Expr::Pipe(Box::new(lhs), Box::new(rhs)),
-                },
                 TokenKind::NullCoalesce => {
                     Expr::BinOp(Box::new(lhs), BinOp::NullCoalesce, Box::new(rhs))
                 }
@@ -3987,7 +3974,7 @@ fn fermi_max(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
   lhs
 }
 fn fermi_max_of(depths: List<FermiDepth>) -> FermiDepth {
-  depths |> fold(init: Xs, f: (acc, d) => fermi_max(lhs: acc, rhs: d))
+  fold(depths, Xs, (acc, d) => fermi_max(lhs: acc, rhs: d))
 }"#,
         );
         // fermi_max_of should be the third item (after module, type, fermi_max)
@@ -4026,13 +4013,13 @@ fn fermi_max(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
   if fermi_gt(lhs: lhs, rhs: rhs) { lhs } else { rhs }
 }
 fn fermi_max_of(depths: List<FermiDepth>) -> FermiDepth {
-  depths |> fold(init: Xs, f: (acc, d) => fermi_max(lhs: acc, rhs: d))
+  fold(depths, Xs, (acc, d) => fermi_max(lhs: acc, rhs: d))
 }
 fn classify_transports(transports: List<TransportClass>) -> DerivedClassification {
-  let depths = transports |> map(tc => transport_depth(tc: tc))
+  let depths = map(transports, tc => transport_depth(tc: tc))
   let max_depth = fermi_max_of(depths: depths)
-  let all_hermetic = transports |> all(tc => transport_hermetic(tc: tc))
-  let n = transports |> count()
+  let all_hermetic = all(transports, tc => transport_hermetic(tc: tc))
+  let n = count(transports)
   let test_class = if n == 0 { Unit } else { if all_hermetic { Hermetic } else { Integration } }
   let depth = if n == 0 { Xs } else { max_depth }
   let hermetic = if n == 0 { true } else { all_hermetic }
@@ -4172,31 +4159,6 @@ pipeline gist {
             Expr::BinOp(lhs, BinOp::Add, rhs) => {
                 assert!(matches!(*lhs, Expr::Ident(ref name) if name == "a"));
                 assert!(matches!(*rhs, Expr::BinOp(_, BinOp::Mul, _)));
-            }
-            other => panic!("unexpected expression tree: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn expression_pipe_is_left_associative() {
-        let expr = parse_expr_only("a |> f |> g");
-        match expr {
-            Expr::Pipe(lhs, rhs) => {
-                assert!(matches!(*rhs, Expr::Ident(ref name) if name == "g"));
-                assert!(matches!(*lhs, Expr::Pipe(_, _)));
-            }
-            other => panic!("unexpected expression tree: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn expression_pipe_method_lowers_to_pipe_call() {
-        let expr = parse_expr_only("items |> map(x => x)");
-        match expr {
-            Expr::PipeCall(receiver, PipeMethod::Map, args) => {
-                assert!(matches!(*receiver, Expr::Ident(ref name) if name == "items"));
-                assert_eq!(args.len(), 1);
-                assert!(matches!(args[0].1, Expr::Lambda(_, _)));
             }
             other => panic!("unexpected expression tree: {other:?}"),
         }

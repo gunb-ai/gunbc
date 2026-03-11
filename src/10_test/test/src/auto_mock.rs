@@ -11,11 +11,11 @@ use gunbc_ir::transport::{
     TransportResponse,
 };
 use gunbc_ir::{
-    detect_boundaries, detect_entrypoints, parse_map_type_id, value_backing_for_type_id,
+    detect_boundaries, detect_entrypoints, parse_map_type_id,
     variant_witnesses, Cardinality, Dag, NodeBody, NodeId, PortName, TypeId, TypeOp, TypeRegistry,
     Value, ValueBacking,
 };
-use gunbc_primitives::filename;
+use gunbc_ir::filename;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::{
@@ -73,11 +73,12 @@ fn parse_container_alias_inner<'a>(type_id: &'a str, suffix: &str) -> Option<&'a
     }
 }
 
-fn is_placeholder_witness(value: &Value) -> bool {
-    matches!(value, Value::Str(s) if s.starts_with('<') && s.ends_with('>'))
-}
-
-fn typed_witness_value(type_id: &str, registry: &TypeRegistry) -> Option<Value> {
+/// Generate a structurally correct witness value for a type using the registry.
+///
+/// Returns `Some` if the type can be resolved to a concrete value shape
+/// (product types → Map, sum types → first variant, containers → wrapped inner).
+/// Returns `None` for primitives that should use simpler fallback logic.
+pub fn typed_witness_value(type_id: &str, registry: &TypeRegistry) -> Option<Value> {
     typed_witness_value_depth(type_id, registry, 0)
 }
 
@@ -130,7 +131,7 @@ fn typed_witness_value_depth(type_id: &str, registry: &TypeRegistry, depth: u8) 
         .and_then(|ws| {
             ws.into_iter()
                 .map(|w| w.value)
-                .find(|v| !matches!(v, Value::Unit) && !is_placeholder_witness(v))
+                .find(|v| !matches!(v, Value::Unit))
         });
     if standard.is_some() {
         return standard;
@@ -175,10 +176,28 @@ fn product_witness(
         let value = if let Some(fdag) = field_dag {
             // Extract the base type from the field's type DAG and recurse.
             let field_base = gunbc_ir::contract::base_type(fdag);
-            field_base
+            let resolved = field_base
                 .as_deref()
-                .and_then(|ft| typed_witness_value_depth(ft, registry, depth + 1))
-                .unwrap_or_else(|| Value::Str("mock".to_string()))
+                .and_then(|ft| typed_witness_value_depth(ft, registry, depth + 1));
+            let inner = resolved.unwrap_or_else(|| Value::Str("mock".to_string()));
+            // base_type strips container wrappers — re-wrap if the field
+            // has a List/Set/Optional wrapper so the mock matches the
+            // expected runtime shape.
+            match gunbc_ir::contract::wrapper_kind(fdag) {
+                Some(gunbc_ir::WrapperKind::List | gunbc_ir::WrapperKind::NonEmptyList) => {
+                    Value::List(vec![inner])
+                }
+                Some(gunbc_ir::WrapperKind::Set | gunbc_ir::WrapperKind::NonEmptySet) => {
+                    Value::Set(vec![inner])
+                }
+                Some(gunbc_ir::WrapperKind::Optional) => Value::Unit,
+                Some(gunbc_ir::WrapperKind::Map) => {
+                    let mut m = BTreeMap::new();
+                    m.insert("mock_key".to_string(), inner);
+                    Value::Map(m)
+                }
+                None => inner,
+            }
         } else {
             Value::Str("mock".to_string())
         };
@@ -198,7 +217,9 @@ fn default_value_for_type(type_id: &str, registry: &TypeRegistry) -> Value {
             if let Some(value) = typed_witness_value(type_id, registry) {
                 return value;
             }
-            match value_backing_for_type_id(type_id) {
+            // Use the passed-in registry (which includes DSL types) instead
+            // of the static core-only registry from value_backing_for_type_id().
+            match registry.value_backing(&gunbc_ir::TypeId::from(type_id)).unwrap_or(ValueBacking::Json) {
                 ValueBacking::String => Value::Str("mock".to_string()),
                 ValueBacking::Secret => Value::Secret(gunbc_ir::SecretString::new("mock")),
                 ValueBacking::Bool => Value::Bool(true),
@@ -590,9 +611,6 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(
             if output_names.contains(input_port.name.0.as_str()) {
                 continue;
             }
-            if input_port.cardinality.allows_empty() {
-                continue;
-            }
             if input_port.type_id.0 == "TransportResponse" {
                 deferred_response_ports.push(input_port.name.0.as_str());
                 continue;
@@ -655,7 +673,7 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(
             let matcher = if use_fallback {
                 OutputMatcher::NonEmpty
             } else {
-                match value_backing_for_type_id(port.type_id.0.as_str()) {
+                match registry.value_backing(&port.type_id).unwrap_or(ValueBacking::Json) {
                     ValueBacking::Bool => OutputMatcher::IsBool,
                     ValueBacking::Int | ValueBacking::Float => OutputMatcher::IsInt,
                     ValueBacking::String => OutputMatcher::IsString,
@@ -700,6 +718,7 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(
 /// Probe order: provider-specific REST → generic REST → Shell → File.
 /// REST is tried first because the majority of service operations are
 /// REST-based (GitHub, OpenAI, Anthropic, GCP).
+#[allow(clippy::disallowed_macros)]
 fn probe_best_response<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     node_id: &str,
@@ -947,20 +966,22 @@ mod tests {
     }
 
     #[test]
-    fn default_value_for_cloud_runtime_uses_variant_witness() {
+    fn default_value_for_coproduct_uses_variant_witness() {
         let registry = TypeRegistry::with_core_types();
+        // Platform is still registered in Rust; CloudRuntime/FermiDepth
+        // are now DSL-only (available after merge_dsl_types).
         assert_eq!(
-            default_value_for_type("CloudRuntime", &registry),
-            Value::Str("GitHubActions".to_string())
+            default_value_for_type("Platform", &registry),
+            Value::Enum { ty: "Platform".to_string(), variant: "Linux".to_string() }
         );
     }
 
     #[test]
-    fn default_value_for_list_of_fermi_depth_uses_variant_elements() {
+    fn default_value_for_list_of_coproduct_uses_variant_elements() {
         let registry = TypeRegistry::with_core_types();
         assert_eq!(
-            default_value_for_type("List<FermiDepth>", &registry),
-            Value::List(vec![Value::Str("Xs".to_string())])
+            default_value_for_type("List<Platform>", &registry),
+            Value::List(vec![Value::Enum { ty: "Platform".to_string(), variant: "Linux".to_string() }])
         );
     }
 
@@ -969,7 +990,7 @@ mod tests {
         let registry = TypeRegistry::with_core_types();
         assert_eq!(
             default_value_for_type("Platform", &registry),
-            Value::Str("Linux".to_string())
+            Value::Enum { ty: "Platform".to_string(), variant: "Linux".to_string() }
         );
     }
 
@@ -979,4 +1000,5 @@ mod tests {
         assert_eq!(default_value_for_type("Optional<String>", &registry), Value::Unit);
         assert_eq!(default_value_for_type("String?", &registry), Value::Unit);
     }
+
 }

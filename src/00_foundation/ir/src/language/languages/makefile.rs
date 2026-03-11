@@ -62,7 +62,7 @@ pub fn build_makefile_subdag() -> Node<LanguageOp> {
         vec![],
         vec![
             Port::scalar("id", "String"),
-            Port::list("file_patterns", "StringList"),
+            Port::list("file_patterns", "List<String>"),
             Port::scalar("comment_prefix", "String"),
             Port::scalar("indent", "String"),
         ],

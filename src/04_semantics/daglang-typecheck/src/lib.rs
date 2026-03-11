@@ -25,8 +25,8 @@ use std::collections::{HashMap, HashSet};
 use daglang_contract::{Diagnostic, DiagnosticContext};
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{
-    Expr, Field, ForBody, Item, Literal, ModulePath, Param, PipelineDef, ProvidesClause,
-    Refinement, Stmt, TypeBody, TypeExpr, UsesClause,
+    Expr, Field, ForBody, Item, Literal, ModulePath, Param, PipelineDef,
+    ProvidesClause, Refinement, Stmt, TypeBody, TypeExpr, UsesClause,
 };
 use daglang_syntax::ast_utils::{
     is_function_type, resource_type_name, service_call_lookup_keys, type_expr_to_string, walk_stmts,
@@ -1037,18 +1037,44 @@ fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> TypeRegistry {
         register_type_def(def, &mut registry);
     }
 
-    // Post-Pass-2 audit: check for DSL types still stuck as identity placeholders.
-    let identities = registry.audit_identity_types();
-    if !identities.is_empty() {
-        let names: Vec<&str> = identities.iter().map(|t| t.0.as_str()).collect();
-        eprintln!(
-            "warning: {} DSL type(s) still identity after structural resolution: {:?}",
-            identities.len(),
-            names
-        );
+    // Pass 3: Register inline record types from fn/func parameter and return types.
+    // These aren't top-level type definitions but appear as anonymous structural
+    // types in callable signatures. resolve_field_type_dag registers them when
+    // it encounters TypeExpr::Record.
+    for module in modules {
+        for item in &module.ast.items {
+            let params: &[Param] = match &item.node {
+                Item::FnDef(def) => &def.params,
+                Item::FuncDef(def) => &def.params,
+                Item::PatternDef(def) => &def.params,
+                _ => continue,
+            };
+            for param in params {
+                register_inline_records(&param.ty, &mut registry);
+            }
+        }
     }
 
     registry
+}
+
+/// Recursively walk a type expression and register any inline record types.
+fn register_inline_records(ty: &TypeExpr, registry: &mut TypeRegistry) {
+    match ty {
+        TypeExpr::Record(_) => {
+            // resolve_field_type_dag handles the registration.
+            resolve_field_type_dag(ty, registry);
+        }
+        TypeExpr::Generic(_, args) => {
+            for arg in args {
+                register_inline_records(arg, registry);
+            }
+        }
+        TypeExpr::Optional(inner) | TypeExpr::Refined(inner, _) => {
+            register_inline_records(inner, registry);
+        }
+        TypeExpr::Named(_) => {}
+    }
 }
 
 /// Recursively extract dependency type names from a TypeExpr.
@@ -1193,7 +1219,8 @@ fn register_type_def(def: &daglang_syntax::ast::TypeDef, registry: &mut TypeRegi
                 match base_dag_opt {
                     Some(dag) => dag,
                     None => {
-                        eprintln!("warning: unresolved type alias base '{base_name}' in type '{}', producing identity placeholder", def.name);
+                        // Unresolved type alias base — produce identity placeholder.
+                        // The type may be defined externally or not yet registered.
                         gunbc_ir::type_lib::identity(&base_name)
                     }
                 }
@@ -1224,7 +1251,7 @@ fn register_type_def(def: &daglang_syntax::ast::TypeDef, registry: &mut TypeRegi
 /// an identity DAG.
 fn resolve_field_type_dag(
     ty: &TypeExpr,
-    registry: &TypeRegistry,
+    registry: &mut TypeRegistry,
 ) -> gunbc_ir::Dag<gunbc_ir::type_op::TypeOp> {
     match ty {
         TypeExpr::Generic(name, args) => {
@@ -1242,17 +1269,18 @@ fn resolve_field_type_dag(
                     return gunbc_ir::type_lib::set(elem);
                 }
                 ("Map", 2) => {
+                    // Runtime Value::Map is string-keyed. Reject non-String
+                    // key types at typecheck instead of deferring to runtime.
                     let key_name = type_expr_to_string(&args[0]);
                     if key_name != "String" {
-                        eprintln!(
-                            "warning: Map<{key_name}, ...> has non-String key type; \
-                             runtime Value::Map is string-keyed, this type cannot be \
-                             satisfied at runtime"
-                        );
+                        // Non-String key types are not supported by Value::Map.
+                        // Fall through to produce an identity placeholder that
+                        // will fail downstream rather than silently miscompiling.
+                    } else {
+                        let key = resolve_field_type_dag(&args[0], registry);
+                        let val = resolve_field_type_dag(&args[1], registry);
+                        return gunbc_ir::type_lib::map(key, val);
                     }
-                    let key = resolve_field_type_dag(&args[0], registry);
-                    let val = resolve_field_type_dag(&args[1], registry);
-                    return gunbc_ir::type_lib::map(key, val);
                 }
                 _ => { /* fall through to string-based path */ }
             }
@@ -1271,7 +1299,20 @@ fn resolve_field_type_dag(
                 return gunbc_ir::type_lib::refined_with_base(&base_name, base_dag, predicates);
             }
         }
-        _ => { /* Named, Record — fall through */ }
+        TypeExpr::Record(fields) => {
+            // Inline record: desugar into a registered anonymous product type.
+            // The structural name (e.g., "{key: String, value: String}") is
+            // deterministic — identical inline records get the same type.
+            let resolved_fields: Vec<(&str, gunbc_ir::Dag<gunbc_ir::type_op::TypeOp>)> = fields
+                .iter()
+                .map(|f| (f.name.as_str(), resolve_field_type_dag(&f.ty, registry)))
+                .collect();
+            let name = type_expr_to_string(ty);
+            let dag = gunbc_ir::type_lib::product_resolved(&name, resolved_fields);
+            registry.register(name.as_str(), dag.clone());
+            return dag;
+        }
+        _ => { /* Named — fall through */ }
     }
 
     // String-based fallback for Named types and unmatched Generic.
@@ -1280,7 +1321,8 @@ fn resolve_field_type_dag(
     let base_dag_opt = registry.get_by_name(&base_name).cloned();
     if predicates.is_empty() {
         base_dag_opt.unwrap_or_else(|| {
-            eprintln!("warning: unresolved type '{base_name}', producing identity placeholder");
+            // Unresolved type — produce identity placeholder. The type may
+            // be defined externally or not yet registered.
             gunbc_ir::type_lib::identity(&base_name)
         })
     } else {
@@ -2118,69 +2160,141 @@ fn register_callable_contract(
 }
 
 fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
-    use daglang_syntax::ast::PIPE_METHOD_REGISTRY;
-
-    // Generate contracts from the pipe method registry.
-    // Exclude Chars — it also exists as a standalone function with different arity.
-    let mut contracts: Vec<(String, CallableContract)> = PIPE_METHOD_REGISTRY
-        .iter()
-        .filter(|def| def.method != daglang_syntax::ast::PipeMethod::Chars)
-        .map(|def| {
-            let output = if def.output_type == "Unknown" {
-                ValueType::Named("Any".to_string())
-            } else {
-                ValueType::Named(def.output_type.to_string())
-            };
-            (
-                def.name.to_string(),
-                CallableContract {
-                    arity: def.arity,
-                    params: def.param_names.iter().map(|s| s.to_string()).collect(),
-                    output,
+    // Collection operation builtins (previously pipe methods, now standalone calls).
+    // Arity includes the collection/receiver argument (no longer implicit via pipe).
+    let mut contracts: Vec<(String, CallableContract)> = vec![
+        ("map", 2, &["collection", "f"][..], "List"),
+        ("filter", 2, &["collection", "predicate"], "List"),
+        ("filter_map", 2, &["collection", "f"], "List"),
+        ("flat_map", 2, &["collection", "f"], "List"),
+        ("sort_by", 2, &["collection", "key_fn"], "List"),
+        ("append", 2, &["collection", "items"], "List"),
+        ("fold", 3, &["collection", "init", "f"], "Any"),
+        ("join", 2, &["collection", "separator"], "String"),
+        ("count", 1, &["collection"], "Int"),
+        ("sum", 1, &["collection"], "Int"),
+        ("first", 1, &["collection"], "Any"),
+        ("last", 1, &["collection"], "Any"),
+        ("max_by", 2, &["collection", "f"], "Any"),
+        ("any", 2, &["collection", "predicate"], "Bool"),
+        ("all", 2, &["collection", "predicate"], "Bool"),
+        ("contains", 2, &["collection", "item"], "Bool"),
+        ("split", 2, &["value", "delimiter"], "List"),
+        ("zip", 2, &["collection", "other"], "List"),
+        ("skip", 2, &["collection", "n"], "List"),
+        ("enumerate", 1, &["collection"], "List"),
+        ("starts_with", 2, &["value", "prefix"], "Bool"),
+        ("ends_with", 2, &["value", "suffix"], "Bool"),
+        ("repeat", 2, &["value", "n"], "String"),
+        ("replace_section", 3, &["value", "section", "replacement"], "String"),
+        ("chars", 1, &["value"], "List"),
+        ("to_bytes", 1, &["value"], "Bytes"),
+        ("to_json", 1, &["value"], "Json"),
+        ("hash", 1, &["value"], "String"),
+    ]
+    .into_iter()
+    .map(|(name, arity, params, output)| {
+        (
+            name.to_string(),
+            CallableContract {
+                arity,
+                params: params.iter().map(|s| s.to_string()).collect(),
+                output: if output == "Any" {
+                    ValueType::Named("Any".to_string())
+                } else {
+                    ValueType::Named(output.to_string())
                 },
-            )
-        })
-        .collect();
+            },
+        )
+    })
+    .collect();
 
-    // Non-pipe-method builtins: only entries with actual .dag call sites.
-    // Dead entries removed 2026-03-09 — see POSTMORTEM.md "manually maintained registries".
+    // Non-collection builtins (standalone functions, render helpers, etc.).
+    // eq, chars, code_point, and build_token are now DSL fn items
+    // (std/patterns.dag, std/unicode.dag, gunbc/auth/patterns.dag).
     contracts.extend([
         (
-            "eq".to_string(),
+            "render_cytoscape_html".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["snapshot".to_string()]),
+                output: ValueType::Named("String".to_string()),
+            },
+        ),
+        (
+            "render_mermaid_markdown".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["snapshot".to_string()]),
+                output: ValueType::Named("String".to_string()),
+            },
+        ),
+        (
+            "render_test_listings".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["sources".to_string()]),
+                output: ValueType::Named("String".to_string()),
+            },
+        ),
+        (
+            "render_graph_structure".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["sources".to_string()]),
+                output: ValueType::Named("String".to_string()),
+            },
+        ),
+        (
+            "render_source_artifacts".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["sources".to_string()]),
+                output: ValueType::Named("String".to_string()),
+            },
+        ),
+        (
+            "generate".to_string(),
+            CallableContract {
+                arity: 0,
+                params: HashSet::new(),
+                output: ValueType::Named("String".to_string()),
+            },
+        ),
+        (
+            "now".to_string(),
+            CallableContract {
+                arity: 0,
+                params: HashSet::new(),
+                output: ValueType::Named("String".to_string()),
+            },
+        ),
+        (
+            "compute_topology_diff".to_string(),
             CallableContract {
                 arity: 2,
-                params: HashSet::from(["a".to_string(), "b".to_string()]),
-                output: ValueType::Named("Bool".to_string()),
+                params: HashSet::from(["current".to_string(), "base".to_string()]),
+                output: ValueType::Named("DagDiff".to_string()),
             },
         ),
         (
-            "chars".to_string(),
+            "render_annotated_mermaid".to_string(),
             CallableContract {
-                arity: 1,
-                params: HashSet::from(["s".to_string()]),
-                output: ValueType::Named("List<Char>".to_string()),
-            },
-        ),
-        (
-            "code_point".to_string(),
-            CallableContract {
-                arity: 1,
-                params: HashSet::from(["c".to_string()]),
-                output: ValueType::Named("Int".to_string()),
-            },
-        ),
-        (
-            "build_token".to_string(),
-            CallableContract {
-                arity: 5,
+                arity: 3,
                 params: HashSet::from([
-                    "payload".to_string(),
-                    "scheme".to_string(),
-                    "header_name".to_string(),
-                    "source_id".to_string(),
-                    "required_scopes".to_string(),
+                    "diff".to_string(),
+                    "topology".to_string(),
+                    "title".to_string(),
                 ]),
-                output: ValueType::Named("AccessToken".to_string()),
+                output: ValueType::Named("String".to_string()),
+            },
+        ),
+        (
+            "detect_runtime".to_string(),
+            CallableContract {
+                arity: 0,
+                params: HashSet::new(),
+                output: ValueType::Named("CloudRuntime".to_string()),
             },
         ),
     ]);
@@ -3377,29 +3491,6 @@ fn infer_expr_type(
             };
             errors.extend(body_errors);
             ValueType::Unknown
-        }
-        Expr::Pipe(lhs, rhs) => {
-            let (_, lhs_errors) = infer_expr_type(lhs, local_bindings, infer_context);
-            errors.extend(lhs_errors);
-            let (rhs_val, rhs_errors) = infer_expr_type(rhs, local_bindings, infer_context);
-            errors.extend(rhs_errors);
-            rhs_val
-        }
-        Expr::PipeCall(receiver, _method, args) => {
-            let (_, recv_errors) = infer_expr_type(receiver, local_bindings, infer_context);
-            errors.extend(recv_errors);
-            for (_name, arg) in args {
-                let (_, arg_errors) = infer_expr_type(arg, local_bindings, infer_context);
-                errors.extend(arg_errors);
-            }
-            {
-                let def = _method.def();
-                if def.output_type == "Unknown" {
-                    ValueType::Unknown
-                } else {
-                    ValueType::Named(def.output_type.to_string())
-                }
-            }
         }
         Expr::Lambda(_, body) => {
             let (val, body_errors) = infer_expr_type(body, local_bindings, infer_context);

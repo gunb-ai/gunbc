@@ -765,7 +765,7 @@ fn build_cli_tool_subdag(
     dag.add_node(Node::opaque(
         "parse_install",
         vec![Port::scalar("response", "TransportResponse")],
-        vec![Port::optional("install_done", "OptionalBool")],
+        vec![Port::optional("install_done", "Optional<Bool>")],
         CliToolOp::parse_install(tool),
     ));
 
@@ -820,7 +820,7 @@ fn build_cli_tool_subdag(
         "prepare_resolve",
         vec![
             Port::scalar("exists", "Bool"),
-            Port::optional("install_done", "OptionalBool"),
+            Port::optional("install_done", "Optional<Bool>"),
         ],
         vec![Port::scalar("request", "TransportRequest")],
         resolve_prepare_op,

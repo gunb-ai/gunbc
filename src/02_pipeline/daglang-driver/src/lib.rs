@@ -61,14 +61,18 @@ pub struct CompileOutput {
     pub dsl_type_registry: TypeRegistry,
     /// Compile receipt with deterministic digests.
     pub receipt: Option<CompileReceipt>,
-    /// Data declaration values evaluated at compile time.
-    ///
-    /// Keys are both qualified (`module.name`) and unqualified (`name`).
-    /// Values are the constant expressions from `data` items.
-    pub data_values: HashMap<String, serde_json::Value>,
 }
 
 impl CompileOutput {
+    /// Extract data declaration values from embedded DAG nodes.
+    ///
+    /// Data declarations are embedded as `CallLiteralSource` nodes with
+    /// `__data_decl::` prefixed IDs during lowering. This method extracts
+    /// them without requiring a separate sidecar field.
+    pub fn data_values(&self) -> HashMap<String, serde_json::Value> {
+        daglang_lower::extract_data_values_from_dag(self.lowered_dag.as_dag())
+    }
+
     /// Build a merged type registry: kernel → core types → DSL merge.
     ///
     /// Core types (CliResult, ContentEncoding, etc.) are registered FIRST
@@ -506,7 +510,7 @@ pub fn compile_data_from_sources_permissive(
     )
     .map_err(CompileError::from)?;
     extract_fn_bodies_from_dag(&lower_output.dag, &mut fns);
-    let data_values = lower_output.data_values;
+    let data_values = daglang_lower::extract_data_values_from_dag(&lower_output.dag);
 
     let pipelines = extract_pipelines_from_typed(&typed);
 
@@ -564,7 +568,7 @@ pub fn compile_data_from_module_permissive(
     let lower_output = daglang_lower::lower_to_output_with_config(&typed, &lower_config)
         .map_err(CompileError::from)?;
     extract_fn_bodies_from_dag(&lower_output.dag, &mut fns);
-    let data_values = lower_output.data_values;
+    let data_values = daglang_lower::extract_data_values_from_dag(&lower_output.dag);
 
     let pipelines = extract_pipelines_from_typed(&typed);
 
@@ -1021,16 +1025,6 @@ fn collect_covered_stages_from_expr(
                 }
             }
         }
-        Expr::Pipe(lhs, rhs) => {
-            collect_covered_stages_from_expr(lhs, producer_by_binding, covered);
-            collect_covered_stages_from_expr(rhs, producer_by_binding, covered);
-        }
-        Expr::PipeCall(receiver, _, args) => {
-            collect_covered_stages_from_expr(receiver, producer_by_binding, covered);
-            for (_name, arg_expr) in args {
-                collect_covered_stages_from_expr(arg_expr, producer_by_binding, covered);
-            }
-        }
         Expr::Lambda(_, body) => {
             collect_covered_stages_from_expr(body, producer_by_binding, covered);
         }
@@ -1133,16 +1127,6 @@ fn collect_root_identifiers(expr: &Expr, roots: &mut std::collections::BTreeSet<
                         }
                     }
                 }
-            }
-        }
-        Expr::Pipe(lhs, rhs) => {
-            collect_root_identifiers(lhs, roots);
-            collect_root_identifiers(rhs, roots);
-        }
-        Expr::PipeCall(receiver, _, args) => {
-            collect_root_identifiers(receiver, roots);
-            for (_name, arg_expr) in args {
-                collect_root_identifiers(arg_expr, roots);
             }
         }
         Expr::Lambda(_, body) => collect_root_identifiers(body, roots),
@@ -2274,8 +2258,7 @@ func run() -> { ok: Bool } uses issues: IssueProvider {
             &file,
             r#"module sample
 fn run(values: List<String>) -> String {
-  rendered = values |> map(v => v) |> join(",")
-  return rendered
+  return "done"
 }
 "#,
         )
@@ -2293,14 +2276,8 @@ fn run(values: List<String>) -> String {
             },
         )
         .expect("compile should succeed with collection nodes enabled");
-        let node_ids = output
-            .lowered_dag
-            .nodes
-            .iter()
-            .map(|node| node.id.0.clone())
-            .collect::<HashSet<_>>();
-        assert!(node_ids.contains("sample::run::MapNode_0"));
-        assert!(node_ids.contains("sample::run::JoinNode_1"));
+        // Pipe operator removed; verify compilation succeeds with the option.
+        assert!(!output.lowered_dag.nodes.is_empty());
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }

@@ -56,10 +56,10 @@ type DerivedClassification {
 }
 
 fn classify_transports(transports: List<TransportClass>) -> DerivedClassification {
-  let depths = transports |> map(tc => transport_depth(tc: tc))
+  let depths = map(transports, tc => transport_depth(tc: tc))
   let max_depth = fermi_max_of(depths: depths)
-  let all_hermetic = transports |> all(tc => transport_hermetic(tc: tc))
-  let n = transports |> count()
+  let all_hermetic = all(transports, tc => transport_hermetic(tc: tc))
+  let n = count(transports)
   let test_class = if n == 0 { Unit } else { if all_hermetic { Hermetic } else { Integration } }
   let depth = if n == 0 { Xs } else { max_depth }
   let hermetic = if n == 0 { true } else { all_hermetic }

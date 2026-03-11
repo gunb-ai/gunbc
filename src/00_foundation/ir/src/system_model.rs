@@ -987,7 +987,8 @@ fn rust_type_for_type_id(type_id: &TypeId) -> String {
     }
 
     // Use ValueBacking for structural mapping.
-    match crate::types::value_backing_for_type_id(raw) {
+    match crate::types::value_backing_for_type_id(raw)
+        .unwrap_or_else(|_| panic!("unknown type '{}' in rust_type_for_type_id — add a .dag definition", raw)) {
         ValueBacking::String => "String".to_string(),
         ValueBacking::Secret => "String".to_string(),
         ValueBacking::Bool => "bool".to_string(),

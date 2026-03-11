@@ -230,7 +230,7 @@ fn discover_from_dag_file_cached(
     let compile_output = compile_from_context(&context).map_err(|e| format!("compile: {e}"))?;
     let output_paths = merge_output_paths(
         &compile_output.output_paths,
-        &declared_output_paths(&compile_output.data_values)?,
+        &declared_output_paths(&compile_output.data_values())?,
     );
 
     let module_entrypoints: Vec<&InferredEntrypoint> = compile_output

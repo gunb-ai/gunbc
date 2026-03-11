@@ -25,7 +25,7 @@ func bootstrap(check_mode: Bool?, gitignore_categories: List<GitignoreCategory>)
   static_gitignore_categories = filter_categories(categories: categories, build_system: "cargo")
   gitignore_file = {
     rule_comment: "Rule: Ignore anything that is (a) reproducible from committed source-of-truth files, or (b) environment-specific and not shared across developers.",
-    categories: static_gitignore_categories |> append(items: gitignore_categories)
+    categories: append(static_gitignore_categories, items: gitignore_categories)
   }
   gitignore_content = render_gitignore_file(
     file: gitignore_file,

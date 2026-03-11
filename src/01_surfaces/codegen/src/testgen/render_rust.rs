@@ -124,6 +124,9 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
             out.push('\n');
         }
 
+        // Allow eprintln! in generated binaries (user-facing error output).
+        out.push_str("#![allow(clippy::disallowed_macros)]\n\n");
+
         for item in &file.items {
             out.push_str(&self.render_item(item, 0));
             out.push('\n');

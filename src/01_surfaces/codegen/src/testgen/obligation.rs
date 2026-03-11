@@ -1787,7 +1787,7 @@ mod tests {
         dag.add_node(
             Node::opaque(
                 "consumer",
-                vec![Port::list("inputs", "JsonList")],
+                vec![Port::list("inputs", "List<Json>")],
                 vec![Port::scalar("result", "Json")],
                 (),
             )
@@ -1845,7 +1845,7 @@ mod tests {
             Node::opaque(
                 "list_producer",
                 vec![],
-                vec![Port::list("out", "JsonList")],
+                vec![Port::list("out", "List<Json>")],
                 (),
             )
             .with_kind(NodeKind::Pure),

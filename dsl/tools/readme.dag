@@ -26,7 +26,8 @@ fn render_tool_row(tool: ReadmeTool) -> String {
 
 fn render_tool_table(tools: List<ReadmeTool>) -> String {
   let header = "| Tool | Description |\n|------|-------------|"
-  let rows = tools |> map(t => render_tool_row(tool: t)) |> join("\n")
+  let rendered = map(tools, t => render_tool_row(tool: t))
+  let rows = join(rendered, "\n")
   "{header}\n{rows}"
 }
 
@@ -68,7 +69,7 @@ fn render_readme(tools: List<ReadmeTool>) -> String {
     render_docs(),
     render_footer()
   ]
-  sections |> join("\n\n")
+  join(sections, "\n\n")
 }
 
 // ── Entry point ──────────────────────────────────────────────────────

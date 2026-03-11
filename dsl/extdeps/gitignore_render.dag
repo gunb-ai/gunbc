@@ -21,13 +21,14 @@ fn render_category(cat: GitignoreCategory) -> String {
     None => ""
     _ => "# {cat.rationale}\n"
   }
-  let items = cat.items |> join("\n")
+  let items = join(cat.items, "\n")
   "{header}\n{rationale_line}{items}\n"
 }
 
 fn render_gitignore_content(file: GitignoreFile) -> String {
   let rule = "# {file.rule_comment}\n\n"
-  let body = file.categories |> map(c => render_category(cat: c)) |> join("\n")
+  let rendered = map(file.categories, c => render_category(cat: c))
+  let body = join(rendered, "\n")
   "{rule}{body}"
 }
 

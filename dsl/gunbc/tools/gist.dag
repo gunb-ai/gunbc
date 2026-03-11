@@ -17,8 +17,8 @@ import std.types { CommitSha, Url }
 
 // Guess a language tag from a file extension for code block syntax highlighting.
 fn lang_for_path(path: String) -> String {
-  let parts = path |> split(".")
-  let ext = parts |> last() ?? ""
+  let parts = split(path, ".")
+  let ext = last(parts) ?? ""
   match ext {
     "rs"   => "rust"
     "dag"  => "dag"
@@ -53,13 +53,14 @@ fn build_snapshot_content(
   skipped: List<String>
 ) -> String {
   let heading = "# Snapshot: {branch}"
-  let file_list = files |> map(f => f.path) |> join("\n")
+  let file_paths = map(files, f => f.path)
+  let file_list = join(file_paths, "\n")
   let tree_section = "## Files\n\n```\n{file_list}\n```"
-  let file_sections = files
-    |> map(f => render_file_section(path: f.path, content: f.content))
-    |> join("\n\n")
-  let skip_lines = skipped |> map(s => "- {s}") |> join("\n")
-  let skip_section = if skipped |> count() > 0 {
+  let rendered_files = map(files, f => render_file_section(path: f.path, content: f.content))
+  let file_sections = join(rendered_files, "\n\n")
+  let skip_items = map(skipped, s => "- {s}")
+  let skip_lines = join(skip_items, "\n")
+  let skip_section = if count(skipped) > 0 {
     "\n\n## Skipped\n\n{skip_lines}"
   } else {
     ""
