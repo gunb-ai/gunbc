@@ -78,7 +78,7 @@ fn resolve_modules(modules: List<Module>) -> ModuleGraph {
   )
   let resolved_imports_list = resolve_results |> map(r => r.resolved_imports)
   let import_diags = resolve_results |> map(r => r.diagnostics)
-    |> fold([], acc, diags => acc + diags)
+    |> fold(init: [], f: fn(acc, diags) { acc + diags })
 
   // Phase 3: topological sort
   let topo_result = topological_sort(modules: modules)
@@ -139,7 +139,7 @@ fn resolve_module_imports(module: Module, all_modules: List<Module>) -> ModuleRe
   )
   let resolved = results |> map(r => r.resolved)
   let diags = results |> map(r => r.diagnostics)
-    |> fold([], acc, d => acc + d)
+    |> fold(init: [], f: fn(acc, d) { acc + d })
   ModuleResolveResult {
     resolved_imports: resolved,
     diagnostics: diags
@@ -213,7 +213,7 @@ fn get_exported_names(module: Module) -> List<String> {
   let item_names = module.items |> map(item => get_item_name(item: item))
   let variant_names = module.items
     |> map(item => get_variant_names(item: item))
-    |> fold([], acc, names => acc + names)
+    |> fold(init: [], f: fn(acc, names) { acc + names })
   item_names + variant_names
 }
 
@@ -282,7 +282,7 @@ fn check_duplicate_modules(modules: List<Module>) -> List<Diagnostic> {
       }]
       None => []
     }
-  ) |> fold([], acc, diags => acc + diags)
+  ) |> fold(init: [], f: fn(acc, diags) { acc + diags })
 }
 
 // =========================================================================
@@ -307,7 +307,7 @@ fn topological_sort(modules: List<Module>) -> TopoResult {
         DepEdge { from_module: dep, to_module: m.name }
       )
     )
-    |> fold([], acc, edges => acc + edges)
+    |> fold(init: [], f: fn(acc, edges) { acc + edges })
 
   // Compute initial in-degrees
   let initial_in_degrees = module_names |> map(name =>

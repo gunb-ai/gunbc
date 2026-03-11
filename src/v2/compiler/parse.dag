@@ -1414,7 +1414,7 @@ fn parse_block(state: ParserState) -> PR {
 
   // If only one statement, unwrap from Block
   if count(stmts) == 1 {
-    ok(val: { expr: first(stmts) }, state: r.state)
+    ok(val: { expr: first(stmts).value }, state: r.state)
   } else {
     let span = current_span(state: state)
     ok(val: { expr: Block { stmts: stmts, span: span } }, state: r.state)
@@ -2431,7 +2431,7 @@ fn parse_brace_expr(state: ParserState) -> PR {
         let r2 = expect(state: s2, tag: "RBrace")
         if is_err(pr: r2) { return r2 }
         if count(r.val.stmts) == 1 {
-          ok(val: { expr: first(r.val.stmts) }, state: r2.state)
+          ok(val: { expr: first(r.val.stmts).value }, state: r2.state)
         } else {
           ok(val: { expr: Block { stmts: r.val.stmts, span: span } }, state: r2.state)
         }
@@ -2443,7 +2443,7 @@ fn parse_brace_expr(state: ParserState) -> PR {
         let r2 = expect(state: s2, tag: "RBrace")
         if is_err(pr: r2) { return r2 }
         if count(r.val.stmts) == 1 {
-          ok(val: { expr: first(r.val.stmts) }, state: r2.state)
+          ok(val: { expr: first(r.val.stmts).value }, state: r2.state)
         } else {
           ok(val: { expr: Block { stmts: r.val.stmts, span: span } }, state: r2.state)
         }
@@ -2466,7 +2466,7 @@ fn parse_brace_expr(state: ParserState) -> PR {
           let r2 = expect(state: s2, tag: "RBrace")
           if is_err(pr: r2) { return r2 }
           if count(r.val.stmts) == 1 {
-            ok(val: { expr: first(r.val.stmts) }, state: r2.state)
+            ok(val: { expr: first(r.val.stmts).value }, state: r2.state)
           } else {
             ok(val: { expr: Block { stmts: r.val.stmts, span: span } }, state: r2.state)
           }

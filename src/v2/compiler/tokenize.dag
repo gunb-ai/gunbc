@@ -108,7 +108,7 @@ fn tokenize_loop(state: TokenizerState) -> TokenizerState {
   // When inside string interpolation and we hit }, check if this
   // closes the interpolation expression (top of depth stack == 0).
   if ch == "}" && count(s.interp_depth) > 0 {
-    let top = last(s.interp_depth)
+    let top = last(s.interp_depth).value
     if top == 0 {
       // Pop the interpolation depth entry, advance past }, resume string scanning
       let popped = drop_last(stack: s.interp_depth)
@@ -165,7 +165,7 @@ fn scan_token(state: TokenizerState, ch: String) -> TokenizerState {
   // Braces — need special handling for interpolation depth tracking
   if ch == "{" {
     let new_depth = if count(state.interp_depth) > 0 {
-      replace_last(stack: state.interp_depth, value: last(state.interp_depth) + 1)
+      replace_last(stack: state.interp_depth, value: last(state.interp_depth).value + 1)
     } else {
       state.interp_depth
     }
@@ -219,8 +219,8 @@ fn scan_ident(state: TokenizerState) -> TokenizerState {
 
 fn scan_number(state: TokenizerState) -> TokenizerState {
   let int_end = scan_while(s: state.source, start: state.pos, pred: is_digit)
-  // Check for decimal point → float
-  if char_at(s: state.source, pos: int_end) == "." && is_digit(ch: char_at(s: state.source, pos: int_end + 1)) {
+  // Check for decimal point → float (guard against EOF)
+  if int_end + 1 < string_length(s: state.source) && char_at(s: state.source, pos: int_end) == "." && is_digit(ch: char_at(s: state.source, pos: int_end + 1)) {
     let frac_end = scan_while(s: state.source, start: int_end + 1, pred: is_digit)
     let text = substring(s: state.source, start: state.pos, end: frac_end)
     let token = Token {
@@ -426,9 +426,9 @@ fn process_escapes_loop(source: String, pos: Int, acc: String) -> String {
 // drop_last: returns a new list with the last element removed (pop).
 fn drop_last(stack: List<Int>) -> List<Int> {
   let len = count(stack)
-  fold(enumerate(stack), [], fn(result, pair) {
-    if first(pair) < len - 1 {
-      result |> append(items: last(pair))
+  fold(enumerate(stack), init: [], f: fn(result, pair) {
+    if pair.first < len - 1 {
+      result |> append(items: pair.second)
     } else {
       result
     }

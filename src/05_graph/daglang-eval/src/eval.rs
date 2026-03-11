@@ -178,8 +178,8 @@ pub fn evaluate_collection(
                 .enumerate()
                 .map(|(i, v)| {
                     let mut map = std::collections::BTreeMap::new();
-                    map.insert("index".to_string(), Value::Int(i as i64));
-                    map.insert("value".to_string(), v);
+                    map.insert("first".to_string(), Value::Int(i as i64));
+                    map.insert("second".to_string(), v);
                     Value::Map(map)
                 })
                 .collect();
@@ -253,6 +253,21 @@ fn eval_intrinsic_call(
                     }
                     Ok(Value::List(results))
                 }
+                (Value::List(items), Some(LoweredExpr::Ident(fn_name))) if sibling_fns.contains_key(fn_name.as_str()) => {
+                    let fn_name = fn_name.clone();
+                    let param = "_item".to_string();
+                    let body = LoweredExpr::Call {
+                        name: fn_name,
+                        args: vec![(None, LoweredExpr::Ident(param.clone()))],
+                    };
+                    let mut results = Vec::new();
+                    for item in items {
+                        let mut child_env = env.child();
+                        child_env.bind(param.clone(), item);
+                        results.push(eval_expr(&body, &child_env, sibling_fns)?);
+                    }
+                    Ok(Value::List(results))
+                }
                 (Value::List(items), _) => Ok(Value::List(items)),
                 (other, _) => Err(EvalError::new(format!("map requires a list, got {other:?}"))),
             }
@@ -267,6 +282,23 @@ fn eval_intrinsic_call(
                         let mut child_env = env.child();
                         child_env.bind(param.clone(), item.clone());
                         if value_truthy(&eval_expr(body, &child_env, sibling_fns)?) {
+                            results.push(item);
+                        }
+                    }
+                    Ok(Value::List(results))
+                }
+                (Value::List(items), Some(LoweredExpr::Ident(fn_name))) if sibling_fns.contains_key(fn_name.as_str()) => {
+                    let fn_name = fn_name.clone();
+                    let param = "_item".to_string();
+                    let body = LoweredExpr::Call {
+                        name: fn_name,
+                        args: vec![(None, LoweredExpr::Ident(param.clone()))],
+                    };
+                    let mut results = Vec::new();
+                    for item in items {
+                        let mut child_env = env.child();
+                        child_env.bind(param.clone(), item.clone());
+                        if value_truthy(&eval_expr(&body, &child_env, sibling_fns)?) {
                             results.push(item);
                         }
                     }
@@ -360,11 +392,33 @@ fn eval_intrinsic_call(
             _ => Err(EvalError::new("sum requires a list")),
         },
         "first" => match receiver {
-            Value::List(items) => Ok(items.into_iter().next().unwrap_or(Value::Unit)),
+            Value::List(items) => {
+                if let Some(item) = items.into_iter().next() {
+                    let mut map = BTreeMap::new();
+                    map.insert("_variant".to_string(), Value::Str("Some".to_string()));
+                    map.insert("value".to_string(), item);
+                    Ok(Value::Map(map))
+                } else {
+                    let mut map = BTreeMap::new();
+                    map.insert("_variant".to_string(), Value::Str("None".to_string()));
+                    Ok(Value::Map(map))
+                }
+            }
             _ => Err(EvalError::new("first requires a list")),
         },
         "last" => match receiver {
-            Value::List(items) => Ok(items.into_iter().last().unwrap_or(Value::Unit)),
+            Value::List(items) => {
+                if let Some(item) = items.into_iter().last() {
+                    let mut map = BTreeMap::new();
+                    map.insert("_variant".to_string(), Value::Str("Some".to_string()));
+                    map.insert("value".to_string(), item);
+                    Ok(Value::Map(map))
+                } else {
+                    let mut map = BTreeMap::new();
+                    map.insert("_variant".to_string(), Value::Str("None".to_string()));
+                    Ok(Value::Map(map))
+                }
+            }
             _ => Err(EvalError::new("last requires a list")),
         },
         "any" => {
@@ -489,8 +543,8 @@ fn eval_intrinsic_call(
         "enumerate" => match receiver {
             Value::List(items) => Ok(Value::List(items.into_iter().enumerate().map(|(i, v)| {
                 let mut map = BTreeMap::new();
-                map.insert("index".to_string(), Value::Int(i as i64));
-                map.insert("value".to_string(), v);
+                map.insert("first".to_string(), Value::Int(i as i64));
+                map.insert("second".to_string(), v);
                 Value::Map(map)
             }).collect())),
             _ => Err(EvalError::new("enumerate requires a list")),
@@ -1035,6 +1089,25 @@ fn eval_call(
                 _ => Err(EvalError::new(format!("code_point: expected Char, got {:?}", val))),
             }
         }
+        // from_code_point(cp: Int) -> String: Unicode scalar value to character
+        "from_code_point" => {
+            let val = eval_positional_or_named("cp", 0, args, env, sibling_fns)?;
+            match val {
+                Value::Int(cp) => {
+                    if let Some(c) = char::from_u32(cp as u32) {
+                        Ok(Value::Str(c.to_string()))
+                    } else {
+                        Err(EvalError::new(format!("from_code_point: invalid code point {cp}")))
+                    }
+                }
+                _ => Err(EvalError::new("from_code_point: expected Int")),
+            }
+        }
+        // to_string(value: Int) -> String: integer to string conversion
+        "to_string" => {
+            let val = eval_positional_or_named("value", 0, args, env, sibling_fns)?;
+            Ok(Value::Str(value_to_string(&val)))
+        }
         // ── v2 kernel intrinsics ───────────────────────────────────────
         "char_at" => {
             let s = eval_positional_or_named("s", 0, args, env, sibling_fns)?;
@@ -1378,14 +1451,39 @@ fn match_pattern(pattern: &LoweredPattern, value: &Value) -> Option<Vec<(String,
         LoweredPattern::Literal(lit) => {
             let expected = eval_literal(lit);
             if values_equal(&expected, value) {
-                Some(vec![])
-            } else {
-                None
+                return Some(vec![]);
             }
+            // Also match structural None: Map with _variant: "None"
+            if matches!(lit, LoweredLiteral::None) {
+                if let Value::Map(map) = value {
+                    if let Some(Value::Str(tag)) = map.get("_variant") {
+                        if tag == "None" {
+                            return Some(vec![]);
+                        }
+                    }
+                }
+            }
+            None
         }
         LoweredPattern::Variant(variant_name, fields) => {
-            // Option transparent matching: `Some(v)` matches anything except Unit/Skipped
+            // Option matching: `Some { value: x }` / `None`
             if variant_name == "Some" && fields.len() == 1 {
+                // Structural Option: Map with _variant field matching Some/None
+                if let Value::Map(map) = value {
+                    if let Some(Value::Str(tag)) = map.get("_variant") {
+                        if tag == "Some" {
+                            // Extract inner value and match sub-pattern against it
+                            let inner = map.get("value").cloned().unwrap_or(Value::Unit);
+                            return match_pattern(&fields[0].1, &inner);
+                        }
+                        if tag == "None" {
+                            // Structural None → doesn't match Some
+                            return None;
+                        }
+                        // Other variant tags (e.g., "Ident") → fall through to transparent
+                    }
+                }
+                // Transparent matching for non-structural values
                 if !matches!(value, Value::Unit | Value::Skipped) {
                     return match_pattern(&fields[0].1, value);
                 }
@@ -1864,14 +1962,14 @@ mod tests {
         let expected = Value::List(vec![
             Value::Map({
                 let mut m = BTreeMap::new();
-                m.insert("index".to_string(), Value::Int(0));
-                m.insert("value".to_string(), Value::Str("x".to_string()));
+                m.insert("first".to_string(), Value::Int(0));
+                m.insert("second".to_string(), Value::Str("x".to_string()));
                 m
             }),
             Value::Map({
                 let mut m = BTreeMap::new();
-                m.insert("index".to_string(), Value::Int(1));
-                m.insert("value".to_string(), Value::Str("y".to_string()));
+                m.insert("first".to_string(), Value::Int(1));
+                m.insert("second".to_string(), Value::Str("y".to_string()));
                 m
             }),
         ]);

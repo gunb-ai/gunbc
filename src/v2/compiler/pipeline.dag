@@ -61,7 +61,7 @@ fn read_source(path: FilePath) -> SourceFile {
 
 // Gather all diagnostics from a list of parse results.
 fn collect_diagnostics(parse_results: List<ParseResult>) -> List<Diagnostic> {
-  fold(parse_results, [], acc, pr =>
+  fold(parse_results, init: [], f: fn(acc, pr) {
     if pr.error != None {
       acc + [Diagnostic {
         severity: Error,
@@ -72,7 +72,7 @@ fn collect_diagnostics(parse_results: List<ParseResult>) -> List<Diagnostic> {
     } else {
       acc
     }
-  )
+  })
 }
 
 // =========================================================================

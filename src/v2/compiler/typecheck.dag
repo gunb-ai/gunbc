@@ -158,8 +158,10 @@ fn lookup_type(env: TypeEnv, name: String) -> TypeExpr? {
   let matches = filter(env.bindings, b => b.name == name)
   let n = count(matches)
   if n > 0 {
-    let binding = first(matches)
-    Some { value: binding.resolved }
+    match first(matches) {
+      Some { value: binding } => Some { value: binding.resolved }
+      None => None
+    }
   } else {
     None
   }
@@ -698,7 +700,7 @@ fn find_resolved_module(modules: List<ResolvedModule>, name: String) -> Resolved
   let matches = filter(modules, m => m.module.name == name)
   let n = count(matches)
   if n > 0 {
-    Some { value: first(matches) }
+    first(matches)
   } else {
     None
   }
@@ -712,7 +714,7 @@ fn find_typed_module(modules: List<TypedModule>, name: String) -> TypedModule? {
   let matches = filter(modules, m => m.module.name == name)
   let n = count(matches)
   if n > 0 {
-    Some { value: first(matches) }
+    first(matches)
   } else {
     None
   }
@@ -984,7 +986,10 @@ fn lookup_type_in_graph(graph: TypedGraph, name: String) -> TypeExpr? {
   let matches = filter(all_bindings, b => b.name == name)
   let n = count(matches)
   if n > 0 {
-    Some { value: first(matches).resolved }
+    match first(matches) {
+      Some { value: binding } => Some { value: binding.resolved }
+      None => None
+    }
   } else {
     None
   }

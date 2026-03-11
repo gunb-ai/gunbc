@@ -78,6 +78,131 @@ mod tests {
         );
     }
 
+    /// Compile all 7 v2 compiler .dag files into a single EmbeddedCompileOutput.
+    /// All fn bodies from all modules share one `fns` HashMap, enabling
+    /// cross-module calls (e.g., pipeline.dag calling tokenize()).
+    fn compile_all_modules() -> Result<daglang_driver::EmbeddedCompileOutput, String> {
+        let root = workspace_root();
+
+        let files = vec![
+            root.join("dsl/std/types.dag"),
+            root.join("src/v2/std/core.dag"),
+            root.join("src/v2/compiler/tokenize.dag"),
+            root.join("src/v2/compiler/parse.dag"),
+            root.join("src/v2/compiler/resolve.dag"),
+            root.join("src/v2/compiler/typecheck.dag"),
+            root.join("src/v2/compiler/emit.dag"),
+            root.join("src/v2/compiler/pipeline.dag"),
+        ];
+        let sources: Vec<(std::path::PathBuf, String)> = files
+            .into_iter()
+            .map(|p| {
+                let content = std::fs::read_to_string(&p).unwrap();
+                (p, content)
+            })
+            .collect();
+
+        let mut parsed_files = Vec::new();
+        for (path, source) in &sources {
+            let ast = daglang_syntax::parser::parse_with_file_diagnostics(path, source)
+                .map_err(|errs| {
+                    errs.iter()
+                        .map(|d| d.render())
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                })?;
+            parsed_files.push((path.clone(), ast, source.clone()));
+        }
+
+        let mut variant_names = std::collections::HashSet::new();
+        for (_path, ast, _source) in &parsed_files {
+            for item in &ast.items {
+                if let daglang_syntax::ast::Item::TypeDef(td) = &item.node {
+                    if let daglang_syntax::ast::TypeBody::Sum(variants) = &td.body {
+                        for v in variants {
+                            variant_names.insert(v.name.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut fns = HashMap::new();
+        let mut data_values = HashMap::new();
+        for (_path, ast, _source) in &parsed_files {
+            for item in &ast.items {
+                match &item.node {
+                    daglang_syntax::ast::Item::FnDef(fndef) => {
+                        let lowered =
+                            daglang_lower::expr::lower_fn_body(&fndef.body, &variant_names);
+                        fns.insert(fndef.name.clone(), lowered);
+                    }
+                    daglang_syntax::ast::Item::DataDef(dd) => {
+                        let expr = &dd.value;
+                        let lowered_expr =
+                            daglang_lower::expr::lower_expr_remap(expr, &variant_names);
+                        let body = daglang_eval::LoweredFnBody {
+                            stmts: vec![daglang_eval::LoweredStmt::Return(vec![(
+                                "return".to_string(),
+                                lowered_expr,
+                            )])],
+                        };
+                        if let Ok(result) = daglang_eval::evaluate_fn_body(
+                            &body,
+                            &HashMap::new(),
+                            &HashMap::new(),
+                        ) {
+                            if let Some(val) = result.get("return") {
+                                data_values.insert(dd.name.clone(), value_to_json(val));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        Ok(daglang_driver::EmbeddedCompileOutput {
+            fns,
+            data_values,
+            pipelines: HashMap::new(),
+        })
+    }
+
+    /// Helper: call a DSL function by name with given inputs and return outputs.
+    fn call_fn(
+        output: &daglang_driver::EmbeddedCompileOutput,
+        fn_name: &str,
+        inputs: HashMap<String, gunbc_ir::Value>,
+    ) -> Result<HashMap<String, gunbc_ir::Value>, String> {
+        let body = output
+            .fns
+            .get(fn_name)
+            .ok_or_else(|| format!("fn '{}' not found", fn_name))?;
+        daglang_eval::evaluate_fn_body_with_data(body, &inputs, &output.fns, &output.data_values)
+            .map_err(|e| format!("{}", e))
+    }
+
+    /// Helper: extract a string field from a token's kind variant.
+    fn token_kind_tag(token: &gunbc_ir::Value) -> Option<String> {
+        if let gunbc_ir::Value::Map(map) = token {
+            if let Some(gunbc_ir::Value::Map(kind_map)) = map.get("kind") {
+                if let Some(gunbc_ir::Value::Str(tag)) = kind_map.get("_variant") {
+                    return Some(tag.clone());
+                }
+            }
+            // Unit variant kinds stored as Enum
+            if let Some(gunbc_ir::Value::Enum { variant, .. }) = map.get("kind") {
+                return Some(variant.clone());
+            }
+            // Str kind (fallback for older format)
+            if let Some(gunbc_ir::Value::Str(s)) = map.get("kind") {
+                return Some(s.clone());
+            }
+        }
+        None
+    }
+
     #[test]
     fn phase0_fn_lambda_syntax() {
         let source = r#"module test
@@ -601,6 +726,303 @@ fn foo(item: String) -> String {
                 }
             }
             Err(e) => panic!("tokenizer failed on operators: {}", e),
+        }
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Phase 3: Stage-by-stage integration — chain stages on trivial fixture
+    // ═════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn phase3_compile_all_modules() {
+        let output = compile_all_modules().expect("all modules should compile");
+        // Verify we got fn bodies from all 7 compiler modules
+        assert!(
+            output.fns.contains_key("tokenize"),
+            "should have tokenize fn"
+        );
+        assert!(output.fns.contains_key("parse"), "should have parse fn");
+        assert!(
+            output.fns.contains_key("resolve_modules"),
+            "should have resolve_modules fn"
+        );
+        assert!(
+            output.fns.contains_key("typecheck"),
+            "should have typecheck fn"
+        );
+        assert!(
+            output.fns.contains_key("emit_rust"),
+            "should have emit_rust fn"
+        );
+        assert!(
+            output.fns.contains_key("compile_sources"),
+            "should have compile_sources fn"
+        );
+    }
+
+    #[test]
+    fn phase3_variant_names_collected() {
+        let root = workspace_root();
+        let core = root.join("src/v2/std/core.dag");
+        let source = std::fs::read_to_string(&core).unwrap();
+        let ast =
+            daglang_syntax::parser::parse_with_file_diagnostics(&core, &source).unwrap();
+        let mut variant_names = std::collections::HashSet::new();
+        for item in &ast.items {
+            if let daglang_syntax::ast::Item::TypeDef(td) = &item.node {
+                if let daglang_syntax::ast::TypeBody::Sum(variants) = &td.body {
+                    for v in variants {
+                        variant_names.insert(v.name.clone());
+                    }
+                }
+            }
+        }
+        assert!(variant_names.contains("Ident"), "should have Ident variant");
+        assert!(
+            variant_names.contains("KwModule"),
+            "should have KwModule variant"
+        );
+        assert!(variant_names.contains("Eof"), "should have Eof variant");
+    }
+
+    #[test]
+    fn phase3_kind_tag_matches_ident() {
+        // Test that kind_tag function correctly matches an Ident token kind
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        // Simulate an Ident { name: "test" } token kind value
+        let mut kind_map = std::collections::BTreeMap::new();
+        kind_map.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("Ident".to_string()),
+        );
+        kind_map.insert(
+            "name".to_string(),
+            gunbc_ir::Value::Str("test".to_string()),
+        );
+        let kind_val = gunbc_ir::Value::Map(kind_map);
+
+        let mut inputs = HashMap::new();
+        inputs.insert("kind".to_string(), kind_val);
+
+        let result = call_fn(&output, "kind_tag", inputs);
+        match result {
+            Ok(outputs) => {
+                let ret = &outputs["return"];
+                assert_eq!(
+                    ret,
+                    &gunbc_ir::Value::Str("Ident".to_string()),
+                    "kind_tag should return 'Ident'"
+                );
+            }
+            Err(e) => panic!("kind_tag failed: {}", e),
+        }
+    }
+
+    #[test]
+    fn phase3_tokenize_produces_correct_kinds() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "source".to_string(),
+            gunbc_ir::Value::Str("fn add(a: Int) -> Int { a }".into()),
+        );
+
+        let result = call_fn(&output, "tokenize", inputs).expect("tokenize should succeed");
+        let tokens = match &result["return"] {
+            gunbc_ir::Value::List(t) => t,
+            other => panic!("expected token list, got: {:?}", other),
+        };
+
+        // Verify token kinds are correct (not double-wrapped in Some)
+        let kinds: Vec<Option<String>> = tokens.iter().map(token_kind_tag).collect();
+        assert!(
+            kinds.iter().any(|k| k.as_deref() == Some("KwFn")),
+            "should have KwFn token, got kinds: {:?}",
+            kinds
+        );
+    }
+
+    #[test]
+    fn phase3_expect_ident_on_ident_token() {
+        // Test expect_ident with a token list starting with an Ident token
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                let output = compile_all_modules().expect("compilation should succeed");
+
+                // Build a token list with just an Ident token + Eof
+                let mut ident_kind = std::collections::BTreeMap::new();
+                ident_kind.insert(
+                    "_variant".to_string(),
+                    gunbc_ir::Value::Str("Ident".to_string()),
+                );
+                ident_kind.insert(
+                    "name".to_string(),
+                    gunbc_ir::Value::Str("test".to_string()),
+                );
+
+                let mut span = std::collections::BTreeMap::new();
+                span.insert("start".to_string(), gunbc_ir::Value::Int(0));
+                span.insert("end".to_string(), gunbc_ir::Value::Int(4));
+
+                let mut token = std::collections::BTreeMap::new();
+                token.insert("kind".to_string(), gunbc_ir::Value::Map(ident_kind));
+                token.insert("span".to_string(), gunbc_ir::Value::Map(span.clone()));
+
+                let eof_token = {
+                    let mut t = std::collections::BTreeMap::new();
+                    t.insert(
+                        "kind".to_string(),
+                        gunbc_ir::Value::Enum {
+                            ty: String::new(),
+                            variant: "Eof".to_string(),
+                        },
+                    );
+                    t.insert("span".to_string(), gunbc_ir::Value::Map(span));
+                    t
+                };
+
+                let tokens = gunbc_ir::Value::List(vec![
+                    gunbc_ir::Value::Map(token),
+                    gunbc_ir::Value::Map(eof_token),
+                ]);
+
+                let mut state = std::collections::BTreeMap::new();
+                state.insert("tokens".to_string(), tokens);
+                state.insert("pos".to_string(), gunbc_ir::Value::Int(0));
+
+                let mut inputs = HashMap::new();
+                inputs.insert("state".to_string(), gunbc_ir::Value::Map(state));
+
+                match call_fn(&output, "expect_ident", inputs) {
+                    Ok(_outputs) => {}
+                    Err(e) => panic!("expect_ident failed: {}", e),
+                }
+            })
+            .unwrap()
+            .join();
+        match result {
+            Ok(()) => {}
+            Err(e) => std::panic::resume_unwind(e),
+        }
+    }
+
+    #[test]
+    fn phase3_peek_kind_returns_option() {
+        // Test peek_kind on a simple token list
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                let output = compile_all_modules().expect("compilation should succeed");
+
+                // Step 1: Tokenize "module test"
+                let mut tok_inputs = HashMap::new();
+                tok_inputs.insert(
+                    "source".to_string(),
+                    gunbc_ir::Value::Str("module test".into()),
+                );
+                let tok_result =
+                    call_fn(&output, "tokenize", tok_inputs).expect("tokenize should succeed");
+                let tokens = match &tok_result["return"] {
+                    gunbc_ir::Value::List(t) => t.clone(),
+                    other => panic!("expected token list, got: {:?}", other),
+                };
+
+                // Step 2: Test peek_kind
+                let mut peek_inputs = HashMap::new();
+                let mut state = std::collections::BTreeMap::new();
+                state.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
+                state.insert("pos".to_string(), gunbc_ir::Value::Int(0));
+                peek_inputs.insert("state".to_string(), gunbc_ir::Value::Map(state));
+
+                match call_fn(&output, "peek_kind", peek_inputs) {
+                    Ok(outputs) => {
+                        // peek_kind returns destructured Some: has "value" key
+                        assert!(
+                            outputs.contains_key("value"),
+                            "peek_kind should have 'value' key, got: {:?}",
+                            outputs.keys().collect::<Vec<_>>()
+                        );
+                    }
+                    Err(e) => panic!("peek_kind failed: {}", e),
+                }
+            })
+            .unwrap()
+            .join();
+        match result {
+            Ok(()) => {}
+            Err(e) => std::panic::resume_unwind(e),
+        }
+    }
+
+    #[test]
+    fn phase3_parser_e2e() {
+        // Parser uses deep recursion via evaluator — needs large stack.
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024) // 64 MB
+            .spawn(|| {
+                let output = compile_all_modules().expect("compilation should succeed");
+
+                // Step 1: Tokenize - start with minimal input
+                let source = "module test";
+                let mut tok_inputs = HashMap::new();
+                tok_inputs.insert(
+                    "source".to_string(),
+                    gunbc_ir::Value::Str(source.into()),
+                );
+                let tok_result =
+                    call_fn(&output, "tokenize", tok_inputs).expect("tokenize should succeed");
+                let tokens = match &tok_result["return"] {
+                    gunbc_ir::Value::List(t) => t.clone(),
+                    other => panic!("expected token list from tokenize, got: {:?}", other),
+                };
+
+                // Step 2: Parse
+                let mut parse_inputs = HashMap::new();
+                parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
+                let parse_result = call_fn(&output, "parse", parse_inputs);
+
+                match parse_result {
+                    Ok(outputs) => {
+                        // The parse function returns fields that may include _variant
+                        // Navigate to the module value, handling possible wrapping
+                        let module_val = outputs
+                            .get("module")
+                            .expect("should have 'module' key");
+                        // The module might be wrapped in a value field (from Some construction)
+                        let module = if let gunbc_ir::Value::Map(m) = module_val {
+                            if m.contains_key("value") && !m.contains_key("name") {
+                                m.get("value").unwrap()
+                            } else {
+                                module_val
+                            }
+                        } else {
+                            module_val
+                        };
+                        if let gunbc_ir::Value::Map(mod_map) = module {
+                            let name = mod_map.get("name").expect("module should have name");
+                            assert_eq!(
+                                name,
+                                &gunbc_ir::Value::Str("test".to_string()),
+                                "module name should be 'test'"
+                            );
+                        } else {
+                            panic!("module is not a Map: {:?}", module);
+                        }
+                    }
+                    Err(e) => {
+                        panic!("parser evaluation failed: {}", e);
+                    }
+                }
+            })
+            .expect("failed to spawn thread")
+            .join();
+
+        match result {
+            Ok(()) => {}
+            Err(e) => std::panic::resume_unwind(e),
         }
     }
 }

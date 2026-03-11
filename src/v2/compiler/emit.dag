@@ -912,7 +912,7 @@ fn emit_test_file(typed_module: TypedModule) -> TextFile {
   let service_items = m.items |> filter(item => is_service_item(item: item))
   let test_fns = service_items
     |> map(item => emit_service_tests(item: item))
-    |> fold([], acc, tests => acc + tests)
+    |> fold(init: [], f: fn(acc, tests) { acc + tests })
   if test_fns |> count == 0 {
     TextFile { path: "", content: "" }
   } else {
