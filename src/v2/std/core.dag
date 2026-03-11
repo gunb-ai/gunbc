@@ -142,6 +142,7 @@ type TypeExpr
   // Kernel types (String, Int, Bool, Float, Secret, Json, Unit, Bytes)
   // that have no structural expansion.
   | Primitive { name: String, span: SourceSpan }
+  | TypeApp { name: String, args: List<TypeExpr>, span: SourceSpan }
 
 type ContainerKind = List | Set | NonEmptyList | NonEmptySet
 
@@ -188,6 +189,7 @@ type Predicate
   | Brand { name: String }
   | ContentEncoding { encoding: String }
   | Format { name: String }
+  | Domain { name: String }
 
 // =========================================================================
 // Expressions
@@ -202,7 +204,7 @@ type Expr
   | Match { scrutinee: Expr, arms: List<MatchArm>, span: SourceSpan }
   | If { condition: Expr, then_branch: Expr, else_branch: Expr?, span: SourceSpan }
   | Let { name: String, value: Expr, body: Expr?, span: SourceSpan }
-  | RecordLit { fields: List<FieldInit>, span: SourceSpan }
+  | RecordLit { type_name: String?, fields: List<FieldInit>, span: SourceSpan }
   | ListLit { elements: List<Expr>, span: SourceSpan }
   | BinOp { op: BinOpKind, left: Expr, right: Expr, span: SourceSpan }
   | UnaryOp { op: UnaryOpKind, operand: Expr, span: SourceSpan }
@@ -218,8 +220,13 @@ type FieldInit { name: String, value: Expr }
 type MatchPattern
   = Bind { name: String }
   | LitPattern { value: LiteralValue }
-  | VariantPattern { name: String, bindings: List<String> }
+  | VariantPattern { name: String, field_bindings: List<FieldBinding> }
   | Wildcard
+
+type FieldBinding {
+  field_name: String
+  binding: MatchPattern
+}
 
 type LiteralValue
   = LitStr { value: String }

@@ -44,17 +44,18 @@ import v2.std.core {
 type ResolvedImport {
   module_path: String
   names: List<String>
-  span: SourceSpan
+  target_module: Module?
 }
 
 type ResolvedModule {
   module: Module
   resolved_imports: List<ResolvedImport>
+  dep_order: Int
 }
 
 type ModuleGraph {
   modules: List<ResolvedModule>
-  dep_order: List<String>
+  diagnostics: List<Diagnostic>
 }
 
 // =========================================================================
@@ -639,14 +640,19 @@ fn resolve_type_body(body: TypeBody, env: TypeEnv, module_name: String) -> TypeB
 // every item. Returns the typed module with its environment.
 // =========================================================================
 
-fn typecheck_module(resolved: ResolvedModule, parent_envs: List<TypeEnv>) -> TypedModule {
+type TypecheckModuleResult {
+  typed: TypedModule
+  diagnostics: List<Diagnostic>
+}
+
+fn typecheck_module(resolved: ResolvedModule, parent_envs: List<TypeEnv>) -> TypecheckModuleResult {
   let env = build_type_env(module: resolved, parent_envs: parent_envs)
   // Resolve all type expressions in every item against the environment.
   let item_results = map(resolved.module.items, item =>
     resolve_item_types(item: item, env: env, module_name: resolved.module.name)
   )
   let resolved_items = map(item_results, ir => ir.item)
-  let all_diags = fold(item_results, init: [], f: (acc, ir) => acc + ir.diagnostics)
+  let item_diags = fold(item_results, init: [], f: (acc, ir) => acc + ir.diagnostics)
 
   // Rebuild the module with resolved items.
   let typed_module = Module {
@@ -660,9 +666,12 @@ fn typecheck_module(resolved: ResolvedModule, parent_envs: List<TypeEnv>) -> Typ
   // bindings point to fully-resolved structural forms.
   let resolved_env = resolve_env_bindings(env: env, module_name: resolved.module.name)
 
-  TypedModule {
-    module: typed_module,
-    type_env: resolved_env.env
+  TypecheckModuleResult {
+    typed: TypedModule {
+      module: typed_module,
+      type_env: resolved_env.env
+    },
+    diagnostics: item_diags + resolved_env.diagnostics
   }
 }
 
@@ -751,28 +760,12 @@ fn typecheck(graph: ModuleGraph) -> TypedGraph {
   // Process modules in dependency order. Each iteration adds one
   // TypedModule to the accumulator, making its types available to
   // subsequent modules.
-  let result = fold(graph.dep_order, init: { modules: [], diagnostics: [] }, f: (acc, module_name) =>
-    match find_resolved_module(modules: graph.modules, name: module_name) {
-      Some { value: resolved } =>
-        let parent_envs = collect_parent_envs(resolved: resolved, typed_modules: acc.modules)
-        let typed = typecheck_module(resolved: resolved, parent_envs: parent_envs)
-        // Collect any diagnostics from environment resolution.
-        let env_result = resolve_env_bindings(env: typed.type_env, module_name: module_name)
-        {
-          modules: acc.modules + [typed],
-          diagnostics: acc.diagnostics + env_result.diagnostics
-        }
-      None =>
-        // Module in dep_order but not in graph — internal error.
-        {
-          modules: acc.modules,
-          diagnostics: acc.diagnostics + [Diagnostic {
-            severity: Error,
-            message: "module '" + module_name + "' in dependency order but not found in module graph",
-            span: None,
-            module_name: module_name
-          }]
-        }
+  let result = fold(graph.modules, init: { modules: [], diagnostics: [] }, f: (acc, resolved) =>
+    let parent_envs = collect_parent_envs(resolved: resolved, typed_modules: acc.modules)
+    let tc_result = typecheck_module(resolved: resolved, parent_envs: parent_envs)
+    {
+      modules: acc.modules + [tc_result.typed],
+      diagnostics: acc.diagnostics + tc_result.diagnostics
     }
   )
 
@@ -813,49 +806,52 @@ fn make_warning(message: String, span: SourceSpan, module_name: String) -> Diagn
 // =========================================================================
 
 fn validate_no_unresolved(graph: TypedGraph) -> List<Diagnostic> {
+  // Collect all defined type names across the graph (for cycle-breaker detection)
+  let all_defined = fold(graph.modules, init: [], f: (acc, tm) => acc + tm.type_env.bindings)
+  let defined_names = map(all_defined, b => b.name)
   fold(graph.modules, init: [], f: (acc, tm) =>
     let item_diags = fold(tm.module.items, init: [], f: (inner_acc, item) =>
-      inner_acc + collect_unresolved_in_item(item: item, module_name: tm.module.name)
+      inner_acc + collect_unresolved_in_item(item: item, module_name: tm.module.name, defined_names: defined_names)
     )
     acc + item_diags
   )
 }
 
-fn collect_unresolved_in_item(item: Item, module_name: String) -> List<Diagnostic> {
+fn collect_unresolved_in_item(item: Item, module_name: String, defined_names: List<String>) -> List<Diagnostic> {
   match item {
     TypeDef { name: _, body: body, span: _ } =>
-      collect_unresolved_in_type_body(body: body, module_name: module_name)
+      collect_unresolved_in_type_body(body: body, module_name: module_name, defined_names: defined_names)
 
     FnDef { name: _, params: params, return_type: return_type, body: _, span: _ } =>
       let param_diags = fold(params, init: [], f: (acc, p) =>
-        acc + collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name)
+        acc + collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names)
       )
       let ret_diags = match return_type {
-        Some { value: te } => collect_unresolved_in_type_expr(expr: te, module_name: module_name)
+        Some { value: te } => collect_unresolved_in_type_expr(expr: te, module_name: module_name, defined_names: defined_names)
         None => []
       }
       param_diags + ret_diags
 
     FuncDef { name: _, params: params, return_type: return_type, uses: uses, body: _, span: _ } =>
       let param_diags = fold(params, init: [], f: (acc, p) =>
-        acc + collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name)
+        acc + collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names)
       )
       let ret_diags = match return_type {
-        Some { value: te } => collect_unresolved_in_type_expr(expr: te, module_name: module_name)
+        Some { value: te } => collect_unresolved_in_type_expr(expr: te, module_name: module_name, defined_names: defined_names)
         None => []
       }
       let use_diags = fold(uses, init: [], f: (acc, u) =>
-        acc + collect_unresolved_in_type_expr(expr: u.resource, module_name: module_name)
+        acc + collect_unresolved_in_type_expr(expr: u.resource, module_name: module_name, defined_names: defined_names)
       )
       param_diags + ret_diags + use_diags
 
     ServiceDef { name: _, transport: _, config: _, operations: operations, span: _ } =>
       fold(operations, init: [], f: (acc, op) =>
         let input_diags = fold(op.inputs, init: [], f: (inner_acc, f) =>
-          inner_acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name)
+          inner_acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names)
         )
         let output_diags = fold(op.outputs, init: [], f: (inner_acc, f) =>
-          inner_acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name)
+          inner_acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names)
         )
         acc + input_diags + output_diags
       )
@@ -863,10 +859,10 @@ fn collect_unresolved_in_item(item: Item, module_name: String) -> List<Diagnosti
     ResourceDef { name: _, capabilities: capabilities, span: _ } =>
       fold(capabilities, init: [], f: (acc, cap) =>
         let input_diags = fold(cap.inputs, init: [], f: (inner_acc, f) =>
-          inner_acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name)
+          inner_acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names)
         )
         let output_diags = fold(cap.outputs, init: [], f: (inner_acc, f) =>
-          inner_acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name)
+          inner_acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names)
         )
         acc + input_diags + output_diags
       )
@@ -876,65 +872,70 @@ fn collect_unresolved_in_item(item: Item, module_name: String) -> List<Diagnosti
 
     ExternFuncDecl { name: _, params: params, return_type: return_type, span: _ } =>
       let param_diags = fold(params, init: [], f: (acc, p) =>
-        acc + collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name)
+        acc + collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names)
       )
       param_diags + collect_unresolved_in_type_expr(expr: return_type, module_name: module_name)
   }
 }
 
-fn collect_unresolved_in_type_body(body: TypeBody, module_name: String) -> List<Diagnostic> {
+fn collect_unresolved_in_type_body(body: TypeBody, module_name: String, defined_names: List<String>) -> List<Diagnostic> {
   match body {
     Record { fields: fields } =>
       fold(fields, init: [], f: (acc, f) =>
-        acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name)
+        acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names)
       )
     Sum { variants: variants } =>
       fold(variants, init: [], f: (acc, v) =>
         fold(v.fields, init: acc, f: (inner_acc, f) =>
-          inner_acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name)
+          inner_acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names)
         )
       )
     Alias { base: base } =>
-      collect_unresolved_in_type_expr(expr: base, module_name: module_name)
+      collect_unresolved_in_type_expr(expr: base, module_name: module_name, defined_names: defined_names)
   }
 }
 
-fn collect_unresolved_in_type_expr(expr: TypeExpr, module_name: String) -> List<Diagnostic> {
+fn collect_unresolved_in_type_expr(expr: TypeExpr, module_name: String, defined_names: List<String>) -> List<Diagnostic> {
   match expr {
     Named { name: name, span: span } =>
-      [Diagnostic {
-        severity: Error,
-        message: "unresolved type '" + name + "' survived typecheck (internal error)",
-        span: span,
-        module_name: module_name
-      }]
+      // Allow Named refs that are defined in the graph (recursive cycle-breakers)
+      if defined_names |> any(d => d == name) {
+        []
+      } else {
+        [Diagnostic {
+          severity: Error,
+          message: "unresolved type '" + name + "' survived typecheck (internal error)",
+          span: span,
+          module_name: module_name
+        }]
+      }
 
     Primitive { name: _, span: _ } => []
 
     Product { name: _, fields: fields, span: _ } =>
       fold(fields, init: [], f: (acc, f) =>
-        acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name)
+        acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names)
       )
 
     Coproduct { name: _, variants: variants, span: _ } =>
       fold(variants, init: [], f: (acc, v) =>
         fold(v.fields, init: acc, f: (inner_acc, f) =>
-          inner_acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name)
+          inner_acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names)
         )
       )
 
     Container { kind: _, element: element, span: _ } =>
-      collect_unresolved_in_type_expr(expr: element, module_name: module_name)
+      collect_unresolved_in_type_expr(expr: element, module_name: module_name, defined_names: defined_names)
 
     Optional { inner: inner, span: _ } =>
-      collect_unresolved_in_type_expr(expr: inner, module_name: module_name)
+      collect_unresolved_in_type_expr(expr: inner, module_name: module_name, defined_names: defined_names)
 
     Refined { base: base, predicates: _, span: _ } =>
-      collect_unresolved_in_type_expr(expr: base, module_name: module_name)
+      collect_unresolved_in_type_expr(expr: base, module_name: module_name, defined_names: defined_names)
 
     MapType { key: key, value: value, span: _ } =>
-      collect_unresolved_in_type_expr(expr: key, module_name: module_name)
-      + collect_unresolved_in_type_expr(expr: value, module_name: module_name)
+      collect_unresolved_in_type_expr(expr: key, module_name: module_name, defined_names: defined_names)
+      + collect_unresolved_in_type_expr(expr: value, module_name: module_name, defined_names: defined_names)
   }
 }
 

@@ -39,7 +39,16 @@ type TypedGraph {
 
 type TypedModule {
   module: Module
-  resolved_types: Map<String, TypeExpr>
+  type_env: TypeEnv
+}
+
+type TypeEnv {
+  bindings: List<TypeBinding>
+}
+
+type TypeBinding {
+  name: String
+  resolved: TypeExpr
 }
 
 // =========================================================================

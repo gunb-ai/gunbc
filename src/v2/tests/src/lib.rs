@@ -540,7 +540,7 @@ fn foo(item: String) -> String {
     }
 
     #[test]
-    fn phase1_all_v2_modules_compile() {
+    fn phase1_tokenizer_module_compiles() {
         match compile_tokenizer_module() {
             Ok(output) => {
                 // Verify we got fn bodies and data values

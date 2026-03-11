@@ -129,11 +129,14 @@ fn compile_sources(sources: List<SourceFile>, backend: Backend) -> CompileResult
     let typed = typecheck(graph: graph)
 
     // Stage 5: Emit target-language files
-    let files = emit_rust(typed: typed)
+    let files = match backend {
+      Rust => emit_rust(typed: typed)
+      Python => []
+    }
 
     CompileResult {
       files: files,
-      diagnostics: typed.diagnostics + parse_diagnostics
+      diagnostics: graph.diagnostics + typed.diagnostics + parse_diagnostics
     }
   }
 }

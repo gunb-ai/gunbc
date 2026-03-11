@@ -117,7 +117,7 @@ fn resolve_modules(modules: List<Module>) -> ModuleGraph {
 fn find_module(modules: List<Module>, path: String) -> Module? {
   let matches = modules |> filter(m => m.name == path)
   match matches |> first {
-    Some { value: m } => Some(m)
+    Some { value: m } => Some { value: m }
     None => None
   }
 }
@@ -164,8 +164,8 @@ fn resolve_import(
       let diag = Diagnostic {
         severity: Error,
         message: "unresolved import: module '" + import.module_path + "' not found (imported by '" + importing_module + "')",
-        span: Some(import.span),
-        module_name: Some(importing_module)
+        span: Some { value: import.span },
+        module_name: Some { value: importing_module }
       }
       ImportResolveResult {
         resolved: ResolvedImport {
@@ -185,15 +185,15 @@ fn resolve_import(
           Diagnostic {
             severity: Error,
             message: "name '" + missing_name + "' not found in module '" + import.module_path + "' (imported by '" + importing_module + "')",
-            span: Some(import.span),
-            module_name: Some(importing_module)
+            span: Some { value: import.span },
+            module_name: Some { value: importing_module }
           }
         )
       ImportResolveResult {
         resolved: ResolvedImport {
           module_path: import.module_path,
           names: import.names,
-          target_module: Some(target_mod)
+          target_module: Some { value: target_mod }
         },
         diagnostics: name_diags
       }
@@ -277,8 +277,8 @@ fn check_duplicate_modules(modules: List<Module>) -> List<Diagnostic> {
       Some { value: _ } => [Diagnostic {
         severity: Error,
         message: "duplicate module declaration: '" + m.name + "'",
-        span: Some(m.span),
-        module_name: Some(m.name)
+        span: Some { value: m.span },
+        module_name: Some { value: m.name }
       }]
       None => []
     }
@@ -335,12 +335,12 @@ fn topological_sort(modules: List<Module>) -> TopoResult {
     let cycle_desc = cycle_members |> join(separator: " -> ")
     TopoResult {
       sorted: final_state.sorted,
-      cycle_error: Some(Diagnostic {
+      cycle_error: Some { value: Diagnostic {
         severity: Error,
         message: "circular dependency detected: " + cycle_desc,
         span: None,
         module_name: None
-      })
+      } }
     }
   }
 }
@@ -424,7 +424,7 @@ fn detect_cycle(modules: List<Module>) -> List<String>? {
   } else {
     let cycle_members = module_names
       |> filter(name => topo.sorted |> any(s => s == name) == false)
-    Some(cycle_members)
+    Some { value: cycle_members }
   }
 }
 
