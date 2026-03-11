@@ -500,6 +500,74 @@ enumeration.
 
 ---
 
+### Branch 7: Evaluator assumes small, non-recursive fn bodies
+
+`daglang-eval` was built to evaluate simple DSL fn bodies (a few `let`
+bindings, one return expression). The v2 self-hosted compiler pushes it
+far beyond that: hundreds of mutually-calling functions, deep
+self-recursion (tokenizer per-character, parser per-token), and large
+accumulating data structures threaded through every call.
+
+The evaluator had no concept of "this function will call itself 10,000
+times" because no prior DSL function did.
+
+**Terminal state:** The evaluator handles recursive DSL programs as
+first-class workloads — bounded stack, shared immutable context,
+amortized data structure operations.
+
+#### Root causes and fixes (2026-03-11):
+
+**S40: `data_values` deep-cloned on every function call.**
+`Env.data_values` was `HashMap<String, serde_json::Value>`, cloned
+on every `evaluate_fn_body_with_data` call and every `Env::child()`.
+For the v2 tokenizer with 42 keyword/punctuation entries, this was
+42 `serde_json::Value` deep-copies per recursive call.
+Fix: `Rc<HashMap<...>>` — clone is pointer-sized.
+
+**S41: No recursion depth limit.**
+Self-recursive DSL functions consumed native Rust stack frames without
+bound. Stack overflow produced a segfault, not a diagnostic.
+Fix: `call_depth` counter in `Env`, checked at function entry.
+Limit: 10,000. Clean error on violation.
+
+**S42: O(N²) list/string accumulation.**
+`eval_binop(Add)` for lists did `a.clone(); result.extend(b)` —
+cloning the entire left-hand side. The tokenizer's `tokens + [tok]`
+pattern cloned the growing list on every token. N tokens = O(N²)
+total allocations.
+Fix: `BinOp::Add` arm in `eval_expr_tc` handles list/string concat
+with owned values directly (`a.extend(b)`, `a.push_str(&b)`), turning
+append from O(N) to O(1) amortized.
+
+**S43: No tail-call optimization for self-recursive functions.**
+`tokenize_loop`, `scan_string_body`, `process_escapes_loop`,
+`parse_stmts`, `parse_items`, `parse_expr_loop`, `kahn_iterate` — all
+self-recursive tail-call functions. Each call grew the native Rust stack
+by ~500-1000 bytes (debug mode). Processing a 200-character string via
+`scan_string_body` consumed ~200 KB of stack just for that one scan.
+Fix: trampoline. `eval_expr_tc` threads a `tail_ctx: bool` through
+`IfElse` branches, `Match` arms, `Return`, and `Call`. When a
+self-recursive call is detected in tail position, `eval_call_tc`
+returns a `tail_call` signal instead of recursing. `eval_fn_body_rc`
+catches it in a loop and rebinds inputs. Zero stack growth for
+self-recursive tail calls.
+
+#### Remaining performance debt (not crash risk):
+
+**`Env::from_inputs` clones inputs on every non-self call.** For the
+parser, this includes the `ParserState` with its token list. Not a
+crash (heap, not stack), but quadratic in call count × state size.
+Fix would be `Rc`/cow for `Value`, which is a larger refactor.
+
+**`Env::child()` clones bindings on every block scope.** Same —
+performance, not crash. Fix: scoped environment with parent pointer.
+
+**Map field flattening clones every field.** `let s = Record {...}`
+creates `s__source`, `s__tokens` etc. by cloning. Fix: lazy flattening
+or reference-counted fields.
+
+---
+
 ## Resolved
 
 | ID | Description | Resolution | Date |

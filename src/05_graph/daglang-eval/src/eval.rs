@@ -108,7 +108,7 @@ fn eval_fn_body_once(
     let last_stmt = body.stmts.last();
 
     for stmt in &body.stmts {
-        let is_last = last_stmt.map_or(false, |l| std::ptr::eq(stmt, l));
+        let is_last = last_stmt.is_some_and(|l| std::ptr::eq(stmt, l));
         match stmt {
             LoweredStmt::Let(name, expr) => {
                 let value = match eval_expr(expr, &env, sibling_fns) {
@@ -2520,5 +2520,112 @@ mod tests {
             m
         });
         assert_eq!(result, expected);
+    }
+
+    /// Self-recursive tail-call function: count_down(n) calls count_down(n-1)
+    /// until n <= 0. Without TCO this would overflow the stack at large N.
+    #[test]
+    fn tco_self_recursive_tail_call() {
+        // Build: fn count_down(n: Int) -> Int {
+        //   if n <= 0 { return 0 }
+        //   count_down(n: n - 1)
+        // }
+        let body = LoweredFnBody {
+            stmts: vec![
+                // if n <= 0 { return 0 }
+                LoweredStmt::Expr(LoweredExpr::IfElse {
+                    cond: Box::new(LoweredExpr::BinOp {
+                        left: Box::new(LoweredExpr::Ident("n".to_string())),
+                        op: LoweredBinOp::Le,
+                        right: Box::new(LoweredExpr::Literal(LoweredLiteral::Int(0))),
+                    }),
+                    then_: Box::new(LoweredExpr::Return(vec![(
+                        "return".to_string(),
+                        LoweredExpr::Literal(LoweredLiteral::Int(0)),
+                    )])),
+                    else_: None,
+                }),
+                // count_down(n: n - 1)  — last expression, tail position
+                LoweredStmt::Expr(LoweredExpr::Call {
+                    name: "count_down".to_string(),
+                    args: vec![(
+                        Some("n".to_string()),
+                        LoweredExpr::BinOp {
+                            left: Box::new(LoweredExpr::Ident("n".to_string())),
+                            op: LoweredBinOp::Sub,
+                            right: Box::new(LoweredExpr::Literal(LoweredLiteral::Int(1))),
+                        },
+                    )],
+                }),
+            ],
+        };
+
+        let mut sibling_fns = HashMap::new();
+        sibling_fns.insert("count_down".to_string(), body.clone());
+
+        // N=20000 would blow a default 8MB stack without TCO.
+        let mut inputs = HashMap::new();
+        inputs.insert("n".to_string(), Value::Int(20_000));
+
+        let result = evaluate_fn_body(&body, &inputs, &sibling_fns).unwrap();
+        assert_eq!(result["return"], Value::Int(0));
+    }
+
+    /// Self-recursive tail call via explicit `return fn(...)` inside an
+    /// if-else branch (the pattern used by tokenize_loop, scan_string_body).
+    #[test]
+    fn tco_self_recursive_return_in_if_branch() {
+        // Build: fn sum_down(n: Int, acc: Int) -> Int {
+        //   if n <= 0 { return acc }
+        //   return sum_down(n: n - 1, acc: acc + n)
+        // }
+        let body = LoweredFnBody {
+            stmts: vec![LoweredStmt::Expr(LoweredExpr::IfElse {
+                cond: Box::new(LoweredExpr::BinOp {
+                    left: Box::new(LoweredExpr::Ident("n".to_string())),
+                    op: LoweredBinOp::Le,
+                    right: Box::new(LoweredExpr::Literal(LoweredLiteral::Int(0))),
+                }),
+                then_: Box::new(LoweredExpr::Return(vec![(
+                    "return".to_string(),
+                    LoweredExpr::Ident("acc".to_string()),
+                )])),
+                else_: Some(Box::new(LoweredExpr::Return(vec![(
+                    "return".to_string(),
+                    LoweredExpr::Call {
+                        name: "sum_down".to_string(),
+                        args: vec![
+                            (
+                                Some("n".to_string()),
+                                LoweredExpr::BinOp {
+                                    left: Box::new(LoweredExpr::Ident("n".to_string())),
+                                    op: LoweredBinOp::Sub,
+                                    right: Box::new(LoweredExpr::Literal(LoweredLiteral::Int(1))),
+                                },
+                            ),
+                            (
+                                Some("acc".to_string()),
+                                LoweredExpr::BinOp {
+                                    left: Box::new(LoweredExpr::Ident("acc".to_string())),
+                                    op: LoweredBinOp::Add,
+                                    right: Box::new(LoweredExpr::Ident("n".to_string())),
+                                },
+                            ),
+                        ],
+                    },
+                )]))),
+            })],
+        };
+
+        let mut sibling_fns = HashMap::new();
+        sibling_fns.insert("sum_down".to_string(), body.clone());
+
+        let mut inputs = HashMap::new();
+        inputs.insert("n".to_string(), Value::Int(20_000));
+        inputs.insert("acc".to_string(), Value::Int(0));
+
+        let result = evaluate_fn_body(&body, &inputs, &sibling_fns).unwrap();
+        // sum 1..20000 = 20000 * 20001 / 2 = 200_010_000
+        assert_eq!(result["return"], Value::Int(200_010_000));
     }
 }
