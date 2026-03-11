@@ -1810,6 +1810,52 @@ fn example(items: List<String>) -> Int {
     /// pipeline: tokenize → parse → resolve → typecheck → emit.
     ///
     /// This is the Level 1 acceptance gate: v2 can process the real gist
+    /// Regression test (S56): a parse error must surface as a parse diagnostic,
+    /// not leak through as a resolve crash like "map requires a list, got Unit".
+    #[test]
+    fn phase6_parse_error_does_not_leak_to_resolve() {
+        with_parser_stack(|| {
+            let output = compile_all_modules().expect("compilation should succeed");
+
+            // Deliberately malformed source: missing module declaration.
+            let bad_source = "fn orphan() -> Int { 42 }";
+            let mut tok_inputs = HashMap::new();
+            tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(bad_source.to_string()));
+            let tok_result = call_fn(&output, "tokenize", tok_inputs)
+                .expect("tokenize should succeed");
+            let tokens = match &tok_result["return"] {
+                gunbc_ir::Value::List(t) => t.clone(),
+                other => panic!("expected token list, got: {:?}", other),
+            };
+
+            let mut parse_inputs = HashMap::new();
+            parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
+            let parse_result = call_fn(&output, "parse", parse_inputs)
+                .expect("parse fn should not panic");
+
+            // The parse result must have a non-Unit error field.
+            let error_val = parse_result.get("error").expect("should have 'error' key");
+            assert!(
+                !matches!(error_val, gunbc_ir::Value::Unit),
+                "parse of malformed source should produce an error, got Unit"
+            );
+
+            // The module field must be none/Unit — NOT a valid Module.
+            let module_val = parse_result.get("module").expect("should have 'module' key");
+            let is_none = matches!(module_val, gunbc_ir::Value::Unit)
+                || matches!(module_val, gunbc_ir::Value::Map(m) if m.get("_variant").and_then(|v| if let gunbc_ir::Value::Str(s) = v { Some(s.as_str()) } else { None }) == Some("None"));
+            assert!(
+                is_none,
+                "parse of malformed source should return module=none, got: {:?}",
+                std::mem::discriminant(module_val)
+            );
+        });
+    }
+
+    /// Feed gist.dag's full transitive dependency chain through the v2
+    /// pipeline: tokenize → parse → resolve → typecheck → emit.
+    ///
+    /// This is the Level 1 acceptance gate: v2 can process the real gist
     /// tool and its 11 transitive dependencies.
     ///
     /// Needs 32MB stack: 12 real .dag files with deep parser mutual recursion.
