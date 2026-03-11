@@ -101,13 +101,13 @@ mod tests {
 
         let files = vec![
             root.join("dsl/std/types.dag"),
-            root.join("src/v2/std/core.dag"),
-            root.join("src/v2/compiler/tokenize.dag"),
-            root.join("src/v2/compiler/parse.dag"),
-            root.join("src/v2/compiler/resolve.dag"),
-            root.join("src/v2/compiler/typecheck.dag"),
-            root.join("src/v2/compiler/emit.dag"),
-            root.join("src/v2/compiler/pipeline.dag"),
+            root.join("src/v2/00_core.dag"),
+            root.join("src/v2/01_tokenize.dag"),
+            root.join("src/v2/02_parse.dag"),
+            root.join("src/v2/03_resolve.dag"),
+            root.join("src/v2/04_typecheck.dag"),
+            root.join("src/v2/05_emit.dag"),
+            root.join("src/v2/06_pipeline.dag"),
         ];
         let sources: Vec<(std::path::PathBuf, String)> = files
             .into_iter()
@@ -415,37 +415,37 @@ fn foo(item: String) -> String {
 
     #[test]
     fn phase0_core_parses_strict() {
-        assert_parses_strict("src/v2/std/core.dag");
+        assert_parses_strict("src/v2/00_core.dag");
     }
 
     #[test]
     fn phase0_tokenize_parses_strict() {
-        assert_parses_strict("src/v2/compiler/tokenize.dag");
+        assert_parses_strict("src/v2/01_tokenize.dag");
     }
 
     #[test]
     fn phase0_parse_parses_strict() {
-        assert_parses_strict("src/v2/compiler/parse.dag");
+        assert_parses_strict("src/v2/02_parse.dag");
     }
 
     #[test]
     fn phase0_resolve_parses_strict() {
-        assert_parses_strict("src/v2/compiler/resolve.dag");
+        assert_parses_strict("src/v2/03_resolve.dag");
     }
 
     #[test]
     fn phase0_typecheck_parses_strict() {
-        assert_parses_strict("src/v2/compiler/typecheck.dag");
+        assert_parses_strict("src/v2/04_typecheck.dag");
     }
 
     #[test]
     fn phase0_emit_parses_strict() {
-        assert_parses_strict("src/v2/compiler/emit.dag");
+        assert_parses_strict("src/v2/05_emit.dag");
     }
 
     #[test]
     fn phase0_pipeline_parses_strict() {
-        assert_parses_strict("src/v2/compiler/pipeline.dag");
+        assert_parses_strict("src/v2/06_pipeline.dag");
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -462,8 +462,8 @@ fn foo(item: String) -> String {
         // Read sources
         let files = vec![
             root.join("dsl/std/types.dag"),
-            root.join("src/v2/std/core.dag"),
-            root.join("src/v2/compiler/tokenize.dag"),
+            root.join("src/v2/00_core.dag"),
+            root.join("src/v2/01_tokenize.dag"),
         ];
         let sources: Vec<(std::path::PathBuf, String)> = files
             .into_iter()
@@ -822,7 +822,7 @@ fn foo(item: String) -> String {
     #[test]
     fn phase3_variant_names_collected() {
         let root = workspace_root();
-        let core = root.join("src/v2/std/core.dag");
+        let core = root.join("src/v2/00_core.dag");
         let source = std::fs::read_to_string(&core).unwrap();
         let ast =
             daglang_syntax::parser::parse_with_file_diagnostics(&core, &source).unwrap();
@@ -1337,9 +1337,9 @@ fn foo(item: String) -> String {
     /// Test that PipeArrow token is recognized by v1 tokenizer.
     #[test]
     fn phase4_pipe_arrow_token_exists() {
-        assert_parses_strict("src/v2/std/core.dag");
+        assert_parses_strict("src/v2/00_core.dag");
         // PipeArrow should be in the TokenKind sum type
-        let source = read_v2_file("src/v2/std/core.dag");
+        let source = read_v2_file("src/v2/00_core.dag");
         assert!(
             source.contains("PipeArrow"),
             "core.dag should contain PipeArrow variant"
@@ -1349,7 +1349,7 @@ fn foo(item: String) -> String {
     /// Test that NullCoalesce is in BinOpKind.
     #[test]
     fn phase4_null_coalesce_in_binop_kind() {
-        let source = read_v2_file("src/v2/std/core.dag");
+        let source = read_v2_file("src/v2/00_core.dag");
         assert!(
             source.contains("NullCoalesce"),
             "core.dag BinOpKind should contain NullCoalesce"
@@ -1401,7 +1401,7 @@ fn foo(item: String) -> String {
     /// Test that parse.dag includes PipeArrow in kind_tag and infix_bp.
     #[test]
     fn phase4_parse_supports_pipe_arrow() {
-        let source = read_v2_file("src/v2/compiler/parse.dag");
+        let source = read_v2_file("src/v2/02_parse.dag");
         assert!(
             source.contains("PipeArrow"),
             "parse.dag should reference PipeArrow"
@@ -1415,7 +1415,7 @@ fn foo(item: String) -> String {
     /// Test that parse.dag supports NullCoalesce in infix_bp.
     #[test]
     fn phase4_parse_supports_null_coalesce() {
-        let source = read_v2_file("src/v2/compiler/parse.dag");
+        let source = read_v2_file("src/v2/02_parse.dag");
         assert!(
             source.contains("NullCoalesce"),
             "parse.dag should reference NullCoalesce"
@@ -1425,7 +1425,7 @@ fn foo(item: String) -> String {
     /// Test that emit.dag handles NullCoalesce emission.
     #[test]
     fn phase4_emit_handles_null_coalesce() {
-        let source = read_v2_file("src/v2/compiler/emit.dag");
+        let source = read_v2_file("src/v2/05_emit.dag");
         assert!(
             source.contains("unwrap_or_else"),
             "emit.dag should emit unwrap_or_else for null coalesce"
@@ -1435,7 +1435,7 @@ fn foo(item: String) -> String {
     /// Test that emit.dag handles for-loop emission.
     #[test]
     fn phase4_emit_handles_for_loop() {
-        let source = read_v2_file("src/v2/compiler/emit.dag");
+        let source = read_v2_file("src/v2/05_emit.dag");
         assert!(
             source.contains("emit_for_loop"),
             "emit.dag should contain emit_for_loop function"
@@ -1449,7 +1449,7 @@ fn foo(item: String) -> String {
     /// Test that emit.dag generates Cargo.toml.
     #[test]
     fn phase4_emit_generates_cargo_toml() {
-        let source = read_v2_file("src/v2/compiler/emit.dag");
+        let source = read_v2_file("src/v2/05_emit.dag");
         assert!(
             source.contains("emit_cargo_toml"),
             "emit.dag should contain emit_cargo_toml function"
@@ -1459,7 +1459,7 @@ fn foo(item: String) -> String {
     /// Test that the parse.dag where clause machinery exists.
     #[test]
     fn phase4_parse_supports_where_clause() {
-        let source = read_v2_file("src/v2/compiler/parse.dag");
+        let source = read_v2_file("src/v2/02_parse.dag");
         assert!(
             source.contains("try_where_clause"),
             "parse.dag should contain try_where_clause function"
@@ -1473,7 +1473,7 @@ fn foo(item: String) -> String {
     /// Test that the parse.dag response/mock_response parsing exists.
     #[test]
     fn phase4_parse_supports_response_blocks() {
-        let source = read_v2_file("src/v2/compiler/parse.dag");
+        let source = read_v2_file("src/v2/02_parse.dag");
         assert!(
             source.contains("parse_optional_response_block"),
             "parse.dag should contain parse_optional_response_block function"
@@ -1487,7 +1487,7 @@ fn foo(item: String) -> String {
     /// Test that the typecheck.dag has mutual recursion cycle detection.
     #[test]
     fn phase4_typecheck_has_cycle_detection() {
-        let source = read_v2_file("src/v2/compiler/typecheck.dag");
+        let source = read_v2_file("src/v2/04_typecheck.dag");
         assert!(
             source.contains("resolve_type_expr_with_resolving"),
             "typecheck.dag should contain resolve_type_expr_with_resolving for cycle detection"
@@ -1498,23 +1498,6 @@ fn foo(item: String) -> String {
         );
     }
 
-    /// Test that the bootstrap crate exists and compiles.
-    #[test]
-    fn phase4_bootstrap_crate_exists() {
-        let root = workspace_root();
-        let main_path = root.join("src/v2/bootstrap/src/main.rs");
-        assert!(
-            main_path.exists(),
-            "bootstrap main.rs should exist at {:?}",
-            main_path
-        );
-        let cargo_path = root.join("src/v2/bootstrap/Cargo.toml");
-        assert!(
-            cargo_path.exists(),
-            "bootstrap Cargo.toml should exist at {:?}",
-            cargo_path
-        );
-    }
 
     /// Test: emit a module with pipe chains and verify Rust output has .len(), .join(), etc.
     #[test]
