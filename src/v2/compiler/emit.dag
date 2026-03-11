@@ -106,7 +106,7 @@ fn emit_module(typed_module: TypedModule) -> TextFile {
 // =========================================================================
 
 fn emit_prelude() -> String {
-  "use std::collections::BTreeMap;\nuse serde::{Serialize, Deserialize};"
+  "use std::collections::BTreeMap;\nuse serde::\{Serialize, Deserialize\};"
 }
 
 // =========================================================================

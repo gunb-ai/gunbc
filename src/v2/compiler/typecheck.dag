@@ -537,8 +537,8 @@ fn resolve_item_types(item: Item, env: TypeEnv, module_name: String) -> ItemResu
 
     ServiceDef { name: name, transport: transport, config: config, operations: operations, span: span } =>
       let op_results = map(operations, op => resolve_operation(op: op, env: env, module_name: module_name))
-      let resolved_ops = map(op_results, or => or.operation)
-      let op_diags = fold(op_results, init: [], f: (acc, or) => acc + or.diagnostics)
+      let resolved_ops = map(op_results, opr => opr.operation)
+      let op_diags = fold(op_results, init: [], f: (acc, opr) => acc + opr.diagnostics)
       ItemResult {
         item: ServiceDef {
           name: name,

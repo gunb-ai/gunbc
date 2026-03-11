@@ -51,7 +51,13 @@ pub fn evaluate_fn_body_with_data(
     for stmt in &body.stmts {
         match stmt {
             LoweredStmt::Let(name, expr) => {
-                let value = eval_expr(expr, &env, sibling_fns)?;
+                let value = match eval_expr(expr, &env, sibling_fns) {
+                    Ok(v) => v,
+                    Err(e) if e.early_return.is_some() => {
+                        return Ok(e.early_return.unwrap());
+                    }
+                    Err(e) => return Err(e),
+                };
                 // Flatten Map/JSON fields into `parent__field` entries so that
                 // the `__` convention works for local let bindings.
                 match &value {
@@ -73,17 +79,24 @@ pub fn evaluate_fn_body_with_data(
                 env.bind(name.clone(), value);
             }
             LoweredStmt::Expr(expr) => {
-                let value = eval_expr(expr, &env, sibling_fns)?;
-                // If this is the last statement and produces a value, capture as "return"
-                if std::ptr::eq(stmt, body.stmts.last().unwrap()) {
-                    if let Value::Map(map) = &value {
-                        let mut result = HashMap::new();
-                        for (k, v) in map {
-                            result.insert(k.clone(), v.clone());
+                match eval_expr(expr, &env, sibling_fns) {
+                    Ok(value) => {
+                        // If this is the last statement and produces a value, capture as "return"
+                        if std::ptr::eq(stmt, body.stmts.last().unwrap()) {
+                            if let Value::Map(map) = &value {
+                                let mut result = HashMap::new();
+                                for (k, v) in map {
+                                    result.insert(k.clone(), v.clone());
+                                }
+                                return Ok(result);
+                            }
+                            return Ok([("return".to_string(), value)].into_iter().collect());
                         }
-                        return Ok(result);
                     }
-                    return Ok([("return".to_string(), value)].into_iter().collect());
+                    Err(e) if e.early_return.is_some() => {
+                        return Ok(e.early_return.unwrap());
+                    }
+                    Err(e) => return Err(e),
                 }
             }
             LoweredStmt::Return(fields) => {
@@ -507,12 +520,22 @@ fn eval_intrinsic_call(
 #[derive(Debug, Clone)]
 pub struct EvalError {
     pub message: String,
+    /// Early return from a fn body — contains the return values.
+    pub early_return: Option<HashMap<String, Value>>,
 }
 
 impl EvalError {
     pub fn new(msg: impl Into<String>) -> Self {
         Self {
             message: msg.into(),
+            early_return: None,
+        }
+    }
+
+    pub fn early_return(values: HashMap<String, Value>) -> Self {
+        Self {
+            message: "__early_return__".to_string(),
+            early_return: Some(values),
         }
     }
 }
@@ -723,12 +746,14 @@ fn eval_expr(
         }
 
         LoweredExpr::Return(fields) => {
-            let mut map = BTreeMap::new();
+            let mut map = HashMap::new();
             for (key, value_expr) in fields {
                 let value = eval_expr(value_expr, env, sibling_fns)?;
                 map.insert(key.clone(), value);
             }
-            Ok(Value::Map(map))
+            // Signal early return via a special error.
+            // The fn body executor catches this and uses the return values.
+            Err(EvalError::early_return(map))
         }
     }
 }
@@ -745,7 +770,11 @@ fn evaluate_block_body(
     for stmt in &body.stmts {
         match stmt {
             LoweredStmt::Let(name, expr) => {
-                let value = eval_expr(expr, &child_env, sibling_fns)?;
+                let value = match eval_expr(expr, &child_env, sibling_fns) {
+                    Ok(v) => v,
+                    Err(e) if e.early_return.is_some() => return Err(e),
+                    Err(e) => return Err(e),
+                };
                 match &value {
                     Value::Map(fields) => {
                         for (field_name, field_value) in fields {
@@ -765,16 +794,21 @@ fn evaluate_block_body(
                 child_env.bind(name.clone(), value);
             }
             LoweredStmt::Expr(expr) => {
-                let value = eval_expr(expr, &child_env, sibling_fns)?;
-                if std::ptr::eq(stmt, body.stmts.last().unwrap()) {
-                    if let Value::Map(map) = &value {
-                        let mut result = HashMap::new();
-                        for (k, v) in map {
-                            result.insert(k.clone(), v.clone());
+                match eval_expr(expr, &child_env, sibling_fns) {
+                    Ok(value) => {
+                        if std::ptr::eq(stmt, body.stmts.last().unwrap()) {
+                            if let Value::Map(map) = &value {
+                                let mut result = HashMap::new();
+                                for (k, v) in map {
+                                    result.insert(k.clone(), v.clone());
+                                }
+                                return Ok(result);
+                            }
+                            return Ok([("return".to_string(), value)].into_iter().collect());
                         }
-                        return Ok(result);
                     }
-                    return Ok([("return".to_string(), value)].into_iter().collect());
+                    Err(e) if e.early_return.is_some() => return Err(e),
+                    Err(e) => return Err(e),
                 }
             }
             LoweredStmt::Return(fields) => {
@@ -783,7 +817,8 @@ fn evaluate_block_body(
                     let value = eval_expr(expr, &child_env, sibling_fns)?;
                     result.insert(name.clone(), value);
                 }
-                return Ok(result);
+                // Propagate as early return so enclosing fn body exits
+                return Err(EvalError::early_return(result));
             }
         }
     }
@@ -862,6 +897,16 @@ pub fn eval_binop(lhs: &Value, op: LoweredBinOp, rhs: &Value) -> Result<Value, E
                 value_to_string(lhs),
                 value_to_string(rhs)
             )))
+        }
+        // List concatenation
+        LoweredBinOp::Add if matches!(lhs, Value::List(_)) && matches!(rhs, Value::List(_)) => {
+            if let (Value::List(a), Value::List(b)) = (lhs, rhs) {
+                let mut result = a.clone();
+                result.extend(b.iter().cloned());
+                Ok(Value::List(result))
+            } else {
+                unreachable!()
+            }
         }
         // Arithmetic
         LoweredBinOp::Add => int_op(lhs, rhs, |a, b| a + b),
@@ -1042,17 +1087,33 @@ fn eval_call(
         "scan_while" => {
             let s = eval_positional_or_named("s", 0, args, env, sibling_fns)?;
             let start = eval_positional_or_named("start", 1, args, env, sibling_fns)?;
-            // The pred argument is a lambda — get it unevaluated.
+            // The pred argument is a lambda or function reference — get it unevaluated.
             let pred_expr = get_arg_expr("pred", 2, args);
-            match (s, start, pred_expr) {
-                (Value::Str(s), Value::Int(start), Some(LoweredExpr::Lambda { params, body })) => {
+            // Handle function references: `pred: is_ident_char` → wrap as Call
+            let resolved_pred = match pred_expr {
+                Some(LoweredExpr::Lambda { params, body }) => {
+                    Some((params.clone(), body.as_ref().clone()))
+                }
+                Some(LoweredExpr::Ident(name)) if sibling_fns.contains_key(name.as_str()) => {
+                    // Function reference → synthetic lambda: ch => fn_name(ch: ch)
+                    let param = "ch".to_string();
+                    let body = LoweredExpr::Call {
+                        name: name.clone(),
+                        args: vec![(Some("ch".to_string()), LoweredExpr::Ident(param.clone()))],
+                    };
+                    Some((vec![param], body))
+                }
+                _ => None,
+            };
+            match (s, start, resolved_pred) {
+                (Value::Str(s), Value::Int(start), Some((params, body))) => {
                     let param = params.first().cloned().unwrap_or_else(|| "_".to_string());
                     let chars: Vec<char> = s.chars().collect();
                     let mut pos = start.max(0) as usize;
                     while pos < chars.len() {
                         let mut child_env = env.child();
                         child_env.bind(param.clone(), Value::Str(chars[pos].to_string()));
-                        let result = eval_expr(body, &child_env, sibling_fns)?;
+                        let result = eval_expr(&body, &child_env, sibling_fns)?;
                         if !value_truthy(&result) {
                             break;
                         }
@@ -1259,6 +1320,12 @@ fn record_update(base: &Value, updates: &Value) -> Result<Value, EvalError> {
 fn sibling_fn_value(name: &str, outputs: HashMap<String, Value>) -> Result<Value, EvalError> {
     if let Some(value) = outputs.get("return") {
         return Ok(value.clone());
+    }
+    // Single `value` key from `return expr` (which lowers to Return([("value", expr)]))
+    if outputs.len() == 1 {
+        if let Some(value) = outputs.get("value") {
+            return Ok(value.clone());
+        }
     }
     if outputs.is_empty() {
         return Err(EvalError::new(format!("fn {name} produced no output")));

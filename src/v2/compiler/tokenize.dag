@@ -279,7 +279,7 @@ fn scan_string(state: TokenizerState) -> TokenizerState {
       TokenizerState {
         source: state.source, pos: end_pos + 1,
         tokens: state.tokens + [token],
-        interp_depth: state.interp_depth |> append(item: 0)
+        interp_depth: state.interp_depth |> append(items: 0)
       }
     }
     UnterminatedString { content, end_pos } => {
@@ -322,7 +322,7 @@ fn scan_str_cont(state: TokenizerState, span_start: Int) -> TokenizerState {
       TokenizerState {
         source: state.source, pos: end_pos + 1,
         tokens: state.tokens + [token],
-        interp_depth: state.interp_depth |> append(item: 0)
+        interp_depth: state.interp_depth |> append(items: 0)
       }
     }
     UnterminatedString { content, end_pos } => {
@@ -428,7 +428,7 @@ fn drop_last(stack: List<Int>) -> List<Int> {
   let len = count(stack)
   fold(enumerate(stack), [], fn(result, pair) {
     if first(pair) < len - 1 {
-      result |> append(item: last(pair))
+      result |> append(items: last(pair))
     } else {
       result
     }
@@ -439,7 +439,7 @@ fn drop_last(stack: List<Int>) -> List<Int> {
 // Used for incrementing/decrementing the top of the interp_depth stack.
 fn replace_last(stack: List<Int>, value: Int) -> List<Int> {
   let prefix = drop_last(stack: stack)
-  prefix |> append(item: value)
+  prefix |> append(items: value)
 }
 
 // Skip spaces and tabs (NOT newlines — those are tokens).

@@ -11,5 +11,6 @@ description = "Integration tests for the v2 self-hosted compiler"
 daglang-driver = { path = "../../02_pipeline/daglang-driver" }
 daglang-eval = { path = "../../05_graph/daglang-eval" }
 daglang-syntax = { path = "../../03_source/daglang-syntax" }
+daglang-lower = { path = "../../05_graph/daglang-lower" }
 gunbc-ir = { path = "../../00_foundation/ir" }
 serde_json = { workspace = true }
