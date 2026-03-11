@@ -782,23 +782,29 @@ Symptom: stack overflow processing types.dag (17KB, 523 lines) at 32MB.
 After fix: same file processes at 16MB with no overflow.
 
 **S56: Parse errors laundered as resolve crashes.**
-`v2_tokenize_and_parse` extracted `parse_result.module` without checking
-`parse_result.error`. Since `parse()` returns `{ module: none, error: e }`
-on failure, a parse error caused `none`/Unit to leak into `resolve_modules`
-as a non-Module element. The resolver then called `module.imports |> map()`
-on `Unit` and failed with `"map requires a list, got Unit"`, obscuring
-the real parse error.
-Root cause: missing error check at the test helper boundary. Same pattern
-exists in the `.dag` pipeline itself — `compile_sources` maps
-`parse_results` to `modules = map(parse_results, p => p.module)` without
-filtering parse failures, passing `List<Module?>` to a function expecting
-`List<Module>`.
+`v2_tokenize_and_parse` (Rust test helper) extracted `parse_result.module`
+without checking `parse_result.error`. Since `parse()` returns
+`{ module: none, error: e }` on failure, a parse error caused `none`/Unit
+to leak into `resolve_modules` as a non-Module element. The resolver then
+called `module.imports |> map()` on `Unit` and failed with
+`"map requires a list, got Unit"`, obscuring the real parse error.
+Root cause: the Rust test helper manually re-implements the pipeline
+stages without the error barriers that the DSL pipeline (`compile_sources`
+in `06_pipeline.dag`) has. The DSL pipeline is correct — it checks
+`has_errors` and returns early with diagnostics before calling
+`resolve_modules`. But the test helper called parse → extract module →
+resolve in sequence with no error check between parse and resolve.
+Note: `compile_sources` line 114 still eagerly computes
+`modules = map(parse_results, p => p.module)` (producing `List<Module?>`)
+before the error check at line 119. The `none` values are never used
+because the early return prevents resolve from running, but the eager
+extraction of optional values into a non-optional list is a latent smell.
 Fix: fail on `parse_result.error` before module extraction, and validate
 module shape (must have `name`, `imports`, `items` keys) before passing
-to resolve. The real frontier is now the first file that produces a
-parse error — that is the actual bug to chase.
-Status: parse error check added; awaiting test run to identify which
-gist dependency file(s) fail to parse.
+to resolve.
+Revealed real frontier: `dsl/std/types.dag` fails to parse at byte 2461
+with `"unknown where predicate 'range'"` — the v2 parser doesn't
+support `where range(...)` predicates yet.
 
 #### Remaining performance debt (not crash risk):
 
