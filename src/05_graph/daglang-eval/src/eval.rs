@@ -5,6 +5,7 @@
 //! Thin DynOp wrappers in `resolve.rs` call these functions.
 
 use std::collections::{BTreeMap, HashMap};
+use std::rc::Rc;
 
 use gunbc_ir::Value;
 
@@ -38,17 +39,76 @@ pub fn evaluate_fn_body_with_data(
     sibling_fns: &HashMap<String, LoweredFnBody>,
     data_values: &HashMap<String, serde_json::Value>,
 ) -> Result<HashMap<String, Value>, EvalError> {
+    eval_fn_body_rc(body, inputs, sibling_fns, Rc::new(data_values.clone()), 0, None)
+}
+
+/// Internal evaluation with shared data_values via Rc (avoids re-cloning on
+/// every recursive sibling fn call).
+///
+/// When `fn_name` is provided, self-recursive tail calls are trampolined
+/// instead of consuming native stack frames.
+fn eval_fn_body_rc(
+    body: &LoweredFnBody,
+    inputs: &HashMap<String, Value>,
+    sibling_fns: &HashMap<String, LoweredFnBody>,
+    data_values: Rc<HashMap<String, serde_json::Value>>,
+    call_depth: usize,
+    fn_name: Option<&str>,
+) -> Result<HashMap<String, Value>, EvalError> {
+    if call_depth > MAX_CALL_DEPTH {
+        return Err(EvalError::new(format!(
+            "maximum call depth ({MAX_CALL_DEPTH}) exceeded — possible infinite recursion"
+        )));
+    }
+
+    // Pre-compute data seeds once (shared across trampoline iterations).
+    let seeds: Vec<_> = data_values
+        .iter()
+        .map(|(name, json_val)| (name.clone(), json_to_eval_value(json_val)))
+        .collect();
+
+    let mut current_inputs = inputs.clone();
+
+    // Trampoline loop: self-recursive tail calls re-enter here instead of
+    // growing the native call stack.
+    loop {
+        match eval_fn_body_once(body, &current_inputs, sibling_fns, &data_values, &seeds, call_depth, fn_name) {
+            Ok(result) => return Ok(result),
+            Err(e) if e.tail_call.is_some() => {
+                // Self-recursive tail call — rebind inputs and loop.
+                current_inputs = e.tail_call.unwrap();
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+/// Single pass of a fn body (no trampoline — that's in eval_fn_body_rc).
+fn eval_fn_body_once(
+    body: &LoweredFnBody,
+    inputs: &HashMap<String, Value>,
+    sibling_fns: &HashMap<String, LoweredFnBody>,
+    data_values: &Rc<HashMap<String, serde_json::Value>>,
+    seeds: &[(String, Value)],
+    call_depth: usize,
+    fn_name: Option<&str>,
+) -> Result<HashMap<String, Value>, EvalError> {
     let mut env = Env::from_inputs(inputs);
-    // Store data_values so sibling fn calls can access them.
-    env.data_values = data_values.clone();
+    env.call_depth = call_depth;
+    env.self_name = fn_name.map(String::from);
+    // Share the Rc — no deep clone.
+    env.data_values = Rc::clone(data_values);
     // Seed data declarations into the environment (lower priority than inputs).
-    for (name, json_val) in data_values {
-        if !env.bindings.contains_key(name) {
-            env.bind(name.clone(), json_to_eval_value(json_val));
+    for (name, value) in seeds {
+        if !env.bindings.contains_key(name.as_str()) {
+            env.bind(name.clone(), value.clone());
         }
     }
 
+    let last_stmt = body.stmts.last();
+
     for stmt in &body.stmts {
+        let is_last = last_stmt.map_or(false, |l| std::ptr::eq(stmt, l));
         match stmt {
             LoweredStmt::Let(name, expr) => {
                 let value = match eval_expr(expr, &env, sibling_fns) {
@@ -56,6 +116,9 @@ pub fn evaluate_fn_body_with_data(
                     Err(e) if e.early_return.is_some() => {
                         return Ok(e.early_return.unwrap());
                     }
+                    // Propagate tail_call signals from return expressions
+                    // inside if/match branches within let bindings.
+                    Err(e) if e.tail_call.is_some() => return Err(e),
                     Err(e) => return Err(e),
                 };
                 // Flatten Map/JSON fields into `parent__field` entries so that
@@ -79,10 +142,11 @@ pub fn evaluate_fn_body_with_data(
                 env.bind(name.clone(), value);
             }
             LoweredStmt::Expr(expr) => {
-                match eval_expr(expr, &env, sibling_fns) {
+                // Last expression stmt is in tail position.
+                match eval_expr_tc(expr, &env, sibling_fns, is_last) {
                     Ok(value) => {
                         // If this is the last statement and produces a value, capture as "return"
-                        if std::ptr::eq(stmt, body.stmts.last().unwrap()) {
+                        if is_last {
                             if let Value::Map(map) = &value {
                                 let mut result = HashMap::new();
                                 for (k, v) in map {
@@ -96,10 +160,18 @@ pub fn evaluate_fn_body_with_data(
                     Err(e) if e.early_return.is_some() => {
                         return Ok(e.early_return.unwrap());
                     }
+                    // Propagate tail_call signal
+                    Err(e) if e.tail_call.is_some() => return Err(e),
                     Err(e) => return Err(e),
                 }
             }
             LoweredStmt::Return(fields) => {
+                // Return stmt is always in tail position.
+                if fields.len() == 1 {
+                    let (name, expr) = &fields[0];
+                    let value = eval_expr_tc(expr, &env, sibling_fns, true)?;
+                    return Ok([(name.clone(), value)].into_iter().collect());
+                }
                 let mut result = HashMap::new();
                 for (name, expr) in fields {
                     let value = eval_expr(expr, &env, sibling_fns)?;
@@ -576,6 +648,9 @@ pub struct EvalError {
     pub message: String,
     /// Early return from a fn body — contains the return values.
     pub early_return: Option<HashMap<String, Value>>,
+    /// Tail-call signal: a self-recursive call in tail position.
+    /// Contains the new inputs for the next iteration.
+    tail_call: Option<HashMap<String, Value>>,
 }
 
 impl EvalError {
@@ -583,6 +658,7 @@ impl EvalError {
         Self {
             message: msg.into(),
             early_return: None,
+            tail_call: None,
         }
     }
 
@@ -590,6 +666,15 @@ impl EvalError {
         Self {
             message: "__early_return__".to_string(),
             early_return: Some(values),
+            tail_call: None,
+        }
+    }
+
+    fn tail_call(inputs: HashMap<String, Value>) -> Self {
+        Self {
+            message: "__tail_call__".to_string(),
+            early_return: None,
+            tail_call: Some(inputs),
         }
     }
 }
@@ -602,18 +687,29 @@ impl std::fmt::Display for EvalError {
 
 // ── Environment ─────────────────────────────────────────────────────────────
 
+/// Maximum sibling-fn call depth before the evaluator bails out with a clear
+/// error instead of blowing the native stack.
+const MAX_CALL_DEPTH: usize = 10_000;
+
 struct Env {
     bindings: HashMap<String, Value>,
     /// Data declaration values carried through so sibling fn calls can
     /// reference module-level `data` items without re-threading them.
-    data_values: HashMap<String, serde_json::Value>,
+    /// Wrapped in Rc to avoid deep-cloning on every recursive call.
+    data_values: Rc<HashMap<String, serde_json::Value>>,
+    /// Current sibling-fn call depth (incremented in eval_fn_body_rc).
+    call_depth: usize,
+    /// Name of the currently-executing function (for tail-call detection).
+    self_name: Option<String>,
 }
 
 impl Env {
     fn from_inputs(inputs: &HashMap<String, Value>) -> Self {
         Self {
             bindings: inputs.clone(),
-            data_values: HashMap::new(),
+            data_values: Rc::new(HashMap::new()),
+            call_depth: 0,
+            self_name: None,
         }
     }
 
@@ -628,17 +724,32 @@ impl Env {
     fn child(&self) -> Self {
         Self {
             bindings: self.bindings.clone(),
-            data_values: self.data_values.clone(),
+            data_values: Rc::clone(&self.data_values),
+            call_depth: self.call_depth,
+            self_name: self.self_name.clone(),
         }
     }
 }
 
 // ── Expression evaluation ───────────────────────────────────────────────────
 
+/// Evaluate an expression. Not in tail position (self-calls will recurse).
 fn eval_expr(
     expr: &LoweredExpr,
     env: &Env,
     sibling_fns: &HashMap<String, LoweredFnBody>,
+) -> Result<Value, EvalError> {
+    eval_expr_tc(expr, env, sibling_fns, false)
+}
+
+/// Evaluate an expression with tail-call context.
+/// When `tail_ctx` is true and a self-recursive call is encountered, a
+/// `tail_call` signal is returned instead of recursing.
+fn eval_expr_tc(
+    expr: &LoweredExpr,
+    env: &Env,
+    sibling_fns: &HashMap<String, LoweredFnBody>,
+    tail_ctx: bool,
 ) -> Result<Value, EvalError> {
     match expr {
         LoweredExpr::Literal(lit) => Ok(eval_literal(lit)),
@@ -692,6 +803,31 @@ fn eval_expr(
                 }
                 _ => {
                     let rhs = eval_expr(right, env, sibling_fns)?;
+                    // Fast path: list/string concat with owned values avoids
+                    // cloning the left-hand side (O(1) amortized append instead
+                    // of O(N) clone + extend).
+                    if *op == LoweredBinOp::Add {
+                        match (lhs, rhs) {
+                            (Value::List(mut a), Value::List(b)) => {
+                                a.extend(b);
+                                return Ok(Value::List(a));
+                            }
+                            (Value::Str(mut a), Value::Str(b)) => {
+                                a.push_str(&b);
+                                return Ok(Value::Str(a));
+                            }
+                            (Value::Str(mut a), Value::Enum { variant, .. }) => {
+                                a.push_str(&variant);
+                                return Ok(Value::Str(a));
+                            }
+                            (Value::Enum { variant, .. }, Value::Str(b)) => {
+                                return Ok(Value::Str(format!("{variant}{b}")));
+                            }
+                            (lhs, rhs) => {
+                                return eval_binop(&lhs, *op, &rhs);
+                            }
+                        }
+                    }
                     eval_binop(&lhs, *op, &rhs)
                 }
             }
@@ -712,9 +848,9 @@ fn eval_expr(
         LoweredExpr::IfElse { cond, then_, else_ } => {
             let condition = eval_expr(cond, env, sibling_fns)?;
             if value_truthy(&condition) {
-                eval_expr(then_, env, sibling_fns)
+                eval_expr_tc(then_, env, sibling_fns, tail_ctx)
             } else if let Some(else_branch) = else_ {
-                eval_expr(else_branch, env, sibling_fns)
+                eval_expr_tc(else_branch, env, sibling_fns, tail_ctx)
             } else {
                 Ok(Value::Unit)
             }
@@ -722,7 +858,7 @@ fn eval_expr(
 
         LoweredExpr::Match { expr, arms } => {
             let scrutinee = eval_expr(expr, env, sibling_fns)?;
-            eval_match_inner(&scrutinee, arms, env, sibling_fns)
+            eval_match_inner_tc(&scrutinee, arms, env, sibling_fns, tail_ctx)
         }
 
         LoweredExpr::VariantConstruct { tag, fields } => {
@@ -743,7 +879,7 @@ fn eval_expr(
             }
         }
 
-        LoweredExpr::Call { name, args } => eval_call(name, args, env, sibling_fns),
+        LoweredExpr::Call { name, args } => eval_call_tc(name, args, env, sibling_fns, tail_ctx),
 
         LoweredExpr::Lambda { .. } => {
             // Lambdas are evaluated inline when used in pipe methods
@@ -800,6 +936,17 @@ fn eval_expr(
         }
 
         LoweredExpr::Return(fields) => {
+            // Return expressions are always in tail position — if a self-call
+            // appears here, it should be trampolined.
+            if fields.len() == 1 {
+                let (key, value_expr) = &fields[0];
+                // Evaluate in tail context: if value_expr is a self-call, we get
+                // a tail_call signal that propagates straight through.
+                let value = eval_expr_tc(value_expr, env, sibling_fns, true)?;
+                let mut map = HashMap::new();
+                map.insert(key.clone(), value);
+                return Err(EvalError::early_return(map));
+            }
             let mut map = HashMap::new();
             for (key, value_expr) in fields {
                 let value = eval_expr(value_expr, env, sibling_fns)?;
@@ -1036,11 +1183,12 @@ fn cmp_op(
     Ok(Value::Bool(pred(ordering)))
 }
 
-fn eval_call(
+fn eval_call_tc(
     name: &str,
     args: &[(Option<String>, LoweredExpr)],
     env: &Env,
     sibling_fns: &HashMap<String, LoweredFnBody>,
+    tail_ctx: bool,
 ) -> Result<Value, EvalError> {
     // Check sibling fn first
     if let Some(fn_body) = sibling_fns.get(name) {
@@ -1051,7 +1199,13 @@ fn eval_call(
                 fn_inputs.insert(name.clone(), value);
             }
         }
-        let outputs = evaluate_fn_body_with_data(fn_body, &fn_inputs, sibling_fns, &env.data_values)?;
+        // Tail-call optimization: if we're in tail position and calling the
+        // same function that's currently executing, signal a trampoline instead
+        // of recursing on the native stack.
+        if tail_ctx && env.self_name.as_deref() == Some(name) {
+            return Err(EvalError::tail_call(fn_inputs));
+        }
+        let outputs = eval_fn_body_rc(fn_body, &fn_inputs, sibling_fns, Rc::clone(&env.data_values), env.call_depth + 1, Some(name))?;
         return sibling_fn_value(name, outputs);
     }
 
@@ -1427,6 +1581,16 @@ fn eval_match_inner(
     env: &Env,
     sibling_fns: &HashMap<String, LoweredFnBody>,
 ) -> Result<Value, EvalError> {
+    eval_match_inner_tc(scrutinee, arms, env, sibling_fns, false)
+}
+
+fn eval_match_inner_tc(
+    scrutinee: &Value,
+    arms: &[LoweredMatchArm],
+    env: &Env,
+    sibling_fns: &HashMap<String, LoweredFnBody>,
+    tail_ctx: bool,
+) -> Result<Value, EvalError> {
     for arm in arms {
         if let Some(bindings) = match_pattern(&arm.pattern, scrutinee) {
             let mut child_env = env.child();
@@ -1440,7 +1604,7 @@ fn eval_match_inner(
                     continue;
                 }
             }
-            return eval_expr(&arm.body, &child_env, sibling_fns);
+            return eval_expr_tc(&arm.body, &child_env, sibling_fns, tail_ctx);
         }
     }
     Err(EvalError::new(format!(
