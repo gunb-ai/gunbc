@@ -107,6 +107,26 @@ variants calling parallel per-transport functions.
 Cost: 2 match arms + 2 functions per new transport.
 Fix: transport trait with `prepare()` and `parse()` methods.
 
+**S42: Provider classification duplicated across operation_key and
+node_id paths.**
+`auto_mock.rs:296-309` (`operation_key_to_mock_provider`) and
+`auto_mock.rs:313-326` (`infer_provider_from_node_id`) are parallel
+implementations of the same classification: service name → MockProvider.
+The operation_key path uses `starts_with("github")|"gcp"`, the node_id
+fallback uses `contains("gist")|"anthropic"` with overlapping patterns.
+Cost: 2 arms per new provider across 2 functions.
+Fix: stamp `MockProvider` on transport nodes at lower time; delete
+both inference functions.
+
+**S43: Kitchen-sink REST response fabricates all-provider fields.**
+`auto_mock.rs:338-376`. `default_rest_response()` produces a merged
+JSON object with fields from ALL providers (OAuth `access_token`,
+GitHub `html_url`, GCP `raw`, etc.) when provider can't be inferred.
+Cost: response grows with each provider; parse tests can pass on
+wrong-provider fields.
+Fix: require provider classification (S42); generate provider-specific
+mock responses.
+
 ---
 
 ### Branch 3: Open-set enumeration by string
@@ -159,6 +179,55 @@ claim ID prefix.
 Cost: new service namespace or transport role requires resolver edits.
 Fix: lower transport role/service-ness into explicit metadata or enum
 tags and dispatch on that.
+
+**S44: Shell output parsing inferred from field shape.**
+`daglang-lower/src/lib.rs:6939-6961`. `infer_shell_output_parsing()`
+classifies by field count + names: 3 fields with success/stdout/stderr
+→ SuccessStdoutStderr; 1 bool → ExitCodeBool; any list field →
+SplitLines; everything else → TrimStdout (default).
+Cost: new output shapes silently degrade to TrimStdout.
+Fix: explicit `@output_parsing` annotation on service operations.
+
+**S45: Response provider inferred from service name substrings.**
+`daglang-lower/src/lib.rs:6484-6497`. `infer_response_provider()`
+uses `starts_with("github.")|contains("gist")` for GitHub,
+`starts_with("gcp.")|"google."` for GCP, `contains("anthropic")` for
+Anthropic. Overlapping patterns — "gist" matches inside unrelated
+names.
+Cost: 1 conditional arm per provider; overlap bugs.
+Fix: stamp `ResponseProvider` on service definitions in DSL.
+
+**S46: Transport kind inferred from operation name substrings.**
+`daglang-emit/src/computation.rs:600-630`. `infer_transport_kind()`
+uses `name.contains("read")` vs `contains("write")` when structured
+`ServiceTransportClass` metadata is absent.
+Cost: name-based heuristic breaks for non-read/write operations.
+Fix: always stamp `ServiceTransportClass`; remove string fallback.
+
+**S47: Container type classification duplicated across emit functions.**
+`daglang-emit/src/type_codegen.rs:57-62` and `:227-236` both match
+`name.as_str()` on `"List"|"Set"|"Map"` to classify container kinds.
+Cost: 2 match sites per new container type, plus language model
+backend mappings.
+Fix: single `ContainerKind` enum resolved at typecheck time, not
+by string match in emit.
+
+**S48: Test class / fermi cost parsed from strings in proc macros.**
+`testgen-registry-macros/src/lib.rs:411-443` (repeated at `:458-490`
+for live variants). Parses `class.value().to_lowercase()` matching
+`"unit"|"hermetic"|"integration"` and `cost.value().to_uppercase()`
+matching `"XS"|"S"|"M"|"L"|"XL"`.
+Cost: 2 match sites per new class or cost level (one regular, one
+live). Dedicated enums exist in gunbc-test but string parsing
+duplicates them.
+Fix: use enum variants directly in macro input; parse once.
+
+**S49: Test output matcher classified by type name string.**
+`daglang-emit/src/test_mock_emit.rs:356-363`. `match type_name.as_str()`
+selects IsString/IsSecret/IsBool/IsInt/NonEmpty matchers; unknown
+types fall back to `Any` matcher.
+Cost: 1 arm per new value type; unknown types get weakest assertion.
+Fix: derive matcher from `ValueBacking` (3 rules, not N arms).
 
 ---
 
@@ -270,6 +339,38 @@ OptionalToList) at runtime. The lowerer should validate cardinality
 compatibility at compile time and insert explicit coercion nodes where
 needed, rather than having the executor compensate silently.
 
+**S7: `resolve_field_type_dag` swallows errors.**
+`daglang-typecheck/src/lib.rs:1252-1334`. Returns `identity(type_name)`
+placeholder instead of compile error for missing types. The `identity()`
+DAG is a single-node pass-through that preserves the type name string
+but contains no structural information (`type_lib.rs:41-52`).
+The same pattern repeats in 7+ locations: `TypeRegistry::register_product()`
+(line 483), `register_coproduct()` (line 531), `resolve_expr()` (line
+612), and all `_checked()` variants. No caller validates the returned
+DAG — all blindly embed it in parent type structures.
+**Downstream cascade:** (1) `value_backing()` can't determine runtime
+backing from Identity → returns `Err`; (2) `value_compatible_with_type_id`
+catches with `.unwrap_or(ValueBacking::Json)` → any value accepted;
+(3) emit layer emits type name verbatim → target-language compile error;
+(4) testgen returns `None` → zero test coverage for unresolved types.
+Fix: return `Result<Dag, TypeResolutionError>`. The `_checked()` API
+variants already exist — make them the only path.
+
+**S40: Optional type syntax not normalized at compile boundary.**
+`auto_mock.rs:49-65` tries 3 syntaxes for Optional (`T?`, `Optional<T>`,
+`OptionalT`). Same 3-way handling in `ir/src/types.rs:975`.
+Cost: every consumer re-implements syntax normalization.
+Fix: lowerer normalizes all Optional shorthands to `Optional<T>` before
+emit; downstream sees one canonical form.
+
+**S41: Cardinality-based mock fabrication hides empty-list cases.**
+`auto_mock.rs:238-257`. `default_value_for_port` wraps scalar mock
+values into `Value::List(vec![value; cardinality.min.max(1)])`.
+When `min=0`, the `max(0,1)=1` silently fabricates a non-empty list,
+hiding cases where the port legitimately receives `[]`.
+Fix: lowerer should validate cardinality compatibility; mock gen
+should respect `min=0` by sometimes producing empty lists.
+
 ---
 
 ### Branch 6: Split metadata authorities
@@ -298,18 +399,33 @@ scope helpers from it.
 
 ### Standalone items
 
-These don't share a root cause with others:
-
-**S7: `resolve_field_type_dag` swallows errors.**
-Returns placeholder instead of compile error for missing types.
-Fix: return `Result`, propagate through typecheck.
+These don't share a root cause with other branches:
 
 **S8: C backend discards Map key types silently.**
-Intentional but undocumented. Fix: document.
+`daglang-emit/src/lower_c.rs:652`. `ContainerShape::Map(_, value)` —
+key type explicitly discarded with `_`. Intentional: C has no native
+map type; maps emit as `T*` (pointer to value). Key handling is in
+custom hash table implementations that don't track compile-time key
+type. Other backends (Go, Rust) preserve key types via
+`type_mapping.rs:79-83`. Harmless because `Value::Map` is always
+string-keyed (enforced by typecheck at `lib.rs:1272-1279`).
+Fix: add a comment in `lower_c.rs` explaining the design choice.
 
 **S9: Opaque kernel types lack documented rationale.**
-`Any`, `Json`, `Record`, `Unit` — correct decision, undocumented.
-Fix: document.
+`type_registry.rs:263-267` registers `Unit`, `Json`, `Any`, `Record`
+as `identity()` DAGs. These are bootstrap placeholders needed before
+`.dag` files are processed (documented at `type_registry.rs:257-262`).
+After typecheck, `merge_dsl_types()` can overwrite them with structural
+definitions. Correct design — each has distinct semantics:
+- `Unit` ≡ zero-valued (matches Bool unit variants, NoneType)
+- `Json` ≡ universal serializable (escape hatch, accepts any value)
+- `Any` ≡ type variable (compatible with everything in checks)
+- `Record` ≡ untyped product (fallback for products without structure)
+The `Any`/`Json` distinction is enforced in `types.rs:1128-1149` but
+nowhere documented. 153 refs to `Any`, 76 to `Json`, 60 to `Unit`,
+19 to `Record`.
+Fix: add doc comment on `register_kernel_types()` explaining each
+type's semantics and when to use which.
 
 ### Review-identified items (2026-03-10)
 
@@ -468,11 +584,15 @@ root by design: types are TypeExpr values, not strings. No TypeRegistry.
 No deferred resolution. No parallel interpreter.
 
 **Eliminated by v2 design (no v1 fix needed):**
-S1, S2, S3, S4, S5, S13, S36, S37 — and all of Branch 1.
+S1, S2, S3, S4, S5, S7, S13, S36, S37, S40 — and all of Branch 1.
+S42, S43 (provider and kitchen-sink mock) — v2 has typed transport metadata.
+S47 (container classification) — v2 emitter uses TypeExpr, not strings.
 
 **Inherited by v2 (re-implement correctly):**
 S34 (callable wiring) — v2 lowerer writes fail-closed from scratch.
 S38 (emitted code untested) — v2 emits tests alongside code.
+S44 (shell output parsing) — needs explicit annotation in v2 DSL too.
+S45, S46 (provider/transport inference) — v2 should stamp metadata at lower time.
 
 **Already fixed in v1:**
 S19 (Map keys), S20 (non-empty list default), S38 (partial — smoke tests).
@@ -480,6 +600,7 @@ S19 (Map keys), S20 (non-empty list default), S38 (partial — smoke tests).
 **Remains as v1 maintenance only:**
 S39 (weakened tests) — v1 tests, v2 writes its own.
 S3 prioritized sequence items — all moot once v2 is primary.
+S48, S49 (test class parsing, output matchers) — v1 testgen-only concerns.
 
 ---
 
