@@ -333,6 +333,62 @@ All ratchets are one-way (lists can only shrink).
 
 ---
 
+## Active: Eval stack machine — block-resume loses fn return values (S52-EVAL)
+
+**Root cause:** When the slice-based continuation machine suspends inside
+a Block (e.g., a sibling call in an if-branch), then resumes and the
+block completes with a `return` statement, the return value is lost.
+
+**Mechanism:** `LoweredStmt::Return` in `eval_stmts` produces
+`Step::Return(map)`. The main loop calls `pop_stack`, which pops the
+block-resume continuation, extracts the value, and resumes the caller's
+remaining stmts. But the caller's remaining stmts include the
+*fallback* return statement after the if/match — NOT the block's
+early return. The `Step::EarlyReturn` variant was added to distinguish
+early returns from normal completions, fixing the simple case (a
+`return` inside a block in a non-last Expr stmt position).
+
+**Remaining issue:** The v2 compiler pipeline still fails with 18/53
+test errors. The pattern is: a function calls a sibling fn whose body
+contains a match/if with blocks, and the result is projected to
+`Value::Unit` instead of the expected state Map. This means the
+block-resume → pop_stack → resume path is dropping the fn return value
+somewhere in the continuation unwinding chain. The symptom is:
+`skip_horizontal_ws requires (String, Int)` — the `state` variable
+is `Unit` instead of a Map with `source` and `pos` fields.
+
+**What works:** The machine correctly handles:
+- Top-level fn-to-fn call chains (N=40000 mutual recursion, heap stack)
+- Sibling calls inside if-branch Blocks (the `sibling_call_inside_if_branch` test)
+- Early returns from blocks propagating to fn boundary
+- Builtin calls, field access, pattern matching
+
+**What fails:** The specific multi-level pattern in the v2 tokenizer:
+```
+fn tokenize_loop(state) {
+  let s = skip_spaces_and_comments(state: state)  // sibling call
+  let tok = scan_token(state: s)                    // sibling call
+  match tok.kind {
+    Eof => return { return: s.tokens }
+    _ => tokenize_loop(state: advance(s, tok))      // recursive
+  }
+}
+```
+Where `skip_spaces_and_comments` itself has internal blocks with
+sibling calls. The multi-level suspension/resume loses the return
+value somewhere in the pop_stack chain.
+
+**Fix direction:** The pop_stack logic needs to correctly handle the
+case where a fn-boundary continuation's callee returns with named
+fields (not just "return"). The projection + binding + resume chain
+has a value-loss path when multiple fn-boundary continuations are
+stacked (fn A calls fn B which internally suspends in a block).
+
+**Invariant:** No parallel implementations — the old recursive evaluator
+remains the default until this is resolved.
+
+---
+
 ## Resolved
 
 | ID | Description | Resolution | Date |

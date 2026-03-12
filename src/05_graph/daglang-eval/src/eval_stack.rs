@@ -218,8 +218,13 @@ fn no_sibling_call_in_branch(expr: &LoweredExpr, loc: &str, sibs: &HashMap<&str,
 // ── 3a. Types ───────────────────────────────────────────────────────────────
 
 enum Step {
+    /// Fn body or block completed normally with this output map.
     Return(HashMap<String, Value>),
+    /// Early return: unwind past block-resume continuations to the fn boundary.
+    EarlyReturn(HashMap<String, Value>),
+    /// Need a sibling fn call.
     Call { callee: FnId, inputs: HashMap<String, Value> },
+    /// Error.
     Error(String),
 }
 
@@ -268,6 +273,18 @@ fn run_machine<'a>(
 
         match eval_stmts(stmts, &mut env, ctx, &mut stack) {
             Step::Return(result) => {
+                match pop_stack(&mut stack, result) {
+                    PopResult::Done(output) => return Ok(output),
+                    PopResult::Resume { stmts: s, env: e } => { stmts = s; env = e; }
+                    PopResult::Error(msg) => return Err(EvalError::new(msg)),
+                }
+            }
+            Step::EarlyReturn(result) => {
+                // Unwind past block-resume continuations to the fn boundary.
+                while let Some(cont) = stack.last() {
+                    if cont.is_fn_boundary { break; }
+                    stack.pop();
+                }
                 match pop_stack(&mut stack, result) {
                     PopResult::Done(output) => return Ok(output),
                     PopResult::Resume { stmts: s, env: e } => { stmts = s; env = e; }
@@ -360,7 +377,7 @@ fn eval_stmts<'a>(
                 } else {
                     match eval_expr_s(expr, env, ctx, stack) {
                         ExprResult::Value(value) => bind_let_result(env, name.clone(), &value),
-                        ExprResult::EarlyReturn(map) => return Step::Return(map),
+                        ExprResult::EarlyReturn(map) => return Step::EarlyReturn(map),
                         ExprResult::Suspend { callee, inputs } => {
                             stack.push(Continuation {
                                 remaining, binding: Some(name.clone()),
@@ -398,7 +415,7 @@ fn eval_stmts<'a>(
                 } else if is_last {
                     match eval_expr_s(expr, env, ctx, stack) {
                         ExprResult::Value(value) => return Step::Return(wrap_value_as_output(value)),
-                        ExprResult::EarlyReturn(map) => return Step::Return(map),
+                        ExprResult::EarlyReturn(map) => return Step::EarlyReturn(map),
                         ExprResult::Suspend { callee, inputs } => {
                             stack.push(Continuation {
                                 remaining: &[], binding: None,
@@ -412,7 +429,7 @@ fn eval_stmts<'a>(
                 } else {
                     match eval_expr_s(expr, env, ctx, stack) {
                         ExprResult::Value(_) => {}
-                        ExprResult::EarlyReturn(map) => return Step::Return(map),
+                        ExprResult::EarlyReturn(map) => return Step::EarlyReturn(map),
                         ExprResult::Suspend { callee, inputs } => {
                             stack.push(Continuation {
                                 remaining, binding: None,
@@ -434,7 +451,7 @@ fn eval_stmts<'a>(
                         Err(e) => return step_from_error(e),
                     }
                 }
-                return Step::Return(result);
+                return Step::EarlyReturn(result);
             }
         }
     }
@@ -807,7 +824,7 @@ fn unit_output() -> HashMap<String, Value> {
 }
 
 fn step_from_error(e: EvalError) -> Step {
-    if let Some(ret) = e.early_return { Step::Return(ret) } else { Step::Error(e.message) }
+    if let Some(ret) = e.early_return { Step::EarlyReturn(ret) } else { Step::Error(e.message) }
 }
 
 fn expr_from_error(e: EvalError) -> ExprResult {
@@ -929,6 +946,51 @@ mod tests {
         let mut s = HashMap::new(); s.insert("make_state".into(), mk); s.insert("outer".into(), outer.clone());
         let mut i = HashMap::new(); i.insert("source".into(), Value::Str("   hello".into()));
         assert_eq!(evaluate_stack(&outer, &i, &s, &HashMap::new()).unwrap()["return"], Value::Int(3));
+    }
+
+    #[test] fn sibling_call_inside_if_branch() {
+        // fn process(x: Int) -> Int {
+        //   if x > 0 {
+        //     let r = double(x: x)   // sibling call inside if-branch Block
+        //     return { return: r }
+        //   }
+        //   return { return: 0 }
+        // }
+        // fn double(x: Int) -> Int { return { value: x * 2 } }
+        let double_body = LoweredFnBody {
+            stmts: vec![LoweredStmt::Return(vec![(
+                "value".to_string(),
+                LoweredExpr::BinOp {
+                    left: Box::new(ident("x")),
+                    op: LoweredBinOp::Mul,
+                    right: Box::new(int(2)),
+                },
+            )])],
+        };
+        let process_body = LoweredFnBody {
+            stmts: vec![
+                LoweredStmt::Expr(LoweredExpr::IfElse {
+                    cond: Box::new(LoweredExpr::BinOp {
+                        left: Box::new(ident("x")),
+                        op: LoweredBinOp::Gt,
+                        right: Box::new(int(0)),
+                    }),
+                    then_: Box::new(LoweredExpr::Block(vec![
+                        LoweredStmt::Let("r".to_string(), call("double", vec![("x", ident("x"))])),
+                        LoweredStmt::Return(vec![("return".to_string(), ident("r"))]),
+                    ])),
+                    else_: None,
+                }),
+                LoweredStmt::Return(vec![("return".to_string(), int(0))]),
+            ],
+        };
+        let mut sibs = HashMap::new();
+        sibs.insert("double".to_string(), double_body);
+        sibs.insert("process".to_string(), process_body.clone());
+        let mut inp = HashMap::new();
+        inp.insert("x".to_string(), Value::Int(5));
+        let result = evaluate_stack(&process_body, &inp, &sibs, &HashMap::new()).unwrap();
+        assert_eq!(result["return"], Value::Int(10));
     }
 
     #[test] fn anf_verifier_catches_nested_call() {
