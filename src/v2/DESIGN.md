@@ -5,7 +5,7 @@
 The v0/v1 compiler exists to eliminate glue bugs in downstream systems,
 but the compiler itself is full of the same glue bugs: string-matching,
 fabrication fallbacks, parallel representations, deferred computation.
-The sustainability ledger (SUSTAINABILITY.md) traces 38 symptoms to one
+The sustainability ledger (src/v1/SUSTAINABILITY.md) traces 38 symptoms to one
 deep root: **incomplete compile-time resolution.**
 
 The fix is not to patch each symptom. The fix is to write the compiler
@@ -453,3 +453,128 @@ return-type record, or model as coproduct (`Found | NotFound`).
 
 **OD4: ServiceConfig grounding.** Field set should match actual grammar,
 not be speculative.
+
+---
+
+# Direction: domain-generic architecture
+
+Where the sections above track the v2 compiler's design and type
+models, this section tracks compatibility with domains beyond software.
+The DAG is not inherently a software concept — it models causal
+process, which all physical systems obey.
+
+## Core model: DAG as causal process
+
+The DAG models causality: directed edges mean "A must happen before B."
+Current flows because voltage was applied. A component is soldered
+because it was placed. A signal is amplified because it entered the
+gain stage.
+
+Even analog circuits with feedback loops are causal in time — the
+output at time t feeds back to affect the input at t+dt. The existing
+loop construct (LoopUnpack → body → LoopPack) models exactly this.
+
+SPICE netlists appear undirected, but this is a modeling shortcut for
+simultaneous constraint solving, not a reflection of the underlying
+physics. The DAG captures the causal reality; backends that need
+undirected representations project away the direction at emit time.
+
+## Everything is an interface
+
+The `extdeps/` pattern treats every external system as a composable
+interface. This is the universal pattern — every domain (circuit
+analysis, simulation, frequency response, physical layout) is an
+interface. Interfaces compose. The user writes at whatever level of
+intent they choose, and the compiler unfolds through the interface
+chain.
+
+```
+SOFTWARE                              CIRCUIT (same pattern)
+extdeps/github.dag → GitHub API       extdeps/ohm.dag → V=IR relationships
+extdeps/shell.dag  → local shell      extdeps/kirchhoff.dag → KVL/KCL
+extdeps/make.dag   → Make             extdeps/spice.dag → SPICE simulation
+```
+
+The domain models live in `.dag` files — type hierarchies and interface
+definitions — the same way `dsl/std/` encodes the type chain
+`Classical → Bit → Byte → Word → Int → String`. The circuit
+equivalent: `Signal → Voltage → BandlimitedVoltage`.
+
+Multiple domain perspectives (signal flow, physical layout, frequency
+response, thermal) are **compiler-derived analyses** over the same
+source DAG — not separate user-authored graphs. The user writes one
+causal description; the compiler derives the rest.
+
+## Architectural constraints
+
+Rules that preserve optionality for future domains:
+
+**C1: Edges are always causal — backends project as needed.**
+The core graph does not need undirected edges. Backends that need
+different connectivity models (SPICE nets, layout adjacency) derive
+them by projecting the causal DAG at emit time.
+
+**C2: Keep the unfolding machinery generic.**
+The type DAG composition, lowering passes, and analysis passes must
+not be specialized to software concepts. `Signal → Voltage →
+BandlimitedVoltage` should work the same way as `Classical → Bit →
+Byte → Word → Int` without compiler changes.
+
+**C3: Do not specialize Domain() refinements.**
+`Domain(String)` is intentionally open — it could mean
+`"ieee754_binary32"`, `"si_volt"`, or `"spice_bsim4_model"`. If
+compile-time dimensional analysis is needed, implement it as a
+typecheck pass that interprets domain strings, not as a change to
+the `Predicate` enum.
+
+**C4: Do not couple type structure to execution model.**
+A `Voltage` type should be usable in both a SPICE netlist (emitted
+for simulation) and a Rust program (computed numerically) without
+the type definition knowing which backend applies. Today this holds.
+
+**C5: Feedback loops use the loop construct, not special edges.**
+Analog feedback and digital feedback both model the same thing:
+output at time t influences input at t+dt. The loop construct
+handles this. Do not introduce cycle-permitting edges.
+
+**C6: Domain analyses are compiler passes, not user-authored graphs.**
+The pass infrastructure must support domain-pluggable analyses — a
+frequency response pass, a thermal pass — alongside today's typecheck
+and derive passes.
+
+## Future domains (stubs)
+
+These are domains the architecture should support. Implementation
+means writing `.dag` interface files and emit backends — not changing
+the core graph or execution model.
+
+**Digital hardware (Verilog).** `logic_gate.dag`, `register.dag`,
+`clock.dag`, `verilog.dag`. The type system already speaks this
+domain: `Classical → Bit → Byte → Word`, `Bit where brand("Clock")`.
+Emit backend maps `Callable{Fn}` → `module`, `BinaryOp` → `assign`
+or `always @(posedge clk)`, port cardinality → wire widths.
+
+**Analog circuits (SPICE).** `ohm.dag`, `kirchhoff.dag`, `spice.dag`.
+Domain type hierarchy: `Signal`, `Voltage`, `Current`, `Impedance`
+with `Domain()` refinements and `Brand()` nominal safety. Transient
+simulation = outer time-stepping loop × inner Newton-Raphson
+convergence loop. Same loop construct, different domain.
+
+**Physical dimensions.** SI base dimensions as compositional types.
+Every physical quantity is a vector of 7 integer exponents over base
+dimensions. The dimensional equivalent of `bit.dag`'s width constraints.
+
+The full composition parallel:
+
+```
+LAYER  SOFTWARE                     CIRCUIT
+0      Classical (truth)            BaseDimension (mass/length/time/...)
+1      Bit = Classical[width(1)]    Quantity = Float64[dimension]
+2      Byte = List<Bit>[8]          Voltage = Quantity[si_volt, brand]
+3      Int64 = Word64[signed]       Resistor = {resistance, tolerance, ...}
+4      Filesystem (resource)        CircuitNet (resource)
+5      file_content_matches (step)  ohm::voltage_from (constitutive law)
+6      content_upsert (pattern)     simulate::transient (pattern)
+7      github.dag (interface)       spice.dag (interface)
+user   "ensure clippy.toml"         "simulate voltage divider"
+```

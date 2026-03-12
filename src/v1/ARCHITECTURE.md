@@ -343,6 +343,6 @@ a structured diagnostic. No silent degradation.
 - Placeholder file rendering in testgen is removed — compile failure is
   a failure, not a "skipped" result.
 
-See `src/README.md` "No hacks or fallbacks" for the coding standard.
+See `src/v1/README.md` "No hacks or fallbacks" for the coding standard.
 This architecture enforces it structurally: with one evaluator and one
 execution path, there are fewer places where fallbacks can hide.

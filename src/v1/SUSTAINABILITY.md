@@ -9,7 +9,7 @@ Fixing individual symptoms is itself unsustainable if they share a root
 cause. This ledger is organized as a **causal tree**: deeper roots
 subsume shallower ones. Fixing a root eliminates its entire subtree.
 
-See `src/README.md` for the invariants.
+See `src/v1/README.md` for the invariants.
 
 ---
 

@@ -11,7 +11,7 @@ many files need editing? The sustainable compiler is one where that
 number is 1. Every invariant below serves that goal.
 
 Active liabilities and their measured costs are tracked in
-`SUSTAINABILITY.md` at the project root.
+`src/v1/SUSTAINABILITY.md`.
 
 ### No duplicate representations
 

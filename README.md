@@ -65,7 +65,7 @@ references.** A type like `List<Span>` is stored as
 not as a `TypeId("List<Span>")` string requiring a registry lookup. No
 registry, no deferred resolution, no stale copies.
 
-See `DESIGN-v2-compiler.md` for the full design and target type models.
+See `src/v2/DESIGN.md` for the full design and target type models.
 
 ## The Invariants
 
