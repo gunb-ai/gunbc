@@ -7,69 +7,50 @@ trees by recursing on the native Rust call stack. The v2 self-hosted
 parser has ~80 mutually recursive functions; interpreting 12 modules with
 150+ type definitions overflows even 128MB stacks (S52).
 
+The current code has accumulated specialized trampoline logic for self
+tail calls, mutual tail calls, and a `Return` fallback to preserve
+wrapping semantics — signs that the retrofitted-TCO path is contorted.
+
 ## Governing Invariants
 
 From `src/README.md`:
 
-**Pure core logic.** Deterministic functions from inputs to outputs.
-
-**Clear interfaces.** Prefer returning values over mutating shared state.
-
-**No parallel implementations.** One evaluator, not two.
-
-**No duplicate representations.** Each fact lives in one place.
-
-**Explicit boundary contracts.** Each pipeline stage's preconditions are
-enforced, not assumed.
+- **Pure core logic.** Deterministic functions from inputs to outputs.
+- **Clear interfaces.** Return values, not mutated shared state.
+- **No parallel implementations.** One evaluator, not two.
+- **Explicit boundary contracts.** Preconditions enforced, not assumed.
 
 ## Core Principle: IR Structure Mirrors Evaluator Structure
 
-The evaluator has two levels of computation with fundamentally different
-characteristics:
+The evaluator has two levels with fundamentally different properties:
 
-| Level | What it does | Can it suspend? | Recursion depth |
-|-------|-------------|-----------------|-----------------|
-| **Expressions** | Arithmetic, field access, string interp, pattern match | No — always completes | Bounded by AST depth (syntactic) |
-| **Statements** | Sequencing, binding, fn calls, control flow | Yes — fn calls suspend | Bounded by input size (unbounded) |
+| Level | What it does | Can it suspend? | Depth bound |
+|-------|-------------|-----------------|-------------|
+| **Expressions** | Arithmetic, field access, string interp, match | Never | AST depth (syntactic) |
+| **Statements** | Sequencing, binding, fn calls, control flow | On fn calls | Input size (unbounded) |
 
-The current evaluator conflates these levels — `eval_expr` can encounter
-fn calls, which recurse into `eval_fn_body`, which runs statements, which
-evaluate expressions. All on the native stack.
+**The fix:** enforce this separation in the IR as a lowering contract.
+Fn calls only appear at statement level, never nested inside expressions.
+Then `eval_expr` is a total pure function, and all suspension logic lives
+in `eval_body` + the main loop.
 
-**The fix:** enforce the separation in the IR. The lowered IR must
-guarantee that fn calls only appear at statement level, never nested
-inside expressions. Then the evaluator's two levels are independent:
-`eval_expr` is a total pure function (never suspends), and `eval_body`
-handles all suspension via an explicit heap stack.
+Edge cases (short-circuit operators with calls, calls in branches, calls
+in lambda bodies) are eliminated by the lowerer — not handled case-by-
+case in the evaluator.
 
-This is not a workaround — it's the explicit boundary contract between
-the lowerer and the evaluator. The lowerer guarantees call-free
-expressions; the evaluator relies on that guarantee for bounded native
-stack usage. Edge cases (short-circuit operators with calls, calls in
-if/else branches, calls in lambda bodies) are eliminated by the lowerer,
-not handled by the evaluator.
+## The Lowering Contract
 
-## The IR Contract: Call-Free Expressions
+After lowering, `LoweredExpr::Call` appears only in statement position:
+`LoweredStmt::Let(name, Call{...})` or `LoweredStmt::Expr(Call{...})`.
+Never nested inside another `LoweredExpr`.
 
-After lowering, `LoweredExpr::Call` appears only in two positions:
-- RHS of `LoweredStmt::Let(name, Call{...})`
-- Bare `LoweredStmt::Expr(Call{...})`
-
-Never nested inside another `LoweredExpr`. This is A-Normal Form (ANF)
-restricted to calls.
-
-The lowerer enforces this by hoisting nested calls into synthetic
-let-bindings:
+This is ANF restricted to calls. The lowerer hoists nested calls into
+synthetic let-bindings:
 
 ```
 Source:      let x = g(f(a))
 Lowered:     let __t0 = f(a)
              let x = g(__t0)
-
-Source:      x |> f() |> g()
-Lowered:     let __t0 = f(x)
-             let __t1 = g(__t0)
-             __t1
 
 Source:      is_valid() && check_db()
 Lowered:     let __t0 = is_valid()
@@ -79,137 +60,174 @@ Source:      map(list, x => f(x))
 Lowered:     for x in list { let __t0 = f(x); __t0 }
 ```
 
-Short-circuit operators, conditional branches, and lambda bodies with
-calls all reduce to the same pattern: calls at statement level inside
-blocks. No special cases in the evaluator.
+**This is the foundation, not a pre-step.** The lowerer change is
+moderate surgery (the current `lower_expr` preserves nesting — nested
+calls in args, record fields, pipe chains, and lambda bodies all exist
+in real .dag files). But it's a one-time change that permanently
+simplifies the evaluator.
 
-**Verification:** a single structural walk after lowering asserts that
-no `LoweredExpr` contains a `Call` descendant. This is the boundary
-contract.
+**Verification:** a structural walk after lowering asserts no
+`LoweredExpr` contains a `Call` descendant. This is the boundary
+contract between lowerer and evaluator.
 
-### Lowerer feasibility
+## Data Structures
 
-The current lowerer (`daglang-lower/src/expr.rs`) preserves nesting —
-`lower_expr` recursively descends the AST without hoisting. Nested calls
-in arguments, record fields, pipe chains, and lambda bodies all exist in
-real .dag files.
-
-The ANF transform is a well-understood compiler pass. The mechanical
-cases (nested args, pipe chains, record fields) cover ~80% of
-occurrences. Control-flow cases (short-circuit, branches) require
-lowering to statement blocks, which is the natural representation anyway.
-
-This is moderate surgery on the lowerer, not trivial. But it's a
-one-time change that simplifies the evaluator permanently.
-
-## Evaluator Design
-
-### Data structures (DI-4: split by change frequency)
+### Split by change frequency
 
 ```rust
-/// Constant for the entire evaluation.
+/// Constant for the entire evaluation. The immutable code store.
+/// Fn bodies are keyed by name; continuations reference them by FnId.
 struct EvalContext {
-    sibling_fns: HashMap<String, LoweredFnBody>,
+    fns: Vec<LoweredFnBody>,               // indexed by FnId
+    fn_index: HashMap<String, FnId>,        // name → FnId
     data_values: HashMap<String, Value>,
 }
 
-/// Variable bindings. Changes every let-binding.
-/// Immutable — bind() returns a new Env via im::HashMap.
-struct Env {
-    bindings: im::HashMap<String, Value>,
-}
+type FnId = usize;
 
-/// Per-fn-call metadata. Changes at fn-call boundaries.
+/// Variable bindings. Changes every let-binding.
+/// Current: Rc<HashMap> with make_mut (keep for now).
+/// Future: im::HashMap or numeric local slots + Vec<Value>.
+struct Env { ... }
+
+/// Per-fn-call metadata.
 struct FrameInfo {
+    fn_id: FnId,
     call_depth: usize,
-    fn_name: Option<String>,
 }
 ```
 
-`im::HashMap`: O(1) clone (structural sharing), O(log n) insert/lookup.
-Truly persistent — no hidden aliasing, no conditional cloning. Purity
-is structural, not simulated.
+FnId + pc (program counter = statement index) replaces `&'a` references.
+No lifetimes spread through the continuation type. `EvalContext` is the
+immutable code store; runtime state is all indices and values.
 
-### Return types (DI-3: no hidden output channels)
+**Env representation is decoupled from the control machine.** The
+explicit-stack refactor works with the current `Rc<HashMap>` env. Whether
+to switch to `im::HashMap` or numeric local slots is a separate decision
+made after the machine works, informed by benchmarks.
+
+### Return types
 
 ```rust
 /// eval_expr: total function over call-free expression trees.
+/// Never suspends. Always returns.
 enum ExprResult {
     Value(Value),
-    Return(HashMap<String, Value>),  // early return from enclosing fn
+    Return(HashMap<String, Value>),
     Error(String),
 }
 
-/// eval_body: may suspend on fn calls.
+/// eval_body: runs statements until completion or suspension.
 enum Action {
     Done(HashMap<String, Value>),
-    Call { callee: String, inputs: HashMap<String, Value> },
+    Suspend {
+        callee: FnId,
+        inputs: HashMap<String, Value>,
+        cont: Continuation,
+    },
+    TailCall {
+        callee: FnId,
+        inputs: HashMap<String, Value>,
+    },
     Error(String),
 }
 ```
 
-### Continuation (zero-allocation suspension)
+`Suspend` vs `TailCall` is explicit in the type — not inferred from
+"missing binding." The distinction is first-class: `TailCall` means
+identity continuation (literally no residual work), `Suspend` means
+there's a continuation to push.
+
+### Continuation
 
 ```rust
-struct Continuation<'a> {
-    binding: Option<String>,             // None = unbound call (not a tail call)
-    remaining_stmts: &'a [LoweredStmt], // slice into EvalContext's fn body
+struct Continuation {
+    fn_id: FnId,
+    pc: usize,                  // index of next statement to execute
+    binding: Option<String>,    // what to bind the call result to
+    projection: Projection,     // how to extract the return value
     env: Env,
-    frame: FrameInfo,
+}
+
+enum Projection {
+    /// Use the `return` field if present, else the `value` field.
+    PrimaryReturn,
+    /// Use the entire output map as-is.
+    WholeMap,
 }
 ```
 
-`remaining_stmts` is a slice — no index tracking, no bounds checking,
-O(1) to create. `&'a` borrows from `EvalContext` which outlives
-everything. `Env` snapshot is O(1) via `im::HashMap`.
+**Projection makes return semantics explicit.** The current evaluator's
+`sibling_fn_value` function is a runtime heuristic ("use `return` if it
+exists, otherwise `value`, otherwise the whole map"). That policy should
+be decided once at lowering time and stored in the continuation. The
+evaluator just executes the plan.
 
-**Tail call:** `remaining_stmts.is_empty() && binding.is_none()`. Don't
-push — just replace the current state. Self-recursive and mutual tail
-calls are identical.
+**Tail call = identity continuation.** A call is a tail call only when
+there is literally no residual work: no binding, no remaining statements,
+no projection. `return { return: f() }` is NOT a tail call because it
+has wrapping/projection work. This is exactly the bug the current mutual
+TCO hit — blindly trampolining lost the field-name wrapping.
 
-**Unbound non-tail call** (e.g., `log("msg"); let x = f()`): binding
-is `None`, remaining is non-empty. Continuation is pushed; result is
-discarded on resume.
-
-### Main loop
+### Depth vs time limits
 
 ```rust
-pub fn evaluate_fn_body<'a>(
-    body: &'a LoweredFnBody,
+const MAX_STACK_DEPTH: usize = 10_000;   // suspended continuations
+const MAX_STEP_BUDGET: usize = 1_000_000; // total eval_body invocations
+```
+
+Once tail calls stop pushing continuations, "stack depth" and "how long
+we've been running" diverge. An infinite tail-call loop uses O(1) stack
+but unbounded time. Both need limits.
+
+## Main Loop
+
+```rust
+pub fn evaluate(
+    fn_id: FnId,
     inputs: HashMap<String, Value>,
-    ctx: &'a EvalContext,
+    ctx: &EvalContext,
 ) -> Result<HashMap<String, Value>, String> {
-    let mut stack: Vec<Continuation<'a>> = Vec::new();
-    let mut stmts: &'a [LoweredStmt] = &body.stmts;
+    let mut stack: Vec<Continuation> = Vec::new();
+    let mut fn_id = fn_id;
+    let mut pc: usize = 0;
     let mut env = Env::from_inputs(inputs, ctx);
-    let mut frame = FrameInfo { call_depth: 0, fn_name: None };
+    let mut steps: usize = 0;
 
     loop {
-        match eval_body(stmts, &env, &frame, ctx) {
+        steps += 1;
+        if steps > MAX_STEP_BUDGET {
+            return Err("step budget exceeded".into());
+        }
+
+        let body = &ctx.fns[fn_id];
+        match eval_body(&body.stmts[pc..], &env, ctx) {
             Action::Done(result) => match stack.pop() {
                 None => return Ok(result),
                 Some(cont) => {
-                    if let Some(name) = &cont.binding {
-                        env = cont.env.bind(name, extract_return(&result));
-                    } else {
-                        env = cont.env; // discard unbound result
-                    }
-                    stmts = cont.remaining_stmts;
-                    frame = cont.frame;
+                    let value = cont.projection.extract(&result);
+                    env = match &cont.binding {
+                        Some(name) => cont.env.bind(name, value),
+                        None => cont.env,
+                    };
+                    fn_id = cont.fn_id;
+                    pc = cont.pc;
                 }
             },
-            Action::Call { callee, inputs } => {
-                if frame.call_depth >= MAX_CALL_DEPTH {
-                    return Err(format!("max call depth ({MAX_CALL_DEPTH}) exceeded"));
+            Action::Suspend { callee, inputs, cont } => {
+                if stack.len() >= MAX_STACK_DEPTH {
+                    return Err("max call depth exceeded".into());
                 }
-                let callee_body = ctx.sibling_fns.get(&callee)
-                    .ok_or_else(|| format!("unknown function: {callee}"))?;
-                stmts = &callee_body.stmts;
+                stack.push(cont);
+                fn_id = callee;
+                pc = 0;
                 env = Env::from_inputs(inputs, ctx);
-                frame = FrameInfo {
-                    call_depth: frame.call_depth + 1,
-                    fn_name: Some(callee),
-                };
+            }
+            Action::TailCall { callee, inputs } => {
+                // No continuation pushed. O(1) state replacement.
+                fn_id = callee;
+                pc = 0;
+                env = Env::from_inputs(inputs, ctx);
             }
             Action::Error(msg) => return Err(msg),
         }
@@ -217,65 +235,57 @@ pub fn evaluate_fn_body<'a>(
 }
 ```
 
+Always the same shape: evaluate a body, handle the result. No separate
+`resume` function. `Suspend` pushes, `TailCall` replaces, `Done` pops.
+
 ## Recursion Bounds
 
 ```
-main_loop                          — iterative, heap-bounded by MAX_CALL_DEPTH
-  └→ eval_body(stmts)             — iterative over stmts, no recursion
-       └→ eval_expr(expr)         — native-recursive, bounded by AST depth
+main_loop                      — iterative, heap-bounded by MAX_STACK_DEPTH
+  └→ eval_body(stmts)         — iterative over stmts
+       └→ eval_expr(expr)     — native-recursive, bounded by AST depth
 ```
 
 **Structural invariant:** `eval_body` never calls `eval_body`. Only the
-main loop does. `eval_expr` never encounters a `Call` (IR contract).
-Therefore: native stack = O(AST expr depth). Heap = O(call depth).
-Both bounded.
+main loop does. `eval_expr` never sees a `Call` (IR contract). Native
+stack = O(AST expr depth). Heap = O(call depth). Both bounded.
 
 | Resource | Bound | At depth 10K |
 |----------|-------|-------------|
 | Native stack | O(expr_depth) ≈ 30 frames | ~6KB |
-| Heap stack | O(call_depth) ≤ MAX_CALL_DEPTH | ~800KB |
-| Env snapshots | O(1) each via structural sharing | shared |
-| AST allocation | zero — slices into EvalContext | zero |
-
-## Relationship to v2 Parser
-
-The v2 parser's ~80 mutually recursive functions are the primary
-consumer. Parser functions where the recursive call is in tail position
-(common in recursive descent) get TCO for free — no continuation pushed.
-Non-tail calls (`let field = parse_field()`) push a continuation bounded
-by grammar nesting depth, not input size.
-
-The parser .dag files go through the same ANF lowering. Pipe chains like
-`tokens |> skip(1) |> parse_type()` hoist naturally. If any parser
-pattern resists ANF, that pattern should be refactored in the .dag source.
+| Heap stack | ≤ MAX_STACK_DEPTH | ~800KB |
+| Env snapshots | O(1) each (structural sharing) | shared |
+| AST cloning | zero — FnId + pc into EvalContext | zero |
+| Time | ≤ MAX_STEP_BUDGET | clean error |
 
 ## Migration Path
 
-Each step compiles and passes all tests before the next.
+Each step compiles and passes all tests.
 
-0. **ANF lowering** — hoist calls to statement level in `daglang-lower`.
-   Add structural assertion: no `LoweredExpr::Call` nested inside
-   another `LoweredExpr`. This is the prerequisite.
-1. **Introduce `EvalContext`** — extract constant state from `Env`.
-2. **Introduce `FrameInfo`** — extract per-call state from `Env`.
-3. **Replace `EvalError` control flow with `ExprResult`/`Action`** —
-   introduce alongside old types, then remove old types.
-4. **Introduce `Continuation` and main loop** — TCO built in from start.
-5. **Switch Env to `im::HashMap`** — `bind()` returns new Env.
-6. **Delete old recursive path.**
-7. **Remove `with_parser_stack(32MB)`.** Un-ignore `phase6`.
+0. **Freeze the lowering contract.** Hoist calls to statement level in
+   `daglang-lower`. Add structural verifier. This is the foundation.
+1. **Introduce `EvalContext` and `FrameInfo`.** Extract from `Env`.
+2. **Make `Action` explicit.** `Suspend`/`TailCall`/`Done`/`Error`
+   with `Continuation` and `Projection`. Introduce alongside old types,
+   then remove old types.
+3. **Introduce the main loop.** FnId + pc based. TCO built in.
+4. **Delete old recursive path** (`eval_fn_body_rc`, trampoline,
+   `tail_call`/`early_return` error variants).
+5. **Remove `with_parser_stack(32MB)`.** Un-ignore `phase6`.
+6. **Benchmark env representation.** Decide `im::HashMap` vs current
+   vs local slots based on measured performance.
 
 ## Verification
 
-**Structural (static):** `eval_body` has exactly one call site (main
-loop). `eval_expr` has no path to `Call` (IR contract assertion).
+**Structural (static):** `eval_body` has one call site (main loop).
+`eval_expr` has no path to `Call` (IR contract verifier).
 
 **Bound tests:**
 ```rust
-#[test] fn mutual_recursion_10k_default_stack()   // no with_parser_stack
-#[test] fn heap_stack_bounded_by_max_call_depth()  // clean error, not OOM
-#[test] fn anf_no_nested_calls_after_lowering()    // structural walk
+#[test] fn mutual_recursion_10k_default_stack()
+#[test] fn heap_stack_bounded_by_max_depth()
+#[test] fn step_budget_catches_infinite_tail_loop()
+#[test] fn anf_no_nested_calls_after_lowering()
 ```
 
-**Acceptance gate:** `phase6_gist_full_pipeline` passes on default 8MB
-stack.
+**Acceptance:** `phase6_gist_full_pipeline` on default 8MB stack.
