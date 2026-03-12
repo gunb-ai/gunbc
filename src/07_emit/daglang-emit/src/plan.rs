@@ -382,7 +382,7 @@ fn topo_sort_dag(dag: &Dag<LoweredOp>) -> Result<Vec<String>, PlanError> {
 mod tests {
     use super::*;
     use crate::computation::{Cardinality, PureBody, TransportKind, TypedPort};
-    use daglang_syntax::ast::EmitCollectionFamily;
+    use crate::computation::EmitCollectionFamily;
 
     #[test]
     fn emit_plan_round_trip() {

@@ -603,15 +603,6 @@ pub mod ast {
         Block(Vec<Stmt>),
     }
 
-    /// Emit-level collection family for code generation classification.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum EmitCollectionFamily {
-        Map,
-        Filter,
-        Fold,
-        Sort,
-    }
-
     #[derive(Debug, Clone)]
     pub enum Literal {
         Int(i64),

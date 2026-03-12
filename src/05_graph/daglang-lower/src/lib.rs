@@ -9558,29 +9558,6 @@ pub(crate) enum ServiceCallArgLiteral {
 /// Re-export from `gunbc_ir` — the canonical definition now lives in the IR layer.
 pub type CollectionOpKind = gunbc_ir::patterns::CollectionKind;
 
-/// Classify a collection op into an emit-level family.
-pub fn collection_emit_family(
-    kind: &CollectionOpKind,
-) -> daglang_syntax::ast::EmitCollectionFamily {
-    use daglang_syntax::ast::EmitCollectionFamily;
-    match kind {
-        CollectionOpKind::Map
-        | CollectionOpKind::FlatMap
-        | CollectionOpKind::Join
-        | CollectionOpKind::Split
-        | CollectionOpKind::Zip
-        | CollectionOpKind::Enumerate => EmitCollectionFamily::Map,
-        CollectionOpKind::Filter | CollectionOpKind::Contains | CollectionOpKind::Skip => {
-            EmitCollectionFamily::Filter
-        }
-        CollectionOpKind::Fold
-        | CollectionOpKind::Any
-        | CollectionOpKind::All
-        | CollectionOpKind::Len => EmitCollectionFamily::Fold,
-        CollectionOpKind::Sort | CollectionOpKind::Dedup => EmitCollectionFamily::Sort,
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CollectionOpSite {
     kind: CollectionOpKind,
