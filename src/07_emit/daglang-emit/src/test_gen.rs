@@ -592,14 +592,21 @@ mod tests {
             "transport.node",
             vec![Port::scalar("request", "TransportRequest")],
             vec![Port::scalar("response", "TransportResponse")],
-            LoweredOp::Callable {
+            LoweredOp::Transport {
                 module: "services.example".to_string(),
                 kind: CallableKind::Func,
                 name: "execute".to_string(),
                 obligation: ObligationCategory::ServiceTransportExecute,
+                service_metadata: Box::new(daglang_lower::ServiceCallMetadata {
+                    service: "example".to_string(),
+                    operation: "execute".to_string(),
+                    transport: daglang_lower::ServiceTransportClass::ShellLocal,
+                    idempotent: false,
+                    readonly: false,
+                    spec: None,
+                }),
                 is_interactive: false,
                 resource_target: None,
-                fn_body: None,
             },
         ));
         ReachableDag::from_dag(&dag)

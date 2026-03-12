@@ -538,6 +538,12 @@ fn classify_callable(
     inputs: Vec<TypedPort>,
     outputs: Vec<TypedPort>,
 ) -> Result<Computation, ClassifyError> {
+    let require_metadata = || {
+        service_metadata.ok_or_else(|| ClassifyError::UnrecognizedOp {
+            node_id: name.to_string(),
+            detail: "transport obligation without service metadata".into(),
+        })
+    };
     match obligation {
         ObligationCategory::ResourceAcquire | ObligationCategory::ResourceProvide => {
             let handle_type = outputs
@@ -551,7 +557,7 @@ fn classify_callable(
         }
 
         ObligationCategory::ServiceTransportExecute => {
-            let transport_kind = infer_transport_kind(name, service_metadata);
+            let transport_kind = infer_transport_kind(name, require_metadata()?);
             Ok(Computation::Transport {
                 prepare: RequestSpec {
                     input_ports: inputs.iter().map(|p| p.name.clone()).collect(),
@@ -640,36 +646,28 @@ fn classify_callable(
     }
 }
 
-/// Infer the [`TransportKind`] from service metadata and name heuristics.
+/// Derive [`TransportKind`] from required service metadata.
+///
+/// Since D (LoweredOp::Transport has required metadata), the name-based
+/// heuristic fallback is gone. The transport class comes from the DSL
+/// service definition's transport binding.
 fn infer_transport_kind(
     name: &str,
-    service_metadata: Option<&daglang_lower::ServiceCallMetadata>,
+    service_metadata: &daglang_lower::ServiceCallMetadata,
 ) -> TransportKind {
-    if let Some(meta) = service_metadata {
-        return match meta.transport {
-            ServiceTransportClass::FileBoundary => {
-                if name.contains("read") {
-                    TransportKind::FileRead
-                } else {
-                    TransportKind::FileWrite
-                }
+    match service_metadata.transport {
+        ServiceTransportClass::FileBoundary => {
+            if name.contains("read") {
+                TransportKind::FileRead
+            } else {
+                TransportKind::FileWrite
             }
-            ServiceTransportClass::ShellLocal => TransportKind::ShellExec,
-            ServiceTransportClass::RestNetwork => TransportKind::HttpRequest,
-            ServiceTransportClass::LocalDirect => TransportKind::ShellExec,
-            ServiceTransportClass::Unknown => TransportKind::ShellExec,
-            // InterfaceStub: auto-mocked in DryRun; Real mode errors before transport.
-            // Classified as ShellExec for emit purposes (execute node is intercepted).
-            ServiceTransportClass::InterfaceStub => TransportKind::ShellExec,
-        };
-    }
-    // Fallback: infer from name
-    if name.contains("read") {
-        TransportKind::FileRead
-    } else if name.contains("write") {
-        TransportKind::FileWrite
-    } else {
-        TransportKind::ShellExec
+        }
+        ServiceTransportClass::ShellLocal => TransportKind::ShellExec,
+        ServiceTransportClass::RestNetwork => TransportKind::HttpRequest,
+        ServiceTransportClass::LocalDirect => TransportKind::ShellExec,
+        ServiceTransportClass::Unknown => TransportKind::ShellExec,
+        ServiceTransportClass::InterfaceStub => TransportKind::ShellExec,
     }
 }
 
