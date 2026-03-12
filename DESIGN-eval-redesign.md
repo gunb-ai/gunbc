@@ -33,9 +33,10 @@ inputs, explicit outputs, no hidden mutation. The function signature
 tells you everything it can do.
 
 **DI-2: Efficiency.** O(1) operations stay O(1). Specifically:
-- Variable lookup: O(1) amortized (HashMap)
-- Let-binding: O(1) amortized (HashMap insert)
-- Env creation for a child scope: O(1) (not O(n) clone)
+- Variable lookup: O(log n) with persistent map (n = bindings in scope,
+  typically < 100)
+- Let-binding: O(log n) (persistent map insert)
+- Env creation for a child scope: O(1) (structural sharing)
 - Literal evaluation: O(1)
 
 **DI-3: No hidden output channels.** A function's return type must
@@ -74,7 +75,8 @@ Purity violations:
 
 ```rust
 /// Constant for the entire evaluation. Created once, read everywhere.
-/// Passed as `&EvalContext` — no cloning, no Rc.
+/// Passed as `&EvalContext` — no cloning, no Rc. Continuations borrow
+/// fn bodies directly via `&'a LoweredFnBody`.
 struct EvalContext {
     sibling_fns: HashMap<String, LoweredFnBody>,
     data_values: HashMap<String, Value>,
@@ -83,9 +85,11 @@ struct EvalContext {
 /// Variable bindings. Changes every let-binding.
 ///
 /// Immutable value type — `bind()` returns a new Env (DI-1).
-/// Uses persistent/CoW map for O(1) child-scope creation (DI-2).
+/// Uses `im::HashMap` for O(1) clone, O(log n) insert/lookup.
+/// Semantics match the API: bind() returns a new Env, the old one
+/// is unchanged, no hidden sharing to reason about.
 struct Env {
-    bindings: HashMap<String, Value>,
+    bindings: im::HashMap<String, Value>,
 }
 
 /// Per-fn-call metadata. Changes at fn-call boundaries only.
@@ -95,153 +99,386 @@ struct FrameInfo {
 }
 ```
 
-**Efficiency note (DI-2):** `Env::bind()` must not clone the entire
-HashMap. Options:
-- `im::HashMap` (persistent data structure, O(log n) insert, O(1) clone)
-- `Rc<HashMap>` with `Rc::make_mut` (current approach, O(1) amortized)
-- Scope-chain (Vec of small maps, O(depth) lookup)
+**Env uses `im::HashMap`** (DI-1 over micro-optimization). The current
+`Rc<HashMap>` with `Rc::make_mut` simulates persistence through interior
+mutation — exactly the kind of hidden-aliasing-with-conditional-cloning
+that DI-1 aims to eliminate. `im::HashMap` is actually persistent: O(1)
+clone via structural sharing, O(log n) insert and lookup. With n < 100
+bindings in a typical scope, log n < 7 — negligible.
 
-The `Rc::make_mut` approach is acceptable IF we make the sharing explicit
-— i.e., `Env::child()` documents that it shares the backing map, and
-`bind()` documents that it clones-on-write. The current code does this
-but the type doesn't communicate it.
+### Return types (DI-3)
 
-### Return types, one per outcome (DI-3)
+One result type, not two. `eval_expr` returns `ExprResult`. `eval_body`
+is the layer that processes a sequence of statements and constructs
+continuations from `ExprResult::Call` — it returns `Action`.
 
 ```rust
-/// Result of evaluating a single expression.
+/// Result of evaluating a single expression within a fn body.
+/// With the ANF invariant, expressions never contain fn calls.
+/// eval_expr is a total function over pure expression trees —
+/// it always terminates and never suspends.
 enum ExprResult {
     /// Normal: produced a value.
     Value(Value),
-    /// The expression is a call to a sibling fn that should be
-    /// evaluated by the outer loop, not by native recursion.
-    /// Carries the callee name, evaluated inputs, and a continuation
-    /// describing how to use the result.
-    Call {
-        callee: String,
-        inputs: HashMap<String, Value>,
-        continuation: Continuation,
-    },
     /// Early return from the enclosing fn body.
     Return(HashMap<String, Value>),
     /// Evaluation error.
     Error(String),
 }
 
-/// Result of evaluating a fn body to completion.
-enum BodyResult {
-    /// Normal completion with output fields.
+/// What the main loop should do next.
+/// Returned by `eval_body`, which runs statements until it finishes
+/// or hits a call it can't resolve locally.
+enum Action {
+    /// Fn body completed with output fields.
     Done(HashMap<String, Value>),
     /// Need to call a sibling fn before continuing.
     Call {
         callee: String,
         inputs: HashMap<String, Value>,
-        continuation: Continuation,
     },
     /// Evaluation error.
     Error(String),
 }
 ```
 
-No `Result<_, EvalError>` — the return type IS the outcome.
+`eval_expr` never returns `Call` — the ANF invariant guarantees calls
+only appear at statement level. `eval_body` is the only layer that sees
+calls, and it produces `Action::Call` with a `Continuation` pushed to
+the heap stack.
 
 ### The continuation (suspended computation)
 
-When a fn body hits a non-tail sibling call (`let x = f(...)`), it
-cannot proceed without f's result. The continuation captures "what to
-do next" as pure data:
+Slim — just the data needed to resume the caller after the callee returns.
 
 ```rust
-struct Continuation {
-    /// Name of the callee (for extracting the return value).
-    callee_name: String,
-    /// How to bind the call result.
-    binding: Option<String>,          // Some("x") for let, None for expr
-    /// Remaining statements after the call.
-    remaining_stmts: Vec<LoweredStmt>,
+struct Continuation<'a> {
+    /// What to bind the call result to.
+    binding: String,
+    /// The fn body being evaluated (borrowed from EvalContext).
+    body: &'a LoweredFnBody,
+    /// Index of the statement to resume at (the one after the call).
+    resume_index: usize,
     /// The env at the point of suspension.
     env: Env,
-    /// Frame metadata.
+    /// Frame metadata for the suspended fn.
     frame: FrameInfo,
-    /// Whether this is the fn body's top-level stmts.
-    is_fn_body: bool,
 }
 ```
 
-**Key property:** Continuation is owned data. No references, no
-lifetimes. It clones the remaining stmts (which are cheaply cloneable
-AST nodes). This avoids all borrow-checker issues from the first attempt.
+No `callee_name` — the main loop already knows who it called.
+No `is_fn_body` flag — the structural position (top of stack vs not)
+determines top-level-vs-nested semantics. No `Option<String>` on
+binding — if a call result isn't bound to anything, it's a tail call
+(no continuation pushed; see below).
 
-**Efficiency (DI-2):** Cloning `Vec<LoweredStmt>` for the remaining
-stmts is O(remaining) per suspension. For the common case (call in the
-last statement), remaining is empty or 1 element. For mid-body calls,
-it's proportional to the number of remaining statements — acceptable
-since fn bodies are typically short (5-20 stmts).
+**No AST cloning, no Rc.** The continuation borrows `&'a LoweredFnBody`
+directly from `EvalContext`, which outlives the entire evaluation. The
+main loop, stack, and all continuations share the lifetime `'a` tied to
+`&'a EvalContext`. Creating a continuation is O(1) — a pointer and an
+integer. No reference counting, no allocation.
+
+This works because the main loop is an iterative `loop {}` — not
+recursive. The `Vec<Continuation<'a>>` lives on the heap alongside the
+loop's local variables. Every `&'a` reference points into `EvalContext`,
+which is immutable and outlives the loop. No borrow checker conflicts.
+
+**Heap cost per continuation:** O(1) fixed overhead + the `Env` snapshot.
+With `im::HashMap`, the Env snapshot is O(1) (structural sharing). So
+total heap for N suspended calls = O(N). At MAX_CALL_DEPTH=10,000, each
+continuation is ~80 bytes (pointer + index + Env pointer + FrameInfo),
+total ~800KB. Bounded and predictable.
 
 ### The main loop
 
 ```rust
-pub fn evaluate_fn_body(
-    body: &LoweredFnBody,
+pub fn evaluate_fn_body<'a>(
+    body: &'a LoweredFnBody,
     inputs: HashMap<String, Value>,
-    ctx: &EvalContext,
+    ctx: &'a EvalContext,
 ) -> Result<HashMap<String, Value>, String> {
-    let mut stack: Vec<Continuation> = Vec::new();
-    let mut current = RunState::new(body, inputs, ctx);
+    let mut stack: Vec<Continuation<'a>> = Vec::new();
+    let mut body: &'a LoweredFnBody = body;
+    let mut start_index: usize = 0;
+    let mut env = Env::from_inputs(inputs, ctx);
+    let mut frame = FrameInfo { call_depth: 0, fn_name: None };
 
     loop {
-        match eval_body_pure(&current.body, &current.env, &current.frame, ctx) {
-            BodyResult::Done(result) => {
+        match eval_body(&body.stmts[start_index..], &env, &frame, ctx) {
+            Action::Done(result) => {
                 match stack.pop() {
                     None => return Ok(result),
-                    Some(cont) => current = resume(cont, &result, ctx),
+                    Some(cont) => {
+                        let value = extract_return_value(&result);
+                        env = cont.env.bind(&cont.binding, value);
+                        body = cont.body;
+                        start_index = cont.resume_index;
+                        frame = cont.frame;
+                    }
                 }
             }
-            BodyResult::Call { callee, inputs, continuation } => {
-                stack.push(continuation);
-                current = RunState::for_call(&callee, inputs, &current.frame, ctx);
+            Action::Call { callee, inputs } => {
+                let callee_body = ctx.sibling_fns.get(&callee)
+                    .ok_or_else(|| format!("unknown function: {callee}"))?;
+                body = callee_body;
+                start_index = 0;
+                env = Env::from_inputs(inputs, ctx);
+                frame = FrameInfo {
+                    call_depth: frame.call_depth + 1,
+                    fn_name: Some(callee),
+                };
             }
-            BodyResult::Error(msg) => return Err(msg),
+            Action::Error(msg) => return Err(msg),
         }
     }
 }
 ```
 
-The entire fn-call stack is `Vec<Continuation>` on the heap. No native
-recursion for fn calls. Expression evaluation within a single fn body
-stays recursive on the native stack (bounded by AST depth, not input
-size).
+The loop always does the same thing: evaluate a body from a given index.
+No separate `resume` function — resuming IS binding a value and
+continuing the loop. Fewer concepts, fewer code paths. Zero allocation
+per iteration — all references borrow from `&'a EvalContext`.
 
-## Open Questions
+### Tail-call optimization
 
-1. **Nested calls in expressions.** `let x = g(f(...))` — when we hit
-   `f(...)`, we're mid-way through evaluating `g`'s arguments. The
-   continuation needs to capture "I was evaluating g's args, I have
-   some done, here's what's left." This enriches the continuation type.
-   Alternative: keep expression-level evaluation recursive (native
-   stack) since expression depth is bounded. Only fn-call→fn-call
-   transitions go through the heap stack.
+Falls out naturally from the loop structure. When `eval_body` encounters
+a sibling call as the last expression in the last statement with no
+remaining work:
 
-2. **Tail-call optimization.** In the current design, tail calls
-   (self-recursive or mutual) can be detected when `remaining_stmts`
-   is empty and `binding` is None. The main loop can then skip pushing
-   a continuation — just replace `current` with the callee. This
-   subsumes the existing trampoline mechanism.
+- `remaining_stmts` would be empty
+- `binding` would be meaningless (nothing to bind to)
 
-3. **Env efficiency.** Whether to use `Rc<HashMap>` with make_mut,
-   `im::HashMap`, or scope chains. The choice affects DI-2 for
-   child-scope creation vs. lookup cost.
+So `eval_body` simply doesn't push a continuation — it returns
+`Action::Call` directly. The main loop replaces `body`/`env`/`frame`
+with the callee's. No special trampoline mechanism needed.
+
+This handles both self-recursive (`A→A`) and mutual (`A→B→A`) tail
+calls identically. The stack doesn't grow because nothing is pushed.
+
+### Expression evaluation stays recursive — via ANF invariant
+
+Expression evaluation within a single fn body uses the native Rust stack.
+This is safe IF expressions cannot contain fn calls — which we enforce
+structurally.
+
+**ANF (A-Normal Form) lowering:** The `daglang-lower` phase hoists all
+nested fn calls into synthetic `let` statements. After lowering,
+`LoweredExpr::Call` only appears as the RHS of a `Let` statement or as
+a bare `Expr` statement — never nested inside another expression.
+
+```
+// Source:      let x = g(f(a))
+// Lowered ANF: let __tmp0 = f(a)
+//              let x = g(__tmp0)
+```
+
+With this invariant, `eval_expr` never encounters `ExprResult::Call`. It
+evaluates pure expression trees (arithmetic, field access, string interp,
+match, etc.) and always returns `ExprResult::Value`. Only `eval_body`
+sees calls, and it handles them via the heap stack.
+
+**This makes the structural invariant trivially true:** `eval_expr` cannot
+trigger fn-call recursion because it never sees a call. The native stack
+is bounded by expression tree depth (operators, field access, conditionals)
+which is syntactic, not input-dependent.
+
+**Verification:** After lowering, assert that no `LoweredExpr::Call`
+appears nested inside another `LoweredExpr`. This is a structural
+property of the IR, checkable with a single walk.
+
+**Migration note:** If the current lowerer does not enforce ANF (calls
+can appear nested in expressions), this must be added as a pre-step
+before the evaluator redesign. The lowerer change is mechanical — hoist
+calls into `let __tmpN = call(...)` — and does not change semantics.
+
+## `eval_body` internals
+
+`eval_body` walks statements sequentially. For each statement:
+
+```
+Let(name, expr):
+    result = eval_expr(expr, env, frame, ctx)
+    match result:
+        Value(v)  → env = env.bind(name, v); continue
+        Call{..}  → push Continuation{binding: name, remaining, env, frame}
+                    return Action::Call{..}
+        Return(m) → return Action::Done(m)
+        Error(e)  → return Action::Error(e)
+
+Expr(expr):        // last stmt: its value is the fn's return
+    result = eval_expr(expr, env, frame, ctx)
+    match result:
+        Value(v)  → return Action::Done(wrap_return(v))
+        Call{..}  → if is_last && no_remaining:
+                        return Action::Call{..}    // tail call, no continuation
+                    else:
+                        push Continuation{..}
+                        return Action::Call{..}
+        Return(m) → return Action::Done(m)
+        Error(e)  → return Action::Error(e)
+
+Return(fields):
+    evaluate each field expr, collect into HashMap
+    return Action::Done(result)
+    (if a field expr returns Call, push continuation)
+```
+
+## Recursion Bounds Analysis
+
+The evaluation call chain has distinct levels, each with a different
+recursion type and bound:
+
+```
+main_loop                            — iterative, heap stack
+  └→ eval_body(stmts, env, frame)    — iterative loop over stmts
+       └→ eval_expr(expr, env)       — native-stack recursive
+            ├→ eval_expr(sub_expr)   — native-stack recursive
+            ├→ eval_binop(lhs, rhs)  — leaf, O(1)
+            ├→ eval_intrinsic(...)   — iterates over list, calls eval_expr per item
+            │    └→ eval_expr(body)  — native-stack recursive
+            └→ [sibling fn call]     — returns ExprResult::Call, does NOT recurse
+```
+
+### Per-level bounds
+
+| Level | Type | Bounded by | Practical max | Heap cost |
+|-------|------|------------|---------------|-----------|
+| main_loop | iterative (heap) | MAX_CALL_DEPTH | 10,000 | O(N) continuations, ~1MB at 10K |
+| eval_body | iterative (stmt loop) | stmt count per fn | ~20 | O(1) — no allocation |
+| eval_expr | native recursive | AST expression depth | ~15-30 | O(1) — native stack only |
+| eval_intrinsic | iterative (item loop) | list length | unbounded* | O(1) — no allocation |
+| eval_expr in intrinsic | native recursive | AST depth of lambda | ~5-10 | O(1) — native stack only |
+
+### The structural invariant
+
+**`eval_body` never calls `eval_body`.** This is the key property that
+makes the heap stack work. `eval_body` calls `eval_expr`; `eval_expr`
+may recurse into itself but returns `ExprResult::Call` instead of
+recursing into `eval_body`. Only the main loop calls `eval_body`. This
+is statically verifiable by inspecting the code — grep for call sites.
+
+If `eval_body` never calls itself (directly or transitively through
+`eval_expr`), then the native stack has at most one `eval_body` frame
+at any time. All fn-call stacking is in `Vec<Continuation>` on the heap.
+
+### The intrinsic loophole (resolved by ANF)
+
+**Original concern:** Intrinsics like `map(list, lambda)` iterate over
+items and call `eval_expr` for the lambda body. If the lambda contains
+a sibling fn call, it could bypass the heap stack.
+
+**ANF resolves this.** After ANF lowering, lambda bodies cannot contain
+fn calls — calls are hoisted to statement level. Intrinsic lambdas are
+pure expression trees (`x => x.name`, `x => x + 1`). `eval_expr` on a
+lambda body always returns `ExprResult::Value`, never suspends.
+
+If a DSL program writes `map(list, x => f(x))`, the lowerer transforms
+it into a `for` loop with explicit statements:
+```
+for x in list {
+    let __tmp = f(x)    // call at statement level
+    __tmp               // pure expression
+}
+```
+
+The `for` loop's body is evaluated by `eval_body`, which handles the
+call via the heap stack. No special intrinsic suspension needed.
+
+**Verification:** assert that no `LoweredExpr::Call` appears inside
+`LoweredExpr::Lambda` after lowering.
+
+### Total resource bounds
+
+At MAX_CALL_DEPTH = 10,000:
+- **Heap stack:** 10,000 continuations × ~100 bytes = ~1MB
+- **Env snapshots:** O(1) each via `im::HashMap` structural sharing.
+  Total unique data = O(total bindings created), not O(depth × bindings).
+- **Native stack:** O(max_expr_depth) ≈ 30 frames × ~200 bytes ≈ 6KB.
+  Well within default 8MB stack.
+- **No AST cloning:** continuations hold Rc + index, not cloned stmts.
+
+The heap stack is bounded by MAX_CALL_DEPTH (explicit limit, clean
+error on exceeded). There is no path to unbounded heap growth.
 
 ## Migration Path
 
-Incremental, test-by-test:
+Incremental, test-by-test. Each step compiles and passes all tests
+before the next begins.
 
-1. Introduce `EvalContext` — extract constant state from `Env`.
-2. Introduce `FrameInfo` — extract per-call state from `Env`.
-3. Replace `EvalError` control flow with `ExprResult` / `BodyResult`.
-4. Introduce `Continuation` and the main loop.
-5. Delete old recursive `eval_fn_body_rc` path.
-6. Remove `with_parser_stack(32MB)` from v2 tests.
-7. Un-ignore `phase6_gist_full_pipeline`.
+1. **Introduce `EvalContext`** — extract `sibling_fns` and `data_values`
+   from `Env`. Thread `&EvalContext` through all eval functions. `Env`
+   still has `Rc<HashMap>` bindings for now.
 
-Each step compiles and passes all tests before the next begins.
+2. **Introduce `FrameInfo`** — extract `call_depth` and `self_name` from
+   `Env`. Thread alongside `&EvalContext`.
+
+3. **Replace `EvalError` with `ExprResult`** — two sub-steps:
+   a. Introduce `ExprResult` alongside `EvalError` with conversion
+      functions. Get everything compiling with both types coexisting.
+   b. Remove `EvalError` control-flow variants (`tail_call`,
+      `early_return`). Replace all call sites. `EvalError` becomes a
+      plain error type (just `message: String`).
+
+4. **Introduce `Continuation` and the main loop** — `eval_body` returns
+   `Action`. The main loop manages `Vec<Continuation>`. Tail-call
+   optimization built in from the start.
+
+5. **Switch Env to `im::HashMap`** — replace `Rc<HashMap>` with
+   persistent map. `bind()` returns a new Env. Drop `Env::child()`.
+
+6. **Delete old recursive `eval_fn_body_rc` path.**
+
+7. **Remove `with_parser_stack(32MB)` from v2 tests.** Un-ignore
+   `phase6_gist_full_pipeline`.
+
+## Verification
+
+### Standard gates (every migration step)
+
+- `cargo test -p daglang-eval` — unit tests
+- `cargo test -p v2-compiler-tests` — integration tests
+- `cargo clippy --all-targets -- -D warnings` — zero warnings
+
+### Structural invariant (static, checkable by inspection)
+
+**`eval_body` never calls `eval_body`**, directly or transitively
+through `eval_expr`. Verify with:
+```
+grep -n 'eval_body(' src/05_graph/daglang-eval/src/eval.rs
+```
+The only call site should be in the main loop.
+
+### Bound verification tests
+
+```rust
+/// Native stack depth stays bounded regardless of fn-call depth.
+/// Instrumented with a thread-local depth counter.
+#[test]
+fn native_stack_depth_bounded() {
+    // Mutual recursion (is_even/is_odd) at depth 10,000.
+    // Run on the DEFAULT thread — no with_parser_stack.
+    // Assert: max native eval_expr depth < 50.
+    // Assert: heap stack depth reached 0 (all tail calls).
+}
+
+/// Heap stack is bounded by MAX_CALL_DEPTH.
+#[test]
+fn heap_stack_bounded_by_limit() {
+    // Mutual recursion at depth MAX_CALL_DEPTH + 1.
+    // Assert: clean error message, not OOM.
+}
+
+/// Intrinsic lambda bodies do not bypass the heap stack.
+#[test]
+fn intrinsic_lambda_does_not_bypass_heap_stack() {
+    // map(list_of_1000, x => recursive_fn(x))
+    // where recursive_fn triggers deep mutual recursion.
+    // Run on default thread — no with_parser_stack.
+    // If intrinsics bypass the heap stack, this overflows.
+}
+```
+
+### Final acceptance gate
+
+`phase6_gist_full_pipeline` passes without `with_parser_stack(32MB)`,
+on the default 8MB thread stack.
