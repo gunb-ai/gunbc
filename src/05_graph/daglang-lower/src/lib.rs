@@ -44,6 +44,7 @@ use gunbc_ir::{
 };
 use serde::{Deserialize, Serialize};
 
+pub mod anf;
 pub mod eval;
 pub mod expr;
 #[allow(dead_code)]
