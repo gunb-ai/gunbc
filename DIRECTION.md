@@ -12,8 +12,10 @@ See `SUSTAINABILITY.md` for the causal tree of current technical debt.
 ## v2 self-hosted compiler
 
 The v2 compiler is written in DSL (8 .dag files). All 5 pipeline stages
-are implemented. 54/55 tests passing; 1 `#[ignore]` pending typechecker
-completeness. Parser handles the full gist dependency chain (12 files). Self-hosting requires emitting a native binary (Phase 1),
+are implemented. 55/56 tests passing; 1 `#[ignore]` on full pipeline
+(stack overflow in interpreted typecheck at scale). Parser handles the
+full gist dependency chain (12 files). Typecheck handles func/fn return
+types correctly. Self-hosting requires emitting a native binary (Phase 1),
 progressive self-compilation (Phase 2), and fixed-point verification
 (Phase 3). See `SUSTAINABILITY.md` Branch 7 for the bootstrap gap
 analysis.
@@ -30,7 +32,7 @@ Each has a test or `#[ignore]` marker; none is silent.
 
 | Bypass | Location | What it masks | Removal condition |
 |--------|----------|---------------|-------------------|
-| `#[ignore]` on `phase6_gist_full_pipeline` | `src/v2/tests/src/lib.rs` | v2 typechecker doesn't handle `Product` return types from pattern/func definitions | Typechecker handles all TypeExpr variants in return position |
+| `#[ignore]` on `phase6_gist_full_pipeline` | `src/v2/tests/src/lib.rs` | Stack overflow: interpreted typecheck on 12 modules with 150+ types exceeds stack | Self-hosting (compiled code) or explicit eval stack (S52) |
 | `with_parser_stack(32MB)` | `src/v2/tests/src/lib.rs` | Parser mutual recursion (S52) needs 32MB for types.dag (150+ type defs). Default 8MB thread stack overflows. | Mutual TCO or compiled parser (self-hosting) |
 | `compile_sources` extracts `p.module` before filtering `None` | `src/v2/06_pipeline.dag:114` (moved to else branch) | `List<Module?>` would leak to resolve if error gate removed | Typechecker enforces `Module` vs `Module?` (self-hosting) |
 
