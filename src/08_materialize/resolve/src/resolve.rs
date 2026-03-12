@@ -159,7 +159,7 @@ struct CallableOp {
     fn_body: Option<daglang_lower::LoweredFnBody>,
     output_ports: Vec<(String, bool)>,
     sibling_fns: HashMap<String, daglang_lower::LoweredFnBody>,
-    data_values: HashMap<String, serde_json::Value>,
+    data_values: HashMap<String, Value>,
 }
 
 impl std::fmt::Debug for CallableOp {
@@ -718,7 +718,7 @@ pub fn resolve_lowered_dag_with(dag: &Dag<LoweredOp>) -> Result<Dag<DynOp>, Reso
 /// This variant is kept for SubDag resolution where parent data_values are inherited.
 fn resolve_lowered_dag_impl(
     dag: &Dag<LoweredOp>,
-    data_values: &HashMap<String, serde_json::Value>,
+    data_values: &HashMap<String, Value>,
 ) -> Result<Dag<DynOp>, ResolveError> {
     // Collect all fn bodies from callable nodes for cross-fn evaluation.
     // Helper fns call sibling fns via evaluate_fn_body; this map provides
@@ -836,7 +836,7 @@ fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
 fn resolve_node_body(
     node: &Node<LoweredOp>,
     sibling_fns: &HashMap<String, daglang_lower::LoweredFnBody>,
-    data_values: &HashMap<String, serde_json::Value>,
+    data_values: &HashMap<String, Value>,
 ) -> Result<NodeBody<DynOp>, ResolveError> {
     match &node.body {
         NodeBody::Opaque(op) => Ok(NodeBody::Opaque(resolve_op(
@@ -860,7 +860,7 @@ fn resolve_op(
     inputs: &[Port],
     outputs: &[Port],
     sibling_fns: &HashMap<String, daglang_lower::LoweredFnBody>,
-    data_values: &HashMap<String, serde_json::Value>,
+    data_values: &HashMap<String, Value>,
 ) -> Result<DynOp, ResolveError> {
     match op {
         LoweredOp::Collection { kind, .. } => resolve_collection(kind),
@@ -1011,7 +1011,7 @@ fn resolve_domain(
     service_metadata: Option<&ServiceCallMetadata>,
     fn_body: Option<&daglang_lower::LoweredFnBody>,
     sibling_fns: &HashMap<String, daglang_lower::LoweredFnBody>,
-    data_values: &HashMap<String, serde_json::Value>,
+    data_values: &HashMap<String, Value>,
 ) -> Result<DynOp, ResolveError> {
     // 1. Modules with custom resolvers — return Some for known callables,
     //    None for unknown (which falls through to passthrough).

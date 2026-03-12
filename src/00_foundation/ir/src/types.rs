@@ -1566,6 +1566,71 @@ mod tests {
         assert_eq!(value_kind_name(&Value::Int(7)), "Int");
     }
 
+    /// Ratchet: freeze the set of DSL-defined types that are known to be
+    /// unresolvable by `value_backing_for_type_id()`.
+    ///
+    /// These types exist on DAG ports but have no structural backing in the
+    /// core TypeRegistry. The system currently "fails open" for them (S23/S35
+    /// in SUSTAINABILITY.md). This test prevents the set from silently growing.
+    ///
+    /// If a type becomes resolvable (e.g. added to `register_core_types()`),
+    /// remove it from this list — that's progress.
+    #[test]
+    fn ratchet_fail_open_types() {
+        let known_unresolvable: std::collections::BTreeSet<&str> = [
+            "Char",
+            "CommitSha",
+            "ContentEncoding",
+            "CursorAction",
+            "DisplayWidth",
+            "DocSource",
+            "DocSourceKind",
+            "Document",
+            "DocumentLine",
+            "DocumentSection",
+            "Duration",
+            "Encoding",
+            "EpochMs",
+            "FermiDepth",
+            "Frame",
+            "GitignoreCategory",
+            "Line",
+            "MimeType",
+            "Milliseconds",
+            "RenderMode",
+            "ResourceHandle",
+            "Seconds",
+            "SemanticColor",
+            "SourceSpan",
+            "Span",
+            "SpanStyle",
+            "StageResult",
+            "Summary",
+            "SymbolId",
+            "TestResult",
+            "Tier",
+            "TopologyNodeKind",
+            "Viewport",
+            "ViewportUnit",
+            "WarningPolicy",
+        ]
+        .into_iter()
+        .collect();
+
+        for type_name in &known_unresolvable {
+            assert!(
+                value_backing_for_type_id(type_name).is_err(),
+                "type `{type_name}` is now resolvable — remove from ratchet allowlist"
+            );
+        }
+
+        assert_eq!(
+            known_unresolvable.len(),
+            35,
+            "ratchet count changed — update the allowlist and this count together"
+        );
+    }
+
     #[test]
     fn test_seed_placeholder_policy_fail_closed() {
         assert_eq!(

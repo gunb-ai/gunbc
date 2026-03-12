@@ -9954,9 +9954,9 @@ fn embed_data_declaration_nodes(
 /// Extract data declaration values from embedded DAG nodes.
 ///
 /// Scans for nodes with IDs prefixed by [`DATA_DECL_NODE_PREFIX`] and extracts
-/// their `PrimitiveLiteral::Json` payloads. Returns the same `HashMap<String, serde_json::Value>`
-/// that `build_data_values` produced at lowering time.
-pub fn extract_data_values_from_dag(dag: &Dag<LoweredOp>) -> HashMap<String, serde_json::Value> {
+/// their `PrimitiveLiteral::Json` payloads, converting to `Value` at the point
+/// of extraction to avoid JSON round-trip lossy conversion (S53 fix).
+pub fn extract_data_values_from_dag(dag: &Dag<LoweredOp>) -> HashMap<String, gunbc_ir::Value> {
     let mut data_values = HashMap::new();
     for node in &dag.nodes {
         if let Some(name) = node.id.0.strip_prefix(DATA_DECL_NODE_PREFIX) {
@@ -9965,11 +9965,39 @@ pub fn extract_data_values_from_dag(dag: &Dag<LoweredOp>) -> HashMap<String, ser
                 ..
             }) = &node.body
             {
-                data_values.insert(name.to_string(), json.clone());
+                data_values.insert(name.to_string(), json_to_value(json));
             }
         }
     }
     data_values
+}
+
+/// Convert a `serde_json::Value` to a `gunbc_ir::Value`.
+///
+/// Recursively converts objects to `Value::Map` and arrays to `Value::List`.
+fn json_to_value(json: &serde_json::Value) -> gunbc_ir::Value {
+    match json {
+        serde_json::Value::Null => gunbc_ir::Value::Unit,
+        serde_json::Value::Bool(b) => gunbc_ir::Value::Bool(*b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                gunbc_ir::Value::Int(i)
+            } else if let Some(f) = n.as_f64() {
+                gunbc_ir::Value::Float(f)
+            } else {
+                gunbc_ir::Value::Str(n.to_string())
+            }
+        }
+        serde_json::Value::String(s) => gunbc_ir::Value::Str(s.clone()),
+        serde_json::Value::Array(arr) => {
+            gunbc_ir::Value::List(arr.iter().map(json_to_value).collect())
+        }
+        serde_json::Value::Object(map) => {
+            let btree: std::collections::BTreeMap<String, gunbc_ir::Value> =
+                map.iter().map(|(k, v)| (k.clone(), json_to_value(v))).collect();
+            gunbc_ir::Value::Map(btree)
+        }
+    }
 }
 
 /// Collect default expressions for callable parameters across all modules.
@@ -12059,6 +12087,7 @@ fn synthesize_get_field_on_resolved(
     Some((node_id, result_port_name.to_string()))
 }
 
+#[must_use = "ignoring wiring errors can silently drop return bindings"]
 fn wire_callable_return_outputs(
     builder: &mut DagBuilder,
     ctx: &LoweringContext<'_>,

@@ -268,36 +268,47 @@ fn type_body_to_expr(name: String, body: TypeBody, span: SourceSpan) -> TypeExpr
 // =========================================================================
 
 fn resolve_type_expr(expr: TypeExpr, env: TypeEnv, module_name: String) -> ResolveResult {
+  resolve_type_expr_with_resolving(expr: expr, env: env, module_name: module_name, resolving: [])
+}
+
+// resolve_type_expr_with_resolving: tracks names currently being resolved
+// to detect mutual recursion cycles (not just self-reference).
+fn resolve_type_expr_with_resolving(expr: TypeExpr, env: TypeEnv, module_name: String, resolving: List<String>) -> ResolveResult {
   match expr {
     Named { name: name, span: span } =>
-      match lookup_type(env: env, name: name) {
-        Some { value: resolved } =>
-          // Check for self-reference (cycle breaker): if the resolved type
-          // is a Named pointing to the same name, keep it to avoid infinite expansion.
-          match resolved {
-            Named { name: inner_name, span: _ } =>
-              if inner_name == name {
-                ResolveResult { resolved: expr, diagnostics: [] }
-              } else {
-                // Resolve the target (one level of indirection).
-                resolve_type_expr(expr: resolved, env: env, module_name: module_name)
-              }
-            _ =>
-              // Resolved to a structural form. Recursively resolve any
-              // Named references inside it.
-              resolve_type_expr(expr: resolved, env: env, module_name: module_name)
-          }
-        None =>
-          // Unresolved name — emit diagnostic.
-          ResolveResult {
-            resolved: expr,
-            diagnostics: [Diagnostic {
-              severity: Error,
-              message: "unresolved type '" + name + "'",
-              span: span,
-              module_name: module_name
-            }]
-          }
+      // Cycle detection: if name is in the resolving stack, break the cycle.
+      if resolving |> any(r => r == name) {
+        ResolveResult { resolved: expr, diagnostics: [] }
+      } else {
+        match lookup_type(env: env, name: name) {
+          Some { value: resolved } =>
+            // Check for self-reference (cycle breaker): if the resolved type
+            // is a Named pointing to the same name, keep it to avoid infinite expansion.
+            match resolved {
+              Named { name: inner_name, span: _ } =>
+                if inner_name == name {
+                  ResolveResult { resolved: expr, diagnostics: [] }
+                } else {
+                  // Resolve the target with name added to resolving stack.
+                  resolve_type_expr_with_resolving(expr: resolved, env: env, module_name: module_name, resolving: resolving + [name])
+                }
+              _ =>
+                // Resolved to a structural form. Recursively resolve any
+                // Named references inside it.
+                resolve_type_expr_with_resolving(expr: resolved, env: env, module_name: module_name, resolving: resolving + [name])
+            }
+          None =>
+            // Unresolved name — emit diagnostic.
+            ResolveResult {
+              resolved: expr,
+              diagnostics: [Diagnostic {
+                severity: Error,
+                message: "unresolved type '" + name + "'",
+                span: span,
+                module_name: module_name
+              }]
+            }
+        }
       }
 
     Primitive { name: _, span: _ } =>
@@ -323,36 +334,36 @@ fn resolve_type_expr(expr: TypeExpr, env: TypeEnv, module_name: String) -> Resol
       }
 
     Container { kind: kind, element: element, span: span } =>
-      let elem_result = resolve_type_expr(expr: element, env: env, module_name: module_name)
+      let elem_result = resolve_type_expr_with_resolving(expr: element, env: env, module_name: module_name, resolving: resolving)
       ResolveResult {
         resolved: Container { kind: kind, element: elem_result.resolved, span: span },
         diagnostics: elem_result.diagnostics
       }
 
     Optional { inner: inner, span: span } =>
-      let inner_result = resolve_type_expr(expr: inner, env: env, module_name: module_name)
+      let inner_result = resolve_type_expr_with_resolving(expr: inner, env: env, module_name: module_name, resolving: resolving)
       ResolveResult {
         resolved: Optional { inner: inner_result.resolved, span: span },
         diagnostics: inner_result.diagnostics
       }
 
     Refined { base: base, predicates: predicates, span: span } =>
-      let base_result = resolve_type_expr(expr: base, env: env, module_name: module_name)
+      let base_result = resolve_type_expr_with_resolving(expr: base, env: env, module_name: module_name, resolving: resolving)
       ResolveResult {
         resolved: Refined { base: base_result.resolved, predicates: predicates, span: span },
         diagnostics: base_result.diagnostics
       }
 
     MapType { key: key, value: value, span: span } =>
-      let key_result = resolve_type_expr(expr: key, env: env, module_name: module_name)
-      let value_result = resolve_type_expr(expr: value, env: env, module_name: module_name)
+      let key_result = resolve_type_expr_with_resolving(expr: key, env: env, module_name: module_name, resolving: resolving)
+      let value_result = resolve_type_expr_with_resolving(expr: value, env: env, module_name: module_name, resolving: resolving)
       ResolveResult {
         resolved: MapType { key: key_result.resolved, value: value_result.resolved, span: span },
         diagnostics: key_result.diagnostics + value_result.diagnostics
       }
 
     TypeApp { name: name, args: args, span: span } =>
-      let arg_results = map(args, a => resolve_type_expr(expr: a, env: env, module_name: module_name))
+      let arg_results = map(args, a => resolve_type_expr_with_resolving(expr: a, env: env, module_name: module_name, resolving: resolving))
       let resolved_args = map(arg_results, ar => ar.resolved)
       let all_diags = fold(arg_results, init: [], f: (acc, ar) => acc + ar.diagnostics)
       ResolveResult {
@@ -433,7 +444,9 @@ fn resolve_operation(op: OperationDef, env: TypeEnv, module_name: String) -> Ope
       outputs: resolved_outputs,
       response: op.response,
       mock_response: op.mock_response,
+      exit_mappings: op.exit_mappings,
       modifiers: op.modifiers,
+      transport: op.transport,
       span: op.span
     },
     diagnostics: input_diags + output_diags
@@ -562,13 +575,14 @@ fn resolve_item_types(item: Item, env: TypeEnv, module_name: String) -> ItemResu
         diagnostics: op_diags
       }
 
-    ResourceDef { name: name, capabilities: capabilities, span: span } =>
+    ResourceDef { name: name, properties: props, capabilities: capabilities, span: span } =>
       let cap_results = map(capabilities, c => resolve_capability(cap: c, env: env, module_name: module_name))
       let resolved_caps = map(cap_results, cr => cr.capability)
       let cap_diags = fold(cap_results, init: [], f: (acc, cr) => acc + cr.diagnostics)
       ItemResult {
         item: ResourceDef {
           name: name,
+          properties: props,
           capabilities: resolved_caps,
           span: span
         },

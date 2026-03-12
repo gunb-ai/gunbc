@@ -25,7 +25,7 @@ pub fn execute_lowered_op(
     op: &LoweredOp,
     inputs: HashMap<String, Value>,
     sibling_fns: &HashMap<String, daglang_eval::LoweredFnBody>,
-    data_values: &HashMap<String, serde_json::Value>,
+    data_values: &HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     match op {
         LoweredOp::Primitive { kind, .. } => execute_primitive(kind, inputs),
@@ -148,7 +148,7 @@ fn execute_callable(
     fn_body: Option<&daglang_eval::LoweredFnBody>,
     inputs: &HashMap<String, Value>,
     sibling_fns: &HashMap<String, daglang_eval::LoweredFnBody>,
-    data_values: &HashMap<String, serde_json::Value>,
+    data_values: &HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let Some(body) = fn_body else {
         // No fn body — passthrough. Map __out: prefixed inputs to outputs,

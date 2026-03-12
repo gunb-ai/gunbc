@@ -468,25 +468,18 @@ fn compile_intrinsic_call(
                 code_ir::Stmt::For {
                     binding: elem.clone(),
                     iter: code_ir::Expr::MethodCall {
-                        receiver: Box::new(code_ir::Expr::MethodCall {
-                            receiver: Box::new(collection()),
-                            method: "split".to_string(),
-                            args: vec![code_ir::Expr::MethodCall {
-                                receiver: Box::new(delim),
-                                method: "as_str".to_string(),
-                                args: vec![],
-                            }],
-                        }),
-                        method: "map".to_string(),
-                        args: vec![code_ir::Expr::Path(vec![
-                            "String".to_string(),
-                            "from".to_string(),
-                        ])],
+                        receiver: Box::new(collection()),
+                        method: "split".to_string(),
+                        args: vec![delim],
                     },
                     body: vec![code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
                         receiver: Box::new(code_ir::Expr::Var(result.clone())),
                         method: "push".to_string(),
-                        args: vec![code_ir::Expr::Var(elem)],
+                        args: vec![code_ir::Expr::MethodCall {
+                            receiver: Box::new(code_ir::Expr::Var(elem)),
+                            method: "to_string".to_string(),
+                            args: vec![],
+                        }],
                     })],
                 },
                 code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
