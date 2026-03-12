@@ -38,10 +38,64 @@ pub struct DslGraphResult {
     pub callable_properties: BTreeMap<String, CallableProperties>,
 }
 
+/// Resolve pre-compiled DSL artifacts into `Dag<DynOp>`.
+///
+/// The caller provides compiled artifacts directly, keeping the resolver
+/// free of compilation concerns. This is the pure resolution path.
+pub fn resolve_compiled_dsl(
+    relative_module: &str,
+    opts: BuildOpts<'_>,
+    result: CompileLoweredResult,
+) -> Result<DslGraphResult, BuilderError> {
+    let lowered = if let Some(entry_func) = opts.entry_func {
+        let module_name = module_name_from_path(relative_module);
+        let module_entrypoints: Vec<&InferredEntrypoint> = result
+            .inferred_entrypoints
+            .iter()
+            .filter(|ep| ep.module == module_name)
+            .collect();
+
+        let entrypoint = module_entrypoints
+            .iter()
+            .find(|ep| ep.func_name == entry_func)
+            .ok_or_else(|| {
+                BuilderError::InternalInvariant(format!(
+                    "entrypoint `{entry_func}` not found in `{relative_module}` (available: {:?})",
+                    module_entrypoints
+                        .iter()
+                        .map(|ep| ep.func_name.as_str())
+                        .collect::<Vec<_>>()
+                ))
+            })?;
+
+        slice_dag_from_entry_preserving_fn_bodies(result.dag, &entrypoint.node_id)?
+    } else {
+        result.dag
+    };
+
+    let dag = crate::resolve::resolve_lowered_dag_with(&lowered).map_err(|error| {
+        let ctx = match (opts.profile, opts.entry_func) {
+            (Some(p), Some(e)) => format!(" (profile={p}, entry={e})"),
+            (Some(p), None) => format!(" (profile={p})"),
+            (None, Some(e)) => format!(" (entry={e})"),
+            (None, None) => String::new(),
+        };
+        BuilderError::InternalInvariant(format!(
+            "failed to resolve lowered DAG for `{relative_module}`{ctx}: {error}"
+        ))
+    })?;
+
+    Ok(DslGraphResult {
+        dag,
+        dsl_type_registry: result.dsl_type_registry,
+        callable_properties: result.callable_properties,
+    })
+}
+
 /// Compile a DSL module and resolve lowered ops into `Dag<DynOp>`.
 ///
-/// This is the single entry point for all DSL graph building. Use `BuildOpts`
-/// to control profile selection and entrypoint slicing.
+/// Convenience wrapper that compiles via the driver and then resolves.
+/// New code should prefer [`resolve_compiled_dsl`] with explicit compilation.
 pub fn build_dsl_graph(
     relative_module: &str,
     opts: BuildOpts<'_>,
@@ -141,11 +195,15 @@ fn workspace_layout() -> Result<WorkspaceLayout, BuilderError> {
         })
 }
 
-struct CompileLoweredResult {
-    dag: Dag<daglang_lower::LoweredOp>,
-    dsl_type_registry: gunbc_ir::TypeRegistry,
-    inferred_entrypoints: Vec<InferredEntrypoint>,
-    callable_properties: BTreeMap<String, CallableProperties>,
+/// Pre-compiled DSL module artifacts.
+///
+/// Produced by the driver's compilation pipeline; consumed by
+/// [`resolve_compiled_dsl`] for resolution into `Dag<DynOp>`.
+pub struct CompileLoweredResult {
+    pub dag: Dag<daglang_lower::LoweredOp>,
+    pub dsl_type_registry: gunbc_ir::TypeRegistry,
+    pub inferred_entrypoints: Vec<InferredEntrypoint>,
+    pub callable_properties: BTreeMap<String, CallableProperties>,
 }
 
 fn compile_lowered(

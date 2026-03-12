@@ -1,3 +1,32 @@
+//! **Stage 7 — Orchestrate**: Transforms a `DriverContext` (filesystem
+//! paths) into a `CompileOutput` containing all artifacts from stages 1–6.
+//!
+//! # Pipeline position
+//!
+//! - **Before**: user invokes the compiler with root directories / target file
+//! - **After**: caller consumes `CompileOutput` (lowered DAG, derived
+//!   artifacts, emitted source files, receipts)
+//!
+//! # Sequential steps
+//!
+//! 1. Discover and resolve the module graph (delegates to `daglang-resolve`)
+//! 2. Typecheck the module graph (delegates to `daglang-typecheck`)
+//! 3. Lower the typed project to `Dag<LoweredOp>` (delegates to `daglang-lower`)
+//! 4. Verify structural invariants on the lowered DAG
+//! 5. Derive artifacts (delegates to `daglang-derive`)
+//! 6. Emit target-language source files (delegates to `daglang-emit`)
+//! 7. Compute deterministic compile receipt (source/IR/emit digests)
+//!
+//! # Purity
+//!
+//! Reads the filesystem during module discovery (via the resolve stage).
+//! All other stages are pure in-memory transformations.
+//!
+//! # Failure
+//!
+//! Returns `CompileError` — a unified error type wrapping `ResolveError`,
+//! `TypeError`, `LowerError`, `DeriveError`, and `EmitError`.
+
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::fmt::Write;
 use std::path::{Path, PathBuf};

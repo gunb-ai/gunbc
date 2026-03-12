@@ -72,22 +72,34 @@ another code path also produces, one of them should be deleted.
 
 Each stage of the pipeline (parse → typecheck → lower → resolve →
 execute) passes a complex IR type to the next stage. The receiving
-stage's preconditions must be explicit and enforced, not implicit
-expectations that silently degrade when violated.
+stage's preconditions must be structural — encoded in the type of the
+boundary, not checked by a validation pass after the fact.
 
-**The test:** for each boundary, there should be a validation function
-that checks the output of stage N against the preconditions of stage
-N+1. Examples:
-- After typecheck: every type reference resolves, Map keys are String
-- After lower: every port TypeId is registered, no unresolved placeholders
-- After resolve: every DynOp implements Executable, no list ports have
-  cardinality `[1,∞)` with zero incoming edges
+**The principle:** make illegal states unrepresentable. When a
+downstream stage needs a guarantee (e.g., "all type references are
+resolved"), the upstream stage must produce an output type that
+*cannot* represent the unresolved case. The compiler enforces the
+contract; no runtime validation walk is needed.
 
-Without boundary enforcement, violations propagate silently across
-stages and surface as confusing runtime errors far from their origin.
-Every fabrication fallback in FC-7 existed because a contract was
-implicit — the producing stage didn't guarantee it, and the consuming
-stage compensated with a fallback instead of failing.
+**The test:** if you find yourself wanting to add a validation pass
+at a boundary, instead refactor the upstream stage's output type so
+the invalid state is impossible to construct.
+
+Examples:
+- After typecheck: the output type embeds resolved type structure,
+  not a string TypeId that might not resolve. Unresolved is not a
+  variant of the output type.
+- After lowering: transport nodes carry `ServiceTransportClass` as
+  a field, not a name substring that needs parsing. Ports carry
+  resolved structure, not string handles.
+- After resolve: the output DAG is parameterized by a trait that
+  requires `Executable`, so non-executable nodes are unrepresentable.
+
+When a boundary today uses a type that *can* represent invalid states,
+that is the root cause — not the absence of a validation function.
+Every fabrication fallback in FC-7 existed because the producing
+stage's output type was too permissive, and the consuming stage
+compensated with a fallback instead of failing.
 
 ### Single-authority metadata
 

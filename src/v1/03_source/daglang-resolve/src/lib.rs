@@ -1,22 +1,28 @@
-//! daglang-resolve: Import resolution and module graph.
-//!
-//! Discovers `.dag` files from the filesystem, resolves imports into a
-//! dependency-ordered module graph, and produces a resolved AST where
-//! every name reference points to its definition.
+//! **Stage 2 — Discover & Resolve Imports**: Transforms filesystem paths + a
+//! `Vfs` into a dependency-ordered `ModuleGraph` of resolved modules.
 //!
 //! # Pipeline position
 //!
-//! ```text
-//! Source files -> [daglang-syntax] -> AST -> [daglang-resolve] -> ResolvedAST
-//! ```
+//! - **Before**: [`daglang-syntax`] has parsed individual source files
+//! - **After**: [`daglang-typecheck`] validates types across the module graph
 //!
-//! # Filesystem discovery
+//! # Sequential steps
 //!
-//! The module graph is built by scanning configured paths for `.dag` files.
-//! Module paths (`module infra.gcp.resources`) map to filesystem paths
-//! (`infra/gcp/resources.dag`). This eliminates manual registration --
-//! every `.dag` file in the configured directories is automatically part
-//! of the module graph.
+//! 1. Scan configured root directories for `.dag` files (via `Vfs` trait)
+//! 2. Parse each discovered file into a `SourceFile` AST
+//! 3. Derive module paths from `module` declarations or filesystem layout
+//! 4. Resolve `import` references to module indices
+//! 5. Topologically sort modules (leaves first) to produce `ModuleGraph`
+//!
+//! # Purity
+//!
+//! Reads the filesystem through the injectable `Vfs` trait. No writes.
+//! When using `InMemoryVfs` (tests), the stage is fully pure.
+//!
+//! # Failure
+//!
+//! Returns `ResolveError` (I/O errors, unresolved imports, cycles,
+//! duplicate modules, invalid extensions).
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;

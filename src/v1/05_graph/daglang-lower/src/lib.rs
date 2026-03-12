@@ -1,20 +1,28 @@
-//! daglang-lower: Lowers typed .dag AST to gunbc GraphIR.
-//!
-//! Transforms the high-level typed AST into gunbc's existing IR types
-//! (`Dag`, `Node`, `Port`, `Edge`). This is where:
-//!
-//! - Pattern expansion happens (`content_upsert` → read/compare/write chain)
-//! - Service calls become transport triplets (prepare/execute/parse)
-//! - Resource `acquire` blocks become acquisition DAG nodes
-//! - `fn` body collection ops (`map`, `filter`, `fold`) become IR-level
-//!   `MapNode`, `FilterNode`, `FoldNode` for data-parallel execution
-//! - `interface` resolution replaces abstract types with concrete resources
+//! **Stage 4 — Lower**: Transforms a `TypedProject` + `LoweringConfig`
+//! into a `LowerOutput` containing `Dag<LoweredOp>` and metadata.
 //!
 //! # Pipeline position
 //!
-//! ```text
-//! TypedAST → [daglang-lower] → GraphIR (gunbc Dag/Node/Port/Edge)
-//! ```
+//! - **Before**: [`daglang-typecheck`] has produced a `TypedProject`
+//! - **After**: [`daglang-derive`] extracts manifests, obligations, and metadata
+//!
+//! # Sequential steps
+//!
+//! 1. Expand patterns (`content_upsert` → read/compare/write chain)
+//! 2. Lower service calls to transport triplets (prepare/execute/parse)
+//! 3. Lower resource `acquire`/`release` blocks to DAG nodes
+//! 4. Lower collection ops (`map`, `filter`, `fold`) to IR-level nodes
+//! 5. Resolve `interface` bindings to concrete resources
+//! 6. Emit `Dag<LoweredOp>` with `Node`/`Port`/`Edge` IR
+//!
+//! # Purity
+//!
+//! Pure — the `env_resolver` is injected but not called by the lowerer
+//! itself. No filesystem or network access.
+//!
+//! # Failure
+//!
+//! Returns `LowerError` with diagnostic context.
 
 // RT-C4: LoweringConfig groups the 4 boolean/optional lowerer parameters.
 
@@ -68,12 +76,21 @@ pub enum LoweredOp {
         kind: CallableKind,
         name: String,
         obligation: ObligationCategory,
-        service_metadata: Option<Box<ServiceCallMetadata>>,
         is_interactive: bool,
         resource_target: Option<String>,
         /// Lowered fn body for `CallableKind::Fn` items — `None` for
-        /// func/pattern items and non-DSL callables (service transport, etc.).
+        /// func/pattern items and non-DSL callables.
         fn_body: Option<Box<LoweredFnBody>>,
+    },
+    /// Transport nodes (service prepare/execute/parse) with required metadata.
+    Transport {
+        module: String,
+        kind: CallableKind,
+        name: String,
+        obligation: ObligationCategory,
+        service_metadata: Box<ServiceCallMetadata>,
+        is_interactive: bool,
+        resource_target: Option<String>,
     },
     Primitive {
         module: String,
@@ -308,7 +325,7 @@ pub struct ServiceCallMetadata {
 impl LoweredOp {
     pub fn obligation_category(&self) -> ObligationCategory {
         match self {
-            Self::Callable { obligation, .. } => *obligation,
+            Self::Callable { obligation, .. } | Self::Transport { obligation, .. } => *obligation,
             Self::Primitive { kind, .. } => kind.obligation_category(),
             Self::Collection { .. }
             | Self::Pipeline { .. }
@@ -319,10 +336,11 @@ impl LoweredOp {
 
     pub fn service_call_metadata(&self) -> Option<&ServiceCallMetadata> {
         match self {
-            Self::Callable {
+            Self::Transport {
                 service_metadata, ..
-            } => service_metadata.as_deref(),
-            Self::Primitive { .. }
+            } => Some(service_metadata),
+            Self::Callable { .. }
+            | Self::Primitive { .. }
             | Self::Collection { .. }
             | Self::Pipeline { .. }
             | Self::Pattern(_)
@@ -672,9 +690,9 @@ pub fn classify_service_transport(op: &LoweredOp) -> Option<ServiceTransportClas
 /// stable semantic classes without depending on fragile node-id prefixes.
 pub fn topology_with_obligation_kinds(dag: &Dag<LoweredOp>) -> DagTopology {
     dag.topology_with_kind(|node| match &node.body {
-        gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { obligation, .. }) => {
-            canonical_kind_for_obligation(*obligation).map(str::to_string)
-        }
+        gunbc_ir::node::NodeBody::Opaque(
+            LoweredOp::Callable { obligation, .. } | LoweredOp::Transport { obligation, .. },
+        ) => canonical_kind_for_obligation(*obligation).map(str::to_string),
         gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive { kind, .. }) => {
             canonical_kind_for_obligation(kind.obligation_category()).map(str::to_string)
         }
@@ -1078,6 +1096,7 @@ fn collect_profile_binding_registry(
 fn resolve_active_profile_bindings(
     registry: &ProfileBindingRegistry,
     active_profile: Option<&str>,
+    env_resolver: &dyn Fn(&str) -> Option<String>,
 ) -> Result<Option<ActiveProfileBindings>, LowerError> {
     let Some(profile) = active_profile else {
         return Ok(None);
@@ -1117,6 +1136,7 @@ fn resolve_active_profile_bindings(
                 interface.as_str(),
                 key.as_str(),
                 value_expr,
+                env_resolver,
             )?;
             config_values.insert(key.clone(), value);
         }
@@ -1139,6 +1159,7 @@ fn resolve_profile_config_value(
     interface_type: &str,
     key: &str,
     expr: &Expr,
+    env_resolver: &dyn Fn(&str) -> Option<String>,
 ) -> Result<ProfileConfigValue, LowerError> {
     match expr {
         Expr::Literal(Literal::String(value)) => Ok(ProfileConfigValue::Literal(value.clone())),
@@ -1152,8 +1173,7 @@ fn resolve_profile_config_value(
                     ),
                 }
             })?;
-            let env_value = std::env::var(env_var.as_str())
-                .ok()
+            let env_value = env_resolver(env_var.as_str())
                 .filter(|value| !value.is_empty())
                 .ok_or_else(|| LowerError::MissingProfileConfigEnv {
                     profile: profile.to_string(),
@@ -1355,7 +1375,7 @@ fn derive_interface_stub_transport_triplets(
                         prepare_id.clone(),
                         prepare_ports,
                         vec![Port::scalar("request", "TransportRequest")],
-                        LoweredOp::Callable {
+                        LoweredOp::Transport {
                             module: module_name.clone(),
                             kind: CallableKind::Pattern,
                             name: format!(
@@ -1363,10 +1383,9 @@ fn derive_interface_stub_transport_triplets(
                                 interface.name, capability.name
                             ),
                             obligation: ObligationCategory::ServiceTransportPrepare,
-                            service_metadata: Some(Box::new(metadata.clone())),
+                            service_metadata: Box::new(metadata.clone()),
                             is_interactive: false,
                             resource_target: None,
-                            fn_body: None,
                         },
                     )
                     .with_origin(origin.clone()),
@@ -1391,7 +1410,7 @@ fn derive_interface_stub_transport_triplets(
                     execute_id.clone(),
                     vec![Port::scalar("request", "TransportRequest")],
                     typed_outputs.clone(),
-                    LoweredOp::Callable {
+                    LoweredOp::Transport {
                         module: module_name.clone(),
                         kind: CallableKind::Pattern,
                         name: format!(
@@ -1399,10 +1418,9 @@ fn derive_interface_stub_transport_triplets(
                             interface.name, capability.name
                         ),
                         obligation: ObligationCategory::ServiceTransportExecute,
-                        service_metadata: Some(Box::new(metadata.clone())),
+                        service_metadata: Box::new(metadata.clone()),
                         is_interactive: false,
                         resource_target: None,
-                        fn_body: None,
                     },
                 )
                 .with_input_guard(
@@ -1419,7 +1437,7 @@ fn derive_interface_stub_transport_triplets(
                         parse_id.clone(),
                         typed_outputs.clone(),
                         typed_outputs,
-                        LoweredOp::Callable {
+                        LoweredOp::Transport {
                             module: module_name.clone(),
                             kind: CallableKind::Pattern,
                             name: format!(
@@ -1427,10 +1445,9 @@ fn derive_interface_stub_transport_triplets(
                                 interface.name, capability.name
                             ),
                             obligation: ObligationCategory::ServiceTransportParse,
-                            service_metadata: Some(Box::new(metadata.clone())),
+                            service_metadata: Box::new(metadata.clone()),
                             is_interactive: false,
                             resource_target: None,
-                            fn_body: None,
                         },
                     )
                     .with_origin(origin.clone()),
@@ -2179,7 +2196,6 @@ fn collect_variant_names(project: &TypedProject) -> HashSet<String> {
 /// Groups the 4 optional/boolean parameters that control which modules are
 /// lowered, how collection nodes are emitted, and which profile is active.
 /// Replaces the 11-function combinatorial entry point explosion (C4).
-#[derive(Debug, Clone, Default)]
 pub struct LoweringConfig<'a> {
     /// If set, only lower callables from these modules.
     pub callable_modules: Option<&'a HashSet<String>>,
@@ -2193,6 +2209,41 @@ pub struct LoweringConfig<'a> {
     pub allow_empty_dag: bool,
     /// Type registry for cardinality inference on callable ports.
     pub type_registry: Option<&'a gunbc_ir::TypeRegistry>,
+    /// Resolves environment variable references in profile config.
+    ///
+    /// The lowerer is a pure function — it does not read the process
+    /// environment. The caller provides this callback to resolve
+    /// `env("VAR")` expressions in profile bindings. If `None`,
+    /// `std::env::var` is used (legacy behavior; callers should migrate).
+    pub env_resolver: Option<&'a dyn Fn(&str) -> Option<String>>,
+}
+
+impl std::fmt::Debug for LoweringConfig<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LoweringConfig")
+            .field("callable_modules", &self.callable_modules)
+            .field("emit_collection_nodes", &self.emit_collection_nodes)
+            .field("active_profile", &self.active_profile)
+            .field("entry_module", &self.entry_module)
+            .field("allow_empty_dag", &self.allow_empty_dag)
+            .field("type_registry", &self.type_registry)
+            .field("env_resolver", &self.env_resolver.as_ref().map(|_| ".."))
+            .finish()
+    }
+}
+
+impl Default for LoweringConfig<'_> {
+    fn default() -> Self {
+        Self {
+            callable_modules: None,
+            emit_collection_nodes: false,
+            active_profile: None,
+            entry_module: None,
+            allow_empty_dag: false,
+            type_registry: None,
+            env_resolver: None,
+        }
+    }
 }
 
 /// Bundled lower-stage outputs for callers that need more than the DAG itself.
@@ -2216,6 +2267,11 @@ pub fn lower_to_output_with_config(
     project: &TypedProject,
     config: &LoweringConfig<'_>,
 ) -> Result<LowerOutput, LowerError> {
+    let default_env_resolver = |name: &str| -> Option<String> {
+        std::env::var(name).ok()
+    };
+    let env_resolver: &dyn Fn(&str) -> Option<String> =
+        config.env_resolver.unwrap_or(&default_env_resolver);
     lower_typed_project_impl(
         project,
         config.callable_modules,
@@ -2224,6 +2280,7 @@ pub fn lower_to_output_with_config(
         config.entry_module,
         config.allow_empty_dag,
         config.type_registry,
+        env_resolver,
     )
 }
 
@@ -2375,6 +2432,7 @@ fn lower_typed_project_impl(
     entry_module: Option<&str>,
     allow_empty_dag: bool,
     type_registry: Option<&gunbc_ir::TypeRegistry>,
+    env_resolver: &dyn Fn(&str) -> Option<String>,
 ) -> Result<LowerOutput, LowerError> {
     let mut builder = DagBuilder::new();
     let mut endpoints_by_full = HashMap::<(String, String), LoweredEndpoint>::new();
@@ -2589,7 +2647,7 @@ fn lower_typed_project_impl(
     );
     let profile_registry = collect_profile_binding_registry(project, active_profile)?;
     let active_profile_bindings =
-        resolve_active_profile_bindings(&profile_registry, active_profile)?;
+        resolve_active_profile_bindings(&profile_registry, active_profile, env_resolver)?;
     let profile_bound_interfaces = collect_profile_bound_interface_names(&profile_registry);
     // IS-3: Collect interfaces needing stub transport.
     let stub_interfaces =
@@ -2956,15 +3014,16 @@ mod parity {
             gunbc_ir::node::NodeBody::Opaque(LoweredOp::Collection { kind, .. }) => {
                 kind.node_label().to_string()
             }
-            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { obligation, .. }) => {
-                canonical_kind_from_shape(
-                    &node.id.0,
-                    &node.inputs,
-                    &node.outputs,
-                    false,
-                    Some(*obligation),
-                )
-            }
+            gunbc_ir::node::NodeBody::Opaque(
+                LoweredOp::Callable { obligation, .. }
+                | LoweredOp::Transport { obligation, .. },
+            ) => canonical_kind_from_shape(
+                &node.id.0,
+                &node.inputs,
+                &node.outputs,
+                false,
+                Some(*obligation),
+            ),
             gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive { kind, .. }) => {
                 canonical_kind_from_shape(
                     &node.id.0,
@@ -3098,7 +3157,6 @@ mod parity {
             kind: CallableKind::Pattern,
             name: id.to_string(),
             obligation: ObligationCategory::None,
-            service_metadata: None,
             is_interactive: false,
             resource_target: None,
             fn_body: None,
@@ -3481,7 +3539,6 @@ fn lower_callable(
                 kind,
                 name: callable.name.clone(),
                 obligation,
-                service_metadata: None,
                 is_interactive,
                 resource_target: None,
                 fn_body,
@@ -4044,7 +4101,6 @@ fn make_loop_body_dag_from_stmts(
             kind: CallableKind::Func,
             name: format!("{callable_node_id}::for_{index}_body"),
             obligation: ObligationCategory::None,
-            service_metadata: None,
             is_interactive: false,
             resource_target: None,
             fn_body: None,
@@ -4261,7 +4317,6 @@ fn make_loop_body_dag(
                 kind: CallableKind::Fn,
                 name: format!("{callable_node_id}::for_{index}_body"),
                 obligation: ObligationCategory::None,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: Some(Box::new(expr::LoweredFnBody {
@@ -4294,7 +4349,6 @@ fn make_loop_body_dag(
                 kind: CallableKind::Fn,
                 name: format!("{callable_node_id}::for_{index}_body"),
                 obligation: ObligationCategory::None,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: Some(Box::new(expr::LoweredFnBody {
@@ -4319,7 +4373,7 @@ fn make_loop_body_dag(
                 prepare_id.clone(),
                 prepare_ports,
                 vec![Port::scalar("request", "TransportRequest")],
-                LoweredOp::Callable {
+                LoweredOp::Transport {
                     module: module_name.to_string(),
                     kind: CallableKind::Pattern,
                     name: format!(
@@ -4327,17 +4381,16 @@ fn make_loop_body_dag(
                         transport.metadata.service, transport.metadata.operation
                     ),
                     obligation: ObligationCategory::ServiceTransportPrepare,
-                    service_metadata: Some(Box::new(transport.metadata.clone())),
+                    service_metadata: Box::new(transport.metadata.clone()),
                     is_interactive: false,
                     resource_target: None,
-                    fn_body: None,
                 },
             ));
             let execute_node = Node::opaque(
                 execute_id.clone(),
                 vec![Port::scalar("request", "TransportRequest")],
                 vec![Port::scalar("response", "TransportResponse")],
-                LoweredOp::Callable {
+                LoweredOp::Transport {
                     module: module_name.to_string(),
                     kind: CallableKind::Pattern,
                     name: format!(
@@ -4345,10 +4398,9 @@ fn make_loop_body_dag(
                         transport.metadata.service, transport.metadata.operation
                     ),
                     obligation: ObligationCategory::ServiceTransportExecute,
-                    service_metadata: Some(Box::new(transport.metadata.clone())),
+                    service_metadata: Box::new(transport.metadata.clone()),
                     is_interactive: false,
                     resource_target: None,
-                    fn_body: None,
                 },
             )
             .with_input_guard(
@@ -4360,7 +4412,7 @@ fn make_loop_body_dag(
                 parse_id.clone(),
                 vec![Port::scalar("response", "TransportResponse")],
                 vec![Port::scalar(transport.parse_output.as_str(), "Any")],
-                LoweredOp::Callable {
+                LoweredOp::Transport {
                     module: module_name.to_string(),
                     kind: CallableKind::Pattern,
                     name: format!(
@@ -4368,10 +4420,9 @@ fn make_loop_body_dag(
                         transport.metadata.service, transport.metadata.operation
                     ),
                     obligation: ObligationCategory::ServiceTransportParse,
-                    service_metadata: Some(Box::new(transport.metadata.clone())),
+                    service_metadata: Box::new(transport.metadata.clone()),
                     is_interactive: false,
                     resource_target: None,
-                    fn_body: None,
                 },
             ));
             // Wire the transport triplet chain: prepare → execute → parse.
@@ -4427,7 +4478,6 @@ fn make_branch_body_dag(
                 kind: CallableKind::Fn,
                 name: format!("{callable_node_id}::if_{index}_{branch_label}"),
                 obligation: ObligationCategory::None,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: Some(Box::new(expr::LoweredFnBody {
@@ -4464,7 +4514,6 @@ fn make_branch_body_dag(
                 kind: CallableKind::Fn,
                 name: format!("{callable_node_id}::if_{index}_{branch_label}"),
                 obligation: ObligationCategory::None,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: Some(Box::new(expr::LoweredFnBody {
@@ -4489,7 +4538,7 @@ fn make_branch_body_dag(
                 prepare_id.clone(),
                 prepare_ports,
                 vec![Port::scalar("request", "TransportRequest")],
-                LoweredOp::Callable {
+                LoweredOp::Transport {
                     module: module_name.to_string(),
                     kind: CallableKind::Pattern,
                     name: format!(
@@ -4497,17 +4546,16 @@ fn make_branch_body_dag(
                         transport.metadata.service, transport.metadata.operation
                     ),
                     obligation: ObligationCategory::ServiceTransportPrepare,
-                    service_metadata: Some(Box::new(transport.metadata.clone())),
+                    service_metadata: Box::new(transport.metadata.clone()),
                     is_interactive: false,
                     resource_target: None,
-                    fn_body: None,
                 },
             ));
             let execute_node = Node::opaque(
                 execute_id.clone(),
                 vec![Port::scalar("request", "TransportRequest")],
                 vec![Port::scalar("response", "TransportResponse")],
-                LoweredOp::Callable {
+                LoweredOp::Transport {
                     module: module_name.to_string(),
                     kind: CallableKind::Pattern,
                     name: format!(
@@ -4515,10 +4563,9 @@ fn make_branch_body_dag(
                         transport.metadata.service, transport.metadata.operation
                     ),
                     obligation: ObligationCategory::ServiceTransportExecute,
-                    service_metadata: Some(Box::new(transport.metadata.clone())),
+                    service_metadata: Box::new(transport.metadata.clone()),
                     is_interactive: false,
                     resource_target: None,
-                    fn_body: None,
                 },
             )
             .with_input_guard(
@@ -4530,7 +4577,7 @@ fn make_branch_body_dag(
                 parse_id.clone(),
                 vec![Port::scalar("response", "TransportResponse")],
                 vec![Port::scalar(transport.parse_output.as_str(), "Any")],
-                LoweredOp::Callable {
+                LoweredOp::Transport {
                     module: module_name.to_string(),
                     kind: CallableKind::Pattern,
                     name: format!(
@@ -4538,10 +4585,9 @@ fn make_branch_body_dag(
                         transport.metadata.service, transport.metadata.operation
                     ),
                     obligation: ObligationCategory::ServiceTransportParse,
-                    service_metadata: Some(Box::new(transport.metadata.clone())),
+                    service_metadata: Box::new(transport.metadata.clone()),
                     is_interactive: false,
                     resource_target: None,
-                    fn_body: None,
                 },
             ));
             dag.add_edge(Edge::new(
@@ -7410,7 +7456,7 @@ fn derive_service_transport_triplets(
                         prepare_id.clone(),
                         prepare_ports,
                         vec![Port::scalar("request", "TransportRequest")],
-                        LoweredOp::Callable {
+                        LoweredOp::Transport {
                             module: module_name.clone(),
                             kind: CallableKind::Pattern,
                             name: format!(
@@ -7418,10 +7464,9 @@ fn derive_service_transport_triplets(
                                 service.name, operation.name
                             ),
                             obligation: ObligationCategory::ServiceTransportPrepare,
-                            service_metadata: Some(Box::new(service_metadata.clone())),
+                            service_metadata: Box::new(service_metadata.clone()),
                             is_interactive: false,
                             resource_target: None,
-                            fn_body: None,
                         },
                     )
                     .with_origin(origin.clone()),
@@ -7439,7 +7484,7 @@ fn derive_service_transport_triplets(
                     execute_id.clone(),
                     execute_inputs,
                     vec![Port::scalar("response", "TransportResponse")],
-                    LoweredOp::Callable {
+                    LoweredOp::Transport {
                         module: module_name.clone(),
                         kind: CallableKind::Pattern,
                         name: format!(
@@ -7447,10 +7492,9 @@ fn derive_service_transport_triplets(
                             service.name, operation.name
                         ),
                         obligation: ObligationCategory::ServiceTransportExecute,
-                        service_metadata: Some(Box::new(service_metadata.clone())),
+                        service_metadata: Box::new(service_metadata.clone()),
                         is_interactive: false,
                         resource_target: None,
-                        fn_body: None,
                     },
                 )
                 .with_input_guard(
@@ -7477,7 +7521,7 @@ fn derive_service_transport_triplets(
                         parse_id.clone(),
                         vec![Port::scalar("response", "TransportResponse")],
                         parse_outputs,
-                        LoweredOp::Callable {
+                        LoweredOp::Transport {
                             module: module_name.clone(),
                             kind: CallableKind::Pattern,
                             name: format!(
@@ -7485,10 +7529,9 @@ fn derive_service_transport_triplets(
                                 service.name, operation.name
                             ),
                             obligation: ObligationCategory::ServiceTransportParse,
-                            service_metadata: Some(Box::new(service_metadata.clone())),
+                            service_metadata: Box::new(service_metadata.clone()),
                             is_interactive: false,
                             resource_target: None,
-                            fn_body: None,
                         },
                     )
                     .with_origin(origin.clone()),
@@ -8874,7 +8917,6 @@ fn add_provided_resource_nodes(
                         kind: CallableKind::Pattern,
                         name: format!("resource_provide::{}::{}", item_name, provided.binding),
                         obligation: ObligationCategory::ResourceProvide,
-                        service_metadata: None,
                         is_interactive: false,
                         resource_target: Some(provided.binding.clone()),
                         fn_body: None,
@@ -9079,7 +9121,6 @@ fn add_resource_lifecycle_nodes(
                         kind: CallableKind::Pattern,
                         name: format!("resource_lifecycle::acquire::{}", resource.name),
                         obligation: ObligationCategory::ResourceAcquire,
-                        service_metadata: None,
                         is_interactive: false,
                         resource_target: Some(resource.name.clone()),
                         fn_body: None,
@@ -9097,7 +9138,6 @@ fn add_resource_lifecycle_nodes(
                         kind: CallableKind::Pattern,
                         name: format!("resource_lifecycle::release::{}", resource.name),
                         obligation: ObligationCategory::ResourceRelease,
-                        service_metadata: None,
                         is_interactive: false,
                         resource_target: Some(resource.name.clone()),
                         fn_body: None,
@@ -9171,7 +9211,6 @@ fn add_interface_contract_verification_nodes(
                             index
                         ),
                         obligation: ObligationCategory::InterfaceContractVerification,
-                        service_metadata: None,
                         is_interactive: false,
                         resource_target: None,
                         fn_body: None,
@@ -9557,29 +9596,6 @@ pub(crate) enum ServiceCallArgLiteral {
 
 /// Re-export from `gunbc_ir` — the canonical definition now lives in the IR layer.
 pub type CollectionOpKind = gunbc_ir::patterns::CollectionKind;
-
-/// Classify a collection op into an emit-level family.
-pub fn collection_emit_family(
-    kind: &CollectionOpKind,
-) -> daglang_syntax::ast::EmitCollectionFamily {
-    use daglang_syntax::ast::EmitCollectionFamily;
-    match kind {
-        CollectionOpKind::Map
-        | CollectionOpKind::FlatMap
-        | CollectionOpKind::Join
-        | CollectionOpKind::Split
-        | CollectionOpKind::Zip
-        | CollectionOpKind::Enumerate => EmitCollectionFamily::Map,
-        CollectionOpKind::Filter | CollectionOpKind::Contains | CollectionOpKind::Skip => {
-            EmitCollectionFamily::Filter
-        }
-        CollectionOpKind::Fold
-        | CollectionOpKind::Any
-        | CollectionOpKind::All
-        | CollectionOpKind::Len => EmitCollectionFamily::Fold,
-        CollectionOpKind::Sort | CollectionOpKind::Dedup => EmitCollectionFamily::Sort,
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CollectionOpSite {
@@ -10491,12 +10507,6 @@ fn lower_expr(
                     output_name,
                     disambiguator,
                 )
-                .ok_or_else(|| {
-                    LowerError::from(format!(
-                        "cannot lower expression in {}.{}",
-                        ctx.module_name, ctx.item_name
-                    ))
-                })
             }
         }
         // C24: List literal — try literal path first, then structural.
@@ -10521,12 +10531,6 @@ fn lower_expr(
                     output_name,
                     disambiguator,
                 )
-                .ok_or_else(|| {
-                    LowerError::from(format!(
-                        "cannot lower expression in {}.{}",
-                        ctx.module_name, ctx.item_name
-                    ))
-                })
             }
         }
         // C24-P1: Direct BinOp → BinaryOp structural node.
@@ -10584,13 +10588,7 @@ fn lower_expr(
             output_port,
             output_name,
             disambiguator,
-        )
-        .ok_or_else(|| {
-            LowerError::from(format!(
-                "cannot lower expression in {}.{}",
-                ctx.module_name, ctx.item_name
-            ))
-        }),
+        ),
         // C24-P2: If/Else → Conditional structural node.
         Expr::If(cond, then_, else_) => synthesize_conditional(
             builder,
@@ -10601,13 +10599,7 @@ fn lower_expr(
             output_port,
             output_name,
             disambiguator,
-        )
-        .ok_or_else(|| {
-            LowerError::from(format!(
-                "cannot lower expression in {}.{}",
-                ctx.module_name, ctx.item_name
-            ))
-        }),
+        ),
         // C24-P2: UnaryOp → UnaryOp structural node.
         Expr::UnaryOp(op, inner) => {
             let any_port = Port::scalar("result", "Any");
@@ -10653,12 +10645,6 @@ fn lower_expr(
                 output_name,
                 disambiguator,
             )
-            .ok_or_else(|| {
-                LowerError::from(format!(
-                    "cannot lower expression in {}.{}",
-                    ctx.module_name, ctx.item_name
-                ))
-            })
         }
         Expr::Record(_, fields) => synthesize_record_construct(
             builder,
@@ -10667,13 +10653,7 @@ fn lower_expr(
             output_port,
             output_name,
             disambiguator,
-        )
-        .ok_or_else(|| {
-            LowerError::from(format!(
-                "cannot lower expression in {}.{}",
-                ctx.module_name, ctx.item_name
-            ))
-        }),
+        ),
         Expr::For(..) => Err(LowerError::from(format!(
             "unsupported expression in {}.{}: for not yet structuralized",
             ctx.module_name, ctx.item_name
@@ -11118,13 +11098,13 @@ fn wire_hoisted_callable_args(
     args: &[(Option<String>, Expr)],
     output_name: &str,
     disambiguator: &str,
-) {
+) -> Result<(), LowerError> {
     let Some(node) = builder
         .dag
         .get_node(&NodeId::new(endpoint.node_id.clone()))
         .cloned()
     else {
-        return;
+        return Ok(());
     };
 
     let param_ports: Vec<String> = node
@@ -11142,23 +11122,20 @@ fn wire_hoisted_callable_args(
             continue;
         }
         let arg_port = Port::scalar(param_name.as_str(), "Any");
-        let source = lower_expr(
+        let (src_node, src_port) = lower_expr(
             builder,
             ctx,
             arg_expr,
             &arg_port,
             &format!("{output_name}_{param_name}"),
             &format!("{disambiguator}_{param_name}_{index}"),
-        )
-        .ok();
-        if let Some((src_node, src_port)) = source {
-            builder.add_edge(
-                src_node.as_str(),
-                src_port.as_str(),
-                endpoint.node_id.as_str(),
-                param_name.as_str(),
-            );
-        }
+        )?;
+        builder.add_edge(
+            src_node.as_str(),
+            src_port.as_str(),
+            endpoint.node_id.as_str(),
+            param_name.as_str(),
+        );
     }
 
     if let Some(param_defaults) = ctx.callable_param_defaults.get(call_name) {
@@ -11186,6 +11163,8 @@ fn wire_hoisted_callable_args(
             }
         }
     }
+
+    Ok(())
 }
 
 fn synthesize_callable_expr_value(
@@ -11195,11 +11174,17 @@ fn synthesize_callable_expr_value(
     args: &[(Option<String>, Expr)],
     output_name: &str,
     disambiguator: &str,
-) -> Option<(String, String)> {
+) -> Result<(String, String), LowerError> {
     let endpoint = ctx
         .endpoints_by_name
         .get(call_name)
-        .and_then(|entry| entry.clone())?;
+        .and_then(|entry| entry.clone())
+        .ok_or_else(|| {
+            LowerError::from(format!(
+                "callable endpoint not found for {call_name} in {}.{}",
+                ctx.module_name, ctx.item_name
+            ))
+        })?;
     wire_hoisted_callable_args(
         builder,
         ctx,
@@ -11208,12 +11193,18 @@ fn synthesize_callable_expr_value(
         args,
         output_name,
         disambiguator,
-    );
+    )?;
 
     let node = builder
         .dag
         .get_node(&NodeId::new(endpoint.node_id.clone()))
-        .cloned()?;
+        .cloned()
+        .ok_or_else(|| {
+            LowerError::from(format!(
+                "node not found for endpoint {} in {}.{}",
+                endpoint.node_id, ctx.module_name, ctx.item_name
+            ))
+        })?;
     let output_fields: Vec<String> = node
         .outputs
         .iter()
@@ -11222,7 +11213,7 @@ fn synthesize_callable_expr_value(
         .collect();
 
     if output_fields.len() == 1 && output_fields[0] == "return" {
-        return Some((endpoint.node_id, "return".to_string()));
+        return Ok((endpoint.node_id, "return".to_string()));
     }
 
     let input_ports: Vec<Port> = output_fields
@@ -11259,7 +11250,7 @@ fn synthesize_callable_expr_value(
         );
     }
 
-    Some((node_id, "result".to_string()))
+    Ok((node_id, "result".to_string()))
 }
 
 fn helper_leaf_input_port(leaf: &ExprLeafRef) -> String {
@@ -11334,7 +11325,6 @@ fn synthesize_expr_value_fallback(
             kind: CallableKind::Fn,
             name: format!("{}::expr_value::{}", ctx.item_name, output_name),
             obligation: ObligationCategory::None,
-            service_metadata: None,
             is_interactive: false,
             resource_target: None,
             fn_body: Some(Box::new(fn_body)),
@@ -11394,7 +11384,7 @@ fn lower_match_arm_for_dispatch(
 ) -> (expr::LoweredMatchArm, Option<(String, String, String)>) {
     if let Expr::Call(call_name, args) = &arm.body {
         let input_port = format!("arm_body_{arm_index}");
-        if let Some((src_node, src_port)) = synthesize_callable_expr_value(
+        if let Ok((src_node, src_port)) = synthesize_callable_expr_value(
             builder,
             ctx,
             call_name.as_str(),
@@ -11434,7 +11424,7 @@ fn synthesize_match_dispatch(
     output_port: &Port,
     output_name: &str,
     disambiguator: &str,
-) -> Option<(String, String)> {
+) -> Result<(String, String), LowerError> {
     // Collect all leaf refs from the entire match expression.
     let whole_expr = Expr::Match(Box::new(scrutinee.clone()), arms.to_vec());
     let mut refs: Vec<ExprLeafRef> = Vec::new();
@@ -11443,7 +11433,10 @@ fn synthesize_match_dispatch(
     collect_expr_leaf_refs(&whole_expr, ctx, &mut refs, &mut seen, &mut has_local_refs);
 
     if has_local_refs {
-        return None;
+        return Err(LowerError::from(format!(
+            "match dispatch has local refs in {}.{}",
+            ctx.module_name, ctx.item_name
+        )));
     }
 
     // Build input ports: "scrutinee" + all leaf refs from arm bodies (deduplicated).
@@ -11492,16 +11485,14 @@ fn synthesize_match_dispatch(
 
     // Wire scrutinee input — use Any-typed port (scrutinee type differs from match result).
     let any_port = Port::scalar("result", "Any");
-    let scrutinee_source = lower_expr(
+    let (scrutinee_node, scrutinee_port) = lower_expr(
         builder,
         ctx,
         scrutinee,
         &any_port,
         &format!("{output_name}_scrutinee"),
         &format!("{disambiguator}_scrutinee"),
-    )
-    .ok();
-    let (scrutinee_node, scrutinee_port) = scrutinee_source?;
+    )?;
 
     let node_id = format!(
         "match_dispatch_{}",
@@ -11562,7 +11553,7 @@ fn synthesize_match_dispatch(
         }
     }
 
-    Some((node_id, result_port_name.to_string()))
+    Ok((node_id, result_port_name.to_string()))
 }
 
 /// C24-P2: Synthesize a Conditional structural node.
@@ -11577,7 +11568,7 @@ fn synthesize_conditional(
     output_port: &Port,
     output_name: &str,
     disambiguator: &str,
-) -> Option<(String, String)> {
+) -> Result<(String, String), LowerError> {
     // Collect all leaf refs from the entire if/else expression.
     let whole_expr = Expr::If(
         Box::new(cond.clone()),
@@ -11590,7 +11581,10 @@ fn synthesize_conditional(
     collect_expr_leaf_refs(&whole_expr, ctx, &mut refs, &mut seen, &mut has_local_refs);
 
     if has_local_refs {
-        return None;
+        return Err(LowerError::from(format!(
+            "conditional has local refs in {}.{}",
+            ctx.module_name, ctx.item_name
+        )));
     }
 
     // Build input ports: "condition", "then", "else" + all leaf refs.
@@ -11608,16 +11602,14 @@ fn synthesize_conditional(
 
     // Wire condition — use Bool-typed port (condition is always Bool).
     let bool_port = Port::scalar("result", "Bool");
-    let cond_source = lower_expr(
+    let (cond_node, cond_port) = lower_expr(
         builder,
         ctx,
         cond,
         &bool_port,
         &format!("{output_name}_cond"),
         &format!("{disambiguator}_cond"),
-    )
-    .ok();
-    let (cond_node, cond_port) = cond_source?;
+    )?;
 
     // Wire then branch.
     let (then_node, then_port) = lower_expr(
@@ -11627,8 +11619,7 @@ fn synthesize_conditional(
         output_port,
         &format!("{output_name}_then"),
         &format!("{disambiguator}_then"),
-    )
-    .ok()?;
+    )?;
 
     let else_source = if let Some(else_expr) = else_ {
         let source = lower_expr(
@@ -11638,8 +11629,7 @@ fn synthesize_conditional(
             output_port,
             &format!("{output_name}_else"),
             &format!("{disambiguator}_else"),
-        )
-        .ok()?;
+        )?;
         Some(source)
     } else {
         None
@@ -11671,7 +11661,7 @@ fn synthesize_conditional(
         builder.add_edge(&else_node, &else_port, &node_id, "else");
     }
 
-    Some((node_id, result_port_name.to_string()))
+    Ok((node_id, result_port_name.to_string()))
 }
 
 /// C24-P2: Synthesize a UnaryOp structural node.
@@ -11730,7 +11720,7 @@ fn synthesize_variant_construct(
     output_port: &Port,
     output_name: &str,
     disambiguator: &str,
-) -> Option<(String, String)> {
+) -> Result<(String, String), LowerError> {
     // Unit variant (no fields) → emit a literal source with the tag string.
     if fields.is_empty() {
         let literal = ServiceCallArgLiteral::String(tag.to_string());
@@ -11743,33 +11733,22 @@ fn synthesize_variant_construct(
             &literal,
             disambiguator,
         );
-        return Some((src, output_name.to_string()));
+        return Ok((src, output_name.to_string()));
     }
 
     // Payload variant — resolve each field, then emit VariantConstruct node.
     let any_port = Port::scalar("result", "Any");
     let mut field_sources: Vec<(String, String, String)> = Vec::new();
-    let mut all_resolved = true;
     for (field_name, field_expr) in fields {
-        let source = lower_expr(
+        let (src_node, src_port) = lower_expr(
             builder,
             ctx,
             field_expr,
             &any_port,
             &format!("{output_name}_{field_name}"),
             &format!("{disambiguator}_{field_name}"),
-        )
-        .ok();
-        if let Some((src_node, src_port)) = source {
-            field_sources.push((field_name.clone(), src_node, src_port));
-        } else {
-            all_resolved = false;
-            break;
-        }
-    }
-
-    if !all_resolved {
-        return None;
+        )?;
+        field_sources.push((field_name.clone(), src_node, src_port));
     }
 
     let field_names: Vec<String> = fields.iter().map(|(name, _)| name.clone()).collect();
@@ -11808,7 +11787,7 @@ fn synthesize_variant_construct(
         builder.add_edge(src_node, src_port, &node_id, field_name);
     }
 
-    Some((node_id, result_port_name.to_string()))
+    Ok((node_id, result_port_name.to_string()))
 }
 
 /// C24-P2: Synthesize a RecordConstruct structural node.
@@ -11820,32 +11799,21 @@ fn synthesize_record_construct(
     output_port: &Port,
     output_name: &str,
     disambiguator: &str,
-) -> Option<(String, String)> {
-    // Resolve each field to a source. If any can't be resolved, fall back.
+) -> Result<(String, String), LowerError> {
+    // Resolve each field to a source.
     // Use Any-typed port for field values (individual fields differ from the record type).
     let any_port = Port::scalar("result", "Any");
     let mut field_sources: Vec<(String, String, String)> = Vec::new();
-    let mut all_resolved = true;
     for (field_name, field_expr) in fields {
-        let source = lower_expr(
+        let (src_node, src_port) = lower_expr(
             builder,
             ctx,
             field_expr,
             &any_port,
             &format!("{output_name}_{field_name}"),
             &format!("{disambiguator}_{field_name}"),
-        )
-        .ok();
-        if let Some((src_node, src_port)) = source {
-            field_sources.push((field_name.clone(), src_node, src_port));
-        } else {
-            all_resolved = false;
-            break;
-        }
-    }
-
-    if !all_resolved {
-        return None;
+        )?;
+        field_sources.push((field_name.clone(), src_node, src_port));
     }
 
     let field_names: Vec<String> = fields.iter().map(|(name, _)| name.clone()).collect();
@@ -11883,7 +11851,7 @@ fn synthesize_record_construct(
         builder.add_edge(src_node, src_port, &node_id, field_name);
     }
 
-    Some((node_id, result_port_name.to_string()))
+    Ok((node_id, result_port_name.to_string()))
 }
 
 /// C24: Synthesize a ListConstruct node for list literals with resolvable elements.
@@ -11895,28 +11863,22 @@ fn synthesize_list_construct(
     output_port: &Port,
     output_name: &str,
     disambiguator: &str,
-) -> Option<(String, String)> {
+) -> Result<(String, String), LowerError> {
     let any_port = Port::scalar("result", "Any");
 
     // Resolve each element recursively.
     let mut elem_sources: Vec<(String, String, String)> = Vec::new();
     for (i, elem) in elements.iter().enumerate() {
         let port_name = format!("elem_{i}");
-        let source = lower_expr(
+        let (node, port) = lower_expr(
             builder,
             ctx,
             elem,
             &any_port,
             &format!("{output_name}_{port_name}"),
             &format!("{disambiguator}_{port_name}"),
-        )
-        .ok();
-        match source {
-            Some((node, port)) => elem_sources.push((port_name, node, port)),
-            None => {
-                return None;
-            }
-        }
+        )?;
+        elem_sources.push((port_name, node, port));
     }
 
     let input_ports: Vec<Port> = elem_sources
@@ -11952,7 +11914,7 @@ fn synthesize_list_construct(
         builder.add_edge(src_node, src_port, &node_id, port_name);
     }
 
-    Some((node_id, result_port_name.to_string()))
+    Ok((node_id, result_port_name.to_string()))
 }
 
 /// C24: Synthesize a StringInterpolate node for string interpolations with variable refs.
@@ -11964,7 +11926,7 @@ fn synthesize_string_interpolate(
     output_port: &Port,
     output_name: &str,
     disambiguator: &str,
-) -> Option<(String, String)> {
+) -> Result<(String, String), LowerError> {
     let any_port = Port::scalar("result", "Any");
 
     let mut parts: Vec<String> = Vec::new();
@@ -11981,24 +11943,16 @@ fn synthesize_string_interpolate(
             daglang_syntax::ast::StringPart::Expr(expr) => {
                 parts.push(std::mem::take(&mut current_literal));
                 let port_name = format!("interp_{i}");
-                let source = lower_expr(
+                let (node, port) = lower_expr(
                     builder,
                     ctx,
                     expr,
                     &any_port,
                     &format!("{output_name}_{port_name}"),
                     &format!("{disambiguator}_{port_name}"),
-                )
-                .ok();
-                match source {
-                    Some((node, port)) => {
-                        input_sources.push((port_name.clone(), node, port));
-                        input_port_names.push(port_name);
-                    }
-                    None => {
-                        return None;
-                    }
-                }
+                )?;
+                input_sources.push((port_name.clone(), node, port));
+                input_port_names.push(port_name);
             }
         }
     }
@@ -12039,7 +11993,7 @@ fn synthesize_string_interpolate(
         builder.add_edge(src_node, src_port, &node_id, port_name);
     }
 
-    Some((node_id, result_port_name.to_string()))
+    Ok((node_id, result_port_name.to_string()))
 }
 
 /// C24: Synthesize a GetField node for a complex base expression (not a direct parameter).

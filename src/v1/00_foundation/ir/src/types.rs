@@ -811,8 +811,66 @@ impl std::fmt::Display for PortName {
 }
 
 /// Type identifier for type checking edges.
+///
+/// **Migration target (change A):** `TypeId(String)` is a deferred lookup —
+/// downstream code must query a `TypeRegistry` to learn anything structural.
+/// The target is `ResolvedType` which embeds structure directly, making
+/// "unresolved type" unrepresentable. See `DESIGN-pipeline-purity-audit.md`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TypeId(pub String);
+
+/// Fully resolved type structure.
+///
+/// The target replacement for `TypeId(String)`. Embeds type structure
+/// directly so there is no string handle to look up and no registry to
+/// query. The invalid state "unresolved type reference" is not a variant
+/// of this enum — it is structurally unrepresentable.
+///
+/// **Status:** defined but not yet wired into `Port`. Migration path:
+/// 1. Populate `ResolvedType` during typechecking/lowering.
+/// 2. Add `resolved_type: ResolvedType` to `Port` alongside `type_id`.
+/// 3. Migrate consumers from `type_id` to `resolved_type`.
+/// 4. Remove `type_id` field.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ResolvedType {
+    /// Scalar primitive: Int, Float, String, Bool, Bytes, Json, Unit.
+    Scalar(ResolvedScalar),
+    /// Homogeneous list.
+    List(Box<ResolvedType>),
+    /// Homogeneous set.
+    Set(Box<ResolvedType>),
+    /// Key-value map.
+    Map {
+        key: Box<ResolvedType>,
+        value: Box<ResolvedType>,
+    },
+    /// Optional (nullable).
+    Optional(Box<ResolvedType>),
+    /// Named product type (record/struct).
+    Record {
+        name: String,
+        fields: Vec<(String, ResolvedType)>,
+    },
+    /// Named sum type (tagged union).
+    Sum {
+        name: String,
+        variants: Vec<(String, ResolvedType)>,
+    },
+    /// Opaque named type (brands, newtypes).
+    Named(String),
+}
+
+/// Scalar primitive kinds for [`ResolvedType::Scalar`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ResolvedScalar {
+    Int,
+    Float,
+    String,
+    Bool,
+    Bytes,
+    Json,
+    Unit,
+}
 
 /// Presence mode for a port (WS4-1).
 ///

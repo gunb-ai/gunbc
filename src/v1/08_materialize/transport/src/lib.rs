@@ -1,31 +1,29 @@
-//! Transport operations and executors for gunbc I/O.
+//! **Stage 11 — Transport**: Transforms a `TransportRequest` into a
+//! `TransportResponse` by performing actual I/O.
 //!
-//! This library provides:
-//! - `TransportOps` - DAG node operations for transport execution
+//! # Pipeline position
 //!
-//! The transport layer separates pure business logic from I/O:
-//! - Pure ops prepare `TransportRequest` values
-//! - `TransportOps::Execute` is the boundary that does actual I/O
+//! - **Before**: pure ops have prepared a `TransportRequest` value
+//! - **After**: parse ops extract structured output from `TransportResponse`
 //!
-//! In dry-run mode, the boundary is mocked to intercept I/O.
+//! # Sequential steps
 //!
-//! # Structural I/O Enforcement
+//! 1. Classify the transport request (REST, shell, file)
+//! 2. Apply middleware pipeline (credentials, rate limiting, retry, metrics)
+//! 3. Execute the I/O operation via the appropriate backend
+//! 4. Return `TransportResponse` (or mock response in DryRun mode)
 //!
-//! `execute_transport()` and `execute_request()` are NOT exported from this crate.
-//! The primary I/O boundary is `TransportOps::Execute` nodes in a DAG. Tool
-//! acquisition/execution helpers live here as well, so CLI tool I/O stays in
-//! the transport layer rather than leaking into pure crates.
+//! # Purity
 //!
-//! This ensures I/O is:
-//! - Visible in the graph structure (for transport requests)
-//! - Interceptable by DryRun mode
-//! - Auditable
+//! **NOT PURE — this is the I/O boundary.** This crate is the ONLY crate
+//! that performs direct I/O (shell, HTTP, filesystem via `std::fs` and
+//! `std::process::Command`). All other crates MUST use
+//! `PrepareXxxOp` + `TransportOps::Execute`.
 //!
-//! # Note
+//! # Failure
 //!
-//! This is the ONLY crate that performs direct I/O operations
-//! via std::fs and std::process::Command. All other crates MUST use
-//! PrepareXxxOp + TransportOps::Execute.
+//! Returns `TransportError` with classified error kinds (network, auth,
+//! rate limit, shell exit code, filesystem).
 
 #![deny(dead_code)]
 

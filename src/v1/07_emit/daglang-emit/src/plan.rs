@@ -382,7 +382,7 @@ fn topo_sort_dag(dag: &Dag<LoweredOp>) -> Result<Vec<String>, PlanError> {
 mod tests {
     use super::*;
     use crate::computation::{Cardinality, PureBody, TransportKind, TypedPort};
-    use daglang_syntax::ast::EmitCollectionFamily;
+    use crate::computation::EmitCollectionFamily;
 
     #[test]
     fn emit_plan_round_trip() {
@@ -567,7 +567,6 @@ mod tests {
                 kind: CallableKind::Fn,
                 name: "load_registry".into(),
                 obligation: ObligationCategory::PureDataLoad,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -582,7 +581,6 @@ mod tests {
                 kind: CallableKind::Fn,
                 name: "render_makefile".into(),
                 obligation: ObligationCategory::PureRender,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -600,7 +598,6 @@ mod tests {
                 kind: CallableKind::Func,
                 name: "makegen".into(),
                 obligation: ObligationCategory::None,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -847,7 +844,6 @@ mod tests {
                 kind: CallableKind::Fn,
                 name: "load_registry".into(),
                 obligation: ObligationCategory::None,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -871,7 +867,6 @@ mod tests {
                     kind: CallableKind::Fn,
                     name: render_id.clone(),
                     obligation: ObligationCategory::None,
-                    service_metadata: None,
                     is_interactive: false,
                     resource_target: None,
                     fn_body: None,
