@@ -20,10 +20,8 @@ progressive self-compilation (Phase 2), and fixed-point verification
 (Phase 3). See `SUSTAINABILITY.md` Branch 7 for the bootstrap gap
 analysis.
 
-- `DESIGN-v2-compiler.md` — design rationale: why self-hosting, what
-  went wrong with v0/v1, core principles.
-- `DESIGN-v2-target-models.md` — target type system specification.
-  The v2 code does not yet match these models; this is what it converges toward.
+- `DESIGN-v2-compiler.md` — design rationale, core principles, and
+  target type system specification.
 
 ### Active bypasses (must be resolved before self-hosting)
 

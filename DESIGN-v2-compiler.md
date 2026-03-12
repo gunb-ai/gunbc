@@ -1,4 +1,4 @@
-# v2: Self-hosted compiler design
+# v2: Self-hosted compiler
 
 ## Premise
 
@@ -21,11 +21,6 @@ itself.
 ```
 .dag source → [compiler] → emitted source files → [target runtime]
 ```
-
-The compiler doesn't know or care how the emitted code gets run. If
-the target is Rust, `cargo` runs it. If the target is Python, `python`
-runs it. If the target is a JSON IR, a separate interpreter runs it.
-The compiler's job ends at file emission.
 
 ## What went wrong with v0/v1
 
@@ -81,6 +76,18 @@ Container { kind: List, element: Product { name: "Span", fields: [...] } }
 The structure IS the type. No registry. No deferred lookup. No stale
 copies.
 
+| v1 problem | v2 design |
+|---|---|
+| TypeId is a string → needs registry | Types are TypeExpr values → no registry |
+| Cardinality cached on port | Derived from TypeExpr structure |
+| Parallel fn body evaluator + DAG executor | Compiler emits files, no interpreter |
+| `mock_element_expr` enumeration | Emitter walks TypeExpr structure |
+| `register_core_types()` duplication | Types defined in .dag only |
+| String-based classification | Pattern match on typed AST |
+| No boundary contracts | Each stage is a typed function |
+| Transport config as `Map<String, String>` | Typed coproduct per transport kind |
+| Emitted code never tested downstream | Compiler emits tests alongside code |
+
 ## Architecture
 
 ```
@@ -113,22 +120,8 @@ copies.
 Five stages, each a pure function. The compiler goes from typed AST
 directly to output files.
 
-### Bootstrap subset vs full language
-
-The v2 prototype targets the **gist.dag bootstrap subset**: the 8
-Item variants actually used by gist.dag and its transitive
-dependencies (`module`, `import`, `type`, `fn`, `func`, `service`,
-`resource`, `data`). The current v1 language has 20 Item variants.
-The remaining 12 are added incrementally after bootstrap proves the
-architecture works.
-
-This is an explicit scope boundary: the prototype does NOT claim to
-be a full-language replacement. It is a bootstrap compiler for a
-well-defined subset, designed to grow into a full compiler.
-
 The emitter is pluggable — it takes a `TypedGraph` and a `Backend`
 and produces files. Different backends produce different languages.
-The public contract is a single function:
 
 ```dag
 type Backend = Rust | Python
@@ -145,95 +138,39 @@ func compile(root: FilePath, backend: Backend) -> CompileResult {
   }
   CompileResult { files: files, diagnostics: typed.diagnostics }
 }
-
-type CompileResult {
-  files: List<TextFile>
-  diagnostics: List<Diagnostic>
-}
 ```
 
-## Testing: the compiler owns its downstream
+### Bootstrap subset
 
-v1's critical gap: emitted code is text-checked ("does the string
-contain this substring?") but never compiled or run. The Go/C/MIPS
-emitters could produce broken output and no test would catch it.
+The v2 prototype targets the **gist.dag bootstrap subset**: the 8
+Item variants actually used by gist.dag and its transitive
+dependencies (`module`, `import`, `type`, `fn`, `func`, `service`,
+`resource`, `data`). The remaining variants are added incrementally
+after bootstrap proves the architecture works.
 
-v2 fixes this by making testing a compiler responsibility. When the
-compiler emits Rust, it also emits Rust tests for that code. The
-tests compile and run in the target language, not in the compiler's
-language. The emitted test verifies the emitted program works.
+### Testing: the compiler owns its downstream
+
+v1's critical gap: emitted code is text-checked but never compiled or
+run. v2 fixes this by emitting tests alongside code:
 
 ```
 .dag source → compiler → {program.rs, program_test.rs}
                               │              │
                               ▼              ▼
                           cargo build    cargo test
-                              │              │
-                              ▼              ▼
-                          binary        PASS/FAIL
 ```
 
-The test and the code are emitted together, in the same language,
-as one unit. If the compiler produces broken Rust, `cargo test` on
-the emitted tests catches it immediately.
+Emitted tests are hermetic by default — they use `mock_response` data
+from the DSL source as fixtures. No network, no credentials.
 
-This replaces two v1 concepts:
-- **testgen** (generated tests against the DAG IR) → tests against
-  the emitted code instead
-- **emit string-checking** (assert output contains substrings) →
-  assert emitted code compiles and its tests pass
+### Bootstrap path
 
-## Emit targets
-
-### Rust (primary)
-
-The v1 compiler already emits Rust. v2 continues this — same output
-format, different (simpler) compiler. The acceptance test is: v2's
-Rust output for gist.dag compiles with `cargo build` AND its emitted
-tests pass with `cargo test`.
-
-### Python (bootstrap accelerator)
-
-Python emission is useful during bootstrap because there's no
-compilation step — the emitted code runs immediately. This makes
-the development loop faster: edit .dag → run compiler → run emitted
-.py → see result.
-
-### JSON (optional, for external tooling)
-
-A structured JSON serialization of the typed AST. Not
-executable by itself — requires a separate runtime. Useful for
-editor tooling, visualization, and language server protocol.
-
-## Bootstrap path
-
-1. **v1 Rust compiler** compiles v2's .dag source files and executes
-   them (v1 is the host for v2 during development)
-2. **v2 compiler** (running on v1) reads .dag files and emits target
-   source code
+1. **v1 Rust compiler** compiles v2's .dag source files (v1 is the host)
+2. **v2 compiler** (running on v1) reads .dag files and emits target code
 3. **v2 compiles gist.dag** → emitted files match v1's output
-4. **v2 compiles itself** → the .dag compiler source is compiled by
-   v2, producing the same output. Fixed point = self-hosting.
+4. **v2 compiles itself** → fixed point = self-hosting
 
-The v1 Rust code remains as the bootstrap host. It doesn't change
-after v2 reaches self-hosting. Language evolution happens entirely
-in .dag files.
-
-## Sustainability invariants enforced by design
-
-| v1 problem | v2 design |
-|---|---|
-| TypeId is a string → needs registry | Types are TypeExpr values → no registry |
-| Cardinality cached on port | Derived from TypeExpr structure |
-| Parallel fn body evaluator + DAG executor | Compiler emits files, no interpreter |
-| `mock_element_expr` enumeration | Emitter walks TypeExpr structure |
-| `register_core_types()` duplication | Types defined in .dag only |
-| String-based classification | Pattern match on typed AST |
-| No boundary contracts | Each stage is a typed function, CompileResult is files + diagnostics |
-| Transport config as `Map<String, String>` | Typed coproduct per transport kind |
-| Emitted code never tested downstream | Compiler emits tests alongside code |
-
-## Dependency chain
+### Dependency chain
 
 ```
 kernel primitives (String, Int, Bool, List, Map)
@@ -242,235 +179,277 @@ kernel primitives (String, Int, Bool, List, Map)
       ← src/v2/compiler/*.dag (tokenize, parse, resolve, typecheck, emit)
 ```
 
-The v2 compiler imports from `std.types` — the same shared type
-library that all DSL programs use. The compiler is just another DSL
-program.
-
-## Open questions
-
-1. **Primary emit target for bootstrap.** Rust matches v1 output for
-   testing. Python is faster to iterate on. Could start with Python
-   for development speed and add Rust for parity testing.
-
-2. **Error recovery in parser.** The v1 parser continues after syntax
-   errors to report multiple diagnostics. Can .dag express this, or
-   does the parser return on first error?
-
-3. **Self-hosting timeline.** Compiling gist.dag proves the compiler
-   works. Compiling itself proves it's complete. The gap between
-   these depends on how many language features the compiler's own
-   .dag source uses beyond what gist.dag exercises.
-
-## Decisions (resolved from review feedback)
-
-### Error recovery: first-error-halt for bootstrap
-
-The parser halts on first error for bootstrap. Multi-error recovery
-requires a synchronization-token strategy designed into the grammar
-rules from the start, which adds significant complexity. The
-bootstrap compiler is a batch compiler — first-error-halt is
-sufficient. Error recovery nodes (`ErrorItem`, `ErrorExpr`) will be
-added later for LSP tooling.
-
-### Python backend: deferred
-
-Python emission is deferred until Rust self-hosting is proven. Adding
-a second backend before the first works recreates the parallel
-implementation problem (S36, Branch 2). One backend, fully tested.
+## Decisions
 
 ### fn vs func
 
-`fn` is a pure function (expression body, no side effects).
-`func` is a workflow function (may use resources, services, transport).
-The distinction maps to v1's `fn` (evaluated by expression evaluator)
-vs `func` (compiled to DAG with transport nodes). Both appear in the
-AST because the parser needs to distinguish them; the emitter uses
-the distinction to decide whether to emit a pure function or a
-service-wired workflow.
+`fn` = pure function (expression body, no side effects).
+`func` = workflow function (may use resources, services, transport).
 
-### Diagnostics are first-class in every stage
+### Diagnostics are first-class
 
-Every stage returns `StageResult<T> { value: T, diagnostics: List<Diagnostic> }`,
-not raw values. This prevents diagnostic loss across stage boundaries.
-The pipeline threads diagnostics:
+Every stage returns its primary value with a `diagnostics: List<Diagnostic>`
+field alongside it. No diagnostic loss across stage boundaries.
 
-```dag
-type StageResult<T> { value: T, diagnostics: List<Diagnostic> }
+### Error recovery: first-error-halt for bootstrap
 
-func compile_sources(sources: List<SourceFile>, backend: Backend) -> CompileResult {
-  let tokenized = map(sources, s => tokenize(source: s.content))
-  let parsed = collect_results(map(tokenized, t => parse(tokens: t.value)))
-  let resolved = resolve_modules(modules: parsed.value)
-  let typed = typecheck(graph: resolved.value)
-  let files = match backend { Rust => emit_rust(typed: typed.value) }
-  CompileResult {
-    files: files,
-    diagnostics: parsed.diagnostics
-      + resolved.diagnostics
-      + typed.diagnostics
-  }
-}
-```
+Multi-error recovery requires synchronization-token strategy designed
+into grammar rules. Deferred — first-error-halt is sufficient for a
+batch compiler.
 
-### Acceptance test levels clarified
+### Python backend: deferred
 
-Level 3 (diff v1 vs v2) compares only the primary output files,
-excluding emitted test files (which are v2-only). The comparison
-is normalized: sorted keys, stripped formatting whitespace.
-
-### Bootstrap circularity risk
-
-v1's known fail-open behaviors (S3 fn-body passthrough, S23/S35
-unknown-type-to-Json) could silently pass through expressions that
-should fail during v2's bootstrap compilation. Mitigation: v2's
-invariant tests (the spec-level column in the test matrix) explicitly
-check for these — e.g., "no unresolved Named after typecheck" catches
-cases where v1's type resolution silently fabricated.
+Deferred until Rust self-hosting is proven. Adding a second backend
+before the first works recreates the parallel implementation problem.
 
 ### Nominal identity in the typed graph
 
-Full structural substitution (replacing every `Named` with its
-structural expansion) loses nominal identity, alias boundaries,
-and generic instantiation information. The typed graph should
-retain a **resolved nominal anchor**: the original type name plus
-any type arguments, alongside the structural expansion.
-
-After typecheck, a type reference like `List<Span>` becomes:
+After typecheck, `List<Span>` becomes:
 ```
-Container {
-  kind: List,
-  element: Product {
-    name: Some("Span"),  // nominal anchor preserved
-    fields: [...]         // structural expansion present
+Container { kind: List, element: Product { name: Some("Span"), fields: [...] } }
+```
+The `name` is metadata for diagnostics and emission — NOT a lookup key.
+The structural fields are authoritative.
+
+### MapType key constraint
+
+`MapType { key, value }` allows arbitrary keys in the AST.
+The typechecker enforces String-key constraint. The AST represents
+what the programmer wrote; the typechecker rejects what's invalid.
+
+---
+
+# Target domain models
+
+**This is a target-model specification, not a description of the
+current implementation.** The v2 compiler code does not yet match
+these models. Each section notes specific gaps where known.
+
+The pipeline stays linear. The model becomes layered.
+
+## Foundations: Set-Algebraic Type Theory
+
+The type system's semantics are set-theoretic (following `std/types.dag`):
+
+```
+Every type T denotes a set ⟦T⟧ of values.
+Subtyping is set inclusion:  A <: B  iff  ⟦A⟧ ⊆ ⟦B⟧
+```
+
+The type algebra has six operations:
+
+| Type Constructor | Set Operation | Notation |
+|-----------------|---------------|----------|
+| **Atom** | Generator set | `⟦String⟧ = Σ*` |
+| **Product** | Cartesian product | `⟦{a: A, b: B}⟧ = ⟦A⟧ × ⟦B⟧` |
+| **Coproduct** | Disjoint union | `⟦A \| B⟧ = ⟦A⟧ ⊔ ⟦B⟧` |
+| **Application** | Functor application | `⟦F<A>⟧ = F(⟦A⟧)` |
+| **Refinement** | Subset comprehension | `⟦T where P⟧ = {x ∈ ⟦T⟧ \| P(x)}` |
+| **Reference** | Indirection | `⟦Named("Foo")⟧ = ⟦Foo⟧` (by lookup) |
+
+These six constructors are **complete** for the language's type system.
+
+The kernel has 8 atoms: `{ String, Int, Bool, Float, Secret, Bytes, Unit, Json }`.
+Lattice bounds: `⊤ = Json` (universal), `⊥ = Never` (uninhabited).
+
+### Optionality and cardinality
+
+**Direction: cardinality as the primitive.** Optionality is not a
+property of the type — it's a property of how the type is used at a
+binding site. `T?` means "type T with cardinality 0..1," not a
+different type.
+
+```
+Required   : exactly 1 value    (1..1)
+Optional   : 0 or 1 value       (0..1)
+Many       : 0..n values        (0..n)
+AtLeastOne : 1..n values        (1..n)
+```
+
+This means:
+- `Optional` exits TypeExpr entirely
+- `Field.optional: Bool` becomes `Field.cardinality: Cardinality`
+- TypeExpr is purely "what" (the set of values), never "how many"
+- `List<T>`, `Set<T>`, `Map<K,V>` remain as type constructors via `App`
+
+## Target TypeExpr (6 variants, down from 9)
+
+```dag
+type TypeExpr
+  = Ref { name: String, span: SourceSpan }
+  | Atom { name: String, span: SourceSpan }
+  | Product { name: String?, fields: List<Field>, span: SourceSpan }
+  | Coproduct { name: String?, variants: List<Variant>, span: SourceSpan }
+  | App { name: String, args: List<TypeExpr>, span: SourceSpan }
+  | Refine { base: TypeExpr, predicates: List<Predicate>, span: SourceSpan }
+```
+
+| Removed | Replaced by | Justification |
+|---------|-------------|---------------|
+| `Named` | `Ref` | Renamed: it is a reference, not a type |
+| `Primitive` | `Atom` | Renamed: these are atoms of the type algebra |
+| `Container` | `App` | `List<T>` IS `App("List", [T])` — same set, one representation |
+| `MapType` | `App` | `Map<K,V>` IS `App("Map", [K, V])` |
+| `Optional` | Cardinality | `T?` is not a type — it's cardinality 0..1 on the binding site |
+| `Refined` | `Refine` | Renamed for verb form consistency |
+| `TypeApp` | `App` | Renamed: shorter, now the only application form |
+
+## Layer 0: Compiler Primitives
+
+```dag
+type SourceSpan { start: Int, end: Int }
+type Severity = Error | Warning | Info
+type Diagnostic { severity: Severity, message: String, span: SourceSpan?, module_name: String? }
+type CompileResult { files: List<TextFile>, diagnostics: List<Diagnostic> }
+type TextFile { path: String, content: String }
+```
+
+Every pass is a function `Input → (Output × List<Diagnostic>)`.
+
+## Layer 1: Type Algebra
+
+TypeExpr (above), Predicate (unchanged — already clean), TypeBody,
+Field, Variant, Param.
+
+```dag
+type Field {
+  name: String
+  type_expr: TypeExpr
+  cardinality: Cardinality       // replaces optional: Bool
+  default_value: Expr?
+  span: SourceSpan
+}
+```
+
+Cardinality all the way down. The `cardinality` field on Field is
+itself a Required binding. The recursion bottoms out at kernel types.
+
+## Layer 2: Normalized Core Syntax
+
+Tokens (unchanged, ~75 variants). AST Items (unchanged — 7 Item
+variants). Expressions (unchanged — 16 Expr variants). The parser
+performs desugarings (`|>` → MethodCall, `pattern`/`interface` →
+FuncDef) — the AST represents core syntax, not every surface spelling.
+
+Service/Transport at AST level:
+
+```dag
+type TransportBinding
+  = RestBinding { base_url: Expr, auth: AuthConfig?, headers: List<HeaderDef> }
+  | ShellBinding { argv: List<Expr>, env: List<EnvDef> }
+  | FileBinding { base_path: Expr }
+  | LocalBinding
+```
+
+## Layer 3: Semantic Model
+
+**Current problem**: `TypedGraph`, `TypedModule`, `TypeEnv`,
+`TypeBinding` are defined independently in both typecheck.dag and
+emit.dag. `ModuleGraph` types are forward-declared in typecheck.dag.
+
+**Target**: All semantic types live in core.dag, imported by consumers:
+
+```dag
+type ModuleGraph { modules: List<ResolvedModule>, diagnostics: List<Diagnostic> }
+type TypedGraph { modules: List<TypedModule>, diagnostics: List<Diagnostic> }
+type TypedModule { module: Module, type_env: TypeEnv }
+type TypeEnv { bindings: List<TypeBinding> }
+type TypeBinding { name: String, resolved: TypeExpr }
+```
+
+## Layer 4: Emission Model
+
+The emitter consumes TypedGraph, produces List<TextFile>. It is the
+only layer that knows about target languages.
+
+Built-in type constructor mapping (replaces separate Container/MapType/Optional arms):
+
+```dag
+fn emit_type_app(name: String, args: List<TypeExpr>) -> String {
+  match name {
+    "List"         => "Vec<" + emit_type(args[0]) + ">"
+    "Set"          => "BTreeSet<" + emit_type(args[0]) + ">"
+    "Map"          => "BTreeMap<" + emit_type(args[0]) + ", " + emit_type(args[1]) + ">"
+    "NonEmptyList" => "Vec<" + emit_type(args[0]) + ">"
+    "NonEmptySet"  => "BTreeSet<" + emit_type(args[0]) + ">"
+    _              => name + "<" + join(map(args, emit_type), ", ") + ">"
   }
 }
 ```
 
-The `name: Some("Span")` is NOT a lookup key — the structural
-fields are authoritative. The name is metadata for diagnostics,
-emission (generating `struct Span` instead of an anonymous type),
-and equality (two structurally identical types with different names
-ARE different types in the nominal sense).
+"Option" is absent — optionality is handled via cardinality on the
+binding site.
 
-This is different from v1's `TypeId("Span")` which was ONLY a name
-with no structural information. In v2, the name is supplementary
-to the structure, not a replacement for it.
+## Layer 5: Pipeline Composition
 
-### MapType key constraint
+Each stage has a well-typed return. The pipeline is linear composition.
+Wrapper types (`StageResult`, `TokenizeResult`, `ParseStageResult`) are
+eliminated — each stage function already has a well-typed return.
 
-`MapType { key: TypeExpr, value: TypeExpr }` allows arbitrary key
-types in the AST (pre-typecheck). The typechecker enforces String-key
-constraint (S19). This is correct — the AST represents what the
-programmer wrote; the typechecker rejects what's invalid.
+## Concept layering
 
-## Review comments and resolutions (2026-03-11)
+**The key rule:** A higher layer may name a concept, but it should not
+explain it from scratch if a lower layer already can.
 
-### 1. Bootstrap target larger than the v2 model
-
-**Issue:** gist.dag depends on features not yet in core.dag: default
-parameters (`public: Bool = false`), `uses` clauses, `as` casts,
-and richer service blocks (`config`, `response`, `mock_response`).
-
-**Resolution:** The AST model needs expansion. The following are
-required for the gist.dag corpus:
-
-- `Param.default_value: Expr?` — already present in Field, add to Param
-- `uses` clause in func/service bodies — add `uses: List<ResourceUse>`
-  to FuncDef/ServiceDef
-- `as` cast expression — add `Cast { expr: Expr, target: TypeExpr }`
-  to Expr
-- Service `config` block — add `ServiceConfig` type to ServiceDef
-- `response` / `mock_response` in operations — add to OperationDef
-- Default parameter values in service operations (`Bool = false`) —
-  Field already has `default_value: Expr?`
-
-These will be added to core.dag as part of C3 (parser) work, since
-the parser needs to understand them to parse the corpus.
-
-### 2. Pure/effectful split in compile contract
-
-**Issue:** `compile(root, backend)` mixes pure compilation with
-filesystem discovery.
-
-**Resolution:** The pipeline should split into:
-- **Driver** (effectful): `discover_files(root) → List<SourceFile>`
-  using `Filesystem.read` with `TextFilePath`
-- **Compiler** (pure): `compile_sources(sources, backend) → CompileResult`
-  taking already-read source text
-
-The public entry point is the driver. The compiler core is pure and
-testable without I/O. `pipeline.dag` should reflect this split.
-
-### 3. Builtin type representation after typecheck
-
-**Issue:** The invariant "no Named TypeExpr survives" is too strong.
-Primitives (String, Int, Bool) have no structural form to resolve to.
-
-**Resolution:** Add a `Primitive` variant to TypeExpr for kernel types:
 ```
-type TypeExpr
-  = Named { ... }           // unresolved reference (pre-typecheck)
-  | Primitive { name: String }  // kernel type (String, Int, Bool, etc.)
-  | Product { ... }         // resolved record
-  | ...
+Concept Layer 0: Universal vocabulary (tautologies)
+  v2.std.span, v2.std.lex, v2.std.types, v2.std.http
+
+Concept Layer 1: Domain styles / protocol families
+  v2.std.rest, v2.std.resource, v2.std.service, v2.std.backend
+
+Concept Layer 2: Provider / backend facts
+  v2.targets.rust, v2.providers.github, v2.providers.gcp
+
+Concept Layer 3: Concrete services / concrete compiler constructs
+  v2.providers.github.gists, v2.targets.rust.type_emit
+
+Concept Layer 4: Workflows / tools / pipeline
+  v2.compiler.pipeline, v2.tools.codegen
 ```
 
-After typecheck, the invariant is: **no `Named` references remain.
-Every name has been resolved to either `Primitive` (kernel types),
-a structural form (Product, Coproduct, etc.), or a cycle-breaking
-`Named` reference to a type that IS defined in the module graph.**
+How layers intersect pipeline stages:
 
-### 4. Emitted test hermeticity
-
-**Issue:** gist.dag is networked/authenticated. What do emitted tests
-test?
-
-**Resolution:** Emitted tests are hermetic by default. They use
-`mock_response` data from the DSL source as test fixtures — no
-network, no credentials. This matches v1's DryRun tier. Live
-network tests are out of scope for bootstrap.
-
-The emitter consumes `mock_response` blocks in the DSL source and
-emits them as test fixtures in the target language:
-```rust
-// Emitted test (Rust)
-#[test]
-fn test_gist_create_dry_run() {
-    let mock = json!({"id": "gist-abc123", ...}); // from mock_response
-    let result = gist_create(mock_transport(201, mock));
-    assert!(result.url.starts_with("https://"));
-}
+```
+                    concept 0         concept 1         concept 2
+                    (tautologies)     (domain styles)   (provider facts)
+pipeline:tokenize   lex vocabulary      —                  —
+pipeline:parse      syntax, types       —                  —
+pipeline:typecheck  types, behavioral   service, resource  —
+pipeline:emit       types               backend            rust/python facts
 ```
 
-### 5. AST error recovery
+Splitting `core.dag` into 5-8 concept modules is not Phase 0 work —
+it runs alongside self-hosting. But new concepts go in the right
+layer, not appended to core.dag.
 
-**Issue:** The AST has no Error variants for partial parse results.
-LSP tooling needs partial ASTs.
+## Migration plan
 
-**Resolution:** Error recovery is deferred past bootstrap. The v2
-parser fails on first error for bootstrap (sufficient for a batch
-compiler). Error recovery nodes (`ErrorItem`, `ErrorExpr`) will be
-added when LSP support is prioritized — they're additive to the AST
-model, not a redesign.
+**Phase 0a: Canonical type homes.** Move semantic types to core.dag.
+Delete local redeclarations. ~1 session, zero semantic change.
 
-### 6. Self-hosting gap and intermediate milestones
+**Phase 0b: TypeExpr consolidation.** Rename `Named` → `Ref`,
+`Primitive` → `Atom`, etc. Remove `Container`, `MapType`, `Optional`.
+Update parser/typechecker/emitter. ~1-2 sessions.
 
-**Issue:** The gap between "compiles gist.dag" and "compiles itself"
-is large. The compiler uses deep pattern matching, recursive data
-structures, and stdlib dependencies.
+**Phase 0c: Eliminate wrapper types.** Delete the 11+ named wrapper
+types in typecheck.dag and pipeline.dag. Return anonymous records.
+~1 session.
 
-**Resolution:** The project plan (v2-project-plan.md) already defines
-per-stage milestones (C2 tokenizer → C3 parser → C4 resolver → C5
-typechecker → C6 emitter). Self-hosting adds intermediate milestones
-within Phase 5:
+**Phase 0d: OperationSemantics (deferred).** Post-self-hosting.
 
-1. v2 compiles gist.dag (Phase 4 deliverable)
-2. v2 compiles tokenize.dag (simpler — no service blocks, no resources)
-3. v2 compiles core.dag (type definitions only — no fn bodies)
-4. v2 compiles pipeline.dag (full compiler source)
-5. v2 output matches v1 output for all of the above (fixed point)
+## Open design work
 
-Each milestone exercises progressively more language features.
-The gap between 1 and 2 is small (tokenize.dag is simpler than
-gist.dag). The gap between 2 and 4 is where the real complexity
-lives (recursive TypeExpr, pattern matching in the parser).
+**OD1: Typed parser result shape.** Leading candidate: typed coproduct
+(`ParseVal`) replacing `Map` in `PR.val`, ~25 variants. Needs
+prototyping against parse.dag's error-propagation patterns.
+
+**OD2: Cardinality representation.** Finite coproduct
+(`Required | Optional | Many | AtLeastOne`) vs min/max range. Coproduct
+covers all current uses; range is more general.
+
+**OD3: Cardinality in return position.** Options: field on function def,
+return-type record, or model as coproduct (`Found | NotFound`).
+
+**OD4: ServiceConfig grounding.** Field set should match actual grammar,
+not be speculative.
