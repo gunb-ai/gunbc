@@ -154,6 +154,30 @@ intrinsic calls in return position.
 **S62:** `[when]` guards on `func` body service calls not lowered into DAG IR.
 Guards are silently dropped, making conditional service calls execute unconditionally.
 Discovered via IAM preflight incident (2026-03-09); affected code deleted.
+**S64:** `lower_expr().ok()` — 9 sites in lowerer silently discard lowering errors,
+producing partial DAGs with unwired edges and no diagnostic. Affected: service call
+arguments, conditional synthesis, match dispatch, list construction, string interpolation.
+Fix: propagate `Result` through all `lower_expr` call sites.
+**S65:** `std::env::var()` in lowerer — `resolve_profile_config_expr` performs
+environment I/O during a pure lowering pass (`lib.rs:1155`). Fix: separate profile
+config resolution step that produces resolved values as lowerer inputs.
+**S66:** `gunbc-resolve` depends on `daglang-driver` (layer 08 → layer 02), inverting
+the pipeline layer order. Resolver should receive compiled artifacts, not invoke
+compilation. Fix: move compilation into driver; resolver receives compiled artifacts.
+**S67:** `ValueType::Unknown` sentinel — 20+ sites in typechecker return `Unknown`
+instead of propagating inference failure. `Unknown` flows through to lowering unchecked.
+Fix: track unresolvable types as explicit errors; validate at typecheck→lower boundary.
+**S68:** Computation classification duplicated in typecheck and emit. Both
+`daglang-typecheck` (`classify_computation`, `classify_fn_body`) and `daglang-emit`
+(`computation.rs`) derive node classification from `LoweredOp`. Fix: stamp
+`Computation` on nodes at lowering time; consumers read, don't re-derive.
+**S69:** `EmitCollectionFamily` enum lives in `daglang-syntax` AST (`lib.rs:608`),
+coupling the parser to codegen concerns. Fix: move to emit or lower crate.
+**S70:** No input validation at emit stage boundary — `emit_rust_bundle` et al.
+take `ReachableDag<LoweredOp>` + `DerivedArtifacts` without checking completeness.
+Fix: validate input structure at emit entry points.
+**S71:** Thread-local `TmpCounter` in emit (`fn_codegen.rs:72–96`) makes temp name
+generation non-deterministic. Fix: explicit counter passed through emission functions.
 
 ---
 
