@@ -60,10 +60,9 @@ pub fn evaluate_stack(
 ) -> Result<HashMap<String, Value>, EvalError> {
     let (ctx, entry) = build_context(body, sibling_fns, data_values);
 
-    debug_assert!(
-        verify_anf_contract(&ctx).is_ok(),
-        "ANF violation: {}", verify_anf_contract(&ctx).unwrap_err()
-    );
+    if let Err(msg) = verify_anf_contract(&ctx) {
+        return Err(EvalError::new(format!("ANF contract violated: {msg}")));
+    }
 
     run_machine(entry, inputs, &ctx)
 }
@@ -186,12 +185,18 @@ fn no_call_in_branch(expr: &LoweredExpr, loc: &str) -> Result<(), String> {
 
 /// What eval_body decided to do.
 enum Step {
+    /// Body completed. Contains the output map.
     Return(HashMap<String, Value>),
+    /// Needs a sibling fn call. Always has a continuation (the work
+    /// remaining after the call returns). True tail calls — identity
+    /// continuations with no residual work — will be added when the
+    /// evaluator owns all control flow (no more block fallbacks).
     Call {
         callee: FnId,
         inputs: HashMap<String, Value>,
-        cont: Option<Continuation>,
+        cont: Continuation,
     },
+    /// Unrecoverable error.
     Error(String),
 }
 
@@ -205,7 +210,7 @@ enum StmtOutcome {
     NeedCall {
         callee: FnId,
         inputs: HashMap<String, Value>,
-        cont: Option<Continuation>,
+        cont: Continuation,
     },
     /// Unrecoverable error.
     Err(String),
@@ -266,14 +271,12 @@ fn run_machine(
                 }
             }
             Step::Call { callee, inputs, cont } => {
-                if let Some(c) = cont {
-                    if stack.len() >= MAX_STACK_DEPTH {
-                        return Err(EvalError::new(format!(
-                            "max stack depth ({MAX_STACK_DEPTH}) exceeded"
-                        )));
-                    }
-                    stack.push(c);
+                if stack.len() >= MAX_STACK_DEPTH {
+                    return Err(EvalError::new(format!(
+                        "max stack depth ({MAX_STACK_DEPTH}) exceeded"
+                    )));
                 }
+                stack.push(cont);
                 fn_id = callee;
                 pc = 0;
                 env = make_initial_env(&inputs, ctx.data_values);
@@ -376,12 +379,12 @@ fn eval_stmt_let(
                 Ok(inputs) => StmtOutcome::NeedCall {
                     callee: callee_id,
                     inputs,
-                    cont: Some(Continuation {
+                    cont: Continuation {
                         fn_id, pc: stmt_idx + 1,
                         binding: Some(name.to_string()),
                         projection: Projection::ReturnField,
                         env: env.clone(),
-                    }),
+                    },
                 },
                 Err(msg) => StmtOutcome::Err(msg),
             }
@@ -426,12 +429,12 @@ fn eval_stmt_expr(
                 Ok(inputs) => StmtOutcome::NeedCall {
                     callee: callee_id,
                     inputs,
-                    cont: Some(Continuation {
+                    cont: Continuation {
                         fn_id, pc: stmt_idx + 1,
                         binding: None,
                         projection: Projection::ReturnField,
                         env: env.clone(),
-                    }),
+                    },
                 },
                 Err(msg) => StmtOutcome::Err(msg),
             }
@@ -869,11 +872,15 @@ fn eval_call_args(
     Ok(inputs)
 }
 
+/// Nested stack evaluation for sibling calls inside block expressions.
+/// Creates an inner evaluate_stack invocation with its own heap stack.
+/// Native stack depth: O(expression nesting) — bounded by AST depth,
+/// NOT by the fn-to-fn call chain depth (which the inner machine handles).
 fn eval_sibling_recursive(
     callee_id: FnId, inputs: &HashMap<String, Value>, ctx: &EvalContext,
 ) -> Result<Value, String> {
     let body = ctx.fns[callee_id];
-    let outputs = crate::eval::evaluate_fn_body_old(body, inputs, ctx.sibling_fns, ctx.data_values)
+    let outputs = evaluate_stack(body, inputs, ctx.sibling_fns, ctx.data_values)
         .map_err(|e| e.message)?;
     Ok(extract_projection(&Projection::ReturnField, &outputs))
 }

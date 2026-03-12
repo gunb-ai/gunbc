@@ -54,18 +54,6 @@ pub fn evaluate_fn_body_stack(
     crate::eval_stack::evaluate_stack(body, inputs, sibling_fns, data_values)
 }
 
-/// Direct recursive evaluation — used by eval_stack as fallback for calls
-/// inside Block expressions. Bypasses evaluate_fn_body_with_data to avoid
-/// mutual recursion when the public API routes to evaluate_stack.
-pub fn evaluate_fn_body_old(
-    body: &LoweredFnBody,
-    inputs: &HashMap<String, Value>,
-    sibling_fns: &HashMap<String, LoweredFnBody>,
-    data_values: &HashMap<String, Value>,
-) -> Result<HashMap<String, Value>, EvalError> {
-    eval_fn_body_rc(body, inputs, sibling_fns, Rc::new(data_values.clone()), 0, None)
-}
-
 /// Bridge for the explicit-stack evaluator: evaluate a non-sibling call
 /// (intrinsic/built-in) using the old evaluator's infrastructure.
 pub fn eval_non_sibling_call(
