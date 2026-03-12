@@ -391,7 +391,16 @@ fn eval_stmt_let(
                 Err(e)     => outcome_from_eval_error(e),
             }
         }
-        CallKind::NotACall => {
+        CallKind::ContainsCalls => {
+            // Expression contains calls in blocks/branches. Using eval_expr
+            // would leak to native recursion. Route through resolve_call_value
+            // which handles sibling calls via the old evaluator (bounded depth).
+            match resolve_call_value(expr, env, ctx) {
+                Ok(value)  => { bind_let_result(env, name.to_string(), &value); StmtOutcome::Continue }
+                Err(e)     => outcome_from_eval_error(e),
+            }
+        }
+        CallKind::Pure => {
             match eval_expr(expr, env, ctx) {
                 Ok(value)  => { bind_let_result(env, name.to_string(), &value); StmtOutcome::Continue }
                 Err(e)     => outcome_from_eval_error(e),
@@ -433,7 +442,7 @@ fn eval_stmt_expr(
                 Err(e)               => outcome_from_eval_error(e),
             }
         }
-        CallKind::NotACall if is_last => {
+        CallKind::ContainsCalls if is_last => {
             match eval_trailing(expr, env, ctx) {
                 Step::Return(r) => StmtOutcome::Done(r),
                 Step::Call { callee, inputs, cont } =>
@@ -441,7 +450,21 @@ fn eval_stmt_expr(
                 Step::Error(msg) => StmtOutcome::Err(msg),
             }
         }
-        CallKind::NotACall => {
+        CallKind::ContainsCalls => {
+            match resolve_call_value(expr, env, ctx) {
+                Ok(_)  => StmtOutcome::Continue,
+                Err(e) => outcome_from_eval_error(e),
+            }
+        }
+        CallKind::Pure if is_last => {
+            match eval_trailing(expr, env, ctx) {
+                Step::Return(r) => StmtOutcome::Done(r),
+                Step::Call { callee, inputs, cont } =>
+                    StmtOutcome::NeedCall { callee, inputs, cont },
+                Step::Error(msg) => StmtOutcome::Err(msg),
+            }
+        }
+        CallKind::Pure => {
             match eval_expr(expr, env, ctx) {
                 Ok(_)  => StmtOutcome::Continue,
                 Err(e) => outcome_from_eval_error(e),
@@ -469,20 +492,71 @@ fn eval_stmt_return(
 // ── 3e. Call classification ─────────────────────────────────────────────────
 
 enum CallKind {
+    /// Top-level Call to a sibling fn — suspend to the heap stack.
     SiblingFn(FnId),
+    /// Top-level Call to a builtin/intrinsic — evaluate inline.
     Builtin,
-    NotACall,
+    /// Not a Call, but contains calls in descendant blocks/branches.
+    /// Must NOT go to eval_expr (which would leak to native recursion).
+    /// Routed through resolve_call_value which handles sibling calls
+    /// via the old evaluator as a bounded-depth fallback.
+    ContainsCalls,
+    /// Pure expression — safe for eval_expr (no calls anywhere).
+    Pure,
 }
 
-/// Pure: (expr, ctx) → is this a sibling call, a builtin call, or not a call?
+/// Pure: (expr, ctx) → classify how this expression should be evaluated.
+///
+/// The critical distinction: `Pure` means eval_expr will never encounter
+/// a Call node anywhere in the tree. `ContainsCalls` means there are calls
+/// hidden inside blocks/branches that eval_expr would silently route to
+/// native recursion — these must go through resolve_call_value instead.
 fn classify_call(expr: &LoweredExpr, ctx: &EvalContext) -> CallKind {
     if let LoweredExpr::Call { name, .. } = expr {
         match ctx.fn_index.get(name.as_str()) {
             Some(&id) => CallKind::SiblingFn(id),
             None      => CallKind::Builtin,
         }
+    } else if expr_contains_call(expr) {
+        CallKind::ContainsCalls
     } else {
-        CallKind::NotACall
+        CallKind::Pure
+    }
+}
+
+fn expr_contains_call(expr: &LoweredExpr) -> bool {
+    match expr {
+        LoweredExpr::Call { .. } => true,
+        LoweredExpr::Literal(_) | LoweredExpr::Ident(_) | LoweredExpr::Lambda { .. } => false,
+        LoweredExpr::FieldAccess { expr, .. } | LoweredExpr::UnaryOp { expr, .. } =>
+            expr_contains_call(expr),
+        LoweredExpr::BinOp { left, right, .. } =>
+            expr_contains_call(left) || expr_contains_call(right),
+        LoweredExpr::StringInterp(parts) => parts.iter().any(|p| match p {
+            LoweredStringPart::Expr(e) => expr_contains_call(e),
+            _ => false,
+        }),
+        LoweredExpr::IfElse { cond, then_, else_ } =>
+            expr_contains_call(cond) || expr_contains_call(then_)
+                || else_.as_ref().is_some_and(|e| expr_contains_call(e)),
+        LoweredExpr::Match { expr, arms } =>
+            expr_contains_call(expr)
+                || arms.iter().any(|a| expr_contains_call(&a.body)
+                    || a.guard.as_ref().is_some_and(|g| expr_contains_call(g))),
+        LoweredExpr::List(items) => items.iter().any(expr_contains_call),
+        LoweredExpr::Block(stmts) => stmts.iter().any(stmt_contains_call),
+        LoweredExpr::Record { fields, .. } | LoweredExpr::VariantConstruct { fields, .. } =>
+            fields.iter().any(|(_, e)| expr_contains_call(e)),
+        LoweredExpr::For { iterable, body, .. } =>
+            expr_contains_call(iterable) || expr_contains_call(body),
+        LoweredExpr::Return(fields) => fields.iter().any(|(_, e)| expr_contains_call(e)),
+    }
+}
+
+fn stmt_contains_call(stmt: &LoweredStmt) -> bool {
+    match stmt {
+        LoweredStmt::Let(_, e) | LoweredStmt::Expr(e) => expr_contains_call(e),
+        LoweredStmt::Return(fields) => fields.iter().any(|(_, e)| expr_contains_call(e)),
     }
 }
 
@@ -611,7 +685,7 @@ fn resolve_call_value(expr: &LoweredExpr, env: &Env, ctx: &EvalContext) -> Resul
                 .map_err(|msg| EvalError::new(msg))
         }
         CallKind::Builtin => eval_non_sibling_call(expr, env, ctx),
-        CallKind::NotACall => eval_expr(expr, env, ctx),
+        CallKind::ContainsCalls | CallKind::Pure => eval_expr(expr, env, ctx),
     }
 }
 
