@@ -47,7 +47,7 @@ pub fn evaluate_fn_body_with_data(
     sibling_fns: &HashMap<String, LoweredFnBody>,
     data_values: &HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, EvalError> {
-    eval_fn_body_rc(body, inputs, sibling_fns, Rc::new(data_values.clone()), 0, None)
+    crate::eval_stack::evaluate_stack(body, inputs, sibling_fns, data_values)
 }
 
 /// Explicit-stack variant: uses heap continuations instead of native recursion.
