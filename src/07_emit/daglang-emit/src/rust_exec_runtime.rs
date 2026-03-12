@@ -337,7 +337,8 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerClassification> {
                 | ObligationCategory::ServiceTransportExecute
                 | ObligationCategory::ServiceTransportParse,
             ..
-        } => {
+        }
+        | LoweredOp::Transport { .. } => {
             return Some(HandlerClassification::Handler(HandlerKind::Passthrough));
         }
         LoweredOp::Callable { .. } => {}
@@ -369,7 +370,9 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerClassification> {
     let handler = |h| Some(HandlerClassification::Handler(h));
 
     let obligation = match op {
-        LoweredOp::Callable { obligation, .. } => Some(*obligation),
+        LoweredOp::Callable { obligation, .. } | LoweredOp::Transport { obligation, .. } => {
+            Some(*obligation)
+        }
         LoweredOp::Pipeline { .. } => None,
         _ => return None,
     };
@@ -1179,7 +1182,6 @@ mod tests {
                 kind: CallableKind::Fn,
                 name: "something".to_string(),
                 obligation: ObligationCategory::None,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1244,7 +1246,6 @@ mod tests {
             kind: CallableKind::Pattern,
             name: "file_content_matches".into(),
             obligation: ObligationCategory::None,
-            service_metadata: None,
             is_interactive: false,
             resource_target: None,
             fn_body: None,
@@ -1260,7 +1261,6 @@ mod tests {
             kind: CallableKind::Pattern,
             name: "service_transport::prepare::workflow.ControlPlane::AcquireStageClaim".into(),
             obligation: ObligationCategory::ServiceTransportPrepare,
-            service_metadata: None,
             is_interactive: false,
             resource_target: None,
             fn_body: None,
@@ -1279,7 +1279,6 @@ mod tests {
             kind: CallableKind::Fn,
             name: "some_op".into(),
             obligation,
-            service_metadata: None,
             is_interactive: false,
             resource_target: None,
             fn_body: None,
@@ -1326,7 +1325,6 @@ mod tests {
                 kind: CallableKind::Fn,
                 name: "render_clippy_toml".to_string(),
                 obligation: ObligationCategory::None,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,

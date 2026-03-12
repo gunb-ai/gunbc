@@ -18,6 +18,45 @@
 //! which is then lowered to target-specific IR.
 
 // ---------------------------------------------------------------------------
+// EmitCollectionFamily
+// ---------------------------------------------------------------------------
+
+/// Emit-level collection family for code generation classification.
+///
+/// Collapses the fine-grained `CollectionKind` into four families that
+/// correspond to distinct codegen strategies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmitCollectionFamily {
+    Map,
+    Filter,
+    Fold,
+    Sort,
+}
+
+/// Classify a collection op kind into an emit-level family.
+pub fn collection_emit_family(
+    kind: &daglang_lower::CollectionOpKind,
+) -> EmitCollectionFamily {
+    use daglang_lower::CollectionOpKind;
+    match kind {
+        CollectionOpKind::Map
+        | CollectionOpKind::FlatMap
+        | CollectionOpKind::Join
+        | CollectionOpKind::Split
+        | CollectionOpKind::Zip
+        | CollectionOpKind::Enumerate => EmitCollectionFamily::Map,
+        CollectionOpKind::Filter | CollectionOpKind::Contains | CollectionOpKind::Skip => {
+            EmitCollectionFamily::Filter
+        }
+        CollectionOpKind::Fold
+        | CollectionOpKind::Any
+        | CollectionOpKind::All
+        | CollectionOpKind::Len => EmitCollectionFamily::Fold,
+        CollectionOpKind::Sort | CollectionOpKind::Dedup => EmitCollectionFamily::Sort,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Computation
 // ---------------------------------------------------------------------------
 
@@ -258,7 +297,6 @@ pub struct ServiceCallMetadata {
 use daglang_lower::{
     LoweredOp, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind, ServiceTransportClass,
 };
-use daglang_syntax::ast::EmitCollectionFamily;
 use gunbc_ir::node::{Node, NodeBody};
 use gunbc_ir::Port;
 
@@ -316,13 +354,19 @@ pub fn classify_computation(node: &Node<LoweredOp>) -> Result<Computation, Class
             module,
             name,
             obligation,
+            ..
+        } => classify_callable(module, name, *obligation, None, inputs, outputs),
+        LoweredOp::Transport {
+            module,
+            name,
+            obligation,
             service_metadata,
             ..
         } => classify_callable(
             module,
             name,
             *obligation,
-            service_metadata.as_deref(),
+            Some(service_metadata),
             inputs,
             outputs,
         ),
@@ -481,7 +525,7 @@ fn classify_collection(
         .unwrap_or_else(|| "Unknown".to_string());
 
     Ok(Computation::Collection {
-        family: daglang_lower::collection_emit_family(kind),
+        family: collection_emit_family(kind),
         element_type,
     })
 }
@@ -494,6 +538,12 @@ fn classify_callable(
     inputs: Vec<TypedPort>,
     outputs: Vec<TypedPort>,
 ) -> Result<Computation, ClassifyError> {
+    let require_metadata = || {
+        service_metadata.ok_or_else(|| ClassifyError::UnrecognizedOp {
+            node_id: name.to_string(),
+            detail: "transport obligation without service metadata".into(),
+        })
+    };
     match obligation {
         ObligationCategory::ResourceAcquire | ObligationCategory::ResourceProvide => {
             let handle_type = outputs
@@ -507,7 +557,7 @@ fn classify_callable(
         }
 
         ObligationCategory::ServiceTransportExecute => {
-            let transport_kind = infer_transport_kind(name, service_metadata);
+            let transport_kind = infer_transport_kind(name, require_metadata()?);
             Ok(Computation::Transport {
                 prepare: RequestSpec {
                     input_ports: inputs.iter().map(|p| p.name.clone()).collect(),
@@ -596,36 +646,28 @@ fn classify_callable(
     }
 }
 
-/// Infer the [`TransportKind`] from service metadata and name heuristics.
+/// Derive [`TransportKind`] from required service metadata.
+///
+/// Since D (LoweredOp::Transport has required metadata), the name-based
+/// heuristic fallback is gone. The transport class comes from the DSL
+/// service definition's transport binding.
 fn infer_transport_kind(
     name: &str,
-    service_metadata: Option<&daglang_lower::ServiceCallMetadata>,
+    service_metadata: &daglang_lower::ServiceCallMetadata,
 ) -> TransportKind {
-    if let Some(meta) = service_metadata {
-        return match meta.transport {
-            ServiceTransportClass::FileBoundary => {
-                if name.contains("read") {
-                    TransportKind::FileRead
-                } else {
-                    TransportKind::FileWrite
-                }
+    match service_metadata.transport {
+        ServiceTransportClass::FileBoundary => {
+            if name.contains("read") {
+                TransportKind::FileRead
+            } else {
+                TransportKind::FileWrite
             }
-            ServiceTransportClass::ShellLocal => TransportKind::ShellExec,
-            ServiceTransportClass::RestNetwork => TransportKind::HttpRequest,
-            ServiceTransportClass::LocalDirect => TransportKind::ShellExec,
-            ServiceTransportClass::Unknown => TransportKind::ShellExec,
-            // InterfaceStub: auto-mocked in DryRun; Real mode errors before transport.
-            // Classified as ShellExec for emit purposes (execute node is intercepted).
-            ServiceTransportClass::InterfaceStub => TransportKind::ShellExec,
-        };
-    }
-    // Fallback: infer from name
-    if name.contains("read") {
-        TransportKind::FileRead
-    } else if name.contains("write") {
-        TransportKind::FileWrite
-    } else {
-        TransportKind::ShellExec
+        }
+        ServiceTransportClass::ShellLocal => TransportKind::ShellExec,
+        ServiceTransportClass::RestNetwork => TransportKind::HttpRequest,
+        ServiceTransportClass::LocalDirect => TransportKind::ShellExec,
+        ServiceTransportClass::Unknown => TransportKind::ShellExec,
+        ServiceTransportClass::InterfaceStub => TransportKind::ShellExec,
     }
 }
 
@@ -802,7 +844,6 @@ mod tests {
                 kind: CallableKind::Fn,
                 name: "load_registry".into(),
                 obligation: ObligationCategory::PureDataLoad,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -829,7 +870,6 @@ mod tests {
                 kind: CallableKind::Fn,
                 name: "render_makefile".into(),
                 obligation: ObligationCategory::PureRender,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -997,7 +1037,6 @@ mod tests {
                 kind: CallableKind::Fn,
                 name: "fs_env".into(),
                 obligation: ObligationCategory::ResourceProvide,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1021,7 +1060,6 @@ mod tests {
                 kind: CallableKind::Func,
                 name: "makegen".into(),
                 obligation: ObligationCategory::None,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1045,7 +1083,6 @@ mod tests {
                 kind: CallableKind::Fn,
                 name: "render_clippy".into(),
                 obligation: ObligationCategory::PureRender,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1072,7 +1109,6 @@ mod tests {
                 kind: CallableKind::Fn,
                 name: "render_allowlist".into(),
                 obligation: ObligationCategory::PureRender,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1099,7 +1135,6 @@ mod tests {
                 kind: CallableKind::Fn,
                 name: "render_lint_policy".into(),
                 obligation: ObligationCategory::PureRender,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1200,7 +1235,6 @@ mod tests {
                 kind: CallableKind::Fn,
                 name: "acquire_filesystem".into(),
                 obligation: ObligationCategory::ResourceAcquire,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1224,15 +1258,14 @@ mod tests {
             "execute_cmd",
             vec![scalar("request", "TransportRequest")],
             vec![scalar("response", "TransportResponse")],
-            LoweredOp::Callable {
+            LoweredOp::Transport {
                 module: "svc.local".into(),
                 kind: CallableKind::Func,
                 name: "run_command".into(),
                 obligation: ObligationCategory::ServiceTransportExecute,
-                service_metadata: Some(Box::new(meta)),
+                service_metadata: Box::new(meta),
                 is_interactive: false,
                 resource_target: None,
-                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1262,15 +1295,14 @@ mod tests {
             "execute_list_repos",
             vec![scalar("request", "TransportRequest")],
             vec![scalar("response", "TransportResponse")],
-            LoweredOp::Callable {
+            LoweredOp::Transport {
                 module: "svc.github".into(),
                 kind: CallableKind::Func,
                 name: "list_repos".into(),
                 obligation: ObligationCategory::ServiceTransportExecute,
-                service_metadata: Some(Box::new(meta)),
+                service_metadata: Box::new(meta),
                 is_interactive: false,
                 resource_target: None,
-                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1297,15 +1329,14 @@ mod tests {
             "prepare_list_repos",
             vec![scalar("token", "String")],
             vec![scalar("request", "TransportRequest")],
-            LoweredOp::Callable {
+            LoweredOp::Transport {
                 module: "svc.github".into(),
                 kind: CallableKind::Func,
                 name: "prepare_list_repos".into(),
                 obligation: ObligationCategory::ServiceTransportPrepare,
-                service_metadata: Some(Box::new(meta)),
+                service_metadata: Box::new(meta),
                 is_interactive: false,
                 resource_target: None,
-                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1458,7 +1489,6 @@ mod tests {
                 kind: CallableKind::Fn,
                 name: "transform".into(),
                 obligation: ObligationCategory::None,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1480,7 +1510,6 @@ mod tests {
                     kind: CallableKind::Func,
                     name: "read_file".into(),
                     obligation: ObligationCategory::None,
-                    service_metadata: None,
                     is_interactive: false,
                     resource_target: None,
                     fn_body: None,
@@ -1504,7 +1533,6 @@ mod tests {
                     kind: CallableKind::Func,
                     name: "prepare".into(),
                     obligation: ObligationCategory::None,
-                    service_metadata: None,
                     is_interactive: false,
                     resource_target: None,
                     fn_body: None,

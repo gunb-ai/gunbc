@@ -12,7 +12,7 @@ use crate::computation::{
     AggregateKind, Computation, JsonOpKind, PureBody, StringOpKind, TransportKind,
 };
 use crate::plan::{EmitPlan, EmitStep, InputBinding};
-use daglang_syntax::ast::EmitCollectionFamily;
+use crate::computation::EmitCollectionFamily;
 use gunbc_ir::code_ir::{CallObligation, Expr, FnDef, Item, SourceFile, Stmt};
 use gunbc_ir::ValueExpr;
 

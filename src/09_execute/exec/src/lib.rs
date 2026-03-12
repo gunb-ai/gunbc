@@ -1,30 +1,29 @@
-//! gunbc-exec: Execution engine for gunbc DAGs.
+//! **Stage 9 — Execute**: Transforms a `Dag<DynOp>` + `ExecutionMode`
+//! into an execution log and node outputs.
 //!
-//! This crate provides:
-//! - [`Executable`]: Trait for operations that can be executed
-//! - [`execute_dag`]: Execute a DAG with the given configuration
-//! - [`lower`]: Flatten sub-DAGs into a single flat DAG
-//! - [`CiContext`]: Runtime CI context for emitting workflow commands
+//! # Pipeline position
 //!
-//! # Dry-Run via Transport Interception
+//! - **Before**: [`resolve`] has produced a `Dag<DynOp>` of executable ops
+//! - **After**: caller consumes execution results (logs, outputs, progress)
 //!
-//! Dry-run is not a flag threaded through operations. It's an execution mode
-//! that intercepts **transport execution nodes** - nodes that consume
-//! `TransportRequest` values. This follows the design principle:
+//! # Sequential steps
 //!
-//! > "World I/O is performed only by transport executor nodes"
-//! > "DryRun intercepts transport execution nodes, not boundary outputs"
+//! 1. Flatten sub-DAGs into a single flat DAG (`lower`)
+//! 2. Topologically sort nodes for execution order
+//! 3. Execute each node by calling its `Executable::execute` impl
+//! 4. In `DryRun` mode, intercept transport execution nodes with mocks
+//! 5. Emit progress events and CI workflow commands (`CiContext`)
+//! 6. Collect execution log entries and node outputs
 //!
-//! This ensures:
-//! - Pure nodes always execute (they can't do I/O)
-//! - Transport executors are replaced with mocks
-//! - Boundaries are just interface definitions, not interception points
+//! # Purity
 //!
-//! # CI Context
+//! Delegates I/O to the transport layer. Pure nodes always execute;
+//! transport executors perform real I/O (or are mocked in DryRun).
 //!
-//! When executing in a CI environment (GitHub Actions, GitLab CI, etc.),
-//! [`CiContext`] automatically emits workflow commands to create collapsible
-//! log groups around DAG nodes, emit annotations for errors, etc.
+//! # Failure
+//!
+//! Returns `ExecError` with layered diagnostics (transport, auth, shell,
+//! HTTP, filesystem context).
 
 #![deny(dead_code)]
 pub mod box_draw;
