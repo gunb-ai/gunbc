@@ -1,27 +1,25 @@
-//! daglang-syntax: Lexer and parser for the .dag DSL.
+//! **Stage 1 — Parse**: Transforms `&str` source text into an unresolved
+//! `SourceFile` AST.
 //!
-//! Produces an unresolved AST from `.dag` source files. The AST preserves
-//! all syntactic information needed by later phases (resolve, typecheck,
-//! lower) without performing any semantic analysis.
+//! # Pipeline position
 //!
-//! # Supported declarations
+//! - **Before**: raw `.dag` source text (from filesystem or embedded string)
+//! - **After**: [`daglang-resolve`] discovers imports and builds a `ModuleGraph`
 //!
-//! - `module` -- module path declaration
-//! - `import` -- import with optional selective bindings
-//! - `type`   -- records, enums/sums, refinements, generics
-//! - `fn`     -- pure functions (no I/O, no side effects)
-//! - `func`   -- effectful functions (can call services, use resources)
-//! - `pattern` -- reusable DAG templates (compile-time expansion)
-//! - `service` -- external service declarations with operations
-//! - `resource` -- resource declarations with acquire/release/capability
-//! - `interface` -- abstract capability contracts with `contract` declarations
-//! - `pipeline` -- multi-stage pipeline declarations
-//! - `profile` -- deployment profile interface bindings
+//! # Sequential steps
 //!
-//! # Golden targets
+//! 1. Lex source text into a token stream (`lexer`)
+//! 2. Parse token stream into `SourceFile` AST (`parser`)
+//! 3. Preserve all syntactic information (spans, declarations) without
+//!    performing any semantic analysis
 //!
-//! The `.dag` files in `dsl/` are the spec examples that this parser must
-//! handle. Start with `dsl/tools/readme.dag` and work outward.
+//! # Purity
+//!
+//! Pure — no side effects. Operates entirely on an in-memory `&str` slice.
+//!
+//! # Failure
+//!
+//! Returns `ParseError` with byte-offset `Span` for each syntax error.
 
 pub mod ast_utils;
 pub mod callable;

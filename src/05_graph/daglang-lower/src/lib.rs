@@ -1,20 +1,28 @@
-//! daglang-lower: Lowers typed .dag AST to gunbc GraphIR.
-//!
-//! Transforms the high-level typed AST into gunbc's existing IR types
-//! (`Dag`, `Node`, `Port`, `Edge`). This is where:
-//!
-//! - Pattern expansion happens (`content_upsert` → read/compare/write chain)
-//! - Service calls become transport triplets (prepare/execute/parse)
-//! - Resource `acquire` blocks become acquisition DAG nodes
-//! - `fn` body collection ops (`map`, `filter`, `fold`) become IR-level
-//!   `MapNode`, `FilterNode`, `FoldNode` for data-parallel execution
-//! - `interface` resolution replaces abstract types with concrete resources
+//! **Stage 4 — Lower**: Transforms a `TypedProject` + `LoweringConfig`
+//! into a `LowerOutput` containing `Dag<LoweredOp>` and metadata.
 //!
 //! # Pipeline position
 //!
-//! ```text
-//! TypedAST → [daglang-lower] → GraphIR (gunbc Dag/Node/Port/Edge)
-//! ```
+//! - **Before**: [`daglang-typecheck`] has produced a `TypedProject`
+//! - **After**: [`daglang-derive`] extracts manifests, obligations, and metadata
+//!
+//! # Sequential steps
+//!
+//! 1. Expand patterns (`content_upsert` → read/compare/write chain)
+//! 2. Lower service calls to transport triplets (prepare/execute/parse)
+//! 3. Lower resource `acquire`/`release` blocks to DAG nodes
+//! 4. Lower collection ops (`map`, `filter`, `fold`) to IR-level nodes
+//! 5. Resolve `interface` bindings to concrete resources
+//! 6. Emit `Dag<LoweredOp>` with `Node`/`Port`/`Edge` IR
+//!
+//! # Purity
+//!
+//! Pure — the `env_resolver` is injected but not called by the lowerer
+//! itself. No filesystem or network access.
+//!
+//! # Failure
+//!
+//! Returns `LowerError` with diagnostic context.
 
 // RT-C4: LoweringConfig groups the 4 boolean/optional lowerer parameters.
 

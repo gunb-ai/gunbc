@@ -1,24 +1,28 @@
-//! daglang-typecheck: Type checking and interface resolution.
-//!
-//! Validates that all types are well-formed, all references resolve to
-//! compatible types, refinement constraints are satisfiable, and
-//! `implements` clauses are fulfilled.
+//! **Stage 3 — Typecheck**: Transforms a `ModuleGraph` into a
+//! `TypedProject` (typed AST + type registry).
 //!
 //! # Pipeline position
 //!
-//! ```text
-//! ResolvedAST → [daglang-typecheck] → TypedAST
-//! ```
+//! - **Before**: [`daglang-resolve`] has built a dependency-ordered `ModuleGraph`
+//! - **After**: [`daglang-lower`] lowers the typed AST to `Dag<LoweredOp>`
 //!
-//! # Key responsibilities
+//! # Sequential steps
 //!
-//! - Record and sum type validation
-//! - Refinement type constraint checking (`@range`, `@pattern`, etc.)
-//! - Generic type instantiation (`List<T>`, `Map<K,V>`, `Queue<T>`)
-//! - Interface conformance (`resource X implements Y` — all capabilities present)
-//! - `CloudConfig` sum type → provider resolution at compile time
-//! - `contract` declaration validation (behavioral specs are well-typed)
-//! - Subtyping via the bounded lattice (§4.1.4 of dsl-design.md)
+//! 1. Validate record and sum type definitions
+//! 2. Check refinement constraints (`@range`, `@pattern`, etc.)
+//! 3. Instantiate generic types (`List<T>`, `Map<K,V>`, `Queue<T>`)
+//! 4. Verify interface conformance (`resource X implements Y`)
+//! 5. Resolve `contract` declarations and subtyping via bounded lattice
+//! 6. Produce `TypedProject` with fully resolved type information
+//!
+//! # Purity
+//!
+//! Pure — no side effects. Operates entirely on the in-memory module graph.
+//!
+//! # Failure
+//!
+//! Returns `Vec<TypeError>` wrapped in `Verdict<TypedProject>` when
+//! validation fails.
 
 use std::collections::{HashMap, HashSet};
 

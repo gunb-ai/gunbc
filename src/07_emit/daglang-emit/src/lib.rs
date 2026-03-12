@@ -1,31 +1,28 @@
-//! daglang-emit: CodegenBackend trait and Rust backend.
-//!
-//! The final compiler phase: emit runnable code from GraphIR + derived
-//! metadata. Each backend implements `CodegenBackend` to produce
-//! target-language code.
+//! **Stage 6 — Emit**: Transforms a `ReachableDag<LoweredOp>` +
+//! `DerivedArtifacts` into an `EmissionBundle` of generated source files
+//! for Rust, Go, C, and MIPS backends.
 //!
 //! # Pipeline position
 //!
-//! ```text
-//! GraphIR + ProgressManifest + TestObligations
-//!   → [daglang-emit] → Rust source files (Phase 1)
-//!                     → Go source files (Phase 4)
-//! ```
+//! - **Before**: [`daglang-derive`] has produced `DerivedArtifacts`
+//! - **After**: [`daglang-driver`] assembles final `CompileOutput`
 //!
-//! # What gets emitted per module
+//! # Sequential steps
 //!
-//! ```text
-//! tools/example.dag
-//!   ├── types/      Type definitions (records, enums)
-//!   ├── fn/         Pure functors → target language functions
-//!   ├── transport/  Transport wiring (HTTP, shell, file)
-//!   ├── func/       DAG orchestrator (topo-scheduled execution)
-//!   ├── cli/        CLI entrypoint (arg parsing from func inputs)
-//!   ├── test/       Test harness (4-bucket obligations)
-//!   ├── mock/       MockSpec (from service declarations)
-//!   ├── manifest/   ProgressManifest (static, from topology)
-//!   └── makefile/   Makefile target (from module metadata)
-//! ```
+//! 1. Collect reachable symbols from the DAG (dead-path pruning via FC-14)
+//! 2. Emit per-backend source files (types, functions, transport wiring,
+//!    CLI entrypoints, test harnesses, mock specs, progress manifests)
+//! 3. Emit service transport code per language (REST, shell, file)
+//! 4. Emit middleware config manifests (TL-14)
+//! 5. Package all files into an `EmissionBundle` with summary metadata
+//!
+//! # Purity
+//!
+//! Pure — no side effects. All output is returned as in-memory strings.
+//!
+//! # Failure
+//!
+//! Returns `EmitError` (unsupported construct, invalid node, missing asset).
 
 // ── Task-owned modules (dsl-codegen-tasks.md) ──────────────────────
 // Wave 1

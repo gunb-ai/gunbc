@@ -1,23 +1,30 @@
-//! daglang-derive: Derives ProgressManifest, TestObligations, TransportTriplets,
-//! and ToolMetadata.
-//!
-//! After lowering to GraphIR, the derive phase extracts higher-level
-//! information needed by renderers, test generation, and tooling:
-//!
-//! - **ProgressManifest**: topology, waves, SubDag boundaries, parallel
-//!   groups, scatter points, stage groups — used by all progress renderers
-//! - **TestObligations**: 4-bucket test obligations derived from DAG structure
-//!   and `mock_response` / `contract` declarations
-//! - **TransportTriplets**: prepare→execute→parse transport chains with metadata
-//! - **ToolMetadata**: CLI entrypoints, Makefile targets, tool descriptions
+//! **Stage 5 — Derive**: Transforms a `Dag<LoweredOp>` into
+//! `DerivedArtifacts` (progress manifest, test obligations, transport
+//! triplets, tool metadata).
 //!
 //! # Pipeline position
 //!
-//! ```text
-//! Validated GraphIR → [daglang-derive] → ProgressManifest
-//!                                      → TestObligations
-//!                                      → ToolMetadata
-//! ```
+//! - **Before**: [`daglang-lower`] has produced a `Dag<LoweredOp>`
+//! - **After**: [`daglang-emit`] generates source files from the DAG + artifacts
+//!
+//! # Sequential steps
+//!
+//! 1. Compute execution waves (topological depth partitioning)
+//! 2. Build `ProgressManifest` (topology, parallel groups, SubDag boundaries,
+//!    scatter points, stage groups, capture modes, resources)
+//! 3. Derive `TestObligations` (transport, hermetic, lifecycle, contract buckets)
+//! 4. Discover `TransportTriplets` (prepare→execute→parse chains)
+//! 5. Extract `ToolMetadata` (per-module callable/pipeline counts)
+//! 6. Derive per-callable structural properties via graph walk
+//!
+//! # Purity
+//!
+//! Pure — no side effects. Operates entirely on the in-memory DAG.
+//!
+//! # Failure
+//!
+//! Returns `DeriveError` when the graph is invalid (empty, cyclic, or
+//! structurally inconsistent).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 

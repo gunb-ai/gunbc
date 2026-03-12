@@ -1,14 +1,27 @@
-//! Direct interpreter for `VerifiedDag<LoweredOp>`.
+//! **Stage 10 — Interpret**: Transforms a `LoweredOp` + inputs into
+//! `HashMap<String, Value>` node outputs via direct dispatch.
 //!
-//! Dispatches on `LoweredOp` variants directly:
-//! - `Primitive` pure ops → `daglang_eval` functions
-//! - `Callable` with fn body → `evaluate_fn_body`
-//! - `Collection` → `evaluate_collection`
-//! - Transport ops → `gunbc_lib_transport` layer
+//! # Pipeline position
 //!
-//! No DynOp translation step — the interpreter reads the lowered IR and
-//! executes it in place. This eliminates the `resolve` → `execute` two-pass
-//! architecture.
+//! - **Before**: a `VerifiedDag<LoweredOp>` is available from compilation
+//! - **After**: caller consumes per-node output values
+//!
+//! # Sequential steps
+//!
+//! 1. Match on the `LoweredOp` variant
+//! 2. Dispatch `Primitive` ops to `daglang_eval` pure evaluators
+//! 3. Dispatch `Callable` ops with fn bodies to `evaluate_fn_body`
+//! 4. Dispatch `Collection` ops to `evaluate_collection`
+//! 5. Delegate transport ops to the `gunbc_lib_transport` layer
+//!
+//! # Purity
+//!
+//! Pure dispatch — no I/O. Transport ops are forwarded to the transport
+//! layer without performing I/O in this crate.
+//!
+//! # Failure
+//!
+//! Returns `ExecError` when evaluation or dispatch fails.
 
 use std::collections::HashMap;
 
