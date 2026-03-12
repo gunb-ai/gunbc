@@ -263,7 +263,8 @@ medium-large refactor of eval.rs (2-3 sessions). Becomes dead code after
 self-hosting.
 
 **Option B: Proceed to self-hosting.** The v2 pipeline is 100% implemented
-(7 .dag files, 7,139 lines, 48/48 tests passing). Remaining work:
+(7 .dag files, 7,197 lines, 54/55 tests passing; 1 `#[ignore]` on
+typechecker gap). Remaining work:
 Phase 1 (emit per-module Rust + driver → first native binary, 3-5 sessions),
 Phase 2 (progressive self-compilation M1-M9, 5-10 sessions),
 Phase 3 (fixed-point verification, 2-3 sessions). Total: ~12-20 sessions.

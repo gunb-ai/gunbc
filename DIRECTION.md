@@ -12,8 +12,8 @@ See `SUSTAINABILITY.md` for the causal tree of current technical debt.
 ## v2 self-hosted compiler
 
 The v2 compiler is written in DSL (8 .dag files). All 5 pipeline stages
-are implemented. 53/55 tests passing; 2 `#[ignore]` pending parser
-completeness. Self-hosting requires emitting a native binary (Phase 1),
+are implemented. 54/55 tests passing; 1 `#[ignore]` pending typechecker
+completeness. Parser handles the full gist dependency chain (12 files). Self-hosting requires emitting a native binary (Phase 1),
 progressive self-compilation (Phase 2), and fixed-point verification
 (Phase 3). See `SUSTAINABILITY.md` Branch 7 for the bootstrap gap
 analysis.
@@ -30,35 +30,26 @@ Each has a test or `#[ignore]` marker; none is silent.
 
 | Bypass | Location | What it masks | Removal condition |
 |--------|----------|---------------|-------------------|
-| `#[ignore]` on `phase5_gist_transitive_closure_v2_parse` | `src/v2/tests/src/lib.rs` | v2 parser can't parse 7/12 gist deps (service operations: exit blocks, transport bindings, mock_response) | Parser handles all service/resource item syntax |
-| `#[ignore]` on `phase6_gist_full_pipeline` | `src/v2/tests/src/lib.rs` | Full pipeline blocked by same parser gaps | Same as above |
+| `#[ignore]` on `phase6_gist_full_pipeline` | `src/v2/tests/src/lib.rs` | v2 typechecker doesn't handle `Product` return types from pattern/func definitions | Typechecker handles all TypeExpr variants in return position |
 | `with_parser_stack(32MB)` | `src/v2/tests/src/lib.rs` | Parser mutual recursion (S52) needs 32MB for types.dag (150+ type defs). Default 8MB thread stack overflows. | Mutual TCO or compiled parser (self-hosting) |
 | `compile_sources` extracts `p.module` before filtering `None` | `src/v2/06_pipeline.dag:114` (moved to else branch) | `List<Module?>` would leak to resolve if error gate removed | Typechecker enforces `Module` vs `Module?` (self-hosting) |
 
-### v2 parser feature gaps (blocking gist pipeline)
+### v2 parser feature gaps (resolved)
 
-5/12 gist dependency files parse successfully. The remaining 7 fail on
-service/resource syntax the v2 parser doesn't handle yet:
-
-| Feature | Example | Files blocked |
-|---------|---------|---------------|
-| Service operation `exit` blocks | `exit { 0 => Unit, nonzero => String "msg" }` | gcp.dag |
-| Service `transport shell` bindings | `transport shell { argv: [...] }` | gcp.dag, git.dag |
-| Service `transport rest` bindings | `transport rest { base_url: "..." }` | github.dag, gists.dag |
-| Operation `mock_response` blocks | `mock_response { status: 200, body: {...} }` | gists.dag |
-| `resource` item definitions | `resource Filesystem { kind: ..., acquire {} }` | resources.dag |
-| `interface` item definitions | `interface ClaimStore { ... }` | (not in gist deps but needed) |
+All 12/12 gist dependency files parse successfully. Parser fixes
+(2026-03-11): status pattern lambda disambiguation, multi-field file
+binding, string-keyed record literals, `null` keyword.
 
 ### Next steps toward self-hosting
 
-1. **Parser completeness**: Add service, resource, interface item parsing
-   to `02_parse.dag`. Unignore phase5/phase6 tests as each file passes.
-2. **Type contract enforcement (S57)**: Add shape validation at pipeline
+1. **Type contract enforcement (S57)**: Add shape validation at pipeline
    stage boundaries in the test helper. Long-term: self-hosted typechecker.
-3. **Mutual TCO (S52)**: Trampoline across function boundaries for parser
+2. **Mutual TCO (S52)**: Trampoline across function boundaries for parser
    mutual recursion. Removes 32MB stack dependency.
-4. **Emit completeness (S54)**: Service param forwarding is done; test
-   with real gist pipeline output once parser unblocks it.
+3. **Phase 1 emit**: Generate per-module Rust + driver crate → first
+   native binary.
+4. **Phase 2 progressive self-compilation**: v2 compiles tokenize.dag →
+   core.dag → pipeline.dag.
 
 ---
 

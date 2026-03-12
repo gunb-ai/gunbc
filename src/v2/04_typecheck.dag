@@ -496,15 +496,17 @@ fn resolve_resource_use(ru: ResourceUse, env: TypeEnv, module_name: String) -> R
 // =========================================================================
 
 fn resolve_optional_type_expr(expr: TypeExpr?, env: TypeEnv, module_name: String) -> ResolveResult {
-  match expr {
-    Some { value: te } =>
-      resolve_type_expr(expr: te, env: env, module_name: module_name)
-    None =>
-      let no_span = SourceSpan { start: 0, end: 0 }
-      ResolveResult {
-        resolved: Primitive { name: "Unit", span: no_span },
-        diagnostics: []
-      }
+  // Use field access instead of match on Some/None — the evaluator
+  // represents Optional as Map({"value": ...}) without _variant field,
+  // so variant pattern matching (Some { value: te }) doesn't work.
+  if expr == none {
+    let no_span = SourceSpan { start: 0, end: 0 }
+    ResolveResult {
+      resolved: Primitive { name: "Unit", span: no_span },
+      diagnostics: []
+    }
+  } else {
+    resolve_type_expr(expr: expr.value, env: env, module_name: module_name)
   }
 }
 
@@ -529,11 +531,13 @@ fn resolve_item_types(item: Item, env: TypeEnv, module_name: String) -> ItemResu
       let resolved_params = map(param_results, pr => pr.param)
       let param_diags = fold(param_results, init: [], f: (acc, pr) => acc + pr.diagnostics)
       let ret_result = resolve_optional_type_expr(expr: return_type, env: env, module_name: module_name)
+      // Wrap resolved type back in Option to preserve return_type: TypeExpr? contract.
+      let resolved_ret = if return_type == none { none } else { Some { value: ret_result.resolved } }
       ItemResult {
         item: FnDef {
           name: name,
           params: resolved_params,
-          return_type: ret_result.resolved,
+          return_type: resolved_ret,
           body: body,
           span: span
         },
@@ -548,11 +552,13 @@ fn resolve_item_types(item: Item, env: TypeEnv, module_name: String) -> ItemResu
       let use_results = map(uses, u => resolve_resource_use(ru: u, env: env, module_name: module_name))
       let resolved_uses = map(use_results, ur => ur.resource_use)
       let use_diags = fold(use_results, init: [], f: (acc, ur) => acc + ur.diagnostics)
+      // Wrap resolved type back in Option to preserve return_type: TypeExpr? contract.
+      let resolved_ret = if return_type == none { none } else { Some { value: ret_result.resolved } }
       ItemResult {
         item: FuncDef {
           name: name,
           params: resolved_params,
-          return_type: ret_result.resolved,
+          return_type: resolved_ret,
           uses: resolved_uses,
           body: body,
           span: span
@@ -849,20 +855,16 @@ fn collect_unresolved_in_item(item: Item, module_name: String, defined_names: Li
       let param_diags = fold(params, init: [], f: (acc, p) =>
         acc + collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names)
       )
-      let ret_diags = match return_type {
-        Some { value: te } => collect_unresolved_in_type_expr(expr: te, module_name: module_name, defined_names: defined_names)
-        None => []
-      }
+      let ret_diags = if return_type == none { [] }
+        else { collect_unresolved_in_type_expr(expr: return_type.value, module_name: module_name, defined_names: defined_names) }
       param_diags + ret_diags
 
     FuncDef { name: _, params: params, return_type: return_type, uses: uses, body: _, span: _ } =>
       let param_diags = fold(params, init: [], f: (acc, p) =>
         acc + collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names)
       )
-      let ret_diags = match return_type {
-        Some { value: te } => collect_unresolved_in_type_expr(expr: te, module_name: module_name, defined_names: defined_names)
-        None => []
-      }
+      let ret_diags = if return_type == none { [] }
+        else { collect_unresolved_in_type_expr(expr: return_type.value, module_name: module_name, defined_names: defined_names) }
       let use_diags = fold(uses, init: [], f: (acc, u) =>
         acc + collect_unresolved_in_type_expr(expr: u.resource, module_name: module_name, defined_names: defined_names)
       )
