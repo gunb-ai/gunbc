@@ -610,7 +610,9 @@ fn eval_sibling_recursive(
     bridge: &Bridge,
 ) -> Result<Value, String> {
     let body = bridge.fn_bodies[callee_id];
-    let outputs = crate::eval::evaluate_fn_body_with_data(
+    // Use the old recursive evaluator directly (not evaluate_fn_body_with_data
+    // which may route back to evaluate_stack, creating mutual recursion).
+    let outputs = crate::eval::evaluate_fn_body_old(
         body, inputs, bridge.sibling_fns, bridge.data_values,
     ).map_err(|e| e.message)?;
     Ok(Projection::PrimaryReturn.extract(&outputs))
@@ -914,6 +916,89 @@ mod tests {
         inputs.insert("n".to_string(), Value::Int(40_001));
         let result = evaluate_stack(&is_even_body, &inputs, &siblings, &HashMap::new()).unwrap();
         assert_eq!(result["return"], Value::Bool(false));
+    }
+
+    #[test]
+    #[test]
+    fn stack_eval_sibling_then_builtin() {
+        // fn outer(source: String) {
+        //   let state = make_state(source: source)
+        //   let result = skip_horizontal_ws(s: state.source, start: state.start)
+        //   return { return: result }
+        // }
+        // fn make_state(source: String) {
+        //   return { source: source, start: 0 }
+        // }
+        let make_state = LoweredFnBody {
+            stmts: vec![LoweredStmt::Return(vec![
+                ("source".to_string(), ident("source")),
+                ("start".to_string(), int(0)),
+            ])],
+        };
+        let outer = LoweredFnBody {
+            stmts: vec![
+                LoweredStmt::Let("state".to_string(), call("make_state", vec![("source", ident("source"))])),
+                LoweredStmt::Let(
+                    "result".to_string(),
+                    LoweredExpr::Call {
+                        name: "skip_horizontal_ws".to_string(),
+                        args: vec![
+                            (Some("s".to_string()), LoweredExpr::FieldAccess {
+                                expr: Box::new(ident("state")),
+                                field: "source".to_string(),
+                            }),
+                            (Some("start".to_string()), LoweredExpr::FieldAccess {
+                                expr: Box::new(ident("state")),
+                                field: "start".to_string(),
+                            }),
+                        ],
+                    },
+                ),
+                LoweredStmt::Return(vec![("return".to_string(), ident("result"))]),
+            ],
+        };
+
+        let mut siblings = HashMap::new();
+        siblings.insert("make_state".to_string(), make_state);
+        siblings.insert("outer".to_string(), outer.clone());
+
+        let mut inputs = HashMap::new();
+        inputs.insert("source".to_string(), Value::Str("   hello".to_string()));
+        let result = evaluate_stack(&outer, &inputs, &siblings, &HashMap::new()).unwrap();
+        assert_eq!(result["return"], Value::Int(3));
+    }
+
+    #[test]
+    fn stack_eval_builtin_call() {
+        // Test that built-in calls (not in sibling_fns) work correctly
+        // through the stack evaluator's bridge to the old evaluator.
+        //
+        // fn test(s: String, start: Int) {
+        //   let result = skip_horizontal_ws(s: s, start: start)
+        //   return { return: result }
+        // }
+        let body = LoweredFnBody {
+            stmts: vec![
+                LoweredStmt::Let(
+                    "result".to_string(),
+                    LoweredExpr::Call {
+                        name: "skip_horizontal_ws".to_string(),
+                        args: vec![
+                            (Some("s".to_string()), ident("s")),
+                            (Some("start".to_string()), ident("start")),
+                        ],
+                    },
+                ),
+                LoweredStmt::Return(vec![("return".to_string(), ident("result"))]),
+            ],
+        };
+
+        let mut inputs = HashMap::new();
+        inputs.insert("s".to_string(), Value::Str("   hello".to_string()));
+        inputs.insert("start".to_string(), Value::Int(0));
+
+        let result = evaluate_stack(&body, &inputs, &HashMap::new(), &HashMap::new()).unwrap();
+        assert_eq!(result["return"], Value::Int(3));
     }
 
     #[test]
