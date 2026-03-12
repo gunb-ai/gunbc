@@ -9,6 +9,22 @@ See `SUSTAINABILITY.md` for the causal tree of current technical debt.
 
 ---
 
+## v2 self-hosted compiler
+
+The v2 compiler is written in DSL (7 .dag files, 7,139 lines). All 5
+pipeline stages are implemented and tested (48/48 tests passing).
+Self-hosting requires emitting a native binary (Phase 1), progressive
+self-compilation (Phase 2), and fixed-point verification (Phase 3).
+See `SUSTAINABILITY.md` Branch 7 for the bootstrap gap analysis and
+stack depth tradeoff.
+
+- `DESIGN-v2-compiler.md` — design rationale: why self-hosting, what
+  went wrong with v0/v1, core principles.
+- `DESIGN-v2-target-models.md` — target type system specification.
+  The v2 code does not yet match these models; this is what it converges toward.
+
+---
+
 ## Core model: DAG as causal process
 
 The DAG models causality: directed edges mean "A must happen before B."

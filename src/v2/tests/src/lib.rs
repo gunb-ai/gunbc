@@ -11,12 +11,13 @@ mod tests {
 
     // ── Helpers ──────────────────────────────────────────────────────────
 
-    /// Run a test body on a thread with 16MB stack. Needed for tests that
+    /// Run a test body on a thread with 32MB stack. Needed for tests that
     /// evaluate the v2 parser, which has ~80 mutually-recursive functions
-    /// (not self-recursive, so TCO doesn't help).
+    /// (not self-recursive, so TCO doesn't help). 16MB is insufficient for
+    /// parsing types.dag (150+ type defs) through mutual recursion (S52).
     fn with_parser_stack(f: impl FnOnce() + Send + 'static) {
         let result = std::thread::Builder::new()
-            .stack_size(16 * 1024 * 1024)
+            .stack_size(32 * 1024 * 1024)
             .spawn(f)
             .unwrap()
             .join();

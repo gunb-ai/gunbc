@@ -509,7 +509,7 @@ fn parse_type_body_after_eq(state: ParserState, name: String, start_span: Source
     let r = expect_ident(state: state)
     if is_err(pr: r) { return r }
     let first_name = r.val.name
-    let s = r.state
+    let s = skip_newlines(state: r.state)
 
     // If followed by { or |, it's a sum type
     if check(state: s, tag: "LBrace") || check(state: s, tag: "Pipe") {
