@@ -10499,12 +10499,6 @@ fn lower_expr(
                     output_name,
                     disambiguator,
                 )
-                .ok_or_else(|| {
-                    LowerError::from(format!(
-                        "cannot lower expression in {}.{}",
-                        ctx.module_name, ctx.item_name
-                    ))
-                })
             }
         }
         // C24: List literal — try literal path first, then structural.
@@ -10529,12 +10523,6 @@ fn lower_expr(
                     output_name,
                     disambiguator,
                 )
-                .ok_or_else(|| {
-                    LowerError::from(format!(
-                        "cannot lower expression in {}.{}",
-                        ctx.module_name, ctx.item_name
-                    ))
-                })
             }
         }
         // C24-P1: Direct BinOp → BinaryOp structural node.
@@ -10592,13 +10580,7 @@ fn lower_expr(
             output_port,
             output_name,
             disambiguator,
-        )
-        .ok_or_else(|| {
-            LowerError::from(format!(
-                "cannot lower expression in {}.{}",
-                ctx.module_name, ctx.item_name
-            ))
-        }),
+        ),
         // C24-P2: If/Else → Conditional structural node.
         Expr::If(cond, then_, else_) => synthesize_conditional(
             builder,
@@ -10609,13 +10591,7 @@ fn lower_expr(
             output_port,
             output_name,
             disambiguator,
-        )
-        .ok_or_else(|| {
-            LowerError::from(format!(
-                "cannot lower expression in {}.{}",
-                ctx.module_name, ctx.item_name
-            ))
-        }),
+        ),
         // C24-P2: UnaryOp → UnaryOp structural node.
         Expr::UnaryOp(op, inner) => {
             let any_port = Port::scalar("result", "Any");
@@ -10661,12 +10637,6 @@ fn lower_expr(
                 output_name,
                 disambiguator,
             )
-            .ok_or_else(|| {
-                LowerError::from(format!(
-                    "cannot lower expression in {}.{}",
-                    ctx.module_name, ctx.item_name
-                ))
-            })
         }
         Expr::Record(_, fields) => synthesize_record_construct(
             builder,
@@ -10675,13 +10645,7 @@ fn lower_expr(
             output_port,
             output_name,
             disambiguator,
-        )
-        .ok_or_else(|| {
-            LowerError::from(format!(
-                "cannot lower expression in {}.{}",
-                ctx.module_name, ctx.item_name
-            ))
-        }),
+        ),
         Expr::For(..) => Err(LowerError::from(format!(
             "unsupported expression in {}.{}: for not yet structuralized",
             ctx.module_name, ctx.item_name
@@ -11126,13 +11090,13 @@ fn wire_hoisted_callable_args(
     args: &[(Option<String>, Expr)],
     output_name: &str,
     disambiguator: &str,
-) {
+) -> Result<(), LowerError> {
     let Some(node) = builder
         .dag
         .get_node(&NodeId::new(endpoint.node_id.clone()))
         .cloned()
     else {
-        return;
+        return Ok(());
     };
 
     let param_ports: Vec<String> = node
@@ -11150,23 +11114,20 @@ fn wire_hoisted_callable_args(
             continue;
         }
         let arg_port = Port::scalar(param_name.as_str(), "Any");
-        let source = lower_expr(
+        let (src_node, src_port) = lower_expr(
             builder,
             ctx,
             arg_expr,
             &arg_port,
             &format!("{output_name}_{param_name}"),
             &format!("{disambiguator}_{param_name}_{index}"),
-        )
-        .ok();
-        if let Some((src_node, src_port)) = source {
-            builder.add_edge(
-                src_node.as_str(),
-                src_port.as_str(),
-                endpoint.node_id.as_str(),
-                param_name.as_str(),
-            );
-        }
+        )?;
+        builder.add_edge(
+            src_node.as_str(),
+            src_port.as_str(),
+            endpoint.node_id.as_str(),
+            param_name.as_str(),
+        );
     }
 
     if let Some(param_defaults) = ctx.callable_param_defaults.get(call_name) {
@@ -11194,6 +11155,8 @@ fn wire_hoisted_callable_args(
             }
         }
     }
+
+    Ok(())
 }
 
 fn synthesize_callable_expr_value(
@@ -11203,11 +11166,17 @@ fn synthesize_callable_expr_value(
     args: &[(Option<String>, Expr)],
     output_name: &str,
     disambiguator: &str,
-) -> Option<(String, String)> {
+) -> Result<(String, String), LowerError> {
     let endpoint = ctx
         .endpoints_by_name
         .get(call_name)
-        .and_then(|entry| entry.clone())?;
+        .and_then(|entry| entry.clone())
+        .ok_or_else(|| {
+            LowerError::from(format!(
+                "callable endpoint not found for {call_name} in {}.{}",
+                ctx.module_name, ctx.item_name
+            ))
+        })?;
     wire_hoisted_callable_args(
         builder,
         ctx,
@@ -11216,12 +11185,18 @@ fn synthesize_callable_expr_value(
         args,
         output_name,
         disambiguator,
-    );
+    )?;
 
     let node = builder
         .dag
         .get_node(&NodeId::new(endpoint.node_id.clone()))
-        .cloned()?;
+        .cloned()
+        .ok_or_else(|| {
+            LowerError::from(format!(
+                "node not found for endpoint {} in {}.{}",
+                endpoint.node_id, ctx.module_name, ctx.item_name
+            ))
+        })?;
     let output_fields: Vec<String> = node
         .outputs
         .iter()
@@ -11230,7 +11205,7 @@ fn synthesize_callable_expr_value(
         .collect();
 
     if output_fields.len() == 1 && output_fields[0] == "return" {
-        return Some((endpoint.node_id, "return".to_string()));
+        return Ok((endpoint.node_id, "return".to_string()));
     }
 
     let input_ports: Vec<Port> = output_fields
@@ -11267,7 +11242,7 @@ fn synthesize_callable_expr_value(
         );
     }
 
-    Some((node_id, "result".to_string()))
+    Ok((node_id, "result".to_string()))
 }
 
 fn helper_leaf_input_port(leaf: &ExprLeafRef) -> String {
@@ -11401,7 +11376,7 @@ fn lower_match_arm_for_dispatch(
 ) -> (expr::LoweredMatchArm, Option<(String, String, String)>) {
     if let Expr::Call(call_name, args) = &arm.body {
         let input_port = format!("arm_body_{arm_index}");
-        if let Some((src_node, src_port)) = synthesize_callable_expr_value(
+        if let Ok((src_node, src_port)) = synthesize_callable_expr_value(
             builder,
             ctx,
             call_name.as_str(),
@@ -11441,7 +11416,7 @@ fn synthesize_match_dispatch(
     output_port: &Port,
     output_name: &str,
     disambiguator: &str,
-) -> Option<(String, String)> {
+) -> Result<(String, String), LowerError> {
     // Collect all leaf refs from the entire match expression.
     let whole_expr = Expr::Match(Box::new(scrutinee.clone()), arms.to_vec());
     let mut refs: Vec<ExprLeafRef> = Vec::new();
@@ -11450,7 +11425,10 @@ fn synthesize_match_dispatch(
     collect_expr_leaf_refs(&whole_expr, ctx, &mut refs, &mut seen, &mut has_local_refs);
 
     if has_local_refs {
-        return None;
+        return Err(LowerError::from(format!(
+            "match dispatch has local refs in {}.{}",
+            ctx.module_name, ctx.item_name
+        )));
     }
 
     // Build input ports: "scrutinee" + all leaf refs from arm bodies (deduplicated).
@@ -11499,16 +11477,14 @@ fn synthesize_match_dispatch(
 
     // Wire scrutinee input — use Any-typed port (scrutinee type differs from match result).
     let any_port = Port::scalar("result", "Any");
-    let scrutinee_source = lower_expr(
+    let (scrutinee_node, scrutinee_port) = lower_expr(
         builder,
         ctx,
         scrutinee,
         &any_port,
         &format!("{output_name}_scrutinee"),
         &format!("{disambiguator}_scrutinee"),
-    )
-    .ok();
-    let (scrutinee_node, scrutinee_port) = scrutinee_source?;
+    )?;
 
     let node_id = format!(
         "match_dispatch_{}",
@@ -11569,7 +11545,7 @@ fn synthesize_match_dispatch(
         }
     }
 
-    Some((node_id, result_port_name.to_string()))
+    Ok((node_id, result_port_name.to_string()))
 }
 
 /// C24-P2: Synthesize a Conditional structural node.
@@ -11584,7 +11560,7 @@ fn synthesize_conditional(
     output_port: &Port,
     output_name: &str,
     disambiguator: &str,
-) -> Option<(String, String)> {
+) -> Result<(String, String), LowerError> {
     // Collect all leaf refs from the entire if/else expression.
     let whole_expr = Expr::If(
         Box::new(cond.clone()),
@@ -11597,7 +11573,10 @@ fn synthesize_conditional(
     collect_expr_leaf_refs(&whole_expr, ctx, &mut refs, &mut seen, &mut has_local_refs);
 
     if has_local_refs {
-        return None;
+        return Err(LowerError::from(format!(
+            "conditional has local refs in {}.{}",
+            ctx.module_name, ctx.item_name
+        )));
     }
 
     // Build input ports: "condition", "then", "else" + all leaf refs.
@@ -11615,16 +11594,14 @@ fn synthesize_conditional(
 
     // Wire condition — use Bool-typed port (condition is always Bool).
     let bool_port = Port::scalar("result", "Bool");
-    let cond_source = lower_expr(
+    let (cond_node, cond_port) = lower_expr(
         builder,
         ctx,
         cond,
         &bool_port,
         &format!("{output_name}_cond"),
         &format!("{disambiguator}_cond"),
-    )
-    .ok();
-    let (cond_node, cond_port) = cond_source?;
+    )?;
 
     // Wire then branch.
     let (then_node, then_port) = lower_expr(
@@ -11634,8 +11611,7 @@ fn synthesize_conditional(
         output_port,
         &format!("{output_name}_then"),
         &format!("{disambiguator}_then"),
-    )
-    .ok()?;
+    )?;
 
     let else_source = if let Some(else_expr) = else_ {
         let source = lower_expr(
@@ -11645,8 +11621,7 @@ fn synthesize_conditional(
             output_port,
             &format!("{output_name}_else"),
             &format!("{disambiguator}_else"),
-        )
-        .ok()?;
+        )?;
         Some(source)
     } else {
         None
@@ -11678,7 +11653,7 @@ fn synthesize_conditional(
         builder.add_edge(&else_node, &else_port, &node_id, "else");
     }
 
-    Some((node_id, result_port_name.to_string()))
+    Ok((node_id, result_port_name.to_string()))
 }
 
 /// C24-P2: Synthesize a UnaryOp structural node.
@@ -11737,7 +11712,7 @@ fn synthesize_variant_construct(
     output_port: &Port,
     output_name: &str,
     disambiguator: &str,
-) -> Option<(String, String)> {
+) -> Result<(String, String), LowerError> {
     // Unit variant (no fields) → emit a literal source with the tag string.
     if fields.is_empty() {
         let literal = ServiceCallArgLiteral::String(tag.to_string());
@@ -11750,33 +11725,22 @@ fn synthesize_variant_construct(
             &literal,
             disambiguator,
         );
-        return Some((src, output_name.to_string()));
+        return Ok((src, output_name.to_string()));
     }
 
     // Payload variant — resolve each field, then emit VariantConstruct node.
     let any_port = Port::scalar("result", "Any");
     let mut field_sources: Vec<(String, String, String)> = Vec::new();
-    let mut all_resolved = true;
     for (field_name, field_expr) in fields {
-        let source = lower_expr(
+        let (src_node, src_port) = lower_expr(
             builder,
             ctx,
             field_expr,
             &any_port,
             &format!("{output_name}_{field_name}"),
             &format!("{disambiguator}_{field_name}"),
-        )
-        .ok();
-        if let Some((src_node, src_port)) = source {
-            field_sources.push((field_name.clone(), src_node, src_port));
-        } else {
-            all_resolved = false;
-            break;
-        }
-    }
-
-    if !all_resolved {
-        return None;
+        )?;
+        field_sources.push((field_name.clone(), src_node, src_port));
     }
 
     let field_names: Vec<String> = fields.iter().map(|(name, _)| name.clone()).collect();
@@ -11815,7 +11779,7 @@ fn synthesize_variant_construct(
         builder.add_edge(src_node, src_port, &node_id, field_name);
     }
 
-    Some((node_id, result_port_name.to_string()))
+    Ok((node_id, result_port_name.to_string()))
 }
 
 /// C24-P2: Synthesize a RecordConstruct structural node.
@@ -11827,32 +11791,21 @@ fn synthesize_record_construct(
     output_port: &Port,
     output_name: &str,
     disambiguator: &str,
-) -> Option<(String, String)> {
-    // Resolve each field to a source. If any can't be resolved, fall back.
+) -> Result<(String, String), LowerError> {
+    // Resolve each field to a source.
     // Use Any-typed port for field values (individual fields differ from the record type).
     let any_port = Port::scalar("result", "Any");
     let mut field_sources: Vec<(String, String, String)> = Vec::new();
-    let mut all_resolved = true;
     for (field_name, field_expr) in fields {
-        let source = lower_expr(
+        let (src_node, src_port) = lower_expr(
             builder,
             ctx,
             field_expr,
             &any_port,
             &format!("{output_name}_{field_name}"),
             &format!("{disambiguator}_{field_name}"),
-        )
-        .ok();
-        if let Some((src_node, src_port)) = source {
-            field_sources.push((field_name.clone(), src_node, src_port));
-        } else {
-            all_resolved = false;
-            break;
-        }
-    }
-
-    if !all_resolved {
-        return None;
+        )?;
+        field_sources.push((field_name.clone(), src_node, src_port));
     }
 
     let field_names: Vec<String> = fields.iter().map(|(name, _)| name.clone()).collect();
@@ -11890,7 +11843,7 @@ fn synthesize_record_construct(
         builder.add_edge(src_node, src_port, &node_id, field_name);
     }
 
-    Some((node_id, result_port_name.to_string()))
+    Ok((node_id, result_port_name.to_string()))
 }
 
 /// C24: Synthesize a ListConstruct node for list literals with resolvable elements.
@@ -11902,28 +11855,22 @@ fn synthesize_list_construct(
     output_port: &Port,
     output_name: &str,
     disambiguator: &str,
-) -> Option<(String, String)> {
+) -> Result<(String, String), LowerError> {
     let any_port = Port::scalar("result", "Any");
 
     // Resolve each element recursively.
     let mut elem_sources: Vec<(String, String, String)> = Vec::new();
     for (i, elem) in elements.iter().enumerate() {
         let port_name = format!("elem_{i}");
-        let source = lower_expr(
+        let (node, port) = lower_expr(
             builder,
             ctx,
             elem,
             &any_port,
             &format!("{output_name}_{port_name}"),
             &format!("{disambiguator}_{port_name}"),
-        )
-        .ok();
-        match source {
-            Some((node, port)) => elem_sources.push((port_name, node, port)),
-            None => {
-                return None;
-            }
-        }
+        )?;
+        elem_sources.push((port_name, node, port));
     }
 
     let input_ports: Vec<Port> = elem_sources
@@ -11959,7 +11906,7 @@ fn synthesize_list_construct(
         builder.add_edge(src_node, src_port, &node_id, port_name);
     }
 
-    Some((node_id, result_port_name.to_string()))
+    Ok((node_id, result_port_name.to_string()))
 }
 
 /// C24: Synthesize a StringInterpolate node for string interpolations with variable refs.
@@ -11971,7 +11918,7 @@ fn synthesize_string_interpolate(
     output_port: &Port,
     output_name: &str,
     disambiguator: &str,
-) -> Option<(String, String)> {
+) -> Result<(String, String), LowerError> {
     let any_port = Port::scalar("result", "Any");
 
     let mut parts: Vec<String> = Vec::new();
@@ -11988,24 +11935,16 @@ fn synthesize_string_interpolate(
             daglang_syntax::ast::StringPart::Expr(expr) => {
                 parts.push(std::mem::take(&mut current_literal));
                 let port_name = format!("interp_{i}");
-                let source = lower_expr(
+                let (node, port) = lower_expr(
                     builder,
                     ctx,
                     expr,
                     &any_port,
                     &format!("{output_name}_{port_name}"),
                     &format!("{disambiguator}_{port_name}"),
-                )
-                .ok();
-                match source {
-                    Some((node, port)) => {
-                        input_sources.push((port_name.clone(), node, port));
-                        input_port_names.push(port_name);
-                    }
-                    None => {
-                        return None;
-                    }
-                }
+                )?;
+                input_sources.push((port_name.clone(), node, port));
+                input_port_names.push(port_name);
             }
         }
     }
@@ -12046,7 +11985,7 @@ fn synthesize_string_interpolate(
         builder.add_edge(src_node, src_port, &node_id, port_name);
     }
 
-    Some((node_id, result_port_name.to_string()))
+    Ok((node_id, result_port_name.to_string()))
 }
 
 /// C24: Synthesize a GetField node for a complex base expression (not a direct parameter).
