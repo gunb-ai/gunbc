@@ -42,6 +42,18 @@ pub fn evaluate_fn_body_with_data(
     eval_fn_body_rc(body, inputs, sibling_fns, Rc::new(data_values.clone()), 0, None)
 }
 
+/// Explicit-stack variant: uses heap continuations instead of native recursion.
+/// Handles deep mutual recursion (N=40000+) without stack overflow.
+/// Will replace `evaluate_fn_body_with_data` once full compatibility is verified.
+pub fn evaluate_fn_body_stack(
+    body: &LoweredFnBody,
+    inputs: &HashMap<String, Value>,
+    sibling_fns: &HashMap<String, LoweredFnBody>,
+    data_values: &HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, EvalError> {
+    crate::eval_stack::evaluate_stack(body, inputs, sibling_fns, data_values)
+}
+
 /// Bridge for the explicit-stack evaluator: evaluate a non-sibling call
 /// (intrinsic/built-in) using the old evaluator's infrastructure.
 pub fn eval_non_sibling_call(
