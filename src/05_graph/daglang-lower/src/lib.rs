@@ -1078,6 +1078,7 @@ fn collect_profile_binding_registry(
 fn resolve_active_profile_bindings(
     registry: &ProfileBindingRegistry,
     active_profile: Option<&str>,
+    env_resolver: &dyn Fn(&str) -> Option<String>,
 ) -> Result<Option<ActiveProfileBindings>, LowerError> {
     let Some(profile) = active_profile else {
         return Ok(None);
@@ -1117,6 +1118,7 @@ fn resolve_active_profile_bindings(
                 interface.as_str(),
                 key.as_str(),
                 value_expr,
+                env_resolver,
             )?;
             config_values.insert(key.clone(), value);
         }
@@ -1139,6 +1141,7 @@ fn resolve_profile_config_value(
     interface_type: &str,
     key: &str,
     expr: &Expr,
+    env_resolver: &dyn Fn(&str) -> Option<String>,
 ) -> Result<ProfileConfigValue, LowerError> {
     match expr {
         Expr::Literal(Literal::String(value)) => Ok(ProfileConfigValue::Literal(value.clone())),
@@ -1152,8 +1155,7 @@ fn resolve_profile_config_value(
                     ),
                 }
             })?;
-            let env_value = std::env::var(env_var.as_str())
-                .ok()
+            let env_value = env_resolver(env_var.as_str())
                 .filter(|value| !value.is_empty())
                 .ok_or_else(|| LowerError::MissingProfileConfigEnv {
                     profile: profile.to_string(),
@@ -2179,7 +2181,6 @@ fn collect_variant_names(project: &TypedProject) -> HashSet<String> {
 /// Groups the 4 optional/boolean parameters that control which modules are
 /// lowered, how collection nodes are emitted, and which profile is active.
 /// Replaces the 11-function combinatorial entry point explosion (C4).
-#[derive(Debug, Clone, Default)]
 pub struct LoweringConfig<'a> {
     /// If set, only lower callables from these modules.
     pub callable_modules: Option<&'a HashSet<String>>,
@@ -2193,6 +2194,41 @@ pub struct LoweringConfig<'a> {
     pub allow_empty_dag: bool,
     /// Type registry for cardinality inference on callable ports.
     pub type_registry: Option<&'a gunbc_ir::TypeRegistry>,
+    /// Resolves environment variable references in profile config.
+    ///
+    /// The lowerer is a pure function — it does not read the process
+    /// environment. The caller provides this callback to resolve
+    /// `env("VAR")` expressions in profile bindings. If `None`,
+    /// `std::env::var` is used (legacy behavior; callers should migrate).
+    pub env_resolver: Option<&'a dyn Fn(&str) -> Option<String>>,
+}
+
+impl std::fmt::Debug for LoweringConfig<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LoweringConfig")
+            .field("callable_modules", &self.callable_modules)
+            .field("emit_collection_nodes", &self.emit_collection_nodes)
+            .field("active_profile", &self.active_profile)
+            .field("entry_module", &self.entry_module)
+            .field("allow_empty_dag", &self.allow_empty_dag)
+            .field("type_registry", &self.type_registry)
+            .field("env_resolver", &self.env_resolver.as_ref().map(|_| ".."))
+            .finish()
+    }
+}
+
+impl Default for LoweringConfig<'_> {
+    fn default() -> Self {
+        Self {
+            callable_modules: None,
+            emit_collection_nodes: false,
+            active_profile: None,
+            entry_module: None,
+            allow_empty_dag: false,
+            type_registry: None,
+            env_resolver: None,
+        }
+    }
 }
 
 /// Bundled lower-stage outputs for callers that need more than the DAG itself.
@@ -2216,6 +2252,11 @@ pub fn lower_to_output_with_config(
     project: &TypedProject,
     config: &LoweringConfig<'_>,
 ) -> Result<LowerOutput, LowerError> {
+    let default_env_resolver = |name: &str| -> Option<String> {
+        std::env::var(name).ok()
+    };
+    let env_resolver: &dyn Fn(&str) -> Option<String> =
+        config.env_resolver.unwrap_or(&default_env_resolver);
     lower_typed_project_impl(
         project,
         config.callable_modules,
@@ -2224,6 +2265,7 @@ pub fn lower_to_output_with_config(
         config.entry_module,
         config.allow_empty_dag,
         config.type_registry,
+        env_resolver,
     )
 }
 
@@ -2375,6 +2417,7 @@ fn lower_typed_project_impl(
     entry_module: Option<&str>,
     allow_empty_dag: bool,
     type_registry: Option<&gunbc_ir::TypeRegistry>,
+    env_resolver: &dyn Fn(&str) -> Option<String>,
 ) -> Result<LowerOutput, LowerError> {
     let mut builder = DagBuilder::new();
     let mut endpoints_by_full = HashMap::<(String, String), LoweredEndpoint>::new();
@@ -2589,7 +2632,7 @@ fn lower_typed_project_impl(
     );
     let profile_registry = collect_profile_binding_registry(project, active_profile)?;
     let active_profile_bindings =
-        resolve_active_profile_bindings(&profile_registry, active_profile)?;
+        resolve_active_profile_bindings(&profile_registry, active_profile, env_resolver)?;
     let profile_bound_interfaces = collect_profile_bound_interface_names(&profile_registry);
     // IS-3: Collect interfaces needing stub transport.
     let stub_interfaces =
