@@ -1080,7 +1080,7 @@ fn eval_return_expr(
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-fn eval_literal(lit: &LoweredLiteral) -> Value {
+pub fn eval_literal(lit: &LoweredLiteral) -> Value {
     match lit {
         LoweredLiteral::Int(i) => Value::Int(*i),
         LoweredLiteral::Bool(b) => Value::Bool(*b),
@@ -1645,7 +1645,7 @@ fn eval_match_inner_tc(
     )))
 }
 
-fn match_pattern(pattern: &LoweredPattern, value: &Value) -> Option<Vec<(String, Value)>> {
+pub fn match_pattern(pattern: &LoweredPattern, value: &Value) -> Option<Vec<(String, Value)>> {
     match pattern {
         LoweredPattern::Wildcard => Some(vec![]),
         LoweredPattern::Ident(name) => Some(vec![(name.clone(), value.clone())]),

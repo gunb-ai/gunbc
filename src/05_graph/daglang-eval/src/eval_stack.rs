@@ -34,7 +34,8 @@ use std::rc::Rc;
 use gunbc_ir::Value;
 
 use crate::eval::{
-    eval_binop, eval_match, field_access, value_to_string, value_truthy, EvalError,
+    eval_binop, eval_literal, eval_match, field_access, match_pattern, value_to_string,
+    value_truthy, EvalError,
 };
 use crate::expr::{
     LoweredBinOp, LoweredExpr, LoweredFnBody, LoweredLiteral, LoweredMatchArm, LoweredPattern,
@@ -922,47 +923,8 @@ fn bind_let_result(env: &mut Env, name: String, value: &Value) {
     env.bind(name, value.clone());
 }
 
-fn eval_literal(lit: &LoweredLiteral) -> Value {
-    match lit {
-        LoweredLiteral::Int(i) => Value::Int(*i),
-        LoweredLiteral::Bool(b) => Value::Bool(*b),
-        LoweredLiteral::String(s) => Value::Str(s.clone()),
-        LoweredLiteral::None => Value::Unit,
-    }
-}
-
-fn match_pattern(pattern: &LoweredPattern, value: &Value) -> Option<Vec<(String, Value)>> {
-    match pattern {
-        LoweredPattern::Wildcard => Some(vec![]),
-        LoweredPattern::Ident(name) => Some(vec![(name.clone(), value.clone())]),
-        LoweredPattern::Literal(lit) => {
-            let lv = eval_literal(lit);
-            if values_match(&lv, value) { Some(vec![]) } else { None }
-        }
-        LoweredPattern::Variant(tag, fields) => match value {
-            Value::Enum { variant, .. } if variant == tag && fields.is_empty() => Some(vec![]),
-            Value::Str(s) if s == tag && fields.is_empty() => Some(vec![]),
-            Value::Map(map) => {
-                let v = map.get("_variant").and_then(|v| if let Value::Str(s) = v { Some(s.as_str()) } else { None });
-                if v != Some(tag) { return None; }
-                let mut bindings = Vec::new();
-                for (f, p) in fields {
-                    match map.get(f).and_then(|fv| match_pattern(p, fv)) {
-                        Some(mut b) => bindings.append(&mut b),
-                        None => return None,
-                    }
-                }
-                Some(bindings)
-            }
-            _ => None,
-        },
-    }
-}
-
-fn values_match(a: &Value, b: &Value) -> bool {
-    matches!((a, b), (Value::Unit, Value::Unit) | (Value::Unit, Value::Skipped) | (Value::Skipped, Value::Unit))
-        || a == b
-}
+// match_pattern, eval_literal, values_equal: imported from crate::eval
+// (single implementation — no parallel copies)
 
 fn wrap_value_as_output(value: Value) -> HashMap<String, Value> {
     if let Value::Map(map) = &value {
