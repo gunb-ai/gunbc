@@ -751,5 +751,5 @@ A and E are already described in `DESIGN-eval-redesign.md` and
 | **D** | ✅ Done | `LoweredOp::Transport` with required `service_metadata`; 123 match sites updated |
 | **F** | ✅ Partial | Emitter name-based transport heuristic eliminated; DSL `@provider` annotations future work |
 | **B** | ✅ Partial | All 9 `lower_expr().ok()` error-swallowing sites eliminated; full expression classification future work |
-| **A** | Designed | Largest change; touches every file with `TypeId` |
+| **A** | ✅ Foundation | `ResolvedType`/`ResolvedScalar` defined in `gunbc-ir`; migration path documented |
 | **E** | Designed | Covered by `DESIGN-eval-redesign.md` |
