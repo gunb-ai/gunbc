@@ -12,6 +12,62 @@ Software drifts when intent is inconsistent. Every layer of this system
 enforces a single invariant. If a layer's invariant holds, the system is
 correct by construction.
 
+## Two products, one pipeline
+
+The system produces two things from `.dag` source files:
+
+1. **Compiled binaries** — the compiler emits target-language source code
+   (Rust, Python, etc.); a host compiler builds it. The compiler's job
+   ends at file emission.
+
+2. **Interpreted execution** — the lowered IR is executed directly by an
+   interpreter. No code generation.
+
+Both share the compiler pipeline (parse -> typecheck -> lower). They
+diverge at the artifact boundary: the compiler produces
+`VerifiedDag<LoweredOp>`, and each branch consumes it differently.
+
+```
+.dag source
+    |
+COMPILER: parse -> resolve imports -> typecheck -> lower -> derive -> emit
+    |
+VerifiedDag<LoweredOp>  <- THE ARTIFACT
+    |                         |
+Branch A: emit -> cargo    Branch B: interpret directly
+```
+
+The compiler and interpreter share the artifact format (`gunbc-ir` types)
+and the evaluator (`daglang-eval`). They share nothing else. The compiler
+does not know about transport. The interpreter does not know about parsing
+or typechecking.
+
+## v2: Self-hosted compiler
+
+The v2 compiler is written in the DSL itself, living at `src/v2/`. The
+compiler is a pure transform — `.dag files -> generated files` — with no
+embedded interpreter. The v1 Rust pipeline serves as bootstrap host.
+
+```
+src/v2/
+  00_core.dag        Type system: Token, AST, Expr, TypeExpr
+  01_tokenize.dag    String -> List<Token>
+  02_parse.dag       List<Token> -> Module (AST)
+  03_resolve.dag     List<Module> -> ModuleGraph
+  04_typecheck.dag   ModuleGraph -> TypedGraph (types resolved to TypeExpr)
+  05_emit.dag        TypedGraph -> List<TextFile>
+  06_pipeline.dag    Orchestrator: discover -> compile -> write
+```
+
+The key design change from v1: **types are structural values, not string
+references.** A type like `List<Span>` is stored as
+`Container { kind: List, element: Product { name: "Span", fields: [...] } }`,
+not as a `TypeId("List<Span>")` string requiring a registry lookup. No
+registry, no deferred resolution, no stale copies.
+
+See `DESIGN-v2-compiler.md` and `DESIGN-v2-target-models.md` for the full
+design.
+
 ## The Invariants
 
 ### 1. Domain lives in the DSL, not in Rust
@@ -29,8 +85,9 @@ dsl/gunbc/tools/gist.dag      "How do we upload a gist?" — composes services
 ```
 
 The compiler pipeline (`src/02_pipeline/` through `src/07_emit/`) transforms
-`.dag` -> executable DAG IR.
-The engine (`src/`) executes it. Neither knows what the domain is.
+`.dag` source into `VerifiedDag<LoweredOp>`. The emitter generates
+target-language source code. The interpreter executes the IR directly.
+Neither knows what the domain is.
 
 ### 2. World I/O is structural, not annotated
 
@@ -42,7 +99,7 @@ the graph.
    (pure)          (the only I/O node)        (pure)
 ```
 
-`src/08_materialize/transport/` is the **only** crate that performs direct I/O.
+`gunbc-lib-transport` is the **only** crate that performs direct I/O.
 All other crates build `TransportRequest` values (pure) and consume
 `TransportResponse` values (pure). Dry-run replaces transport nodes with
 mocks. Pure nodes always run.
@@ -79,12 +136,12 @@ Each layer only knows about layers below it. Adding a new external
 dependency means instantiating existing vocabulary, not inventing new
 abstractions.
 
-### 6. Resolution maps DSL constructs to runtime — nothing more
+### 6. The interpreter maps IR to execution — nothing more
 
-The runtime materialization layer (`src/08_materialize/`) is the wiring layer.
-It does not contain domain logic (that's DSL) or engine logic (that's the
-pipeline, IR, and executor crates). Every `extern func` backed by Rust is
-ratcheted and must be justified.
+The interpreter (`gunbc-interp`) dispatches `LoweredOp` nodes: pure ops
+go to the evaluator, I/O ops go to the transport layer. It does not
+contain domain logic (that's DSL) or compiler logic (that's the pipeline).
+Every `extern func` backed by Rust is ratcheted and must be justified.
 
 ### 7. Every expression lowers to structural DAG nodes or the compilation fails
 
@@ -110,24 +167,60 @@ compiler itself, not a substitute for structural guarantees.
 ## Structure
 
 ```
-dsl/              Domain: .dag source files, types, data, workflows
+dsl/                    Domain: .dag source files, types, data, workflows
+  std/                  Shared vocabulary (errors, types, resources, ...)
+  extdeps/              External system models (GCP, GitHub, shell, git, ...)
+  config/               Repo-specific policy (clippy, test policy, ...)
+  tools/                Tool definitions (bootstrap, build, codegen, ...)
+
 src/
-  00_foundation/  Shared IR and foundational crates
-  01_surfaces/    CLIs, codegen, workflow-facing entrypoints
-  02_pipeline/    Driver/orchestrator: prepare -> run staged compile
-  03_source/      Source discovery, parse, module graph
-  04_semantics/   Typechecking and semantic validation
-  05_graph/       Lowering to GraphIR
-  06_artifacts/   Derived manifests and obligations
-  07_emit/        Code emission
-  08_materialize/ Runtime wiring, resolver, primitives, blob, transport
-  09_execute/     DAG executor
-  10_test/        Test support and generated tests
+  00_foundation/        Shared IR and foundational crates
+    infra/                gunbc-infra: hashing, resource IDs, manifests (leaf)
+    ir/                   gunbc-ir: DAG, Node, Port, Edge, Value types
+    daglang-contract/     Verdict, Diagnostic, spans (leaf)
+    delegate-macros/      Proc macros for delegation
+  01_surfaces/          CLIs, codegen, workflow-facing entrypoints
+    cli/                  Main CLI entrypoint
+    codegen/              Code generation, testgen, DSL-generated binaries
+    daglang-cli/          DSL compiler CLI
+    workflow/             Workflow runner
+  02_pipeline/          Compiler orchestration
+    daglang-driver/       Pipeline driver: discover -> compile staged
+  03_source/            Source discovery, parse, module graph
+    daglang-syntax/       Tokenizer and parser (.dag -> AST)
+    daglang-resolve/      Import resolution, module graph
+  04_semantics/         Typechecking and semantic validation
+    daglang-typecheck/    Type resolution, validation
+  05_graph/             Lowering and evaluation
+    daglang-lower/        Typed AST -> VerifiedDag<LoweredOp>
+    daglang-eval/         Expression evaluator (shared by compiler + interpreter)
+  06_artifacts/         Derived metadata
+    daglang-derive/       Structural graph walks, callable properties
+  07_emit/              Code emission
+    daglang-emit/         Generate target-language source from IR
+  08_materialize/       Runtime wiring and I/O
+    resolve/              gunbc-resolve: LoweredOp -> DynOp resolution
+    interp/               gunbc-interp: interpreter dispatch
+    transport/            gunbc-lib-transport: the I/O boundary
+    blob/                 gunbc-lib-blob: content-addressed storage
+  09_execute/           DAG executor
+    exec/                 gunbc-exec: topological scheduling, dry-run
+  10_test/              Test support and generated tests
+    test/                 Test utilities
+    generated-tests/      Auto-generated DAG integration tests
+    testgen-registry/     Test generation registry
+  v2/                   Self-hosted compiler (.dag source)
 ```
 
 ## Testing
 
 ```bash
-cargo test
+# All hand-written tests
+cargo test --workspace --exclude gunbc-dag-tests
+
+# Auto-generated DAG integration tests
+cargo test -p gunbc-dag-tests
+
+# Lint
 cargo clippy --all-targets -- -D warnings
 ```

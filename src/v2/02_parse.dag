@@ -1266,17 +1266,11 @@ fn parse_transport_binding(state: ParserState) -> PR {
       let adv = advance(state: state)
       let r = expect(state: adv.state, tag: "LBrace")
       if is_err(pr: r) { return r }
-      // Parse base_path
-      let s = skip_newlines(state: r.state)
-      let r2 = expect_ident(state: s)
+      let r2 = parse_file_binding_body(state: skip_newlines(state: r.state))
       if is_err(pr: r2) { return r2 }
-      let r3 = expect(state: r2.state, tag: "Colon")
+      let r3 = expect(state: skip_newlines(state: r2.state), tag: "RBrace")
       if is_err(pr: r3) { return r3 }
-      let r4 = parse_expr(state: r3.state)
-      if is_err(pr: r4) { return r4 }
-      let r5 = expect(state: skip_newlines(state: r4.state), tag: "RBrace")
-      if is_err(pr: r5) { return r5 }
-      ok(val: { transport: FileBinding { base_path: r4.val.expr } }, state: r5.state)
+      ok(val: { transport: r2.val.transport }, state: r3.state)
     }
     _ => {
       // Default: local binding
@@ -1349,6 +1343,36 @@ fn parse_shell_fields(state: ParserState, argv: List<Expr>, env: List<EnvDef>) -
         let s2 = if e.consumed { e.state } else { r3.state }
         parse_shell_fields(state: s2, argv: argv, env: env)
       }
+    }
+  }
+}
+
+fn parse_file_binding_body(state: ParserState) -> PR {
+  parse_file_fields(state: state, base_path: none)
+}
+
+fn parse_file_fields(state: ParserState, base_path: Expr?) -> PR {
+  let s = skip_newlines(state: state)
+  if check(state: s, tag: "RBrace") || at_end(state: s) {
+    let bp = match base_path {
+      Some { value: e } => e
+      None => Literal { value: LitStr { value: "" }, span: SourceSpan { start: 0, end: 0 } }
+    }
+    ok(val: { transport: FileBinding { base_path: bp } }, state: s)
+  } else {
+    let r = expect_ident(state: s)
+    if is_err(pr: r) { return r }
+    let fname = r.val.name
+    let r2 = expect(state: r.state, tag: "Colon")
+    if is_err(pr: r2) { return r2 }
+    let r3 = parse_expr(state: r2.state)
+    if is_err(pr: r3) { return r3 }
+    let e = eat(state: r3.state, tag: "Comma")
+    let s2 = if e.consumed { e.state } else { r3.state }
+    match fname {
+      "path" => parse_file_fields(state: s2, base_path: Some { value: r3.val.expr })
+      "base_path" => parse_file_fields(state: s2, base_path: Some { value: r3.val.expr })
+      _ => parse_file_fields(state: s2, base_path: base_path)
     }
   }
 }
@@ -1598,16 +1622,40 @@ fn parse_status_pattern(state: ParserState) -> PR {
                 let adv2 = advance(state: adv.state)
                 ok(val: { expr: Literal { value: LitStr { value: "{n}xx" }, span: span } }, state: adv2.state)
               }
-              _ => parse_expr(state: state)
+              _ => {
+                // Plain integer — consume it directly (don't use parse_expr
+                // which would interpret `200 =>` as starting a lambda).
+                let span = current_span(state: state)
+                let adv = advance(state: state)
+                ok(val: { expr: Literal { value: LitInt { value: n }, span: span } }, state: adv.state)
+              }
             }
           }
-          None => parse_expr(state: state)
+          None => {
+            let span = current_span(state: state)
+            let adv = advance(state: state)
+            ok(val: { expr: Literal { value: LitInt { value: n }, span: span } }, state: adv.state)
+          }
         }
       } else {
-        parse_expr(state: state)
+        let span = current_span(state: state)
+        let adv = advance(state: state)
+        ok(val: { expr: Literal { value: LitInt { value: n }, span: span } }, state: adv.state)
       }
     }
-    _ => parse_expr(state: state)
+    Some { value: Ident { name: id } } => {
+      // Named status pattern like "nonzero" — consume as string literal,
+      // NOT via parse_expr (which would interpret `ident =>` as a lambda).
+      let span = current_span(state: state)
+      let adv = advance(state: state)
+      ok(val: { expr: Literal { value: LitStr { value: id }, span: span } }, state: adv.state)
+    }
+    _ => {
+      // Wildcard _ or other tokens
+      let span = current_span(state: state)
+      let adv = advance(state: state)
+      ok(val: { expr: Literal { value: LitStr { value: "_" }, span: span } }, state: adv.state)
+    }
   }
 }
 
@@ -2952,6 +3000,19 @@ fn parse_field_init(state: ParserState) -> PR {
       let fi = FieldInit { name: n, value: Var { name: n, span: current_span(state: state) } }
       ok(val: { field: fi }, state: name_r.state)
     }
+  } else if check(state: state, tag: "LitStr") && peek_is_colon_after_ident(state: state) {
+    // String-keyed field: "key": expr (JSON-style record)
+    let k = peek_kind(state: state)
+    let str_name = match k {
+      Some { value: LitStr { value: sv } } => sv
+      _ => "_"
+    }
+    let adv = advance(state: state)
+    let adv2 = advance(state: adv.state)
+    let r = parse_expr(state: adv2.state)
+    if is_err(pr: r) { return r }
+    let fi = FieldInit { name: str_name, value: r.val.expr }
+    ok(val: { field: fi }, state: r.state)
   } else {
     let r = parse_expr(state: state)
     if is_err(pr: r) { return r }
@@ -3181,9 +3242,17 @@ fn parse_brace_expr(state: ParserState) -> PR {
         }
       }
       _ => {
-        // Try record literal: { name: expr, ... }
-        // If ident followed by colon, it's a record
+        // Try record literal: { name: expr, ... } or { "key": expr, ... }
+        // If ident/keyword followed by colon, or string followed by colon, it's a record
         if (is_ident(state: s) || is_keyword_name(state: s)) && peek_is_colon_after_ident(state: s) {
+          let r = parse_field_init_list(state: s)
+          if is_err(pr: r) { return r }
+          let s2 = skip_newlines(state: r.state)
+          let r2 = expect(state: s2, tag: "RBrace")
+          if is_err(pr: r2) { return r2 }
+          ok(val: { expr: RecordLit { type_name: none, fields: r.val.fields, span: span } }, state: r2.state)
+        } else if check(state: s, tag: "LitStr") && peek_is_colon_after_ident(state: s) {
+          // String-keyed record literal: { "key": value, ... }
           let r = parse_field_init_list(state: s)
           if is_err(pr: r) { return r }
           let s2 = skip_newlines(state: r.state)

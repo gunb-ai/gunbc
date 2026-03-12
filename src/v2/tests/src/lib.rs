@@ -1574,10 +1574,9 @@ fn example(items: List<String>) -> Int {
 
     /// Gate test: v2 parser handles all gist.dag transitive deps.
     /// Compiles v2 compiler via v1, then calls v2's tokenize+parse on each file.
-    /// Currently blocked: 5/12 files parse, 7 fail on service operation syntax
-    /// (exit blocks, transport bindings, mock_response) not yet in v2 parser.
+    /// All 12 files parse successfully (service operations, transport bindings,
+    /// exit blocks, mock_response, resource definitions all handled).
     #[test]
-    #[ignore = "v2 parser incomplete: service operation syntax (exit blocks, transport bindings)"]
     fn phase5_gist_transitive_closure_v2_parse() {
         with_parser_stack(|| {
             let output = compile_all_modules().expect("compilation should succeed");
@@ -1860,20 +1859,51 @@ fn example(items: List<String>) -> Int {
         });
     }
 
+    /// Focused test: func with return type goes through typecheck without error.
+    /// Exercises Optional<TypeExpr> handling in resolve_optional_type_expr.
+    #[test]
+    fn phase6_func_return_type_typecheck() {
+        with_parser_stack(|| {
+            let output = compile_all_modules().expect("compilation should succeed");
+            let src = "module test.auth\nfunc get_token() -> { token: Secret } {\n  return { token: \"mock\" }\n}\n";
+            let module = v2_tokenize_and_parse(&output, src);
+
+            let mut resolve_inputs = HashMap::new();
+            resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
+            let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
+                .expect("resolve should succeed");
+            let graph = resolve_result.get("return").cloned()
+                .unwrap_or_else(|| gunbc_ir::Value::Map(resolve_result.into_iter().collect()));
+
+            let mut tc_inputs = HashMap::new();
+            tc_inputs.insert("graph".to_string(), graph);
+            let tc_result = call_fn(&output, "typecheck", tc_inputs)
+                .expect("typecheck should succeed for func with return type");
+            let typed_graph = tc_result.get("return").cloned()
+                .unwrap_or_else(|| gunbc_ir::Value::Map(tc_result.into_iter().collect()));
+
+            if let gunbc_ir::Value::Map(ref m) = typed_graph {
+                if let Some(gunbc_ir::Value::List(modules)) = m.get("modules") {
+                    assert_eq!(modules.len(), 1, "should have 1 typed module");
+                }
+            }
+        });
+    }
+
     /// Feed gist.dag's full transitive dependency chain through the v2
     /// pipeline: tokenize → parse → resolve → typecheck → emit.
     ///
     /// This is the Level 1 acceptance gate: v2 can process the real gist
     /// tool and its 11 transitive dependencies.
     ///
-    /// Needs 32MB stack: 12 real .dag files with deep parser mutual recursion.
-    /// Currently blocked: same parser gaps as phase5_gist_transitive_closure_v2_parse.
+    /// Needs 128MB stack: 12 real .dag files with deep parser mutual recursion
+    /// plus type resolution across 150+ type definitions.
     #[test]
-    #[ignore = "v2 parser incomplete: service operation syntax (exit blocks, transport bindings)"]
+    #[ignore = "stack overflow in interpreted typecheck — needs self-hosting or explicit eval stack (S52)"]
     #[allow(clippy::disallowed_macros)]
     fn phase6_gist_full_pipeline() {
         let result = std::thread::Builder::new()
-            .stack_size(32 * 1024 * 1024)
+            .stack_size(128 * 1024 * 1024)
             .spawn(|| {
                 let output = compile_all_modules().expect("compilation should succeed");
                 let root = workspace_root();

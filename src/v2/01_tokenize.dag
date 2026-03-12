@@ -44,7 +44,7 @@ data keywords: Map<String, TokenKind> = {
   "let": KwLet, "return": KwReturn, "match": KwMatch,
   "if": KwIf, "else": KwElse, "for": KwFor, "in": KwIn,
   "where": KwWhere, "with": KwWith,
-  "true": KwTrue, "false": KwFalse, "none": KwNone,
+  "true": KwTrue, "false": KwFalse, "none": KwNone, "null": KwNone,
   "acquire": KwAcquire, "release": KwRelease,
   "capability": KwCapability, "operation": KwOperation,
   "input": KwInput, "output": KwOutput,
