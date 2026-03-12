@@ -300,6 +300,9 @@ pub fn emit_rust_bundle(
         match op {
             LoweredOp::Callable {
                 module, kind, name, ..
+            }
+            | LoweredOp::Transport {
+                module, kind, name, ..
             } => {
                 callable_count += 1;
                 let fn_name = sanitize_identifier(&format!("{module}_{name}"));
@@ -766,11 +769,24 @@ fn collect_symbols_with_metadata(
                 module,
                 name,
                 obligation,
+                ..
+            } => {
+                callable_count += 1;
+                symbols.push(CollectedSymbol {
+                    name: sanitize_identifier(&format!("{module}_{name}")),
+                    spec: None,
+                    service_phase: service_transport_phase(*obligation),
+                });
+            }
+            LoweredOp::Transport {
+                module,
+                name,
+                obligation,
                 service_metadata,
                 ..
             } => {
                 callable_count += 1;
-                let spec = service_metadata.as_ref().and_then(|m| m.spec.clone());
+                let spec = service_metadata.spec.clone();
                 symbols.push(CollectedSymbol {
                     name: sanitize_identifier(&format!("{module}_{name}")),
                     spec,
@@ -1009,7 +1025,6 @@ mod tests {
                 kind: CallableKind::Fn,
                 name: "render_content".to_string(),
                 obligation: ObligationCategory::PureRender,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1024,7 +1039,6 @@ mod tests {
                 kind: CallableKind::Func,
                 name: "bundle".to_string(),
                 obligation: ObligationCategory::None,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1285,22 +1299,21 @@ mod tests {
             "svc::rest_prepare",
             vec![Port::scalar("model", "String")],
             vec![Port::scalar("request", "TransportRequest")],
-            LoweredOp::Callable {
+            LoweredOp::Transport {
                 module: "extdeps.llm.anthropic".to_string(),
                 kind: CallableKind::Func,
                 name: "service_transport::prepare::llm.Anthropic::Messages".to_string(),
                 obligation: ObligationCategory::ServiceTransportPrepare,
-                service_metadata: Some(Box::new(ServiceCallMetadata {
+                service_metadata: Box::new(ServiceCallMetadata {
                     service: "llm.Anthropic".to_string(),
                     operation: "Messages".to_string(),
                     transport: ServiceTransportClass::RestNetwork,
                     idempotent: false,
                     readonly: false,
                     spec: Some(rest_spec.clone()),
-                })),
+                }),
                 is_interactive: false,
                 resource_target: None,
-                fn_body: None,
             },
         ));
 
@@ -1309,22 +1322,21 @@ mod tests {
             "svc::rest_execute",
             vec![Port::scalar("request", "TransportRequest")],
             vec![Port::scalar("response", "TransportResponse")],
-            LoweredOp::Callable {
+            LoweredOp::Transport {
                 module: "extdeps.llm.anthropic".to_string(),
                 kind: CallableKind::Func,
                 name: "service_transport::execute::llm.Anthropic::Messages".to_string(),
                 obligation: ObligationCategory::ServiceTransportExecute,
-                service_metadata: Some(Box::new(ServiceCallMetadata {
+                service_metadata: Box::new(ServiceCallMetadata {
                     service: "llm.Anthropic".to_string(),
                     operation: "Messages".to_string(),
                     transport: ServiceTransportClass::RestNetwork,
                     idempotent: false,
                     readonly: false,
                     spec: Some(rest_spec.clone()),
-                })),
+                }),
                 is_interactive: false,
                 resource_target: None,
-                fn_body: None,
             },
         ));
 
@@ -1333,22 +1345,21 @@ mod tests {
             "svc::rest_parse",
             vec![Port::scalar("response", "TransportResponse")],
             vec![Port::scalar("content", "String")],
-            LoweredOp::Callable {
+            LoweredOp::Transport {
                 module: "extdeps.llm.anthropic".to_string(),
                 kind: CallableKind::Func,
                 name: "service_transport::parse::llm.Anthropic::Messages".to_string(),
                 obligation: ObligationCategory::ServiceTransportParse,
-                service_metadata: Some(Box::new(ServiceCallMetadata {
+                service_metadata: Box::new(ServiceCallMetadata {
                     service: "llm.Anthropic".to_string(),
                     operation: "Messages".to_string(),
                     transport: ServiceTransportClass::RestNetwork,
                     idempotent: false,
                     readonly: false,
                     spec: Some(rest_spec),
-                })),
+                }),
                 is_interactive: false,
                 resource_target: None,
-                fn_body: None,
             },
         ));
 
@@ -1357,22 +1368,21 @@ mod tests {
             "svc::shell_prepare",
             vec![],
             vec![Port::scalar("request", "TransportRequest")],
-            LoweredOp::Callable {
+            LoweredOp::Transport {
                 module: "extdeps.cargo".to_string(),
                 kind: CallableKind::Func,
                 name: "service_transport::prepare::cargo.Cargo::Build".to_string(),
                 obligation: ObligationCategory::ServiceTransportPrepare,
-                service_metadata: Some(Box::new(ServiceCallMetadata {
+                service_metadata: Box::new(ServiceCallMetadata {
                     service: "cargo.Cargo".to_string(),
                     operation: "Build".to_string(),
                     transport: ServiceTransportClass::ShellLocal,
                     idempotent: false,
                     readonly: false,
                     spec: Some(shell_spec.clone()),
-                })),
+                }),
                 is_interactive: false,
                 resource_target: None,
-                fn_body: None,
             },
         ));
 
@@ -1381,22 +1391,21 @@ mod tests {
             "svc::shell_parse",
             vec![Port::scalar("response", "TransportResponse")],
             vec![Port::scalar("success", "Bool")],
-            LoweredOp::Callable {
+            LoweredOp::Transport {
                 module: "extdeps.cargo".to_string(),
                 kind: CallableKind::Func,
                 name: "service_transport::parse::cargo.Cargo::Build".to_string(),
                 obligation: ObligationCategory::ServiceTransportParse,
-                service_metadata: Some(Box::new(ServiceCallMetadata {
+                service_metadata: Box::new(ServiceCallMetadata {
                     service: "cargo.Cargo".to_string(),
                     operation: "Build".to_string(),
                     transport: ServiceTransportClass::ShellLocal,
                     idempotent: false,
                     readonly: false,
                     spec: Some(shell_spec),
-                })),
+                }),
                 is_interactive: false,
                 resource_target: None,
-                fn_body: None,
             },
         ));
 
@@ -1651,7 +1660,6 @@ mod tests {
                 kind: CallableKind::Func,
                 name: "entry".to_string(),
                 obligation: ObligationCategory::None,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1666,7 +1674,6 @@ mod tests {
                 kind: CallableKind::Func,
                 name: "downstream".to_string(),
                 obligation: ObligationCategory::None,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1681,7 +1688,6 @@ mod tests {
                 kind: CallableKind::Func,
                 name: "unreachable".to_string(),
                 obligation: ObligationCategory::None,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1722,7 +1728,6 @@ mod tests {
                 kind: CallableKind::Func,
                 name: "entry".to_string(),
                 obligation: ObligationCategory::None,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1737,7 +1742,6 @@ mod tests {
                 kind: CallableKind::Func,
                 name: "middle".to_string(),
                 obligation: ObligationCategory::None,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1752,7 +1756,6 @@ mod tests {
                 kind: CallableKind::Func,
                 name: "orphan".to_string(),
                 obligation: ObligationCategory::None,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,

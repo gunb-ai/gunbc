@@ -874,7 +874,6 @@ fn resolve_op(
             module,
             name,
             kind,
-            service_metadata,
             fn_body,
             ..
         } => resolve_domain(
@@ -883,8 +882,25 @@ fn resolve_op(
             name,
             *kind,
             outputs,
-            service_metadata.as_deref(),
+            None,
             fn_body.as_deref(),
+            sibling_fns,
+            data_values,
+        ),
+        LoweredOp::Transport {
+            module,
+            name,
+            kind,
+            service_metadata,
+            ..
+        } => resolve_domain(
+            node_id,
+            module,
+            name,
+            *kind,
+            outputs,
+            Some(service_metadata),
+            None,
             sibling_fns,
             data_values,
         ),
@@ -1339,7 +1355,6 @@ mod tests {
                 kind: CallableKind::Fn,
                 name: name.to_string(),
                 obligation,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1438,15 +1453,14 @@ mod tests {
             id,
             vec![],
             vec![Port::new("out", "String")],
-            LoweredOp::Callable {
+            LoweredOp::Transport {
                 module: module.to_string(),
                 kind: CallableKind::Fn,
                 name: name.to_string(),
                 obligation,
-                service_metadata: Some(Box::new(metadata)),
+                service_metadata: Box::new(metadata),
                 is_interactive: false,
                 resource_target: None,
-                fn_body: None,
             },
         )
     }
@@ -2092,7 +2106,6 @@ mod tests {
                 kind: CallableKind::Pattern,
                 name: "resource_lifecycle::release::Filesystem".to_string(),
                 obligation: ObligationCategory::ResourceRelease,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,

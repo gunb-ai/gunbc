@@ -32,6 +32,9 @@ pub fn execute_lowered_op(
         LoweredOp::Callable { fn_body, .. } => {
             execute_callable(fn_body.as_deref(), &inputs, sibling_fns, data_values)
         }
+        LoweredOp::Transport { .. } => {
+            execute_callable(None, &inputs, sibling_fns, data_values)
+        }
         LoweredOp::Collection { kind, .. } => {
             execute_collection(kind, inputs)
         }

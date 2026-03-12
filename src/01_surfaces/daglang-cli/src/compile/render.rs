@@ -19,9 +19,14 @@ pub fn render_expand(dag: &Dag<LoweredOp>) -> String {
     out.push_str("Nodes:\n");
     for node in &dag.nodes {
         let kind = match &node.body {
-            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable {
-                kind, module, name, ..
-            }) => {
+            gunbc_ir::node::NodeBody::Opaque(
+                LoweredOp::Callable {
+                    kind, module, name, ..
+                }
+                | LoweredOp::Transport {
+                    kind, module, name, ..
+                },
+            ) => {
                 format!("callable::{kind:?} {module}.{name}")
             }
             gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive {

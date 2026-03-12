@@ -475,7 +475,10 @@ fn derive_node_labels(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, String> {
         .iter()
         .map(|node| {
             let label = match &node.body {
-                gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { module, name, .. }) => {
+                gunbc_ir::node::NodeBody::Opaque(
+                    LoweredOp::Callable { module, name, .. }
+                    | LoweredOp::Transport { module, name, .. },
+                ) => {
                     format!("{module}.{name}")
                 }
                 gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive { module, name, .. }) => {
@@ -512,11 +515,18 @@ fn derive_capture_modes(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, CaptureMo
         .iter()
         .map(|node| {
             let capture_mode = match node.body.as_opaque() {
-                Some(LoweredOp::Callable {
-                    obligation,
-                    is_interactive,
-                    ..
-                }) => {
+                Some(
+                    LoweredOp::Callable {
+                        obligation,
+                        is_interactive,
+                        ..
+                    }
+                    | LoweredOp::Transport {
+                        obligation,
+                        is_interactive,
+                        ..
+                    },
+                ) => {
                     if matches!(
                         obligation,
                         ObligationCategory::ServiceTransportPrepare
@@ -541,10 +551,16 @@ fn derive_interactive_nodes(nodes: &[Node<LoweredOp>]) -> Vec<String> {
     let mut interactive = nodes
         .iter()
         .filter_map(|node| match node.body.as_opaque() {
-            Some(LoweredOp::Callable {
-                is_interactive: true,
-                ..
-            }) => Some(node.id.0.clone()),
+            Some(
+                LoweredOp::Callable {
+                    is_interactive: true,
+                    ..
+                }
+                | LoweredOp::Transport {
+                    is_interactive: true,
+                    ..
+                },
+            ) => Some(node.id.0.clone()),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -555,13 +571,18 @@ fn derive_interactive_nodes(nodes: &[Node<LoweredOp>]) -> Vec<String> {
 fn derive_resources(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, Vec<ResourceUsage>> {
     let mut resources = BTreeMap::<String, Vec<ResourceUsage>>::new();
     for node in nodes {
-        let Some(LoweredOp::Callable {
-            obligation,
-            resource_target,
-            ..
-        }) = node.body.as_opaque()
-        else {
-            continue;
+        let (obligation, resource_target) = match node.body.as_opaque() {
+            Some(LoweredOp::Callable {
+                obligation,
+                resource_target,
+                ..
+            }) => (obligation, resource_target),
+            Some(LoweredOp::Transport {
+                obligation,
+                resource_target,
+                ..
+            }) => (obligation, resource_target),
+            _ => continue,
         };
         let Some(resource) = resource_target.as_ref() else {
             continue;
@@ -602,6 +623,7 @@ fn derive_module_metadata(nodes: &[Node<LoweredOp>]) -> Vec<ModuleMetadata> {
             gunbc_ir::NodeBody::Opaque(op) => {
                 let (module, is_pipeline) = match op {
                     LoweredOp::Callable { module, .. }
+                    | LoweredOp::Transport { module, .. }
                     | LoweredOp::Primitive { module, .. }
                     | LoweredOp::Collection { module, .. } => (module, false),
                     LoweredOp::Pipeline { module, .. } => (module, true),
@@ -784,12 +806,20 @@ fn derive_callable_properties(dag: &Dag<LoweredOp>) -> BTreeMap<String, Callable
         .nodes
         .iter()
         .filter_map(|node| match node.body.as_opaque() {
-            Some(LoweredOp::Callable {
-                kind: CallableKind::Func,
-                module,
-                name,
-                ..
-            }) => Some((node.id.0.as_str(), module.as_str(), name.as_str())),
+            Some(
+                LoweredOp::Callable {
+                    kind: CallableKind::Func,
+                    module,
+                    name,
+                    ..
+                }
+                | LoweredOp::Transport {
+                    kind: CallableKind::Func,
+                    module,
+                    name,
+                    ..
+                },
+            ) => Some((node.id.0.as_str(), module.as_str(), name.as_str())),
             _ => None,
         })
         .collect();
@@ -915,7 +945,6 @@ mod tests {
                 kind: CallableKind::Func,
                 name: name.to_string(),
                 obligation: ObligationCategory::None,
-                service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1091,7 +1120,6 @@ mod tests {
                     kind: CallableKind::Pattern,
                     name: "call_param_source::run::path".to_string(),
                     obligation: ObligationCategory::ServiceParamSource,
-                    service_metadata: None,
                     is_interactive: false,
                     resource_target: None,
                     fn_body: None,
@@ -1109,7 +1137,6 @@ mod tests {
                     kind: CallableKind::Pattern,
                     name: "service_transport::prepare::FsStorage::read".to_string(),
                     obligation: ObligationCategory::ServiceTransportPrepare,
-                    service_metadata: None,
                     is_interactive: false,
                     resource_target: None,
                     fn_body: None,
@@ -1127,7 +1154,6 @@ mod tests {
                     kind: CallableKind::Pattern,
                     name: "service_transport::execute::FsStorage::read".to_string(),
                     obligation: ObligationCategory::ServiceTransportExecute,
-                    service_metadata: None,
                     is_interactive: false,
                     resource_target: None,
                     fn_body: None,
@@ -1145,7 +1171,6 @@ mod tests {
                     kind: CallableKind::Pattern,
                     name: "service_transport::parse::FsStorage::read".to_string(),
                     obligation: ObligationCategory::ServiceTransportParse,
-                    service_metadata: None,
                     is_interactive: false,
                     resource_target: None,
                     fn_body: None,
@@ -1163,7 +1188,6 @@ mod tests {
                     kind: CallableKind::Pattern,
                     name: "resource_provide::run::out".to_string(),
                     obligation: ObligationCategory::ResourceProvide,
-                    service_metadata: None,
                     is_interactive: false,
                     resource_target: Some("out".to_string()),
                     fn_body: None,
@@ -1181,7 +1205,6 @@ mod tests {
                     kind: CallableKind::Pattern,
                     name: "resource_lifecycle::acquire::TempFile".to_string(),
                     obligation: ObligationCategory::ResourceAcquire,
-                    service_metadata: None,
                     is_interactive: false,
                     resource_target: Some("TempFile".to_string()),
                     fn_body: None,
@@ -1199,7 +1222,6 @@ mod tests {
                     kind: CallableKind::Pattern,
                     name: "resource_lifecycle::release::TempFile".to_string(),
                     obligation: ObligationCategory::ResourceRelease,
-                    service_metadata: None,
                     is_interactive: false,
                     resource_target: Some("TempFile".to_string()),
                     fn_body: None,
@@ -1307,22 +1329,21 @@ mod tests {
                 "execute_transport_hermetic",
                 vec![Port::scalar("request", "TransportRequest")],
                 vec![Port::scalar("response", "TransportResponse")],
-                LoweredOp::Callable {
+                LoweredOp::Transport {
                     module: "sample.services".to_string(),
                     kind: CallableKind::Pattern,
                     name: "service_transport::execute::FsStorage::read".to_string(),
                     obligation: ObligationCategory::ServiceTransportExecute,
-                    service_metadata: Some(Box::new(ServiceCallMetadata {
+                    service_metadata: Box::new(ServiceCallMetadata {
                         service: "FsStorage".to_string(),
                         operation: "read".to_string(),
                         transport: ServiceTransportClass::ShellLocal,
                         idempotent: true,
                         readonly: true,
                         spec: None,
-                    })),
+                    }),
                     is_interactive: false,
                     resource_target: None,
-                    fn_body: None,
                 },
             )
             .with_kind(NodeKind::TransportExecute),
@@ -1332,22 +1353,21 @@ mod tests {
                 "execute_transport_external",
                 vec![Port::scalar("request", "TransportRequest")],
                 vec![Port::scalar("response", "TransportResponse")],
-                LoweredOp::Callable {
+                LoweredOp::Transport {
                     module: "sample.services".to_string(),
                     kind: CallableKind::Pattern,
                     name: "service_transport::execute::GistApi::create".to_string(),
                     obligation: ObligationCategory::ServiceTransportExecute,
-                    service_metadata: Some(Box::new(ServiceCallMetadata {
+                    service_metadata: Box::new(ServiceCallMetadata {
                         service: "GistApi".to_string(),
                         operation: "create".to_string(),
                         transport: ServiceTransportClass::RestNetwork,
                         idempotent: false,
                         readonly: false,
                         spec: None,
-                    })),
+                    }),
                     is_interactive: false,
                     resource_target: None,
-                    fn_body: None,
                 },
             )
             .with_kind(NodeKind::TransportExecute),
@@ -1383,7 +1403,6 @@ mod tests {
                     kind: CallableKind::Pattern,
                     name: "service_transport::prepare::Fake::op".to_string(),
                     obligation: ObligationCategory::None,
-                    service_metadata: None,
                     is_interactive: false,
                     resource_target: None,
                     fn_body: None,
@@ -1401,7 +1420,6 @@ mod tests {
                     kind: CallableKind::Pattern,
                     name: "not_a_transport_name".to_string(),
                     obligation: ObligationCategory::ServiceTransportPrepare,
-                    service_metadata: None,
                     is_interactive: false,
                     resource_target: None,
                     fn_body: None,
@@ -1430,7 +1448,6 @@ mod tests {
                     kind: CallableKind::Func,
                     name: "prompt_user".to_string(),
                     obligation: ObligationCategory::None,
-                    service_metadata: None,
                     is_interactive: true,
                     resource_target: None,
                     fn_body: None,
@@ -1448,7 +1465,6 @@ mod tests {
                     kind: CallableKind::Pattern,
                     name: "service_transport::execute::FsStorage::read".to_string(),
                     obligation: ObligationCategory::ServiceTransportExecute,
-                    service_metadata: None,
                     is_interactive: false,
                     resource_target: None,
                     fn_body: None,

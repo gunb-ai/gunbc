@@ -1254,11 +1254,12 @@ func caller(id: String) -> { ok: Bool }
     );
 
     // Auth scheme should be stored on the spec metadata
-    if let NodeBody::Opaque(LoweredOp::Callable {
-        service_metadata: Some(ref metadata),
+    if let NodeBody::Opaque(LoweredOp::Transport {
+        ref service_metadata,
         ..
     }) = execute_node.body
     {
+        let metadata = service_metadata;
         if let Some(ServiceOperationSpec::Rest(spec)) = &metadata.spec {
             assert_eq!(
                 spec.auth_scheme.as_deref(),
@@ -2559,7 +2560,6 @@ fn classify_obligation_uses_structural_lowered_metadata() {
         kind: CallableKind::Pattern,
         name: "prepare_transport_sample".to_string(),
         obligation: ObligationCategory::ServiceTransportPrepare,
-        service_metadata: None,
         is_interactive: false,
         resource_target: None,
         fn_body: None,
@@ -2652,7 +2652,6 @@ fn topology_with_obligation_kinds_populates_canonical_kind_metadata() {
             kind: CallableKind::Pattern,
             name: "execute_transport_sample".to_string(),
             obligation: ObligationCategory::ServiceTransportExecute,
-            service_metadata: None,
             is_interactive: false,
             resource_target: None,
             fn_body: None,
@@ -2676,7 +2675,6 @@ fn parity_report_includes_changed_node_details() {
             kind: CallableKind::Fn,
             name: "render".to_string(),
             obligation: ObligationCategory::None,
-            service_metadata: None,
             is_interactive: false,
             resource_target: None,
             fn_body: None,
@@ -2712,7 +2710,6 @@ fn parity_report_lists_added_and_removed_items_in_sorted_order() {
             kind: CallableKind::Fn,
             name: "b".to_string(),
             obligation: ObligationCategory::None,
-            service_metadata: None,
             is_interactive: false,
             resource_target: None,
             fn_body: None,
@@ -2727,7 +2724,6 @@ fn parity_report_lists_added_and_removed_items_in_sorted_order() {
             kind: CallableKind::Fn,
             name: "a".to_string(),
             obligation: ObligationCategory::None,
-            service_metadata: None,
             is_interactive: false,
             resource_target: None,
             fn_body: None,
