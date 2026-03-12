@@ -405,8 +405,14 @@ error on exceeded). There is no path to unbounded heap growth.
 Incremental, test-by-test. Each step compiles and passes all tests
 before the next begins.
 
+0. **ANF lowering** — ensure `daglang-lower` hoists all fn calls to
+   statement level. After this step, `LoweredExpr::Call` never appears
+   nested inside another expression or inside a lambda. Add a structural
+   assertion to verify. This is a prerequisite — without it, the
+   evaluator redesign cannot guarantee bounded native stack.
+
 1. **Introduce `EvalContext`** — extract `sibling_fns` and `data_values`
-   from `Env`. Thread `&EvalContext` through all eval functions. `Env`
+   from `Env`. Thread `&'a EvalContext` through all eval functions. `Env`
    still has `Rc<HashMap>` bindings for now.
 
 2. **Introduce `FrameInfo`** — extract `call_depth` and `self_name` from
@@ -420,8 +426,9 @@ before the next begins.
       plain error type (just `message: String`).
 
 4. **Introduce `Continuation` and the main loop** — `eval_body` returns
-   `Action`. The main loop manages `Vec<Continuation>`. Tail-call
-   optimization built in from the start.
+   `Action`. The main loop manages `Vec<Continuation<'a>>`. Tail-call
+   optimization built in from the start (don't push when remaining is
+   empty).
 
 5. **Switch Env to `im::HashMap`** — replace `Rc<HashMap>` with
    persistent map. `bind()` returns a new Env. Drop `Env::child()`.
@@ -430,6 +437,25 @@ before the next begins.
 
 7. **Remove `with_parser_stack(32MB)` from v2 tests.** Un-ignore
    `phase6_gist_full_pipeline`.
+
+## Relationship to v2 Parser
+
+The v2 self-hosted parser (`src/v2/`) is the primary consumer that
+motivates this redesign. The parser's ~80 mutually recursive functions
+are the workload that overflows the stack. Two considerations:
+
+1. **Parser function structure matters.** If parser functions are
+   structured so that recursive calls are in tail position (common in
+   recursive-descent parsers), the evaluator's TCO eliminates stack
+   growth entirely. Non-tail calls (e.g., `let field = parse_field()`
+   mid-body) still push a continuation, but the depth is bounded by
+   the grammar's nesting depth, not the input size.
+
+2. **ANF compatibility.** The v2 parser .dag files will be lowered
+   through the same ANF pass. Verify that parser patterns like
+   `parse_type(tokens |> skip(1))` lower correctly — the `skip` call
+   must be hoisted. If the parser uses patterns that resist ANF
+   lowering, those patterns should be refactored in the .dag files.
 
 ## Verification
 
