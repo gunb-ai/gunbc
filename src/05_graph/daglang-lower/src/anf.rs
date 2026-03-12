@@ -398,52 +398,8 @@ fn wrap_in_block(mut prefix: Vec<LoweredStmt>, trailing: LoweredExpr) -> Lowered
 
 // ── Call detection ──────────────────────────────────────────────────────────
 
-/// Returns true if the expression tree contains any `Call` node.
-fn contains_call(expr: &LoweredExpr) -> bool {
-    match expr {
-        LoweredExpr::Call { .. } => true,
-        LoweredExpr::Literal(_) | LoweredExpr::Ident(_) => false,
-        LoweredExpr::FieldAccess { expr, .. } => contains_call(expr),
-        LoweredExpr::StringInterp(parts) => parts.iter().any(|p| match p {
-            LoweredStringPart::Literal(_) => false,
-            LoweredStringPart::Expr(e) => contains_call(e),
-        }),
-        LoweredExpr::BinOp { left, right, .. } => {
-            contains_call(left) || contains_call(right)
-        }
-        LoweredExpr::UnaryOp { expr, .. } => contains_call(expr),
-        LoweredExpr::IfElse { cond, then_, else_ } => {
-            contains_call(cond)
-                || contains_call(then_)
-                || else_.as_ref().is_some_and(|e| contains_call(e))
-        }
-        LoweredExpr::Match { expr, arms } => {
-            contains_call(expr)
-                || arms.iter().any(|a| {
-                    contains_call(&a.body)
-                        || a.guard.as_ref().is_some_and(|g| contains_call(g))
-                })
-        }
-        LoweredExpr::Lambda { body, .. } => contains_call(body),
-        LoweredExpr::List(items) => items.iter().any(contains_call),
-        LoweredExpr::Block(stmts) => stmts.iter().any(stmt_contains_call),
-        LoweredExpr::Record { fields, .. } => fields.iter().any(|(_, e)| contains_call(e)),
-        LoweredExpr::For { iterable, body, .. } => {
-            contains_call(iterable) || contains_call(body)
-        }
-        LoweredExpr::Return(fields) => fields.iter().any(|(_, e)| contains_call(e)),
-        LoweredExpr::VariantConstruct { fields, .. } => {
-            fields.iter().any(|(_, e)| contains_call(e))
-        }
-    }
-}
-
-fn stmt_contains_call(stmt: &LoweredStmt) -> bool {
-    match stmt {
-        LoweredStmt::Let(_, expr) | LoweredStmt::Expr(expr) => contains_call(expr),
-        LoweredStmt::Return(fields) => fields.iter().any(|(_, e)| contains_call(e)),
-    }
-}
+// contains_call: single implementation in daglang_eval::eval_core
+use daglang_eval::eval_core::expr_contains_call as contains_call;
 
 // ── Structural verifier ─────────────────────────────────────────────────────
 

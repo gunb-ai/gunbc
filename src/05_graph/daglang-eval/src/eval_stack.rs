@@ -35,8 +35,8 @@ use gunbc_ir::Value;
 
 use crate::eval::eval_match;
 use crate::eval_core::{
-    eval_binop, eval_literal, field_access, match_pattern, value_to_string, value_truthy,
-    EvalError,
+    eval_binop, eval_literal, expr_contains_call, field_access, match_pattern, value_to_string,
+    value_truthy, EvalError,
 };
 use crate::expr::{
     LoweredBinOp, LoweredExpr, LoweredFnBody, LoweredMatchArm, LoweredStmt, LoweredStringPart,
@@ -83,6 +83,12 @@ pub struct EvalContext<'a> {
 }
 
 /// Pure: (entry_body, sibling_fns, data_values) → (EvalContext, entry_fn_id)
+///
+/// If entry_body is pointer-equal to one of the sibling_fns values, its
+/// FnId will be that sibling's id (no duplication). Otherwise it gets a
+/// dedicated FnId at the end of the table. This means self-recursive entry
+/// functions work regardless of whether the caller inserted them into
+/// sibling_fns.
 fn build_context<'a>(
     entry_body: &'a LoweredFnBody,
     sibling_fns: &'a HashMap<String, LoweredFnBody>,
@@ -90,13 +96,20 @@ fn build_context<'a>(
 ) -> (EvalContext<'a>, FnId) {
     let mut fns = Vec::with_capacity(sibling_fns.len() + 1);
     let mut fn_index = HashMap::with_capacity(sibling_fns.len() + 1);
+    let mut entry_id: Option<FnId> = None;
     for (name, body) in sibling_fns {
         let id = fns.len();
         fns.push(body);
         fn_index.insert(name.as_str(), id);
+        if std::ptr::eq(body, entry_body) {
+            entry_id = Some(id);
+        }
     }
-    let entry_id = fns.len();
-    fns.push(entry_body);
+    let entry_id = entry_id.unwrap_or_else(|| {
+        let id = fns.len();
+        fns.push(entry_body);
+        id
+    });
     (EvalContext { fns, fn_index, data_values, sibling_fns }, entry_id)
 }
 
@@ -251,7 +264,7 @@ fn run_machine(
     let mut stack: Vec<Continuation> = Vec::new();
     let mut fn_id = entry_fn_id;
     let mut pc: usize = 0;
-    let mut env = make_initial_env(inputs, ctx.data_values);
+    let mut env = Env::from_inputs(inputs);
     let mut transitions: usize = 0;
 
     loop {
@@ -281,7 +294,7 @@ fn run_machine(
                 stack.push(cont);
                 fn_id = callee;
                 pc = 0;
-                env = make_initial_env(&inputs, ctx.data_values);
+                env = Env::from_inputs(&inputs);
             }
             Step::Error(msg) => return Err(EvalError::new(msg)),
         }
@@ -534,41 +547,8 @@ fn classify_call(expr: &LoweredExpr, ctx: &EvalContext) -> CallKind {
     }
 }
 
-fn expr_contains_call(expr: &LoweredExpr) -> bool {
-    match expr {
-        LoweredExpr::Call { .. } => true,
-        LoweredExpr::Literal(_) | LoweredExpr::Ident(_) | LoweredExpr::Lambda { .. } => false,
-        LoweredExpr::FieldAccess { expr, .. } | LoweredExpr::UnaryOp { expr, .. } =>
-            expr_contains_call(expr),
-        LoweredExpr::BinOp { left, right, .. } =>
-            expr_contains_call(left) || expr_contains_call(right),
-        LoweredExpr::StringInterp(parts) => parts.iter().any(|p| match p {
-            LoweredStringPart::Expr(e) => expr_contains_call(e),
-            _ => false,
-        }),
-        LoweredExpr::IfElse { cond, then_, else_ } =>
-            expr_contains_call(cond) || expr_contains_call(then_)
-                || else_.as_ref().is_some_and(|e| expr_contains_call(e)),
-        LoweredExpr::Match { expr, arms } =>
-            expr_contains_call(expr)
-                || arms.iter().any(|a| expr_contains_call(&a.body)
-                    || a.guard.as_ref().is_some_and(|g| expr_contains_call(g))),
-        LoweredExpr::List(items) => items.iter().any(expr_contains_call),
-        LoweredExpr::Block(stmts) => stmts.iter().any(stmt_contains_call),
-        LoweredExpr::Record { fields, .. } | LoweredExpr::VariantConstruct { fields, .. } =>
-            fields.iter().any(|(_, e)| expr_contains_call(e)),
-        LoweredExpr::For { iterable, body, .. } =>
-            expr_contains_call(iterable) || expr_contains_call(body),
-        LoweredExpr::Return(fields) => fields.iter().any(|(_, e)| expr_contains_call(e)),
-    }
-}
-
-fn stmt_contains_call(stmt: &LoweredStmt) -> bool {
-    match stmt {
-        LoweredStmt::Let(_, e) | LoweredStmt::Expr(e) => expr_contains_call(e),
-        LoweredStmt::Return(fields) => fields.iter().any(|(_, e)| expr_contains_call(e)),
-    }
-}
+// expr_contains_call, stmt_contains_call: imported from crate::eval_core
+// (single implementation — no Lambda handling skew)
 
 fn call_args(expr: &LoweredExpr) -> &[(Option<String>, LoweredExpr)] {
     match expr {
@@ -707,7 +687,7 @@ fn resolve_call_value(expr: &LoweredExpr, env: &Env, ctx: &EvalContext) -> Resul
 fn eval_expr(expr: &LoweredExpr, env: &Env, ctx: &EvalContext) -> Result<Value, EvalError> {
     match expr {
         LoweredExpr::Literal(lit) => Ok(eval_literal(lit)),
-        LoweredExpr::Ident(name) => eval_ident(name, env),
+        LoweredExpr::Ident(name) => eval_ident(name, env, ctx),
         LoweredExpr::FieldAccess { expr, field } =>
             field_access(&eval_expr(expr, env, ctx)?, field),
         LoweredExpr::StringInterp(parts) => eval_string_interp(parts, env, ctx),
@@ -738,9 +718,10 @@ fn eval_expr(expr: &LoweredExpr, env: &Env, ctx: &EvalContext) -> Result<Value, 
 
 // ── 3h. Expression helpers (each a small pure function) ─────────────────────
 
-fn eval_ident(name: &str, env: &Env) -> Result<Value, EvalError> {
+fn eval_ident(name: &str, env: &Env, ctx: &EvalContext) -> Result<Value, EvalError> {
     if name == "None" || name == "null" { return Ok(Value::Unit); }
     if let Some(val) = env.get(name) { return Ok(val.clone()); }
+    if let Some(val) = ctx.data_values.get(name) { return Ok(val.clone()); }
     if name.chars().next().unwrap_or('a').is_uppercase() { return Ok(Value::Str(name.to_string())); }
     Err(EvalError::new(format!("unbound variable: {name}")))
 }
@@ -956,13 +937,8 @@ fn unit_output() -> HashMap<String, Value> {
     [("return".to_string(), Value::Unit)].into_iter().collect()
 }
 
-fn make_initial_env(inputs: &HashMap<String, Value>, data_values: &HashMap<String, Value>) -> Env {
-    let mut env = Env::from_inputs(inputs);
-    for (name, val) in data_values {
-        if env.get(name).is_none() { env.bind(name.clone(), val.clone()); }
-    }
-    env
-}
+// data_values are NOT seeded into Env — they live in ctx.data_values only.
+// eval_ident reads from ctx.data_values as fallback after checking bindings.
 
 fn step_from_eval_error(e: EvalError) -> Step {
     if let Some(ret) = e.early_return { Step::Return(ret) } else { Step::Error(e.message) }

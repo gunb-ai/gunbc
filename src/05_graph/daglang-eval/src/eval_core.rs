@@ -17,7 +17,8 @@ use std::collections::{BTreeMap, HashMap};
 use gunbc_ir::Value;
 
 use crate::expr::{
-    LoweredBinOp, LoweredLiteral, LoweredPattern, LoweredUnaryOp,
+    LoweredBinOp, LoweredExpr, LoweredLiteral, LoweredPattern, LoweredStmt, LoweredStringPart,
+    LoweredUnaryOp,
 };
 
 // ── Error type ──────────────────────────────────────────────────────────────
@@ -390,4 +391,46 @@ pub fn eval_list_construct(elements: Vec<Value>) -> Result<Value, EvalError> {
         if matches!(elem, Value::Skipped) { return Ok(Value::Skipped); }
     }
     Ok(Value::List(elements))
+}
+
+// ── IR tree walkers ─────────────────────────────────────────────────────────
+
+/// Single authoritative implementation: does this expression tree contain any
+/// `LoweredExpr::Call` node? Used by both the ANF normalizer (to decide what
+/// to hoist) and the evaluator (to classify expressions).
+pub fn expr_contains_call(expr: &LoweredExpr) -> bool {
+    match expr {
+        LoweredExpr::Call { .. } => true,
+        LoweredExpr::Literal(_) | LoweredExpr::Ident(_) => false,
+        LoweredExpr::FieldAccess { expr, .. } | LoweredExpr::UnaryOp { expr, .. } =>
+            expr_contains_call(expr),
+        LoweredExpr::BinOp { left, right, .. } =>
+            expr_contains_call(left) || expr_contains_call(right),
+        LoweredExpr::StringInterp(parts) => parts.iter().any(|p| match p {
+            LoweredStringPart::Expr(e) => expr_contains_call(e),
+            _ => false,
+        }),
+        LoweredExpr::IfElse { cond, then_, else_ } =>
+            expr_contains_call(cond) || expr_contains_call(then_)
+                || else_.as_ref().is_some_and(|e| expr_contains_call(e)),
+        LoweredExpr::Match { expr, arms } =>
+            expr_contains_call(expr)
+                || arms.iter().any(|a| expr_contains_call(&a.body)
+                    || a.guard.as_ref().is_some_and(|g| expr_contains_call(g))),
+        LoweredExpr::Lambda { body, .. } => expr_contains_call(body),
+        LoweredExpr::List(items) => items.iter().any(expr_contains_call),
+        LoweredExpr::Block(stmts) => stmts.iter().any(stmt_contains_call),
+        LoweredExpr::Record { fields, .. } | LoweredExpr::VariantConstruct { fields, .. } =>
+            fields.iter().any(|(_, e)| expr_contains_call(e)),
+        LoweredExpr::For { iterable, body, .. } =>
+            expr_contains_call(iterable) || expr_contains_call(body),
+        LoweredExpr::Return(fields) => fields.iter().any(|(_, e)| expr_contains_call(e)),
+    }
+}
+
+pub fn stmt_contains_call(stmt: &LoweredStmt) -> bool {
+    match stmt {
+        LoweredStmt::Let(_, e) | LoweredStmt::Expr(e) => expr_contains_call(e),
+        LoweredStmt::Return(fields) => fields.iter().any(|(_, e)| expr_contains_call(e)),
+    }
 }
