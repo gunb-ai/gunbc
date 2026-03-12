@@ -269,6 +269,7 @@ fn run_machine(
                     PopResult::Resume { fn_id: fid, pc: p, env: e } => {
                         fn_id = fid; pc = p; env = e;
                     }
+                    PopResult::Error(msg) => return Err(EvalError::new(msg)),
                 }
             }
             Step::Call { callee, inputs, cont } => {
@@ -290,6 +291,7 @@ fn run_machine(
 enum PopResult {
     Finished(HashMap<String, Value>),
     Resume { fn_id: FnId, pc: usize, env: Env },
+    Error(String),
 }
 
 /// Pop continuations until one has remaining work, or the stack is empty.
@@ -302,7 +304,10 @@ fn pop_to_resume(
         match stack.pop() {
             None => return PopResult::Finished(result),
             Some(cont) => {
-                let value = extract_projection(&cont.projection, &result);
+                let value = match extract_projection(&cont.projection, &result) {
+                    Ok(v) => v,
+                    Err(msg) => return PopResult::Error(msg),
+                };
                 let past_end = cont.pc >= ctx.fns[cont.fn_id].stmts.len();
                 if past_end && cont.binding.is_none() {
                     result = wrap_value_as_output(value);
@@ -883,7 +888,7 @@ fn eval_sibling_recursive(
     let body = ctx.fns[callee_id];
     let outputs = evaluate_stack(body, inputs, ctx.sibling_fns, ctx.data_values)
         .map_err(|e| e.message)?;
-    Ok(extract_projection(&Projection::ReturnField, &outputs))
+    extract_projection(&Projection::ReturnField, &outputs)
 }
 
 fn eval_non_sibling_call(expr: &LoweredExpr, env: &Env, ctx: &EvalContext) -> Result<Value, EvalError> {
@@ -905,16 +910,21 @@ fn eval_non_sibling_call_raw(
 // Shared helpers (used across stages)
 // ═══════════════════════════════════════════════════════════════════════════
 
-fn extract_projection(proj: &Projection, outputs: &HashMap<String, Value>) -> Value {
+fn extract_projection(proj: &Projection, outputs: &HashMap<String, Value>) -> Result<Value, String> {
     match proj {
         Projection::ReturnField => {
-            if let Some(v) = outputs.get("return") { return v.clone(); }
-            if outputs.len() == 1 { if let Some(v) = outputs.get("value") { return v.clone(); } }
-            if outputs.is_empty() { return Value::Unit; }
-            Value::Map(outputs.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+            if let Some(v) = outputs.get("return") { return Ok(v.clone()); }
+            if outputs.len() == 1 {
+                if let Some(v) = outputs.get("value") { return Ok(v.clone()); }
+            }
+            if outputs.is_empty() { return Ok(Value::Unit); }
+            // The output map has fields but no "return" or single "value" key.
+            // Return the whole map — this is the case for functions that return
+            // named fields like `return { source: s, pos: p }`.
+            Ok(Value::Map(outputs.iter().map(|(k, v)| (k.clone(), v.clone())).collect()))
         }
         Projection::WholeMap =>
-            Value::Map(outputs.iter().map(|(k, v)| (k.clone(), v.clone())).collect()),
+            Ok(Value::Map(outputs.iter().map(|(k, v)| (k.clone(), v.clone())).collect())),
     }
 }
 
