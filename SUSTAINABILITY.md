@@ -120,13 +120,16 @@ When a concept is defined in both the DSL and Rust, the two diverge.
 
 ---
 
-### Branch 5: No boundary contracts (enables all other branches)
+### Branch 5: Permissive boundary types (enables all other branches)
 
-Each stage passes complex IR types but preconditions are implicit.
-Violations trigger fabrication fallbacks instead of failures.
+Each stage passes IR types that can represent invalid states.
+Downstream stages compensate with fabrication fallbacks instead of
+failing, because the type doesn't prevent the invalid state.
 
-**Terminal state:** Each boundary has a validation function. Violations
-are compile errors, not runtime degradation.
+**Terminal state:** Each boundary uses a type that makes the invalid
+state unrepresentable. No validation walks needed — the Rust compiler
+enforces the contract. When you want to add a boundary check, instead
+refactor the upstream output type so the check is unnecessary.
 
 #### Symptoms:
 
@@ -166,16 +169,18 @@ the pipeline layer order. Resolver should receive compiled artifacts, not invoke
 compilation. Fix: move compilation into driver; resolver receives compiled artifacts.
 **S67:** `ValueType::Unknown` sentinel — 20+ sites in typechecker return `Unknown`
 instead of propagating inference failure. `Unknown` flows through to lowering unchecked.
-Fix: track unresolvable types as explicit errors; validate at typecheck→lower boundary.
+Fix: typechecker output type has no `Unknown` variant — unresolvable types are errors,
+not sentinels. The lowerer's input type makes "unresolved" unrepresentable.
 **S68:** Computation classification duplicated in typecheck and emit. Both
 `daglang-typecheck` (`classify_computation`, `classify_fn_body`) and `daglang-emit`
 (`computation.rs`) derive node classification from `LoweredOp`. Fix: stamp
 `Computation` on nodes at lowering time; consumers read, don't re-derive.
 **S69:** `EmitCollectionFamily` enum lives in `daglang-syntax` AST (`lib.rs:608`),
 coupling the parser to codegen concerns. Fix: move to emit or lower crate.
-**S70:** No input validation at emit stage boundary — `emit_rust_bundle` et al.
-take `ReachableDag<LoweredOp>` + `DerivedArtifacts` without checking completeness.
-Fix: validate input structure at emit entry points.
+**S70:** Emit input types too permissive — `emit_rust_bundle` et al. take
+`ReachableDag<LoweredOp>` + `DerivedArtifacts` without structural guarantees.
+Fix: richer input types (embedded type structure, split LoweredOp variants)
+that make incomplete/invalid inputs unrepresentable.
 **S71:** Thread-local `TmpCounter` in emit (`fn_codegen.rs:72–96`) makes temp name
 generation non-deterministic. Fix: explicit counter passed through emission functions.
 

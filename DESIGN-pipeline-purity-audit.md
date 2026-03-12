@@ -447,34 +447,297 @@ items:
 
 ---
 
-## Recommended fix sequence
+## Governing principle: make illegal states unrepresentable
 
-Ordered by impact on pipeline purity:
+The project invariant is: **don't validate; refactor the upstream type
+so the invalid state is impossible to construct.** A validation pass
+at a boundary is a symptom that the boundary type is too permissive.
 
-1. **Propagate `lower_expr` errors (2.1).** Replace `.ok()` with
-   `?` or `Verdict` accumulation at all 9 sites. Largest source of
-   silent partial DAGs.
+Every recommendation below is an upstream structural change, not a
+downstream check.
 
-2. **Add boundary validation after lowering (6.1, S18).** Structural
-   walk asserting all TypeIds resolve, all transport triplets complete,
-   all callable outputs wired.
+---
 
-3. **Extract profile config resolution from lowerer (1.1).** Move
-   `env()` / `secret()` resolution to a separate step that produces
-   resolved values as inputs to the lowerer.
+## Recommended structural changes
 
-4. **Invert resolve→driver dependency (8.1).** Move compilation into
-   the driver; resolver receives compiled artifacts.
+Ordered by the number of downstream violations each change eliminates.
 
-5. **Move computation classification to lowerer (7.1, 7.2).** Stamp
-   `Computation` on nodes at lowering time. Emit and typecheck read
-   it, don't derive it.
+### A. Embed resolved type structure in ports (eliminates Branch 1)
 
-6. **Structured eval contract (2.2, S3).** Evaluator declares
-   capabilities; unsupported forms are compile-time opaque.
+**Current:** `Port { type_id: TypeId }` where `TypeId(String)`.
+Downstream must look up the string in a `TypeRegistry` to learn
+anything about the type. The lookup can fail → `ValueBacking::Json`
+fallback → any value accepted → wrong emit → no test coverage. This
+is the "deep root" from SUSTAINABILITY.md.
 
-7. **Remove `EmitCollectionFamily` from syntax (7.3).** Move to emit
-   or lower crate.
+**Structural fix:** `Port { typ: ResolvedType }` where `ResolvedType`
+is an algebraic type that embeds structure directly:
 
-8. **Stamp transport/provider metadata in DSL (3.1, 3.2, S45, S46).**
-   Eliminate string heuristics for transport kind and provider hint.
+```rust
+enum ResolvedType {
+    Scalar(ScalarType),
+    List(Box<ResolvedType>),
+    Set(Box<ResolvedType>),
+    Map { key: Box<ResolvedType>, value: Box<ResolvedType> },
+    Optional(Box<ResolvedType>),
+    Record { fields: Vec<(String, ResolvedType)> },
+    Sum { variants: Vec<(String, ResolvedType)> },
+}
+```
+
+There is no `Unknown` variant. There is no `String` handle. The
+typechecker must fully resolve before constructing the output type.
+If it can't resolve, it returns an error — not `Unknown`.
+
+**Eliminates:** S18 (TypeId validation), S23/S35 (`ValueBacking::Json`
+fallback), S7 (identity placeholder), 3.5 (executor type_id checks),
+3.6 (service ops type_id checks), S30 (testgen re-parsing TypeId
+strings), 3.8 (container type string matching in emit), S1 (registry
+duplication), S2 (mock element enumeration), S4 (cardinality cache),
+S13 (carrier classification), 2.4 (lexer number fabrication — types
+would enforce validity).
+
+**Why this is upstream, not validation:** A validation walk after
+lowering ("assert all TypeIds resolve") would catch the symptom but
+leave the root cause: the `TypeId(String)` type *can* represent
+unresolved references. Embedding structure makes "unresolved" not a
+state the type can express.
+
+---
+
+### B. Classify expressions before lowering (eliminates S64)
+
+**Current:** `lower_expr` takes an AST `Expr` and tries to turn it
+into a DAG node. It can fail because not all expressions can become
+DAG nodes. Callers use `.ok()` to silently discard the error (9 sites).
+
+**Structural fix:** The typechecker (or a pre-lowering pass)
+classifies each expression into one of two types:
+
+```rust
+enum DagExpr { ... }     // service calls, data references, literals
+                         // — will become DAG nodes
+enum FnBodyExpr { ... }  // arbitrary computations
+                         // — will become LoweredExpr for the evaluator
+```
+
+Then:
+- `lower_dag_expr(DagExpr) → (NodeId, PortName)` is **total**. No
+  `Result`, no `.ok()`. If the typechecker classified it as
+  `DagExpr`, it will succeed.
+- `lower_fn_expr(FnBodyExpr) → LoweredExpr` is **total**. The
+  evaluator can handle all `FnBodyExpr` forms.
+
+**Eliminates:** S64 (all 9 `.ok()` sites), the `.ok()?` double
+conversion pattern, and partial DAGs from silently unwired edges.
+
+**Why this is upstream, not validation:** Propagating `Result` (the
+validation approach) would surface the error instead of hiding it,
+but wouldn't prevent the error. Classification makes the error
+impossible: a `DagExpr` can always become a node.
+
+---
+
+### C. Resolve config before lowering (eliminates S65)
+
+**Current:** `resolve_profile_config_expr` calls `std::env::var()`
+during lowering.
+
+**Structural fix:** The pipeline becomes:
+
+```
+TypedProject
+    → resolve_config(env_provider) → ResolvedProject
+    → lower(ResolvedProject) → Dag
+```
+
+`ResolvedProject`'s config type is:
+
+```rust
+enum ResolvedConfigValue {
+    Literal(String),
+    SecretRef(String),
+}
+// No Env(String) variant — it's been resolved.
+```
+
+The lowerer's match has no `env()` arm. The `std::env::var` call
+is structurally absent from the lowerer.
+
+**Eliminates:** S65, and makes the lowerer a pure function.
+
+---
+
+### D. Split `LoweredOp::Callable` by computation kind (eliminates S68, S46)
+
+**Current:** `LoweredOp::Callable` is a kitchen-sink variant with
+optional `service_metadata`. The emitter re-derives computation kind
+(`Pure`/`Transport`/`ResourceAcquire`) by inspecting metadata fields.
+Transport kind is inferred from name substrings when metadata is
+missing.
+
+**Structural fix:** Split `Callable` into distinct enum variants:
+
+```rust
+enum LoweredOp {
+    FnBody { module: String, name: String, fn_body: LoweredFnBody },
+    Transport {
+        module: String,
+        name: String,
+        class: ServiceTransportClass,  // not optional, not inferred
+        phase: TransportPhase,         // Prepare | Execute | Parse
+        obligation: ObligationCategory,
+    },
+    ResourceAcquire { ... },
+    Collection { ... },
+    Primitive { ... },
+    Pipeline { ... },
+    Pattern(PatternOp),
+}
+```
+
+The emitter matches on variants — `Transport { class, phase, .. }` —
+not on optional metadata and name heuristics.
+
+**Eliminates:** S68 (classification duplication in emit and typecheck),
+S46 (transport kind from name substrings), 3.2
+(`infer_transport_kind` fallback), 4.4 (parallel classification),
+7.1/7.2 (cross-layer classification), 3.4 (resolver name prefix
+dispatch — the resolver matches on the variant instead).
+
+**Why this is upstream, not validation:** Validating "all Callable
+nodes have transport metadata" after lowering would surface the
+gap but leave the door open. A distinct `Transport` variant with
+required fields makes "transport node without transport class"
+unrepresentable.
+
+---
+
+### E. ANF lowering contract (eliminates S3, part of eval redesign)
+
+**Current:** `LoweredExpr` can contain nested `Call` nodes. The
+evaluator must handle calls inside expressions, which it can't
+always do. The `CallableOp` catches evaluator failures and
+passthroughs.
+
+**Structural fix:** (from `DESIGN-eval-redesign.md`) Hoist calls
+to statement level during lowering. After lowering, `LoweredExpr`
+structurally cannot contain a `Call`:
+
+```rust
+enum LoweredExpr {
+    Literal(LoweredLiteral),
+    Var(String),
+    BinOp { ... },
+    FieldAccess { ... },
+    Record { ... },
+    // No Call variant. Calls are LoweredStmt::Let(name, Call{...}).
+}
+```
+
+`eval_expr` is a total function over call-free trees. It cannot fail
+for "unsupported expression forms" because the type prevents them.
+The `CallableOp` catch-all becomes dead code.
+
+**Eliminates:** S3 (evaluator passthrough), 4.3 (resolver vs interp
+dual failure modes), the `execute_with_declared_output_passthrough`
+function.
+
+---
+
+### F. Provider/transport metadata as DSL annotations (eliminates S45, 3.1, 3.11)
+
+**Current:** Provider and transport kind are inferred from symbol
+name substrings (`"Gcp"`, `"read"`, etc.) and hardcoded canonical
+node ID sets.
+
+**Structural fix:** DSL annotations at the definition site:
+
+```dag
+@transport shell
+@provider gcp
+service gcp.STS {
+  ...
+}
+```
+
+The parser produces `ServiceDef { transport: ServiceTransportClass, provider: ProviderHint }`. The typechecker propagates them. The lowerer stamps them on nodes. No inference.
+
+The node ID sets in `lib.rs:3036–3091` become unnecessary because
+provider and transport are fields, not properties derived from the ID.
+
+**Eliminates:** S45 (provider classification), 3.1 (provider hints
+from symbol names), 3.11 (hardcoded canonical node IDs), S25
+(virtual backend defaulting to REST).
+
+---
+
+### G. Remove `EmitCollectionFamily` from syntax (eliminates 7.3)
+
+**Current:** `EmitCollectionFamily { Map, Filter, Fold, Sort }` lives
+in `daglang-syntax/src/lib.rs:608` — a codegen concept in the parser.
+
+**Structural fix:** Delete from syntax. The lowerer determines
+collection operation kind and stamps it on `LoweredOp::Collection { kind: CollectionOpKind }` (which already exists). The emitter reads
+`CollectionOpKind`, not a syntax-level enum.
+
+---
+
+### H. Invert resolve→driver dependency (eliminates S66)
+
+**Current:** `gunbc-resolve` depends on `daglang-driver` (layer 08 →
+layer 02).
+
+**Structural fix:** The resolver's input type is
+`Dag<LoweredOp>` — the driver compiles and passes the artifact
+down. The resolver never invokes compilation. The
+`daglang-driver` dependency disappears because the resolver has no
+path to it.
+
+---
+
+## How each violation maps to a structural change
+
+| Violation | Fix |
+|-----------|-----|
+| S64: `lower_expr().ok()` | **B** (expression classification) |
+| S3: CallableOp passthrough | **E** (ANF contract) |
+| S65: `env()` I/O in lowerer | **C** (resolve config first) |
+| S18: unresolved TypeIds | **A** (embedded type structure) |
+| S66: resolve→driver dep | **H** (invert dependency) |
+| S23/S35: `ValueBacking::Json` | **A** (embedded type structure) |
+| S67: `ValueType::Unknown` | **A** (output type has no Unknown) |
+| S45/S46: provider/transport heuristics | **D** + **F** (split variant + DSL annotations) |
+| S68: classification duplication | **D** (split LoweredOp variant) |
+| S69: `EmitCollectionFamily` in syntax | **G** (delete from syntax) |
+| S70: no emit input validation | **A** + **D** (richer input types) |
+| S71: thread-local TmpCounter | standalone (explicit counter) |
+| 3.4: resolver name prefix dispatch | **D** (match on variant) |
+| 3.5: executor type_id strings | **A** (embedded type structure) |
+| 3.6: service ops type_id strings | **A** (embedded type structure) |
+| 3.7: error classification by substring | standalone (structured error types) |
+| 7.1–7.4: cross-layer classification | **D** (lowerer stamps kind) |
+| 4.3: dual fn-body eval paths | **E** (ANF makes eval total) |
+
+---
+
+## Cascade order
+
+Changes depend on each other. This is the order that avoids rework:
+
+```
+F (DSL annotations)
+  → D (split LoweredOp — uses annotated metadata)
+    → B (expression classification — depends on LoweredOp shape)
+
+C (resolve config — independent)
+
+A (embedded type structure — largest, can proceed in parallel)
+
+E (ANF contract — from eval redesign, parallel to above)
+
+G, H — small/mechanical, any time
+```
+
+A and E are already described in `DESIGN-eval-redesign.md` and
+`SUSTAINABILITY.md` respectively. D and F are new. B and C are new.
