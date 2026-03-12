@@ -42,6 +42,20 @@ pub fn evaluate_fn_body_with_data(
     eval_fn_body_rc(body, inputs, sibling_fns, Rc::new(data_values.clone()), 0, None)
 }
 
+/// Bridge for the explicit-stack evaluator: evaluate a non-sibling call
+/// (intrinsic/built-in) using the old evaluator's infrastructure.
+pub fn eval_non_sibling_call(
+    name: &str,
+    args: &[(Option<String>, LoweredExpr)],
+    env_bindings: &HashMap<String, Value>,
+    sibling_fns: &HashMap<String, LoweredFnBody>,
+    data_values: &HashMap<String, Value>,
+) -> Result<Value, EvalError> {
+    let mut env = Env::from_inputs(env_bindings);
+    env.data_values = Rc::new(data_values.clone());
+    eval_call_tc(name, args, &env, sibling_fns, false)
+}
+
 /// Internal evaluation with shared data_values via Rc (avoids re-cloning on
 /// every recursive sibling fn call).
 ///
@@ -1069,7 +1083,7 @@ fn eval_string_interp(
     Ok(Value::Str(result))
 }
 
-fn field_access(base: &Value, field: &str) -> Result<Value, EvalError> {
+pub fn field_access(base: &Value, field: &str) -> Result<Value, EvalError> {
     match base {
         Value::Map(map) => map
             .get(field)
