@@ -265,9 +265,75 @@ fn expect_ident(state: ParserState) -> PR {
         Some { value: kind } => kind_tag(kind: kind)
         None => "EOF"
       }
-      fail(msg: "expected identifier, found {found}", state: state)
+      fail(msg: "expected identifier, found " + found, state: state)
     }
   }
+}
+
+// Like expect_ident but also accepts keywords in name position.
+// Used for record field names and other contexts where DSL keywords
+// (type, resource, capability, operation, pattern, etc.) are valid names.
+fn expect_name(state: ParserState) -> PR {
+  let k = peek_kind(state: state)
+  match k {
+    Some { value: Ident { name: n } } => {
+      let adv = advance(state: state)
+      ok(val: { name: n }, state: adv.state)
+    }
+    _ => {
+      // Try to extract keyword name — all Kw* tokens can be field names.
+      let kw_name = keyword_to_name(state: state)
+      match kw_name {
+        Some { value: n } => {
+          let adv = advance(state: state)
+          ok(val: { name: n }, state: adv.state)
+        }
+        None => {
+          let found = match k {
+            Some { value: kind } => kind_tag(kind: kind)
+            None => "EOF"
+          }
+          fail(msg: "expected name, found " + found, state: state)
+        }
+      }
+    }
+  }
+}
+
+// Extract the string name from a keyword token, if the current token is a keyword.
+fn keyword_to_name(state: ParserState) -> String? {
+  if check(state: state, tag: "KwType") { Some { value: "type" } }
+  else if check(state: state, tag: "KwResource") { Some { value: "resource" } }
+  else if check(state: state, tag: "KwCapability") { Some { value: "capability" } }
+  else if check(state: state, tag: "KwOperation") { Some { value: "operation" } }
+  else if check(state: state, tag: "KwPattern") { Some { value: "pattern" } }
+  else if check(state: state, tag: "KwInput") { Some { value: "input" } }
+  else if check(state: state, tag: "KwOutput") { Some { value: "output" } }
+  else if check(state: state, tag: "KwData") { Some { value: "data" } }
+  else if check(state: state, tag: "KwMatch") { Some { value: "match" } }
+  else if check(state: state, tag: "KwService") { Some { value: "service" } }
+  else if check(state: state, tag: "KwImport") { Some { value: "import" } }
+  else if check(state: state, tag: "KwModule") { Some { value: "module" } }
+  else if check(state: state, tag: "KwFn") { Some { value: "fn" } }
+  else if check(state: state, tag: "KwFunc") { Some { value: "func" } }
+  else if check(state: state, tag: "KwExtern") { Some { value: "extern" } }
+  else if check(state: state, tag: "KwLet") { Some { value: "let" } }
+  else if check(state: state, tag: "KwReturn") { Some { value: "return" } }
+  else if check(state: state, tag: "KwIf") { Some { value: "if" } }
+  else if check(state: state, tag: "KwElse") { Some { value: "else" } }
+  else if check(state: state, tag: "KwFor") { Some { value: "for" } }
+  else if check(state: state, tag: "KwIn") { Some { value: "in" } }
+  else if check(state: state, tag: "KwWhere") { Some { value: "where" } }
+  else if check(state: state, tag: "KwWith") { Some { value: "with" } }
+  else if check(state: state, tag: "KwTrue") { Some { value: "true" } }
+  else if check(state: state, tag: "KwFalse") { Some { value: "false" } }
+  else if check(state: state, tag: "KwInterface") { Some { value: "interface" } }
+  else if check(state: state, tag: "KwPipeline") { Some { value: "pipeline" } }
+  else if check(state: state, tag: "KwProfile") { Some { value: "profile" } }
+  else if check(state: state, tag: "KwIdempotent") { Some { value: "idempotent" } }
+  else if check(state: state, tag: "KwReadonly") { Some { value: "readonly" } }
+  else if check(state: state, tag: "KwHermetic") { Some { value: "hermetic" } }
+  else { None }
 }
 
 fn skip_newlines(state: ParserState) -> ParserState {
@@ -292,6 +358,15 @@ fn eat(state: ParserState, tag: String) -> Map {
 // Check if current token is an identifier (has Ident tag)
 fn is_ident(state: ParserState) -> Bool {
   check(state: state, tag: "Ident")
+}
+
+// Check if the current token is a keyword that can be used as a name
+// (field name, predicate name, etc.).
+fn is_keyword_name(state: ParserState) -> Bool {
+  match keyword_to_name(state: state) {
+    Some { value: _ } => true
+    None => false
+  }
 }
 
 // =========================================================================
@@ -575,21 +650,12 @@ fn parse_predicates(state: ParserState) -> PR {
 }
 
 // parse_single_predicate: pattern("...") | range(min: N, max: N) | non_empty | format(name) | brand("...") | content(name)
-// Note: "pattern" is both a keyword (KwPattern for `pattern` items) and a
-// predicate name in `where pattern(...)`. We accept it as either.
 fn parse_single_predicate(state: ParserState) -> PR {
-  // Try identifier first; fall back to KwPattern which doubles as predicate name.
-  let r = expect_ident(state: state)
-  let pred_name = if is_err(pr: r) {
-    if check(state: state, tag: "KwPattern") {
-      "pattern"
-    } else {
-      return r
-    }
-  } else {
-    r.val.name
-  }
-  let s = if is_err(pr: r) { advance(state: state).state } else { r.state }
+  // Use expect_name to accept keywords (like "pattern") as predicate names.
+  let r = expect_name(state: state)
+  if is_err(pr: r) { return r }
+  let pred_name = r.val.name
+  let s = r.state
 
   // Check for (args)
   let e = eat(state: s, tag: "LParen")
@@ -836,7 +902,9 @@ fn parse_field_list(state: ParserState) -> PR {
   if check(state: s, tag: "RBrace") || check(state: s, tag: "RParen") || at_end(state: s) {
     ok(val: { fields: [] }, state: s)
   } else {
-    if is_ident(state: s) {
+    // Accept identifiers OR keywords as field names (keywords like "type",
+    // "resource", "capability" are valid field names in record definitions).
+    if is_ident(state: s) || is_keyword_name(state: s) {
       let r = parse_field(state: s)
       if is_err(pr: r) { return r }
       let s2 = r.state
@@ -853,7 +921,7 @@ fn parse_field_list(state: ParserState) -> PR {
 
 fn parse_field(state: ParserState) -> PR {
   let start_span = current_span(state: state)
-  let r = expect_ident(state: state)
+  let r = expect_name(state: state)
   if is_err(pr: r) { return r }
   let name = r.val.name
 
@@ -2868,31 +2936,21 @@ fn parse_field_init_list(state: ParserState) -> PR {
 }
 
 fn parse_field_init(state: ParserState) -> PR {
-  // Named field: name: expr
-  if is_ident(state: state) {
-    let k = peek_kind(state: state)
-    match k {
-      Some { value: Ident { name: n } } => {
-        let save = state.pos
-        let adv = advance(state: state)
-        if check(state: adv.state, tag: "Colon") {
-          let adv2 = advance(state: adv.state)
-          let r = parse_expr(state: adv2.state)
-          if is_err(pr: r) { return r }
-          let fi = FieldInit { name: n, value: r.val.expr }
-          ok(val: { field: fi }, state: r.state)
-        } else {
-          // Shorthand: { name } => { name: name }
-          let fi = FieldInit { name: n, value: Var { name: n, span: current_span(state: state) } }
-          ok(val: { field: fi }, state: adv.state)
-        }
-      }
-      _ => {
-        let r = parse_expr(state: state)
-        if is_err(pr: r) { return r }
-        let fi = FieldInit { name: "_", value: r.val.expr }
-        ok(val: { field: fi }, state: r.state)
-      }
+  // Named field: name: expr (accepts keywords as field names)
+  if is_ident(state: state) || is_keyword_name(state: state) {
+    let name_r = expect_name(state: state)
+    if is_err(pr: name_r) { return name_r }
+    let n = name_r.val.name
+    if check(state: name_r.state, tag: "Colon") {
+      let adv2 = advance(state: name_r.state)
+      let r = parse_expr(state: adv2.state)
+      if is_err(pr: r) { return r }
+      let fi = FieldInit { name: n, value: r.val.expr }
+      ok(val: { field: fi }, state: r.state)
+    } else {
+      // Shorthand: { name } => { name: name }
+      let fi = FieldInit { name: n, value: Var { name: n, span: current_span(state: state) } }
+      ok(val: { field: fi }, state: name_r.state)
     }
   } else {
     let r = parse_expr(state: state)
@@ -3125,7 +3183,7 @@ fn parse_brace_expr(state: ParserState) -> PR {
       _ => {
         // Try record literal: { name: expr, ... }
         // If ident followed by colon, it's a record
-        if is_ident(state: s) && peek_is_colon_after_ident(state: s) {
+        if (is_ident(state: s) || is_keyword_name(state: s)) && peek_is_colon_after_ident(state: s) {
           let r = parse_field_init_list(state: s)
           if is_err(pr: r) { return r }
           let s2 = skip_newlines(state: r.state)
