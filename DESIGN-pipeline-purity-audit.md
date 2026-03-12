@@ -730,14 +730,26 @@ F (DSL annotations)
   → D (split LoweredOp — uses annotated metadata)
     → B (expression classification — depends on LoweredOp shape)
 
-C (resolve config — independent)
-
+C (resolve config — independent)                               ✓ DONE
 A (embedded type structure — largest, can proceed in parallel)
-
 E (ANF contract — from eval redesign, parallel to above)
-
-G, H — small/mechanical, any time
+G, H — small/mechanical, any time                              ✓ DONE
 ```
 
 A and E are already described in `DESIGN-eval-redesign.md` and
 `SUSTAINABILITY.md` respectively. D and F are new. B and C are new.
+
+---
+
+## Implementation status
+
+| Change | Status | Notes |
+|--------|--------|-------|
+| **G** | ✅ Done | `EmitCollectionFamily` moved from syntax → emit |
+| **C** | ✅ Done | `env_resolver` callback on `LoweringConfig`; lowerer is pure |
+| **H** | ✅ Done | `resolve_compiled_dsl` accepts pre-compiled artifacts; `CompileLoweredResult` public |
+| **D** | Designed | 123 match sites across 15 files; depends on F |
+| **F** | Designed | Requires parser `@transport`/`@provider` annotation support |
+| **B** | Designed | Requires typechecker expression classification pass |
+| **A** | Designed | Largest change; touches every file with `TypeId` |
+| **E** | Designed | Covered by `DESIGN-eval-redesign.md` |
