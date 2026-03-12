@@ -748,8 +748,8 @@ A and E are already described in `DESIGN-eval-redesign.md` and
 | **G** | ✅ Done | `EmitCollectionFamily` moved from syntax → emit |
 | **C** | ✅ Done | `env_resolver` callback on `LoweringConfig`; lowerer is pure |
 | **H** | ✅ Done | `resolve_compiled_dsl` accepts pre-compiled artifacts; `CompileLoweredResult` public |
-| **D** | Designed | 123 match sites across 15 files; depends on F |
-| **F** | Designed | Requires parser `@transport`/`@provider` annotation support |
-| **B** | Designed | Requires typechecker expression classification pass |
+| **D** | ✅ Done | `LoweredOp::Transport` with required `service_metadata`; 123 match sites updated |
+| **F** | ✅ Partial | Emitter name-based transport heuristic eliminated; DSL `@provider` annotations future work |
+| **B** | ✅ Partial | All 9 `lower_expr().ok()` error-swallowing sites eliminated; full expression classification future work |
 | **A** | Designed | Largest change; touches every file with `TypeId` |
 | **E** | Designed | Covered by `DESIGN-eval-redesign.md` |
