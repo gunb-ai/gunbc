@@ -161,7 +161,7 @@ This tier proves that computation within the DAG produces correct
 
 Reference tests: `env_var_read_real_mode`,
 `real_mode_executes_resource_environment_node` in
-`src/09_execute/exec/src/execute/tests.rs`.
+`src/v1/09_execute/exec/src/execute/tests.rs`.
 
 ### Tier 3 — Full Real (integration)
 
