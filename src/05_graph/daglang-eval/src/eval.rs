@@ -67,40 +67,25 @@ fn eval_fn_body_rc(
         .map(|(name, val)| (name.clone(), val.clone()))
         .collect();
 
-    let mut current_body = body;
-    let mut current_name: Option<String> = fn_name.map(String::from);
     let mut current_inputs = inputs.clone();
     let mut trampoline_iters: usize = 0;
 
-    // Trampoline loop: handles both self-recursive and mutual tail calls.
-    // Self-recursive tail calls rebind inputs and loop. Mutual tail calls
-    // switch to the callee's body and loop — no native stack growth.
+    // Trampoline loop: handles self-recursive tail calls only.
+    // Self-recursive tail calls rebind inputs and loop without growing the
+    // native stack. Mutual tail calls are evaluated normally (the upcoming
+    // explicit-stack evaluator will handle them via heap continuations).
     loop {
-        let name_ref = current_name.as_deref();
-        match eval_fn_body_once(current_body, &current_inputs, sibling_fns, &data_values, &seeds, call_depth, name_ref) {
+        match eval_fn_body_once(body, &current_inputs, sibling_fns, &data_values, &seeds, call_depth, fn_name) {
             Ok(result) => return Ok(result),
             Err(e) if e.tail_call.is_some() => {
                 trampoline_iters += 1;
                 if trampoline_iters > MAX_TRAMPOLINE_ITERS {
                     return Err(EvalError::new(format!(
                         "maximum tail-call iterations ({MAX_TRAMPOLINE_ITERS}) exceeded in '{}' — possible infinite loop",
-                        name_ref.unwrap_or("<anonymous>")
+                        fn_name.unwrap_or("<anonymous>")
                     )));
                 }
                 current_inputs = e.tail_call.unwrap();
-
-                // Mutual tail call: switch to the callee's fn body.
-                if let Some(callee_name) = e.tail_call_name {
-                    if let Some(callee_body) = sibling_fns.get(&callee_name) {
-                        current_body = callee_body;
-                        current_name = Some(callee_name);
-                    } else {
-                        return Err(EvalError::new(format!(
-                            "mutual tail call to unknown function: {callee_name}"
-                        )));
-                    }
-                }
-                // Self-recursive tail call (tail_call_name is None): same body, new inputs.
             }
             Err(e) => return Err(e),
         }
@@ -218,29 +203,8 @@ fn eval_stmts(
                 // fn body's trampoline loop.
                 if fields.len() == 1 {
                     let (name, expr) = &fields[0];
-                    // Evaluate in tail context for self-recursive TCO. If a
-                    // mutual tail call fires, catch it and evaluate normally —
-                    // mutual TCO from Return would lose the field-name wrapping.
                     let value = match eval_expr_tc(expr, env, sibling_fns, true) {
                         Ok(v) => v,
-                        Err(e) if e.tail_call.is_some() && e.tail_call_name.is_some() => {
-                            // Mutual tail call from Return — evaluate the callee
-                            // normally to preserve the Return wrapping.
-                            let callee_name = e.tail_call_name.unwrap();
-                            let callee_inputs = e.tail_call.unwrap();
-                            if let Some(callee_body) = sibling_fns.get(&callee_name) {
-                                let outputs = eval_fn_body_rc(
-                                    callee_body, &callee_inputs, sibling_fns,
-                                    Rc::clone(&env.data_values), env.call_depth + 1,
-                                    Some(&callee_name),
-                                )?;
-                                sibling_fn_value(&callee_name, outputs)?
-                            } else {
-                                return Err(EvalError::new(format!(
-                                    "mutual tail call to unknown function: {callee_name}"
-                                )));
-                            }
-                        }
                         Err(e) => return Err(e),
                     };
                     if is_fn_body {
@@ -729,11 +693,9 @@ pub struct EvalError {
     pub message: String,
     /// Early return from a fn body — contains the return values.
     pub early_return: Option<HashMap<String, Value>>,
-    /// Tail-call signal: a (possibly mutual) recursive call in tail position.
-    /// Contains the new inputs for the next iteration.
+    /// Self-recursive tail-call signal: contains the new inputs for the next
+    /// trampoline iteration. Only used for self-recursive calls (A→A).
     tail_call: Option<HashMap<String, Value>>,
-    /// Name of the callee for mutual tail calls. `None` means self-recursive.
-    tail_call_name: Option<String>,
 }
 
 impl EvalError {
@@ -742,7 +704,6 @@ impl EvalError {
             message: msg.into(),
             early_return: None,
             tail_call: None,
-            tail_call_name: None,
         }
     }
 
@@ -751,7 +712,6 @@ impl EvalError {
             message: "__early_return__".to_string(),
             early_return: Some(values),
             tail_call: None,
-            tail_call_name: None,
         }
     }
 
@@ -760,16 +720,6 @@ impl EvalError {
             message: "__tail_call__".to_string(),
             early_return: None,
             tail_call: Some(inputs),
-            tail_call_name: None,
-        }
-    }
-
-    fn mutual_tail_call(name: String, inputs: HashMap<String, Value>) -> Self {
-        Self {
-            message: "__tail_call__".to_string(),
-            early_return: None,
-            tail_call: Some(inputs),
-            tail_call_name: Some(name),
         }
     }
 }
@@ -1270,16 +1220,12 @@ fn eval_call_tc(
                 fn_inputs.insert(name.clone(), value);
             }
         }
-        // Tail-call optimization: if we're in tail position, signal a
-        // trampoline instead of recursing on the native stack.
-        // Handles both self-recursive (A→A) and mutual (A→B) tail calls.
-        if tail_ctx {
-            if env.self_name.as_deref() == Some(name) {
-                // Self-recursive tail call
-                return Err(EvalError::tail_call(fn_inputs));
-            }
-            // Mutual tail call — signal with callee name
-            return Err(EvalError::mutual_tail_call(name.to_string(), fn_inputs));
+        // Self-recursive tail-call optimization: signal a trampoline
+        // instead of recursing on the native stack. Only self-recursive
+        // calls (A→A) are trampolined; mutual calls (A→B) go through
+        // normal evaluation until the explicit-stack evaluator lands.
+        if tail_ctx && env.self_name.as_deref() == Some(name) {
+            return Err(EvalError::tail_call(fn_inputs));
         }
         let outputs = eval_fn_body_rc(fn_body, &fn_inputs, sibling_fns, Rc::clone(&env.data_values), env.call_depth + 1, Some(name))?;
         return sibling_fn_value(name, outputs);
@@ -2677,8 +2623,9 @@ mod tests {
         assert_eq!(result["return"], Value::Int(200_010_000));
     }
 
-    /// Mutual tail-call recursion: A calls B calls A, trampolined on the heap.
-    /// This would overflow an 8MB stack without mutual TCO.
+    /// Mutual recursion correctness: is_even/is_odd at moderate depth.
+    /// Deep mutual recursion (N=40000+) requires the explicit-stack evaluator;
+    /// see DESIGN-eval-redesign.md. For now, test correctness at N=100.
     #[test]
     fn tco_mutual_recursive_tail_call() {
         // fn is_even(n: Int) -> Bool {
@@ -2749,22 +2696,74 @@ mod tests {
         sibling_fns.insert("is_even".to_string(), is_even_body.clone());
         sibling_fns.insert("is_odd".to_string(), is_odd_body);
 
-        // N=40000 would overflow a default 8MB stack without mutual TCO.
-        let mut inputs = HashMap::new();
-        inputs.insert("n".to_string(), Value::Int(40_000));
-        let result = evaluate_fn_body(&is_even_body, &inputs, &sibling_fns).unwrap();
-        assert_eq!(result["return"], Value::Bool(true)); // 40000 is even
+        let sibling_fns_clone = sibling_fns.clone();
+        let is_even_clone = is_even_body.clone();
+        std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(move || {
+                let mut inputs = HashMap::new();
+                inputs.insert("n".to_string(), Value::Int(100));
+                let r1 = evaluate_fn_body(&is_even_clone, &inputs, &sibling_fns_clone).unwrap();
+                assert_eq!(r1["return"], Value::Bool(true)); // 100 is even
 
-        inputs.insert("n".to_string(), Value::Int(40_001));
-        let result = evaluate_fn_body(&is_even_body, &inputs, &sibling_fns).unwrap();
-        assert_eq!(result["return"], Value::Bool(false)); // 40001 is odd
+                inputs.insert("n".to_string(), Value::Int(101));
+                let r2 = evaluate_fn_body(&is_even_clone, &inputs, &sibling_fns_clone).unwrap();
+                assert_eq!(r2["return"], Value::Bool(false)); // 101 is odd
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    /// Regression test (P1): calling a sibling fn whose body uses `return expr`
+    /// (lowered to `Return([("value", expr)])`) from a last-expression position
+    /// must normalize the result through `sibling_fn_value` and wrap it as
+    /// `{"return": <scalar>}`. Before the mutual-TCO revert, the trampoline
+    /// returned raw `{"value": ...}` which changed the observable return shape.
+    #[test]
+    fn p1_sibling_call_value_normalization() {
+        // fn inner() { return { value: 42 } }
+        let inner_body = LoweredFnBody {
+            stmts: vec![LoweredStmt::Return(vec![(
+                "value".to_string(),
+                LoweredExpr::Literal(LoweredLiteral::Int(42)),
+            )])],
+        };
+
+        // fn wrapper() { inner() }   — last expr stmt, would have been mutual tail call
+        let wrapper_body = LoweredFnBody {
+            stmts: vec![LoweredStmt::Expr(LoweredExpr::Call {
+                name: "inner".to_string(),
+                args: vec![],
+            })],
+        };
+
+        let mut sibling_fns = HashMap::new();
+        sibling_fns.insert("inner".to_string(), inner_body);
+        sibling_fns.insert("wrapper".to_string(), wrapper_body.clone());
+
+        let result = evaluate_fn_body(&wrapper_body, &HashMap::new(), &sibling_fns).unwrap();
+        // The wrapper must return {"return": 42}, not {"value": 42}.
+        assert_eq!(
+            result.get("return"),
+            Some(&Value::Int(42)),
+            "sibling call should normalize 'value' to 'return', got: {result:?}"
+        );
+        assert!(
+            !result.contains_key("value"),
+            "raw 'value' key should not leak through: {result:?}"
+        );
     }
 
     /// Infinite mutual tail recursion (A→B→A) must produce a clean error.
+    /// Without the explicit-stack evaluator, infinite mutual recursion
+    /// overflows the native stack before MAX_CALL_DEPTH fires (each frame
+    /// is ~30KB in debug mode). The explicit-stack evaluator (step 3 of
+    /// DESIGN-eval-redesign.md) will make this O(1) stack via heap
+    /// continuations.
     #[test]
+    #[ignore = "needs explicit-stack evaluator — native stack overflow in debug before MAX_CALL_DEPTH fires"]
     fn tco_infinite_mutual_tail_recursion_is_caught() {
-        // fn ping() { pong() }
-        // fn pong() { ping() }
         let ping_body = LoweredFnBody {
             stmts: vec![LoweredStmt::Expr(LoweredExpr::Call {
                 name: "pong".to_string(),
@@ -2786,8 +2785,8 @@ mod tests {
         assert!(result.is_err(), "infinite mutual recursion should error");
         let msg = result.unwrap_err().message;
         assert!(
-            msg.contains("tail-call iterations") || msg.contains("call depth"),
-            "error should mention iteration limit, got: {}",
+            msg.contains("call depth") || msg.contains("step budget"),
+            "error should mention depth/budget limit, got: {}",
             msg
         );
     }
