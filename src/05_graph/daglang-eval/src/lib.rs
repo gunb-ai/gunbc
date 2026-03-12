@@ -4,10 +4,12 @@
 //! types from `gunbc-ir`. No side effects, no transport, no I/O.
 
 pub mod eval;
+pub mod eval_core;
 pub mod eval_stack;
 pub mod expr;
 
 pub use eval::*;
+pub use eval_core::*;
 pub use expr::*;
 
 #[cfg(test)]

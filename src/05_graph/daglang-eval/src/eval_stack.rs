@@ -33,13 +33,14 @@ use std::rc::Rc;
 
 use gunbc_ir::Value;
 
-use crate::eval::{
-    eval_binop, eval_literal, eval_match, field_access, match_pattern, value_to_string,
-    value_truthy, EvalError,
+use crate::eval::eval_match;
+use crate::eval_core::{
+    eval_binop, eval_literal, field_access, match_pattern, value_to_string, value_truthy,
+    EvalError,
 };
 use crate::expr::{
-    LoweredBinOp, LoweredExpr, LoweredFnBody, LoweredLiteral, LoweredMatchArm, LoweredPattern,
-    LoweredStmt, LoweredStringPart, LoweredUnaryOp,
+    LoweredBinOp, LoweredExpr, LoweredFnBody, LoweredMatchArm, LoweredStmt, LoweredStringPart,
+    LoweredUnaryOp,
 };
 
 // ── Limits ──────────────────────────────────────────────────────────────────
