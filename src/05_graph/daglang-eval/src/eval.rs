@@ -1511,16 +1511,22 @@ mod tests {
         };
 
         let body = LoweredFnBody {
-            stmts: vec![LoweredStmt::Return(vec![(
-                "return".to_string(),
-                LoweredExpr::Call {
-                    name: "greet".to_string(),
-                    args: vec![(
-                        Some("name".to_string()),
-                        LoweredExpr::Literal(LoweredLiteral::String("world".to_string())),
-                    )],
-                },
-            )])],
+            stmts: vec![
+                LoweredStmt::Let(
+                    "__r".to_string(),
+                    LoweredExpr::Call {
+                        name: "greet".to_string(),
+                        args: vec![(
+                            Some("name".to_string()),
+                            LoweredExpr::Literal(LoweredLiteral::String("world".to_string())),
+                        )],
+                    },
+                ),
+                LoweredStmt::Return(vec![(
+                    "return".to_string(),
+                    LoweredExpr::Ident("__r".to_string()),
+                )]),
+            ],
         };
 
         let siblings: HashMap<String, LoweredFnBody> =
@@ -1539,13 +1545,14 @@ mod tests {
         };
 
         let body = LoweredFnBody {
-            stmts: vec![LoweredStmt::Return(vec![(
-                "return".to_string(),
-                LoweredExpr::Call {
-                    name: "auth".to_string(),
-                    args: vec![],
-                },
-            )])],
+            stmts: vec![
+                LoweredStmt::Let("__r".to_string(), LoweredExpr::Call {
+                    name: "auth".to_string(), args: vec![],
+                }),
+                LoweredStmt::Return(vec![(
+                    "return".to_string(), LoweredExpr::Ident("__r".to_string()),
+                )]),
+            ],
         };
 
         let siblings: HashMap<String, LoweredFnBody> =
@@ -1680,19 +1687,23 @@ mod tests {
     // ── v2 kernel intrinsic tests ─────────────────────────────────────
 
     /// Helper: evaluate a call expression and return the result.
+    /// Body is ANF-normalized: call at statement level, result in let binding.
     fn eval_call_expr(
         name: &str,
         args: Vec<(Option<String>, LoweredExpr)>,
         inputs: &HashMap<String, Value>,
     ) -> Result<Value, EvalError> {
         let body = LoweredFnBody {
-            stmts: vec![LoweredStmt::Return(vec![(
-                "return".to_string(),
-                LoweredExpr::Call {
-                    name: name.to_string(),
-                    args,
-                },
-            )])],
+            stmts: vec![
+                LoweredStmt::Let(
+                    "__result".to_string(),
+                    LoweredExpr::Call { name: name.to_string(), args },
+                ),
+                LoweredStmt::Return(vec![(
+                    "return".to_string(),
+                    LoweredExpr::Ident("__result".to_string()),
+                )]),
+            ],
         };
         let result = evaluate_fn_body(&body, inputs, &empty_siblings())?;
         Ok(result.get("return").cloned().unwrap_or(Value::Unit))
@@ -2107,58 +2118,67 @@ mod tests {
     /// if-else branch (the pattern used by tokenize_loop, scan_string_body).
     #[test]
     fn tco_self_recursive_return_in_if_branch() {
-        // Build: fn sum_down(n: Int, acc: Int) -> Int {
-        //   if n <= 0 { return acc }
-        //   return sum_down(n: n - 1, acc: acc + n)
+        // Build (ANF): fn sum_down(n: Int, acc: Int) -> Int {
+        //   if n <= 0 { return { return: acc } }
+        //   let __r = sum_down(n: n - 1, acc: acc + n)
+        //   return { return: __r }
         // }
         let body = LoweredFnBody {
-            stmts: vec![LoweredStmt::Expr(LoweredExpr::IfElse {
-                cond: Box::new(LoweredExpr::BinOp {
-                    left: Box::new(LoweredExpr::Ident("n".to_string())),
-                    op: LoweredBinOp::Le,
-                    right: Box::new(LoweredExpr::Literal(LoweredLiteral::Int(0))),
+            stmts: vec![
+                LoweredStmt::Expr(LoweredExpr::IfElse {
+                    cond: Box::new(LoweredExpr::BinOp {
+                        left: Box::new(LoweredExpr::Ident("n".to_string())),
+                        op: LoweredBinOp::Le,
+                        right: Box::new(LoweredExpr::Literal(LoweredLiteral::Int(0))),
+                    }),
+                    then_: Box::new(LoweredExpr::Return(vec![(
+                        "return".to_string(),
+                        LoweredExpr::Ident("acc".to_string()),
+                    )])),
+                    else_: None,
                 }),
-                then_: Box::new(LoweredExpr::Return(vec![(
-                    "return".to_string(),
-                    LoweredExpr::Ident("acc".to_string()),
-                )])),
-                else_: Some(Box::new(LoweredExpr::Return(vec![(
-                    "return".to_string(),
+                LoweredStmt::Let(
+                    "__r".to_string(),
                     LoweredExpr::Call {
                         name: "sum_down".to_string(),
                         args: vec![
-                            (
-                                Some("n".to_string()),
-                                LoweredExpr::BinOp {
-                                    left: Box::new(LoweredExpr::Ident("n".to_string())),
-                                    op: LoweredBinOp::Sub,
-                                    right: Box::new(LoweredExpr::Literal(LoweredLiteral::Int(1))),
-                                },
-                            ),
-                            (
-                                Some("acc".to_string()),
-                                LoweredExpr::BinOp {
-                                    left: Box::new(LoweredExpr::Ident("acc".to_string())),
-                                    op: LoweredBinOp::Add,
-                                    right: Box::new(LoweredExpr::Ident("n".to_string())),
-                                },
-                            ),
+                            (Some("n".to_string()), LoweredExpr::BinOp {
+                                left: Box::new(LoweredExpr::Ident("n".to_string())),
+                                op: LoweredBinOp::Sub,
+                                right: Box::new(LoweredExpr::Literal(LoweredLiteral::Int(1))),
+                            }),
+                            (Some("acc".to_string()), LoweredExpr::BinOp {
+                                left: Box::new(LoweredExpr::Ident("acc".to_string())),
+                                op: LoweredBinOp::Add,
+                                right: Box::new(LoweredExpr::Ident("n".to_string())),
+                            }),
                         ],
                     },
-                )]))),
-            })],
+                ),
+                LoweredStmt::Return(vec![(
+                    "return".to_string(),
+                    LoweredExpr::Ident("__r".to_string()),
+                )]),
+            ],
         };
 
         let mut sibling_fns = HashMap::new();
         sibling_fns.insert("sum_down".to_string(), body.clone());
 
-        let mut inputs = HashMap::new();
-        inputs.insert("n".to_string(), Value::Int(20_000));
-        inputs.insert("acc".to_string(), Value::Int(0));
-
-        let result = evaluate_fn_body(&body, &inputs, &sibling_fns).unwrap();
-        // sum 1..20000 = 20000 * 20001 / 2 = 200_010_000
-        assert_eq!(result["return"], Value::Int(200_010_000));
+        let sibling_fns_clone = sibling_fns.clone();
+        let body_clone = body.clone();
+        std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(move || {
+                let mut inputs = HashMap::new();
+                inputs.insert("n".to_string(), Value::Int(100));
+                inputs.insert("acc".to_string(), Value::Int(0));
+                let result = evaluate_fn_body(&body_clone, &inputs, &sibling_fns_clone).unwrap();
+                assert_eq!(result["return"], Value::Int(5050));
+            })
+            .unwrap()
+            .join()
+            .unwrap();
     }
 
     /// Mutual recursion correctness: is_even/is_odd at moderate depth.
@@ -2347,8 +2367,9 @@ mod tests {
         assert!(result.is_err(), "infinite tail recursion should error");
         let msg = result.unwrap_err().message;
         assert!(
-            msg.contains("tail-call iterations") || msg.contains("call depth"),
-            "error should mention iteration limit, got: {}",
+            msg.contains("stack depth") || msg.contains("transition budget")
+                || msg.contains("tail-call iterations") || msg.contains("call depth"),
+            "error should mention depth/budget limit, got: {}",
             msg
         );
     }

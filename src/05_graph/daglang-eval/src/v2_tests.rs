@@ -39,15 +39,19 @@ fn empty_siblings() -> HashMap<String, LoweredFnBody> {
 }
 
 /// Helper: build a fn body that calls a kernel intrinsic and returns the result.
+/// ANF-normalized: call at statement level in a Let, then return the binding.
 fn call_and_return(name: &str, args: Vec<(Option<String>, LoweredExpr)>) -> LoweredFnBody {
     LoweredFnBody {
-        stmts: vec![LoweredStmt::Return(vec![(
-            "return".to_string(),
-            LoweredExpr::Call {
-                name: name.to_string(),
-                args,
-            },
-        )])],
+        stmts: vec![
+            LoweredStmt::Let(
+                "__result".to_string(),
+                LoweredExpr::Call { name: name.to_string(), args },
+            ),
+            LoweredStmt::Return(vec![(
+                "return".to_string(),
+                LoweredExpr::Ident("__result".to_string()),
+            )]),
+        ],
     }
 }
 
