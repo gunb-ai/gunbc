@@ -368,7 +368,6 @@ Each step compiles and passes all tests.
 #[test] fn builtin_lookup()                  // Option-returning builtin
 ```
 
-**Acceptance:** 56 v2 tests pass on default stack (no `with_parser_stack`).
-3 tests ignored: `phase5_debug_stack_overflow_isolation` (diagnostic probe),
-`phase5_gist_full_transitive_closure` (O(n²) tokenizer overhead on 12 files),
-`phase6_gist_full_pipeline` (OOM in debug mode — >16GB heap, not stack).
+**Acceptance:** v2 tests pass on default stack (no `with_parser_stack`).
+1 test ignored: `phase6_gist_full_pipeline` (OOM in debug mode — >16GB
+heap, not stack). The stack overflow problem is solved.
