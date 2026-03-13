@@ -510,7 +510,7 @@ pub fn emit_c_tests(spec: &TestSpec) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use daglang_lower::{CallableKind, ObligationCategory};
+    use daglang_lower::{CallableKind, CallableObligation, TransportObligation};
     use gunbc_ir::{Dag, Node, Port};
 
     fn obligations(required: bool) -> TestObligations {
@@ -596,7 +596,7 @@ mod tests {
                 module: "services.example".to_string(),
                 kind: CallableKind::Func,
                 name: "execute".to_string(),
-                obligation: ObligationCategory::ServiceTransportExecute,
+                obligation: TransportObligation::Execute,
                 service_metadata: Box::new(daglang_lower::ServiceCallMetadata {
                     service: "example".to_string(),
                     operation: "execute".to_string(),
@@ -622,7 +622,7 @@ mod tests {
                 module: "tools.makegen".to_string(),
                 kind: CallableKind::Fn,
                 name: "render_makefile".to_string(),
-                obligation: ObligationCategory::PureRender,
+                obligation: CallableObligation::PureRender,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,

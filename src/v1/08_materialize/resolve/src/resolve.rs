@@ -1337,14 +1337,16 @@ fn wire_missing_filesystem_resources(dag: &mut Dag<DynOp>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use daglang_lower::{CallableKind, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind};
+    use daglang_lower::{
+        CallableKind, CallableObligation, PrimitiveLiteral, PrimitiveOpKind, TransportObligation,
+    };
     use gunbc_ir::{Node, Port};
 
     fn callable_node(
         id: &str,
         module: &str,
         name: &str,
-        obligation: ObligationCategory,
+        obligation: CallableObligation,
     ) -> Node<LoweredOp> {
         Node::opaque(
             id,
@@ -1442,11 +1444,23 @@ mod tests {
     }
 
     /// Build a service transport node with metadata and spec for generic dispatch.
+    fn obligation_from_transport_name(name: &str) -> TransportObligation {
+        if name.contains("::prepare::") {
+            TransportObligation::Prepare
+        } else if name.contains("::execute::") {
+            TransportObligation::Execute
+        } else if name.contains("::parse::") {
+            TransportObligation::Parse
+        } else {
+            panic!("unknown transport name pattern: {name}")
+        }
+    }
+
     fn service_callable_node(
         id: &str,
         module: &str,
         name: &str,
-        obligation: ObligationCategory,
+        obligation: TransportObligation,
         metadata: ServiceCallMetadata,
     ) -> Node<LoweredOp> {
         Node::opaque(
@@ -1579,7 +1593,7 @@ mod tests {
                 name,
                 "extdeps.shell",
                 name,
-                ObligationCategory::None,
+                obligation_from_transport_name(name),
                 metadata,
             );
             let result = resolve_node(&node).expect(name);
@@ -1597,7 +1611,7 @@ mod tests {
             "codegen",
             "tools.codegen",
             "codegen",
-            ObligationCategory::None,
+            CallableObligation::None,
         );
         let result =
             resolve_node(&node).expect("tools.codegen::codegen should resolve via passthrough");
@@ -1879,8 +1893,13 @@ mod tests {
             ),
         ];
         for (module, name, metadata, expected_debug) in cases {
-            let node =
-                service_callable_node(name, module, name, ObligationCategory::None, metadata);
+            let node = service_callable_node(
+                name,
+                module,
+                name,
+                obligation_from_transport_name(name),
+                metadata,
+            );
             let result = resolve_node(&node).expect(name);
             assert!(
                 format!("{:?}", result).contains(expected_debug),
@@ -1954,7 +1973,7 @@ mod tests {
             "unknown_op",
             "tools.unknown",
             "do_something",
-            ObligationCategory::None,
+            CallableObligation::None,
         );
         let result = resolve_node(&node).expect("unknown modules should resolve via passthrough");
         let debug = format!("{result:?}");
@@ -1970,7 +1989,7 @@ mod tests {
             "bad_op",
             "tools.bootstrap",
             "nonexistent_op",
-            ObligationCategory::None,
+            CallableObligation::None,
         );
         let result = resolve_node(&node).expect("unknown callable should resolve via passthrough");
         let debug = format!("{result:?}");
@@ -1985,14 +2004,27 @@ mod tests {
 
     #[test]
     fn resolve_unknown_service_transport_prepare_fails() {
-        let node = callable_node(
+        let node = service_callable_node(
             "bad_service_prepare",
             "extdeps.cloud.gcp.sts",
             "service_transport::prepare::gcp.STS::Refresh",
-            ObligationCategory::ServiceTransportPrepare,
+            TransportObligation::Prepare,
+            ServiceCallMetadata {
+                service: "gcp.STS".to_string(),
+                operation: "Refresh".to_string(),
+                transport: daglang_lower::ServiceTransportClass::RestNetwork,
+                idempotent: false,
+                readonly: false,
+                spec: None,
+            },
         );
         let err = resolve_node(&node).unwrap_err();
-        assert!(err.reason.contains("unknown callable"));
+        assert!(
+            err.reason.contains("unknown callable")
+                || err.reason.contains("no matching operation spec"),
+            "expected failure for unknown service transport prepare, got: {}",
+            err.reason
+        );
     }
 
     #[test]
@@ -2002,7 +2034,7 @@ mod tests {
             "render",
             "tools.bootstrap",
             "render_clippy_toml",
-            ObligationCategory::None,
+            CallableObligation::None,
         ));
         dag.add_node(primitive_node(
             "prepare_read",
@@ -2105,7 +2137,7 @@ mod tests {
                 module: "std.resources".to_string(),
                 kind: CallableKind::Pattern,
                 name: "resource_lifecycle::release::Filesystem".to_string(),
-                obligation: ObligationCategory::ResourceRelease,
+                obligation: CallableObligation::ResourceRelease,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,

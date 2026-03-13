@@ -2,7 +2,8 @@ use super::*;
 use crate::pipeline::PipelineContext;
 use daglang_derive::derive_artifacts;
 use daglang_lower::{
-    CallableKind, LoweredOp, ObligationCategory, ServiceCallMetadata, ServiceTransportClass,
+    CallableKind, CallableObligation, LoweredOp, ServiceCallMetadata, ServiceTransportClass,
+    TransportObligation,
 };
 use gunbc_exec::{lower, ExecutionMode};
 use gunbc_ir::{Dag, Edge, Node, NodeKind, Port};
@@ -357,7 +358,7 @@ fn resolve_lowered_dag_unknown_callable_module_fails_closed() {
             module: "sample.module".to_string(),
             kind: CallableKind::Func,
             name: "unknown".to_string(),
-            obligation: ObligationCategory::None,
+            obligation: CallableObligation::None,
             is_interactive: false,
             resource_target: None,
             fn_body: None,
@@ -521,7 +522,7 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 module: "sample.services".to_string(),
                 kind: CallableKind::Pattern,
                 name: "service_transport::prepare::FsStorage::read".to_string(),
-                obligation: ObligationCategory::ServiceTransportPrepare,
+                obligation: TransportObligation::Prepare,
                 service_metadata: Box::new(ServiceCallMetadata {
                     service: "FsStorage".to_string(),
                     operation: "read".to_string(),
@@ -545,7 +546,7 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 module: "sample.services".to_string(),
                 kind: CallableKind::Pattern,
                 name: "service_transport::execute::FsStorage::read".to_string(),
-                obligation: ObligationCategory::ServiceTransportExecute,
+                obligation: TransportObligation::Execute,
                 service_metadata: Box::new(ServiceCallMetadata {
                     service: "FsStorage".to_string(),
                     operation: "read".to_string(),
@@ -569,7 +570,7 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 module: "sample.services".to_string(),
                 kind: CallableKind::Pattern,
                 name: "service_transport::parse::FsStorage::read".to_string(),
-                obligation: ObligationCategory::ServiceTransportParse,
+                obligation: TransportObligation::Parse,
                 service_metadata: Box::new(ServiceCallMetadata {
                     service: "FsStorage".to_string(),
                     operation: "read".to_string(),
@@ -681,7 +682,7 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
                 module: "sample.triplets".to_string(),
                 kind: CallableKind::Pattern,
                 name: "prepare".to_string(),
-                obligation: ObligationCategory::None,
+                obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -698,7 +699,7 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
                 module: "sample.triplets".to_string(),
                 kind: CallableKind::Pattern,
                 name: "execute".to_string(),
-                obligation: ObligationCategory::None,
+                obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -715,7 +716,7 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
                 module: "sample.triplets".to_string(),
                 kind: CallableKind::Pattern,
                 name: "parse_z".to_string(),
-                obligation: ObligationCategory::None,
+                obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -732,7 +733,7 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
                 module: "sample.triplets".to_string(),
                 kind: CallableKind::Pattern,
                 name: "parse_a".to_string(),
-                obligation: ObligationCategory::None,
+                obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -748,7 +749,7 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
             module: "sample.triplets".to_string(),
             kind: CallableKind::Pattern,
             name: "sink".to_string(),
-            obligation: ObligationCategory::None,
+            obligation: CallableObligation::None,
             is_interactive: false,
             resource_target: None,
             fn_body: None,
