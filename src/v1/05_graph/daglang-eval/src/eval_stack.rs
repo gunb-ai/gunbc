@@ -79,6 +79,9 @@ fn output_value(outputs: &HashMap<String, Value>) -> Value {
     }
     if outputs.len() == 1 {
         if let Some(value) = outputs.get("value") {
+            // Legacy "value" fallback — all functions should return through
+            // the "return" key. This path exists for backward compatibility
+            // and should be eliminated once all callers are migrated.
             return value.clone();
         }
     }
@@ -286,10 +289,15 @@ fn no_sibling_call(expr: &LoweredExpr, loc: &str, sibs: &HashMap<&str, FnId>) ->
             }
             Ok(())
         }
-        // Lambda bodies are evaluated lazily by intrinsic handlers (map, filter,
-        // scan_while, etc.), not in ANF statement position — calls inside them
-        // are fine and expected.
-        LoweredExpr::Lambda { .. } => Ok(()),
+        // Lambda bodies are evaluated on the pure eval_expr path by intrinsic
+        // handlers (map, filter, scan_while, etc.). The ANF normalizer hoists
+        // calls to statement level within blocks inside lambdas. Sibling calls
+        // in lambda bodies would be evaluated re-entrantly via evaluate_stack,
+        // which is correct but breaks the contract that the pure path should
+        // not need the continuation stack. Tighten: reject sibling calls.
+        LoweredExpr::Lambda { body, .. } => {
+            no_sibling_call_in_branch(body, &format!("{loc}/Lambda"), sibs)
+        }
         LoweredExpr::List(xs) => { for x in xs { no_sibling_call(x, loc, sibs)?; } Ok(()) }
         LoweredExpr::Block(ss) => { for s in ss { check_stmt_anf(s, loc, sibs)?; } Ok(()) }
         LoweredExpr::Record { fields, .. }
@@ -1571,6 +1579,11 @@ fn bind_let_result(env: &mut Env, name: String, value: &Value) {
 
 fn wrap_value_as_output(value: Value) -> HashMap<String, Value> {
     if let Value::Map(map) = &value {
+        // Map flattening: a Map result is destructured into the output map.
+        // This is documented as "structurally necessary" (Limitation 3 in
+        // the design doc) because the v2 evaluation model returns multi-field
+        // records this way. Target for removal once all callers wrap
+        // explicitly as {"return": map_value}.
         map.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
     } else {
         [("return".to_string(), value)].into_iter().collect()
@@ -1810,7 +1823,12 @@ mod tests {
     }
 
     #[test] fn builtin_scan_while_with_lambda() {
-        // scan_while(s: "123abc", start: 0, pred: c => code_point(c) >= code_point("0") && code_point(c) <= code_point("9"))
+        // scan_while(s: "123abc", start: 0, pred: c => {
+        //   let __t0 = code_point(c); let __t1 = code_point("0");
+        //   let __t2 = code_point(c); let __t3 = code_point("9");
+        //   __t0 >= __t1 && __t2 <= __t3
+        // })
+        // ANF-normalized: calls hoisted to let-bindings inside the lambda block.
         let body = LoweredFnBody {
  stmts: vec![
             LoweredStmt::Let("r".into(), LoweredExpr::Call {
@@ -1820,23 +1838,29 @@ mod tests {
                     (Some("start".into()), int(0)),
                     (Some("pred".into()), LoweredExpr::Lambda {
                         params: vec!["c".into()],
-                        body: Box::new(LoweredExpr::BinOp {
-                            left: Box::new(LoweredExpr::BinOp {
-                                left: Box::new(LoweredExpr::Call { name: "code_point".into(),
-                                    args: vec![(Some("c".into()), ident("c"))] }),
-                                op: LoweredBinOp::Ge,
-                                right: Box::new(LoweredExpr::Call { name: "code_point".into(),
-                                    args: vec![(Some("c".into()), LoweredExpr::Literal(LoweredLiteral::String("0".into())))] }),
+                        body: Box::new(LoweredExpr::Block(vec![
+                            LoweredStmt::Let("__t0".into(), LoweredExpr::Call { name: "code_point".into(),
+                                args: vec![(Some("c".into()), ident("c"))] }),
+                            LoweredStmt::Let("__t1".into(), LoweredExpr::Call { name: "code_point".into(),
+                                args: vec![(Some("c".into()), LoweredExpr::Literal(LoweredLiteral::String("0".into())))] }),
+                            LoweredStmt::Let("__t2".into(), LoweredExpr::Call { name: "code_point".into(),
+                                args: vec![(Some("c".into()), ident("c"))] }),
+                            LoweredStmt::Let("__t3".into(), LoweredExpr::Call { name: "code_point".into(),
+                                args: vec![(Some("c".into()), LoweredExpr::Literal(LoweredLiteral::String("9".into())))] }),
+                            LoweredStmt::Expr(LoweredExpr::BinOp {
+                                left: Box::new(LoweredExpr::BinOp {
+                                    left: Box::new(ident("__t0")),
+                                    op: LoweredBinOp::Ge,
+                                    right: Box::new(ident("__t1")),
+                                }),
+                                op: LoweredBinOp::And,
+                                right: Box::new(LoweredExpr::BinOp {
+                                    left: Box::new(ident("__t2")),
+                                    op: LoweredBinOp::Le,
+                                    right: Box::new(ident("__t3")),
+                                }),
                             }),
-                            op: LoweredBinOp::And,
-                            right: Box::new(LoweredExpr::BinOp {
-                                left: Box::new(LoweredExpr::Call { name: "code_point".into(),
-                                    args: vec![(Some("c".into()), ident("c"))] }),
-                                op: LoweredBinOp::Le,
-                                right: Box::new(LoweredExpr::Call { name: "code_point".into(),
-                                    args: vec![(Some("c".into()), LoweredExpr::Literal(LoweredLiteral::String("9".into())))] }),
-                            }),
-                        }),
+                        ])),
                     }),
                 ],
             }),
