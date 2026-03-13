@@ -108,11 +108,9 @@ pub fn evaluate_collection(
 }
 
 /// Check if a function name is an evaluator-handled intrinsic.
+///
+/// Delegates to [`gunbc_ir::patterns::is_eval_intrinsic`] — single source
+/// of truth (S11).
 pub fn is_intrinsic_call(name: &str) -> bool {
-    matches!(name,
-        "map" | "filter" | "filter_map" | "flat_map" | "fold" | "append"
-        | "join" | "count" | "sum" | "first" | "last" | "any" | "all" | "contains"
-        | "sort_by" | "split" | "zip" | "skip" | "enumerate"
-        | "starts_with" | "ends_with" | "repeat" | "chars"
-    )
+    gunbc_ir::patterns::is_eval_intrinsic(name)
 }

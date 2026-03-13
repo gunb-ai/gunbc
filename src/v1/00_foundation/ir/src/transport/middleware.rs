@@ -223,6 +223,21 @@ pub enum ResponseProvider {
     OpenAi,
 }
 
+impl std::str::FromStr for ResponseProvider {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "generic" | "Generic" => Ok(Self::Generic),
+            "github" | "GitHub" | "git_hub" => Ok(Self::GitHub),
+            "gcp" | "Gcp" | "GCP" => Ok(Self::Gcp),
+            "anthropic" | "Anthropic" => Ok(Self::Anthropic),
+            "openai" | "OpenAi" | "open_ai" => Ok(Self::OpenAi),
+            other => Err(format!("unknown response provider: `{other}`")),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

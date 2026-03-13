@@ -44,7 +44,7 @@ use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
 use gunbc_ir::{
     contract, parse_map_type_id, value_compatible_with_type_id, value_kind_name, Cardinality, Dag,
-    NodeId, NodeKind, Os, PortName, SecretString, SeedPlaceholderPolicy, SemanticCarrierClass,
+    NodeId, NodeKind, Os, SecretString, SeedPlaceholderPolicy, SemanticCarrierClass,
     TypeRegistry, Value, ValueExpr,
 };
 use gunbc_test::{FailureVariant, FermiCost, MockSpec, OutputMatcher, TestClass};
@@ -157,9 +157,6 @@ pub struct TestConfig {
     pub boundary_tests: bool,
     /// Generate chain validation tests (mock spec self-consistency)
     pub chain_tests: bool,
-    /// Generate flow verification tests (DryRun full DAG, verify terminal outputs).
-    /// DEPRECATED: Tautological — replaced by probe_observer_tests.
-    pub flow_tests: bool,
     /// Generate live flow verification tests (Real execution, gated by env + cost)
     pub live_flow_tests: bool,
     /// Generate per-node I/O example tests (from MockSpec.node_examples)
@@ -178,9 +175,6 @@ pub struct TestConfig {
     pub fidelity_ladder_tests: bool,
     /// Generate failure-variant tests (RV-4: error-path coverage per transport boundary)
     pub failure_variant_tests: bool,
-    /// Max window size for windowed tests (None = disabled).
-    /// DEPRECATED: Tautological — replaced by probe_observer_tests.
-    pub window_max_nodes: Option<usize>,
     /// Test module visibility
     pub visibility: String,
     /// Test class (unit/hermetic/integration)
@@ -216,7 +210,6 @@ impl Default for TestConfig {
             resource_tests: true,
             boundary_tests: true,
             chain_tests: true,
-            flow_tests: false,
             live_flow_tests: false,
             example_tests: true,
             optional_input_tests: true,
@@ -226,7 +219,6 @@ impl Default for TestConfig {
             cross_workflow_tests: false,
             fidelity_ladder_tests: false,
             failure_variant_tests: true,
-            window_max_nodes: None, // Deprecated: use probe_observer_tests instead
             visibility: "pub".to_string(),
             test_class: TestClass::Hermetic,
             fermi_cost: FermiCost::XS,
@@ -1063,17 +1055,6 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             });
         }
 
-        if self.mock_spec_fn.is_some() && self.config.window_max_nodes.unwrap_or(usize::MAX) >= 2 {
-            file.imports.push(Import {
-                path: vec!["gunbc_test".to_string()],
-                items: vec![
-                    "apply_window_inputs".to_string(),
-                    "assert_window_outputs".to_string(),
-                    "window_subdag".to_string(),
-                    "Window".to_string(),
-                ],
-            });
-        }
 
         if self.config.probe_observer_tests && self.mock_spec.is_some() {
             file.imports.push(Import {
@@ -1333,12 +1314,6 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             }
         }
 
-        if self.config.flow_tests {
-            if let Some(section) = self.build_flow_section(analysis, graph_builder_fn) {
-                file.sections.push(section);
-            }
-        }
-
         if self.config.live_flow_tests {
             if let Some(section) = self.build_live_flow_section(graph_builder_fn) {
                 file.sections.push(section);
@@ -1348,12 +1323,6 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
         // PT-5: Per-profile live flow test sections.
         for section in self.build_per_profile_live_flow_sections() {
             file.sections.push(section);
-        }
-
-        if self.mock_spec_fn.is_some() && self.config.window_max_nodes.unwrap_or(usize::MAX) >= 2 {
-            if let Some(section) = self.build_window_section(graph_builder_fn) {
-                file.sections.push(section);
-            }
         }
 
         if self.config.probe_observer_tests {
@@ -1477,21 +1446,11 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
     }
 
     fn class_variant(class: TestClass) -> &'static str {
-        match class {
-            TestClass::Unit => "Unit",
-            TestClass::Hermetic => "Hermetic",
-            TestClass::Integration => "Integration",
-        }
+        class.variant_name()
     }
 
     fn cost_variant(cost: FermiCost) -> &'static str {
-        match cost {
-            FermiCost::XS => "XS",
-            FermiCost::S => "S",
-            FermiCost::M => "M",
-            FermiCost::L => "L",
-            FermiCost::XL => "XL",
-        }
+        cost.variant_name()
     }
 
     fn prune_unused_imports(file: &mut TestFile) {
@@ -3972,116 +3931,6 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
         ValueExpr::from(value)
     }
 
-    fn build_flow_section(
-        &self,
-        _analysis: &DagAnalysis,
-        graph_builder_fn: &str,
-    ) -> Option<TestSection> {
-        let Some(spec) = &self.mock_spec else {
-            return None;
-        };
-        if self.mock_spec_fn.is_none() {
-            panic!(
-                "Flow tests require mock_spec_fn so generated tests can build boundary mocks.\n\
-                 Provide TestGenerator::with_mock_spec_fn(\"path::to::mock_spec()\") to enable flow tests."
-            );
-        }
-        if !spec.has_flow_test_data() {
-            return None;
-        }
-
-        let test_name = format!("test_flow_{}", NamingCase::SnakeCase.apply(&spec.name));
-
-        let mut body = vec![
-            Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
-            Stmt::let_bind("spec", Expr::call("mock_spec", vec![])),
-            Stmt::let_bind(
-                "mocks",
-                Expr::var("spec").method("to_boundary_mocks", vec![]),
-            ),
-            Stmt::let_bind(
-                if spec.expected_outputs.is_empty() {
-                    "_log"
-                } else {
-                    "log"
-                },
-                Expr::call(
-                    "execute_dag",
-                    vec![
-                        Expr::var("dag").ref_of(),
-                        Expr::Struct {
-                            name: "ExecuteConfig".to_string(),
-                            fields: vec![(
-                                "mode".to_string(),
-                                Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
-                            )],
-                            rest: Some(Box::new(Expr::call("Default::default", vec![]))),
-                        },
-                    ],
-                )
-                .method(
-                    "expect",
-                    vec![Expr::Str("DryRun execution should succeed".into())],
-                ),
-            ),
-            Stmt::Blank,
-        ];
-
-        for eo in &spec.expected_outputs {
-            body.push(Stmt::Comment(format!("Verify {}.{}", eo.node, eo.port)));
-            body.push(Stmt::let_bind(
-                "entry",
-                Expr::var("log")
-                    .method("get", vec![Expr::Str(eo.node.clone())])
-                    .method(
-                        "expect",
-                        vec![Expr::Str(format!(
-                            "node '{}' should be in execution log",
-                            eo.node
-                        ))],
-                    ),
-            ));
-
-            let left = Expr::var("entry")
-                .field("outputs")
-                .method("get", vec![Expr::Str(eo.port.clone())])
-                .method(
-                    "expect",
-                    vec![Expr::Str(format!(
-                        "port '{}' should exist on '{}'",
-                        eo.port, eo.node
-                    ))],
-                );
-            let right = Expr::Value(ValueExpr::from(&eo.expected)).ref_of();
-            body.push(Stmt::Assert(Assert::Eq {
-                left,
-                right,
-                message: format!("flow verification: {}.{} mismatch", eo.node, eo.port),
-            }));
-            body.push(Stmt::Blank);
-        }
-
-        Some(TestSection {
-            title: "Flow Verification Tests".to_string(),
-            notes: vec![
-                "These tests execute the full DAG in DryRun mode with mocked transport".to_string(),
-                "responses, verifying that pure node logic produces expected outputs.".to_string(),
-            ],
-            tests: vec![TestFn {
-                name: test_name,
-                doc: vec![
-                    format!("Flow verification: {} scenario.", spec.name),
-                    String::new(),
-                    "Builds the DAG, injects mocked transport responses via DryRun,".to_string(),
-                    "and verifies that the pure node chain produces expected terminal outputs."
-                        .to_string(),
-                ],
-                attributes: vec![],
-                body,
-            }],
-        })
-    }
-
     fn build_live_flow_section(&self, graph_builder_fn: &str) -> Option<TestSection> {
         let Some(spec) = &self.mock_spec else {
             return None;
@@ -4383,168 +4232,6 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 }
             })
             .collect()
-    }
-
-    fn build_window_section(&self, graph_builder_fn: &str) -> Option<TestSection> {
-        self.mock_spec_fn.as_ref()?;
-
-        let max_nodes = self.config.window_max_nodes.unwrap_or(usize::MAX);
-        if max_nodes < 2 {
-            return None;
-        }
-
-        let lowered =
-            gunbc_exec::lower(self.dag).expect("window tests require DAG lowering to succeed");
-        let pure_nodes = collect_pure_nodes(&lowered.dag);
-        let windows = enumerate_window_specs(&lowered.dag, max_nodes, &pure_nodes);
-        if windows.is_empty() {
-            return None;
-        }
-
-        let mut used_names: HashSet<String> = HashSet::new();
-        let mut tests = Vec::new();
-
-        for (idx, spec) in windows.iter().enumerate() {
-            let base_name = format!(
-                "test_window_{}_through_{}",
-                NamingCase::SnakeCase.apply(&spec.first.0),
-                NamingCase::SnakeCase.apply(&spec.last.0)
-            );
-            let test_name = if used_names.insert(base_name.clone()) {
-                base_name
-            } else {
-                format!("{}_{}", base_name, idx)
-            };
-
-            let mut node_args = Vec::new();
-            for node in &spec.nodes {
-                node_args.push(Expr::Str(node.0.clone()));
-            }
-
-            let body = vec![
-                Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
-                Stmt::let_bind(
-                    "flat",
-                    Expr::call("lower", vec![Expr::var("dag").ref_of()])
-                        .method("expect", vec![Expr::Str("lower should succeed".into())])
-                        .field("dag"),
-                ),
-                Stmt::let_bind(
-                    "baseline",
-                    Expr::call(
-                        "execute_dag",
-                        vec![
-                            Expr::var("flat").ref_of(),
-                            Expr::Struct {
-                                name: "ExecuteConfig".to_string(),
-                                fields: vec![(
-                                    "mode".to_string(),
-                                    Expr::call(
-                                        "ExecutionMode::DryRun",
-                                        vec![Expr::call("mock_spec", vec![])
-                                            .method("to_boundary_mocks", vec![])],
-                                    ),
-                                )],
-                                rest: Some(Box::new(Expr::call("Default::default", vec![]))),
-                            },
-                        ],
-                    )
-                    .method(
-                        "expect",
-                        vec![Expr::Str("baseline DryRun should succeed".into())],
-                    ),
-                ),
-                Stmt::let_bind(
-                    "window",
-                    Expr::call(
-                        "Window::from_nodes",
-                        vec![Expr::var("flat").ref_of(), Expr::call("vec!", node_args)],
-                    ),
-                ),
-                Stmt::let_mut(
-                    "mocks",
-                    Expr::call("mock_spec", vec![]).method("to_boundary_mocks", vec![]),
-                ),
-                Stmt::Expr(
-                    Expr::call(
-                        "apply_window_inputs",
-                        vec![
-                            Expr::var("flat").ref_of(),
-                            Expr::var("window").ref_of(),
-                            Expr::var("baseline").ref_of(),
-                            Expr::var("mocks").ref_mut(),
-                        ],
-                    )
-                    .method(
-                        "expect",
-                        vec![Expr::Str(
-                            "window inputs should be derivable from baseline".into(),
-                        )],
-                    ),
-                ),
-                Stmt::let_bind(
-                    "window_dag",
-                    Expr::call(
-                        "window_subdag",
-                        vec![Expr::var("flat").ref_of(), Expr::var("window").ref_of()],
-                    ),
-                ),
-                Stmt::let_bind(
-                    "log",
-                    Expr::call(
-                        "execute_dag",
-                        vec![
-                            Expr::var("window_dag").ref_of(),
-                            Expr::Struct {
-                                name: "ExecuteConfig".to_string(),
-                                fields: vec![(
-                                    "mode".to_string(),
-                                    Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
-                                )],
-                                rest: Some(Box::new(Expr::call("Default::default", vec![]))),
-                            },
-                        ],
-                    )
-                    .method(
-                        "expect",
-                        vec![Expr::Str("window execution should succeed".into())],
-                    ),
-                ),
-                Stmt::Expr(
-                    Expr::call(
-                        "assert_window_outputs",
-                        vec![
-                            Expr::var("flat").ref_of(),
-                            Expr::var("window").ref_of(),
-                            Expr::var("baseline").ref_of(),
-                            Expr::var("log").ref_of(),
-                        ],
-                    )
-                    .method(
-                        "expect",
-                        vec![Expr::Str("window outputs should match baseline".into())],
-                    ),
-                ),
-            ];
-
-            tests.push(TestFn {
-                name: test_name,
-                doc: vec![format!("Window: {} -> {}", spec.first.0, spec.last.0)],
-                attributes: vec![],
-                body,
-            });
-        }
-
-        Some(TestSection {
-            title: "Windowed Segment Tests".to_string(),
-            notes: vec![
-                "These tests execute contiguous windows of the DAG using baseline DryRun"
-                    .to_string(),
-                "values as injected inputs, then verify window exit outputs match baseline."
-                    .to_string(),
-            ],
-            tests,
-        })
     }
 
     fn build_probe_observer_section(
@@ -6979,33 +6666,48 @@ fn try_mock_element_value(type_id: &str, index: Option<u32>) -> Option<Value> {
         return Some(Value::Map(map));
     }
 
+    // Structural overrides: types that need specific field layouts for downstream
+    // consumers (e.g., ToolHandle needs "type", "id", "path", "cap" fields).
+    // These cannot be derived from ValueBacking alone.
+    if let Some(value) = mock_structural_override(type_id, index) {
+        return Some(value);
+    }
+
+    // Bare container types without element info cannot produce mock values.
+    if matches!(type_id, "List" | "Set") {
+        return None;
+    }
+
+    // Transport types need specific constructors.
+    match type_id {
+        "TransportRequest" => {
+            return Some(Value::Request(TransportRequest::Shell(ShellRequest::new(
+                "true",
+            ))))
+        }
+        "TransportResponse" => {
+            return Some(Value::Response(TransportResponse::Shell(ShellResponse::ok(
+                "<MOCK>",
+            ))))
+        }
+        _ => {}
+    }
+
+    // Derive from ValueBacking for all primitive/standard types (S17).
+    // This replaces the previous 20+ arm match on type-name strings.
+    let backing = gunbc_ir::value_backing_for_type_id(type_id).ok()?;
+    Some(backing.mock_value(index))
+}
+
+/// Structural mock overrides for record types that need specific field layouts.
+///
+/// These types have downstream consumers that access specific fields, so a
+/// generic `Value::Map({})` from `ValueBacking::Map` is insufficient.
+/// All other types are handled by `ValueBacking::mock_value()`.
+fn mock_structural_override(type_id: &str, index: Option<u32>) -> Option<Value> {
     let value = match type_id {
-        "String" => match index {
-            Some(1) | None => Value::Str("<MOCK>".to_string()),
-            Some(i) => Value::Str(format!("<MOCK_{}>", i)),
-        },
-        "Bool" => match index {
-            Some(i) => Value::Bool(i % 2 == 1),
-            None => Value::Bool(true),
-        },
-        "Int" | "i64" | "i32" => match index {
-            Some(i) => Value::Int(i as i64),
-            None => Value::Int(0),
-        },
-        "Unit" => Value::Unit,
-        "Json" => Value::Json(JsonValue::Null),
-        "Map" => Value::Map(BTreeMap::new()),
         "CloudSecretConfig" => Value::Json(mock_cloud_secret_config_json()),
-        "Secret" => Value::Secret(SecretString::new("<MOCK_SECRET>")),
-        "Any" | "Record" => Value::Json(JsonValue::Null),
-        "S" => Value::Str("<MOCK>".to_string()),
-        "Path" | "FilePath" => Value::Str("/tmp/mock".to_string()),
-        "SourceIR" => Value::Str("<SOURCE_IR>".to_string()),
         "Platform" => Value::Str(platform_mock_token(index)),
-        "Error" => Value::Str("<ERROR>".to_string()),
-        "Tier" => Value::Str("Ascii".to_string()),
-        "Unknown" => Value::Json(JsonValue::Null),
-        "ToolId" => Value::Str("clippy".to_string()),
         "ToolHandle" => {
             let mut map = BTreeMap::new();
             map.insert("type".to_string(), Value::Str("tool_handle".to_string()));
@@ -7025,7 +6727,6 @@ fn try_mock_element_value(type_id: &str, index: Option<u32>) -> Option<Value> {
             map.insert("stderr".to_string(), Value::Str(String::new()));
             Value::Map(map)
         }
-        "Timestamp" => Value::Int(0),
         "Credential" => {
             let mut map = BTreeMap::new();
             map.insert(
@@ -7067,14 +6768,8 @@ fn try_mock_element_value(type_id: &str, index: Option<u32>) -> Option<Value> {
             );
             Value::Map(map)
         }
-        "TransportRequest" => Value::Request(TransportRequest::Shell(ShellRequest::new("true"))),
-        "TransportResponse" => {
-            Value::Response(TransportResponse::Shell(ShellResponse::ok("<MOCK>")))
-        }
-        "List" | "Set" => return None,
         _ => return None,
     };
-
     Some(value)
 }
 
@@ -7466,182 +7161,6 @@ fn mock_wrong_type_expr(type_id: &str) -> Option<ValueExpr> {
         // Unit is ambiguous — no wrong-type witness
         ValueBacking::Unit => None,
     }
-}
-
-#[derive(Debug)]
-struct WindowSpec {
-    nodes: Vec<NodeId>,
-    first: NodeId,
-    last: NodeId,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct WindowSignature {
-    entry_ports: Vec<(String, String)>,
-    exit_ports: Vec<(String, String)>,
-}
-
-fn enumerate_window_specs<T>(
-    dag: &Dag<T>,
-    max_nodes: usize,
-    pure_nodes: &HashSet<NodeId>,
-) -> Vec<WindowSpec> {
-    let topo = gunbc_exec::topo_sort(dag);
-    let mut specs = Vec::new();
-    let mut seen: HashSet<WindowSignature> = HashSet::new();
-
-    if topo.len() < 2 {
-        return specs;
-    }
-
-    let max_size = max_nodes.min(topo.len());
-    for size in 2..=max_size {
-        for start in 0..=(topo.len() - size) {
-            let end = start + size - 1;
-            let slice = &topo[start..=end];
-            let node_set: HashSet<NodeId> = slice.iter().cloned().collect();
-
-            if !window_is_connected(dag, &node_set) {
-                continue;
-            }
-            if window_has_mixed_inputs(dag, &node_set) {
-                continue;
-            }
-            if !window_has_pure_node(&node_set, pure_nodes) {
-                continue;
-            }
-
-            let signature = window_signature(dag, &node_set);
-            if signature.exit_ports.is_empty() {
-                continue;
-            }
-            if !seen.insert(signature) {
-                continue;
-            }
-
-            specs.push(WindowSpec {
-                nodes: slice.to_vec(),
-                first: slice[0].clone(),
-                last: slice[slice.len() - 1].clone(),
-            });
-        }
-    }
-
-    specs
-}
-
-fn window_is_connected<T>(dag: &Dag<T>, nodes: &HashSet<NodeId>) -> bool {
-    if nodes.len() <= 1 {
-        return true;
-    }
-
-    let mut adj: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
-    for node in nodes {
-        adj.entry(node.clone()).or_default();
-    }
-
-    for edge in &dag.edges {
-        if nodes.contains(&edge.from_node) && nodes.contains(&edge.to_node) {
-            adj.entry(edge.from_node.clone())
-                .or_default()
-                .push(edge.to_node.clone());
-            adj.entry(edge.to_node.clone())
-                .or_default()
-                .push(edge.from_node.clone());
-        }
-    }
-
-    let start = nodes.iter().next().unwrap().clone();
-    let mut stack = vec![start];
-    let mut visited: HashSet<NodeId> = HashSet::new();
-
-    while let Some(node) = stack.pop() {
-        if !visited.insert(node.clone()) {
-            continue;
-        }
-        if let Some(neighbors) = adj.get(&node) {
-            for neighbor in neighbors {
-                if !visited.contains(neighbor) {
-                    stack.push(neighbor.clone());
-                }
-            }
-        }
-    }
-
-    visited.len() == nodes.len()
-}
-
-fn window_has_mixed_inputs<T>(dag: &Dag<T>, nodes: &HashSet<NodeId>) -> bool {
-    let mut seen: HashMap<(NodeId, PortName), (bool, bool)> = HashMap::new();
-
-    for edge in &dag.edges {
-        if nodes.contains(&edge.to_node) {
-            let entry = seen
-                .entry((edge.to_node.clone(), edge.to_port.clone()))
-                .or_insert((false, false));
-            if nodes.contains(&edge.from_node) {
-                entry.0 = true;
-            } else {
-                entry.1 = true;
-            }
-            if entry.0 && entry.1 {
-                return true;
-            }
-        }
-    }
-
-    false
-}
-
-fn window_has_pure_node(nodes: &HashSet<NodeId>, pure_nodes: &HashSet<NodeId>) -> bool {
-    nodes.iter().any(|n| pure_nodes.contains(n))
-}
-
-fn window_signature<T>(dag: &Dag<T>, nodes: &HashSet<NodeId>) -> WindowSignature {
-    let mut internal_incoming: HashSet<(NodeId, PortName)> = HashSet::new();
-    let mut internal_outgoing: HashSet<(NodeId, PortName)> = HashSet::new();
-
-    for edge in &dag.edges {
-        if nodes.contains(&edge.from_node) && nodes.contains(&edge.to_node) {
-            internal_incoming.insert((edge.to_node.clone(), edge.to_port.clone()));
-            internal_outgoing.insert((edge.from_node.clone(), edge.from_port.clone()));
-        }
-    }
-
-    let mut entry_ports: Vec<(String, String)> = Vec::new();
-    let mut exit_ports: Vec<(String, String)> = Vec::new();
-
-    for node in &dag.nodes {
-        if !nodes.contains(&node.id) {
-            continue;
-        }
-        for port in &node.inputs {
-            if !internal_incoming.contains(&(node.id.clone(), port.name.clone())) {
-                entry_ports.push((node.id.0.clone(), port.name.0.clone()));
-            }
-        }
-        for port in &node.outputs {
-            if !internal_outgoing.contains(&(node.id.clone(), port.name.clone())) {
-                exit_ports.push((node.id.0.clone(), port.name.0.clone()));
-            }
-        }
-    }
-
-    entry_ports.sort();
-    exit_ports.sort();
-
-    WindowSignature {
-        entry_ports,
-        exit_ports,
-    }
-}
-
-fn collect_pure_nodes<T>(dag: &Dag<T>) -> HashSet<NodeId> {
-    dag.nodes
-        .iter()
-        .filter(|node| is_pure_node(node))
-        .map(|node| node.id.clone())
-        .collect()
 }
 
 fn is_pure_node<T>(node: &gunbc_ir::Node<T>) -> bool {
@@ -8160,9 +7679,7 @@ mod tests {
             resource_tests: false,
             boundary_tests: false,
             chain_tests: false,
-            flow_tests: false,
             example_tests: true,
-            window_max_nodes: Some(0),
             ..TestConfig::default()
         };
         let generator = TestGenerator::new(&dag).with_config(config);
@@ -9715,7 +9232,6 @@ mod tests {
                 input_expectations: vec![],
                 resource_mocks: Default::default(),
                 transport_mocks: vec![],
-                expected_outputs: vec![],
                 live_expected_outputs: vec![],
                 node_examples: vec![],
                 skipped_node_examples: vec![],

@@ -13,13 +13,11 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut module: Option<syn::LitStr> = None;
     let mut builder: Option<Expr> = None;
     let mut signature: Option<Expr> = None;
-    let mut flow_tests = false;
     let mut live_flow_tests = false;
     let mut no_boundary_tests = false;
     let mut no_chain_tests = false;
     let mut skip = false;
     let mut returns_result = false;
-    let mut window_max_nodes: Option<usize> = None;
     let mut test_class: Option<syn::LitStr> = None;
     let mut fermi_cost: Option<syn::LitStr> = None;
     let mut requires: Option<Vec<syn::LitStr>> = None;
@@ -88,21 +86,6 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
                             return syn::Error::new_spanned(
                                 nv,
                                 "signature must be a string literal or use signature(...) form",
-                            )
-                            .to_compile_error()
-                            .into();
-                        }
-                    }
-                    Some("window_max_nodes") => {
-                        if let Lit::Int(i) = nv.lit {
-                            match i.base10_parse::<usize>() {
-                                Ok(v) => window_max_nodes = Some(v),
-                                Err(e) => return e.to_compile_error().into(),
-                            }
-                        } else {
-                            return syn::Error::new_spanned(
-                                nv,
-                                "window_max_nodes must be an integer",
                             )
                             .to_compile_error()
                             .into();
@@ -275,7 +258,6 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
             NestedMeta::Meta(Meta::Path(path)) => {
                 if let Some(ident) = path.get_ident() {
                     match ident.to_string().as_str() {
-                        "flow_tests" => flow_tests = true,
                         "live_flow_tests" => live_flow_tests = true,
                         "no_boundary_tests" => no_boundary_tests = true,
                         "no_chain_tests" => no_chain_tests = true,
@@ -302,11 +284,9 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
             || output.is_some()
             || module.is_some()
             || signature.is_some()
-            || flow_tests
             || live_flow_tests
             || no_boundary_tests
             || no_chain_tests
-            || window_max_nodes.is_some()
             || test_class.is_some()
             || fermi_cost.is_some()
             || requires.is_some()
@@ -381,7 +361,6 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let mut boundary_tests = true;
     let mut chain_tests = true;
-    let mut flow = false;
 
     if no_boundary_tests {
         boundary_tests = false;
@@ -389,20 +368,9 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
     if no_chain_tests {
         chain_tests = false;
     }
-    if flow_tests {
-        flow = true;
-        boundary_tests = false;
-        chain_tests = false;
-    }
 
     let signature_tokens = if let Some(sig) = signature {
         quote!(Some(stringify!(#sig)))
-    } else {
-        quote!(None)
-    };
-
-    let window_tokens = if let Some(n) = window_max_nodes {
-        quote!(Some(#n))
     } else {
         quote!(None)
     };
@@ -554,9 +522,7 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
                 testgen: gunbc_testgen_registry::DagSpecTestgen {
                     boundary_tests: #boundary_tests,
                     chain_tests: #chain_tests,
-                    flow_tests: #flow,
                     live_flow_tests: #live_flow_tests,
-                    window_max_nodes: #window_tokens,
                     test_class: #class_tokens,
                     fermi_cost: #fermi_tokens,
                     requires: #requires_tokens,

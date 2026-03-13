@@ -240,6 +240,13 @@ pub struct Node<T> {
     /// through `LoweredOp`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transport_class: Option<ServiceTransportClass>,
+    /// Response provider classification for this node's service (S45).
+    ///
+    /// Stamped by the lowerer from `ServiceCallMetadata` on transport triplet
+    /// nodes. When set from DSL `config { response_provider: X }`, this avoids
+    /// substring inference from service names. `None` for non-transport nodes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_provider: Option<crate::transport::middleware::ResponseProvider>,
     /// Static fingerprint for compile-time redundancy detection (C22).
     ///
     /// When two transport nodes share the same fingerprint, they perform
@@ -268,6 +275,7 @@ impl<T> Node<T> {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
         }
@@ -341,6 +349,7 @@ impl<T> Node<T> {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
         }
@@ -410,6 +419,15 @@ impl<T> Node<T> {
     /// Set the transport protocol class for this node.
     pub fn with_transport_class(mut self, tc: ServiceTransportClass) -> Self {
         self.transport_class = Some(tc);
+        self
+    }
+
+    /// Set the response provider classification for this node (S45).
+    pub fn with_response_provider(
+        mut self,
+        rp: crate::transport::middleware::ResponseProvider,
+    ) -> Self {
+        self.response_provider = Some(rp);
         self
     }
 
@@ -493,6 +511,7 @@ impl<T> Node<T> {
             kind: self.kind,
             operation_key: self.operation_key,
             transport_class: self.transport_class,
+            response_provider: self.response_provider,
             static_fingerprint: self.static_fingerprint,
             origin: self.origin,
         }

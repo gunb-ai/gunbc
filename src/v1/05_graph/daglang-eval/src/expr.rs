@@ -9,9 +9,34 @@ use serde::{Deserialize, Serialize};
 // ── IR types ────────────────────────────────────────────────────────────────
 
 /// A lowered function body — the unit of computation for `fn` items.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LoweredFnBody {
     pub stmts: Vec<LoweredStmt>,
+    /// Parameter types for runtime boundary checks: `(name, type_id)`.
+    /// Empty when type info is not available (e.g. synthetic bodies).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub param_types: Vec<(String, String)>,
+    /// Return type for runtime boundary checks.
+    /// `None` when type info is not available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub return_type: Option<String>,
+}
+
+impl LoweredFnBody {
+    /// Create a fn body with only statements (no type metadata).
+    /// Used by synthetic/test bodies where type info is not available.
+    pub fn from_stmts(stmts: Vec<LoweredStmt>) -> Self {
+        Self { stmts, param_types: vec![], return_type: None }
+    }
+
+    /// Create a fn body with full type metadata for boundary checks.
+    pub fn with_types(
+        stmts: Vec<LoweredStmt>,
+        param_types: Vec<(String, String)>,
+        return_type: Option<String>,
+    ) -> Self {
+        Self { stmts, param_types, return_type }
+    }
 }
 
 /// Typed reference to an expression leaf source used by lowerer wiring.
@@ -104,8 +129,6 @@ pub enum LoweredExpr {
         iterable: Box<LoweredExpr>,
         body: Box<LoweredExpr>,
     },
-    /// Return: `return { field: value }`
-    Return(Vec<(String, LoweredExpr)>),
     /// Sum-type variant construction: `Closed` or `Ok { value: x }`
     VariantConstruct {
         tag: String,

@@ -41,18 +41,25 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// Whether strict or lenient dry-run mode is used.
+/// Whether the executor enforces strict input validation.
 ///
-/// In lenient mode (current default), missing resource/env inputs get default
-/// mocks. In strict mode, missing inputs produce poison values that fail on
-/// consumption — this surfaces modeling gaps that lenient mode masks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// In **Strict** mode (the default), the executor fails with a diagnostic
+/// error when a required input port has no value after all edge, mock, and
+/// default-list resolution.  This catches modeling gaps early instead of
+/// letting them propagate as surprising `Unit` / missing-key failures
+/// deep inside op implementations.
+///
+/// In **Lenient** mode, missing required inputs are silently tolerated
+/// (the node receives whatever partial inputs were gathered).  This is
+/// the legacy behavior preserved for tests that intentionally omit
+/// inputs.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DryRunStrictness {
-    /// Current behavior: missing inputs get default mocks.
+    /// Missing required inputs produce a hard error.
     #[default]
-    Lenient,
-    /// Missing resource/env inputs produce poison values that fail on consumption.
     Strict,
+    /// Missing required inputs are silently tolerated (legacy behavior).
+    Lenient,
 }
 
 /// Execution mode: real, dry-run, or simulate.
@@ -271,9 +278,9 @@ pub struct ExecuteConfig<'a> {
     pub observer: Option<&'a mut dyn ProgressObserver>,
     /// Execution log detail level. Default: IncludeInputs.
     pub log_detail: LogDetailLevel,
-    /// Dry-run strictness (CP-15). In Lenient mode (default), missing
-    /// resource/env inputs get default mocks. In Strict mode, missing inputs
-    /// produce diagnostic warnings.
+    /// Input strictness (S32). In Strict mode (the default), missing required
+    /// inputs produce a hard error.  In Lenient mode, missing inputs are
+    /// silently tolerated (legacy test behavior).
     pub strictness: DryRunStrictness,
 }
 
@@ -312,6 +319,7 @@ pub fn execute_dag<T: Executable + Clone + Send>(
         effective_mocks,
         &lowered.loops,
         config.log_detail,
+        config.strictness,
     )
 }
 
@@ -412,7 +420,8 @@ pub fn simulate<T: Executable + Clone + Send>(
     // Get topological order
     let order = topo_sort(&lowered.dag);
 
-    // Execute with simulation tracking
+    // Execute with simulation tracking — simulation uses Lenient by default
+    // since it's a planning/estimation tool, not a production path.
     let log = execute_flat(
         &lowered.dag,
         &boundaries,
@@ -421,6 +430,7 @@ pub fn simulate<T: Executable + Clone + Send>(
         None,
         &lowered.loops,
         LogDetailLevel::IncludeInputs,
+        DryRunStrictness::Lenient,
     )?;
 
     // Compute simulation metrics
@@ -531,6 +541,7 @@ fn remap_mode_inputs(
 /// When the observer requires sequential execution (e.g. `CiContext` for proper
 /// group nesting), routes to [`execute_flat_sequential`]. Otherwise uses the
 /// parallel executor.
+#[allow(clippy::too_many_arguments)]
 fn execute_flat<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     boundaries: &BoundaryInfo,
@@ -539,6 +550,7 @@ fn execute_flat<T: Executable + Clone + Send>(
     input_mocks: Option<&BoundaryMocks>,
     loops: &[LoopInfo<T>],
     log_detail: LogDetailLevel,
+    strictness: DryRunStrictness,
 ) -> Result<ExecutionLog, ExecError> {
     if matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_)) {
         validate_node_kinds_for_interception(dag)?;
@@ -553,6 +565,7 @@ fn execute_flat<T: Executable + Clone + Send>(
             input_mocks,
             loops,
             log_detail,
+            strictness,
         )
     } else {
         execute_flat_parallel(
@@ -563,6 +576,7 @@ fn execute_flat<T: Executable + Clone + Send>(
             input_mocks,
             loops,
             log_detail,
+            strictness,
         )
     }
 }
@@ -572,6 +586,7 @@ fn execute_flat<T: Executable + Clone + Send>(
 /// Used when the observer requires sequential execution (e.g. `CiContext`
 /// needs proper group nesting). All CI-specific behaviors (groups, annotations,
 /// secret masking, boundary output) are handled through the observer trait.
+#[allow(clippy::too_many_arguments)]
 fn execute_flat_sequential<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     boundaries: &BoundaryInfo,
@@ -580,6 +595,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
     input_mocks: Option<&BoundaryMocks>,
     loops: &[LoopInfo<T>],
     log_detail: LogDetailLevel,
+    strictness: DryRunStrictness,
 ) -> Result<ExecutionLog, ExecError> {
     let file_guard_enabled = runtime_file_guard_enabled();
     let order = topo_sort(dag);
@@ -728,6 +744,11 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
             }
         }
 
+        // S32: Strict-mode check — fail if any required input port has no value.
+        if strictness == DryRunStrictness::Strict {
+            check_missing_required_inputs(node, &inputs)?;
+        }
+
         // Capture the final input map for execution logs before ownership can move.
         let captured_inputs = capture_log_inputs_for_node(node, &inputs, log_detail);
 
@@ -862,10 +883,11 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
         // Loop body execution: if this node is a loop unpack, execute the body
         // template once per element and replace the element output with results.
         if let Some(loop_info) = loops.iter().find(|l| l.unpack_id == *node_id) {
-            let body_entries = execute_loop_body(loop_info, &node_outputs, mode, log_detail)
-                .map_err(|e| {
-                    // Annotate loop body errors with the unpack node as context
-                    e.with_layer(node_trace_layer(node_id, node))
+            let body_entries =
+                execute_loop_body(loop_info, &node_outputs, mode, log_detail, strictness)
+                    .map_err(|e| {
+                        // Annotate loop body errors with the unpack node as context
+                        e.with_layer(node_trace_layer(node_id, node))
                 })?;
 
             let results: Vec<Value> = body_entries
@@ -1380,6 +1402,7 @@ fn finalize_node_parallel<T: Executable + Clone + Send>(
     coercions_applied: Vec<AppliedCoercion>,
     mode: &ExecutionMode,
     log_detail: LogDetailLevel,
+    strictness: DryRunStrictness,
     state: &mut ParallelSchedulerState<'_, T>,
 ) -> Result<(), ExecError> {
     let idx = *state.node_index.get(node_id).ok_or_else(|| {
@@ -1401,8 +1424,9 @@ fn finalize_node_parallel<T: Executable + Clone + Send>(
     });
 
     if let Some(loop_info) = state.loops_by_unpack.get(node_id) {
-        let body_entries = execute_loop_body(loop_info, &state.node_outputs, mode, log_detail)
-            .map_err(|e| {
+        let body_entries =
+            execute_loop_body(loop_info, &state.node_outputs, mode, log_detail, strictness)
+                .map_err(|e| {
                 // Annotate loop body errors with unpack node context (Pure role
                 // since we don't have the full Node<T> here — the node_id is the
                 // important part for trace rendering).
@@ -1446,6 +1470,7 @@ fn finalize_node_parallel<T: Executable + Clone + Send>(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn execute_flat_parallel<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     boundaries: &BoundaryInfo,
@@ -1454,6 +1479,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
     input_mocks: Option<&BoundaryMocks>,
     loops: &[LoopInfo<T>],
     log_detail: LogDetailLevel,
+    strictness: DryRunStrictness,
 ) -> Result<ExecutionLog, ExecError> {
     struct NodeExecutionResult {
         node_id: NodeId,
@@ -1584,6 +1610,11 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                     input_mocks,
                 )?;
 
+                // S32: Strict-mode check — fail if any required input port has no value.
+                if strictness == DryRunStrictness::Strict {
+                    check_missing_required_inputs(node, &inputs)?;
+                }
+
                 if should_skip_node(node, &inputs) {
                     let captured_inputs = capture_log_inputs_for_node(node, &inputs, log_detail);
                     let outputs: HashMap<String, Value> = node
@@ -1602,6 +1633,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         node_coercions,
                         mode,
                         log_detail,
+                        strictness,
                         &mut state,
                     )?;
                     release_node_requirements(requirements, &mut active_resource_locks);
@@ -1653,6 +1685,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         node_coercions,
                         mode,
                         log_detail,
+                        strictness,
                         &mut state,
                     )?;
                     release_node_requirements(requirements, &mut active_resource_locks);
@@ -1757,6 +1790,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         completed_node.coercions_applied,
                         mode,
                         log_detail,
+                        strictness,
                         &mut state,
                     )?
                 }
@@ -1862,6 +1896,7 @@ fn execute_loop_body<T: Executable + Clone + Send>(
     node_outputs: &HashMap<String, HashMap<String, Value>>,
     mode: &ExecutionMode,
     log_detail: LogDetailLevel,
+    strictness: DryRunStrictness,
 ) -> Result<Vec<LogEntry>, ExecError> {
     // Get the element list from the unpack outputs
     let unpack_outputs = node_outputs.get(&loop_info.unpack_id.0).ok_or_else(|| {
@@ -1942,6 +1977,7 @@ fn execute_loop_body<T: Executable + Clone + Send>(
             Some(&iter_mocks),
             &lowered_body.loops,
             log_detail,
+            strictness,
         )?;
 
         // Prefix iteration entries for unique identification in the log
@@ -1958,6 +1994,53 @@ fn execute_loop_body<T: Executable + Clone + Send>(
     }
 
     Ok(all_entries)
+}
+
+/// S32: Fail if any required input port has no value after all resolution.
+///
+/// A port is "required" when:
+/// 1. Its cardinality min > 0 (i.e., `!allows_empty()`), AND
+/// 2. It is not an internal wiring port (`__deps`, `__out:*`), AND
+/// 3. It does not have a guard (guarded ports are handled by skip logic).
+///
+/// Resource and tool ports ARE checked — they must be wired or mocked.
+fn check_missing_required_inputs<T>(
+    node: &Node<T>,
+    inputs: &HashMap<String, Value>,
+) -> Result<(), ExecError> {
+    let mut missing = Vec::new();
+    for port in &node.inputs {
+        // Skip ports that allow zero values (optional, empty-allowing lists).
+        if port.cardinality.allows_empty() {
+            continue;
+        }
+        // Skip internal wiring ports — they are infrastructure, not user data.
+        if port.name.0.starts_with("__") {
+            continue;
+        }
+        // Skip guarded ports — their absence causes node skip, not an error.
+        if port.has_guard() {
+            continue;
+        }
+        if !inputs.contains_key(&port.name.0) {
+            missing.push(format!(
+                "'{}' (type: {}, cardinality: {})",
+                port.name.0, port.type_id.0, port.cardinality
+            ));
+        }
+    }
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(ExecError::new(format!(
+        "strict mode: node '{}' is missing {} required input{}: {}. \
+         Either wire the input via edges/mocks, or use ExecuteConfig {{ strictness: \
+         DryRunStrictness::Lenient, .. }} for tests that intentionally omit inputs",
+        node.id.0,
+        missing.len(),
+        if missing.len() == 1 { "" } else { "s" },
+        missing.join(", "),
+    )))
 }
 
 /// Check whether a node should be skipped based on guard predicates.

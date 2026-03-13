@@ -123,13 +123,6 @@ pub enum WindowError {
         node: String,
         port: String,
     },
-    /// Output mismatch for an exit port.
-    OutputMismatch {
-        node: String,
-        port: String,
-        expected: Box<Value>,
-        actual: Box<Value>,
-    },
     /// OutputMatcher failed for a chain observer.
     MatcherFailed {
         node: String,
@@ -160,16 +153,6 @@ impl fmt::Display for WindowError {
                 node,
                 port,
             } => write!(f, "missing {} log output for {}.{}", context, node, port),
-            WindowError::OutputMismatch {
-                node,
-                port,
-                expected,
-                actual,
-            } => write!(
-                f,
-                "output mismatch for {}.{} (expected {:?}, got {:?})",
-                node, port, expected, actual
-            ),
             WindowError::MatcherFailed {
                 node,
                 port,
@@ -318,97 +301,9 @@ pub fn apply_window_inputs<T>(
     Ok(())
 }
 
-/// Verify that all exit-port outputs from the window match the baseline.
-///
-/// DEPRECATED: Tautological — compares re-execution against its own baseline.
-/// Use `assert_chain_outputs` with developer-specified OutputMatchers instead.
-pub fn assert_window_outputs<T>(
-    dag: &Dag<T>,
-    window: &Window,
-    baseline: &ExecutionLog,
-    window_log: &ExecutionLog,
-) -> Result<(), WindowError> {
-    let node_set = window.node_set();
-
-    let mut internal_outputs: HashSet<(NodeId, PortName)> = HashSet::new();
-    for edge in &dag.edges {
-        if node_set.contains(&edge.from_node) && node_set.contains(&edge.to_node) {
-            internal_outputs.insert((edge.from_node.clone(), edge.from_port.clone()));
-        }
-    }
-
-    for node_id in node_set {
-        let node = dag
-            .get_node(&node_id)
-            .unwrap_or_else(|| panic!("window node '{}' not found in DAG", node_id.0));
-
-        let baseline_entry = baseline.get(&node_id.0);
-        let window_entry = window_log.get(&node_id.0);
-
-        // If neither log has the node, skip comparison.
-        if baseline_entry.is_none() && window_entry.is_none() {
-            continue;
-        }
-
-        for port in &node.outputs {
-            if internal_outputs.contains(&(node_id.clone(), port.name.clone())) {
-                continue;
-            }
-
-            let expected = match baseline_entry.and_then(|e| e.outputs.get(&port.name.0)) {
-                Some(v) => v.clone(),
-                None => {
-                    if port.cardinality.allows_empty() {
-                        empty_value_for_cardinality(port.cardinality)
-                    } else {
-                        // Dry-run may not produce all ports; treat as Skipped.
-                        Value::Skipped
-                    }
-                }
-            };
-            let actual = match window_entry.and_then(|e| e.outputs.get(&port.name.0)) {
-                Some(v) => v.clone(),
-                None => {
-                    if port.cardinality.allows_empty() {
-                        empty_value_for_cardinality(port.cardinality)
-                    } else {
-                        // Dry-run may not produce all ports; treat as Skipped.
-                        Value::Skipped
-                    }
-                }
-            };
-
-            // Skipped on either side is accepted: dry-run may not produce
-            // all values, and downstream nodes propagate Skipped inputs.
-            if matches!(expected, Value::Skipped) || matches!(actual, Value::Skipped) {
-                continue;
-            }
-
-            // Fan-in order is now deterministic (edges carry monotonic indices),
-            // so lists are compared by exact equality.
-            if let (Value::List(_), Value::List(_)) = (&expected, &actual) {
-                if expected == actual {
-                    continue;
-                }
-            }
-
-            if expected != actual {
-                return Err(WindowError::OutputMismatch {
-                    node: node_id.0.clone(),
-                    port: port.name.0.clone(),
-                    expected: Box::new(expected),
-                    actual: Box::new(actual),
-                });
-            }
-        }
-    }
-
-    Ok(())
-}
-
 /// Verify observer outputs against OutputMatchers (non-tautological).
 ///
-/// Unlike `assert_window_outputs`, this does NOT compare against a baseline.
+/// This does NOT compare against a baseline.
 /// Instead, it checks exit-port outputs against developer-specified matchers.
 /// This ensures the test provides real correctness signal.
 ///
@@ -442,14 +337,6 @@ pub fn assert_chain_outputs(
     }
 
     Ok(())
-}
-
-fn empty_value_for_cardinality(cardinality: gunbc_ir::Cardinality) -> Value {
-    if cardinality.is_list() {
-        Value::List(Vec::new())
-    } else {
-        Value::Unit
-    }
 }
 
 fn mixed_input_ports<T>(dag: &Dag<T>, node_set: &HashSet<NodeId>) -> Vec<(NodeId, PortName)> {
@@ -591,49 +478,6 @@ mod window_helper_tests {
         assert_eq!(input, &Value::List(vec![Value::Int(1), Value::Int(2)]));
     }
 
-    #[test]
-    fn assert_window_outputs_detects_mismatch() {
-        let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque("a", vec![], vec![port("out", "Int")], ()));
-        dag.add_node(Node::opaque(
-            "b",
-            vec![port("in", "Int")],
-            vec![port("out", "Int")],
-            (),
-        ));
-        dag.add_edge(edge("a", "out", "b", "in"));
-
-        let window = Window::from_nodes(&dag, vec!["a", "b"]);
-        let baseline = ExecutionLog {
-            entries: vec![
-                log_entry("a", vec![("out", Value::Int(10))]),
-                log_entry("b", vec![("out", Value::Int(1))]),
-            ],
-        };
-        let window_log = ExecutionLog {
-            entries: vec![
-                log_entry("a", vec![("out", Value::Int(10))]),
-                log_entry("b", vec![("out", Value::Int(2))]),
-            ],
-        };
-
-        let err = assert_window_outputs(&dag, &window, &baseline, &window_log)
-            .expect_err("mismatched outputs should error");
-        match err {
-            WindowError::OutputMismatch {
-                node,
-                port,
-                expected,
-                actual,
-            } => {
-                assert_eq!(node, "b");
-                assert_eq!(port, "out");
-                assert_eq!(*expected, Value::Int(1));
-                assert_eq!(*actual, Value::Int(2));
-            }
-            other => panic!("expected OutputMismatch error, got {:?}", other),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -931,79 +775,3 @@ mod assert_chain_outputs_tests {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use gunbc_exec::LogEntry;
-    use gunbc_ir::{Dag, Node, Port};
-    use std::collections::HashMap;
-
-    #[test]
-    fn window_outputs_allow_missing_optional_port() {
-        let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "a",
-            vec![],
-            vec![Port::optional("out", "String")],
-            (),
-        ));
-
-        let window = Window::from_nodes(&dag, vec!["a"]);
-        let baseline = ExecutionLog {
-            entries: vec![LogEntry {
-                node_id: "a".to_string(),
-                inputs: None,
-                outputs: HashMap::new(),
-                was_intercepted: false,
-                coercions_applied: vec![],
-            }],
-        };
-        let window_log = ExecutionLog {
-            entries: vec![LogEntry {
-                node_id: "a".to_string(),
-                inputs: None,
-                outputs: HashMap::new(),
-                was_intercepted: false,
-                coercions_applied: vec![],
-            }],
-        };
-
-        assert!(assert_window_outputs(&dag, &window, &baseline, &window_log).is_ok());
-    }
-
-    #[test]
-    fn window_outputs_require_non_optional_port() {
-        let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "a",
-            vec![],
-            vec![Port::new("out", "String")],
-            (),
-        ));
-
-        let window = Window::from_nodes(&dag, vec!["a"]);
-        let baseline = ExecutionLog {
-            entries: vec![LogEntry {
-                node_id: "a".to_string(),
-                inputs: None,
-                outputs: HashMap::new(),
-                was_intercepted: false,
-                coercions_applied: vec![],
-            }],
-        };
-        let window_log = ExecutionLog {
-            entries: vec![LogEntry {
-                node_id: "a".to_string(),
-                inputs: None,
-                outputs: HashMap::new(),
-                was_intercepted: false,
-                coercions_applied: vec![],
-            }],
-        };
-
-        // Both baseline and window missing the port — both fall back to
-        // Value::Skipped, so Skipped == Skipped → Ok.
-        assert_window_outputs(&dag, &window, &baseline, &window_log)
-            .expect("both sides Skipped should match");
-    }
-}

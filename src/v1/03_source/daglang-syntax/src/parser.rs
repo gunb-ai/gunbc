@@ -488,6 +488,16 @@ impl Parser {
                             config.credential = Some(self.parse_credential_block()?);
                             self.expect(&TokenKind::RBrace)?;
                         }
+                        "response_provider" => {
+                            if Self::token_kind_as_ident(&self.peek().kind).is_some() {
+                                config.response_provider = Some(self.expect_ident()?);
+                            } else {
+                                return Err(self.err(format!(
+                                    "expected identifier for `response_provider`, found {}",
+                                    self.peek().kind.desc()
+                                )));
+                            }
+                        }
                         other => {
                             // Provider-specific config fields (e.g., bucket,
                             // base_dir, model, project_id). Parse the type
@@ -1400,7 +1410,7 @@ impl Parser {
             TokenKind::Fn => Item::FnDef(self.parse_fn_def()?),
             TokenKind::Func => Item::FuncDef(self.parse_func_def()?),
             TokenKind::Pattern => Item::PatternDef(self.parse_pattern_def()?),
-            TokenKind::Service => Item::ServiceDef(self.parse_service_def()?),
+            TokenKind::Service => Item::ServiceDef(Box::new(self.parse_service_def()?)),
             TokenKind::Resource => Item::ResourceDef(self.parse_resource_def()?),
             TokenKind::Interface => Item::InterfaceDef(self.parse_interface_def()?),
             TokenKind::Pipeline => Item::PipelineDef(self.parse_pipeline_def()?),
@@ -2109,6 +2119,7 @@ impl Parser {
         let mut response: Vec<ResponseEntry> = Vec::new();
         let mut exit: Vec<ExitEntry> = Vec::new();
         let mut mock_responses: Vec<MockResponseDef> = Vec::new();
+        let mut output_parsing: Option<String> = None;
 
         if self.eat(&TokenKind::LParen) {
             inputs = self.parse_field_list_until_rparen()?;
@@ -2162,6 +2173,10 @@ impl Parser {
                     exit = self.parse_exit_block()?;
                 } else if matches!(&self.peek().kind, TokenKind::Ident(s) if s == "mock_response") {
                     mock_responses = self.parse_mock_response_block()?;
+                } else if matches!(&self.peek().kind, TokenKind::Ident(s) if s == "output_parsing") {
+                    self.advance(); // consume "output_parsing"
+                    self.expect(&TokenKind::Colon)?;
+                    output_parsing = Some(self.expect_ident()?);
                 } else if self.eat(&TokenKind::Uses) {
                     // Consume `uses` clause — resource requirements are structurally
                     // derived from the operation's transport, not stored in the AST.
@@ -2187,6 +2202,7 @@ impl Parser {
             response,
             exit,
             mock_responses,
+            output_parsing,
         })
     }
 
@@ -5384,5 +5400,100 @@ service rest.T {
         assert!(has(|i| matches!(i, Item::PatternDef(_))));
         assert!(has(|i| matches!(i, Item::ServiceDef(_))));
         assert!(has(|i| matches!(i, Item::ResourceDef(_))));
+    }
+
+    // S44: output_parsing annotation on operations
+    #[test]
+    fn parse_operation_with_output_parsing() {
+        let source = r#"
+            module services.example
+            service cargo.Build {
+                operation Check {
+                    input { package: String }
+                    output { success: Bool, stdout: String, stderr: String }
+                    transport shell { argv: ["cargo", "check"] }
+                    output_parsing: TrimStdout
+                }
+            }
+        "#;
+        let ast = parse_or_panic(source);
+        match &ast.items[0].node {
+            Item::ServiceDef(def) => {
+                assert_eq!(def.operations.len(), 1);
+                let op = &def.operations[0];
+                assert_eq!(op.output_parsing, Some("TrimStdout".to_string()));
+            }
+            other => panic!("expected ServiceDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_operation_without_output_parsing_defaults_to_none() {
+        let source = r#"
+            module services.example
+            service cargo.Build {
+                operation Check {
+                    input { package: String }
+                    output { success: Bool }
+                    transport shell { argv: ["cargo", "check"] }
+                }
+            }
+        "#;
+        let ast = parse_or_panic(source);
+        match &ast.items[0].node {
+            Item::ServiceDef(def) => {
+                assert_eq!(def.operations[0].output_parsing, None);
+            }
+            other => panic!("expected ServiceDef, got {other:?}"),
+        }
+    }
+
+    // S45: response_provider in service config
+    #[test]
+    fn parse_service_config_with_response_provider() {
+        let source = r#"
+            module services.example
+            service custom.MyApi {
+                config {
+                    endpoint: "https://api.example.com"
+                    response_provider: GitHub
+                }
+                operation Fetch {
+                    output { data: String }
+                    transport rest { method: GET, path: "/data" }
+                }
+            }
+        "#;
+        let ast = parse_or_panic(source);
+        match &ast.items[0].node {
+            Item::ServiceDef(def) => {
+                assert_eq!(
+                    def.config.response_provider,
+                    Some("GitHub".to_string())
+                );
+            }
+            other => panic!("expected ServiceDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_service_config_without_response_provider_defaults_to_none() {
+        let source = r#"
+            module services.example
+            service github.Gist {
+                config { endpoint: "https://api.github.com" }
+                operation Create {
+                    output { url: String }
+                    transport rest { method: POST, path: "/gists" }
+                }
+            }
+        "#;
+        let ast = parse_or_panic(source);
+        match &ast.items[0].node {
+            Item::ServiceDef(def) => {
+                assert_eq!(def.config.response_provider, None);
+            }
+            other => panic!("expected ServiceDef, got {other:?}"),
+        }
     }
 }

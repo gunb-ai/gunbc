@@ -253,6 +253,20 @@ pub enum ShellOutputParsing {
     ExitCodeBool,
 }
 
+impl std::str::FromStr for ShellOutputParsing {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "trim_stdout" | "TrimStdout" => Ok(Self::TrimStdout),
+            "split_lines" | "SplitLines" => Ok(Self::SplitLines),
+            "success_stdout_stderr" | "SuccessStdoutStderr" => Ok(Self::SuccessStdoutStderr),
+            "exit_code_bool" | "ExitCodeBool" => Ok(Self::ExitCodeBool),
+            other => Err(format!("unknown shell output parsing mode: `{other}`")),
+        }
+    }
+}
+
 /// HTTP response contract entry: maps status codes to response types.
 /// Compiled from `response { STATUS => TYPE }` blocks in `.dag` files.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

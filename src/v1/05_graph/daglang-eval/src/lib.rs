@@ -10,6 +10,7 @@ pub mod expr;
 
 pub use eval::*;
 pub use eval_core::*;
+pub use eval_stack::take_type_warnings;
 pub use expr::*;
 
 #[cfg(test)]

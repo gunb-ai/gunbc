@@ -270,13 +270,10 @@ bounded.
 
 ## Known Limitations
 
-1. **`LoweredExpr::Return` is still an expression.** This means
-   `eval_expr` is not fully pure — it can produce early-return signals.
-   The clean fix: make `return` a statement form only, not an
-   expression. Deferred — 23 match sites across 4 files (eval_stack,
-   eval_core, anf, expr), high risk of breaking the ANF normalizer's
-   call-hoisting logic and the suspendable evaluator's continuation
-   handling for blocks.
+1. ~~**`LoweredExpr::Return` is still an expression.**~~ **FIXED.**
+   `LoweredExpr::Return` removed. `ast::Expr::Return` now lowers to
+   `LoweredExpr::Block(vec![LoweredStmt::Return(...)])`. `eval_expr`
+   no longer produces early-return signals from Return variants.
 
 2. **`LoweredExpr::Block` and `LoweredExpr::For` carry statement
    semantics.** The cleanest end state is `ForCollect` as a statement
@@ -321,8 +318,9 @@ Each step compiles and passes all tests.
    stack overflow — 12 .dag files exceed 16GB heap in debug mode).
 7. ✅ **Standardize return convention (partial).** Parser changed to
    `"return"` key. `"value"` fallback preserved (see Limitation 3).
-8. 🔲 **IR cleanup.** Move `Return`, `Block`, `For` to statement forms.
-   Deferred — see Limitation 1.
+8. ✅ **IR cleanup (partial).** `LoweredExpr::Return` removed — `return`
+   is now statement-only. `Block` and `For` kept as expression forms
+   because they genuinely return values. See Limitation 1 for rationale.
 9. ✅ **Benchmark env representation (analysis).** `Rc<HashMap>` COW
    is correct for the workload. `im::HashMap` adds dependency for
    marginal benefit (3-10 bindings per scope). Local slots blocked

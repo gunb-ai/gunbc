@@ -142,10 +142,12 @@ mod tests {
                         let lowered_expr =
                             daglang_lower::expr::lower_expr_remap(expr, &variant_names);
                         let body = daglang_eval::LoweredFnBody {
+
                             stmts: vec![daglang_eval::LoweredStmt::Return(vec![(
                                 "return".to_string(),
                                 lowered_expr,
                             )])],
+                            ..Default::default()
                         };
                         if let Ok(result) = daglang_eval::evaluate_fn_body(
                             &body,
@@ -502,10 +504,12 @@ fn foo(item: String) -> String {
                             let lowered_expr =
                                 daglang_lower::expr::lower_expr_remap(expr, &variant_names);
                             let body = daglang_eval::LoweredFnBody {
+
                                 stmts: vec![daglang_eval::LoweredStmt::Return(vec![(
                                     "return".to_string(),
                                     lowered_expr,
                                 )])],
+                                ..Default::default()
                             };
                             match daglang_eval::evaluate_fn_body(
                                 &body,

@@ -65,6 +65,10 @@ pub fn emit_dry_run_completion_test(
 /// instead of flat "mock-response" strings. Each transport node produces a
 /// mock value derived from its output port type (TransportResponse, FileResponse,
 /// RestResponse, ShellResponse).
+///
+/// **Invariant:** Only `Execute` transport nodes are included. `Prepare` and
+/// `Parse` nodes are classified as `Computation::Pure` by `classify_computation`,
+/// so the `Computation::Transport` filter below excludes them automatically.
 pub fn emit_transport_mock_tests(
     backend: &str,
     dag: &ReachableDag<LoweredOp>,
@@ -146,13 +150,77 @@ pub fn emit_transport_mock_tests(
     }
 }
 
+/// Emit per-transport mock tests from pre-classified transport entries.
+///
+/// This is the S70 classified path — accepts pre-extracted (node_id, mock_value)
+/// pairs instead of walking the raw DAG.
+pub fn emit_transport_mock_tests_from_entries(
+    backend: &str,
+    transport_entries: &[(String, String)],
+) -> Option<EmittedFile> {
+    if transport_entries.is_empty() {
+        return None;
+    }
+
+    match backend {
+        "rust" => {
+            let mut content = String::new();
+            for (node_id, mock_value) in transport_entries {
+                let test_name = sanitize_identifier(&format!("mock_transport_{node_id}"));
+                let escaped = mock_value.replace('"', "\\\"");
+                let _ = writeln!(
+                    content,
+                    "#[test]\nfn {test_name}() {{\n    let mut mocks = std::collections::BTreeMap::new();\n    mocks.insert(\"{node_id}\", \"{escaped}\");\n    assert_eq!(mocks.get(\"{node_id}\"), Some(&\"{escaped}\"));\n}}\n"
+                );
+            }
+            Some(EmittedFile {
+                path: "target/generated/rust/transport_mock_tests.rs".to_string(),
+                content,
+            })
+        }
+        "go" => {
+            let mut content = String::from("package main\n\nimport \"testing\"\n\n");
+            for (node_id, mock_value) in transport_entries {
+                let test_name = go_test_name(node_id);
+                let escaped = mock_value.replace('"', "\\\"");
+                let _ = writeln!(
+                    content,
+                    "func {test_name}(t *testing.T) {{\n    mocks := map[string]string{{\"{node_id}\": \"{escaped}\"}}\n    got, ok := mocks[\"{node_id}\"]\n    if !ok || got != \"{escaped}\" {{\n        t.Fatalf(\"missing mock for {node_id}\")\n    }}\n}}\n"
+                );
+            }
+            Some(EmittedFile {
+                path: "target/generated/go/transport_mock_tests_test.go".to_string(),
+                content,
+            })
+        }
+        "c" => {
+            let mut content =
+                String::from("#include <assert.h>\n#include <string.h>\n\nint main(void) {\n");
+            for (node_id, mock_value) in transport_entries {
+                let var_name = sanitize_identifier(&format!("mock_{node_id}"));
+                let escaped = mock_value.replace('"', "\\\"");
+                let _ = writeln!(
+                    content,
+                    "    const char* {var_name} = \"{escaped}\";\n    assert(strcmp({var_name}, \"{escaped}\") == 0);"
+                );
+            }
+            content.push_str("    return 0;\n}\n");
+            Some(EmittedFile {
+                path: "target/generated/c/transport_mock_tests.c".to_string(),
+                content,
+            })
+        }
+        _ => None,
+    }
+}
+
 /// Generate a type-appropriate mock response string for a port type.
 ///
 /// Instead of using a flat `"mock-response"` for all transport nodes,
 /// this returns a structured mock value based on the response port type.
 /// This integrates the cross-product witness concept from the type contract
 /// layer into the codegen test emission.
-fn typed_mock_for_response(response_type: &str) -> &'static str {
+pub fn typed_mock_for_response(response_type: &str) -> &'static str {
     match response_type {
         "TransportResponse" => r#"{"status":"ok","type":"transport"}"#,
         "FileResponse" => r#"{"path":"/tmp/test.txt","success":true,"operation":"read"}"#,
@@ -604,6 +672,7 @@ mod tests {
                     idempotent: false,
                     readonly: false,
                     spec: None,
+                    response_provider: None,
                 }),
                 is_interactive: false,
                 resource_target: None,
