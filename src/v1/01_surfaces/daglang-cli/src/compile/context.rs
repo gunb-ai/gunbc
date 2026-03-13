@@ -20,7 +20,8 @@ pub fn build_context(
     cwd: &std::path::Path,
     input: Option<&String>,
 ) -> Result<PipelineContext, String> {
-    build_context_with_default_roots(cwd, input, None)
+    let default_roots = resolve_default_roots(cwd)?;
+    build_context_with_default_roots(cwd, input, Some(&default_roots))
 }
 
 #[allow(clippy::disallowed_methods)]

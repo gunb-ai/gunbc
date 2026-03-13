@@ -1,0 +1,2 @@
+[discovery]
+roots = ["dsl", "src/v2"]
