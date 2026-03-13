@@ -207,12 +207,12 @@ lists.~~ **DONE.** Consolidated static registry in `transport/llm/provider.rs`.
 **S9:** Opaque kernel types (Unit/Json/Any/Record) lack documented rationale.
 **S63:** `std/patterns.dag` mixes generic patterns with GCP-specific auth
 implementations. Provider-specific code belongs under `extdeps/`, not `std/`.
-**S72:** `generated_types_are_not_stale` is `#[ignore]`d. The original
-anonymous-record naming bug is fixed — `gen-types` now emits
-`TypeName { field: val }` for fold initializers, inferring the struct
-name from known types or synthesizing one when ambiguous. The test
-remains ignored because gen-types output still has other codegen quality
-issues (type mismatches, missing methods) that prevent the on-disk
+**S72 (resolved):** `generated_types_are_not_stale` is `#[ignore]`d.
+The anonymous-record naming bug is fixed — `gen-types` now emits
+`TypeName { field: val }` for fold initializers via three-tier
+inference: exact struct match, best-match by field count, or
+synthesized helper struct. Test remains ignored because gen-types
+output still has other codegen quality issues that prevent the on-disk
 `mod.rs` from being regenerated. Delete when: gen-types output compiles
 cleanly and the on-disk file can be regenerated.
 **S73:** `cargo check --workspace --all-targets` is not a stable hygiene
@@ -317,19 +317,60 @@ medium-large refactor of eval.rs (2-3 sessions). Becomes dead code after
 self-hosting.
 
 **Option B: Proceed to self-hosting.** The v2 pipeline is 100% implemented
-(7 .dag files, 7,197 lines in the 2026-03-11 snapshot). The current
-checked-in `#[ignore]` is `generated_types_are_not_stale` in
-`gunbc-ir`, blocked by remaining gen-types codegen quality issues
-(the original anonymous-record naming bug is fixed).
-Remaining work:
-Phase 1 (emit per-module Rust + driver → first native binary, 3-5 sessions),
-Phase 2 (progressive self-compilation M1-M9, 5-10 sessions),
-Phase 3 (fixed-point verification, 2-3 sessions). Total: ~12-20 sessions.
+(7 .dag files, 7,268 lines). The anonymous-record naming bug (S72) is
+fixed. Assessment of the v1→v2 compilation path (2026-03-13) identified
+concrete blockers — see gap analysis below.
 
-**Decision:** if current 16-32MB stack sizes hold until self-hosting,
-Option B is preferred — the eval.rs refactor has zero residual value.
-If stack sizes need bumping again, Option A becomes justified as an
-interim fix.
+**Decision:** Option B is preferred — the eval.rs refactor has zero
+residual value. If stack sizes need bumping again before self-hosting
+lands, Option A becomes justified as an interim fix.
+
+#### V2 self-hosting gap analysis (2026-03-13)
+
+**What works today:**
+- Module discovery: `daglang.toml` multi-root config discovers all 7 v2 modules
+- Parsing: all v2 .dag files parse to AST successfully
+- Type codegen: `typedef_to_code_ir` handles structs, enums, aliases
+- Fn codegen: handles records, match, if/else, for, lambda, string interp,
+  intrinsics (map/filter/fold/any/contains/sum/join/last/enumerate)
+- Rust rendering: `render_rust` produces valid Rust from code_ir
+
+**Blocker 1 — `build_context` ignores `daglang.toml`:**
+`build_context()` hardcodes `dsl/` as the only root. Must call
+`resolve_default_roots()` to read `daglang.toml` multi-root config.
+Fix is 1 line in `compile/context.rs`.
+
+**Blocker 2 — v1 typechecker rejects v2 idioms (12 errors):**
+- TC003 ×7: bare enum variant used where parent type expected
+  (`UnterminatedString` vs `StringScanResult`, `Some` vs `Option<T>`)
+- TC003 ×2: `Record` literal where typechecker expects `Map`
+- TC021 ×3: named arguments not recognized (`ch:` in `code_point()`)
+
+Fix: make typechecker accept variant-as-type in assignment/return
+context, and recognize named args in the callable registry.
+
+**Blocker 3 — fn_codegen missing constructs:**
+- `with(state, { field: value })` — immutable record update, used
+  pervasively for state threading (~100 call sites in v2)
+- String builtins: `char_at()`, `substring()`, `string_length()`,
+  `lookup()` — need Rust equivalents
+- Recursive enum boxing: `Expr` contains `Expr` via variants;
+  type codegen must detect cycles and insert `Box<>`
+- Optional field patterns: `T?` → `Option<T>`, `Some { value: x }`
+  match patterns
+
+**Blocker 4 — end-to-end crate assembly:**
+- No harness to emit a complete Cargo crate (Cargo.toml, lib.rs,
+  per-module files, main.rs driver)
+- Need v2-specific stdlib shims (string ops, list ops, Option helpers)
+
+**Recommended sequence (next PR):**
+1. Fix `build_context` to read `daglang.toml` (1 line)
+2. Fix 12 typecheck errors (variant-as-type, named args)
+3. Add `with()` and string builtins to fn_codegen
+4. Add recursive type detection for `Box<>`
+5. Build crate assembly harness
+6. Iterative: generate crate, compile, fix errors
 
 ---
 
