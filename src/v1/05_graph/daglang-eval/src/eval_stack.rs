@@ -248,18 +248,10 @@ enum ExprResult {
     Error(String),
 }
 
-#[derive(Debug, Clone)]
-enum Projection {
-    ReturnField,
-    #[allow(dead_code)]
-    WholeMap,
-}
-
 #[derive(Clone)]
 struct Continuation<'a> {
     remaining: &'a [LoweredStmt],
     binding: Option<String>,
-    projection: Projection,
     env: Env,
     is_fn_boundary: bool,
 }
@@ -288,7 +280,7 @@ fn run_machine<'a>(
             Step::Return(result) => {
                 match pop_stack(&mut stack, result) {
                     PopResult::Done(output) => return Ok(output),
-                    PopResult::Resume { stmts: s, env: e, .. } => { stmts = s; env = e; }
+                    PopResult::Resume { stmts: s, env: e } => { stmts = s; env = e; }
                     PopResult::Error(msg) => return Err(EvalError::new(msg)),
                 }
             }
@@ -300,7 +292,7 @@ fn run_machine<'a>(
                 }
                 match pop_stack(&mut stack, result) {
                     PopResult::Done(output) => return Ok(output),
-                    PopResult::Resume { stmts: s, env: e, .. } => { stmts = s; env = e; }
+                    PopResult::Resume { stmts: s, env: e } => { stmts = s; env = e; }
                     PopResult::Error(msg) => return Err(EvalError::new(msg)),
                 }
             }
@@ -320,7 +312,7 @@ fn run_machine<'a>(
 
 enum PopResult<'a> {
     Done(HashMap<String, Value>),
-    Resume { stmts: &'a [LoweredStmt], env: Env, #[allow(dead_code)] is_fn_boundary: bool },
+    Resume { stmts: &'a [LoweredStmt], env: Env },
     Error(String),
 }
 
@@ -332,7 +324,7 @@ fn pop_stack<'a>(
         match stack.pop() {
             None => return PopResult::Done(result),
             Some(cont) => {
-                let value = match extract_projection(&cont.projection, &result) {
+                let value = match extract_projection(&result) {
                     Ok(v) => v,
                     Err(msg) => return PopResult::Error(msg),
                 };
@@ -347,7 +339,7 @@ fn pop_stack<'a>(
                         result = unit_output();
                     }
                 } else {
-                    return PopResult::Resume { stmts: cont.remaining, env, is_fn_boundary: cont.is_fn_boundary };
+                    return PopResult::Resume { stmts: cont.remaining, env };
                 }
             }
         }
@@ -378,7 +370,7 @@ fn eval_stmts<'a>(
                             Ok(inputs) => {
                                 stack.push(Continuation {
                                     remaining, binding: Some(name.clone()),
-                                    projection: Projection::ReturnField,
+
                                     env: env.clone(), is_fn_boundary: true,
                                 });
                                 return Step::Call { callee: callee_id, inputs };
@@ -398,7 +390,7 @@ fn eval_stmts<'a>(
                         ExprResult::Suspend { callee, inputs } => {
                             stack.insert(stack_base, Continuation {
                                 remaining, binding: Some(name.clone()),
-                                projection: Projection::ReturnField,
+    
                                 env: env.clone(), is_fn_boundary: false,
                             });
                             return Step::Call { callee, inputs };
@@ -415,7 +407,7 @@ fn eval_stmts<'a>(
                             Ok(inputs) => {
                                 stack.push(Continuation {
                                     remaining, binding: None,
-                                    projection: Projection::ReturnField,
+
                                     env: env.clone(), is_fn_boundary: true,
                                 });
                                 return Step::Call { callee: callee_id, inputs };
@@ -436,7 +428,7 @@ fn eval_stmts<'a>(
                         ExprResult::Suspend { callee, inputs } => {
                             stack.insert(stack_base, Continuation {
                                 remaining: &[], binding: None,
-                                projection: Projection::ReturnField,
+    
                                 env: env.clone(), is_fn_boundary: false,
                             });
                             return Step::Call { callee, inputs };
@@ -450,7 +442,7 @@ fn eval_stmts<'a>(
                         ExprResult::Suspend { callee, inputs } => {
                             stack.insert(stack_base, Continuation {
                                 remaining, binding: None,
-                                projection: Projection::ReturnField,
+    
                                 env: env.clone(), is_fn_boundary: false,
                             });
                             return Step::Call { callee, inputs };
@@ -572,7 +564,7 @@ fn eval_block_s<'a>(
                             Ok(inputs) => {
                                 stack.push(Continuation {
                                     remaining, binding: Some(name.clone()),
-                                    projection: Projection::ReturnField,
+
                                     env: child, is_fn_boundary: false,
                                 });
                                 return ExprResult::Suspend { callee: callee_id, inputs };
@@ -592,7 +584,7 @@ fn eval_block_s<'a>(
                         ExprResult::Suspend { callee, inputs } => {
                             stack.insert(stack_base, Continuation {
                                 remaining, binding: Some(name.clone()),
-                                projection: Projection::ReturnField,
+    
                                 env: child, is_fn_boundary: false,
                             });
                             return ExprResult::Suspend { callee, inputs };
@@ -607,7 +599,7 @@ fn eval_block_s<'a>(
                             Ok(inputs) => {
                                 stack.push(Continuation {
                                     remaining, binding: None,
-                                    projection: Projection::ReturnField,
+
                                     env: child, is_fn_boundary: false,
                                 });
                                 return ExprResult::Suspend { callee: callee_id, inputs };
@@ -630,7 +622,7 @@ fn eval_block_s<'a>(
                         ExprResult::Suspend { callee, inputs } => {
                             stack.insert(stack_base, Continuation {
                                 remaining, binding: None,
-                                projection: Projection::ReturnField,
+    
                                 env: child, is_fn_boundary: false,
                             });
                             return ExprResult::Suspend { callee, inputs };
@@ -1280,22 +1272,16 @@ fn get_arg_expr_s<'a>(
 // Shared helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
-fn extract_projection(proj: &Projection, outputs: &HashMap<String, Value>) -> Result<Value, String> {
-    match proj {
-        Projection::ReturnField => {
-            if let Some(v) = outputs.get("return") { return Ok(v.clone()); }
-            // Legacy compat: wrap_value_as_output flattens Map trailing
-            // expressions, which can produce single-field output maps with
-            // a "value" key (e.g. from `Some { value: x }` variants).
-            if outputs.len() == 1 {
-                if let Some(v) = outputs.get("value") { return Ok(v.clone()); }
-            }
-            if outputs.is_empty() { return Ok(Value::Unit); }
-            Ok(Value::Map(outputs.iter().map(|(k, v)| (k.clone(), v.clone())).collect()))
-        }
-        Projection::WholeMap =>
-            Ok(Value::Map(outputs.iter().map(|(k, v)| (k.clone(), v.clone())).collect())),
+fn extract_projection(outputs: &HashMap<String, Value>) -> Result<Value, String> {
+    if let Some(v) = outputs.get("return") { return Ok(v.clone()); }
+    // Legacy compat: wrap_value_as_output flattens Map trailing
+    // expressions, which can produce single-field output maps with
+    // a "value" key (e.g. from `Some { value: x }` variants).
+    if outputs.len() == 1 {
+        if let Some(v) = outputs.get("value") { return Ok(v.clone()); }
     }
+    if outputs.is_empty() { return Ok(Value::Unit); }
+    Ok(Value::Map(outputs.iter().map(|(k, v)| (k.clone(), v.clone())).collect()))
 }
 
 fn bind_let_result(env: &mut Env, name: String, value: &Value) {

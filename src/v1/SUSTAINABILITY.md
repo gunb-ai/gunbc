@@ -435,6 +435,56 @@ old recursive evaluator deleted (step 5). The bubble-up sites are
 exactly the 5 points that call `eval_expr_s` with a subsequent push
 (4 in `eval_stmts` + 1 in `eval_block_s` for non-last Expr).
 
+### S67 — Remaining eval_stack invariant violations
+
+**File:** `daglang-eval/src/eval_stack.rs`
+
+The stack machine works correctly for all tested workloads but has
+structural issues that could cause subtle bugs as the DSL grows:
+
+1. **`eval_expr` is not pure.** It handles `LoweredExpr::Call` (via
+   `eval_non_sibling_call_raw`, which can re-entrantly call
+   `evaluate_stack`), `LoweredExpr::Return` (produces early_return
+   error signal), and `LoweredExpr::Block` with Return stmts. The
+   doc claims "pure expression → Value" but calls and returns are
+   control flow, not values.
+
+2. **Two block evaluation paths.** `eval_block_s` (suspendable) and
+   `eval_expr`'s Block arm (pure) evaluate blocks with different
+   semantics. The pure path can't suspend on sibling calls; it
+   handles them via re-entrant `evaluate_stack`.
+
+3. **Two match evaluation paths.** `eval_match_s` (suspendable, used
+   by `eval_expr_s`) and `eval_match_local` (pure, used by
+   `eval_expr`). Guards in both use `eval_expr`, not `eval_expr_s`
+   — this is correct because the continuation model can't represent
+   guard truthiness checks, but it means guard evaluation uses
+   native recursion for sibling calls.
+
+4. **`wrap_value_as_output` flattens Maps.** When a fn's trailing
+   expression is a Map, it becomes the output HashMap directly. The
+   caller can't distinguish "returned a Map" from "returned multiple
+   named fields." The `"value"` fallback in `extract_projection` is
+   a partial repair for one case of this.
+
+5. **`EvalError` conflates errors and control flow.** The
+   `early_return` field uses the error path for non-error semantics.
+   Return signals propagate as `Err(EvalError { early_return: Some(...) })`.
+
+6. **`eval_call_args` and `eval_non_sibling_call_raw` drop positional
+   args.** When `param_name` is `None`, the evaluated value is
+   discarded. Intrinsic fn-reference paths create synthetic calls
+   with `(None, Ident(...))` positional args that hit this.
+
+7. **No tail continuation elimination.** Tail calls push identity
+   continuations (`remaining: &[], binding: None`). Deep mutual
+   recursion at N=40K allocates 40K continuations on the heap.
+
+**When to fix:** Items 1-3 are the Phase 6 IR cleanup (move Return,
+Block, For to statement forms). Items 4-5 are architectural. Item 6
+is a latent bug (fn-reference callbacks in intrinsics don't pass
+args). Item 7 is the main contributor to gist pipeline OOM.
+
 ---
 
 ## Resolved
