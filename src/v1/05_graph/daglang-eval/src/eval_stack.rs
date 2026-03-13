@@ -531,6 +531,15 @@ fn eval_match_s<'a>(
             let mut arm_env = env.child();
             for (name, val) in bindings { arm_env.bind(name, val); }
             if let Some(guard) = &arm.guard {
+                // Guards use eval_expr (pure path), not eval_expr_s. A guard
+                // that contains a sibling call will evaluate it via
+                // eval_non_sibling_call_raw → evaluate_stack (re-entrant).
+                // This is correct but uses native recursion for the guard.
+                //
+                // Using eval_expr_s here would be wrong: if the guard suspends,
+                // the continuation model can't represent "check truthiness of
+                // the returned value, then maybe try the next arm." The guard
+                // result would be misinterpreted as the match result.
                 match eval_expr(guard, &arm_env, ctx) {
                     Ok(g) if value_truthy(&g) => {}
                     Ok(_) => continue,
