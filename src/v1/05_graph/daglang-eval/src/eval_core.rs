@@ -446,23 +446,7 @@ fn require_builtin_arg(
 pub fn eval_builtin_call(
     name: &str, args: &[(Option<String>, Value)],
 ) -> Option<Result<Value, EvalError>> {
-    if !is_known_builtin(name) { return None; }
-    Some(eval_builtin_inner(name, args))
-}
-
-fn is_known_builtin(name: &str) -> bool {
-    matches!(name,
-        "with" | "Some" | "code_point" | "from_code_point" | "to_string"
-        | "char_at" | "substring" | "string_length" | "parse_int"
-        | "scan_string_end" | "scan_to_eol" | "skip_horizontal_ws" | "lookup"
-    ) || name.chars().next().unwrap_or('a').is_uppercase()
-      || name.contains('.')
-}
-
-fn eval_builtin_inner(
-    name: &str, args: &[(Option<String>, Value)],
-) -> Result<Value, EvalError> {
-    match name {
+    Some(match name {
         "with" => {
             if args.len() >= 2 {
                 match (&args[0].1, &args[1].1) {
@@ -479,35 +463,39 @@ fn eval_builtin_inner(
         }
         "Some" => Ok(args.first().map(|(_, v)| v.clone()).unwrap_or(Value::Unit)),
         "code_point" => {
-            let val = require_builtin_arg("c", 0, args)?;
-            match &val {
-                Value::Str(s) => match s.chars().next() {
-                    Some(c) => Ok(Value::Int(c as i64)),
-                    None => Err(EvalError::new("code_point: empty string")),
+            let val = require_builtin_arg("c", 0, args);
+            match val {
+                Err(e) => Err(e),
+                Ok(val) => match &val {
+                    Value::Str(s) => match s.chars().next() {
+                        Some(c) => Ok(Value::Int(c as i64)),
+                        None => Err(EvalError::new("code_point: empty string")),
+                    },
+                    Value::Int(n) => Ok(Value::Int(*n)),
+                    _ => Err(EvalError::new(format!("code_point: expected Char, got {:?}", val))),
                 },
-                Value::Int(n) => Ok(Value::Int(*n)),
-                _ => Err(EvalError::new(format!("code_point: expected Char, got {:?}", val))),
             }
         }
         "from_code_point" => {
-            let val = require_builtin_arg("cp", 0, args)?;
-            match val {
-                Value::Int(cp) => match char::from_u32(cp as u32) {
+            match require_builtin_arg("cp", 0, args) {
+                Err(e) => Err(e),
+                Ok(Value::Int(cp)) => match char::from_u32(cp as u32) {
                     Some(c) => Ok(Value::Str(c.to_string())),
                     None => Err(EvalError::new(format!("from_code_point: invalid code point {cp}"))),
                 },
-                _ => Err(EvalError::new("from_code_point: expected Int")),
+                Ok(_) => Err(EvalError::new("from_code_point: expected Int")),
             }
         }
         "to_string" => {
-            let val = require_builtin_arg("value", 0, args)?;
-            Ok(Value::Str(value_to_string(&val)))
+            match require_builtin_arg("value", 0, args) {
+                Err(e) => Err(e),
+                Ok(val) => Ok(Value::Str(value_to_string(&val))),
+            }
         }
         "char_at" => {
-            let s = require_builtin_arg("s", 0, args)?;
-            let pos = require_builtin_arg("pos", 1, args)?;
-            match (s, pos) {
-                (Value::Str(s), Value::Int(i)) => match s.chars().nth(i as usize) {
+            match (require_builtin_arg("s", 0, args), require_builtin_arg("pos", 1, args)) {
+                (Err(e), _) | (_, Err(e)) => Err(e),
+                (Ok(Value::Str(s)), Ok(Value::Int(i))) => match s.chars().nth(i as usize) {
                     Some(c) => Ok(Value::Str(c.to_string())),
                     None => Ok(Value::Unit),
                 },
@@ -515,11 +503,9 @@ fn eval_builtin_inner(
             }
         }
         "substring" => {
-            let s = require_builtin_arg("s", 0, args)?;
-            let start = require_builtin_arg("start", 1, args)?;
-            let end = require_builtin_arg("end", 2, args)?;
-            match (s, start, end) {
-                (Value::Str(s), Value::Int(start), Value::Int(end)) => {
+            match (require_builtin_arg("s", 0, args), require_builtin_arg("start", 1, args), require_builtin_arg("end", 2, args)) {
+                (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => Err(e),
+                (Ok(Value::Str(s)), Ok(Value::Int(start)), Ok(Value::Int(end))) => {
                     let chars: Vec<char> = s.chars().collect();
                     let len = chars.len() as i64;
                     let s_idx = (start.max(0) as usize).min(len as usize);
@@ -530,31 +516,30 @@ fn eval_builtin_inner(
             }
         }
         "string_length" => {
-            let s = require_builtin_arg("s", 0, args)?;
-            match s {
-                Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
+            match require_builtin_arg("s", 0, args) {
+                Err(e) => Err(e),
+                Ok(Value::Str(s)) => Ok(Value::Int(s.chars().count() as i64)),
                 _ => Err(EvalError::new("string_length requires a String")),
             }
         }
         "parse_int" => {
-            let s = require_builtin_arg("s", 0, args)?;
-            match s {
-                Value::Str(s) => s.trim().parse::<i64>()
+            match require_builtin_arg("s", 0, args) {
+                Err(e) => Err(e),
+                Ok(Value::Str(s)) => s.trim().parse::<i64>()
                     .map(Value::Int)
                     .map_err(|e| EvalError::new(format!("parse_int: cannot parse '{s}': {e}"))),
                 _ => Err(EvalError::new("parse_int requires a String")),
             }
         }
         "scan_string_end" => {
-            let s = require_builtin_arg("s", 0, args)?;
-            let start = require_builtin_arg("start", 1, args)?;
-            match (s, start) {
-                (Value::Str(s), Value::Int(start)) => {
+            match (require_builtin_arg("s", 0, args), require_builtin_arg("start", 1, args)) {
+                (Err(e), _) | (_, Err(e)) => Err(e),
+                (Ok(Value::Str(s)), Ok(Value::Int(start))) => {
                     let chars: Vec<char> = s.chars().collect();
                     let mut pos = start.max(0) as usize;
                     while pos < chars.len() {
                         if chars[pos] == '\\' { pos += 2; }
-                        else if chars[pos] == '"' { return Ok(Value::Int((pos + 1) as i64)); }
+                        else if chars[pos] == '"' { return Some(Ok(Value::Int((pos + 1) as i64))); }
                         else { pos += 1; }
                     }
                     Ok(Value::Int(chars.len() as i64))
@@ -563,14 +548,13 @@ fn eval_builtin_inner(
             }
         }
         "scan_to_eol" => {
-            let s = require_builtin_arg("s", 0, args)?;
-            let start = require_builtin_arg("start", 1, args)?;
-            match (s, start) {
-                (Value::Str(s), Value::Int(start)) => {
+            match (require_builtin_arg("s", 0, args), require_builtin_arg("start", 1, args)) {
+                (Err(e), _) | (_, Err(e)) => Err(e),
+                (Ok(Value::Str(s)), Ok(Value::Int(start))) => {
                     let chars: Vec<char> = s.chars().collect();
                     let start = start.max(0) as usize;
                     for (i, &ch) in chars.iter().enumerate().skip(start) {
-                        if ch == '\n' { return Ok(Value::Int(i as i64)); }
+                        if ch == '\n' { return Some(Ok(Value::Int(i as i64))); }
                     }
                     Ok(Value::Int(chars.len() as i64))
                 }
@@ -578,10 +562,9 @@ fn eval_builtin_inner(
             }
         }
         "skip_horizontal_ws" => {
-            let s = require_builtin_arg("s", 0, args)?;
-            let start = require_builtin_arg("start", 1, args)?;
-            match (s, start) {
-                (Value::Str(s), Value::Int(start)) => {
+            match (require_builtin_arg("s", 0, args), require_builtin_arg("start", 1, args)) {
+                (Err(e), _) | (_, Err(e)) => Err(e),
+                (Ok(Value::Str(s)), Ok(Value::Int(start))) => {
                     let chars: Vec<char> = s.chars().collect();
                     let mut pos = start.max(0) as usize;
                     while pos < chars.len() && (chars[pos] == ' ' || chars[pos] == '\t') { pos += 1; }
@@ -591,10 +574,9 @@ fn eval_builtin_inner(
             }
         }
         "lookup" => {
-            let map_val = require_builtin_arg("map", 0, args)?;
-            let key = require_builtin_arg("key", 1, args)?;
-            match (map_val, key) {
-                (Value::Map(map), Value::Str(key)) => {
+            match (require_builtin_arg("map", 0, args), require_builtin_arg("key", 1, args)) {
+                (Err(e), _) | (_, Err(e)) => Err(e),
+                (Ok(Value::Map(map)), Ok(Value::Str(key))) => {
                     let mut result = BTreeMap::new();
                     if let Some(value) = map.get(&key) {
                         result.insert("_variant".to_string(), Value::Str("Some".to_string()));
@@ -617,6 +599,6 @@ fn eval_builtin_inner(
             Ok(Value::Map(map))
         }
         _ if name.contains('.') => Ok(Value::Unit),
-        _ => Err(EvalError::new(format!("unknown built-in: {name}"))),
-    }
+        _ => return None,
+    })
 }

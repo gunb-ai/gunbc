@@ -42,44 +42,14 @@ pub fn evaluate_fn_body_with_data(
 
 /// Evaluate a match expression. Used by DAG executor nodes (resolve.rs, interp).
 ///
-/// Delegates to the stack evaluator for arm body evaluation.
+/// Delegates to the stack evaluator's direct match implementation.
 pub fn eval_match(
     scrutinee: &Value,
     arms: &[LoweredMatchArm],
     env_bindings: &HashMap<String, Value>,
     sibling_fns: &HashMap<String, LoweredFnBody>,
 ) -> Result<Value, EvalError> {
-    for arm in arms {
-        if let Some(bindings) = match_pattern(&arm.pattern, scrutinee) {
-            let mut inputs = env_bindings.clone();
-            for (name, val) in bindings { inputs.insert(name, val); }
-            if let Some(guard) = &arm.guard {
-                // Evaluate guard as a trivial fn body
-                let guard_body = crate::expr::LoweredFnBody {
-                    stmts: vec![crate::expr::LoweredStmt::Return(vec![
-                        ("return".to_string(), guard.clone()),
-                    ])],
-                };
-                let result = crate::eval_stack::evaluate_stack(
-                    &guard_body, &inputs, sibling_fns, &HashMap::new(),
-                )?;
-                if !value_truthy(result.get("return").unwrap_or(&Value::Unit)) {
-                    continue;
-                }
-            }
-            // Evaluate arm body as a trivial fn body
-            let body = crate::expr::LoweredFnBody {
-                stmts: vec![crate::expr::LoweredStmt::Return(vec![
-                    ("return".to_string(), arm.body.clone()),
-                ])],
-            };
-            let result = crate::eval_stack::evaluate_stack(
-                &body, &inputs, sibling_fns, &HashMap::new(),
-            )?;
-            return Ok(result.get("return").cloned().unwrap_or(Value::Unit));
-        }
-    }
-    Err(EvalError::new(format!("no match arm matched value: {:?}", scrutinee)))
+    crate::eval_stack::eval_match_standalone(scrutinee, arms, env_bindings, sibling_fns)
 }
 
 /// Evaluate a collection operation.
@@ -137,15 +107,12 @@ pub fn evaluate_collection(
     }
 }
 
-/// Collection/intrinsic function names handled by the evaluator.
-const INTRINSIC_CALLS: &[&str] = &[
-    "map", "filter", "filter_map", "flat_map", "fold", "append",
-    "join", "count", "sum", "first", "last", "any", "all", "contains",
-    "sort_by", "split", "zip", "skip", "enumerate",
-    "starts_with", "ends_with", "repeat", "chars",
-];
-
 /// Check if a function name is an evaluator-handled intrinsic.
 pub fn is_intrinsic_call(name: &str) -> bool {
-    INTRINSIC_CALLS.contains(&name)
+    matches!(name,
+        "map" | "filter" | "filter_map" | "flat_map" | "fold" | "append"
+        | "join" | "count" | "sum" | "first" | "last" | "any" | "all" | "contains"
+        | "sort_by" | "split" | "zip" | "skip" | "enumerate"
+        | "starts_with" | "ends_with" | "repeat" | "chars"
+    )
 }

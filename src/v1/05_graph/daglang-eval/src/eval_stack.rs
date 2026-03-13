@@ -125,7 +125,13 @@ fn build_context<'a>(
 
 /// Pure: EvalContext → Ok(()) or Err(location).
 /// Asserts no SIBLING fn Call nested inside another expression.
-/// Builtin calls are allowed in nested position (they evaluate inline).
+///
+/// Note: This is intentionally weaker than the lowerer's ANF verifier
+/// (daglang-lower::anf) which rejects ALL nested calls. The runtime
+/// verifier only checks the suspension-critical invariant: sibling calls
+/// must be at statement level for the continuation-based call protocol.
+/// Non-sibling calls (builtins, intrinsics) are evaluated inline by
+/// eval_expr and don't need hoisting.
 fn verify_anf_contract(ctx: &EvalContext) -> Result<(), String> {
     for (id, body) in ctx.fns.iter().enumerate() {
         for (i, stmt) in body.stmts.iter().enumerate() {
@@ -234,8 +240,9 @@ enum Step {
     Error(String),
 }
 
+#[allow(clippy::large_enum_variant)]
 enum ExprResult {
-    Value(Box<Value>),
+    Value(Value),
     EarlyReturn(HashMap<String, Value>),
     Suspend { callee: FnId, inputs: HashMap<String, Value> },
     Error(String),
@@ -424,7 +431,7 @@ fn eval_stmts<'a>(
                     }
                 } else if is_last {
                     match eval_expr_s(expr, env, ctx, stack) {
-                        ExprResult::Value(value) => return Step::Return(wrap_value_as_output(*value)),
+                        ExprResult::Value(value) => return Step::Return(wrap_value_as_output(value)),
                         ExprResult::EarlyReturn(map) => return Step::EarlyReturn(map),
                         ExprResult::Suspend { callee, inputs } => {
                             stack.insert(stack_base, Continuation {
@@ -490,7 +497,7 @@ fn eval_expr_s<'a>(
                         else { else_.as_ref().map(|e| e.as_ref()) };
                     match branch {
                         Some(b) => eval_expr_s(b, env, ctx, stack),
-                        None => ExprResult::Value(Box::new(Value::Unit)),
+                        None => ExprResult::Value(Value::Unit),
                     }
                 }
                 Err(e) => expr_from_error(e),
@@ -506,7 +513,7 @@ fn eval_expr_s<'a>(
             eval_block_s(block_stmts, env, ctx, stack)
         }
         _ => match eval_expr(expr, env, ctx) {
-            Ok(v) => ExprResult::Value(Box::new(v)),
+            Ok(v) => ExprResult::Value(v),
             Err(e) => expr_from_error(e),
         }
     }
@@ -600,7 +607,7 @@ fn eval_block_s<'a>(
                         }
                     } else {
                         match eval_non_sibling_call_raw(callee, args, &child, ctx) {
-                            Ok(value) if is_last => return ExprResult::Value(Box::new(value)),
+                            Ok(value) if is_last => return ExprResult::Value(value),
                             Ok(_) => {}
                             Err(e) => return expr_from_error(e),
                         }
@@ -635,7 +642,7 @@ fn eval_block_s<'a>(
             }
         }
     }
-    ExprResult::Value(Box::new(Value::Unit))
+    ExprResult::Value(Value::Unit)
 }
 
 // ── 3e. Pure expression evaluation ──────────────────────────────────────────
@@ -803,8 +810,8 @@ fn eval_non_sibling_call_raw(
         return sibling_fn_value_extract(name, outputs);
     }
     // 2. Intrinsics (need unevaluated args for lambdas)
-    if is_intrinsic(name) {
-        return eval_intrinsic_call_s(name, args, env, ctx);
+    if let Some(result) = eval_intrinsic_call_s(name, args, env, ctx) {
+        return result;
     }
     // 3. scan_while (builtin that needs a lambda predicate)
     if name == "scan_while" {
@@ -848,18 +855,38 @@ fn eval_match_local(
     Err(EvalError::new(format!("no matching arm for: {:?}", scrutinee)))
 }
 
+/// Evaluate a match expression without synthetic-fn-body overhead.
+/// Used by the public `eval_match` wrapper in eval.rs.
+pub fn eval_match_standalone(
+    scrutinee: &Value,
+    arms: &[LoweredMatchArm],
+    env_bindings: &HashMap<String, Value>,
+    sibling_fns: &HashMap<String, LoweredFnBody>,
+) -> Result<Value, EvalError> {
+    let data_values = HashMap::new();
+    let dummy = LoweredFnBody { stmts: vec![] };
+    let (ctx, _) = build_context(&dummy, sibling_fns, &data_values);
+    let env = Env::from_inputs(env_bindings);
+    eval_match_local(scrutinee, arms, &env, &ctx)
+}
+
 // ── Intrinsics (self-contained, no bridge to eval.rs) ────────────────────
 
-const INTRINSIC_CALLS: &[&str] = &[
-    "map", "filter", "filter_map", "flat_map", "fold", "append",
-    "join", "count", "sum", "first", "last", "any", "all", "contains",
-    "sort_by", "split", "zip", "skip", "enumerate",
-    "starts_with", "ends_with", "repeat", "chars",
-];
-
-fn is_intrinsic(name: &str) -> bool { INTRINSIC_CALLS.contains(&name) }
-
 fn eval_intrinsic_call_s(
+    name: &str, args: &[(Option<String>, LoweredExpr)], env: &Env, ctx: &EvalContext,
+) -> Option<Result<Value, EvalError>> {
+    if !matches!(name,
+        "map" | "filter" | "filter_map" | "flat_map" | "fold" | "append"
+        | "join" | "count" | "sum" | "first" | "last" | "any" | "all" | "contains"
+        | "sort_by" | "split" | "zip" | "skip" | "enumerate"
+        | "starts_with" | "ends_with" | "repeat" | "chars"
+    ) {
+        return None;
+    }
+    Some(eval_intrinsic_inner(name, args, env, ctx))
+}
+
+fn eval_intrinsic_inner(
     name: &str, args: &[(Option<String>, LoweredExpr)], env: &Env, ctx: &EvalContext,
 ) -> Result<Value, EvalError> {
     let receiver = if let Some((_, first_arg)) = args.first() {

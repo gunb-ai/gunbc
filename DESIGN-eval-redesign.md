@@ -89,6 +89,22 @@ independently testable.
 
 ## Data Structures
 
+> **Current vs Target:** The data structures below describe the target
+> design. The shipped implementation differs in several ways:
+>
+> - **Continuations** use `remaining: &'a [LoweredStmt]` slices instead
+>   of absolute `pc` indices. This requires lifetimes in the
+>   continuation type but avoids index arithmetic.
+> - **Continuation ownership** is shared: `eval_stmts` and `eval_block_s`
+>   mutate `&mut Vec<Continuation>` directly, using `stack.insert(stack_base, ...)`
+>   to maintain ordering when inner blocks push before outer callers.
+> - **Tail call elimination** is not implemented — tail calls still push
+>   identity continuations (`remaining: &[], binding: None`). Deep
+>   mutual recursion works because the heap can hold 100K continuations,
+>   not because identity continuations are elided.
+> - **Step::Call** always pushes a continuation; there is no
+>   `cont: Option<Continuation>` distinction in the code.
+
 ### Immutable code store
 
 ```rust

@@ -38,6 +38,9 @@ struct AnfState {
 }
 
 impl AnfState {
+    /// Generate a fresh temporary name. The `__anf_` prefix is reserved
+    /// by convention — DSL source should never use it. The monotonic counter
+    /// ensures uniqueness within a single function body.
     fn fresh_name(&mut self) -> String {
         let n = self.counter;
         self.counter += 1;
