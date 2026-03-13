@@ -747,9 +747,9 @@ fn eval_block_s<'a>(
                     if let Some(&callee_id) = ctx.fn_index.get(callee.as_str()) {
                         match eval_call_args(args, &child, ctx) {
                             Ok(inputs) => {
-                                stack.push(Continuation {
+                                stack.insert(stack_base, Continuation {
                                     remaining, binding: Some(name.clone()),
-                                    env: child, is_fn_boundary: false,
+                                    env: child, is_fn_boundary: true,
                                     caller_fn: current_fn,
                                 });
                                 return ExprResult::Suspend { callee: callee_id, inputs };
@@ -782,9 +782,9 @@ fn eval_block_s<'a>(
                     if let Some(&callee_id) = ctx.fn_index.get(callee.as_str()) {
                         match eval_call_args(args, &child, ctx) {
                             Ok(inputs) => {
-                                stack.push(Continuation {
+                                stack.insert(stack_base, Continuation {
                                     remaining, binding: None,
-                                    env: child, is_fn_boundary: false,
+                                    env: child, is_fn_boundary: true,
                                     caller_fn: current_fn,
                                 });
                                 return ExprResult::Suspend { callee: callee_id, inputs };

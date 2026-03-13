@@ -854,7 +854,7 @@ pub fn verify_dag<T>(dag: &Dag<T>) -> Vec<VerifyError> {
 /// Verify structural invariants only (no port type-id checks).
 ///
 /// Used by `verify_dag` when only a core-only registry is available.
-fn verify_dag_structural<T>(dag: &Dag<T>, registry: &TypeRegistry) -> Vec<VerifyError> {
+fn verify_dag_structural<T>(dag: &Dag<T>, _registry: &TypeRegistry) -> Vec<VerifyError> {
     let mut errors: Vec<VerifyError> = Vec::new();
 
     errors.extend(
@@ -877,8 +877,13 @@ fn verify_dag_structural<T>(dag: &Dag<T>, registry: &TypeRegistry) -> Vec<Verify
             .into_iter()
             .map(VerifyError::UnwiredInput),
     );
+    // Use registry-free cardinality validation here because
+    // `verify_dag_structural` is called from `verify_dag` with a core-only
+    // registry. Passing that partial registry would cause false-positive
+    // VER006 errors for DSL-defined types. Full registry validation is
+    // available via `verify_dag_with_registry`.
     errors.extend(
-        validate_cardinality_compatibility_with_registry(dag, Some(registry))
+        validate_cardinality_compatibility(dag)
             .into_iter()
             .map(VerifyError::CardinalityIncompatibility),
     );

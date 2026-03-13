@@ -6703,11 +6703,8 @@ fn try_mock_element_value(type_id: &str, index: Option<u32>) -> Option<Value> {
     // treats this as "no mock available" which is correct for custom types).
     let backing = match gunbc_ir::value_backing_for_type_id(type_id) {
         Ok(b) => b,
-        Err(_e) => {
-            #[cfg(debug_assertions)]
-            eprintln!("testgen: value_backing_for_type_id({type_id:?}) failed: {_e}");
-            return None;
-        }
+        // Unrecognized types (custom user types) → no mock available.
+        Err(_) => return None,
     };
     Some(backing.mock_value(index))
 }
@@ -7159,11 +7156,8 @@ fn mock_wrong_type_expr(type_id: &str) -> Option<ValueExpr> {
     // swallowing via .ok().
     let backing = match gunbc_ir::value_backing_for_type_id(base) {
         Ok(b) => b,
-        Err(_e) => {
-            #[cfg(debug_assertions)]
-            eprintln!("testgen/wrong_type: value_backing_for_type_id({base:?}) failed: {_e}");
-            return None;
-        }
+        // Unrecognized types → no wrong-type mock available.
+        Err(_) => return None,
     };
     match backing {
         // String-backed → use Int
