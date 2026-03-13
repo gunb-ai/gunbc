@@ -772,7 +772,7 @@ fn collect_symbols_with_metadata(
                 symbols.push(CollectedSymbol {
                     name: sanitize_identifier(&format!("{module}_{name}")),
                     spec: None,
-                    service_phase: service_transport_phase(*obligation),
+                    service_phase: service_transport_phase((*obligation).into()),
                 });
             }
             LoweredOp::Transport {
@@ -787,7 +787,7 @@ fn collect_symbols_with_metadata(
                 symbols.push(CollectedSymbol {
                     name: sanitize_identifier(&format!("{module}_{name}")),
                     spec,
-                    service_phase: service_transport_phase(*obligation),
+                    service_phase: service_transport_phase((*obligation).into()),
                 });
             }
             LoweredOp::Primitive { module, name, .. } => {
@@ -1007,7 +1007,7 @@ impl NodeBodyExt for gunbc_ir::node::NodeBody<LoweredOp> {
 mod tests {
     use super::*;
     use daglang_derive::derive_artifacts;
-    use daglang_lower::ObligationCategory;
+    use daglang_lower::{CallableObligation, TransportObligation};
     use gunbc_ir::{Edge, Node, Port};
     use std::collections::{BTreeSet, HashMap};
 
@@ -1021,7 +1021,7 @@ mod tests {
                 module: "tools.bundle".to_string(),
                 kind: CallableKind::Fn,
                 name: "render_content".to_string(),
-                obligation: ObligationCategory::PureRender,
+                obligation: CallableObligation::PureRender,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1035,7 +1035,7 @@ mod tests {
                 module: "tools.bundle".to_string(),
                 kind: CallableKind::Func,
                 name: "bundle".to_string(),
-                obligation: ObligationCategory::None,
+                obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1300,7 +1300,7 @@ mod tests {
                 module: "extdeps.llm.anthropic".to_string(),
                 kind: CallableKind::Func,
                 name: "service_transport::prepare::llm.Anthropic::Messages".to_string(),
-                obligation: ObligationCategory::ServiceTransportPrepare,
+                obligation: TransportObligation::Prepare,
                 service_metadata: Box::new(ServiceCallMetadata {
                     service: "llm.Anthropic".to_string(),
                     operation: "Messages".to_string(),
@@ -1323,7 +1323,7 @@ mod tests {
                 module: "extdeps.llm.anthropic".to_string(),
                 kind: CallableKind::Func,
                 name: "service_transport::execute::llm.Anthropic::Messages".to_string(),
-                obligation: ObligationCategory::ServiceTransportExecute,
+                obligation: TransportObligation::Execute,
                 service_metadata: Box::new(ServiceCallMetadata {
                     service: "llm.Anthropic".to_string(),
                     operation: "Messages".to_string(),
@@ -1346,7 +1346,7 @@ mod tests {
                 module: "extdeps.llm.anthropic".to_string(),
                 kind: CallableKind::Func,
                 name: "service_transport::parse::llm.Anthropic::Messages".to_string(),
-                obligation: ObligationCategory::ServiceTransportParse,
+                obligation: TransportObligation::Parse,
                 service_metadata: Box::new(ServiceCallMetadata {
                     service: "llm.Anthropic".to_string(),
                     operation: "Messages".to_string(),
@@ -1369,7 +1369,7 @@ mod tests {
                 module: "extdeps.cargo".to_string(),
                 kind: CallableKind::Func,
                 name: "service_transport::prepare::cargo.Cargo::Build".to_string(),
-                obligation: ObligationCategory::ServiceTransportPrepare,
+                obligation: TransportObligation::Prepare,
                 service_metadata: Box::new(ServiceCallMetadata {
                     service: "cargo.Cargo".to_string(),
                     operation: "Build".to_string(),
@@ -1392,7 +1392,7 @@ mod tests {
                 module: "extdeps.cargo".to_string(),
                 kind: CallableKind::Func,
                 name: "service_transport::parse::cargo.Cargo::Build".to_string(),
-                obligation: ObligationCategory::ServiceTransportParse,
+                obligation: TransportObligation::Parse,
                 service_metadata: Box::new(ServiceCallMetadata {
                     service: "cargo.Cargo".to_string(),
                     operation: "Build".to_string(),
@@ -1656,7 +1656,7 @@ mod tests {
                 module: "test".to_string(),
                 kind: CallableKind::Func,
                 name: "entry".to_string(),
-                obligation: ObligationCategory::None,
+                obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1670,7 +1670,7 @@ mod tests {
                 module: "test".to_string(),
                 kind: CallableKind::Func,
                 name: "downstream".to_string(),
-                obligation: ObligationCategory::None,
+                obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1684,7 +1684,7 @@ mod tests {
                 module: "test".to_string(),
                 kind: CallableKind::Func,
                 name: "unreachable".to_string(),
-                obligation: ObligationCategory::None,
+                obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1724,7 +1724,7 @@ mod tests {
                 module: "test".to_string(),
                 kind: CallableKind::Func,
                 name: "entry".to_string(),
-                obligation: ObligationCategory::None,
+                obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1738,7 +1738,7 @@ mod tests {
                 module: "test".to_string(),
                 kind: CallableKind::Func,
                 name: "middle".to_string(),
-                obligation: ObligationCategory::None,
+                obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1752,7 +1752,7 @@ mod tests {
                 module: "test".to_string(),
                 kind: CallableKind::Func,
                 name: "orphan".to_string(),
-                obligation: ObligationCategory::None,
+                obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,

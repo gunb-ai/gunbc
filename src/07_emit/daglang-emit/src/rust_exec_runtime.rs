@@ -331,14 +331,7 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerClassification> {
             ))
         }
         LoweredOp::Pipeline { .. } => {}
-        LoweredOp::Callable {
-            obligation:
-                ObligationCategory::ServiceTransportPrepare
-                | ObligationCategory::ServiceTransportExecute
-                | ObligationCategory::ServiceTransportParse,
-            ..
-        }
-        | LoweredOp::Transport { .. } => {
+        LoweredOp::Transport { .. } => {
             return Some(HandlerClassification::Handler(HandlerKind::Passthrough));
         }
         LoweredOp::Callable { .. } => {}
@@ -369,10 +362,9 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerClassification> {
 
     let handler = |h| Some(HandlerClassification::Handler(h));
 
-    let obligation = match op {
-        LoweredOp::Callable { obligation, .. } | LoweredOp::Transport { obligation, .. } => {
-            Some(*obligation)
-        }
+    let obligation: Option<ObligationCategory> = match op {
+        LoweredOp::Callable { obligation, .. } => Some((*obligation).into()),
+        LoweredOp::Transport { obligation, .. } => Some((*obligation).into()),
         LoweredOp::Pipeline { .. } => None,
         _ => return None,
     };
@@ -1132,7 +1124,8 @@ fn emitted_dag_has_edges(dag: &Dag<LoweredOp>, classified: &[ClassifiedNode]) ->
 mod tests {
     use super::*;
     use daglang_lower::{
-        CallableKind, LoweredOp, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind,
+        CallableKind, CallableObligation, LoweredOp, PrimitiveLiteral, PrimitiveOpKind,
+        ServiceCallMetadata, ServiceTransportClass, TransportObligation,
     };
     use gunbc_ir::{Node, Port};
 
@@ -1181,7 +1174,7 @@ mod tests {
                 module: "tools.unknown".to_string(),
                 kind: CallableKind::Fn,
                 name: "something".to_string(),
-                obligation: ObligationCategory::None,
+                obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1245,7 +1238,7 @@ mod tests {
             module: "std.patterns".into(),
             kind: CallableKind::Pattern,
             name: "file_content_matches".into(),
-            obligation: ObligationCategory::None,
+            obligation: CallableObligation::None,
             is_interactive: false,
             resource_target: None,
             fn_body: None,
@@ -1256,14 +1249,21 @@ mod tests {
         );
 
         // Service transport nodes use passthrough.
-        let service_prepare = LoweredOp::Callable {
+        let service_prepare = LoweredOp::Transport {
             module: "services.workflow.control_plane".into(),
             kind: CallableKind::Pattern,
             name: "service_transport::prepare::workflow.ControlPlane::AcquireStageClaim".into(),
-            obligation: ObligationCategory::ServiceTransportPrepare,
+            obligation: TransportObligation::Prepare,
+            service_metadata: Box::new(ServiceCallMetadata {
+                service: "workflow.ControlPlane".to_string(),
+                operation: "AcquireStageClaim".to_string(),
+                transport: ServiceTransportClass::ShellLocal,
+                idempotent: true,
+                readonly: false,
+                spec: None,
+            }),
             is_interactive: false,
             resource_target: None,
-            fn_body: None,
         };
         assert_eq!(
             classify_handler(&service_prepare),
@@ -1274,7 +1274,7 @@ mod tests {
     #[test]
     fn classify_handler_obligation_gated_passthrough() {
         // Helper to build a callable with a given obligation.
-        let make = |obligation: ObligationCategory| LoweredOp::Callable {
+        let make = |obligation: CallableObligation| LoweredOp::Callable {
             module: "tools.newfeature".into(),
             kind: CallableKind::Fn,
             name: "some_op".into(),
@@ -1286,28 +1286,28 @@ mod tests {
 
         // PureGeneric → passthrough (DSL body wrapper, no specialized handler needed).
         assert_eq!(
-            classify_handler(&make(ObligationCategory::PureGeneric)),
+            classify_handler(&make(CallableObligation::PureGeneric)),
             Some(HandlerClassification::Handler(HandlerKind::Passthrough)),
             "PureGeneric should passthrough"
         );
 
         // PureRender requires a dedicated handler and is not classified as passthrough.
         assert_eq!(
-            classify_handler(&make(ObligationCategory::PureRender)),
+            classify_handler(&make(CallableObligation::PureRender)),
             None,
             "PureRender should be unresolved without a dedicated handler"
         );
 
         // PureDataLoad requires a dedicated handler and is not classified as passthrough.
         assert_eq!(
-            classify_handler(&make(ObligationCategory::PureDataLoad)),
+            classify_handler(&make(CallableObligation::PureDataLoad)),
             None,
             "PureDataLoad should be unresolved without a dedicated handler"
         );
 
         // ResourceProvide → passthrough (structural).
         assert_eq!(
-            classify_handler(&make(ObligationCategory::ResourceProvide)),
+            classify_handler(&make(CallableObligation::ResourceProvide)),
             Some(HandlerClassification::Handler(HandlerKind::Passthrough)),
             "ResourceProvide should passthrough"
         );
@@ -1324,7 +1324,7 @@ mod tests {
                 module: "tools.pragma".to_string(),
                 kind: CallableKind::Fn,
                 name: "render_clippy_toml".to_string(),
-                obligation: ObligationCategory::None,
+                obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
