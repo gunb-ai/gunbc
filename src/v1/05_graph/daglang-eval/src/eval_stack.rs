@@ -85,9 +85,11 @@ fn output_value(outputs: &HashMap<String, Value>) -> Value {
             return value.clone();
         }
     }
-    if outputs.is_empty() {
-        return Value::Unit;
-    }
+    assert!(
+        !outputs.is_empty(),
+        "BUG: output_value called with empty outputs map — \
+         all functions must produce at least one output",
+    );
     Value::Map(outputs.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
 }
 
