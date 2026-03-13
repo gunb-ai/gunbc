@@ -2,15 +2,16 @@
 //! what `daglang gen-types` would produce from the current DSL files.
 //!
 //! If this test fails, regenerate with:
-//!   cargo run -p daglang-cli -- gen-types dsl/std \
+//!   cargo run -p daglang-cli -- gen-types dsl \
 //!     --module std.symbols --module std.unicode --module std.width \
 //!     --module std.render \
 //!     --output src/v1/00_foundation/ir/src/generated/mod.rs
 
 #[allow(clippy::disallowed_methods)] // Test infrastructure: needs Command::new and fs::read_to_string
 #[test]
-#[ignore] // gen-types emitter bug: anonymous record fold inits emit `{ field: val }` instead of
-          // `TypeName { field: val }`, producing invalid Rust. Pre-existing — tracked as RT emitter task.
+#[ignore] // gen-types emitter still produces code that doesn't compile (type mismatches, missing
+          // methods, etc.). The anonymous-record naming bug (S72) is fixed, but on-disk mod.rs
+          // is hand-tuned and cannot be regenerated until remaining codegen quality issues are resolved.
 fn generated_types_are_not_stale() {
     let output = std::process::Command::new(env!("CARGO"))
         .args([
@@ -19,7 +20,7 @@ fn generated_types_are_not_stale() {
             "daglang-cli",
             "--",
             "gen-types",
-            "dsl/std",
+            "dsl",
             "--module",
             "std.symbols",
             "--module",
@@ -47,7 +48,7 @@ fn generated_types_are_not_stale() {
     if fresh != on_disk {
         panic!(
             "src/v1/00_foundation/ir/src/generated/mod.rs is stale. Regenerate with:\n  \
-             cargo run -p daglang-cli -- gen-types dsl/std \
+             cargo run -p daglang-cli -- gen-types dsl \
              --module std.symbols --module std.unicode --module std.width \
              --module std.render \
              --output src/v1/00_foundation/ir/src/generated/mod.rs"

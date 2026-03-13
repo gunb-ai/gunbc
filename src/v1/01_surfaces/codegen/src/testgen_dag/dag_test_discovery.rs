@@ -19,12 +19,11 @@ use daglang_emit::test_mock_emit::{TestFile, TERMINAL_NODE_SENTINEL};
 use daglang_syntax::ast::{ExpectStmt, Expr, FixtureDef, Literal, TestDef};
 use gunbc_exec::DynOp;
 use gunbc_ir::{BuilderError, Dag};
-#[allow(deprecated)]
-use gunbc_resolve::builder::build_dsl_graph;
+use gunbc_resolve::builder::compile_and_resolve;
 use gunbc_resolve::BuildOpts;
 use gunbc_test::{auto_mock_failure_variants, auto_mock_spec};
 use gunbc_test::{
-    BoundaryMock, ExpectedOutput, FermiCost, LiveExpectedOutput, MockSpec, OutputMatcher,
+    BoundaryMock, FermiCost, LiveExpectedOutput, MockSpec, OutputMatcher,
     TestClass, TransportMock,
 };
 use std::borrow::Cow;
@@ -33,12 +32,11 @@ use std::path::Path;
 
 use super::mock_interpreter::{interpret_expr, is_transport_response};
 
-#[allow(deprecated)]
 fn build_gunbc_dsl_graph(
     relative_module: &str,
     opts: BuildOpts<'_>,
 ) -> Result<gunbc_resolve::DslGraphResult, BuilderError> {
-    build_dsl_graph(relative_module, opts)
+    compile_and_resolve(relative_module, opts)
 }
 
 // ── Auto-discovery: any compilable .dag file ──────────────────────────
@@ -213,11 +211,11 @@ pub fn auto_testgen_for_module(module: &CompilableModule, output_dir: &Path) -> 
     let module_test_name = format!("{}_generated_tests", module.module_name.replace('.', "_"));
 
     let dag_builder_call = format!(
-        "gunbc_resolve::builder::build_dsl_graph_dag(\"{}\", gunbc_resolve::BuildOpts::default()).expect(\"graph should build\")",
+        "gunbc_resolve::builder::compile_and_resolve_dag(\"{}\", gunbc_resolve::BuildOpts::default()).expect(\"graph should build\")",
         module.dsl_path,
     );
     let mock_spec_path = format!(
-        "{{ let __r = gunbc_resolve::builder::build_dsl_graph(\"{}\", gunbc_resolve::BuildOpts::default()).expect(\"graph should build\"); gunbc_test::auto_mock_spec(&__r.dag, \"{}\", Some(&__r.dsl_type_registry)) }}",
+        "{{ let __r = gunbc_resolve::builder::compile_and_resolve(\"{}\", gunbc_resolve::BuildOpts::default()).expect(\"graph should build\"); gunbc_test::auto_mock_spec(&__r.dag, \"{}\", Some(&__r.dsl_type_registry)) }}",
         module.dsl_path, safe_name,
     );
 
@@ -230,9 +228,7 @@ pub fn auto_testgen_for_module(module: &CompilableModule, output_dir: &Path) -> 
         signature_path: None,
         boundary_tests: true,
         chain_tests: true,
-        flow_tests: true,
         live_flow_tests: false,
-        window_max_nodes: None,
         test_class: classification.test_class,
         fermi_cost: classification.fermi_cost,
         requires,
@@ -455,9 +451,7 @@ pub fn build_testgen_target_def(
         signature_path: None,
         boundary_tests: true,
         chain_tests: true,
-        flow_tests: true,
         live_flow_tests: false,
-        window_max_nodes: None,
         test_class: TestClass::Unit,
         fermi_cost: FermiCost::XS,
         requires: Vec::new(),
@@ -484,7 +478,7 @@ pub fn compile_dag_for_test(dsl_module: &str) -> Result<Dag<DynOp>, BuilderError
 /// the DAG at test runtime.
 pub fn dag_builder_call_for_module(dsl_module: &str) -> String {
     format!(
-        "gunbc_resolve::builder::build_dsl_graph_dag(\"{dsl_module}\", gunbc_resolve::BuildOpts::default()).expect(\"graph should build\")"
+        "gunbc_resolve::builder::compile_and_resolve_dag(\"{dsl_module}\", gunbc_resolve::BuildOpts::default()).expect(\"graph should build\")"
     )
 }
 
@@ -549,10 +543,10 @@ fn apply_expect<T>(spec: &mut MockSpec, expect: &ExpectStmt, module_prefix: &str
             if let Some((node, port)) = extract_result_path(lhs) {
                 let node = qualify_node_id(&node, module_prefix, dag);
                 let value = interpret_expr(rhs);
-                spec.expected_outputs.push(ExpectedOutput {
+                spec.live_expected_outputs.push(LiveExpectedOutput {
                     node,
                     port,
-                    expected: value,
+                    matcher: OutputMatcher::exact(value),
                 });
             }
         }
@@ -766,14 +760,14 @@ mod tests {
     #[test]
     fn dag_builder_call_known_modules() {
         let call = dag_builder_call_for_module("tools/bootstrap.dag");
-        assert!(call.contains("build_dsl_graph"));
+        assert!(call.contains("compile_and_resolve"));
         assert!(call.contains("expect"));
     }
 
     #[test]
     fn dag_builder_call_unknown_module_falls_back() {
         let call = dag_builder_call_for_module("tools/unknown.dag");
-        assert!(call.contains("build_dsl_graph"));
+        assert!(call.contains("compile_and_resolve"));
         assert!(call.contains("unknown.dag"));
     }
 }

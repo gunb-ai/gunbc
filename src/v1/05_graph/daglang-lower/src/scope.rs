@@ -8,22 +8,18 @@
 //! their transport triplets inside the branch SubDag, not at the
 //! top level. The existing `collect_service_calls_from_stmts` flattens
 //! all calls regardless of scope. This module preserves that structure.
-//!
-//! The main lowering pipeline uses these types directly via the
-//! `collect_for_loops`, `collect_if_branches`, `collect_match_branches`,
-//! and `nested_service_call_paths` methods on `ScopedBody`.
 
 #[cfg(test)]
 use daglang_syntax::ast::MatchArm;
-use daglang_syntax::ast::{Expr, ForBody, Pattern, Stmt};
+#[cfg(test)]
+use daglang_syntax::ast::Pattern;
+use daglang_syntax::ast::{Expr, ForBody, Stmt};
 
-/// A service call found in the AST, with its dot-separated path and args.
+/// A service call found in the AST, with its dot-separated path.
 #[derive(Debug, Clone)]
 pub(crate) struct ScopedServiceCall {
     /// The dot-separated path, e.g., `["gcp", "SecretManager", "AccessSecret"]`.
     pub path: Vec<String>,
-    /// Argument expressions — only the label and ident/literal info needed.
-    pub arg_labels: Vec<Option<String>>,
 }
 
 /// Reference to an expression — simplified for scope analysis.
@@ -38,8 +34,6 @@ pub(crate) enum ExprRef {
     Ident(String),
     /// Field access reference: `x.field`.
     FieldAccess { base: String, field: String },
-    /// A literal value.
-    Literal(crate::ServiceCallArgLiteral),
     /// Any other expression (not decomposed further for scope analysis).
     Opaque,
 }
@@ -70,41 +64,20 @@ pub(crate) enum ScopedItem {
 
     /// A function call (non-service). Not scope-introducing, but tracked
     /// so transport planning knows about fn-call-based service forwarding.
-    FnCall { name: String },
+    FnCall,
 
     /// A let binding or assignment. Not scope-introducing.
-    Binding { name: String },
-
-    /// Anything else (pure expressions, returns, etc.).
-    Other,
+    Binding,
 }
 
 /// One arm of a match expression, with its own scope.
 #[derive(Debug, Clone)]
 pub(crate) struct MatchArmScope {
-    /// The pattern label (variant name, literal, or wildcard).
-    pub label: String,
     /// The body scope for this arm.
     pub body: ScopedBody,
-}
-
-/// Discriminant for selecting ScopedItem variants during recursive walks.
-#[derive(Debug, Clone, Copy)]
-enum ItemKind {
-    ForLoop,
-    IfBranch,
-    MatchBranch,
-}
-
-impl ScopedItem {
-    fn matches_kind(&self, kind: ItemKind) -> bool {
-        matches!(
-            (self, kind),
-            (ScopedItem::ForLoop { .. }, ItemKind::ForLoop)
-                | (ScopedItem::IfBranch { .. }, ItemKind::IfBranch)
-                | (ScopedItem::MatchBranch { .. }, ItemKind::MatchBranch)
-        )
-    }
+    /// The pattern label (variant name, literal, or wildcard).
+    #[cfg(test)]
+    pub label: String,
 }
 
 /// A scoped body — a sequence of items at a given nesting level.
@@ -128,6 +101,7 @@ impl ScopedBody {
     }
 
     /// Collect all service call paths at this scope level only (not nested).
+    #[cfg(test)]
     pub fn direct_service_calls(&self) -> Vec<&ScopedServiceCall> {
         self.items
             .iter()
@@ -164,110 +138,21 @@ impl ScopedBody {
                         arm.body.collect_all_service_calls(out);
                     }
                 }
-                ScopedItem::FnCall { .. } | ScopedItem::Binding { .. } | ScopedItem::Other => {}
+                ScopedItem::FnCall | ScopedItem::Binding => {}
             }
         }
     }
 
     /// Check if this scope or any nested scope contains service calls.
+    #[cfg(test)]
     pub fn has_service_calls(&self) -> bool {
         !self.all_service_calls().is_empty()
     }
 
     /// Recursively count total service calls across all scopes.
+    #[cfg(test)]
     pub fn total_service_call_count(&self) -> usize {
         self.all_service_calls().len()
-    }
-
-    /// Collect all ForLoop items recursively across the scope tree.
-    pub fn collect_for_loops(&self) -> Vec<&ScopedItem> {
-        let mut result = Vec::new();
-        self.collect_items_by_kind(ItemKind::ForLoop, &mut result);
-        result
-    }
-
-    /// Collect all IfBranch items recursively across the scope tree.
-    pub fn collect_if_branches(&self) -> Vec<&ScopedItem> {
-        let mut result = Vec::new();
-        self.collect_items_by_kind(ItemKind::IfBranch, &mut result);
-        result
-    }
-
-    /// Collect all MatchBranch items recursively across the scope tree.
-    pub fn collect_match_branches(&self) -> Vec<&ScopedItem> {
-        let mut result = Vec::new();
-        self.collect_items_by_kind(ItemKind::MatchBranch, &mut result);
-        result
-    }
-
-    /// Collect service call paths that are nested inside control flow
-    /// (for-loops, if/else, match), not at the top level of this scope.
-    pub fn nested_service_call_paths(&self) -> Vec<Vec<String>> {
-        let mut result = Vec::new();
-        for item in &self.items {
-            match item {
-                ScopedItem::ForLoop { body, .. } => {
-                    result.extend(body.all_service_calls().into_iter().map(|c| c.path.clone()));
-                }
-                ScopedItem::IfBranch {
-                    then_body,
-                    else_body,
-                } => {
-                    result.extend(
-                        then_body
-                            .all_service_calls()
-                            .into_iter()
-                            .map(|c| c.path.clone()),
-                    );
-                    if let Some(else_body) = else_body {
-                        result.extend(
-                            else_body
-                                .all_service_calls()
-                                .into_iter()
-                                .map(|c| c.path.clone()),
-                        );
-                    }
-                }
-                ScopedItem::MatchBranch { arms } => {
-                    for arm in arms {
-                        result.extend(
-                            arm.body
-                                .all_service_calls()
-                                .into_iter()
-                                .map(|c| c.path.clone()),
-                        );
-                    }
-                }
-                _ => {}
-            }
-        }
-        result
-    }
-
-    fn collect_items_by_kind<'a>(&'a self, kind: ItemKind, out: &mut Vec<&'a ScopedItem>) {
-        for item in &self.items {
-            if item.matches_kind(kind) {
-                out.push(item);
-            }
-            match item {
-                ScopedItem::ForLoop { body, .. } => body.collect_items_by_kind(kind, out),
-                ScopedItem::IfBranch {
-                    then_body,
-                    else_body,
-                } => {
-                    then_body.collect_items_by_kind(kind, out);
-                    if let Some(else_body) = else_body {
-                        else_body.collect_items_by_kind(kind, out);
-                    }
-                }
-                ScopedItem::MatchBranch { arms } => {
-                    for arm in arms {
-                        arm.body.collect_items_by_kind(kind, out);
-                    }
-                }
-                _ => {}
-            }
-        }
     }
 }
 
@@ -280,11 +165,13 @@ fn collect_scoped_items_from_stmt(stmt: &Stmt, items: &mut Vec<ScopedItem>) {
         Stmt::Let(name, expr) => {
             // First process the expression for service calls / control flow
             collect_scoped_items_from_expr(expr, items);
-            items.push(ScopedItem::Binding { name: name.clone() });
+            let _ = name;
+            items.push(ScopedItem::Binding);
         }
         Stmt::Assign(name, expr) => {
             collect_scoped_items_from_expr(expr, items);
-            items.push(ScopedItem::Binding { name: name.clone() });
+            let _ = name;
+            items.push(ScopedItem::Binding);
         }
         Stmt::Expr(expr) => {
             collect_scoped_items_from_expr(expr, items);
@@ -304,9 +191,9 @@ fn collect_scoped_items_from_expr(expr: &Expr, items: &mut Vec<ScopedItem>) {
     match expr {
         // Service call — the key item we're tracking.
         Expr::ServiceCall(path, args) => {
+            let _ = args;
             items.push(ScopedItem::ServiceCall(ScopedServiceCall {
                 path: path.clone(),
-                arg_labels: args.iter().map(|(label, _)| label.clone()).collect(),
             }));
         }
 
@@ -345,9 +232,12 @@ fn collect_scoped_items_from_expr(expr: &Expr, items: &mut Vec<ScopedItem>) {
             let arm_scopes: Vec<MatchArmScope> = arms
                 .iter()
                 .map(|arm| {
-                    let label = pattern_label(&arm.pattern);
                     let body = scope_from_expr(&arm.body);
-                    MatchArmScope { label, body }
+                    MatchArmScope {
+                        body,
+                        #[cfg(test)]
+                        label: pattern_label(&arm.pattern),
+                    }
                 })
                 .collect();
             items.push(ScopedItem::MatchBranch { arms: arm_scopes });
@@ -359,7 +249,8 @@ fn collect_scoped_items_from_expr(expr: &Expr, items: &mut Vec<ScopedItem>) {
             for (_, arg_expr) in args {
                 collect_scoped_items_from_expr(arg_expr, items);
             }
-            items.push(ScopedItem::FnCall { name: name.clone() });
+            let _ = name;
+            items.push(ScopedItem::FnCall);
         }
 
         // Binary op — recurse.
@@ -465,6 +356,7 @@ fn scope_from_expr(expr: &Expr) -> ScopedBody {
 }
 
 /// Extract a human-readable label from a match pattern.
+#[cfg(test)]
 fn pattern_label(pattern: &Pattern) -> String {
     match pattern {
         Pattern::Ident(name) => name.clone(),

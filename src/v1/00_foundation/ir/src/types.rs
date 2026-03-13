@@ -983,7 +983,7 @@ impl TypeId {
         Self(format!("Map<{},{}>", key.0, val.0))
     }
     pub fn option(inner: &TypeId) -> Self {
-        Self(format!("Option<{}>", inner.0))
+        Self(format!("Optional<{}>", inner.0))
     }
     pub fn transport_request() -> Self {
         Self("TransportRequest".into())
@@ -1025,7 +1025,10 @@ pub fn parse_map_type_id(type_id: &str) -> Option<(String, String)> {
     Some((key.to_string(), value.to_string()))
 }
 
-pub(crate) fn parse_unary_generic_type_id<'a>(type_id: &'a str, wrapper: &str) -> Option<&'a str> {
+/// Parse a unary generic type-id of the form `Wrapper<T>`.
+///
+/// Returns the inner type string when the type-id matches `{wrapper}<T>`.
+pub fn parse_unary_generic_type_id<'a>(type_id: &'a str, wrapper: &str) -> Option<&'a str> {
     let rest = type_id.strip_prefix(wrapper)?;
     let inner = rest.strip_prefix('<')?.strip_suffix('>')?.trim();
     if inner.is_empty() {
@@ -1035,10 +1038,27 @@ pub(crate) fn parse_unary_generic_type_id<'a>(type_id: &'a str, wrapper: &str) -
     }
 }
 
-pub(crate) fn optional_inner_type_id(type_id: &str) -> Option<&str> {
+/// Extract the inner type from any optional type syntax.
+///
+/// Recognizes three forms:
+/// - `Optional<T>` (canonical generic form)
+/// - `OptionalT` (legacy concatenated form)
+/// - `T?` (shorthand suffix form)
+///
+/// Returns `None` if the type is not an optional wrapper.
+pub fn optional_inner_type_id(type_id: &str) -> Option<&str> {
+    // T? shorthand — check first since it's unambiguous
+    if let Some(inner) = type_id.strip_suffix('?') {
+        let inner = inner.trim();
+        if !inner.is_empty() {
+            return Some(inner);
+        }
+    }
+    // Optional<T> canonical form
     if let Some(inner) = parse_unary_generic_type_id(type_id, "Optional") {
         return Some(inner);
     }
+    // OptionalT legacy concatenated form
     let inner = type_id.strip_prefix("Optional")?;
     if inner.is_empty() {
         None
@@ -1047,12 +1067,142 @@ pub(crate) fn optional_inner_type_id(type_id: &str) -> Option<&str> {
     }
 }
 
+/// Normalize any optional type syntax to the canonical `Optional<T>` form.
+///
+/// Converts:
+/// - `T?` -> `Optional<T>`
+/// - `OptionalT` -> `Optional<T>`
+/// - `Optional<T>` -> `Optional<T>` (already canonical)
+///
+/// Returns the input unchanged if it is not an optional type.
+pub fn normalize_optional_type_id(type_id: &str) -> String {
+    if let Some(inner) = optional_inner_type_id(type_id) {
+        format!("Optional<{inner}>")
+    } else {
+        type_id.to_string()
+    }
+}
+
+// =============================================================================
+// Builtin type registry (S12)
+// =============================================================================
+
+/// Consolidated metadata for a builtin type.
+///
+/// Each entry in [`BUILTIN_TYPES`] describes a single builtin type with all
+/// its properties in one place, eliminating scattered match arms and
+/// parallel function hierarchies (sustainability item S12).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuiltinType {
+    /// Canonical type name (e.g. `"String"`, `"Bool"`, `"List"`).
+    pub name: &'static str,
+    /// Number of generic type parameters (0 for scalars, 1 for `List`/`Optional`, 2 for `Map`).
+    pub arity: usize,
+    /// Runtime value backing, if this type has a direct primitive backing.
+    /// `None` for generic containers (`List`, `Map`, `Set`, `Option`) whose
+    /// backing depends on instantiation.
+    pub value_backing: Option<ValueBacking>,
+    /// Semantic carrier classification.
+    pub carrier_kind: SemanticCarrierKind,
+}
+
+impl BuiltinType {
+    /// Look up a builtin type by name.
+    pub fn lookup(name: &str) -> Option<&'static BuiltinType> {
+        BUILTIN_TYPES.iter().find(|b| b.name == name)
+    }
+
+    /// Check whether a type name is a builtin type.
+    pub fn is_builtin(name: &str) -> bool {
+        BUILTIN_TYPES.iter().any(|b| b.name == name)
+    }
+
+    /// Iterator over all builtin types.
+    pub fn all() -> &'static [BuiltinType] {
+        BUILTIN_TYPES
+    }
+}
+
+/// Static registry of all builtin types with consolidated metadata.
+///
+/// This is the single source of truth for builtin type properties.
+/// Consumers should use [`BuiltinType::lookup`] or [`BuiltinType::all`]
+/// instead of maintaining parallel match arms.
+pub static BUILTIN_TYPES: &[BuiltinType] = &[
+    // ── Scalar primitives ────────────────────────────────────────────
+    BuiltinType { name: "String",  arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "Bool",    arity: 0, value_backing: Some(ValueBacking::Bool),   carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "Int",     arity: 0, value_backing: Some(ValueBacking::Int),    carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "Float",   arity: 0, value_backing: Some(ValueBacking::Float),  carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "Bytes",   arity: 0, value_backing: Some(ValueBacking::Bytes),  carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "Unit",    arity: 0, value_backing: Some(ValueBacking::Unit),   carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "Json",    arity: 0, value_backing: Some(ValueBacking::Json),   carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "Secret",  arity: 0, value_backing: Some(ValueBacking::Secret), carrier_kind: SemanticCarrierKind::Secret },
+    BuiltinType { name: "Any",     arity: 0, value_backing: Some(ValueBacking::Json),   carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "Record",  arity: 0, value_backing: Some(ValueBacking::Map),    carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "Void",    arity: 0, value_backing: Some(ValueBacking::Unit),   carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "Error",   arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    // ── Generic containers ───────────────────────────────────────────
+    BuiltinType { name: "List",    arity: 1, value_backing: None, carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "Map",     arity: 2, value_backing: None, carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "Optional", arity: 1, value_backing: None, carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "Result",  arity: 2, value_backing: None, carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "Queue",   arity: 1, value_backing: None, carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "Set",     arity: 1, value_backing: None, carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "Self",    arity: 0, value_backing: None, carrier_kind: SemanticCarrierKind::Structural },
+    // ── Refined structural types (named, zero-arity) ─────────────────
+    BuiltinType { name: "NonEmptyString",    arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "NonEmptyStr",       arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "SecretName",        arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "Url",               arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "FilePath",          arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "Path",              arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "Email",             arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "PositiveInt",       arity: 0, value_backing: Some(ValueBacking::Int),    carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "NonNegativeInt",    arity: 0, value_backing: Some(ValueBacking::Int),    carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "Char",              arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    // ── GCP/OIDC identity types ──────────────────────────────────────
+    BuiltinType { name: "OidcAudience",              arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "WifAudience",               arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "GcpProjectId",              arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "GcpSecretId",               arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "GcpSecretVersion",          arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "GcpServiceAccountEmail",    arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "GcpSubjectToken",           arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "OidcSubjectToken",          arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "LanguageId",                arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "ProjectId",                 arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "ServiceAccountEmail",       arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    // ── Transport types ──────────────────────────────────────────────
+    BuiltinType { name: "TransportRequest",  arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportRequest },
+    BuiltinType { name: "FileRequest",       arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportRequest },
+    BuiltinType { name: "ShellRequest",      arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportRequest },
+    BuiltinType { name: "RestRequest",       arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportRequest },
+    BuiltinType { name: "HttpRequest",       arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportRequest },
+    BuiltinType { name: "TcpRequest",        arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportRequest },
+    BuiltinType { name: "TransportResponse", arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportResponse },
+    BuiltinType { name: "FileResponse",      arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportResponse },
+    BuiltinType { name: "ShellResponse",     arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportResponse },
+    BuiltinType { name: "RestResponse",      arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportResponse },
+    BuiltinType { name: "HttpResponse",      arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportResponse },
+    BuiltinType { name: "TcpResponse",       arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportResponse },
+    // ── Semantic carrier types ───────────────────────────────────────
+    BuiltinType { name: "Credential",        arity: 0, value_backing: Some(ValueBacking::Map),    carrier_kind: SemanticCarrierKind::Credential },
+    BuiltinType { name: "SecretString",      arity: 0, value_backing: Some(ValueBacking::Secret), carrier_kind: SemanticCarrierKind::Secret },
+    BuiltinType { name: "FilesystemHandle",  arity: 0, value_backing: Some(ValueBacking::Json),   carrier_kind: SemanticCarrierKind::FilesystemHandle },
+    BuiltinType { name: "NetworkHandle",     arity: 0, value_backing: Some(ValueBacking::Json),   carrier_kind: SemanticCarrierKind::NetworkHandle },
+    BuiltinType { name: "ToolHandle",        arity: 0, value_backing: Some(ValueBacking::Json),   carrier_kind: SemanticCarrierKind::ToolHandle },
+    BuiltinType { name: "Platform",          arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Platform },
+    BuiltinType { name: "RuntimePlatform",   arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Platform },
+    BuiltinType { name: "Timestamp",         arity: 0, value_backing: Some(ValueBacking::Int),    carrier_kind: SemanticCarrierKind::Timestamp },
+];
+
 /// Classify a type name into a semantic carrier kind.
 ///
-/// Recognizes primitives and known carrier kinds by name. Unknown names
-/// return `UnknownSemantic` (fail-closed). The caller (typically
-/// `TypeRegistry::semantic_carrier_kind`) handles container unwrapping
-/// and DAG-based resolution before reaching here.
+/// Delegates to the [`BUILTIN_TYPES`] registry for known types.
+/// Unknown names return `UnknownSemantic` (fail-closed). The caller
+/// (typically `TypeRegistry::semantic_carrier_kind`) handles container
+/// unwrapping and DAG-based resolution before reaching here.
 pub(crate) fn semantic_carrier_kind_for_type_name(type_name: &str) -> SemanticCarrierKind {
     match type_name {
         "String"
@@ -1153,6 +1303,67 @@ impl ValueBacking {
             ValueBacking::Set => kind == ValueKind::Set,
             ValueBacking::Unit => kind == ValueKind::Unit,
             ValueBacking::Bytes => kind == ValueKind::List, // byte arrays are lists
+        }
+    }
+
+    /// Generate a canonical mock [`Value`] for this backing type.
+    ///
+    /// The optional `index` differentiates mock values when multiple distinct
+    /// elements are needed (e.g., list elements). When `None`, a single
+    /// default mock value is produced.
+    ///
+    /// Used by testgen codegen to replace type-name-string match matrices
+    /// (sustainability item S17).
+    pub fn mock_value(&self, index: Option<u32>) -> crate::value::Value {
+        use crate::value::Value;
+        match self {
+            ValueBacking::String => match index {
+                Some(1) | None => Value::Str("<MOCK>".to_string()),
+                Some(i) => Value::Str(format!("<MOCK_{}>", i)),
+            },
+            ValueBacking::Secret => {
+                Value::Secret(crate::value::SecretString::new("<MOCK_SECRET>"))
+            }
+            ValueBacking::Bool => match index {
+                Some(i) => Value::Bool(i % 2 == 1),
+                None => Value::Bool(true),
+            },
+            ValueBacking::Int => match index {
+                Some(i) => Value::Int(i as i64),
+                None => Value::Int(0),
+            },
+            ValueBacking::Float => match index {
+                Some(i) => Value::Float(i as f64),
+                None => Value::Float(0.0),
+            },
+            ValueBacking::Json => Value::Json(serde_json::Value::Null),
+            ValueBacking::Map => Value::Map(std::collections::BTreeMap::new()),
+            ValueBacking::List => Value::List(vec![]),
+            ValueBacking::Set => Value::Set(vec![]),
+            ValueBacking::Unit => Value::Unit,
+            ValueBacking::Bytes => Value::List(vec![Value::Int(0)]),
+        }
+    }
+
+    /// Return the `OutputMatcher` variant name (as a Rust path string) that
+    /// corresponds to this backing type.
+    ///
+    /// Used by DSL test emitters to derive the correct matcher from a type
+    /// name without maintaining a parallel string-match table (S49).
+    ///
+    /// Returns `None` for permissive types (`Json`, `Unit`) where no specific
+    /// type matcher applies.
+    pub fn output_matcher_path(&self) -> Option<&'static str> {
+        match self {
+            ValueBacking::String => Some("gunbc_test::OutputMatcher::IsString"),
+            ValueBacking::Secret => Some("gunbc_test::OutputMatcher::IsSecret"),
+            ValueBacking::Bool => Some("gunbc_test::OutputMatcher::IsBool"),
+            ValueBacking::Int => Some("gunbc_test::OutputMatcher::IsInt"),
+            ValueBacking::Float => Some("gunbc_test::OutputMatcher::IsNumeric"),
+            ValueBacking::Map | ValueBacking::List | ValueBacking::Set | ValueBacking::Bytes => {
+                Some("gunbc_test::OutputMatcher::NonEmpty")
+            }
+            ValueBacking::Json | ValueBacking::Unit => None,
         }
     }
 }
@@ -1978,7 +2189,7 @@ mod type_id_tests {
             TypeId::map(&TypeId::string(), &TypeId::int()).0,
             "Map<String,Int>"
         );
-        assert_eq!(TypeId::option(&TypeId::bool()).0, "Option<Bool>");
+        assert_eq!(TypeId::option(&TypeId::bool()).0, "Optional<Bool>");
     }
 
     #[test]

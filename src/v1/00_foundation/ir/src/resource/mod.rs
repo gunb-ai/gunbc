@@ -101,6 +101,12 @@ pub const RESOURCE_FILE: &str = "res:file";
 pub const RESOURCE_FILE_PREFIX: &str = "res:file:";
 /// Canonical coarse network API resource port.
 pub const RESOURCE_API_NETWORK: &str = "res:api:network";
+
+/// Canonical type name for filesystem resource handles.
+///
+/// Single source of truth for the string previously hardcoded as
+/// `"FilesystemHandle"` across resolve.rs, compute, and emit (S15).
+pub const FILESYSTEM_HANDLE_TYPE: &str = "FilesystemHandle";
 /// Canonical repository resource port.
 pub const RESOURCE_REPO: &str = "res:repo";
 /// Canonical coarse target resource port.
@@ -178,6 +184,19 @@ pub fn resource_file_port(path: &str) -> String {
     } else {
         format!("{RESOURCE_FILE_PREFIX}{path}")
     }
+}
+
+/// Check whether a port represents a filesystem resource (S15).
+///
+/// Returns `true` when both:
+/// - The port's type ID is [`FILESYSTEM_HANDLE_TYPE`]
+/// - The port's name is `res:file` or starts with `res:file:`
+///
+/// Single source of truth — replaces the duplicated inline checks in
+/// `needs_transport_resource` and `wire_missing_filesystem_resources`.
+pub fn is_filesystem_resource_port(port: &crate::dag::Port) -> bool {
+    port.type_id.0 == FILESYSTEM_HANDLE_TYPE
+        && (port.name.0 == RESOURCE_FILE || port.name.0.starts_with(RESOURCE_FILE_PREFIX))
 }
 
 /// Build a canonical API resource port (`res:api:<provider>`).

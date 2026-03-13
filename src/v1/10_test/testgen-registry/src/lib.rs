@@ -29,9 +29,7 @@ pub struct DagSpecMeta {
 pub struct DagSpecTestgen {
     pub boundary_tests: bool,
     pub chain_tests: bool,
-    pub flow_tests: bool,
     pub live_flow_tests: bool,
-    pub window_max_nodes: Option<usize>,
     pub test_class: Option<TestClass>,
     pub fermi_cost: Option<FermiCost>,
     pub requires: Option<&'static [&'static str]>,
@@ -82,9 +80,7 @@ impl DagSpecDef {
             .map(|s| to_crate_path(s, self.origin_crate).into());
         def.boundary_tests = self.testgen.boundary_tests;
         def.chain_tests = self.testgen.chain_tests;
-        def.flow_tests = self.testgen.flow_tests;
         def.live_flow_tests = self.testgen.live_flow_tests;
-        def.window_max_nodes = self.testgen.window_max_nodes;
         def.test_class = self.testgen.test_class.unwrap_or(TestClass::Unit);
         def.fermi_cost = self.testgen.fermi_cost.unwrap_or(FermiCost::XS);
         def.requires = self

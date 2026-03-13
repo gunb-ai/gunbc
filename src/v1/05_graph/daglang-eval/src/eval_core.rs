@@ -12,7 +12,7 @@
 //! - Record/variant/list construction
 //! - EvalError type
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 use gunbc_ir::Value;
 
@@ -23,19 +23,21 @@ use crate::expr::{
 
 // ── Error type ──────────────────────────────────────────────────────────────
 
+/// Evaluation error.
+///
+/// Previously also carried an `early_return` control-flow signal (S67 item 5),
+/// but `Return` is now a statement-level construct handled by `eval_block_s` /
+/// `eval_stmts` via `Step::EarlyReturn`, so `EvalError` is purely an error type.
 #[derive(Debug, Clone)]
 pub struct EvalError {
     pub message: String,
-    pub early_return: Option<HashMap<String, Value>>,
 }
 
 impl EvalError {
     pub fn new(msg: impl Into<String>) -> Self {
-        Self { message: msg.into(), early_return: None }
-    }
-
-    pub fn early_return(values: HashMap<String, Value>) -> Self {
-        Self { message: "__early_return__".to_string(), early_return: Some(values) }
+        Self {
+            message: msg.into(),
+        }
     }
 }
 
@@ -71,12 +73,14 @@ pub fn field_access(base: &Value, field: &str) -> Result<Value, EvalError> {
                 .unwrap_or(Value::Json(serde_json::Value::Null))),
             serde_json::Value::Null => Ok(Value::Json(serde_json::Value::Null)),
             _ => Err(EvalError::new(format!(
-                "cannot access field '{field}' on JSON {:?}", json
+                "cannot access field '{field}' on JSON {:?}",
+                json
             ))),
         },
         Value::Unit | Value::Skipped => Ok(Value::Unit),
         _ => Err(EvalError::new(format!(
-            "cannot access field '{field}' on {:?}", base
+            "cannot access field '{field}' on {:?}",
+            base
         ))),
     }
 }
@@ -126,7 +130,8 @@ pub fn eval_binop(lhs: &Value, op: LoweredBinOp, rhs: &Value) -> Result<Value, E
                     Ok(Value::List(result))
                 }
                 _ => Err(EvalError::new(format!(
-                    "list concat requires both sides to be lists: {:?}, {:?}", lhs, rhs
+                    "list concat requires both sides to be lists: {:?}, {:?}",
+                    lhs, rhs
                 ))),
             }
         }
@@ -134,7 +139,11 @@ pub fn eval_binop(lhs: &Value, op: LoweredBinOp, rhs: &Value) -> Result<Value, E
             if matches!(lhs, Value::Str(_) | Value::Enum { .. })
                 || matches!(rhs, Value::Str(_) | Value::Enum { .. }) =>
         {
-            Ok(Value::Str(format!("{}{}", value_to_string(lhs), value_to_string(rhs))))
+            Ok(Value::Str(format!(
+                "{}{}",
+                value_to_string(lhs),
+                value_to_string(rhs)
+            )))
         }
         LoweredBinOp::Add => int_op(lhs, rhs, |a, b| a + b),
         LoweredBinOp::Sub => int_op(lhs, rhs, |a, b| a - b),
@@ -150,8 +159,11 @@ pub fn eval_binop(lhs: &Value, op: LoweredBinOp, rhs: &Value) -> Result<Value, E
         LoweredBinOp::And => Ok(Value::Bool(value_truthy(lhs) && value_truthy(rhs))),
         LoweredBinOp::Or => Ok(Value::Bool(value_truthy(lhs) || value_truthy(rhs))),
         LoweredBinOp::NullCoalesce => {
-            if !matches!(lhs, Value::Unit | Value::Skipped) { Ok(lhs.clone()) }
-            else { Ok(rhs.clone()) }
+            if !matches!(lhs, Value::Unit | Value::Skipped) {
+                Ok(lhs.clone())
+            } else {
+                Ok(rhs.clone())
+            }
         }
     }
 }
@@ -161,13 +173,16 @@ fn int_op(lhs: &Value, rhs: &Value, f: impl Fn(i64, i64) -> i64) -> Result<Value
         (Value::Int(a), Value::Int(b)) => Ok(Value::Int(f(*a, *b))),
         (Value::Skipped, _) | (_, Value::Skipped) => Ok(Value::Skipped),
         _ => Err(EvalError::new(format!(
-            "arithmetic on non-integers: {:?}, {:?}", lhs, rhs
+            "arithmetic on non-integers: {:?}, {:?}",
+            lhs, rhs
         ))),
     }
 }
 
 fn cmp_op(
-    lhs: &Value, rhs: &Value, pred: impl Fn(std::cmp::Ordering) -> bool,
+    lhs: &Value,
+    rhs: &Value,
+    pred: impl Fn(std::cmp::Ordering) -> bool,
 ) -> Result<Value, EvalError> {
     if matches!(lhs, Value::Skipped) || matches!(rhs, Value::Skipped) {
         return Ok(Value::Skipped);
@@ -179,9 +194,12 @@ fn cmp_op(
         (Value::Int(a), Value::Int(b)) => a.cmp(b),
         (Value::Str(a), Value::Str(b)) => a.cmp(b),
         (Value::Bool(a), Value::Bool(b)) => a.cmp(b),
-        _ => return Err(EvalError::new(format!(
-            "cannot compare {:?} with {:?}", lhs, rhs
-        ))),
+        _ => {
+            return Err(EvalError::new(format!(
+                "cannot compare {:?} with {:?}",
+                lhs, rhs
+            )))
+        }
     };
     Ok(Value::Bool(pred(ordering)))
 }
@@ -189,13 +207,17 @@ fn cmp_op(
 // ── Unary operations ────────────────────────────────────────────────────────
 
 pub fn eval_unary_op(op: LoweredUnaryOp, value: &Value) -> Result<Value, EvalError> {
-    if matches!(value, Value::Skipped) { return Ok(Value::Skipped); }
+    if matches!(value, Value::Skipped) {
+        return Ok(Value::Skipped);
+    }
     match op {
         LoweredUnaryOp::Not => Ok(Value::Bool(!value_truthy(value))),
         LoweredUnaryOp::Neg => match value {
             Value::Int(i) => Ok(Value::Int(-i)),
             Value::Float(f) => Ok(Value::Float(-f)),
-            other => Err(EvalError::new(format!("UnaryOp Neg: cannot negate {other:?}"))),
+            other => Err(EvalError::new(format!(
+                "UnaryOp Neg: cannot negate {other:?}"
+            ))),
         },
     }
 }
@@ -237,7 +259,11 @@ pub fn value_to_string(value: &Value) -> String {
         Value::Int(i) => i.to_string(),
         Value::Bool(b) => b.to_string(),
         Value::Unit | Value::Skipped => String::new(),
-        Value::List(items) => items.iter().map(value_to_string).collect::<Vec<_>>().join(", "),
+        Value::List(items) => items
+            .iter()
+            .map(value_to_string)
+            .collect::<Vec<_>>()
+            .join(", "),
         Value::Map(map) => format!("map({})", map.len()),
         Value::Set(items) => format!("set({})", items.len()),
         Value::Json(json) => json.to_string(),
@@ -245,7 +271,11 @@ pub fn value_to_string(value: &Value) -> String {
         Value::Response(r) => format!("{r:?}"),
         Value::Secret(s) => format!("secret({})", s.len()),
         Value::Enum { ty, variant } => {
-            if ty.is_empty() { variant.clone() } else { format!("{ty}.{variant}") }
+            if ty.is_empty() {
+                variant.clone()
+            } else {
+                format!("{ty}.{variant}")
+            }
         }
         Value::Float(f) => f.to_string(),
         Value::Bytes(b) => format!("<{} bytes>", b.len()),
@@ -274,12 +304,16 @@ pub fn sort_key(value: &Value) -> String {
 
 pub fn eval_string_interpolate(parts: &[String], values: &[Value]) -> Result<Value, EvalError> {
     for v in values {
-        if matches!(v, Value::Skipped) { return Ok(Value::Skipped); }
+        if matches!(v, Value::Skipped) {
+            return Ok(Value::Skipped);
+        }
     }
     let mut result = String::new();
     for (i, part) in parts.iter().enumerate() {
         result.push_str(part);
-        if i < values.len() { result.push_str(&value_to_string(&values[i])); }
+        if i < values.len() {
+            result.push_str(&value_to_string(&values[i]));
+        }
     }
     Ok(Value::Str(result))
 }
@@ -292,11 +326,15 @@ pub fn match_pattern(pattern: &LoweredPattern, value: &Value) -> Option<Vec<(Str
         LoweredPattern::Ident(name) => Some(vec![(name.clone(), value.clone())]),
         LoweredPattern::Literal(lit) => {
             let expected = eval_literal(lit);
-            if values_equal(&expected, value) { return Some(vec![]); }
+            if values_equal(&expected, value) {
+                return Some(vec![]);
+            }
             if matches!(lit, LoweredLiteral::None) {
                 if let Value::Map(map) = value {
                     if let Some(Value::Str(tag)) = map.get("_variant") {
-                        if tag == "None" { return Some(vec![]); }
+                        if tag == "None" {
+                            return Some(vec![]);
+                        }
                     }
                 }
             }
@@ -310,7 +348,9 @@ pub fn match_pattern(pattern: &LoweredPattern, value: &Value) -> Option<Vec<(Str
                             let inner = map.get("value").cloned().unwrap_or(Value::Unit);
                             return match_pattern(&fields[0].1, &inner);
                         }
-                        if tag == "None" { return None; }
+                        if tag == "None" {
+                            return None;
+                        }
                     }
                 }
                 if !matches!(value, Value::Unit | Value::Skipped) {
@@ -321,7 +361,11 @@ pub fn match_pattern(pattern: &LoweredPattern, value: &Value) -> Option<Vec<(Str
             match value {
                 Value::Map(map) => {
                     let variant = map.get("_variant").and_then(|v| {
-                        if let Value::Str(s) = v { Some(s.as_str()) } else { None }
+                        if let Value::Str(s) = v {
+                            Some(s.as_str())
+                        } else {
+                            None
+                        }
                     });
                     if variant == Some(variant_name.as_str()) {
                         let mut bindings = vec![];
@@ -333,7 +377,9 @@ pub fn match_pattern(pattern: &LoweredPattern, value: &Value) -> Option<Vec<(Str
                             }
                         }
                         Some(bindings)
-                    } else { None }
+                    } else {
+                        None
+                    }
                 }
                 Value::Enum { variant, .. } if variant == variant_name => Some(vec![]),
                 Value::Str(s) if s == variant_name => Some(vec![]),
@@ -346,34 +392,50 @@ pub fn match_pattern(pattern: &LoweredPattern, value: &Value) -> Option<Vec<(Str
 // ── Construction helpers (used by interp crate) ─────────────────────────────
 
 pub fn eval_conditional(condition: &Value, then_val: &Value, else_val: Option<&Value>) -> Value {
-    if matches!(condition, Value::Skipped) { return Value::Skipped; }
-    if value_truthy(condition) { then_val.clone() }
-    else if let Some(e) = else_val { e.clone() }
-    else { Value::Skipped }
+    if matches!(condition, Value::Skipped) {
+        return Value::Skipped;
+    }
+    if value_truthy(condition) {
+        then_val.clone()
+    } else if let Some(e) = else_val {
+        e.clone()
+    } else {
+        Value::Skipped
+    }
 }
 
 pub fn eval_record_construct(fields: &[(String, Value)]) -> Result<Value, EvalError> {
     let mut map = BTreeMap::new();
     for (name, value) in fields {
-        if matches!(value, Value::Skipped) { return Ok(Value::Skipped); }
+        if matches!(value, Value::Skipped) {
+            return Ok(Value::Skipped);
+        }
         map.insert(name.clone(), value.clone());
     }
     Ok(Value::Map(map))
 }
 
 pub fn eval_null_coalesce(value: &Value, default: &Value) -> Value {
-    if matches!(value, Value::Unit | Value::Skipped) { default.clone() }
-    else { value.clone() }
+    if matches!(value, Value::Unit | Value::Skipped) {
+        default.clone()
+    } else {
+        value.clone()
+    }
 }
 
 pub fn eval_variant_construct(tag: &str, fields: &[(String, Value)]) -> Result<Value, EvalError> {
     if fields.is_empty() {
-        return Ok(Value::Enum { ty: String::new(), variant: tag.to_string() });
+        return Ok(Value::Enum {
+            ty: String::new(),
+            variant: tag.to_string(),
+        });
     }
     let mut map = BTreeMap::new();
     map.insert("_variant".to_string(), Value::Str(tag.to_string()));
     for (name, value) in fields {
-        if matches!(value, Value::Skipped) { return Ok(Value::Skipped); }
+        if matches!(value, Value::Skipped) {
+            return Ok(Value::Skipped);
+        }
         map.insert(name.clone(), value.clone());
     }
     Ok(Value::Map(map))
@@ -381,7 +443,9 @@ pub fn eval_variant_construct(tag: &str, fields: &[(String, Value)]) -> Result<V
 
 pub fn eval_list_construct(elements: Vec<Value>) -> Result<Value, EvalError> {
     for elem in &elements {
-        if matches!(elem, Value::Skipped) { return Ok(Value::Skipped); }
+        if matches!(elem, Value::Skipped) {
+            return Ok(Value::Skipped);
+        }
     }
     Ok(Value::List(elements))
 }
@@ -395,29 +459,36 @@ pub fn expr_contains_call(expr: &LoweredExpr) -> bool {
     match expr {
         LoweredExpr::Call { .. } => true,
         LoweredExpr::Literal(_) | LoweredExpr::Ident(_) => false,
-        LoweredExpr::FieldAccess { expr, .. } | LoweredExpr::UnaryOp { expr, .. } =>
-            expr_contains_call(expr),
-        LoweredExpr::BinOp { left, right, .. } =>
-            expr_contains_call(left) || expr_contains_call(right),
+        LoweredExpr::FieldAccess { expr, .. } | LoweredExpr::UnaryOp { expr, .. } => {
+            expr_contains_call(expr)
+        }
+        LoweredExpr::BinOp { left, right, .. } => {
+            expr_contains_call(left) || expr_contains_call(right)
+        }
         LoweredExpr::StringInterp(parts) => parts.iter().any(|p| match p {
             LoweredStringPart::Expr(e) => expr_contains_call(e),
             _ => false,
         }),
-        LoweredExpr::IfElse { cond, then_, else_ } =>
-            expr_contains_call(cond) || expr_contains_call(then_)
-                || else_.as_ref().is_some_and(|e| expr_contains_call(e)),
-        LoweredExpr::Match { expr, arms } =>
+        LoweredExpr::IfElse { cond, then_, else_ } => {
+            expr_contains_call(cond)
+                || expr_contains_call(then_)
+                || else_.as_ref().is_some_and(|e| expr_contains_call(e))
+        }
+        LoweredExpr::Match { expr, arms } => {
             expr_contains_call(expr)
-                || arms.iter().any(|a| expr_contains_call(&a.body)
-                    || a.guard.as_ref().is_some_and(expr_contains_call)),
+                || arms.iter().any(|a| {
+                    expr_contains_call(&a.body) || a.guard.as_ref().is_some_and(expr_contains_call)
+                })
+        }
         LoweredExpr::Lambda { body, .. } => expr_contains_call(body),
         LoweredExpr::List(items) => items.iter().any(expr_contains_call),
         LoweredExpr::Block(stmts) => stmts.iter().any(stmt_contains_call),
-        LoweredExpr::Record { fields, .. } | LoweredExpr::VariantConstruct { fields, .. } =>
-            fields.iter().any(|(_, e)| expr_contains_call(e)),
-        LoweredExpr::For { iterable, body, .. } =>
-            expr_contains_call(iterable) || expr_contains_call(body),
-        LoweredExpr::Return(fields) => fields.iter().any(|(_, e)| expr_contains_call(e)),
+        LoweredExpr::Record { fields, .. } | LoweredExpr::VariantConstruct { fields, .. } => {
+            fields.iter().any(|(_, e)| expr_contains_call(e))
+        }
+        LoweredExpr::For { iterable, body, .. } => {
+            expr_contains_call(iterable) || expr_contains_call(body)
+        }
     }
 }
 
@@ -431,12 +502,18 @@ pub fn stmt_contains_call(stmt: &LoweredStmt) -> bool {
 // ── Built-in call evaluation (pre-evaluated args) ────────────────────────
 
 fn require_builtin_arg(
-    param: &str, index: usize, args: &[(Option<String>, Value)],
+    param: &str,
+    index: usize,
+    args: &[(Option<String>, Value)],
 ) -> Result<Value, EvalError> {
     for (name, val) in args {
-        if name.as_deref() == Some(param) { return Ok(val.clone()); }
+        if name.as_deref() == Some(param) {
+            return Ok(val.clone());
+        }
     }
-    if let Some((_, val)) = args.get(index) { return Ok(val.clone()); }
+    if let Some((_, val)) = args.get(index) {
+        return Ok(val.clone());
+    }
     Err(EvalError::new(format!("missing argument '{param}'")))
 }
 
@@ -444,7 +521,8 @@ fn require_builtin_arg(
 /// Returns `None` if the name is not a recognized built-in.
 /// `scan_while` is NOT handled here (needs lambda evaluation).
 pub fn eval_builtin_call(
-    name: &str, args: &[(Option<String>, Value)],
+    name: &str,
+    args: &[(Option<String>, Value)],
 ) -> Option<Result<Value, EvalError>> {
     Some(match name {
         "with" => {
@@ -452,7 +530,9 @@ pub fn eval_builtin_call(
                 match (&args[0].1, &args[1].1) {
                     (Value::Map(base), Value::Map(updates)) => {
                         let mut result = base.clone();
-                        for (k, v) in updates { result.insert(k.clone(), v.clone()); }
+                        for (k, v) in updates {
+                            result.insert(k.clone(), v.clone());
+                        }
                         Ok(Value::Map(result))
                     }
                     _ => Err(EvalError::new("'with' requires record values")),
@@ -472,28 +552,32 @@ pub fn eval_builtin_call(
                         None => Err(EvalError::new("code_point: empty string")),
                     },
                     Value::Int(n) => Ok(Value::Int(*n)),
-                    _ => Err(EvalError::new(format!("code_point: expected Char, got {:?}", val))),
+                    _ => Err(EvalError::new(format!(
+                        "code_point: expected Char, got {:?}",
+                        val
+                    ))),
                 },
             }
         }
-        "from_code_point" => {
-            match require_builtin_arg("cp", 0, args) {
-                Err(e) => Err(e),
-                Ok(Value::Int(cp)) => match char::from_u32(cp as u32) {
-                    Some(c) => Ok(Value::Str(c.to_string())),
-                    None => Err(EvalError::new(format!("from_code_point: invalid code point {cp}"))),
-                },
-                Ok(_) => Err(EvalError::new("from_code_point: expected Int")),
-            }
-        }
-        "to_string" => {
-            match require_builtin_arg("value", 0, args) {
-                Err(e) => Err(e),
-                Ok(val) => Ok(Value::Str(value_to_string(&val))),
-            }
-        }
+        "from_code_point" => match require_builtin_arg("cp", 0, args) {
+            Err(e) => Err(e),
+            Ok(Value::Int(cp)) => match char::from_u32(cp as u32) {
+                Some(c) => Ok(Value::Str(c.to_string())),
+                None => Err(EvalError::new(format!(
+                    "from_code_point: invalid code point {cp}"
+                ))),
+            },
+            Ok(_) => Err(EvalError::new("from_code_point: expected Int")),
+        },
+        "to_string" => match require_builtin_arg("value", 0, args) {
+            Err(e) => Err(e),
+            Ok(val) => Ok(Value::Str(value_to_string(&val))),
+        },
         "char_at" => {
-            match (require_builtin_arg("s", 0, args), require_builtin_arg("pos", 1, args)) {
+            match (
+                require_builtin_arg("s", 0, args),
+                require_builtin_arg("pos", 1, args),
+            ) {
                 (Err(e), _) | (_, Err(e)) => Err(e),
                 (Ok(Value::Str(s)), Ok(Value::Int(i))) => match s.chars().nth(i as usize) {
                     Some(c) => Ok(Value::Str(c.to_string())),
@@ -503,7 +587,11 @@ pub fn eval_builtin_call(
             }
         }
         "substring" => {
-            match (require_builtin_arg("s", 0, args), require_builtin_arg("start", 1, args), require_builtin_arg("end", 2, args)) {
+            match (
+                require_builtin_arg("s", 0, args),
+                require_builtin_arg("start", 1, args),
+                require_builtin_arg("end", 2, args),
+            ) {
                 (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => Err(e),
                 (Ok(Value::Str(s)), Ok(Value::Int(start)), Ok(Value::Int(end))) => {
                     let chars: Vec<char> = s.chars().collect();
@@ -515,32 +603,37 @@ pub fn eval_builtin_call(
                 _ => Err(EvalError::new("substring requires (String, Int, Int)")),
             }
         }
-        "string_length" => {
-            match require_builtin_arg("s", 0, args) {
-                Err(e) => Err(e),
-                Ok(Value::Str(s)) => Ok(Value::Int(s.chars().count() as i64)),
-                _ => Err(EvalError::new("string_length requires a String")),
-            }
-        }
-        "parse_int" => {
-            match require_builtin_arg("s", 0, args) {
-                Err(e) => Err(e),
-                Ok(Value::Str(s)) => s.trim().parse::<i64>()
-                    .map(Value::Int)
-                    .map_err(|e| EvalError::new(format!("parse_int: cannot parse '{s}': {e}"))),
-                _ => Err(EvalError::new("parse_int requires a String")),
-            }
-        }
+        "string_length" => match require_builtin_arg("s", 0, args) {
+            Err(e) => Err(e),
+            Ok(Value::Str(s)) => Ok(Value::Int(s.chars().count() as i64)),
+            _ => Err(EvalError::new("string_length requires a String")),
+        },
+        "parse_int" => match require_builtin_arg("s", 0, args) {
+            Err(e) => Err(e),
+            Ok(Value::Str(s)) => s
+                .trim()
+                .parse::<i64>()
+                .map(Value::Int)
+                .map_err(|e| EvalError::new(format!("parse_int: cannot parse '{s}': {e}"))),
+            _ => Err(EvalError::new("parse_int requires a String")),
+        },
         "scan_string_end" => {
-            match (require_builtin_arg("s", 0, args), require_builtin_arg("start", 1, args)) {
+            match (
+                require_builtin_arg("s", 0, args),
+                require_builtin_arg("start", 1, args),
+            ) {
                 (Err(e), _) | (_, Err(e)) => Err(e),
                 (Ok(Value::Str(s)), Ok(Value::Int(start))) => {
                     let chars: Vec<char> = s.chars().collect();
                     let mut pos = start.max(0) as usize;
                     while pos < chars.len() {
-                        if chars[pos] == '\\' { pos += 2; }
-                        else if chars[pos] == '"' { return Some(Ok(Value::Int((pos + 1) as i64))); }
-                        else { pos += 1; }
+                        if chars[pos] == '\\' {
+                            pos += 2;
+                        } else if chars[pos] == '"' {
+                            return Some(Ok(Value::Int((pos + 1) as i64)));
+                        } else {
+                            pos += 1;
+                        }
                     }
                     Ok(Value::Int(chars.len() as i64))
                 }
@@ -548,13 +641,18 @@ pub fn eval_builtin_call(
             }
         }
         "scan_to_eol" => {
-            match (require_builtin_arg("s", 0, args), require_builtin_arg("start", 1, args)) {
+            match (
+                require_builtin_arg("s", 0, args),
+                require_builtin_arg("start", 1, args),
+            ) {
                 (Err(e), _) | (_, Err(e)) => Err(e),
                 (Ok(Value::Str(s)), Ok(Value::Int(start))) => {
                     let chars: Vec<char> = s.chars().collect();
                     let start = start.max(0) as usize;
                     for (i, &ch) in chars.iter().enumerate().skip(start) {
-                        if ch == '\n' { return Some(Ok(Value::Int(i as i64))); }
+                        if ch == '\n' {
+                            return Some(Ok(Value::Int(i as i64)));
+                        }
                     }
                     Ok(Value::Int(chars.len() as i64))
                 }
@@ -562,19 +660,27 @@ pub fn eval_builtin_call(
             }
         }
         "skip_horizontal_ws" => {
-            match (require_builtin_arg("s", 0, args), require_builtin_arg("start", 1, args)) {
+            match (
+                require_builtin_arg("s", 0, args),
+                require_builtin_arg("start", 1, args),
+            ) {
                 (Err(e), _) | (_, Err(e)) => Err(e),
                 (Ok(Value::Str(s)), Ok(Value::Int(start))) => {
                     let chars: Vec<char> = s.chars().collect();
                     let mut pos = start.max(0) as usize;
-                    while pos < chars.len() && (chars[pos] == ' ' || chars[pos] == '\t') { pos += 1; }
+                    while pos < chars.len() && (chars[pos] == ' ' || chars[pos] == '\t') {
+                        pos += 1;
+                    }
                     Ok(Value::Int(pos as i64))
                 }
                 _ => Err(EvalError::new("skip_horizontal_ws requires (String, Int)")),
             }
         }
         "lookup" => {
-            match (require_builtin_arg("map", 0, args), require_builtin_arg("key", 1, args)) {
+            match (
+                require_builtin_arg("map", 0, args),
+                require_builtin_arg("key", 1, args),
+            ) {
                 (Err(e), _) | (_, Err(e)) => Err(e),
                 (Ok(Value::Map(map)), Ok(Value::Str(key))) => {
                     let mut result = BTreeMap::new();

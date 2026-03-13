@@ -10,12 +10,13 @@
 //! (Deductive Redundancy Elimination using idempotency fingerprints).
 
 use crate::boundary::detect_boundaries;
+use crate::coerce::validate_coercions_with_registry;
 use crate::dag::{Dag, Port};
 use crate::entrypoint::detect_entrypoints;
 use crate::node::{Node, NodeBody, SubDagKind};
 use crate::type_registry::TypeRegistry;
 use crate::types::{
-    NodeId, PortName, PresenceMode, SemanticCarrierKind, StaticFingerprint, TypeId,
+    Cardinality, NodeId, PortName, PresenceMode, SemanticCarrierKind, StaticFingerprint, TypeId,
 };
 use daglang_contract::{Diagnostic, DiagnosticContext};
 use std::collections::HashSet;
@@ -599,6 +600,10 @@ pub enum VerifyError {
     Fingerprint(FingerprintConflict),
     /// Required input port has no incoming edge.
     UnwiredInput(UnwiredInputError),
+    /// Port references an unregistered type.
+    UnregisteredType(UnregisteredTypeError),
+    /// Edge cardinality incompatibility (S33).
+    CardinalityIncompatibility(CardinalityIncompatibility),
 }
 
 impl fmt::Display for VerifyError {
@@ -608,6 +613,8 @@ impl fmt::Display for VerifyError {
             VerifyError::UnwiredResource(e) => write!(f, "{e}"),
             VerifyError::Fingerprint(e) => write!(f, "{e}"),
             VerifyError::UnwiredInput(e) => write!(f, "{e}"),
+            VerifyError::UnregisteredType(e) => write!(f, "{e}"),
+            VerifyError::CardinalityIncompatibility(e) => write!(f, "{e}"),
         }
     }
 }
@@ -619,6 +626,8 @@ impl VerifyError {
             VerifyError::UnwiredResource(..) => "VER002",
             VerifyError::Fingerprint(..) => "VER003",
             VerifyError::UnwiredInput(..) => "VER004",
+            VerifyError::UnregisteredType(..) => "VER005",
+            VerifyError::CardinalityIncompatibility(..) => "VER006",
         }
     }
 
@@ -639,6 +648,16 @@ impl VerifyError {
             VerifyError::SubDag(..) => Some(
                 "align the parent node interface with the inner SubDag boundary ports".to_string(),
             ),
+            VerifyError::UnregisteredType(error) => Some(format!(
+                "register type `{}` in the TypeRegistry or fix the port's type_id on node `{}`",
+                error.type_id.0, error.node_id.0
+            )),
+            VerifyError::CardinalityIncompatibility(error) => Some(format!(
+                "add an explicit coercion between {}.{} ({}) and {}.{} ({}), \
+                 or adjust port cardinalities to match",
+                error.from_node.0, error.from_port.0, error.from_cardinality,
+                error.to_node.0, error.to_port.0, error.to_cardinality,
+            )),
         }
     }
 
@@ -673,6 +692,20 @@ impl VerifyError {
                 name: format!("{}::{}", error.node, error.port),
                 available: Vec::new(),
             },
+            VerifyError::UnregisteredType(error) => DiagnosticContext::Missing {
+                kind: "type",
+                name: format!(
+                    "{}::{}::{}",
+                    error.node_id.0, error.port_name.0, error.type_id.0
+                ),
+                available: Vec::new(),
+            },
+            VerifyError::CardinalityIncompatibility(error) => DiagnosticContext::Note(format!(
+                "edge {}.{} -> {}.{}: {} does not satisfy {}",
+                error.from_node.0, error.from_port.0,
+                error.to_node.0, error.to_port.0,
+                error.from_cardinality, error.to_cardinality,
+            )),
             VerifyError::SubDag(..) | VerifyError::Fingerprint(..) => {
                 DiagnosticContext::Note(String::new())
             }
@@ -810,6 +843,18 @@ pub fn validate_required_inputs<T>(dag: &Dag<T>) -> Vec<UnwiredInputError> {
 ///
 /// Returns all errors found (does not stop at the first).
 pub fn verify_dag<T>(dag: &Dag<T>) -> Vec<VerifyError> {
+    let registry = TypeRegistry::with_core_types();
+    // Port type-id validation is skipped when using the core-only registry
+    // because DSL-defined types (CloudConfig, ArtifactStore, etc.) won't
+    // be registered there. Use `verify_dag_with_registry` with a fully
+    // populated registry to enable port type-id checks.
+    verify_dag_structural(dag, &registry)
+}
+
+/// Verify structural invariants only (no port type-id checks).
+///
+/// Used by `verify_dag` when only a core-only registry is available.
+fn verify_dag_structural<T>(dag: &Dag<T>, _registry: &TypeRegistry) -> Vec<VerifyError> {
     let mut errors: Vec<VerifyError> = Vec::new();
 
     errors.extend(
@@ -831,6 +876,56 @@ pub fn verify_dag<T>(dag: &Dag<T>) -> Vec<VerifyError> {
         validate_required_inputs(dag)
             .into_iter()
             .map(VerifyError::UnwiredInput),
+    );
+    // Use registry-free cardinality validation here because
+    // `verify_dag_structural` is called from `verify_dag` with a core-only
+    // registry. Passing that partial registry would cause false-positive
+    // VER006 errors for DSL-defined types. Full registry validation is
+    // available via `verify_dag_with_registry`.
+    errors.extend(
+        validate_cardinality_compatibility(dag)
+            .into_iter()
+            .map(VerifyError::CardinalityIncompatibility),
+    );
+
+    errors
+}
+
+/// Verify all structural invariants with an explicit type registry.
+///
+/// Includes port type-id validation against the provided registry.
+pub fn verify_dag_with_registry<T>(dag: &Dag<T>, registry: &TypeRegistry) -> Vec<VerifyError> {
+    let mut errors: Vec<VerifyError> = Vec::new();
+
+    errors.extend(
+        validate_subdag_interfaces(dag)
+            .into_iter()
+            .map(VerifyError::SubDag),
+    );
+    errors.extend(
+        validate_resource_wiring_recursive(dag)
+            .into_iter()
+            .map(VerifyError::UnwiredResource),
+    );
+    errors.extend(
+        validate_fingerprint_uniqueness(dag)
+            .into_iter()
+            .map(VerifyError::Fingerprint),
+    );
+    errors.extend(
+        validate_required_inputs(dag)
+            .into_iter()
+            .map(VerifyError::UnwiredInput),
+    );
+    errors.extend(
+        validate_port_type_ids(dag, registry)
+            .into_iter()
+            .map(VerifyError::UnregisteredType),
+    );
+    errors.extend(
+        validate_cardinality_compatibility_with_registry(dag, Some(registry))
+            .into_iter()
+            .map(VerifyError::CardinalityIncompatibility),
     );
 
     errors
@@ -893,11 +988,206 @@ pub fn validate_presence_wiring<T>(dag: &Dag<T>) -> Vec<PresenceWiringError> {
     errors
 }
 
+/// A port whose `type_id` does not resolve against the type registry.
+#[derive(Debug, Clone)]
+pub struct UnregisteredTypeError {
+    /// Node containing the port.
+    pub node_id: NodeId,
+    /// Port name.
+    pub port_name: PortName,
+    /// Direction of the port (input or output).
+    pub direction: PortDirection,
+    /// The unresolvable type identifier.
+    pub type_id: TypeId,
+}
+
+impl fmt::Display for UnregisteredTypeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "unregistered type `{}` on {} port `{}` of node `{}`",
+            self.type_id.0,
+            match self.direction {
+                PortDirection::Input => "input",
+                PortDirection::Output => "output",
+            },
+            self.port_name.0,
+            self.node_id.0,
+        )
+    }
+}
+
+/// Validate that every port's `type_id` resolves in the given type registry.
+///
+/// Walks all nodes (including SubDag inner DAGs recursively) and checks
+/// both input and output ports. Skips ports with empty type_ids (untyped
+/// ports that have not yet been assigned a type), `res:*` resource ports,
+/// and `tool:*` capability ports.
+///
+/// Returns a list of all unresolvable port type references.
+pub fn validate_port_type_ids<T>(
+    dag: &Dag<T>,
+    registry: &TypeRegistry,
+) -> Vec<UnregisteredTypeError> {
+    let mut errors = Vec::new();
+    validate_port_type_ids_recursive(dag, registry, &mut errors);
+    errors
+}
+
+fn validate_port_type_ids_recursive<T>(
+    dag: &Dag<T>,
+    registry: &TypeRegistry,
+    errors: &mut Vec<UnregisteredTypeError>,
+) {
+    for node in &dag.nodes {
+        // Check input ports.
+        for port in &node.inputs {
+            check_port_type_id(&node.id, &port.name, PortDirection::Input, &port.type_id, registry, errors);
+        }
+        // Check output ports.
+        for port in &node.outputs {
+            check_port_type_id(&node.id, &port.name, PortDirection::Output, &port.type_id, registry, errors);
+        }
+        // Recurse into SubDag inner DAGs.
+        if let NodeBody::SubDag(inner, _) = &node.body {
+            validate_port_type_ids_recursive(inner, registry, errors);
+        }
+    }
+}
+
+/// Check a single port's type_id against the registry.
+///
+/// Skips:
+/// - Empty type_ids (untyped / not yet assigned)
+/// - `res:*` resource ports (resource handles, not type-registry types)
+/// - `tool:*` capability ports (tool handles, not type-registry types)
+/// - `__deps` internal ordering ports
+fn check_port_type_id(
+    node_id: &NodeId,
+    port_name: &PortName,
+    direction: PortDirection,
+    type_id: &TypeId,
+    registry: &TypeRegistry,
+    errors: &mut Vec<UnregisteredTypeError>,
+) {
+    // Skip empty type_ids — some ports don't have types yet.
+    if type_id.0.is_empty() {
+        return;
+    }
+    // Skip resource ports (res:*) — their type_ids are resource handles.
+    if port_name.is_resource() {
+        return;
+    }
+    // Skip tool capability ports (tool:*).
+    if port_name.is_tool() {
+        return;
+    }
+    // Skip internal ordering ports (__deps, __out:*, etc.).
+    if port_name.0.starts_with("__") {
+        return;
+    }
+    // Try to resolve the type. `resolve_type_checked` returns:
+    //   Ok(Some(_))  — valid, registered type
+    //   Ok(None)     — syntactically valid but not registered
+    //   Err(_)       — invalid type expression
+    // Both Ok(None) and Err(_) are failures for our purposes.
+    match registry.resolve_type_checked(type_id) {
+        Ok(Some(_)) => {} // Type resolves — valid.
+        Ok(None) | Err(_) => {
+            // Fall back to builtin type registry — many port types are
+            // builtins that may not be registered in the DSL TypeRegistry.
+            let base_name = type_id.0.split('<').next().unwrap_or(&type_id.0);
+            if crate::types::BuiltinType::is_builtin(base_name) {
+                return;
+            }
+            // Skip function types (fn(A)->B).
+            if type_id.0.starts_with("fn(") {
+                return;
+            }
+            // Skip generic type parameters (single-char uppercase like T, U, V).
+            if base_name.len() == 1 && base_name.starts_with(|c: char| c.is_ascii_uppercase()) {
+                return;
+            }
+            errors.push(UnregisteredTypeError {
+                node_id: node_id.clone(),
+                port_name: port_name.clone(),
+                direction,
+                type_id: type_id.clone(),
+            });
+        }
+    }
+}
+
+// =============================================================================
+// Cardinality compatibility validation (S33)
+// =============================================================================
+
+/// An edge where the output port's cardinality cannot satisfy the input
+/// port's cardinality without an explicit coercion node.
+#[derive(Debug, Clone)]
+pub struct CardinalityIncompatibility {
+    pub from_node: NodeId,
+    pub from_port: PortName,
+    pub to_node: NodeId,
+    pub to_port: PortName,
+    pub from_cardinality: Cardinality,
+    pub to_cardinality: Cardinality,
+    pub reason: String,
+}
+
+impl fmt::Display for CardinalityIncompatibility {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "cardinality mismatch: {}.{} ({}) -> {}.{} ({}): {}",
+            self.from_node.0,
+            self.from_port.0,
+            self.from_cardinality,
+            self.to_node.0,
+            self.to_port.0,
+            self.to_cardinality,
+            self.reason,
+        )
+    }
+}
+
+/// Validate cardinality compatibility on all edges in a DAG.
+///
+/// Delegates to `validate_coercions` from `coerce.rs` and converts
+/// incompatible edges into `CardinalityIncompatibility` errors. Safe
+/// coercions (scalar-to-list wrapping) are allowed and not reported.
+pub fn validate_cardinality_compatibility<T>(dag: &Dag<T>) -> Vec<CardinalityIncompatibility> {
+    validate_cardinality_compatibility_with_registry(dag, None)
+}
+
+/// Like `validate_cardinality_compatibility` but with an explicit type
+/// registry for type-derived cardinality inference (`Port::infer_cardinality`).
+pub fn validate_cardinality_compatibility_with_registry<T>(
+    dag: &Dag<T>,
+    registry: Option<&TypeRegistry>,
+) -> Vec<CardinalityIncompatibility> {
+    let report = validate_coercions_with_registry(dag, registry);
+    report
+        .errors
+        .into_iter()
+        .map(|e| CardinalityIncompatibility {
+            from_node: e.from_node,
+            from_port: e.from_port,
+            to_node: e.to_node,
+            to_port: e.to_port,
+            from_cardinality: e.from_cardinality,
+            to_cardinality: e.to_cardinality,
+            reason: e.reason,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::dag::{build::*, Dag, Edge};
     use crate::node::{NodeKind, NodeOrigin, SubDagKind};
+    use crate::resource::AccessMode;
     use crate::types::{Cardinality, InputProvenance, OperationKey};
 
     #[test]
@@ -963,6 +1253,7 @@ mod tests {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
         };
@@ -1000,6 +1291,7 @@ mod tests {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
         };
@@ -1037,6 +1329,7 @@ mod tests {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
         };
@@ -1076,6 +1369,7 @@ mod tests {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
         };
@@ -1116,6 +1410,7 @@ mod tests {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
         };
@@ -1234,6 +1529,7 @@ mod tests {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
         };
@@ -1284,6 +1580,7 @@ mod tests {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
         };
@@ -1321,6 +1618,7 @@ mod tests {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
         };
@@ -1365,6 +1663,7 @@ mod tests {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
         };
@@ -1755,6 +2054,7 @@ mod tests {
             kind: NodeKind::Pure,
             operation_key: None,
             transport_class: None,
+            response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
         };
@@ -1904,5 +2204,172 @@ mod tests {
         dag.add_edge(Edge::new("src", "out", "tgt", "in"));
         let errors = validate_presence_wiring(&dag);
         assert!(errors.is_empty());
+    }
+
+    // --- Port TypeId validation tests ---
+
+    #[test]
+    fn port_type_ids_valid_types_pass() {
+        let registry = TypeRegistry::with_core_types();
+        let mut dag: Dag<()> = Dag::default();
+        dag.add_node(Node::opaque(
+            "n1",
+            vec![Port::new("in", "String")],
+            vec![Port::new("out", "Bool")],
+            (),
+        ));
+        let errors = validate_port_type_ids(&dag, &registry);
+        assert!(errors.is_empty(), "expected no errors, got: {errors:?}");
+    }
+
+    #[test]
+    fn port_type_ids_unregistered_type_detected() {
+        let registry = TypeRegistry::with_core_types();
+        let mut dag: Dag<()> = Dag::default();
+        dag.add_node(Node::opaque(
+            "n1",
+            vec![Port::new("in", "NonExistentType42")],
+            vec![],
+            (),
+        ));
+        let errors = validate_port_type_ids(&dag, &registry);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].node_id.0, "n1");
+        assert_eq!(errors[0].port_name.0, "in");
+        assert_eq!(errors[0].type_id.0, "NonExistentType42");
+        assert!(matches!(errors[0].direction, PortDirection::Input));
+    }
+
+    #[test]
+    fn port_type_ids_output_port_unregistered() {
+        let registry = TypeRegistry::with_core_types();
+        let mut dag: Dag<()> = Dag::default();
+        dag.add_node(Node::opaque(
+            "n1",
+            vec![],
+            vec![Port::new("result", "CompletelyFakeType")],
+            (),
+        ));
+        let errors = validate_port_type_ids(&dag, &registry);
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(errors[0].direction, PortDirection::Output));
+    }
+
+    #[test]
+    fn port_type_ids_empty_type_id_skipped() {
+        let registry = TypeRegistry::with_core_types();
+        let mut dag: Dag<()> = Dag::default();
+        dag.add_node(Node::opaque(
+            "n1",
+            vec![Port::new("in", "")],
+            vec![],
+            (),
+        ));
+        let errors = validate_port_type_ids(&dag, &registry);
+        assert!(errors.is_empty(), "empty type_id should be skipped");
+    }
+
+    #[test]
+    fn port_type_ids_resource_port_skipped() {
+        let registry = TypeRegistry::with_core_types();
+        let mut dag: Dag<()> = Dag::default();
+        dag.add_node(Node::opaque(
+            "n1",
+            vec![Port::resource("file:foo", "ResourceHandle", AccessMode::Read)],
+            vec![],
+            (),
+        ));
+        let errors = validate_port_type_ids(&dag, &registry);
+        assert!(errors.is_empty(), "resource ports should be skipped");
+    }
+
+    #[test]
+    fn port_type_ids_internal_port_skipped() {
+        let registry = TypeRegistry::with_core_types();
+        let mut dag: Dag<()> = Dag::default();
+        dag.add_node(Node::opaque(
+            "n1",
+            vec![Port::new("__deps", "UnknownInternalType")],
+            vec![],
+            (),
+        ));
+        let errors = validate_port_type_ids(&dag, &registry);
+        assert!(errors.is_empty(), "__deps ports should be skipped");
+    }
+
+    #[test]
+    fn port_type_ids_wrapper_type_resolves() {
+        let registry = TypeRegistry::with_core_types();
+        let mut dag: Dag<()> = Dag::default();
+        // Optional<String> should resolve through wrapper expression parsing.
+        dag.add_node(Node::opaque(
+            "n1",
+            vec![Port::new("in", "Optional<String>")],
+            vec![],
+            (),
+        ));
+        let errors = validate_port_type_ids(&dag, &registry);
+        assert!(errors.is_empty(), "Optional<String> should resolve: {errors:?}");
+    }
+
+    #[test]
+    fn port_type_ids_multiple_errors_collected() {
+        let registry = TypeRegistry::with_core_types();
+        let mut dag: Dag<()> = Dag::default();
+        dag.add_node(Node::opaque(
+            "n1",
+            vec![Port::new("a", "FakeA")],
+            vec![Port::new("b", "FakeB")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "n2",
+            vec![Port::new("c", "FakeC")],
+            vec![],
+            (),
+        ));
+        let errors = validate_port_type_ids(&dag, &registry);
+        assert_eq!(errors.len(), 3);
+    }
+
+    #[test]
+    fn port_type_ids_subdag_recursive_validation() {
+        let registry = TypeRegistry::with_core_types();
+        let mut inner: Dag<()> = Dag::default();
+        inner.add_node(Node::opaque(
+            "inner_node",
+            vec![Port::new("x", "BogusInnerType")],
+            vec![],
+            (),
+        ));
+        let mut dag: Dag<()> = Dag::default();
+        dag.add_node(Node::subdag("outer", inner));
+        let errors = validate_port_type_ids(&dag, &registry);
+        // At least the inner node's bogus type should be caught. The outer
+        // SubDag wrapper may also expose auto-inferred ports with the same
+        // unregistered type.
+        assert!(
+            !errors.is_empty(),
+            "should catch unregistered type inside SubDag"
+        );
+        assert!(
+            errors.iter().any(|e| e.node_id.0 == "inner_node" && e.type_id.0 == "BogusInnerType"),
+            "should include inner_node's BogusInnerType: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn port_type_ids_display_format() {
+        let error = UnregisteredTypeError {
+            node_id: NodeId("my_node".into()),
+            port_name: PortName("my_port".into()),
+            direction: PortDirection::Input,
+            type_id: TypeId("MissingType".into()),
+        };
+        let msg = error.to_string();
+        assert!(msg.contains("MissingType"));
+        assert!(msg.contains("input"));
+        assert!(msg.contains("my_port"));
+        assert!(msg.contains("my_node"));
     }
 }

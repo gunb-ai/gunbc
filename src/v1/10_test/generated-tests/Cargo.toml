@@ -11,6 +11,6 @@ description = "Auto-generated workspace tests"
 [dev-dependencies]
 gunbc-exec = { path = "../../09_execute/exec" }
 gunbc-ir = { path = "../../00_foundation/ir" }
-gunbc-resolve = { path = "../../08_materialize/resolve" }
+gunbc-resolve = { path = "../../08_materialize/resolve", features = ["compile"] }
 gunbc-test = { path = "../test" }
 serde_json = { workspace = true }

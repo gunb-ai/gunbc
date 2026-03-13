@@ -88,9 +88,7 @@ pub fn generate_target_full<T: Executable + Clone + 'static>(
     let test_config = TestConfig {
         boundary_tests: config.boundary_tests,
         chain_tests: config.chain_tests,
-        flow_tests: config.flow_tests,
         live_flow_tests: config.live_flow_tests,
-        window_max_nodes: config.window_max_nodes,
         test_class,
         fermi_cost,
         requires,

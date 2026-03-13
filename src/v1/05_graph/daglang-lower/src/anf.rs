@@ -19,6 +19,8 @@ pub fn anf_normalize(body: LoweredFnBody) -> LoweredFnBody {
     let mut state = AnfState { counter: 0 };
     LoweredFnBody {
         stmts: anf_stmts(body.stmts, &mut state),
+        param_types: body.param_types,
+        return_type: body.return_type,
     }
 }
 
@@ -98,10 +100,7 @@ fn anf_stmt(stmt: LoweredStmt, state: &mut AnfState) -> Vec<LoweredStmt> {
 
 /// Process an expression at the top of a statement (Let/Expr).
 /// A Call at this level stays in place; nested calls within are hoisted.
-fn anf_expr_in_stmt(
-    expr: LoweredExpr,
-    state: &mut AnfState,
-) -> (Vec<LoweredStmt>, LoweredExpr) {
+fn anf_expr_in_stmt(expr: LoweredExpr, state: &mut AnfState) -> (Vec<LoweredStmt>, LoweredExpr) {
     match expr {
         LoweredExpr::Call { name, args } => {
             // Call at statement level is fine — just hoist its args.
@@ -112,17 +111,20 @@ fn anf_expr_in_stmt(
                 prefix.extend(p);
                 clean_args.push((label, a));
             }
-            (prefix, LoweredExpr::Call { name, args: clean_args })
+            (
+                prefix,
+                LoweredExpr::Call {
+                    name,
+                    args: clean_args,
+                },
+            )
         }
         _ => anf_expr_hoist(expr, state),
     }
 }
 
 /// Process an expression in nested position. Calls are hoisted out.
-fn anf_expr_hoist(
-    expr: LoweredExpr,
-    state: &mut AnfState,
-) -> (Vec<LoweredStmt>, LoweredExpr) {
+fn anf_expr_hoist(expr: LoweredExpr, state: &mut AnfState) -> (Vec<LoweredStmt>, LoweredExpr) {
     match expr {
         // ── Leaves ──────────────────────────────────────────────────────
         LoweredExpr::Literal(_) | LoweredExpr::Ident(_) => (vec![], expr),
@@ -139,7 +141,10 @@ fn anf_expr_hoist(
             let fresh = state.fresh_name();
             prefix.push(LoweredStmt::Let(
                 fresh.clone(),
-                LoweredExpr::Call { name, args: clean_args },
+                LoweredExpr::Call {
+                    name,
+                    args: clean_args,
+                },
             ));
             (prefix, LoweredExpr::Ident(fresh))
         }
@@ -147,7 +152,13 @@ fn anf_expr_hoist(
         // ── Field access ────────────────────────────────────────────────
         LoweredExpr::FieldAccess { expr, field } => {
             let (prefix, clean) = anf_expr_hoist(*expr, state);
-            (prefix, LoweredExpr::FieldAccess { expr: Box::new(clean), field })
+            (
+                prefix,
+                LoweredExpr::FieldAccess {
+                    expr: Box::new(clean),
+                    field,
+                },
+            )
         }
 
         // ── String interpolation ────────────────────────────────────────
@@ -170,14 +181,18 @@ fn anf_expr_hoist(
         }
 
         // ── Binary operations ───────────────────────────────────────────
-        LoweredExpr::BinOp { left, op, right } => {
-            anf_binop(*left, op, *right, state)
-        }
+        LoweredExpr::BinOp { left, op, right } => anf_binop(*left, op, *right, state),
 
         // ── Unary operations ────────────────────────────────────────────
         LoweredExpr::UnaryOp { op, expr } => {
             let (prefix, clean) = anf_expr_hoist(*expr, state);
-            (prefix, LoweredExpr::UnaryOp { op, expr: Box::new(clean) })
+            (
+                prefix,
+                LoweredExpr::UnaryOp {
+                    op,
+                    expr: Box::new(clean),
+                },
+            )
         }
 
         // ── If/else ─────────────────────────────────────────────────────
@@ -215,14 +230,23 @@ fn anf_expr_hoist(
                 .collect();
             (
                 scrutinee_prefix,
-                LoweredExpr::Match { expr: Box::new(scrutinee_clean), arms: clean_arms },
+                LoweredExpr::Match {
+                    expr: Box::new(scrutinee_clean),
+                    arms: clean_arms,
+                },
             )
         }
 
         // ── Lambda ──────────────────────────────────────────────────────
         LoweredExpr::Lambda { params, body } => {
             let clean_body = anf_branch(*body, state);
-            (vec![], LoweredExpr::Lambda { params, body: Box::new(clean_body) })
+            (
+                vec![],
+                LoweredExpr::Lambda {
+                    params,
+                    body: Box::new(clean_body),
+                },
+            )
         }
 
         // ── List ────────────────────────────────────────────────────────
@@ -252,11 +276,21 @@ fn anf_expr_hoist(
                 prefix.extend(p);
                 clean_fields.push((name, c));
             }
-            (prefix, LoweredExpr::Record { type_name, fields: clean_fields })
+            (
+                prefix,
+                LoweredExpr::Record {
+                    type_name,
+                    fields: clean_fields,
+                },
+            )
         }
 
         // ── For loop ────────────────────────────────────────────────────
-        LoweredExpr::For { binding, iterable, body } => {
+        LoweredExpr::For {
+            binding,
+            iterable,
+            body,
+        } => {
             let (iter_prefix, iter_clean) = anf_expr_hoist(*iterable, state);
             let body_clean = anf_branch(*body, state);
             (
@@ -269,18 +303,6 @@ fn anf_expr_hoist(
             )
         }
 
-        // ── Return expression ───────────────────────────────────────────
-        LoweredExpr::Return(fields) => {
-            let mut prefix = Vec::new();
-            let mut clean_fields = Vec::with_capacity(fields.len());
-            for (name, expr) in fields {
-                let (p, c) = anf_expr_hoist(expr, state);
-                prefix.extend(p);
-                clean_fields.push((name, c));
-            }
-            (prefix, LoweredExpr::Return(clean_fields))
-        }
-
         // ── Variant construct ───────────────────────────────────────────
         LoweredExpr::VariantConstruct { tag, fields } => {
             let mut prefix = Vec::new();
@@ -290,7 +312,13 @@ fn anf_expr_hoist(
                 prefix.extend(p);
                 clean_fields.push((name, c));
             }
-            (prefix, LoweredExpr::VariantConstruct { tag, fields: clean_fields })
+            (
+                prefix,
+                LoweredExpr::VariantConstruct {
+                    tag,
+                    fields: clean_fields,
+                },
+            )
         }
     }
 }
@@ -377,9 +405,7 @@ fn anf_binop(
 fn anf_branch(expr: LoweredExpr, state: &mut AnfState) -> LoweredExpr {
     match expr {
         // Block: normalize its statements directly.
-        LoweredExpr::Block(stmts) => {
-            LoweredExpr::Block(anf_stmts(stmts, state))
-        }
+        LoweredExpr::Block(stmts) => LoweredExpr::Block(anf_stmts(stmts, state)),
         // Non-block: hoist, and wrap in Block if needed.
         other => {
             let (prefix, clean) = anf_expr_in_stmt(other, state);
@@ -464,9 +490,7 @@ fn verify_no_call(expr: &LoweredExpr, path: &str) -> Result<(), String> {
             verify_no_call(left, &format!("{path}/BinOp.left"))?;
             verify_no_call(right, &format!("{path}/BinOp.right"))
         }
-        LoweredExpr::UnaryOp { expr, .. } => {
-            verify_no_call(expr, &format!("{path}/UnaryOp"))
-        }
+        LoweredExpr::UnaryOp { expr, .. } => verify_no_call(expr, &format!("{path}/UnaryOp")),
         LoweredExpr::IfElse { cond, then_, else_ } => {
             verify_no_call(cond, &format!("{path}/If.cond"))?;
             verify_branch(then_, &format!("{path}/If.then"))?;
@@ -485,9 +509,7 @@ fn verify_no_call(expr: &LoweredExpr, path: &str) -> Result<(), String> {
             }
             Ok(())
         }
-        LoweredExpr::Lambda { body, .. } => {
-            verify_branch(body, &format!("{path}/Lambda"))
-        }
+        LoweredExpr::Lambda { body, .. } => verify_branch(body, &format!("{path}/Lambda")),
         LoweredExpr::List(items) => {
             for (i, item) in items.iter().enumerate() {
                 verify_no_call(item, &format!("{path}/List[{i}]"))?;
@@ -509,12 +531,6 @@ fn verify_no_call(expr: &LoweredExpr, path: &str) -> Result<(), String> {
         LoweredExpr::For { iterable, body, .. } => {
             verify_no_call(iterable, &format!("{path}/For.iter"))?;
             verify_branch(body, &format!("{path}/For.body"))
-        }
-        LoweredExpr::Return(fields) => {
-            for (i, (_, e)) in fields.iter().enumerate() {
-                verify_no_call(e, &format!("{path}/Return[{i}]"))?;
-            }
-            Ok(())
         }
         LoweredExpr::VariantConstruct { fields, .. } => {
             for (i, (_, e)) in fields.iter().enumerate() {
@@ -577,6 +593,7 @@ mod tests {
                 ),
                 LoweredStmt::Return(vec![("return".to_string(), ident("x"))]),
             ],
+            ..Default::default()
         };
         let result = anf_normalize(body.clone());
         assert_eq!(result.stmts.len(), 2);
@@ -595,6 +612,7 @@ mod tests {
                     right: Box::new(call("g", vec![("b", int(2))])),
                 },
             )],
+            ..Default::default()
         };
         let result = anf_normalize(body);
         // Should be: let __anf_0 = f(a: 1); let __anf_1 = g(b: 2); let x = __anf_0 + __anf_1
@@ -610,6 +628,7 @@ mod tests {
                 "x".to_string(),
                 call("f", vec![("a", call("g", vec![("b", int(1))]))]),
             )],
+            ..Default::default()
         };
         let result = anf_normalize(body);
         // Should be: let __anf_0 = g(b: 1); let x = f(a: __anf_0)
@@ -629,6 +648,7 @@ mod tests {
                     right: Box::new(call("g", vec![])),
                 },
             )],
+            ..Default::default()
         };
         let result = anf_normalize(body);
         verify_anf(&result).unwrap();
@@ -648,6 +668,7 @@ mod tests {
                     right: Box::new(LoweredExpr::Literal(LoweredLiteral::Bool(true))),
                 },
             )],
+            ..Default::default()
         };
         let result = anf_normalize(body);
         verify_anf(&result).unwrap();
@@ -666,6 +687,7 @@ mod tests {
                     field: "field".to_string(),
                 },
             )],
+            ..Default::default()
         };
         let result = anf_normalize(body);
         // Should be: let __anf_0 = f(a: 1); let x = __anf_0.field
@@ -682,6 +704,7 @@ mod tests {
                 then_: Box::new(call("g", vec![])),
                 else_: Some(Box::new(call("h", vec![]))),
             })],
+            ..Default::default()
         };
         let result = anf_normalize(body);
         verify_anf(&result).unwrap();
@@ -701,6 +724,7 @@ mod tests {
                     right: Box::new(call("g", vec![("x", ident("x"))])),
                 }),
             })],
+            ..Default::default()
         };
         let result = anf_normalize(body);
         verify_anf(&result).unwrap();
@@ -714,6 +738,7 @@ mod tests {
                 "value".to_string(),
                 call("f", vec![("x", ident("x"))]),
             )])],
+            ..Default::default()
         };
         let result = anf_normalize(body);
         verify_anf(&result).unwrap();
@@ -732,6 +757,7 @@ mod tests {
                     right: Box::new(int(1)),
                 },
             )],
+            ..Default::default()
         };
         assert!(verify_anf(&body).is_err());
     }
@@ -743,6 +769,7 @@ mod tests {
                 LoweredStmt::Let("x".to_string(), call("f", vec![])),
                 LoweredStmt::Return(vec![("return".to_string(), ident("x"))]),
             ],
+            ..Default::default()
         };
         verify_anf(&body).unwrap();
     }
@@ -768,6 +795,7 @@ mod tests {
                     },
                 )]),
             ],
+            ..Default::default()
         };
         let result = anf_normalize(body);
         verify_anf(&result).expect("all calls should be at statement level after ANF");

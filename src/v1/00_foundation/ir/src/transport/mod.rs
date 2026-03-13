@@ -118,8 +118,9 @@ pub use github_actions::{
 pub use http::{HttpMethod, HttpRequest, HttpResponse};
 pub use llm::{
     anthropic_provider, build_chat_request, builtin_provider_ids, openai_provider,
-    parse_chat_response, provider_by_id, ChatMessage, ChatRequest, ChatResponse, FinishReason,
-    LlmProvider, Role, Usage,
+    parse_chat_response, provider_by_id, provider_meta_by_id, ChatMessage, ChatRequest,
+    ChatResponse, FinishReason, LlmAuthMeta, LlmProvider, LlmProviderMeta, Role, Usage,
+    BUILTIN_PROVIDERS,
 };
 pub use middleware::{
     CircuitBreakerConfig, CredentialConfig, CredentialInjection, CredentialProvider,

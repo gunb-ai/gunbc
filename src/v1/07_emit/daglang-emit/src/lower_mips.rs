@@ -61,9 +61,7 @@ pub fn lower_to_mips(source: &CSourceFile, config: &MipsConfig) -> Result<AsmPro
 // Global lowering context
 // ===========================================================================
 
-struct LowerCtx<'a> {
-    #[allow(dead_code)]
-    config: &'a MipsConfig,
+struct LowerCtx {
     data: Vec<DataEntry>,
     functions: Vec<AsmFunction>,
     /// Interned string literals: value → data label.
@@ -72,10 +70,9 @@ struct LowerCtx<'a> {
     label_count: usize,
 }
 
-impl<'a> LowerCtx<'a> {
-    fn new(config: &'a MipsConfig) -> Self {
+impl LowerCtx {
+    fn new(_config: &MipsConfig) -> Self {
         Self {
-            config,
             data: Vec::new(),
             functions: Vec::new(),
             strings: HashMap::new(),

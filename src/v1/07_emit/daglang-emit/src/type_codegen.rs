@@ -548,6 +548,20 @@ fn to_screaming_snake(name: &str) -> String {
 /// `data_names` provides the set of `data` definition names visible in the
 /// module so that identifier references can be mapped to SCREAMING_SNAKE_CASE.
 pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<code_ir::Item> {
+    // Pre-pass: synthesize struct definitions for anonymous records (fold inits).
+    let (synth_items, _name_map, new_field_types) =
+        fn_codegen::synthesize_anonymous_structs(&fd.name, &fd.body, &ctx.struct_field_types);
+
+    // Augment context with synthesized struct field types so compile_expr
+    // can resolve anonymous records to the synthesized struct names.
+    let ctx = if new_field_types.is_empty() {
+        std::borrow::Cow::Borrowed(ctx)
+    } else {
+        let mut augmented = ctx.clone();
+        augmented.struct_field_types.extend(new_field_types);
+        std::borrow::Cow::Owned(augmented)
+    };
+
     let mut params: Vec<(String, String)> = fd
         .params
         .iter()
@@ -571,7 +585,7 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
         todo_body
     } else {
         fn_codegen::reset_tmp_counter();
-        let compiled = fn_codegen::compile_fn_body(&fd.body, ctx);
+        let compiled = fn_codegen::compile_fn_body(&fd.body, &ctx);
         if fn_codegen::body_has_empty_construct(&compiled) {
             if rename_todo_params {
                 for (name, _) in &mut params {
@@ -586,7 +600,8 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
         }
     };
 
-    vec![code_ir::Item::Fn(code_ir::FnDef {
+    let mut items = synth_items;
+    items.push(code_ir::Item::Fn(code_ir::FnDef {
         name: to_snake_case(&fd.name),
         is_pub: true,
         params,
@@ -594,7 +609,8 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
         body,
         doc: vec![],
         attributes: vec![],
-    })]
+    }));
+    items
 }
 
 /// Build a map of struct_name → {optional field names} for `Some()` wrapping.

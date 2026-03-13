@@ -475,6 +475,97 @@ The gap between 1 and 2 is small (tokenize.dag is simpler than
 gist.dag). The gap between 2 and 4 is where the real complexity
 lives (recursive TypeExpr, pattern matching in the parser).
 
+## Gap analysis: v1→v2 compilation path (2026-03-13)
+
+Status assessment of using the v1 codegen pipeline (`daglang compile`)
+to compile the v2 `.dag` compiler sources into a native Rust crate.
+
+### What works today
+
+| Component | Status |
+|---|---|
+| Module discovery | `daglang.toml` multi-root config can discover all 7 v2 modules (tokenize, parse, core, pipeline, resolve, typecheck, emit) |
+| Parsing | All v2 .dag files parse to AST successfully |
+| Type codegen | `typedef_to_code_ir` handles structs, enums, type aliases |
+| Fn codegen | Records, match, if/else, for, lambda, string interpolation, intrinsics (map/filter/fold/any/contains/sum/join/last/enumerate) |
+| Rust rendering | `render_rust` produces valid Rust from CodeIR |
+| Anonymous records (S72) | Fixed — three-tier inference: exact struct match → best-match by field count → synthesized helper struct |
+
+### Blockers
+
+**1. `build_context` ignores `daglang.toml` (trivial)**
+
+`build_context()` in `compile/context.rs` hardcodes `dsl/` as the only
+source root. The v2 modules live under `src/v2/`. Fix: call
+`resolve_default_roots()` which already reads `daglang.toml` multi-root
+config. One-line change.
+
+**2. Typechecker rejects v2 idioms (12 errors)**
+
+The v1 typechecker (TC003/TC021) rejects patterns used pervasively in
+v2 source:
+
+- **TC003 ×7**: bare enum variant used where parent type expected.
+  v2 writes `UnterminatedString` where the typechecker expects
+  `StringScanResult`, `Some` where it expects `Option<T>`. The fix:
+  accept variant-as-type in assignment/return context by looking up the
+  variant's parent enum.
+- **TC003 ×2**: `Record { ... }` literal where typechecker expects `Map`.
+  v2 uses record literals for constructing typed output; the typechecker
+  classifies them as Map.
+- **TC021 ×3**: named arguments not recognized. v2 uses `ch:` in
+  `code_point(ch: c)` etc. Fix: register named parameters in the
+  callable signature registry.
+
+**3. Missing fn_codegen constructs**
+
+| Construct | Usage in v2 | Required fix |
+|---|---|---|
+| `with(state, { field: value })` | Immutable record update, ~100 call sites for state threading | Add `with` as intrinsic → emit struct update expression |
+| `char_at()`, `substring()`, `string_length()` | String processing in tokenizer | Add string builtin → Rust method mappings |
+| `lookup()` | Map/record field access by name | Map to `.get()` or field access |
+| Recursive enum variants | `Expr` contains `Expr` via sum variants | Detect type cycles in codegen, insert `Box<>` |
+| Optional fields (`T?` → `Option<T>`) | Throughout core.dag type definitions | Map `?` suffix to `Option<>` wrapper in type codegen |
+| Optional match patterns | `Some { value: x }` destructuring | Emit `Some(x)` match arms |
+
+**4. Crate assembly harness**
+
+No mechanism to emit a complete Cargo crate from compiled modules:
+- `Cargo.toml` with correct dependencies
+- `lib.rs` with `mod` declarations for each compiled module
+- Per-module `.rs` files from codegen output
+- `main.rs` driver (or integration as library)
+- v2-specific stdlib shims (string ops, list ops, Option helpers
+  that v2 .dag code calls but have no Rust equivalent today)
+
+### Recommended sequence (next PR)
+
+```
+1. build_context reads daglang.toml          ─── trivial, unblocks everything
+2. Fix 12 typecheck errors                   ─── variant-as-type, named args
+3. Add with() + string builtins to fn_codegen ─── most-used missing constructs
+4. Recursive type detection → Box<>          ─── required for Expr/TypeExpr
+5. Crate assembly harness                    ─── emit compilable Cargo project
+6. Iterative: generate crate → cargo build → fix errors → repeat
+```
+
+Steps 1-2 unblock end-to-end pipeline testing. Steps 3-4 are the bulk
+of the codegen work. Step 5 creates the integration harness. Step 6 is
+the convergence loop where remaining gaps surface as Rust compile errors.
+
+### Relationship to self-hosting milestones
+
+This gap analysis covers **Phase 1** of the self-hosting path (section 6
+above): emit per-module Rust + driver → first native binary. Once Phase 1
+produces a compiling crate, the milestones proceed:
+
+- Phase 2: v2 compiles tokenize.dag → core.dag → pipeline.dag
+  (progressive self-compilation)
+- Phase 3: v2 output matches v1 output for all modules (fixed point
+  verification = self-hosting achieved)
+
+---
+
 ## Evaluator architecture (as of 2026-03-12)
 
 The v2 compiler's ~80 mutually recursive functions are evaluated by an
@@ -487,19 +578,16 @@ The old recursive evaluator is deleted.
 - ANF contract: sibling fn calls appear only at statement level
 - Limits: MAX_STACK_DEPTH=100K, MAX_TRANSITIONS=10M
 
-**Remaining evaluator quirks affecting v2:**
+**Accepted evaluator design decisions (see DESIGN-eval-redesign.md):**
 - `wrap_value_as_output` flattens Map trailing expressions into the
   output HashMap. A function ending with `Some { value: x }` produces
   output `{"_variant": "Some", "value": x}` (flattened), not
   `{"return": Map({"_variant": "Some", "value": x})}`. Callers rely on
-  `extract_projection` reconstructing the Map. This means return value
-  extraction has a `"value"` fallback for single-field maps (to handle
-  the case where the flattened Map has only a `"value"` payload field).
-  See DESIGN-eval-redesign.md Limitation 3.
-- `LoweredExpr::Return`, `Block`, `For` are still expression forms,
-  making `eval_expr` impure (can early-return or iterate). Moving them
-  to statement forms requires coordinated changes to the lowerer, ANF
-  normalizer, and evaluator — deferred.
+  `extract_projection` reconstructing the Map. The `"value"` fallback
+  is structurally necessary (S67-4).
+- `LoweredExpr::Return` removed — return is now statement-only.
+  `Block` and `For` remain as expression forms because they genuinely
+  return values (accepted permanent, S67-2).
 - Debug-mode OOM: evaluating 12 real .dag files (gist pipeline) exceeds
   16GB heap. Not a stack issue — interpreter overhead from cloning
   Values through deep call chains. Release mode or self-hosting would

@@ -46,7 +46,10 @@ pub use authenticate::{
     AuthenticatePhase, AuthenticatePhaseBinding,
 };
 pub use branch::BranchBuilder;
-pub use collection::CollectionKind;
+pub use collection::{
+    contract_for_name, is_eval_intrinsic, non_collection_builtin_contracts, BuiltinContract,
+    CollectionKind, EmitCollectionFamily, ALL_COLLECTION_OPS,
+};
 pub use emit::EmitBuilder;
 pub use loop_pattern::LoopBuilder;
 pub use pattern_op::PatternOp;

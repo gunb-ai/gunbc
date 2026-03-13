@@ -11,8 +11,10 @@ use serde::Serialize;
 /// A DAG that has passed all structural verification checks.
 ///
 /// Cannot be constructed directly — use [`VerifiedDag::verify`].
-/// Downstream stages (resolve, emit, derive) should require this type
-/// to enforce verification at compile time.
+/// This is the **single validation authority** for DAG correctness:
+/// lowering produces the DAG, `VerifiedDag::verify` gates it.
+/// Downstream stages (resolve, emit, derive) require this type
+/// to enforce verification at the type level.
 #[derive(Debug, Clone)]
 pub struct VerifiedDag<T>(Dag<T>);
 

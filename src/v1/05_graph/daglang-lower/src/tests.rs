@@ -436,6 +436,11 @@ fn run(values: List<String>) -> String {
         CollectionOpKind::Zip => 12,
         CollectionOpKind::Skip => 13,
         CollectionOpKind::Enumerate => 14,
+        CollectionOpKind::Count => 15,
+        CollectionOpKind::Sum => 16,
+        CollectionOpKind::FilterMap => 17,
+        CollectionOpKind::SortBy => 18,
+        CollectionOpKind::Append => 19,
     });
     assert_eq!(
         collection_kinds,
@@ -2567,6 +2572,7 @@ fn classify_obligation_uses_structural_lowered_metadata() {
             idempotent: true,
             readonly: true,
             spec: None,
+            response_provider: None,
         }),
         is_interactive: false,
         resource_target: None,
@@ -2666,6 +2672,7 @@ fn topology_with_obligation_kinds_populates_canonical_kind_metadata() {
                 idempotent: true,
                 readonly: true,
                 spec: None,
+                response_provider: None,
             }),
             is_interactive: false,
             resource_target: None,
@@ -3543,6 +3550,7 @@ fn make_branch_body_dag_with_transports_has_triplets() {
             idempotent: true,
             readonly: true,
             spec: None,
+            response_provider: None,
         },
         prepare_inputs: vec!["bucket".to_string(), "path".to_string()],
         parse_output: "result".to_string(),
@@ -3597,6 +3605,7 @@ fn branch_body_dag_with_transports_builds_with_branch_builder() {
             idempotent: true,
             readonly: true,
             spec: None,
+            response_provider: None,
         },
         prepare_inputs: vec!["bucket".to_string()],
         parse_output: "result".to_string(),
@@ -3704,15 +3713,16 @@ func run(extra: String) -> { out: String } {
 
     // Verify lowering succeeded and render_file node exists.
     assert!(
-        dag.nodes.iter().any(|node| node.id.0.contains("render_file")),
+        dag.nodes
+            .iter()
+            .any(|node| node.id.0.contains("render_file")),
         "render_file callable should appear in lowered DAG; nodes: {:?}",
         dag.nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
     );
     // Verify the file arg is wired to render_file.
     assert!(
         dag.edges.iter().any(|edge| {
-            edge.to_node.0 == "sample.fn_args::render_file"
-                && edge.to_port.0 == "file"
+            edge.to_node.0 == "sample.fn_args::render_file" && edge.to_port.0 == "file"
         }),
         "file argument should be wired to render_file; edges: {:?}",
         dag.edges
@@ -3759,15 +3769,16 @@ func run(extra: String) -> { out: String } {
 
     // Verify lowering succeeded and render_file node exists.
     assert!(
-        dag.nodes.iter().any(|node| node.id.0.contains("render_file")),
+        dag.nodes
+            .iter()
+            .any(|node| node.id.0.contains("render_file")),
         "imported render_file callable should appear in lowered DAG; nodes: {:?}",
         dag.nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
     );
     // Verify the file arg is wired to render_file.
     assert!(
         dag.edges.iter().any(|edge| {
-            edge.to_node.0 == "sample.render::render_file"
-                && edge.to_port.0 == "file"
+            edge.to_node.0 == "sample.render::render_file" && edge.to_port.0 == "file"
         }),
         "file argument should be wired to imported render_file; edges: {:?}",
         dag.edges
@@ -3967,4 +3978,76 @@ func run() -> { result: String } {
     let body: serde_json::Value =
         serde_json::from_str(&mock_responses[1].body_json).expect("should parse as JSON");
     assert_eq!(body["error"], "unauthorized");
+}
+
+// ============================================================================
+// S44: ShellOutputParsing::from_str (was parse_shell_output_parsing)
+// ============================================================================
+
+#[test]
+fn shell_output_parsing_from_str_recognizes_all_variants() {
+    assert_eq!(
+        "TrimStdout".parse::<ShellOutputParsing>().unwrap(),
+        ShellOutputParsing::TrimStdout
+    );
+    assert_eq!(
+        "trim_stdout".parse::<ShellOutputParsing>().unwrap(),
+        ShellOutputParsing::TrimStdout
+    );
+    assert_eq!(
+        "SplitLines".parse::<ShellOutputParsing>().unwrap(),
+        ShellOutputParsing::SplitLines
+    );
+    assert_eq!(
+        "SuccessStdoutStderr".parse::<ShellOutputParsing>().unwrap(),
+        ShellOutputParsing::SuccessStdoutStderr
+    );
+    assert_eq!(
+        "ExitCodeBool".parse::<ShellOutputParsing>().unwrap(),
+        ShellOutputParsing::ExitCodeBool
+    );
+    assert!("unknown".parse::<ShellOutputParsing>().is_err());
+}
+
+// ============================================================================
+// S45: ResponseProvider::from_str (was parse_response_provider)
+// ============================================================================
+
+#[test]
+fn response_provider_from_str_recognizes_all_variants() {
+    use gunbc_ir::transport::middleware::ResponseProvider;
+
+    assert_eq!(
+        "GitHub".parse::<ResponseProvider>().unwrap(),
+        ResponseProvider::GitHub
+    );
+    assert_eq!(
+        "github".parse::<ResponseProvider>().unwrap(),
+        ResponseProvider::GitHub
+    );
+    assert_eq!(
+        "Gcp".parse::<ResponseProvider>().unwrap(),
+        ResponseProvider::Gcp
+    );
+    assert_eq!(
+        "GCP".parse::<ResponseProvider>().unwrap(),
+        ResponseProvider::Gcp
+    );
+    assert_eq!(
+        "Anthropic".parse::<ResponseProvider>().unwrap(),
+        ResponseProvider::Anthropic
+    );
+    assert_eq!(
+        "OpenAi".parse::<ResponseProvider>().unwrap(),
+        ResponseProvider::OpenAi
+    );
+    assert_eq!(
+        "openai".parse::<ResponseProvider>().unwrap(),
+        ResponseProvider::OpenAi
+    );
+    assert_eq!(
+        "Generic".parse::<ResponseProvider>().unwrap(),
+        ResponseProvider::Generic
+    );
+    assert!("unknown_provider".parse::<ResponseProvider>().is_err());
 }

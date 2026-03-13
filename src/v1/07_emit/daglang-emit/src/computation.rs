@@ -18,42 +18,19 @@
 //! which is then lowered to target-specific IR.
 
 // ---------------------------------------------------------------------------
-// EmitCollectionFamily
+// EmitCollectionFamily — re-exported from gunbc_ir (S11)
 // ---------------------------------------------------------------------------
 
-/// Emit-level collection family for code generation classification.
-///
-/// Collapses the fine-grained `CollectionKind` into four families that
-/// correspond to distinct codegen strategies.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EmitCollectionFamily {
-    Map,
-    Filter,
-    Fold,
-    Sort,
-}
+/// Re-export from `gunbc_ir::patterns` — single source of truth (S11).
+pub use gunbc_ir::patterns::EmitCollectionFamily;
 
 /// Classify a collection op kind into an emit-level family.
+///
+/// Delegates to [`CollectionKind::emit_family`] — single source of truth (S11).
 pub fn collection_emit_family(
     kind: &daglang_lower::CollectionOpKind,
 ) -> EmitCollectionFamily {
-    use daglang_lower::CollectionOpKind;
-    match kind {
-        CollectionOpKind::Map
-        | CollectionOpKind::FlatMap
-        | CollectionOpKind::Join
-        | CollectionOpKind::Split
-        | CollectionOpKind::Zip
-        | CollectionOpKind::Enumerate => EmitCollectionFamily::Map,
-        CollectionOpKind::Filter | CollectionOpKind::Contains | CollectionOpKind::Skip => {
-            EmitCollectionFamily::Filter
-        }
-        CollectionOpKind::Fold
-        | CollectionOpKind::Any
-        | CollectionOpKind::All
-        | CollectionOpKind::Len => EmitCollectionFamily::Fold,
-        CollectionOpKind::Sort | CollectionOpKind::Dedup => EmitCollectionFamily::Sort,
-    }
+    kind.emit_family()
 }
 
 // ---------------------------------------------------------------------------
@@ -1260,6 +1237,7 @@ mod tests {
             idempotent: true,
             readonly: false,
             spec: None,
+            response_provider: None,
         };
         let node = make_node(
             "execute_cmd",
@@ -1297,6 +1275,7 @@ mod tests {
             idempotent: true,
             readonly: true,
             spec: None,
+            response_provider: None,
         };
         let node = make_node(
             "execute_list_repos",
@@ -1331,6 +1310,7 @@ mod tests {
             idempotent: true,
             readonly: true,
             spec: None,
+            response_provider: None,
         };
         let node = make_node(
             "prepare_list_repos",

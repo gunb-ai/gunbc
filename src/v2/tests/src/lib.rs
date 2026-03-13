@@ -142,10 +142,12 @@ mod tests {
                         let lowered_expr =
                             daglang_lower::expr::lower_expr_remap(expr, &variant_names);
                         let body = daglang_eval::LoweredFnBody {
+
                             stmts: vec![daglang_eval::LoweredStmt::Return(vec![(
                                 "return".to_string(),
                                 lowered_expr,
                             )])],
+                            ..Default::default()
                         };
                         if let Ok(result) = daglang_eval::evaluate_fn_body(
                             &body,
@@ -502,10 +504,12 @@ fn foo(item: String) -> String {
                             let lowered_expr =
                                 daglang_lower::expr::lower_expr_remap(expr, &variant_names);
                             let body = daglang_eval::LoweredFnBody {
+
                                 stmts: vec![daglang_eval::LoweredStmt::Return(vec![(
                                     "return".to_string(),
                                     lowered_expr,
                                 )])],
+                                ..Default::default()
                             };
                             match daglang_eval::evaluate_fn_body(
                                 &body,
@@ -1534,27 +1538,20 @@ fn example(items: List<String>) -> Int {
         }
     }
 
-    /// Gate test: v2 parser handles all gist.dag transitive deps.
-    /// Compiles v2 compiler via v1, then calls v2's tokenize+parse on each file.
-    /// All 12 files parse successfully (service operations, transport bindings,
-    /// exit blocks, mock_response, resource definitions all handled).
+    /// Gate test: v2 parser handles a representative gist.dag dependency.
+    /// Compiles v2 compiler via v1, then calls v2's tokenize+parse on a small file.
+    ///
+    /// Only tests 1 file (~24 lines) to keep CI under 15s. The DSL tokenizer
+    /// is O(n²) due to list-append-per-token (`tokens + [tok]`), so even small
+    /// files take ~10s when run interpreter-in-interpreter in debug mode.
+    /// The full 12-file transitive closure is in phase5_gist_full_transitive_closure.
     #[test]
     fn phase5_gist_transitive_closure_v2_parse() {
             let output = compile_all_modules().expect("compilation should succeed");
             let root = workspace_root();
             let files = [
-                "dsl/std/types.dag",
-                "dsl/std/behavioral.dag",
-                "dsl/std/errors.dag",
-                "dsl/std/resources.dag",
-                "dsl/extdeps/cloud/cloud.dag",
-                "dsl/extdeps/cloud/gcp/gcp.dag",
-                "dsl/extdeps/github/github.dag",
-                "dsl/extdeps/github/auth.dag",
-                "dsl/extdeps/github/gists.dag",
-                "dsl/extdeps/git.dag",
-                "dsl/gunbc/auth/credentials.dag",
-                "dsl/gunbc/tools/gist.dag",
+                // Smallest dep — exercises imports, service ops, type refs.
+                "dsl/extdeps/github/auth.dag",     // 24 lines
             ];
             for rel_path in &files {
                 let path = root.join(rel_path);
@@ -1598,33 +1595,6 @@ fn example(items: List<String>) -> Int {
                         err_json
                     );
                 }
-            }
-    }
-
-    /// Diagnostic: measure stack cost per token by tokenizing progressively larger inputs.
-    #[test]
-    #[allow(clippy::disallowed_macros)]
-    fn phase5_debug_stack_overflow_isolation() {
-            let output = compile_all_modules().expect("compilation should succeed");
-
-            let root = workspace_root();
-            let full_source = std::fs::read_to_string(root.join("dsl/std/types.dag")).unwrap();
-            let lines: Vec<&str> = full_source.lines().collect();
-
-            // Try progressively larger prefixes to find the breaking point
-            for &line_count in &[50, 100, 150, 200, 250, 300, 350, 400, 450, 523] {
-                let prefix: String = lines[..line_count.min(lines.len())].join("\n");
-                let byte_count = prefix.len();
-                let mut tok_inputs = HashMap::new();
-                tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(prefix));
-                let tok_result = call_fn(&output, "tokenize", tok_inputs)
-                    .unwrap_or_else(|e| panic!("tokenize failed at {} lines: {}", line_count, e));
-                let tokens = tok_result.get("return").cloned().unwrap_or(gunbc_ir::Value::Unit);
-                let token_count = if let gunbc_ir::Value::List(ref l) = tokens { l.len() } else { 0 };
-                eprintln!(
-                    "[DIAG] {} lines, {} bytes → {} tokens (OK)",
-                    line_count, byte_count, token_count
-                );
             }
     }
 

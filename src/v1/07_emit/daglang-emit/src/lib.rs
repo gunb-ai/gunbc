@@ -73,9 +73,12 @@ pub mod dag_emit;
 #[cfg(test)]
 mod backend_harness;
 
-use daglang_derive::{DerivedArtifacts, ProgressManifest};
+use daglang_derive::{DerivedArtifacts, ProgressManifest, TestObligations};
 pub use daglang_lower::extract_output_paths;
-use daglang_lower::{CallableKind, LoweredOp, ObligationCategory, ServiceOperationSpec};
+use daglang_lower::{
+    CallableKind, CallableObligation, CollectionOpKind, LoweredFnBody, LoweredOp,
+    ObligationCategory, ServiceCallMetadata, ServiceOperationSpec, TransportObligation,
+};
 use gunbc_ir::{Dag, ProgramSymbolId, ReachableDag};
 use std::collections::{BTreeSet, HashSet};
 use std::fmt::Write as _;
@@ -276,18 +279,133 @@ impl CodegenBackend for RustBackend {
     }
 }
 
-/// Emit a minimal Rust project bundle from lowered GraphIR and derived artifacts.
+// ============================================================================
+// S70: Pre-classified emit input types
+// ============================================================================
+
+/// A callable node pre-classified for emission.
 ///
-/// Accepts a `ReachableDag` to structurally enforce that only reachable nodes
-/// are emitted — the type system prevents access to unreachable code paths.
-pub fn emit_rust_bundle(
+/// Extracts the fields the emitter actually needs from `LoweredOp::Callable`,
+/// making the shape of the data explicit and invalid states unrepresentable.
+#[derive(Debug, Clone)]
+pub struct EmitCallable {
+    /// Module name (e.g., "tools.bundle").
+    pub module: String,
+    /// Callable name (e.g., "render_content").
+    pub name: String,
+    /// Whether this is a pure fn, effectful func, or pattern.
+    pub kind: CallableKind,
+    /// Obligation category (PureRender, ResourceAcquire, etc.).
+    pub obligation: CallableObligation,
+    /// Whether this callable requires interactive input.
+    pub is_interactive: bool,
+    /// Optional resource target.
+    pub resource_target: Option<String>,
+    /// Lowered fn body for `CallableKind::Fn` items.
+    pub fn_body: Option<Box<LoweredFnBody>>,
+}
+
+/// A transport node pre-classified for emission.
+///
+/// Extracts the fields from `LoweredOp::Transport` that emitters consume.
+#[derive(Debug, Clone)]
+pub struct EmitTransport {
+    /// Module name (e.g., "extdeps.llm.anthropic").
+    pub module: String,
+    /// Transport node name (e.g., "service_transport::prepare::llm.Anthropic::Messages").
+    pub name: String,
+    /// Callable kind (always Func for transport nodes in practice).
+    pub kind: CallableKind,
+    /// Transport phase (Prepare, Execute, Parse).
+    pub phase: TransportObligation,
+    /// Full service call metadata.
+    pub service_metadata: Box<ServiceCallMetadata>,
+    /// Whether this transport node is interactive.
+    pub is_interactive: bool,
+    /// Optional resource target.
+    pub resource_target: Option<String>,
+    /// The node ID in the DAG (needed for mock test generation).
+    pub node_id: String,
+    /// Output port type ID (needed for typed mock generation).
+    pub response_type: String,
+}
+
+/// A primitive node pre-classified for emission.
+#[derive(Debug, Clone)]
+pub struct EmitPrimitive {
+    /// Module name.
+    pub module: String,
+    /// Primitive name.
+    pub name: String,
+    /// Primitive op kind.
+    pub kind: daglang_lower::PrimitiveOpKind,
+}
+
+/// A collection operation node pre-classified for emission.
+#[derive(Debug, Clone)]
+pub struct EmitCollection {
+    /// Module name.
+    pub module: String,
+    /// Parent callable name.
+    pub callable: String,
+    /// Collection operation kind.
+    pub kind: CollectionOpKind,
+}
+
+/// A pipeline node pre-classified for emission.
+#[derive(Debug, Clone)]
+pub struct EmitPipeline {
+    /// Module name.
+    pub module: String,
+    /// Pipeline name.
+    pub name: String,
+    /// Number of stages.
+    pub stages: usize,
+    /// Stage names.
+    pub stage_names: Vec<String>,
+}
+
+/// Pre-classified emit input — replaces raw `ReachableDag<LoweredOp>` + `DerivedArtifacts`.
+///
+/// Walking the DAG and pattern-matching on `LoweredOp` variants happens exactly
+/// once in [`classify_for_emit`]. Downstream emit functions receive only the
+/// pre-classified data they need, with no runtime variant matching required.
+#[derive(Debug, Clone)]
+pub struct EmitInput {
+    /// Callable nodes with their fn bodies and parameters.
+    pub callables: Vec<EmitCallable>,
+    /// Transport nodes with their prepare/execute/parse metadata.
+    pub transports: Vec<EmitTransport>,
+    /// Primitive nodes.
+    pub primitives: Vec<EmitPrimitive>,
+    /// Collection operation nodes.
+    pub collections: Vec<EmitCollection>,
+    /// Pipeline nodes.
+    pub pipelines: Vec<EmitPipeline>,
+
+    // ── Derived artifact data (pre-extracted) ──
+    /// Progress manifest for topology rendering.
+    pub manifest: ProgressManifest,
+    /// Test obligations for dry-run completion tests.
+    pub obligations: TestObligations,
+    /// Module count from tool metadata.
+    pub module_count: usize,
+}
+
+/// Walk the reachable DAG once and classify every node into its emit category.
+///
+/// This is the single point where `LoweredOp` variant matching happens for
+/// emission. All downstream emit functions consume the pre-classified
+/// [`EmitInput`] without touching `LoweredOp` directly.
+pub fn classify_for_emit(
     dag: &ReachableDag<LoweredOp>,
     artifacts: &DerivedArtifacts,
-) -> Result<EmissionBundle, EmitError> {
-    let backend = RustBackend;
-    let mut emitted_functions = Vec::new();
-    let mut callable_count = 0usize;
-    let mut pipeline_count = 0usize;
+) -> EmitInput {
+    let mut callables = Vec::new();
+    let mut transports = Vec::new();
+    let mut primitives = Vec::new();
+    let mut collections = Vec::new();
+    let mut pipelines = Vec::new();
 
     for node in &dag.nodes {
         let Some(op) = node.body.as_opaque() else {
@@ -296,45 +414,212 @@ pub fn emit_rust_bundle(
 
         match op {
             LoweredOp::Callable {
-                module, kind, name, ..
-            }
-            | LoweredOp::Transport {
-                module, kind, name, ..
+                module,
+                kind,
+                name,
+                obligation,
+                is_interactive,
+                resource_target,
+                fn_body,
             } => {
-                callable_count += 1;
-                let fn_name = sanitize_identifier(&format!("{module}_{name}"));
-                let rendered = match kind {
-                    CallableKind::Fn => backend.emit_fn(&fn_name),
-                    CallableKind::Func | CallableKind::Pattern => backend.emit_func(&fn_name),
-                };
-                emitted_functions.push(rendered);
+                callables.push(EmitCallable {
+                    module: module.clone(),
+                    name: name.clone(),
+                    kind: *kind,
+                    obligation: *obligation,
+                    is_interactive: *is_interactive,
+                    resource_target: resource_target.clone(),
+                    fn_body: fn_body.clone(),
+                });
             }
-            LoweredOp::Primitive { module, name, .. } => {
-                callable_count += 1;
-                let fn_name = sanitize_identifier(&format!("{module}_{name}"));
-                emitted_functions.push(backend.emit_func(&fn_name));
+            LoweredOp::Transport {
+                module,
+                kind,
+                name,
+                obligation,
+                service_metadata,
+                is_interactive,
+                resource_target,
+            } => {
+                let response_type = node
+                    .outputs
+                    .first()
+                    .map(|p| p.type_id.0.clone())
+                    .expect("transport node must have at least one output port");
+                transports.push(EmitTransport {
+                    module: module.clone(),
+                    name: name.clone(),
+                    kind: *kind,
+                    phase: *obligation,
+                    service_metadata: service_metadata.clone(),
+                    is_interactive: *is_interactive,
+                    resource_target: resource_target.clone(),
+                    node_id: node.id.0.clone(),
+                    response_type,
+                });
+            }
+            LoweredOp::Primitive { module, name, kind } => {
+                primitives.push(EmitPrimitive {
+                    module: module.clone(),
+                    name: name.clone(),
+                    kind: kind.clone(),
+                });
             }
             LoweredOp::Collection {
                 module,
                 callable,
                 kind,
             } => {
-                callable_count += 1;
-                let fn_name =
-                    sanitize_identifier(&format!("{module}_{callable}_collection_{kind:?}"));
-                emitted_functions.push(backend.emit_func(&fn_name));
+                collections.push(EmitCollection {
+                    module: module.clone(),
+                    callable: callable.clone(),
+                    kind: *kind,
+                });
             }
-            LoweredOp::Pipeline { module, name, .. } => {
-                pipeline_count += 1;
-                let fn_name = sanitize_identifier(&format!("{module}_{name}"));
-                emitted_functions.push(backend.emit_func(&fn_name));
+            LoweredOp::Pipeline {
+                module,
+                name,
+                stages,
+                stage_names,
+            } => {
+                pipelines.push(EmitPipeline {
+                    module: module.clone(),
+                    name: name.clone(),
+                    stages: *stages,
+                    stage_names: stage_names.clone(),
+                });
             }
-            LoweredOp::Pattern(_) | LoweredOp::UnsupportedPattern { .. } => {}
+            LoweredOp::Pattern(_) | LoweredOp::UnsupportedPattern { .. } => {
+                // Patterns are internal to the executor — not emitted.
+            }
         }
     }
 
+    EmitInput {
+        callables,
+        transports,
+        primitives,
+        collections,
+        pipelines,
+        manifest: artifacts.manifest.clone(),
+        obligations: artifacts.obligations.clone(),
+        module_count: artifacts.tool_metadata.modules.len(),
+    }
+}
+
+// ============================================================================
+// S70: Classified emit helpers
+// ============================================================================
+
+/// Build the collected symbols list from pre-classified input.
+///
+/// This replaces `collect_symbols_with_metadata`, producing the same
+/// `CollectedSymbol` list without re-matching on `LoweredOp` variants.
+fn symbols_from_classified(input: &EmitInput) -> Vec<CollectedSymbol> {
+    let mut symbols = Vec::new();
+
+    for c in &input.callables {
+        let obligation_cat: ObligationCategory = c.obligation.into();
+        symbols.push(CollectedSymbol {
+            name: sanitize_identifier(&format!("{}_{}", c.module, c.name)),
+            spec: None,
+            service_phase: service_transport_phase(obligation_cat),
+        });
+    }
+
+    for t in &input.transports {
+        let obligation_cat: ObligationCategory = t.phase.into();
+        symbols.push(CollectedSymbol {
+            name: sanitize_identifier(&format!("{}_{}", t.module, t.name)),
+            spec: t.service_metadata.spec.clone(),
+            service_phase: service_transport_phase(obligation_cat),
+        });
+    }
+
+    for p in &input.primitives {
+        symbols.push(CollectedSymbol {
+            name: sanitize_identifier(&format!("{}_{}", p.module, p.name)),
+            spec: None,
+            service_phase: None,
+        });
+    }
+
+    for c in &input.collections {
+        symbols.push(CollectedSymbol {
+            name: sanitize_identifier(&format!(
+                "{}_{}_collection_{:?}",
+                c.module, c.callable, c.kind
+            )),
+            spec: None,
+            service_phase: None,
+        });
+    }
+
+    for p in &input.pipelines {
+        symbols.push(CollectedSymbol {
+            name: sanitize_identifier(&format!("{}_{}", p.module, p.name)),
+            spec: None,
+            service_phase: None,
+        });
+    }
+
+    symbols
+}
+
+/// Count callables and pipelines from pre-classified input.
+fn counts_from_classified(input: &EmitInput) -> (usize, usize) {
+    let callable_count =
+        input.callables.len() + input.transports.len() + input.primitives.len() + input.collections.len();
+    let pipeline_count = input.pipelines.len();
+    (callable_count, pipeline_count)
+}
+
+
+// ============================================================================
+// S70: New emit functions that consume EmitInput
+// ============================================================================
+
+/// Emit a Rust bundle from pre-classified input.
+pub fn emit_rust_bundle_classified(input: &EmitInput) -> Result<EmissionBundle, EmitError> {
+    let backend = RustBackend;
+    let mut emitted_functions = Vec::new();
+
+    for c in &input.callables {
+        let fn_name = sanitize_identifier(&format!("{}_{}", c.module, c.name));
+        let rendered = match c.kind {
+            CallableKind::Fn => backend.emit_fn(&fn_name),
+            CallableKind::Func | CallableKind::Pattern => backend.emit_func(&fn_name),
+        };
+        emitted_functions.push(rendered);
+    }
+
+    for t in &input.transports {
+        let fn_name = sanitize_identifier(&format!("{}_{}", t.module, t.name));
+        let rendered = match t.kind {
+            CallableKind::Fn => backend.emit_fn(&fn_name),
+            CallableKind::Func | CallableKind::Pattern => backend.emit_func(&fn_name),
+        };
+        emitted_functions.push(rendered);
+    }
+
+    for p in &input.primitives {
+        let fn_name = sanitize_identifier(&format!("{}_{}", p.module, p.name));
+        emitted_functions.push(backend.emit_func(&fn_name));
+    }
+
+    for c in &input.collections {
+        let fn_name =
+            sanitize_identifier(&format!("{}_{}_collection_{:?}", c.module, c.callable, c.kind));
+        emitted_functions.push(backend.emit_func(&fn_name));
+    }
+
+    for p in &input.pipelines {
+        let fn_name = sanitize_identifier(&format!("{}_{}", p.module, p.name));
+        emitted_functions.push(backend.emit_func(&fn_name));
+    }
+
     // TL-14: Also collect symbols for middleware config emission.
-    let (rust_symbols, _, _) = collect_symbols_with_metadata(dag)?;
+    let rust_symbols = symbols_from_classified(input);
     let rust_middleware_funcs =
         emit_middleware_inline_funcs(&rust_symbols, service_emit::emit_rust_middleware_config);
     if !rust_middleware_funcs.is_empty() {
@@ -343,8 +628,8 @@ pub fn emit_rust_bundle(
         ));
     }
 
-    let module_count = artifacts.tool_metadata.modules.len();
-    let manifest_rendered = render_manifest(&artifacts.manifest);
+    let (callable_count, pipeline_count) = counts_from_classified(input);
+    let manifest_rendered = render_manifest(&input.manifest);
 
     let mut files = vec![
         EmittedFile {
@@ -352,7 +637,7 @@ pub fn emit_rust_bundle(
             content: format!(
                 "// Generated by daglang-emit (phase-1 scaffold)\n\n{}\n{}",
                 backend.emit_cli(
-                    &artifacts
+                    &input
                         .manifest
                         .entrypoint_nodes
                         .iter()
@@ -371,36 +656,34 @@ pub fn emit_rust_bundle(
     if let Some(manifest) = emit_middleware_manifest("rust", &rust_symbols)? {
         files.push(manifest);
     }
-    if let Some(test_file) = test_gen::emit_dry_run_completion_test("rust", &artifacts.obligations)
+    if let Some(test_file) =
+        test_gen::emit_dry_run_completion_test("rust", &input.obligations)
     {
         files.push(test_file);
-    }
-    if let Some(mock_tests) = test_gen::emit_transport_mock_tests("rust", dag) {
-        files.push(mock_tests);
     }
 
     Ok(EmissionBundle {
         backend: "rust".to_string(),
         files,
         summary: EmissionSummary {
-            module_count,
+            module_count: input.module_count,
             callable_count,
             pipeline_count,
         },
     })
 }
 
-/// Emit a minimal Go project bundle from lowered GraphIR and derived artifacts.
-pub fn emit_go_bundle(
-    dag: &ReachableDag<LoweredOp>,
-    artifacts: &DerivedArtifacts,
+/// Emit a Go bundle from pre-classified input.
+pub fn emit_go_bundle_classified(
+    input: &EmitInput,
     required_assets: &BTreeSet<ProgramSymbolId>,
     embedded_data: &std::collections::HashMap<String, EmbeddedData>,
 ) -> Result<EmissionBundle, EmitError> {
-    let (symbols, callable_count, pipeline_count) = collect_symbols_with_metadata(dag)?;
-    let manifest_rendered = render_manifest(&artifacts.manifest);
+    let symbols = symbols_from_classified(input);
+    let (callable_count, pipeline_count) = counts_from_classified(input);
+    let manifest_rendered = render_manifest(&input.manifest);
     let embedded_asset = single_required_embedded_asset(required_assets, embedded_data, "go")?;
-    let entrypoints = artifacts
+    let entrypoints = input
         .manifest
         .entrypoint_nodes
         .iter()
@@ -481,36 +764,33 @@ pub fn emit_go_bundle(
     if let Some(manifest) = emit_middleware_manifest("go", &symbols)? {
         files.push(manifest);
     }
-    if let Some(test_file) = test_gen::emit_dry_run_completion_test("go", &artifacts.obligations) {
+    if let Some(test_file) = test_gen::emit_dry_run_completion_test("go", &input.obligations) {
         files.push(test_file);
-    }
-    if let Some(mock_tests) = test_gen::emit_transport_mock_tests("go", dag) {
-        files.push(mock_tests);
     }
 
     Ok(EmissionBundle {
         backend: "go".to_string(),
         files,
         summary: EmissionSummary {
-            module_count: artifacts.tool_metadata.modules.len(),
+            module_count: input.module_count,
             callable_count,
             pipeline_count,
         },
     })
 }
 
-/// Emit a minimal C project bundle from lowered GraphIR and derived artifacts.
-pub fn emit_c_bundle(
-    dag: &ReachableDag<LoweredOp>,
-    artifacts: &DerivedArtifacts,
+/// Emit a C bundle from pre-classified input.
+pub fn emit_c_bundle_classified(
+    input: &EmitInput,
     required_assets: &BTreeSet<ProgramSymbolId>,
     embedded_data: &std::collections::HashMap<String, EmbeddedData>,
 ) -> Result<EmissionBundle, EmitError> {
-    let (symbols, callable_count, pipeline_count) = collect_symbols_with_metadata(dag)?;
-    let manifest_rendered = render_manifest(&artifacts.manifest);
+    let symbols = symbols_from_classified(input);
+    let (callable_count, pipeline_count) = counts_from_classified(input);
+    let manifest_rendered = render_manifest(&input.manifest);
     let embedded_asset = single_required_embedded_asset(required_assets, embedded_data, "c")?;
     let has_service_transport = symbols.iter().any(|s| s.spec.is_some());
-    let entrypoints = artifacts
+    let entrypoints = input
         .manifest
         .entrypoint_nodes
         .iter()
@@ -578,33 +858,30 @@ pub fn emit_c_bundle(
     if let Some(manifest) = emit_middleware_manifest("c", &symbols)? {
         files.push(manifest);
     }
-    if let Some(test_file) = test_gen::emit_dry_run_completion_test("c", &artifacts.obligations) {
+    if let Some(test_file) = test_gen::emit_dry_run_completion_test("c", &input.obligations) {
         files.push(test_file);
-    }
-    if let Some(mock_tests) = test_gen::emit_transport_mock_tests("c", dag) {
-        files.push(mock_tests);
     }
 
     Ok(EmissionBundle {
         backend: "c".to_string(),
         files,
         summary: EmissionSummary {
-            module_count: artifacts.tool_metadata.modules.len(),
+            module_count: input.module_count,
             callable_count,
             pipeline_count,
         },
     })
 }
 
-/// Emit a minimal MIPS assembly bundle from lowered GraphIR and derived artifacts.
-pub fn emit_mips_bundle(
-    dag: &ReachableDag<LoweredOp>,
-    artifacts: &DerivedArtifacts,
+/// Emit a MIPS bundle from pre-classified input.
+pub fn emit_mips_bundle_classified(
+    input: &EmitInput,
     required_assets: &BTreeSet<ProgramSymbolId>,
     embedded_data: &std::collections::HashMap<String, EmbeddedData>,
 ) -> Result<EmissionBundle, EmitError> {
-    let (symbols, callable_count, pipeline_count) = collect_symbols_with_metadata(dag)?;
-    let manifest_rendered = render_manifest(&artifacts.manifest);
+    let symbols = symbols_from_classified(input);
+    let (callable_count, pipeline_count) = counts_from_classified(input);
+    let manifest_rendered = render_manifest(&input.manifest);
     let embedded_asset = single_required_embedded_asset(required_assets, embedded_data, "mips")?;
 
     let mut label_defs_parts: Vec<String> = Vec::with_capacity(symbols.len());
@@ -655,23 +932,68 @@ pub fn emit_mips_bundle(
     if let Some(manifest) = emit_middleware_manifest("mips", &symbols)? {
         files.push(manifest);
     }
-    if let Some(test_file) = test_gen::emit_dry_run_completion_test("mips", &artifacts.obligations)
-    {
+    if let Some(test_file) = test_gen::emit_dry_run_completion_test("mips", &input.obligations) {
         files.push(test_file);
-    }
-    if let Some(mock_tests) = test_gen::emit_transport_mock_tests("mips", dag) {
-        files.push(mock_tests);
     }
 
     Ok(EmissionBundle {
         backend: "mips".to_string(),
         files,
         summary: EmissionSummary {
-            module_count: artifacts.tool_metadata.modules.len(),
+            module_count: input.module_count,
             callable_count,
             pipeline_count,
         },
     })
+}
+
+// ============================================================================
+// Legacy API wrappers (delegate to classify_for_emit + *_classified)
+// ============================================================================
+
+/// Emit a minimal Rust project bundle from lowered GraphIR and derived artifacts.
+///
+/// Accepts a `ReachableDag` to structurally enforce that only reachable nodes
+/// are emitted — the type system prevents access to unreachable code paths.
+pub fn emit_rust_bundle(
+    dag: &ReachableDag<LoweredOp>,
+    artifacts: &DerivedArtifacts,
+) -> Result<EmissionBundle, EmitError> {
+    let input = classify_for_emit(dag, artifacts);
+    emit_rust_bundle_classified(&input)
+}
+
+/// Emit a minimal Go project bundle from lowered GraphIR and derived artifacts.
+pub fn emit_go_bundle(
+    dag: &ReachableDag<LoweredOp>,
+    artifacts: &DerivedArtifacts,
+    required_assets: &BTreeSet<ProgramSymbolId>,
+    embedded_data: &std::collections::HashMap<String, EmbeddedData>,
+) -> Result<EmissionBundle, EmitError> {
+    let input = classify_for_emit(dag, artifacts);
+    emit_go_bundle_classified(&input, required_assets, embedded_data)
+}
+
+/// Emit a minimal C project bundle from lowered GraphIR and derived artifacts.
+pub fn emit_c_bundle(
+    dag: &ReachableDag<LoweredOp>,
+    artifacts: &DerivedArtifacts,
+    required_assets: &BTreeSet<ProgramSymbolId>,
+    embedded_data: &std::collections::HashMap<String, EmbeddedData>,
+) -> Result<EmissionBundle, EmitError> {
+    let input = classify_for_emit(dag, artifacts);
+    emit_c_bundle_classified(&input, required_assets, embedded_data)
+}
+
+/// Emit a minimal MIPS assembly bundle from lowered GraphIR and derived artifacts.
+pub fn emit_mips_bundle(
+    dag: &ReachableDag<LoweredOp>,
+    artifacts: &DerivedArtifacts,
+    required_assets: &BTreeSet<ProgramSymbolId>,
+    embedded_data: &std::collections::HashMap<String, EmbeddedData>,
+) -> Result<EmissionBundle, EmitError> {
+    let input = classify_for_emit(dag, artifacts);
+    emit_mips_bundle_classified(&input, required_assets, embedded_data)
 }
 
 /// A collected symbol from the DAG, with optional service transport metadata.
@@ -747,82 +1069,6 @@ fn emit_middleware_inline_funcs(
         .map(|(name, config)| emit_fn(name, config))
         .collect::<Vec<_>>()
         .join("\n")
-}
-
-fn collect_symbols_with_metadata(
-    dag: &ReachableDag<LoweredOp>,
-) -> Result<(Vec<CollectedSymbol>, usize, usize), EmitError> {
-    let mut symbols = Vec::new();
-    let mut callable_count = 0usize;
-    let mut pipeline_count = 0usize;
-
-    for node in &dag.nodes {
-        let Some(op) = node.body.as_opaque() else {
-            continue;
-        };
-
-        match op {
-            LoweredOp::Callable {
-                module,
-                name,
-                obligation,
-                ..
-            } => {
-                callable_count += 1;
-                symbols.push(CollectedSymbol {
-                    name: sanitize_identifier(&format!("{module}_{name}")),
-                    spec: None,
-                    service_phase: service_transport_phase((*obligation).into()),
-                });
-            }
-            LoweredOp::Transport {
-                module,
-                name,
-                obligation,
-                service_metadata,
-                ..
-            } => {
-                callable_count += 1;
-                let spec = service_metadata.spec.clone();
-                symbols.push(CollectedSymbol {
-                    name: sanitize_identifier(&format!("{module}_{name}")),
-                    spec,
-                    service_phase: service_transport_phase((*obligation).into()),
-                });
-            }
-            LoweredOp::Primitive { module, name, .. } => {
-                callable_count += 1;
-                symbols.push(CollectedSymbol {
-                    name: sanitize_identifier(&format!("{module}_{name}")),
-                    spec: None,
-                    service_phase: None,
-                });
-            }
-            LoweredOp::Collection {
-                module,
-                callable,
-                kind,
-            } => {
-                callable_count += 1;
-                symbols.push(CollectedSymbol {
-                    name: sanitize_identifier(&format!("{module}_{callable}_collection_{kind:?}")),
-                    spec: None,
-                    service_phase: None,
-                });
-            }
-            LoweredOp::Pipeline { module, name, .. } => {
-                pipeline_count += 1;
-                symbols.push(CollectedSymbol {
-                    name: sanitize_identifier(&format!("{module}_{name}")),
-                    spec: None,
-                    service_phase: None,
-                });
-            }
-            LoweredOp::Pattern(_) | LoweredOp::UnsupportedPattern { .. } => {}
-        }
-    }
-
-    Ok((symbols, callable_count, pipeline_count))
 }
 
 fn service_transport_phase(
@@ -1308,6 +1554,7 @@ mod tests {
                     idempotent: false,
                     readonly: false,
                     spec: Some(rest_spec.clone()),
+                    response_provider: None,
                 }),
                 is_interactive: false,
                 resource_target: None,
@@ -1331,6 +1578,7 @@ mod tests {
                     idempotent: false,
                     readonly: false,
                     spec: Some(rest_spec.clone()),
+                    response_provider: None,
                 }),
                 is_interactive: false,
                 resource_target: None,
@@ -1354,6 +1602,7 @@ mod tests {
                     idempotent: false,
                     readonly: false,
                     spec: Some(rest_spec),
+                    response_provider: None,
                 }),
                 is_interactive: false,
                 resource_target: None,
@@ -1377,6 +1626,7 @@ mod tests {
                     idempotent: false,
                     readonly: false,
                     spec: Some(shell_spec.clone()),
+                    response_provider: None,
                 }),
                 is_interactive: false,
                 resource_target: None,
@@ -1400,6 +1650,7 @@ mod tests {
                     idempotent: false,
                     readonly: false,
                     spec: Some(shell_spec),
+                    response_provider: None,
                 }),
                 is_interactive: false,
                 resource_target: None,

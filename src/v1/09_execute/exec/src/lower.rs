@@ -276,6 +276,7 @@ fn lower_with_log_detail<T: Clone>(
                             kind: sub_node.kind,
                             operation_key: sub_node.operation_key.clone(),
                             transport_class: sub_node.transport_class,
+                            response_provider: sub_node.response_provider,
                             static_fingerprint: None,
                             origin: sub_node.origin.clone(),
                         };
@@ -428,6 +429,7 @@ fn apply_log_detail_context<T: Clone>(
             kind: node.kind,
             operation_key: node.operation_key.clone(),
             transport_class: node.transport_class,
+            response_provider: node.response_provider,
             static_fingerprint: None,
             origin: node.origin.clone(),
         });
@@ -466,6 +468,7 @@ fn lower_loop_subdag<T: Clone>(
         kind: unpack.kind,
         operation_key: unpack.operation_key.clone(),
         transport_class: unpack.transport_class,
+        response_provider: unpack.response_provider,
         static_fingerprint: None,
         origin: unpack.origin.clone(),
     };
@@ -479,6 +482,7 @@ fn lower_loop_subdag<T: Clone>(
         kind: pack.kind,
         operation_key: pack.operation_key.clone(),
         transport_class: pack.transport_class,
+        response_provider: pack.response_provider,
         static_fingerprint: None,
         origin: pack.origin.clone(),
     };

@@ -25,6 +25,17 @@ impl TestClass {
         }
     }
 
+    /// Returns the Rust enum variant name (e.g., `"Unit"`, `"Hermetic"`).
+    ///
+    /// Used by codegen to emit `TestClass::Unit` etc. in generated test code.
+    pub fn variant_name(self) -> &'static str {
+        match self {
+            TestClass::Unit => "Unit",
+            TestClass::Hermetic => "Hermetic",
+            TestClass::Integration => "Integration",
+        }
+    }
+
     pub fn parse(input: &str) -> Option<Self> {
         match input.trim().to_lowercase().as_str() {
             "unit" => Some(TestClass::Unit),
@@ -54,6 +65,16 @@ impl FermiCost {
             FermiCost::L => "L",
             FermiCost::XL => "XL",
         }
+    }
+
+    /// Returns the Rust enum variant name (e.g., `"XS"`, `"M"`).
+    ///
+    /// Used by codegen to emit `FermiCost::XS` etc. in generated test code.
+    /// For `FermiCost`, this is identical to [`as_str`](Self::as_str), but
+    /// having a separate method keeps the contract explicit and symmetric
+    /// with [`TestClass::variant_name`].
+    pub fn variant_name(self) -> &'static str {
+        self.as_str()
     }
 
     pub fn parse(input: &str) -> Option<Self> {

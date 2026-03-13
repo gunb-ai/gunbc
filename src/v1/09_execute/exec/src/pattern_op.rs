@@ -173,10 +173,12 @@ fn execute_collection_aggregate(
     };
 
     let output = match kind {
-        CollectionKind::Map | CollectionKind::Filter | CollectionKind::FlatMap => {
-            Value::List(items)
-        }
-        CollectionKind::Sort => {
+        CollectionKind::Map
+        | CollectionKind::Filter
+        | CollectionKind::FlatMap
+        | CollectionKind::FilterMap
+        | CollectionKind::Append => Value::List(items),
+        CollectionKind::Sort | CollectionKind::SortBy => {
             let mut sorted = items;
             sorted.sort_by_key(|v| match v {
                 Value::Str(s) => s.clone(),
@@ -205,7 +207,19 @@ fn execute_collection_aggregate(
                 .join(",");
             Value::Str(joined)
         }
-        CollectionKind::Fold | CollectionKind::Len => Value::Int(items.len() as i64),
+        CollectionKind::Fold | CollectionKind::Len | CollectionKind::Count => {
+            Value::Int(items.len() as i64)
+        }
+        CollectionKind::Sum => {
+            let total: i64 = items
+                .iter()
+                .map(|v| match v {
+                    Value::Int(i) => *i,
+                    _ => 0,
+                })
+                .sum();
+            Value::Int(total)
+        }
         CollectionKind::Any => Value::Bool(
             items
                 .iter()

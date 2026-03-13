@@ -4,16 +4,14 @@
 //!
 //! - **Dry-run completion test** (E3.1): verifies the generated program
 //!   runs to completion without transport calls (all transports mocked).
-//! - **Per-transport mock test** (E3.2): one test per transport node,
-//!   verifying mock injection and response handling.
+//! - **TestSpec-based tests** (E3.4-E3.6): generates tests that call actual
+//!   transport/pure functions with mock inputs and verify behavioral results.
 
 use std::fmt::Write;
 
 use daglang_derive::TestObligations;
-use daglang_lower::LoweredOp;
-use gunbc_ir::{value_backing_for_type_id, ReachableDag, ValueBacking};
+use gunbc_ir::{value_backing_for_type_id, ValueBacking};
 
-use crate::computation::{classify_computation, Computation};
 use crate::EmittedFile;
 
 /// Emit a dry-run completion test artifact for the selected backend.
@@ -59,92 +57,6 @@ pub fn emit_dry_run_completion_test(
     })
 }
 
-/// Emit per-transport-node mock tests for backends that support test runners.
-///
-/// Uses typed mock responses based on the transport node's response port type
-/// instead of flat "mock-response" strings. Each transport node produces a
-/// mock value derived from its output port type (TransportResponse, FileResponse,
-/// RestResponse, ShellResponse).
-pub fn emit_transport_mock_tests(
-    backend: &str,
-    dag: &ReachableDag<LoweredOp>,
-) -> Option<EmittedFile> {
-    let mut transport_entries: Vec<(String, String)> = dag
-        .nodes
-        .iter()
-        .filter_map(|node| match classify_computation(node) {
-            Ok(Computation::Transport { .. }) => {
-                let response_type = node
-                    .outputs
-                    .first()
-                    .map(|p| p.type_id.0.as_str())
-                    .unwrap_or("TransportResponse");
-                Some((
-                    node.id.0.clone(),
-                    typed_mock_for_response(response_type).to_string(),
-                ))
-            }
-            _ => None,
-        })
-        .collect();
-    transport_entries.sort_by(|a, b| a.0.cmp(&b.0));
-    transport_entries.dedup_by(|a, b| a.0 == b.0);
-
-    if transport_entries.is_empty() {
-        return None;
-    }
-
-    match backend {
-        "rust" => {
-            let mut content = String::new();
-            for (node_id, mock_value) in &transport_entries {
-                let test_name = sanitize_identifier(&format!("mock_transport_{node_id}"));
-                let escaped = mock_value.replace('"', "\\\"");
-                let _ = writeln!(
-                    content,
-                    "#[test]\nfn {test_name}() {{\n    let mut mocks = std::collections::BTreeMap::new();\n    mocks.insert(\"{node_id}\", \"{escaped}\");\n    assert_eq!(mocks.get(\"{node_id}\"), Some(&\"{escaped}\"));\n}}\n"
-                );
-            }
-            Some(EmittedFile {
-                path: "target/generated/rust/transport_mock_tests.rs".to_string(),
-                content,
-            })
-        }
-        "go" => {
-            let mut content = String::from("package main\n\nimport \"testing\"\n\n");
-            for (node_id, mock_value) in &transport_entries {
-                let test_name = go_test_name(node_id);
-                let escaped = mock_value.replace('"', "\\\"");
-                let _ = writeln!(
-                    content,
-                    "func {test_name}(t *testing.T) {{\n    mocks := map[string]string{{\"{node_id}\": \"{escaped}\"}}\n    got, ok := mocks[\"{node_id}\"]\n    if !ok || got != \"{escaped}\" {{\n        t.Fatalf(\"missing mock for {node_id}\")\n    }}\n}}\n"
-                );
-            }
-            Some(EmittedFile {
-                path: "target/generated/go/transport_mock_tests_test.go".to_string(),
-                content,
-            })
-        }
-        "c" => {
-            let mut content =
-                String::from("#include <assert.h>\n#include <string.h>\n\nint main(void) {\n");
-            for (node_id, mock_value) in &transport_entries {
-                let var_name = sanitize_identifier(&format!("mock_{node_id}"));
-                let escaped = mock_value.replace('"', "\\\"");
-                let _ = writeln!(
-                    content,
-                    "    const char* {var_name} = \"{escaped}\";\n    assert(strcmp({var_name}, \"{escaped}\") == 0);"
-                );
-            }
-            content.push_str("    return 0;\n}\n");
-            Some(EmittedFile {
-                path: "target/generated/c/transport_mock_tests.c".to_string(),
-                content,
-            })
-        }
-        _ => None,
-    }
-}
 
 /// Generate a type-appropriate mock response string for a port type.
 ///
@@ -152,7 +64,7 @@ pub fn emit_transport_mock_tests(
 /// this returns a structured mock value based on the response port type.
 /// This integrates the cross-product witness concept from the type contract
 /// layer into the codegen test emission.
-fn typed_mock_for_response(response_type: &str) -> &'static str {
+pub fn typed_mock_for_response(response_type: &str) -> &'static str {
     match response_type {
         "TransportResponse" => r#"{"status":"ok","type":"transport"}"#,
         "FileResponse" => r#"{"path":"/tmp/test.txt","success":true,"operation":"read"}"#,
@@ -216,38 +128,6 @@ pub fn witness_mock_responses(response_type: &str) -> Vec<String> {
             vec![one, alternate]
         }
     }
-}
-
-fn sanitize_identifier(input: &str) -> String {
-    let mut out = input
-        .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
-        .collect::<String>();
-    if out.is_empty() {
-        out.push('_');
-    }
-    if out.chars().next().is_some_and(|ch| ch.is_ascii_digit()) {
-        out.insert(0, '_');
-    }
-    out
-}
-
-fn go_test_name(node_id: &str) -> String {
-    let mut out = String::from("TestMockTransport");
-    for part in node_id
-        .split(|ch: char| !ch.is_ascii_alphanumeric())
-        .filter(|part| !part.is_empty())
-    {
-        let mut chars = part.chars();
-        if let Some(first) = chars.next() {
-            out.push(first.to_ascii_uppercase());
-            out.extend(chars);
-        }
-    }
-    if out == "TestMockTransport" {
-        out.push_str("Node");
-    }
-    out
 }
 
 // ── E3.4-E3.6: TestSpec-based multi-language test generation ─────
@@ -510,8 +390,6 @@ pub fn emit_c_tests(spec: &TestSpec) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use daglang_lower::{CallableKind, CallableObligation, TransportObligation};
-    use gunbc_ir::{Dag, Node, Port};
 
     fn obligations(required: bool) -> TestObligations {
         TestObligations {
@@ -584,93 +462,6 @@ mod tests {
     #[test]
     fn unknown_backend_emits_no_dry_run_test() {
         assert!(emit_dry_run_completion_test("python", &obligations(true)).is_none());
-    }
-
-    fn dag_with_transport_node() -> ReachableDag<LoweredOp> {
-        let mut dag = Dag::new();
-        dag.add_node(Node::opaque(
-            "transport.node",
-            vec![Port::scalar("request", "TransportRequest")],
-            vec![Port::scalar("response", "TransportResponse")],
-            LoweredOp::Transport {
-                module: "services.example".to_string(),
-                kind: CallableKind::Func,
-                name: "execute".to_string(),
-                obligation: TransportObligation::Execute,
-                service_metadata: Box::new(daglang_lower::ServiceCallMetadata {
-                    service: "example".to_string(),
-                    operation: "execute".to_string(),
-                    transport: daglang_lower::ServiceTransportClass::ShellLocal,
-                    idempotent: false,
-                    readonly: false,
-                    spec: None,
-                }),
-                is_interactive: false,
-                resource_target: None,
-            },
-        ));
-        ReachableDag::from_dag(&dag)
-    }
-
-    fn dag_without_transport_nodes() -> ReachableDag<LoweredOp> {
-        let mut dag = Dag::new();
-        dag.add_node(Node::opaque(
-            "pure.node",
-            vec![],
-            vec![],
-            LoweredOp::Callable {
-                module: "tools.makegen".to_string(),
-                kind: CallableKind::Fn,
-                name: "render_makefile".to_string(),
-                obligation: CallableObligation::PureRender,
-                is_interactive: false,
-                resource_target: None,
-                fn_body: None,
-            },
-        ));
-        ReachableDag::from_dag(&dag)
-    }
-
-    #[test]
-    fn emit_rust_transport_mock_tests_per_transport_node() {
-        let emitted = emit_transport_mock_tests("rust", &dag_with_transport_node())
-            .expect("rust backend should emit transport mock tests");
-        assert_eq!(
-            emitted.path,
-            "target/generated/rust/transport_mock_tests.rs"
-        );
-        assert!(emitted.content.contains("#[test]"));
-        // Typed mock response based on TransportResponse port type
-        assert!(emitted.content.contains("status"));
-    }
-
-    #[test]
-    fn emit_go_transport_mock_tests_per_transport_node() {
-        let emitted = emit_transport_mock_tests("go", &dag_with_transport_node())
-            .expect("go backend should emit transport mock tests");
-        assert_eq!(
-            emitted.path,
-            "target/generated/go/transport_mock_tests_test.go"
-        );
-        assert!(emitted.content.contains("func TestMockTransport"));
-        // Typed mock response based on TransportResponse port type
-        assert!(emitted.content.contains("status"));
-    }
-
-    #[test]
-    fn emit_c_transport_mock_tests_per_transport_node() {
-        let emitted = emit_transport_mock_tests("c", &dag_with_transport_node())
-            .expect("c backend should emit transport mock tests");
-        assert_eq!(emitted.path, "target/generated/c/transport_mock_tests.c");
-        assert!(emitted.content.contains("#include <assert.h>"));
-        assert!(emitted.content.contains("strcmp"));
-    }
-
-    #[test]
-    fn emit_transport_mock_tests_returns_none_when_no_transport_nodes() {
-        assert!(emit_transport_mock_tests("rust", &dag_without_transport_nodes()).is_none());
-        assert!(emit_transport_mock_tests("go", &dag_without_transport_nodes()).is_none());
-        assert!(emit_transport_mock_tests("c", &dag_without_transport_nodes()).is_none());
     }
 
     #[test]

@@ -51,10 +51,6 @@ pub struct MockSpec {
     /// These are the values that intercepted transport nodes return.
     pub transport_mocks: Vec<TransportMock>,
 
-    /// Expected outputs at terminal/boundary nodes (for flow test assertions).
-    /// After DryRun execution, these are verified against actual outputs.
-    pub expected_outputs: Vec<ExpectedOutput>,
-
     /// Expected outputs for live flow tests (Real execution).
     /// These use OutputMatcher instead of exact values.
     pub live_expected_outputs: Vec<LiveExpectedOutput>,
@@ -90,7 +86,6 @@ impl MockSpec {
             input_expectations: Vec::new(),
             resource_mocks: ResourceMocks::new(),
             transport_mocks: Vec::new(),
-            expected_outputs: Vec::new(),
             live_expected_outputs: Vec::new(),
             node_examples: Vec::new(),
             skipped_node_examples: Vec::new(),
@@ -187,21 +182,6 @@ impl MockSpec {
             node: node.into(),
             port: port.into(),
             value,
-        });
-        self
-    }
-
-    /// Add an expected output (assertion for flow test verification).
-    pub fn expected_output(
-        mut self,
-        node: impl Into<String>,
-        port: impl Into<String>,
-        expected: Value,
-    ) -> Self {
-        self.expected_outputs.push(ExpectedOutput {
-            node: node.into(),
-            port: port.into(),
-            expected,
         });
         self
     }
@@ -343,11 +323,6 @@ impl MockSpec {
         mocks
     }
 
-    /// Check whether this spec has flow test data (transport mocks or expected outputs).
-    pub fn has_flow_test_data(&self) -> bool {
-        !self.transport_mocks.is_empty() || !self.expected_outputs.is_empty()
-    }
-
     /// Check whether this spec has live flow expectations.
     pub fn has_live_flow_test_data(&self) -> bool {
         !self.live_expected_outputs.is_empty()
@@ -418,21 +393,6 @@ pub struct InputMock {
     pub port: String,
     /// Mock value to inject for this input
     pub value: Value,
-}
-
-/// An expected output at a terminal/boundary node (for flow test assertions).
-///
-/// DEPRECATED: Use NodeExample with OutputMatchers instead. ExpectedOutput
-/// causes tautological tests — the expected value is often just a copy of
-/// what the code already produces.
-#[derive(Debug, Clone)]
-pub struct ExpectedOutput {
-    /// Node ID to check (e.g., "report")
-    pub node: String,
-    /// Output port name (e.g., "overall_success")
-    pub port: String,
-    /// Expected value
-    pub expected: Value,
 }
 
 /// An expected output matcher for live flow tests.
@@ -943,6 +903,8 @@ pub enum OutputMatcher {
     IsBool,
     /// Output must be an integer (any value).
     IsInt,
+    /// Output must be numeric (Int or Float).
+    IsNumeric,
     /// Output must be a string (any value).
     IsString,
     /// Output must be a secret (any value).
@@ -977,6 +939,7 @@ impl std::fmt::Debug for OutputMatcher {
             OutputMatcher::NonEmpty => write!(f, "NonEmpty"),
             OutputMatcher::IsBool => write!(f, "IsBool"),
             OutputMatcher::IsInt => write!(f, "IsInt"),
+            OutputMatcher::IsNumeric => write!(f, "IsNumeric"),
             OutputMatcher::IsString => write!(f, "IsString"),
             OutputMatcher::IsSecret => write!(f, "IsSecret"),
             OutputMatcher::IsRequest => write!(f, "IsRequest"),
@@ -1026,6 +989,7 @@ impl OutputMatcher {
             OutputMatcher::NonEmpty
                 | OutputMatcher::IsBool
                 | OutputMatcher::IsInt
+                | OutputMatcher::IsNumeric
                 | OutputMatcher::IsString
                 | OutputMatcher::IsSecret
                 | OutputMatcher::IsRequest
@@ -1067,6 +1031,10 @@ impl OutputMatcher {
             OutputMatcher::IsInt => match value {
                 Value::Int(_) => Ok(()),
                 _ => Err(format!("expected Int, got {:?}", value)),
+            },
+            OutputMatcher::IsNumeric => match value {
+                Value::Int(_) | Value::Float(_) => Ok(()),
+                _ => Err(format!("expected Int or Float, got {:?}", value)),
             },
             OutputMatcher::IsString => match value {
                 Value::Str(_) => Ok(()),
