@@ -61,14 +61,6 @@ pub fn evaluate_stack(
 ) -> Result<HashMap<String, Value>, EvalError> {
     let (ctx, entry) = build_context(body, sibling_fns, data_values);
 
-    // Debug: check if specific sibling names are in fn_index
-    if std::env::var("EVAL_STACK_DEBUG").is_ok() {
-        eprintln!("[eval_stack] fn_index size: {}, fns size: {}", ctx.fn_index.len(), ctx.fns.len());
-        for check in &["is_digit", "is_ident_start", "scan_token", "emit"] {
-            eprintln!("[eval_stack]   fn_index has '{}': {}", check, ctx.fn_index.contains_key(check));
-        }
-    }
-
     if let Err(msg) = verify_anf_contract(&ctx) {
         return Err(EvalError::new(format!("ANF contract violated: {msg}")));
     }
@@ -129,23 +121,10 @@ fn build_context<'a>(
 /// Asserts no SIBLING fn Call nested inside another expression.
 /// Builtin calls are allowed in nested position (they evaluate inline).
 fn verify_anf_contract(ctx: &EvalContext) -> Result<(), String> {
-    let debug = std::env::var("EVAL_STACK_DEBUG").is_ok();
-    // Find scan_token's fn ID
-    let scan_token_id = if debug { ctx.fn_index.get("scan_token").copied() } else { None };
     for (id, body) in ctx.fns.iter().enumerate() {
-        if debug && scan_token_id == Some(id) {
-            eprintln!("[anf-verify] === SCAN_TOKEN fn[{}] has {} stmts ===", id, body.stmts.len());
-            for (i, stmt) in body.stmts.iter().enumerate() {
-                let s = format!("{:?}", stmt);
-                eprintln!("[anf-verify]   stmt[{}]: {}", i, &s[..s.len().min(200)]);
-            }
-        }
         for (i, stmt) in body.stmts.iter().enumerate() {
             check_stmt_anf(stmt, &format!("fn[{id}]/stmt[{i}]"), &ctx.fn_index)?;
         }
-    }
-    if debug {
-        eprintln!("[anf-verify] all {} fns passed ANF check", ctx.fns.len());
     }
     Ok(())
 }
@@ -169,11 +148,7 @@ fn check_stmt_anf(stmt: &LoweredStmt, loc: &str, sibs: &HashMap<&str, FnId>) -> 
 fn no_sibling_call(expr: &LoweredExpr, loc: &str, sibs: &HashMap<&str, FnId>) -> Result<(), String> {
     match expr {
         LoweredExpr::Call { name, args } => {
-            let is_sib = sibs.contains_key(name.as_str());
-            if std::env::var("EVAL_STACK_DEBUG").is_ok() && (name == "is_digit" || name == "is_ident_start") {
-                eprintln!("[anf] Call '{}' at {}, is_sibling={}", name, loc, is_sib);
-            }
-            if is_sib {
+            if sibs.contains_key(name.as_str()) {
                 return Err(format!("ANF violation at {loc}: nested sibling Call to '{name}'"));
             }
             for (_, a) in args { no_sibling_call(a, loc, sibs)?; }
@@ -288,8 +263,6 @@ fn run_machine<'a>(
     let mut env = Env::from_inputs(inputs);
     let mut transitions: usize = 0;
 
-    let debug_machine = std::env::var("EVAL_MACHINE_DEBUG").is_ok();
-
     loop {
         transitions += 1;
         if transitions > MAX_TRANSITIONS {
@@ -298,36 +271,7 @@ fn run_machine<'a>(
             )));
         }
 
-        if debug_machine && transitions <= 30 {
-            let fn_name = ctx.fn_index.iter().find(|(_, &id)| id == entry).map(|(n, _)| *n).unwrap_or("?entry?");
-            let stmts_preview: String = stmts.iter().take(1).map(|s| {
-                let d = format!("{:?}", s); d[..d.len().min(100)].to_string()
-            }).collect::<Vec<_>>().join(" | ");
-            eprintln!("[machine] t={} stack={} fn={} stmts={} [{:.100}]",
-                transitions, stack.len(), fn_name, stmts.len(), stmts_preview);
-        }
-
-        let step = eval_stmts(stmts, &mut env, ctx, &mut stack);
-
-        if debug_machine && transitions <= 30 {
-            match &step {
-                Step::Return(r) => {
-                    let keys: Vec<_> = r.keys().collect();
-                    eprintln!("[machine]   → Return keys={:?}", keys);
-                }
-                Step::EarlyReturn(r) => {
-                    let keys: Vec<_> = r.keys().collect();
-                    eprintln!("[machine]   → EarlyReturn keys={:?}", keys);
-                }
-                Step::Call { callee, .. } => {
-                    let callee_name = ctx.fn_index.iter().find(|(_, &id)| id == *callee).map(|(n, _)| *n).unwrap_or("?");
-                    eprintln!("[machine]   → Call({})", callee_name);
-                }
-                Step::Error(msg) => eprintln!("[machine]   → Error({})", msg),
-            }
-        }
-
-        match step {
+        match eval_stmts(stmts, &mut env, ctx, &mut stack) {
             Step::Return(result) => {
                 match pop_stack(&mut stack, result) {
                     PopResult::Done(output) => return Ok(output),
@@ -596,6 +540,7 @@ fn eval_block_s<'a>(
     for (i, stmt) in block_stmts.iter().enumerate() {
         let is_last = i == block_stmts.len() - 1;
         let remaining = &block_stmts[i + 1..];
+        let stack_base = stack.len();
 
         match stmt {
             LoweredStmt::Let(name, expr) => {
@@ -623,7 +568,7 @@ fn eval_block_s<'a>(
                         ExprResult::Value(value) => bind_let_result(&mut child, name.clone(), &value),
                         other @ (ExprResult::EarlyReturn(_) | ExprResult::Error(_)) => return other,
                         ExprResult::Suspend { callee, inputs } => {
-                            stack.push(Continuation {
+                            stack.insert(stack_base, Continuation {
                                 remaining, binding: Some(name.clone()),
                                 projection: Projection::ReturnField,
                                 env: child, is_fn_boundary: false,

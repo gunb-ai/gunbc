@@ -2036,11 +2036,12 @@ fn example(items: List<String>) -> Int {
     }
 
     // ═════════════════════════════════════════════════════════════════════
-    // Diagnostic: isolate tokenizer regression with compile_all_modules
+    // Regression: stack ordering for inner/outer continuations (S52-EVAL)
     // ═════════════════════════════════════════════════════════════════════
 
+    /// Verify is_ident_start works when compiled with all v2 modules.
     #[test]
-    fn diag_is_ident_start_with_all_modules() {
+    fn regression_is_ident_start_with_all_modules() {
         let output = compile_all_modules().expect("compilation should succeed");
         // Call is_ident_start("f") directly
         let mut inputs = HashMap::new();
@@ -2060,64 +2061,13 @@ fn example(items: List<String>) -> Int {
         }
     }
 
+    /// Regression: tokenize('f') with all v2 modules should produce Ident token.
+    /// Before the stack-ordering fix, inner block continuations were pushed
+    /// below outer stmt continuations, causing pop_stack to resume with the
+    /// wrong continuation and skip the block's Return/EarlyReturn.
     #[test]
-    fn diag_is_ident_start_with_tokenizer_only() {
-        let output = compile_tokenizer_module().expect("compilation should succeed");
-        let mut inputs = HashMap::new();
-        inputs.insert("ch".to_string(), gunbc_ir::Value::Str("f".to_string()));
-        let result = call_fn(&output, "is_ident_start", inputs);
-        match &result {
-            Ok(outputs) => {
-                let ret = outputs.get("return").unwrap();
-                assert_eq!(
-                    ret,
-                    &gunbc_ir::Value::Bool(true),
-                    "is_ident_start('f') should be true (tokenizer only), got: {:?}",
-                    ret
-                );
-            }
-            Err(e) => panic!("is_ident_start('f') failed (tokenizer only): {}", e),
-        }
-    }
-
-    #[test]
-    #[allow(clippy::disallowed_macros)]
-    fn diag_scan_token_trace() {
-        // Call scan_token directly with machine debug tracing
+    fn regression_tokenize_single_ident() {
         let output = compile_all_modules().expect("compilation should succeed");
-        let mut inputs = HashMap::new();
-        let mut state = std::collections::BTreeMap::new();
-        state.insert("source".to_string(), gunbc_ir::Value::Str("f".to_string()));
-        state.insert("pos".to_string(), gunbc_ir::Value::Int(0));
-        state.insert("tokens".to_string(), gunbc_ir::Value::List(vec![]));
-        state.insert("interp_depth".to_string(), gunbc_ir::Value::List(vec![]));
-        inputs.insert("state".to_string(), gunbc_ir::Value::Map(state));
-        inputs.insert("ch".to_string(), gunbc_ir::Value::Str("f".to_string()));
-
-        let result = call_fn(&output, "scan_token", inputs);
-        match &result {
-            Ok(outputs) => {
-                eprintln!("[diag] scan_token trace result keys: {:?}", outputs.keys().collect::<Vec<_>>());
-                let val = outputs.get("return").or(outputs.get("value"));
-                if let Some(gunbc_ir::Value::Map(m)) = val {
-                    if let Some(gunbc_ir::Value::List(tokens)) = m.get("tokens") {
-                        for (i, t) in tokens.iter().enumerate() {
-                            let ts = format!("{:?}", t);
-                            eprintln!("[diag]   token[{}]: {}", i, &ts[..ts.len().min(200)]);
-                        }
-                    }
-                }
-            }
-            Err(e) => eprintln!("[diag] scan_token error: {}", e),
-        }
-    }
-
-    #[test]
-    fn diag_scan_token_single_char() {
-        // Test scan_token with a single alphabetic character using all modules
-        let output = compile_all_modules().expect("compilation should succeed");
-
-        // First tokenize just "f" with all modules
         let mut inputs = HashMap::new();
         inputs.insert("source".to_string(), gunbc_ir::Value::Str("f".to_string()));
         let result = call_fn(&output, "tokenize", inputs).expect("tokenize should succeed");
@@ -2131,150 +2081,5 @@ fn example(items: List<String>) -> Int {
             "tokenize('f') with all modules should produce Ident, got: {:?}",
             kinds
         );
-    }
-
-    #[test]
-    #[allow(clippy::disallowed_macros)]
-    fn diag_condition_call_with_all_siblings() {
-        // Test: does a sibling call in an if-condition work with 300 siblings?
-        // Build a fn: if is_ident_start(ch: "f") { "yes" } else { "no" }
-        // Use handcrafted lowered IR to avoid parser/lowerer interference.
-        use daglang_eval::{LoweredFnBody, LoweredStmt, LoweredExpr, LoweredLiteral};
-
-        let output = compile_all_modules().expect("compilation should succeed");
-
-        // fn test_cond_call(ch: String) -> String {
-        //   if is_ident_start(ch: ch) { "yes" } else { "no" }
-        // }
-        let body = LoweredFnBody {
-            stmts: vec![
-                LoweredStmt::Expr(LoweredExpr::IfElse {
-                    cond: Box::new(LoweredExpr::Call {
-                        name: "is_ident_start".to_string(),
-                        args: vec![(Some("ch".to_string()), LoweredExpr::Ident("ch".to_string()))],
-                    }),
-                    then_: Box::new(LoweredExpr::Literal(LoweredLiteral::String("yes".to_string()))),
-                    else_: Some(Box::new(LoweredExpr::Literal(LoweredLiteral::String("no".to_string())))),
-                }),
-            ],
-        };
-
-        let mut inputs = HashMap::new();
-        inputs.insert("ch".to_string(), gunbc_ir::Value::Str("f".to_string()));
-
-        match daglang_eval::evaluate_fn_body_with_data(&body, &inputs, &output.fns, &output.data_values) {
-            Ok(outputs) => {
-                let ret = outputs.get("return").or(outputs.get("value"));
-                eprintln!("[diag] cond_call result: {:?}", outputs);
-                assert_eq!(
-                    ret,
-                    Some(&gunbc_ir::Value::Str("yes".to_string())),
-                    "is_ident_start('f') in condition should be true, got: {:?}",
-                    outputs
-                );
-            }
-            Err(e) => panic!("cond_call failed: {}", e),
-        }
-    }
-
-    #[test]
-    #[allow(clippy::disallowed_macros)]
-    fn diag_scan_token_stmt_by_stmt() {
-        // Now we know: the lowerer ANF-lifts calls in if-conditions to Let bindings.
-        // stmt[1]: Let("__anf_1", Call("is_digit", ...))
-        // stmt[2]: Expr(IfElse { cond: Ident("__anf_1"), ... })
-        // stmt[3]: Let("__anf_3", Call("is_ident_start", ...))
-        // stmt[4]: Expr(IfElse { cond: Ident("__anf_3"), ... })
-        //
-        // Issue: after is_digit returns and __anf_1 is bound,
-        // is_ident_start is called at stmt[3] — another sibling call.
-        // This creates a continuation chain. Let's trace the value.
-        let output = compile_all_modules().expect("compilation should succeed");
-
-        // Call is_ident_start directly
-        let is_fn = output.fns.get("is_ident_start").unwrap();
-        let mut inputs = HashMap::new();
-        inputs.insert("ch".to_string(), gunbc_ir::Value::Str("f".to_string()));
-        let result = daglang_eval::evaluate_fn_body_with_data(
-            is_fn, &inputs, &output.fns, &output.data_values
-        );
-        eprintln!("[diag] is_ident_start('f') direct: {:?}", result);
-
-        // Minimal test: two sequential Let+Call then an if
-        // This mimics scan_token's pattern:
-        //   let r1 = is_digit(ch: "f")     // should be false
-        //   if r1 { return "digit" }
-        //   let r2 = is_ident_start(ch: "f") // should be true
-        //   if r2 { return "ident" }
-        //   "other"
-        use daglang_eval::{LoweredFnBody, LoweredStmt, LoweredExpr, LoweredLiteral};
-
-        // Test 1: matching scan_token pattern exactly:
-        // The then_ block has Let+Call (sibling) + Return with "value" key
-        let body = LoweredFnBody {
-            stmts: vec![
-                // stmt[0]: Expr(IfElse with pure condition, then: block with sibling call + return)
-                LoweredStmt::Expr(LoweredExpr::IfElse {
-                    cond: Box::new(LoweredExpr::BinOp {
-                        left: Box::new(LoweredExpr::Ident("ch".to_string())),
-                        op: daglang_eval::LoweredBinOp::Eq,
-                        right: Box::new(LoweredExpr::Literal(LoweredLiteral::String("\"".to_string()))),
-                    }),
-                    then_: Box::new(LoweredExpr::Block(vec![
-                        LoweredStmt::Let("__anf_0".to_string(), LoweredExpr::Call {
-                            name: "is_digit".to_string(), // dummy call for scan_string
-                            args: vec![(Some("ch".to_string()), LoweredExpr::Ident("ch".to_string()))],
-                        }),
-                        LoweredStmt::Return(vec![("value".to_string(), LoweredExpr::Ident("__anf_0".to_string()))]),
-                    ])),
-                    else_: None,
-                }),
-                // stmt[1]: Let = is_digit(ch)
-                LoweredStmt::Let("__anf_1".to_string(), LoweredExpr::Call {
-                    name: "is_digit".to_string(),
-                    args: vec![(Some("ch".to_string()), LoweredExpr::Ident("ch".to_string()))],
-                }),
-                // stmt[2]: if __anf_1 { let r = scan_number(...); return { value: r } }
-                LoweredStmt::Expr(LoweredExpr::IfElse {
-                    cond: Box::new(LoweredExpr::Ident("__anf_1".to_string())),
-                    then_: Box::new(LoweredExpr::Block(vec![
-                        LoweredStmt::Return(vec![("value".to_string(), LoweredExpr::Literal(LoweredLiteral::String("digit".to_string())))])
-                    ])),
-                    else_: None,
-                }),
-                // stmt[3]: Let = is_ident_start(ch)
-                LoweredStmt::Let("__anf_3".to_string(), LoweredExpr::Call {
-                    name: "is_ident_start".to_string(),
-                    args: vec![(Some("ch".to_string()), LoweredExpr::Ident("ch".to_string()))],
-                }),
-                // stmt[4]: if __anf_3 { return { value: "ident" } }
-                LoweredStmt::Expr(LoweredExpr::IfElse {
-                    cond: Box::new(LoweredExpr::Ident("__anf_3".to_string())),
-                    then_: Box::new(LoweredExpr::Block(vec![
-                        LoweredStmt::Return(vec![("value".to_string(), LoweredExpr::Literal(LoweredLiteral::String("ident".to_string())))])
-                    ])),
-                    else_: None,
-                }),
-                // stmt[5]: fallthrough
-                LoweredStmt::Expr(LoweredExpr::Literal(LoweredLiteral::String("other".to_string()))),
-            ],
-        };
-
-        let mut test_inputs = HashMap::new();
-        test_inputs.insert("ch".to_string(), gunbc_ir::Value::Str("f".to_string()));
-
-        match daglang_eval::evaluate_fn_body_with_data(&body, &test_inputs, &output.fns, &output.data_values) {
-            Ok(outputs) => {
-                eprintln!("[diag] scan_token pattern result: {:?}", outputs);
-                let ret = outputs.get("return").or(outputs.get("value"));
-                assert_eq!(
-                    ret,
-                    Some(&gunbc_ir::Value::Str("ident".to_string())),
-                    "should get 'ident' for 'f', got: {:?}",
-                    outputs
-                );
-            }
-            Err(e) => panic!("scan_token pattern failed: {}", e),
-        }
     }
 }
