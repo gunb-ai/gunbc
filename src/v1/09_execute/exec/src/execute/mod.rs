@@ -49,15 +49,10 @@ use std::time::{Duration, Instant};
 /// propagate as surprising `Unit` / missing-key failures deep inside op
 /// implementations.
 ///
-/// **Lenient** mode (the default) silently tolerates missing required inputs.
-/// Callers that want strict validation should set `DryRunStrictness::Strict`
-/// explicitly.  The default will be flipped to Strict once all call sites
-/// are audited.
-///
-/// In **Lenient** mode, missing required inputs are silently tolerated
-/// (the node receives whatever partial inputs were gathered).  This is
-/// the legacy behavior preserved for tests that intentionally omit
-/// inputs.
+/// **Lenient** mode (the default) silently tolerates missing required inputs,
+/// passing whatever partial inputs were gathered.  This is the legacy behavior
+/// preserved for tests that intentionally omit inputs.  The default will be
+/// flipped to Strict once all call sites are audited.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DryRunStrictness {
     /// Missing required inputs produce a hard error.

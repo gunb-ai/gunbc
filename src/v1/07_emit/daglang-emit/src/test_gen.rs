@@ -78,16 +78,11 @@ pub fn emit_transport_mock_tests(
         .iter()
         .filter_map(|node| match classify_computation(node) {
             Ok(Computation::Transport { .. }) => {
-                debug_assert!(
-                    !node.outputs.is_empty(),
-                    "BUG: transport node '{}' has zero output ports",
-                    node.id.0,
-                );
                 let response_type = node
                     .outputs
                     .first()
                     .map(|p| p.type_id.0.as_str())
-                    .unwrap_or("TransportResponse");
+                    .expect("transport node must have at least one output port");
                 Some((
                     node.id.0.clone(),
                     typed_mock_for_response(response_type).to_string(),

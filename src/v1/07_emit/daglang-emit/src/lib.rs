@@ -441,19 +441,11 @@ pub fn classify_for_emit(
                 is_interactive,
                 resource_target,
             } => {
-                debug_assert!(
-                    !node.outputs.is_empty(),
-                    "BUG: transport node '{}' has zero output ports — \
-                     cannot determine response type. This likely indicates \
-                     a lowerer bug (all transport nodes should have at least \
-                     one output port).",
-                    node.id.0,
-                );
                 let response_type = node
                     .outputs
                     .first()
                     .map(|p| p.type_id.0.clone())
-                    .unwrap_or_else(|| "TransportResponse".to_string());
+                    .expect("transport node must have at least one output port");
                 transports.push(EmitTransport {
                     module: module.clone(),
                     name: name.clone(),

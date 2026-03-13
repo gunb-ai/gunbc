@@ -6399,10 +6399,9 @@ fn derive_operation_spec(
         ServiceTransportClass::ShellLocal => {
             Ok(derive_shell_spec(service, operation, data_registry)?.map(ServiceOperationSpec::Shell))
         }
-        ServiceTransportClass::FileBoundary => match derive_file_spec(operation) {
-            Ok(spec) => Ok(Some(ServiceOperationSpec::File(spec))),
-            Err(_) => Ok(None),
-        },
+        ServiceTransportClass::FileBoundary => {
+            Ok(Some(ServiceOperationSpec::File(derive_file_spec(operation)?)))
+        }
         ServiceTransportClass::LocalDirect => {
             Ok(Some(ServiceOperationSpec::Local(derive_local_spec(operation))))
         }

@@ -482,18 +482,8 @@ fn pop_stack<'a>(
         match stack.pop() {
             None => return PopResult::Done(result),
             Some(cont) => {
-                // S57: when crossing a fn boundary during collapse, check the
-                // return type of the function that just completed. The caller_fn
-                // on the *next* frame tells us which function was the callee.
-                if cont.is_fn_boundary {
-                    // The function that just returned is the one that was active
-                    // before we resumed the caller. We can identify it by looking
-                    // at what was pushed: cont.caller_fn is the *caller*, so the
-                    // callee is the function whose result we're processing.
-                    // We check the result against the callee's return type in
-                    // run_machine (before calling pop_stack), so here we only
-                    // need to track the restoration.
-                }
+                // S57: return type checks happen in run_machine before
+                // pop_stack is called, so no per-frame check needed here.
                 let value = match extract_projection(&result) {
                     Ok(v) => v,
                     Err(msg) => return PopResult::Error(msg),
@@ -1076,21 +1066,15 @@ fn eval_block_pure(stmts: &[LoweredStmt], env: &Env, ctx: &EvalContext) -> Resul
                 let value = eval_expr(e, &child, ctx)?;
                 if is_last { return Ok(value); }
             }
-            LoweredStmt::Return(fields) => {
-                // Return inside a pure-path block is unexpected — the
-                // lowerer should not produce Return in lambda/match-arm
-                // blocks. Debug builds panic; release builds fall back
-                // to early_return for backwards compatibility.
-                debug_assert!(
-                    false,
-                    "BUG: LoweredStmt::Return found inside a block on the pure \
-                     eval_expr path. Return statements should only appear in \
-                     blocks processed by eval_block_s (the suspendable path). \
-                     This likely indicates a lowerer bug."
-                );
-                let mut result = HashMap::new();
-                for (name, e) in fields { result.insert(name.clone(), eval_expr(e, &child, ctx)?); }
-                return Err(EvalError::early_return(result));
+            LoweredStmt::Return(_) => {
+                // Return inside a pure-path block is a lowerer bug.
+                // The lowerer should not produce Return in lambda/match-arm
+                // blocks — only in blocks processed by eval_block_s.
+                return Err(EvalError::new(
+                    "BUG: LoweredStmt::Return in pure-path block (eval_block_pure). \
+                     Return should only appear in blocks processed by eval_block_s."
+                    .to_string(),
+                ));
             }
         }
     }
