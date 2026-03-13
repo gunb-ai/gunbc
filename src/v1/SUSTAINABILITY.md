@@ -154,14 +154,14 @@ Prereqs: `lower_expr` must trace service call result bindings and handle collect
 intrinsic calls in return position.
 **S40:** Optional type syntax not normalized (`T?` / `Optional<T>` / `OptionalT`).
 **S41:** Cardinality-based mock fabrication hides empty-list cases (`min=0` → `max(0,1)=1`).
-**S62:** `[when]` guards on `func` body service calls not lowered into DAG IR.
+**S62:** (Fixed.) `[when]` guards on `func` body service calls not lowered into DAG IR.
 Guards are silently dropped, making conditional service calls execute unconditionally.
 Discovered via IAM preflight incident (2026-03-09); affected code deleted.
-**S64:** `lower_expr().ok()` — 9 sites in lowerer silently discard lowering errors,
+**S64:** (Fixed.) All `.ok()` sites eliminated from daglang-lower. `lower_expr().ok()` — 9 sites in lowerer silently discard lowering errors,
 producing partial DAGs with unwired edges and no diagnostic. Affected: service call
 arguments, conditional synthesis, match dispatch, list construction, string interpolation.
 Fix: propagate `Result` through all `lower_expr` call sites.
-**S65:** `std::env::var()` in lowerer — `resolve_profile_config_expr` performs
+**S65:** (Fixed.) Replaced by injected `env_resolver` callback. `std::env::var()` in lowerer — `resolve_profile_config_expr` performs
 environment I/O during a pure lowering pass (`lib.rs:1155`). Fix: separate profile
 config resolution step that produces resolved values as lowerer inputs.
 **S66:** `gunbc-resolve` depends on `daglang-driver` (layer 08 → layer 02), inverting
@@ -171,11 +171,11 @@ compilation. Fix: move compilation into driver; resolver receives compiled artif
 instead of propagating inference failure. `Unknown` flows through to lowering unchecked.
 Fix: typechecker output type has no `Unknown` variant — unresolvable types are errors,
 not sentinels. The lowerer's input type makes "unresolved" unrepresentable.
-**S68:** Computation classification duplicated in typecheck and emit. Both
+**S68:** (Fixed.) Classification only in `daglang-emit/src/computation.rs`; removed from typecheck. Computation classification duplicated in typecheck and emit. Both
 `daglang-typecheck` (`classify_computation`, `classify_fn_body`) and `daglang-emit`
 (`computation.rs`) derive node classification from `LoweredOp`. Fix: stamp
 `Computation` on nodes at lowering time; consumers read, don't re-derive.
-**S69:** `EmitCollectionFamily` enum lives in `daglang-syntax` AST (`lib.rs:608`),
+**S69:** (Fixed.) Lives in `daglang-emit/src/computation.rs`, not in daglang-syntax. `EmitCollectionFamily` enum lives in `daglang-syntax` AST (`lib.rs:608`),
 coupling the parser to codegen concerns. Fix: move to emit or lower crate.
 **S70:** Emit input types too permissive — `emit_rust_bundle` et al. take
 `ReachableDag<LoweredOp>` + `DerivedArtifacts` without structural guarantees.
@@ -199,7 +199,7 @@ lists. 4 edits per provider. Fix: single static registry.
 
 **S8:** C backend discards Map key types. Intentional (C has no native map).
 **S9:** Opaque kernel types (Unit/Json/Any/Record) lack documented rationale.
-**S63:** `std/patterns.dag` mixes generic patterns with GCP-specific auth
+**S63:** (Fixed.) GCP-specific code removed; 198 lines of pure generic patterns remain. `std/patterns.dag` mixes generic patterns with GCP-specific auth
 implementations. Provider-specific code belongs under `extdeps/`, not `std/`.
 
 ---
