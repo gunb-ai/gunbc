@@ -309,6 +309,31 @@ fn no_sibling_call_in_branch(expr: &LoweredExpr, loc: &str, sibs: &HashMap<&str,
     }
 }
 
+/// Debug-only check: verify that a block's statements contain no sibling calls.
+///
+/// Blocks that reach `eval_expr` (the pure, non-suspendable path) come from
+/// only two sources:
+///   1. Lambda bodies — evaluated inside intrinsics (map, filter, etc.)
+///   2. Match arm bodies — evaluated by `eval_match_local`
+///
+/// In both cases, sibling calls are handled re-entrantly via
+/// `eval_non_sibling_call_raw` → `evaluate_stack`, not via the continuation
+/// stack. The ANF contract guarantees that sibling calls don't appear nested
+/// inside these blocks. This function makes that invariant explicit as a
+/// debug assertion.
+#[cfg(debug_assertions)]
+fn debug_assert_no_sibling_calls_in_block(stmts: &[LoweredStmt], sibs: &HashMap<&str, FnId>) {
+    for (i, stmt) in stmts.iter().enumerate() {
+        let loc = format!("eval_expr/Block/stmt[{i}]");
+        if let Err(msg) = check_stmt_anf(stmt, &loc, sibs) {
+            panic!(
+                "BUG: sibling call found in block evaluated by eval_expr (pure path). \
+                 This block should only contain non-sibling calls. {msg}"
+            );
+        }
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Stage 3 — Run machine (slice-based continuations + stack bubbling)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -799,6 +824,23 @@ fn eval_block_s<'a>(
 }
 
 // ── 3e. Pure expression evaluation ──────────────────────────────────────────
+//
+// `eval_expr` is the non-suspendable expression evaluator. It runs on the
+// native Rust call stack and CANNOT push continuations or suspend for sibling
+// calls. Any calls encountered are evaluated re-entrantly via
+// `eval_non_sibling_call_raw` → `evaluate_stack`.
+//
+// Block and For arms in this function are reached ONLY from:
+//   - Lambda bodies (via intrinsic evaluation: map, filter, etc.)
+//   - Match arm bodies in `eval_match_local`
+//   - Nested expressions that `eval_expr_s` delegates here
+//
+// The ANF contract guarantees these blocks contain no sibling calls. Debug
+// assertions enforce this invariant explicitly (see `debug_assert_no_sibling_calls_in_block`).
+//
+// The suspendable counterpart is `eval_expr_s`, which intercepts Block,
+// IfElse, and Match before they reach this function, routing them through
+// `eval_block_s` / `eval_match_s` which can push continuations.
 
 fn eval_expr(expr: &LoweredExpr, env: &Env, ctx: &EvalContext) -> Result<Value, EvalError> {
     match expr {
@@ -895,7 +937,20 @@ fn eval_expr(expr: &LoweredExpr, env: &Env, ctx: &EvalContext) -> Result<Value, 
             for (k, v) in fields { map.insert(k.clone(), eval_expr(v, env, ctx)?); }
             Ok(Value::Map(map))
         }
+        // Pure for-loop evaluation — same constraints as Block above.
+        // The body must not contain sibling calls; they would need the
+        // continuation stack which is unavailable on this path.
         LoweredExpr::For { binding, iterable, body } => {
+            #[cfg(debug_assertions)]
+            {
+                let loc = "eval_expr/For/body";
+                if let Err(msg) = no_sibling_call(body, loc, &ctx.fn_index) {
+                    panic!(
+                        "BUG: sibling call found in For body evaluated by eval_expr (pure path). \
+                         For bodies with sibling calls must go through eval_expr_s. {msg}"
+                    );
+                }
+            }
             match eval_expr(iterable, env, ctx)? {
                 Value::List(list) => {
                     let mut results = Vec::with_capacity(list.len());
@@ -926,9 +981,14 @@ fn eval_call_args(
     args: &[(Option<String>, LoweredExpr)], env: &Env, ctx: &EvalContext,
 ) -> Result<HashMap<String, Value>, String> {
     let mut inputs = HashMap::new();
+    let mut pos_idx = 0usize;
     for (param, arg_expr) in args {
         let value = eval_expr(arg_expr, env, ctx).map_err(|e| e.message)?;
-        if let Some(name) = param { inputs.insert(name.clone(), value); }
+        let key = match param {
+            Some(name) => name.clone(),
+            None => { let k = format!("__pos_{pos_idx}"); pos_idx += 1; k }
+        };
+        inputs.insert(key, value);
     }
     Ok(inputs)
 }
@@ -939,9 +999,14 @@ fn eval_non_sibling_call_raw(
     // 1. Sibling fn call (e.g. from synthetic calls inside intrinsics)
     if let Some(fn_body) = ctx.sibling_fns.get(name) {
         let mut fn_inputs = HashMap::new();
+        let mut pos_idx = 0usize;
         for (param_name, arg_expr) in args {
             let value = eval_expr(arg_expr, env, ctx)?;
-            if let Some(pname) = param_name { fn_inputs.insert(pname.clone(), value); }
+            let key = match param_name {
+                Some(pname) => pname.clone(),
+                None => { let k = format!("__pos_{pos_idx}"); pos_idx += 1; k }
+            };
+            fn_inputs.insert(key, value);
         }
         let outputs = evaluate_stack(fn_body, &fn_inputs, ctx.sibling_fns, ctx.data_values)?;
         return sibling_fn_value_extract(name, outputs);
@@ -979,6 +1044,9 @@ fn sibling_fn_value_extract(
 /// - `eval_block_pure`: no continuation stack available (lambda bodies)
 /// - `eval_block_s`: continuation stack available (main-loop statement level)
 fn eval_block_pure(stmts: &[LoweredStmt], env: &Env, ctx: &EvalContext) -> Result<Value, EvalError> {
+    #[cfg(debug_assertions)]
+    debug_assert_no_sibling_calls_in_block(stmts, &ctx.fn_index);
+
     let mut child = env.child();
     let last = stmts.last();
     for stmt in stmts {
@@ -993,6 +1061,17 @@ fn eval_block_pure(stmts: &[LoweredStmt], env: &Env, ctx: &EvalContext) -> Resul
                 if is_last { return Ok(value); }
             }
             LoweredStmt::Return(fields) => {
+                // Return inside a pure-path block is unexpected — the
+                // lowerer should not produce Return in lambda/match-arm
+                // blocks. Debug builds panic; release builds fall back
+                // to early_return for backwards compatibility.
+                debug_assert!(
+                    false,
+                    "BUG: LoweredStmt::Return found inside a block on the pure \
+                     eval_expr path. Return statements should only appear in \
+                     blocks processed by eval_block_s (the suspendable path). \
+                     This likely indicates a lowerer bug."
+                );
                 let mut result = HashMap::new();
                 for (name, e) in fields { result.insert(name.clone(), eval_expr(e, &child, ctx)?); }
                 return Err(EvalError::early_return(result));
@@ -1002,6 +1081,22 @@ fn eval_block_pure(stmts: &[LoweredStmt], env: &Env, ctx: &EvalContext) -> Resul
     Ok(Value::Unit)
 }
 
+/// Pure (non-suspendable) match evaluation — the lambda/standalone-only path.
+///
+/// This function is reached from two call sites:
+///   1. `eval_expr` → `LoweredExpr::Match` — for match expressions inside
+///      lambda bodies or other pure-path blocks that cannot suspend.
+///   2. `eval_match_standalone` — public API for standalone match evaluation.
+///
+/// Because this path runs on the native Rust call stack (not the continuation
+/// stack), it CANNOT suspend for sibling calls. Any calls in arm bodies are
+/// evaluated re-entrantly via `eval_non_sibling_call_raw` → `evaluate_stack`.
+/// This is correct for lambda bodies (which can't suspend) and standalone
+/// evaluation (which has no continuation stack).
+///
+/// The suspendable counterpart is `eval_match_s`, which handles match
+/// expressions at statement level where sibling calls need continuation-based
+/// suspension.
 fn eval_match_local(
     scrutinee: &Value, arms: &[LoweredMatchArm], env: &Env, ctx: &EvalContext,
 ) -> Result<Value, EvalError> {
@@ -1909,5 +2004,33 @@ mod tests {
             assert_eq!(map.get("_variant"), Some(&Value::Str("Some".into())));
             assert_eq!(map.get("value"), Some(&Value::Int(42)));
         } else { panic!("expected Map, got {result:?}"); }
+    }
+
+    #[test] fn positional_args_preserved() {
+        // fn adder(__pos_0, __pos_1) -> { return: __pos_0 + __pos_1 }
+        let adder = LoweredFnBody {
+            stmts: vec![LoweredStmt::Return(vec![(
+                "return".to_string(),
+                LoweredExpr::BinOp {
+                    left: Box::new(ident("__pos_0")),
+                    op: LoweredBinOp::Add,
+                    right: Box::new(ident("__pos_1")),
+                },
+            )])],
+            ..Default::default()
+        };
+        // outer calls adder with positional args: adder(10, 32)
+        let outer = LoweredFnBody {
+            stmts: vec![
+                LoweredStmt::Let("r".into(), call_positional("adder", vec![int(10), int(32)])),
+                LoweredStmt::Return(vec![("return".into(), ident("r"))]),
+            ],
+            ..Default::default()
+        };
+        let mut sibs = HashMap::new();
+        sibs.insert("adder".to_string(), adder);
+        sibs.insert("outer".to_string(), outer.clone());
+        let result = evaluate_stack(&outer, &HashMap::new(), &sibs, &HashMap::new()).unwrap();
+        assert_eq!(result["return"], Value::Int(42));
     }
 }
