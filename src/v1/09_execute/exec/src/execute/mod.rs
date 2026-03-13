@@ -43,11 +43,16 @@ use std::time::{Duration, Instant};
 
 /// Whether the executor enforces strict input validation.
 ///
-/// In **Strict** mode (the default), the executor fails with a diagnostic
-/// error when a required input port has no value after all edge, mock, and
-/// default-list resolution.  This catches modeling gaps early instead of
-/// letting them propagate as surprising `Unit` / missing-key failures
-/// deep inside op implementations.
+/// In **Strict** mode, the executor fails with a diagnostic error when a
+/// required input port has no value after all edge, mock, and default-list
+/// resolution.  This catches modeling gaps early instead of letting them
+/// propagate as surprising `Unit` / missing-key failures deep inside op
+/// implementations.
+///
+/// **Lenient** mode (the default) silently tolerates missing required inputs.
+/// Callers that want strict validation should set `DryRunStrictness::Strict`
+/// explicitly.  The default will be flipped to Strict once all call sites
+/// are audited.
 ///
 /// In **Lenient** mode, missing required inputs are silently tolerated
 /// (the node receives whatever partial inputs were gathered).  This is
@@ -56,9 +61,10 @@ use std::time::{Duration, Instant};
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DryRunStrictness {
     /// Missing required inputs produce a hard error.
-    #[default]
     Strict,
     /// Missing required inputs are silently tolerated (legacy behavior).
+    /// Default until all callers are audited for strict-mode readiness.
+    #[default]
     Lenient,
 }
 

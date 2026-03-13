@@ -1145,7 +1145,7 @@ pub static BUILTIN_TYPES: &[BuiltinType] = &[
     // ── Generic containers ───────────────────────────────────────────
     BuiltinType { name: "List",    arity: 1, value_backing: None, carrier_kind: SemanticCarrierKind::Structural },
     BuiltinType { name: "Map",     arity: 2, value_backing: None, carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "Option",  arity: 1, value_backing: None, carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType { name: "Optional", arity: 1, value_backing: None, carrier_kind: SemanticCarrierKind::Structural },
     BuiltinType { name: "Result",  arity: 2, value_backing: None, carrier_kind: SemanticCarrierKind::Structural },
     BuiltinType { name: "Queue",   arity: 1, value_backing: None, carrier_kind: SemanticCarrierKind::Structural },
     BuiltinType { name: "Set",     arity: 1, value_backing: None, carrier_kind: SemanticCarrierKind::Structural },
@@ -1358,7 +1358,8 @@ impl ValueBacking {
             ValueBacking::String => Some("gunbc_test::OutputMatcher::IsString"),
             ValueBacking::Secret => Some("gunbc_test::OutputMatcher::IsSecret"),
             ValueBacking::Bool => Some("gunbc_test::OutputMatcher::IsBool"),
-            ValueBacking::Int | ValueBacking::Float => Some("gunbc_test::OutputMatcher::IsInt"),
+            ValueBacking::Int => Some("gunbc_test::OutputMatcher::IsInt"),
+            ValueBacking::Float => Some("gunbc_test::OutputMatcher::IsNumeric"),
             ValueBacking::Map | ValueBacking::List | ValueBacking::Set | ValueBacking::Bytes => {
                 Some("gunbc_test::OutputMatcher::NonEmpty")
             }

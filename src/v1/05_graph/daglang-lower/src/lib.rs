@@ -1863,6 +1863,12 @@ pub enum LowerError {
         key: String,
         env_var: String,
     },
+    /// An explicit DSL annotation has an unrecognized value.
+    InvalidAnnotation {
+        service: String,
+        annotation: String,
+        detail: String,
+    },
     /// No executable declarations were available for lowering.
     NoLowerableItems,
     /// A pure function contains an effectful node statement.
@@ -2001,6 +2007,14 @@ impl std::fmt::Display for LowerError {
                 f,
                 "profile `{profile}` binding `{interface_type}` requires config `{key}` from env var `{env_var}`, but it is not set"
             ),
+            Self::InvalidAnnotation {
+                service,
+                annotation,
+                detail,
+            } => write!(
+                f,
+                "invalid `{annotation}` annotation on `{service}`: {detail}"
+            ),
             Self::NoLowerableItems => write!(f, "no callable or pipeline declarations to lower"),
             Self::PureFnContainsEffectfulNode { fn_name, node_name } => write!(
                 f,
@@ -2091,6 +2105,7 @@ impl LowerError {
             Self::InvalidFileOp { .. } => "LOW015",
             Self::InvalidTransportSpec { .. } => "LOW016",
             Self::MissingProfileConfigEnv { .. } => "LOW017",
+            Self::InvalidAnnotation { .. } => "LOW030",
             Self::NoLowerableItems => "LOW018",
             Self::PureFnContainsEffectfulNode { .. } => "LOW019",
             Self::InvalidAuthInput { .. } => "LOW020",
@@ -2124,6 +2139,10 @@ impl LowerError {
                  `path` for REST, `argv` for shell"
                     .into(),
             ),
+            Self::InvalidAnnotation { annotation, .. } => Some(format!(
+                "check the `{annotation}` value in the DSL config block; see the \
+                 FromStr impl for accepted values"
+            )),
             Self::NoLowerableItems => Some(
                 "ensure the file contains at least one `fn`, `func`, `pattern`, or \
                  `pipeline` declaration"
@@ -6162,7 +6181,7 @@ fn derive_service_call_metadata(
     service: &ServiceDef,
     operation: &OperationDef,
     data_registry: &DataRegistry<'_>,
-) -> ServiceCallMetadata {
+) -> Result<ServiceCallMetadata, LowerError> {
     let transport = match &operation.transport {
         Some(TransportBinding::Rest { .. }) => ServiceTransportClass::RestNetwork,
         Some(TransportBinding::Shell { .. }) => ServiceTransportClass::ShellLocal,
@@ -6175,7 +6194,7 @@ fn derive_service_call_metadata(
         None => ServiceTransportClass::Unknown,
     };
 
-    let spec = derive_operation_spec(service, operation, transport, data_registry);
+    let spec = derive_operation_spec(service, operation, transport, data_registry)?;
 
     // Auto-derive readonly from HTTP method: GET and HEAD are read-only by definition.
     let readonly = operation.readonly
@@ -6185,16 +6204,20 @@ fn derive_service_call_metadata(
                 if method.eq_ignore_ascii_case("GET") || method.eq_ignore_ascii_case("HEAD")
         );
 
-    // S45: Prefer explicit response_provider from DSL config, fall back to
-    // service-name-substring inference.
-    let response_provider = service
-        .config
-        .response_provider
-        .as_deref()
-        .and_then(parse_response_provider)
-        .or_else(|| infer_response_provider(&service.name));
+    // S45: Explicit annotation is authoritative; unknown values fail fast.
+    // Falls back to service-name inference only when no annotation is present.
+    let response_provider = match service.config.response_provider.as_deref() {
+        Some(name) => Some(name.parse::<ResponseProvider>().map_err(|e| {
+            LowerError::InvalidAnnotation {
+                service: service.name.clone(),
+                annotation: "response_provider".to_string(),
+                detail: e,
+            }
+        })?),
+        None => infer_response_provider(&service.name),
+    };
 
-    ServiceCallMetadata {
+    Ok(ServiceCallMetadata {
         service: service.name.clone(),
         operation: operation.name.clone(),
         transport,
@@ -6202,7 +6225,7 @@ fn derive_service_call_metadata(
         readonly,
         spec,
         response_provider,
-    }
+    })
 }
 
 // ============================================================================
@@ -6368,31 +6391,31 @@ fn derive_operation_spec(
     operation: &OperationDef,
     transport: ServiceTransportClass,
     data_registry: &DataRegistry<'_>,
-) -> Option<ServiceOperationSpec> {
+) -> Result<Option<ServiceOperationSpec>, LowerError> {
     match transport {
         ServiceTransportClass::RestNetwork => {
-            derive_rest_spec(service, operation).map(|s| ServiceOperationSpec::Rest(Box::new(s)))
+            Ok(derive_rest_spec(service, operation).map(|s| ServiceOperationSpec::Rest(Box::new(s))))
         }
         ServiceTransportClass::ShellLocal => {
-            derive_shell_spec(service, operation, data_registry).map(ServiceOperationSpec::Shell)
+            Ok(derive_shell_spec(service, operation, data_registry)?.map(ServiceOperationSpec::Shell))
         }
         ServiceTransportClass::FileBoundary => match derive_file_spec(operation) {
-            Ok(spec) => Some(ServiceOperationSpec::File(spec)),
-            Err(_) => None,
+            Ok(spec) => Ok(Some(ServiceOperationSpec::File(spec))),
+            Err(_) => Ok(None),
         },
         ServiceTransportClass::LocalDirect => {
-            Some(ServiceOperationSpec::Local(derive_local_spec(operation)))
+            Ok(Some(ServiceOperationSpec::Local(derive_local_spec(operation))))
         }
         ServiceTransportClass::InterfaceStub => {
             // Services implementing interfaces with no transport block.
             // Use the service name as the interface name (from `: InterfaceName` syntax).
-            Some(ServiceOperationSpec::InterfaceStub {
+            Ok(Some(ServiceOperationSpec::InterfaceStub {
                 interface: service
                     .implements
                     .clone()
                     .unwrap_or_else(|| service.name.clone()),
                 capability: operation.name.clone(),
-            })
+            }))
         }
         ServiceTransportClass::Unknown => {
             // Transport class could not be determined. This is not an error
@@ -6400,7 +6423,7 @@ fn derive_operation_spec(
             // which the resolver handles as a stub. Concrete services with
             // declared but unrecognized transport would hit MissingTransport
             // earlier in the validation pass.
-            None
+            Ok(None)
         }
     }
 }
@@ -6508,17 +6531,9 @@ fn derive_middleware_config(
     })
 }
 
-/// Parse an explicit response provider identifier from the DSL (S45).
-fn parse_response_provider(name: &str) -> Option<ResponseProvider> {
-    match name {
-        "GitHub" | "github" => Some(ResponseProvider::GitHub),
-        "Gcp" | "gcp" | "GCP" => Some(ResponseProvider::Gcp),
-        "Anthropic" | "anthropic" => Some(ResponseProvider::Anthropic),
-        "OpenAi" | "openai" | "OpenAI" => Some(ResponseProvider::OpenAi),
-        "Generic" | "generic" => Some(ResponseProvider::Generic),
-        _ => None,
-    }
-}
+// S45: `parse_response_provider` removed — use `ResponseProvider::from_str`
+// (in ir/src/transport/middleware.rs) which is the single authority and returns
+// `Err` on unknown values instead of silently falling back to inference.
 
 /// Infer the response provider from service name patterns.
 fn infer_response_provider(service_name: &str) -> Option<ResponseProvider> {
@@ -6713,21 +6728,26 @@ fn derive_shell_spec(
     _service: &ServiceDef,
     operation: &OperationDef,
     data_registry: &DataRegistry<'_>,
-) -> Option<ShellOperationSpec> {
+) -> Result<Option<ShellOperationSpec>, LowerError> {
     let argv_template = match &operation.transport {
         Some(TransportBinding::Shell { argv }) => resolve_argv_exprs(argv),
-        _ => return None,
+        _ => return Ok(None),
     };
 
     let input_fields = derive_input_fields_for_shell(&operation.inputs, &argv_template);
     let output_fields = derive_output_fields(&operation.outputs);
-    // S44: Prefer explicit output_parsing from DSL annotation, fall back to
-    // inference from output field types.
-    let output_parsing = operation
-        .output_parsing
-        .as_deref()
-        .and_then(parse_shell_output_parsing)
-        .unwrap_or_else(|| infer_shell_output_parsing(&operation.outputs));
+    // S44: Explicit annotation is authoritative; unknown values fail fast.
+    // Falls back to inference only when no annotation is present.
+    let output_parsing = match operation.output_parsing.as_deref() {
+        Some(name) => name.parse::<ShellOutputParsing>().map_err(|e| {
+            LowerError::InvalidAnnotation {
+                service: operation.name.clone(),
+                annotation: "output_parsing".to_string(),
+                detail: e,
+            }
+        })?,
+        None => infer_shell_output_parsing(&operation.outputs),
+    };
 
     // Extract env from `env: Map<String, String>` input default.
     let env = extract_env_from_inputs(&operation.inputs, data_registry);
@@ -6735,14 +6755,14 @@ fn derive_shell_spec(
     // Derive exit mapping from exit {} blocks (SL-9).
     let exit_mapping = derive_exit_mapping(&operation.exit);
 
-    Some(ShellOperationSpec {
+    Ok(Some(ShellOperationSpec {
         argv_template,
         input_fields,
         output_fields,
         output_parsing,
         env,
         exit_mapping,
-    })
+    }))
 }
 
 fn derive_file_spec(operation: &OperationDef) -> Result<FileOperationSpec, LowerError> {
@@ -6981,18 +7001,9 @@ fn derive_output_fields(outputs: &[daglang_syntax::ast::Field]) -> Vec<OutputFie
         .collect()
 }
 
-/// Parse an explicit shell output parsing mode identifier from the DSL (S44).
-fn parse_shell_output_parsing(name: &str) -> Option<ShellOutputParsing> {
-    match name {
-        "TrimStdout" | "trim_stdout" => Some(ShellOutputParsing::TrimStdout),
-        "SplitLines" | "split_lines" => Some(ShellOutputParsing::SplitLines),
-        "SuccessStdoutStderr" | "success_stdout_stderr" => {
-            Some(ShellOutputParsing::SuccessStdoutStderr)
-        }
-        "ExitCodeBool" | "exit_code_bool" => Some(ShellOutputParsing::ExitCodeBool),
-        _ => None,
-    }
-}
+// S44: `parse_shell_output_parsing` removed — use `ShellOutputParsing::from_str`
+// (in spec.rs) which is the single authority and returns `Err` on unknown values
+// instead of silently falling back to inference.
 
 /// Infer shell output parsing mode from output field types.
 fn infer_shell_output_parsing(outputs: &[daglang_syntax::ast::Field]) -> ShellOutputParsing {
@@ -7391,7 +7402,7 @@ fn derive_service_transport_triplets(
                 }
                 validate_rest_output_field_paths(service, operation)?;
                 let service_metadata =
-                    derive_service_call_metadata(service, operation, &data_registry);
+                    derive_service_call_metadata(service, operation, &data_registry)?;
                 // RT4: Fail-closed when a service operation has no transport
                 // block. Previously this silently created a triplet with no
                 // spec, causing the executor to skip the operation.

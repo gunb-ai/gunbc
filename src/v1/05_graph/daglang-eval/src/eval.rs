@@ -40,6 +40,16 @@ pub fn evaluate_fn_body_with_data(
     crate::eval_stack::evaluate_stack(body, inputs, sibling_fns, data_values)
 }
 
+/// Like `evaluate_fn_body_with_data` but returns type-boundary diagnostics.
+pub fn evaluate_fn_body_with_diagnostics(
+    body: &LoweredFnBody,
+    inputs: &HashMap<String, Value>,
+    sibling_fns: &HashMap<String, LoweredFnBody>,
+    data_values: &HashMap<String, Value>,
+) -> Result<crate::eval_stack::EvalOutcome, EvalError> {
+    crate::eval_stack::evaluate_stack_with_diagnostics(body, inputs, sibling_fns, data_values)
+}
+
 /// Evaluate a match expression. Used by DAG executor nodes (resolve.rs, interp).
 ///
 /// Delegates to the stack evaluator's direct match implementation.

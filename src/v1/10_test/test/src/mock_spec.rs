@@ -903,6 +903,8 @@ pub enum OutputMatcher {
     IsBool,
     /// Output must be an integer (any value).
     IsInt,
+    /// Output must be numeric (Int or Float).
+    IsNumeric,
     /// Output must be a string (any value).
     IsString,
     /// Output must be a secret (any value).
@@ -937,6 +939,7 @@ impl std::fmt::Debug for OutputMatcher {
             OutputMatcher::NonEmpty => write!(f, "NonEmpty"),
             OutputMatcher::IsBool => write!(f, "IsBool"),
             OutputMatcher::IsInt => write!(f, "IsInt"),
+            OutputMatcher::IsNumeric => write!(f, "IsNumeric"),
             OutputMatcher::IsString => write!(f, "IsString"),
             OutputMatcher::IsSecret => write!(f, "IsSecret"),
             OutputMatcher::IsRequest => write!(f, "IsRequest"),
@@ -986,6 +989,7 @@ impl OutputMatcher {
             OutputMatcher::NonEmpty
                 | OutputMatcher::IsBool
                 | OutputMatcher::IsInt
+                | OutputMatcher::IsNumeric
                 | OutputMatcher::IsString
                 | OutputMatcher::IsSecret
                 | OutputMatcher::IsRequest
@@ -1027,6 +1031,10 @@ impl OutputMatcher {
             OutputMatcher::IsInt => match value {
                 Value::Int(_) => Ok(()),
                 _ => Err(format!("expected Int, got {:?}", value)),
+            },
+            OutputMatcher::IsNumeric => match value {
+                Value::Int(_) | Value::Float(_) => Ok(()),
+                _ => Err(format!("expected Int or Float, got {:?}", value)),
             },
             OutputMatcher::IsString => match value {
                 Value::Str(_) => Ok(()),

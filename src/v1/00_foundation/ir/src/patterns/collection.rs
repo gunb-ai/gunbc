@@ -425,24 +425,21 @@ pub fn non_collection_builtin_contracts() -> Vec<(&'static str, BuiltinContract)
 
 /// Check if a function name is an evaluator-handled intrinsic.
 ///
-/// Centralizes the intrinsic name check (S11). Previously duplicated in
-/// `daglang-eval/src/eval.rs`.
+/// Derived from the registries (S11) — no hand-maintained string list.
+/// A name is intrinsic if it appears in any of:
+///   1. `CollectionKind::from_name` (canonical collection ops)
+///   2. `CollectionKind::from_name_or_alias` (aliases like `count`, `sum`)
+///   3. `alias_contracts()` (alias-specific contract overrides)
+///   4. `non_collection_builtin_contracts()` (standalone builtins)
 pub fn is_eval_intrinsic(name: &str) -> bool {
-    // Check collection ops (canonical names)
-    if CollectionKind::from_name(name).is_some() {
+    // Collection ops: canonical names + aliases
+    if CollectionKind::from_name_or_alias(name).is_some() {
         return true;
     }
-    // Check aliases
-    matches!(
-        name,
-        "filter_map" | "flat_map" | "count" | "sum" | "sort_by" | "append"
-    ) ||
-    // Non-collection intrinsics
-    matches!(
-        name,
-        "first" | "last" | "any" | "all" | "contains"
-            | "starts_with" | "ends_with" | "repeat" | "chars"
-    )
+    // Non-collection builtins (first, last, max_by, starts_with, etc.)
+    non_collection_builtin_contracts()
+        .iter()
+        .any(|(n, _)| *n == name)
 }
 
 #[cfg(test)]

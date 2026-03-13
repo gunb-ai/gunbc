@@ -55,10 +55,19 @@ const MAX_TRANSITIONS: usize = 10_000_000;
 
 // ── Runtime type boundary checks (S57) ───────────────────────────────────
 //
-// Soft diagnostics: mismatches are collected in a thread-local vec and
-// do not crash the evaluator. Callers can drain the diagnostics via
-// `take_type_warnings()`. This is an interim guard until the self-hosting
-// compiler provides static guarantees.
+// Soft diagnostics: mismatches are collected internally and returned as part
+// of `EvalOutcome`. Thread-local storage is used only within a single
+// `evaluate_stack` call; the public API returns warnings explicitly.
+
+/// The result of a successful evaluation, including any type-boundary warnings.
+#[derive(Debug, Clone)]
+pub struct EvalOutcome {
+    /// The output values from the evaluated function.
+    pub outputs: HashMap<String, Value>,
+    /// S57 type-boundary warnings collected during evaluation.
+    /// Empty when all runtime types match declared types.
+    pub warnings: Vec<String>,
+}
 
 #[derive(Default)]
 struct WarningState {
@@ -83,6 +92,11 @@ impl WarningScope {
         });
         Self
     }
+
+    /// Drain all warnings accumulated in this scope.
+    fn drain_warnings(&self) -> Vec<String> {
+        TYPE_WARNINGS.with(|state| state.borrow_mut().warnings.drain(..).collect())
+    }
 }
 
 impl Drop for WarningScope {
@@ -95,6 +109,10 @@ impl Drop for WarningScope {
 }
 
 /// Drain and return any type warnings accumulated during evaluation.
+///
+/// Deprecated: prefer using `evaluate_stack_with_diagnostics` which returns
+/// warnings as part of `EvalOutcome`. This function is retained for backward
+/// compatibility during migration.
 pub fn take_type_warnings() -> Vec<String> {
     TYPE_WARNINGS.with(|state| state.borrow_mut().warnings.drain(..).collect())
 }
@@ -167,21 +185,39 @@ fn fn_name_for_id(fn_id: FnId, ctx: &EvalContext) -> String {
 // Public entry point
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Evaluate a fn body. Pipeline: build context → verify contract → run machine.
-pub fn evaluate_stack(
+/// Evaluate a fn body, returning outputs and type-boundary warnings.
+///
+/// This is the preferred entry point — warnings are part of the return type.
+pub fn evaluate_stack_with_diagnostics(
     body: &LoweredFnBody,
     inputs: &HashMap<String, Value>,
     sibling_fns: &HashMap<String, LoweredFnBody>,
     data_values: &HashMap<String, Value>,
-) -> Result<HashMap<String, Value>, EvalError> {
-    let _warning_scope = WarningScope::enter();
+) -> Result<EvalOutcome, EvalError> {
+    let scope = WarningScope::enter();
     let (ctx, entry) = build_context(body, sibling_fns, data_values);
 
     if let Err(msg) = verify_anf_contract(&ctx) {
         return Err(EvalError::new(format!("ANF contract violated: {msg}")));
     }
 
-    run_machine(entry, inputs, &ctx)
+    let outputs = run_machine(entry, inputs, &ctx)?;
+    let warnings = scope.drain_warnings();
+    Ok(EvalOutcome { outputs, warnings })
+}
+
+/// Evaluate a fn body. Pipeline: build context → verify contract → run machine.
+///
+/// Returns only the output map. Use `evaluate_stack_with_diagnostics` to also
+/// receive S57 type-boundary warnings.
+pub fn evaluate_stack(
+    body: &LoweredFnBody,
+    inputs: &HashMap<String, Value>,
+    sibling_fns: &HashMap<String, LoweredFnBody>,
+    data_values: &HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, EvalError> {
+    let outcome = evaluate_stack_with_diagnostics(body, inputs, sibling_fns, data_values)?;
+    Ok(outcome.outputs)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -272,12 +308,12 @@ fn check_stmt_anf(stmt: &LoweredStmt, loc: &str, sibs: &HashMap<&str, FnId>) -> 
 
 fn no_sibling_call(expr: &LoweredExpr, loc: &str, sibs: &HashMap<&str, FnId>) -> Result<(), String> {
     match expr {
-        LoweredExpr::Call { name, args } => {
-            if sibs.contains_key(name.as_str()) {
-                return Err(format!("ANF violation at {loc}: nested sibling Call to '{name}'"));
-            }
-            for (_, a) in args { no_sibling_call(a, loc, sibs)?; }
-            Ok(())
+        LoweredExpr::Call { name, .. } => {
+            // Reject ALL nested calls, matching the lowerer's ANF verifier
+            // (anf.rs:verify_no_call). Previously only sibling calls were
+            // rejected here, but the lowerer rejects all calls in non-statement
+            // position, so the runtime check should be equally strict.
+            Err(format!("ANF violation at {loc}: nested Call to '{name}'"))
         }
         LoweredExpr::Literal(_) | LoweredExpr::Ident(_) => Ok(()),
         LoweredExpr::FieldAccess { expr, .. }
@@ -303,7 +339,10 @@ fn no_sibling_call(expr: &LoweredExpr, loc: &str, sibs: &HashMap<&str, FnId>) ->
             }
             Ok(())
         }
-        LoweredExpr::Lambda { body, .. } => no_sibling_call_in_branch(body, loc, sibs),
+        // Lambda bodies are evaluated lazily by intrinsic handlers (map, filter,
+        // scan_while, etc.), not in ANF statement position — calls inside them
+        // are fine and expected.
+        LoweredExpr::Lambda { .. } => Ok(()),
         LoweredExpr::List(xs) => { for x in xs { no_sibling_call(x, loc, sibs)?; } Ok(()) }
         LoweredExpr::Block(ss) => { for s in ss { check_stmt_anf(s, loc, sibs)?; } Ok(()) }
         LoweredExpr::Record { fields, .. }
@@ -1841,8 +1880,6 @@ mod tests {
     }
 
     #[test] fn s57_return_check_validates_multi_field_outputs() {
-        take_type_warnings();
-
         let body = LoweredFnBody::with_types(
             vec![LoweredStmt::Return(vec![
                 ("a".into(), int(1)),
@@ -1852,33 +1889,31 @@ mod tests {
             Some("Map<String,Int>".into()),
         );
 
-        let result = evaluate_stack(&body, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap();
-        assert_eq!(result["a"], Value::Int(1));
-        assert_eq!(result["b"], Value::Str("oops".into()));
+        let outcome = evaluate_stack_with_diagnostics(&body, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap();
+        assert_eq!(outcome.outputs["a"], Value::Int(1));
+        assert_eq!(outcome.outputs["b"], Value::Str("oops".into()));
 
-        let warnings = take_type_warnings();
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].contains("type mismatch at return"));
+        assert_eq!(outcome.warnings.len(), 1);
+        assert!(outcome.warnings[0].contains("type mismatch at return"));
     }
 
     #[test] fn s57_warnings_are_scoped_per_top_level_evaluation() {
-        take_type_warnings();
-
         let bad = LoweredFnBody::with_types(
             vec![LoweredStmt::Return(vec![("return".into(), string("wrong"))])],
             vec![],
             Some("Int".into()),
         );
-        evaluate_stack(&bad, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap();
+        let bad_outcome = evaluate_stack_with_diagnostics(&bad, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap();
+        assert!(!bad_outcome.warnings.is_empty());
 
         let good = LoweredFnBody::with_types(
             vec![LoweredStmt::Return(vec![("return".into(), int(7))])],
             vec![],
             Some("Int".into()),
         );
-        evaluate_stack(&good, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap();
+        let good_outcome = evaluate_stack_with_diagnostics(&good, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap();
 
-        assert!(take_type_warnings().is_empty());
+        assert!(good_outcome.warnings.is_empty());
     }
 
     #[test] fn builtin_lookup() {

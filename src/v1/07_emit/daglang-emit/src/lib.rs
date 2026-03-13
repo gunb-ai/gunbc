@@ -576,11 +576,16 @@ fn counts_from_classified(input: &EmitInput) -> (usize, usize) {
 
 /// Collect transport node entries for mock test generation from pre-classified input.
 ///
-/// This replaces the `classify_computation` walk in `test_gen::emit_transport_mock_tests`.
+/// Only Execute-phase transport nodes get mock tests. Prepare and Parse nodes
+/// are internal pipeline stages that don't perform I/O and therefore don't need
+/// mocking. This matches the documented invariant (test_gen.rs:69-71) and the
+/// old `classify_computation` behavior which only returned `Computation::Transport`
+/// for `ServiceTransportExecute` obligation.
 fn transport_mock_entries_from_classified(input: &EmitInput) -> Vec<(String, String)> {
     let mut entries: Vec<(String, String)> = input
         .transports
         .iter()
+        .filter(|t| t.phase == TransportObligation::Execute)
         .map(|t| {
             (
                 t.node_id.clone(),

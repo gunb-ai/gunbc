@@ -257,6 +257,13 @@ fn strip_optional_wrapper(type_id: &str) -> (&str, bool) {
     {
         // Legacy Rust-style "Option<T>" for backward compatibility.
         (inner, true)
+    } else if let Some(inner) = type_id.strip_prefix("Optional") {
+        // Legacy concatenated form "OptionalT" (no angle brackets).
+        if !inner.is_empty() && !inner.starts_with('<') {
+            (inner, true)
+        } else {
+            (type_id, false)
+        }
     } else {
         (type_id, false)
     }

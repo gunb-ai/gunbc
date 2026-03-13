@@ -3976,67 +3976,67 @@ func run() -> { result: String } {
 }
 
 // ============================================================================
-// S44: parse_shell_output_parsing
+// S44: ShellOutputParsing::from_str (was parse_shell_output_parsing)
 // ============================================================================
 
 #[test]
-fn parse_shell_output_parsing_recognizes_all_variants() {
+fn shell_output_parsing_from_str_recognizes_all_variants() {
     assert_eq!(
-        parse_shell_output_parsing("TrimStdout"),
-        Some(ShellOutputParsing::TrimStdout)
+        "TrimStdout".parse::<ShellOutputParsing>().unwrap(),
+        ShellOutputParsing::TrimStdout
     );
     assert_eq!(
-        parse_shell_output_parsing("trim_stdout"),
-        Some(ShellOutputParsing::TrimStdout)
+        "trim_stdout".parse::<ShellOutputParsing>().unwrap(),
+        ShellOutputParsing::TrimStdout
     );
     assert_eq!(
-        parse_shell_output_parsing("SplitLines"),
-        Some(ShellOutputParsing::SplitLines)
+        "SplitLines".parse::<ShellOutputParsing>().unwrap(),
+        ShellOutputParsing::SplitLines
     );
     assert_eq!(
-        parse_shell_output_parsing("SuccessStdoutStderr"),
-        Some(ShellOutputParsing::SuccessStdoutStderr)
+        "SuccessStdoutStderr".parse::<ShellOutputParsing>().unwrap(),
+        ShellOutputParsing::SuccessStdoutStderr
     );
     assert_eq!(
-        parse_shell_output_parsing("ExitCodeBool"),
-        Some(ShellOutputParsing::ExitCodeBool)
+        "ExitCodeBool".parse::<ShellOutputParsing>().unwrap(),
+        ShellOutputParsing::ExitCodeBool
     );
-    assert_eq!(parse_shell_output_parsing("unknown"), None);
+    assert!("unknown".parse::<ShellOutputParsing>().is_err());
 }
 
 // ============================================================================
-// S45: parse_response_provider
+// S45: ResponseProvider::from_str (was parse_response_provider)
 // ============================================================================
 
 #[test]
-fn parse_response_provider_recognizes_all_variants() {
+fn response_provider_from_str_recognizes_all_variants() {
     use gunbc_ir::transport::middleware::ResponseProvider;
 
     assert_eq!(
-        parse_response_provider("GitHub"),
-        Some(ResponseProvider::GitHub)
+        "GitHub".parse::<ResponseProvider>().unwrap(),
+        ResponseProvider::GitHub
     );
     assert_eq!(
-        parse_response_provider("github"),
-        Some(ResponseProvider::GitHub)
+        "github".parse::<ResponseProvider>().unwrap(),
+        ResponseProvider::GitHub
     );
-    assert_eq!(parse_response_provider("Gcp"), Some(ResponseProvider::Gcp));
-    assert_eq!(parse_response_provider("GCP"), Some(ResponseProvider::Gcp));
+    assert_eq!("Gcp".parse::<ResponseProvider>().unwrap(), ResponseProvider::Gcp);
+    assert_eq!("GCP".parse::<ResponseProvider>().unwrap(), ResponseProvider::Gcp);
     assert_eq!(
-        parse_response_provider("Anthropic"),
-        Some(ResponseProvider::Anthropic)
-    );
-    assert_eq!(
-        parse_response_provider("OpenAi"),
-        Some(ResponseProvider::OpenAi)
+        "Anthropic".parse::<ResponseProvider>().unwrap(),
+        ResponseProvider::Anthropic
     );
     assert_eq!(
-        parse_response_provider("openai"),
-        Some(ResponseProvider::OpenAi)
+        "OpenAi".parse::<ResponseProvider>().unwrap(),
+        ResponseProvider::OpenAi
     );
     assert_eq!(
-        parse_response_provider("Generic"),
-        Some(ResponseProvider::Generic)
+        "openai".parse::<ResponseProvider>().unwrap(),
+        ResponseProvider::OpenAi
     );
-    assert_eq!(parse_response_provider("unknown_provider"), None);
+    assert_eq!(
+        "Generic".parse::<ResponseProvider>().unwrap(),
+        ResponseProvider::Generic
+    );
+    assert!("unknown_provider".parse::<ResponseProvider>().is_err());
 }

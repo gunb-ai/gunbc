@@ -6609,6 +6609,9 @@ fn render_output_matcher_check(matcher: &OutputMatcher, var_name: &str) -> Vec<S
         OutputMatcher::IsInt => vec![Stmt::Item(Item::Raw(format!(
             "assert!({output_var}.as_int().is_some() || matches!(*{output_var}, Value::Skipped), \"expected Int or Skipped for {output_var}\");"
         )))],
+        OutputMatcher::IsNumeric => vec![Stmt::Item(Item::Raw(format!(
+            "assert!({output_var}.as_int().is_some() || {output_var}.as_float().is_some() || matches!(*{output_var}, Value::Skipped), \"expected Int/Float or Skipped for {output_var}\");"
+        )))],
         OutputMatcher::IsString => vec![Stmt::Item(Item::Raw(format!(
             "assert!({output_var}.as_str().is_some() || matches!(*{output_var}, Value::Skipped), \"expected String or Skipped for {output_var}\");"
         )))],
