@@ -2297,11 +2297,6 @@ pub struct LowerOutput {
     pub dag: Dag<LoweredOp>,
     pub output_paths: Vec<String>,
     pub inferred_entrypoints: Vec<InferredEntrypoint>,
-    /// Cardinality compatibility diagnostics (S33).
-    ///
-    /// Non-empty when edges connect ports with incompatible cardinalities.
-    /// Advisory — the DAG is still usable but may need explicit coercion.
-    pub cardinality_diagnostics: Vec<gunbc_ir::CardinalityIncompatibility>,
 }
 
 /// Lower a typed project with the given configuration.
@@ -2776,23 +2771,12 @@ fn lower_typed_project_impl(
     stamp_node_kinds(&mut dag);
     validate_callable_output_wiring(&dag)?;
 
-    // Post-lowering validation: verify all port TypeIds resolve against the
-    // type registry. Available via `gunbc_ir::validate_port_type_ids()` but
-    // not wired into the pipeline yet — the IR TypeRegistry does not contain
-    // DSL-defined types, so the check would produce false positives.
-    // Once DSL types are propagated into the registry (S18 follow-up),
-    // uncomment this block to enable hard validation.
-    // if let Some(registry) = type_registry {
-    //     let type_errors = gunbc_ir::validate_port_type_ids(&dag, registry);
-    //     if !type_errors.is_empty() {
-    //         let diagnostics: Vec<String> = type_errors.iter().map(|e| e.to_string()).collect();
-    //         return Err(LowerError::PortTypeValidation(diagnostics));
-    //     }
-    // }
-    let _ = type_registry; // Suppress unused warning until validation is enabled.
-
-    // S33: Cardinality compatibility validation (diagnostic mode).
-    let cardinality_diagnostics = gunbc_ir::validate_cardinality_compatibility(&dag);
+    // Validation (cardinality, port type IDs, structural invariants) is
+    // performed post-lowering by `VerifiedDag::verify()` in the pipeline.
+    // That is the single validation authority — lowering produces the DAG,
+    // verification gates it. Port type-id validation against a full registry
+    // (including DSL-defined types) is deferred to S18.
+    let _ = type_registry;
 
     let output_paths = extract_output_paths(&dag);
     let inferred_entrypoints = infer_entrypoints(&dag);
@@ -2800,7 +2784,6 @@ fn lower_typed_project_impl(
         dag,
         output_paths,
         inferred_entrypoints,
-        cardinality_diagnostics,
     })
 }
 

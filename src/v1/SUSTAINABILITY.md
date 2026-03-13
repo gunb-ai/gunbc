@@ -481,10 +481,11 @@ exactly the 5 points that call `eval_expr_s` with a subsequent push
    `eval_expr` because the continuation model can't represent guard
    truthiness checks. Documented as intentional.
 
-4. **`wrap_value_as_output` flattens Maps.** **Accepted.** Map flattening is
-   structurally necessary for the v2 evaluation model to return multi-field
-   records. The `"value"` fallback in `output_value` is legacy — to be
-   eliminated when all callers migrate to `"return"`.
+4. **`wrap_value_as_output` flattens Maps.** **Accepted permanent.** Map
+   flattening is structurally necessary for the v2 evaluation model to
+   return multi-field records. The `"value"` fallback in `output_value`
+   cannot be removed without either breaking the v2 DSL model or adding
+   unreliable signal detection (see DESIGN-eval-redesign.md Limitation 3).
 
 5. ~~**`EvalError` conflates errors and control flow.**~~ **DONE.** `early_return`
    field removed from `EvalError`. `Return` is now a statement-level construct

@@ -92,12 +92,13 @@ independently testable.
 
 ## Data Structures
 
-> **Current vs Target:** The data structures below describe the target
-> design. The shipped implementation differs in several ways:
+> **Accepted implementation deviations:** The data structures below
+> describe the original target. The shipped implementation differs in
+> three ways, all accepted as permanent (S67):
 >
 > - **Continuations** use `remaining: &'a [LoweredStmt]` slices instead
->   of absolute `pc` indices. This requires lifetimes in the
->   continuation type but avoids index arithmetic.
+>   of absolute `pc` indices. This avoids index arithmetic at the cost
+>   of lifetimes in the continuation type.
 > - **Continuation ownership** is shared: `eval_stmts` and `eval_block_s`
 >   mutate `&mut Vec<Continuation>` directly, using `stack.insert(stack_base, ...)`
 >   to maintain ordering when inner blocks push before outer callers.
@@ -293,34 +294,28 @@ where evaluation contexts fundamentally differ:
 
 These are permanent splits documented in SUSTAINABILITY.md S67.
 
-## Known Limitations
+## Accepted Limitations
 
 1. ~~**`LoweredExpr::Return` is still an expression.**~~ **FIXED.**
    `LoweredExpr::Return` removed. `ast::Expr::Return` now lowers to
    `LoweredExpr::Block(vec![LoweredStmt::Return(...)])`. `eval_expr`
    no longer produces early-return signals from Return variants.
-   `EvalError::early_return` removed (dead code after this change).
 
 2. **`LoweredExpr::Block` and `LoweredExpr::For` carry statement
-   semantics.** The cleanest end state is `ForCollect` as a statement
-   form with its own body-stmts, and blocks as statement sequences (not
-   expressions). Deferred — both genuinely return values.
+   semantics.** **Accepted permanent.** The cleanest end state is
+   `ForCollect` as a statement form with its own body-stmts, and blocks
+   as statement sequences (not expressions). Both genuinely return
+   values, making statement-only forms a net-negative change.
 
-3. **`Projection::ReturnField` "value" fallback.** The parser now
-   standardizes on `"return"` key (Phase 5a done). However, the
-   `"value"` fallback cannot be fully removed because
-   `wrap_value_as_output` flattens Map trailing expressions into the
-   output HashMap. When a function's trailing expression is a variant
-   like `Some { value: x }`, the Map `{"_variant": "Some", "value": x}`
-   gets flattened, and the caller's `extract_projection` must
-   reconstruct it. If the variant has a single payload field `"value"`,
-   the flattened output has `{"value": x}` which needs the fallback to
-   extract correctly. Removing this requires either:
-   (a) making `wrap_value_as_output` always wrap with `"return"` (breaks
-   the v2 DSL evaluation model which expects Map flattening), or
-   (b) teaching `extract_projection` to distinguish "return-convention
-   value" from "legitimate Map field named value" (no reliable signal).
-   **Status:** accepted as structurally necessary (see S67-4).
+3. **`Projection::ReturnField` "value" fallback.** **Accepted permanent
+   (S67-4).** The parser standardizes on `"return"` key. The `"value"`
+   fallback cannot be removed because `wrap_value_as_output` flattens
+   Map trailing expressions into the output HashMap. When a function's
+   trailing expression is a variant like `Some { value: x }`, the Map
+   `{"_variant": "Some", "value": x}` gets flattened, and the caller's
+   `extract_projection` must reconstruct it. Removing this requires
+   either (a) breaking the v2 DSL evaluation model or (b) adding
+   unreliable signal detection. Neither is viable.
 
 ## Migration Path
 

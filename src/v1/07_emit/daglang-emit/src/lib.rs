@@ -574,29 +574,6 @@ fn counts_from_classified(input: &EmitInput) -> (usize, usize) {
     (callable_count, pipeline_count)
 }
 
-/// Collect transport node entries for mock test generation from pre-classified input.
-///
-/// Only Execute-phase transport nodes get mock tests. Prepare and Parse nodes
-/// are internal pipeline stages that don't perform I/O and therefore don't need
-/// mocking. This matches the documented invariant (test_gen.rs:69-71) and the
-/// old `classify_computation` behavior which only returned `Computation::Transport`
-/// for `ServiceTransportExecute` obligation.
-fn transport_mock_entries_from_classified(input: &EmitInput) -> Vec<(String, String)> {
-    let mut entries: Vec<(String, String)> = input
-        .transports
-        .iter()
-        .filter(|t| t.phase == TransportObligation::Execute)
-        .map(|t| {
-            (
-                t.node_id.clone(),
-                test_gen::typed_mock_for_response(&t.response_type).to_string(),
-            )
-        })
-        .collect();
-    entries.sort_by(|a, b| a.0.cmp(&b.0));
-    entries.dedup_by(|a, b| a.0 == b.0);
-    entries
-}
 
 // ============================================================================
 // S70: New emit functions that consume EmitInput
@@ -683,12 +660,6 @@ pub fn emit_rust_bundle_classified(input: &EmitInput) -> Result<EmissionBundle, 
         test_gen::emit_dry_run_completion_test("rust", &input.obligations)
     {
         files.push(test_file);
-    }
-    let transport_entries = transport_mock_entries_from_classified(input);
-    if let Some(mock_tests) =
-        test_gen::emit_transport_mock_tests_from_entries("rust", &transport_entries)
-    {
-        files.push(mock_tests);
     }
 
     Ok(EmissionBundle {
@@ -796,12 +767,6 @@ pub fn emit_go_bundle_classified(
     if let Some(test_file) = test_gen::emit_dry_run_completion_test("go", &input.obligations) {
         files.push(test_file);
     }
-    let transport_entries = transport_mock_entries_from_classified(input);
-    if let Some(mock_tests) =
-        test_gen::emit_transport_mock_tests_from_entries("go", &transport_entries)
-    {
-        files.push(mock_tests);
-    }
 
     Ok(EmissionBundle {
         backend: "go".to_string(),
@@ -896,12 +861,6 @@ pub fn emit_c_bundle_classified(
     if let Some(test_file) = test_gen::emit_dry_run_completion_test("c", &input.obligations) {
         files.push(test_file);
     }
-    let transport_entries = transport_mock_entries_from_classified(input);
-    if let Some(mock_tests) =
-        test_gen::emit_transport_mock_tests_from_entries("c", &transport_entries)
-    {
-        files.push(mock_tests);
-    }
 
     Ok(EmissionBundle {
         backend: "c".to_string(),
@@ -975,12 +934,6 @@ pub fn emit_mips_bundle_classified(
     }
     if let Some(test_file) = test_gen::emit_dry_run_completion_test("mips", &input.obligations) {
         files.push(test_file);
-    }
-    let transport_entries = transport_mock_entries_from_classified(input);
-    if let Some(mock_tests) =
-        test_gen::emit_transport_mock_tests_from_entries("mips", &transport_entries)
-    {
-        files.push(mock_tests);
     }
 
     Ok(EmissionBundle {
