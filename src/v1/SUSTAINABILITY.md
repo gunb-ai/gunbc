@@ -207,12 +207,14 @@ lists.~~ **DONE.** Consolidated static registry in `transport/llm/provider.rs`.
 **S9:** Opaque kernel types (Unit/Json/Any/Record) lack documented rationale.
 **S63:** `std/patterns.dag` mixes generic patterns with GCP-specific auth
 implementations. Provider-specific code belongs under `extdeps/`, not `std/`.
-**S72:** `generated_types_are_not_stale` is `#[ignore]`d because
-`daglang gen-types` still emits invalid Rust for anonymous record fold
-initializers (`{ field: val }` instead of `TypeName { field: val }`).
-Why it persists: the staleness ratchet depends on the same broken
-emitter, so un-ignoring it only converts known debt into a permanent
-red test.
+**S72:** `generated_types_are_not_stale` is `#[ignore]`d. The original
+anonymous-record naming bug is fixed — `gen-types` now emits
+`TypeName { field: val }` for fold initializers, inferring the struct
+name from known types or synthesizing one when ambiguous. The test
+remains ignored because gen-types output still has other codegen quality
+issues (type mismatches, missing methods) that prevent the on-disk
+`mod.rs` from being regenerated. Delete when: gen-types output compiles
+cleanly and the on-disk file can be regenerated.
 **S73:** `cargo check --workspace --all-targets` is not a stable hygiene
 ratchet because `gunbc-codegen` declares bins under
 `target/codegen/bin/*/main.rs`. Why it persists: those entrypoints are
@@ -317,8 +319,8 @@ self-hosting.
 **Option B: Proceed to self-hosting.** The v2 pipeline is 100% implemented
 (7 .dag files, 7,197 lines in the 2026-03-11 snapshot). The current
 checked-in `#[ignore]` is `generated_types_are_not_stale` in
-`gunbc-ir`, blocked by a `gen-types` emitter bug rather than the old
-full-pipeline stack-overflow case.
+`gunbc-ir`, blocked by remaining gen-types codegen quality issues
+(the original anonymous-record naming bug is fixed).
 Remaining work:
 Phase 1 (emit per-module Rust + driver → first native binary, 3-5 sessions),
 Phase 2 (progressive self-compilation M1-M9, 5-10 sessions),

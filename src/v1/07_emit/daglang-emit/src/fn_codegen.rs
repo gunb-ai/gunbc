@@ -15,6 +15,7 @@
 use daglang_syntax::ast;
 use gunbc_ir::code_ir;
 use std::collections::HashSet;
+use std::collections::HashMap;
 
 use crate::type_codegen::to_snake_case;
 
@@ -24,6 +25,7 @@ use crate::type_codegen::to_snake_case;
 /// identifier references can be mapped to their SCREAMING_SNAKE_CASE
 /// static names in the generated output, and struct field optionality
 /// information for automatic `Some()` wrapping.
+#[derive(Clone)]
 pub struct CompileContext {
     /// Names of `data` definitions visible in this module.
     pub data_names: HashSet<String>,
@@ -183,7 +185,33 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
             expr: Box::new(compile_expr(expr, ctx)),
         },
         ast::Expr::Record(name, fields) => {
-            let struct_name = name.clone().unwrap_or_default();
+            let struct_name = name.clone().unwrap_or_else(|| {
+                // Infer the struct type for anonymous records (e.g. fold inits)
+                // by matching field names against known struct definitions.
+                let field_names: HashSet<&str> =
+                    fields.iter().map(|(n, _)| n.as_str()).collect();
+                let candidates: Vec<(&String, usize)> = ctx
+                    .struct_field_types
+                    .iter()
+                    .filter(|(_, ft)| field_names.iter().all(|f| ft.contains_key(*f)))
+                    .map(|(sn, ft)| (sn, ft.len()))
+                    .collect();
+                if candidates.len() == 1 {
+                    candidates[0].0.clone()
+                } else if candidates.len() > 1 {
+                    // Prefer exact field-count match (synthesized structs), then
+                    // smallest superset.
+                    let n = field_names.len();
+                    let mut sorted = candidates;
+                    sorted.sort_by_key(|(_, count)| {
+                        let diff = (*count as isize - n as isize).unsigned_abs();
+                        (if *count == n { 0usize } else { 1 }, diff)
+                    });
+                    sorted[0].0.clone()
+                } else {
+                    String::new()
+                }
+            });
             let opt_set = ctx.optional_fields.get(&struct_name);
             let field_types = ctx.struct_field_types.get(&struct_name);
             let ir_fields: Vec<(String, code_ir::Expr)> = fields
@@ -1057,6 +1085,277 @@ fn compile_string_concat(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Exp
         }
     }
     code_ir::Expr::FormatStr { template, args }
+}
+
+// ---------------------------------------------------------------------------
+// Anonymous record synthesis
+// ---------------------------------------------------------------------------
+
+/// Collect field-name sets from anonymous records in a function body.
+/// Returns deduplicated sets of field names (sorted for determinism).
+fn collect_anonymous_record_shapes(body: &ast::FnBody) -> Vec<Vec<String>> {
+    let mut shapes: Vec<Vec<String>> = Vec::new();
+    for stmt in &body.stmts {
+        collect_shapes_in_stmt(stmt, &mut shapes);
+    }
+    shapes.sort();
+    shapes.dedup();
+    shapes
+}
+
+fn collect_shapes_in_stmt(stmt: &ast::Stmt, out: &mut Vec<Vec<String>>) {
+    match stmt {
+        ast::Stmt::Let(_, value) => collect_shapes_in_expr(value, out),
+        ast::Stmt::Assign(_, value) => collect_shapes_in_expr(value, out),
+        ast::Stmt::Expr(e) => collect_shapes_in_expr(e, out),
+        ast::Stmt::Return(fields) => {
+            for (_, e) in fields {
+                collect_shapes_in_expr(e, out);
+            }
+        }
+        ast::Stmt::Node(_) => {}
+    }
+}
+
+fn collect_shapes_in_expr(expr: &ast::Expr, out: &mut Vec<Vec<String>>) {
+    match expr {
+        ast::Expr::Record(None, fields) => {
+            let mut names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
+            names.sort();
+            out.push(names);
+            for (_, v) in fields {
+                collect_shapes_in_expr(v, out);
+            }
+        }
+        ast::Expr::Record(Some(_), fields) | ast::Expr::Return(fields) => {
+            for (_, v) in fields {
+                collect_shapes_in_expr(v, out);
+            }
+        }
+        ast::Expr::Call(_, args) | ast::Expr::ServiceCall(_, args) => {
+            for (_, e) in args {
+                collect_shapes_in_expr(e, out);
+            }
+        }
+        ast::Expr::Lambda(_, body) => collect_shapes_in_expr(body, out),
+        ast::Expr::If(cond, then_e, else_e) => {
+            collect_shapes_in_expr(cond, out);
+            collect_shapes_in_expr(then_e, out);
+            if let Some(e) = else_e {
+                collect_shapes_in_expr(e, out);
+            }
+        }
+        ast::Expr::BinOp(l, _, r) => {
+            collect_shapes_in_expr(l, out);
+            collect_shapes_in_expr(r, out);
+        }
+        ast::Expr::UnaryOp(_, e) | ast::Expr::FieldAccess(e, _) => {
+            collect_shapes_in_expr(e, out);
+        }
+        ast::Expr::Match(scrutinee, arms) => {
+            collect_shapes_in_expr(scrutinee, out);
+            for arm in arms {
+                collect_shapes_in_expr(&arm.body, out);
+            }
+        }
+        ast::Expr::List(elems) => {
+            for e in elems {
+                collect_shapes_in_expr(e, out);
+            }
+        }
+        ast::Expr::Block(stmts) => {
+            for s in stmts {
+                collect_shapes_in_stmt(s, out);
+            }
+        }
+        ast::Expr::For(_, iter_expr, _, for_body) => {
+            collect_shapes_in_expr(iter_expr, out);
+            match for_body {
+                ast::ForBody::Expr(e) => collect_shapes_in_expr(e, out),
+                ast::ForBody::Block(stmts) => {
+                    for s in stmts {
+                        collect_shapes_in_stmt(s, out);
+                    }
+                }
+            }
+        }
+        ast::Expr::Map(pairs) => {
+            for (k, v) in pairs {
+                collect_shapes_in_expr(k, out);
+                collect_shapes_in_expr(v, out);
+            }
+        }
+        ast::Expr::Guarded(e, cond) => {
+            collect_shapes_in_expr(e, out);
+            collect_shapes_in_expr(cond, out);
+        }
+        ast::Expr::After(e, _) => {
+            collect_shapes_in_expr(e, out);
+        }
+        _ => {}
+    }
+}
+
+/// Infer a Rust type string from a literal expression used as a field default.
+fn infer_field_type_from_expr(expr: &ast::Expr) -> &'static str {
+    match expr {
+        ast::Expr::Literal(ast::Literal::String(_)) => "String",
+        ast::Expr::Literal(ast::Literal::Int(_)) => "i64",
+        ast::Expr::Literal(ast::Literal::Float(_)) => "f64",
+        ast::Expr::Literal(ast::Literal::Bool(_)) => "bool",
+        ast::Expr::List(_) => "Vec<String>", // best-effort default
+        _ => "String", // fallback
+    }
+}
+
+/// Synthesize struct names and definitions for anonymous record shapes that
+/// don't match any known struct type.
+///
+/// Returns: (struct items to emit, mapping from sorted-field-key → struct name,
+///           entries to add to struct_field_types)
+pub fn synthesize_anonymous_structs(
+    fn_name: &str,
+    body: &ast::FnBody,
+    known_structs: &HashMap<String, HashMap<String, String>>,
+) -> (Vec<code_ir::Item>, HashMap<Vec<String>, String>, HashMap<String, HashMap<String, String>>) {
+    let shapes = collect_anonymous_record_shapes(body);
+    let mut items = Vec::new();
+    let mut name_map: HashMap<Vec<String>, String> = HashMap::new();
+    let mut new_field_types: HashMap<String, HashMap<String, String>> = HashMap::new();
+
+    for (idx, shape) in shapes.iter().enumerate() {
+        // Check if exactly one known struct contains all these fields
+        // (unambiguous match). If ambiguous or none, we synthesize.
+        let matching: Vec<&String> = known_structs
+            .iter()
+            .filter(|(_, ft)| shape.iter().all(|f| ft.contains_key(f)))
+            .map(|(sn, _)| sn)
+            .collect();
+        if matching.len() == 1 {
+            continue;
+        }
+
+        // Synthesize a struct name from the function name.
+        let pascal_fn = capitalize_first_char(&fn_name.replace('_', " "))
+            .replace(' ', "");
+        let struct_name = if idx == 0 {
+            format!("__{pascal_fn}State")
+        } else {
+            format!("__{pascal_fn}State{idx}")
+        };
+
+        // Find the anonymous record to infer field types from init values.
+        let field_exprs = find_record_fields_for_shape(body, shape);
+        let fields: Vec<(String, String, bool)> = shape
+            .iter()
+            .map(|f| {
+                let ty = field_exprs
+                    .get(f.as_str())
+                    .map(|e| infer_field_type_from_expr(e))
+                    .unwrap_or("String");
+                (f.clone(), ty.to_string(), true)
+            })
+            .collect();
+
+        let mut ft_map = HashMap::new();
+        for (name, ty, _) in &fields {
+            ft_map.insert(name.clone(), ty.clone());
+        }
+        new_field_types.insert(struct_name.clone(), ft_map);
+
+        items.push(code_ir::Item::Struct(code_ir::StructDef {
+            name: struct_name.clone(),
+            is_pub: false,
+            derives: vec![
+                "Debug".to_string(),
+                "Clone".to_string(),
+                "PartialEq".to_string(),
+            ],
+            fields,
+            doc: vec![format!("Synthesized fold accumulator for `{fn_name}`.")],
+        }));
+        name_map.insert(shape.clone(), struct_name);
+    }
+    (items, name_map, new_field_types)
+}
+
+fn capitalize_first_char(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+    }
+}
+
+/// Find the first anonymous record in the AST matching a given field shape,
+/// and return a map of field name → init expression for type inference.
+fn find_record_fields_for_shape<'a>(
+    body: &'a ast::FnBody,
+    shape: &[String],
+) -> HashMap<&'a str, &'a ast::Expr> {
+    let mut result = HashMap::new();
+    find_record_in_stmts(&body.stmts, shape, &mut result);
+    result
+}
+
+fn find_record_in_stmts<'a>(
+    stmts: &'a [ast::Stmt],
+    shape: &[String],
+    out: &mut HashMap<&'a str, &'a ast::Expr>,
+) {
+    for stmt in stmts {
+        match stmt {
+            ast::Stmt::Let(_, value) | ast::Stmt::Assign(_, value) => {
+                find_record_in_expr(value, shape, out);
+            }
+            ast::Stmt::Expr(e) => find_record_in_expr(e, shape, out),
+            _ => {}
+        }
+        if !out.is_empty() {
+            return;
+        }
+    }
+}
+
+fn find_record_in_expr<'a>(
+    expr: &'a ast::Expr,
+    shape: &[String],
+    out: &mut HashMap<&'a str, &'a ast::Expr>,
+) {
+    if !out.is_empty() {
+        return;
+    }
+    if let ast::Expr::Record(None, fields) = expr {
+        let mut names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
+        names.sort();
+        if names == shape {
+            for (n, v) in fields {
+                out.insert(n.as_str(), v);
+            }
+            return;
+        }
+    }
+    // Recurse into sub-expressions.
+    match expr {
+        ast::Expr::Call(_, args) => {
+            for (_, e) in args {
+                find_record_in_expr(e, shape, out);
+            }
+        }
+        ast::Expr::Lambda(_, body) => find_record_in_expr(body, shape, out),
+        ast::Expr::If(c, t, e) => {
+            find_record_in_expr(c, shape, out);
+            find_record_in_expr(t, shape, out);
+            if let Some(e) = e {
+                find_record_in_expr(e, shape, out);
+            }
+        }
+        ast::Expr::BinOp(l, _, r) => {
+            find_record_in_expr(l, shape, out);
+            find_record_in_expr(r, shape, out);
+        }
+        _ => {}
+    }
 }
 
 #[cfg(test)]
