@@ -1,0 +1,69 @@
+1773359382.800678 client started (2740): version 3.4, socket /tmp/tmux-1000/default, protocol 8
+1773359382.800709 on Linux 6.6.87.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun  5 18:30:46 UTC 2025
+1773359382.800712 using libevent 2.1.12-stable poll
+1773359382.800714 using ncurses 6.4 20240113
+1773359382.800725 flags are 0x18010000
+1773359382.800738 socket is /tmp/tmux-1000/default
+1773359382.800748 trying connect
+1773359382.800761 connect failed: Connection refused
+1773359382.800773 lock file is /tmp/tmux-1000/default.lock
+1773359382.800853 flock succeeded
+1773359382.800857 got lock (6)
+1773359382.800864 trying connect
+1773359382.800872 connect failed: Connection refused
+1773359382.801303 add peer 0x61636318c200: 7 ((nil))
+1773359382.801427 sending message 100 to peer 0x61636318c200 (4 bytes)
+1773359382.801433 sending message 111 to peer 0x61636318c200 (8 bytes)
+1773359382.801435 sending message 101 to peer 0x61636318c200 (15 bytes)
+1773359382.801438 sending message 109 to peer 0x61636318c200 (4 bytes)
+1773359382.801440 sending message 102 to peer 0x61636318c200 (1 bytes)
+1773359382.801442 sending message 108 to peer 0x61636318c200 (22 bytes)
+1773359382.801445 sending message 104 to peer 0x61636318c200 (0 bytes)
+1773359382.801448 sending message 110 to peer 0x61636318c200 (0 bytes)
+1773359382.801451 sending message 107 to peer 0x61636318c200 (4 bytes)
+1773359382.801453 sending message 105 to peer 0x61636318c200 (16 bytes)
+1773359382.801455 sending message 105 to peer 0x61636318c200 (27 bytes)
+1773359382.801458 sending message 105 to peer 0x61636318c200 (24 bytes)
+1773359382.801460 sending message 105 to peer 0x61636318c200 (29 bytes)
+1773359382.801462 sending message 105 to peer 0x61636318c200 (48 bytes)
+1773359382.801464 sending message 105 to peer 0x61636318c200 (11 bytes)
+1773359382.801466 sending message 105 to peer 0x61636318c200 (26 bytes)
+1773359382.801469 sending message 105 to peer 0x61636318c200 (18 bytes)
+1773359382.801471 sending message 105 to peer 0x61636318c200 (37 bytes)
+1773359382.801473 sending message 105 to peer 0x61636318c200 (13 bytes)
+1773359382.801475 sending message 105 to peer 0x61636318c200 (21 bytes)
+1773359382.801477 sending message 105 to peer 0x61636318c200 (13 bytes)
+1773359382.801479 sending message 105 to peer 0x61636318c200 (33 bytes)
+1773359382.801482 sending message 105 to peer 0x61636318c200 (54 bytes)
+1773359382.801484 sending message 105 to peer 0x61636318c200 (1817 bytes)
+1773359382.801493 sending message 105 to peer 0x61636318c200 (26 bytes)
+1773359382.801496 sending message 105 to peer 0x61636318c200 (34 bytes)
+1773359382.801498 sending message 105 to peer 0x61636318c200 (20 bytes)
+1773359382.801500 sending message 105 to peer 0x61636318c200 (32 bytes)
+1773359382.801502 sending message 105 to peer 0x61636318c200 (15 bytes)
+1773359382.801505 sending message 105 to peer 0x61636318c200 (11 bytes)
+1773359382.801507 sending message 105 to peer 0x61636318c200 (8 bytes)
+1773359382.801509 sending message 105 to peer 0x61636318c200 (16 bytes)
+1773359382.801511 sending message 105 to peer 0x61636318c200 (56 bytes)
+1773359382.801514 sending message 105 to peer 0x61636318c200 (32 bytes)
+1773359382.801516 sending message 105 to peer 0x61636318c200 (27 bytes)
+1773359382.801518 sending message 105 to peer 0x61636318c200 (33 bytes)
+1773359382.801520 sending message 105 to peer 0x61636318c200 (65 bytes)
+1773359382.801523 sending message 105 to peer 0x61636318c200 (25 bytes)
+1773359382.801525 sending message 105 to peer 0x61636318c200 (1587 bytes)
+1773359382.801528 sending message 105 to peer 0x61636318c200 (54 bytes)
+1773359382.801530 sending message 105 to peer 0x61636318c200 (16 bytes)
+1773359382.801532 sending message 105 to peer 0x61636318c200 (40 bytes)
+1773359382.801534 sending message 105 to peer 0x61636318c200 (53 bytes)
+1773359382.801536 sending message 105 to peer 0x61636318c200 (23 bytes)
+1773359382.801539 sending message 105 to peer 0x61636318c200 (16 bytes)
+1773359382.801541 sending message 106 to peer 0x61636318c200 (0 bytes)
+1773359382.801570 cmd_pack_argv: argv[0]=new-session
+1773359382.801590 cmd_pack_argv: argv[1]=-d
+1773359382.801591 cmd_pack_argv: argv[2]=-s
+1773359382.801593 cmd_pack_argv: argv[3]=test
+1773359382.801595 sending message 200 to peer 0x61636318c200 (27 bytes)
+1773359382.801597 client loop enter
+1773359382.801681 client_signal: Child exited
+1773359382.849585 peer 0x61636318c200 message 203
+1773359382.849598 client loop exit
