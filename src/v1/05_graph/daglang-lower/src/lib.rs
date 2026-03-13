@@ -58,7 +58,6 @@ use serde::{Deserialize, Serialize};
 pub mod anf;
 pub mod eval;
 pub mod expr;
-#[allow(dead_code)]
 pub(crate) mod scope;
 pub mod spec;
 pub(crate) mod transport;
@@ -755,12 +754,12 @@ pub fn classify_service_transport(op: &LoweredOp) -> Option<ServiceTransportClas
 /// stable semantic classes without depending on fragile node-id prefixes.
 pub fn topology_with_obligation_kinds(dag: &Dag<LoweredOp>) -> DagTopology {
     dag.topology_with_kind(|node| match &node.body {
-        gunbc_ir::node::NodeBody::Opaque(
-            LoweredOp::Callable { obligation, .. }
-        ) => canonical_kind_for_obligation(ObligationCategory::from(*obligation)).map(str::to_string),
-        gunbc_ir::node::NodeBody::Opaque(
-            LoweredOp::Transport { obligation, .. }
-        ) => canonical_kind_for_obligation(ObligationCategory::from(*obligation)).map(str::to_string),
+        gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { obligation, .. }) => {
+            canonical_kind_for_obligation(ObligationCategory::from(*obligation)).map(str::to_string)
+        }
+        gunbc_ir::node::NodeBody::Opaque(LoweredOp::Transport { obligation, .. }) => {
+            canonical_kind_for_obligation(ObligationCategory::from(*obligation)).map(str::to_string)
+        }
         gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive { kind, .. }) => {
             canonical_kind_for_obligation(kind.obligation_category()).map(str::to_string)
         }
@@ -1469,10 +1468,7 @@ fn derive_interface_stub_transport_triplets(
                         fields: typed_outputs,
                     },
                     origin: Some(origin.clone()),
-                    operation_key: Some(OperationKey::new(
-                        &interface.name,
-                        &capability.name,
-                    )),
+                    operation_key: Some(OperationKey::new(&interface.name, &capability.name)),
                 };
                 transport::emit_triplet_to_manifest(
                     &mut manifest,
@@ -2509,9 +2505,9 @@ fn lower_typed_project_impl(
                             )
                         })
                         .collect();
-                    body.return_type = Some(
-                        daglang_syntax::ast_utils::type_expr_to_string(&def.return_type),
-                    );
+                    body.return_type = Some(daglang_syntax::ast_utils::type_expr_to_string(
+                        &def.return_type,
+                    ));
                     Some((def.name.as_str(), body))
                 }
                 _ => None,
@@ -3078,24 +3074,24 @@ mod parity {
             gunbc_ir::node::NodeBody::Opaque(LoweredOp::Collection { kind, .. }) => {
                 kind.node_label().to_string()
             }
-            gunbc_ir::node::NodeBody::Opaque(
-                LoweredOp::Callable { obligation, .. }
-            ) => canonical_kind_from_shape(
-                &node.id.0,
-                &node.inputs,
-                &node.outputs,
-                false,
-                Some(ObligationCategory::from(*obligation)),
-            ),
-            gunbc_ir::node::NodeBody::Opaque(
-                LoweredOp::Transport { obligation, .. }
-            ) => canonical_kind_from_shape(
-                &node.id.0,
-                &node.inputs,
-                &node.outputs,
-                false,
-                Some(ObligationCategory::from(*obligation)),
-            ),
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { obligation, .. }) => {
+                canonical_kind_from_shape(
+                    &node.id.0,
+                    &node.inputs,
+                    &node.outputs,
+                    false,
+                    Some(ObligationCategory::from(*obligation)),
+                )
+            }
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Transport { obligation, .. }) => {
+                canonical_kind_from_shape(
+                    &node.id.0,
+                    &node.inputs,
+                    &node.outputs,
+                    false,
+                    Some(ObligationCategory::from(*obligation)),
+                )
+            }
             gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive { kind, .. }) => {
                 canonical_kind_from_shape(
                     &node.id.0,
@@ -3838,10 +3834,6 @@ struct IfBranchSite {
 #[derive(Debug)]
 struct MatchBranchSite {
     arm_count: usize,
-    /// Service call paths per arm: `per_arm_service_call_paths[arm_idx]` is
-    /// the list of service call paths for that arm.
-    #[allow(dead_code)]
-    per_arm_service_call_paths: Vec<Vec<Vec<String>>>,
     /// Flattened union of all per-arm paths (for top-level dedup in add_service_call_edges).
     all_service_call_paths: Vec<Vec<String>>,
 }
@@ -3868,7 +3860,7 @@ fn collect_for_loop_sites_from_scoped(body: &scope::ScopedBody, out: &mut Vec<Fo
                     scope::ExprRef::FieldAccess { base, field } => {
                         Some(IterableRef::FieldAccess(base.clone(), field.clone()))
                     }
-                    scope::ExprRef::Literal(_) | scope::ExprRef::Opaque => None,
+                    scope::ExprRef::Opaque => None,
                 };
                 out.push(ForLoopSite {
                     element_var: element_var.clone(),
@@ -3894,9 +3886,8 @@ fn collect_for_loop_sites_from_scoped(body: &scope::ScopedBody, out: &mut Vec<Fo
                 }
             }
             scope::ScopedItem::ServiceCall(_)
-            | scope::ScopedItem::FnCall { .. }
-            | scope::ScopedItem::Binding { .. }
-            | scope::ScopedItem::Other => {}
+            | scope::ScopedItem::FnCall
+            | scope::ScopedItem::Binding => {}
         }
     }
 }
@@ -3930,9 +3921,8 @@ fn collect_if_sites_from_scoped(body: &scope::ScopedBody, out: &mut Vec<IfBranch
                 }
             }
             scope::ScopedItem::ServiceCall(_)
-            | scope::ScopedItem::FnCall { .. }
-            | scope::ScopedItem::Binding { .. }
-            | scope::ScopedItem::Other => {}
+            | scope::ScopedItem::FnCall
+            | scope::ScopedItem::Binding => {}
         }
     }
 }
@@ -3942,15 +3932,12 @@ fn collect_match_sites_from_scoped(body: &scope::ScopedBody, out: &mut Vec<Match
         match item {
             scope::ScopedItem::MatchBranch { arms } => {
                 let mut all_paths = Vec::new();
-                let mut per_arm = Vec::new();
                 for arm in arms {
                     let arm_paths = collect_service_paths_from_scoped_body(&arm.body);
                     all_paths.extend(arm_paths.clone());
-                    per_arm.push(arm_paths);
                 }
                 out.push(MatchBranchSite {
                     arm_count: arms.len(),
-                    per_arm_service_call_paths: per_arm,
                     all_service_call_paths: all_paths,
                 });
                 for arm in arms {
@@ -3970,9 +3957,8 @@ fn collect_match_sites_from_scoped(body: &scope::ScopedBody, out: &mut Vec<Match
                 collect_match_sites_from_scoped(body, out);
             }
             scope::ScopedItem::ServiceCall(_)
-            | scope::ScopedItem::FnCall { .. }
-            | scope::ScopedItem::Binding { .. }
-            | scope::ScopedItem::Other => {}
+            | scope::ScopedItem::FnCall
+            | scope::ScopedItem::Binding => {}
         }
     }
 }
@@ -4401,12 +4387,12 @@ fn make_loop_body_dag(
                 obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
-                fn_body: Some(Box::new(expr::LoweredFnBody::from_stmts(
-                    vec![expr::LoweredStmt::Return(vec![(
+                fn_body: Some(Box::new(expr::LoweredFnBody::from_stmts(vec![
+                    expr::LoweredStmt::Return(vec![(
                         "result".to_string(),
                         expr::LoweredExpr::Ident(element_var.to_string()),
-                    )])],
-                ))),
+                    )]),
+                ]))),
             },
         ));
     } else {
@@ -4433,12 +4419,12 @@ fn make_loop_body_dag(
                 obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
-                fn_body: Some(Box::new(expr::LoweredFnBody::from_stmts(
-                    vec![expr::LoweredStmt::Return(vec![(
+                fn_body: Some(Box::new(expr::LoweredFnBody::from_stmts(vec![
+                    expr::LoweredStmt::Return(vec![(
                         "result".to_string(),
                         expr::LoweredExpr::Ident(last_parse_output.clone()),
-                    )])],
-                ))),
+                    )]),
+                ]))),
             },
         ));
         for (ti, transport) in body_transports.iter().enumerate() {
@@ -4511,12 +4497,12 @@ fn make_branch_body_dag(
                 obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
-                fn_body: Some(Box::new(expr::LoweredFnBody::from_stmts(
-                    vec![expr::LoweredStmt::Return(vec![(
+                fn_body: Some(Box::new(expr::LoweredFnBody::from_stmts(vec![
+                    expr::LoweredStmt::Return(vec![(
                         "result".to_string(),
                         expr::LoweredExpr::Ident("input".to_string()),
-                    )])],
-                ))),
+                    )]),
+                ]))),
             },
         ));
     } else {
@@ -4547,12 +4533,12 @@ fn make_branch_body_dag(
                 obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
-                fn_body: Some(Box::new(expr::LoweredFnBody::from_stmts(
-                    vec![expr::LoweredStmt::Return(vec![(
+                fn_body: Some(Box::new(expr::LoweredFnBody::from_stmts(vec![
+                    expr::LoweredStmt::Return(vec![(
                         "result".to_string(),
                         expr::LoweredExpr::Ident(last_parse_output.clone()),
-                    )])],
-                ))),
+                    )]),
+                ]))),
             },
         ));
         for (ti, transport) in body_transports.iter().enumerate() {
@@ -4752,8 +4738,7 @@ fn add_control_flow_pattern_nodes(builder: &mut DagBuilder, ctx: &ControlFlowPat
         // NOTE: Currently all arms' transports go into both branches because
         // the match condition isn't wired to the BranchBuilder's condition port.
         // Both branches execute and the fn_body evaluation picks the correct arm.
-        // Per-arm transport isolation requires proper match condition routing
-        // (per_arm_service_call_paths is tracked for future use).
+        // Per-arm transport isolation still requires proper match condition routing.
         let mut match_transports = Vec::new();
         for call_path in &site.all_service_call_paths {
             if let Some(transport) = resolve_loop_body_service_call(
@@ -5261,14 +5246,10 @@ fn expansion_suffix(item_name: &str, expansion_count: usize) -> String {
 
 /// Collected info about a pattern definition that can be expanded.
 struct ExpandablePattern<'a> {
-    #[allow(dead_code)]
-    name: &'a str,
     params: &'a [daglang_syntax::ast::Param],
     type_params: &'a [String],
     body_stmts: &'a [Stmt],
     uses: &'a [daglang_syntax::ast::UsesClause],
-    #[allow(dead_code)]
-    outputs: &'a [daglang_syntax::ast::Field],
 }
 
 /// Collect ALL pattern definitions from the project (generic and non-generic).
@@ -5282,12 +5263,10 @@ fn collect_expandable_pattern_defs<'a>(
                 patterns.insert(
                     def.name.clone(),
                     ExpandablePattern {
-                        name: &def.name,
                         params: &def.params,
                         type_params: &def.type_params,
                         body_stmts: &def.body.stmts,
                         uses: &def.uses,
-                        outputs: &def.outputs,
                     },
                 );
             }
@@ -7510,10 +7489,7 @@ fn derive_service_transport_triplets(
                     parse_outputs,
                     execute_parse_wiring: transport::ExecuteParseWiring::Response,
                     origin: Some(origin),
-                    operation_key: Some(OperationKey::new(
-                        &service.name,
-                        &operation.name,
-                    )),
+                    operation_key: Some(OperationKey::new(&service.name, &operation.name)),
                 };
                 transport::emit_triplet_to_manifest(
                     &mut manifest,
@@ -7776,18 +7752,14 @@ fn add_service_call_edges(
             let mut fn_name_overrides: HashMap<String, LoweredEndpoint> = HashMap::new();
             for stmt in stmts {
                 let (binding, fn_name) = match stmt {
-                    Stmt::Let(b, expr) | Stmt::Assign(b, expr) => {
-                        match unwrap_guarded_expr(expr) {
-                            Expr::Call(name, _) => (b.as_str(), name.as_str()),
-                            _ => continue,
-                        }
-                    }
-                    Stmt::Node(node_stmt) => {
-                        match unwrap_guarded_expr(&node_stmt.expr) {
-                            Expr::Call(name, _) => (node_stmt.name.as_str(), name.as_str()),
-                            _ => continue,
-                        }
-                    }
+                    Stmt::Let(b, expr) | Stmt::Assign(b, expr) => match unwrap_guarded_expr(expr) {
+                        Expr::Call(name, _) => (b.as_str(), name.as_str()),
+                        _ => continue,
+                    },
+                    Stmt::Node(node_stmt) => match unwrap_guarded_expr(&node_stmt.expr) {
+                        Expr::Call(name, _) => (node_stmt.name.as_str(), name.as_str()),
+                        _ => continue,
+                    },
                     _ => continue,
                 };
                 let Some(endpoint) = bound_callable_sources.get(binding) else {
@@ -9951,7 +9923,10 @@ pub fn extract_data_values_from_dag(dag: &Dag<LoweredOp>) -> HashMap<String, gun
     for node in &dag.nodes {
         if let Some(name) = node.id.0.strip_prefix(DATA_DECL_NODE_PREFIX) {
             if let gunbc_ir::NodeBody::Opaque(LoweredOp::Primitive {
-                kind: PrimitiveOpKind::CallLiteralSource { literal: PrimitiveLiteral::Json(json) },
+                kind:
+                    PrimitiveOpKind::CallLiteralSource {
+                        literal: PrimitiveLiteral::Json(json),
+                    },
                 ..
             }) = &node.body
             {
@@ -9983,8 +9958,10 @@ fn json_to_value(json: &serde_json::Value) -> gunbc_ir::Value {
             gunbc_ir::Value::List(arr.iter().map(json_to_value).collect())
         }
         serde_json::Value::Object(map) => {
-            let btree: std::collections::BTreeMap<String, gunbc_ir::Value> =
-                map.iter().map(|(k, v)| (k.clone(), json_to_value(v))).collect();
+            let btree: std::collections::BTreeMap<String, gunbc_ir::Value> = map
+                .iter()
+                .map(|(k, v)| (k.clone(), json_to_value(v)))
+                .collect();
             gunbc_ir::Value::Map(btree)
         }
     }
@@ -11435,14 +11412,8 @@ fn synthesize_match_dispatch(
     let mut hoisted_arm_sources = Vec::new();
     let mut lowered_arms: Vec<expr::LoweredMatchArm> = Vec::with_capacity(arms.len());
     for (arm_index, arm) in arms.iter().enumerate() {
-        let (lowered, source) = lower_match_arm_for_dispatch(
-            builder,
-            ctx,
-            arm,
-            output_name,
-            disambiguator,
-            arm_index,
-        )?;
+        let (lowered, source) =
+            lower_match_arm_for_dispatch(builder, ctx, arm, output_name, disambiguator, arm_index)?;
         if let Some(source) = source {
             hoisted_arm_sources.push(source);
         }

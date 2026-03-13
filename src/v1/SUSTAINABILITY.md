@@ -207,6 +207,22 @@ lists.~~ **DONE.** Consolidated static registry in `transport/llm/provider.rs`.
 **S9:** Opaque kernel types (Unit/Json/Any/Record) lack documented rationale.
 **S63:** `std/patterns.dag` mixes generic patterns with GCP-specific auth
 implementations. Provider-specific code belongs under `extdeps/`, not `std/`.
+**S72:** `generated_types_are_not_stale` is `#[ignore]`d because
+`daglang gen-types` still emits invalid Rust for anonymous record fold
+initializers (`{ field: val }` instead of `TypeName { field: val }`).
+Why it persists: the staleness ratchet depends on the same broken
+emitter, so un-ignoring it only converts known debt into a permanent
+red test.
+**S73:** `cargo check --workspace --all-targets` is not a stable hygiene
+ratchet because `gunbc-codegen` declares bins under
+`target/codegen/bin/*/main.rs`. Why it persists: those entrypoints are
+generated out-of-band, so a fresh checkout cannot lint all targets
+until codegen has already run.
+~~**S74:** Blanket `#[allow(dead_code)]` suppressions in lowering/emit
+hid unused scope-analysis state and MIPS config plumbing.~~ **DONE.**
+Removed the repo-local `dead_code` allows; test-only scope helpers now
+compile only under `#[cfg(test)]`, and unused carried state was deleted
+instead of suppressed.
 
 ---
 
@@ -299,8 +315,10 @@ medium-large refactor of eval.rs (2-3 sessions). Becomes dead code after
 self-hosting.
 
 **Option B: Proceed to self-hosting.** The v2 pipeline is 100% implemented
-(7 .dag files, 7,197 lines, 55/56 tests passing; 1 `#[ignore]` on
-full pipeline stack overflow at scale — eliminated by self-hosting).
+(7 .dag files, 7,197 lines in the 2026-03-11 snapshot). The current
+checked-in `#[ignore]` is `generated_types_are_not_stale` in
+`gunbc-ir`, blocked by a `gen-types` emitter bug rather than the old
+full-pipeline stack-overflow case.
 Remaining work:
 Phase 1 (emit per-module Rust + driver → first native binary, 3-5 sessions),
 Phase 2 (progressive self-compilation M1-M9, 5-10 sessions),
@@ -395,7 +413,7 @@ inner continuations pushed by `eval_expr_s`, so `pop_stack` processes
 inner (block) continuations first. Applied at 4 bubble-up sites:
 `eval_stmts` (3 Suspend handlers) and `eval_block_s` (1 Suspend handler).
 
-**Result:** 54/58 v2 tests pass (up from 41). Remaining 3 are Phase 5
+**Result (2026-03-11):** 54/58 v2 tests pass (up from 41). Remaining 3 are Phase 5
 tests that OOM on large source files (memory scaling, not correctness).
 1 test intentionally ignored (needs self-hosting).
 

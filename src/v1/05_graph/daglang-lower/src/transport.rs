@@ -9,9 +9,7 @@
 //! eliminating the 4-way duplication across service, interface stub, loop body,
 //! and branch body transport creation sites.
 
-use gunbc_ir::{
-    Dag, Edge, Node, NodeOrigin, OperationKey, Port, Predicate, PredicateValue,
-};
+use gunbc_ir::{Dag, Edge, Node, NodeOrigin, OperationKey, Port, Predicate, PredicateValue};
 
 use crate::{
     CallableKind, LoweredOp, ServiceCallMetadata, ServiceEndpointRegistry, TransportObligation,
@@ -279,12 +277,20 @@ pub(crate) fn build_transport_triplet(spec: TransportTripletSpec) -> TransportTr
 }
 
 /// Emit a transport triplet into a `TransportManifest`.
-pub(crate) fn emit_triplet_to_manifest(manifest: &mut TransportManifest, triplet: TransportTripletNodes) {
+pub(crate) fn emit_triplet_to_manifest(
+    manifest: &mut TransportManifest,
+    triplet: TransportTripletNodes,
+) {
     manifest.add_node(triplet.prepare);
     manifest.add_node(triplet.execute);
     manifest.add_node(triplet.parse);
     for edge in triplet.edges {
-        manifest.add_edge(&edge.from_node, &edge.from_port, &edge.to_node, &edge.to_port);
+        manifest.add_edge(
+            &edge.from_node,
+            &edge.from_port,
+            &edge.to_node,
+            &edge.to_port,
+        );
     }
 }
 

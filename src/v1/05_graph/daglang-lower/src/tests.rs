@@ -3708,15 +3708,16 @@ func run(extra: String) -> { out: String } {
 
     // Verify lowering succeeded and render_file node exists.
     assert!(
-        dag.nodes.iter().any(|node| node.id.0.contains("render_file")),
+        dag.nodes
+            .iter()
+            .any(|node| node.id.0.contains("render_file")),
         "render_file callable should appear in lowered DAG; nodes: {:?}",
         dag.nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
     );
     // Verify the file arg is wired to render_file.
     assert!(
         dag.edges.iter().any(|edge| {
-            edge.to_node.0 == "sample.fn_args::render_file"
-                && edge.to_port.0 == "file"
+            edge.to_node.0 == "sample.fn_args::render_file" && edge.to_port.0 == "file"
         }),
         "file argument should be wired to render_file; edges: {:?}",
         dag.edges
@@ -3763,15 +3764,16 @@ func run(extra: String) -> { out: String } {
 
     // Verify lowering succeeded and render_file node exists.
     assert!(
-        dag.nodes.iter().any(|node| node.id.0.contains("render_file")),
+        dag.nodes
+            .iter()
+            .any(|node| node.id.0.contains("render_file")),
         "imported render_file callable should appear in lowered DAG; nodes: {:?}",
         dag.nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
     );
     // Verify the file arg is wired to render_file.
     assert!(
         dag.edges.iter().any(|edge| {
-            edge.to_node.0 == "sample.render::render_file"
-                && edge.to_port.0 == "file"
+            edge.to_node.0 == "sample.render::render_file" && edge.to_port.0 == "file"
         }),
         "file argument should be wired to imported render_file; edges: {:?}",
         dag.edges
@@ -4018,14 +4020,8 @@ fn parse_response_provider_recognizes_all_variants() {
         parse_response_provider("github"),
         Some(ResponseProvider::GitHub)
     );
-    assert_eq!(
-        parse_response_provider("Gcp"),
-        Some(ResponseProvider::Gcp)
-    );
-    assert_eq!(
-        parse_response_provider("GCP"),
-        Some(ResponseProvider::Gcp)
-    );
+    assert_eq!(parse_response_provider("Gcp"), Some(ResponseProvider::Gcp));
+    assert_eq!(parse_response_provider("GCP"), Some(ResponseProvider::Gcp));
     assert_eq!(
         parse_response_provider("Anthropic"),
         Some(ResponseProvider::Anthropic)

@@ -100,10 +100,7 @@ fn anf_stmt(stmt: LoweredStmt, state: &mut AnfState) -> Vec<LoweredStmt> {
 
 /// Process an expression at the top of a statement (Let/Expr).
 /// A Call at this level stays in place; nested calls within are hoisted.
-fn anf_expr_in_stmt(
-    expr: LoweredExpr,
-    state: &mut AnfState,
-) -> (Vec<LoweredStmt>, LoweredExpr) {
+fn anf_expr_in_stmt(expr: LoweredExpr, state: &mut AnfState) -> (Vec<LoweredStmt>, LoweredExpr) {
     match expr {
         LoweredExpr::Call { name, args } => {
             // Call at statement level is fine — just hoist its args.
@@ -114,17 +111,20 @@ fn anf_expr_in_stmt(
                 prefix.extend(p);
                 clean_args.push((label, a));
             }
-            (prefix, LoweredExpr::Call { name, args: clean_args })
+            (
+                prefix,
+                LoweredExpr::Call {
+                    name,
+                    args: clean_args,
+                },
+            )
         }
         _ => anf_expr_hoist(expr, state),
     }
 }
 
 /// Process an expression in nested position. Calls are hoisted out.
-fn anf_expr_hoist(
-    expr: LoweredExpr,
-    state: &mut AnfState,
-) -> (Vec<LoweredStmt>, LoweredExpr) {
+fn anf_expr_hoist(expr: LoweredExpr, state: &mut AnfState) -> (Vec<LoweredStmt>, LoweredExpr) {
     match expr {
         // ── Leaves ──────────────────────────────────────────────────────
         LoweredExpr::Literal(_) | LoweredExpr::Ident(_) => (vec![], expr),
@@ -141,7 +141,10 @@ fn anf_expr_hoist(
             let fresh = state.fresh_name();
             prefix.push(LoweredStmt::Let(
                 fresh.clone(),
-                LoweredExpr::Call { name, args: clean_args },
+                LoweredExpr::Call {
+                    name,
+                    args: clean_args,
+                },
             ));
             (prefix, LoweredExpr::Ident(fresh))
         }
@@ -149,7 +152,13 @@ fn anf_expr_hoist(
         // ── Field access ────────────────────────────────────────────────
         LoweredExpr::FieldAccess { expr, field } => {
             let (prefix, clean) = anf_expr_hoist(*expr, state);
-            (prefix, LoweredExpr::FieldAccess { expr: Box::new(clean), field })
+            (
+                prefix,
+                LoweredExpr::FieldAccess {
+                    expr: Box::new(clean),
+                    field,
+                },
+            )
         }
 
         // ── String interpolation ────────────────────────────────────────
@@ -172,14 +181,18 @@ fn anf_expr_hoist(
         }
 
         // ── Binary operations ───────────────────────────────────────────
-        LoweredExpr::BinOp { left, op, right } => {
-            anf_binop(*left, op, *right, state)
-        }
+        LoweredExpr::BinOp { left, op, right } => anf_binop(*left, op, *right, state),
 
         // ── Unary operations ────────────────────────────────────────────
         LoweredExpr::UnaryOp { op, expr } => {
             let (prefix, clean) = anf_expr_hoist(*expr, state);
-            (prefix, LoweredExpr::UnaryOp { op, expr: Box::new(clean) })
+            (
+                prefix,
+                LoweredExpr::UnaryOp {
+                    op,
+                    expr: Box::new(clean),
+                },
+            )
         }
 
         // ── If/else ─────────────────────────────────────────────────────
@@ -217,14 +230,23 @@ fn anf_expr_hoist(
                 .collect();
             (
                 scrutinee_prefix,
-                LoweredExpr::Match { expr: Box::new(scrutinee_clean), arms: clean_arms },
+                LoweredExpr::Match {
+                    expr: Box::new(scrutinee_clean),
+                    arms: clean_arms,
+                },
             )
         }
 
         // ── Lambda ──────────────────────────────────────────────────────
         LoweredExpr::Lambda { params, body } => {
             let clean_body = anf_branch(*body, state);
-            (vec![], LoweredExpr::Lambda { params, body: Box::new(clean_body) })
+            (
+                vec![],
+                LoweredExpr::Lambda {
+                    params,
+                    body: Box::new(clean_body),
+                },
+            )
         }
 
         // ── List ────────────────────────────────────────────────────────
@@ -254,11 +276,21 @@ fn anf_expr_hoist(
                 prefix.extend(p);
                 clean_fields.push((name, c));
             }
-            (prefix, LoweredExpr::Record { type_name, fields: clean_fields })
+            (
+                prefix,
+                LoweredExpr::Record {
+                    type_name,
+                    fields: clean_fields,
+                },
+            )
         }
 
         // ── For loop ────────────────────────────────────────────────────
-        LoweredExpr::For { binding, iterable, body } => {
+        LoweredExpr::For {
+            binding,
+            iterable,
+            body,
+        } => {
             let (iter_prefix, iter_clean) = anf_expr_hoist(*iterable, state);
             let body_clean = anf_branch(*body, state);
             (
@@ -280,7 +312,13 @@ fn anf_expr_hoist(
                 prefix.extend(p);
                 clean_fields.push((name, c));
             }
-            (prefix, LoweredExpr::VariantConstruct { tag, fields: clean_fields })
+            (
+                prefix,
+                LoweredExpr::VariantConstruct {
+                    tag,
+                    fields: clean_fields,
+                },
+            )
         }
     }
 }
@@ -367,9 +405,7 @@ fn anf_binop(
 fn anf_branch(expr: LoweredExpr, state: &mut AnfState) -> LoweredExpr {
     match expr {
         // Block: normalize its statements directly.
-        LoweredExpr::Block(stmts) => {
-            LoweredExpr::Block(anf_stmts(stmts, state))
-        }
+        LoweredExpr::Block(stmts) => LoweredExpr::Block(anf_stmts(stmts, state)),
         // Non-block: hoist, and wrap in Block if needed.
         other => {
             let (prefix, clean) = anf_expr_in_stmt(other, state);
@@ -454,9 +490,7 @@ fn verify_no_call(expr: &LoweredExpr, path: &str) -> Result<(), String> {
             verify_no_call(left, &format!("{path}/BinOp.left"))?;
             verify_no_call(right, &format!("{path}/BinOp.right"))
         }
-        LoweredExpr::UnaryOp { expr, .. } => {
-            verify_no_call(expr, &format!("{path}/UnaryOp"))
-        }
+        LoweredExpr::UnaryOp { expr, .. } => verify_no_call(expr, &format!("{path}/UnaryOp")),
         LoweredExpr::IfElse { cond, then_, else_ } => {
             verify_no_call(cond, &format!("{path}/If.cond"))?;
             verify_branch(then_, &format!("{path}/If.then"))?;
@@ -475,9 +509,7 @@ fn verify_no_call(expr: &LoweredExpr, path: &str) -> Result<(), String> {
             }
             Ok(())
         }
-        LoweredExpr::Lambda { body, .. } => {
-            verify_branch(body, &format!("{path}/Lambda"))
-        }
+        LoweredExpr::Lambda { body, .. } => verify_branch(body, &format!("{path}/Lambda")),
         LoweredExpr::List(items) => {
             for (i, item) in items.iter().enumerate() {
                 verify_no_call(item, &format!("{path}/List[{i}]"))?;
@@ -550,7 +582,6 @@ mod tests {
     #[test]
     fn anf_no_change_for_call_free() {
         let body = LoweredFnBody {
-
             stmts: vec![
                 LoweredStmt::Let(
                     "x".to_string(),
@@ -573,7 +604,6 @@ mod tests {
     fn anf_hoists_nested_call_in_binop() {
         // let x = f(a: 1) + g(b: 2)
         let body = LoweredFnBody {
-
             stmts: vec![LoweredStmt::Let(
                 "x".to_string(),
                 LoweredExpr::BinOp {
@@ -594,7 +624,6 @@ mod tests {
     fn anf_hoists_call_in_call_args() {
         // let x = f(a: g(b: 1))
         let body = LoweredFnBody {
-
             stmts: vec![LoweredStmt::Let(
                 "x".to_string(),
                 call("f", vec![("a", call("g", vec![("b", int(1))]))]),
@@ -611,7 +640,6 @@ mod tests {
     fn anf_desugars_and_with_calls() {
         // let x = f() && g()
         let body = LoweredFnBody {
-
             stmts: vec![LoweredStmt::Let(
                 "x".to_string(),
                 LoweredExpr::BinOp {
@@ -632,7 +660,6 @@ mod tests {
     fn anf_preserves_and_without_calls_on_right() {
         // let x = f() && true
         let body = LoweredFnBody {
-
             stmts: vec![LoweredStmt::Let(
                 "x".to_string(),
                 LoweredExpr::BinOp {
@@ -653,7 +680,6 @@ mod tests {
     fn anf_hoists_call_in_field_access() {
         // let x = f(a: 1).field
         let body = LoweredFnBody {
-
             stmts: vec![LoweredStmt::Let(
                 "x".to_string(),
                 LoweredExpr::FieldAccess {
@@ -673,7 +699,6 @@ mod tests {
     fn anf_normalizes_if_branches() {
         // if f() { g() } else { h() }
         let body = LoweredFnBody {
-
             stmts: vec![LoweredStmt::Expr(LoweredExpr::IfElse {
                 cond: Box::new(call("f", vec![])),
                 then_: Box::new(call("g", vec![])),
@@ -691,7 +716,6 @@ mod tests {
     fn anf_normalizes_lambda_body() {
         // x => f(x) + g(x)
         let body = LoweredFnBody {
-
             stmts: vec![LoweredStmt::Expr(LoweredExpr::Lambda {
                 params: vec!["x".to_string()],
                 body: Box::new(LoweredExpr::BinOp {
@@ -710,7 +734,6 @@ mod tests {
     fn anf_hoists_call_in_return() {
         // return { value: f(x) }
         let body = LoweredFnBody {
-
             stmts: vec![LoweredStmt::Return(vec![(
                 "value".to_string(),
                 call("f", vec![("x", ident("x"))]),
@@ -726,7 +749,6 @@ mod tests {
     #[test]
     fn anf_verifier_catches_nested_call() {
         let body = LoweredFnBody {
-
             stmts: vec![LoweredStmt::Let(
                 "x".to_string(),
                 LoweredExpr::BinOp {
@@ -743,7 +765,6 @@ mod tests {
     #[test]
     fn anf_verifier_passes_clean_body() {
         let body = LoweredFnBody {
-
             stmts: vec![
                 LoweredStmt::Let("x".to_string(), call("f", vec![])),
                 LoweredStmt::Return(vec![("return".to_string(), ident("x"))]),
@@ -756,7 +777,6 @@ mod tests {
     #[test]
     fn anf_no_nested_calls_after_lowering() {
         let body = LoweredFnBody {
-
             stmts: vec![
                 LoweredStmt::Let(
                     "x".to_string(),
