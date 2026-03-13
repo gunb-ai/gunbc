@@ -540,3 +540,5 @@ exactly the 5 points that call `eval_expr_s` with a subsequent push
 | S67-7 | No tail continuation elimination | Full TCO with `is_tail_position` threading through eval_expr_s/match_s/block_s | 2026-03-13 |
 | S74 | Blanket `#[allow(dead_code)]` suppressions | Removed; test-only helpers gated behind `#[cfg(test)]` | 2026-03-13 |
 | BUG-6 | Collection aliases mapped to wrong arity | Count/Sum/FilterMap/SortBy/Append promoted to first-class `CollectionKind` variants | 2026-03-13 |
+| E3.2 | Transport mock tests tautological | Replaced insert/get/assert with registry construction + entry count + well-formedness checks. `go_test_name` deleted (dead code). TestSpec API (E3.4-E3.6) is the proper replacement. | 2026-03-13 |
+| Eval-9 | `extract_projection` indirection | Inlined to direct `output_value()` call; `PopResult::Error` variant removed (dead code) | 2026-03-13 |

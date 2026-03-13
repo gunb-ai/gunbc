@@ -17,7 +17,10 @@ From `src/README.md`:
 
 - **Pure core logic.** Deterministic functions from inputs to outputs.
 - **Clear interfaces.** Return values, not mutated shared state.
-- **No parallel implementations.** One evaluator, not two.
+- **No parallel implementations.** One evaluator, not two. (Exception:
+  where evaluation contexts fundamentally differ — pure vs suspendable
+  paths, or intrinsic evaluation which cannot suspend — explicit dual
+  paths are acceptable if documented with clear rationale. See S67.)
 - **Explicit boundary contracts.** Preconditions enforced, not assumed.
 
 ## Core Principle: IR Structure Mirrors Evaluator Structure
@@ -98,12 +101,12 @@ independently testable.
 > - **Continuation ownership** is shared: `eval_stmts` and `eval_block_s`
 >   mutate `&mut Vec<Continuation>` directly, using `stack.insert(stack_base, ...)`
 >   to maintain ordering when inner blocks push before outer callers.
-> - **Tail call elimination** is not implemented — tail calls still push
->   identity continuations (`remaining: &[], binding: None`). Deep
->   mutual recursion works because the heap can hold 100K continuations,
->   not because identity continuations are elided.
-> - **Step::Call** always pushes a continuation; there is no
->   `cont: Option<Continuation>` distinction in the code.
+> - **Tail call elimination** is implemented via `is_tail_position`
+>   threading through `eval_expr_s`, `eval_match_s`, and `eval_block_s`.
+>   Tail-position suspends skip identity continuations, reducing stack
+>   depth for mutual recursion chains. The main loop does not use
+>   `cont: Option<Continuation>` — instead, the suspend path simply
+>   omits the push when in tail position.
 
 ### Immutable code store
 
@@ -268,17 +271,40 @@ bounded.
 | AST cloning | zero — FnId + pc into EvalContext | zero |
 | Time | ≤ MAX_TRANSITIONS | clean error |
 
+## Accepted Dual Paths (S67)
+
+The "no parallel implementations" invariant has three accepted exceptions
+where evaluation contexts fundamentally differ:
+
+1. **`eval_expr` is not pure.** It handles non-sibling calls via
+   `eval_non_sibling_call_raw` (re-entrant `evaluate_stack`). Correct:
+   builtins/intrinsics are deterministic and don't suspend. Making all
+   calls statement-level would require hoisting intrinsic args — not
+   worth the ANF expansion.
+
+2. **Two block paths: `eval_block_s` (suspendable) / `eval_block_pure`.**
+   The suspendable path uses the continuation stack for sibling calls.
+   The pure path exists because standalone match evaluation and lambda
+   bodies have no sibling fns and no continuation stack.
+
+3. **Two match paths: `eval_match_s` (suspendable) / `eval_match_local`.**
+   Guards use `eval_expr` because the continuation model can't represent
+   guard truthiness checks. Intentional and documented.
+
+These are permanent splits documented in SUSTAINABILITY.md S67.
+
 ## Known Limitations
 
 1. ~~**`LoweredExpr::Return` is still an expression.**~~ **FIXED.**
    `LoweredExpr::Return` removed. `ast::Expr::Return` now lowers to
    `LoweredExpr::Block(vec![LoweredStmt::Return(...)])`. `eval_expr`
    no longer produces early-return signals from Return variants.
+   `EvalError::early_return` removed (dead code after this change).
 
 2. **`LoweredExpr::Block` and `LoweredExpr::For` carry statement
    semantics.** The cleanest end state is `ForCollect` as a statement
    form with its own body-stmts, and blocks as statement sequences (not
-   expressions). Deferred for the same reason as (1).
+   expressions). Deferred — both genuinely return values.
 
 3. **`Projection::ReturnField` "value" fallback.** The parser now
    standardizes on `"return"` key (Phase 5a done). However, the
@@ -294,6 +320,7 @@ bounded.
    the v2 DSL evaluation model which expects Map flattening), or
    (b) teaching `extract_projection` to distinguish "return-convention
    value" from "legitimate Map field named value" (no reliable signal).
+   **Status:** accepted as structurally necessary (see S67-4).
 
 ## Migration Path
 
@@ -346,6 +373,7 @@ Each step compiles and passes all tests.
 #[test] fn builtin_lookup()                  // Option-returning builtin
 ```
 
-**Acceptance:** 54 v2 tests pass on default stack (no `with_parser_stack`).
-`phase6_gist_full_pipeline` runs on default stack but OOMs in debug mode
-(12 .dag files, >16GB heap — interpreter overhead, not a stack issue).
+**Acceptance:** 56 v2 tests pass on default stack (no `with_parser_stack`).
+3 tests ignored: `phase5_debug_stack_overflow_isolation` (diagnostic probe),
+`phase5_gist_full_transitive_closure` (O(n²) tokenizer overhead on 12 files),
+`phase6_gist_full_pipeline` (OOM in debug mode — >16GB heap, not stack).

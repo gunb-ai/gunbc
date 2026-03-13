@@ -515,7 +515,6 @@ fn run_machine<'a>(
                         env = e;
                         current_fn = fn_id;
                     }
-                    PopResult::Error(msg) => return Err(EvalError::new(msg)),
                 }
             }
             Step::EarlyReturn(result) => {
@@ -544,7 +543,6 @@ fn run_machine<'a>(
                         env = e;
                         current_fn = fn_id;
                     }
-                    PopResult::Error(msg) => return Err(EvalError::new(msg)),
                 }
             }
             Step::Call { callee, inputs } => {
@@ -576,7 +574,6 @@ enum PopResult<'a> {
         env: Env,
         fn_id: FnId,
     },
-    Error(String),
 }
 
 fn pop_stack<'a>(
@@ -591,10 +588,7 @@ fn pop_stack<'a>(
             Some(cont) => {
                 // S57: return type checks happen in run_machine before
                 // pop_stack is called, so no per-frame check needed here.
-                let value = match extract_projection(&result) {
-                    Ok(v) => v,
-                    Err(msg) => return PopResult::Error(msg),
-                };
+                let value = output_value(&result);
                 let mut env = cont.env;
                 if let Some(ref name) = cont.binding {
                     bind_let_result(&mut env, name.clone(), &value);
@@ -1918,10 +1912,6 @@ fn get_arg_expr_s<'a>(
 // ═══════════════════════════════════════════════════════════════════════════
 // Shared helpers
 // ═══════════════════════════════════════════════════════════════════════════
-
-fn extract_projection(outputs: &HashMap<String, Value>) -> Result<Value, String> {
-    Ok(output_value(outputs))
-}
 
 fn bind_let_result(env: &mut Env, name: String, value: &Value) {
     match value {

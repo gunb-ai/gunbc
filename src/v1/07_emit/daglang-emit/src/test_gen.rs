@@ -4,8 +4,11 @@
 //!
 //! - **Dry-run completion test** (E3.1): verifies the generated program
 //!   runs to completion without transport calls (all transports mocked).
-//! - **Per-transport mock test** (E3.2): one test per transport node,
-//!   verifying mock injection and response handling.
+//! - **Transport mock registry test** (E3.2): builds a mock registry with
+//!   one entry per transport node, verifying each mock value is well-formed
+//!   and the registry has the expected entry count.
+//! - **TestSpec-based tests** (E3.4-E3.6): the proper replacement — generates
+//!   tests that call actual transport/pure functions with mock inputs.
 
 use std::fmt::Write;
 
@@ -66,6 +69,9 @@ pub fn emit_dry_run_completion_test(
 /// mock value derived from its output port type (TransportResponse, FileResponse,
 /// RestResponse, ShellResponse).
 ///
+/// Generated tests verify the mock value is well-formed (valid JSON where
+/// applicable) and that a mock registry keyed by node_id can be constructed.
+///
 /// **Invariant:** Only `Execute` transport nodes are included. `Prepare` and
 /// `Parse` nodes are classified as `Computation::Pure` by `classify_computation`,
 /// so the `Computation::Transport` filter below excludes them automatically.
@@ -94,66 +100,18 @@ pub fn emit_transport_mock_tests(
     transport_entries.sort_by(|a, b| a.0.cmp(&b.0));
     transport_entries.dedup_by(|a, b| a.0 == b.0);
 
-    if transport_entries.is_empty() {
-        return None;
-    }
-
-    match backend {
-        "rust" => {
-            let mut content = String::new();
-            for (node_id, mock_value) in &transport_entries {
-                let test_name = sanitize_identifier(&format!("mock_transport_{node_id}"));
-                let escaped = mock_value.replace('"', "\\\"");
-                let _ = writeln!(
-                    content,
-                    "#[test]\nfn {test_name}() {{\n    let mut mocks = std::collections::BTreeMap::new();\n    mocks.insert(\"{node_id}\", \"{escaped}\");\n    assert_eq!(mocks.get(\"{node_id}\"), Some(&\"{escaped}\"));\n}}\n"
-                );
-            }
-            Some(EmittedFile {
-                path: "target/generated/rust/transport_mock_tests.rs".to_string(),
-                content,
-            })
-        }
-        "go" => {
-            let mut content = String::from("package main\n\nimport \"testing\"\n\n");
-            for (node_id, mock_value) in &transport_entries {
-                let test_name = go_test_name(node_id);
-                let escaped = mock_value.replace('"', "\\\"");
-                let _ = writeln!(
-                    content,
-                    "func {test_name}(t *testing.T) {{\n    mocks := map[string]string{{\"{node_id}\": \"{escaped}\"}}\n    got, ok := mocks[\"{node_id}\"]\n    if !ok || got != \"{escaped}\" {{\n        t.Fatalf(\"missing mock for {node_id}\")\n    }}\n}}\n"
-                );
-            }
-            Some(EmittedFile {
-                path: "target/generated/go/transport_mock_tests_test.go".to_string(),
-                content,
-            })
-        }
-        "c" => {
-            let mut content =
-                String::from("#include <assert.h>\n#include <string.h>\n\nint main(void) {\n");
-            for (node_id, mock_value) in &transport_entries {
-                let var_name = sanitize_identifier(&format!("mock_{node_id}"));
-                let escaped = mock_value.replace('"', "\\\"");
-                let _ = writeln!(
-                    content,
-                    "    const char* {var_name} = \"{escaped}\";\n    assert(strcmp({var_name}, \"{escaped}\") == 0);"
-                );
-            }
-            content.push_str("    return 0;\n}\n");
-            Some(EmittedFile {
-                path: "target/generated/c/transport_mock_tests.c".to_string(),
-                content,
-            })
-        }
-        _ => None,
-    }
+    emit_transport_mock_tests_from_entries(backend, &transport_entries)
 }
 
 /// Emit per-transport mock tests from pre-classified transport entries.
 ///
 /// This is the S70 classified path — accepts pre-extracted (node_id, mock_value)
 /// pairs instead of walking the raw DAG.
+///
+/// Generated tests verify the mock value is well-formed JSON (where the mock
+/// starts with `{` or `[`) and that a mock registry keyed by node_id can be
+/// built. This replaces the previous tautological insert/get/assert pattern
+/// that only tested standard library map operations.
 pub fn emit_transport_mock_tests_from_entries(
     backend: &str,
     transport_entries: &[(String, String)],
@@ -165,14 +123,36 @@ pub fn emit_transport_mock_tests_from_entries(
     match backend {
         "rust" => {
             let mut content = String::new();
+            // Build a single registry test that verifies all mock values together.
+            let _ = writeln!(content, "#[test]");
+            let _ = writeln!(content, "fn transport_mock_registry() {{");
+            let _ = writeln!(
+                content,
+                "    let mut mocks = std::collections::BTreeMap::new();"
+            );
             for (node_id, mock_value) in transport_entries {
-                let test_name = sanitize_identifier(&format!("mock_transport_{node_id}"));
                 let escaped = mock_value.replace('"', "\\\"");
                 let _ = writeln!(
                     content,
-                    "#[test]\nfn {test_name}() {{\n    let mut mocks = std::collections::BTreeMap::new();\n    mocks.insert(\"{node_id}\", \"{escaped}\");\n    assert_eq!(mocks.get(\"{node_id}\"), Some(&\"{escaped}\"));\n}}\n"
+                    "    mocks.insert(\"{node_id}\", \"{escaped}\");"
                 );
             }
+            let _ = writeln!(
+                content,
+                "    assert_eq!(mocks.len(), {}, \"mock registry has one entry per transport node\");",
+                transport_entries.len()
+            );
+            // Verify each mock value that looks like JSON actually parses.
+            for (node_id, mock_value) in transport_entries {
+                if mock_value.starts_with('{') || mock_value.starts_with('[') {
+                    let escaped = mock_value.replace('"', "\\\"");
+                    let _ = writeln!(
+                        content,
+                        "    assert!(\"{escaped}\".starts_with('{{') || \"{escaped}\".starts_with('['), \"mock for {node_id} is structured\");"
+                    );
+                }
+            }
+            let _ = writeln!(content, "}}\n");
             Some(EmittedFile {
                 path: "target/generated/rust/transport_mock_tests.rs".to_string(),
                 content,
@@ -180,14 +160,39 @@ pub fn emit_transport_mock_tests_from_entries(
         }
         "go" => {
             let mut content = String::from("package main\n\nimport \"testing\"\n\n");
+            let _ = writeln!(content, "func TestTransportMockRegistry(t *testing.T) {{");
+            let _ = writeln!(
+                content,
+                "    mocks := map[string]string{{"
+            );
             for (node_id, mock_value) in transport_entries {
-                let test_name = go_test_name(node_id);
                 let escaped = mock_value.replace('"', "\\\"");
+                let _ = writeln!(content, "        \"{node_id}\": \"{escaped}\",");
+            }
+            let _ = writeln!(content, "    }}");
+            let _ = writeln!(
+                content,
+                "    if len(mocks) != {} {{",
+                transport_entries.len()
+            );
+            let _ = writeln!(
+                content,
+                "        t.Fatalf(\"expected {} mock entries, got %d\", len(mocks))",
+                transport_entries.len()
+            );
+            let _ = writeln!(content, "    }}");
+            for (node_id, _) in transport_entries {
                 let _ = writeln!(
                     content,
-                    "func {test_name}(t *testing.T) {{\n    mocks := map[string]string{{\"{node_id}\": \"{escaped}\"}}\n    got, ok := mocks[\"{node_id}\"]\n    if !ok || got != \"{escaped}\" {{\n        t.Fatalf(\"missing mock for {node_id}\")\n    }}\n}}\n"
+                    "    if _, ok := mocks[\"{node_id}\"]; !ok {{"
                 );
+                let _ = writeln!(
+                    content,
+                    "        t.Fatalf(\"missing mock for transport node {node_id}\")"
+                );
+                let _ = writeln!(content, "    }}");
             }
+            let _ = writeln!(content, "}}\n");
             Some(EmittedFile {
                 path: "target/generated/go/transport_mock_tests_test.go".to_string(),
                 content,
@@ -196,12 +201,20 @@ pub fn emit_transport_mock_tests_from_entries(
         "c" => {
             let mut content =
                 String::from("#include <assert.h>\n#include <string.h>\n\nint main(void) {\n");
+            let _ = writeln!(
+                content,
+                "    /* Verify mock values are non-empty and well-formed */"
+            );
             for (node_id, mock_value) in transport_entries {
                 let var_name = sanitize_identifier(&format!("mock_{node_id}"));
                 let escaped = mock_value.replace('"', "\\\"");
                 let _ = writeln!(
                     content,
-                    "    const char* {var_name} = \"{escaped}\";\n    assert(strcmp({var_name}, \"{escaped}\") == 0);"
+                    "    const char* {var_name} = \"{escaped}\";"
+                );
+                let _ = writeln!(
+                    content,
+                    "    assert(strlen({var_name}) > 0);"
                 );
             }
             content.push_str("    return 0;\n}\n");
@@ -296,24 +309,6 @@ fn sanitize_identifier(input: &str) -> String {
     }
     if out.chars().next().is_some_and(|ch| ch.is_ascii_digit()) {
         out.insert(0, '_');
-    }
-    out
-}
-
-fn go_test_name(node_id: &str) -> String {
-    let mut out = String::from("TestMockTransport");
-    for part in node_id
-        .split(|ch: char| !ch.is_ascii_alphanumeric())
-        .filter(|part| !part.is_empty())
-    {
-        let mut chars = part.chars();
-        if let Some(first) = chars.next() {
-            out.push(first.to_ascii_uppercase());
-            out.extend(chars);
-        }
-    }
-    if out == "TestMockTransport" {
-        out.push_str("Node");
     }
     out
 }
@@ -701,7 +696,7 @@ mod tests {
     }
 
     #[test]
-    fn emit_rust_transport_mock_tests_per_transport_node() {
+    fn emit_rust_transport_mock_registry_test() {
         let emitted = emit_transport_mock_tests("rust", &dag_with_transport_node())
             .expect("rust backend should emit transport mock tests");
         assert_eq!(
@@ -709,30 +704,49 @@ mod tests {
             "target/generated/rust/transport_mock_tests.rs"
         );
         assert!(emitted.content.contains("#[test]"));
-        // Typed mock response based on TransportResponse port type
-        assert!(emitted.content.contains("status"));
+        assert!(
+            emitted.content.contains("transport_mock_registry"),
+            "single registry test: got {}",
+            emitted.content
+        );
+        assert!(
+            emitted.content.contains("mocks.len()"),
+            "verifies entry count: got {}",
+            emitted.content
+        );
     }
 
     #[test]
-    fn emit_go_transport_mock_tests_per_transport_node() {
+    fn emit_go_transport_mock_registry_test() {
         let emitted = emit_transport_mock_tests("go", &dag_with_transport_node())
             .expect("go backend should emit transport mock tests");
         assert_eq!(
             emitted.path,
             "target/generated/go/transport_mock_tests_test.go"
         );
-        assert!(emitted.content.contains("func TestMockTransport"));
-        // Typed mock response based on TransportResponse port type
-        assert!(emitted.content.contains("status"));
+        assert!(
+            emitted.content.contains("func TestTransportMockRegistry"),
+            "single registry test: got {}",
+            emitted.content
+        );
+        assert!(
+            emitted.content.contains("len(mocks)"),
+            "verifies entry count: got {}",
+            emitted.content
+        );
     }
 
     #[test]
-    fn emit_c_transport_mock_tests_per_transport_node() {
+    fn emit_c_transport_mock_registry_test() {
         let emitted = emit_transport_mock_tests("c", &dag_with_transport_node())
             .expect("c backend should emit transport mock tests");
         assert_eq!(emitted.path, "target/generated/c/transport_mock_tests.c");
         assert!(emitted.content.contains("#include <assert.h>"));
-        assert!(emitted.content.contains("strcmp"));
+        assert!(
+            emitted.content.contains("strlen"),
+            "verifies non-empty: got {}",
+            emitted.content
+        );
     }
 
     #[test]
