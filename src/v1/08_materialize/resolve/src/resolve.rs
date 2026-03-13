@@ -33,7 +33,9 @@ use daglang_lower::{
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::patterns::PatternOp;
-use gunbc_ir::resource::{AccessMode, RESOURCE_FILE, RESOURCE_FILE_PREFIX};
+use gunbc_ir::resource::{
+    is_filesystem_resource_port, AccessMode, FILESYSTEM_HANDLE_TYPE, RESOURCE_FILE,
+};
 use gunbc_ir::transport::{FileRequest, TransportRequest};
 use gunbc_ir::types::PortName;
 use gunbc_ir::{Cardinality, Dag, Edge, Node, Port, Value};
@@ -595,7 +597,7 @@ impl Executable for DslFsEnvOp {
         let fs: Value = filename::FilesystemHandle::cross_platform(filename::Scope::Write).into();
         OutputMap::new()
             .value(FsEnv::WRITE_PORT, fs.clone())
-            .value("FilesystemHandle", fs)
+            .value(FILESYSTEM_HANDLE_TYPE, fs)
             .ok()
     }
 }
@@ -755,6 +757,7 @@ fn resolve_lowered_dag_impl(
             kind: node.kind,
             operation_key: node.operation_key.clone(),
             transport_class: node.transport_class,
+            response_provider: node.response_provider,
             static_fingerprint: None,
             origin: node.origin.clone(),
         };
@@ -762,7 +765,7 @@ fn resolve_lowered_dag_impl(
         if let Some(mode) = needs_transport_resource(node, &resolved_node) {
             resolved_node
                 .inputs
-                .push(Port::resource(RESOURCE_FILE, "FilesystemHandle", mode));
+                .push(Port::resource(RESOURCE_FILE, FILESYSTEM_HANDLE_TYPE, mode));
         }
         resolved.add_node(resolved_node);
     }
@@ -1257,11 +1260,11 @@ fn needs_transport_resource(
         _ => return None,
     };
 
-    // Only add if not already present.
-    let already_has = resolved.inputs.iter().any(|port| {
-        port.type_id.0 == "FilesystemHandle"
-            && (port.name.0 == RESOURCE_FILE || port.name.0.starts_with(RESOURCE_FILE_PREFIX))
-    });
+    // Only add if not already present (S15: structural query).
+    let already_has = resolved
+        .inputs
+        .iter()
+        .any(is_filesystem_resource_port);
     if already_has {
         None
     } else {
@@ -1273,9 +1276,7 @@ fn wire_missing_filesystem_resources(dag: &mut Dag<DynOp>) {
     let mut pending = Vec::new();
     for node in &dag.nodes {
         for port in &node.inputs {
-            let is_filesystem_resource_port = port.type_id.0 == "FilesystemHandle"
-                && (port.name.0 == RESOURCE_FILE || port.name.0.starts_with(RESOURCE_FILE_PREFIX));
-            if !is_filesystem_resource_port {
+            if !is_filesystem_resource_port(port) {
                 continue;
             }
             let connected = dag
@@ -1296,20 +1297,20 @@ fn wire_missing_filesystem_resources(dag: &mut Dag<DynOp>) {
         existing
             .outputs
             .iter()
-            .find(|port| port.type_id.0 == "FilesystemHandle")
+            .find(|port| port.type_id.0 == FILESYSTEM_HANDLE_TYPE)
             .map(|port| port.name.0.clone())
-            .unwrap_or_else(|| "FilesystemHandle".to_string())
+            .unwrap_or_else(|| FILESYSTEM_HANDLE_TYPE.to_string())
     } else {
         dag.add_node(
             Node::opaque(
                 fs_node_id.as_str(),
                 vec![],
-                vec![Port::new("FilesystemHandle", "FilesystemHandle")],
+                vec![Port::new(FILESYSTEM_HANDLE_TYPE, FILESYSTEM_HANDLE_TYPE)],
                 DynOp::new(DslFsEnvOp),
             )
             .with_kind(gunbc_ir::NodeKind::ResourceEnvironment),
         );
-        "FilesystemHandle".to_string()
+        FILESYSTEM_HANDLE_TYPE.to_string()
     };
 
     for (node_id, port_name) in pending {
@@ -1506,6 +1507,7 @@ mod tests {
                 env: vec![],
                 exit_mapping: vec![],
             })),
+            response_provider: None,
         }
     }
 
@@ -1559,6 +1561,7 @@ mod tests {
                 env: vec![],
                 exit_mapping: vec![],
             })),
+            response_provider: None,
         }
     }
 
@@ -1795,6 +1798,7 @@ mod tests {
                 output_shape: None,
                 mock_responses: vec![],
             }))),
+            response_provider: None,
         }
     }
 
@@ -1861,6 +1865,7 @@ mod tests {
                 output_shape: None,
                 mock_responses: vec![],
             }))),
+            response_provider: None,
         }
     }
 
@@ -2016,6 +2021,7 @@ mod tests {
                 idempotent: false,
                 readonly: false,
                 spec: None,
+                response_provider: None,
             },
         );
         let err = resolve_node(&node).unwrap_err();
@@ -2068,7 +2074,7 @@ mod tests {
         );
         let resolved = Node::opaque(
             "execute_read_makegen",
-            vec![Port::resource("file", "FilesystemHandle", AccessMode::Read)],
+            vec![Port::resource("file", FILESYSTEM_HANDLE_TYPE, AccessMode::Read)],
             vec![Port::new("response", "TransportResponse")],
             DynOp::new(DslFsEnvOp),
         );
@@ -2086,12 +2092,12 @@ mod tests {
         dag.add_node(Node::opaque(
             "fs_env",
             vec![],
-            vec![Port::new("FilesystemHandle", "FilesystemHandle")],
+            vec![Port::new(FILESYSTEM_HANDLE_TYPE, FILESYSTEM_HANDLE_TYPE)],
             DynOp::new(DslFsEnvOp),
         ));
         dag.add_node(Node::opaque(
             "execute_read_makegen",
-            vec![Port::resource("file", "FilesystemHandle", AccessMode::Read)],
+            vec![Port::resource("file", FILESYSTEM_HANDLE_TYPE, AccessMode::Read)],
             vec![Port::new("response", "TransportResponse")],
             DynOp::new(DslFsEnvOp),
         ));
@@ -2100,7 +2106,7 @@ mod tests {
 
         let has_edge = dag.edges.iter().any(|edge| {
             edge.from_node.0 == "fs_env"
-                && edge.from_port.0 == "FilesystemHandle"
+                && edge.from_port.0 == FILESYSTEM_HANDLE_TYPE
                 && edge.to_node.0 == "execute_read_makegen"
                 && edge.to_port.0 == "res:file"
         });

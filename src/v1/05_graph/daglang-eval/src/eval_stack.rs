@@ -36,6 +36,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
 use gunbc_ir::Value;
+use gunbc_ir::value_compatible_with_type_id;
 
 use crate::eval_core::{
     eval_binop, eval_builtin_call, eval_literal, field_access, match_pattern,
@@ -50,6 +51,82 @@ use crate::expr::{
 
 const MAX_STACK_DEPTH: usize = 100_000;
 const MAX_TRANSITIONS: usize = 10_000_000;
+
+// ── Runtime type boundary checks (S57) ───────────────────────────────────
+//
+// Soft diagnostics: mismatches are collected in a thread-local vec and
+// do not crash the evaluator. Callers can drain the diagnostics via
+// `take_type_warnings()`. This is an interim guard until the self-hosting
+// compiler provides static guarantees.
+
+use std::cell::RefCell;
+
+thread_local! {
+    static TYPE_WARNINGS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Drain and return any type warnings accumulated during evaluation.
+pub fn take_type_warnings() -> Vec<String> {
+    TYPE_WARNINGS.with(|w| w.borrow_mut().drain(..).collect())
+}
+
+fn push_type_warning(msg: String) {
+    TYPE_WARNINGS.with(|w| w.borrow_mut().push(msg));
+}
+
+/// Check that each argument value is compatible with the callee's declared
+/// parameter type. Collects a warning for each mismatch.
+fn check_call_inputs(fn_body: &LoweredFnBody, inputs: &HashMap<String, Value>, fn_name: &str) {
+    for (param_name, expected_type) in &fn_body.param_types {
+        if let Some(value) = inputs.get(param_name) {
+            if !value_compatible_with_type_id(expected_type, value) {
+                push_type_warning(format!(
+                    "[S57] type mismatch at call to `{fn_name}`: \
+                     param `{param_name}` expects `{expected_type}`, \
+                     got `{}`",
+                    value.kind().type_name(),
+                ));
+            }
+        }
+    }
+}
+
+/// Check that the return value is compatible with the callee's declared
+/// return type. Collects a warning on mismatch.
+fn check_return_value(fn_body: &LoweredFnBody, result: &HashMap<String, Value>, fn_name: &str) {
+    let Some(expected_type) = &fn_body.return_type else { return };
+    // Convention: the primary return port is "return" or "value", or the single
+    // output key. We check whichever port exists.
+    let value = result
+        .get("return")
+        .or_else(|| result.get("value"))
+        .or_else(|| {
+            if result.len() == 1 {
+                result.values().next()
+            } else {
+                None
+            }
+        });
+    if let Some(value) = value {
+        if !value_compatible_with_type_id(expected_type, value) {
+            push_type_warning(format!(
+                "[S57] type mismatch at return from `{fn_name}`: \
+                 expects `{expected_type}`, got `{}`",
+                value.kind().type_name(),
+            ));
+        }
+    }
+}
+
+/// Look up the human-readable name for a FnId from the context.
+fn fn_name_for_id(fn_id: FnId, ctx: &EvalContext) -> String {
+    for (name, &id) in &ctx.fn_index {
+        if id == fn_id {
+            return (*name).to_string();
+        }
+    }
+    format!("<fn#{fn_id}>")
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Public entry point
@@ -200,7 +277,6 @@ fn no_sibling_call(expr: &LoweredExpr, loc: &str, sibs: &HashMap<&str, FnId>) ->
         LoweredExpr::For { iterable, body, .. } => {
             no_sibling_call(iterable, loc, sibs)?; no_sibling_call_in_branch(body, loc, sibs)
         }
-        LoweredExpr::Return(fs) => { for (_, e) in fs { no_sibling_call(e, loc, sibs)?; } Ok(()) }
     }
 }
 
@@ -267,6 +343,13 @@ fn run_machine<'a>(
     let mut stmts: &'a [LoweredStmt] = &ctx.fns[entry].stmts;
     let mut env = Env::from_inputs(inputs);
     let mut transitions: usize = 0;
+    // S57: track the current executing function and a parallel fn_id stack
+    // to restore after returns.
+    let mut current_fn: FnId = entry;
+    let mut fn_stack: Vec<FnId> = Vec::new();
+
+    // S57: check entry function inputs
+    check_call_inputs(ctx.fns[entry], inputs, &fn_name_for_id(entry, ctx));
 
     loop {
         transitions += 1;
@@ -278,13 +361,23 @@ fn run_machine<'a>(
 
         match eval_stmts(stmts, &mut env, ctx, &mut stack) {
             Step::Return(result) => {
+                // S57: check return type of the completing function
+                check_return_value(ctx.fns[current_fn], &result, &fn_name_for_id(current_fn, ctx));
                 match pop_stack(&mut stack, result) {
                     PopResult::Done(output) => return Ok(output),
-                    PopResult::Resume { stmts: s, env: e } => { stmts = s; env = e; }
+                    PopResult::Resume { stmts: s, env: e } => {
+                        stmts = s; env = e;
+                        // Restore caller fn from the parallel stack
+                        if let Some(caller) = fn_stack.pop() {
+                            current_fn = caller;
+                        }
+                    }
                     PopResult::Error(msg) => return Err(EvalError::new(msg)),
                 }
             }
             Step::EarlyReturn(result) => {
+                // S57: check return type of the completing function
+                check_return_value(ctx.fns[current_fn], &result, &fn_name_for_id(current_fn, ctx));
                 // Unwind past block-resume continuations to the fn boundary.
                 while let Some(cont) = stack.last() {
                     if cont.is_fn_boundary { break; }
@@ -292,7 +385,12 @@ fn run_machine<'a>(
                 }
                 match pop_stack(&mut stack, result) {
                     PopResult::Done(output) => return Ok(output),
-                    PopResult::Resume { stmts: s, env: e } => { stmts = s; env = e; }
+                    PopResult::Resume { stmts: s, env: e } => {
+                        stmts = s; env = e;
+                        if let Some(caller) = fn_stack.pop() {
+                            current_fn = caller;
+                        }
+                    }
                     PopResult::Error(msg) => return Err(EvalError::new(msg)),
                 }
             }
@@ -302,6 +400,10 @@ fn run_machine<'a>(
                         "max stack depth ({MAX_STACK_DEPTH}) exceeded"
                     )));
                 }
+                // S57: check callee input types before transitioning
+                check_call_inputs(ctx.fns[callee], &inputs, &fn_name_for_id(callee, ctx));
+                fn_stack.push(current_fn);
+                current_fn = callee;
                 stmts = &ctx.fns[callee].stmts;
                 env = Env::from_inputs(&inputs);
             }
@@ -768,11 +870,6 @@ fn eval_expr(expr: &LoweredExpr, env: &Env, ctx: &EvalContext) -> Result<Value, 
                 other => Err(EvalError::new(format!("for requires list, got {:?}", other))),
             }
         }
-        LoweredExpr::Return(fields) => {
-            let mut result = HashMap::new();
-            for (n, e) in fields { result.insert(n.clone(), eval_expr(e, env, ctx)?); }
-            Err(EvalError::early_return(result))
-        }
     }
 }
 
@@ -865,7 +962,7 @@ pub fn eval_match_standalone(
     sibling_fns: &HashMap<String, LoweredFnBody>,
 ) -> Result<Value, EvalError> {
     let data_values = HashMap::new();
-    let dummy = LoweredFnBody { stmts: vec![] };
+    let dummy = LoweredFnBody::from_stmts(vec![]);
     let (ctx, _) = build_context(&dummy, sibling_fns, &data_values);
     let env = Env::from_inputs(env_bindings);
     eval_match_local(scrutinee, arms, &env, &ctx)
@@ -1350,13 +1447,16 @@ mod tests {
 
     fn is_even_odd_pair() -> (LoweredFnBody, LoweredFnBody) {
         let mk = |_base_name: &str, base_val: bool, other: &str| LoweredFnBody {
+
             stmts: vec![
                 LoweredStmt::Expr(LoweredExpr::IfElse {
                     cond: Box::new(LoweredExpr::BinOp {
                         left: Box::new(ident("n")), op: LoweredBinOp::Eq, right: Box::new(int(0)),
                     }),
-                    then_: Box::new(LoweredExpr::Return(vec![
-                        ("return".to_string(), LoweredExpr::Literal(LoweredLiteral::Bool(base_val))),
+                    then_: Box::new(LoweredExpr::Block(vec![
+                        LoweredStmt::Return(vec![
+                            ("return".to_string(), LoweredExpr::Literal(LoweredLiteral::Bool(base_val))),
+                        ]),
                     ])),
                     else_: None,
                 }),
@@ -1366,21 +1466,25 @@ mod tests {
                     }),
                 ])),
             ],
+            ..Default::default()
         };
         (mk("is_even", true, "is_odd"), mk("is_odd", false, "is_even"))
     }
 
     #[test] fn simple_fn() {
-        let body = LoweredFnBody { stmts: vec![LoweredStmt::Return(vec![("return".into(), int(42))])] };
+        let body = LoweredFnBody { stmts: vec![LoweredStmt::Return(vec![("return".into(), int(42))])], ..Default::default() };
         assert_eq!(evaluate_stack(&body, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap()["return"], Value::Int(42));
     }
 
     #[test] fn sibling_call_with_projection() {
-        let inner = LoweredFnBody { stmts: vec![LoweredStmt::Return(vec![("return".into(), int(99))])] };
-        let outer = LoweredFnBody { stmts: vec![
+        let inner = LoweredFnBody { stmts: vec![LoweredStmt::Return(vec![("return".into(), int(99))])], ..Default::default() };
+        let outer = LoweredFnBody {
+ stmts: vec![
             LoweredStmt::Let("r".into(), call("inner", vec![])),
             LoweredStmt::Return(vec![("return".into(), ident("r"))]),
-        ]};
+        ],
+            ..Default::default()
+        };
         let mut s = HashMap::new(); s.insert("inner".into(), inner); s.insert("outer".into(), outer.clone());
         assert_eq!(evaluate_stack(&outer, &HashMap::new(), &s, &HashMap::new()).unwrap()["return"], Value::Int(99));
     }
@@ -1396,8 +1500,8 @@ mod tests {
     }
 
     #[test] fn value_normalization() {
-        let inner = LoweredFnBody { stmts: vec![LoweredStmt::Return(vec![("return".into(), int(42))])] };
-        let wrapper = LoweredFnBody { stmts: vec![LoweredStmt::Expr(call("inner", vec![]))] };
+        let inner = LoweredFnBody { stmts: vec![LoweredStmt::Return(vec![("return".into(), int(42))])], ..Default::default() };
+        let wrapper = LoweredFnBody { stmts: vec![LoweredStmt::Expr(call("inner", vec![]))], ..Default::default() };
         let mut s = HashMap::new(); s.insert("inner".into(), inner); s.insert("wrapper".into(), wrapper.clone());
         let r = evaluate_stack(&wrapper, &HashMap::new(), &s, &HashMap::new()).unwrap();
         assert_eq!(r.get("return"), Some(&Value::Int(42)));
@@ -1405,20 +1509,24 @@ mod tests {
     }
 
     #[test] fn builtin_call() {
-        let body = LoweredFnBody { stmts: vec![
+        let body = LoweredFnBody {
+ stmts: vec![
             LoweredStmt::Let("result".into(), LoweredExpr::Call {
                 name: "skip_horizontal_ws".into(),
                 args: vec![(Some("s".into()), ident("s")), (Some("start".into()), ident("start"))],
             }),
             LoweredStmt::Return(vec![("return".into(), ident("result"))]),
-        ]};
+        ],
+            ..Default::default()
+        };
         let mut i = HashMap::new(); i.insert("s".into(), Value::Str("   hello".into())); i.insert("start".into(), Value::Int(0));
         assert_eq!(evaluate_stack(&body, &i, &HashMap::new(), &HashMap::new()).unwrap()["return"], Value::Int(3));
     }
 
     #[test] fn sibling_then_builtin() {
-        let mk = LoweredFnBody { stmts: vec![LoweredStmt::Return(vec![("source".into(), ident("source")), ("start".into(), int(0))])] };
-        let outer = LoweredFnBody { stmts: vec![
+        let mk = LoweredFnBody { stmts: vec![LoweredStmt::Return(vec![("source".into(), ident("source")), ("start".into(), int(0))])], ..Default::default() };
+        let outer = LoweredFnBody {
+ stmts: vec![
             LoweredStmt::Let("state".into(), call("make_state", vec![("source", ident("source"))])),
             LoweredStmt::Let("result".into(), LoweredExpr::Call {
                 name: "skip_horizontal_ws".into(),
@@ -1428,7 +1536,9 @@ mod tests {
                 ],
             }),
             LoweredStmt::Return(vec![("return".into(), ident("result"))]),
-        ]};
+        ],
+            ..Default::default()
+        };
         let mut s = HashMap::new(); s.insert("make_state".into(), mk); s.insert("outer".into(), outer.clone());
         let mut i = HashMap::new(); i.insert("source".into(), Value::Str("   hello".into()));
         assert_eq!(evaluate_stack(&outer, &i, &s, &HashMap::new()).unwrap()["return"], Value::Int(3));
@@ -1444,6 +1554,7 @@ mod tests {
         // }
         // fn double(x: Int) -> Int { return { return: x * 2 } }
         let double_body = LoweredFnBody {
+
             stmts: vec![LoweredStmt::Return(vec![(
                 "return".to_string(),
                 LoweredExpr::BinOp {
@@ -1452,8 +1563,10 @@ mod tests {
                     right: Box::new(int(2)),
                 },
             )])],
+            ..Default::default()
         };
         let process_body = LoweredFnBody {
+
             stmts: vec![
                 LoweredStmt::Expr(LoweredExpr::IfElse {
                     cond: Box::new(LoweredExpr::BinOp {
@@ -1469,6 +1582,7 @@ mod tests {
                 }),
                 LoweredStmt::Return(vec![("return".to_string(), int(0))]),
             ],
+            ..Default::default()
         };
         let mut sibs = HashMap::new();
         sibs.insert("double".to_string(), double_body);
@@ -1480,10 +1594,13 @@ mod tests {
     }
 
     #[test] fn anf_verifier_catches_nested_call() {
-        let bad = LoweredFnBody { stmts: vec![LoweredStmt::Let("x".into(), LoweredExpr::BinOp {
+        let bad = LoweredFnBody {
+ stmts: vec![LoweredStmt::Let("x".into(), LoweredExpr::BinOp {
             left: Box::new(call("f", vec![])), op: LoweredBinOp::Add, right: Box::new(int(1)),
-        })] };
-        let f_body = LoweredFnBody { stmts: vec![LoweredStmt::Return(vec![("return".into(), int(1))])] };
+        })],
+            ..Default::default()
+        };
+        let f_body = LoweredFnBody { stmts: vec![LoweredStmt::Return(vec![("return".into(), int(1))])], ..Default::default() };
         let mut sibs = HashMap::new();
         sibs.insert("f".to_string(), f_body);
         let data = HashMap::new();
@@ -1494,7 +1611,8 @@ mod tests {
     // ── Ported builtin/intrinsic tests (Phase 3 migration) ──────────────
 
     #[test] fn builtin_char_at() {
-        let body = LoweredFnBody { stmts: vec![
+        let body = LoweredFnBody {
+ stmts: vec![
             LoweredStmt::Let("r".into(), LoweredExpr::Call {
                 name: "char_at".into(),
                 args: vec![
@@ -1503,13 +1621,16 @@ mod tests {
                 ],
             }),
             LoweredStmt::Return(vec![("return".into(), ident("r"))]),
-        ]};
+        ],
+            ..Default::default()
+        };
         assert_eq!(evaluate_stack(&body, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap()["return"], Value::Str("e".into()));
     }
 
     #[test] fn builtin_scan_while_with_lambda() {
         // scan_while(s: "123abc", start: 0, pred: c => code_point(c) >= code_point("0") && code_point(c) <= code_point("9"))
-        let body = LoweredFnBody { stmts: vec![
+        let body = LoweredFnBody {
+ stmts: vec![
             LoweredStmt::Let("r".into(), LoweredExpr::Call {
                 name: "scan_while".into(),
                 args: vec![
@@ -1538,13 +1659,16 @@ mod tests {
                 ],
             }),
             LoweredStmt::Return(vec![("return".into(), ident("r"))]),
-        ]};
+        ],
+            ..Default::default()
+        };
         assert_eq!(evaluate_stack(&body, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap()["return"], Value::Int(3));
     }
 
     #[test] fn intrinsic_map_with_lambda() {
         // map([1,2,3], x => x * 2)
-        let body = LoweredFnBody { stmts: vec![
+        let body = LoweredFnBody {
+ stmts: vec![
             LoweredStmt::Let("r".into(), LoweredExpr::Call {
                 name: "map".into(),
                 args: vec![
@@ -1558,14 +1682,17 @@ mod tests {
                 ],
             }),
             LoweredStmt::Return(vec![("return".into(), ident("r"))]),
-        ]};
+        ],
+            ..Default::default()
+        };
         assert_eq!(evaluate_stack(&body, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap()["return"],
             Value::List(vec![Value::Int(2), Value::Int(4), Value::Int(6)]));
     }
 
     #[test] fn intrinsic_fold() {
         // fold([1,2,3], init: 0, f: (acc, x) => acc + x)
-        let body = LoweredFnBody { stmts: vec![
+        let body = LoweredFnBody {
+ stmts: vec![
             LoweredStmt::Let("r".into(), LoweredExpr::Call {
                 name: "fold".into(),
                 args: vec![
@@ -1580,7 +1707,9 @@ mod tests {
                 ],
             }),
             LoweredStmt::Return(vec![("return".into(), ident("r"))]),
-        ]};
+        ],
+            ..Default::default()
+        };
         assert_eq!(evaluate_stack(&body, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap()["return"], Value::Int(6));
     }
 
@@ -1589,7 +1718,8 @@ mod tests {
         let mut m = std::collections::BTreeMap::new();
         m.insert("x".to_string(), Value::Int(42));
         inp.insert("m".into(), Value::Map(m));
-        let body = LoweredFnBody { stmts: vec![
+        let body = LoweredFnBody {
+ stmts: vec![
             LoweredStmt::Let("r".into(), LoweredExpr::Call {
                 name: "lookup".into(),
                 args: vec![
@@ -1598,7 +1728,9 @@ mod tests {
                 ],
             }),
             LoweredStmt::Return(vec![("return".into(), ident("r"))]),
-        ]};
+        ],
+            ..Default::default()
+        };
         let r = evaluate_stack(&body, &inp, &HashMap::new(), &HashMap::new()).unwrap();
         let result = &r["return"];
         // Should be Some { value: 42 }

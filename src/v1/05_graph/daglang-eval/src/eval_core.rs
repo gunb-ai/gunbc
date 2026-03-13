@@ -417,7 +417,6 @@ pub fn expr_contains_call(expr: &LoweredExpr) -> bool {
             fields.iter().any(|(_, e)| expr_contains_call(e)),
         LoweredExpr::For { iterable, body, .. } =>
             expr_contains_call(iterable) || expr_contains_call(body),
-        LoweredExpr::Return(fields) => fields.iter().any(|(_, e)| expr_contains_call(e)),
     }
 }
 

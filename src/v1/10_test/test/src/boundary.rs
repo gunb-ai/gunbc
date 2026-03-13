@@ -70,11 +70,13 @@ pub fn assert_boundary_mockable<T: gunbc_exec::Executable + Clone + Send>(
         };
     }
 
-    // Execute in dry-run mode
+    // Execute in dry-run mode with lenient strictness — boundary tests
+    // intentionally omit non-boundary inputs.
     match execute_dag(
         dag,
         ExecuteConfig {
             mode: ExecutionMode::DryRun(mocks),
+            strictness: gunbc_exec::DryRunStrictness::Lenient,
             ..Default::default()
         },
     ) {

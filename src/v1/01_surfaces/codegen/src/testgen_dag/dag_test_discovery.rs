@@ -19,7 +19,6 @@ use daglang_emit::test_mock_emit::{TestFile, TERMINAL_NODE_SENTINEL};
 use daglang_syntax::ast::{ExpectStmt, Expr, FixtureDef, Literal, TestDef};
 use gunbc_exec::DynOp;
 use gunbc_ir::{BuilderError, Dag};
-#[allow(deprecated)]
 use gunbc_resolve::builder::build_dsl_graph;
 use gunbc_resolve::BuildOpts;
 use gunbc_test::{auto_mock_failure_variants, auto_mock_spec};
@@ -33,7 +32,6 @@ use std::path::Path;
 
 use super::mock_interpreter::{interpret_expr, is_transport_response};
 
-#[allow(deprecated)]
 fn build_gunbc_dsl_graph(
     relative_module: &str,
     opts: BuildOpts<'_>,

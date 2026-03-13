@@ -2567,6 +2567,7 @@ fn classify_obligation_uses_structural_lowered_metadata() {
             idempotent: true,
             readonly: true,
             spec: None,
+            response_provider: None,
         }),
         is_interactive: false,
         resource_target: None,
@@ -2666,6 +2667,7 @@ fn topology_with_obligation_kinds_populates_canonical_kind_metadata() {
                 idempotent: true,
                 readonly: true,
                 spec: None,
+                response_provider: None,
             }),
             is_interactive: false,
             resource_target: None,
@@ -3543,6 +3545,7 @@ fn make_branch_body_dag_with_transports_has_triplets() {
             idempotent: true,
             readonly: true,
             spec: None,
+            response_provider: None,
         },
         prepare_inputs: vec!["bucket".to_string(), "path".to_string()],
         parse_output: "result".to_string(),
@@ -3597,6 +3600,7 @@ fn branch_body_dag_with_transports_builds_with_branch_builder() {
             idempotent: true,
             readonly: true,
             spec: None,
+            response_provider: None,
         },
         prepare_inputs: vec!["bucket".to_string()],
         parse_output: "result".to_string(),
@@ -3967,4 +3971,76 @@ func run() -> { result: String } {
     let body: serde_json::Value =
         serde_json::from_str(&mock_responses[1].body_json).expect("should parse as JSON");
     assert_eq!(body["error"], "unauthorized");
+}
+
+// ============================================================================
+// S44: parse_shell_output_parsing
+// ============================================================================
+
+#[test]
+fn parse_shell_output_parsing_recognizes_all_variants() {
+    assert_eq!(
+        parse_shell_output_parsing("TrimStdout"),
+        Some(ShellOutputParsing::TrimStdout)
+    );
+    assert_eq!(
+        parse_shell_output_parsing("trim_stdout"),
+        Some(ShellOutputParsing::TrimStdout)
+    );
+    assert_eq!(
+        parse_shell_output_parsing("SplitLines"),
+        Some(ShellOutputParsing::SplitLines)
+    );
+    assert_eq!(
+        parse_shell_output_parsing("SuccessStdoutStderr"),
+        Some(ShellOutputParsing::SuccessStdoutStderr)
+    );
+    assert_eq!(
+        parse_shell_output_parsing("ExitCodeBool"),
+        Some(ShellOutputParsing::ExitCodeBool)
+    );
+    assert_eq!(parse_shell_output_parsing("unknown"), None);
+}
+
+// ============================================================================
+// S45: parse_response_provider
+// ============================================================================
+
+#[test]
+fn parse_response_provider_recognizes_all_variants() {
+    use gunbc_ir::transport::middleware::ResponseProvider;
+
+    assert_eq!(
+        parse_response_provider("GitHub"),
+        Some(ResponseProvider::GitHub)
+    );
+    assert_eq!(
+        parse_response_provider("github"),
+        Some(ResponseProvider::GitHub)
+    );
+    assert_eq!(
+        parse_response_provider("Gcp"),
+        Some(ResponseProvider::Gcp)
+    );
+    assert_eq!(
+        parse_response_provider("GCP"),
+        Some(ResponseProvider::Gcp)
+    );
+    assert_eq!(
+        parse_response_provider("Anthropic"),
+        Some(ResponseProvider::Anthropic)
+    );
+    assert_eq!(
+        parse_response_provider("OpenAi"),
+        Some(ResponseProvider::OpenAi)
+    );
+    assert_eq!(
+        parse_response_provider("openai"),
+        Some(ResponseProvider::OpenAi)
+    );
+    assert_eq!(
+        parse_response_provider("Generic"),
+        Some(ResponseProvider::Generic)
+    );
+    assert_eq!(parse_response_provider("unknown_provider"), None);
 }

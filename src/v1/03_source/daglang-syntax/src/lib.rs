@@ -117,7 +117,7 @@ pub mod ast {
         FnDef(FnDef),
         FuncDef(FuncDef),
         PatternDef(PatternDef),
-        ServiceDef(ServiceDef),
+        ServiceDef(Box<ServiceDef>),
         ResourceDef(ResourceDef),
         InterfaceDef(InterfaceDef),
         PipelineDef(PipelineDef),
@@ -283,6 +283,10 @@ pub mod ast {
         /// Mock response definitions for test generation.
         /// Populated from `mock_response { STATUS => { body } }` blocks.
         pub mock_responses: Vec<MockResponseDef>,
+        /// Explicit output parsing mode (S44). When set, overrides inference
+        /// from output field types. Valid values: `TrimStdout`, `SplitLines`,
+        /// `SuccessStdoutStderr`, `ExitCodeBool`.
+        pub output_parsing: Option<String>,
     }
 
     /// Response contract entry: STATUS => TYPE.
@@ -677,6 +681,10 @@ pub mod ast {
         /// schema. Parsed as typed declarations for downstream validation
         /// (e.g., `bucket: NonEmptyStr`, `project_id: ProjectId`).
         pub extra: Vec<ProviderConfigField>,
+        /// Explicit response provider classification (S45). When set, overrides
+        /// inference from service name substrings. Valid values: `GitHub`,
+        /// `Gcp`, `Anthropic`, `OpenAi`, `Generic`.
+        pub response_provider: Option<String>,
     }
 
     /// A provider-specific config field: `name: Type` or `name: Type = default`.

@@ -42,6 +42,7 @@ fn empty_siblings() -> HashMap<String, LoweredFnBody> {
 /// ANF-normalized: call at statement level in a Let, then return the binding.
 fn call_and_return(name: &str, args: Vec<(Option<String>, LoweredExpr)>) -> LoweredFnBody {
     LoweredFnBody {
+
         stmts: vec![
             LoweredStmt::Let(
                 "__result".to_string(),
@@ -52,6 +53,7 @@ fn call_and_return(name: &str, args: Vec<(Option<String>, LoweredExpr)>) -> Lowe
                 LoweredExpr::Ident("__result".to_string()),
             )]),
         ],
+        ..Default::default()
     }
 }
 

@@ -7,7 +7,7 @@ description = "Shared DAG resolution operations for service transports"
 
 [dependencies]
 daglang-derive = { path = "../../06_artifacts/daglang-derive" }
-daglang-driver = { path = "../../02_pipeline/daglang-driver" }
+daglang-driver = { path = "../../02_pipeline/daglang-driver", optional = true }
 daglang-lower = { path = "../../05_graph/daglang-lower" }
 gunbc-exec = { path = "../../09_execute/exec" }
 gunbc-infra = { path = "../../00_foundation/infra" }
@@ -16,6 +16,11 @@ gunbc-lib-blob = { path = "../blob" }
 gunbc-lib-transport = { path = "../transport" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+[features]
+## Enable compilation convenience functions (`build_dsl_graph`, dagbin cache).
+## Without this feature, only the pure resolution API (`resolve_compiled_dsl`) is available.
+compile = ["dep:daglang-driver"]
 
 [dev-dependencies]
 gunbc-test = { path = "../../10_test/test" }

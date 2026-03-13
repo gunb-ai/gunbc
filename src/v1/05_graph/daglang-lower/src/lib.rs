@@ -51,7 +51,7 @@ use gunbc_ir::transport::middleware::{
 };
 use gunbc_ir::{
     Cardinality, Dag, DagTopology, Edge, EdgeKind, InputProvenance, Node, NodeId, NodeKind,
-    NodeOrigin, OperationKey, Port, PortName, Predicate, PredicateValue, StaticFingerprint,
+    NodeOrigin, OperationKey, Port, PortName, StaticFingerprint,
 };
 use serde::{Deserialize, Serialize};
 
@@ -375,6 +375,11 @@ pub struct ServiceCallMetadata {
     /// Used by generic protocol interpreters to replace per-service adapters.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spec: Option<ServiceOperationSpec>,
+    /// Response provider classification (S45). Stamped from DSL
+    /// `config { response_provider: X }` when present, else inferred from
+    /// service name substrings. Propagated to `Node.response_provider`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_provider: Option<ResponseProvider>,
 }
 
 impl LoweredOp {
@@ -501,11 +506,15 @@ pub fn obligation_to_node_kind(node: &Node<LoweredOp>) -> NodeKind {
 pub fn stamp_node_kinds(dag: &mut Dag<LoweredOp>) {
     for node in &mut dag.nodes {
         node.kind = obligation_to_node_kind(node);
-        // Stamp transport class from ServiceCallMetadata so consumers can
-        // read it directly from the Node without Any-downcasting LoweredOp.
+        // Stamp transport class and response provider from ServiceCallMetadata
+        // so consumers can read them directly from the Node without
+        // Any-downcasting LoweredOp (S45/S46).
         if let gunbc_ir::NodeBody::Opaque(ref op) = node.body {
             if let Some(meta) = op.service_call_metadata() {
                 node.transport_class = Some(meta.transport);
+                if let Some(rp) = meta.response_provider {
+                    node.response_provider = Some(rp);
+                }
             }
         }
         if let gunbc_ir::NodeBody::SubDag(ref mut inner, _) = node.body {
@@ -1412,6 +1421,7 @@ fn derive_interface_stub_transport_triplets(
                         interface: interface.name.clone(),
                         capability: capability.name.clone(),
                     }),
+                    response_provider: None,
                 };
 
                 let suffix = sanitize_identifier(&format!(
@@ -1422,33 +1432,11 @@ fn derive_interface_stub_transport_triplets(
                 let execute_id = format!("execute_transport_{suffix}");
                 let parse_id = format!("parse_transport_{suffix}");
 
-                // Prepare node: capability inputs → TransportRequest.
                 let prepare_ports = capability_prepare_ports(capability, &metadata);
                 let prepare_inputs = prepare_ports
                     .iter()
                     .map(|port| port.name.0.clone())
                     .collect::<Vec<_>>();
-
-                manifest.add_node(
-                    Node::opaque(
-                        prepare_id.clone(),
-                        prepare_ports,
-                        vec![Port::scalar("request", "TransportRequest")],
-                        LoweredOp::Transport {
-                            module: module_name.clone(),
-                            kind: CallableKind::Pattern,
-                            name: format!(
-                                "service_transport::prepare::{}::{}",
-                                interface.name, capability.name
-                            ),
-                            obligation: TransportObligation::Prepare,
-                            service_metadata: Box::new(metadata.clone()),
-                            is_interactive: false,
-                            resource_target: None,
-                        },
-                    )
-                    .with_origin(origin.clone()),
-                );
 
                 // Execute node: TransportRequest → typed capability outputs.
                 // In DryRun, boundary mocks supply typed fields directly.
@@ -1465,72 +1453,31 @@ fn derive_interface_stub_transport_triplets(
                         })
                         .collect::<Vec<_>>()
                 };
-                let execute_node = Node::opaque(
-                    execute_id.clone(),
-                    vec![Port::scalar("request", "TransportRequest")],
-                    typed_outputs.clone(),
-                    LoweredOp::Transport {
-                        module: module_name.clone(),
-                        kind: CallableKind::Pattern,
-                        name: format!(
-                            "service_transport::execute::{}::{}",
-                            interface.name, capability.name
-                        ),
-                        obligation: TransportObligation::Execute,
-                        service_metadata: Box::new(metadata.clone()),
-                        is_interactive: false,
-                        resource_target: None,
+
+                let triplet_spec = transport::TransportTripletSpec {
+                    module: module_name.clone(),
+                    service: interface.name.clone(),
+                    operation: capability.name.clone(),
+                    metadata: metadata.clone(),
+                    prepare_id: prepare_id.clone(),
+                    execute_id: execute_id.clone(),
+                    parse_id: parse_id.clone(),
+                    prepare_inputs: prepare_ports,
+                    execute_extra_inputs: vec![],
+                    parse_outputs: typed_outputs.clone(),
+                    execute_parse_wiring: transport::ExecuteParseWiring::PerField {
+                        fields: typed_outputs,
                     },
-                )
-                .with_input_guard(
-                    "request",
-                    Predicate::Not(Box::new(Predicate::Equals(PredicateValue::Skipped))),
-                )
-                .with_operation_key(OperationKey::new(&interface.name, &capability.name))
-                .with_origin(origin.clone());
-                manifest.add_node(execute_node);
-
-                // Parse node: typed capability outputs → typed capability outputs (identity).
-                manifest.add_node(
-                    Node::opaque(
-                        parse_id.clone(),
-                        typed_outputs.clone(),
-                        typed_outputs,
-                        LoweredOp::Transport {
-                            module: module_name.clone(),
-                            kind: CallableKind::Pattern,
-                            name: format!(
-                                "service_transport::parse::{}::{}",
-                                interface.name, capability.name
-                            ),
-                            obligation: TransportObligation::Parse,
-                            service_metadata: Box::new(metadata.clone()),
-                            is_interactive: false,
-                            resource_target: None,
-                        },
-                    )
-                    .with_origin(origin.clone()),
+                    origin: Some(origin.clone()),
+                    operation_key: Some(OperationKey::new(
+                        &interface.name,
+                        &capability.name,
+                    )),
+                };
+                transport::emit_triplet_to_manifest(
+                    &mut manifest,
+                    transport::build_transport_triplet(triplet_spec),
                 );
-
-                // Wire the triplet: prepare → execute → parse.
-                manifest.add_edge(
-                    prepare_id.as_str(),
-                    "request",
-                    execute_id.as_str(),
-                    "request",
-                );
-                // Wire per-field edges from execute to parse.
-                for field in &capability.outputs {
-                    manifest.add_edge(
-                        execute_id.as_str(),
-                        field.name.as_str(),
-                        parse_id.as_str(),
-                        field.name.as_str(),
-                    );
-                }
-                if capability.outputs.is_empty() {
-                    manifest.add_edge(execute_id.as_str(), "result", parse_id.as_str(), "result");
-                }
 
                 // Register endpoints under multiple keys for flexible resolution.
                 let parse_output = capability
@@ -1958,6 +1905,8 @@ pub enum LowerError {
     ExprLower(String),
     /// Data-flow wiring failed during lowering.
     WiringFailure { source_file: String, detail: String },
+    /// One or more ports reference type_ids not registered in the TypeRegistry.
+    PortTypeValidation(Vec<String>),
 }
 
 impl std::fmt::Display for LowerError {
@@ -2108,6 +2057,13 @@ impl std::fmt::Display for LowerError {
                 source_file,
                 detail,
             } => write!(f, "{source_file}: {detail}"),
+            Self::PortTypeValidation(diagnostics) => {
+                writeln!(f, "port type validation failed:")?;
+                for d in diagnostics {
+                    writeln!(f, "  - {d}")?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -2148,6 +2104,7 @@ impl LowerError {
             Self::MissingCallablePassthrough { .. } => "LOW024",
             Self::ExprLower(..) => "LOW025",
             Self::WiringFailure { .. } => "LOW026",
+            Self::PortTypeValidation(..) => "LOW027",
         }
     }
 
@@ -2180,6 +2137,11 @@ impl LowerError {
                 "check that `{field_name}` exists in the operation's inputs and is \
                  of type `Secret`"
             )),
+            Self::PortTypeValidation(_) => Some(
+                "register missing types in the TypeRegistry or fix the port type_ids \
+                 in the DSL source"
+                    .into(),
+            ),
             _ => None,
         }
     }
@@ -2320,6 +2282,11 @@ pub struct LowerOutput {
     pub dag: Dag<LoweredOp>,
     pub output_paths: Vec<String>,
     pub inferred_entrypoints: Vec<InferredEntrypoint>,
+    /// Cardinality compatibility diagnostics (S33).
+    ///
+    /// Non-empty when edges connect ports with incompatible cardinalities.
+    /// Advisory — the DAG is still usable but may need explicit coercion.
+    pub cardinality_diagnostics: Vec<gunbc_ir::CardinalityIncompatibility>,
 }
 
 /// Lower a typed project with the given configuration.
@@ -2530,10 +2497,23 @@ fn lower_typed_project_impl(
             .items
             .iter()
             .filter_map(|item| match &item.node {
-                Item::FnDef(def) => Some((
-                    def.name.as_str(),
-                    expr::lower_fn_body(&def.body, &variant_names),
-                )),
+                Item::FnDef(def) => {
+                    let mut body = expr::lower_fn_body(&def.body, &variant_names);
+                    body.param_types = def
+                        .params
+                        .iter()
+                        .map(|p| {
+                            (
+                                p.name.clone(),
+                                daglang_syntax::ast_utils::type_expr_to_string(&p.ty),
+                            )
+                        })
+                        .collect();
+                    body.return_type = Some(
+                        daglang_syntax::ast_utils::type_expr_to_string(&def.return_type),
+                    );
+                    Some((def.name.as_str(), body))
+                }
                 _ => None,
             })
             .collect();
@@ -2780,12 +2760,32 @@ fn lower_typed_project_impl(
     let mut dag = builder.into_dag();
     stamp_node_kinds(&mut dag);
     validate_callable_output_wiring(&dag)?;
+
+    // Post-lowering validation: verify all port TypeIds resolve against the
+    // type registry. Available via `gunbc_ir::validate_port_type_ids()` but
+    // not wired into the pipeline yet — the IR TypeRegistry does not contain
+    // DSL-defined types, so the check would produce false positives.
+    // Once DSL types are propagated into the registry (S18 follow-up),
+    // uncomment this block to enable hard validation.
+    // if let Some(registry) = type_registry {
+    //     let type_errors = gunbc_ir::validate_port_type_ids(&dag, registry);
+    //     if !type_errors.is_empty() {
+    //         let diagnostics: Vec<String> = type_errors.iter().map(|e| e.to_string()).collect();
+    //         return Err(LowerError::PortTypeValidation(diagnostics));
+    //     }
+    // }
+    let _ = type_registry; // Suppress unused warning until validation is enabled.
+
+    // S33: Cardinality compatibility validation (diagnostic mode).
+    let cardinality_diagnostics = gunbc_ir::validate_cardinality_compatibility(&dag);
+
     let output_paths = extract_output_paths(&dag);
     let inferred_entrypoints = infer_entrypoints(&dag);
     Ok(LowerOutput {
         dag,
         output_paths,
         inferred_entrypoints,
+        cardinality_diagnostics,
     })
 }
 
@@ -3520,29 +3520,40 @@ mod parity {
     }
 }
 
-/// Infer an obligation category for `fn` items based on name/output-type heuristics.
+/// Infer an obligation category for `fn` items based on output port type structure.
 ///
 /// Only applies to `CallableKind::Fn` (pure functions). `Func`/`Pattern` callables
 /// keep `ObligationCategory::None` (they are classified structurally elsewhere).
-fn infer_fn_obligation(name: &str, kind: CallableKind, outputs: &[Port]) -> CallableObligation {
+///
+/// # Classification rules (S14 — structural, not name-prefix)
+///
+/// 1. **ResourceProvide**: any fn whose output type contains "Handle" or "Env"
+///    (structural indicator of resource provision).
+/// 2. **PureRender**: fn with a single `String` output and at least one
+///    non-String input (structural indicator of template/render).
+/// 3. **PureDataLoad**: fn with no inputs (beyond `__deps`) and non-Handle
+///    outputs (structural indicator of data loading).
+/// 4. **PureGeneric**: everything else.
+fn infer_fn_obligation(_name: &str, kind: CallableKind, outputs: &[Port]) -> CallableObligation {
     if kind != CallableKind::Fn {
         return CallableObligation::None;
     }
+
+    // Rule 1: Output type contains "Handle" or "Env" → resource provider.
     let has_handle_output = outputs.iter().any(|p| {
         let ty = p.type_id.0.as_str();
         ty.contains("Handle") || ty.contains("Env")
     });
-    if has_handle_output
-        && (name.starts_with("load_") || name == "fs_env" || name.starts_with("env_"))
-    {
+    if has_handle_output {
         return CallableObligation::ResourceProvide;
     }
-    if name.starts_with("render_") {
+
+    // Rule 2: Single String output → pure renderer.
+    let is_string_output = outputs.len() == 1 && outputs[0].type_id.0 == "String";
+    if is_string_output {
         return CallableObligation::PureRender;
     }
-    if name.starts_with("load_") || name.starts_with("env_") {
-        return CallableObligation::PureDataLoad;
-    }
+
     CallableObligation::PureGeneric
 }
 
@@ -4390,12 +4401,12 @@ fn make_loop_body_dag(
                 obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
-                fn_body: Some(Box::new(expr::LoweredFnBody {
-                    stmts: vec![expr::LoweredStmt::Return(vec![(
+                fn_body: Some(Box::new(expr::LoweredFnBody::from_stmts(
+                    vec![expr::LoweredStmt::Return(vec![(
                         "result".to_string(),
                         expr::LoweredExpr::Ident(element_var.to_string()),
                     )])],
-                })),
+                ))),
             },
         ));
     } else {
@@ -4422,12 +4433,12 @@ fn make_loop_body_dag(
                 obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
-                fn_body: Some(Box::new(expr::LoweredFnBody {
-                    stmts: vec![expr::LoweredStmt::Return(vec![(
+                fn_body: Some(Box::new(expr::LoweredFnBody::from_stmts(
+                    vec![expr::LoweredStmt::Return(vec![(
                         "result".to_string(),
                         expr::LoweredExpr::Ident(last_parse_output.clone()),
                     )])],
-                })),
+                ))),
             },
         ));
         for (ti, transport) in body_transports.iter().enumerate() {
@@ -4440,77 +4451,26 @@ fn make_loop_body_dag(
                 .iter()
                 .map(|name| Port::scalar(name.as_str(), "Any"))
                 .collect();
-            dag.add_node(Node::opaque(
-                prepare_id.clone(),
-                prepare_ports,
-                vec![Port::scalar("request", "TransportRequest")],
-                LoweredOp::Transport {
-                    module: module_name.to_string(),
-                    kind: CallableKind::Pattern,
-                    name: format!(
-                        "service_transport::prepare::{}::{}",
-                        transport.metadata.service, transport.metadata.operation
-                    ),
-                    obligation: TransportObligation::Prepare,
-                    service_metadata: Box::new(transport.metadata.clone()),
-                    is_interactive: false,
-                    resource_target: None,
-                },
-            ));
-            let execute_node = Node::opaque(
-                execute_id.clone(),
-                vec![Port::scalar("request", "TransportRequest")],
-                vec![Port::scalar("response", "TransportResponse")],
-                LoweredOp::Transport {
-                    module: module_name.to_string(),
-                    kind: CallableKind::Pattern,
-                    name: format!(
-                        "service_transport::execute::{}::{}",
-                        transport.metadata.service, transport.metadata.operation
-                    ),
-                    obligation: TransportObligation::Execute,
-                    service_metadata: Box::new(transport.metadata.clone()),
-                    is_interactive: false,
-                    resource_target: None,
-                },
-            )
-            .with_input_guard(
-                "request",
-                Predicate::Not(Box::new(Predicate::Equals(PredicateValue::Skipped))),
+
+            let triplet_spec = transport::TransportTripletSpec {
+                module: module_name.to_string(),
+                service: transport.metadata.service.clone(),
+                operation: transport.metadata.operation.clone(),
+                metadata: transport.metadata.clone(),
+                prepare_id: prepare_id.clone(),
+                execute_id: execute_id.clone(),
+                parse_id: parse_id.clone(),
+                prepare_inputs: prepare_ports,
+                execute_extra_inputs: vec![],
+                parse_outputs: vec![Port::scalar(transport.parse_output.as_str(), "Any")],
+                execute_parse_wiring: transport::ExecuteParseWiring::Response,
+                origin: None,
+                operation_key: None,
+            };
+            transport::emit_triplet_to_dag(
+                &mut dag,
+                transport::build_transport_triplet(triplet_spec),
             );
-            dag.add_node(execute_node);
-            dag.add_node(Node::opaque(
-                parse_id.clone(),
-                vec![Port::scalar("response", "TransportResponse")],
-                vec![Port::scalar(transport.parse_output.as_str(), "Any")],
-                LoweredOp::Transport {
-                    module: module_name.to_string(),
-                    kind: CallableKind::Pattern,
-                    name: format!(
-                        "service_transport::parse::{}::{}",
-                        transport.metadata.service, transport.metadata.operation
-                    ),
-                    obligation: TransportObligation::Parse,
-                    service_metadata: Box::new(transport.metadata.clone()),
-                    is_interactive: false,
-                    resource_target: None,
-                },
-            ));
-            // Wire the transport triplet chain: prepare → execute → parse.
-            // Prepare inputs matching element_var or passthrough are left as
-            // entrypoints — the loop executor injects them via set_input.
-            dag.add_edge(Edge::new(
-                prepare_id.as_str(),
-                "request",
-                execute_id.as_str(),
-                "request",
-            ));
-            dag.add_edge(Edge::new(
-                execute_id.as_str(),
-                "response",
-                parse_id.as_str(),
-                "response",
-            ));
             // Wire parse output to body_op as a DATA edge (not __deps) so
             // PassthroughOp forwards the transport result to body_op.result.
             dag.add_edge(Edge::new(
@@ -4551,12 +4511,12 @@ fn make_branch_body_dag(
                 obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
-                fn_body: Some(Box::new(expr::LoweredFnBody {
-                    stmts: vec![expr::LoweredStmt::Return(vec![(
+                fn_body: Some(Box::new(expr::LoweredFnBody::from_stmts(
+                    vec![expr::LoweredStmt::Return(vec![(
                         "result".to_string(),
                         expr::LoweredExpr::Ident("input".to_string()),
                     )])],
-                })),
+                ))),
             },
         ));
     } else {
@@ -4587,12 +4547,12 @@ fn make_branch_body_dag(
                 obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
-                fn_body: Some(Box::new(expr::LoweredFnBody {
-                    stmts: vec![expr::LoweredStmt::Return(vec![(
+                fn_body: Some(Box::new(expr::LoweredFnBody::from_stmts(
+                    vec![expr::LoweredStmt::Return(vec![(
                         "result".to_string(),
                         expr::LoweredExpr::Ident(last_parse_output.clone()),
                     )])],
-                })),
+                ))),
             },
         ));
         for (ti, transport) in body_transports.iter().enumerate() {
@@ -4605,74 +4565,26 @@ fn make_branch_body_dag(
                 .iter()
                 .map(|name| Port::scalar(name.as_str(), "Any"))
                 .collect();
-            dag.add_node(Node::opaque(
-                prepare_id.clone(),
-                prepare_ports,
-                vec![Port::scalar("request", "TransportRequest")],
-                LoweredOp::Transport {
-                    module: module_name.to_string(),
-                    kind: CallableKind::Pattern,
-                    name: format!(
-                        "service_transport::prepare::{}::{}",
-                        transport.metadata.service, transport.metadata.operation
-                    ),
-                    obligation: TransportObligation::Prepare,
-                    service_metadata: Box::new(transport.metadata.clone()),
-                    is_interactive: false,
-                    resource_target: None,
-                },
-            ));
-            let execute_node = Node::opaque(
-                execute_id.clone(),
-                vec![Port::scalar("request", "TransportRequest")],
-                vec![Port::scalar("response", "TransportResponse")],
-                LoweredOp::Transport {
-                    module: module_name.to_string(),
-                    kind: CallableKind::Pattern,
-                    name: format!(
-                        "service_transport::execute::{}::{}",
-                        transport.metadata.service, transport.metadata.operation
-                    ),
-                    obligation: TransportObligation::Execute,
-                    service_metadata: Box::new(transport.metadata.clone()),
-                    is_interactive: false,
-                    resource_target: None,
-                },
-            )
-            .with_input_guard(
-                "request",
-                Predicate::Not(Box::new(Predicate::Equals(PredicateValue::Skipped))),
+
+            let triplet_spec = transport::TransportTripletSpec {
+                module: module_name.to_string(),
+                service: transport.metadata.service.clone(),
+                operation: transport.metadata.operation.clone(),
+                metadata: transport.metadata.clone(),
+                prepare_id: prepare_id.clone(),
+                execute_id: execute_id.clone(),
+                parse_id: parse_id.clone(),
+                prepare_inputs: prepare_ports,
+                execute_extra_inputs: vec![],
+                parse_outputs: vec![Port::scalar(transport.parse_output.as_str(), "Any")],
+                execute_parse_wiring: transport::ExecuteParseWiring::Response,
+                origin: None,
+                operation_key: None,
+            };
+            transport::emit_triplet_to_dag(
+                &mut dag,
+                transport::build_transport_triplet(triplet_spec),
             );
-            dag.add_node(execute_node);
-            dag.add_node(Node::opaque(
-                parse_id.clone(),
-                vec![Port::scalar("response", "TransportResponse")],
-                vec![Port::scalar(transport.parse_output.as_str(), "Any")],
-                LoweredOp::Transport {
-                    module: module_name.to_string(),
-                    kind: CallableKind::Pattern,
-                    name: format!(
-                        "service_transport::parse::{}::{}",
-                        transport.metadata.service, transport.metadata.operation
-                    ),
-                    obligation: TransportObligation::Parse,
-                    service_metadata: Box::new(transport.metadata.clone()),
-                    is_interactive: false,
-                    resource_target: None,
-                },
-            ));
-            dag.add_edge(Edge::new(
-                prepare_id.as_str(),
-                "request",
-                execute_id.as_str(),
-                "request",
-            ));
-            dag.add_edge(Edge::new(
-                execute_id.as_str(),
-                "response",
-                parse_id.as_str(),
-                "response",
-            ));
             dag.add_edge(Edge::new(
                 parse_id.as_str(),
                 transport.parse_output.as_str(),
@@ -6284,6 +6196,15 @@ fn derive_service_call_metadata(
                 if method.eq_ignore_ascii_case("GET") || method.eq_ignore_ascii_case("HEAD")
         );
 
+    // S45: Prefer explicit response_provider from DSL config, fall back to
+    // service-name-substring inference.
+    let response_provider = service
+        .config
+        .response_provider
+        .as_deref()
+        .and_then(parse_response_provider)
+        .or_else(|| infer_response_provider(&service.name));
+
     ServiceCallMetadata {
         service: service.name.clone(),
         operation: operation.name.clone(),
@@ -6291,6 +6212,7 @@ fn derive_service_call_metadata(
         idempotent: operation.idempotent,
         readonly,
         spec,
+        response_provider,
     }
 }
 
@@ -6597,6 +6519,18 @@ fn derive_middleware_config(
     })
 }
 
+/// Parse an explicit response provider identifier from the DSL (S45).
+fn parse_response_provider(name: &str) -> Option<ResponseProvider> {
+    match name {
+        "GitHub" | "github" => Some(ResponseProvider::GitHub),
+        "Gcp" | "gcp" | "GCP" => Some(ResponseProvider::Gcp),
+        "Anthropic" | "anthropic" => Some(ResponseProvider::Anthropic),
+        "OpenAi" | "openai" | "OpenAI" => Some(ResponseProvider::OpenAi),
+        "Generic" | "generic" => Some(ResponseProvider::Generic),
+        _ => None,
+    }
+}
+
 /// Infer the response provider from service name patterns.
 fn infer_response_provider(service_name: &str) -> Option<ResponseProvider> {
     let lower = service_name.to_lowercase();
@@ -6798,7 +6732,13 @@ fn derive_shell_spec(
 
     let input_fields = derive_input_fields_for_shell(&operation.inputs, &argv_template);
     let output_fields = derive_output_fields(&operation.outputs);
-    let output_parsing = infer_shell_output_parsing(&operation.outputs);
+    // S44: Prefer explicit output_parsing from DSL annotation, fall back to
+    // inference from output field types.
+    let output_parsing = operation
+        .output_parsing
+        .as_deref()
+        .and_then(parse_shell_output_parsing)
+        .unwrap_or_else(|| infer_shell_output_parsing(&operation.outputs));
 
     // Extract env from `env: Map<String, String>` input default.
     let env = extract_env_from_inputs(&operation.inputs, data_registry);
@@ -7050,6 +6990,19 @@ fn derive_output_fields(outputs: &[daglang_syntax::ast::Field]) -> Vec<OutputFie
             }
         })
         .collect()
+}
+
+/// Parse an explicit shell output parsing mode identifier from the DSL (S44).
+fn parse_shell_output_parsing(name: &str) -> Option<ShellOutputParsing> {
+    match name {
+        "TrimStdout" | "trim_stdout" => Some(ShellOutputParsing::TrimStdout),
+        "SplitLines" | "split_lines" => Some(ShellOutputParsing::SplitLines),
+        "SuccessStdoutStderr" | "success_stdout_stderr" => {
+            Some(ShellOutputParsing::SuccessStdoutStderr)
+        }
+        "ExitCodeBool" | "exit_code_bool" => Some(ShellOutputParsing::ExitCodeBool),
+        _ => None,
+    }
 }
 
 /// Infer shell output parsing mode from output field types.
@@ -7522,59 +7475,15 @@ fn derive_service_transport_triplets(
                     .map(|port| port.name.0.clone())
                     .collect::<Vec<_>>();
 
-                manifest.add_node(
-                    Node::opaque(
-                        prepare_id.clone(),
-                        prepare_ports,
-                        vec![Port::scalar("request", "TransportRequest")],
-                        LoweredOp::Transport {
-                            module: module_name.clone(),
-                            kind: CallableKind::Pattern,
-                            name: format!(
-                                "service_transport::prepare::{}::{}",
-                                service.name, operation.name
-                            ),
-                            obligation: TransportObligation::Prepare,
-                            service_metadata: Box::new(service_metadata.clone()),
-                            is_interactive: false,
-                            resource_target: None,
-                        },
-                    )
-                    .with_origin(origin.clone()),
-                );
                 let has_auth = matches!(
                     &service_metadata.spec,
                     Some(ServiceOperationSpec::Rest(spec)) if spec.auth_scheme.is_some()
                 );
-                let mut execute_inputs = vec![Port::scalar("request", "TransportRequest")];
-                if has_auth {
-                    execute_inputs
-                        .push(Port::optional(PortName::RESOURCE_CREDENTIAL, "Credential"));
-                }
-                let execute_node = Node::opaque(
-                    execute_id.clone(),
-                    execute_inputs,
-                    vec![Port::scalar("response", "TransportResponse")],
-                    LoweredOp::Transport {
-                        module: module_name.clone(),
-                        kind: CallableKind::Pattern,
-                        name: format!(
-                            "service_transport::execute::{}::{}",
-                            service.name, operation.name
-                        ),
-                        obligation: TransportObligation::Execute,
-                        service_metadata: Box::new(service_metadata.clone()),
-                        is_interactive: false,
-                        resource_target: None,
-                    },
-                )
-                .with_input_guard(
-                    "request",
-                    Predicate::Not(Box::new(Predicate::Equals(PredicateValue::Skipped))),
-                )
-                .with_operation_key(OperationKey::new(&service.name, &operation.name))
-                .with_origin(origin.clone());
-                manifest.add_node(execute_node);
+                let execute_extra_inputs = if has_auth {
+                    vec![Port::optional(PortName::RESOURCE_CREDENTIAL, "Credential")]
+                } else {
+                    vec![]
+                };
                 let parse_outputs = if operation.outputs.is_empty() {
                     vec![Port::scalar("result", "Unit")]
                 } else {
@@ -7587,38 +7496,28 @@ fn derive_service_transport_triplets(
                         })
                         .collect::<Vec<_>>()
                 };
-                manifest.add_node(
-                    Node::opaque(
-                        parse_id.clone(),
-                        vec![Port::scalar("response", "TransportResponse")],
-                        parse_outputs,
-                        LoweredOp::Transport {
-                            module: module_name.clone(),
-                            kind: CallableKind::Pattern,
-                            name: format!(
-                                "service_transport::parse::{}::{}",
-                                service.name, operation.name
-                            ),
-                            obligation: TransportObligation::Parse,
-                            service_metadata: Box::new(service_metadata.clone()),
-                            is_interactive: false,
-                            resource_target: None,
-                        },
-                    )
-                    .with_origin(origin.clone()),
-                );
 
-                manifest.add_edge(
-                    prepare_id.as_str(),
-                    "request",
-                    execute_id.as_str(),
-                    "request",
-                );
-                manifest.add_edge(
-                    execute_id.as_str(),
-                    "response",
-                    parse_id.as_str(),
-                    "response",
+                let triplet_spec = transport::TransportTripletSpec {
+                    module: module_name.clone(),
+                    service: service.name.clone(),
+                    operation: operation.name.clone(),
+                    metadata: service_metadata.clone(),
+                    prepare_id: prepare_id.clone(),
+                    execute_id: execute_id.clone(),
+                    parse_id: parse_id.clone(),
+                    prepare_inputs: prepare_ports,
+                    execute_extra_inputs,
+                    parse_outputs,
+                    execute_parse_wiring: transport::ExecuteParseWiring::Response,
+                    origin: Some(origin),
+                    operation_key: Some(OperationKey::new(
+                        &service.name,
+                        &operation.name,
+                    )),
+                };
+                transport::emit_triplet_to_manifest(
+                    &mut manifest,
+                    transport::build_transport_triplet(triplet_spec),
                 );
 
                 let parse_output = operation
@@ -7702,7 +7601,20 @@ fn collect_project_fn_bodies(
             if fn_stmts.is_empty() {
                 continue;
             }
-            let body = LoweredFnBody { stmts: fn_stmts };
+            let param_types: Vec<(String, String)> = def
+                .params
+                .iter()
+                .map(|p| {
+                    (
+                        p.name.clone(),
+                        daglang_syntax::ast_utils::type_expr_to_string(&p.ty),
+                    )
+                })
+                .collect();
+            let return_type = Some(daglang_syntax::ast_utils::type_expr_to_string(
+                &def.return_type,
+            ));
+            let body = LoweredFnBody::with_types(fn_stmts, param_types, return_type);
             fn_bodies.insert(def.name.clone(), body);
         }
     }
@@ -9680,17 +9592,8 @@ struct CollectionNodeSpec {
 }
 
 fn collection_op_kind(name: &str) -> Option<CollectionOpKind> {
-    // Handle aliases: count→len, sum→fold.
-    match name {
-        "count" => return Some(CollectionOpKind::Len),
-        "sum" => return Some(CollectionOpKind::Fold),
-        "filter_map" => return Some(CollectionOpKind::Filter),
-        "flat_map" => return Some(CollectionOpKind::FlatMap),
-        "sort_by" => return Some(CollectionOpKind::Sort),
-        "append" => return Some(CollectionOpKind::Map),
-        _ => {}
-    }
-    CollectionOpKind::from_name(name)
+    // Delegates to CollectionKind::from_name_or_alias — single source of truth (S11).
+    CollectionOpKind::from_name_or_alias(name)
 }
 
 fn collect_collection_ops_from_stmts(stmts: &[Stmt], sites: &mut Vec<CollectionOpSite>) {

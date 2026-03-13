@@ -605,6 +605,7 @@ fn test_dry_run_intercepts_transport_executor() {
         &dag,
         ExecuteConfig {
             mode: ExecutionMode::DryRun(mocks),
+            strictness: DryRunStrictness::Lenient,
             ..Default::default()
         },
     )
@@ -673,6 +674,7 @@ fn test_pure_node_not_intercepted() {
         &dag,
         ExecuteConfig {
             mode: ExecutionMode::DryRun(mocks),
+            strictness: DryRunStrictness::Lenient,
             ..Default::default()
         },
     )

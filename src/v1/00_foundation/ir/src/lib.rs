@@ -149,8 +149,9 @@ pub use patterns::{
         TransportPortTypes,
     },
     validate_authenticate_bindings, validate_authenticate_chain, AtomicBuilder, AuthenticatePhase,
-    AuthenticatePhaseBinding, BackoffStrategy, FailureClassifier, PatternOp, PollBuilder,
-    RepeatPolicy, ResourceInput, RetryBuilder, TransactionBuilder, UpsertBuilder, WhileBuilder,
+    AuthenticatePhaseBinding, BackoffStrategy, EmitCollectionFamily, FailureClassifier, PatternOp,
+    PollBuilder, RepeatPolicy, ResourceInput, RetryBuilder, TransactionBuilder, UpsertBuilder,
+    WhileBuilder,
 };
 pub use plain_render::PlainStructuredRenderer;
 pub use platform::{
@@ -202,18 +203,19 @@ pub use typed_io::{
     TypedOutput, TypedPort, UrlTag,
 };
 pub use types::{
-    boundary_label, parse_map_type_id, value_backing_for_type_id, value_compatible_with_type_id,
-    value_kind_name, Cardinality, CardinalityMismatch, CardinalitySamplingStrategy,
-    InputProvenance, NodeId, OperationKey, PortCategory, PortName,
-    ResolvedScalar, ResolvedType,
+    boundary_label, normalize_optional_type_id, optional_inner_type_id, parse_map_type_id,
+    parse_unary_generic_type_id, value_backing_for_type_id, value_compatible_with_type_id,
+    value_kind_name, BuiltinType, Cardinality, CardinalityMismatch, CardinalitySamplingStrategy,
+    InputProvenance, NodeId, OperationKey, PortCategory, PortName, ResolvedScalar, ResolvedType,
     SeedPlaceholderPolicy, SemanticCarrierClass, SemanticCarrierKind, StaticFingerprint, TypeId,
-    ValueBacking,
+    ValueBacking, BUILTIN_TYPES,
 };
 pub use validate::{
-    validate_fingerprint_uniqueness, validate_required_inputs, validate_resource_wiring,
-    validate_resource_wiring_recursive, validate_subdag_interfaces, verify_dag,
-    FingerprintConflict, PortDirection, SubDagError, UnwiredInputError, UnwiredResource,
-    VerifyError,
+    validate_cardinality_compatibility, validate_fingerprint_uniqueness, validate_port_type_ids,
+    validate_required_inputs, validate_resource_wiring, validate_resource_wiring_recursive,
+    validate_subdag_interfaces, verify_dag, verify_dag_with_registry, CardinalityIncompatibility,
+    FingerprintConflict, PortDirection, SubDagError, UnregisteredTypeError, UnwiredInputError,
+    UnwiredResource, VerifyError,
 };
 pub use value::{
     SecretHint, SecretString, Value, ValueKind, HUMAN_TEXT_MAX_LINES, HUMAN_TEXT_MAX_LINE_WIDTH,

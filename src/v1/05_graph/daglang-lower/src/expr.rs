@@ -46,13 +46,12 @@ pub fn lower_fn_body_with_mode(
     variant_names: &HashSet<String>,
     mode: ExprLowerMode,
 ) -> LoweredFnBody {
-    let lowered = LoweredFnBody {
-        stmts: body
-            .stmts
+    let lowered = LoweredFnBody::from_stmts(
+        body.stmts
             .iter()
             .map(|s| lower_stmt(s, variant_names, mode))
             .collect(),
-    };
+    );
     let normalized = crate::anf::anf_normalize(lowered);
     debug_assert!(
         crate::anf::verify_anf(&normalized).is_ok(),
@@ -263,12 +262,12 @@ fn lower_expr(
             // After deps are DAG scheduling concerns — evaluate the inner expr
             lower_expr(expr, variant_names, mode)
         }
-        ast::Expr::Return(fields) => LoweredExpr::Return(
+        ast::Expr::Return(fields) => LoweredExpr::Block(vec![LoweredStmt::Return(
             fields
                 .iter()
                 .map(|(k, v)| (k.clone(), lower_expr(v, variant_names, mode)))
                 .collect(),
-        ),
+        )]),
     }
 }
 

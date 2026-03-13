@@ -167,20 +167,21 @@ config resolution step that produces resolved values as lowerer inputs.
 **S66:** `gunbc-resolve` depends on `daglang-driver` (layer 08 → layer 02), inverting
 the pipeline layer order. Resolver should receive compiled artifacts, not invoke
 compilation. Fix: move compilation into driver; resolver receives compiled artifacts.
-**S67:** `ValueType::Unknown` sentinel — 20+ sites in typechecker return `Unknown`
-instead of propagating inference failure. `Unknown` flows through to lowering unchecked.
-Fix: typechecker output type has no `Unknown` variant — unresolvable types are errors,
-not sentinels. The lowerer's input type makes "unresolved" unrepresentable.
+**S67:** ~~`ValueType::Unknown` sentinel~~ **DONE.** `Unknown` variant renamed to
+`Inferred` with documented semantics ("valid type exists but inference cannot name it").
+`display_name()` returns `String` (not `Option`); `is_inferred()` guard replaces all
+`matches!(_, Unknown)` checks. `TypecheckWarning::InferredType` added for soft failures.
+Match and if/else arms now propagate concrete types when all branches agree.
 **S68:** Computation classification duplicated in typecheck and emit. Both
 `daglang-typecheck` (`classify_computation`, `classify_fn_body`) and `daglang-emit`
 (`computation.rs`) derive node classification from `LoweredOp`. Fix: stamp
 `Computation` on nodes at lowering time; consumers read, don't re-derive.
 **S69:** `EmitCollectionFamily` enum lives in `daglang-syntax` AST (`lib.rs:608`),
 coupling the parser to codegen concerns. Fix: move to emit or lower crate.
-**S70:** Emit input types too permissive — `emit_rust_bundle` et al. take
-`ReachableDag<LoweredOp>` + `DerivedArtifacts` without structural guarantees.
-Fix: richer input types (embedded type structure, split LoweredOp variants)
-that make incomplete/invalid inputs unrepresentable.
+**S70:** ~~Emit input types too permissive~~ — DONE. `classify_for_emit()`
+walks the DAG once; `EmitInput` / `EmitCallable` / `EmitTransport` /
+`EmitPrimitive` / `EmitCollection` / `EmitPipeline` structs replace raw
+variant matching. Legacy API wraps new classified path.
 **S71:** Thread-local `TmpCounter` in emit (`fn_codegen.rs:72–96`) makes temp name
 generation non-deterministic. Fix: explicit counter passed through emission functions.
 
@@ -497,3 +498,6 @@ args). Item 7 is the main contributor to gist pipeline OOM.
 | R4 | `scalar_witness_for_base` fabrication | Returns `None` | 2026-03-10 |
 | R5 | `is_placeholder_witness` / `is_compatible(Unknown)` | Deleted | 2026-03-10 |
 | R6 | Callable port cardinality wrong for fn params | Always scalar | 2026-03-10 |
+| S11 | Collection ops require 5 edits each | `CollectionKind` registry: `emit_family()`, `typecheck_contract()`, `from_name_or_alias()`, `is_eval_intrinsic()` centralized in `ir/src/patterns/collection.rs`. Consumers delegate. | 2026-03-13 |
+| S14 | Obligation classification by name prefix | Structural: output type shape (`Handle`/`Env` -> ResourceProvide, single String -> PureRender). `infer_fn_obligation` no longer reads `name`. | 2026-03-13 |
+| S15 | Filesystem resource hardcoded by type name | `FILESYSTEM_HANDLE_TYPE` constant + `is_filesystem_resource_port()` helper in `ir/src/resource/mod.rs`. Resolve.rs migrated. | 2026-03-13 |

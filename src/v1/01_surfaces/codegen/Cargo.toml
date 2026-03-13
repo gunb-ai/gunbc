@@ -10,7 +10,7 @@ gunbc-infra = { path = "../../00_foundation/infra" }
 gunbc-ir = { path = "../../00_foundation/ir" }
 gunbc-test = { path = "../../10_test/test" }
 gunbc-exec = { path = "../../09_execute/exec" }
-gunbc-resolve = { path = "../../08_materialize/resolve" }
+gunbc-resolve = { path = "../../08_materialize/resolve", features = ["compile"] }
 gunbc-cli = { path = "../cli" }
 gunbc-lib-transport = { path = "../../08_materialize/transport" }
 gunbc-lib-blob = { path = "../../08_materialize/blob" }

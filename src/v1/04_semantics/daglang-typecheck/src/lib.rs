@@ -35,7 +35,7 @@ use daglang_syntax::ast::{
 use daglang_syntax::ast_utils::{
     is_function_type, resource_type_name, service_call_lookup_keys, type_expr_to_string, walk_stmts,
 };
-use gunbc_ir::TypeRegistry;
+use gunbc_ir::{TypeRegistry, BUILTIN_TYPES};
 
 /// A typechecked project snapshot over a resolved module graph.
 #[derive(Debug)]
@@ -359,6 +359,31 @@ pub enum TypeError {
         scrutinee_type: String,
         missing_variants: Vec<String>,
     },
+}
+
+/// Non-fatal diagnostic emitted when the typechecker encounters an
+/// expression whose type cannot be fully determined but is not an error.
+///
+/// Warnings are collected alongside `TypeError`s and surfaced to the
+/// caller for reporting. They do NOT block compilation.
+#[derive(Debug)]
+pub enum TypecheckWarning {
+    /// The typechecker could not infer a concrete type for an expression
+    /// and fell back to `Inferred` (treated as compatible with any type).
+    InferredType {
+        context: String,
+        hint: String,
+    },
+}
+
+impl std::fmt::Display for TypecheckWarning {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InferredType { context, hint } => {
+                write!(f, "type not inferred for {context}: {hint}")
+            }
+        }
+    }
 }
 
 /// A type error enriched with source location information.
@@ -1822,13 +1847,11 @@ fn validate_pipeline_def(
                 inferred,
                 ValueType::Named(ref name) if strip_generic_params(name) == "Bool"
             );
-            if !is_bool && !matches!(inferred, ValueType::Unknown) {
+            if !is_bool && !inferred.is_inferred() {
                 errors.push(TypeError::PipelineStageWhenTypeMismatch {
                     pipeline: pipeline_name.clone(),
                     stage: stage.name.clone(),
-                    got: inferred
-                        .display_name()
-                        .unwrap_or_else(|| "Unknown".to_string()),
+                    got: inferred.display_name(),
                 });
             }
         }
@@ -2164,54 +2187,42 @@ fn register_callable_contract(
 }
 
 fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
-    // Collection operation builtins (previously pipe methods, now standalone calls).
-    // Arity includes the collection/receiver argument (no longer implicit via pipe).
-    let mut contracts: Vec<(String, CallableContract)> = vec![
-        ("map", 2, &["collection", "f"][..], "List"),
-        ("filter", 2, &["collection", "predicate"], "List"),
-        ("filter_map", 2, &["collection", "f"], "List"),
-        ("flat_map", 2, &["collection", "f"], "List"),
-        ("sort_by", 2, &["collection", "key_fn"], "List"),
-        ("append", 2, &["collection", "items"], "List"),
-        ("fold", 3, &["collection", "init", "f"], "Any"),
-        ("join", 2, &["collection", "separator"], "String"),
-        ("count", 1, &["collection"], "Int"),
-        ("sum", 1, &["collection"], "Int"),
-        ("first", 1, &["collection"], "Any"),
-        ("last", 1, &["collection"], "Any"),
-        ("max_by", 2, &["collection", "f"], "Any"),
-        ("any", 2, &["collection", "predicate"], "Bool"),
-        ("all", 2, &["collection", "predicate"], "Bool"),
-        ("contains", 2, &["collection", "item"], "Bool"),
-        ("split", 2, &["value", "delimiter"], "List"),
-        ("zip", 2, &["collection", "other"], "List"),
-        ("skip", 2, &["collection", "n"], "List"),
-        ("enumerate", 1, &["collection"], "List"),
-        ("starts_with", 2, &["value", "prefix"], "Bool"),
-        ("ends_with", 2, &["value", "suffix"], "Bool"),
-        ("repeat", 2, &["value", "n"], "String"),
-        ("replace_section", 3, &["value", "section", "replacement"], "String"),
-        ("chars", 1, &["value"], "List"),
-        ("to_bytes", 1, &["value"], "Bytes"),
-        ("to_json", 1, &["value"], "Json"),
-        ("hash", 1, &["value"], "String"),
-    ]
-    .into_iter()
-    .map(|(name, arity, params, output)| {
-        (
-            name.to_string(),
-            CallableContract {
-                arity,
-                params: params.iter().map(|s| s.to_string()).collect(),
-                output: if output == "Any" {
-                    ValueType::Named("Any".to_string())
-                } else {
-                    ValueType::Named(output.to_string())
+    // Collection operation builtins — derived from centralized registry (S11).
+    // Each CollectionKind carries its own typecheck contract metadata.
+    use gunbc_ir::patterns::{
+        alias_contracts, non_collection_builtin_contracts, ALL_COLLECTION_OPS,
+    };
+
+    let builtin_to_contract =
+        |name: &str, bc: &gunbc_ir::patterns::BuiltinContract| -> (String, CallableContract) {
+            (
+                name.to_string(),
+                CallableContract {
+                    arity: bc.arity,
+                    params: bc.params.iter().map(|s| s.to_string()).collect(),
+                    output: ValueType::Named(bc.output_type.to_string()),
                 },
-            },
-        )
-    })
-    .collect();
+            )
+        };
+
+    let mut contracts: Vec<(String, CallableContract)> = Vec::new();
+
+    // Canonical collection ops (map, filter, fold, etc.)
+    for kind in ALL_COLLECTION_OPS {
+        let name = kind.from_name_reverse();
+        let bc = kind.typecheck_contract();
+        contracts.push(builtin_to_contract(name, &bc));
+    }
+
+    // DSL aliases (filter_map, sort_by, append, count, sum)
+    for (name, bc) in alias_contracts() {
+        contracts.push(builtin_to_contract(name, &bc));
+    }
+
+    // Non-collection builtins (first, last, max_by, starts_with, etc.)
+    for (name, bc) in non_collection_builtin_contracts() {
+        contracts.push(builtin_to_contract(name, &bc));
+    }
 
     // Non-collection builtins (standalone functions, render helpers, etc.).
     // eq, chars, code_point, and build_token are now DSL fn items
@@ -2390,7 +2401,14 @@ struct RecordTypeRegistry {
 enum ValueType {
     Named(String),
     Record(HashMap<String, String>),
-    Unknown,
+    /// The typechecker could not determine a concrete type for this expression.
+    ///
+    /// This occurs in legitimate cases where inference is incomplete (e.g.,
+    /// for-loop element types, deferred service calls, unresolved cross-module
+    /// references). Unlike an error, `Inferred` means "some valid type exists
+    /// but we lack information to name it." Downstream consumers treat it as
+    /// compatible with any expected type.
+    Inferred,
 }
 
 #[derive(Debug, Clone)]
@@ -2572,29 +2590,7 @@ struct CapabilityContract {
     outputs: HashMap<String, String>,
 }
 
-struct BuiltinType {
-    name: &'static str,
-    arity: usize,
-}
-
-const BUILTIN_TYPES: &[BuiltinType] = &[
-    BuiltinType { name: "Any", arity: 0 },
-    BuiltinType { name: "Unit", arity: 0 },
-    BuiltinType { name: "Bool", arity: 0 },
-    BuiltinType { name: "Int", arity: 0 },
-    BuiltinType { name: "Float", arity: 0 },
-    BuiltinType { name: "String", arity: 0 },
-    BuiltinType { name: "Bytes", arity: 0 },
-    BuiltinType { name: "Secret", arity: 0 },
-    BuiltinType { name: "Json", arity: 0 },
-    BuiltinType { name: "Record", arity: 0 },
-    BuiltinType { name: "List", arity: 1 },
-    BuiltinType { name: "Map", arity: 2 },
-    BuiltinType { name: "Option", arity: 1 },
-    BuiltinType { name: "Result", arity: 2 },
-    BuiltinType { name: "Queue", arity: 1 },
-    BuiltinType { name: "Self", arity: 0 },
-];
+// BuiltinType and BUILTIN_TYPES are imported from gunbc_ir (S12 consolidation).
 
 fn record_duplicate_item_name(
     module_name: &str,
@@ -3133,7 +3129,7 @@ fn infer_expr_type_for_expected_named_record(
     for (name, value_expr) in fields {
         let (inferred, val_errors) = infer_expr_type(value_expr, local_bindings, infer_context);
         errors.extend(val_errors);
-        let inferred_name = inferred.display_name().unwrap_or_else(|| "Any".to_string());
+        let inferred_name = inferred.display_name();
         inferred_fields.insert(name.clone(), inferred_name.clone());
         let Some(expected_field_ty) = expected_fields.get(name) else {
             errors.push(TypeError::NoSuchField {
@@ -3197,12 +3193,7 @@ fn infer_block_expr_type(
                 for (field_name, expr) in fields {
                     let (inferred, stmt_errors) = infer_expr_type(expr, &scope, infer_context);
                     errors.extend(stmt_errors);
-                    record.insert(
-                        field_name.clone(),
-                        inferred
-                            .display_name()
-                            .unwrap_or_else(|| "Unknown".to_string()),
-                    );
+                    record.insert(field_name.clone(), inferred.display_name());
                 }
                 trailing_expr_type = ValueType::Record(record);
             }
@@ -3244,7 +3235,7 @@ fn infer_expr_type(
                     .filter(|contract| callable_contract_max_arity(contract) == 0)
                     .map(|contract| contract.output.clone())
             })
-            .unwrap_or(ValueType::Unknown),
+            .unwrap_or(ValueType::Inferred),
         Expr::FieldAccess(base, field) => {
             let (base_type, base_errors) = infer_expr_type(base, local_bindings, infer_context);
             errors.extend(base_errors);
@@ -3256,7 +3247,7 @@ fn infer_expr_type(
                             ty: "Record".to_string(),
                             field: field.clone(),
                         });
-                        ValueType::Unknown
+                        ValueType::Inferred
                     }
                 },
                 ValueType::Named(name) => {
@@ -3268,13 +3259,13 @@ fn infer_expr_type(
                                     ty: name,
                                     field: field.clone(),
                                 });
-                                ValueType::Unknown
+                                ValueType::Inferred
                             }
                         },
-                        None => ValueType::Unknown,
+                        None => ValueType::Inferred,
                     }
                 }
-                ValueType::Unknown => ValueType::Unknown,
+                ValueType::Inferred => ValueType::Inferred,
             }
         }
         Expr::Call(name, args) => {
@@ -3290,7 +3281,7 @@ fn infer_expr_type(
                     .get(name)
                     .and_then(|entry| entry.as_ref())
                     .map(|contract| contract.output.clone())
-                    .unwrap_or(ValueType::Unknown)
+                    .unwrap_or(ValueType::Inferred)
             }
         }
         Expr::ServiceCall(path, args) => {
@@ -3300,7 +3291,7 @@ fn infer_expr_type(
             }
             match resolve_service_call_contract(path, infer_context.service_call_registry) {
                 ServiceCallResolution::Resolved(contract) => ValueType::Record(contract.outputs),
-                ServiceCallResolution::Ambiguous => ValueType::Unknown,
+                ServiceCallResolution::Ambiguous => ValueType::Inferred,
                 ServiceCallResolution::Missing => {
                     match resolve_bound_service_call_contract(
                         path,
@@ -3311,7 +3302,7 @@ fn infer_expr_type(
                         }
                         BoundServiceCallResolution::MissingCapability
                         | BoundServiceCallResolution::Deferred
-                        | BoundServiceCallResolution::NotBound => ValueType::Unknown,
+                        | BoundServiceCallResolution::NotBound => ValueType::Inferred,
                     }
                 }
             }
@@ -3337,7 +3328,7 @@ fn infer_expr_type(
                     {
                         ValueType::Named(lhs)
                     }
-                    _ => ValueType::Unknown,
+                    _ => ValueType::Inferred,
                 },
             }
         }
@@ -3375,7 +3366,7 @@ fn infer_expr_type(
                             errors.extend(val_errors);
                             (
                                 name.clone(),
-                                val.display_name().unwrap_or_else(|| "Any".to_string()),
+                                val.display_name(),
                             )
                         })
                         .collect(),
@@ -3394,8 +3385,8 @@ fn infer_expr_type(
                 let (arm_ty, body_errors) =
                     infer_expr_type(&arm.body, local_bindings, infer_context);
                 errors.extend(body_errors);
-                if let Some(name) = arm_ty.display_name() {
-                    arm_types.push(name);
+                if !arm_ty.is_inferred() {
+                    arm_types.push(arm_ty.display_name());
                 }
             }
             // WS3-5: Check compatibility across arms
@@ -3416,7 +3407,18 @@ fn infer_expr_type(
             // WS3-6: Exhaustiveness checking infrastructure is available via
             // `check_match_exhaustiveness()`. Not enforced in the main typecheck
             // path because existing DSL code has intentional partial matches.
-            ValueType::Unknown
+            //
+            // S67: Return the unified arm type when all concrete arms agree,
+            // rather than unconditionally returning Inferred.
+            if let Some(first) = arm_types.first() {
+                if arm_types.iter().all(|t| t == first) {
+                    ValueType::Named(first.clone())
+                } else {
+                    ValueType::Inferred
+                }
+            } else {
+                ValueType::Inferred
+            }
         }
         Expr::If(cond, then_expr, else_expr) => {
             let (_, cond_errors) = infer_expr_type(cond, local_bindings, infer_context);
@@ -3430,32 +3432,42 @@ fn infer_expr_type(
             });
             match else_ty {
                 Some(ref otherwise) => {
-                    match (then_ty.display_name(), otherwise.display_name()) {
-                        (Some(ref t), Some(ref e)) => {
-                            let (compat, confident) =
-                                are_branch_types_compatible(t, e, infer_context.variant_parents);
-                            if compat {
-                                // Preserve pre-WS3-5 behavior: return then_ty when
-                                // names match exactly, Unknown otherwise.
-                                if then_ty.display_name() == otherwise.display_name() {
-                                    then_ty
-                                } else {
-                                    ValueType::Unknown
-                                }
-                            } else {
-                                if confident {
-                                    errors.push(TypeError::BranchTypeMismatch {
-                                        then_type: t.clone(),
-                                        else_type: e.clone(),
-                                    });
-                                }
-                                ValueType::Unknown
-                            }
+                    // S67: Skip branch unification when either side is Inferred
+                    // (insufficient information to compare).
+                    if then_ty.is_inferred() || otherwise.is_inferred() {
+                        // Prefer the concrete side if one exists.
+                        if !then_ty.is_inferred() {
+                            then_ty
+                        } else if !otherwise.is_inferred() {
+                            otherwise.clone()
+                        } else {
+                            ValueType::Inferred
                         }
-                        _ => ValueType::Unknown,
+                    } else {
+                        let t = then_ty.display_name();
+                        let e = otherwise.display_name();
+                        let (compat, confident) =
+                            are_branch_types_compatible(&t, &e, infer_context.variant_parents);
+                        if compat {
+                            if t == e {
+                                then_ty
+                            } else {
+                                ValueType::Inferred
+                            }
+                        } else {
+                            if confident {
+                                errors.push(TypeError::BranchTypeMismatch {
+                                    then_type: t,
+                                    else_type: e,
+                                });
+                            }
+                            ValueType::Inferred
+                        }
                     }
                 }
-                None => ValueType::Unknown,
+                // No else branch — expression type is the then-branch type
+                // only in statement position; as an expression it's Inferred.
+                None => ValueType::Inferred,
             }
         }
         Expr::For(binding, iterable, passthrough, body) => {
@@ -3463,12 +3475,12 @@ fn infer_expr_type(
             errors.extend(iter_errors);
             let mut loop_scope = local_bindings.clone();
             // Element type inference is not modeled yet; make loop binding available in body.
-            loop_scope.insert(binding.clone(), ValueType::Unknown);
+            loop_scope.insert(binding.clone(), ValueType::Inferred);
             for name in passthrough {
                 let passthrough_ty = local_bindings
                     .get(name)
                     .cloned()
-                    .unwrap_or(ValueType::Unknown);
+                    .unwrap_or(ValueType::Inferred);
                 loop_scope.insert(name.clone(), passthrough_ty);
             }
             let (_, body_errors) = match body {
@@ -3476,7 +3488,7 @@ fn infer_expr_type(
                 ForBody::Block(stmts) => infer_block_expr_type(stmts, &loop_scope, infer_context),
             };
             errors.extend(body_errors);
-            ValueType::Unknown
+            ValueType::Inferred
         }
         Expr::Lambda(_, body) => {
             let (val, body_errors) = infer_expr_type(body, local_bindings, infer_context);
@@ -3504,7 +3516,7 @@ fn infer_expr_type(
             errors.extend(inner_errors);
             let (_, guard_errors) = infer_expr_type(guard, local_bindings, infer_context);
             errors.extend(guard_errors);
-            ValueType::Unknown
+            ValueType::Inferred
         }
         Expr::After(inner, _) => {
             let (val, inner_errors) = infer_expr_type(inner, local_bindings, infer_context);
@@ -3519,7 +3531,7 @@ fn infer_expr_type(
                     errors.extend(val_errors);
                     (
                         name.clone(),
-                        val.display_name().unwrap_or_else(|| "Any".to_string()),
+                        val.display_name(),
                     )
                 })
                 .collect(),
@@ -3534,12 +3546,17 @@ fn infer_expr_type(
 }
 
 impl ValueType {
-    fn display_name(&self) -> Option<String> {
+    fn display_name(&self) -> String {
         match self {
-            Self::Named(name) => Some(name.clone()),
-            Self::Record(_) => Some("Record".to_string()),
-            Self::Unknown => None,
+            Self::Named(name) => name.clone(),
+            Self::Record(_) => "Record".to_string(),
+            Self::Inferred => "Any".to_string(),
         }
+    }
+
+    /// Returns `true` when the typechecker could not determine a concrete type.
+    fn is_inferred(&self) -> bool {
+        matches!(self, Self::Inferred)
     }
 }
 
@@ -3586,9 +3603,12 @@ fn are_branch_types_compatible(
 }
 
 fn push_type_mismatch_if_needed(expected: &str, inferred: &ValueType) -> Vec<TypeError> {
-    let Some(got) = inferred.display_name() else {
+    // S67: Skip type mismatch when the inferred type is Inferred — the
+    // typechecker lacks enough information to judge compatibility.
+    if inferred.is_inferred() {
         return Vec::new();
-    };
+    }
+    let got = inferred.display_name();
     if !gunbc_ir::type_registry::TypeRegistry::with_core_types()
         .is_compatible(&normalize_type_id(&got), &normalize_type_id(expected))
     {

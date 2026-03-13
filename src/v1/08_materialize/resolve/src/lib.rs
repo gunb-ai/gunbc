@@ -31,6 +31,8 @@ pub mod resolve;
 pub mod service_ops;
 
 pub use builder::{BuildOpts, CompileLoweredResult, DslGraphResult};
+#[cfg(feature = "compile")]
+pub use builder::{build_dsl_graph, build_dsl_graph_dag};
 pub use dry_run::wire_fs_env_write_mock;
 pub use fs_env::{add_fs_env_root_node, wire_fs_env_write_edges};
 pub use resolve::{resolve_lowered_dag_with, ResolveError};

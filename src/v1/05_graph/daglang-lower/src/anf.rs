@@ -19,6 +19,8 @@ pub fn anf_normalize(body: LoweredFnBody) -> LoweredFnBody {
     let mut state = AnfState { counter: 0 };
     LoweredFnBody {
         stmts: anf_stmts(body.stmts, &mut state),
+        param_types: body.param_types,
+        return_type: body.return_type,
     }
 }
 
@@ -269,18 +271,6 @@ fn anf_expr_hoist(
             )
         }
 
-        // ── Return expression ───────────────────────────────────────────
-        LoweredExpr::Return(fields) => {
-            let mut prefix = Vec::new();
-            let mut clean_fields = Vec::with_capacity(fields.len());
-            for (name, expr) in fields {
-                let (p, c) = anf_expr_hoist(expr, state);
-                prefix.extend(p);
-                clean_fields.push((name, c));
-            }
-            (prefix, LoweredExpr::Return(clean_fields))
-        }
-
         // ── Variant construct ───────────────────────────────────────────
         LoweredExpr::VariantConstruct { tag, fields } => {
             let mut prefix = Vec::new();
@@ -510,12 +500,6 @@ fn verify_no_call(expr: &LoweredExpr, path: &str) -> Result<(), String> {
             verify_no_call(iterable, &format!("{path}/For.iter"))?;
             verify_branch(body, &format!("{path}/For.body"))
         }
-        LoweredExpr::Return(fields) => {
-            for (i, (_, e)) in fields.iter().enumerate() {
-                verify_no_call(e, &format!("{path}/Return[{i}]"))?;
-            }
-            Ok(())
-        }
         LoweredExpr::VariantConstruct { fields, .. } => {
             for (i, (_, e)) in fields.iter().enumerate() {
                 verify_no_call(e, &format!("{path}/Variant[{i}]"))?;
@@ -566,6 +550,7 @@ mod tests {
     #[test]
     fn anf_no_change_for_call_free() {
         let body = LoweredFnBody {
+
             stmts: vec![
                 LoweredStmt::Let(
                     "x".to_string(),
@@ -577,6 +562,7 @@ mod tests {
                 ),
                 LoweredStmt::Return(vec![("return".to_string(), ident("x"))]),
             ],
+            ..Default::default()
         };
         let result = anf_normalize(body.clone());
         assert_eq!(result.stmts.len(), 2);
@@ -587,6 +573,7 @@ mod tests {
     fn anf_hoists_nested_call_in_binop() {
         // let x = f(a: 1) + g(b: 2)
         let body = LoweredFnBody {
+
             stmts: vec![LoweredStmt::Let(
                 "x".to_string(),
                 LoweredExpr::BinOp {
@@ -595,6 +582,7 @@ mod tests {
                     right: Box::new(call("g", vec![("b", int(2))])),
                 },
             )],
+            ..Default::default()
         };
         let result = anf_normalize(body);
         // Should be: let __anf_0 = f(a: 1); let __anf_1 = g(b: 2); let x = __anf_0 + __anf_1
@@ -606,10 +594,12 @@ mod tests {
     fn anf_hoists_call_in_call_args() {
         // let x = f(a: g(b: 1))
         let body = LoweredFnBody {
+
             stmts: vec![LoweredStmt::Let(
                 "x".to_string(),
                 call("f", vec![("a", call("g", vec![("b", int(1))]))]),
             )],
+            ..Default::default()
         };
         let result = anf_normalize(body);
         // Should be: let __anf_0 = g(b: 1); let x = f(a: __anf_0)
@@ -621,6 +611,7 @@ mod tests {
     fn anf_desugars_and_with_calls() {
         // let x = f() && g()
         let body = LoweredFnBody {
+
             stmts: vec![LoweredStmt::Let(
                 "x".to_string(),
                 LoweredExpr::BinOp {
@@ -629,6 +620,7 @@ mod tests {
                     right: Box::new(call("g", vec![])),
                 },
             )],
+            ..Default::default()
         };
         let result = anf_normalize(body);
         verify_anf(&result).unwrap();
@@ -640,6 +632,7 @@ mod tests {
     fn anf_preserves_and_without_calls_on_right() {
         // let x = f() && true
         let body = LoweredFnBody {
+
             stmts: vec![LoweredStmt::Let(
                 "x".to_string(),
                 LoweredExpr::BinOp {
@@ -648,6 +641,7 @@ mod tests {
                     right: Box::new(LoweredExpr::Literal(LoweredLiteral::Bool(true))),
                 },
             )],
+            ..Default::default()
         };
         let result = anf_normalize(body);
         verify_anf(&result).unwrap();
@@ -659,6 +653,7 @@ mod tests {
     fn anf_hoists_call_in_field_access() {
         // let x = f(a: 1).field
         let body = LoweredFnBody {
+
             stmts: vec![LoweredStmt::Let(
                 "x".to_string(),
                 LoweredExpr::FieldAccess {
@@ -666,6 +661,7 @@ mod tests {
                     field: "field".to_string(),
                 },
             )],
+            ..Default::default()
         };
         let result = anf_normalize(body);
         // Should be: let __anf_0 = f(a: 1); let x = __anf_0.field
@@ -677,11 +673,13 @@ mod tests {
     fn anf_normalizes_if_branches() {
         // if f() { g() } else { h() }
         let body = LoweredFnBody {
+
             stmts: vec![LoweredStmt::Expr(LoweredExpr::IfElse {
                 cond: Box::new(call("f", vec![])),
                 then_: Box::new(call("g", vec![])),
                 else_: Some(Box::new(call("h", vec![]))),
             })],
+            ..Default::default()
         };
         let result = anf_normalize(body);
         verify_anf(&result).unwrap();
@@ -693,6 +691,7 @@ mod tests {
     fn anf_normalizes_lambda_body() {
         // x => f(x) + g(x)
         let body = LoweredFnBody {
+
             stmts: vec![LoweredStmt::Expr(LoweredExpr::Lambda {
                 params: vec!["x".to_string()],
                 body: Box::new(LoweredExpr::BinOp {
@@ -701,6 +700,7 @@ mod tests {
                     right: Box::new(call("g", vec![("x", ident("x"))])),
                 }),
             })],
+            ..Default::default()
         };
         let result = anf_normalize(body);
         verify_anf(&result).unwrap();
@@ -710,10 +710,12 @@ mod tests {
     fn anf_hoists_call_in_return() {
         // return { value: f(x) }
         let body = LoweredFnBody {
+
             stmts: vec![LoweredStmt::Return(vec![(
                 "value".to_string(),
                 call("f", vec![("x", ident("x"))]),
             )])],
+            ..Default::default()
         };
         let result = anf_normalize(body);
         verify_anf(&result).unwrap();
@@ -724,6 +726,7 @@ mod tests {
     #[test]
     fn anf_verifier_catches_nested_call() {
         let body = LoweredFnBody {
+
             stmts: vec![LoweredStmt::Let(
                 "x".to_string(),
                 LoweredExpr::BinOp {
@@ -732,6 +735,7 @@ mod tests {
                     right: Box::new(int(1)),
                 },
             )],
+            ..Default::default()
         };
         assert!(verify_anf(&body).is_err());
     }
@@ -739,10 +743,12 @@ mod tests {
     #[test]
     fn anf_verifier_passes_clean_body() {
         let body = LoweredFnBody {
+
             stmts: vec![
                 LoweredStmt::Let("x".to_string(), call("f", vec![])),
                 LoweredStmt::Return(vec![("return".to_string(), ident("x"))]),
             ],
+            ..Default::default()
         };
         verify_anf(&body).unwrap();
     }
@@ -750,6 +756,7 @@ mod tests {
     #[test]
     fn anf_no_nested_calls_after_lowering() {
         let body = LoweredFnBody {
+
             stmts: vec![
                 LoweredStmt::Let(
                     "x".to_string(),
@@ -768,6 +775,7 @@ mod tests {
                     },
                 )]),
             ],
+            ..Default::default()
         };
         let result = anf_normalize(body);
         verify_anf(&result).expect("all calls should be at statement level after ANF");

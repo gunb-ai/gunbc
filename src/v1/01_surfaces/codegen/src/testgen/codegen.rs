@@ -1477,21 +1477,11 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
     }
 
     fn class_variant(class: TestClass) -> &'static str {
-        match class {
-            TestClass::Unit => "Unit",
-            TestClass::Hermetic => "Hermetic",
-            TestClass::Integration => "Integration",
-        }
+        class.variant_name()
     }
 
     fn cost_variant(cost: FermiCost) -> &'static str {
-        match cost {
-            FermiCost::XS => "XS",
-            FermiCost::S => "S",
-            FermiCost::M => "M",
-            FermiCost::L => "L",
-            FermiCost::XL => "XL",
-        }
+        cost.variant_name()
     }
 
     fn prune_unused_imports(file: &mut TestFile) {
@@ -6979,33 +6969,48 @@ fn try_mock_element_value(type_id: &str, index: Option<u32>) -> Option<Value> {
         return Some(Value::Map(map));
     }
 
+    // Structural overrides: types that need specific field layouts for downstream
+    // consumers (e.g., ToolHandle needs "type", "id", "path", "cap" fields).
+    // These cannot be derived from ValueBacking alone.
+    if let Some(value) = mock_structural_override(type_id, index) {
+        return Some(value);
+    }
+
+    // Bare container types without element info cannot produce mock values.
+    if matches!(type_id, "List" | "Set") {
+        return None;
+    }
+
+    // Transport types need specific constructors.
+    match type_id {
+        "TransportRequest" => {
+            return Some(Value::Request(TransportRequest::Shell(ShellRequest::new(
+                "true",
+            ))))
+        }
+        "TransportResponse" => {
+            return Some(Value::Response(TransportResponse::Shell(ShellResponse::ok(
+                "<MOCK>",
+            ))))
+        }
+        _ => {}
+    }
+
+    // Derive from ValueBacking for all primitive/standard types (S17).
+    // This replaces the previous 20+ arm match on type-name strings.
+    let backing = gunbc_ir::value_backing_for_type_id(type_id).ok()?;
+    Some(backing.mock_value(index))
+}
+
+/// Structural mock overrides for record types that need specific field layouts.
+///
+/// These types have downstream consumers that access specific fields, so a
+/// generic `Value::Map({})` from `ValueBacking::Map` is insufficient.
+/// All other types are handled by `ValueBacking::mock_value()`.
+fn mock_structural_override(type_id: &str, index: Option<u32>) -> Option<Value> {
     let value = match type_id {
-        "String" => match index {
-            Some(1) | None => Value::Str("<MOCK>".to_string()),
-            Some(i) => Value::Str(format!("<MOCK_{}>", i)),
-        },
-        "Bool" => match index {
-            Some(i) => Value::Bool(i % 2 == 1),
-            None => Value::Bool(true),
-        },
-        "Int" | "i64" | "i32" => match index {
-            Some(i) => Value::Int(i as i64),
-            None => Value::Int(0),
-        },
-        "Unit" => Value::Unit,
-        "Json" => Value::Json(JsonValue::Null),
-        "Map" => Value::Map(BTreeMap::new()),
         "CloudSecretConfig" => Value::Json(mock_cloud_secret_config_json()),
-        "Secret" => Value::Secret(SecretString::new("<MOCK_SECRET>")),
-        "Any" | "Record" => Value::Json(JsonValue::Null),
-        "S" => Value::Str("<MOCK>".to_string()),
-        "Path" | "FilePath" => Value::Str("/tmp/mock".to_string()),
-        "SourceIR" => Value::Str("<SOURCE_IR>".to_string()),
         "Platform" => Value::Str(platform_mock_token(index)),
-        "Error" => Value::Str("<ERROR>".to_string()),
-        "Tier" => Value::Str("Ascii".to_string()),
-        "Unknown" => Value::Json(JsonValue::Null),
-        "ToolId" => Value::Str("clippy".to_string()),
         "ToolHandle" => {
             let mut map = BTreeMap::new();
             map.insert("type".to_string(), Value::Str("tool_handle".to_string()));
@@ -7025,7 +7030,6 @@ fn try_mock_element_value(type_id: &str, index: Option<u32>) -> Option<Value> {
             map.insert("stderr".to_string(), Value::Str(String::new()));
             Value::Map(map)
         }
-        "Timestamp" => Value::Int(0),
         "Credential" => {
             let mut map = BTreeMap::new();
             map.insert(
@@ -7067,14 +7071,8 @@ fn try_mock_element_value(type_id: &str, index: Option<u32>) -> Option<Value> {
             );
             Value::Map(map)
         }
-        "TransportRequest" => Value::Request(TransportRequest::Shell(ShellRequest::new("true"))),
-        "TransportResponse" => {
-            Value::Response(TransportResponse::Shell(ShellResponse::ok("<MOCK>")))
-        }
-        "List" | "Set" => return None,
         _ => return None,
     };
-
     Some(value)
 }
 
