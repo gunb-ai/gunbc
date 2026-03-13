@@ -430,10 +430,10 @@ construction, no positional tricks. This aligns with the design doc's
 "return values, not mutated shared state" principle and eliminates the
 class of ordering bugs entirely.
 
-**When to do this:** Migration path step 4-5 (switch public API to
-`evaluate_stack`, delete old recursive evaluator). The current fix is
-stable for all tested patterns and the bubble-up sites are exactly the
-4 points that call `eval_expr_s` with a subsequent push.
+**Status:** Done. Public API switched to `evaluate_stack` (step 4),
+old recursive evaluator deleted (step 5). The bubble-up sites are
+exactly the 5 points that call `eval_expr_s` with a subsequent push
+(4 in `eval_stmts` + 1 in `eval_block_s` for non-last Expr).
 
 ---
 

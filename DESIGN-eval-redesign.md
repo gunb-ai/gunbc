@@ -148,7 +148,7 @@ struct Continuation {
 
 enum Projection {
     /// Extract the "return" field. Falls back to single "value" field
-    /// for compatibility with `return expr`. No other heuristic.
+    /// for Map-flattened trailing expressions (see Limitation 3).
     ReturnField,
     /// Use the entire output map.
     WholeMap,
@@ -161,9 +161,8 @@ relative offset. This makes resume points unambiguous.
 
 **Projection is explicit.** The lowerer decides how to extract the
 return value. The evaluator executes the plan. `ReturnField` matches
-the current `sibling_fn_value` behavior. The `"value"` fallback is a
-documented compatibility shim that will be removed once the return
-convention is standardized.
+the current `sibling_fn_value` behavior. The `"value"` fallback is
+structurally necessary (see Limitation 3) — not a temporary shim.
 
 **Centralized binding.** `bind_let_result(env, name, value)` is the
 single helper for map-flattening into `name__field` entries. Used in
@@ -240,8 +239,10 @@ run_machine                    — iterative, heap-bounded by MAX_STACK_DEPTH
 ```
 
 **Structural invariant:** `eval_body` never calls `eval_body`. Only the
-main loop does. `eval_expr` never sees a `Call` (ANF contract). Native
-stack = O(AST expr depth). Heap = O(call depth). Both bounded.
+main loop does. `eval_expr` never sees a **sibling** `Call` (ANF
+contract). Non-sibling calls (builtins, intrinsics) are evaluated
+inline. Native stack = O(AST expr depth). Heap = O(call depth). Both
+bounded.
 
 | Resource | Bound | At depth 100K |
 |----------|-------|--------------|

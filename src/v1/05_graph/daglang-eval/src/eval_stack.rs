@@ -26,7 +26,11 @@
 //! ```
 //!
 //! Every box is a pure function. `eval_body` never calls `eval_body`.
-//! Only `run_machine` does. `eval_expr` never sees a `Call` (ANF contract).
+//! Only `run_machine` does.
+//!
+//! **ANF contract:** SIBLING fn calls appear only at statement level.
+//! Non-sibling calls (builtins, intrinsics) may still appear nested in
+//! expressions and are evaluated inline by `eval_expr` → `eval_non_sibling_call_raw`.
 
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
@@ -85,9 +89,12 @@ pub struct EvalContext<'a> {
 ///
 /// If entry_body is pointer-equal to one of the sibling_fns values, its
 /// FnId will be that sibling's id (no duplication). Otherwise it gets a
-/// dedicated FnId at the end of the table. This means self-recursive entry
-/// functions work regardless of whether the caller inserted them into
-/// sibling_fns.
+/// dedicated FnId at the end of the table.
+///
+/// **Note:** If entry_body is NOT in sibling_fns, self-recursive calls by
+/// name will not resolve (the entry has a FnId but no name→FnId mapping).
+/// Callers must ensure the entry fn is present in sibling_fns for
+/// self-recursion to work.
 fn build_context<'a>(
     entry_body: &'a LoweredFnBody,
     sibling_fns: &'a HashMap<String, LoweredFnBody>,
@@ -603,7 +610,16 @@ fn eval_block_s<'a>(
                 } else {
                     match eval_expr_s(expr, &child, ctx, stack) {
                         ExprResult::Value(_) => {}
-                        other => return other,
+                        ExprResult::EarlyReturn(map) => return ExprResult::EarlyReturn(map),
+                        ExprResult::Suspend { callee, inputs } => {
+                            stack.insert(stack_base, Continuation {
+                                remaining, binding: None,
+                                projection: Projection::ReturnField,
+                                env: child, is_fn_boundary: false,
+                            });
+                            return ExprResult::Suspend { callee, inputs };
+                        }
+                        ExprResult::Error(msg) => return ExprResult::Error(msg),
                     }
                 }
             }
@@ -1438,7 +1454,7 @@ mod tests {
         let mut inp = HashMap::new();
         inp.insert("x".to_string(), Value::Int(5));
         let result = evaluate_stack(&process_body, &inp, &sibs, &HashMap::new()).unwrap();
-        assert_eq!(result.get("return").or(result.get("value")).cloned().unwrap_or(Value::Unit), Value::Int(10));
+        assert_eq!(result["return"], Value::Int(10));
     }
 
     #[test] fn anf_verifier_catches_nested_call() {
