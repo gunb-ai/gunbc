@@ -70,7 +70,7 @@ pub use mock_requirements::{
 };
 pub use mock_spec::{
     assert_boundaries, assert_transport_mocks, validate_chain, BoundaryMock, ChainError,
-    ChainValidationResult, ExpectedOutput, InputConstraint, InputExpectation, InputMock,
+    ChainValidationResult, InputConstraint, InputExpectation, InputMock,
     LiveExpectedOutput, MockSpec, NodeExample, OutputMatcher, ResourceAcquireResult,
     ResourceBehavior, ResourceMocks, ResourceSimulation, ResourceType, TransportMock,
 };
@@ -81,7 +81,7 @@ pub use mock_synthesis::{
 pub use mockable::{CardinalityTestInput, ErrorTestCase, ExpectedBehavior, Mockable};
 pub use simulator::{IoContract, Simulator};
 pub use window::{
-    apply_window_inputs, assert_chain_outputs, assert_window_outputs, window_subdag, Window,
+    apply_window_inputs, assert_chain_outputs, window_subdag, Window,
     WindowError,
 };
 /// Assert that the typed MockSpec builder rejects an unknown slot.

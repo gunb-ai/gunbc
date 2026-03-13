@@ -78,12 +78,8 @@ pub struct TestgenTargetDef {
     pub boundary_tests: bool,
     /// Enable chain tests
     pub chain_tests: bool,
-    /// Enable flow tests
-    pub flow_tests: bool,
     /// Enable live flow tests (Real execution)
     pub live_flow_tests: bool,
-    /// Max window size for windowed tests (None = no limit)
-    pub window_max_nodes: Option<usize>,
     /// Test class (unit/hermetic/integration). Default: Unit.
     pub test_class: TestClass,
     /// Fermi cost bucket. Default: XS.
@@ -148,9 +144,7 @@ impl TestgenTargetDef {
             signature_path: None,
             boundary_tests: true,
             chain_tests: true,
-            flow_tests: false,
             live_flow_tests: false,
-            window_max_nodes: None, // Deprecated: use probe_observer_tests instead
             test_class: TestClass::Unit,
             fermi_cost: FermiCost::XS,
             requires: Vec::new(),
@@ -180,20 +174,6 @@ impl TestgenTargetDef {
     /// Set the signature function path.
     pub fn signature(mut self, path: impl Into<Cow<'static, str>>) -> Self {
         self.signature_path = Some(path.into());
-        self
-    }
-
-    /// Enable flow tests (and disable boundary/chain tests).
-    pub fn flow_tests(mut self) -> Self {
-        self.boundary_tests = false;
-        self.chain_tests = false;
-        self.flow_tests = true;
-        self
-    }
-
-    /// Set the max window size for windowed tests.
-    pub fn window_max_nodes(mut self, max: usize) -> Self {
-        self.window_max_nodes = Some(max);
         self
     }
 

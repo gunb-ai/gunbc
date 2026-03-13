@@ -18,7 +18,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 
 [features]
-## Enable compilation convenience functions (`build_dsl_graph`, dagbin cache).
+## Enable compilation convenience functions (`compile_and_resolve`, dagbin cache).
 ## Without this feature, only the pure resolution API (`resolve_compiled_dsl`) is available.
 compile = ["dep:daglang-driver"]
 

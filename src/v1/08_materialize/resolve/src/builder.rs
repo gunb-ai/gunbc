@@ -4,7 +4,7 @@
 //! `DslGraphResult`, `BuildOpts`) is always available and depends only on
 //! `daglang-lower` / `gunbc-ir`.
 //!
-//! The **compilation convenience API** (`build_dsl_graph`, dagbin cache)
+//! The **compilation convenience API** (`compile_and_resolve`, dagbin cache)
 //! requires the `compile` Cargo feature, which pulls in `daglang-driver`.
 
 use daglang_derive::CallableProperties;
@@ -113,7 +113,7 @@ pub fn resolve_compiled_dsl(
 /// [`daglang_driver::compile_from_context`] and pass the result to
 /// [`resolve_compiled_dsl`].
 #[cfg(feature = "compile")]
-pub fn build_dsl_graph(
+pub fn compile_and_resolve(
     relative_module: &str,
     opts: BuildOpts<'_>,
 ) -> Result<DslGraphResult, BuilderError> {
@@ -123,11 +123,11 @@ pub fn build_dsl_graph(
 
 /// Convenience wrapper: compile + resolve a DSL module and return just the DAG.
 #[cfg(feature = "compile")]
-pub fn build_dsl_graph_dag(
+pub fn compile_and_resolve_dag(
     relative_module: &str,
     opts: BuildOpts<'_>,
 ) -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph(relative_module, opts).map(|r| r.dag)
+    compile_and_resolve(relative_module, opts).map(|r| r.dag)
 }
 
 // ============================================================================

@@ -35,7 +35,7 @@ pub struct ToolMeta {
     pub tool_name: Cow<'static, str>,
     /// Short description
     pub description: Cow<'static, str>,
-    /// The graph builder callable name (typically a direct `build_dsl_graph(...)` adapter).
+    /// The graph builder callable name (typically a direct `compile_and_resolve(...)` adapter).
     pub graph_builder_call: Cow<'static, str>,
     /// Arguments to pass to graph builder (e.g., "extensions.clone(), public")
     pub graph_builder_args: Cow<'static, str>,
@@ -1569,7 +1569,7 @@ mod tests {
     use super::*;
 
     const DSL_GRAPH_BUILDER_ADAPTER: &str =
-        "(|relative_module, resolver, opts| gunbc_resolve::builder::build_dsl_graph(relative_module, resolver, opts).map(|result| result.dag))";
+        "(|relative_module, resolver, opts| gunbc_resolve::builder::compile_and_resolve(relative_module, resolver, opts).map(|result| result.dag))";
 
     #[test]
     fn test_cli_entrypoint_flag_name() {
@@ -1683,7 +1683,7 @@ mod tests {
         let entrypoints = vec![];
 
         let code = generate_cli(&tool, &entrypoints);
-        assert!(code.contains("gunbc_resolve::builder::build_dsl_graph"));
+        assert!(code.contains("gunbc_resolve::builder::compile_and_resolve"));
         assert!(code.contains(".map(|result| result.dag)"));
         assert!(code.contains("Ok(d) => d"));
         assert!(code.contains("process::exit(1)"));

@@ -398,7 +398,7 @@ fn dsl_graph_builder_adapter() -> String {
     // Returns a callable expression that takes (relative_module, bindings, opts).
     // The `{` ... `}` block avoids the clippy::redundant_closure_call lint
     // that triggers when a closure is immediately invoked.
-    String::from("gunbc_resolve::builder::build_dsl_graph_dag")
+    String::from("gunbc_resolve::builder::compile_and_resolve_dag")
 }
 
 fn dsl_graph_builder_args(rel_path: &str, entry_func: &str) -> String {
