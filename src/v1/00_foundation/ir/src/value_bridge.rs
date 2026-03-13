@@ -247,9 +247,15 @@ fn strip_optional_wrapper(type_id: &str) -> (&str, bool) {
     if let Some(inner) = type_id.strip_suffix('?') {
         (inner, true)
     } else if let Some(inner) = type_id
+        .strip_prefix("Optional<")
+        .and_then(|s| s.strip_suffix('>'))
+    {
+        (inner, true)
+    } else if let Some(inner) = type_id
         .strip_prefix("Option<")
         .and_then(|s| s.strip_suffix('>'))
     {
+        // Legacy Rust-style "Option<T>" for backward compatibility.
         (inner, true)
     } else {
         (type_id, false)

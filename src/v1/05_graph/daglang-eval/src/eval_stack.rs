@@ -32,6 +32,7 @@
 //! Non-sibling calls (builtins, intrinsics) may still appear nested in
 //! expressions and are evaluated inline by `eval_expr` → `eval_non_sibling_call_raw`.
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
@@ -39,7 +40,7 @@ use gunbc_ir::Value;
 use gunbc_ir::value_compatible_with_type_id;
 
 use crate::eval_core::{
-    eval_binop, eval_builtin_call, eval_literal, field_access, match_pattern,
+    eval_binop, eval_builtin_call, eval_literal, field_access, match_pattern, sort_key,
     value_to_string, value_truthy, EvalError,
 };
 use crate::expr::{
@@ -59,19 +60,66 @@ const MAX_TRANSITIONS: usize = 10_000_000;
 // `take_type_warnings()`. This is an interim guard until the self-hosting
 // compiler provides static guarantees.
 
-use std::cell::RefCell;
+#[derive(Default)]
+struct WarningState {
+    depth: usize,
+    warnings: Vec<String>,
+}
 
 thread_local! {
-    static TYPE_WARNINGS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    static TYPE_WARNINGS: RefCell<WarningState> = RefCell::new(WarningState::default());
+}
+
+struct WarningScope;
+
+impl WarningScope {
+    fn enter() -> Self {
+        TYPE_WARNINGS.with(|state| {
+            let mut state = state.borrow_mut();
+            if state.depth == 0 {
+                state.warnings.clear();
+            }
+            state.depth += 1;
+        });
+        Self
+    }
+}
+
+impl Drop for WarningScope {
+    fn drop(&mut self) {
+        TYPE_WARNINGS.with(|state| {
+            let mut state = state.borrow_mut();
+            state.depth = state.depth.saturating_sub(1);
+        });
+    }
 }
 
 /// Drain and return any type warnings accumulated during evaluation.
 pub fn take_type_warnings() -> Vec<String> {
-    TYPE_WARNINGS.with(|w| w.borrow_mut().drain(..).collect())
+    TYPE_WARNINGS.with(|state| state.borrow_mut().warnings.drain(..).collect())
 }
 
 fn push_type_warning(msg: String) {
-    TYPE_WARNINGS.with(|w| w.borrow_mut().push(msg));
+    TYPE_WARNINGS.with(|state| state.borrow_mut().warnings.push(msg));
+}
+
+/// Reconstruct the value that callers observe from an output map.
+///
+/// This must stay in sync with sibling-call projection so runtime boundary
+/// checks validate the same shape that downstream code actually receives.
+fn output_value(outputs: &HashMap<String, Value>) -> Value {
+    if let Some(value) = outputs.get("return") {
+        return value.clone();
+    }
+    if outputs.len() == 1 {
+        if let Some(value) = outputs.get("value") {
+            return value.clone();
+        }
+    }
+    if outputs.is_empty() {
+        return Value::Unit;
+    }
+    Value::Map(outputs.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
 }
 
 /// Check that each argument value is compatible with the callee's declared
@@ -95,26 +143,13 @@ fn check_call_inputs(fn_body: &LoweredFnBody, inputs: &HashMap<String, Value>, f
 /// return type. Collects a warning on mismatch.
 fn check_return_value(fn_body: &LoweredFnBody, result: &HashMap<String, Value>, fn_name: &str) {
     let Some(expected_type) = &fn_body.return_type else { return };
-    // Convention: the primary return port is "return" or "value", or the single
-    // output key. We check whichever port exists.
-    let value = result
-        .get("return")
-        .or_else(|| result.get("value"))
-        .or_else(|| {
-            if result.len() == 1 {
-                result.values().next()
-            } else {
-                None
-            }
-        });
-    if let Some(value) = value {
-        if !value_compatible_with_type_id(expected_type, value) {
-            push_type_warning(format!(
-                "[S57] type mismatch at return from `{fn_name}`: \
-                 expects `{expected_type}`, got `{}`",
-                value.kind().type_name(),
-            ));
-        }
+    let value = output_value(result);
+    if !value_compatible_with_type_id(expected_type, &value) {
+        push_type_warning(format!(
+            "[S57] type mismatch at return from `{fn_name}`: \
+             expects `{expected_type}`, got `{}`",
+            value.kind().type_name(),
+        ));
     }
 }
 
@@ -139,6 +174,7 @@ pub fn evaluate_stack(
     sibling_fns: &HashMap<String, LoweredFnBody>,
     data_values: &HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, EvalError> {
+    let _warning_scope = WarningScope::enter();
     let (ctx, entry) = build_context(body, sibling_fns, data_values);
 
     if let Err(msg) = verify_anf_contract(&ctx) {
@@ -330,6 +366,10 @@ struct Continuation<'a> {
     binding: Option<String>,
     env: Env,
     is_fn_boundary: bool,
+    /// The fn_id of the caller that pushed this continuation. Bound directly
+    /// to the frame so `pop_stack` can restore it automatically — preventing
+    /// desync between the continuation stack and a parallel fn_id tracker.
+    caller_fn: FnId,
 }
 
 // ── 3b. Main loop ───────────────────────────────────────────────────────────
@@ -343,10 +383,10 @@ fn run_machine<'a>(
     let mut stmts: &'a [LoweredStmt] = &ctx.fns[entry].stmts;
     let mut env = Env::from_inputs(inputs);
     let mut transitions: usize = 0;
-    // S57: track the current executing function and a parallel fn_id stack
-    // to restore after returns.
+    // S57: track the current executing function. The caller's fn_id is bound
+    // directly to each Continuation frame (caller_fn field), so pop_stack
+    // restores it automatically — no parallel fn_stack needed.
     let mut current_fn: FnId = entry;
-    let mut fn_stack: Vec<FnId> = Vec::new();
 
     // S57: check entry function inputs
     check_call_inputs(ctx.fns[entry], inputs, &fn_name_for_id(entry, ctx));
@@ -359,18 +399,15 @@ fn run_machine<'a>(
             )));
         }
 
-        match eval_stmts(stmts, &mut env, ctx, &mut stack) {
+        match eval_stmts(stmts, &mut env, ctx, &mut stack, current_fn) {
             Step::Return(result) => {
                 // S57: check return type of the completing function
                 check_return_value(ctx.fns[current_fn], &result, &fn_name_for_id(current_fn, ctx));
-                match pop_stack(&mut stack, result) {
+                match pop_stack(&mut stack, result, ctx) {
                     PopResult::Done(output) => return Ok(output),
-                    PopResult::Resume { stmts: s, env: e } => {
+                    PopResult::Resume { stmts: s, env: e, fn_id } => {
                         stmts = s; env = e;
-                        // Restore caller fn from the parallel stack
-                        if let Some(caller) = fn_stack.pop() {
-                            current_fn = caller;
-                        }
+                        current_fn = fn_id;
                     }
                     PopResult::Error(msg) => return Err(EvalError::new(msg)),
                 }
@@ -383,13 +420,11 @@ fn run_machine<'a>(
                     if cont.is_fn_boundary { break; }
                     stack.pop();
                 }
-                match pop_stack(&mut stack, result) {
+                match pop_stack(&mut stack, result, ctx) {
                     PopResult::Done(output) => return Ok(output),
-                    PopResult::Resume { stmts: s, env: e } => {
+                    PopResult::Resume { stmts: s, env: e, fn_id } => {
                         stmts = s; env = e;
-                        if let Some(caller) = fn_stack.pop() {
-                            current_fn = caller;
-                        }
+                        current_fn = fn_id;
                     }
                     PopResult::Error(msg) => return Err(EvalError::new(msg)),
                 }
@@ -402,7 +437,6 @@ fn run_machine<'a>(
                 }
                 // S57: check callee input types before transitioning
                 check_call_inputs(ctx.fns[callee], &inputs, &fn_name_for_id(callee, ctx));
-                fn_stack.push(current_fn);
                 current_fn = callee;
                 stmts = &ctx.fns[callee].stmts;
                 env = Env::from_inputs(&inputs);
@@ -414,18 +448,31 @@ fn run_machine<'a>(
 
 enum PopResult<'a> {
     Done(HashMap<String, Value>),
-    Resume { stmts: &'a [LoweredStmt], env: Env },
+    Resume { stmts: &'a [LoweredStmt], env: Env, fn_id: FnId },
     Error(String),
 }
 
 fn pop_stack<'a>(
     stack: &mut Vec<Continuation<'a>>,
     mut result: HashMap<String, Value>,
+    ctx: &'a EvalContext<'a>,
 ) -> PopResult<'a> {
     loop {
         match stack.pop() {
             None => return PopResult::Done(result),
             Some(cont) => {
+                // S57: when crossing a fn boundary during collapse, check the
+                // return type of the function that just completed. The caller_fn
+                // on the *next* frame tells us which function was the callee.
+                if cont.is_fn_boundary {
+                    // The function that just returned is the one that was active
+                    // before we resumed the caller. We can identify it by looking
+                    // at what was pushed: cont.caller_fn is the *caller*, so the
+                    // callee is the function whose result we're processing.
+                    // We check the result against the callee's return type in
+                    // run_machine (before calling pop_stack), so here we only
+                    // need to track the restoration.
+                }
                 let value = match extract_projection(&result) {
                     Ok(v) => v,
                     Err(msg) => return PopResult::Error(msg),
@@ -440,8 +487,19 @@ fn pop_stack<'a>(
                     } else {
                         result = unit_output();
                     }
+                    // If this was a fn boundary that collapsed (remaining empty),
+                    // check the return value for the function we're collapsing
+                    // through. The caller's fn_id is on cont.caller_fn.
+                    if cont.is_fn_boundary {
+                        let caller_name = fn_name_for_id(cont.caller_fn, ctx);
+                        check_return_value(ctx.fns[cont.caller_fn], &result, &caller_name);
+                    }
                 } else {
-                    return PopResult::Resume { stmts: cont.remaining, env };
+                    return PopResult::Resume {
+                        stmts: cont.remaining,
+                        env,
+                        fn_id: cont.caller_fn,
+                    };
                 }
             }
         }
@@ -455,6 +513,7 @@ fn eval_stmts<'a>(
     env: &mut Env,
     ctx: &'a EvalContext<'a>,
     stack: &mut Vec<Continuation<'a>>,
+    current_fn: FnId,
 ) -> Step {
     for (i, stmt) in stmts.iter().enumerate() {
         let is_last = i == stmts.len() - 1;
@@ -472,8 +531,8 @@ fn eval_stmts<'a>(
                             Ok(inputs) => {
                                 stack.push(Continuation {
                                     remaining, binding: Some(name.clone()),
-
                                     env: env.clone(), is_fn_boundary: true,
+                                    caller_fn: current_fn,
                                 });
                                 return Step::Call { callee: callee_id, inputs };
                             }
@@ -486,14 +545,14 @@ fn eval_stmts<'a>(
                         }
                     }
                 } else {
-                    match eval_expr_s(expr, env, ctx, stack) {
+                    match eval_expr_s(expr, env, ctx, stack, current_fn) {
                         ExprResult::Value(value) => bind_let_result(env, name.clone(), &value),
                         ExprResult::EarlyReturn(map) => return Step::EarlyReturn(map),
                         ExprResult::Suspend { callee, inputs } => {
                             stack.insert(stack_base, Continuation {
                                 remaining, binding: Some(name.clone()),
-    
                                 env: env.clone(), is_fn_boundary: false,
+                                caller_fn: current_fn,
                             });
                             return Step::Call { callee, inputs };
                         }
@@ -509,8 +568,8 @@ fn eval_stmts<'a>(
                             Ok(inputs) => {
                                 stack.push(Continuation {
                                     remaining, binding: None,
-
                                     env: env.clone(), is_fn_boundary: true,
+                                    caller_fn: current_fn,
                                 });
                                 return Step::Call { callee: callee_id, inputs };
                             }
@@ -524,28 +583,28 @@ fn eval_stmts<'a>(
                         }
                     }
                 } else if is_last {
-                    match eval_expr_s(expr, env, ctx, stack) {
+                    match eval_expr_s(expr, env, ctx, stack, current_fn) {
                         ExprResult::Value(value) => return Step::Return(wrap_value_as_output(value)),
                         ExprResult::EarlyReturn(map) => return Step::EarlyReturn(map),
                         ExprResult::Suspend { callee, inputs } => {
                             stack.insert(stack_base, Continuation {
                                 remaining: &[], binding: None,
-    
                                 env: env.clone(), is_fn_boundary: false,
+                                caller_fn: current_fn,
                             });
                             return Step::Call { callee, inputs };
                         }
                         ExprResult::Error(msg) => return Step::Error(msg),
                     }
                 } else {
-                    match eval_expr_s(expr, env, ctx, stack) {
+                    match eval_expr_s(expr, env, ctx, stack, current_fn) {
                         ExprResult::Value(_) => {}
                         ExprResult::EarlyReturn(map) => return Step::EarlyReturn(map),
                         ExprResult::Suspend { callee, inputs } => {
                             stack.insert(stack_base, Continuation {
                                 remaining, binding: None,
-    
                                 env: env.clone(), is_fn_boundary: false,
+                                caller_fn: current_fn,
                             });
                             return Step::Call { callee, inputs };
                         }
@@ -582,6 +641,7 @@ fn eval_expr_s<'a>(
     env: &Env,
     ctx: &'a EvalContext<'a>,
     stack: &mut Vec<Continuation<'a>>,
+    current_fn: FnId,
 ) -> ExprResult {
     match expr {
         LoweredExpr::IfElse { cond, then_, else_ } => {
@@ -590,7 +650,7 @@ fn eval_expr_s<'a>(
                     let branch = if value_truthy(&c) { Some(then_.as_ref()) }
                         else { else_.as_ref().map(|e| e.as_ref()) };
                     match branch {
-                        Some(b) => eval_expr_s(b, env, ctx, stack),
+                        Some(b) => eval_expr_s(b, env, ctx, stack, current_fn),
                         None => ExprResult::Value(Value::Unit),
                     }
                 }
@@ -599,12 +659,12 @@ fn eval_expr_s<'a>(
         }
         LoweredExpr::Match { expr: scrutinee, arms } => {
             match eval_expr(scrutinee, env, ctx) {
-                Ok(val) => eval_match_s(&val, arms, env, ctx, stack),
+                Ok(val) => eval_match_s(&val, arms, env, ctx, stack, current_fn),
                 Err(e) => expr_from_error(e),
             }
         }
         LoweredExpr::Block(block_stmts) => {
-            eval_block_s(block_stmts, env, ctx, stack)
+            eval_block_s(block_stmts, env, ctx, stack, current_fn)
         }
         _ => match eval_expr(expr, env, ctx) {
             Ok(v) => ExprResult::Value(v),
@@ -619,6 +679,7 @@ fn eval_match_s<'a>(
     env: &Env,
     ctx: &'a EvalContext<'a>,
     stack: &mut Vec<Continuation<'a>>,
+    current_fn: FnId,
 ) -> ExprResult {
     for arm in arms {
         if let Some(bindings) = match_pattern(&arm.pattern, scrutinee) {
@@ -640,7 +701,7 @@ fn eval_match_s<'a>(
                     Err(e) => return expr_from_error(e),
                 }
             }
-            return eval_expr_s(&arm.body, &arm_env, ctx, stack);
+            return eval_expr_s(&arm.body, &arm_env, ctx, stack, current_fn);
         }
     }
     ExprResult::Error(format!("no matching arm for: {scrutinee:?}"))
@@ -651,6 +712,7 @@ fn eval_block_s<'a>(
     env: &Env,
     ctx: &'a EvalContext<'a>,
     stack: &mut Vec<Continuation<'a>>,
+    current_fn: FnId,
 ) -> ExprResult {
     let mut child = env.child();
     for (i, stmt) in block_stmts.iter().enumerate() {
@@ -666,8 +728,8 @@ fn eval_block_s<'a>(
                             Ok(inputs) => {
                                 stack.push(Continuation {
                                     remaining, binding: Some(name.clone()),
-
                                     env: child, is_fn_boundary: false,
+                                    caller_fn: current_fn,
                                 });
                                 return ExprResult::Suspend { callee: callee_id, inputs };
                             }
@@ -680,14 +742,14 @@ fn eval_block_s<'a>(
                         }
                     }
                 } else {
-                    match eval_expr_s(expr, &child, ctx, stack) {
+                    match eval_expr_s(expr, &child, ctx, stack, current_fn) {
                         ExprResult::Value(value) => bind_let_result(&mut child, name.clone(), &value),
                         other @ (ExprResult::EarlyReturn(_) | ExprResult::Error(_)) => return other,
                         ExprResult::Suspend { callee, inputs } => {
                             stack.insert(stack_base, Continuation {
                                 remaining, binding: Some(name.clone()),
-    
                                 env: child, is_fn_boundary: false,
+                                caller_fn: current_fn,
                             });
                             return ExprResult::Suspend { callee, inputs };
                         }
@@ -701,8 +763,8 @@ fn eval_block_s<'a>(
                             Ok(inputs) => {
                                 stack.push(Continuation {
                                     remaining, binding: None,
-
                                     env: child, is_fn_boundary: false,
+                                    caller_fn: current_fn,
                                 });
                                 return ExprResult::Suspend { callee: callee_id, inputs };
                             }
@@ -716,16 +778,16 @@ fn eval_block_s<'a>(
                         }
                     }
                 } else if is_last {
-                    return eval_expr_s(expr, &child, ctx, stack);
+                    return eval_expr_s(expr, &child, ctx, stack, current_fn);
                 } else {
-                    match eval_expr_s(expr, &child, ctx, stack) {
+                    match eval_expr_s(expr, &child, ctx, stack, current_fn) {
                         ExprResult::Value(_) => {}
                         ExprResult::EarlyReturn(map) => return ExprResult::EarlyReturn(map),
                         ExprResult::Suspend { callee, inputs } => {
                             stack.insert(stack_base, Continuation {
                                 remaining, binding: None,
-    
                                 env: child, is_fn_boundary: false,
+                                caller_fn: current_fn,
                             });
                             return ExprResult::Suspend { callee, inputs };
                         }
@@ -928,12 +990,7 @@ fn eval_non_sibling_call_raw(
 fn sibling_fn_value_extract(
     _name: &str, outputs: HashMap<String, Value>,
 ) -> Result<Value, EvalError> {
-    if let Some(v) = outputs.get("return") { return Ok(v.clone()); }
-    if outputs.len() == 1 {
-        if let Some(v) = outputs.get("value") { return Ok(v.clone()); }
-    }
-    if outputs.is_empty() { return Ok(Value::Unit); }
-    Ok(Value::Map(outputs.into_iter().collect()))
+    Ok(output_value(&outputs))
 }
 
 fn eval_match_local(
@@ -973,12 +1030,7 @@ pub fn eval_match_standalone(
 fn eval_intrinsic_call_s(
     name: &str, args: &[(Option<String>, LoweredExpr)], env: &Env, ctx: &EvalContext,
 ) -> Option<Result<Value, EvalError>> {
-    if !matches!(name,
-        "map" | "filter" | "filter_map" | "flat_map" | "fold" | "append"
-        | "join" | "count" | "sum" | "first" | "last" | "any" | "all" | "contains"
-        | "sort_by" | "split" | "zip" | "skip" | "enumerate"
-        | "starts_with" | "ends_with" | "repeat" | "chars"
-    ) {
+    if !gunbc_ir::patterns::is_eval_intrinsic(name) {
         return None;
     }
     Some(eval_intrinsic_inner(name, args, env, ctx))
@@ -1134,7 +1186,7 @@ fn eval_intrinsic_inner(
                 (other, _) => Err(EvalError::new(format!("append requires a list, got {other:?}"))),
             }
         }
-        "count" => match receiver {
+        "len" | "count" => match receiver {
             Value::List(items) => Ok(Value::Int(items.len() as i64)),
             _ => Err(EvalError::new("count requires a list")),
         },
@@ -1209,6 +1261,25 @@ fn eval_intrinsic_inner(
                 _ => Err(EvalError::new("contains requires list and item")),
             }
         }
+        "sort" => match receiver {
+            Value::List(mut items) => {
+                items.sort_by_key(sort_key);
+                Ok(Value::List(items))
+            }
+            _ => Err(EvalError::new("sort requires a list")),
+        },
+        "dedup" => match receiver {
+            Value::List(items) => {
+                let mut out = Vec::new();
+                for item in items {
+                    if !out.contains(&item) {
+                        out.push(item);
+                    }
+                }
+                Ok(Value::List(out))
+            }
+            _ => Err(EvalError::new("dedup requires a list")),
+        },
         "sort_by" => {
             let lambda = rest.first().map(|(_, e)| e);
             match (receiver, lambda) {
@@ -1370,15 +1441,7 @@ fn get_arg_expr_s<'a>(
 // ═══════════════════════════════════════════════════════════════════════════
 
 fn extract_projection(outputs: &HashMap<String, Value>) -> Result<Value, String> {
-    if let Some(v) = outputs.get("return") { return Ok(v.clone()); }
-    // Legacy compat: wrap_value_as_output flattens Map trailing
-    // expressions, which can produce single-field output maps with
-    // a "value" key (e.g. from `Some { value: x }` variants).
-    if outputs.len() == 1 {
-        if let Some(v) = outputs.get("value") { return Ok(v.clone()); }
-    }
-    if outputs.is_empty() { return Ok(Value::Unit); }
-    Ok(Value::Map(outputs.iter().map(|(k, v)| (k.clone(), v.clone())).collect()))
+    Ok(output_value(outputs))
 }
 
 fn bind_let_result(env: &mut Env, name: String, value: &Value) {
@@ -1442,8 +1505,15 @@ mod tests {
             args: args.into_iter().map(|(k, v)| (Some(k.to_string()), v)).collect(),
         }
     }
+    fn call_positional(name: &str, args: Vec<LoweredExpr>) -> LoweredExpr {
+        LoweredExpr::Call {
+            name: name.to_string(),
+            args: args.into_iter().map(|v| (None, v)).collect(),
+        }
+    }
     fn ident(n: &str) -> LoweredExpr { LoweredExpr::Ident(n.to_string()) }
     fn int(n: i64) -> LoweredExpr { LoweredExpr::Literal(LoweredLiteral::Int(n)) }
+    fn string(s: &str) -> LoweredExpr { LoweredExpr::Literal(LoweredLiteral::String(s.to_string())) }
 
     fn is_even_odd_pair() -> (LoweredFnBody, LoweredFnBody) {
         let mk = |_base_name: &str, base_val: bool, other: &str| LoweredFnBody {
@@ -1711,6 +1781,104 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(evaluate_stack(&body, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap()["return"], Value::Int(6));
+    }
+
+    #[test] fn canonical_collection_intrinsics_dispatch() {
+        let body = LoweredFnBody {
+            stmts: vec![
+                LoweredStmt::Let(
+                    "sorted".into(),
+                    call_positional(
+                        "sort",
+                        vec![LoweredExpr::List(vec![int(3), int(1), int(2), int(1)])],
+                    ),
+                ),
+                LoweredStmt::Let(
+                    "deduped".into(),
+                    call_positional("dedup", vec![ident("sorted")]),
+                ),
+                LoweredStmt::Let(
+                    "count".into(),
+                    call_positional("len", vec![ident("deduped")]),
+                ),
+                LoweredStmt::Return(vec![
+                    ("sorted".into(), ident("sorted")),
+                    ("deduped".into(), ident("deduped")),
+                    ("return".into(), ident("count")),
+                ]),
+            ],
+            ..Default::default()
+        };
+
+        let result = evaluate_stack(&body, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap();
+        assert_eq!(
+            result["sorted"],
+            Value::List(vec![Value::Int(1), Value::Int(1), Value::Int(2), Value::Int(3)])
+        );
+        assert_eq!(
+            result["deduped"],
+            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)])
+        );
+        assert_eq!(result["return"], Value::Int(3));
+    }
+
+    #[test] fn s57_return_check_uses_structured_return_value() {
+        take_type_warnings();
+
+        let body = LoweredFnBody::with_types(
+            vec![LoweredStmt::Expr(LoweredExpr::VariantConstruct {
+                tag: "Some".into(),
+                fields: vec![("value".into(), int(42))],
+            })],
+            vec![],
+            Some("Map<String,Any>".into()),
+        );
+
+        let result = evaluate_stack(&body, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap();
+        assert_eq!(result.get("_variant"), Some(&Value::Str("Some".into())));
+        assert_eq!(result.get("value"), Some(&Value::Int(42)));
+        assert!(take_type_warnings().is_empty());
+    }
+
+    #[test] fn s57_return_check_validates_multi_field_outputs() {
+        take_type_warnings();
+
+        let body = LoweredFnBody::with_types(
+            vec![LoweredStmt::Return(vec![
+                ("a".into(), int(1)),
+                ("b".into(), string("oops")),
+            ])],
+            vec![],
+            Some("Map<String,Int>".into()),
+        );
+
+        let result = evaluate_stack(&body, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap();
+        assert_eq!(result["a"], Value::Int(1));
+        assert_eq!(result["b"], Value::Str("oops".into()));
+
+        let warnings = take_type_warnings();
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("type mismatch at return"));
+    }
+
+    #[test] fn s57_warnings_are_scoped_per_top_level_evaluation() {
+        take_type_warnings();
+
+        let bad = LoweredFnBody::with_types(
+            vec![LoweredStmt::Return(vec![("return".into(), string("wrong"))])],
+            vec![],
+            Some("Int".into()),
+        );
+        evaluate_stack(&bad, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap();
+
+        let good = LoweredFnBody::with_types(
+            vec![LoweredStmt::Return(vec![("return".into(), int(7))])],
+            vec![],
+            Some("Int".into()),
+        );
+        evaluate_stack(&good, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap();
+
+        assert!(take_type_warnings().is_empty());
     }
 
     #[test] fn builtin_lookup() {

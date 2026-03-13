@@ -3525,12 +3525,17 @@ mod parity {
 ///
 /// 1. **ResourceProvide**: any fn whose output type contains "Handle" or "Env"
 ///    (structural indicator of resource provision).
-/// 2. **PureRender**: fn with a single `String` output and at least one
-///    non-String input (structural indicator of template/render).
-/// 3. **PureDataLoad**: fn with no inputs (beyond `__deps`) and non-Handle
-///    outputs (structural indicator of data loading).
+/// 2. **PureDataLoad**: fn with zero user-facing inputs and a single `String`
+///    output (structural indicator of data loading / constant).
+/// 3. **PureRender**: fn with at least one user-facing input and a single
+///    `String` output (structural indicator of template/render).
 /// 4. **PureGeneric**: everything else.
-fn infer_fn_obligation(_name: &str, kind: CallableKind, outputs: &[Port]) -> CallableObligation {
+fn infer_fn_obligation(
+    _name: &str,
+    kind: CallableKind,
+    user_param_count: usize,
+    outputs: &[Port],
+) -> CallableObligation {
     if kind != CallableKind::Fn {
         return CallableObligation::None;
     }
@@ -3544,9 +3549,14 @@ fn infer_fn_obligation(_name: &str, kind: CallableKind, outputs: &[Port]) -> Cal
         return CallableObligation::ResourceProvide;
     }
 
-    // Rule 2: Single String output → pure renderer.
+    // Rules 2 & 3: Single String output, distinguished by input count.
     let is_string_output = outputs.len() == 1 && outputs[0].type_id.0 == "String";
     if is_string_output {
+        if user_param_count == 0 {
+            // Zero user inputs + String output → data loader / constant.
+            return CallableObligation::PureDataLoad;
+        }
+        // Non-zero user inputs + String output → renderer / template.
         return CallableObligation::PureRender;
     }
 
@@ -3602,7 +3612,7 @@ fn lower_callable(
         ));
     }
     inputs.push(Port::list(PortName::DEPS, "Any"));
-    let obligation = infer_fn_obligation(&callable.name, kind, &outputs);
+    let obligation = infer_fn_obligation(&callable.name, kind, callable.params.len(), &outputs);
     let primary_output = outputs
         .first()
         .map(|port| port.name.0.clone())

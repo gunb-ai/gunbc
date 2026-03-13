@@ -983,7 +983,7 @@ impl TypeId {
         Self(format!("Map<{},{}>", key.0, val.0))
     }
     pub fn option(inner: &TypeId) -> Self {
-        Self(format!("Option<{}>", inner.0))
+        Self(format!("Optional<{}>", inner.0))
     }
     pub fn transport_request() -> Self {
         Self("TransportRequest".into())
@@ -2188,7 +2188,7 @@ mod type_id_tests {
             TypeId::map(&TypeId::string(), &TypeId::int()).0,
             "Map<String,Int>"
         );
-        assert_eq!(TypeId::option(&TypeId::bool()).0, "Option<Bool>");
+        assert_eq!(TypeId::option(&TypeId::bool()).0, "Optional<Bool>");
     }
 
     #[test]
