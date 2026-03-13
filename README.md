@@ -65,8 +65,7 @@ references.** A type like `List<Span>` is stored as
 not as a `TypeId("List<Span>")` string requiring a registry lookup. No
 registry, no deferred resolution, no stale copies.
 
-See `DESIGN-v2-compiler.md` and `DESIGN-v2-target-models.md` for the full
-design.
+See `src/v2/DESIGN.md` for the full design and target type models.
 
 ## The Invariants
 
@@ -174,41 +173,42 @@ dsl/                    Domain: .dag source files, types, data, workflows
   tools/                Tool definitions (bootstrap, build, codegen, ...)
 
 src/
-  00_foundation/        Shared IR and foundational crates
-    infra/                gunbc-infra: hashing, resource IDs, manifests (leaf)
-    ir/                   gunbc-ir: DAG, Node, Port, Edge, Value types
-    daglang-contract/     Verdict, Diagnostic, spans (leaf)
-    delegate-macros/      Proc macros for delegation
-  01_surfaces/          CLIs, codegen, workflow-facing entrypoints
-    cli/                  Main CLI entrypoint
-    codegen/              Code generation, testgen, DSL-generated binaries
-    daglang-cli/          DSL compiler CLI
-    workflow/             Workflow runner
-  02_pipeline/          Compiler orchestration
-    daglang-driver/       Pipeline driver: discover -> compile staged
-  03_source/            Source discovery, parse, module graph
-    daglang-syntax/       Tokenizer and parser (.dag -> AST)
-    daglang-resolve/      Import resolution, module graph
-  04_semantics/         Typechecking and semantic validation
-    daglang-typecheck/    Type resolution, validation
-  05_graph/             Lowering and evaluation
-    daglang-lower/        Typed AST -> VerifiedDag<LoweredOp>
-    daglang-eval/         Expression evaluator (shared by compiler + interpreter)
-  06_artifacts/         Derived metadata
-    daglang-derive/       Structural graph walks, callable properties
-  07_emit/              Code emission
-    daglang-emit/         Generate target-language source from IR
-  08_materialize/       Runtime wiring and I/O
-    resolve/              gunbc-resolve: LoweredOp -> DynOp resolution
-    interp/               gunbc-interp: interpreter dispatch
-    transport/            gunbc-lib-transport: the I/O boundary
-    blob/                 gunbc-lib-blob: content-addressed storage
-  09_execute/           DAG executor
-    exec/                 gunbc-exec: topological scheduling, dry-run
-  10_test/              Test support and generated tests
-    test/                 Test utilities
-    generated-tests/      Auto-generated DAG integration tests
-    testgen-registry/     Test generation registry
+  v1/                   v1 compiler and runtime (Rust)
+    00_foundation/        Shared IR and foundational crates
+      infra/                gunbc-infra: hashing, resource IDs, manifests (leaf)
+      ir/                   gunbc-ir: DAG, Node, Port, Edge, Value types
+      daglang-contract/     Verdict, Diagnostic, spans (leaf)
+      delegate-macros/      Proc macros for delegation
+    01_surfaces/          CLIs, codegen, workflow-facing entrypoints
+      cli/                  Main CLI entrypoint
+      codegen/              Code generation, testgen, DSL-generated binaries
+      daglang-cli/          DSL compiler CLI
+      workflow/             Workflow runner
+    02_pipeline/          Compiler orchestration
+      daglang-driver/       Pipeline driver: discover -> compile staged
+    03_source/            Source discovery, parse, module graph
+      daglang-syntax/       Tokenizer and parser (.dag -> AST)
+      daglang-resolve/      Import resolution, module graph
+    04_semantics/         Typechecking and semantic validation
+      daglang-typecheck/    Type resolution, validation
+    05_graph/             Lowering and evaluation
+      daglang-lower/        Typed AST -> VerifiedDag<LoweredOp>
+      daglang-eval/         Expression evaluator (shared by compiler + interpreter)
+    06_artifacts/         Derived metadata
+      daglang-derive/       Structural graph walks, callable properties
+    07_emit/              Code emission
+      daglang-emit/         Generate target-language source from IR
+    08_materialize/       Runtime wiring and I/O
+      resolve/              gunbc-resolve: LoweredOp -> DynOp resolution
+      interp/               gunbc-interp: interpreter dispatch
+      transport/            gunbc-lib-transport: the I/O boundary
+      blob/                 gunbc-lib-blob: content-addressed storage
+    09_execute/           DAG executor
+      exec/                 gunbc-exec: topological scheduling, dry-run
+    10_test/              Test support and generated tests
+      test/                 Test utilities
+      generated-tests/      Auto-generated DAG integration tests
+      testgen-registry/     Test generation registry
   v2/                   Self-hosted compiler (.dag source)
 ```
 
