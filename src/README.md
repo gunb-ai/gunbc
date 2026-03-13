@@ -85,13 +85,15 @@ contract; no runtime validation walk is needed.
 at a boundary, instead refactor the upstream stage's output type so
 the invalid state is impossible to construct.
 
-Examples:
-- After typecheck: the output type embeds resolved type structure,
-  not a string TypeId that might not resolve. Unresolved is not a
-  variant of the output type.
-- After lowering: transport nodes carry `ServiceTransportClass` as
-  a field, not a name substring that needs parsing. Ports carry
-  resolved structure, not string handles.
+Examples (current state and target):
+- After lowering (done): transport nodes are a distinct `LoweredOp::Transport`
+  variant with required `ServiceCallMetadata` and `TransportObligation`.
+  Transport obligations are structurally excluded from `LoweredOp::Callable`.
+- After lowering (target): ports embed `ResolvedType` instead of `TypeId(String)`.
+  `ResolvedType` is defined in `gunbc-ir` but not yet wired into ports;
+  the migration is additive (`resolved_type` alongside `type_id`).
+- After typecheck (target): the output type embeds resolved type structure,
+  not a string TypeId that might not resolve.
 - After resolve: the output DAG is parameterized by a trait that
   requires `Executable`, so non-executable nodes are unrepresentable.
 
