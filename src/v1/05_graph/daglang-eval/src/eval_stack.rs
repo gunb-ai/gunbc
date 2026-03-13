@@ -579,11 +579,19 @@ fn eval_stmts<'a>(
                     if let Some(&callee_id) = ctx.fn_index.get(callee.as_str()) {
                         match eval_call_args(args, env, ctx) {
                             Ok(inputs) => {
-                                stack.push(Continuation {
-                                    remaining, binding: None,
-                                    env: env.clone(), is_fn_boundary: true,
-                                    caller_fn: current_fn,
-                                });
+                                // Tail call elimination: when this is the last
+                                // statement (remaining is empty) and we have no
+                                // binding, the continuation would be an identity
+                                // frame that just collapses in pop_stack. Skip
+                                // it to avoid O(call_depth) heap growth for tail
+                                // recursive patterns.
+                                if !remaining.is_empty() {
+                                    stack.push(Continuation {
+                                        remaining, binding: None,
+                                        env: env.clone(), is_fn_boundary: true,
+                                        caller_fn: current_fn,
+                                    });
+                                }
                                 return Step::Call { callee: callee_id, inputs };
                             }
                             Err(msg) => return Step::Error(msg),
