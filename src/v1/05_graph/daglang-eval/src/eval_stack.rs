@@ -32,7 +32,6 @@
 //! Non-sibling calls (builtins, intrinsics) may still appear nested in
 //! expressions and are evaluated inline by `eval_expr` → `eval_non_sibling_call_raw`.
 
-use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
@@ -55,9 +54,8 @@ const MAX_TRANSITIONS: usize = 10_000_000;
 
 // ── Runtime type boundary checks (S57) ───────────────────────────────────
 //
-// Soft diagnostics: mismatches are collected internally and returned as part
-// of `EvalOutcome`. Thread-local storage is used only within a single
-// `evaluate_stack` call; the public API returns warnings explicitly.
+// Soft diagnostics: mismatches are collected via an explicit `&mut Vec<String>`
+// threaded through the evaluation functions and returned as part of `EvalOutcome`.
 
 /// The result of a successful evaluation, including any type-boundary warnings.
 #[derive(Debug, Clone)]
@@ -69,57 +67,7 @@ pub struct EvalOutcome {
     pub warnings: Vec<String>,
 }
 
-#[derive(Default)]
-struct WarningState {
-    depth: usize,
-    warnings: Vec<String>,
-}
 
-thread_local! {
-    static TYPE_WARNINGS: RefCell<WarningState> = RefCell::new(WarningState::default());
-}
-
-struct WarningScope;
-
-impl WarningScope {
-    fn enter() -> Self {
-        TYPE_WARNINGS.with(|state| {
-            let mut state = state.borrow_mut();
-            if state.depth == 0 {
-                state.warnings.clear();
-            }
-            state.depth += 1;
-        });
-        Self
-    }
-
-    /// Drain all warnings accumulated in this scope.
-    fn drain_warnings(&self) -> Vec<String> {
-        TYPE_WARNINGS.with(|state| state.borrow_mut().warnings.drain(..).collect())
-    }
-}
-
-impl Drop for WarningScope {
-    fn drop(&mut self) {
-        TYPE_WARNINGS.with(|state| {
-            let mut state = state.borrow_mut();
-            state.depth = state.depth.saturating_sub(1);
-        });
-    }
-}
-
-/// Drain and return any type warnings accumulated during evaluation.
-///
-/// Deprecated: prefer using `evaluate_stack_with_diagnostics` which returns
-/// warnings as part of `EvalOutcome`. This function is retained for backward
-/// compatibility during migration.
-pub fn take_type_warnings() -> Vec<String> {
-    TYPE_WARNINGS.with(|state| state.borrow_mut().warnings.drain(..).collect())
-}
-
-fn push_type_warning(msg: String) {
-    TYPE_WARNINGS.with(|state| state.borrow_mut().warnings.push(msg));
-}
 
 /// Reconstruct the value that callers observe from an output map.
 ///
@@ -142,11 +90,11 @@ fn output_value(outputs: &HashMap<String, Value>) -> Value {
 
 /// Check that each argument value is compatible with the callee's declared
 /// parameter type. Collects a warning for each mismatch.
-fn check_call_inputs(fn_body: &LoweredFnBody, inputs: &HashMap<String, Value>, fn_name: &str) {
+fn check_call_inputs(fn_body: &LoweredFnBody, inputs: &HashMap<String, Value>, fn_name: &str, warnings: &mut Vec<String>) {
     for (param_name, expected_type) in &fn_body.param_types {
         if let Some(value) = inputs.get(param_name) {
             if !value_compatible_with_type_id(expected_type, value) {
-                push_type_warning(format!(
+                warnings.push(format!(
                     "[S57] type mismatch at call to `{fn_name}`: \
                      param `{param_name}` expects `{expected_type}`, \
                      got `{}`",
@@ -159,11 +107,11 @@ fn check_call_inputs(fn_body: &LoweredFnBody, inputs: &HashMap<String, Value>, f
 
 /// Check that the return value is compatible with the callee's declared
 /// return type. Collects a warning on mismatch.
-fn check_return_value(fn_body: &LoweredFnBody, result: &HashMap<String, Value>, fn_name: &str) {
+fn check_return_value(fn_body: &LoweredFnBody, result: &HashMap<String, Value>, fn_name: &str, warnings: &mut Vec<String>) {
     let Some(expected_type) = &fn_body.return_type else { return };
     let value = output_value(result);
     if !value_compatible_with_type_id(expected_type, &value) {
-        push_type_warning(format!(
+        warnings.push(format!(
             "[S57] type mismatch at return from `{fn_name}`: \
              expects `{expected_type}`, got `{}`",
             value.kind().type_name(),
@@ -194,15 +142,14 @@ pub fn evaluate_stack_with_diagnostics(
     sibling_fns: &HashMap<String, LoweredFnBody>,
     data_values: &HashMap<String, Value>,
 ) -> Result<EvalOutcome, EvalError> {
-    let scope = WarningScope::enter();
     let (ctx, entry) = build_context(body, sibling_fns, data_values);
 
     if let Err(msg) = verify_anf_contract(&ctx) {
         return Err(EvalError::new(format!("ANF contract violated: {msg}")));
     }
 
-    let outputs = run_machine(entry, inputs, &ctx)?;
-    let warnings = scope.drain_warnings();
+    let mut warnings = Vec::new();
+    let outputs = run_machine(entry, inputs, &ctx, &mut warnings)?;
     Ok(EvalOutcome { outputs, warnings })
 }
 
@@ -417,6 +364,7 @@ fn run_machine<'a>(
     entry: FnId,
     inputs: &HashMap<String, Value>,
     ctx: &'a EvalContext<'a>,
+    warnings: &mut Vec<String>,
 ) -> Result<HashMap<String, Value>, EvalError> {
     let mut stack: Vec<Continuation<'a>> = Vec::new();
     let mut stmts: &'a [LoweredStmt] = &ctx.fns[entry].stmts;
@@ -428,7 +376,7 @@ fn run_machine<'a>(
     let mut current_fn: FnId = entry;
 
     // S57: check entry function inputs
-    check_call_inputs(ctx.fns[entry], inputs, &fn_name_for_id(entry, ctx));
+    check_call_inputs(ctx.fns[entry], inputs, &fn_name_for_id(entry, ctx), warnings);
 
     loop {
         transitions += 1;
@@ -441,8 +389,8 @@ fn run_machine<'a>(
         match eval_stmts(stmts, &mut env, ctx, &mut stack, current_fn) {
             Step::Return(result) => {
                 // S57: check return type of the completing function
-                check_return_value(ctx.fns[current_fn], &result, &fn_name_for_id(current_fn, ctx));
-                match pop_stack(&mut stack, result, ctx) {
+                check_return_value(ctx.fns[current_fn], &result, &fn_name_for_id(current_fn, ctx), warnings);
+                match pop_stack(&mut stack, result, ctx, warnings) {
                     PopResult::Done(output) => return Ok(output),
                     PopResult::Resume { stmts: s, env: e, fn_id } => {
                         stmts = s; env = e;
@@ -453,13 +401,13 @@ fn run_machine<'a>(
             }
             Step::EarlyReturn(result) => {
                 // S57: check return type of the completing function
-                check_return_value(ctx.fns[current_fn], &result, &fn_name_for_id(current_fn, ctx));
+                check_return_value(ctx.fns[current_fn], &result, &fn_name_for_id(current_fn, ctx), warnings);
                 // Unwind past block-resume continuations to the fn boundary.
                 while let Some(cont) = stack.last() {
                     if cont.is_fn_boundary { break; }
                     stack.pop();
                 }
-                match pop_stack(&mut stack, result, ctx) {
+                match pop_stack(&mut stack, result, ctx, warnings) {
                     PopResult::Done(output) => return Ok(output),
                     PopResult::Resume { stmts: s, env: e, fn_id } => {
                         stmts = s; env = e;
@@ -475,7 +423,7 @@ fn run_machine<'a>(
                     )));
                 }
                 // S57: check callee input types before transitioning
-                check_call_inputs(ctx.fns[callee], &inputs, &fn_name_for_id(callee, ctx));
+                check_call_inputs(ctx.fns[callee], &inputs, &fn_name_for_id(callee, ctx), warnings);
                 current_fn = callee;
                 stmts = &ctx.fns[callee].stmts;
                 env = Env::from_inputs(&inputs);
@@ -495,6 +443,7 @@ fn pop_stack<'a>(
     stack: &mut Vec<Continuation<'a>>,
     mut result: HashMap<String, Value>,
     ctx: &'a EvalContext<'a>,
+    warnings: &mut Vec<String>,
 ) -> PopResult<'a> {
     loop {
         match stack.pop() {
@@ -531,7 +480,7 @@ fn pop_stack<'a>(
                     // through. The caller's fn_id is on cont.caller_fn.
                     if cont.is_fn_boundary {
                         let caller_name = fn_name_for_id(cont.caller_fn, ctx);
-                        check_return_value(ctx.fns[cont.caller_fn], &result, &caller_name);
+                        check_return_value(ctx.fns[cont.caller_fn], &result, &caller_name, warnings);
                     }
                 } else {
                     return PopResult::Resume {
@@ -1883,8 +1832,6 @@ mod tests {
     }
 
     #[test] fn s57_return_check_uses_structured_return_value() {
-        take_type_warnings();
-
         let body = LoweredFnBody::with_types(
             vec![LoweredStmt::Expr(LoweredExpr::VariantConstruct {
                 tag: "Some".into(),
@@ -1894,10 +1841,10 @@ mod tests {
             Some("Map<String,Any>".into()),
         );
 
-        let result = evaluate_stack(&body, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap();
-        assert_eq!(result.get("_variant"), Some(&Value::Str("Some".into())));
-        assert_eq!(result.get("value"), Some(&Value::Int(42)));
-        assert!(take_type_warnings().is_empty());
+        let outcome = evaluate_stack_with_diagnostics(&body, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap();
+        assert_eq!(outcome.outputs.get("_variant"), Some(&Value::Str("Some".into())));
+        assert_eq!(outcome.outputs.get("value"), Some(&Value::Int(42)));
+        assert!(outcome.warnings.is_empty());
     }
 
     #[test] fn s57_return_check_validates_multi_field_outputs() {
