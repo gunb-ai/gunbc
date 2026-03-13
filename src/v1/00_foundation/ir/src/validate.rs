@@ -10,7 +10,7 @@
 //! (Deductive Redundancy Elimination using idempotency fingerprints).
 
 use crate::boundary::detect_boundaries;
-use crate::coerce::validate_coercions;
+use crate::coerce::validate_coercions_with_registry;
 use crate::dag::{Dag, Port};
 use crate::entrypoint::detect_entrypoints;
 use crate::node::{Node, NodeBody, SubDagKind};
@@ -850,7 +850,7 @@ pub fn verify_dag<T>(dag: &Dag<T>) -> Vec<VerifyError> {
 /// Verify all structural invariants with an explicit type registry.
 ///
 /// Includes port type-id validation against the provided registry.
-pub fn verify_dag_with_registry<T>(dag: &Dag<T>, _registry: &TypeRegistry) -> Vec<VerifyError> {
+pub fn verify_dag_with_registry<T>(dag: &Dag<T>, registry: &TypeRegistry) -> Vec<VerifyError> {
     let mut errors: Vec<VerifyError> = Vec::new();
 
     errors.extend(
@@ -873,19 +873,13 @@ pub fn verify_dag_with_registry<T>(dag: &Dag<T>, _registry: &TypeRegistry) -> Ve
             .into_iter()
             .map(VerifyError::UnwiredInput),
     );
-    // Port type-id validation is available via `validate_port_type_ids()` but
-    // not wired into the verification pipeline yet.  The IR TypeRegistry does
-    // not include DSL-defined types, so the check would produce false
-    // positives for every DSL record/enum type.  Once the pipeline propagates
-    // DSL types into the registry (S18 follow-up), this can be re-enabled.
-    // errors.extend(
-    //     validate_port_type_ids(dag, registry)
-    //         .into_iter()
-    //         .map(VerifyError::UnregisteredType),
-    // );
-
     errors.extend(
-        validate_cardinality_compatibility(dag)
+        validate_port_type_ids(dag, registry)
+            .into_iter()
+            .map(VerifyError::UnregisteredType),
+    );
+    errors.extend(
+        validate_cardinality_compatibility_with_registry(dag, Some(registry))
             .into_iter()
             .map(VerifyError::CardinalityIncompatibility),
     );
@@ -1119,7 +1113,16 @@ impl fmt::Display for CardinalityIncompatibility {
 /// incompatible edges into `CardinalityIncompatibility` errors. Safe
 /// coercions (scalar-to-list wrapping) are allowed and not reported.
 pub fn validate_cardinality_compatibility<T>(dag: &Dag<T>) -> Vec<CardinalityIncompatibility> {
-    let report = validate_coercions(dag);
+    validate_cardinality_compatibility_with_registry(dag, None)
+}
+
+/// Like `validate_cardinality_compatibility` but with an explicit type
+/// registry for type-derived cardinality inference (`Port::infer_cardinality`).
+pub fn validate_cardinality_compatibility_with_registry<T>(
+    dag: &Dag<T>,
+    registry: Option<&TypeRegistry>,
+) -> Vec<CardinalityIncompatibility> {
+    let report = validate_coercions_with_registry(dag, registry);
     report
         .errors
         .into_iter()

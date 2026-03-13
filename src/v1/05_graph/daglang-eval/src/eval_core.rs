@@ -23,9 +23,23 @@ use crate::expr::{
 
 // ── Error type ──────────────────────────────────────────────────────────────
 
+/// Evaluation error OR early-return control signal.
+///
+/// **S67 note:** `early_return` uses the error path for non-error semantics.
+/// `return` statements in `eval_block_pure` propagate as
+/// `Err(EvalError { early_return: Some(...) })` through `eval_expr`'s `?`
+/// operator. The main loop's `step_from_error` / `expr_from_error` convert
+/// these back to `Step::EarlyReturn` / `ExprResult::EarlyReturn`.
+///
+/// This conflation exists because `eval_expr` returns `Result<Value, EvalError>`
+/// and early returns must propagate through arbitrary nesting depth. Changing
+/// the return type to a three-variant enum would require updating every
+/// `eval_expr` call site (~40 locations). Tracked as S67 item 5.
 #[derive(Debug, Clone)]
 pub struct EvalError {
     pub message: String,
+    /// Control-flow signal: `Some(outputs)` means this is a `return` statement,
+    /// not an error. See S67 item 5.
     pub early_return: Option<HashMap<String, Value>>,
 }
 
@@ -34,6 +48,7 @@ impl EvalError {
         Self { message: msg.into(), early_return: None }
     }
 
+    /// Create a control-flow signal for `return` statements. Not an error.
     pub fn early_return(values: HashMap<String, Value>) -> Self {
         Self { message: "__early_return__".to_string(), early_return: Some(values) }
     }

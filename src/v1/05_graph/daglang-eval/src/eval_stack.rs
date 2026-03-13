@@ -911,6 +911,8 @@ fn eval_expr(expr: &LoweredExpr, env: &Env, ctx: &EvalContext) -> Result<Value, 
             else if let Some(e) = else_ { eval_expr(e, env, ctx) }
             else { Ok(Value::Unit) }
         }
+        // Non-suspendable match. See eval_block_pure for rationale on why
+        // this is not a parallel implementation of eval_match_s.
         LoweredExpr::Match { expr: scrutinee, arms } => {
             let val = eval_expr(scrutinee, env, ctx)?;
             eval_match_local(&val, arms, env, ctx)
@@ -929,29 +931,16 @@ fn eval_expr(expr: &LoweredExpr, env: &Env, ctx: &EvalContext) -> Result<Value, 
         LoweredExpr::Lambda { .. } => Err(EvalError::new("lambda cannot be evaluated standalone")),
         LoweredExpr::List(items) =>
             items.iter().map(|i| eval_expr(i, env, ctx)).collect::<Result<Vec<_>, _>>().map(Value::List),
-        LoweredExpr::Block(stmts) => {
-            let mut child = env.child();
-            let last = stmts.last();
-            for stmt in stmts {
-                let is_last = last.is_some_and(|l| std::ptr::eq(stmt, l));
-                match stmt {
-                    LoweredStmt::Let(name, e) => {
-                        let val = eval_expr(e, &child, ctx)?;
-                        bind_let_result(&mut child, name.clone(), &val);
-                    }
-                    LoweredStmt::Expr(e) => {
-                        let value = eval_expr(e, &child, ctx)?;
-                        if is_last { return Ok(value); }
-                    }
-                    LoweredStmt::Return(fields) => {
-                        let mut result = HashMap::new();
-                        for (name, e) in fields { result.insert(name.clone(), eval_expr(e, &child, ctx)?); }
-                        return Err(EvalError::early_return(result));
-                    }
-                }
-            }
-            Ok(Value::Unit)
-        }
+        // Non-suspendable block evaluation. Used for intrinsic lambda bodies
+        // and standalone match arms where no continuation stack exists.
+        // The suspendable path (eval_block_s) handles blocks at statement
+        // level in the main loop via the continuation stack.
+        //
+        // S67: These are not parallel implementations — they serve different
+        // contexts. This path evaluates blocks where sibling calls are
+        // resolved re-entrantly (via eval_non_sibling_call_raw → evaluate_stack).
+        // The suspendable path resolves them via Step::Call + continuations.
+        LoweredExpr::Block(stmts) => eval_block_pure(stmts, env, ctx),
         LoweredExpr::Record { fields, .. } => {
             let mut map = BTreeMap::new();
             for (k, v) in fields { map.insert(k.clone(), eval_expr(v, env, ctx)?); }
@@ -1030,6 +1019,38 @@ fn sibling_fn_value_extract(
     _name: &str, outputs: HashMap<String, Value>,
 ) -> Result<Value, EvalError> {
     Ok(output_value(&outputs))
+}
+
+/// Non-suspendable block evaluation for intrinsic lambda bodies and
+/// standalone match arms. Sibling calls inside the block are resolved
+/// re-entrantly via `eval_non_sibling_call_raw` → `evaluate_stack`.
+///
+/// This is NOT a parallel implementation of `eval_block_s`. The two paths
+/// serve different contexts:
+/// - `eval_block_pure`: no continuation stack available (lambda bodies)
+/// - `eval_block_s`: continuation stack available (main-loop statement level)
+fn eval_block_pure(stmts: &[LoweredStmt], env: &Env, ctx: &EvalContext) -> Result<Value, EvalError> {
+    let mut child = env.child();
+    let last = stmts.last();
+    for stmt in stmts {
+        let is_last = last.is_some_and(|l| std::ptr::eq(stmt, l));
+        match stmt {
+            LoweredStmt::Let(name, e) => {
+                let val = eval_expr(e, &child, ctx)?;
+                bind_let_result(&mut child, name.clone(), &val);
+            }
+            LoweredStmt::Expr(e) => {
+                let value = eval_expr(e, &child, ctx)?;
+                if is_last { return Ok(value); }
+            }
+            LoweredStmt::Return(fields) => {
+                let mut result = HashMap::new();
+                for (name, e) in fields { result.insert(name.clone(), eval_expr(e, &child, ctx)?); }
+                return Err(EvalError::early_return(result));
+            }
+        }
+    }
+    Ok(Value::Unit)
 }
 
 fn eval_match_local(
