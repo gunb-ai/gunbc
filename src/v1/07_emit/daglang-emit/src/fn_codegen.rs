@@ -1213,6 +1213,7 @@ fn infer_field_type_from_expr(expr: &ast::Expr) -> &'static str {
 ///
 /// Returns: (struct items to emit, mapping from sorted-field-key → struct name,
 ///           entries to add to struct_field_types)
+#[allow(clippy::type_complexity)]
 pub fn synthesize_anonymous_structs(
     fn_name: &str,
     body: &ast::FnBody,
