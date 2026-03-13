@@ -260,15 +260,40 @@ impl TypeRegistry {
     /// names in type positions (field types, alias bases, refinement targets).
     /// After typecheck, `merge_dsl_types()` overwrites the placeholders with
     /// structural definitions from the compiled `.dag` files.
+    ///
+    /// Bootstrap lifecycle:
+    /// 1. `register_kernel_types()` — minimal set needed before any .dag processing
+    /// 2. DSL typecheck — compiles .dag files, produces structural type DAGs
+    /// 3. `merge_dsl_types()` — overwrites kernel placeholders with DSL definitions
+    ///
+    /// After step 3, kernel types that have DSL equivalents are replaced.
+    /// Types without DSL files (Bool, Secret) persist from step 1.
     pub fn register_kernel_types(&mut self) {
+        // Unit: absence-of-value sentinel, analogous to Rust's `()`.
+        // Used for skip propagation, optional output ports, and
+        // payload-free coproduct variants (e.g. Bool::True).
         self.register("Unit", type_lib::unit());
+
+        // Json: escape hatch for untyped data crossing the I/O boundary.
+        // Accepts any Value variant. Used when external service responses
+        // have unknown shape or type info is genuinely unavailable.
+        // WARNING: also serves as fail-open fallback when type resolution
+        // fails (S23/S35) — unknown types should reject, not accept.
         self.register("Json", type_lib::json());
+
+        // Any: identity/top type — every type is a subtype of Any.
+        // Distinguished from Json: Any is a type-system concept (subtyping),
+        // while Json is a runtime representation (wire format).
         self.register("Any", type_lib::identity("Any"));
+
+        // Record: anonymous product type — a bag of named fields without
+        // a registered schema. Used for ad-hoc Map values that don't
+        // correspond to a named DSL type.
         self.register("Record", type_lib::identity("Record"));
 
-        // Structural kernel types — these serve as bootstrap definitions that
-        // the DSL merge can override with richer structural DAGs. Bool and
-        // Secret are defined here because no DSL file defines them.
+        // Bool: structural coproduct True | False. Defined in Rust because
+        // no DSL file defines it. Runtime representation: Value::Str("True")
+        // or Value::Str("False") (coproduct variant tags).
         self.register(
             "Bool",
             type_lib::coproduct_resolved(
@@ -277,20 +302,22 @@ impl TypeRegistry {
             ),
         );
         self.register("Bytes", type_lib::list(type_lib::identity("Byte")));
+
+        // Secret: branded String — same runtime representation but redacted
+        // in logs/output. Used for API keys, tokens, passwords.
         self.register(
             "Secret",
             type_lib::branded("Secret", type_lib::identity("String")),
         );
 
-        // String: structural Product matching string_type.dag.
+        // String, Int, Float: structural definitions matching the DSL files
+        // (string_type.dag, integer.dag, float.dag). These are kernel
+        // bootstrap definitions that merge_dsl_types() can override with
+        // richer structural DAGs from compiled .dag files.
         self.register_product(
             "String",
             vec![("bytes", "Bytes"), ("encoding", "ContentEncoding")],
         );
-
-        // Int, Float: structural kernel definitions matching the DSL files
-        // (integer.dag, float.dag). These produce Platform shapes via
-        // Width/Signed/Domain predicates, which the emit layer handles.
         self.register(
             "Int",
             type_lib::refined(

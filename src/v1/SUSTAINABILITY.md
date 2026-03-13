@@ -198,7 +198,7 @@ lists. 4 edits per provider. Fix: single static registry.
 ### Standalone items
 
 **S8:** C backend discards Map key types. Intentional (C has no native map).
-**S9:** Opaque kernel types (Unit/Json/Any/Record) lack documented rationale.
+(Fixed.) **S9:** Opaque kernel types (Unit/Json/Any/Record) lack documented rationale.
 **S63:** `std/patterns.dag` mixes generic patterns with GCP-specific auth
 implementations. Provider-specific code belongs under `extdeps/`, not `std/`.
 
