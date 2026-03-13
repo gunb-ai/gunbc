@@ -251,28 +251,35 @@ stack = O(AST expr depth). Heap = O(call depth). Both bounded.
 | AST cloning | zero — FnId + pc into EvalContext | zero |
 | Time | ≤ MAX_TRANSITIONS | clean error |
 
-## Known Limitations (to resolve)
+## Known Limitations
 
 1. **`LoweredExpr::Return` is still an expression.** This means
    `eval_expr` is not fully pure — it can produce early-return signals.
    The clean fix: make `return` a statement form only, not an
-   expression. Deferred to avoid IR churn during migration.
+   expression. Deferred — 23 match sites across 4 files (eval_stack,
+   eval_core, anf, expr), high risk of breaking the ANF normalizer's
+   call-hoisting logic and the suspendable evaluator's continuation
+   handling for blocks.
 
 2. **`LoweredExpr::Block` and `LoweredExpr::For` carry statement
    semantics.** The cleanest end state is `ForCollect` as a statement
    form with its own body-stmts, and blocks as statement sequences (not
-   expressions). Deferred for the same reason.
+   expressions). Deferred for the same reason as (1).
 
-3. **Calls in trailing-expression Blocks** use the old recursive
-   evaluator as fallback (`eval_sibling_recursive`). The explicit-stack
-   machine handles the fn-to-fn call chain; calls inside branch blocks
-   still recurse. Acceptable for now — the recursion depth is bounded by
-   expression nesting (shallow), not the call chain (deep).
-
-4. **`Projection::ReturnField` fallback.** The `"value"` key fallback
-   exists for compatibility with `return expr` lowering. Will be
-   removed once the return convention is standardized to always produce
-   a `"return"` key.
+3. **`Projection::ReturnField` "value" fallback.** The parser now
+   standardizes on `"return"` key (Phase 5a done). However, the
+   `"value"` fallback cannot be fully removed because
+   `wrap_value_as_output` flattens Map trailing expressions into the
+   output HashMap. When a function's trailing expression is a variant
+   like `Some { value: x }`, the Map `{"_variant": "Some", "value": x}`
+   gets flattened, and the caller's `extract_projection` must
+   reconstruct it. If the variant has a single payload field `"value"`,
+   the flattened output has `{"value": x}` which needs the fallback to
+   extract correctly. Removing this requires either:
+   (a) making `wrap_value_as_output` always wrap with `"return"` (breaks
+   the v2 DSL evaluation model which expects Map flattening), or
+   (b) teaching `extract_projection` to distinguish "return-convention
+   value" from "legitimate Map field named value" (no reliable signal).
 
 ## Migration Path
 
@@ -285,17 +292,25 @@ Each step compiles and passes all tests.
    `Continuation` and `Projection`. (`eval_stack.rs`)
 3. ✅ **Introduce the main loop.** FnId + absolute pc based.
    (`run_machine` in `eval_stack.rs`)
-4. 🔲 **Switch public API** to `evaluate_stack`. Requires resolving
-   the v2 pipeline compatibility issue (calls inside trailing-expr
-   blocks need full integration with the statement machine).
-5. 🔲 **Delete old recursive path** (`eval_fn_body_rc`, trampoline,
-   `tail_call`/`early_return` error variants).
-6. 🔲 **Remove `with_parser_stack(32MB)`.** Un-ignore `phase6`.
-7. 🔲 **Standardize return convention.** All fns produce `"return"`
-   key. Remove `ReturnField` fallback.
+4. ✅ **Internalize non-sibling call handling.** Builtins moved to
+   `eval_core::eval_builtin_call`. Intrinsics, `scan_while`, match
+   evaluation, sibling-fn dispatch all self-contained in eval_stack.rs.
+   Zero imports from eval.rs.
+5. ✅ **Delete old recursive path.** eval.rs reduced from ~2300 lines
+   to ~140 lines of thin wrappers. `eval_fn_body_rc`, trampoline,
+   `tail_call` field, old `Env`, all intrinsics/builtins deleted.
+6. ✅ **Remove `with_parser_stack(32MB)`.** 16 call sites unwrapped.
+   `phase6_gist_full_pipeline` un-ignored (re-ignored as OOM, not
+   stack overflow — 12 .dag files exceed 16GB heap in debug mode).
+7. ✅ **Standardize return convention (partial).** Parser changed to
+   `"return"` key. `"value"` fallback preserved (see Limitation 3).
 8. 🔲 **IR cleanup.** Move `Return`, `Block`, `For` to statement forms.
-9. 🔲 **Benchmark env representation.** Decide `im::HashMap` vs
-   current vs local slots based on measured performance.
+   Deferred — see Limitation 1.
+9. ✅ **Benchmark env representation (analysis).** `Rc<HashMap>` COW
+   is correct for the workload. `im::HashMap` adds dependency for
+   marginal benefit (3-10 bindings per scope). Local slots blocked
+   by dynamic `name__field` binding names from Map destructuring.
+   Recommendation: keep `Rc<HashMap>`.
 
 ## Verification
 
@@ -307,8 +322,15 @@ Each step compiles and passes all tests.
 ```rust
 #[test] fn deep_mutual_recursion_40k()       // heap stack, not native
 #[test] fn anf_verifier_catches_nested_call() // contract enforcement
-#[test] fn value_normalization()              // P1 regression
-#[test] fn sibling_then_builtin()            // bridge to old evaluator
+#[test] fn value_normalization()              // return key normalization
+#[test] fn sibling_then_builtin()            // sibling → builtin chain
+#[test] fn builtin_char_at()                 // eval_builtin_call path
+#[test] fn builtin_scan_while_with_lambda()  // lambda in builtin
+#[test] fn intrinsic_map_with_lambda()       // eval_intrinsic_call_s path
+#[test] fn intrinsic_fold()                  // named-arg intrinsic
+#[test] fn builtin_lookup()                  // Option-returning builtin
 ```
 
-**Acceptance:** `phase6_gist_full_pipeline` on default 8MB stack.
+**Acceptance:** 54 v2 tests pass on default stack (no `with_parser_stack`).
+`phase6_gist_full_pipeline` runs on default stack but OOMs in debug mode
+(12 .dag files, >16GB heap — interpreter overhead, not a stack issue).

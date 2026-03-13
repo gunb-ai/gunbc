@@ -33,10 +33,9 @@ use std::rc::Rc;
 
 use gunbc_ir::Value;
 
-use crate::eval::eval_match;
 use crate::eval_core::{
-    eval_binop, eval_literal, field_access, match_pattern, value_to_string,
-    value_truthy, EvalError,
+    eval_binop, eval_builtin_call, eval_literal, field_access, match_pattern,
+    value_to_string, value_truthy, EvalError,
 };
 use crate::expr::{
     LoweredBinOp, LoweredExpr, LoweredFnBody, LoweredMatchArm, LoweredStmt, LoweredStringPart,
@@ -229,7 +228,7 @@ enum Step {
 }
 
 enum ExprResult {
-    Value(Value),
+    Value(Box<Value>),
     EarlyReturn(HashMap<String, Value>),
     Suspend { callee: FnId, inputs: HashMap<String, Value> },
     Error(String),
@@ -307,7 +306,7 @@ fn run_machine<'a>(
 
 enum PopResult<'a> {
     Done(HashMap<String, Value>),
-    Resume { stmts: &'a [LoweredStmt], env: Env, is_fn_boundary: bool },
+    Resume { stmts: &'a [LoweredStmt], env: Env, #[allow(dead_code)] is_fn_boundary: bool },
     Error(String),
 }
 
@@ -418,7 +417,7 @@ fn eval_stmts<'a>(
                     }
                 } else if is_last {
                     match eval_expr_s(expr, env, ctx, stack) {
-                        ExprResult::Value(value) => return Step::Return(wrap_value_as_output(value)),
+                        ExprResult::Value(value) => return Step::Return(wrap_value_as_output(*value)),
                         ExprResult::EarlyReturn(map) => return Step::EarlyReturn(map),
                         ExprResult::Suspend { callee, inputs } => {
                             stack.insert(stack_base, Continuation {
@@ -484,7 +483,7 @@ fn eval_expr_s<'a>(
                         else { else_.as_ref().map(|e| e.as_ref()) };
                     match branch {
                         Some(b) => eval_expr_s(b, env, ctx, stack),
-                        None => ExprResult::Value(Value::Unit),
+                        None => ExprResult::Value(Box::new(Value::Unit)),
                     }
                 }
                 Err(e) => expr_from_error(e),
@@ -500,7 +499,7 @@ fn eval_expr_s<'a>(
             eval_block_s(block_stmts, env, ctx, stack)
         }
         _ => match eval_expr(expr, env, ctx) {
-            Ok(v) => ExprResult::Value(v),
+            Ok(v) => ExprResult::Value(Box::new(v)),
             Err(e) => expr_from_error(e),
         }
     }
@@ -594,7 +593,7 @@ fn eval_block_s<'a>(
                         }
                     } else {
                         match eval_non_sibling_call_raw(callee, args, &child, ctx) {
-                            Ok(value) if is_last => return ExprResult::Value(value),
+                            Ok(value) if is_last => return ExprResult::Value(Box::new(value)),
                             Ok(_) => {}
                             Err(e) => return expr_from_error(e),
                         }
@@ -620,7 +619,7 @@ fn eval_block_s<'a>(
             }
         }
     }
-    ExprResult::Value(Value::Unit)
+    ExprResult::Value(Box::new(Value::Unit))
 }
 
 // ── 3e. Pure expression evaluation ──────────────────────────────────────────
@@ -687,7 +686,7 @@ fn eval_expr(expr: &LoweredExpr, env: &Env, ctx: &EvalContext) -> Result<Value, 
         }
         LoweredExpr::Match { expr: scrutinee, arms } => {
             let val = eval_expr(scrutinee, env, ctx)?;
-            eval_match(&val, arms, env.bindings.as_ref(), ctx.sibling_fns)
+            eval_match_local(&val, arms, env, ctx)
         }
         LoweredExpr::VariantConstruct { tag, fields } => {
             if fields.is_empty() {
@@ -777,11 +776,452 @@ fn eval_call_args(
 fn eval_non_sibling_call_raw(
     name: &str, args: &[(Option<String>, LoweredExpr)], env: &Env, ctx: &EvalContext,
 ) -> Result<Value, EvalError> {
-    let mut env_bindings: HashMap<String, Value> = env.bindings.as_ref().clone();
-    for (k, v) in ctx.data_values {
-        env_bindings.entry(k.clone()).or_insert_with(|| v.clone());
+    // 1. Sibling fn call (e.g. from synthetic calls inside intrinsics)
+    if let Some(fn_body) = ctx.sibling_fns.get(name) {
+        let mut fn_inputs = HashMap::new();
+        for (param_name, arg_expr) in args {
+            let value = eval_expr(arg_expr, env, ctx)?;
+            if let Some(pname) = param_name { fn_inputs.insert(pname.clone(), value); }
+        }
+        let outputs = evaluate_stack(fn_body, &fn_inputs, ctx.sibling_fns, ctx.data_values)?;
+        return sibling_fn_value_extract(name, outputs);
     }
-    crate::eval::eval_non_sibling_call(name, args, &env_bindings, ctx.sibling_fns, ctx.data_values)
+    // 2. Intrinsics (need unevaluated args for lambdas)
+    if is_intrinsic(name) {
+        return eval_intrinsic_call_s(name, args, env, ctx);
+    }
+    // 3. scan_while (builtin that needs a lambda predicate)
+    if name == "scan_while" {
+        return eval_scan_while_s(args, env, ctx);
+    }
+    // 4. Pre-evaluate args, try builtins
+    let evaluated: Vec<(Option<String>, Value)> = args.iter()
+        .map(|(n, e)| Ok((n.clone(), eval_expr(e, env, ctx)?)))
+        .collect::<Result<_, EvalError>>()?;
+    if let Some(result) = eval_builtin_call(name, &evaluated) {
+        return result;
+    }
+    Err(EvalError::new(format!("unknown function: {name}")))
+}
+
+fn sibling_fn_value_extract(
+    _name: &str, outputs: HashMap<String, Value>,
+) -> Result<Value, EvalError> {
+    if let Some(v) = outputs.get("return") { return Ok(v.clone()); }
+    if outputs.len() == 1 {
+        if let Some(v) = outputs.get("value") { return Ok(v.clone()); }
+    }
+    if outputs.is_empty() { return Ok(Value::Unit); }
+    Ok(Value::Map(outputs.into_iter().collect()))
+}
+
+fn eval_match_local(
+    scrutinee: &Value, arms: &[LoweredMatchArm], env: &Env, ctx: &EvalContext,
+) -> Result<Value, EvalError> {
+    for arm in arms {
+        if let Some(bindings) = match_pattern(&arm.pattern, scrutinee) {
+            let mut arm_env = env.child();
+            for (name, val) in bindings { arm_env.bind(name, val); }
+            if let Some(guard) = &arm.guard {
+                let g = eval_expr(guard, &arm_env, ctx)?;
+                if !value_truthy(&g) { continue; }
+            }
+            return eval_expr(&arm.body, &arm_env, ctx);
+        }
+    }
+    Err(EvalError::new(format!("no matching arm for: {:?}", scrutinee)))
+}
+
+// ── Intrinsics (self-contained, no bridge to eval.rs) ────────────────────
+
+const INTRINSIC_CALLS: &[&str] = &[
+    "map", "filter", "filter_map", "flat_map", "fold", "append",
+    "join", "count", "sum", "first", "last", "any", "all", "contains",
+    "sort_by", "split", "zip", "skip", "enumerate",
+    "starts_with", "ends_with", "repeat", "chars",
+];
+
+fn is_intrinsic(name: &str) -> bool { INTRINSIC_CALLS.contains(&name) }
+
+fn eval_intrinsic_call_s(
+    name: &str, args: &[(Option<String>, LoweredExpr)], env: &Env, ctx: &EvalContext,
+) -> Result<Value, EvalError> {
+    let receiver = if let Some((_, first_arg)) = args.first() {
+        eval_expr(first_arg, env, ctx)?
+    } else {
+        return Err(EvalError::new(format!("{name}: missing receiver argument")));
+    };
+    let rest = &args[1..];
+
+    match name {
+        "join" => {
+            let sep = if let Some((_, e)) = rest.first() {
+                match eval_expr(e, env, ctx)? { Value::Str(s) => s, _ => ",".into() }
+            } else { ",".into() };
+            match receiver {
+                Value::List(items) => Ok(Value::Str(
+                    items.iter().map(value_to_string).collect::<Vec<_>>().join(&sep))),
+                _ => Err(EvalError::new("join requires a list")),
+            }
+        }
+        "map" => {
+            let lambda = rest.first().map(|(_, e)| e);
+            match (receiver, lambda) {
+                (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
+                    let p = params.first().cloned().unwrap_or_else(|| "_".into());
+                    let mut out = Vec::new();
+                    for item in items {
+                        let mut c = env.child(); c.bind(p.clone(), item);
+                        out.push(eval_expr(body, &c, ctx)?);
+                    }
+                    Ok(Value::List(out))
+                }
+                (Value::List(items), Some(LoweredExpr::Ident(fn_name)))
+                    if ctx.sibling_fns.contains_key(fn_name.as_str()) =>
+                {
+                    let p = "_item".to_string();
+                    let call = LoweredExpr::Call {
+                        name: fn_name.clone(),
+                        args: vec![(None, LoweredExpr::Ident(p.clone()))],
+                    };
+                    let mut out = Vec::new();
+                    for item in items {
+                        let mut c = env.child(); c.bind(p.clone(), item);
+                        out.push(eval_expr(&call, &c, ctx)?);
+                    }
+                    Ok(Value::List(out))
+                }
+                (Value::List(items), _) => Ok(Value::List(items)),
+                (other, _) => Err(EvalError::new(format!("map requires a list, got {other:?}"))),
+            }
+        }
+        "filter" => {
+            let lambda = rest.first().map(|(_, e)| e);
+            match (receiver, lambda) {
+                (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
+                    let p = params.first().cloned().unwrap_or_else(|| "_".into());
+                    let mut out = Vec::new();
+                    for item in items {
+                        let mut c = env.child(); c.bind(p.clone(), item.clone());
+                        if value_truthy(&eval_expr(body, &c, ctx)?) { out.push(item); }
+                    }
+                    Ok(Value::List(out))
+                }
+                (Value::List(items), Some(LoweredExpr::Ident(fn_name)))
+                    if ctx.sibling_fns.contains_key(fn_name.as_str()) =>
+                {
+                    let p = "_item".to_string();
+                    let call = LoweredExpr::Call {
+                        name: fn_name.clone(),
+                        args: vec![(None, LoweredExpr::Ident(p.clone()))],
+                    };
+                    let mut out = Vec::new();
+                    for item in items {
+                        let mut c = env.child(); c.bind(p.clone(), item.clone());
+                        if value_truthy(&eval_expr(&call, &c, ctx)?) { out.push(item); }
+                    }
+                    Ok(Value::List(out))
+                }
+                (Value::List(items), _) => Ok(Value::List(items)),
+                _ => Err(EvalError::new("filter requires a list")),
+            }
+        }
+        "filter_map" => {
+            let lambda = rest.first().map(|(_, e)| e);
+            match (receiver, lambda) {
+                (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
+                    let p = params.first().cloned().unwrap_or_else(|| "_".into());
+                    let mut out = Vec::new();
+                    for item in items {
+                        let mut c = env.child(); c.bind(p.clone(), item);
+                        let val = eval_expr(body, &c, ctx)?;
+                        if !matches!(val, Value::Unit | Value::Skipped) { out.push(val); }
+                    }
+                    Ok(Value::List(out))
+                }
+                (Value::List(items), _) => Ok(Value::List(items)),
+                _ => Err(EvalError::new("filter_map requires a list")),
+            }
+        }
+        "flat_map" => {
+            let lambda = rest.first().map(|(_, e)| e);
+            match (receiver, lambda) {
+                (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
+                    let p = params.first().cloned().unwrap_or_else(|| "_".into());
+                    let mut out = Vec::new();
+                    for item in items {
+                        let mut c = env.child(); c.bind(p.clone(), item);
+                        match eval_expr(body, &c, ctx)? {
+                            Value::List(inner) => out.extend(inner),
+                            other => out.push(other),
+                        }
+                    }
+                    Ok(Value::List(out))
+                }
+                (Value::List(items), _) => Ok(Value::List(items)),
+                _ => Err(EvalError::new("flat_map requires a list")),
+            }
+        }
+        "fold" => {
+            let init = rest.iter().find(|(k, _)| k.as_deref() == Some("init"));
+            let func = rest.iter().find(|(k, _)| k.as_deref() == Some("f"));
+            match (receiver, init, func) {
+                (Value::List(items), Some((_, init_e)), Some((_, LoweredExpr::Lambda { params, body }))) => {
+                    let mut acc = eval_expr(init_e, env, ctx)?;
+                    let ap = params.first().cloned().unwrap_or_else(|| "acc".into());
+                    let ip = params.get(1).cloned().unwrap_or_else(|| "item".into());
+                    for item in items {
+                        let mut c = env.child();
+                        c.bind(ap.clone(), acc); c.bind(ip.clone(), item);
+                        acc = eval_expr(body, &c, ctx)?;
+                    }
+                    Ok(acc)
+                }
+                _ => Err(EvalError::new("fold requires list, init, and f")),
+            }
+        }
+        "append" => {
+            let new_items = rest.iter().find(|(k, _)| k.as_deref() == Some("items"));
+            match (receiver, new_items) {
+                (Value::List(mut base), Some((_, e))) => {
+                    match eval_expr(e, env, ctx)? {
+                        Value::List(more) => base.extend(more),
+                        other => base.push(other),
+                    }
+                    Ok(Value::List(base))
+                }
+                (other, _) => Err(EvalError::new(format!("append requires a list, got {other:?}"))),
+            }
+        }
+        "count" => match receiver {
+            Value::List(items) => Ok(Value::Int(items.len() as i64)),
+            _ => Err(EvalError::new("count requires a list")),
+        },
+        "sum" => match receiver {
+            Value::List(items) => {
+                let total: i64 = items.iter().filter_map(|v| if let Value::Int(i) = v { Some(i) } else { None }).sum();
+                Ok(Value::Int(total))
+            }
+            _ => Err(EvalError::new("sum requires a list")),
+        },
+        "first" => match receiver {
+            Value::List(items) => {
+                let mut m = BTreeMap::new();
+                if let Some(item) = items.into_iter().next() {
+                    m.insert("_variant".into(), Value::Str("Some".into()));
+                    m.insert("value".into(), item);
+                } else {
+                    m.insert("_variant".into(), Value::Str("None".into()));
+                }
+                Ok(Value::Map(m))
+            }
+            _ => Err(EvalError::new("first requires a list")),
+        },
+        "last" => match receiver {
+            Value::List(items) => {
+                let mut m = BTreeMap::new();
+                if let Some(item) = items.into_iter().last() {
+                    m.insert("_variant".into(), Value::Str("Some".into()));
+                    m.insert("value".into(), item);
+                } else {
+                    m.insert("_variant".into(), Value::Str("None".into()));
+                }
+                Ok(Value::Map(m))
+            }
+            _ => Err(EvalError::new("last requires a list")),
+        },
+        "any" => {
+            let lambda = rest.first().map(|(_, e)| e);
+            match (receiver, lambda) {
+                (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
+                    let p = params.first().cloned().unwrap_or_else(|| "_".into());
+                    for item in items {
+                        let mut c = env.child(); c.bind(p.clone(), item);
+                        if value_truthy(&eval_expr(body, &c, ctx)?) { return Ok(Value::Bool(true)); }
+                    }
+                    Ok(Value::Bool(false))
+                }
+                _ => Err(EvalError::new("any requires list and predicate")),
+            }
+        }
+        "all" => {
+            let lambda = rest.first().map(|(_, e)| e);
+            match (receiver, lambda) {
+                (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
+                    let p = params.first().cloned().unwrap_or_else(|| "_".into());
+                    for item in items {
+                        let mut c = env.child(); c.bind(p.clone(), item);
+                        if !value_truthy(&eval_expr(body, &c, ctx)?) { return Ok(Value::Bool(false)); }
+                    }
+                    Ok(Value::Bool(true))
+                }
+                _ => Err(EvalError::new("all requires list and predicate")),
+            }
+        }
+        "contains" => {
+            let needle_expr = rest.first().or_else(|| rest.iter().find(|(k, _)| k.as_deref() == Some("item")));
+            match (receiver, needle_expr) {
+                (Value::List(items), Some((_, expr))) => {
+                    let needle = eval_expr(expr, env, ctx)?;
+                    Ok(Value::Bool(items.contains(&needle)))
+                }
+                _ => Err(EvalError::new("contains requires list and item")),
+            }
+        }
+        "sort_by" => {
+            let lambda = rest.first().map(|(_, e)| e);
+            match (receiver, lambda) {
+                (Value::List(mut items), Some(LoweredExpr::Lambda { params, body })) => {
+                    let p = params.first().cloned().unwrap_or_else(|| "_".into());
+                    let mut keyed: Vec<(String, Value)> = Vec::with_capacity(items.len());
+                    for item in items.drain(..) {
+                        let mut c = env.child(); c.bind(p.clone(), item.clone());
+                        let key = eval_expr(body, &c, ctx).map(|v| value_to_string(&v))?;
+                        keyed.push((key, item));
+                    }
+                    keyed.sort_by(|a, b| a.0.cmp(&b.0));
+                    Ok(Value::List(keyed.into_iter().map(|(_, v)| v).collect()))
+                }
+                (Value::List(items), _) => Ok(Value::List(items)),
+                _ => Err(EvalError::new("sort_by requires a list")),
+            }
+        }
+        "starts_with" => {
+            let prefix = rest.iter().find(|(k, _)| k.as_deref() == Some("prefix")).or_else(|| rest.first());
+            match (receiver, prefix) {
+                (Value::Str(s), Some((_, e))) =>
+                    Ok(Value::Bool(s.starts_with(&value_to_string(&eval_expr(e, env, ctx)?)))),
+                _ => Err(EvalError::new("starts_with requires string and prefix")),
+            }
+        }
+        "ends_with" => {
+            let suffix = rest.iter().find(|(k, _)| k.as_deref() == Some("suffix")).or_else(|| rest.first());
+            match (receiver, suffix) {
+                (Value::Str(s), Some((_, e))) =>
+                    Ok(Value::Bool(s.ends_with(&value_to_string(&eval_expr(e, env, ctx)?)))),
+                _ => Err(EvalError::new("ends_with requires string and suffix")),
+            }
+        }
+        "split" => {
+            let delim = rest.iter().find(|(k, _)| k.as_deref() == Some("delimiter")).or_else(|| rest.first());
+            match (receiver, delim) {
+                (Value::Str(s), Some((_, e))) => {
+                    let d = value_to_string(&eval_expr(e, env, ctx)?);
+                    Ok(Value::List(s.split(&d).map(|p| Value::Str(p.to_string())).collect()))
+                }
+                (Value::Str(s), None) =>
+                    Ok(Value::List(s.split(',').map(|p| Value::Str(p.to_string())).collect())),
+                _ => Err(EvalError::new("split requires a string")),
+            }
+        }
+        "zip" => {
+            let other_expr = rest.iter().find(|(k, _)| k.as_deref() == Some("other")).or_else(|| rest.first());
+            match (receiver, other_expr) {
+                (Value::List(items), Some((_, e))) => {
+                    let other = match eval_expr(e, env, ctx)? {
+                        Value::List(l) => l,
+                        _ => return Err(EvalError::new("zip requires a list for 'other'")),
+                    };
+                    Ok(Value::List(items.into_iter().zip(other).map(|(a, b)| {
+                        let mut m = BTreeMap::new();
+                        m.insert("first".into(), a); m.insert("second".into(), b);
+                        Value::Map(m)
+                    }).collect()))
+                }
+                _ => Err(EvalError::new("zip requires a list")),
+            }
+        }
+        "skip" => {
+            let n_expr = rest.iter().find(|(k, _)| k.as_deref() == Some("n")).or_else(|| rest.first());
+            match (receiver, n_expr) {
+                (Value::List(items), Some((_, e))) => match eval_expr(e, env, ctx)? {
+                    Value::Int(count) => Ok(Value::List(items.into_iter().skip(count.max(0) as usize).collect())),
+                    _ => Err(EvalError::new("skip requires integer count")),
+                },
+                (Value::List(items), None) => Ok(Value::List(items)),
+                _ => Err(EvalError::new("skip requires a list")),
+            }
+        }
+        "enumerate" => match receiver {
+            Value::List(items) => Ok(Value::List(items.into_iter().enumerate().map(|(i, v)| {
+                let mut m = BTreeMap::new();
+                m.insert("first".into(), Value::Int(i as i64));
+                m.insert("second".into(), v);
+                Value::Map(m)
+            }).collect())),
+            _ => Err(EvalError::new("enumerate requires a list")),
+        },
+        "repeat" => {
+            let n_expr = rest.first();
+            match (receiver, n_expr) {
+                (Value::Str(s), Some((_, e))) => match eval_expr(e, env, ctx)? {
+                    Value::Int(count) => Ok(Value::Str(s.repeat(count.max(0) as usize))),
+                    _ => Err(EvalError::new("repeat requires integer count")),
+                },
+                _ => Err(EvalError::new("repeat requires string and count")),
+            }
+        }
+        "chars" => match &receiver {
+            Value::Str(s) => Ok(Value::List(s.chars().map(|c| Value::Str(c.to_string())).collect())),
+            _ => Err(EvalError::new(format!("chars: expected String, got {receiver:?}"))),
+        },
+        _ => Err(EvalError::new(format!("unknown intrinsic call: {name}"))),
+    }
+}
+
+fn eval_scan_while_s(
+    args: &[(Option<String>, LoweredExpr)], env: &Env, ctx: &EvalContext,
+) -> Result<Value, EvalError> {
+    let s = eval_positional_or_named_s("s", 0, args, env, ctx)?;
+    let start = eval_positional_or_named_s("start", 1, args, env, ctx)?;
+    let pred_expr = get_arg_expr_s("pred", 2, args);
+    let resolved_pred = match pred_expr {
+        Some(LoweredExpr::Lambda { params, body }) =>
+            Some((params.clone(), body.as_ref().clone())),
+        Some(LoweredExpr::Ident(name)) if ctx.sibling_fns.contains_key(name.as_str()) => {
+            let p = "ch".to_string();
+            Some((vec![p.clone()], LoweredExpr::Call {
+                name: name.clone(),
+                args: vec![(Some("ch".into()), LoweredExpr::Ident(p))],
+            }))
+        }
+        _ => None,
+    };
+    match (s, start, resolved_pred) {
+        (Value::Str(s), Value::Int(start), Some((params, body))) => {
+            let p = params.first().cloned().unwrap_or_else(|| "_".into());
+            let chars: Vec<char> = s.chars().collect();
+            let mut pos = start.max(0) as usize;
+            while pos < chars.len() {
+                let mut c = env.child();
+                c.bind(p.clone(), Value::Str(chars[pos].to_string()));
+                if !value_truthy(&eval_expr(&body, &c, ctx)?) { break; }
+                pos += 1;
+            }
+            Ok(Value::Int(pos as i64))
+        }
+        _ => Err(EvalError::new("scan_while requires (String, Int, Lambda)")),
+    }
+}
+
+fn eval_positional_or_named_s(
+    param: &str, index: usize, args: &[(Option<String>, LoweredExpr)],
+    env: &Env, ctx: &EvalContext,
+) -> Result<Value, EvalError> {
+    for (name, expr) in args {
+        if name.as_deref() == Some(param) { return eval_expr(expr, env, ctx); }
+    }
+    if let Some((_, expr)) = args.get(index) { return eval_expr(expr, env, ctx); }
+    Err(EvalError::new(format!("missing argument '{param}'")))
+}
+
+fn get_arg_expr_s<'a>(
+    param: &str, index: usize, args: &'a [(Option<String>, LoweredExpr)],
+) -> Option<&'a LoweredExpr> {
+    for (name, expr) in args {
+        if name.as_deref() == Some(param) { return Some(expr); }
+    }
+    args.get(index).map(|(_, expr)| expr)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -792,6 +1232,9 @@ fn extract_projection(proj: &Projection, outputs: &HashMap<String, Value>) -> Re
     match proj {
         Projection::ReturnField => {
             if let Some(v) = outputs.get("return") { return Ok(v.clone()); }
+            // Legacy compat: wrap_value_as_output flattens Map trailing
+            // expressions, which can produce single-field output maps with
+            // a "value" key (e.g. from `Some { value: x }` variants).
             if outputs.len() == 1 {
                 if let Some(v) = outputs.get("value") { return Ok(v.clone()); }
             }
@@ -868,7 +1311,7 @@ mod tests {
     fn int(n: i64) -> LoweredExpr { LoweredExpr::Literal(LoweredLiteral::Int(n)) }
 
     fn is_even_odd_pair() -> (LoweredFnBody, LoweredFnBody) {
-        let mk = |base_name: &str, base_val: bool, other: &str| LoweredFnBody {
+        let mk = |_base_name: &str, base_val: bool, other: &str| LoweredFnBody {
             stmts: vec![
                 LoweredStmt::Expr(LoweredExpr::IfElse {
                     cond: Box::new(LoweredExpr::BinOp {
@@ -895,7 +1338,7 @@ mod tests {
     }
 
     #[test] fn sibling_call_with_projection() {
-        let inner = LoweredFnBody { stmts: vec![LoweredStmt::Return(vec![("value".into(), int(99))])] };
+        let inner = LoweredFnBody { stmts: vec![LoweredStmt::Return(vec![("return".into(), int(99))])] };
         let outer = LoweredFnBody { stmts: vec![
             LoweredStmt::Let("r".into(), call("inner", vec![])),
             LoweredStmt::Return(vec![("return".into(), ident("r"))]),
@@ -915,7 +1358,7 @@ mod tests {
     }
 
     #[test] fn value_normalization() {
-        let inner = LoweredFnBody { stmts: vec![LoweredStmt::Return(vec![("value".into(), int(42))])] };
+        let inner = LoweredFnBody { stmts: vec![LoweredStmt::Return(vec![("return".into(), int(42))])] };
         let wrapper = LoweredFnBody { stmts: vec![LoweredStmt::Expr(call("inner", vec![]))] };
         let mut s = HashMap::new(); s.insert("inner".into(), inner); s.insert("wrapper".into(), wrapper.clone());
         let r = evaluate_stack(&wrapper, &HashMap::new(), &s, &HashMap::new()).unwrap();
@@ -961,10 +1404,10 @@ mod tests {
         //   }
         //   return { return: 0 }
         // }
-        // fn double(x: Int) -> Int { return { value: x * 2 } }
+        // fn double(x: Int) -> Int { return { return: x * 2 } }
         let double_body = LoweredFnBody {
             stmts: vec![LoweredStmt::Return(vec![(
-                "value".to_string(),
+                "return".to_string(),
                 LoweredExpr::BinOp {
                     left: Box::new(ident("x")),
                     op: LoweredBinOp::Mul,
@@ -1008,5 +1451,122 @@ mod tests {
         let data = HashMap::new();
         let (ctx, _) = build_context(&bad, &sibs, &data);
         assert!(verify_anf_contract(&ctx).is_err());
+    }
+
+    // ── Ported builtin/intrinsic tests (Phase 3 migration) ──────────────
+
+    #[test] fn builtin_char_at() {
+        let body = LoweredFnBody { stmts: vec![
+            LoweredStmt::Let("r".into(), LoweredExpr::Call {
+                name: "char_at".into(),
+                args: vec![
+                    (Some("s".into()), LoweredExpr::Literal(LoweredLiteral::String("hello".into()))),
+                    (Some("pos".into()), int(1)),
+                ],
+            }),
+            LoweredStmt::Return(vec![("return".into(), ident("r"))]),
+        ]};
+        assert_eq!(evaluate_stack(&body, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap()["return"], Value::Str("e".into()));
+    }
+
+    #[test] fn builtin_scan_while_with_lambda() {
+        // scan_while(s: "123abc", start: 0, pred: c => code_point(c) >= code_point("0") && code_point(c) <= code_point("9"))
+        let body = LoweredFnBody { stmts: vec![
+            LoweredStmt::Let("r".into(), LoweredExpr::Call {
+                name: "scan_while".into(),
+                args: vec![
+                    (Some("s".into()), LoweredExpr::Literal(LoweredLiteral::String("123abc".into()))),
+                    (Some("start".into()), int(0)),
+                    (Some("pred".into()), LoweredExpr::Lambda {
+                        params: vec!["c".into()],
+                        body: Box::new(LoweredExpr::BinOp {
+                            left: Box::new(LoweredExpr::BinOp {
+                                left: Box::new(LoweredExpr::Call { name: "code_point".into(),
+                                    args: vec![(Some("c".into()), ident("c"))] }),
+                                op: LoweredBinOp::Ge,
+                                right: Box::new(LoweredExpr::Call { name: "code_point".into(),
+                                    args: vec![(Some("c".into()), LoweredExpr::Literal(LoweredLiteral::String("0".into())))] }),
+                            }),
+                            op: LoweredBinOp::And,
+                            right: Box::new(LoweredExpr::BinOp {
+                                left: Box::new(LoweredExpr::Call { name: "code_point".into(),
+                                    args: vec![(Some("c".into()), ident("c"))] }),
+                                op: LoweredBinOp::Le,
+                                right: Box::new(LoweredExpr::Call { name: "code_point".into(),
+                                    args: vec![(Some("c".into()), LoweredExpr::Literal(LoweredLiteral::String("9".into())))] }),
+                            }),
+                        }),
+                    }),
+                ],
+            }),
+            LoweredStmt::Return(vec![("return".into(), ident("r"))]),
+        ]};
+        assert_eq!(evaluate_stack(&body, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap()["return"], Value::Int(3));
+    }
+
+    #[test] fn intrinsic_map_with_lambda() {
+        // map([1,2,3], x => x * 2)
+        let body = LoweredFnBody { stmts: vec![
+            LoweredStmt::Let("r".into(), LoweredExpr::Call {
+                name: "map".into(),
+                args: vec![
+                    (None, LoweredExpr::List(vec![int(1), int(2), int(3)])),
+                    (None, LoweredExpr::Lambda {
+                        params: vec!["x".into()],
+                        body: Box::new(LoweredExpr::BinOp {
+                            left: Box::new(ident("x")), op: LoweredBinOp::Mul, right: Box::new(int(2)),
+                        }),
+                    }),
+                ],
+            }),
+            LoweredStmt::Return(vec![("return".into(), ident("r"))]),
+        ]};
+        assert_eq!(evaluate_stack(&body, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap()["return"],
+            Value::List(vec![Value::Int(2), Value::Int(4), Value::Int(6)]));
+    }
+
+    #[test] fn intrinsic_fold() {
+        // fold([1,2,3], init: 0, f: (acc, x) => acc + x)
+        let body = LoweredFnBody { stmts: vec![
+            LoweredStmt::Let("r".into(), LoweredExpr::Call {
+                name: "fold".into(),
+                args: vec![
+                    (None, LoweredExpr::List(vec![int(1), int(2), int(3)])),
+                    (Some("init".into()), int(0)),
+                    (Some("f".into()), LoweredExpr::Lambda {
+                        params: vec!["acc".into(), "x".into()],
+                        body: Box::new(LoweredExpr::BinOp {
+                            left: Box::new(ident("acc")), op: LoweredBinOp::Add, right: Box::new(ident("x")),
+                        }),
+                    }),
+                ],
+            }),
+            LoweredStmt::Return(vec![("return".into(), ident("r"))]),
+        ]};
+        assert_eq!(evaluate_stack(&body, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap()["return"], Value::Int(6));
+    }
+
+    #[test] fn builtin_lookup() {
+        let mut inp = HashMap::new();
+        let mut m = std::collections::BTreeMap::new();
+        m.insert("x".to_string(), Value::Int(42));
+        inp.insert("m".into(), Value::Map(m));
+        let body = LoweredFnBody { stmts: vec![
+            LoweredStmt::Let("r".into(), LoweredExpr::Call {
+                name: "lookup".into(),
+                args: vec![
+                    (Some("map".into()), ident("m")),
+                    (Some("key".into()), LoweredExpr::Literal(LoweredLiteral::String("x".into()))),
+                ],
+            }),
+            LoweredStmt::Return(vec![("return".into(), ident("r"))]),
+        ]};
+        let r = evaluate_stack(&body, &inp, &HashMap::new(), &HashMap::new()).unwrap();
+        let result = &r["return"];
+        // Should be Some { value: 42 }
+        if let Value::Map(map) = result {
+            assert_eq!(map.get("_variant"), Some(&Value::Str("Some".into())));
+            assert_eq!(map.get("value"), Some(&Value::Int(42)));
+        } else { panic!("expected Map, got {result:?}"); }
     }
 }

@@ -27,22 +27,15 @@ use crate::expr::{
 pub struct EvalError {
     pub message: String,
     pub early_return: Option<HashMap<String, Value>>,
-    /// Self-recursive tail-call signal: contains the new inputs for the next
-    /// trampoline iteration. Only used for self-recursive calls (A→A).
-    pub(crate) tail_call: Option<HashMap<String, Value>>,
 }
 
 impl EvalError {
     pub fn new(msg: impl Into<String>) -> Self {
-        Self { message: msg.into(), early_return: None, tail_call: None }
+        Self { message: msg.into(), early_return: None }
     }
 
     pub fn early_return(values: HashMap<String, Value>) -> Self {
-        Self { message: "__early_return__".to_string(), early_return: Some(values), tail_call: None }
-    }
-
-    pub(crate) fn tail_call(inputs: HashMap<String, Value>) -> Self {
-        Self { message: "__tail_call__".to_string(), early_return: None, tail_call: Some(inputs) }
+        Self { message: "__early_return__".to_string(), early_return: Some(values) }
     }
 }
 
@@ -416,7 +409,7 @@ pub fn expr_contains_call(expr: &LoweredExpr) -> bool {
         LoweredExpr::Match { expr, arms } =>
             expr_contains_call(expr)
                 || arms.iter().any(|a| expr_contains_call(&a.body)
-                    || a.guard.as_ref().is_some_and(|g| expr_contains_call(g))),
+                    || a.guard.as_ref().is_some_and(expr_contains_call)),
         LoweredExpr::Lambda { body, .. } => expr_contains_call(body),
         LoweredExpr::List(items) => items.iter().any(expr_contains_call),
         LoweredExpr::Block(stmts) => stmts.iter().any(stmt_contains_call),
@@ -432,5 +425,198 @@ pub fn stmt_contains_call(stmt: &LoweredStmt) -> bool {
     match stmt {
         LoweredStmt::Let(_, e) | LoweredStmt::Expr(e) => expr_contains_call(e),
         LoweredStmt::Return(fields) => fields.iter().any(|(_, e)| expr_contains_call(e)),
+    }
+}
+
+// ── Built-in call evaluation (pre-evaluated args) ────────────────────────
+
+fn require_builtin_arg(
+    param: &str, index: usize, args: &[(Option<String>, Value)],
+) -> Result<Value, EvalError> {
+    for (name, val) in args {
+        if name.as_deref() == Some(param) { return Ok(val.clone()); }
+    }
+    if let Some((_, val)) = args.get(index) { return Ok(val.clone()); }
+    Err(EvalError::new(format!("missing argument '{param}'")))
+}
+
+/// Evaluate a built-in function call with pre-evaluated arguments.
+/// Returns `None` if the name is not a recognized built-in.
+/// `scan_while` is NOT handled here (needs lambda evaluation).
+pub fn eval_builtin_call(
+    name: &str, args: &[(Option<String>, Value)],
+) -> Option<Result<Value, EvalError>> {
+    if !is_known_builtin(name) { return None; }
+    Some(eval_builtin_inner(name, args))
+}
+
+fn is_known_builtin(name: &str) -> bool {
+    matches!(name,
+        "with" | "Some" | "code_point" | "from_code_point" | "to_string"
+        | "char_at" | "substring" | "string_length" | "parse_int"
+        | "scan_string_end" | "scan_to_eol" | "skip_horizontal_ws" | "lookup"
+    ) || name.chars().next().unwrap_or('a').is_uppercase()
+      || name.contains('.')
+}
+
+fn eval_builtin_inner(
+    name: &str, args: &[(Option<String>, Value)],
+) -> Result<Value, EvalError> {
+    match name {
+        "with" => {
+            if args.len() >= 2 {
+                match (&args[0].1, &args[1].1) {
+                    (Value::Map(base), Value::Map(updates)) => {
+                        let mut result = base.clone();
+                        for (k, v) in updates { result.insert(k.clone(), v.clone()); }
+                        Ok(Value::Map(result))
+                    }
+                    _ => Err(EvalError::new("'with' requires record values")),
+                }
+            } else {
+                Err(EvalError::new("'with' requires base and updates"))
+            }
+        }
+        "Some" => Ok(args.first().map(|(_, v)| v.clone()).unwrap_or(Value::Unit)),
+        "code_point" => {
+            let val = require_builtin_arg("c", 0, args)?;
+            match &val {
+                Value::Str(s) => match s.chars().next() {
+                    Some(c) => Ok(Value::Int(c as i64)),
+                    None => Err(EvalError::new("code_point: empty string")),
+                },
+                Value::Int(n) => Ok(Value::Int(*n)),
+                _ => Err(EvalError::new(format!("code_point: expected Char, got {:?}", val))),
+            }
+        }
+        "from_code_point" => {
+            let val = require_builtin_arg("cp", 0, args)?;
+            match val {
+                Value::Int(cp) => match char::from_u32(cp as u32) {
+                    Some(c) => Ok(Value::Str(c.to_string())),
+                    None => Err(EvalError::new(format!("from_code_point: invalid code point {cp}"))),
+                },
+                _ => Err(EvalError::new("from_code_point: expected Int")),
+            }
+        }
+        "to_string" => {
+            let val = require_builtin_arg("value", 0, args)?;
+            Ok(Value::Str(value_to_string(&val)))
+        }
+        "char_at" => {
+            let s = require_builtin_arg("s", 0, args)?;
+            let pos = require_builtin_arg("pos", 1, args)?;
+            match (s, pos) {
+                (Value::Str(s), Value::Int(i)) => match s.chars().nth(i as usize) {
+                    Some(c) => Ok(Value::Str(c.to_string())),
+                    None => Ok(Value::Unit),
+                },
+                _ => Err(EvalError::new("char_at requires (String, Int)")),
+            }
+        }
+        "substring" => {
+            let s = require_builtin_arg("s", 0, args)?;
+            let start = require_builtin_arg("start", 1, args)?;
+            let end = require_builtin_arg("end", 2, args)?;
+            match (s, start, end) {
+                (Value::Str(s), Value::Int(start), Value::Int(end)) => {
+                    let chars: Vec<char> = s.chars().collect();
+                    let len = chars.len() as i64;
+                    let s_idx = (start.max(0) as usize).min(len as usize);
+                    let e_idx = (end.max(0) as usize).min(len as usize);
+                    Ok(Value::Str(chars[s_idx..e_idx].iter().collect()))
+                }
+                _ => Err(EvalError::new("substring requires (String, Int, Int)")),
+            }
+        }
+        "string_length" => {
+            let s = require_builtin_arg("s", 0, args)?;
+            match s {
+                Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
+                _ => Err(EvalError::new("string_length requires a String")),
+            }
+        }
+        "parse_int" => {
+            let s = require_builtin_arg("s", 0, args)?;
+            match s {
+                Value::Str(s) => s.trim().parse::<i64>()
+                    .map(Value::Int)
+                    .map_err(|e| EvalError::new(format!("parse_int: cannot parse '{s}': {e}"))),
+                _ => Err(EvalError::new("parse_int requires a String")),
+            }
+        }
+        "scan_string_end" => {
+            let s = require_builtin_arg("s", 0, args)?;
+            let start = require_builtin_arg("start", 1, args)?;
+            match (s, start) {
+                (Value::Str(s), Value::Int(start)) => {
+                    let chars: Vec<char> = s.chars().collect();
+                    let mut pos = start.max(0) as usize;
+                    while pos < chars.len() {
+                        if chars[pos] == '\\' { pos += 2; }
+                        else if chars[pos] == '"' { return Ok(Value::Int((pos + 1) as i64)); }
+                        else { pos += 1; }
+                    }
+                    Ok(Value::Int(chars.len() as i64))
+                }
+                _ => Err(EvalError::new("scan_string_end requires (String, Int)")),
+            }
+        }
+        "scan_to_eol" => {
+            let s = require_builtin_arg("s", 0, args)?;
+            let start = require_builtin_arg("start", 1, args)?;
+            match (s, start) {
+                (Value::Str(s), Value::Int(start)) => {
+                    let chars: Vec<char> = s.chars().collect();
+                    let start = start.max(0) as usize;
+                    for (i, &ch) in chars.iter().enumerate().skip(start) {
+                        if ch == '\n' { return Ok(Value::Int(i as i64)); }
+                    }
+                    Ok(Value::Int(chars.len() as i64))
+                }
+                _ => Err(EvalError::new("scan_to_eol requires (String, Int)")),
+            }
+        }
+        "skip_horizontal_ws" => {
+            let s = require_builtin_arg("s", 0, args)?;
+            let start = require_builtin_arg("start", 1, args)?;
+            match (s, start) {
+                (Value::Str(s), Value::Int(start)) => {
+                    let chars: Vec<char> = s.chars().collect();
+                    let mut pos = start.max(0) as usize;
+                    while pos < chars.len() && (chars[pos] == ' ' || chars[pos] == '\t') { pos += 1; }
+                    Ok(Value::Int(pos as i64))
+                }
+                _ => Err(EvalError::new("skip_horizontal_ws requires (String, Int)")),
+            }
+        }
+        "lookup" => {
+            let map_val = require_builtin_arg("map", 0, args)?;
+            let key = require_builtin_arg("key", 1, args)?;
+            match (map_val, key) {
+                (Value::Map(map), Value::Str(key)) => {
+                    let mut result = BTreeMap::new();
+                    if let Some(value) = map.get(&key) {
+                        result.insert("_variant".to_string(), Value::Str("Some".to_string()));
+                        result.insert("value".to_string(), value.clone());
+                    } else {
+                        result.insert("_variant".to_string(), Value::Str("None".to_string()));
+                    }
+                    Ok(Value::Map(result))
+                }
+                _ => Err(EvalError::new("lookup requires (Map, String)")),
+            }
+        }
+        _ if name.chars().next().unwrap_or('a').is_uppercase() => {
+            let mut map = BTreeMap::new();
+            map.insert("_variant".to_string(), Value::Str(name.to_string()));
+            for (idx, (arg_name, arg_val)) in args.iter().enumerate() {
+                let field_name = arg_name.clone().unwrap_or_else(|| format!("_{idx}"));
+                map.insert(field_name, arg_val.clone());
+            }
+            Ok(Value::Map(map))
+        }
+        _ if name.contains('.') => Ok(Value::Unit),
+        _ => Err(EvalError::new(format!("unknown built-in: {name}"))),
     }
 }

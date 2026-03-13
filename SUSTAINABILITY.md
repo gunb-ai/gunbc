@@ -333,59 +333,78 @@ All ratchets are one-way (lists can only shrink).
 
 ---
 
-## Active: Eval stack machine — block-resume loses fn return values (S52-EVAL)
+## Resolved: Eval stack machine — continuation ordering during suspension bubbling (S52-EVAL)
 
-**Root cause:** When the slice-based continuation machine suspends inside
-a Block (e.g., a sibling call in an if-branch), then resumes and the
-block completes with a `return` statement, the return value is lost.
+**Root cause (found):** Continuation stack ordering was reversed during
+suspension bubbling. When a sibling call suspends inside a block/match-arm:
 
-**Mechanism:** `LoweredStmt::Return` in `eval_stmts` produces
-`Step::Return(map)`. The main loop calls `pop_stack`, which pops the
-block-resume continuation, extracts the value, and resumes the caller's
-remaining stmts. But the caller's remaining stmts include the
-*fallback* return statement after the if/match — NOT the block's
-early return. The `Step::EarlyReturn` variant was added to distinguish
-early returns from normal completions, fixing the simple case (a
-`return` inside a block in a non-last Expr stmt position).
+1. `eval_block_s` pushes an **inner** continuation (block's remaining stmts)
+2. `eval_stmts` catches `ExprResult::Suspend` and pushes an **outer**
+   continuation (function's remaining stmts)
+3. The outer continuation ends up **on top** of the stack (pushed last)
+4. `pop_stack` pops top-first → resumes the outer context before the inner
+5. The inner block's `Return`/`EarlyReturn` is never processed — execution
+   falls through to wrong code (typically the function's fallback path)
 
-**Remaining issue:** The v2 compiler pipeline still fails with 18/53
-test errors. The pattern is: a function calls a sibling fn whose body
-contains a match/if with blocks, and the result is projected to
-`Value::Unit` instead of the expected state Map. This means the
-block-resume → pop_stack → resume path is dropping the fn return value
-somewhere in the continuation unwinding chain. The symptom is:
-`skip_horizontal_ws requires (String, Int)` — the `state` variable
-is `Unit` instead of a Map with `source` and `pos` fields.
+**Concrete symptom:** `scan_token("f")` should hit the `is_ident_start`
+branch and return via `scan_ident`. Instead, `pop_stack` resumed with
+`scan_token`'s remaining 23 stmts (skipping the block's Return), falling
+through to `match lookup(single_punct, ...)` → `Unknown { char: "f" }`.
+This cascaded: broken tokens → parser sees wrong kinds → returns Unit.
 
-**What works:** The machine correctly handles:
-- Top-level fn-to-fn call chains (N=40000 mutual recursion, heap stack)
-- Sibling calls inside if-branch Blocks (the `sibling_call_inside_if_branch` test)
-- Early returns from blocks propagating to fn boundary
-- Builtin calls, field access, pattern matching
+**Fix applied:** Before calling `eval_expr_s`, record `stack_base =
+stack.len()`. On `Suspend`, use `stack.insert(stack_base, cont)` instead
+of `stack.push(cont)`. This places the outer continuation **below** any
+inner continuations pushed by `eval_expr_s`, so `pop_stack` processes
+inner (block) continuations first. Applied at 4 bubble-up sites:
+`eval_stmts` (3 Suspend handlers) and `eval_block_s` (1 Suspend handler).
 
-**What fails:** The specific multi-level pattern in the v2 tokenizer:
-```
-fn tokenize_loop(state) {
-  let s = skip_spaces_and_comments(state: state)  // sibling call
-  let tok = scan_token(state: s)                    // sibling call
-  match tok.kind {
-    Eof => return { return: s.tokens }
-    _ => tokenize_loop(state: advance(s, tok))      // recursive
-  }
+**Result:** 54/58 v2 tests pass (up from 41). Remaining 3 are Phase 5
+tests that OOM on large source files (memory scaling, not correctness).
+1 test intentionally ignored (needs self-hosting).
+
+### Refactor note: shared-stack mutation violates design invariants
+
+The `stack.insert(stack_base, ...)` fix is correct and tested, but it
+is a positional compensation on shared mutable state. The design doc
+(`DESIGN-eval-redesign.md` lines 18-21) specifies:
+
+> **Clear interfaces.** Return values, not mutated shared state.
+
+and the Step::Call type (line 128) carries `cont: Option<Continuation>`,
+meaning the main loop should be the only code that touches the stack.
+
+**Current violation:** `eval_expr_s` and `eval_block_s` mutate
+`&mut Vec<Continuation>` as a side effect. Multiple layers push in an
+order determined by call sequence, and `stack.insert` compensates.
+
+**Preferred approach for a follow-up PR:**
+
+`eval_expr_s` and `eval_block_s` should stop mutating the stack.
+Instead, return inner continuations with the Suspend variant:
+
+```rust
+enum ExprResult {
+    Value(Value),
+    EarlyReturn(HashMap<String, Value>),
+    Suspend {
+        callee: FnId,
+        inputs: HashMap<String, Value>,
+        inner_conts: Vec<Continuation<'a>>,
+    },
+    Error(String),
 }
 ```
-Where `skip_spaces_and_comments` itself has internal blocks with
-sibling calls. The multi-level suspension/resume loses the return
-value somewhere in the pop_stack chain.
 
-**Fix direction:** The pop_stack logic needs to correctly handle the
-case where a fn-boundary continuation's callee returns with named
-fields (not just "return"). The projection + binding + resume chain
-has a value-loss path when multiple fn-boundary continuations are
-stacked (fn A calls fn B which internally suspends in a block).
+Then `eval_stmts` pushes outer first, inner on top — correct by
+construction, no positional tricks. This aligns with the design doc's
+"return values, not mutated shared state" principle and eliminates the
+class of ordering bugs entirely.
 
-**Invariant:** No parallel implementations — the old recursive evaluator
-remains the default until this is resolved.
+**When to do this:** Migration path step 4-5 (switch public API to
+`evaluate_stack`, delete old recursive evaluator). The current fix is
+stable for all tested patterns and the bubble-up sites are exactly the
+4 points that call `eval_expr_s` with a subsequent push.
 
 ---
 

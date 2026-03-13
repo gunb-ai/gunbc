@@ -474,3 +474,33 @@ Each milestone exercises progressively more language features.
 The gap between 1 and 2 is small (tokenize.dag is simpler than
 gist.dag). The gap between 2 and 4 is where the real complexity
 lives (recursive TypeExpr, pattern matching in the parser).
+
+## Evaluator architecture (as of 2026-03-12)
+
+The v2 compiler's ~80 mutually recursive functions are evaluated by an
+explicit-stack machine (`eval_stack.rs`), not native Rust recursion.
+The old recursive evaluator is deleted.
+
+**Stack machine properties:**
+- Heap continuations: deep mutual recursion uses O(1) native stack
+- Self-contained: builtins, intrinsics, match evaluation all inline
+- ANF contract: sibling fn calls appear only at statement level
+- Limits: MAX_STACK_DEPTH=100K, MAX_TRANSITIONS=10M
+
+**Remaining evaluator quirks affecting v2:**
+- `wrap_value_as_output` flattens Map trailing expressions into the
+  output HashMap. A function ending with `Some { value: x }` produces
+  output `{"_variant": "Some", "value": x}` (flattened), not
+  `{"return": Map({"_variant": "Some", "value": x})}`. Callers rely on
+  `extract_projection` reconstructing the Map. This means return value
+  extraction has a `"value"` fallback for single-field maps (to handle
+  the case where the flattened Map has only a `"value"` payload field).
+  See DESIGN-eval-redesign.md Limitation 3.
+- `LoweredExpr::Return`, `Block`, `For` are still expression forms,
+  making `eval_expr` impure (can early-return or iterate). Moving them
+  to statement forms requires coordinated changes to the lowerer, ANF
+  normalizer, and evaluator — deferred.
+- Debug-mode OOM: evaluating 12 real .dag files (gist pipeline) exceeds
+  16GB heap. Not a stack issue — interpreter overhead from cloning
+  Values through deep call chains. Release mode or self-hosting would
+  resolve this.
