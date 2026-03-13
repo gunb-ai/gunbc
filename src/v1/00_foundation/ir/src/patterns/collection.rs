@@ -423,6 +423,35 @@ pub fn non_collection_builtin_contracts() -> Vec<(&'static str, BuiltinContract)
     ]
 }
 
+/// Look up the typecheck contract for a name, including alias overrides.
+///
+/// For aliases like `sum`, `count`, etc., returns the alias-specific contract
+/// (e.g., `sum` has arity 1) rather than the canonical variant's contract
+/// (e.g., `Fold` has arity 3). This ensures callers always see the correct
+/// arity for the name as written in DSL source.
+///
+/// Resolution order: alias_contracts → CollectionKind::typecheck_contract
+/// → non_collection_builtin_contracts.
+pub fn contract_for_name(name: &str) -> Option<BuiltinContract> {
+    // 1. Alias overrides take precedence (sum→arity 1, count→arity 1, etc.)
+    for (alias_name, contract) in alias_contracts() {
+        if alias_name == name {
+            return Some(contract);
+        }
+    }
+    // 2. Canonical collection ops
+    if let Some(kind) = CollectionKind::from_name(name) {
+        return Some(kind.typecheck_contract());
+    }
+    // 3. Non-collection builtins
+    for (builtin_name, contract) in non_collection_builtin_contracts() {
+        if builtin_name == name {
+            return Some(contract);
+        }
+    }
+    None
+}
+
 /// Check if a function name is an evaluator-handled intrinsic.
 ///
 /// Derived from the registries (S11) — no hand-maintained string list.
@@ -531,5 +560,28 @@ mod tests {
         for name in ["first", "last", "starts_with", "ends_with", "repeat", "chars"] {
             assert!(is_eval_intrinsic(name), "{name} should be intrinsic");
         }
+    }
+
+    #[test]
+    fn contract_for_name_uses_alias_overrides() {
+        // sum alias should have arity 1 (not Fold's arity 3)
+        let sum = contract_for_name("sum").unwrap();
+        assert_eq!(sum.arity, 1, "sum should have arity 1 (alias override), not Fold's arity 3");
+        assert_eq!(sum.output_type, "Int");
+
+        // count alias should have arity 1 (not Len's arity 1 — same here, but verify)
+        let count = contract_for_name("count").unwrap();
+        assert_eq!(count.arity, 1);
+
+        // canonical fold should still have arity 3
+        let fold = contract_for_name("fold").unwrap();
+        assert_eq!(fold.arity, 3);
+
+        // non-collection builtins work too
+        let first = contract_for_name("first").unwrap();
+        assert!(first.arity > 0);
+
+        // unknown returns None
+        assert!(contract_for_name("unknown_op").is_none());
     }
 }

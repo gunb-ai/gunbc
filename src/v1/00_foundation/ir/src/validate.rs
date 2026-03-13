@@ -844,7 +844,46 @@ pub fn validate_required_inputs<T>(dag: &Dag<T>) -> Vec<UnwiredInputError> {
 /// Returns all errors found (does not stop at the first).
 pub fn verify_dag<T>(dag: &Dag<T>) -> Vec<VerifyError> {
     let registry = TypeRegistry::with_core_types();
-    verify_dag_with_registry(dag, &registry)
+    // Port type-id validation is skipped when using the core-only registry
+    // because DSL-defined types (CloudConfig, ArtifactStore, etc.) won't
+    // be registered there. Use `verify_dag_with_registry` with a fully
+    // populated registry to enable port type-id checks.
+    verify_dag_structural(dag, &registry)
+}
+
+/// Verify structural invariants only (no port type-id checks).
+///
+/// Used by `verify_dag` when only a core-only registry is available.
+fn verify_dag_structural<T>(dag: &Dag<T>, registry: &TypeRegistry) -> Vec<VerifyError> {
+    let mut errors: Vec<VerifyError> = Vec::new();
+
+    errors.extend(
+        validate_subdag_interfaces(dag)
+            .into_iter()
+            .map(VerifyError::SubDag),
+    );
+    errors.extend(
+        validate_resource_wiring_recursive(dag)
+            .into_iter()
+            .map(VerifyError::UnwiredResource),
+    );
+    errors.extend(
+        validate_fingerprint_uniqueness(dag)
+            .into_iter()
+            .map(VerifyError::Fingerprint),
+    );
+    errors.extend(
+        validate_required_inputs(dag)
+            .into_iter()
+            .map(VerifyError::UnwiredInput),
+    );
+    errors.extend(
+        validate_cardinality_compatibility_with_registry(dag, Some(registry))
+            .into_iter()
+            .map(VerifyError::CardinalityIncompatibility),
+    );
+
+    errors
 }
 
 /// Verify all structural invariants with an explicit type registry.

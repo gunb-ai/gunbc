@@ -47,8 +47,8 @@ pub use authenticate::{
 };
 pub use branch::BranchBuilder;
 pub use collection::{
-    alias_contracts, is_eval_intrinsic, non_collection_builtin_contracts, BuiltinContract,
-    CollectionKind, EmitCollectionFamily, ALL_COLLECTION_OPS,
+    alias_contracts, contract_for_name, is_eval_intrinsic, non_collection_builtin_contracts,
+    BuiltinContract, CollectionKind, EmitCollectionFamily, ALL_COLLECTION_OPS,
 };
 pub use emit::EmitBuilder;
 pub use loop_pattern::LoopBuilder;
