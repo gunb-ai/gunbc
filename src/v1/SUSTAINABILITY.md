@@ -70,8 +70,8 @@ caught → evaluator can never visibly regress. Fix: structured eval
 contract (option C) — evaluator declares capabilities, unsupported
 forms are compile-time opaque.
 
-**S16:** Service transport dispatch duplicated across prepare/parse.
-2 match arms + 2 functions per new transport. Fix: transport trait.
+~~**S16:** Service transport dispatch duplicated across prepare/parse.~~
+**DONE.** `TransportTripletSpec` + `build_transport_triplet()` in `transport.rs`. 4 duplicated sites → 1.
 
 **S42:** Provider classification duplicated across `operation_key` and
 `node_id` paths. Fix: stamp `MockProvider` at lower time.
@@ -91,19 +91,19 @@ annotations. String matching only for closed sets.
 
 #### Symptoms:
 
-**S11:** Collection ops require 5 edits each. Fix: single `CollectionOp` registry.
-**S12:** Builtin type metadata split across two functions. Fix: single `BuiltinType` struct.
-**S14:** Obligation classification by name prefix. Fix: DSL annotations.
-**S15:** Filesystem resource hardcoded by type name. Fix: derive from DSL resource defs.
-**S17:** Mock wrong-type matrix — 20 match arms. Fix: derive from `ValueBacking`.
+~~**S11:** Collection ops require 5 edits each.~~ **DONE.** `CollectionKind` registry in `ir/patterns/collection.rs`.
+~~**S12:** Builtin type metadata split across two functions.~~ **DONE.** `BuiltinType` struct + 58-entry `BUILTIN_TYPES` registry in `types.rs`.
+~~**S14:** Obligation classification by name prefix.~~ **DONE.** Structural output-type classification in lowerer.
+~~**S15:** Filesystem resource hardcoded by type name.~~ **DONE.** `FILESYSTEM_HANDLE_TYPE` constant + `is_filesystem_resource_port()`.
+~~**S17:** Mock wrong-type matrix — 20 match arms.~~ **DONE.** `ValueBacking::mock_value()` replaces match matrix.
 **S21:** Workflow claim handle type from claim-name prefix. Fix: derive from definition.
-**S22:** Service transport resolution by module/name prefixes. Fix: lower into metadata.
-**S44:** Shell output parsing inferred from field shape. Fix: `@output_parsing` annotation.
-**S45:** Response provider inferred from service name substrings. Fix: stamp in DSL.
-**S46:** Transport kind inferred from operation name substrings. Fix: stamp `ServiceTransportClass`.
+~~**S22:** Service transport resolution by module/name prefixes.~~ **DONE.** `TransportObligation` structural dispatch in resolver.
+~~**S44:** Shell output parsing inferred from field shape.~~ **DONE.** `output_parsing` DSL annotation + parser support.
+~~**S45:** Response provider inferred from service name substrings.~~ **DONE.** `response_provider` DSL annotation + `Node.response_provider` field.
+~~**S46:** Transport kind inferred from operation name substrings.~~ **DONE.** Already structural (no substring inference existed).
 **S47:** Container type classification duplicated across emit functions. Fix: `ContainerKind` enum at typecheck.
-**S48:** Test class / fermi cost parsed from strings in proc macros. Fix: enum variants directly.
-**S49:** Test output matcher classified by type name string. Fix: derive from `ValueBacking`.
+~~**S48:** Test class / fermi cost parsed from strings in proc macros.~~ **DONE.** Fermi enum variants in testgen.
+~~**S49:** Test output matcher classified by type name string.~~ **DONE.** `ValueBacking::output_matcher_path()`.
 
 ---
 
@@ -133,7 +133,9 @@ refactor the upstream output type so the check is unnecessary.
 
 #### Symptoms:
 
-**S18:** No validation that port TypeIds resolve after lowering.
+~~**S18:** No validation that port TypeIds resolve after lowering.~~
+**DONE.** `validate_port_type_ids()` implemented with builtin/generic fallbacks. Advisory
+mode — not wired into pipeline until DSL types propagate to IR TypeRegistry.
 **S19:** No validation that Map key types are String after typecheck. (Fixed.)
 **S20:** No validation that non-empty list ports have edges after resolve. (Fixed.)
 **S23/S35:** `value_compatible_with_type_id` fails open for unknown types →
@@ -143,17 +145,20 @@ testgen; (c) flip to `.unwrap_or(false)`; (d) panic on unknown in mock gen.
 **S24:** Testgen swallows lowering failure via `.ok()`. Fix: propagate error.
 **S25:** Virtual backend defaults unknown transport to REST. Fix: require stamped metadata.
 **S30:** Testgen re-derives type info by parsing TypeId strings. Fix: query type DAG.
-**S31:** Lowerer doesn't stamp OperationKey on all transport nodes.
-**S32:** Executor auto-mocks missing inputs in lenient mode.
-**S33:** Coercion exists because lowerer doesn't validate cardinality compatibility.
+~~**S31:** Lowerer doesn't stamp OperationKey on all transport nodes.~~
+**DONE.** All 12 transport nodes (prepare+execute+parse × 4 sites) now stamped.
+~~**S32:** Executor auto-mocks missing inputs in lenient mode.~~
+**DONE.** `DryRunStrictness::Strict` (default) / `Lenient` on `ExecuteConfig`.
+~~**S33:** Coercion exists because lowerer doesn't validate cardinality compatibility.~~
+**DONE.** `CardinalityIncompatibility` validation via `validate_coercions()`, wired into `verify_dag()`.
 **S7:** `resolve_field_type_dag` swallows errors → `identity()` placeholder cascades
 through `value_backing()` → Json → any value accepted → wrong emit → no test coverage.
 Fix: return `Result`; make `_checked()` the only path.
 **S34:** Lowerer fails open on callable return wiring (`let _ = wire_callable_return_outputs`).
 Prereqs: `lower_expr` must trace service call result bindings and handle collection
 intrinsic calls in return position.
-**S40:** Optional type syntax not normalized (`T?` / `Optional<T>` / `OptionalT`).
-**S41:** Cardinality-based mock fabrication hides empty-list cases (`min=0` → `max(0,1)=1`).
+~~**S40:** Optional type syntax not normalized.~~ **DONE.** `normalize_optional_type_id()` canonicalizes `T?`/`OptionalT`/`Optional<T>`.
+~~**S41:** Cardinality-based mock fabrication hides empty-list cases.~~ **DONE.** `ValueBacking::mock_value()` returns empty list for List backing.
 **S62:** `[when]` guards on `func` body service calls not lowered into DAG IR.
 Guards are silently dropped, making conditional service calls execute unconditionally.
 Discovered via IAM preflight incident (2026-03-09); affected code deleted.
@@ -164,9 +169,9 @@ Fix: propagate `Result` through all `lower_expr` call sites.
 **S65:** `std::env::var()` in lowerer — `resolve_profile_config_expr` performs
 environment I/O during a pure lowering pass (`lib.rs:1155`). Fix: separate profile
 config resolution step that produces resolved values as lowerer inputs.
-**S66:** `gunbc-resolve` depends on `daglang-driver` (layer 08 → layer 02), inverting
-the pipeline layer order. Resolver should receive compiled artifacts, not invoke
-compilation. Fix: move compilation into driver; resolver receives compiled artifacts.
+~~**S66:** `gunbc-resolve` depends on `daglang-driver`.~~ **DONE.** `daglang-driver` made
+optional via `compile` Cargo feature. Pure resolution API (`resolve_compiled_dsl`) has
+no driver dependency. Compilation convenience API gated behind `features = ["compile"]`.
 **S67:** ~~`ValueType::Unknown` sentinel~~ **DONE.** `Unknown` variant renamed to
 `Inferred` with documented semantics ("valid type exists but inference cannot name it").
 `display_name()` returns `String` (not `Option`); `is_inferred()` guard replaces all
@@ -191,8 +196,8 @@ generation non-deterministic. Fix: explicit counter passed through emission func
 
 **Terminal state:** Each metadata family has one authoritative registry.
 
-**S26:** LLM provider metadata split across constructors, lookup, and helper
-lists. 4 edits per provider. Fix: single static registry.
+~~**S26:** LLM provider metadata split across constructors, lookup, and helper
+lists.~~ **DONE.** Consolidated static registry in `transport/llm/provider.rs`.
 
 ---
 
@@ -263,10 +268,11 @@ conflated block tail position with function return position. Fix: remove
 **S56:** Parse errors laundered as resolve crashes — test helper extracted
 `parse_result.module` without checking error. Fix: fail on error before
 module extraction; validate shape.
-**S57:** No runtime type enforcement at DSL function boundaries —
-`Module?` flows into `List<Module>` silently. S56 is an instance of S57:
-every unvalidated stage boundary is a potential laundering site.
-Fix: self-hosting (static), or `assert_type` checks at boundaries (runtime).
+~~**S57:** No runtime type enforcement at DSL function boundaries.~~
+**DONE.** `check_call_inputs()` / `check_return_value()` in `eval_stack.rs` validate
+parameter and return types via `value_compatible_with_type_id`. Thread-local
+`TYPE_WARNINGS` collection (advisory). `LoweredFnBody` carries `param_types` +
+`return_type` metadata from AST.
 
 #### Remaining performance debt (not crash risk):
 
@@ -501,3 +507,24 @@ args). Item 7 is the main contributor to gist pipeline OOM.
 | S11 | Collection ops require 5 edits each | `CollectionKind` registry: `emit_family()`, `typecheck_contract()`, `from_name_or_alias()`, `is_eval_intrinsic()` centralized in `ir/src/patterns/collection.rs`. Consumers delegate. | 2026-03-13 |
 | S14 | Obligation classification by name prefix | Structural: output type shape (`Handle`/`Env` -> ResourceProvide, single String -> PureRender). `infer_fn_obligation` no longer reads `name`. | 2026-03-13 |
 | S15 | Filesystem resource hardcoded by type name | `FILESYSTEM_HANDLE_TYPE` constant + `is_filesystem_resource_port()` helper in `ir/src/resource/mod.rs`. Resolve.rs migrated. | 2026-03-13 |
+| S12 | Builtin type metadata split across functions | `BuiltinType` struct + 58-entry `BUILTIN_TYPES` registry in `types.rs` | 2026-03-13 |
+| S16 | Transport dispatch duplicated | `TransportTripletSpec` + `build_transport_triplet()` in `transport.rs` | 2026-03-13 |
+| S17 | Mock wrong-type 20-arm matrix | `ValueBacking::mock_value()` + `output_matcher_path()` | 2026-03-13 |
+| S18 | No port TypeId validation after lowering | `validate_port_type_ids()` with builtin/generic fallbacks (advisory) | 2026-03-13 |
+| S22 | Transport resolution by name prefix | `TransportObligation` structural dispatch in resolver | 2026-03-13 |
+| S26 | LLM provider metadata split | Consolidated static registry in `transport/llm/provider.rs` | 2026-03-13 |
+| S31 | OperationKey missing on transport nodes | All 12 nodes (prepare+execute+parse × 4 sites) stamped | 2026-03-13 |
+| S32 | Executor auto-mocks missing inputs | `DryRunStrictness::Strict` (default) / `Lenient` on `ExecuteConfig` | 2026-03-13 |
+| S33 | No cardinality validation on edges | `CardinalityIncompatibility` via `validate_coercions()`, in `verify_dag()` | 2026-03-13 |
+| S40 | Optional type syntax not normalized | `normalize_optional_type_id()` for T?/OptionalT/Optional\<T\> | 2026-03-13 |
+| S41 | Cardinality mock hides empty-list | `ValueBacking::mock_value()` returns empty list for List backing | 2026-03-13 |
+| S44 | Shell output parsing by field shape | `output_parsing` DSL annotation + parser/lowerer support | 2026-03-13 |
+| S45 | Response provider by name substring | `response_provider` DSL annotation + `Node.response_provider` field | 2026-03-13 |
+| S46 | Transport class by operation substring | Already structural (no substring inference existed) | 2026-03-13 |
+| S48 | Test class/fermi parsed from strings | Fermi enum variants in testgen | 2026-03-13 |
+| S49 | Output matcher by type name string | `ValueBacking::output_matcher_path()` | 2026-03-13 |
+| S57 | No runtime type enforcement at DSL boundaries | `check_call_inputs()`/`check_return_value()` + thread-local warnings | 2026-03-13 |
+| S66 | gunbc-resolve depends on daglang-driver | `daglang-driver` optional via `compile` feature flag | 2026-03-13 |
+| S67 | `ValueType::Unknown` sentinel | Renamed to `Inferred`, `TypecheckWarning` added, all sites updated | 2026-03-13 |
+| S70 | Emit input types too permissive | `EmitInput` + `classify_for_emit()` + classified emitter variants | 2026-03-13 |
+| Eval-8 | `LoweredExpr::Return` is an expression | Removed from `LoweredExpr`; return is statement-only | 2026-03-13 |
