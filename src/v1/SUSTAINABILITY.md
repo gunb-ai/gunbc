@@ -460,55 +460,44 @@ old recursive evaluator deleted (step 5). The bubble-up sites are
 exactly the 5 points that call `eval_expr_s` with a subsequent push
 (4 in `eval_stmts` + 1 in `eval_block_s` for non-last Expr).
 
-### S67 — Remaining eval_stack invariant violations
+### S67 — Eval stack invariant violations (mostly resolved)
 
 **File:** `daglang-eval/src/eval_stack.rs`
 
-The stack machine works correctly for all tested workloads but has
-structural issues that could cause subtle bugs as the DSL grows:
+1. ~~**`eval_expr` is not pure.**~~ **Accepted permanent split.** `eval_expr`
+   handles non-sibling calls via `eval_non_sibling_call_raw` (re-entrant
+   `evaluate_stack`). This is correct: builtins/intrinsics are deterministic
+   and don't suspend. Making all calls statement-level would require hoisting
+   intrinsic args — not worth the ANF expansion.
 
-1. **`eval_expr` is not pure.** It handles `LoweredExpr::Call` (via
-   `eval_non_sibling_call_raw`, which can re-entrantly call
-   `evaluate_stack`), `LoweredExpr::Return` (produces early_return
-   error signal), and `LoweredExpr::Block` with Return stmts. The
-   doc claims "pure expression → Value" but calls and returns are
-   control flow, not values.
+2. ~~**Two block evaluation paths.**~~ **Accepted permanent split.**
+   `eval_block_s` (suspendable, continuation stack) and `eval_block_pure`
+   (pure, used by `eval_match_standalone` and lambda bodies). Both are
+   documented with rationale. The pure path exists because standalone match
+   evaluation has no sibling fns and no continuation stack.
 
-2. **Two block evaluation paths.** `eval_block_s` (suspendable) and
-   `eval_expr`'s Block arm (pure) evaluate blocks with different
-   semantics. The pure path can't suspend on sibling calls; it
-   handles them via re-entrant `evaluate_stack`.
+3. ~~**Two match evaluation paths.**~~ **Accepted permanent split.**
+   `eval_match_s` (suspendable) and `eval_match_local` (pure). Guards use
+   `eval_expr` because the continuation model can't represent guard
+   truthiness checks. Documented as intentional.
 
-3. **Two match evaluation paths.** `eval_match_s` (suspendable, used
-   by `eval_expr_s`) and `eval_match_local` (pure, used by
-   `eval_expr`). Guards in both use `eval_expr`, not `eval_expr_s`
-   — this is correct because the continuation model can't represent
-   guard truthiness checks, but it means guard evaluation uses
-   native recursion for sibling calls.
+4. **`wrap_value_as_output` flattens Maps.** **Accepted.** Map flattening is
+   structurally necessary for the v2 evaluation model to return multi-field
+   records. The `"value"` fallback in `output_value` is legacy — to be
+   eliminated when all callers migrate to `"return"`.
 
-4. **`wrap_value_as_output` flattens Maps.** When a fn's trailing
-   expression is a Map, it becomes the output HashMap directly. The
-   caller can't distinguish "returned a Map" from "returned multiple
-   named fields." The `"value"` fallback in `extract_projection` is
-   a partial repair for one case of this.
+5. ~~**`EvalError` conflates errors and control flow.**~~ **DONE.** `early_return`
+   field removed from `EvalError`. `Return` is now a statement-level construct
+   handled by `eval_block_s` / `eval_stmts` via `Step::EarlyReturn`.
 
-5. **`EvalError` conflates errors and control flow.** The
-   `early_return` field uses the error path for non-error semantics.
-   Return signals propagate as `Err(EvalError { early_return: Some(...) })`.
+6. ~~**Positional args dropped.**~~ **DONE.** `eval_call_args` preserves
+   positional args as `__pos_0`, `__pos_1`, etc.
 
-6. **`eval_call_args` and `eval_non_sibling_call_raw` drop positional
-   args.** When `param_name` is `None`, the evaluated value is
-   discarded. Intrinsic fn-reference paths create synthetic calls
-   with `(None, Ident(...))` positional args that hit this.
-
-7. **No tail continuation elimination.** Tail calls push identity
-   continuations (`remaining: &[], binding: None`). Deep mutual
-   recursion at N=40K allocates 40K continuations on the heap.
-
-**When to fix:** Items 1-3 are the Phase 6 IR cleanup (move Return,
-Block, For to statement forms). Items 4-5 are architectural. Item 6
-is a latent bug (fn-reference callbacks in intrinsics don't pass
-args). Item 7 is the main contributor to gist pipeline OOM.
+7. ~~**No tail continuation elimination.**~~ **DONE.** Full TCO: tail-position
+   calls (including inside if/match/block) skip identity continuations.
+   `is_tail_position` threaded through `eval_expr_s` / `eval_match_s` /
+   `eval_block_s`. Deep mutual recursion at 40K uses O(1) heap for tail
+   patterns.
 
 ---
 
@@ -522,7 +511,7 @@ args). Item 7 is the main contributor to gist pipeline OOM.
 | R4 | `scalar_witness_for_base` fabrication | Returns `None` | 2026-03-10 |
 | R5 | `is_placeholder_witness` / `is_compatible(Unknown)` | Deleted | 2026-03-10 |
 | R6 | Callable port cardinality wrong for fn params | Always scalar | 2026-03-10 |
-| S11 | Collection ops require 5 edits each | `CollectionKind` registry: `emit_family()`, `typecheck_contract()`, `from_name_or_alias()`, `is_eval_intrinsic()` centralized in `ir/src/patterns/collection.rs`. Consumers delegate. | 2026-03-13 |
+| S11 | Collection ops require 5 edits each | `CollectionKind` registry: `emit_family()`, `typecheck_contract()`, `from_name()`, `is_eval_intrinsic()` centralized in `ir/src/patterns/collection.rs`. Former aliases (count/sum/filter_map/sort_by/append) promoted to first-class variants — `alias_contracts()` and `from_name_or_alias()` deleted. | 2026-03-13 |
 | S14 | Obligation classification by name prefix | Structural: output type shape (`Handle`/`Env` -> ResourceProvide, single String -> PureRender). `infer_fn_obligation` no longer reads `name`. | 2026-03-13 |
 | S15 | Filesystem resource hardcoded by type name | `FILESYSTEM_HANDLE_TYPE` constant + `is_filesystem_resource_port()` helper in `ir/src/resource/mod.rs`. Resolve.rs migrated. | 2026-03-13 |
 | S12 | Builtin type metadata split across functions | `BuiltinType` struct + 58-entry `BUILTIN_TYPES` registry in `types.rs` | 2026-03-13 |
@@ -546,3 +535,8 @@ args). Item 7 is the main contributor to gist pipeline OOM.
 | S67 | `ValueType::Unknown` sentinel | Renamed to `Inferred`, `TypecheckWarning` added, all sites updated | 2026-03-13 |
 | S70 | Emit input types too permissive | `EmitInput` + `classify_for_emit()` + classified emitter variants | 2026-03-13 |
 | Eval-8 | `LoweredExpr::Return` is an expression | Removed from `LoweredExpr`; return is statement-only | 2026-03-13 |
+| S67-5 | `EvalError` conflates errors and control flow | `early_return` field removed; `EvalError` is purely an error type | 2026-03-13 |
+| S67-6 | Positional args dropped in `eval_call_args` | Preserved as `__pos_0`, `__pos_1`, etc. | 2026-03-13 |
+| S67-7 | No tail continuation elimination | Full TCO with `is_tail_position` threading through eval_expr_s/match_s/block_s | 2026-03-13 |
+| S74 | Blanket `#[allow(dead_code)]` suppressions | Removed; test-only helpers gated behind `#[cfg(test)]` | 2026-03-13 |
+| BUG-6 | Collection aliases mapped to wrong arity | Count/Sum/FilterMap/SortBy/Append promoted to first-class `CollectionKind` variants | 2026-03-13 |

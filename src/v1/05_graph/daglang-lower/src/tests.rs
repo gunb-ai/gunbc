@@ -436,6 +436,11 @@ fn run(values: List<String>) -> String {
         CollectionOpKind::Zip => 12,
         CollectionOpKind::Skip => 13,
         CollectionOpKind::Enumerate => 14,
+        CollectionOpKind::Count => 15,
+        CollectionOpKind::Sum => 16,
+        CollectionOpKind::FilterMap => 17,
+        CollectionOpKind::SortBy => 18,
+        CollectionOpKind::Append => 19,
     });
     assert_eq!(
         collection_kinds,
@@ -4020,8 +4025,14 @@ fn response_provider_from_str_recognizes_all_variants() {
         "github".parse::<ResponseProvider>().unwrap(),
         ResponseProvider::GitHub
     );
-    assert_eq!("Gcp".parse::<ResponseProvider>().unwrap(), ResponseProvider::Gcp);
-    assert_eq!("GCP".parse::<ResponseProvider>().unwrap(), ResponseProvider::Gcp);
+    assert_eq!(
+        "Gcp".parse::<ResponseProvider>().unwrap(),
+        ResponseProvider::Gcp
+    );
+    assert_eq!(
+        "GCP".parse::<ResponseProvider>().unwrap(),
+        ResponseProvider::Gcp
+    );
     assert_eq!(
         "Anthropic".parse::<ResponseProvider>().unwrap(),
         ResponseProvider::Anthropic

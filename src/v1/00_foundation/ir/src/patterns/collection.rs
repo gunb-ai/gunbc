@@ -30,6 +30,14 @@ pub enum CollectionKind {
     Zip,
     Skip,
     Enumerate,
+    // First-class aliases (formerly mapped to canonical variants via
+    // from_name_or_alias, which caused arity mismatches — e.g., sum
+    // has arity 1 but was mapped to Fold with arity 3).
+    Count,
+    Sum,
+    FilterMap,
+    SortBy,
+    Append,
 }
 
 /// Emit-level collection family for code generation classification.
@@ -79,6 +87,11 @@ pub const ALL_COLLECTION_OPS: &[CollectionKind] = &[
     CollectionKind::Zip,
     CollectionKind::Skip,
     CollectionKind::Enumerate,
+    CollectionKind::Count,
+    CollectionKind::Sum,
+    CollectionKind::FilterMap,
+    CollectionKind::SortBy,
+    CollectionKind::Append,
 ];
 
 impl CollectionKind {
@@ -100,6 +113,11 @@ impl CollectionKind {
             Self::Zip => "ZipNode",
             Self::Skip => "SkipNode",
             Self::Enumerate => "EnumerateNode",
+            Self::Count => "CountNode",
+            Self::Sum => "SumNode",
+            Self::FilterMap => "FilterMapNode",
+            Self::SortBy => "SortByNode",
+            Self::Append => "AppendNode",
         }
     }
 
@@ -123,10 +141,18 @@ impl CollectionKind {
             Self::Zip => "zip",
             Self::Skip => "skip",
             Self::Enumerate => "enumerate",
+            Self::Count => "count",
+            Self::Sum => "sum",
+            Self::FilterMap => "filter_map",
+            Self::SortBy => "sort_by",
+            Self::Append => "append",
         }
     }
 
     /// Parse a collection op name string into the corresponding variant.
+    ///
+    /// Handles both canonical names and DSL aliases (count, sum,
+    /// filter_map, sort_by, append) — each is a first-class variant.
     pub fn from_name(name: &str) -> Option<Self> {
         Some(match name {
             "map" => Self::Map,
@@ -144,24 +170,13 @@ impl CollectionKind {
             "zip" => Self::Zip,
             "skip" => Self::Skip,
             "enumerate" => Self::Enumerate,
+            "count" => Self::Count,
+            "sum" => Self::Sum,
+            "filter_map" => Self::FilterMap,
+            "sort_by" => Self::SortBy,
+            "append" => Self::Append,
             _ => return None,
         })
-    }
-
-    /// Parse a name including DSL aliases into the corresponding variant.
-    ///
-    /// Handles both canonical names (via [`Self::from_name`]) and common
-    /// aliases used in DSL source: `count`→Len, `sum`→Fold,
-    /// `filter_map`→Filter, `sort_by`→Sort, `append`→Map.
-    pub fn from_name_or_alias(name: &str) -> Option<Self> {
-        match name {
-            "count" => Some(Self::Len),
-            "sum" => Some(Self::Fold),
-            "filter_map" => Some(Self::Filter),
-            "sort_by" => Some(Self::Sort),
-            "append" => Some(Self::Map),
-            _ => Self::from_name(name),
-        }
     }
 
     /// Emit-level family for code generation classification (S11).
@@ -170,20 +185,27 @@ impl CollectionKind {
     /// mapping, previously duplicated in `daglang-emit/src/computation.rs`.
     pub fn emit_family(&self) -> EmitCollectionFamily {
         match self {
-            Self::Map | Self::FlatMap | Self::Join | Self::Split | Self::Zip | Self::Enumerate => {
-                EmitCollectionFamily::Map
+            Self::Map
+            | Self::FlatMap
+            | Self::Join
+            | Self::Split
+            | Self::Zip
+            | Self::Enumerate
+            | Self::Append => EmitCollectionFamily::Map,
+            Self::Filter | Self::Contains | Self::Skip | Self::FilterMap => {
+                EmitCollectionFamily::Filter
             }
-            Self::Filter | Self::Contains | Self::Skip => EmitCollectionFamily::Filter,
-            Self::Fold | Self::Any | Self::All | Self::Len => EmitCollectionFamily::Fold,
-            Self::Sort | Self::Dedup => EmitCollectionFamily::Sort,
+            Self::Fold | Self::Any | Self::All | Self::Len | Self::Count | Self::Sum => {
+                EmitCollectionFamily::Fold
+            }
+            Self::Sort | Self::Dedup | Self::SortBy => EmitCollectionFamily::Sort,
         }
     }
 
     /// Typecheck contract for this collection operation (S11).
     ///
     /// Returns the arity, parameter names, and output type that the
-    /// typechecker uses to validate call sites. Single source of truth
-    /// — previously duplicated in `builtin_callable_contracts()`.
+    /// typechecker uses to validate call sites. Single source of truth.
     pub fn typecheck_contract(&self) -> BuiltinContract {
         match self {
             Self::Map => BuiltinContract {
@@ -261,6 +283,31 @@ impl CollectionKind {
                 params: &["collection"],
                 output_type: "List",
             },
+            Self::Count => BuiltinContract {
+                arity: 1,
+                params: &["collection"],
+                output_type: "Int",
+            },
+            Self::Sum => BuiltinContract {
+                arity: 1,
+                params: &["collection"],
+                output_type: "Int",
+            },
+            Self::FilterMap => BuiltinContract {
+                arity: 2,
+                params: &["collection", "f"],
+                output_type: "List",
+            },
+            Self::SortBy => BuiltinContract {
+                arity: 2,
+                params: &["collection", "key_fn"],
+                output_type: "List",
+            },
+            Self::Append => BuiltinContract {
+                arity: 2,
+                params: &["collection", "items"],
+                output_type: "List",
+            },
         }
     }
 
@@ -272,57 +319,6 @@ impl CollectionKind {
         // All CollectionKind variants are handled by the evaluator.
         true
     }
-}
-
-/// Builtin contract metadata for alias operations that map to collection ops
-/// but have different names in the DSL (e.g., `filter_map`, `sort_by`).
-///
-/// These are operations that the typechecker needs to know about but that
-/// are not direct `CollectionKind` variants. They are aliases resolved
-/// to the canonical variant by `from_name_or_alias`.
-pub fn alias_contracts() -> Vec<(&'static str, BuiltinContract)> {
-    vec![
-        (
-            "filter_map",
-            BuiltinContract {
-                arity: 2,
-                params: &["collection", "f"],
-                output_type: "List",
-            },
-        ),
-        (
-            "sort_by",
-            BuiltinContract {
-                arity: 2,
-                params: &["collection", "key_fn"],
-                output_type: "List",
-            },
-        ),
-        (
-            "append",
-            BuiltinContract {
-                arity: 2,
-                params: &["collection", "items"],
-                output_type: "List",
-            },
-        ),
-        (
-            "count",
-            BuiltinContract {
-                arity: 1,
-                params: &["collection"],
-                output_type: "Int",
-            },
-        ),
-        (
-            "sum",
-            BuiltinContract {
-                arity: 1,
-                params: &["collection"],
-                output_type: "Int",
-            },
-        ),
-    ]
 }
 
 /// Builtin contract metadata for non-collection builtins that the
@@ -423,27 +419,15 @@ pub fn non_collection_builtin_contracts() -> Vec<(&'static str, BuiltinContract)
     ]
 }
 
-/// Look up the typecheck contract for a name, including alias overrides.
+/// Look up the typecheck contract for a name.
 ///
-/// For aliases like `sum`, `count`, etc., returns the alias-specific contract
-/// (e.g., `sum` has arity 1) rather than the canonical variant's contract
-/// (e.g., `Fold` has arity 3). This ensures callers always see the correct
-/// arity for the name as written in DSL source.
-///
-/// Resolution order: alias_contracts → CollectionKind::typecheck_contract
-/// → non_collection_builtin_contracts.
+/// Resolution order: CollectionKind::from_name → non_collection_builtin_contracts.
 pub fn contract_for_name(name: &str) -> Option<BuiltinContract> {
-    // 1. Alias overrides take precedence (sum→arity 1, count→arity 1, etc.)
-    for (alias_name, contract) in alias_contracts() {
-        if alias_name == name {
-            return Some(contract);
-        }
-    }
-    // 2. Canonical collection ops
+    // 1. Collection ops (all names are first-class variants now)
     if let Some(kind) = CollectionKind::from_name(name) {
         return Some(kind.typecheck_contract());
     }
-    // 3. Non-collection builtins
+    // 2. Non-collection builtins
     for (builtin_name, contract) in non_collection_builtin_contracts() {
         if builtin_name == name {
             return Some(contract);
@@ -456,16 +440,12 @@ pub fn contract_for_name(name: &str) -> Option<BuiltinContract> {
 ///
 /// Derived from the registries (S11) — no hand-maintained string list.
 /// A name is intrinsic if it appears in any of:
-///   1. `CollectionKind::from_name` (canonical collection ops)
-///   2. `CollectionKind::from_name_or_alias` (aliases like `count`, `sum`)
-///   3. `alias_contracts()` (alias-specific contract overrides)
-///   4. `non_collection_builtin_contracts()` (standalone builtins)
+///   1. `CollectionKind::from_name` (all collection ops including former aliases)
+///   2. `non_collection_builtin_contracts()` (standalone builtins)
 pub fn is_eval_intrinsic(name: &str) -> bool {
-    // Collection ops: canonical names + aliases
-    if CollectionKind::from_name_or_alias(name).is_some() {
+    if CollectionKind::from_name(name).is_some() {
         return true;
     }
-    // Non-collection builtins (first, last, max_by, starts_with, etc.)
     non_collection_builtin_contracts()
         .iter()
         .any(|(n, _)| *n == name)
@@ -480,10 +460,7 @@ mod tests {
         for kind in ALL_COLLECTION_OPS {
             let contract = kind.typecheck_contract();
             assert!(contract.arity > 0, "{kind:?} has zero arity");
-            assert!(
-                !contract.params.is_empty(),
-                "{kind:?} has no params"
-            );
+            assert!(!contract.params.is_empty(), "{kind:?} has no params");
             assert!(
                 !contract.output_type.is_empty(),
                 "{kind:?} has no output type"
@@ -494,94 +471,70 @@ mod tests {
     #[test]
     fn all_ops_have_emit_family() {
         for kind in ALL_COLLECTION_OPS {
-            // Just verifying it doesn't panic — exhaustiveness is checked
-            // at compile time by the match.
             let _ = kind.emit_family();
         }
     }
 
     #[test]
-    fn aliases_resolve_to_canonical() {
+    fn former_aliases_are_first_class() {
         assert_eq!(
-            CollectionKind::from_name_or_alias("count"),
-            Some(CollectionKind::Len)
+            CollectionKind::from_name("count"),
+            Some(CollectionKind::Count)
+        );
+        assert_eq!(CollectionKind::from_name("sum"), Some(CollectionKind::Sum));
+        assert_eq!(
+            CollectionKind::from_name("filter_map"),
+            Some(CollectionKind::FilterMap)
         );
         assert_eq!(
-            CollectionKind::from_name_or_alias("sum"),
-            Some(CollectionKind::Fold)
+            CollectionKind::from_name("sort_by"),
+            Some(CollectionKind::SortBy)
         );
         assert_eq!(
-            CollectionKind::from_name_or_alias("filter_map"),
-            Some(CollectionKind::Filter)
-        );
-        assert_eq!(
-            CollectionKind::from_name_or_alias("sort_by"),
-            Some(CollectionKind::Sort)
-        );
-        assert_eq!(
-            CollectionKind::from_name_or_alias("append"),
-            Some(CollectionKind::Map)
+            CollectionKind::from_name("append"),
+            Some(CollectionKind::Append)
         );
         // Canonical names still work
-        assert_eq!(
-            CollectionKind::from_name_or_alias("map"),
-            Some(CollectionKind::Map)
-        );
+        assert_eq!(CollectionKind::from_name("map"), Some(CollectionKind::Map));
         // Unknown names return None
-        assert_eq!(CollectionKind::from_name_or_alias("unknown_op"), None);
+        assert_eq!(CollectionKind::from_name("unknown_op"), None);
     }
 
     #[test]
-    fn eval_intrinsic_recognizes_all_ops() {
-        for kind in ALL_COLLECTION_OPS {
-            // Use from_name's inverse: node_label strips "Node" suffix
-            let label = kind.node_label();
-            let name = &label[..label.len() - 4]; // "MapNode" -> "Map"
-            let lower_name = name.to_lowercase();
-            // The canonical names should be intrinsics
-            if CollectionKind::from_name(&lower_name).is_some() {
-                assert!(
-                    is_eval_intrinsic(&lower_name),
-                    "{lower_name} should be intrinsic"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn eval_intrinsic_recognizes_aliases() {
-        for alias in ["filter_map", "flat_map", "count", "sum", "sort_by", "append"] {
-            assert!(is_eval_intrinsic(alias), "{alias} should be intrinsic");
-        }
-    }
-
-    #[test]
-    fn eval_intrinsic_recognizes_non_collection() {
-        for name in ["first", "last", "starts_with", "ends_with", "repeat", "chars"] {
-            assert!(is_eval_intrinsic(name), "{name} should be intrinsic");
-        }
-    }
-
-    #[test]
-    fn contract_for_name_uses_alias_overrides() {
-        // sum alias should have arity 1 (not Fold's arity 3)
+    fn sum_has_correct_arity() {
+        // This was the original BUG-6: sum mapped to Fold (arity 3)
+        // but sum only takes 1 argument.
         let sum = contract_for_name("sum").unwrap();
-        assert_eq!(sum.arity, 1, "sum should have arity 1 (alias override), not Fold's arity 3");
+        assert_eq!(sum.arity, 1, "sum should have arity 1");
         assert_eq!(sum.output_type, "Int");
 
-        // count alias should have arity 1 (not Len's arity 1 — same here, but verify)
         let count = contract_for_name("count").unwrap();
         assert_eq!(count.arity, 1);
 
         // canonical fold should still have arity 3
         let fold = contract_for_name("fold").unwrap();
         assert_eq!(fold.arity, 3);
+    }
 
-        // non-collection builtins work too
-        let first = contract_for_name("first").unwrap();
-        assert!(first.arity > 0);
+    #[test]
+    fn eval_intrinsic_recognizes_all_ops() {
+        for kind in ALL_COLLECTION_OPS {
+            let name = kind.from_name_reverse();
+            assert!(is_eval_intrinsic(name), "{name} should be intrinsic");
+        }
+    }
 
-        // unknown returns None
-        assert!(contract_for_name("unknown_op").is_none());
+    #[test]
+    fn eval_intrinsic_recognizes_non_collection() {
+        for name in [
+            "first",
+            "last",
+            "starts_with",
+            "ends_with",
+            "repeat",
+            "chars",
+        ] {
+            assert!(is_eval_intrinsic(name), "{name} should be intrinsic");
+        }
     }
 }

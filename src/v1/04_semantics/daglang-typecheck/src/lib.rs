@@ -29,8 +29,8 @@ use std::collections::{HashMap, HashSet};
 use daglang_contract::{Diagnostic, DiagnosticContext};
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{
-    Expr, Field, ForBody, Item, Literal, ModulePath, Param, PipelineDef,
-    ProvidesClause, Refinement, Stmt, TypeBody, TypeExpr, UsesClause,
+    Expr, Field, ForBody, Item, Literal, ModulePath, Param, PipelineDef, ProvidesClause,
+    Refinement, Stmt, TypeBody, TypeExpr, UsesClause,
 };
 use daglang_syntax::ast_utils::{
     is_function_type, resource_type_name, service_call_lookup_keys, type_expr_to_string, walk_stmts,
@@ -370,10 +370,7 @@ pub enum TypeError {
 pub enum TypecheckWarning {
     /// The typechecker could not infer a concrete type for an expression
     /// and fell back to `Inferred` (treated as compatible with any type).
-    InferredType {
-        context: String,
-        hint: String,
-    },
+    InferredType { context: String, hint: String },
 }
 
 impl std::fmt::Display for TypecheckWarning {
@@ -2189,9 +2186,7 @@ fn register_callable_contract(
 fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
     // Collection operation builtins — derived from centralized registry (S11).
     // Each CollectionKind carries its own typecheck contract metadata.
-    use gunbc_ir::patterns::{
-        alias_contracts, non_collection_builtin_contracts, ALL_COLLECTION_OPS,
-    };
+    use gunbc_ir::patterns::{non_collection_builtin_contracts, ALL_COLLECTION_OPS};
 
     let builtin_to_contract =
         |name: &str, bc: &gunbc_ir::patterns::BuiltinContract| -> (String, CallableContract) {
@@ -2211,11 +2206,6 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
     for kind in ALL_COLLECTION_OPS {
         let name = kind.from_name_reverse();
         let bc = kind.typecheck_contract();
-        contracts.push(builtin_to_contract(name, &bc));
-    }
-
-    // DSL aliases (filter_map, sort_by, append, count, sum)
-    for (name, bc) in alias_contracts() {
         contracts.push(builtin_to_contract(name, &bc));
     }
 
@@ -3364,10 +3354,7 @@ fn infer_expr_type(
                             let (val, val_errors) =
                                 infer_expr_type(expr, local_bindings, infer_context);
                             errors.extend(val_errors);
-                            (
-                                name.clone(),
-                                val.display_name(),
-                            )
+                            (name.clone(), val.display_name())
                         })
                         .collect(),
                 )
@@ -3529,10 +3516,7 @@ fn infer_expr_type(
                 .map(|(name, expr)| {
                     let (val, val_errors) = infer_expr_type(expr, local_bindings, infer_context);
                     errors.extend(val_errors);
-                    (
-                        name.clone(),
-                        val.display_name(),
-                    )
+                    (name.clone(), val.display_name())
                 })
                 .collect(),
         ),

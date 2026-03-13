@@ -69,10 +69,12 @@ pub fn evaluate_collection(
     inputs: &HashMap<String, Value>,
 ) -> Result<Value, EvalError> {
     match kind {
-        CollectionOpKind::Map | CollectionOpKind::Filter | CollectionOpKind::FlatMap => {
-            Ok(Value::List(items))
-        }
-        CollectionOpKind::Sort => {
+        CollectionOpKind::Map
+        | CollectionOpKind::Filter
+        | CollectionOpKind::FlatMap
+        | CollectionOpKind::FilterMap
+        | CollectionOpKind::Append => Ok(Value::List(items)),
+        CollectionOpKind::Sort | CollectionOpKind::SortBy => {
             let mut sorted = items;
             sorted.sort_by_key(sort_key);
             Ok(Value::List(sorted))
@@ -80,40 +82,72 @@ pub fn evaluate_collection(
         CollectionOpKind::Dedup => {
             let mut out = Vec::new();
             for item in items {
-                if !out.contains(&item) { out.push(item); }
+                if !out.contains(&item) {
+                    out.push(item);
+                }
             }
             Ok(Value::List(out))
         }
         CollectionOpKind::Join => {
-            let joined = items.iter().map(value_to_string).collect::<Vec<_>>().join(",");
+            let joined = items
+                .iter()
+                .map(value_to_string)
+                .collect::<Vec<_>>()
+                .join(",");
             Ok(Value::Str(joined))
         }
-        CollectionOpKind::Fold | CollectionOpKind::Len => Ok(Value::Int(items.len() as i64)),
+        CollectionOpKind::Fold | CollectionOpKind::Len | CollectionOpKind::Count => {
+            Ok(Value::Int(items.len() as i64))
+        }
+        CollectionOpKind::Sum => {
+            let total: i64 = items
+                .iter()
+                .map(|v| match v {
+                    Value::Int(i) => *i,
+                    _ => 0,
+                })
+                .sum();
+            Ok(Value::Int(total))
+        }
         CollectionOpKind::Any => Ok(Value::Bool(items.iter().any(value_truthy))),
         CollectionOpKind::All => Ok(Value::Bool(items.iter().all(value_truthy))),
         CollectionOpKind::Contains => {
-            let needle = inputs.get("needle")
+            let needle = inputs
+                .get("needle")
                 .or_else(|| inputs.get("item"))
                 .or_else(|| inputs.get("contains"));
-            let found = needle.map(|n| items.iter().any(|v| v == n)).unwrap_or(false);
+            let found = needle
+                .map(|n| items.iter().any(|v| v == n))
+                .unwrap_or(false);
             Ok(Value::Bool(found))
         }
         CollectionOpKind::Split => Ok(Value::List(items)),
         CollectionOpKind::Zip => Ok(Value::List(items)),
         CollectionOpKind::Skip => {
-            let n = inputs.get("n")
-                .and_then(|v| if let Value::Int(i) = v { Some(*i as usize) } else { None })
+            let n = inputs
+                .get("n")
+                .and_then(|v| {
+                    if let Value::Int(i) = v {
+                        Some(*i as usize)
+                    } else {
+                        None
+                    }
+                })
                 .unwrap_or(0);
             Ok(Value::List(items.into_iter().skip(n).collect()))
         }
-        CollectionOpKind::Enumerate => {
-            Ok(Value::List(items.into_iter().enumerate().map(|(i, v)| {
-                let mut map = BTreeMap::new();
-                map.insert("first".to_string(), Value::Int(i as i64));
-                map.insert("second".to_string(), v);
-                Value::Map(map)
-            }).collect()))
-        }
+        CollectionOpKind::Enumerate => Ok(Value::List(
+            items
+                .into_iter()
+                .enumerate()
+                .map(|(i, v)| {
+                    let mut map = BTreeMap::new();
+                    map.insert("first".to_string(), Value::Int(i as i64));
+                    map.insert("second".to_string(), v);
+                    Value::Map(map)
+                })
+                .collect(),
+        )),
     }
 }
 

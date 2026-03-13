@@ -6206,16 +6206,17 @@ fn derive_service_call_metadata(
 
     // S45: Explicit annotation is authoritative; unknown values fail fast.
     // Falls back to service-name inference only when no annotation is present.
-    let response_provider = match service.config.response_provider.as_deref() {
-        Some(name) => Some(name.parse::<ResponseProvider>().map_err(|e| {
-            LowerError::InvalidAnnotation {
-                service: service.name.clone(),
-                annotation: "response_provider".to_string(),
-                detail: e,
-            }
-        })?),
-        None => infer_response_provider(&service.name),
-    };
+    let response_provider =
+        match service.config.response_provider.as_deref() {
+            Some(name) => Some(name.parse::<ResponseProvider>().map_err(|e| {
+                LowerError::InvalidAnnotation {
+                    service: service.name.clone(),
+                    annotation: "response_provider".to_string(),
+                    detail: e,
+                }
+            })?),
+            None => infer_response_provider(&service.name),
+        };
 
     Ok(ServiceCallMetadata {
         service: service.name.clone(),
@@ -6394,17 +6395,19 @@ fn derive_operation_spec(
 ) -> Result<Option<ServiceOperationSpec>, LowerError> {
     match transport {
         ServiceTransportClass::RestNetwork => {
-            Ok(derive_rest_spec(service, operation).map(|s| ServiceOperationSpec::Rest(Box::new(s))))
+            Ok(derive_rest_spec(service, operation)
+                .map(|s| ServiceOperationSpec::Rest(Box::new(s))))
         }
         ServiceTransportClass::ShellLocal => {
-            Ok(derive_shell_spec(service, operation, data_registry)?.map(ServiceOperationSpec::Shell))
+            Ok(derive_shell_spec(service, operation, data_registry)?
+                .map(ServiceOperationSpec::Shell))
         }
-        ServiceTransportClass::FileBoundary => {
-            Ok(Some(ServiceOperationSpec::File(derive_file_spec(operation)?)))
-        }
-        ServiceTransportClass::LocalDirect => {
-            Ok(Some(ServiceOperationSpec::Local(derive_local_spec(operation))))
-        }
+        ServiceTransportClass::FileBoundary => Ok(Some(ServiceOperationSpec::File(
+            derive_file_spec(operation)?,
+        ))),
+        ServiceTransportClass::LocalDirect => Ok(Some(ServiceOperationSpec::Local(
+            derive_local_spec(operation),
+        ))),
         ServiceTransportClass::InterfaceStub => {
             // Services implementing interfaces with no transport block.
             // Use the service name as the interface name (from `: InterfaceName` syntax).
@@ -6738,13 +6741,14 @@ fn derive_shell_spec(
     // S44: Explicit annotation is authoritative; unknown values fail fast.
     // Falls back to inference only when no annotation is present.
     let output_parsing = match operation.output_parsing.as_deref() {
-        Some(name) => name.parse::<ShellOutputParsing>().map_err(|e| {
-            LowerError::InvalidAnnotation {
-                service: operation.name.clone(),
-                annotation: "output_parsing".to_string(),
-                detail: e,
-            }
-        })?,
+        Some(name) => {
+            name.parse::<ShellOutputParsing>()
+                .map_err(|e| LowerError::InvalidAnnotation {
+                    service: operation.name.clone(),
+                    annotation: "output_parsing".to_string(),
+                    detail: e,
+                })?
+        }
         None => infer_shell_output_parsing(&operation.outputs),
     };
 
@@ -9584,8 +9588,8 @@ struct CollectionNodeSpec {
 }
 
 fn collection_op_kind(name: &str) -> Option<CollectionOpKind> {
-    // Delegates to CollectionKind::from_name_or_alias — single source of truth (S11).
-    CollectionOpKind::from_name_or_alias(name)
+    // Delegates to CollectionKind::from_name — single source of truth (S11).
+    CollectionOpKind::from_name(name)
 }
 
 fn collect_collection_ops_from_stmts(stmts: &[Stmt], sites: &mut Vec<CollectionOpSite>) {
