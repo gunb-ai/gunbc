@@ -541,7 +541,7 @@ mod tests {
     // -- A2.3: makegen DAG → EmitPlan in topo order --
 
     use daglang_derive::derive_artifacts;
-    use daglang_lower::{CallableKind, LoweredOp, ObligationCategory, PrimitiveOpKind};
+    use daglang_lower::{CallableKind, CallableObligation, LoweredOp, PrimitiveOpKind};
     use gunbc_ir::{Dag, Edge, Node, Port};
 
     /// Build a realistic makegen DAG matching the content_upsert pattern.
@@ -566,7 +566,7 @@ mod tests {
                 module: "tools.makegen".into(),
                 kind: CallableKind::Fn,
                 name: "load_registry".into(),
-                obligation: ObligationCategory::PureDataLoad,
+                obligation: CallableObligation::PureDataLoad,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -580,7 +580,7 @@ mod tests {
                 module: "tools.makegen".into(),
                 kind: CallableKind::Fn,
                 name: "render_makefile".into(),
-                obligation: ObligationCategory::PureRender,
+                obligation: CallableObligation::PureRender,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -597,7 +597,7 @@ mod tests {
                 module: "tools.makegen".into(),
                 kind: CallableKind::Func,
                 name: "makegen".into(),
-                obligation: ObligationCategory::None,
+                obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -843,7 +843,7 @@ mod tests {
                 module: "pragma".into(),
                 kind: CallableKind::Fn,
                 name: "load_registry".into(),
-                obligation: ObligationCategory::None,
+                obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -866,7 +866,7 @@ mod tests {
                     module: "pragma".into(),
                     kind: CallableKind::Fn,
                     name: render_id.clone(),
-                    obligation: ObligationCategory::None,
+                    obligation: CallableObligation::None,
                     is_interactive: false,
                     resource_target: None,
                     fn_body: None,

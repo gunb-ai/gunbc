@@ -16,8 +16,9 @@
 //!
 //! # Purity
 //!
-//! Pure dispatch — no I/O. Transport ops are forwarded to the transport
-//! layer without performing I/O in this crate.
+//! Pure dispatch — no I/O. Transport ops are pure passthrough in the
+//! interpreter (inputs forwarded to outputs). Actual transport I/O is
+//! performed by the transport layer at execution time, not here.
 //!
 //! # Failure
 //!
@@ -46,7 +47,7 @@ pub fn execute_lowered_op(
             execute_callable(fn_body.as_deref(), &inputs, sibling_fns, data_values)
         }
         LoweredOp::Transport { .. } => {
-            execute_callable(None, &inputs, sibling_fns, data_values)
+            execute_transport_passthrough(inputs)
         }
         LoweredOp::Collection { kind, .. } => {
             execute_collection(kind, inputs)
@@ -158,6 +159,22 @@ fn execute_primitive(
         // not by the pure evaluator. These pass through for now.
         _ => Ok(inputs),
     }
+}
+
+/// Transport ops are delegated to the transport layer at execution time.
+/// In the interpreter, they are pure passthrough: output ports mirror inputs.
+fn execute_transport_passthrough(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let mut outputs = HashMap::new();
+    for (key, value) in &inputs {
+        if let Some(output_name) = key.strip_prefix("__out:") {
+            outputs.insert(output_name.to_string(), value.clone());
+        } else if key != "__deps" && key != "_freshness" && !key.starts_with("res:") {
+            outputs.insert(key.clone(), value.clone());
+        }
+    }
+    Ok(outputs)
 }
 
 fn execute_callable(

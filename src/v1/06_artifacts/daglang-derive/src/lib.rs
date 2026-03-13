@@ -522,31 +522,11 @@ fn derive_capture_modes(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, CaptureMo
         .iter()
         .map(|node| {
             let capture_mode = match node.body.as_opaque() {
-                Some(
-                    LoweredOp::Callable {
-                        obligation,
-                        is_interactive,
-                        ..
-                    }
-                    | LoweredOp::Transport {
-                        obligation,
-                        is_interactive,
-                        ..
-                    },
-                ) => {
-                    if matches!(
-                        obligation,
-                        ObligationCategory::ServiceTransportPrepare
-                            | ObligationCategory::ServiceTransportExecute
-                            | ObligationCategory::ServiceTransportParse
-                    ) {
-                        CaptureMode::Captured
-                    } else if *is_interactive {
-                        CaptureMode::Passthrough
-                    } else {
-                        CaptureMode::Captured
-                    }
-                }
+                Some(LoweredOp::Transport { .. }) => CaptureMode::Captured,
+                Some(LoweredOp::Callable {
+                    is_interactive: true,
+                    ..
+                }) => CaptureMode::Passthrough,
                 _ => CaptureMode::Captured,
             };
             (node.id.0.clone(), capture_mode)
@@ -583,12 +563,12 @@ fn derive_resources(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, Vec<ResourceU
                 obligation,
                 resource_target,
                 ..
-            }) => (obligation, resource_target),
+            }) => (ObligationCategory::from(*obligation), resource_target),
             Some(LoweredOp::Transport {
                 obligation,
                 resource_target,
                 ..
-            }) => (obligation, resource_target),
+            }) => (ObligationCategory::from(*obligation), resource_target),
             _ => continue,
         };
         let Some(resource) = resource_target.as_ref() else {
@@ -938,7 +918,8 @@ fn collect_service_metadata_from_node(
 mod tests {
     use super::*;
     use daglang_lower::{
-        CallableKind, LoweredOp, ObligationCategory, ServiceCallMetadata, ServiceTransportClass,
+        CallableKind, CallableObligation, LoweredOp, PrimitiveOpKind, ServiceCallMetadata,
+        ServiceTransportClass, TransportObligation,
     };
     use gunbc_ir::{Edge, Node, Port};
 
@@ -951,7 +932,7 @@ mod tests {
                 module: module.to_string(),
                 kind: CallableKind::Func,
                 name: name.to_string(),
-                obligation: ObligationCategory::None,
+                obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1122,14 +1103,13 @@ mod tests {
                 "param_source",
                 vec![],
                 vec![Port::scalar("path", "String")],
-                LoweredOp::Callable {
+                LoweredOp::Primitive {
                     module: "sample.services".to_string(),
-                    kind: CallableKind::Pattern,
                     name: "call_param_source::run::path".to_string(),
-                    obligation: ObligationCategory::ServiceParamSource,
-                    is_interactive: false,
-                    resource_target: None,
-                    fn_body: None,
+                    kind: PrimitiveOpKind::CallParamSource {
+                        callable: "run".to_string(),
+                        param: "path".to_string(),
+                    },
                 },
             )
             .with_kind(NodeKind::Pure),
@@ -1139,14 +1119,21 @@ mod tests {
                 "prepare_transport",
                 vec![Port::scalar("path", "String")],
                 vec![Port::scalar("request", "TransportRequest")],
-                LoweredOp::Callable {
+                LoweredOp::Transport {
                     module: "sample.services".to_string(),
                     kind: CallableKind::Pattern,
                     name: "service_transport::prepare::FsStorage::read".to_string(),
-                    obligation: ObligationCategory::ServiceTransportPrepare,
+                    obligation: TransportObligation::Prepare,
+                    service_metadata: Box::new(ServiceCallMetadata {
+                        service: "FsStorage".to_string(),
+                        operation: "read".to_string(),
+                        transport: ServiceTransportClass::ShellLocal,
+                        idempotent: true,
+                        readonly: true,
+                        spec: None,
+                    }),
                     is_interactive: false,
                     resource_target: None,
-                    fn_body: None,
                 },
             )
             .with_kind(NodeKind::TransportPrepare),
@@ -1156,14 +1143,21 @@ mod tests {
                 "execute_transport",
                 vec![Port::scalar("request", "TransportRequest")],
                 vec![Port::scalar("response", "TransportResponse")],
-                LoweredOp::Callable {
+                LoweredOp::Transport {
                     module: "sample.services".to_string(),
                     kind: CallableKind::Pattern,
                     name: "service_transport::execute::FsStorage::read".to_string(),
-                    obligation: ObligationCategory::ServiceTransportExecute,
+                    obligation: TransportObligation::Execute,
+                    service_metadata: Box::new(ServiceCallMetadata {
+                        service: "FsStorage".to_string(),
+                        operation: "read".to_string(),
+                        transport: ServiceTransportClass::ShellLocal,
+                        idempotent: true,
+                        readonly: true,
+                        spec: None,
+                    }),
                     is_interactive: false,
                     resource_target: None,
-                    fn_body: None,
                 },
             )
             .with_kind(NodeKind::TransportExecute),
@@ -1173,14 +1167,21 @@ mod tests {
                 "parse_transport",
                 vec![Port::scalar("response", "TransportResponse")],
                 vec![Port::scalar("body", "String")],
-                LoweredOp::Callable {
+                LoweredOp::Transport {
                     module: "sample.services".to_string(),
                     kind: CallableKind::Pattern,
                     name: "service_transport::parse::FsStorage::read".to_string(),
-                    obligation: ObligationCategory::ServiceTransportParse,
+                    obligation: TransportObligation::Parse,
+                    service_metadata: Box::new(ServiceCallMetadata {
+                        service: "FsStorage".to_string(),
+                        operation: "read".to_string(),
+                        transport: ServiceTransportClass::ShellLocal,
+                        idempotent: true,
+                        readonly: true,
+                        spec: None,
+                    }),
                     is_interactive: false,
                     resource_target: None,
-                    fn_body: None,
                 },
             )
             .with_kind(NodeKind::TransportParse),
@@ -1194,7 +1195,7 @@ mod tests {
                     module: "sample.resources".to_string(),
                     kind: CallableKind::Pattern,
                     name: "resource_provide::run::out".to_string(),
-                    obligation: ObligationCategory::ResourceProvide,
+                    obligation: CallableObligation::ResourceProvide,
                     is_interactive: false,
                     resource_target: Some("out".to_string()),
                     fn_body: None,
@@ -1211,7 +1212,7 @@ mod tests {
                     module: "sample.resources".to_string(),
                     kind: CallableKind::Pattern,
                     name: "resource_lifecycle::acquire::TempFile".to_string(),
-                    obligation: ObligationCategory::ResourceAcquire,
+                    obligation: CallableObligation::ResourceAcquire,
                     is_interactive: false,
                     resource_target: Some("TempFile".to_string()),
                     fn_body: None,
@@ -1228,7 +1229,7 @@ mod tests {
                     module: "sample.resources".to_string(),
                     kind: CallableKind::Pattern,
                     name: "resource_lifecycle::release::TempFile".to_string(),
-                    obligation: ObligationCategory::ResourceRelease,
+                    obligation: CallableObligation::ResourceRelease,
                     is_interactive: false,
                     resource_target: Some("TempFile".to_string()),
                     fn_body: None,
@@ -1273,13 +1274,13 @@ mod tests {
         assert_eq!(artifacts.obligations.service_transport_prepare_targets, 1);
         assert_eq!(artifacts.obligations.service_transport_execute_targets, 1);
         assert_eq!(artifacts.obligations.service_transport_parse_targets, 1);
-        assert_eq!(artifacts.obligations.service_transport_hermetic_targets, 0);
-        assert_eq!(artifacts.obligations.service_transport_external_targets, 1);
+        assert_eq!(artifacts.obligations.service_transport_hermetic_targets, 1);
+        assert_eq!(artifacts.obligations.service_transport_external_targets, 0);
         assert_eq!(
             artifacts.obligations.service_transport_idempotent_targets,
-            0
+            1
         );
-        assert_eq!(artifacts.obligations.service_transport_readonly_targets, 0);
+        assert_eq!(artifacts.obligations.service_transport_readonly_targets, 1);
         assert_eq!(artifacts.obligations.service_param_source_targets, 1);
         assert_eq!(artifacts.obligations.resource_provide_targets, 1);
         assert_eq!(artifacts.obligations.resource_acquire_targets, 1);
@@ -1297,7 +1298,14 @@ mod tests {
                 prepare_node: "prepare_transport".to_string(),
                 execute_node: "execute_transport".to_string(),
                 parse_nodes: vec!["parse_transport".to_string()],
-                service_metadata: None,
+                service_metadata: Some(ServiceCallMetadata {
+                    service: "FsStorage".to_string(),
+                    operation: "read".to_string(),
+                    transport: ServiceTransportClass::ShellLocal,
+                    idempotent: true,
+                    readonly: true,
+                    spec: None,
+                }),
             }
         );
         assert_eq!(
@@ -1340,7 +1348,7 @@ mod tests {
                     module: "sample.services".to_string(),
                     kind: CallableKind::Pattern,
                     name: "service_transport::execute::FsStorage::read".to_string(),
-                    obligation: ObligationCategory::ServiceTransportExecute,
+                    obligation: TransportObligation::Execute,
                     service_metadata: Box::new(ServiceCallMetadata {
                         service: "FsStorage".to_string(),
                         operation: "read".to_string(),
@@ -1364,7 +1372,7 @@ mod tests {
                     module: "sample.services".to_string(),
                     kind: CallableKind::Pattern,
                     name: "service_transport::execute::GistApi::create".to_string(),
-                    obligation: ObligationCategory::ServiceTransportExecute,
+                    obligation: TransportObligation::Execute,
                     service_metadata: Box::new(ServiceCallMetadata {
                         service: "GistApi".to_string(),
                         operation: "create".to_string(),
@@ -1409,7 +1417,7 @@ mod tests {
                     module: "sample.services".to_string(),
                     kind: CallableKind::Pattern,
                     name: "service_transport::prepare::Fake::op".to_string(),
-                    obligation: ObligationCategory::None,
+                    obligation: CallableObligation::None,
                     is_interactive: false,
                     resource_target: None,
                     fn_body: None,
@@ -1422,14 +1430,21 @@ mod tests {
                 "structural_category",
                 vec![],
                 vec![Port::scalar("out", "String")],
-                LoweredOp::Callable {
+                LoweredOp::Transport {
                     module: "sample.services".to_string(),
                     kind: CallableKind::Pattern,
                     name: "not_a_transport_name".to_string(),
-                    obligation: ObligationCategory::ServiceTransportPrepare,
+                    obligation: TransportObligation::Prepare,
+                    service_metadata: Box::new(ServiceCallMetadata {
+                        service: "Fake".to_string(),
+                        operation: "op".to_string(),
+                        transport: ServiceTransportClass::ShellLocal,
+                        idempotent: true,
+                        readonly: true,
+                        spec: None,
+                    }),
                     is_interactive: false,
                     resource_target: None,
-                    fn_body: None,
                 },
             )
             .with_kind(NodeKind::TransportPrepare),
@@ -1454,7 +1469,7 @@ mod tests {
                     module: "sample.app".to_string(),
                     kind: CallableKind::Func,
                     name: "prompt_user".to_string(),
-                    obligation: ObligationCategory::None,
+                    obligation: CallableObligation::None,
                     is_interactive: true,
                     resource_target: None,
                     fn_body: None,
@@ -1467,14 +1482,21 @@ mod tests {
                 "transport_node",
                 vec![Port::scalar("request", "TransportRequest")],
                 vec![Port::scalar("response", "TransportResponse")],
-                LoweredOp::Callable {
+                LoweredOp::Transport {
                     module: "sample.app".to_string(),
                     kind: CallableKind::Pattern,
                     name: "service_transport::execute::FsStorage::read".to_string(),
-                    obligation: ObligationCategory::ServiceTransportExecute,
+                    obligation: TransportObligation::Execute,
+                    service_metadata: Box::new(ServiceCallMetadata {
+                        service: "FsStorage".to_string(),
+                        operation: "read".to_string(),
+                        transport: ServiceTransportClass::ShellLocal,
+                        idempotent: true,
+                        readonly: true,
+                        spec: None,
+                    }),
                     is_interactive: false,
                     resource_target: None,
-                    fn_body: None,
                 },
             )
             .with_kind(NodeKind::TransportExecute),

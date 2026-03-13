@@ -17,8 +17,11 @@
 //!
 //! # Purity
 //!
-//! Pure — the `env_resolver` is injected but not called by the lowerer
-//! itself. No filesystem or network access.
+//! Pure — the `env_resolver` callback is injected by the caller and
+//! invoked during profile config resolution (`resolve_profile_config_value`).
+//! The lowerer itself contains no ambient I/O; all environment access
+//! is mediated through the injected callback. No filesystem or network
+//! access.
 //!
 //! # Failure
 //!
@@ -52,6 +55,7 @@ use gunbc_ir::{
 };
 use serde::{Deserialize, Serialize};
 
+pub mod anf;
 pub mod eval;
 pub mod expr;
 #[allow(dead_code)]
@@ -75,7 +79,7 @@ pub enum LoweredOp {
         module: String,
         kind: CallableKind,
         name: String,
-        obligation: ObligationCategory,
+        obligation: CallableObligation,
         is_interactive: bool,
         resource_target: Option<String>,
         /// Lowered fn body for `CallableKind::Fn` items — `None` for
@@ -87,7 +91,7 @@ pub enum LoweredOp {
         module: String,
         kind: CallableKind,
         name: String,
-        obligation: ObligationCategory,
+        obligation: TransportObligation,
         service_metadata: Box<ServiceCallMetadata>,
         is_interactive: bool,
         resource_target: Option<String>,
@@ -305,6 +309,57 @@ pub enum ObligationCategory {
     PureGeneric,
 }
 
+/// Obligation subset valid for `LoweredOp::Callable` nodes.
+///
+/// Transport obligations (`ServiceTransportPrepare/Execute/Parse`) are
+/// structurally excluded — they belong exclusively on `LoweredOp::Transport`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CallableObligation {
+    None,
+    ResourceProvide,
+    ResourceAcquire,
+    ResourceRelease,
+    InterfaceContractVerification,
+    PureRender,
+    PureDataLoad,
+    PureGeneric,
+}
+
+impl From<CallableObligation> for ObligationCategory {
+    fn from(o: CallableObligation) -> Self {
+        match o {
+            CallableObligation::None => ObligationCategory::None,
+            CallableObligation::ResourceProvide => ObligationCategory::ResourceProvide,
+            CallableObligation::ResourceAcquire => ObligationCategory::ResourceAcquire,
+            CallableObligation::ResourceRelease => ObligationCategory::ResourceRelease,
+            CallableObligation::InterfaceContractVerification => {
+                ObligationCategory::InterfaceContractVerification
+            }
+            CallableObligation::PureRender => ObligationCategory::PureRender,
+            CallableObligation::PureDataLoad => ObligationCategory::PureDataLoad,
+            CallableObligation::PureGeneric => ObligationCategory::PureGeneric,
+        }
+    }
+}
+
+/// Obligation subset valid for `LoweredOp::Transport` nodes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TransportObligation {
+    Prepare,
+    Execute,
+    Parse,
+}
+
+impl From<TransportObligation> for ObligationCategory {
+    fn from(o: TransportObligation) -> Self {
+        match o {
+            TransportObligation::Prepare => ObligationCategory::ServiceTransportPrepare,
+            TransportObligation::Execute => ObligationCategory::ServiceTransportExecute,
+            TransportObligation::Parse => ObligationCategory::ServiceTransportParse,
+        }
+    }
+}
+
 // ServiceTransportClass has been moved to gunbc-ir. Re-export for backward
 // compatibility with consumers that import it from daglang_lower.
 pub use gunbc_ir::ServiceTransportClass;
@@ -325,7 +380,8 @@ pub struct ServiceCallMetadata {
 impl LoweredOp {
     pub fn obligation_category(&self) -> ObligationCategory {
         match self {
-            Self::Callable { obligation, .. } | Self::Transport { obligation, .. } => *obligation,
+            Self::Callable { obligation, .. } => ObligationCategory::from(*obligation),
+            Self::Transport { obligation, .. } => ObligationCategory::from(*obligation),
             Self::Primitive { kind, .. } => kind.obligation_category(),
             Self::Collection { .. }
             | Self::Pipeline { .. }
@@ -629,7 +685,7 @@ fn validate_callable_output_wiring(dag: &Dag<LoweredOp>) -> Result<(), LowerErro
             // Transport roles (prepare/execute/parse) and other obligation
             // categories are resolved via dedicated ops — they don't need
             // __out: passthrough ports.
-            if *obligation != ObligationCategory::None {
+            if *obligation != CallableObligation::None {
                 continue;
             }
             let input_names: HashSet<&str> =
@@ -691,8 +747,11 @@ pub fn classify_service_transport(op: &LoweredOp) -> Option<ServiceTransportClas
 pub fn topology_with_obligation_kinds(dag: &Dag<LoweredOp>) -> DagTopology {
     dag.topology_with_kind(|node| match &node.body {
         gunbc_ir::node::NodeBody::Opaque(
-            LoweredOp::Callable { obligation, .. } | LoweredOp::Transport { obligation, .. },
-        ) => canonical_kind_for_obligation(*obligation).map(str::to_string),
+            LoweredOp::Callable { obligation, .. }
+        ) => canonical_kind_for_obligation(ObligationCategory::from(*obligation)).map(str::to_string),
+        gunbc_ir::node::NodeBody::Opaque(
+            LoweredOp::Transport { obligation, .. }
+        ) => canonical_kind_for_obligation(ObligationCategory::from(*obligation)).map(str::to_string),
         gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive { kind, .. }) => {
             canonical_kind_for_obligation(kind.obligation_category()).map(str::to_string)
         }
@@ -1382,7 +1441,7 @@ fn derive_interface_stub_transport_triplets(
                                 "service_transport::prepare::{}::{}",
                                 interface.name, capability.name
                             ),
-                            obligation: ObligationCategory::ServiceTransportPrepare,
+                            obligation: TransportObligation::Prepare,
                             service_metadata: Box::new(metadata.clone()),
                             is_interactive: false,
                             resource_target: None,
@@ -1417,7 +1476,7 @@ fn derive_interface_stub_transport_triplets(
                             "service_transport::execute::{}::{}",
                             interface.name, capability.name
                         ),
-                        obligation: ObligationCategory::ServiceTransportExecute,
+                        obligation: TransportObligation::Execute,
                         service_metadata: Box::new(metadata.clone()),
                         is_interactive: false,
                         resource_target: None,
@@ -1444,7 +1503,7 @@ fn derive_interface_stub_transport_triplets(
                                 "service_transport::parse::{}::{}",
                                 interface.name, capability.name
                             ),
-                            obligation: ObligationCategory::ServiceTransportParse,
+                            obligation: TransportObligation::Parse,
                             service_metadata: Box::new(metadata.clone()),
                             is_interactive: false,
                             resource_target: None,
@@ -2213,9 +2272,12 @@ pub struct LoweringConfig<'a> {
     ///
     /// The lowerer is a pure function — it does not read the process
     /// environment. The caller provides this callback to resolve
-    /// `env("VAR")` expressions in profile bindings. If `None`,
-    /// `std::env::var` is used (legacy behavior; callers should migrate).
-    pub env_resolver: Option<&'a dyn Fn(&str) -> Option<String>>,
+    /// `env("VAR")` expressions in profile bindings.
+    ///
+    /// Defaults to a no-op resolver (always returns `None`). Callers that
+    /// need process-environment resolution must inject `std::env::var`
+    /// explicitly.
+    pub env_resolver: &'a dyn Fn(&str) -> Option<String>,
 }
 
 impl std::fmt::Debug for LoweringConfig<'_> {
@@ -2227,9 +2289,15 @@ impl std::fmt::Debug for LoweringConfig<'_> {
             .field("entry_module", &self.entry_module)
             .field("allow_empty_dag", &self.allow_empty_dag)
             .field("type_registry", &self.type_registry)
-            .field("env_resolver", &self.env_resolver.as_ref().map(|_| ".."))
+            .field("env_resolver", &"..")
             .finish()
     }
+}
+
+/// No-op env resolver: always returns `None`. Used as the default so
+/// the lowerer performs no environment I/O.
+fn no_op_env_resolver(_: &str) -> Option<String> {
+    None
 }
 
 impl Default for LoweringConfig<'_> {
@@ -2241,7 +2309,7 @@ impl Default for LoweringConfig<'_> {
             entry_module: None,
             allow_empty_dag: false,
             type_registry: None,
-            env_resolver: None,
+            env_resolver: &no_op_env_resolver,
         }
     }
 }
@@ -2267,11 +2335,6 @@ pub fn lower_to_output_with_config(
     project: &TypedProject,
     config: &LoweringConfig<'_>,
 ) -> Result<LowerOutput, LowerError> {
-    let default_env_resolver = |name: &str| -> Option<String> {
-        std::env::var(name).ok()
-    };
-    let env_resolver: &dyn Fn(&str) -> Option<String> =
-        config.env_resolver.unwrap_or(&default_env_resolver);
     lower_typed_project_impl(
         project,
         config.callable_modules,
@@ -2280,7 +2343,7 @@ pub fn lower_to_output_with_config(
         config.entry_module,
         config.allow_empty_dag,
         config.type_registry,
-        env_resolver,
+        config.env_resolver,
     )
 }
 
@@ -2424,6 +2487,7 @@ pub fn lower_typed_project_for_modules_with_entry_and_collection_nodes(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn lower_typed_project_impl(
     project: &TypedProject,
     callable_modules: Option<&HashSet<String>>,
@@ -3016,13 +3080,21 @@ mod parity {
             }
             gunbc_ir::node::NodeBody::Opaque(
                 LoweredOp::Callable { obligation, .. }
-                | LoweredOp::Transport { obligation, .. },
             ) => canonical_kind_from_shape(
                 &node.id.0,
                 &node.inputs,
                 &node.outputs,
                 false,
-                Some(*obligation),
+                Some(ObligationCategory::from(*obligation)),
+            ),
+            gunbc_ir::node::NodeBody::Opaque(
+                LoweredOp::Transport { obligation, .. }
+            ) => canonical_kind_from_shape(
+                &node.id.0,
+                &node.inputs,
+                &node.outputs,
+                false,
+                Some(ObligationCategory::from(*obligation)),
             ),
             gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive { kind, .. }) => {
                 canonical_kind_from_shape(
@@ -3156,7 +3228,7 @@ mod parity {
             module: "parity.gcp_credential".to_string(),
             kind: CallableKind::Pattern,
             name: id.to_string(),
-            obligation: ObligationCategory::None,
+            obligation: CallableObligation::None,
             is_interactive: false,
             resource_target: None,
             fn_body: None,
@@ -3452,11 +3524,10 @@ mod parity {
 ///
 /// Only applies to `CallableKind::Fn` (pure functions). `Func`/`Pattern` callables
 /// keep `ObligationCategory::None` (they are classified structurally elsewhere).
-fn infer_fn_obligation(name: &str, kind: CallableKind, outputs: &[Port]) -> ObligationCategory {
+fn infer_fn_obligation(name: &str, kind: CallableKind, outputs: &[Port]) -> CallableObligation {
     if kind != CallableKind::Fn {
-        return ObligationCategory::None;
+        return CallableObligation::None;
     }
-    // Handle/Env output + load_/fs_env/env_ name → resource provider.
     let has_handle_output = outputs.iter().any(|p| {
         let ty = p.type_id.0.as_str();
         ty.contains("Handle") || ty.contains("Env")
@@ -3464,15 +3535,15 @@ fn infer_fn_obligation(name: &str, kind: CallableKind, outputs: &[Port]) -> Obli
     if has_handle_output
         && (name.starts_with("load_") || name == "fs_env" || name.starts_with("env_"))
     {
-        return ObligationCategory::ResourceProvide;
+        return CallableObligation::ResourceProvide;
     }
     if name.starts_with("render_") {
-        return ObligationCategory::PureRender;
+        return CallableObligation::PureRender;
     }
     if name.starts_with("load_") || name.starts_with("env_") {
-        return ObligationCategory::PureDataLoad;
+        return CallableObligation::PureDataLoad;
     }
-    ObligationCategory::PureGeneric
+    CallableObligation::PureGeneric
 }
 
 fn output_passthrough_input_name(output_name: &str) -> String {
@@ -4100,7 +4171,7 @@ fn make_loop_body_dag_from_stmts(
             module: ctx.module_name.to_string(),
             kind: CallableKind::Func,
             name: format!("{callable_node_id}::for_{index}_body"),
-            obligation: ObligationCategory::None,
+            obligation: CallableObligation::None,
             is_interactive: false,
             resource_target: None,
             fn_body: None,
@@ -4316,7 +4387,7 @@ fn make_loop_body_dag(
                 module: module_name.to_string(),
                 kind: CallableKind::Fn,
                 name: format!("{callable_node_id}::for_{index}_body"),
-                obligation: ObligationCategory::None,
+                obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: Some(Box::new(expr::LoweredFnBody {
@@ -4348,7 +4419,7 @@ fn make_loop_body_dag(
                 module: module_name.to_string(),
                 kind: CallableKind::Fn,
                 name: format!("{callable_node_id}::for_{index}_body"),
-                obligation: ObligationCategory::None,
+                obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: Some(Box::new(expr::LoweredFnBody {
@@ -4380,7 +4451,7 @@ fn make_loop_body_dag(
                         "service_transport::prepare::{}::{}",
                         transport.metadata.service, transport.metadata.operation
                     ),
-                    obligation: ObligationCategory::ServiceTransportPrepare,
+                    obligation: TransportObligation::Prepare,
                     service_metadata: Box::new(transport.metadata.clone()),
                     is_interactive: false,
                     resource_target: None,
@@ -4397,7 +4468,7 @@ fn make_loop_body_dag(
                         "service_transport::execute::{}::{}",
                         transport.metadata.service, transport.metadata.operation
                     ),
-                    obligation: ObligationCategory::ServiceTransportExecute,
+                    obligation: TransportObligation::Execute,
                     service_metadata: Box::new(transport.metadata.clone()),
                     is_interactive: false,
                     resource_target: None,
@@ -4419,7 +4490,7 @@ fn make_loop_body_dag(
                         "service_transport::parse::{}::{}",
                         transport.metadata.service, transport.metadata.operation
                     ),
-                    obligation: ObligationCategory::ServiceTransportParse,
+                    obligation: TransportObligation::Parse,
                     service_metadata: Box::new(transport.metadata.clone()),
                     is_interactive: false,
                     resource_target: None,
@@ -4477,7 +4548,7 @@ fn make_branch_body_dag(
                 module: module_name.to_string(),
                 kind: CallableKind::Fn,
                 name: format!("{callable_node_id}::if_{index}_{branch_label}"),
-                obligation: ObligationCategory::None,
+                obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: Some(Box::new(expr::LoweredFnBody {
@@ -4513,7 +4584,7 @@ fn make_branch_body_dag(
                 module: module_name.to_string(),
                 kind: CallableKind::Fn,
                 name: format!("{callable_node_id}::if_{index}_{branch_label}"),
-                obligation: ObligationCategory::None,
+                obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: Some(Box::new(expr::LoweredFnBody {
@@ -4545,7 +4616,7 @@ fn make_branch_body_dag(
                         "service_transport::prepare::{}::{}",
                         transport.metadata.service, transport.metadata.operation
                     ),
-                    obligation: ObligationCategory::ServiceTransportPrepare,
+                    obligation: TransportObligation::Prepare,
                     service_metadata: Box::new(transport.metadata.clone()),
                     is_interactive: false,
                     resource_target: None,
@@ -4562,7 +4633,7 @@ fn make_branch_body_dag(
                         "service_transport::execute::{}::{}",
                         transport.metadata.service, transport.metadata.operation
                     ),
-                    obligation: ObligationCategory::ServiceTransportExecute,
+                    obligation: TransportObligation::Execute,
                     service_metadata: Box::new(transport.metadata.clone()),
                     is_interactive: false,
                     resource_target: None,
@@ -4584,7 +4655,7 @@ fn make_branch_body_dag(
                         "service_transport::parse::{}::{}",
                         transport.metadata.service, transport.metadata.operation
                     ),
-                    obligation: ObligationCategory::ServiceTransportParse,
+                    obligation: TransportObligation::Parse,
                     service_metadata: Box::new(transport.metadata.clone()),
                     is_interactive: false,
                     resource_target: None,
@@ -7463,7 +7534,7 @@ fn derive_service_transport_triplets(
                                 "service_transport::prepare::{}::{}",
                                 service.name, operation.name
                             ),
-                            obligation: ObligationCategory::ServiceTransportPrepare,
+                            obligation: TransportObligation::Prepare,
                             service_metadata: Box::new(service_metadata.clone()),
                             is_interactive: false,
                             resource_target: None,
@@ -7491,7 +7562,7 @@ fn derive_service_transport_triplets(
                             "service_transport::execute::{}::{}",
                             service.name, operation.name
                         ),
-                        obligation: ObligationCategory::ServiceTransportExecute,
+                        obligation: TransportObligation::Execute,
                         service_metadata: Box::new(service_metadata.clone()),
                         is_interactive: false,
                         resource_target: None,
@@ -7528,7 +7599,7 @@ fn derive_service_transport_triplets(
                                 "service_transport::parse::{}::{}",
                                 service.name, operation.name
                             ),
-                            obligation: ObligationCategory::ServiceTransportParse,
+                            obligation: TransportObligation::Parse,
                             service_metadata: Box::new(service_metadata.clone()),
                             is_interactive: false,
                             resource_target: None,
@@ -8916,7 +8987,7 @@ fn add_provided_resource_nodes(
                         module: module_name.clone(),
                         kind: CallableKind::Pattern,
                         name: format!("resource_provide::{}::{}", item_name, provided.binding),
-                        obligation: ObligationCategory::ResourceProvide,
+                        obligation: CallableObligation::ResourceProvide,
                         is_interactive: false,
                         resource_target: Some(provided.binding.clone()),
                         fn_body: None,
@@ -9120,7 +9191,7 @@ fn add_resource_lifecycle_nodes(
                         module: module_name.clone(),
                         kind: CallableKind::Pattern,
                         name: format!("resource_lifecycle::acquire::{}", resource.name),
-                        obligation: ObligationCategory::ResourceAcquire,
+                        obligation: CallableObligation::ResourceAcquire,
                         is_interactive: false,
                         resource_target: Some(resource.name.clone()),
                         fn_body: None,
@@ -9137,7 +9208,7 @@ fn add_resource_lifecycle_nodes(
                         module: module_name.clone(),
                         kind: CallableKind::Pattern,
                         name: format!("resource_lifecycle::release::{}", resource.name),
-                        obligation: ObligationCategory::ResourceRelease,
+                        obligation: CallableObligation::ResourceRelease,
                         is_interactive: false,
                         resource_target: Some(resource.name.clone()),
                         fn_body: None,
@@ -9210,7 +9281,7 @@ fn add_interface_contract_verification_nodes(
                             canonical_resource_type_name(interface_name),
                             index
                         ),
-                        obligation: ObligationCategory::InterfaceContractVerification,
+                        obligation: CallableObligation::InterfaceContractVerification,
                         is_interactive: false,
                         resource_target: None,
                         fn_body: None,
@@ -11324,7 +11395,7 @@ fn synthesize_expr_value_fallback(
             module: ctx.module_name.to_string(),
             kind: CallableKind::Fn,
             name: format!("{}::expr_value::{}", ctx.item_name, output_name),
-            obligation: ObligationCategory::None,
+            obligation: CallableObligation::None,
             is_interactive: false,
             resource_target: None,
             fn_body: Some(Box::new(fn_body)),
@@ -11374,6 +11445,7 @@ fn synthesize_expr_value_fallback(
     Some((node_id, result_port_name.to_string()))
 }
 
+#[allow(clippy::type_complexity)]
 fn lower_match_arm_for_dispatch(
     builder: &mut DagBuilder,
     ctx: &LoweringContext<'_>,
@@ -11381,10 +11453,10 @@ fn lower_match_arm_for_dispatch(
     output_name: &str,
     disambiguator: &str,
     arm_index: usize,
-) -> (expr::LoweredMatchArm, Option<(String, String, String)>) {
+) -> Result<(expr::LoweredMatchArm, Option<(String, String, String)>), LowerError> {
     if let Expr::Call(call_name, args) = &arm.body {
         let input_port = format!("arm_body_{arm_index}");
-        if let Ok((src_node, src_port)) = synthesize_callable_expr_value(
+        let (src_node, src_port) = synthesize_callable_expr_value(
             builder,
             ctx,
             call_name.as_str(),
@@ -11394,24 +11466,23 @@ fn lower_match_arm_for_dispatch(
                 "{disambiguator}_arm_{arm_index}_{}",
                 sanitize_identifier(call_name)
             ),
-        ) {
-            let mut hoisted_arm = arm.clone();
-            hoisted_arm.body = Expr::Ident(input_port.clone());
-            return (
-                expr::lower_match_arm(
-                    &hoisted_arm,
-                    ctx.variant_names,
-                    expr::ExprLowerMode::Standard,
-                ),
-                Some((input_port, src_node, src_port)),
-            );
-        }
+        )?;
+        let mut hoisted_arm = arm.clone();
+        hoisted_arm.body = Expr::Ident(input_port.clone());
+        return Ok((
+            expr::lower_match_arm(
+                &hoisted_arm,
+                ctx.variant_names,
+                expr::ExprLowerMode::Standard,
+            ),
+            Some((input_port, src_node, src_port)),
+        ));
     }
 
-    (
+    Ok((
         expr::lower_match_arm(arm, ctx.variant_names, expr::ExprLowerMode::Standard),
         None,
-    )
+    ))
 }
 
 /// C24-P1: Synthesize a MatchDispatch structural node.
@@ -11459,24 +11530,21 @@ fn synthesize_match_dispatch(
     let output_ports = vec![Port::scalar(result_port_name, output_type)];
 
     let mut hoisted_arm_sources = Vec::new();
-    let lowered_arms: Vec<expr::LoweredMatchArm> = arms
-        .iter()
-        .enumerate()
-        .map(|(arm_index, arm)| {
-            let (lowered, source) = lower_match_arm_for_dispatch(
-                builder,
-                ctx,
-                arm,
-                output_name,
-                disambiguator,
-                arm_index,
-            );
-            if let Some(source) = source {
-                hoisted_arm_sources.push(source);
-            }
-            lowered
-        })
-        .collect();
+    let mut lowered_arms: Vec<expr::LoweredMatchArm> = Vec::with_capacity(arms.len());
+    for (arm_index, arm) in arms.iter().enumerate() {
+        let (lowered, source) = lower_match_arm_for_dispatch(
+            builder,
+            ctx,
+            arm,
+            output_name,
+            disambiguator,
+            arm_index,
+        )?;
+        if let Some(source) = source {
+            hoisted_arm_sources.push(source);
+        }
+        lowered_arms.push(lowered);
+    }
     for (input_port, _, _) in &hoisted_arm_sources {
         if seen_ports.insert(input_port.clone()) {
             input_ports.push(Port::scalar(input_port.as_str(), "Any"));

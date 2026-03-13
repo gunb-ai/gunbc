@@ -3103,7 +3103,7 @@ impl Parser {
             Ok(Stmt::Return(fields))
         } else {
             let expr = self.parse_expr(0)?;
-            Ok(Stmt::Return(vec![("value".into(), expr)]))
+            Ok(Stmt::Return(vec![("return".into(), expr)]))
         }
     }
 
@@ -3530,7 +3530,7 @@ impl Parser {
                     Ok(Expr::Return(fields))
                 } else {
                     let e = self.parse_expr(0)?;
-                    Ok(Expr::Return(vec![("value".into(), e)]))
+                    Ok(Expr::Return(vec![("return".into(), e)]))
                 }
             }
             TokenKind::Fn => {

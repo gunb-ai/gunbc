@@ -362,6 +362,131 @@ All ratchets are one-way (lists can only shrink).
 
 ---
 
+## Resolved: Eval stack machine — continuation ordering during suspension bubbling (S52-EVAL)
+
+**Root cause (found):** Continuation stack ordering was reversed during
+suspension bubbling. When a sibling call suspends inside a block/match-arm:
+
+1. `eval_block_s` pushes an **inner** continuation (block's remaining stmts)
+2. `eval_stmts` catches `ExprResult::Suspend` and pushes an **outer**
+   continuation (function's remaining stmts)
+3. The outer continuation ends up **on top** of the stack (pushed last)
+4. `pop_stack` pops top-first → resumes the outer context before the inner
+5. The inner block's `Return`/`EarlyReturn` is never processed — execution
+   falls through to wrong code (typically the function's fallback path)
+
+**Concrete symptom:** `scan_token("f")` should hit the `is_ident_start`
+branch and return via `scan_ident`. Instead, `pop_stack` resumed with
+`scan_token`'s remaining 23 stmts (skipping the block's Return), falling
+through to `match lookup(single_punct, ...)` → `Unknown { char: "f" }`.
+This cascaded: broken tokens → parser sees wrong kinds → returns Unit.
+
+**Fix applied:** Before calling `eval_expr_s`, record `stack_base =
+stack.len()`. On `Suspend`, use `stack.insert(stack_base, cont)` instead
+of `stack.push(cont)`. This places the outer continuation **below** any
+inner continuations pushed by `eval_expr_s`, so `pop_stack` processes
+inner (block) continuations first. Applied at 4 bubble-up sites:
+`eval_stmts` (3 Suspend handlers) and `eval_block_s` (1 Suspend handler).
+
+**Result:** 54/58 v2 tests pass (up from 41). Remaining 3 are Phase 5
+tests that OOM on large source files (memory scaling, not correctness).
+1 test intentionally ignored (needs self-hosting).
+
+### Refactor note: shared-stack mutation violates design invariants
+
+The `stack.insert(stack_base, ...)` fix is correct and tested, but it
+is a positional compensation on shared mutable state. The design doc
+(`DESIGN-eval-redesign.md` lines 18-21) specifies:
+
+> **Clear interfaces.** Return values, not mutated shared state.
+
+and the Step::Call type (line 128) carries `cont: Option<Continuation>`,
+meaning the main loop should be the only code that touches the stack.
+
+**Current violation:** `eval_expr_s` and `eval_block_s` mutate
+`&mut Vec<Continuation>` as a side effect. Multiple layers push in an
+order determined by call sequence, and `stack.insert` compensates.
+
+**Preferred approach for a follow-up PR:**
+
+`eval_expr_s` and `eval_block_s` should stop mutating the stack.
+Instead, return inner continuations with the Suspend variant:
+
+```rust
+enum ExprResult {
+    Value(Value),
+    EarlyReturn(HashMap<String, Value>),
+    Suspend {
+        callee: FnId,
+        inputs: HashMap<String, Value>,
+        inner_conts: Vec<Continuation<'a>>,
+    },
+    Error(String),
+}
+```
+
+Then `eval_stmts` pushes outer first, inner on top — correct by
+construction, no positional tricks. This aligns with the design doc's
+"return values, not mutated shared state" principle and eliminates the
+class of ordering bugs entirely.
+
+**Status:** Done. Public API switched to `evaluate_stack` (step 4),
+old recursive evaluator deleted (step 5). The bubble-up sites are
+exactly the 5 points that call `eval_expr_s` with a subsequent push
+(4 in `eval_stmts` + 1 in `eval_block_s` for non-last Expr).
+
+### S67 — Remaining eval_stack invariant violations
+
+**File:** `daglang-eval/src/eval_stack.rs`
+
+The stack machine works correctly for all tested workloads but has
+structural issues that could cause subtle bugs as the DSL grows:
+
+1. **`eval_expr` is not pure.** It handles `LoweredExpr::Call` (via
+   `eval_non_sibling_call_raw`, which can re-entrantly call
+   `evaluate_stack`), `LoweredExpr::Return` (produces early_return
+   error signal), and `LoweredExpr::Block` with Return stmts. The
+   doc claims "pure expression → Value" but calls and returns are
+   control flow, not values.
+
+2. **Two block evaluation paths.** `eval_block_s` (suspendable) and
+   `eval_expr`'s Block arm (pure) evaluate blocks with different
+   semantics. The pure path can't suspend on sibling calls; it
+   handles them via re-entrant `evaluate_stack`.
+
+3. **Two match evaluation paths.** `eval_match_s` (suspendable, used
+   by `eval_expr_s`) and `eval_match_local` (pure, used by
+   `eval_expr`). Guards in both use `eval_expr`, not `eval_expr_s`
+   — this is correct because the continuation model can't represent
+   guard truthiness checks, but it means guard evaluation uses
+   native recursion for sibling calls.
+
+4. **`wrap_value_as_output` flattens Maps.** When a fn's trailing
+   expression is a Map, it becomes the output HashMap directly. The
+   caller can't distinguish "returned a Map" from "returned multiple
+   named fields." The `"value"` fallback in `extract_projection` is
+   a partial repair for one case of this.
+
+5. **`EvalError` conflates errors and control flow.** The
+   `early_return` field uses the error path for non-error semantics.
+   Return signals propagate as `Err(EvalError { early_return: Some(...) })`.
+
+6. **`eval_call_args` and `eval_non_sibling_call_raw` drop positional
+   args.** When `param_name` is `None`, the evaluated value is
+   discarded. Intrinsic fn-reference paths create synthetic calls
+   with `(None, Ident(...))` positional args that hit this.
+
+7. **No tail continuation elimination.** Tail calls push identity
+   continuations (`remaining: &[], binding: None`). Deep mutual
+   recursion at N=40K allocates 40K continuations on the heap.
+
+**When to fix:** Items 1-3 are the Phase 6 IR cleanup (move Return,
+Block, For to statement forms). Items 4-5 are architectural. Item 6
+is a latent bug (fn-reference callbacks in intrinsics don't pass
+args). Item 7 is the main contributor to gist pipeline OOM.
+
+---
+
 ## Resolved
 
 | ID | Description | Resolution | Date |

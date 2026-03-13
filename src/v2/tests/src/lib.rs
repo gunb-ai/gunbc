@@ -11,22 +11,6 @@ mod tests {
 
     // ── Helpers ──────────────────────────────────────────────────────────
 
-    /// Run a test body on a thread with 32MB stack. Needed for tests that
-    /// evaluate the v2 parser, which has ~80 mutually-recursive functions
-    /// (not self-recursive, so TCO doesn't help). 16MB is insufficient for
-    /// parsing types.dag (150+ type defs) through mutual recursion (S52).
-    fn with_parser_stack(f: impl FnOnce() + Send + 'static) {
-        let result = std::thread::Builder::new()
-            .stack_size(32 * 1024 * 1024)
-            .spawn(f)
-            .unwrap()
-            .join();
-        match result {
-            Ok(()) => {}
-            Err(e) => std::panic::resume_unwind(e),
-        }
-    }
-
     fn workspace_root() -> std::path::PathBuf {
         let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         // v2/tests lives at src/v2/tests, so workspace root is 3 levels up.
@@ -908,7 +892,6 @@ fn foo(item: String) -> String {
 
     #[test]
     fn phase3_expect_ident_on_ident_token() {
-        with_parser_stack(|| {
             // Test expect_ident with a token list starting with an Ident token
             let output = compile_all_modules().expect("compilation should succeed");
 
@@ -960,12 +943,10 @@ fn foo(item: String) -> String {
                 Ok(_outputs) => {}
                 Err(e) => panic!("expect_ident failed: {}", e),
             }
-        });
     }
 
     #[test]
     fn phase3_peek_kind_returns_option() {
-        with_parser_stack(|| {
             // Test peek_kind on a simple token list
             let output = compile_all_modules().expect("compilation should succeed");
 
@@ -1000,12 +981,10 @@ fn foo(item: String) -> String {
                 }
                 Err(e) => panic!("peek_kind failed: {}", e),
             }
-        });
     }
 
     #[test]
     fn phase3_parser_e2e() {
-        with_parser_stack(|| {
             // Parser uses deep recursion via evaluator — needs large stack.
             let output = compile_all_modules().expect("compilation should succeed");
 
@@ -1060,7 +1039,6 @@ fn foo(item: String) -> String {
                     panic!("parser evaluation failed: {}", e);
                 }
             }
-        });
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -1069,7 +1047,6 @@ fn foo(item: String) -> String {
 
     #[test]
     fn phase3_parse_real_source() {
-        with_parser_stack(|| {
             let output = compile_all_modules().expect("compilation should succeed");
             let source = "module types_test\n\
                 type SourceSpan { start: Int, end: Int }\n\
@@ -1110,12 +1087,10 @@ fn foo(item: String) -> String {
             } else {
                 panic!("module is not a Map: {:?}", module);
             }
-        });
     }
 
     #[test]
     fn phase3_resolve_single_module() {
-        with_parser_stack(|| {
             let output = compile_all_modules().expect("compilation should succeed");
             let source = "module test\ntype Foo { x: Int }";
             let mut tok_inputs = HashMap::new();
@@ -1149,12 +1124,10 @@ fn foo(item: String) -> String {
                 }
                 other => panic!("unexpected resolve result: {:?}", other),
             }
-        });
     }
 
     #[test]
     fn phase3_typecheck_single_module() {
-        with_parser_stack(|| {
             let output = compile_all_modules().expect("compilation should succeed");
             let source = "module test\ntype Foo { x: Int }";
             let mut tok_inputs = HashMap::new();
@@ -1196,12 +1169,10 @@ fn foo(item: String) -> String {
             } else {
                 panic!("TypedGraph is not a Map: {:?}", typed_graph);
             }
-        });
     }
 
     #[test]
     fn phase3_emit_single_module() {
-        with_parser_stack(|| {
             let output = compile_all_modules().expect("compilation should succeed");
             let source = "module test\ntype Foo { x: Int }";
             let mut tok_inputs = HashMap::new();
@@ -1264,12 +1235,10 @@ fn foo(item: String) -> String {
             } else {
                 panic!("TextFile is not a Map: {:?}", text_file);
             }
-        });
     }
 
     #[test]
     fn phase3_full_pipeline() {
-        with_parser_stack(|| {
             let output = compile_all_modules().expect("compilation should succeed");
             let source = "module test\ntype Foo { x: Int }";
             let mut tok_inputs = HashMap::new();
@@ -1330,7 +1299,6 @@ fn foo(item: String) -> String {
             } else {
                 panic!("not a TextFile map");
             }
-        });
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -1362,7 +1330,6 @@ fn foo(item: String) -> String {
     /// Test that the tokenizer scans |> as PipeArrow.
     #[test]
     fn phase4_tokenizer_scans_pipe_arrow() {
-        with_parser_stack(|| {
             let output = compile_all_modules().expect("compilation should succeed");
             let mut inputs = HashMap::new();
             inputs.insert(
@@ -1377,13 +1344,11 @@ fn foo(item: String) -> String {
                 "tokenize('items |> count') should produce PipeArrow token, got: {}",
                 &json_str[..json_str.len().min(500)]
             );
-        });
     }
 
     /// Test that the tokenizer scans ?? as NullCoalesce.
     #[test]
     fn phase4_tokenizer_scans_null_coalesce() {
-        with_parser_stack(|| {
             let output = compile_all_modules().expect("compilation should succeed");
             let mut inputs = HashMap::new();
             inputs.insert(
@@ -1398,7 +1363,6 @@ fn foo(item: String) -> String {
                 "tokenize('x ?? y') should produce NullCoalesce token, got: {}",
                 &json_str[..json_str.len().min(500)]
             );
-        });
     }
 
     /// Test that parse.dag includes PipeArrow in kind_tag and infix_bp.
@@ -1505,7 +1469,6 @@ fn foo(item: String) -> String {
     /// Test: emit a module with pipe chains and verify Rust output has .len(), .join(), etc.
     #[test]
     fn phase4_emit_pipe_methods() {
-        with_parser_stack(|| {
             let output = compile_all_modules().expect("compilation should succeed");
             let fixture = r#"module test
 
@@ -1540,7 +1503,6 @@ fn example(items: List<String>) -> Int {
                 "tokenization of 'items |> count' should contain PipeArrow, got: {}",
                 &json_str[..json_str.len().min(500)]
             );
-        });
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -1578,7 +1540,6 @@ fn example(items: List<String>) -> Int {
     /// exit blocks, mock_response, resource definitions all handled).
     #[test]
     fn phase5_gist_transitive_closure_v2_parse() {
-        with_parser_stack(|| {
             let output = compile_all_modules().expect("compilation should succeed");
             let root = workspace_root();
             let files = [
@@ -1638,14 +1599,12 @@ fn example(items: List<String>) -> Int {
                     );
                 }
             }
-        });
     }
 
     /// Diagnostic: measure stack cost per token by tokenizing progressively larger inputs.
     #[test]
     #[allow(clippy::disallowed_macros)]
     fn phase5_debug_stack_overflow_isolation() {
-        with_parser_stack(|| {
             let output = compile_all_modules().expect("compilation should succeed");
 
             let root = workspace_root();
@@ -1667,7 +1626,6 @@ fn example(items: List<String>) -> Int {
                     line_count, byte_count, token_count
                 );
             }
-        });
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -1739,7 +1697,6 @@ fn example(items: List<String>) -> Int {
     #[test]
     #[allow(clippy::disallowed_macros)]
     fn phase6_multi_module_synthetic() {
-        with_parser_stack(|| {
             let output = compile_all_modules().expect("compilation should succeed");
 
             // Start with the simplest possible multi-module case.
@@ -1810,7 +1767,6 @@ fn example(items: List<String>) -> Int {
             } else {
                 panic!("typed_graph not a Map");
             }
-        });
     }
 
     /// Feed gist.dag's full transitive dependency chain through the v2
@@ -1821,7 +1777,6 @@ fn example(items: List<String>) -> Int {
     /// not leak through as a resolve crash like "map requires a list, got Unit".
     #[test]
     fn phase6_parse_error_does_not_leak_to_resolve() {
-        with_parser_stack(|| {
             let output = compile_all_modules().expect("compilation should succeed");
 
             // Deliberately malformed source: missing module declaration.
@@ -1856,14 +1811,12 @@ fn example(items: List<String>) -> Int {
                 "parse of malformed source should return module=none, got: {:?}",
                 std::mem::discriminant(module_val)
             );
-        });
     }
 
     /// Focused test: func with return type goes through typecheck without error.
     /// Exercises Optional<TypeExpr> handling in resolve_optional_type_expr.
     #[test]
     fn phase6_func_return_type_typecheck() {
-        with_parser_stack(|| {
             let output = compile_all_modules().expect("compilation should succeed");
             let src = "module test.auth\nfunc get_token() -> { token: Secret } {\n  return { token: \"mock\" }\n}\n";
             let module = v2_tokenize_and_parse(&output, src);
@@ -1887,7 +1840,6 @@ fn example(items: List<String>) -> Int {
                     assert_eq!(modules.len(), 1, "should have 1 typed module");
                 }
             }
-        });
     }
 
     /// Feed gist.dag's full transitive dependency chain through the v2
@@ -1896,142 +1848,144 @@ fn example(items: List<String>) -> Int {
     /// This is the Level 1 acceptance gate: v2 can process the real gist
     /// tool and its 11 transitive dependencies.
     ///
-    /// Needs 128MB stack: 12 real .dag files with deep parser mutual recursion
-    /// plus type resolution across 150+ type definitions.
+    /// No stack overflow: the explicit-stack evaluator handles deep mutual
+    /// recursion via heap continuations. However, evaluating 12 real .dag
+    /// files consumes >16GB heap in debug mode (interpreter overhead).
     #[test]
-    #[ignore = "stack overflow in interpreted typecheck — needs self-hosting or explicit eval stack (S52)"]
-    #[allow(clippy::disallowed_macros)]
+    #[ignore = "OOM in debug mode — 12 .dag files exceed 16GB heap (not a stack issue)"]
     fn phase6_gist_full_pipeline() {
-        let result = std::thread::Builder::new()
-            .stack_size(128 * 1024 * 1024)
-            .spawn(|| {
-                let output = compile_all_modules().expect("compilation should succeed");
-                let root = workspace_root();
+        let output = compile_all_modules().expect("compilation should succeed");
+        let root = workspace_root();
 
-                // Gist's full transitive dependency chain (topological order: leaves first).
-                let dag_files = vec![
-                    "dsl/std/types.dag",
-                    "dsl/std/resources.dag",
-                    "dsl/std/behavioral.dag",
-                    "dsl/std/errors.dag",
-                    "dsl/extdeps/cloud/cloud.dag",
-                    "dsl/extdeps/cloud/gcp/gcp.dag",
-                    "dsl/extdeps/github/github.dag",
-                    "dsl/gunbc/auth/credentials.dag",
-                    "dsl/extdeps/git.dag",
-                    "dsl/extdeps/github/auth.dag",
-                    "dsl/extdeps/github/gists.dag",
-                    "dsl/gunbc/tools/gist.dag",
-                ];
+        // Gist's full transitive dependency chain (topological order: leaves first).
+        let dag_files = vec![
+            "dsl/std/types.dag",
+            "dsl/std/resources.dag",
+            "dsl/std/behavioral.dag",
+            "dsl/std/errors.dag",
+            "dsl/extdeps/cloud/cloud.dag",
+            "dsl/extdeps/cloud/gcp/gcp.dag",
+            "dsl/extdeps/github/github.dag",
+            "dsl/gunbc/auth/credentials.dag",
+            "dsl/extdeps/git.dag",
+            "dsl/extdeps/github/auth.dag",
+            "dsl/extdeps/github/gists.dag",
+            "dsl/gunbc/tools/gist.dag",
+        ];
 
-                // Step 1: Tokenize + parse each file
-                let mut modules = Vec::new();
-                for path in &dag_files {
-                    let full_path = root.join(path);
-                    let source = std::fs::read_to_string(&full_path)
-                        .unwrap_or_else(|e| panic!("failed to read {}: {}", path, e));
-                    eprintln!("[v2] tokenize+parse {} ({} bytes)...", path, source.len());
-                    let module = v2_tokenize_and_parse(&output, &source);
-                    modules.push(module);
-                }
-                eprintln!("[v2] parsed {} modules", modules.len());
-
-                // Step 2: Resolve imports
-                let mut resolve_inputs = HashMap::new();
-                resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(modules));
-                let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
-                    .expect("resolve_modules should succeed");
-                let graph = if let Some(ret) = resolve_result.get("return") {
-                    ret.clone()
-                } else {
-                    gunbc_ir::Value::Map(resolve_result.into_iter().collect())
-                };
-                eprintln!("[v2] resolve complete");
-
-                // Step 3: Typecheck
-                let mut tc_inputs = HashMap::new();
-                tc_inputs.insert("graph".to_string(), graph.clone());
-                let tc_result = call_fn(&output, "typecheck", tc_inputs)
-                    .expect("typecheck should succeed");
-                let typed_graph = if let Some(ret) = tc_result.get("return") {
-                    ret.clone()
-                } else {
-                    gunbc_ir::Value::Map(tc_result.into_iter().collect())
-                };
-
-                // Report diagnostics
-                if let gunbc_ir::Value::Map(ref m) = typed_graph {
-                    if let Some(gunbc_ir::Value::List(diags)) = m.get("diagnostics") {
-                        for d in diags {
-                            if let gunbc_ir::Value::Map(dm) = d {
-                                let sev = dm.get("severity").map(|s| format!("{:?}", s)).unwrap_or_default();
-                                let msg = dm.get("message").map(|s| format!("{:?}", s)).unwrap_or_default();
-                                eprintln!("[v2] diagnostic: {} {}", sev, msg);
-                            }
-                        }
-                    }
-                }
-                eprintln!("[v2] typecheck complete");
-
-                // Step 4: Emit Rust for each typed module
-                let typed_modules = if let gunbc_ir::Value::Map(ref m) = typed_graph {
-                    if let Some(gunbc_ir::Value::List(mods)) = m.get("modules") {
-                        mods.clone()
-                    } else { panic!("no modules in typed graph"); }
-                } else { panic!("typed graph not a map"); };
-
-                assert_eq!(
-                    typed_modules.len(), dag_files.len(),
-                    "should have {} typed modules, got {}",
-                    dag_files.len(), typed_modules.len()
-                );
-
-                let mut emitted_files = Vec::new();
-                for (i, typed_module) in typed_modules.iter().enumerate() {
-                    let mut emit_inputs = HashMap::new();
-                    emit_inputs.insert("typed_module".to_string(), typed_module.clone());
-                    match call_fn(&output, "emit_module", emit_inputs) {
-                        Ok(result) => {
-                            let text_file = if let Some(ret) = result.get("return") {
-                                ret.clone()
-                            } else {
-                                gunbc_ir::Value::Map(result.into_iter().collect())
-                            };
-                            if let gunbc_ir::Value::Map(ref m) = text_file {
-                                let path = m.get("path").map(|v| format!("{:?}", v)).unwrap_or_default();
-                                let content_len = m.get("content")
-                                    .and_then(|v| if let gunbc_ir::Value::Str(s) = v { Some(s.len()) } else { None })
-                                    .unwrap_or(0);
-                                eprintln!("[v2] emitted {} → {} bytes", path, content_len);
-                                emitted_files.push(text_file);
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("[v2] emit_module failed for module {}: {}", dag_files[i], e);
-                        }
-                    }
-                }
-
-                // At minimum, gist.dag should produce emitted output
-                assert!(
-                    !emitted_files.is_empty(),
-                    "should have emitted at least one file"
-                );
-
-                // Check that gist module's emission contains func signatures
-                if let Some(gunbc_ir::Value::Map(ref m)) = emitted_files.last() {
-                    if let Some(gunbc_ir::Value::Str(content)) = m.get("content") {
-                        eprintln!("[v2] gist.dag emitted {} bytes of Rust", content.len());
-                        let preview = &content[..content.len().min(500)];
-                        eprintln!("[v2] preview:\n{}", preview);
-                    }
-                }
-            })
-            .unwrap()
-            .join();
-        match result {
-            Ok(()) => {}
-            Err(e) => std::panic::resume_unwind(e),
+        // Step 1: Tokenize + parse each file
+        let mut modules = Vec::new();
+        for path in &dag_files {
+            let full_path = root.join(path);
+            let source = std::fs::read_to_string(&full_path)
+                .unwrap_or_else(|e| panic!("failed to read {}: {}", path, e));
+            let module = v2_tokenize_and_parse(&output, &source);
+            modules.push(module);
         }
+
+        // Step 2: Resolve imports
+        let mut resolve_inputs = HashMap::new();
+        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(modules));
+        let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
+            .expect("resolve_modules should succeed");
+        let graph = if let Some(ret) = resolve_result.get("return") {
+            ret.clone()
+        } else {
+            gunbc_ir::Value::Map(resolve_result.into_iter().collect())
+        };
+
+        // Step 3: Typecheck
+        let mut tc_inputs = HashMap::new();
+        tc_inputs.insert("graph".to_string(), graph.clone());
+        let tc_result = call_fn(&output, "typecheck", tc_inputs)
+            .expect("typecheck should succeed");
+        let typed_graph = if let Some(ret) = tc_result.get("return") {
+            ret.clone()
+        } else {
+            gunbc_ir::Value::Map(tc_result.into_iter().collect())
+        };
+
+        // Step 4: Emit Rust for each typed module
+        let typed_modules = if let gunbc_ir::Value::Map(ref m) = typed_graph {
+            if let Some(gunbc_ir::Value::List(mods)) = m.get("modules") {
+                mods.clone()
+            } else { panic!("no modules in typed graph"); }
+        } else { panic!("typed graph not a map"); };
+
+        assert_eq!(
+            typed_modules.len(), dag_files.len(),
+            "should have {} typed modules, got {}",
+            dag_files.len(), typed_modules.len()
+        );
+
+        let mut emitted_files = Vec::new();
+        for typed_module in &typed_modules {
+            let mut emit_inputs = HashMap::new();
+            emit_inputs.insert("typed_module".to_string(), typed_module.clone());
+            if let Ok(result) = call_fn(&output, "emit_module", emit_inputs) {
+                let text_file = if let Some(ret) = result.get("return") {
+                    ret.clone()
+                } else {
+                    gunbc_ir::Value::Map(result.into_iter().collect())
+                };
+                if matches!(text_file, gunbc_ir::Value::Map(_)) {
+                    emitted_files.push(text_file);
+                }
+            }
+        }
+
+        // At minimum, gist.dag should produce emitted output
+        assert!(
+            !emitted_files.is_empty(),
+            "should have emitted at least one file"
+        );
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Regression: stack ordering for inner/outer continuations (S52-EVAL)
+    // ═════════════════════════════════════════════════════════════════════
+
+    /// Verify is_ident_start works when compiled with all v2 modules.
+    #[test]
+    fn regression_is_ident_start_with_all_modules() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        // Call is_ident_start("f") directly
+        let mut inputs = HashMap::new();
+        inputs.insert("ch".to_string(), gunbc_ir::Value::Str("f".to_string()));
+        let result = call_fn(&output, "is_ident_start", inputs);
+        match &result {
+            Ok(outputs) => {
+                let ret = outputs.get("return").unwrap();
+                assert_eq!(
+                    ret,
+                    &gunbc_ir::Value::Bool(true),
+                    "is_ident_start('f') should be true, got: {:?}",
+                    ret
+                );
+            }
+            Err(e) => panic!("is_ident_start('f') failed: {}", e),
+        }
+    }
+
+    /// Regression: tokenize('f') with all v2 modules should produce Ident token.
+    /// Before the stack-ordering fix, inner block continuations were pushed
+    /// below outer stmt continuations, causing pop_stack to resume with the
+    /// wrong continuation and skip the block's Return/EarlyReturn.
+    #[test]
+    fn regression_tokenize_single_ident() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let mut inputs = HashMap::new();
+        inputs.insert("source".to_string(), gunbc_ir::Value::Str("f".to_string()));
+        let result = call_fn(&output, "tokenize", inputs).expect("tokenize should succeed");
+        let tokens = match &result["return"] {
+            gunbc_ir::Value::List(t) => t,
+            other => panic!("expected token list, got: {:?}", other),
+        };
+        let kinds: Vec<Option<String>> = tokens.iter().map(token_kind_tag).collect();
+        assert!(
+            kinds.iter().any(|k| k.as_deref() == Some("Ident")),
+            "tokenize('f') with all modules should produce Ident, got: {:?}",
+            kinds
+        );
     }
 }

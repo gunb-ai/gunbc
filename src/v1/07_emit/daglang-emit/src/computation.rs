@@ -355,7 +355,7 @@ pub fn classify_computation(node: &Node<LoweredOp>) -> Result<Computation, Class
             name,
             obligation,
             ..
-        } => classify_callable(module, name, *obligation, None, inputs, outputs),
+        } => classify_callable(module, name, (*obligation).into(), None, inputs, outputs),
         LoweredOp::Transport {
             module,
             name,
@@ -365,7 +365,7 @@ pub fn classify_computation(node: &Node<LoweredOp>) -> Result<Computation, Class
         } => classify_callable(
             module,
             name,
-            *obligation,
+            (*obligation).into(),
             Some(service_metadata),
             inputs,
             outputs,
@@ -557,7 +557,7 @@ fn classify_callable(
         }
 
         ObligationCategory::ServiceTransportExecute => {
-            let transport_kind = infer_transport_kind(name, require_metadata()?);
+            let transport_kind = infer_transport_kind(name, require_metadata()?)?;
             Ok(Computation::Transport {
                 prepare: RequestSpec {
                     input_ports: inputs.iter().map(|p| p.name.clone()).collect(),
@@ -648,26 +648,33 @@ fn classify_callable(
 
 /// Derive [`TransportKind`] from required service metadata.
 ///
-/// Since D (LoweredOp::Transport has required metadata), the name-based
-/// heuristic fallback is gone. The transport class comes from the DSL
-/// service definition's transport binding.
+/// Uses the DSL service definition's transport binding and `readonly` flag.
+/// Returns an error for `Unknown` transport class (the caller must specify a
+/// concrete transport) and for `InterfaceStub` (stubs are resolved before
+/// emission).
 fn infer_transport_kind(
     name: &str,
     service_metadata: &daglang_lower::ServiceCallMetadata,
-) -> TransportKind {
+) -> Result<TransportKind, ClassifyError> {
     match service_metadata.transport {
         ServiceTransportClass::FileBoundary => {
-            if name.contains("read") {
-                TransportKind::FileRead
+            if service_metadata.readonly {
+                Ok(TransportKind::FileRead)
             } else {
-                TransportKind::FileWrite
+                Ok(TransportKind::FileWrite)
             }
         }
-        ServiceTransportClass::ShellLocal => TransportKind::ShellExec,
-        ServiceTransportClass::RestNetwork => TransportKind::HttpRequest,
-        ServiceTransportClass::LocalDirect => TransportKind::ShellExec,
-        ServiceTransportClass::Unknown => TransportKind::ShellExec,
-        ServiceTransportClass::InterfaceStub => TransportKind::ShellExec,
+        ServiceTransportClass::ShellLocal => Ok(TransportKind::ShellExec),
+        ServiceTransportClass::RestNetwork => Ok(TransportKind::HttpRequest),
+        ServiceTransportClass::LocalDirect => Ok(TransportKind::ShellExec),
+        ServiceTransportClass::Unknown => Err(ClassifyError::UnrecognizedOp {
+            node_id: name.to_string(),
+            detail: "transport class is Unknown — service must declare a concrete transport binding".into(),
+        }),
+        ServiceTransportClass::InterfaceStub => Err(ClassifyError::UnrecognizedOp {
+            node_id: name.to_string(),
+            detail: "InterfaceStub transport should be resolved to a concrete binding before emission".into(),
+        }),
     }
 }
 
@@ -814,7 +821,7 @@ pub fn classify_fn_body<T: std::fmt::Debug>(dag: &gunbc_ir::Dag<T>) -> FnBodyCla
 #[cfg(test)]
 mod tests {
     use super::*;
-    use daglang_lower::{CallableKind, LoweredOp, ObligationCategory};
+    use daglang_lower::{CallableKind, CallableObligation, LoweredOp, TransportObligation};
     use gunbc_ir::Node;
 
     /// Helper: build an opaque node with the given op.
@@ -843,7 +850,7 @@ mod tests {
                 module: "tools.makegen".into(),
                 kind: CallableKind::Fn,
                 name: "load_registry".into(),
-                obligation: ObligationCategory::PureDataLoad,
+                obligation: CallableObligation::PureDataLoad,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -869,7 +876,7 @@ mod tests {
                 module: "tools.makegen".into(),
                 kind: CallableKind::Fn,
                 name: "render_makefile".into(),
-                obligation: ObligationCategory::PureRender,
+                obligation: CallableObligation::PureRender,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1036,7 +1043,7 @@ mod tests {
                 module: "tools.makegen".into(),
                 kind: CallableKind::Fn,
                 name: "fs_env".into(),
-                obligation: ObligationCategory::ResourceProvide,
+                obligation: CallableObligation::ResourceProvide,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1059,7 +1066,7 @@ mod tests {
                 module: "tools.makegen".into(),
                 kind: CallableKind::Func,
                 name: "makegen".into(),
-                obligation: ObligationCategory::None,
+                obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1082,7 +1089,7 @@ mod tests {
                 module: "pragma".into(),
                 kind: CallableKind::Fn,
                 name: "render_clippy".into(),
-                obligation: ObligationCategory::PureRender,
+                obligation: CallableObligation::PureRender,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1108,7 +1115,7 @@ mod tests {
                 module: "pragma".into(),
                 kind: CallableKind::Fn,
                 name: "render_allowlist".into(),
-                obligation: ObligationCategory::PureRender,
+                obligation: CallableObligation::PureRender,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1134,7 +1141,7 @@ mod tests {
                 module: "pragma".into(),
                 kind: CallableKind::Fn,
                 name: "render_lint_policy".into(),
-                obligation: ObligationCategory::PureRender,
+                obligation: CallableObligation::PureRender,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1234,7 +1241,7 @@ mod tests {
                 module: "infra".into(),
                 kind: CallableKind::Fn,
                 name: "acquire_filesystem".into(),
-                obligation: ObligationCategory::ResourceAcquire,
+                obligation: CallableObligation::ResourceAcquire,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1262,7 +1269,7 @@ mod tests {
                 module: "svc.local".into(),
                 kind: CallableKind::Func,
                 name: "run_command".into(),
-                obligation: ObligationCategory::ServiceTransportExecute,
+                obligation: TransportObligation::Execute,
                 service_metadata: Box::new(meta),
                 is_interactive: false,
                 resource_target: None,
@@ -1299,7 +1306,7 @@ mod tests {
                 module: "svc.github".into(),
                 kind: CallableKind::Func,
                 name: "list_repos".into(),
-                obligation: ObligationCategory::ServiceTransportExecute,
+                obligation: TransportObligation::Execute,
                 service_metadata: Box::new(meta),
                 is_interactive: false,
                 resource_target: None,
@@ -1333,7 +1340,7 @@ mod tests {
                 module: "svc.github".into(),
                 kind: CallableKind::Func,
                 name: "prepare_list_repos".into(),
-                obligation: ObligationCategory::ServiceTransportPrepare,
+                obligation: TransportObligation::Prepare,
                 service_metadata: Box::new(meta),
                 is_interactive: false,
                 resource_target: None,
@@ -1488,7 +1495,7 @@ mod tests {
                 module: "test".into(),
                 kind: CallableKind::Fn,
                 name: "transform".into(),
-                obligation: ObligationCategory::None,
+                obligation: CallableObligation::None,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -1509,7 +1516,7 @@ mod tests {
                     module: "test".into(),
                     kind: CallableKind::Func,
                     name: "read_file".into(),
-                    obligation: ObligationCategory::None,
+                    obligation: CallableObligation::None,
                     is_interactive: false,
                     resource_target: None,
                     fn_body: None,
@@ -1532,7 +1539,7 @@ mod tests {
                     module: "test".into(),
                     kind: CallableKind::Func,
                     name: "prepare".into(),
-                    obligation: ObligationCategory::None,
+                    obligation: CallableObligation::None,
                     is_interactive: false,
                     resource_target: None,
                     fn_body: None,

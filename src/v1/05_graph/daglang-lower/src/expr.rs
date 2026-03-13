@@ -38,18 +38,28 @@ pub fn lower_expr_remap(expr: &ast::Expr, variant_names: &HashSet<String>) -> Lo
 /// Lower an AST fn body with an explicit lowering mode.
 ///
 /// `Remap` mode flattens `ident.field` to `ident__field` for DAG port wiring.
+///
+/// After basic lowering, applies ANF normalization to hoist nested calls
+/// to statement level (DESIGN-eval-redesign.md §"The Lowering Contract").
 pub fn lower_fn_body_with_mode(
     body: &ast::FnBody,
     variant_names: &HashSet<String>,
     mode: ExprLowerMode,
 ) -> LoweredFnBody {
-    LoweredFnBody {
+    let lowered = LoweredFnBody {
         stmts: body
             .stmts
             .iter()
             .map(|s| lower_stmt(s, variant_names, mode))
             .collect(),
-    }
+    };
+    let normalized = crate::anf::anf_normalize(lowered);
+    debug_assert!(
+        crate::anf::verify_anf(&normalized).is_ok(),
+        "ANF contract violated after lowering: {}",
+        crate::anf::verify_anf(&normalized).unwrap_err()
+    );
+    normalized
 }
 
 /// Lower a single AST statement with an explicit lowering mode.

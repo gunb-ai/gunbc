@@ -18,7 +18,7 @@ use gunbc_ir::{BuilderError, Dag, WorkspaceLayout};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 
-/// Options for `build_dsl_graph`.
+/// Options for graph building and resolution.
 #[derive(Debug, Default)]
 pub struct BuildOpts<'a> {
     /// Active profile for interface binding resolution (PT-4).
@@ -94,8 +94,12 @@ pub fn resolve_compiled_dsl(
 
 /// Compile a DSL module and resolve lowered ops into `Dag<DynOp>`.
 ///
-/// Convenience wrapper that compiles via the driver and then resolves.
-/// New code should prefer [`resolve_compiled_dsl`] with explicit compilation.
+/// **Deprecated.** This wrapper compiles via the driver and then resolves
+/// in a single call, which inverts the expected layering (the resolver
+/// should not depend on the compilation driver). New code should compile
+/// via [`daglang_driver::compile_from_context`] and pass the result to
+/// [`resolve_compiled_dsl`].
+#[deprecated(note = "use resolve_compiled_dsl with explicit compilation instead")]
 pub fn build_dsl_graph(
     relative_module: &str,
     opts: BuildOpts<'_>,
@@ -149,8 +153,9 @@ pub fn build_dsl_graph(
 
 /// Convenience wrapper: compile + resolve a DSL module and return just the DAG.
 ///
-/// Used by generated CLI binaries to avoid a redundant closure around
-/// `build_dsl_graph(...).map(|r| r.dag)`.
+/// **Deprecated.** See [`build_dsl_graph`] deprecation notice.
+#[deprecated(note = "use resolve_compiled_dsl with explicit compilation instead")]
+#[allow(deprecated)]
 pub fn build_dsl_graph_dag(
     relative_module: &str,
     opts: BuildOpts<'_>,

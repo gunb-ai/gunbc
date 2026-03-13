@@ -815,7 +815,7 @@ impl std::fmt::Display for PortName {
 /// **Migration target (change A):** `TypeId(String)` is a deferred lookup —
 /// downstream code must query a `TypeRegistry` to learn anything structural.
 /// The target is `ResolvedType` which embeds structure directly, making
-/// "unresolved type" unrepresentable. See `DESIGN-pipeline-purity-audit.md`.
+/// "unresolved type" unrepresentable.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TypeId(pub String);
 
@@ -823,14 +823,20 @@ pub struct TypeId(pub String);
 ///
 /// The target replacement for `TypeId(String)`. Embeds type structure
 /// directly so there is no string handle to look up and no registry to
-/// query. The invalid state "unresolved type reference" is not a variant
-/// of this enum — it is structurally unrepresentable.
+/// query.
+///
+/// **Caveat:** `Named(String)` reintroduces a string handle for opaque
+/// types (brands, newtypes) that cannot be decomposed further. During
+/// the migration period this is a pragmatic escape hatch, but it means
+/// the "fully resolved" guarantee is weaker than the structural variants
+/// provide. Consumers should treat `Named` as an opaque boundary type,
+/// not as a resolved structure.
 ///
 /// **Status:** defined but not yet wired into `Port`. Migration path:
 /// 1. Populate `ResolvedType` during typechecking/lowering.
 /// 2. Add `resolved_type: ResolvedType` to `Port` alongside `type_id`.
 /// 3. Migrate consumers from `type_id` to `resolved_type`.
-/// 4. Remove `type_id` field.
+/// 4. Remove `type_id` field and audit `Named(String)` uses.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ResolvedType {
     /// Scalar primitive: Int, Float, String, Bool, Bytes, Json, Unit.

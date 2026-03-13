@@ -2555,14 +2555,21 @@ fn lower_errors_when_no_callable_items_exist() {
 
 #[test]
 fn classify_obligation_uses_structural_lowered_metadata() {
-    let op = LoweredOp::Callable {
+    let op = LoweredOp::Transport {
         module: "sample.services".to_string(),
         kind: CallableKind::Pattern,
         name: "prepare_transport_sample".to_string(),
-        obligation: ObligationCategory::ServiceTransportPrepare,
+        obligation: TransportObligation::Prepare,
+        service_metadata: Box::new(ServiceCallMetadata {
+            service: "FsStorage".to_string(),
+            operation: "read".to_string(),
+            transport: ServiceTransportClass::ShellLocal,
+            idempotent: true,
+            readonly: true,
+            spec: None,
+        }),
         is_interactive: false,
         resource_target: None,
-        fn_body: None,
     };
     assert_eq!(
         classify_obligation(&op),
@@ -2647,14 +2654,21 @@ fn topology_with_obligation_kinds_populates_canonical_kind_metadata() {
         "execute_transport_sample",
         vec![],
         vec![],
-        LoweredOp::Callable {
+        LoweredOp::Transport {
             module: "sample.services".to_string(),
             kind: CallableKind::Pattern,
             name: "execute_transport_sample".to_string(),
-            obligation: ObligationCategory::ServiceTransportExecute,
+            obligation: TransportObligation::Execute,
+            service_metadata: Box::new(ServiceCallMetadata {
+                service: "FsStorage".to_string(),
+                operation: "read".to_string(),
+                transport: ServiceTransportClass::ShellLocal,
+                idempotent: true,
+                readonly: true,
+                spec: None,
+            }),
             is_interactive: false,
             resource_target: None,
-            fn_body: None,
         },
     ));
 
@@ -2674,7 +2688,7 @@ fn parity_report_includes_changed_node_details() {
             module: "tools.makegen".to_string(),
             kind: CallableKind::Fn,
             name: "render".to_string(),
-            obligation: ObligationCategory::None,
+            obligation: CallableObligation::None,
             is_interactive: false,
             resource_target: None,
             fn_body: None,
@@ -2709,7 +2723,7 @@ fn parity_report_lists_added_and_removed_items_in_sorted_order() {
             module: "sample".to_string(),
             kind: CallableKind::Fn,
             name: "b".to_string(),
-            obligation: ObligationCategory::None,
+            obligation: CallableObligation::None,
             is_interactive: false,
             resource_target: None,
             fn_body: None,
@@ -2723,7 +2737,7 @@ fn parity_report_lists_added_and_removed_items_in_sorted_order() {
             module: "sample".to_string(),
             kind: CallableKind::Fn,
             name: "a".to_string(),
-            obligation: ObligationCategory::None,
+            obligation: CallableObligation::None,
             is_interactive: false,
             resource_target: None,
             fn_body: None,
